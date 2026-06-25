@@ -3,7 +3,7 @@ import { playersTable, activeEventsTable, eventParticipantsTable, eventClaimsTab
 import { eq, and, gte, gt, inArray, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import type { Player, EventParticipant } from "@workspace/db";
-import { CLASSES, isClassKey, rollRarity, COMPANIONS, isCompanionKey, isCompanionEvolved, companionStats } from "./survival";
+import { CLASSES, isClassKey, rollRarity, isCompanionKey, companionStats } from "./survival";
 
 export type UpgradeKey = "atac" | "def" | "dodge" | "crit" | "hp";
 
@@ -55,15 +55,81 @@ export async function setPlayerClass(discordId: string, classKey: string): Promi
   return u ?? null;
 }
 
-// Permanent: only sets the companion if the player has none yet. Returns the
-// updated player, or null if a companion was already chosen.
-export async function setCompanion(discordId: string, companionKey: string): Promise<Player | null> {
+// Buys a companion with Oboli (gold). Permanent: only if the player has none
+// yet and can afford it. Returns the updated player, or null on failure.
+export async function buyCompanion(discordId: string, companionKey: string, cost: number): Promise<Player | null> {
   if (!isCompanionKey(companionKey)) return null;
   const [u] = await db.update(playersTable)
-    .set({ companion: companionKey })
-    .where(and(eq(playersTable.discordId, discordId), sql`${playersTable.companion} IS NULL`))
+    .set({ companion: companionKey, companionLevel: 1, gold: sql`${playersTable.gold} - ${cost}` })
+    .where(and(eq(playersTable.discordId, discordId), sql`${playersTable.companion} IS NULL`, gte(playersTable.gold, cost)))
     .returning();
   return u ?? null;
+}
+
+// Upgrades the owned companion: consumes Oboli + XP, raises companion_level.
+// `expectedLevel` guards against concurrent clicks paying the same lower tier:
+// the row only updates if its level still matches the one the price was based on.
+export async function upgradeCompanion(discordId: string, expectedLevel: number, cost: number, xpCost: number): Promise<Player | null> {
+  const [u] = await db.update(playersTable)
+    .set({
+      companionLevel: sql`${playersTable.companionLevel} + 1`,
+      gold: sql`${playersTable.gold} - ${cost}`,
+      xp: sql`${playersTable.xp} - ${xpCost}`,
+    })
+    .where(and(
+      eq(playersTable.discordId, discordId),
+      sql`${playersTable.companion} IS NOT NULL`,
+      eq(playersTable.companionLevel, expectedLevel),
+      gte(playersTable.gold, cost),
+      gte(playersTable.xp, xpCost),
+    ))
+    .returning();
+  return u ?? null;
+}
+
+export type AbilityKind = "empower" | "shield";
+
+// Unlocks an ability (level 0 → 1) with Oboli. Returns null if already owned
+// or unaffordable.
+export async function buyAbility(discordId: string, kind: AbilityKind, cost: number): Promise<Player | null> {
+  const col = kind === "empower" ? playersTable.abilityEmpowerLevel : playersTable.abilityShieldLevel;
+  const setObj = kind === "empower" ? { abilityEmpowerLevel: 1 } : { abilityShieldLevel: 1 };
+  const [u] = await db.update(playersTable)
+    .set({ ...setObj, gold: sql`${playersTable.gold} - ${cost}` })
+    .where(and(eq(playersTable.discordId, discordId), eq(col, 0), gte(playersTable.gold, cost)))
+    .returning();
+  return u ?? null;
+}
+
+// Upgrades an owned ability: consumes Oboli + XP, raises its level.
+// `expectedLevel` guards against concurrent clicks paying the same lower tier.
+export async function upgradeAbility(discordId: string, kind: AbilityKind, expectedLevel: number, cost: number, xpCost: number): Promise<Player | null> {
+  const col = kind === "empower" ? playersTable.abilityEmpowerLevel : playersTable.abilityShieldLevel;
+  const setObj = kind === "empower"
+    ? { abilityEmpowerLevel: sql`${playersTable.abilityEmpowerLevel} + 1` }
+    : { abilityShieldLevel: sql`${playersTable.abilityShieldLevel} + 1` };
+  const [u] = await db.update(playersTable)
+    .set({ ...setObj, gold: sql`${playersTable.gold} - ${cost}`, xp: sql`${playersTable.xp} - ${xpCost}` })
+    .where(and(eq(playersTable.discordId, discordId), eq(col, expectedLevel), gte(col, 1), gte(playersTable.gold, cost), gte(playersTable.xp, xpCost)))
+    .returning();
+  return u ?? null;
+}
+
+// Mirrors a freshly-bought/upgraded ability level onto the active participant so
+// it becomes usable in the current fight (participants snapshot at join time).
+export async function applyAbilityLevelToActiveParticipant(discordId: string, kind: AbilityKind, level: number): Promise<void> {
+  const activeIds = db
+    .select({ id: activeEventsTable.id })
+    .from(activeEventsTable)
+    .where(and(eq(activeEventsTable.isActive, true), gt(activeEventsTable.expiresAt, new Date())));
+  const setObj = kind === "empower" ? { empowerLevel: level } : { shieldLevel: level };
+  await db.update(eventParticipantsTable)
+    .set(setObj)
+    .where(and(
+      eq(eventParticipantsTable.discordId, discordId),
+      eq(eventParticipantsTable.isAlive, true),
+      inArray(eventParticipantsTable.eventId, activeIds),
+    ));
 }
 
 export async function setHonorTitle(discordId: string, title: string): Promise<void> {
@@ -187,7 +253,7 @@ export async function joinEvent(eventId: number, discordId: string, username: st
   const player = await getPlayerById(discordId);
   const cls = player?.class && isClassKey(player.class) ? CLASSES[player.class] : null;
   const comp = player?.companion && isCompanionKey(player.companion)
-    ? companionStats(player.companion, isCompanionEvolved(player.maxLevel ?? 0))
+    ? companionStats(player.companion, player.companionLevel ?? 1)
     : null;
   const maxHp = 100 + (player?.maxHpBonus ?? 0) + (cls?.hp ?? 0) + (comp?.hp ?? 0);
   try {
@@ -202,6 +268,8 @@ export async function joinEvent(eventId: number, discordId: string, username: st
       defenseBonus: (player?.defenseBonus ?? 0) + (comp?.defense ?? 0),
       dodgeBonus: (player?.dodgeBonus ?? 0) + (cls?.dodge ?? 0),
       critBonus: (player?.critBonus ?? 0) + (cls?.crit ?? 0) + (comp?.crit ?? 0),
+      empowerLevel: player?.abilityEmpowerLevel ?? 0,
+      shieldLevel: player?.abilityShieldLevel ?? 0,
     }).returning();
     return p!;
   } catch { return null; }

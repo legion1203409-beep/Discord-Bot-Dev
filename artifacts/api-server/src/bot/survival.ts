@@ -103,10 +103,36 @@ export const CLASSES: Record<ClassKey, {
 };
 export function isClassKey(k: string): k is ClassKey { return k in CLASSES; }
 
-// ─── Companions ──────────────────────────────────────────────────────────────
-// Companions give a passive bonus that DOUBLES once the player evolves them by
-// reaching COMPANION_EVOLVE_LEVEL (max level achieved across events).
-export const COMPANION_EVOLVE_LEVEL = 20;
+// ─── Shop economy: companions & abilities ─────────────────────────────────────
+// Companions and abilities are bought with Oboli (gold) and then leveled up.
+// Each upgrade consumes XP and Oboli; cost grows 15%/level, the offered bonus
+// grows 5%/level (compound). Companions evolve (legendary art) at EVOLVE_LEVEL.
+export const COMPANION_BUY_COST = 300; // one-time, Oboli
+export const ABILITY_BUY_COST = 250; // per ability unlock, Oboli
+export const UPGRADE_BASE_COST = 200; // Oboli for the first upgrade
+export const UPGRADE_COST_GROWTH = 1.15;
+export const UPGRADE_BONUS_GROWTH = 1.05;
+export const UPGRADE_XP_COST = 100; // XP consumed per upgrade
+export const COMPANION_EVOLVE_LEVEL = 5; // companion level at which art evolves
+
+// Oboli cost to go from `level` to `level+1`.
+export function upgradeCost(level: number): number {
+  return Math.ceil(UPGRADE_BASE_COST * Math.pow(UPGRADE_COST_GROWTH, Math.max(0, level - 1)));
+}
+// Multiplier applied to a base bonus at a given level (level 1 = ×1).
+export function bonusMult(level: number): number {
+  return Math.pow(UPGRADE_BONUS_GROWTH, Math.max(0, level - 1));
+}
+// Empower (Lovitura Umbrei): ×2 at level 1, the +100% bonus grows 5%/level.
+export function empowerMult(level: number): number {
+  if (level < 1) return 1;
+  return 1 + bonusMult(level);
+}
+// Shield (Scut de Cenușă): 50% damage reduction at level 1, grows 5%/level (cap 90%).
+export function shieldReduction(level: number): number {
+  if (level < 1) return 0;
+  return Math.min(0.9, 0.5 * bonusMult(level));
+}
 
 export type CompanionKey = "lup" | "corb" | "spirit" | "golem";
 export const COMPANIONS: Record<CompanionKey, {
@@ -120,16 +146,38 @@ export const COMPANIONS: Record<CompanionKey, {
 };
 export function isCompanionKey(k: string): k is CompanionKey { return k in COMPANIONS; }
 
-export function isCompanionEvolved(maxLevel: number): boolean {
-  return maxLevel >= COMPANION_EVOLVE_LEVEL;
+export function isCompanionEvolved(companionLevel: number): boolean {
+  return companionLevel >= COMPANION_EVOLVE_LEVEL;
 }
 
-// Effective bonuses for a companion, doubled when evolved.
-export function companionStats(key: CompanionKey, evolved: boolean): { attack: number; hp: number; crit: number; defense: number } {
+// Effective bonuses for a companion at a given level (base × 1.05^(level-1)).
+export function companionStats(key: CompanionKey, level: number): { attack: number; hp: number; crit: number; defense: number } {
   const c = COMPANIONS[key];
-  const m = evolved ? 2 : 1;
-  return { attack: c.attack * m, hp: c.hp * m, crit: c.crit * m, defense: c.defense * m };
+  const m = bonusMult(level);
+  return {
+    attack: Math.round(c.attack * m),
+    hp: Math.round(c.hp * m),
+    crit: Math.round(c.crit * m),
+    defense: Math.round(c.defense * m),
+  };
 }
+// Precise (unrounded) effective bonus for display, e.g. "+2.6 damage".
+export function companionEffectiveDesc(key: CompanionKey, level: number): string {
+  const c = COMPANIONS[key];
+  const m = bonusMult(level);
+  if (c.attack) return `+${(c.attack * m).toFixed(1)} damage`;
+  if (c.crit) return `+${(c.crit * m).toFixed(1)}% critic`;
+  if (c.hp) return `+${(c.hp * m).toFixed(1)} HP`;
+  if (c.defense) return `-${(c.defense * m).toFixed(1)} damage primit`;
+  return c.desc;
+}
+
+export const ABILITIES = {
+  empower: { label: "Lovitura Umbrei", emoji: "🌑", desc: "Următoarea lovitură ×2 (crește 5%/nivel)" },
+  shield: { label: "Scut de Cenușă", emoji: "🛡️", desc: "Următorul atac primit -50% (crește 5%/nivel)" },
+} as const;
+export type AbilityKey = keyof typeof ABILITIES;
+export function isAbilityKey(k: string): k is AbilityKey { return k in ABILITIES; }
 
 function rand(min: number, max: number) { return Math.floor(Math.random() * (max - min + 1)) + min; }
 function hpBar(cur: number, max: number) {
@@ -157,7 +205,7 @@ export function doCombat(p: EventParticipant): CombatResult {
   const isCrit = Math.random() * 100 < p.critBonus;
   let base = rand(10, 20) + p.attackBonus;
   if (isCrit) base *= 2;
-  if (usedEmpower) base *= 2;
+  if (usedEmpower) base = Math.round(base * empowerMult(p.empowerLevel));
   if (battle) base = Math.round(base * battle.damageMult);
   const playerDmg = base;
   const newMHp = Math.max(0, p.monsterCurrentHp - playerDmg);
@@ -186,7 +234,7 @@ export function doCombat(p: EventParticipant): CombatResult {
       if (!playerDodged) {
         const [mn, mx] = monsterDmgRange(p.monsterLevel);
         monsterDmg = Math.max(1, rand(mn, mx) - p.defenseBonus);
-        if (usedShield) monsterDmg = Math.ceil(monsterDmg / 2);
+        if (usedShield) monsterDmg = Math.max(1, Math.round(monsterDmg * (1 - shieldReduction(p.shieldLevel))));
         newPlayerHp = Math.max(0, newPlayerHp - monsterDmg);
         playerDied = newPlayerHp <= 0;
       }
@@ -316,8 +364,14 @@ export function buildProfileEmbed(player: Player, title?: string, avatarUrl?: st
       (player.honorTitle ? `👑 **${player.honorTitle}**\n` : "") +
       (cls ? `${cls.emoji} **${cls.label}** — ${cls.desc}\n` : "🧭 *Fără clasă — folosește /clasa*\n") +
       (player.companion && isCompanionKey(player.companion)
-        ? `${COMPANIONS[player.companion].emoji} **${isCompanionEvolved(player.maxLevel) ? COMPANIONS[player.companion].evoLabel : COMPANIONS[player.companion].label}** — ${COMPANIONS[player.companion].desc}${isCompanionEvolved(player.maxLevel) ? " *(dublu)*" : ""}`
-        : "🐾 *Fără companion — folosește /companion*"),
+        ? `${COMPANIONS[player.companion].emoji} **${isCompanionEvolved(player.companionLevel) ? COMPANIONS[player.companion].evoLabel : COMPANIONS[player.companion].label}** Nv.${player.companionLevel} — ${companionEffectiveDesc(player.companion, player.companionLevel)}${isCompanionEvolved(player.companionLevel) ? " ✨" : ""}\n`
+        : "🐾 *Fără companion — cumpără din /magazin*\n") +
+      ((player.abilityEmpowerLevel >= 1 || player.abilityShieldLevel >= 1)
+        ? "🎯 " + [
+            player.abilityEmpowerLevel >= 1 ? `${ABILITIES.empower.emoji} ${ABILITIES.empower.label} Nv.${player.abilityEmpowerLevel}` : null,
+            player.abilityShieldLevel >= 1 ? `${ABILITIES.shield.emoji} ${ABILITIES.shield.label} Nv.${player.abilityShieldLevel}` : null,
+          ].filter(Boolean).join(" · ")
+        : "🎯 *Fără abilități — deblochează din /magazin*"),
     )
     .addFields(
       { name: "⭐ XP Total", value: `${player.xp}`, inline: true },
@@ -377,23 +431,34 @@ export function buildChestEmbed(gold: number, rarity?: ChestRarity): EmbedBuilde
 }
 
 export function buildShopEmbed(p: Player): EmbedBuilder {
+  const compLine = p.companion && isCompanionKey(p.companion)
+    ? `${COMPANIONS[p.companion].emoji} **${COMPANIONS[p.companion].label}** Nv.${p.companionLevel} (${companionEffectiveDesc(p.companion, p.companionLevel)}) → Upgrade: **${upgradeCost(p.companionLevel)} Oboli + ${UPGRADE_XP_COST} XP**\n`
+    : `🐾 **Companion** — cumpără unul (**${COMPANION_BUY_COST} Oboli**): ` +
+      Object.values(COMPANIONS).map((c) => `${c.emoji} ${c.label} (${c.desc})`).join(", ") + "\n";
+  const abilLine = (kind: AbilityKey) => {
+    const lvl = kind === "empower" ? p.abilityEmpowerLevel : p.abilityShieldLevel;
+    const a = ABILITIES[kind];
+    return lvl >= 1
+      ? `${a.emoji} **${a.label}** Nv.${lvl} → Upgrade: **${upgradeCost(lvl)} Oboli + ${UPGRADE_XP_COST} XP**\n`
+      : `${a.emoji} **${a.label}** 🔒 — deblochează (**${ABILITY_BUY_COST} Oboli**): ${a.desc}\n`;
+  };
   return new EmbedBuilder()
     .setColor(0x8a4a2f)
     .setTitle("🔥🏺  FORJA CENUȘII – MAGAZINUL REGAL  🏺🔥")
     .setDescription(
       "În adâncul cetății, focul nu se stinge niciodată.\n" +
-      "Aici, metalul se topește, umbrele se împletesc,\n" +
-      "iar puterea se cumpără cu Oboli de Cenușă.\n\n" +
-      `💰 **Oboli disponibili: ${p.gold}**\n\n` +
-      `⚔️ **Furia Cenușii (Atac)** — ${shopPrice("atac", p.shopAttackCount)} Oboli → +2 damage\n` +
-      `🛡️ **Scutul Umbrelor (Defensivă)** — ${shopPrice("def", p.shopDefenseCount)} Oboli → -2 damage primit\n` +
-      `🌀 **Dansul Fumului (Evitare)** — ${shopPrice("dodge", p.shopDodgeCount)} Oboli → +3% evitare\n` +
-      `💥 **Lovitura Arhontei (Critic)** — ${shopPrice("crit", p.shopCritCount)} Oboli → +2% critic\n` +
-      `❤️ **Voința Cenușii (HP Max)** — ${shopPrice("hp", p.shopHpCount)} Oboli → +10 HP Max\n\n` +
-      `📊 **Bonusurile tale acum:**\n` +
-      `⚔️ +${p.attackBonus} atac | 🛡️ +${p.defenseBonus} def | 🌀 ${p.dodgeBonus}% evitare | 💥 ${p.critBonus}% critic | ❤️ +${p.maxHpBonus} HP\n\n` +
-      "Upgrade-urile sunt **permanente** și se aplică **imediat**, chiar și în lupta curentă.\n" +
-      "Alege cu înțelepciune.\nFiecare Obol cheltuit îți apropie destinul de victorie… sau de ruină.",
+      "Aici puterea se cumpără cu Oboli de Cenușă.\n\n" +
+      `💰 **Oboli: ${p.gold}**  |  ⭐ **XP: ${p.xp}**\n\n` +
+      "**━━ Statistici (permanente, efect imediat) ━━**\n" +
+      `⚔️ **Atac** — ${shopPrice("atac", p.shopAttackCount)} Oboli → +2 damage\n` +
+      `🛡️ **Apărare** — ${shopPrice("def", p.shopDefenseCount)} Oboli → -2 damage primit\n` +
+      `🌀 **Evitare** — ${shopPrice("dodge", p.shopDodgeCount)} Oboli → +3% evitare\n` +
+      `💥 **Critic** — ${shopPrice("crit", p.shopCritCount)} Oboli → +2% critic\n` +
+      `❤️ **HP Max** — ${shopPrice("hp", p.shopHpCount)} Oboli → +10 HP Max\n\n` +
+      "**━━ Companion ━━**\n" + compLine + "\n" +
+      "**━━ Abilități de luptă ━━**\n" + abilLine("empower") + abilLine("shield") + "\n" +
+      "📊 *Upgrade-urile la companion/abilități costă Oboli + XP; bonusul crește 5%/nivel iar prețul 15%/nivel.*\n" +
+      "*Abilitățile se aplică imediat, chiar în lupta curentă. Companionul se aplică din următoarea Ora Umbrelor.*",
     );
 }
 
@@ -452,10 +517,12 @@ export function buildExpiredCronica(
 
 export function combatRow(eventId: number, p?: EventParticipant): ActionRowBuilder<ButtonBuilder> {
   const onCooldown = p?.abilityReadyAt ? p.abilityReadyAt.getTime() > Date.now() : false;
+  const hasEmpower = (p?.empowerLevel ?? 0) >= 1;
+  const hasShield = (p?.shieldLevel ?? 0) >= 1;
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(`ora_attack_${eventId}`).setLabel("Atacă").setEmoji("⚔️").setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId(`ora_ability_${eventId}_empower`).setLabel("Lovitura Umbrei").setEmoji("🌑").setStyle(ButtonStyle.Primary).setDisabled(onCooldown),
-    new ButtonBuilder().setCustomId(`ora_ability_${eventId}_shield`).setLabel("Scut de Cenușă").setEmoji("🛡️").setStyle(ButtonStyle.Primary).setDisabled(onCooldown),
+    new ButtonBuilder().setCustomId(`ora_ability_${eventId}_empower`).setLabel(hasEmpower ? "Lovitura Umbrei" : "🔒 Lovitura Umbrei").setEmoji("🌑").setStyle(ButtonStyle.Primary).setDisabled(onCooldown || !hasEmpower),
+    new ButtonBuilder().setCustomId(`ora_ability_${eventId}_shield`).setLabel(hasShield ? "Scut de Cenușă" : "🔒 Scut de Cenușă").setEmoji("🛡️").setStyle(ButtonStyle.Primary).setDisabled(onCooldown || !hasShield),
     new ButtonBuilder().setCustomId(`ora_retreat_${eventId}`).setLabel("Retragere").setEmoji("🏳️").setStyle(ButtonStyle.Secondary),
   );
 }
@@ -502,7 +569,7 @@ export function shopRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
       .setDisabled(p.gold < price);
   };
 
-  return [
+  const rows: ActionRowBuilder<ButtonBuilder>[] = [
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       mk("atac", "⚔️", "Atac"),
       mk("def", "🛡️", "Apărare"),
@@ -513,6 +580,55 @@ export function shopRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
       mk("hp", "❤️", "HP Max"),
     ),
   ];
+
+  // Companion row.
+  if (p.companion && isCompanionKey(p.companion)) {
+    const cost = upgradeCost(p.companionLevel);
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId("shop_compup")
+        .setLabel(`Upgrade Companion Nv.${p.companionLevel} (${cost} + ${UPGRADE_XP_COST}XP)`)
+        .setEmoji(COMPANIONS[p.companion].emoji)
+        .setStyle(ButtonStyle.Success)
+        .setDisabled(p.gold < cost || p.xp < UPGRADE_XP_COST),
+    ));
+  } else {
+    const keys = Object.keys(COMPANIONS) as CompanionKey[];
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      keys.map((k) =>
+        new ButtonBuilder()
+          .setCustomId(`shop_compbuy_${k}`)
+          .setLabel(`${COMPANIONS[k].label} (${COMPANION_BUY_COST})`)
+          .setEmoji(COMPANIONS[k].emoji)
+          .setStyle(ButtonStyle.Success)
+          .setDisabled(p.gold < COMPANION_BUY_COST),
+      ),
+    ));
+  }
+
+  // Ability row.
+  const abilBtn = (kind: AbilityKey) => {
+    const lvl = kind === "empower" ? p.abilityEmpowerLevel : p.abilityShieldLevel;
+    const a = ABILITIES[kind];
+    if (lvl >= 1) {
+      const cost = upgradeCost(lvl);
+      return new ButtonBuilder()
+        .setCustomId(`shop_abilup_${kind}`)
+        .setLabel(`${a.label} Nv.${lvl} ▲ (${cost}+${UPGRADE_XP_COST}XP)`)
+        .setEmoji(a.emoji)
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(p.gold < cost || p.xp < UPGRADE_XP_COST);
+    }
+    return new ButtonBuilder()
+      .setCustomId(`shop_abilbuy_${kind}`)
+      .setLabel(`🔒 ${a.label} (${ABILITY_BUY_COST})`)
+      .setEmoji(a.emoji)
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(p.gold < ABILITY_BUY_COST);
+  };
+  rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(abilBtn("empower"), abilBtn("shield")));
+
+  return rows;
 }
 
 export function levelupRows(eventId: number): ActionRowBuilder<ButtonBuilder>[] {
@@ -563,10 +679,11 @@ export function classRows(): ActionRowBuilder<ButtonBuilder>[] {
 }
 
 // ─── Companions ──────────────────────────────────────────────────────────────
+// Read-only status view. Companions are bought & upgraded from /magazin.
 export function buildCompanionEmbed(player: Player): EmbedBuilder {
   if (player.companion && isCompanionKey(player.companion)) {
     const c = COMPANIONS[player.companion];
-    const evolved = isCompanionEvolved(player.maxLevel);
+    const evolved = isCompanionEvolved(player.companionLevel);
     const img = COMPANION_IMG[player.companion];
     const embed = new EmbedBuilder()
       .setColor(0x2f8a4a)
@@ -574,10 +691,11 @@ export function buildCompanionEmbed(player: Player): EmbedBuilder {
       .setDescription(
         `${c.emoji} **${evolved ? c.evoLabel : c.label}**${evolved ? "  ✨*(Evoluat)*" : ""}\n` +
         `*${c.lore}*\n\n` +
-        `🎁 **Bonus activ:** ${evolved ? `${c.desc} ➜ **dublu!**` : c.desc}\n\n` +
+        `🏅 **Nivel ${player.companionLevel}**\n` +
+        `🎁 **Bonus activ:** ${companionEffectiveDesc(player.companion, player.companionLevel)}\n\n` +
         (evolved
           ? "Companionul tău a evoluat la forma sa legendară!"
-          : `🔓 Evoluează la **Nivel ${COMPANION_EVOLVE_LEVEL}** (acum: ${player.maxLevel}) — bonusul se dublează.`),
+          : `🔓 Evoluează la **Nivel ${COMPANION_EVOLVE_LEVEL}** companion — fă upgrade din **/magazin**.`),
       );
     const url = evolved ? img?.evo : img?.base;
     if (url) embed.setImage(url);
@@ -585,41 +703,13 @@ export function buildCompanionEmbed(player: Player): EmbedBuilder {
   }
   return new EmbedBuilder()
     .setColor(0x2f8a4a)
-    .setTitle("🐾  ALEGE-ȚI COMPANIONUL")
+    .setTitle("🐾  COMPANIONI")
     .setDescription(
-      "O creatură a Cenușii ți se va alătura în luptă.\n" +
-      "⚠️ **Alegerea este permanentă!**\n\n" +
+      "O creatură a Cenușii ți se poate alătura în luptă.\n" +
+      `🛒 Cumpără un companion din **/magazin** (**${COMPANION_BUY_COST} Oboli**):\n\n` +
       Object.values(COMPANIONS).map((c) => `${c.emoji} **${c.label}** — ${c.desc}`).join("\n") +
-      `\n\n✨ La **Nivel ${COMPANION_EVOLVE_LEVEL}** companionul evoluează și bonusul se dublează.`,
+      `\n\n✨ La **Nivel ${COMPANION_EVOLVE_LEVEL}** companionul evoluează în forma legendară.`,
     );
-}
-
-// Selection confirmation message, with the companion's image alongside.
-export function buildCompanionPickedEmbed(key: CompanionKey): EmbedBuilder {
-  const c = COMPANIONS[key];
-  const img = COMPANION_IMG[key];
-  const embed = new EmbedBuilder()
-    .setColor(0x2f8a4a)
-    .setTitle(`${c.emoji}  ${c.label.toUpperCase()} ȚI S-A ALĂTURAT!`)
-    .setDescription(
-      `*${c.lore}*\n\n` +
-      `Din cenușă s-a ridicat un nou tovarăș de luptă.\n` +
-      `🎁 **Bonus:** ${c.desc}\n\n` +
-      `✨ Crește până la **Nivel ${COMPANION_EVOLVE_LEVEL}** ca să-l vezi evoluând în **${c.evoLabel}** (bonus dublu).`,
-    )
-    .setFooter({ text: "Companionii sunt permanenți — alege cu grijă." });
-  if (img?.base) embed.setImage(img.base);
-  return embed;
-}
-
-export function companionRows(): ActionRowBuilder<ButtonBuilder>[] {
-  const keys = Object.keys(COMPANIONS) as CompanionKey[];
-  const btn = (k: CompanionKey) =>
-    new ButtonBuilder().setCustomId(`comp_pick_${k}`).setLabel(COMPANIONS[k].label).setEmoji(COMPANIONS[k].emoji).setStyle(ButtonStyle.Success);
-  return [
-    new ActionRowBuilder<ButtonBuilder>().addComponents(keys.slice(0, 2).map(btn)),
-    new ActionRowBuilder<ButtonBuilder>().addComponents(keys.slice(2).map(btn)),
-  ];
 }
 
 // ─── Oracle random messages ──────────────────────────────────────────────────

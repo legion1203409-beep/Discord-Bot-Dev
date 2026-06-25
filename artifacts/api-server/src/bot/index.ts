@@ -32,8 +32,13 @@ import {
   getPlayerById,
   updateMaxLevel,
   setPlayerClass,
-  setCompanion,
+  buyCompanion,
+  upgradeCompanion,
+  buyAbility,
+  upgradeAbility,
+  applyAbilityLevelToActiveParticipant,
   recordFinalBossHit,
+  type AbilityKind,
 } from "./db";
 import {
   doCombat,
@@ -47,8 +52,6 @@ import {
   buildClassEmbed,
   classRows,
   buildCompanionEmbed,
-  buildCompanionPickedEmbed,
-  companionRows,
   isCompanionKey,
   combatRow,
   shopRows,
@@ -59,6 +62,11 @@ import {
   levelTitle,
   CLASSES,
   isClassKey,
+  isAbilityKey,
+  upgradeCost,
+  COMPANION_BUY_COST,
+  ABILITY_BUY_COST,
+  UPGRADE_XP_COST,
   SHOP_COUNT_KEY,
   LEVELUP_INTERVAL,
   ABILITY_COOLDOWN_MS,
@@ -74,7 +82,7 @@ const slashCommands = [
   new SlashCommandBuilder().setName("clasament").setDescription("👑 Top 10 cei mai puternici luptători."),
   new SlashCommandBuilder().setName("magazin").setDescription("🏺 Forja Cenușii — upgrade-uri permanente, mereu disponibilă."),
   new SlashCommandBuilder().setName("clasa").setDescription("🧬 Alege-ți clasa RPG (alegere permanentă)."),
-  new SlashCommandBuilder().setName("companion").setDescription("🐾 Alege-ți companionul de luptă (alegere permanentă)."),
+  new SlashCommandBuilder().setName("companion").setDescription("🐾 Vezi companionul tău (cumpără și fă upgrade din /magazin)."),
   new SlashCommandBuilder()
     .setName("startevent")
     .setDescription("🔥 [Admin] Pornește manual Ora Umbrelor.")
@@ -407,24 +415,56 @@ async function handleCompanion(interaction: ChatInputCommandInteraction) {
   const p = await upsertPlayer(interaction.user.id, interaction.user.username);
   await interaction.reply({
     embeds: [buildCompanionEmbed(p)],
-    components: p.companion ? [] : companionRows(),
+    components: [],
     ephemeral: true,
   });
 }
 
-async function handleCompanionPick(interaction: ButtonInteraction, key: string) {
-  await upsertPlayer(interaction.user.id, interaction.user.username);
-  const updated = await setCompanion(interaction.user.id, key);
+// Refreshes the shop view after a buy/upgrade, or shows an ephemeral error.
+async function refreshShopOrError(interaction: ButtonInteraction, updated: Awaited<ReturnType<typeof buyCompanion>>, errMsg: string) {
   if (!updated) {
-    const cur = await getPlayerById(interaction.user.id);
-    await interaction.update({
-      embeds: [cur ? buildCompanionEmbed(cur) : buildCompanionEmbed({ companion: null, maxLevel: 0 } as never)],
-      components: [],
-    });
+    await interaction.reply({ content: errMsg, ephemeral: true });
     return;
   }
-  const picked = isCompanionKey(key) ? buildCompanionPickedEmbed(key) : buildCompanionEmbed(updated);
-  await interaction.update({ embeds: [picked], components: [] });
+  await interaction.update({ embeds: [buildShopEmbed(updated)], components: shopRows(updated) });
+}
+
+async function handleCompBuy(interaction: ButtonInteraction, key: string) {
+  await upsertPlayer(interaction.user.id, interaction.user.username);
+  if (!isCompanionKey(key)) return;
+  const updated = await buyCompanion(interaction.user.id, key, COMPANION_BUY_COST);
+  await refreshShopOrError(interaction, updated, `❌ Nu poți cumpăra acest companion — ai nevoie de **${COMPANION_BUY_COST} Oboli** și să nu ai deja unul.`);
+}
+
+async function handleCompUpgrade(interaction: ButtonInteraction) {
+  const p = await upsertPlayer(interaction.user.id, interaction.user.username);
+  const cost = upgradeCost(p.companionLevel);
+  const updated = await upgradeCompanion(interaction.user.id, p.companionLevel, cost, UPGRADE_XP_COST);
+  await refreshShopOrError(interaction, updated, `❌ Upgrade eșuat — ai nevoie de un companion, **${cost} Oboli** și **${UPGRADE_XP_COST} XP**.`);
+}
+
+async function handleAbilBuy(interaction: ButtonInteraction, kind: string) {
+  await upsertPlayer(interaction.user.id, interaction.user.username);
+  if (!isAbilityKey(kind)) return;
+  const updated = await buyAbility(interaction.user.id, kind as AbilityKind, ABILITY_BUY_COST);
+  if (updated) {
+    const lvl = kind === "empower" ? updated.abilityEmpowerLevel : updated.abilityShieldLevel;
+    await applyAbilityLevelToActiveParticipant(interaction.user.id, kind as AbilityKind, lvl);
+  }
+  await refreshShopOrError(interaction, updated, `❌ Nu poți debloca abilitatea — ai nevoie de **${ABILITY_BUY_COST} Oboli** și să nu o deții deja.`);
+}
+
+async function handleAbilUpgrade(interaction: ButtonInteraction, kind: string) {
+  const p = await upsertPlayer(interaction.user.id, interaction.user.username);
+  if (!isAbilityKey(kind)) return;
+  const curLvl = kind === "empower" ? p.abilityEmpowerLevel : p.abilityShieldLevel;
+  const cost = upgradeCost(curLvl);
+  const updated = await upgradeAbility(interaction.user.id, kind as AbilityKind, curLvl, cost, UPGRADE_XP_COST);
+  if (updated) {
+    const lvl = kind === "empower" ? updated.abilityEmpowerLevel : updated.abilityShieldLevel;
+    await applyAbilityLevelToActiveParticipant(interaction.user.id, kind as AbilityKind, lvl);
+  }
+  await refreshShopOrError(interaction, updated, `❌ Upgrade eșuat — ai nevoie de abilitate, **${cost} Oboli** și **${UPGRADE_XP_COST} XP**.`);
 }
 
 async function handleAbility(interaction: ButtonInteraction, eventId: number, kind: string) {
@@ -522,11 +562,14 @@ async function handleButton(interaction: ButtonInteraction) {
   if (id.startsWith("ora_retreat_")) return handleRetreat(interaction, parseInt(id.replace("ora_retreat_", "")));
   if (id.startsWith("finalboss_")) return handleFinalBoss(interaction, parseInt(id.replace("finalboss_", "")));
   if (id.startsWith("class_pick_")) return handleClassPick(interaction, id.replace("class_pick_", ""));
-  if (id.startsWith("comp_pick_")) return handleCompanionPick(interaction, id.replace("comp_pick_", ""));
 
   if (id.startsWith("shop_buy_")) {
     return handleBuy(interaction, id.replace("shop_buy_", "") as ShopKey);
   }
+  if (id.startsWith("shop_compbuy_")) return handleCompBuy(interaction, id.replace("shop_compbuy_", ""));
+  if (id === "shop_compup") return handleCompUpgrade(interaction);
+  if (id.startsWith("shop_abilbuy_")) return handleAbilBuy(interaction, id.replace("shop_abilbuy_", ""));
+  if (id.startsWith("shop_abilup_")) return handleAbilUpgrade(interaction, id.replace("shop_abilup_", ""));
 
   if (id.startsWith("ora_lvlup_")) {
     const parts = id.split("_");

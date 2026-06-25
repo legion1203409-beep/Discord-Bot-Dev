@@ -17,6 +17,8 @@ export const eventParticipantsTable = pgTable(
     abilityReadyAt: timestamp("ability_ready_at", { withTimezone: true }),
     empowerNext: boolean("empower_next").notNull().default(false),
     shieldNext: boolean("shield_next").notNull().default(false),
+    empowerLevel: integer("empower_level").notNull().default(0),
+    shieldLevel: integer("shield_level").notNull().default(0),
     attackBonus: integer("attack_bonus").notNull().default(0),
     defenseBonus: integer("defense_bonus").notNull().default(0),
     dodgeBonus: integer("dodge_bonus").notNull().default(0),
