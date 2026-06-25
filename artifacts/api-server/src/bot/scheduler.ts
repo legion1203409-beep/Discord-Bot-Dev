@@ -34,8 +34,9 @@ async function expireOldEvents(client: Client) {
         if (msg) {
           const participants = await getEventParticipants(ev.id);
           const survivors = participants.filter((p) => p.isAlive);
-          const fallen = participants.filter((p) => !p.isAlive);
-          const cronica = buildExpiredCronica(survivors, fallen);
+          const fled = participants.filter((p) => !p.isAlive && p.fled);
+          const fallen = participants.filter((p) => !p.isAlive && !p.fled);
+          const cronica = buildExpiredCronica(survivors, fallen, fled);
           const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
               .setCustomId(`expired_${ev.id}`)

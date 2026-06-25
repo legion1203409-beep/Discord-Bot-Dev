@@ -11,6 +11,8 @@ export const playersTable = pgTable("players", {
   hp: integer("hp").notNull().default(100),
   deaths: integer("deaths").notNull().default(0),
   deathLevel: integer("death_level").notNull().default(0),
+  retreats: integer("retreats").notNull().default(0),
+  retreatLevel: integer("retreat_level").notNull().default(0),
   attackBonus: integer("attack_bonus").notNull().default(0),
   defenseBonus: integer("defense_bonus").notNull().default(0),
   dodgeBonus: integer("dodge_bonus").notNull().default(0),

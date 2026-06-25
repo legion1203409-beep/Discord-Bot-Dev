@@ -27,6 +27,7 @@ import {
   applyUpgradeToActiveParticipant,
   getTopPlayers,
   recordPlayerDeath,
+  recordPlayerRetreat,
   getPlayerById,
 } from "./db";
 import {
@@ -34,6 +35,7 @@ import {
   buildCombatEmbed,
   buildResultText,
   buildDeathEmbed,
+  buildRetreatEmbed,
   buildShopEmbed,
   buildLevelupEmbed,
   buildProfileEmbed,
@@ -82,7 +84,8 @@ async function handleClasament(interaction: ChatInputCommandInteraction) {
 
   const lines = top.map((p, i) => {
     const deathStr = p.deaths > 0 ? ` | 💀 ${p.deaths}×(Niv.${p.deathLevel})` : "";
-    return `${medals[i] ?? `**${i + 1}.**`} **${p.username}** — ${p.xp} XP${deathStr}`;
+    const fledStr = p.retreats > 0 ? ` | 🏳️ ${p.retreats}× a fugit` : "";
+    return `${medals[i] ?? `**${i + 1}.**`} **${p.username}** — ${p.xp} XP${deathStr}${fledStr}`;
   }).join("\n");
 
   const buttons = top.slice(0, 5).map((p, i) =>
@@ -179,7 +182,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
     return;
   }
   if (!p.isAlive) {
-    await interaction.update({ embeds: [buildDeathEmbed()], components: [] });
+    await interaction.update({ embeds: [p.fled ? buildRetreatEmbed(p.monsterLevel) : buildDeathEmbed()], components: [] });
     return;
   }
   if (p.pendingLevelup) {
@@ -240,6 +243,26 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
   await interaction.update({ embeds: [buildCombatEmbed(updated, extra)], components: [combatRow(eventId)] });
 }
 
+async function handleRetreat(interaction: ButtonInteraction, eventId: number) {
+  const p = await getParticipant(eventId, interaction.user.id);
+  if (!p) {
+    await interaction.reply({ content: "❌ Nu ești în nicio luptă!", ephemeral: true });
+    return;
+  }
+  if (!p.isAlive) {
+    await interaction.update({ embeds: [p.fled ? buildRetreatEmbed(p.monsterLevel) : buildDeathEmbed()], components: [] });
+    return;
+  }
+  const ev = await getActiveEvent(eventId);
+  if (!ev || !ev.isActive || ev.expiresAt.getTime() < Date.now()) {
+    await interaction.update({ content: "⌛ Ora Umbrelor s-a încheiat!", embeds: [], components: [] });
+    return;
+  }
+  await updateParticipant(p.id, { isAlive: false, fled: true });
+  await recordPlayerRetreat(p.discordId, p.monsterLevel);
+  await interaction.update({ embeds: [buildRetreatEmbed(p.monsterLevel)], components: [] });
+}
+
 async function handleBuy(interaction: ButtonInteraction, key: ShopKey) {
   const p = await upsertPlayer(interaction.user.id, interaction.user.username);
   const cost = shopPrice(key, p[SHOP_COUNT_KEY[key]] as number);
@@ -294,6 +317,7 @@ async function handleButton(interaction: ButtonInteraction) {
 
   if (id.startsWith("ora_join_")) return handleJoin(interaction, parseInt(id.replace("ora_join_", "")));
   if (id.startsWith("ora_attack_")) return handleAttack(interaction, parseInt(id.replace("ora_attack_", "")));
+  if (id.startsWith("ora_retreat_")) return handleRetreat(interaction, parseInt(id.replace("ora_retreat_", "")));
 
   if (id.startsWith("shop_buy_")) {
     return handleBuy(interaction, id.replace("shop_buy_", "") as ShopKey);

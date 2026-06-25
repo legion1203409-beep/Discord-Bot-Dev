@@ -154,6 +154,9 @@ export function buildProfileEmbed(player: Player, title?: string): EmbedBuilder 
   const deathInfo = player.deaths > 0
     ? `${player.deaths} × (ultima: Nivel ${player.deathLevel})`
     : "0 — neînvins";
+  const retreatInfo = player.retreats > 0
+    ? `🏳️ A abandonat și a fugit de **${player.retreats}** ori (ultima: Nivel ${player.retreatLevel})`
+    : "🛡️ Nu a fugit niciodată din luptă";
   return new EmbedBuilder()
     .setColor(0x8a4a2f)
     .setTitle(title ?? `📜 Profilul lui ${player.username}`)
@@ -162,6 +165,7 @@ export function buildProfileEmbed(player: Player, title?: string): EmbedBuilder 
       { name: "🪙 Oboli", value: `${player.gold}`, inline: true },
       { name: "🏅 Reputație", value: `${player.reputation}`, inline: true },
       { name: "💀 Morți", value: deathInfo, inline: false },
+      { name: "🏳️ Retrageri", value: retreatInfo, inline: false },
     )
     .setFooter({ text: "Regatul Cenușii — Cronica Umbrelor" })
     .setTimestamp();
@@ -222,6 +226,7 @@ export function buildLevelupEmbed(newLevel: number): EmbedBuilder {
 export function buildExpiredCronica(
   survivors: { username: string; monsterLevel: number }[],
   fallen: { username: string; monsterLevel: number }[],
+  fled: { username: string; monsterLevel: number }[] = [],
 ): EmbedBuilder {
   const medals = ["🥇", "🥈", "🥉"];
   const top = survivors
@@ -236,6 +241,12 @@ export function buildExpiredCronica(
     .map((p) => `💀 **${p.username}** — Căzut la Nivel ${p.monsterLevel}`)
     .join("\n") || "*Nimeni nu a căzut.*";
 
+  const topFled = fled
+    .sort((a, b) => b.monsterLevel - a.monsterLevel)
+    .slice(0, 3)
+    .map((p) => `🏳️ **${p.username}** — A abandonat și a fugit la Nivel ${p.monsterLevel}`)
+    .join("\n");
+
   return new EmbedBuilder()
     .setColor(0x8a4a2f)
     .setTitle("🏆📜  CRONICA SUPRAVIEȚUITORILOR  📜🏆")
@@ -243,6 +254,7 @@ export function buildExpiredCronica(
       "Eventul s-a încheiat.\nUmbrele se retrag, iar cenușa cade încet peste Regat.\n\n" +
       `**Eroii care au rezistat cel mai mult:**\n${top}\n\n` +
       `**Cei Căzuți în Umbre:**\n${topFallen}\n\n` +
+      (topFled ? `**Cei care au abandonat și au fugit:**\n${topFled}\n\n` : "") +
       "Regatul Cenușii își amintește de fiecare pas,\nde fiecare lovitură și de fiecare cădere.\nUmbrele îți mulțumesc pentru luptă.",
     );
 }
@@ -250,7 +262,22 @@ export function buildExpiredCronica(
 export function combatRow(eventId: number): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(`ora_attack_${eventId}`).setLabel("Atacă").setEmoji("⚔️").setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`ora_retreat_${eventId}`).setLabel("Retragere").setEmoji("🏳️").setStyle(ButtonStyle.Secondary),
   );
+}
+
+export function buildRetreatEmbed(level: number): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(0x555555)
+    .setTitle("🏳️  TE-AI RETRAS DIN LUPTĂ 🏳️")
+    .setDescription(
+      "Ai întors spatele Umbrelor și ai fugit din fața monstrului.\n" +
+      `Ai abandonat lupta la **Nivelul ${level}**.\n\n` +
+      "🪙 Obolii strânși rămân ai tăi — fuga ți-a salvat câștigul.\n" +
+      "Dar Regatul își amintește de cei care au fugit…\n\n" +
+      "Numele tău va purta pecetea celui care **a abandonat și a fugit**.\n" +
+      "Folosește **/magazin** ca să te întărești pentru următoarea chemare.",
+    );
 }
 
 export const SHOP_COUNT_KEY: Record<ShopKey, keyof Player> = {

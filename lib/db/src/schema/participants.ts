@@ -23,6 +23,7 @@ export const eventParticipantsTable = pgTable(
     shopCritCount: integer("shop_crit_count").notNull().default(0),
     shopHpCount: integer("shop_hp_count").notNull().default(0),
     isAlive: boolean("is_alive").notNull().default(true),
+    fled: boolean("fled").notNull().default(false),
     pendingLevelup: boolean("pending_levelup").notNull().default(false),
     joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
   },

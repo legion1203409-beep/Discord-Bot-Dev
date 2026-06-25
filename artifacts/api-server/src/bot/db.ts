@@ -24,6 +24,14 @@ export async function recordPlayerDeath(discordId: string, deathLevel: number): 
     .where(eq(playersTable.discordId, discordId));
 }
 
+export async function recordPlayerRetreat(discordId: string, retreatLevel: number): Promise<void> {
+  const [p] = await db.select().from(playersTable).where(eq(playersTable.discordId, discordId));
+  if (!p) return;
+  await db.update(playersTable)
+    .set({ retreats: p.retreats + 1, retreatLevel })
+    .where(eq(playersTable.discordId, discordId));
+}
+
 export async function getPlayerById(discordId: string): Promise<Player | null> {
   const [p] = await db.select().from(playersTable).where(eq(playersTable.discordId, discordId));
   return p ?? null;
