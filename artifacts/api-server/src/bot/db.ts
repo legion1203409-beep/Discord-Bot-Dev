@@ -1,8 +1,9 @@
 import { db } from "@workspace/db";
-import { playersTable, activeEventsTable, eventParticipantsTable } from "@workspace/db";
+import { playersTable, activeEventsTable, eventParticipantsTable, eventClaimsTable } from "@workspace/db";
 import { eq, and, gte, gt, inArray, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import type { Player, EventParticipant } from "@workspace/db";
+import { CLASSES, isClassKey, rollRarity } from "./survival";
 
 export type UpgradeKey = "atac" | "def" | "dodge" | "crit" | "hp";
 
@@ -35,6 +36,41 @@ export async function recordPlayerRetreat(discordId: string, retreatLevel: numbe
 export async function getPlayerById(discordId: string): Promise<Player | null> {
   const [p] = await db.select().from(playersTable).where(eq(playersTable.discordId, discordId));
   return p ?? null;
+}
+
+export async function updateMaxLevel(discordId: string, level: number): Promise<void> {
+  await db.update(playersTable)
+    .set({ maxLevel: sql`GREATEST(${playersTable.maxLevel}, ${level})` })
+    .where(eq(playersTable.discordId, discordId));
+}
+
+// Permanent: only sets the class if the player has none yet. Returns the
+// updated player, or null if a class was already chosen.
+export async function setPlayerClass(discordId: string, classKey: string): Promise<Player | null> {
+  if (!isClassKey(classKey)) return null;
+  const [u] = await db.update(playersTable)
+    .set({ class: classKey })
+    .where(and(eq(playersTable.discordId, discordId), sql`${playersTable.class} IS NULL`))
+    .returning();
+  return u ?? null;
+}
+
+export async function setHonorTitle(discordId: string, title: string): Promise<void> {
+  await db.update(playersTable).set({ honorTitle: title }).where(eq(playersTable.discordId, discordId));
+}
+
+// Records a one-time final-boss hit using the unique (eventId, discordId)
+// claim row. Returns true only on the first hit per player per event.
+export async function recordFinalBossHit(eventId: number, discordId: string): Promise<boolean> {
+  try {
+    const [row] = await db.insert(eventClaimsTable)
+      .values({ eventId, discordId })
+      .onConflictDoNothing()
+      .returning();
+    return !!row;
+  } catch {
+    return false;
+  }
 }
 
 export async function addPlayerGold(discordId: string, amount: number): Promise<void> {
@@ -138,7 +174,8 @@ export async function joinEvent(eventId: number, discordId: string, username: st
     .where(and(eq(eventParticipantsTable.eventId, eventId), eq(eventParticipantsTable.discordId, discordId)));
   if (existing) return existing;
   const player = await getPlayerById(discordId);
-  const maxHp = 100 + (player?.maxHpBonus ?? 0);
+  const cls = player?.class && isClassKey(player.class) ? CLASSES[player.class] : null;
+  const maxHp = 100 + (player?.maxHpBonus ?? 0) + (cls?.hp ?? 0);
   try {
     const [p] = await db.insert(eventParticipantsTable).values({
       eventId,
@@ -146,10 +183,11 @@ export async function joinEvent(eventId: number, discordId: string, username: st
       username,
       maxHp,
       currentHp: maxHp,
-      attackBonus: player?.attackBonus ?? 0,
+      monsterRarity: rollRarity(1),
+      attackBonus: (player?.attackBonus ?? 0) + (cls?.attack ?? 0),
       defenseBonus: player?.defenseBonus ?? 0,
-      dodgeBonus: player?.dodgeBonus ?? 0,
-      critBonus: player?.critBonus ?? 0,
+      dodgeBonus: (player?.dodgeBonus ?? 0) + (cls?.dodge ?? 0),
+      critBonus: (player?.critBonus ?? 0) + (cls?.crit ?? 0),
     }).returning();
     return p!;
   } catch { return null; }
@@ -168,6 +206,12 @@ export async function updateParticipant(id: number, values: Partial<Omit<EventPa
 
 export async function getEventParticipants(eventId: number): Promise<EventParticipant[]> {
   return db.select().from(eventParticipantsTable).where(eq(eventParticipantsTable.eventId, eventId));
+}
+
+export async function addPlayerReputation(discordId: string, amount: number): Promise<void> {
+  await db.update(playersTable)
+    .set({ reputation: sql`${playersTable.reputation} + ${amount}` })
+    .where(eq(playersTable.discordId, discordId));
 }
 
 export async function addPlayerXp(discordId: string, amount: number): Promise<void> {

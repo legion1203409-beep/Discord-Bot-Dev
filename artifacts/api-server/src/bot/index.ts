@@ -22,6 +22,7 @@ import {
   getActiveEvent,
   addPlayerXp,
   addPlayerGold,
+  addPlayerReputation,
   deductPlayerGold,
   buyPlayerUpgrade,
   applyUpgradeToActiveParticipant,
@@ -29,6 +30,9 @@ import {
   recordPlayerDeath,
   recordPlayerRetreat,
   getPlayerById,
+  updateMaxLevel,
+  setPlayerClass,
+  recordFinalBossHit,
 } from "./db";
 import {
   doCombat,
@@ -39,13 +43,20 @@ import {
   buildShopEmbed,
   buildLevelupEmbed,
   buildProfileEmbed,
+  buildClassEmbed,
+  classRows,
   combatRow,
   shopRows,
   levelupRows,
   shopPrice,
   monsterMaxHp,
+  formatCooldown,
+  levelTitle,
+  CLASSES,
+  isClassKey,
   SHOP_COUNT_KEY,
   LEVELUP_INTERVAL,
+  ABILITY_COOLDOWN_MS,
   type ShopKey,
 } from "./survival";
 
@@ -57,6 +68,7 @@ const slashCommands = [
   new SlashCommandBuilder().setName("profil").setDescription("📜 Statisticile tale din Regatul Cenușii."),
   new SlashCommandBuilder().setName("clasament").setDescription("👑 Top 10 cei mai puternici luptători."),
   new SlashCommandBuilder().setName("magazin").setDescription("🏺 Forja Cenușii — upgrade-uri permanente, mereu disponibilă."),
+  new SlashCommandBuilder().setName("clasa").setDescription("🧬 Alege-ți clasa RPG (alegere permanentă)."),
   new SlashCommandBuilder()
     .setName("startevent")
     .setDescription("🔥 [Admin] Pornește manual Ora Umbrelor.")
@@ -120,7 +132,7 @@ async function handleClasament(interaction: ChatInputCommandInteraction) {
   const lines = top.map((p, i) => {
     const deathStr = p.deaths > 0 ? ` | 💀 ${p.deaths}×(Niv.${p.deathLevel})` : "";
     const fledStr = p.retreats > 0 ? ` | 🏳️ ${p.retreats}× a fugit` : "";
-    return `${medals[i] ?? `**${i + 1}.**`} **${p.username}** — ${p.xp} XP${deathStr}${fledStr}`;
+    return `${medals[i] ?? `**${i + 1}.**`} **${p.username}** — 🎖️ ${levelTitle(p.maxLevel)} · ${p.xp} XP${deathStr}${fledStr}`;
   }).join("\n");
 
   const buttons = top.slice(0, 5).map((p, i) =>
@@ -222,7 +234,7 @@ async function handleJoin(interaction: ButtonInteraction, eventId: number) {
     await interaction.editReply({ embeds: [buildLevelupEmbed(lvl)], components: levelupRows(eventId) });
     return;
   }
-  await interaction.editReply({ embeds: [buildCombatEmbed(participant, "", interaction.user.displayAvatarURL({ size: 256 }))], components: [combatRow(eventId)] });
+  await interaction.editReply({ embeds: [buildCombatEmbed(participant, "", interaction.user.displayAvatarURL({ size: 256 }))], components: [combatRow(eventId, participant)] });
 }
 
 async function handleAttack(interaction: ButtonInteraction, eventId: number) {
@@ -248,11 +260,22 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
   }
 
   const result = doCombat(p);
+
+  // Class reward multipliers (only matter when a monster is defeated).
+  if (result.oboliGained > 0) {
+    const pl = await getPlayerById(p.discordId);
+    const cls = pl?.class && isClassKey(pl.class) ? CLASSES[pl.class] : null;
+    if (cls) {
+      result.xpGained = Math.round(result.xpGained * cls.xpMult);
+      result.oboliGained = Math.round(result.oboliGained * cls.oboliMult);
+    }
+  }
+
   const extra = buildResultText(result);
 
   if (result.playerDied) {
     const lost = Math.floor(p.oboli * 0.2);
-    await updateParticipant(p.id, { isAlive: false, currentHp: 0 });
+    await updateParticipant(p.id, { isAlive: false, currentHp: 0, empowerNext: false, shieldNext: false });
     await Promise.all([
       deductPlayerGold(p.discordId, lost),
       recordPlayerDeath(p.discordId, p.monsterLevel),
@@ -265,6 +288,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
     await Promise.all([
       addPlayerGold(p.discordId, result.oboliGained),
       addPlayerXp(p.discordId, result.xpGained),
+      updateMaxLevel(p.discordId, result.newMonsterLevel),
     ]);
   }
 
@@ -274,9 +298,12 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
       currentHp: result.newPlayerHp,
       monsterLevel: result.newMonsterLevel,
       monsterCurrentHp: monsterMaxHp(result.newMonsterLevel),
+      monsterRarity: result.newMonsterRarity,
       totalDamage: p.totalDamage + result.playerDmg,
       oboli: p.oboli + result.oboliGained,
       pendingLevelup: true,
+      empowerNext: false,
+      shieldNext: false,
     });
     await interaction.update({ embeds: [buildLevelupEmbed(newLevel)], components: levelupRows(eventId) });
     return;
@@ -286,11 +313,14 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
     currentHp: result.newPlayerHp,
     monsterLevel: result.newMonsterLevel,
     monsterCurrentHp: result.newMonsterHp,
+    monsterRarity: result.newMonsterRarity,
     totalDamage: p.totalDamage + result.playerDmg,
     oboli: p.oboli + result.oboliGained,
+    empowerNext: false,
+    shieldNext: false,
   });
 
-  await interaction.update({ embeds: [buildCombatEmbed(updated, extra, interaction.user.displayAvatarURL({ size: 256 }))], components: [combatRow(eventId)] });
+  await interaction.update({ embeds: [buildCombatEmbed(updated, extra, interaction.user.displayAvatarURL({ size: 256 }))], components: [combatRow(eventId, updated)] });
 }
 
 async function handleRetreat(interaction: ButtonInteraction, eventId: number) {
@@ -341,7 +371,81 @@ async function handleLevelup(interaction: ButtonInteraction, eventId: number, bo
 
   const bonusValues = bonusMap[bonus] ?? {};
   const updated = await updateParticipant(p.id, { ...bonusValues, pendingLevelup: false });
-  await interaction.update({ embeds: [buildCombatEmbed(updated, "✨ **Bonus ales! Umbrele îți recunosc puterea.**", interaction.user.displayAvatarURL({ size: 256 }))], components: [combatRow(eventId)] });
+  await interaction.update({ embeds: [buildCombatEmbed(updated, "✨ **Bonus ales! Umbrele îți recunosc puterea.**", interaction.user.displayAvatarURL({ size: 256 }))], components: [combatRow(eventId, updated)] });
+}
+
+async function handleClasa(interaction: ChatInputCommandInteraction) {
+  const p = await upsertPlayer(interaction.user.id, interaction.user.username);
+  await interaction.reply({
+    embeds: [buildClassEmbed(p)],
+    components: p.class ? [] : classRows(),
+    ephemeral: true,
+  });
+}
+
+async function handleClassPick(interaction: ButtonInteraction, key: string) {
+  await upsertPlayer(interaction.user.id, interaction.user.username);
+  const updated = await setPlayerClass(interaction.user.id, key);
+  if (!updated) {
+    const cur = await getPlayerById(interaction.user.id);
+    await interaction.update({
+      embeds: [cur ? buildClassEmbed(cur) : buildClassEmbed({ class: null } as never)],
+      components: [],
+    });
+    return;
+  }
+  await interaction.update({ embeds: [buildClassEmbed(updated)], components: [] });
+}
+
+async function handleAbility(interaction: ButtonInteraction, eventId: number, kind: string) {
+  const p = await getParticipant(eventId, interaction.user.id);
+  if (!p || !p.isAlive) {
+    await interaction.reply({ content: "❌ Trebuie să fii în luptă ca să folosești abilități!", ephemeral: true });
+    return;
+  }
+  if (p.pendingLevelup) {
+    const lvl = Math.floor(p.monsterLevel / LEVELUP_INTERVAL);
+    await interaction.update({ embeds: [buildLevelupEmbed(lvl)], components: levelupRows(eventId) });
+    return;
+  }
+  const ev = await getActiveEvent(eventId);
+  if (!ev || !ev.isActive || ev.expiresAt.getTime() < Date.now()) {
+    await interaction.update({ content: "⌛ Ora Umbrelor s-a încheiat!", embeds: [], components: [] });
+    return;
+  }
+  if (p.abilityReadyAt && p.abilityReadyAt.getTime() > Date.now()) {
+    await interaction.reply({ content: `⏳ Abilitatea e pe cooldown — mai așteaptă **${formatCooldown(p.abilityReadyAt)}**.`, ephemeral: true });
+    return;
+  }
+
+  const readyAt = new Date(Date.now() + ABILITY_COOLDOWN_MS);
+  const flags = kind === "shield" ? { shieldNext: true } : { empowerNext: true };
+  const note = kind === "shield"
+    ? "🛡️ **Scut de Cenușă activat!** Următorul atac primit va fi înjumătățit."
+    : "🌑 **Lovitura Umbrei pregătită!** Următoarea ta lovitură va fi dublă.";
+  const updated = await updateParticipant(p.id, { ...flags, abilityReadyAt: readyAt });
+  await interaction.update({
+    embeds: [buildCombatEmbed(updated, note, interaction.user.displayAvatarURL({ size: 256 }))],
+    components: [combatRow(eventId, updated)],
+  });
+}
+
+async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) {
+  await upsertPlayer(interaction.user.id, interaction.user.username);
+  const first = await recordFinalBossHit(eventId, interaction.user.id);
+  if (!first) {
+    await interaction.reply({ content: "🐉 Ai lovit deja Dragonul Stins! Fiecare luptător lovește o singură dată.", ephemeral: true });
+    return;
+  }
+  await Promise.all([
+    addPlayerReputation(interaction.user.id, 50),
+    addPlayerGold(interaction.user.id, 150),
+    addPlayerXp(interaction.user.id, 250),
+  ]);
+  await interaction.reply({
+    content: "🐉⚔️ Ai lovit **Dragonul Stins**! Recompensă: **+50 Reputație, +150 Oboli, +250 XP**!",
+    ephemeral: true,
+  });
 }
 
 async function handleButton(interaction: ButtonInteraction) {
@@ -367,7 +471,13 @@ async function handleButton(interaction: ButtonInteraction) {
 
   if (id.startsWith("ora_join_")) return handleJoin(interaction, parseInt(id.replace("ora_join_", "")));
   if (id.startsWith("ora_attack_")) return handleAttack(interaction, parseInt(id.replace("ora_attack_", "")));
+  if (id.startsWith("ora_ability_")) {
+    const parts = id.split("_"); // ora_ability_<eventId>_<kind>
+    return handleAbility(interaction, parseInt(parts[2]!), parts[3]!);
+  }
   if (id.startsWith("ora_retreat_")) return handleRetreat(interaction, parseInt(id.replace("ora_retreat_", "")));
+  if (id.startsWith("finalboss_")) return handleFinalBoss(interaction, parseInt(id.replace("finalboss_", "")));
+  if (id.startsWith("class_pick_")) return handleClassPick(interaction, id.replace("class_pick_", ""));
 
   if (id.startsWith("shop_buy_")) {
     return handleBuy(interaction, id.replace("shop_buy_", "") as ShopKey);
@@ -399,6 +509,7 @@ export async function startBot() {
         if (interaction.commandName === "profil") await handleProfil(interaction);
         if (interaction.commandName === "clasament") await handleClasament(interaction);
         if (interaction.commandName === "magazin") await handleMagazin(interaction);
+        if (interaction.commandName === "clasa") await handleClasa(interaction);
         if (interaction.commandName === "startevent") await handleStartEvent(interaction);
         if (interaction.commandName === "cufar") await handleSpawnChest(interaction);
       } else if (interaction.isButton()) {

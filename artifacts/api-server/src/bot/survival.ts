@@ -7,25 +7,101 @@ import {
 import type { EventParticipant } from "@workspace/db";
 import type { Player } from "@workspace/db";
 import { IMG } from "./assets";
+import { getActiveBattleEvent, consumeStormDrain } from "./combat-events";
 
 const BASE_PRICES = { atac: 50, def: 60, dodge: 70, crit: 80, hp: 40 } as const;
 export type ShopKey = keyof typeof BASE_PRICES;
 export const LEVELUP_INTERVAL = 5;
+export const ABILITY_COOLDOWN_MS = 5 * 60 * 1000;
+
+// ─── Monster rarities ──────────────────────────────────────────────────────
+export type Rarity = "comun" | "rar" | "epic" | "legendar" | "mitic" | "boss";
+export const RARITY: Record<Rarity, { label: string; emoji: string; color: number; rewardMult: number }> = {
+  comun: { label: "Comun", emoji: "⚪", color: 0x9aa0a6, rewardMult: 1 },
+  rar: { label: "Rar", emoji: "🔵", color: 0x3b82f6, rewardMult: 1.5 },
+  epic: { label: "Epic", emoji: "🟣", color: 0x8b5cf6, rewardMult: 2.5 },
+  legendar: { label: "Legendar", emoji: "🟠", color: 0xf59e0b, rewardMult: 4 },
+  mitic: { label: "Mitic", emoji: "🔴", color: 0xef4444, rewardMult: 8 },
+  boss: { label: "MINI-BOSS", emoji: "🔥", color: 0xb91c1c, rewardMult: 2 },
+};
+const RARITY_WEIGHTS: [Exclude<Rarity, "boss">, number][] = [
+  ["comun", 690], ["rar", 220], ["epic", 80], ["legendar", 9], ["mitic", 1],
+];
+
+export function isMiniBoss(level: number): boolean {
+  return level > 0 && level % 10 === 0;
+}
+
+export function rollRarity(level: number): Rarity {
+  if (isMiniBoss(level)) return "boss";
+  const total = RARITY_WEIGHTS.reduce((s, [, w]) => s + w, 0);
+  let roll = Math.random() * total;
+  for (const [r, w] of RARITY_WEIGHTS) {
+    if ((roll -= w) <= 0) return r;
+  }
+  return "comun";
+}
 
 const MONSTER_PREFIXES = ["Umbra", "Cenușa", "Neantul", "Vidul", "Bezna", "Întunericul", "Obscuritatea", "Golul"];
 const MONSTER_NOUNS = ["Devorantul", "Torturatorul", "Corumpatorul", "Distrugătorul", "Vânătorul", "Consumatorul", "Sufocatorul", "Devastatorul", "Corupătorul", "Nimicitorul"];
+const BOSS_NAMES = ["Colosul Cenușii", "Avatarul Ruinei", "Tiranul Abisului", "Stăpânul Fumegând", "Coloasul Umbrelor"];
 
 export function monsterName(level: number): string {
+  if (isMiniBoss(level)) return BOSS_NAMES[(level / 10 - 1) % BOSS_NAMES.length]!;
   return `${MONSTER_PREFIXES[level % MONSTER_PREFIXES.length]} ${MONSTER_NOUNS[Math.floor(level / MONSTER_PREFIXES.length) % MONSTER_NOUNS.length]}`;
 }
-export function monsterMaxHp(level: number) { return 40 + level * 15; }
+export function monsterMaxHp(level: number) {
+  const base = 40 + level * 15;
+  return isMiniBoss(level) ? Math.round(base * 2.5) : base;
+}
 export function monsterDmgRange(level: number): [number, number] {
-  const b = 5 + level * 1.5;
+  const b = (5 + level * 1.5) * (isMiniBoss(level) ? 1.4 : 1);
   return [Math.max(1, Math.floor(b - 3)), Math.ceil(b + 3)];
 }
-export function monsterHitPct(level: number) { return Math.min(90, 35 + level * 1.2); }
-export function monsterReward(level: number) { return { xp: level * 10, oboli: level * 3 }; }
+export function monsterHitPct(level: number) { return Math.min(90, 35 + level * 1.2 + (isMiniBoss(level) ? 5 : 0)); }
+export function monsterReward(level: number, rarity: Rarity = "comun") {
+  const mult = RARITY[rarity]?.rewardMult ?? 1;
+  return { xp: Math.round(level * 10 * mult), oboli: Math.round(level * 3 * mult) };
+}
 export function shopPrice(key: ShopKey, count: number) { return Math.ceil(BASE_PRICES[key] * Math.pow(1.35, count)); }
+
+// ─── Zones ─────────────────────────────────────────────────────────────────
+const ZONES: { max: number; name: string; intro: string }[] = [
+  { max: 10, name: "Pădurea Umbrelor", intro: "🌲 Copacii negri foșnesc, iar umbrele se târăsc printre rădăcini." },
+  { max: 25, name: "Catacombele Regale", intro: "🕯️ Umbrele sunt mai reci aici… și mai flămânde." },
+  { max: 50, name: "Ținuturile Arse", intro: "🔥 Pământul fumegă sub pași, iar cenușa nu se mai așază niciodată." },
+  { max: 100, name: "Turnul Vânturilor Negre", intro: "🗼 Vânturi întunecate urlă printre ziduri sfărâmate." },
+  { max: Infinity, name: "Abisul Fumegând", intro: "🌑 Ai pătruns în Abis. Doar cei eterni mai pot respira aici." },
+];
+export function zoneFor(level: number) { return ZONES.find((z) => level <= z.max) ?? ZONES[ZONES.length - 1]!; }
+
+// ─── Level titles (evolutive) ───────────────────────────────────────────────
+const LEVEL_TITLES: { max: number; title: string }[] = [
+  { max: 5, title: "Umbra Începătorului" },
+  { max: 10, title: "Călătorul Cenușii" },
+  { max: 20, title: "Vânătorul Umbrelor" },
+  { max: 40, title: "Sfărâmătorul Abisului" },
+  { max: 80, title: "Arhontele Întunecat" },
+  { max: 99, title: "Stăpânul Cenușii" },
+  { max: Infinity, title: "Eternul Cenușii" },
+];
+export function levelTitle(level: number): string {
+  return (LEVEL_TITLES.find((t) => level <= t.max) ?? LEVEL_TITLES[0]!).title;
+}
+
+// ─── RPG classes ─────────────────────────────────────────────────────────────
+export type ClassKey = "cavaler" | "umbrolog" | "strajer" | "alchimist" | "ratacitor";
+export const CLASSES: Record<ClassKey, {
+  label: string; emoji: string; desc: string;
+  attack: number; hp: number; dodge: number; crit: number; xpMult: number; oboliMult: number;
+}> = {
+  cavaler: { label: "Cavaler al Cenușii", emoji: "🛡️", desc: "+2 damage, +5 HP", attack: 2, hp: 5, dodge: 0, crit: 0, xpMult: 1, oboliMult: 1 },
+  umbrolog: { label: "Umbrolog", emoji: "🌀", desc: "+3% evitare, +1% critic", attack: 0, hp: 0, dodge: 3, crit: 1, xpMult: 1, oboliMult: 1 },
+  strajer: { label: "Străjerul Arșiței", emoji: "🔥", desc: "+10% XP câștigat", attack: 0, hp: 0, dodge: 0, crit: 0, xpMult: 1.1, oboliMult: 1 },
+  alchimist: { label: "Alchimist Stins", emoji: "⚗️", desc: "+20% Oboli câștigați", attack: 0, hp: 0, dodge: 0, crit: 0, xpMult: 1, oboliMult: 1.2 },
+  ratacitor: { label: "Rătăcitorul Fumului", emoji: "💨", desc: "+5% șansă de evitare", attack: 0, hp: 0, dodge: 5, crit: 0, xpMult: 1, oboliMult: 1 },
+};
+export function isClassKey(k: string): k is ClassKey { return k in CLASSES; }
 
 function rand(min: number, max: number) { return Math.floor(Math.random() * (max - min + 1)) + min; }
 function hpBar(cur: number, max: number) {
@@ -40,33 +116,50 @@ export type CombatResult = {
   playerDied: boolean;
   newMonsterHp: number; newPlayerHp: number;
   xpGained: number; oboliGained: number;
-  levelUp: boolean; newMonsterLevel: number;
+  levelUp: boolean; newMonsterLevel: number; newMonsterRarity: Rarity;
+  usedEmpower: boolean; usedShield: boolean;
+  stormDrain: number; battleEventEmoji: string;
 };
 
 export function doCombat(p: EventParticipant): CombatResult {
+  const battle = getActiveBattleEvent();
+  const usedEmpower = p.empowerNext;
+  const usedShield = p.shieldNext;
+
   const isCrit = Math.random() * 100 < p.critBonus;
-  const base = rand(10, 20) + p.attackBonus;
-  const playerDmg = isCrit ? base * 2 : base;
+  let base = rand(10, 20) + p.attackBonus;
+  if (isCrit) base *= 2;
+  if (usedEmpower) base *= 2;
+  if (battle) base = Math.round(base * battle.damageMult);
+  const playerDmg = base;
   const newMHp = Math.max(0, p.monsterCurrentHp - playerDmg);
   const monsterDefeated = newMHp <= 0;
 
   let xpGained = 0, oboliGained = 0, newMonsterLevel = p.monsterLevel, levelUp = false;
+  let newMonsterRarity: Rarity = p.monsterRarity as Rarity;
   if (monsterDefeated) {
-    const r = monsterReward(p.monsterLevel);
+    const r = monsterReward(p.monsterLevel, p.monsterRarity as Rarity);
     xpGained = r.xp; oboliGained = r.oboli;
     newMonsterLevel = p.monsterLevel + 1;
+    newMonsterRarity = rollRarity(newMonsterLevel);
     levelUp = newMonsterLevel % LEVELUP_INTERVAL === 0;
   }
 
-  let monsterHit = false, monsterDmg = 0, playerDodged = false, newPlayerHp = p.currentHp, playerDied = false;
-  if (!monsterDefeated) {
-    monsterHit = Math.random() * 100 < monsterHitPct(p.monsterLevel);
+  // Smoke-storm drain hits the fighter once, regardless of the monster's turn.
+  const stormDrain = consumeStormDrain(p.eventId, p.discordId);
+  let newPlayerHp = Math.max(0, p.currentHp - stormDrain);
+  let monsterHit = false, monsterDmg = 0, playerDodged = false, playerDied = newPlayerHp <= 0;
+
+  if (!monsterDefeated && !playerDied) {
+    const missBonus = battle?.monsterMissBonus ?? 0;
+    monsterHit = Math.random() * 100 < monsterHitPct(p.monsterLevel) - missBonus;
     if (monsterHit) {
       playerDodged = Math.random() * 100 < p.dodgeBonus;
       if (!playerDodged) {
         const [mn, mx] = monsterDmgRange(p.monsterLevel);
         monsterDmg = Math.max(1, rand(mn, mx) - p.defenseBonus);
-        newPlayerHp = Math.max(0, p.currentHp - monsterDmg);
+        if (usedShield) monsterDmg = Math.ceil(monsterDmg / 2);
+        newPlayerHp = Math.max(0, newPlayerHp - monsterDmg);
         playerDied = newPlayerHp <= 0;
       }
     }
@@ -75,7 +168,8 @@ export function doCombat(p: EventParticipant): CombatResult {
   return {
     playerDmg, isCrit, monsterDefeated, monsterHit, monsterDmg, playerDodged,
     playerDied, newMonsterHp: monsterDefeated ? monsterMaxHp(newMonsterLevel) : newMHp,
-    newPlayerHp, xpGained, oboliGained, levelUp, newMonsterLevel,
+    newPlayerHp, xpGained, oboliGained, levelUp, newMonsterLevel, newMonsterRarity,
+    usedEmpower, usedShield, stormDrain, battleEventEmoji: battle?.emoji ?? "",
   };
 }
 
@@ -99,13 +193,22 @@ export function buildStartEmbed(): EmbedBuilder {
 export function buildCombatEmbed(p: EventParticipant, extra = "", avatarUrl?: string | null): EmbedBuilder {
   const [mn, mx] = monsterDmgRange(p.monsterLevel);
   const mMaxHp = monsterMaxHp(p.monsterLevel);
-  const reward = monsterReward(p.monsterLevel);
+  const rarity = (p.monsterRarity as Rarity) ?? "comun";
+  const meta = RARITY[rarity] ?? RARITY.comun;
+  const reward = monsterReward(p.monsterLevel, rarity);
+  const zone = zoneFor(p.monsterLevel);
+  const boss = isMiniBoss(p.monsterLevel);
+  const title = boss
+    ? `🔥 MINI-BOSS NIVEL ${p.monsterLevel} – ${monsterName(p.monsterLevel)} 🔥`
+    : `${meta.emoji} MONSTRU ${meta.label.toUpperCase()} NIVEL ${p.monsterLevel} – ${monsterName(p.monsterLevel)}`;
+  const battle = getActiveBattleEvent();
   const embed = new EmbedBuilder()
-    .setColor(0x4b0082)
-    .setTitle(`👁️  MONSTRU NIVEL ${p.monsterLevel} – ${monsterName(p.monsterLevel)}`)
+    .setColor(meta.color)
+    .setTitle(title)
     .setDescription(
-      "Umbrele se contorsionează și dau naștere unei noi ființe.\n" +
-      "Cu fiecare nivel, puterea ei crește, iar speranța se stinge.\n\n" +
+      `🗺️ *${zone.name}* — ${zone.intro}\n\n` +
+      (boss ? "💀 O prezență colosală blochează drumul. Reward dublu pentru cel care o doboară!\n\n" : "") +
+      (battle ? `${battle.emoji} *${battle.title} e activ acum!*\n\n` : "") +
       (extra ? `${extra}\n\n` : "") +
       `❤️ HP Monstru: **${p.monsterCurrentHp}/${mMaxHp}** ${hpBar(p.monsterCurrentHp, mMaxHp)}\n` +
       `⚔️ Damage: **${mn} – ${mx}**\n` +
@@ -121,13 +224,29 @@ export function buildCombatEmbed(p: EventParticipant, extra = "", avatarUrl?: st
   return embed;
 }
 
+const CRIT_LINES = [
+  "💥 **LOVITURĂ DEVASTATOARE** 💥\nUmbrele se rup în două sub puterea ta!\nAi provocat **{dmg} damage critic**!",
+  "🔥 **FURIA CENUȘII SE DEZLĂNȚUIE** 🔥\nLovitura ta a sfâșiat creatura pentru **{dmg} damage**!",
+  "⚡ **IMPACT CATACLISMIC** ⚡\nCenușa explodează în jurul creaturii — **{dmg} damage**!",
+];
+
 export function buildResultText(r: CombatResult): string {
   let txt = "";
-  if (r.isCrit) txt += "⚡ **LOVITURĂ CRITICĂ!**\n";
-  txt += `⚔️ **AI LOVIT MONSTRUL!**\nLovitura ta a atins creatura pentru **${r.playerDmg} damage**.\nUmbrele se clatină în jurul ei.\n\n`;
+  if (r.usedEmpower) txt += "🌑 **LOVITURA UMBREI!** Puterea Umbrelor îți dublează lovitura!\n";
+  if (r.usedShield) txt += "🛡️ **SCUT DE CENUȘĂ activ!** Daunele primite sunt înjumătățite.\n";
+  if (r.isCrit) {
+    txt += CRIT_LINES[Math.floor(Math.random() * CRIT_LINES.length)]!.replace("{dmg}", String(r.playerDmg)) + "\n\n";
+  } else {
+    txt += `⚔️ **AI LOVIT MONSTRUL!**\nLovitura ta a atins creatura pentru **${r.playerDmg} damage**.\nUmbrele se clatină în jurul ei.\n\n`;
+  }
+  if (r.stormDrain > 0) txt += `🌪️ Furtuna de Fum îți arde **${r.stormDrain} HP**!\n`;
   if (r.monsterDefeated) {
     txt += `💀 **MONSTRUL A CĂZUT!** +${r.xpGained} XP, +${r.oboliGained} Oboli\n`;
-    if (!r.levelUp) txt += `👁️ Un nou monstru se ridică… **Nivel ${r.newMonsterLevel}**`;
+    if (!r.levelUp) {
+      const meta = RARITY[r.newMonsterRarity] ?? RARITY.comun;
+      const label = r.newMonsterRarity === "boss" ? "🔥 UN MINI-BOSS" : `${meta.emoji} Un monstru ${meta.label}`;
+      txt += `👁️ ${label} se ridică… **Nivel ${r.newMonsterLevel}**`;
+    }
   } else if (r.monsterHit) {
     if (r.playerDodged) txt += "🌀 **AI EVITAT ATACUL!** Umbrele te-au ferit.";
     else txt += `💀 **MONSTRUL RIPOSTEAZĂ!**\nCreatura îți aplică **${r.monsterDmg} damage**.\nUmbrele îți apasă umerii, iar sângele îți pulsează în tâmple.`;
@@ -159,9 +278,16 @@ export function buildProfileEmbed(player: Player, title?: string, avatarUrl?: st
   const retreatInfo = player.retreats > 0
     ? `🏳️ A abandonat și a fugit de **${player.retreats}** ori (ultima: Nivel ${player.retreatLevel})`
     : "🛡️ Nu a fugit niciodată din luptă";
+  const cls = player.class && isClassKey(player.class) ? CLASSES[player.class] : null;
+  const rank = levelTitle(player.maxLevel);
   const embed = new EmbedBuilder()
     .setColor(0x8a4a2f)
     .setTitle(title ?? `📜 Profilul lui ${player.username}`)
+    .setDescription(
+      `🎖️ **${rank}** *(Nivel max: ${player.maxLevel})*\n` +
+      (player.honorTitle ? `👑 **${player.honorTitle}**\n` : "") +
+      (cls ? `${cls.emoji} **${cls.label}** — ${cls.desc}` : "🧭 *Fără clasă — folosește /clasa*"),
+    )
     .addFields(
       { name: "⭐ XP Total", value: `${player.xp}`, inline: true },
       { name: "🪙 Oboli", value: `${player.gold}`, inline: true },
@@ -263,11 +389,22 @@ export function buildExpiredCronica(
     );
 }
 
-export function combatRow(eventId: number): ActionRowBuilder<ButtonBuilder> {
+export function combatRow(eventId: number, p?: EventParticipant): ActionRowBuilder<ButtonBuilder> {
+  const onCooldown = p?.abilityReadyAt ? p.abilityReadyAt.getTime() > Date.now() : false;
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(`ora_attack_${eventId}`).setLabel("Atacă").setEmoji("⚔️").setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`ora_ability_${eventId}_empower`).setLabel("Lovitura Umbrei").setEmoji("🌑").setStyle(ButtonStyle.Primary).setDisabled(onCooldown),
+    new ButtonBuilder().setCustomId(`ora_ability_${eventId}_shield`).setLabel("Scut de Cenușă").setEmoji("🛡️").setStyle(ButtonStyle.Primary).setDisabled(onCooldown),
     new ButtonBuilder().setCustomId(`ora_retreat_${eventId}`).setLabel("Retragere").setEmoji("🏳️").setStyle(ButtonStyle.Secondary),
   );
+}
+
+export function formatCooldown(readyAt: Date | null): string {
+  if (!readyAt) return "gata";
+  const ms = readyAt.getTime() - Date.now();
+  if (ms <= 0) return "gata";
+  const s = Math.ceil(ms / 1000);
+  return `${Math.floor(s / 60)}m ${s % 60}s`;
 }
 
 export function buildRetreatEmbed(level: number): EmbedBuilder {
@@ -329,4 +466,73 @@ export function levelupRows(eventId: number): ActionRowBuilder<ButtonBuilder>[] 
       new ButtonBuilder().setCustomId(`ora_lvlup_${eventId}_crit`).setLabel("+1% Critic").setEmoji("🔹").setStyle(ButtonStyle.Success),
     ),
   ];
+}
+
+// ─── Classes ─────────────────────────────────────────────────────────────────
+export function buildClassEmbed(player: Player): EmbedBuilder {
+  const cls = player.class && isClassKey(player.class) ? CLASSES[player.class] : null;
+  if (cls) {
+    return new EmbedBuilder()
+      .setColor(0x6d28d9)
+      .setTitle("🧬  CLASA TA ÎN REGATUL CENUȘII")
+      .setDescription(
+        `Ai ales deja calea ta, iar ea este **permanentă**.\n\n` +
+        `${cls.emoji} **${cls.label}**\n*${cls.desc}*\n\n` +
+        "Bonusurile clasei se aplică automat la fiecare intrare în Ora Umbrelor.",
+      );
+  }
+  return new EmbedBuilder()
+    .setColor(0x6d28d9)
+    .setTitle("🧬  ALEGE-ȚI CLASA")
+    .setDescription(
+      "Înainte de a intra în Umbre, alege-ți calea.\n" +
+      "⚠️ **Alegerea este permanentă!**\n\n" +
+      Object.values(CLASSES).map((c) => `${c.emoji} **${c.label}** — ${c.desc}`).join("\n"),
+    );
+}
+
+export function classRows(): ActionRowBuilder<ButtonBuilder>[] {
+  const keys = Object.keys(CLASSES) as ClassKey[];
+  const btn = (k: ClassKey) =>
+    new ButtonBuilder().setCustomId(`class_pick_${k}`).setLabel(CLASSES[k].label).setEmoji(CLASSES[k].emoji).setStyle(ButtonStyle.Primary);
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(keys.slice(0, 3).map(btn)),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(keys.slice(3).map(btn)),
+  ];
+}
+
+// ─── Oracle random messages ──────────────────────────────────────────────────
+const ORACLE_LINES = [
+  "🔮 **ORACOLUL CENUȘII ȘOPTEȘTE** 🔮\n*„Nu toți cei care luptă vor supraviețui… dar toți vor fi amintiți.”*",
+  "🕯️ *„Umbrele cresc… pregătește-te.”* 🕯️",
+  "🔮 **ORACOLUL CENUȘII ȘOPTEȘTE** 🔮\n*„Cenușa de azi este focul de mâine.”*",
+  "🌑 *„Cei care fug trăiesc o clipă mai mult, dar mor uitați.”* 🌑",
+  "🔮 *„Aud pași în Abis… ceva mare se trezește.”* 🔮",
+  "🕯️ *„Forja nu doarme niciodată. Nici Umbrele.”* 🕯️",
+];
+export function oracleMessage(): string {
+  return ORACLE_LINES[Math.floor(Math.random() * ORACLE_LINES.length)]!;
+}
+
+// ─── Final boss ──────────────────────────────────────────────────────────────
+export function buildFinalBossEmbed(level: number): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(0x7f1d1d)
+    .setTitle(`🐉  DRAGONUL STINS – NIVEL ${level}  🐉`)
+    .setDescription(
+      "Cerul Regatului se întunecă, iar cenușa se ridică în vârtejuri.\n" +
+      "**Ultima încercare a Regatului a sosit.**\n\n" +
+      "🐉 Dragonul Stins coboară din Abis. Doar cei vii îl pot lovi.\n" +
+      "Cei care îndrăznesc să-l lovească primesc un **dar special**:\n" +
+      "🏅 **+50 Reputație, +150 Oboli, +250 XP**\n\n" +
+      "⚔️ Lovește acum — fiecare luptător poate lovi o singură dată!",
+    )
+    .setImage(IMG.monster)
+    .setFooter({ text: "Eventul se încheie în curând…" });
+}
+
+export function finalBossRow(eventId: number): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(`finalboss_${eventId}`).setLabel("Lovește Dragonul").setEmoji("🐉").setStyle(ButtonStyle.Danger),
+  );
 }
