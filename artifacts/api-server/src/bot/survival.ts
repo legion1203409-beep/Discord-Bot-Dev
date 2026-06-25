@@ -116,7 +116,7 @@ export function buildCombatEmbed(p: EventParticipant, extra = ""): EmbedBuilder 
       `🪙 Oboli strânși în event: **${p.oboli}** *(20% se pierd la moarte)*`,
     )
     .setImage(IMG.monster)
-    .setFooter({ text: `⚔️ +${p.attackBonus} | 🛡️ +${p.defenseBonus} | 🌀 ${p.dodgeBonus}% | 💥 ${p.critBonus}%` });
+    .setFooter({ text: `⚔️ +${p.attackBonus} | 🛡️ +${p.defenseBonus} | 🌀 ${p.dodgeBonus}% | 💥 ${p.critBonus}% | ❤️ +${p.maxHp - 100}` });
 }
 
 export function buildResultText(r: CombatResult): string {
