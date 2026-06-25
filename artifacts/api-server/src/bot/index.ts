@@ -13,7 +13,7 @@ import {
   PermissionFlagsBits,
 } from "discord.js";
 import { logger } from "../lib/logger";
-import { startScheduler, APPLICATION_ID, fireEvent, claimedChests } from "./scheduler";
+import { startScheduler, APPLICATION_ID, fireEvent, fireChest, claimedChests } from "./scheduler";
 import {
   upsertPlayer,
   joinEvent,
@@ -61,6 +61,10 @@ const slashCommands = [
     .setName("startevent")
     .setDescription("🔥 [Admin] Pornește manual Ora Umbrelor.")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+  new SlashCommandBuilder()
+    .setName("cufar")
+    .setDescription("📦 [Admin] Generează manual un cufăr cu Oboli.")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 ];
 
 async function handleProfil(interaction: ChatInputCommandInteraction) {
@@ -76,6 +80,11 @@ async function handleMagazin(interaction: ChatInputCommandInteraction) {
 async function handleStartEvent(interaction: ChatInputCommandInteraction) {
   await interaction.reply({ content: "🔥 *Umbrele se mișcă…* Evenimentul pornește!", ephemeral: true });
   if (botClient) await fireEvent(botClient);
+}
+
+async function handleSpawnChest(interaction: ChatInputCommandInteraction) {
+  await interaction.reply({ content: "📦 *Cenușa se ridică…* Un cufăr apare în Regat!", ephemeral: true });
+  if (botClient) await fireChest(botClient);
 }
 
 async function handleClasament(interaction: ChatInputCommandInteraction) {
@@ -350,6 +359,7 @@ export async function startBot() {
         if (interaction.commandName === "clasament") await handleClasament(interaction);
         if (interaction.commandName === "magazin") await handleMagazin(interaction);
         if (interaction.commandName === "startevent") await handleStartEvent(interaction);
+        if (interaction.commandName === "cufar") await handleSpawnChest(interaction);
       } else if (interaction.isButton()) {
         await handleButton(interaction as ButtonInteraction);
       }
