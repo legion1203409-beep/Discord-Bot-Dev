@@ -273,7 +273,10 @@ async function fireBattleEvent(client: Client) {
     const channel = await client.channels.fetch(EVENT_CHANNEL_ID).catch(() => null);
     if (!(channel instanceof TextChannel)) return;
     const battle = triggerRandomBattleEvent();
-    await channel.send({ content: battle.announce });
+    const sent = await channel.send({ content: battle.announce });
+    // Auto-delete the announcement once the battle event's effect ends.
+    const ttl = Math.max(0, battle.expiresAt - Date.now());
+    setTimeout(() => { void sent.delete().catch(() => {}); }, ttl);
     logger.info({ eventId: ev.id, battle: battle.key }, "Battle event triggered");
   } catch (err) {
     logger.error({ err }, "Failed to trigger battle event");
