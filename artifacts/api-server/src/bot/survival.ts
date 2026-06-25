@@ -96,11 +96,11 @@ export function buildStartEmbed(): EmbedBuilder {
     .setTimestamp();
 }
 
-export function buildCombatEmbed(p: EventParticipant, extra = ""): EmbedBuilder {
+export function buildCombatEmbed(p: EventParticipant, extra = "", avatarUrl?: string | null): EmbedBuilder {
   const [mn, mx] = monsterDmgRange(p.monsterLevel);
   const mMaxHp = monsterMaxHp(p.monsterLevel);
   const reward = monsterReward(p.monsterLevel);
-  return new EmbedBuilder()
+  const embed = new EmbedBuilder()
     .setColor(0x4b0082)
     .setTitle(`👁️  MONSTRU NIVEL ${p.monsterLevel} – ${monsterName(p.monsterLevel)}`)
     .setDescription(
@@ -117,6 +117,8 @@ export function buildCombatEmbed(p: EventParticipant, extra = ""): EmbedBuilder 
     )
     .setImage(IMG.monster)
     .setFooter({ text: `⚔️ +${p.attackBonus} | 🛡️ +${p.defenseBonus} | 🌀 ${p.dodgeBonus}% | 💥 ${p.critBonus}% | ❤️ +${p.maxHp - 100}` });
+  if (avatarUrl) embed.setThumbnail(avatarUrl);
+  return embed;
 }
 
 export function buildResultText(r: CombatResult): string {
@@ -150,14 +152,14 @@ export function buildDeathEmbed(lostOboli = 0): EmbedBuilder {
     .setImage(IMG.death);
 }
 
-export function buildProfileEmbed(player: Player, title?: string): EmbedBuilder {
+export function buildProfileEmbed(player: Player, title?: string, avatarUrl?: string | null): EmbedBuilder {
   const deathInfo = player.deaths > 0
     ? `${player.deaths} × (ultima: Nivel ${player.deathLevel})`
     : "0 — neînvins";
   const retreatInfo = player.retreats > 0
     ? `🏳️ A abandonat și a fugit de **${player.retreats}** ori (ultima: Nivel ${player.retreatLevel})`
     : "🛡️ Nu a fugit niciodată din luptă";
-  return new EmbedBuilder()
+  const embed = new EmbedBuilder()
     .setColor(0x8a4a2f)
     .setTitle(title ?? `📜 Profilul lui ${player.username}`)
     .addFields(
@@ -169,6 +171,8 @@ export function buildProfileEmbed(player: Player, title?: string): EmbedBuilder 
     )
     .setFooter({ text: "Regatul Cenușii — Cronica Umbrelor" })
     .setTimestamp();
+  if (avatarUrl) embed.setThumbnail(avatarUrl);
+  return embed;
 }
 
 export function buildChestEmbed(gold: number): EmbedBuilder {

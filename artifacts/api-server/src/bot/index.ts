@@ -67,9 +67,23 @@ const slashCommands = [
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 ];
 
+async function avatarById(discordId: string): Promise<string | null> {
+  if (!botClient) return null;
+  const cached = botClient.users.cache.get(discordId);
+  if (cached) return cached.displayAvatarURL({ size: 256 });
+  const u = await Promise.race([
+    botClient.users.fetch(discordId).catch(() => null),
+    new Promise<null>((r) => setTimeout(() => r(null), 1500)),
+  ]);
+  return u ? u.displayAvatarURL({ size: 256 }) : null;
+}
+
 async function handleProfil(interaction: ChatInputCommandInteraction) {
   const p = await upsertPlayer(interaction.user.id, interaction.user.username);
-  await interaction.reply({ embeds: [buildProfileEmbed(p)], ephemeral: true });
+  await interaction.reply({
+    embeds: [buildProfileEmbed(p, undefined, interaction.user.displayAvatarURL({ size: 256 }))],
+    ephemeral: true,
+  });
 }
 
 async function handleMagazin(interaction: ChatInputCommandInteraction) {
@@ -101,6 +115,7 @@ async function handleSpawnChest(interaction: ChatInputCommandInteraction) {
 async function handleClasament(interaction: ChatInputCommandInteraction) {
   const top = await getTopPlayers();
   const medals = ["🥇", "🥈", "🥉"];
+  const champAvatar = top[0] ? await avatarById(top[0].discordId) : null;
 
   const lines = top.map((p, i) => {
     const deathStr = p.deaths > 0 ? ` | 💀 ${p.deaths}×(Niv.${p.deathLevel})` : "";
@@ -126,6 +141,7 @@ async function handleClasament(interaction: ChatInputCommandInteraction) {
         color: 0x8a4a2f,
         title: "👑 Clasament – Regatul Cenușii",
         description: lines || "*Nimeni nu a luptat încă.*",
+        ...(champAvatar ? { thumbnail: { url: champAvatar } } : {}),
         footer: { text: "Apasă un buton pentru a vedea profilul complet al unui luptător" },
         timestamp: new Date().toISOString(),
       },
@@ -140,7 +156,10 @@ async function handleViewProfile(interaction: ButtonInteraction, discordId: stri
     await interaction.reply({ content: "❌ Jucătorul nu a fost găsit.", ephemeral: true });
     return;
   }
-  await interaction.reply({ embeds: [buildProfileEmbed(player)], ephemeral: true });
+  await interaction.reply({
+    embeds: [buildProfileEmbed(player, undefined, await avatarById(discordId))],
+    ephemeral: true,
+  });
 }
 
 async function handleChestClaim(interaction: ButtonInteraction, chestId: string, gold: number) {
@@ -203,7 +222,7 @@ async function handleJoin(interaction: ButtonInteraction, eventId: number) {
     await interaction.editReply({ embeds: [buildLevelupEmbed(lvl)], components: levelupRows(eventId) });
     return;
   }
-  await interaction.editReply({ embeds: [buildCombatEmbed(participant)], components: [combatRow(eventId)] });
+  await interaction.editReply({ embeds: [buildCombatEmbed(participant, "", interaction.user.displayAvatarURL({ size: 256 }))], components: [combatRow(eventId)] });
 }
 
 async function handleAttack(interaction: ButtonInteraction, eventId: number) {
@@ -271,7 +290,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
     oboli: p.oboli + result.oboliGained,
   });
 
-  await interaction.update({ embeds: [buildCombatEmbed(updated, extra)], components: [combatRow(eventId)] });
+  await interaction.update({ embeds: [buildCombatEmbed(updated, extra, interaction.user.displayAvatarURL({ size: 256 }))], components: [combatRow(eventId)] });
 }
 
 async function handleRetreat(interaction: ButtonInteraction, eventId: number) {
@@ -322,7 +341,7 @@ async function handleLevelup(interaction: ButtonInteraction, eventId: number, bo
 
   const bonusValues = bonusMap[bonus] ?? {};
   const updated = await updateParticipant(p.id, { ...bonusValues, pendingLevelup: false });
-  await interaction.update({ embeds: [buildCombatEmbed(updated, "✨ **Bonus ales! Umbrele îți recunosc puterea.**")], components: [combatRow(eventId)] });
+  await interaction.update({ embeds: [buildCombatEmbed(updated, "✨ **Bonus ales! Umbrele îți recunosc puterea.**", interaction.user.displayAvatarURL({ size: 256 }))], components: [combatRow(eventId)] });
 }
 
 async function handleButton(interaction: ButtonInteraction) {
