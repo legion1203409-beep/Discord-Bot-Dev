@@ -55,6 +55,9 @@ import {
   isCompanionKey,
   combatRow,
   shopRows,
+  shopStatsRows,
+  shopCompRows,
+  shopAbilRows,
   levelupRows,
   shopPrice,
   monsterMaxHp,
@@ -365,7 +368,7 @@ async function handleBuy(interaction: ButtonInteraction, key: ShopKey) {
     await applyUpgradeToActiveParticipant(interaction.user.id, key);
   }
   const player = updated ?? p;
-  await interaction.update({ embeds: [buildShopEmbed(player)], components: shopRows(player) });
+  await interaction.update({ embeds: [buildShopEmbed(player)], components: shopStatsRows(player) });
 }
 
 async function handleLevelup(interaction: ButtonInteraction, eventId: number, bonus: string) {
@@ -420,27 +423,47 @@ async function handleCompanion(interaction: ChatInputCommandInteraction) {
   });
 }
 
-// Refreshes the shop view after a buy/upgrade, or shows an ephemeral error.
-async function refreshShopOrError(interaction: ButtonInteraction, updated: Awaited<ReturnType<typeof buyCompanion>>, errMsg: string) {
-  if (!updated) {
-    await interaction.reply({ content: errMsg, ephemeral: true });
-    return;
-  }
-  await interaction.update({ embeds: [buildShopEmbed(updated)], components: shopRows(updated) });
+// Shop nav handlers — each opens its sub-page or returns to main.
+async function handleShopNavStats(interaction: ButtonInteraction) {
+  const p = await upsertPlayer(interaction.user.id, interaction.user.username);
+  await interaction.update({ embeds: [buildShopEmbed(p)], components: shopStatsRows(p) });
+}
+
+async function handleShopNavComp(interaction: ButtonInteraction) {
+  const p = await upsertPlayer(interaction.user.id, interaction.user.username);
+  await interaction.update({ embeds: [buildShopEmbed(p)], components: shopCompRows(p) });
+}
+
+async function handleShopNavAbil(interaction: ButtonInteraction) {
+  const p = await upsertPlayer(interaction.user.id, interaction.user.username);
+  await interaction.update({ embeds: [buildShopEmbed(p)], components: shopAbilRows(p) });
+}
+
+async function handleShopBack(interaction: ButtonInteraction) {
+  const p = await upsertPlayer(interaction.user.id, interaction.user.username);
+  await interaction.update({ embeds: [buildShopEmbed(p)], components: shopRows(p) });
 }
 
 async function handleCompBuy(interaction: ButtonInteraction, key: string) {
   await upsertPlayer(interaction.user.id, interaction.user.username);
   if (!isCompanionKey(key)) return;
   const updated = await buyCompanion(interaction.user.id, key, COMPANION_BUY_COST);
-  await refreshShopOrError(interaction, updated, `❌ Nu poți cumpăra acest companion — ai nevoie de **${COMPANION_BUY_COST} Oboli** și să nu ai deja unul.`);
+  if (!updated) {
+    await interaction.reply({ content: `❌ Nu poți cumpăra acest companion — ai nevoie de **${COMPANION_BUY_COST} Oboli** și să nu ai deja unul.`, ephemeral: true });
+    return;
+  }
+  await interaction.update({ embeds: [buildShopEmbed(updated)], components: shopCompRows(updated) });
 }
 
 async function handleCompUpgrade(interaction: ButtonInteraction) {
   const p = await upsertPlayer(interaction.user.id, interaction.user.username);
   const cost = upgradeCost(p.companionLevel);
   const updated = await upgradeCompanion(interaction.user.id, p.companionLevel, cost, UPGRADE_XP_COST);
-  await refreshShopOrError(interaction, updated, `❌ Upgrade eșuat — ai nevoie de un companion, **${cost} Oboli** și **${UPGRADE_XP_COST} XP**.`);
+  if (!updated) {
+    await interaction.reply({ content: `❌ Upgrade eșuat — ai nevoie de un companion, **${cost} Oboli** și **${UPGRADE_XP_COST} XP**.`, ephemeral: true });
+    return;
+  }
+  await interaction.update({ embeds: [buildShopEmbed(updated)], components: shopCompRows(updated) });
 }
 
 async function handleAbilBuy(interaction: ButtonInteraction, kind: string) {
@@ -451,7 +474,11 @@ async function handleAbilBuy(interaction: ButtonInteraction, kind: string) {
     const lvl = kind === "empower" ? updated.abilityEmpowerLevel : updated.abilityShieldLevel;
     await applyAbilityLevelToActiveParticipant(interaction.user.id, kind as AbilityKind, lvl);
   }
-  await refreshShopOrError(interaction, updated, `❌ Nu poți debloca abilitatea — ai nevoie de **${ABILITY_BUY_COST} Oboli** și să nu o deții deja.`);
+  if (!updated) {
+    await interaction.reply({ content: `❌ Nu poți debloca abilitatea — ai nevoie de **${ABILITY_BUY_COST} Oboli** și să nu o deții deja.`, ephemeral: true });
+    return;
+  }
+  await interaction.update({ embeds: [buildShopEmbed(updated)], components: shopAbilRows(updated) });
 }
 
 async function handleAbilUpgrade(interaction: ButtonInteraction, kind: string) {
@@ -464,7 +491,11 @@ async function handleAbilUpgrade(interaction: ButtonInteraction, kind: string) {
     const lvl = kind === "empower" ? updated.abilityEmpowerLevel : updated.abilityShieldLevel;
     await applyAbilityLevelToActiveParticipant(interaction.user.id, kind as AbilityKind, lvl);
   }
-  await refreshShopOrError(interaction, updated, `❌ Upgrade eșuat — ai nevoie de abilitate, **${cost} Oboli** și **${UPGRADE_XP_COST} XP**.`);
+  if (!updated) {
+    await interaction.reply({ content: `❌ Upgrade eșuat — ai nevoie de abilitate, **${cost} Oboli** și **${UPGRADE_XP_COST} XP**.`, ephemeral: true });
+    return;
+  }
+  await interaction.update({ embeds: [buildShopEmbed(updated)], components: shopAbilRows(updated) });
 }
 
 async function handleAbility(interaction: ButtonInteraction, eventId: number, kind: string) {
@@ -562,6 +593,11 @@ async function handleButton(interaction: ButtonInteraction) {
   if (id.startsWith("ora_retreat_")) return handleRetreat(interaction, parseInt(id.replace("ora_retreat_", "")));
   if (id.startsWith("finalboss_")) return handleFinalBoss(interaction, parseInt(id.replace("finalboss_", "")));
   if (id.startsWith("class_pick_")) return handleClassPick(interaction, id.replace("class_pick_", ""));
+
+  if (id === "shop_nav_stats") return handleShopNavStats(interaction);
+  if (id === "shop_nav_comp") return handleShopNavComp(interaction);
+  if (id === "shop_nav_abil") return handleShopNavAbil(interaction);
+  if (id === "shop_back") return handleShopBack(interaction);
 
   if (id.startsWith("shop_buy_")) {
     return handleBuy(interaction, id.replace("shop_buy_", "") as ShopKey);

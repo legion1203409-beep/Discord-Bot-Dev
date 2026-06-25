@@ -557,7 +557,31 @@ export const SHOP_COUNT_KEY: Record<ShopKey, keyof Player> = {
   hp: "shopHpCount",
 };
 
-export function shopRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
+// ─── Shop navigation ─────────────────────────────────────────────────────────
+
+/** Main nav row — 3 category buttons shown on the landing page. */
+export function shopNavRow(): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId("shop_nav_stats").setLabel("Puteri").setEmoji("⚔️").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("shop_nav_comp").setLabel("Companion").setEmoji("🐾").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("shop_nav_abil").setLabel("Abilități").setEmoji("🎯").setStyle(ButtonStyle.Secondary),
+  );
+}
+
+/** Back button row — shown at the bottom of every sub-page. */
+export function shopBackRow(): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId("shop_back").setLabel("← Înapoi").setStyle(ButtonStyle.Secondary),
+  );
+}
+
+/** Main page rows (just the nav). */
+export function shopRows(_p: Player): ActionRowBuilder<ButtonBuilder>[] {
+  return [shopNavRow()];
+}
+
+/** Puteri (stat upgrades) sub-page rows. */
+export function shopStatsRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
   const mk = (key: ShopKey, emoji: string, label: string) => {
     const count = p[SHOP_COUNT_KEY[key]] as number;
     const price = shopPrice(key, count);
@@ -568,8 +592,7 @@ export function shopRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
       .setStyle(ButtonStyle.Primary)
       .setDisabled(p.gold < price);
   };
-
-  const rows: ActionRowBuilder<ButtonBuilder>[] = [
+  return [
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       mk("atac", "⚔️", "Atac"),
       mk("def", "🛡️", "Apărare"),
@@ -579,23 +602,30 @@ export function shopRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
       mk("crit", "💥", "Critic"),
       mk("hp", "❤️", "HP Max"),
     ),
+    shopBackRow(),
   ];
+}
 
-  // Companion row.
+/** Companion sub-page rows (buy or upgrade). */
+export function shopCompRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
   if (p.companion && isCompanionKey(p.companion)) {
     const cost = upgradeCost(p.companionLevel);
-    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId("shop_compup")
-        .setLabel(`Upgrade Companion Nv.${p.companionLevel} (${cost} + ${UPGRADE_XP_COST}XP)`)
-        .setEmoji(COMPANIONS[p.companion].emoji)
-        .setStyle(ButtonStyle.Success)
-        .setDisabled(p.gold < cost || p.xp < UPGRADE_XP_COST),
-    ));
-  } else {
-    const keys = Object.keys(COMPANIONS) as CompanionKey[];
-    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
-      keys.map((k) =>
+    return [
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId("shop_compup")
+          .setLabel(`Upgrade Nv.${p.companionLevel} → ${p.companionLevel + 1} (${cost} Oboli + ${UPGRADE_XP_COST} XP)`)
+          .setEmoji(COMPANIONS[p.companion].emoji)
+          .setStyle(ButtonStyle.Success)
+          .setDisabled(p.gold < cost || p.xp < UPGRADE_XP_COST),
+      ),
+      shopBackRow(),
+    ];
+  }
+  const keys = Object.keys(COMPANIONS) as CompanionKey[];
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      keys.slice(0, 4).map((k) =>
         new ButtonBuilder()
           .setCustomId(`shop_compbuy_${k}`)
           .setLabel(`${COMPANIONS[k].label} (${COMPANION_BUY_COST})`)
@@ -603,10 +633,13 @@ export function shopRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
           .setStyle(ButtonStyle.Success)
           .setDisabled(p.gold < COMPANION_BUY_COST),
       ),
-    ));
-  }
+    ),
+    shopBackRow(),
+  ];
+}
 
-  // Ability row.
+/** Abilități sub-page rows (buy or upgrade each ability). */
+export function shopAbilRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
   const abilBtn = (kind: AbilityKey) => {
     const lvl = kind === "empower" ? p.abilityEmpowerLevel : p.abilityShieldLevel;
     const a = ABILITIES[kind];
@@ -614,21 +647,22 @@ export function shopRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
       const cost = upgradeCost(lvl);
       return new ButtonBuilder()
         .setCustomId(`shop_abilup_${kind}`)
-        .setLabel(`${a.label} Nv.${lvl} ▲ (${cost}+${UPGRADE_XP_COST}XP)`)
+        .setLabel(`${a.label} Nv.${lvl} → ${lvl + 1} (${cost} + ${UPGRADE_XP_COST}XP)`)
         .setEmoji(a.emoji)
         .setStyle(ButtonStyle.Primary)
         .setDisabled(p.gold < cost || p.xp < UPGRADE_XP_COST);
     }
     return new ButtonBuilder()
       .setCustomId(`shop_abilbuy_${kind}`)
-      .setLabel(`🔒 ${a.label} (${ABILITY_BUY_COST})`)
+      .setLabel(`🔒 ${a.label} — Deblochează (${ABILITY_BUY_COST} Oboli)`)
       .setEmoji(a.emoji)
       .setStyle(ButtonStyle.Primary)
       .setDisabled(p.gold < ABILITY_BUY_COST);
   };
-  rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(abilBtn("empower"), abilBtn("shield")));
-
-  return rows;
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(abilBtn("empower"), abilBtn("shield")),
+    shopBackRow(),
+  ];
 }
 
 export function levelupRows(eventId: number): ActionRowBuilder<ButtonBuilder>[] {
