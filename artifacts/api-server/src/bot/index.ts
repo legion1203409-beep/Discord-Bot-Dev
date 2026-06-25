@@ -51,6 +51,13 @@ export async function startBot() {
   const commandData = allCommands.map((c) => c.data.toJSON());
 
   try {
+    await rest.put(Routes.applicationCommands(applicationId), { body: [] });
+    logger.info("Global commands cleared");
+  } catch (err) {
+    logger.error({ err }, "Failed to clear global commands");
+  }
+
+  try {
     await rest.put(Routes.applicationGuildCommands(applicationId, guildId), {
       body: commandData,
     });
