@@ -14,6 +14,7 @@ import {
 } from "./db";
 
 const CHANNEL_ID = "1472579703457190042";
+const MAIN_CHANNEL_ID = "1382042144717410385";
 const EVENT_DURATION_MS = 60 * 60 * 1000;
 const MIN_COOLDOWN_MS = 2 * 60 * 60 * 1000;
 const MAX_COOLDOWN_MS = 4 * 60 * 60 * 1000;
@@ -71,6 +72,17 @@ async function fireEvent(client: Client) {
     const embed = buildEventEmbed(def);
     const row = buildEventRow(ev.id, def);
     await placeholder.edit({ content: "", embeds: [embed], components: [row] });
+
+    try {
+      const mainChannel = await client.channels.fetch(MAIN_CHANNEL_ID);
+      if (mainChannel instanceof TextChannel) {
+        await mainChannel.send(
+          `⚔️ 📜 **Decret al Curții Cenușii – Eveniment Activ**\n\nUmbrele s‑au mișcat, iar cenușa s‑a ridicat din adâncuri.\nUn nou eveniment a fost declanșat în Regat — semnele se schimbă, iar destinul se scrie din nou.\n\n➡️ <#${CHANNEL_ID}>`,
+        );
+      }
+    } catch (err) {
+      logger.error({ err }, "Failed to send main channel notification");
+    }
 
     logger.info({ type, eventId: ev.id }, "Event fired");
   } catch (err) {
