@@ -195,6 +195,8 @@ export function buildShopEmbed(p: Player): EmbedBuilder {
       `🌀 **Dansul Fumului (Evitare)** — ${shopPrice("dodge", p.shopDodgeCount)} Oboli → +3% evitare\n` +
       `💥 **Lovitura Arhontei (Critic)** — ${shopPrice("crit", p.shopCritCount)} Oboli → +2% critic\n` +
       `❤️ **Voința Cenușii (HP Max)** — ${shopPrice("hp", p.shopHpCount)} Oboli → +10 HP Max\n\n` +
+      `📊 **Bonusurile tale acum:**\n` +
+      `⚔️ +${p.attackBonus} atac | 🛡️ +${p.defenseBonus} def | 🌀 ${p.dodgeBonus}% evitare | 💥 ${p.critBonus}% critic | ❤️ +${p.maxHpBonus} HP\n\n` +
       "Upgrade-urile sunt **permanente** și se aplică **imediat**, chiar și în lupta curentă.\n" +
       "Alege cu înțelepciune.\nFiecare Obol cheltuit îți apropie destinul de victorie… sau de ruină.",
     );
