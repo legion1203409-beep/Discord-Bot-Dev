@@ -24,6 +24,7 @@ import {
   addPlayerGold,
   deductPlayerGold,
   buyPlayerUpgrade,
+  applyUpgradeToActiveParticipant,
   getTopPlayers,
   recordPlayerDeath,
   getPlayerById,
@@ -243,6 +244,9 @@ async function handleBuy(interaction: ButtonInteraction, key: ShopKey) {
   const p = await upsertPlayer(interaction.user.id, interaction.user.username);
   const cost = shopPrice(key, p[SHOP_COUNT_KEY[key]] as number);
   const updated = await buyPlayerUpgrade(interaction.user.id, key, cost);
+  if (updated) {
+    await applyUpgradeToActiveParticipant(interaction.user.id, key);
+  }
   const player = updated ?? p;
   await interaction.update({ embeds: [buildShopEmbed(player)], components: shopRows(player) });
 }

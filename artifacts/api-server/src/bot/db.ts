@@ -1,6 +1,6 @@
 import { db } from "@workspace/db";
 import { playersTable, activeEventsTable, eventParticipantsTable } from "@workspace/db";
-import { eq, and, gte, sql } from "drizzle-orm";
+import { eq, and, gte, gt, inArray, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import type { Player, EventParticipant } from "@workspace/db";
 
@@ -41,12 +41,28 @@ export async function deductPlayerGold(discordId: string, amount: number): Promi
     .where(eq(playersTable.discordId, discordId));
 }
 
+export const UPGRADE_DELTA: Record<UpgradeKey, number> = { atac: 2, def: 2, dodge: 3, crit: 2, hp: 10 };
+
 const UPGRADE_SET: Record<UpgradeKey, Record<string, SQL>> = {
-  atac: { attackBonus: sql`${playersTable.attackBonus} + 2`, shopAttackCount: sql`${playersTable.shopAttackCount} + 1` },
-  def: { defenseBonus: sql`${playersTable.defenseBonus} + 2`, shopDefenseCount: sql`${playersTable.shopDefenseCount} + 1` },
-  dodge: { dodgeBonus: sql`${playersTable.dodgeBonus} + 3`, shopDodgeCount: sql`${playersTable.shopDodgeCount} + 1` },
-  crit: { critBonus: sql`${playersTable.critBonus} + 2`, shopCritCount: sql`${playersTable.shopCritCount} + 1` },
-  hp: { maxHpBonus: sql`${playersTable.maxHpBonus} + 10`, shopHpCount: sql`${playersTable.shopHpCount} + 1` },
+  atac: { attackBonus: sql`${playersTable.attackBonus} + ${UPGRADE_DELTA.atac}`, shopAttackCount: sql`${playersTable.shopAttackCount} + 1` },
+  def: { defenseBonus: sql`${playersTable.defenseBonus} + ${UPGRADE_DELTA.def}`, shopDefenseCount: sql`${playersTable.shopDefenseCount} + 1` },
+  dodge: { dodgeBonus: sql`${playersTable.dodgeBonus} + ${UPGRADE_DELTA.dodge}`, shopDodgeCount: sql`${playersTable.shopDodgeCount} + 1` },
+  crit: { critBonus: sql`${playersTable.critBonus} + ${UPGRADE_DELTA.crit}`, shopCritCount: sql`${playersTable.shopCritCount} + 1` },
+  hp: { maxHpBonus: sql`${playersTable.maxHpBonus} + ${UPGRADE_DELTA.hp}`, shopHpCount: sql`${playersTable.shopHpCount} + 1` },
+};
+
+// Mirrors UPGRADE_SET deltas onto the active event participant so a mid-event
+// purchase takes effect in the current fight (the participant snapshots player
+// bonuses at join time and would otherwise stay stale until the next event).
+const PARTICIPANT_UPGRADE_SET: Record<UpgradeKey, Record<string, SQL>> = {
+  atac: { attackBonus: sql`${eventParticipantsTable.attackBonus} + ${UPGRADE_DELTA.atac}` },
+  def: { defenseBonus: sql`${eventParticipantsTable.defenseBonus} + ${UPGRADE_DELTA.def}` },
+  dodge: { dodgeBonus: sql`${eventParticipantsTable.dodgeBonus} + ${UPGRADE_DELTA.dodge}` },
+  crit: { critBonus: sql`${eventParticipantsTable.critBonus} + ${UPGRADE_DELTA.crit}` },
+  hp: {
+    maxHp: sql`${eventParticipantsTable.maxHp} + ${UPGRADE_DELTA.hp}`,
+    currentHp: sql`${eventParticipantsTable.currentHp} + ${UPGRADE_DELTA.hp}`,
+  },
 };
 
 export async function buyPlayerUpgrade(discordId: string, key: UpgradeKey, cost: number): Promise<Player | null> {
@@ -55,6 +71,20 @@ export async function buyPlayerUpgrade(discordId: string, key: UpgradeKey, cost:
     .where(and(eq(playersTable.discordId, discordId), gte(playersTable.gold, cost)))
     .returning();
   return u ?? null;
+}
+
+export async function applyUpgradeToActiveParticipant(discordId: string, key: UpgradeKey): Promise<void> {
+  const activeIds = db
+    .select({ id: activeEventsTable.id })
+    .from(activeEventsTable)
+    .where(and(eq(activeEventsTable.isActive, true), gt(activeEventsTable.expiresAt, new Date())));
+  await db.update(eventParticipantsTable)
+    .set(PARTICIPANT_UPGRADE_SET[key])
+    .where(and(
+      eq(eventParticipantsTable.discordId, discordId),
+      eq(eventParticipantsTable.isAlive, true),
+      inArray(eventParticipantsTable.eventId, activeIds),
+    ));
 }
 
 export async function createEvent(type: string, messageId: string, expiresAt: Date) {

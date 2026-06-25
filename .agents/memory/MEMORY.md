@@ -1,1 +1,2 @@
 - [Discord embed images](discord-embed-images.md) — bot serves embed PNGs as static files at /api/assets, referenced by env-derived public URL (not attachments) to avoid per-edit re-upload.
+- [Event participant bonus snapshot](event-participant-bonus-snapshot.md) — combat uses participant stats snapshotted at join; mid-event player-stat changes must be mirrored onto the active participant or they don't apply.
