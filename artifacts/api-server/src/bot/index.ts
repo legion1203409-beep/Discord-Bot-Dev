@@ -10,7 +10,7 @@ import {
   EmbedBuilder,
 } from "discord.js";
 import { logger } from "../lib/logger";
-import { startScheduler, APPLICATION_ID } from "./scheduler";
+import { startScheduler, APPLICATION_ID, fireEvent } from "./scheduler";
 import {
   upsertPlayer,
   joinEvent,
@@ -38,9 +38,12 @@ import {
 
 const GUILD_ID = "1382035307607883816";
 
+let botClient: Client | null = null;
+
 const slashCommands = [
   new SlashCommandBuilder().setName("profil").setDescription("📜 Statisticile tale din Regatul Cenușii."),
   new SlashCommandBuilder().setName("clasament").setDescription("👑 Top 10 cei mai puternici luptători."),
+  new SlashCommandBuilder().setName("startevent").setDescription("🔥 [Admin] Pornește manual Ora Umbrelor."),
 ];
 
 async function handleProfil(interaction: ChatInputCommandInteraction) {
@@ -60,6 +63,11 @@ async function handleProfil(interaction: ChatInputCommandInteraction) {
     ],
     ephemeral: true,
   });
+}
+
+async function handleStartEvent(interaction: ChatInputCommandInteraction) {
+  await interaction.reply({ content: "🔥 *Umbrele se mișcă…* Evenimentul pornește!", ephemeral: true });
+  if (botClient) await fireEvent(botClient);
 }
 
 async function handleClasament(interaction: ChatInputCommandInteraction) {
@@ -247,6 +255,7 @@ export async function startBot() {
 
   client.once(Events.ClientReady, async (c) => {
     logger.info({ tag: c.user.tag }, "Discord bot ready");
+    botClient = client;
     startScheduler(client);
   });
 
@@ -255,6 +264,7 @@ export async function startBot() {
       if (interaction.isChatInputCommand()) {
         if (interaction.commandName === "profil") await handleProfil(interaction);
         if (interaction.commandName === "clasament") await handleClasament(interaction);
+        if (interaction.commandName === "startevent") await handleStartEvent(interaction);
       } else if (interaction.isButton()) {
         await handleButton(interaction as ButtonInteraction);
       }

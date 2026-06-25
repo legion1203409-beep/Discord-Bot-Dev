@@ -45,7 +45,7 @@ async function expireOldEvents(client: Client) {
   }
 }
 
-async function fireEvent(client: Client) {
+export async function fireEvent(client: Client) {
   try {
     const channel = await client.channels.fetch(EVENT_CHANNEL_ID);
     if (!(channel instanceof TextChannel)) {
