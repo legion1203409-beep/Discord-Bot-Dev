@@ -245,14 +245,25 @@ export function combatRow(eventId: number): ActionRowBuilder<ButtonBuilder> {
   );
 }
 
+const SHOP_COUNT_KEY: Record<ShopKey, keyof EventParticipant> = {
+  atac: "shopAttackCount",
+  def: "shopDefenseCount",
+  dodge: "shopDodgeCount",
+  crit: "shopCritCount",
+  hp: "shopHpCount",
+};
+
 export function shopRows(eventId: number, p: EventParticipant): ActionRowBuilder<ButtonBuilder>[] {
-  const mk = (key: ShopKey, emoji: string, label: string) =>
-    new ButtonBuilder()
+  const mk = (key: ShopKey, emoji: string, label: string) => {
+    const count = p[SHOP_COUNT_KEY[key]] as number;
+    const price = shopPrice(key, count);
+    return new ButtonBuilder()
       .setCustomId(`ora_buy_${eventId}_${key}`)
-      .setLabel(`${label} (${shopPrice(key, p[`shop${key.charAt(0).toUpperCase() + key.slice(1)}Count` as keyof EventParticipant] as number)})`)
+      .setLabel(`${label} (${price})`)
       .setEmoji(emoji)
       .setStyle(ButtonStyle.Primary)
-      .setDisabled(p.oboli < shopPrice(key, p[`shop${key.charAt(0).toUpperCase() + key.slice(1)}Count` as keyof EventParticipant] as number));
+      .setDisabled(p.oboli < price);
+  };
 
   return [
     new ActionRowBuilder<ButtonBuilder>().addComponents(
