@@ -15,6 +15,8 @@ const CHEST_EXPIRE_MS = 10 * 60 * 1000;
 
 export const claimedChests = new Set<string>();
 
+let lastChestMessageId: string | null = null;
+
 function randomCooldown() {
   return Math.floor(Math.random() * (MAX_COOLDOWN_MS - MIN_COOLDOWN_MS + 1)) + MIN_COOLDOWN_MS;
 }
@@ -57,6 +59,12 @@ export async function fireChest(client: Client) {
     const channel = await client.channels.fetch(MAIN_CHANNEL_ID);
     if (!(channel instanceof TextChannel)) return;
 
+    if (lastChestMessageId) {
+      const old = await channel.messages.fetch(lastChestMessageId).catch(() => null);
+      if (old) await old.delete().catch(() => null);
+      lastChestMessageId = null;
+    }
+
     const gold = Math.floor(Math.random() * 91) + 10;
     const chestId = `chest_${Date.now()}`;
     const expireAt = Date.now() + CHEST_EXPIRE_MS;
@@ -70,6 +78,7 @@ export async function fireChest(client: Client) {
     );
 
     const msg = await channel.send({ embeds: [buildChestEmbed(gold)], components: [row] });
+    lastChestMessageId = msg.id;
     logger.info({ chestId, gold }, "Chest spawned");
 
     const timeout = setTimeout(async () => {
