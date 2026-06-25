@@ -9,6 +9,8 @@ export const playersTable = pgTable("players", {
   gold: integer("gold").notNull().default(0),
   reputation: integer("reputation").notNull().default(0),
   hp: integer("hp").notNull().default(100),
+  deaths: integer("deaths").notNull().default(0),
+  deathLevel: integer("death_level").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

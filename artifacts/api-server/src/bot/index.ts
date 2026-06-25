@@ -7,11 +7,13 @@ import {
   ButtonInteraction,
   ChatInputCommandInteraction,
   SlashCommandBuilder,
-  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   PermissionFlagsBits,
 } from "discord.js";
 import { logger } from "../lib/logger";
-import { startScheduler, APPLICATION_ID, fireEvent } from "./scheduler";
+import { startScheduler, APPLICATION_ID, fireEvent, claimedChests } from "./scheduler";
 import {
   upsertPlayer,
   joinEvent,
@@ -20,7 +22,10 @@ import {
   getActiveEvent,
   getLatestActiveEvent,
   addPlayerXp,
+  addPlayerGold,
   getTopPlayers,
+  recordPlayerDeath,
+  getPlayerById,
 } from "./db";
 import {
   doCombat,
@@ -29,6 +34,8 @@ import {
   buildDeathEmbed,
   buildShopEmbed,
   buildLevelupEmbed,
+  buildProfileEmbed,
+  buildChestEmbed,
   combatRow,
   shopRows,
   levelupRows,
@@ -54,21 +61,7 @@ const slashCommands = [
 
 async function handleProfil(interaction: ChatInputCommandInteraction) {
   const p = await upsertPlayer(interaction.user.id, interaction.user.username);
-  await interaction.reply({
-    embeds: [
-      new EmbedBuilder()
-        .setColor(0x8a4a2f)
-        .setTitle(`📜 Profilul lui ${p.username}`)
-        .addFields(
-          { name: "⭐ XP Total", value: `${p.xp}`, inline: true },
-          { name: "🪙 Aur", value: `${p.gold}`, inline: true },
-          { name: "🏅 Reputație", value: `${p.reputation}`, inline: true },
-        )
-        .setFooter({ text: "Participă la Ora Umbrelor pentru a crește!" })
-        .setTimestamp(),
-    ],
-    ephemeral: true,
-  });
+  await interaction.reply({ embeds: [buildProfileEmbed(p)], ephemeral: true });
 }
 
 async function handleMagazin(interaction: ChatInputCommandInteraction) {
@@ -97,16 +90,72 @@ async function handleStartEvent(interaction: ChatInputCommandInteraction) {
 async function handleClasament(interaction: ChatInputCommandInteraction) {
   const top = await getTopPlayers();
   const medals = ["🥇", "🥈", "🥉"];
-  const lines = top.map((p, i) => `${medals[i] ?? `**${i + 1}.**`} **${p.username}** — ${p.xp} XP`).join("\n");
+
+  const lines = top.map((p, i) => {
+    const deathStr = p.deaths > 0 ? ` | 💀 ${p.deaths}×(Niv.${p.deathLevel})` : "";
+    return `${medals[i] ?? `**${i + 1}.**`} **${p.username}** — ${p.xp} XP${deathStr}`;
+  }).join("\n");
+
+  const buttons = top.slice(0, 5).map((p, i) =>
+    new ButtonBuilder()
+      .setCustomId(`profile_view_${p.discordId}`)
+      .setLabel(`${medals[i] ?? `#${i + 1}`} ${p.username}`)
+      .setStyle(ButtonStyle.Secondary),
+  );
+
+  const rows: ActionRowBuilder<ButtonBuilder>[] = [];
+  for (let i = 0; i < buttons.length; i += 5) {
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(buttons.slice(i, i + 5)));
+  }
+
   await interaction.reply({
     embeds: [
-      new EmbedBuilder()
-        .setColor(0x8a4a2f)
-        .setTitle("👑 Clasament – Regatul Cenușii")
-        .setDescription(lines || "*Nimeni nu a luptat încă.*")
-        .setTimestamp(),
+      {
+        color: 0x8a4a2f,
+        title: "👑 Clasament – Regatul Cenușii",
+        description: lines || "*Nimeni nu a luptat încă.*",
+        footer: { text: "Apasă un buton pentru a vedea profilul complet al unui luptător" },
+        timestamp: new Date().toISOString(),
+      },
     ],
+    components: rows,
   });
+}
+
+async function handleViewProfile(interaction: ButtonInteraction, discordId: string) {
+  const player = await getPlayerById(discordId);
+  if (!player) {
+    await interaction.reply({ content: "❌ Jucătorul nu a fost găsit.", ephemeral: true });
+    return;
+  }
+  await interaction.reply({ embeds: [buildProfileEmbed(player)], ephemeral: true });
+}
+
+async function handleChestClaim(interaction: ButtonInteraction, chestId: string, gold: number) {
+  if (claimedChests.has(chestId)) {
+    await interaction.reply({ content: "😔 Cineva a fost mai rapid! Cufărul a fost deja revendicat.", ephemeral: true });
+    return;
+  }
+  claimedChests.add(chestId);
+
+  await upsertPlayer(interaction.user.id, interaction.user.username);
+  await addPlayerGold(interaction.user.id, gold);
+
+  const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${chestId}_claimed`)
+      .setLabel(`Revendicat de ${interaction.user.username}`)
+      .setEmoji("✅")
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(true),
+  );
+
+  await interaction.update({ components: [disabledRow] });
+  await interaction.followUp({
+    content: `🎉 **${interaction.user.username}** a revendicat cufărul și a câștigat **${gold} Aur**! 💰`,
+  });
+
+  logger.info({ discordId: interaction.user.id, chestId, gold }, "Chest claimed");
 }
 
 async function handleJoin(interaction: ButtonInteraction, eventId: number) {
@@ -161,7 +210,10 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
 
   if (result.playerDied) {
     await updateParticipant(p.id, { isAlive: false, currentHp: 0 });
-    await addPlayerXp(p.discordId, p.oboli);
+    await Promise.all([
+      addPlayerXp(p.discordId, p.oboli),
+      recordPlayerDeath(p.discordId, p.monsterLevel),
+    ]);
     await interaction.update({ embeds: [buildDeathEmbed()], components: [] });
     return;
   }
@@ -250,6 +302,24 @@ async function handleLevelup(interaction: ButtonInteraction, eventId: number, bo
 
 async function handleButton(interaction: ButtonInteraction) {
   const id = interaction.customId;
+
+  if (id.startsWith("profile_view_")) {
+    return handleViewProfile(interaction, id.replace("profile_view_", ""));
+  }
+
+  if (id.startsWith("chest_") && !id.endsWith("_claimed") && !id.endsWith("_expired")) {
+    const match = id.match(/^(chest_\d+)_(\d+)$/);
+    if (match) {
+      return handleChestClaim(interaction, match[1]!, parseInt(match[2]!));
+    }
+    const simpleMatch = id.match(/^(chest_\d+)$/);
+    if (simpleMatch) {
+      const msgEmbed = interaction.message.embeds[0];
+      const goldMatch = msgEmbed?.description?.match(/\*\*(\d+) Aur\*\*/);
+      const gold = goldMatch ? parseInt(goldMatch[1]!) : 50;
+      return handleChestClaim(interaction, simpleMatch[1]!, gold);
+    }
+  }
 
   if (id.startsWith("ora_join_")) return handleJoin(interaction, parseInt(id.replace("ora_join_", "")));
   if (id.startsWith("ora_attack_")) return handleAttack(interaction, parseInt(id.replace("ora_attack_", "")));

@@ -13,13 +13,27 @@ export async function upsertPlayer(discordId: string, username: string): Promise
   return c!;
 }
 
-export async function addPlayerXp(discordId: string, xp: number): Promise<void> {
+export async function recordPlayerDeath(discordId: string, deathLevel: number): Promise<void> {
   const [p] = await db.select().from(playersTable).where(eq(playersTable.discordId, discordId));
-  if (p) await db.update(playersTable).set({ xp: p.xp + xp }).where(eq(playersTable.discordId, discordId));
+  if (!p) return;
+  await db.update(playersTable)
+    .set({ deaths: p.deaths + 1, deathLevel })
+    .where(eq(playersTable.discordId, discordId));
 }
 
-export async function createEvent(eventType: string, messageId: string, expiresAt: Date) {
-  const [ev] = await db.insert(activeEventsTable).values({ eventType, messageId, expiresAt }).returning();
+export async function getPlayerById(discordId: string): Promise<Player | null> {
+  const [p] = await db.select().from(playersTable).where(eq(playersTable.discordId, discordId));
+  return p ?? null;
+}
+
+export async function addPlayerGold(discordId: string, amount: number): Promise<void> {
+  const [p] = await db.select().from(playersTable).where(eq(playersTable.discordId, discordId));
+  if (!p) return;
+  await db.update(playersTable).set({ gold: p.gold + amount }).where(eq(playersTable.discordId, discordId));
+}
+
+export async function createEvent(type: string, messageId: string, expiresAt: Date) {
+  const [ev] = await db.insert(activeEventsTable).values({ type, messageId, expiresAt }).returning();
   return ev!;
 }
 
@@ -28,13 +42,19 @@ export async function getActiveEvent(id: number) {
   return ev ?? null;
 }
 
-export async function deactivateEvent(id: number) {
-  await db.update(activeEventsTable).set({ isActive: false }).where(eq(activeEventsTable.id, id));
+export async function getLatestActiveEvent() {
+  const all = await db.select().from(activeEventsTable).where(eq(activeEventsTable.isActive, true));
+  const valid = all.filter((e) => e.expiresAt.getTime() > Date.now());
+  return valid.sort((a, b) => b.id - a.id)[0] ?? null;
 }
 
 export async function getExpiredActiveEvents() {
   const all = await db.select().from(activeEventsTable).where(eq(activeEventsTable.isActive, true));
   return all.filter((e) => e.expiresAt.getTime() < Date.now());
+}
+
+export async function deactivateEvent(id: number) {
+  await db.update(activeEventsTable).set({ isActive: false }).where(eq(activeEventsTable.id, id));
 }
 
 export async function joinEvent(eventId: number, discordId: string, username: string): Promise<EventParticipant | null> {
@@ -62,10 +82,10 @@ export async function getEventParticipants(eventId: number): Promise<EventPartic
   return db.select().from(eventParticipantsTable).where(eq(eventParticipantsTable.eventId, eventId));
 }
 
-export async function getLatestActiveEvent() {
-  const all = await db.select().from(activeEventsTable).where(eq(activeEventsTable.isActive, true));
-  const valid = all.filter((e) => e.expiresAt.getTime() > Date.now());
-  return valid.sort((a, b) => b.id - a.id)[0] ?? null;
+export async function addPlayerXp(discordId: string, amount: number): Promise<void> {
+  const [p] = await db.select().from(playersTable).where(eq(playersTable.discordId, discordId));
+  if (!p) return;
+  await db.update(playersTable).set({ xp: p.xp + amount }).where(eq(playersTable.discordId, discordId));
 }
 
 export async function getTopPlayers(): Promise<Player[]> {

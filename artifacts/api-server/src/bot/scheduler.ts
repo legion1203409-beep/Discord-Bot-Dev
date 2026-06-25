@@ -1,6 +1,6 @@
 import { Client, TextChannel, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import { logger } from "../lib/logger";
-import { buildStartEmbed, buildExpiredCronica } from "./survival";
+import { buildStartEmbed, buildExpiredCronica, buildChestEmbed } from "./survival";
 import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants } from "./db";
 
 const EVENT_CHANNEL_ID = "1472579703457190042";
@@ -10,8 +10,18 @@ const EVENT_DURATION_MS = 60 * 60 * 1000;
 const MIN_COOLDOWN_MS = 2 * 60 * 60 * 1000;
 const MAX_COOLDOWN_MS = 4 * 60 * 60 * 1000;
 
+const CHEST_MIN_MS = 30 * 60 * 1000;
+const CHEST_MAX_MS = 90 * 60 * 1000;
+const CHEST_EXPIRE_MS = 10 * 60 * 1000;
+
+export const claimedChests = new Set<string>();
+
 function randomCooldown() {
   return Math.floor(Math.random() * (MAX_COOLDOWN_MS - MIN_COOLDOWN_MS + 1)) + MIN_COOLDOWN_MS;
+}
+
+function randomChestCooldown() {
+  return Math.floor(Math.random() * (CHEST_MAX_MS - CHEST_MIN_MS + 1)) + CHEST_MIN_MS;
 }
 
 async function expireOldEvents(client: Client) {
@@ -42,6 +52,51 @@ async function expireOldEvents(client: Client) {
     } catch (err) {
       logger.error({ err, eventId: ev.id }, "Failed to expire event");
     }
+  }
+}
+
+export async function fireChest(client: Client) {
+  try {
+    const channel = await client.channels.fetch(MAIN_CHANNEL_ID);
+    if (!(channel instanceof TextChannel)) return;
+
+    const gold = Math.floor(Math.random() * 91) + 10;
+    const chestId = `chest_${Date.now()}`;
+    const expireAt = Date.now() + CHEST_EXPIRE_MS;
+
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(chestId)
+        .setLabel("Revendică Cufărul")
+        .setEmoji("📦")
+        .setStyle(ButtonStyle.Success),
+    );
+
+    const msg = await channel.send({ embeds: [buildChestEmbed(gold)], components: [row] });
+    logger.info({ chestId, gold }, "Chest spawned");
+
+    const timeout = setTimeout(async () => {
+      if (!claimedChests.has(chestId)) {
+        claimedChests.add(chestId);
+        const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`${chestId}_expired`)
+            .setLabel("Cufărul a dispărut...")
+            .setEmoji("💨")
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(true),
+        );
+        await msg.edit({ embeds: [buildChestEmbed(gold)], components: [disabledRow] }).catch(() => null);
+        logger.info({ chestId }, "Chest expired unclaimed");
+      }
+    }, CHEST_EXPIRE_MS);
+
+    timeout.unref?.();
+
+    return { chestId, gold, expireAt };
+  } catch (err) {
+    logger.error({ err }, "Failed to fire chest");
+    return null;
   }
 }
 
@@ -97,8 +152,16 @@ export function startScheduler(client: Client) {
     setTimeout(async () => { await fireEvent(client); scheduleNext(); }, cooldown);
   };
 
+  const scheduleChest = () => {
+    const delay = randomChestCooldown();
+    setTimeout(async () => { await fireChest(client); scheduleChest(); }, delay);
+  };
+
   setTimeout(async () => { await fireEvent(client); scheduleNext(); }, 5 * 60 * 1000);
   logger.info("First Ora Umbrelor in 5 minutes");
+
+  scheduleChest();
+  logger.info("Chest scheduler started");
 }
 
 export { APPLICATION_ID };

@@ -5,6 +5,7 @@ import {
   ButtonStyle,
 } from "discord.js";
 import type { EventParticipant } from "@workspace/db";
+import type { Player } from "@workspace/db";
 
 const BASE_PRICES = { atac: 50, def: 60, dodge: 70, crit: 80, hp: 40 } as const;
 export type ShopKey = keyof typeof BASE_PRICES;
@@ -143,6 +144,36 @@ export function buildDeathEmbed(): EmbedBuilder {
       "dar numele tău va rămâne scris în cronica celor căzuți.\n\n" +
       "Așteaptă următoarea chemare a Regatului Cenușii.",
     );
+}
+
+export function buildProfileEmbed(player: Player, title?: string): EmbedBuilder {
+  const deathInfo = player.deaths > 0
+    ? `${player.deaths} × (ultima: Nivel ${player.deathLevel})`
+    : "0 — neînvins";
+  return new EmbedBuilder()
+    .setColor(0x8a4a2f)
+    .setTitle(title ?? `📜 Profilul lui ${player.username}`)
+    .addFields(
+      { name: "⭐ XP Total", value: `${player.xp}`, inline: true },
+      { name: "🪙 Aur", value: `${player.gold}`, inline: true },
+      { name: "🏅 Reputație", value: `${player.reputation}`, inline: true },
+      { name: "💀 Morți", value: deathInfo, inline: false },
+    )
+    .setFooter({ text: "Regatul Cenușii — Cronica Umbrelor" })
+    .setTimestamp();
+}
+
+export function buildChestEmbed(gold: number): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(0xffd700)
+    .setTitle("📦✨  UN CUFĂR A APĂRUT ÎN REGAT!  ✨📦")
+    .setDescription(
+      "Cenușa s-a ridicat și a dezvăluit un cufăr misterios!\n" +
+      "Aurul zace în el, așteptând mâna celui mai rapid.\n\n" +
+      `💰 **${gold} Aur** pentru primul care revendică!\n\n` +
+      "⚡ Fii primul — cufărul dispare în fumul umbrelor!",
+    )
+    .setFooter({ text: "Primul click câștigă!" });
 }
 
 export function buildShopEmbed(p: EventParticipant): EmbedBuilder {
