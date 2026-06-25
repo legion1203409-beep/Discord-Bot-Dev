@@ -10,8 +10,7 @@ const EVENT_DURATION_MS = 60 * 60 * 1000;
 const MIN_COOLDOWN_MS = 2 * 60 * 60 * 1000;
 const MAX_COOLDOWN_MS = 4 * 60 * 60 * 1000;
 
-const CHEST_MIN_MS = 30 * 60 * 1000;
-const CHEST_MAX_MS = 90 * 60 * 1000;
+const CHEST_INTERVAL_MS = 30 * 60 * 1000;
 const CHEST_EXPIRE_MS = 10 * 60 * 1000;
 
 export const claimedChests = new Set<string>();
@@ -20,9 +19,6 @@ function randomCooldown() {
   return Math.floor(Math.random() * (MAX_COOLDOWN_MS - MIN_COOLDOWN_MS + 1)) + MIN_COOLDOWN_MS;
 }
 
-function randomChestCooldown() {
-  return Math.floor(Math.random() * (CHEST_MAX_MS - CHEST_MIN_MS + 1)) + CHEST_MIN_MS;
-}
 
 async function expireOldEvents(client: Client) {
   const expired = await getExpiredActiveEvents();
@@ -190,16 +186,16 @@ export function startScheduler(client: Client) {
     setTimeout(async () => { await fireEvent(client); scheduleNext(); }, cooldown);
   };
 
-  const scheduleChest = () => {
-    const delay = randomChestCooldown();
-    setTimeout(async () => { await fireChest(client); scheduleChest(); }, delay);
-  };
-
   setTimeout(async () => { await fireEvent(client); scheduleNext(); }, 5 * 60 * 1000);
   logger.info("First Ora Umbrelor in 5 minutes");
 
-  scheduleChest();
-  logger.info("Chest scheduler started");
+  let chestInFlight = false;
+  setInterval(() => {
+    if (chestInFlight) return;
+    chestInFlight = true;
+    void fireChest(client).finally(() => { chestInFlight = false; });
+  }, CHEST_INTERVAL_MS);
+  logger.info({ everyMinutes: CHEST_INTERVAL_MS / 60000 }, "Chest scheduler started — fixed interval");
 }
 
 export { APPLICATION_ID };
