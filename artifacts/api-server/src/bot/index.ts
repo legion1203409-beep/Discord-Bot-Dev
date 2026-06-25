@@ -46,14 +46,15 @@ export async function startBot() {
 
   const rest = new REST().setToken(token);
   const applicationId = "1472675543777280071";
+  const guildId = "1382035307607883816";
 
   const commandData = allCommands.map((c) => c.data.toJSON());
 
   try {
-    await rest.put(Routes.applicationCommands(applicationId), {
+    await rest.put(Routes.applicationGuildCommands(applicationId, guildId), {
       body: commandData,
     });
-    logger.info("Slash commands registered globally");
+    logger.info({ guildId }, "Slash commands registered for guild");
   } catch (err) {
     logger.error({ err }, "Failed to register slash commands");
   }
