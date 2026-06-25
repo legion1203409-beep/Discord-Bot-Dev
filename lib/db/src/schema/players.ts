@@ -11,6 +11,16 @@ export const playersTable = pgTable("players", {
   hp: integer("hp").notNull().default(100),
   deaths: integer("deaths").notNull().default(0),
   deathLevel: integer("death_level").notNull().default(0),
+  attackBonus: integer("attack_bonus").notNull().default(0),
+  defenseBonus: integer("defense_bonus").notNull().default(0),
+  dodgeBonus: integer("dodge_bonus").notNull().default(0),
+  critBonus: integer("crit_bonus").notNull().default(0),
+  maxHpBonus: integer("max_hp_bonus").notNull().default(0),
+  shopAttackCount: integer("shop_attack_count").notNull().default(0),
+  shopDefenseCount: integer("shop_defense_count").notNull().default(0),
+  shopDodgeCount: integer("shop_dodge_count").notNull().default(0),
+  shopCritCount: integer("shop_crit_count").notNull().default(0),
+  shopHpCount: integer("shop_hp_count").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

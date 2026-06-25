@@ -20,9 +20,10 @@ import {
   getParticipant,
   updateParticipant,
   getActiveEvent,
-  getLatestActiveEvent,
   addPlayerXp,
   addPlayerGold,
+  deductPlayerGold,
+  buyPlayerUpgrade,
   getTopPlayers,
   recordPlayerDeath,
   getPlayerById,
@@ -35,12 +36,12 @@ import {
   buildShopEmbed,
   buildLevelupEmbed,
   buildProfileEmbed,
-  buildChestEmbed,
   combatRow,
   shopRows,
   levelupRows,
   shopPrice,
   monsterMaxHp,
+  SHOP_COUNT_KEY,
   LEVELUP_INTERVAL,
   type ShopKey,
 } from "./survival";
@@ -52,7 +53,7 @@ let botClient: Client | null = null;
 const slashCommands = [
   new SlashCommandBuilder().setName("profil").setDescription("📜 Statisticile tale din Regatul Cenușii."),
   new SlashCommandBuilder().setName("clasament").setDescription("👑 Top 10 cei mai puternici luptători."),
-  new SlashCommandBuilder().setName("magazin").setDescription("🏺 Deschide Forja Cenușii în evenimentul activ."),
+  new SlashCommandBuilder().setName("magazin").setDescription("🏺 Forja Cenușii — upgrade-uri permanente, mereu disponibilă."),
   new SlashCommandBuilder()
     .setName("startevent")
     .setDescription("🔥 [Admin] Pornește manual Ora Umbrelor.")
@@ -65,21 +66,8 @@ async function handleProfil(interaction: ChatInputCommandInteraction) {
 }
 
 async function handleMagazin(interaction: ChatInputCommandInteraction) {
-  const ev = await getLatestActiveEvent();
-  if (!ev) {
-    await interaction.reply({ content: "❌ Nu există niciun eveniment activ acum. Așteaptă **Ora Umbrelor**!", ephemeral: true });
-    return;
-  }
-  const p = await getParticipant(ev.id, interaction.user.id);
-  if (!p) {
-    await interaction.reply({ content: `❌ Nu ești înscris în evenimentul activ. Intră în luptă mai întâi din <#1472579703457190042>!`, ephemeral: true });
-    return;
-  }
-  if (!p.isAlive) {
-    await interaction.reply({ embeds: [buildDeathEmbed()], ephemeral: true });
-    return;
-  }
-  await interaction.reply({ embeds: [buildShopEmbed(p)], components: shopRows(ev.id, p), ephemeral: true });
+  const p = await upsertPlayer(interaction.user.id, interaction.user.username);
+  await interaction.reply({ embeds: [buildShopEmbed(p)], components: shopRows(p), ephemeral: true });
 }
 
 async function handleStartEvent(interaction: ChatInputCommandInteraction) {
@@ -152,7 +140,7 @@ async function handleChestClaim(interaction: ButtonInteraction, chestId: string,
 
   await interaction.update({ components: [disabledRow] });
   await interaction.followUp({
-    content: `🎉 **${interaction.user.username}** a revendicat cufărul și a câștigat **${gold} Aur**! 💰`,
+    content: `🎉 **${interaction.user.username}** a revendicat cufărul și a câștigat **${gold} Oboli**! 💰`,
   });
 
   logger.info({ discordId: interaction.user.id, chestId, gold }, "Chest claimed");
@@ -209,14 +197,21 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
   const extra = buildResultText(result);
 
   if (result.playerDied) {
+    const lost = Math.floor(p.oboli * 0.2);
     await updateParticipant(p.id, { isAlive: false, currentHp: 0 });
     await Promise.all([
-      addPlayerXp(p.discordId, p.oboli),
-      addPlayerGold(p.discordId, p.oboli),
+      deductPlayerGold(p.discordId, lost),
       recordPlayerDeath(p.discordId, p.monsterLevel),
     ]);
-    await interaction.update({ embeds: [buildDeathEmbed()], components: [] });
+    await interaction.update({ embeds: [buildDeathEmbed(lost)], components: [] });
     return;
+  }
+
+  if (result.oboliGained > 0) {
+    await Promise.all([
+      addPlayerGold(p.discordId, result.oboliGained),
+      addPlayerXp(p.discordId, result.xpGained),
+    ]);
   }
 
   if (result.levelUp) {
@@ -244,41 +239,12 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
   await interaction.update({ embeds: [buildCombatEmbed(updated, extra)], components: [combatRow(eventId)] });
 }
 
-async function handleShop(interaction: ButtonInteraction, eventId: number) {
-  const p = await getParticipant(eventId, interaction.user.id);
-  if (!p || !p.isAlive) { await interaction.reply({ content: "❌ Nu ești în luptă!", ephemeral: true }); return; }
-  await interaction.update({ embeds: [buildShopEmbed(p)], components: shopRows(eventId, p) });
-}
-
-async function handleBuy(interaction: ButtonInteraction, eventId: number, key: ShopKey) {
-  const p = await getParticipant(eventId, interaction.user.id);
-  if (!p || !p.isAlive) { await interaction.reply({ content: "❌ Nu ești în luptă!", ephemeral: true }); return; }
-
-  const countKey = `shop${key.charAt(0).toUpperCase() + key.slice(1)}Count` as keyof typeof p;
-  const count = p[countKey] as number;
-  const cost = shopPrice(key, count);
-
-  if (p.oboli < cost) {
-    await interaction.update({ embeds: [buildShopEmbed(p)], components: shopRows(eventId, p) });
-    return;
-  }
-
-  const statUpdates: Record<ShopKey, Partial<typeof p>> = {
-    atac: { attackBonus: p.attackBonus + 2, shopAttackCount: count + 1 },
-    def: { defenseBonus: p.defenseBonus + 2, shopDefenseCount: count + 1 },
-    dodge: { dodgeBonus: p.dodgeBonus + 3, shopDodgeCount: count + 1 },
-    crit: { critBonus: p.critBonus + 2, shopCritCount: count + 1 },
-    hp: { maxHp: p.maxHp + 10, currentHp: Math.min(p.maxHp + 10, p.currentHp + 5), shopHpCount: count + 1 },
-  };
-
-  const updated = await updateParticipant(p.id, { ...statUpdates[key], oboli: p.oboli - cost });
-  await interaction.update({ embeds: [buildShopEmbed(updated)], components: shopRows(eventId, updated) });
-}
-
-async function handleBackToCombat(interaction: ButtonInteraction, eventId: number) {
-  const p = await getParticipant(eventId, interaction.user.id);
-  if (!p || !p.isAlive) { await interaction.reply({ content: "❌ Nu ești în luptă!", ephemeral: true }); return; }
-  await interaction.update({ embeds: [buildCombatEmbed(p)], components: [combatRow(eventId)] });
+async function handleBuy(interaction: ButtonInteraction, key: ShopKey) {
+  const p = await upsertPlayer(interaction.user.id, interaction.user.username);
+  const cost = shopPrice(key, p[SHOP_COUNT_KEY[key]] as number);
+  const updated = await buyPlayerUpgrade(interaction.user.id, key, cost);
+  const player = updated ?? p;
+  await interaction.update({ embeds: [buildShopEmbed(player)], components: shopRows(player) });
 }
 
 async function handleLevelup(interaction: ButtonInteraction, eventId: number, bonus: string) {
@@ -316,7 +282,7 @@ async function handleButton(interaction: ButtonInteraction) {
     const simpleMatch = id.match(/^(chest_\d+)$/);
     if (simpleMatch) {
       const msgEmbed = interaction.message.embeds[0];
-      const goldMatch = msgEmbed?.description?.match(/\*\*(\d+) Aur\*\*/);
+      const goldMatch = msgEmbed?.description?.match(/\*\*(\d+) Oboli\*\*/);
       const gold = goldMatch ? parseInt(goldMatch[1]!) : 50;
       return handleChestClaim(interaction, simpleMatch[1]!, gold);
     }
@@ -324,14 +290,9 @@ async function handleButton(interaction: ButtonInteraction) {
 
   if (id.startsWith("ora_join_")) return handleJoin(interaction, parseInt(id.replace("ora_join_", "")));
   if (id.startsWith("ora_attack_")) return handleAttack(interaction, parseInt(id.replace("ora_attack_", "")));
-  if (id.startsWith("ora_shop_")) return handleShop(interaction, parseInt(id.replace("ora_shop_", "")));
-  if (id.startsWith("ora_combat_")) return handleBackToCombat(interaction, parseInt(id.replace("ora_combat_", "")));
 
-  if (id.startsWith("ora_buy_")) {
-    const parts = id.split("_");
-    const key = parts[parts.length - 1] as ShopKey;
-    const eventId = parseInt(parts[2]!);
-    return handleBuy(interaction, eventId, key);
+  if (id.startsWith("shop_buy_")) {
+    return handleBuy(interaction, id.replace("shop_buy_", "") as ShopKey);
   }
 
   if (id.startsWith("ora_lvlup_")) {

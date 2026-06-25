@@ -112,7 +112,7 @@ export function buildCombatEmbed(p: EventParticipant, extra = ""): EmbedBuilder 
       `💰 Reward: **${reward.xp} XP, ${reward.oboli} Oboli**\n\n` +
       `━━━━━━━━━━━━━━━━━━\n` +
       `❤️ HP-ul tău: **${p.currentHp}/${p.maxHp}** ${hpBar(p.currentHp, p.maxHp)}\n` +
-      `🪙 Oboli: **${p.oboli}**`,
+      `🪙 Oboli strânși în event: **${p.oboli}** *(20% se pierd la moarte)*`,
     )
     .setFooter({ text: `⚔️ +${p.attackBonus} | 🛡️ +${p.defenseBonus} | 🌀 ${p.dodgeBonus}% | 💥 ${p.critBonus}%` });
 }
@@ -133,16 +133,17 @@ export function buildResultText(r: CombatResult): string {
   return txt;
 }
 
-export function buildDeathEmbed(): EmbedBuilder {
+export function buildDeathEmbed(lostOboli = 0): EmbedBuilder {
   return new EmbedBuilder()
     .setColor(0x000000)
     .setTitle("💀  AI CĂZUT ÎN UMBRE 💀")
     .setDescription(
       "Umbrele te-au revendicat, iar cenușa îți acoperă pașii.\n" +
       "Nu mai poți continua acest event.\n\n" +
+      (lostOboli > 0 ? `🪙 Ai pierdut **${lostOboli} Oboli** (20% din ce ai strâns în event).\n\n` : "") +
       "Trupul tău pământesc a cedat,\n" +
       "dar numele tău va rămâne scris în cronica celor căzuți.\n\n" +
-      "Așteaptă următoarea chemare a Regatului Cenușii.",
+      "Magazinul rămâne deschis — folosește **/magazin** ca să te întărești pentru următoarea chemare.",
     );
 }
 
@@ -155,7 +156,7 @@ export function buildProfileEmbed(player: Player, title?: string): EmbedBuilder 
     .setTitle(title ?? `📜 Profilul lui ${player.username}`)
     .addFields(
       { name: "⭐ XP Total", value: `${player.xp}`, inline: true },
-      { name: "🪙 Aur", value: `${player.gold}`, inline: true },
+      { name: "🪙 Oboli", value: `${player.gold}`, inline: true },
       { name: "🏅 Reputație", value: `${player.reputation}`, inline: true },
       { name: "💀 Morți", value: deathInfo, inline: false },
     )
@@ -169,14 +170,14 @@ export function buildChestEmbed(gold: number): EmbedBuilder {
     .setTitle("📦✨  UN CUFĂR A APĂRUT ÎN REGAT!  ✨📦")
     .setDescription(
       "Cenușa s-a ridicat și a dezvăluit un cufăr misterios!\n" +
-      "Aurul zace în el, așteptând mâna celui mai rapid.\n\n" +
-      `💰 **${gold} Aur** pentru primul care revendică!\n\n` +
+      "Obolii zac în el, așteptând mâna celui mai rapid.\n\n" +
+      `💰 **${gold} Oboli** pentru primul care revendică!\n\n` +
       "⚡ Fii primul — cufărul dispare în fumul umbrelor!",
     )
     .setFooter({ text: "Primul click câștigă!" });
 }
 
-export function buildShopEmbed(p: EventParticipant): EmbedBuilder {
+export function buildShopEmbed(p: Player): EmbedBuilder {
   return new EmbedBuilder()
     .setColor(0x8a4a2f)
     .setTitle("🔥🏺  FORJA CENUȘII – MAGAZINUL REGAL  🏺🔥")
@@ -184,12 +185,13 @@ export function buildShopEmbed(p: EventParticipant): EmbedBuilder {
       "În adâncul cetății, focul nu se stinge niciodată.\n" +
       "Aici, metalul se topește, umbrele se împletesc,\n" +
       "iar puterea se cumpără cu Oboli de Cenușă.\n\n" +
-      `💰 **Oboli disponibili: ${p.oboli}**\n\n` +
+      `💰 **Oboli disponibili: ${p.gold}**\n\n` +
       `⚔️ **Furia Cenușii (Atac)** — ${shopPrice("atac", p.shopAttackCount)} Oboli → +2 damage\n` +
       `🛡️ **Scutul Umbrelor (Defensivă)** — ${shopPrice("def", p.shopDefenseCount)} Oboli → -2 damage primit\n` +
       `🌀 **Dansul Fumului (Evitare)** — ${shopPrice("dodge", p.shopDodgeCount)} Oboli → +3% evitare\n` +
       `💥 **Lovitura Arhontei (Critic)** — ${shopPrice("crit", p.shopCritCount)} Oboli → +2% critic\n` +
       `❤️ **Voința Cenușii (HP Max)** — ${shopPrice("hp", p.shopHpCount)} Oboli → +10 HP Max\n\n` +
+      "Upgrade-urile sunt **permanente** și se aplică de la următoarea intrare în luptă.\n" +
       "Alege cu înțelepciune.\nFiecare Obol cheltuit îți apropie destinul de victorie… sau de ruină.",
     );
 }
@@ -245,7 +247,7 @@ export function combatRow(eventId: number): ActionRowBuilder<ButtonBuilder> {
   );
 }
 
-const SHOP_COUNT_KEY: Record<ShopKey, keyof EventParticipant> = {
+export const SHOP_COUNT_KEY: Record<ShopKey, keyof Player> = {
   atac: "shopAttackCount",
   def: "shopDefenseCount",
   dodge: "shopDodgeCount",
@@ -253,16 +255,16 @@ const SHOP_COUNT_KEY: Record<ShopKey, keyof EventParticipant> = {
   hp: "shopHpCount",
 };
 
-export function shopRows(eventId: number, p: EventParticipant): ActionRowBuilder<ButtonBuilder>[] {
+export function shopRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
   const mk = (key: ShopKey, emoji: string, label: string) => {
     const count = p[SHOP_COUNT_KEY[key]] as number;
     const price = shopPrice(key, count);
     return new ButtonBuilder()
-      .setCustomId(`ora_buy_${eventId}_${key}`)
+      .setCustomId(`shop_buy_${key}`)
       .setLabel(`${label} (${price})`)
       .setEmoji(emoji)
       .setStyle(ButtonStyle.Primary)
-      .setDisabled(p.oboli < price);
+      .setDisabled(p.gold < price);
   };
 
   return [
