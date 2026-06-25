@@ -8,6 +8,7 @@ import {
   ChatInputCommandInteraction,
   SlashCommandBuilder,
   EmbedBuilder,
+  PermissionFlagsBits,
 } from "discord.js";
 import { logger } from "../lib/logger";
 import { startScheduler, APPLICATION_ID, fireEvent } from "./scheduler";
@@ -17,6 +18,7 @@ import {
   getParticipant,
   updateParticipant,
   getActiveEvent,
+  getLatestActiveEvent,
   addPlayerXp,
   getTopPlayers,
 } from "./db";
@@ -43,7 +45,11 @@ let botClient: Client | null = null;
 const slashCommands = [
   new SlashCommandBuilder().setName("profil").setDescription("📜 Statisticile tale din Regatul Cenușii."),
   new SlashCommandBuilder().setName("clasament").setDescription("👑 Top 10 cei mai puternici luptători."),
-  new SlashCommandBuilder().setName("startevent").setDescription("🔥 [Admin] Pornește manual Ora Umbrelor."),
+  new SlashCommandBuilder().setName("magazin").setDescription("🏺 Deschide Forja Cenușii în evenimentul activ."),
+  new SlashCommandBuilder()
+    .setName("startevent")
+    .setDescription("🔥 [Admin] Pornește manual Ora Umbrelor.")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 ];
 
 async function handleProfil(interaction: ChatInputCommandInteraction) {
@@ -63,6 +69,24 @@ async function handleProfil(interaction: ChatInputCommandInteraction) {
     ],
     ephemeral: true,
   });
+}
+
+async function handleMagazin(interaction: ChatInputCommandInteraction) {
+  const ev = await getLatestActiveEvent();
+  if (!ev) {
+    await interaction.reply({ content: "❌ Nu există niciun eveniment activ acum. Așteaptă **Ora Umbrelor**!", ephemeral: true });
+    return;
+  }
+  const p = await getParticipant(ev.id, interaction.user.id);
+  if (!p) {
+    await interaction.reply({ content: `❌ Nu ești înscris în evenimentul activ. Intră în luptă mai întâi din <#1472579703457190042>!`, ephemeral: true });
+    return;
+  }
+  if (!p.isAlive) {
+    await interaction.reply({ embeds: [buildDeathEmbed()], ephemeral: true });
+    return;
+  }
+  await interaction.reply({ embeds: [buildShopEmbed(p)], components: shopRows(ev.id, p), ephemeral: true });
 }
 
 async function handleStartEvent(interaction: ChatInputCommandInteraction) {
@@ -264,6 +288,7 @@ export async function startBot() {
       if (interaction.isChatInputCommand()) {
         if (interaction.commandName === "profil") await handleProfil(interaction);
         if (interaction.commandName === "clasament") await handleClasament(interaction);
+        if (interaction.commandName === "magazin") await handleMagazin(interaction);
         if (interaction.commandName === "startevent") await handleStartEvent(interaction);
       } else if (interaction.isButton()) {
         await handleButton(interaction as ButtonInteraction);

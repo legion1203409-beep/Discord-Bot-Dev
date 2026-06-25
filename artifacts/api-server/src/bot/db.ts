@@ -62,6 +62,12 @@ export async function getEventParticipants(eventId: number): Promise<EventPartic
   return db.select().from(eventParticipantsTable).where(eq(eventParticipantsTable.eventId, eventId));
 }
 
+export async function getLatestActiveEvent() {
+  const all = await db.select().from(activeEventsTable).where(eq(activeEventsTable.isActive, true));
+  const valid = all.filter((e) => e.expiresAt.getTime() > Date.now());
+  return valid.sort((a, b) => b.id - a.id)[0] ?? null;
+}
+
 export async function getTopPlayers(): Promise<Player[]> {
   const rows = await db.select().from(playersTable).orderBy(playersTable.xp);
   return rows.slice(-10).reverse();
