@@ -1,52 +1,25 @@
 import { db } from "@workspace/db";
-import { playersTable, activeEventsTable, eventClaimsTable } from "@workspace/db";
+import { playersTable, activeEventsTable, eventParticipantsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
-import type { Player } from "@workspace/db";
+import type { Player, EventParticipant } from "@workspace/db";
 
 export async function upsertPlayer(discordId: string, username: string): Promise<Player> {
-  const existing = await db.select().from(playersTable).where(eq(playersTable.discordId, discordId));
-  if (existing[0]) {
-    const [updated] = await db
-      .update(playersTable)
-      .set({ username })
-      .where(eq(playersTable.discordId, discordId))
-      .returning();
-    return updated!;
+  const [existing] = await db.select().from(playersTable).where(eq(playersTable.discordId, discordId));
+  if (existing) {
+    const [u] = await db.update(playersTable).set({ username }).where(eq(playersTable.discordId, discordId)).returning();
+    return u!;
   }
-  const [created] = await db.insert(playersTable).values({ discordId, username }).returning();
-  return created!;
+  const [c] = await db.insert(playersTable).values({ discordId, username }).returning();
+  return c!;
 }
 
-export async function applyRewards(
-  discordId: string,
-  delta: { xp: number; gold: number; reputation: number; hpChange: number },
-): Promise<Player> {
-  const [player] = await db.select().from(playersTable).where(eq(playersTable.discordId, discordId));
-  if (!player) throw new Error("Player not found");
-
-  const newHp = Math.max(1, Math.min(100, player.hp + delta.hpChange));
-  const [updated] = await db
-    .update(playersTable)
-    .set({
-      xp: Math.max(0, player.xp + delta.xp),
-      gold: Math.max(0, player.gold + delta.gold),
-      reputation: Math.max(0, player.reputation + delta.reputation),
-      hp: newHp,
-    })
-    .where(eq(playersTable.discordId, discordId))
-    .returning();
-  return updated!;
+export async function addPlayerXp(discordId: string, xp: number): Promise<void> {
+  const [p] = await db.select().from(playersTable).where(eq(playersTable.discordId, discordId));
+  if (p) await db.update(playersTable).set({ xp: p.xp + xp }).where(eq(playersTable.discordId, discordId));
 }
 
-export async function createEvent(
-  eventType: string,
-  messageId: string,
-  expiresAt: Date,
-) {
-  const [ev] = await db
-    .insert(activeEventsTable)
-    .values({ eventType, messageId, expiresAt })
-    .returning();
+export async function createEvent(eventType: string, messageId: string, expiresAt: Date) {
+  const [ev] = await db.insert(activeEventsTable).values({ eventType, messageId, expiresAt }).returning();
   return ev!;
 }
 
@@ -59,25 +32,37 @@ export async function deactivateEvent(id: number) {
   await db.update(activeEventsTable).set({ isActive: false }).where(eq(activeEventsTable.id, id));
 }
 
-export async function claimEvent(eventId: number, discordId: string): Promise<boolean> {
-  try {
-    await db.insert(eventClaimsTable).values({ eventId, discordId });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export async function hasClaimedEvent(eventId: number, discordId: string): Promise<boolean> {
-  const rows = await db
-    .select()
-    .from(eventClaimsTable)
-    .where(and(eq(eventClaimsTable.eventId, eventId), eq(eventClaimsTable.discordId, discordId)));
-  return rows.length > 0;
-}
-
 export async function getExpiredActiveEvents() {
   const all = await db.select().from(activeEventsTable).where(eq(activeEventsTable.isActive, true));
-  const now = Date.now();
-  return all.filter((e) => e.expiresAt.getTime() < now);
+  return all.filter((e) => e.expiresAt.getTime() < Date.now());
+}
+
+export async function joinEvent(eventId: number, discordId: string, username: string): Promise<EventParticipant | null> {
+  const [existing] = await db.select().from(eventParticipantsTable)
+    .where(and(eq(eventParticipantsTable.eventId, eventId), eq(eventParticipantsTable.discordId, discordId)));
+  if (existing) return existing;
+  try {
+    const [p] = await db.insert(eventParticipantsTable).values({ eventId, discordId, username }).returning();
+    return p!;
+  } catch { return null; }
+}
+
+export async function getParticipant(eventId: number, discordId: string): Promise<EventParticipant | null> {
+  const [p] = await db.select().from(eventParticipantsTable)
+    .where(and(eq(eventParticipantsTable.eventId, eventId), eq(eventParticipantsTable.discordId, discordId)));
+  return p ?? null;
+}
+
+export async function updateParticipant(id: number, values: Partial<Omit<EventParticipant, "id" | "eventId" | "discordId" | "joinedAt">>): Promise<EventParticipant> {
+  const [u] = await db.update(eventParticipantsTable).set(values).where(eq(eventParticipantsTable.id, id)).returning();
+  return u!;
+}
+
+export async function getEventParticipants(eventId: number): Promise<EventParticipant[]> {
+  return db.select().from(eventParticipantsTable).where(eq(eventParticipantsTable.eventId, eventId));
+}
+
+export async function getTopPlayers(): Promise<Player[]> {
+  const rows = await db.select().from(playersTable).orderBy(playersTable.xp);
+  return rows.slice(-10).reverse();
 }

@@ -1,20 +1,11 @@
 import { Client, TextChannel, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import { logger } from "../lib/logger";
-import {
-  EVENT_DEFS,
-  randomEventType,
-  buildEventEmbed,
-  buildEventRow,
-  buildExpiredEmbed,
-} from "./events";
-import {
-  createEvent,
-  deactivateEvent,
-  getExpiredActiveEvents,
-} from "./db";
+import { buildStartEmbed, buildExpiredCronica } from "./survival";
+import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants } from "./db";
 
-const CHANNEL_ID = "1472579703457190042";
+const EVENT_CHANNEL_ID = "1472579703457190042";
 const MAIN_CHANNEL_ID = "1382042144717410385";
+const APPLICATION_ID = "1472675543777280071";
 const EVENT_DURATION_MS = 60 * 60 * 1000;
 const MIN_COOLDOWN_MS = 2 * 60 * 60 * 1000;
 const MAX_COOLDOWN_MS = 4 * 60 * 60 * 1000;
@@ -27,22 +18,23 @@ async function expireOldEvents(client: Client) {
   const expired = await getExpiredActiveEvents();
   for (const ev of expired) {
     try {
-      const channel = await client.channels.fetch(CHANNEL_ID);
+      const channel = await client.channels.fetch(EVENT_CHANNEL_ID);
       if (channel instanceof TextChannel) {
         const msg = await channel.messages.fetch(ev.messageId).catch(() => null);
         if (msg) {
-          const def = EVENT_DEFS[ev.eventType as keyof typeof EVENT_DEFS];
-          if (def) {
-            const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-              new ButtonBuilder()
-                .setCustomId(`expired_${ev.id}`)
-                .setLabel("Eveniment încheiat")
-                .setEmoji("⌛")
-                .setStyle(ButtonStyle.Secondary)
-                .setDisabled(true),
-            );
-            await msg.edit({ embeds: [buildExpiredEmbed(def)], components: [disabledRow] });
-          }
+          const participants = await getEventParticipants(ev.id);
+          const survivors = participants.filter((p) => p.isAlive);
+          const fallen = participants.filter((p) => !p.isAlive);
+          const cronica = buildExpiredCronica(survivors, fallen);
+          const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder()
+              .setCustomId(`expired_${ev.id}`)
+              .setLabel("Ora Umbrelor s-a încheiat")
+              .setEmoji("⌛")
+              .setStyle(ButtonStyle.Secondary)
+              .setDisabled(true),
+          );
+          await msg.edit({ embeds: [cronica], components: [disabledRow] });
         }
       }
       await deactivateEvent(ev.id);
@@ -55,36 +47,42 @@ async function expireOldEvents(client: Client) {
 
 async function fireEvent(client: Client) {
   try {
-    const channel = await client.channels.fetch(CHANNEL_ID);
+    const channel = await client.channels.fetch(EVENT_CHANNEL_ID);
     if (!(channel instanceof TextChannel)) {
-      logger.error({ channelId: CHANNEL_ID }, "Event channel not found or not a text channel");
+      logger.error({ channelId: EVENT_CHANNEL_ID }, "Event channel not found");
       return;
     }
 
-    const type = randomEventType();
-    const def = EVENT_DEFS[type];
     const expiresAt = new Date(Date.now() + EVENT_DURATION_MS);
+    const placeholder = await channel.send({ content: "🔥 *Umbrele se mișcă…*" });
+    const ev = await createEvent("ora_umbrelor", placeholder.id, expiresAt);
 
-    const placeholder = await channel.send({ content: "🔥 *Un eveniment se apropie…*" });
+    const joinRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`ora_join_${ev.id}`)
+        .setLabel("Intră în Luptă")
+        .setEmoji("⚔️")
+        .setStyle(ButtonStyle.Danger),
+    );
 
-    const ev = await createEvent(type, placeholder.id, expiresAt);
-
-    const embed = buildEventEmbed(def);
-    const row = buildEventRow(ev.id, def);
-    await placeholder.edit({ content: "", embeds: [embed], components: [row] });
+    await placeholder.edit({ content: "", embeds: [buildStartEmbed()], components: [joinRow] });
 
     try {
       const mainChannel = await client.channels.fetch(MAIN_CHANNEL_ID);
       if (mainChannel instanceof TextChannel) {
         await mainChannel.send(
-          `⚔️ 📜 **Decret al Curții Cenușii – Eveniment Activ**\n\nUmbrele s‑au mișcat, iar cenușa s‑a ridicat din adâncuri.\nUn nou eveniment a fost declanșat în Regat — semnele se schimbă, iar destinul se scrie din nou.\n\n➡️ <#${CHANNEL_ID}>`,
+          `⚔️📜 **DECRET AL CURȚII CENUȘII**  📜⚔️\n\n` +
+          `Umbrele s-au mișcat, iar cenușa s-a ridicat din adâncuri.\n` +
+          `Un nou eveniment a fost declanșat în Regat.\n\n` +
+          `Verifică sanctuarul umbrelor:\n👉 <#${EVENT_CHANNEL_ID}>\n\n` +
+          `Acolo începe lupta.\nAcolo se scrie destinul.\nAcolo se ridică eroii… și cad cei slabi.`,
         );
       }
     } catch (err) {
       logger.error({ err }, "Failed to send main channel notification");
     }
 
-    logger.info({ type, eventId: ev.id }, "Event fired");
+    logger.info({ eventId: ev.id }, "Ora Umbrelor fired");
   } catch (err) {
     logger.error({ err }, "Failed to fire event");
   }
@@ -95,18 +93,12 @@ export function startScheduler(client: Client) {
 
   const scheduleNext = () => {
     const cooldown = randomCooldown();
-    const hours = (cooldown / 3600000).toFixed(2);
-    logger.info({ nextEventInHours: hours }, "Next event scheduled");
-    setTimeout(async () => {
-      await fireEvent(client);
-      scheduleNext();
-    }, cooldown);
+    logger.info({ nextInHours: (cooldown / 3600000).toFixed(2) }, "Next event scheduled");
+    setTimeout(async () => { await fireEvent(client); scheduleNext(); }, cooldown);
   };
 
-  const firstDelay = 5 * 60 * 1000;
-  logger.info("First event in 5 minutes");
-  setTimeout(async () => {
-    await fireEvent(client);
-    scheduleNext();
-  }, firstDelay);
+  setTimeout(async () => { await fireEvent(client); scheduleNext(); }, 5 * 60 * 1000);
+  logger.info("First Ora Umbrelor in 5 minutes");
 }
+
+export { APPLICATION_ID };
