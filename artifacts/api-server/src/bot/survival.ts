@@ -242,7 +242,6 @@ export function buildExpiredCronica(
 export function combatRow(eventId: number): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(`ora_attack_${eventId}`).setLabel("Atacă").setEmoji("⚔️").setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId(`ora_shop_${eventId}`).setLabel("Magazin").setEmoji("🏺").setStyle(ButtonStyle.Secondary),
   );
 }
 
@@ -264,7 +263,6 @@ export function shopRows(eventId: number, p: EventParticipant): ActionRowBuilder
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       mk("crit", "💥", "Critic"),
       mk("hp", "❤️", "HP Max"),
-      new ButtonBuilder().setCustomId(`ora_combat_${eventId}`).setLabel("Înapoi").setEmoji("↩️").setStyle(ButtonStyle.Secondary),
     ),
   ];
 }
