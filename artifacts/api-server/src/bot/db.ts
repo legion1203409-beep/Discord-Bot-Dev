@@ -33,7 +33,7 @@ export async function addPlayerGold(discordId: string, amount: number): Promise<
 }
 
 export async function createEvent(type: string, messageId: string, expiresAt: Date) {
-  const [ev] = await db.insert(activeEventsTable).values({ type, messageId, expiresAt }).returning();
+  const [ev] = await db.insert(activeEventsTable).values({ eventType: type, messageId, expiresAt }).returning();
   return ev!;
 }
 

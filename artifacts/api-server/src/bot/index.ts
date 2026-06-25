@@ -212,6 +212,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
     await updateParticipant(p.id, { isAlive: false, currentHp: 0 });
     await Promise.all([
       addPlayerXp(p.discordId, p.oboli),
+      addPlayerGold(p.discordId, p.oboli),
       recordPlayerDeath(p.discordId, p.monsterLevel),
     ]);
     await interaction.update({ embeds: [buildDeathEmbed()], components: [] });
