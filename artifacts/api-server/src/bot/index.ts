@@ -77,12 +77,23 @@ async function handleMagazin(interaction: ChatInputCommandInteraction) {
   await interaction.reply({ embeds: [buildShopEmbed(p)], components: shopRows(p), ephemeral: true });
 }
 
+async function isOwner(interaction: ChatInputCommandInteraction): Promise<boolean> {
+  if (interaction.guild && interaction.user.id === interaction.guild.ownerId) return true;
+  await interaction.reply({
+    content: "🔒 Doar Stăpânul Regatului poate folosi această comandă.",
+    ephemeral: true,
+  });
+  return false;
+}
+
 async function handleStartEvent(interaction: ChatInputCommandInteraction) {
+  if (!(await isOwner(interaction))) return;
   await interaction.reply({ content: "🔥 *Umbrele se mișcă…* Evenimentul pornește!", ephemeral: true });
   if (botClient) await fireEvent(botClient);
 }
 
 async function handleSpawnChest(interaction: ChatInputCommandInteraction) {
+  if (!(await isOwner(interaction))) return;
   await interaction.reply({ content: "📦 *Cenușa se ridică…* Un cufăr apare în Regat!", ephemeral: true });
   if (botClient) await fireChest(botClient);
 }
