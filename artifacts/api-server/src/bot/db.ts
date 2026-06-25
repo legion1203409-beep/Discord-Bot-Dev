@@ -3,7 +3,7 @@ import { playersTable, activeEventsTable, eventParticipantsTable, eventClaimsTab
 import { eq, and, gte, gt, inArray, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import type { Player, EventParticipant } from "@workspace/db";
-import { CLASSES, isClassKey, rollRarity } from "./survival";
+import { CLASSES, isClassKey, rollRarity, COMPANIONS, isCompanionKey, isCompanionEvolved, companionStats } from "./survival";
 
 export type UpgradeKey = "atac" | "def" | "dodge" | "crit" | "hp";
 
@@ -51,6 +51,17 @@ export async function setPlayerClass(discordId: string, classKey: string): Promi
   const [u] = await db.update(playersTable)
     .set({ class: classKey })
     .where(and(eq(playersTable.discordId, discordId), sql`${playersTable.class} IS NULL`))
+    .returning();
+  return u ?? null;
+}
+
+// Permanent: only sets the companion if the player has none yet. Returns the
+// updated player, or null if a companion was already chosen.
+export async function setCompanion(discordId: string, companionKey: string): Promise<Player | null> {
+  if (!isCompanionKey(companionKey)) return null;
+  const [u] = await db.update(playersTable)
+    .set({ companion: companionKey })
+    .where(and(eq(playersTable.discordId, discordId), sql`${playersTable.companion} IS NULL`))
     .returning();
   return u ?? null;
 }
@@ -175,7 +186,10 @@ export async function joinEvent(eventId: number, discordId: string, username: st
   if (existing) return existing;
   const player = await getPlayerById(discordId);
   const cls = player?.class && isClassKey(player.class) ? CLASSES[player.class] : null;
-  const maxHp = 100 + (player?.maxHpBonus ?? 0) + (cls?.hp ?? 0);
+  const comp = player?.companion && isCompanionKey(player.companion)
+    ? companionStats(player.companion, isCompanionEvolved(player.maxLevel ?? 0))
+    : null;
+  const maxHp = 100 + (player?.maxHpBonus ?? 0) + (cls?.hp ?? 0) + (comp?.hp ?? 0);
   try {
     const [p] = await db.insert(eventParticipantsTable).values({
       eventId,
@@ -184,10 +198,10 @@ export async function joinEvent(eventId: number, discordId: string, username: st
       maxHp,
       currentHp: maxHp,
       monsterRarity: rollRarity(1),
-      attackBonus: (player?.attackBonus ?? 0) + (cls?.attack ?? 0),
-      defenseBonus: player?.defenseBonus ?? 0,
+      attackBonus: (player?.attackBonus ?? 0) + (cls?.attack ?? 0) + (comp?.attack ?? 0),
+      defenseBonus: (player?.defenseBonus ?? 0) + (comp?.defense ?? 0),
       dodgeBonus: (player?.dodgeBonus ?? 0) + (cls?.dodge ?? 0),
-      critBonus: (player?.critBonus ?? 0) + (cls?.crit ?? 0),
+      critBonus: (player?.critBonus ?? 0) + (cls?.crit ?? 0) + (comp?.crit ?? 0),
     }).returning();
     return p!;
   } catch { return null; }

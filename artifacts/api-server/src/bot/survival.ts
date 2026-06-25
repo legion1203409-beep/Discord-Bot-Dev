@@ -6,7 +6,7 @@ import {
 } from "discord.js";
 import type { EventParticipant } from "@workspace/db";
 import type { Player } from "@workspace/db";
-import { IMG } from "./assets";
+import { IMG, COMPANION_IMG } from "./assets";
 import { getActiveBattleEvent, consumeStormDrain } from "./combat-events";
 
 const BASE_PRICES = { atac: 50, def: 60, dodge: 70, crit: 80, hp: 40 } as const;
@@ -102,6 +102,34 @@ export const CLASSES: Record<ClassKey, {
   ratacitor: { label: "Rătăcitorul Fumului", emoji: "💨", desc: "+5% șansă de evitare", attack: 0, hp: 0, dodge: 5, crit: 0, xpMult: 1, oboliMult: 1 },
 };
 export function isClassKey(k: string): k is ClassKey { return k in CLASSES; }
+
+// ─── Companions ──────────────────────────────────────────────────────────────
+// Companions give a passive bonus that DOUBLES once the player evolves them by
+// reaching COMPANION_EVOLVE_LEVEL (max level achieved across events).
+export const COMPANION_EVOLVE_LEVEL = 20;
+
+export type CompanionKey = "lup" | "corb" | "spirit" | "golem";
+export const COMPANIONS: Record<CompanionKey, {
+  label: string; emoji: string; desc: string; evoLabel: string; lore: string;
+  attack: number; hp: number; crit: number; defense: number;
+}> = {
+  lup: { label: "Lupul de Cenușă", emoji: "🐺", desc: "+2 damage", evoLabel: "Alfa de Cenușă", lore: "Un lup spectral, credincios până în Abis.", attack: 2, hp: 0, crit: 0, defense: 0 },
+  corb: { label: "Corbul Umbrelor", emoji: "🐦‍⬛", desc: "+3% critic", evoLabel: "Corbul de Jar", lore: "Ochii lui văd slăbiciunea oricărui monstru.", attack: 0, hp: 0, crit: 3, defense: 0 },
+  spirit: { label: "Spiritul Stins", emoji: "👻", desc: "+5 HP", evoLabel: "Străjerul Eteric", lore: "O umbră blândă ce te ține în viață.", attack: 0, hp: 5, crit: 0, defense: 0 },
+  golem: { label: "Golem de Fum", emoji: "🗿", desc: "-1 damage primit", evoLabel: "Colosul de Magmă", lore: "Un zid de cenușă între tine și moarte.", attack: 0, hp: 0, crit: 0, defense: 1 },
+};
+export function isCompanionKey(k: string): k is CompanionKey { return k in COMPANIONS; }
+
+export function isCompanionEvolved(maxLevel: number): boolean {
+  return maxLevel >= COMPANION_EVOLVE_LEVEL;
+}
+
+// Effective bonuses for a companion, doubled when evolved.
+export function companionStats(key: CompanionKey, evolved: boolean): { attack: number; hp: number; crit: number; defense: number } {
+  const c = COMPANIONS[key];
+  const m = evolved ? 2 : 1;
+  return { attack: c.attack * m, hp: c.hp * m, crit: c.crit * m, defense: c.defense * m };
+}
 
 function rand(min: number, max: number) { return Math.floor(Math.random() * (max - min + 1)) + min; }
 function hpBar(cur: number, max: number) {
@@ -286,7 +314,10 @@ export function buildProfileEmbed(player: Player, title?: string, avatarUrl?: st
     .setDescription(
       `🎖️ **${rank}** *(Nivel max: ${player.maxLevel})*\n` +
       (player.honorTitle ? `👑 **${player.honorTitle}**\n` : "") +
-      (cls ? `${cls.emoji} **${cls.label}** — ${cls.desc}` : "🧭 *Fără clasă — folosește /clasa*"),
+      (cls ? `${cls.emoji} **${cls.label}** — ${cls.desc}\n` : "🧭 *Fără clasă — folosește /clasa*\n") +
+      (player.companion && isCompanionKey(player.companion)
+        ? `${COMPANIONS[player.companion].emoji} **${isCompanionEvolved(player.maxLevel) ? COMPANIONS[player.companion].evoLabel : COMPANIONS[player.companion].label}** — ${COMPANIONS[player.companion].desc}${isCompanionEvolved(player.maxLevel) ? " *(dublu)*" : ""}`
+        : "🐾 *Fără companion — folosește /companion*"),
     )
     .addFields(
       { name: "⭐ XP Total", value: `${player.xp}`, inline: true },
@@ -528,6 +559,66 @@ export function classRows(): ActionRowBuilder<ButtonBuilder>[] {
   return [
     new ActionRowBuilder<ButtonBuilder>().addComponents(keys.slice(0, 3).map(btn)),
     new ActionRowBuilder<ButtonBuilder>().addComponents(keys.slice(3).map(btn)),
+  ];
+}
+
+// ─── Companions ──────────────────────────────────────────────────────────────
+export function buildCompanionEmbed(player: Player): EmbedBuilder {
+  if (player.companion && isCompanionKey(player.companion)) {
+    const c = COMPANIONS[player.companion];
+    const evolved = isCompanionEvolved(player.maxLevel);
+    const img = COMPANION_IMG[player.companion];
+    const embed = new EmbedBuilder()
+      .setColor(0x2f8a4a)
+      .setTitle("🐾  COMPANIONUL TĂU")
+      .setDescription(
+        `${c.emoji} **${evolved ? c.evoLabel : c.label}**${evolved ? "  ✨*(Evoluat)*" : ""}\n` +
+        `*${c.lore}*\n\n` +
+        `🎁 **Bonus activ:** ${evolved ? `${c.desc} ➜ **dublu!**` : c.desc}\n\n` +
+        (evolved
+          ? "Companionul tău a evoluat la forma sa legendară!"
+          : `🔓 Evoluează la **Nivel ${COMPANION_EVOLVE_LEVEL}** (acum: ${player.maxLevel}) — bonusul se dublează.`),
+      );
+    const url = evolved ? img?.evo : img?.base;
+    if (url) embed.setImage(url);
+    return embed;
+  }
+  return new EmbedBuilder()
+    .setColor(0x2f8a4a)
+    .setTitle("🐾  ALEGE-ȚI COMPANIONUL")
+    .setDescription(
+      "O creatură a Cenușii ți se va alătura în luptă.\n" +
+      "⚠️ **Alegerea este permanentă!**\n\n" +
+      Object.values(COMPANIONS).map((c) => `${c.emoji} **${c.label}** — ${c.desc}`).join("\n") +
+      `\n\n✨ La **Nivel ${COMPANION_EVOLVE_LEVEL}** companionul evoluează și bonusul se dublează.`,
+    );
+}
+
+// Selection confirmation message, with the companion's image alongside.
+export function buildCompanionPickedEmbed(key: CompanionKey): EmbedBuilder {
+  const c = COMPANIONS[key];
+  const img = COMPANION_IMG[key];
+  const embed = new EmbedBuilder()
+    .setColor(0x2f8a4a)
+    .setTitle(`${c.emoji}  ${c.label.toUpperCase()} ȚI S-A ALĂTURAT!`)
+    .setDescription(
+      `*${c.lore}*\n\n` +
+      `Din cenușă s-a ridicat un nou tovarăș de luptă.\n` +
+      `🎁 **Bonus:** ${c.desc}\n\n` +
+      `✨ Crește până la **Nivel ${COMPANION_EVOLVE_LEVEL}** ca să-l vezi evoluând în **${c.evoLabel}** (bonus dublu).`,
+    )
+    .setFooter({ text: "Companionii sunt permanenți — alege cu grijă." });
+  if (img?.base) embed.setImage(img.base);
+  return embed;
+}
+
+export function companionRows(): ActionRowBuilder<ButtonBuilder>[] {
+  const keys = Object.keys(COMPANIONS) as CompanionKey[];
+  const btn = (k: CompanionKey) =>
+    new ButtonBuilder().setCustomId(`comp_pick_${k}`).setLabel(COMPANIONS[k].label).setEmoji(COMPANIONS[k].emoji).setStyle(ButtonStyle.Success);
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(keys.slice(0, 2).map(btn)),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(keys.slice(2).map(btn)),
   ];
 }
 

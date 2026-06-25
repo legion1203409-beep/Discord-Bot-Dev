@@ -32,6 +32,7 @@ import {
   getPlayerById,
   updateMaxLevel,
   setPlayerClass,
+  setCompanion,
   recordFinalBossHit,
 } from "./db";
 import {
@@ -45,6 +46,10 @@ import {
   buildProfileEmbed,
   buildClassEmbed,
   classRows,
+  buildCompanionEmbed,
+  buildCompanionPickedEmbed,
+  companionRows,
+  isCompanionKey,
   combatRow,
   shopRows,
   levelupRows,
@@ -69,6 +74,7 @@ const slashCommands = [
   new SlashCommandBuilder().setName("clasament").setDescription("👑 Top 10 cei mai puternici luptători."),
   new SlashCommandBuilder().setName("magazin").setDescription("🏺 Forja Cenușii — upgrade-uri permanente, mereu disponibilă."),
   new SlashCommandBuilder().setName("clasa").setDescription("🧬 Alege-ți clasa RPG (alegere permanentă)."),
+  new SlashCommandBuilder().setName("companion").setDescription("🐾 Alege-ți companionul de luptă (alegere permanentă)."),
   new SlashCommandBuilder()
     .setName("startevent")
     .setDescription("🔥 [Admin] Pornește manual Ora Umbrelor.")
@@ -397,6 +403,30 @@ async function handleClassPick(interaction: ButtonInteraction, key: string) {
   await interaction.update({ embeds: [buildClassEmbed(updated)], components: [] });
 }
 
+async function handleCompanion(interaction: ChatInputCommandInteraction) {
+  const p = await upsertPlayer(interaction.user.id, interaction.user.username);
+  await interaction.reply({
+    embeds: [buildCompanionEmbed(p)],
+    components: p.companion ? [] : companionRows(),
+    ephemeral: true,
+  });
+}
+
+async function handleCompanionPick(interaction: ButtonInteraction, key: string) {
+  await upsertPlayer(interaction.user.id, interaction.user.username);
+  const updated = await setCompanion(interaction.user.id, key);
+  if (!updated) {
+    const cur = await getPlayerById(interaction.user.id);
+    await interaction.update({
+      embeds: [cur ? buildCompanionEmbed(cur) : buildCompanionEmbed({ companion: null, maxLevel: 0 } as never)],
+      components: [],
+    });
+    return;
+  }
+  const picked = isCompanionKey(key) ? buildCompanionPickedEmbed(key) : buildCompanionEmbed(updated);
+  await interaction.update({ embeds: [picked], components: [] });
+}
+
 async function handleAbility(interaction: ButtonInteraction, eventId: number, kind: string) {
   const p = await getParticipant(eventId, interaction.user.id);
   if (!p || !p.isAlive) {
@@ -492,6 +522,7 @@ async function handleButton(interaction: ButtonInteraction) {
   if (id.startsWith("ora_retreat_")) return handleRetreat(interaction, parseInt(id.replace("ora_retreat_", "")));
   if (id.startsWith("finalboss_")) return handleFinalBoss(interaction, parseInt(id.replace("finalboss_", "")));
   if (id.startsWith("class_pick_")) return handleClassPick(interaction, id.replace("class_pick_", ""));
+  if (id.startsWith("comp_pick_")) return handleCompanionPick(interaction, id.replace("comp_pick_", ""));
 
   if (id.startsWith("shop_buy_")) {
     return handleBuy(interaction, id.replace("shop_buy_", "") as ShopKey);
@@ -524,6 +555,7 @@ export async function startBot() {
         if (interaction.commandName === "clasament") await handleClasament(interaction);
         if (interaction.commandName === "magazin") await handleMagazin(interaction);
         if (interaction.commandName === "clasa") await handleClasa(interaction);
+        if (interaction.commandName === "companion") await handleCompanion(interaction);
         if (interaction.commandName === "startevent") await handleStartEvent(interaction);
         if (interaction.commandName === "cufar") await handleSpawnChest(interaction);
       } else if (interaction.isButton()) {

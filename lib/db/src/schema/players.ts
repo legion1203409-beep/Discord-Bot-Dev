@@ -11,6 +11,7 @@ export const playersTable = pgTable("players", {
   hp: integer("hp").notNull().default(100),
   maxLevel: integer("max_level").notNull().default(0),
   class: text("class"),
+  companion: text("companion"),
   honorTitle: text("honor_title"),
   deaths: integer("deaths").notNull().default(0),
   deathLevel: integer("death_level").notNull().default(0),

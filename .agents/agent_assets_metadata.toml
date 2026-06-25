@@ -18,3 +18,51 @@ id = "fzoCuuFPKSyumS897e3Ee"
 uri = "file://artifacts/api-server/assets/death.png"
 type = "image"
 title = "generated_image"
+
+[[generated]]
+id = "l0f9OxBQYie3tqDuN0kG5"
+uri = "file://artifacts/api-server/assets/companion_lup.png"
+type = "image"
+title = "ash wolf companion"
+
+[[generated]]
+id = "pvNRkmgkoOxrDEF9goEWY"
+uri = "file://artifacts/api-server/assets/companion_lup_evo.png"
+type = "image"
+title = "evolved ash wolf"
+
+[[generated]]
+id = "ADv__2D07vST91dcWCAHw"
+uri = "file://artifacts/api-server/assets/companion_corb.png"
+type = "image"
+title = "shadow raven companion"
+
+[[generated]]
+id = "mGzuruWgXKqnnK0CStaOt"
+uri = "file://artifacts/api-server/assets/companion_corb_evo.png"
+type = "image"
+title = "evolved shadow raven"
+
+[[generated]]
+id = "SHTfaerxEa9RpelM8cGbD"
+uri = "file://artifacts/api-server/assets/companion_spirit.png"
+type = "image"
+title = "extinguished spirit companion"
+
+[[generated]]
+id = "FXNpZ9TzA5ORBi_wpilGS"
+uri = "file://artifacts/api-server/assets/companion_spirit_evo.png"
+type = "image"
+title = "evolved ash spirit"
+
+[[generated]]
+id = "M-4tOhVLtFV46A_LSbCq9"
+uri = "file://artifacts/api-server/assets/companion_golem.png"
+type = "image"
+title = "smoke golem companion"
+
+[[generated]]
+id = "D4D1jC40wwaKrgILWXlrz"
+uri = "file://artifacts/api-server/assets/companion_golem_evo.png"
+type = "image"
+title = "evolved magma golem"
