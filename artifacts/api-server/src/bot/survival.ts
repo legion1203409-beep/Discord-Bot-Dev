@@ -6,6 +6,7 @@ import {
 } from "discord.js";
 import type { EventParticipant } from "@workspace/db";
 import type { Player } from "@workspace/db";
+import { IMG } from "./assets";
 
 const BASE_PRICES = { atac: 50, def: 60, dodge: 70, crit: 80, hp: 40 } as const;
 export type ShopKey = keyof typeof BASE_PRICES;
@@ -114,6 +115,7 @@ export function buildCombatEmbed(p: EventParticipant, extra = ""): EmbedBuilder 
       `❤️ HP-ul tău: **${p.currentHp}/${p.maxHp}** ${hpBar(p.currentHp, p.maxHp)}\n` +
       `🪙 Oboli strânși în event: **${p.oboli}** *(20% se pierd la moarte)*`,
     )
+    .setImage(IMG.monster)
     .setFooter({ text: `⚔️ +${p.attackBonus} | 🛡️ +${p.defenseBonus} | 🌀 ${p.dodgeBonus}% | 💥 ${p.critBonus}%` });
 }
 
@@ -144,7 +146,8 @@ export function buildDeathEmbed(lostOboli = 0): EmbedBuilder {
       "Trupul tău pământesc a cedat,\n" +
       "dar numele tău va rămâne scris în cronica celor căzuți.\n\n" +
       "Magazinul rămâne deschis — folosește **/magazin** ca să te întărești pentru următoarea chemare.",
-    );
+    )
+    .setImage(IMG.death);
 }
 
 export function buildProfileEmbed(player: Player, title?: string): EmbedBuilder {
@@ -174,6 +177,7 @@ export function buildChestEmbed(gold: number): EmbedBuilder {
       `💰 **${gold} Oboli** pentru primul care revendică!\n\n` +
       "⚡ Fii primul — cufărul dispare în fumul umbrelor!",
     )
+    .setImage(IMG.chest)
     .setFooter({ text: "Primul click câștigă!" });
 }
 

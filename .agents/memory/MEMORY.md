@@ -1,0 +1,1 @@
+- [Discord embed images](discord-embed-images.md) — bot serves embed PNGs as static files at /api/assets, referenced by env-derived public URL (not attachments) to avoid per-edit re-upload.
