@@ -431,6 +431,20 @@ async function handleAbility(interaction: ButtonInteraction, eventId: number, ki
 }
 
 async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) {
+  const ev = await getActiveEvent(eventId);
+  if (!ev || !ev.isActive || ev.expiresAt.getTime() < Date.now()) {
+    await interaction.reply({ content: "⌛ Dragonul Stins s-a întors în Abis — Ora Umbrelor s-a încheiat.", ephemeral: true });
+    return;
+  }
+  const p = await getParticipant(eventId, interaction.user.id);
+  if (!p) {
+    await interaction.reply({ content: "❌ Doar cei care au intrat în luptă pot lovi Dragonul Stins!", ephemeral: true });
+    return;
+  }
+  if (!p.isAlive) {
+    await interaction.reply({ content: "💀 Doar cei vii îl pot lovi pe Dragonul Stins.", ephemeral: true });
+    return;
+  }
   await upsertPlayer(interaction.user.id, interaction.user.username);
   const first = await recordFinalBossHit(eventId, interaction.user.id);
   if (!first) {

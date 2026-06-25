@@ -2,3 +2,4 @@
 - [Discord animations](discord-animations.md) — animate via GIFs (ffmpeg eq+sin loop from PNGs; hue lacks eval) or message-edit frames; fireChest needs an internal lock (scheduler + /cufar both call it).
 - [Event participant bonus snapshot](event-participant-bonus-snapshot.md) — combat uses participant stats snapshotted at join; mid-event player-stat changes must be mirrored onto the active participant or they don't apply.
 - [drizzle push blocked](drizzle-push-blocked.md) — db push is interactive; unrelated destructive drift blocks it. Apply additive columns via ALTER TABLE ... ADD COLUMN IF NOT EXISTS + edit schema file.
+- [Final boss reward auth](final-boss-auth.md) — reward buttons tied to an event must re-check active+not-expired+participant+isAlive server-side; stale button messages otherwise let non-eligible users claim.

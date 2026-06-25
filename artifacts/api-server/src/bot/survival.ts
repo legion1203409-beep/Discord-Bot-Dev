@@ -301,10 +301,40 @@ export function buildProfileEmbed(player: Player, title?: string, avatarUrl?: st
   return embed;
 }
 
-export function buildChestEmbed(gold: number): EmbedBuilder {
+export interface ChestRarity {
+  key: string;
+  label: string;
+  emoji: string;
+  color: number;
+  min: number;
+  max: number;
+  weight: number;
+}
+
+export const CHEST_RARITIES: ChestRarity[] = [
+  { key: "lemn", label: "Cufăr de Lemn", emoji: "📦", color: 0x9aa0a6, min: 10, max: 40, weight: 58 },
+  { key: "argint", label: "Cufăr de Argint", emoji: "🥈", color: 0xc0c0c0, min: 40, max: 90, weight: 28 },
+  { key: "aur", label: "Cufăr de Aur", emoji: "🥇", color: 0xffd700, min: 90, max: 180, weight: 11 },
+  { key: "mitic", label: "Cufăr Mitic", emoji: "💎", color: 0xb026ff, min: 180, max: 350, weight: 3 },
+];
+
+export function rollChest(): { rarity: ChestRarity; gold: number } {
+  const total = CHEST_RARITIES.reduce((s, r) => s + r.weight, 0);
+  let roll = Math.random() * total;
+  let rarity = CHEST_RARITIES[0]!;
+  for (const r of CHEST_RARITIES) {
+    if (roll < r.weight) { rarity = r; break; }
+    roll -= r.weight;
+  }
+  const gold = Math.floor(Math.random() * (rarity.max - rarity.min + 1)) + rarity.min;
+  return { rarity, gold };
+}
+
+export function buildChestEmbed(gold: number, rarity?: ChestRarity): EmbedBuilder {
+  const r = rarity ?? CHEST_RARITIES[0]!;
   return new EmbedBuilder()
-    .setColor(0xffd700)
-    .setTitle("📦✨  UN CUFĂR A APĂRUT ÎN REGAT!  ✨📦")
+    .setColor(r.color)
+    .setTitle(`${r.emoji}✨  ${r.label.toUpperCase()} A APĂRUT ÎN REGAT!  ✨${r.emoji}`)
     .setDescription(
       "Cenușa s-a ridicat și a dezvăluit un cufăr misterios!\n" +
       "Obolii zac în el, așteptând mâna celui mai rapid.\n\n" +

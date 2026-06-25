@@ -1,7 +1,8 @@
 import { Client, TextChannel, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import { logger } from "../lib/logger";
-import { buildStartEmbed, buildExpiredCronica, buildChestEmbed } from "./survival";
-import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent } from "./db";
+import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, rollChest, oracleMessage, buildFinalBossEmbed, finalBossRow } from "./survival";
+import { triggerRandomBattleEvent } from "./combat-events";
+import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle } from "./db";
 
 const EVENT_CHANNEL_ID = "1472579703457190042";
 const MAIN_CHANNEL_ID = "1382042144717410385";
@@ -12,6 +13,9 @@ const MAX_COOLDOWN_MS = 4 * 60 * 60 * 1000;
 
 const CHEST_INTERVAL_MS = 30 * 60 * 1000;
 const CHEST_EXPIRE_MS = 10 * 60 * 1000;
+
+const ORACLE_INTERVAL_MS = 25 * 60 * 1000;
+const BATTLE_EVENT_INTERVAL_MS = 7 * 60 * 1000;
 
 export const claimedChests = new Set<string>();
 
@@ -48,6 +52,18 @@ async function expireOldEvents(client: Client) {
               .setDisabled(true),
           );
           await msg.edit({ embeds: [cronica], components: [disabledRow] });
+
+          const ranked = [...participants].sort((a, b) => {
+            if (a.isAlive !== b.isAlive) return a.isAlive ? -1 : 1;
+            if (b.monsterLevel !== a.monsterLevel) return b.monsterLevel - a.monsterLevel;
+            return b.totalDamage - a.totalDamage;
+          });
+          const HONOR_TITLES = ["Eroul Umbrelor", "Supraviețuitorul Cenușii", "Vânătorul Stins"];
+          for (let i = 0; i < Math.min(3, ranked.length); i++) {
+            const r = ranked[i]!;
+            if (r.monsterLevel <= 1) continue;
+            await setHonorTitle(r.discordId, HONOR_TITLES[i]!).catch(() => null);
+          }
         }
       }
       await deactivateEvent(ev.id);
@@ -78,7 +94,7 @@ export async function fireChest(client: Client) {
       lastChestMessageId = null;
     }
 
-    const gold = Math.floor(Math.random() * 91) + 10;
+    const { rarity, gold } = rollChest();
     const chestId = `chest_${Date.now()}`;
     const expireAt = Date.now() + CHEST_EXPIRE_MS;
 
@@ -96,11 +112,11 @@ export async function fireChest(client: Client) {
     await sleep(900);
     await msg.edit({ content: "✨📦 *Un cufăr se ridică din adâncuri…*" }).catch(() => null);
     await sleep(900);
-    await msg.edit({ content: "💫📦✨", embeds: [buildChestEmbed(gold)], components: [row] }).catch(() => null);
+    await msg.edit({ content: "💫📦✨", embeds: [buildChestEmbed(gold, rarity)], components: [row] }).catch(() => null);
     await sleep(600);
-    await msg.edit({ content: "", embeds: [buildChestEmbed(gold)], components: [row] }).catch(() => null);
+    await msg.edit({ content: "", embeds: [buildChestEmbed(gold, rarity)], components: [row] }).catch(() => null);
 
-    logger.info({ chestId, gold }, "Chest spawned");
+    logger.info({ chestId, gold, rarity: rarity.key }, "Chest spawned");
 
     const timeout = setTimeout(async () => {
       if (!claimedChests.has(chestId)) {
@@ -113,7 +129,7 @@ export async function fireChest(client: Client) {
             .setStyle(ButtonStyle.Secondary)
             .setDisabled(true),
         );
-        await msg.edit({ embeds: [buildChestEmbed(gold)], components: [disabledRow] }).catch(() => null);
+        await msg.edit({ embeds: [buildChestEmbed(gold, rarity)], components: [disabledRow] }).catch(() => null);
         logger.info({ chestId }, "Chest expired unclaimed");
       }
     }, CHEST_EXPIRE_MS);
@@ -210,11 +226,57 @@ export async function fireEvent(client: Client) {
       logger.error({ err }, "Failed to send main channel notification");
     }
 
+    const fbTimeout = setTimeout(() => { void fireFinalBoss(client, ev.id); }, EVENT_DURATION_MS - 60 * 1000);
+    fbTimeout.unref?.();
+
     logger.info({ eventId: ev.id }, "Ora Umbrelor fired");
   } catch (err) {
     logger.error({ err }, "Failed to fire event");
   } finally {
     firingEvent = false;
+  }
+}
+
+async function fireFinalBoss(client: Client, eventId: number) {
+  try {
+    const ev = await getActiveEvent(eventId);
+    if (!ev || !ev.isActive || ev.expiresAt.getTime() < Date.now()) return;
+
+    const channel = await client.channels.fetch(EVENT_CHANNEL_ID).catch(() => null);
+    if (!(channel instanceof TextChannel)) return;
+
+    const participants = await getEventParticipants(eventId);
+    const maxLevel = participants.reduce((m, p) => Math.max(m, p.monsterLevel), 1);
+    const bossLevel = Math.max(50, maxLevel + 10);
+
+    await channel.send({ embeds: [buildFinalBossEmbed(bossLevel)], components: [finalBossRow(eventId)] });
+    logger.info({ eventId, bossLevel }, "Final boss summoned");
+  } catch (err) {
+    logger.error({ err, eventId }, "Failed to summon final boss");
+  }
+}
+
+async function fireOracle(client: Client) {
+  try {
+    const channel = await client.channels.fetch(MAIN_CHANNEL_ID).catch(() => null);
+    if (!(channel instanceof TextChannel)) return;
+    await channel.send({ content: oracleMessage() });
+  } catch (err) {
+    logger.error({ err }, "Failed to send oracle message");
+  }
+}
+
+async function fireBattleEvent(client: Client) {
+  try {
+    const ev = await getLatestActiveEvent();
+    if (!ev) return;
+    const channel = await client.channels.fetch(EVENT_CHANNEL_ID).catch(() => null);
+    if (!(channel instanceof TextChannel)) return;
+    const battle = triggerRandomBattleEvent();
+    await channel.send({ content: battle.announce });
+    logger.info({ eventId: ev.id, battle: battle.key }, "Battle event triggered");
+  } catch (err) {
+    logger.error({ err }, "Failed to trigger battle event");
   }
 }
 
@@ -232,6 +294,12 @@ export function startScheduler(client: Client) {
 
   setInterval(() => { void fireChest(client); }, CHEST_INTERVAL_MS);
   logger.info({ everyMinutes: CHEST_INTERVAL_MS / 60000 }, "Chest scheduler started — fixed interval");
+
+  setInterval(() => { void fireOracle(client); }, ORACLE_INTERVAL_MS);
+  logger.info({ everyMinutes: ORACLE_INTERVAL_MS / 60000 }, "Oracle scheduler started");
+
+  setInterval(() => { void fireBattleEvent(client); }, BATTLE_EVENT_INTERVAL_MS);
+  logger.info({ everyMinutes: BATTLE_EVENT_INTERVAL_MS / 60000 }, "Battle-event scheduler started");
 }
 
 export { APPLICATION_ID };
