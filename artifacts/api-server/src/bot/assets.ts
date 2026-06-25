@@ -16,7 +16,7 @@ function assetUrl(file: string): string | null {
 }
 
 export const IMG = {
-  monster: assetUrl("monster.png"),
-  chest: assetUrl("chest.png"),
-  death: assetUrl("death.png"),
+  monster: assetUrl("monster.gif"),
+  chest: assetUrl("chest.gif"),
+  death: assetUrl("death.gif"),
 };

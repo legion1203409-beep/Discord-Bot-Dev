@@ -153,6 +153,15 @@ async function handleChestClaim(interaction: ButtonInteraction, chestId: string,
   await upsertPlayer(interaction.user.id, interaction.user.username);
   await addPlayerGold(interaction.user.id, gold);
 
+  const openingRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${chestId}_opening`)
+      .setLabel("Se deschide…")
+      .setEmoji("🔓")
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(true),
+  );
+
   const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId(`${chestId}_claimed`)
@@ -162,9 +171,11 @@ async function handleChestClaim(interaction: ButtonInteraction, chestId: string,
       .setDisabled(true),
   );
 
-  await interaction.update({ components: [disabledRow] });
+  await interaction.update({ components: [openingRow] });
+  await new Promise<void>((r) => setTimeout(r, 800));
+  await interaction.message.edit({ components: [disabledRow] }).catch(() => null);
   await interaction.followUp({
-    content: `🎉 **${interaction.user.username}** a revendicat cufărul și a câștigat **${gold} Oboli**! 💰`,
+    content: `🎉✨ **${interaction.user.username}** a deschis cufărul și a câștigat **${gold} Oboli**! 💰🪙`,
   });
 
   logger.info({ discordId: interaction.user.id, chestId, gold }, "Chest claimed");

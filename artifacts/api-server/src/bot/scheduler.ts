@@ -16,6 +16,10 @@ const CHEST_EXPIRE_MS = 10 * 60 * 1000;
 export const claimedChests = new Set<string>();
 
 let lastChestMessageId: string | null = null;
+let lastChestTimeout: ReturnType<typeof setTimeout> | null = null;
+let firingChest = false;
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 function randomCooldown() {
   return Math.floor(Math.random() * (MAX_COOLDOWN_MS - MIN_COOLDOWN_MS + 1)) + MIN_COOLDOWN_MS;
@@ -55,10 +59,19 @@ async function expireOldEvents(client: Client) {
 }
 
 export async function fireChest(client: Client) {
+  if (firingChest) {
+    logger.warn("fireChest already in progress, skipping duplicate trigger");
+    return null;
+  }
+  firingChest = true;
   try {
     const channel = await client.channels.fetch(MAIN_CHANNEL_ID);
-    if (!(channel instanceof TextChannel)) return;
+    if (!(channel instanceof TextChannel)) return null;
 
+    if (lastChestTimeout) {
+      clearTimeout(lastChestTimeout);
+      lastChestTimeout = null;
+    }
     if (lastChestMessageId) {
       const old = await channel.messages.fetch(lastChestMessageId).catch(() => null);
       if (old) await old.delete().catch(() => null);
@@ -77,8 +90,16 @@ export async function fireChest(client: Client) {
         .setStyle(ButtonStyle.Success),
     );
 
-    const msg = await channel.send({ embeds: [buildChestEmbed(gold)], components: [row] });
+    const msg = await channel.send({ content: "✨ *Ceva strălucește în cenușă…*" });
     lastChestMessageId = msg.id;
+
+    await sleep(900);
+    await msg.edit({ content: "✨📦 *Un cufăr se ridică din adâncuri…*" }).catch(() => null);
+    await sleep(900);
+    await msg.edit({ content: "💫📦✨", embeds: [buildChestEmbed(gold)], components: [row] }).catch(() => null);
+    await sleep(600);
+    await msg.edit({ content: "", embeds: [buildChestEmbed(gold)], components: [row] }).catch(() => null);
+
     logger.info({ chestId, gold }, "Chest spawned");
 
     const timeout = setTimeout(async () => {
@@ -98,11 +119,14 @@ export async function fireChest(client: Client) {
     }, CHEST_EXPIRE_MS);
 
     timeout.unref?.();
+    lastChestTimeout = timeout;
 
     return { chestId, gold, expireAt };
   } catch (err) {
     logger.error({ err }, "Failed to fire chest");
     return null;
+  } finally {
+    firingChest = false;
   }
 }
 
@@ -149,8 +173,16 @@ export async function fireEvent(client: Client) {
     await cleanupOldEvents(client);
 
     const expiresAt = new Date(Date.now() + EVENT_DURATION_MS);
-    const placeholder = await channel.send({ content: "🔥 *Umbrele se mișcă…*" });
+    const placeholder = await channel.send({ content: "🌑 *Liniște deplină se așterne peste Regat…*" });
     const ev = await createEvent("ora_umbrelor", placeholder.id, expiresAt);
+
+    await sleep(1100);
+    await placeholder.edit({ content: "🌑🔥 *Umbrele se trezesc în adâncuri…*" }).catch(() => null);
+    await sleep(1100);
+    await placeholder.edit({ content: "🌫️🔥 *Cenușa se ridică… ceva se apropie…*" }).catch(() => null);
+    await sleep(1100);
+    await placeholder.edit({ content: "⚔️🔥💀 *A SOSIT CEASUL!*" }).catch(() => null);
+    await sleep(700);
 
     const joinRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
@@ -198,12 +230,7 @@ export function startScheduler(client: Client) {
   setTimeout(async () => { await fireEvent(client); scheduleNext(); }, 5 * 60 * 1000);
   logger.info("First Ora Umbrelor in 5 minutes");
 
-  let chestInFlight = false;
-  setInterval(() => {
-    if (chestInFlight) return;
-    chestInFlight = true;
-    void fireChest(client).finally(() => { chestInFlight = false; });
-  }, CHEST_INTERVAL_MS);
+  setInterval(() => { void fireChest(client); }, CHEST_INTERVAL_MS);
   logger.info({ everyMinutes: CHEST_INTERVAL_MS / 60000 }, "Chest scheduler started — fixed interval");
 }
 
