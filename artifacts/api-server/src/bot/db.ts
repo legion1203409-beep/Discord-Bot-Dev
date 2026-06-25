@@ -53,6 +53,19 @@ export async function getExpiredActiveEvents() {
   return all.filter((e) => e.expiresAt.getTime() < Date.now());
 }
 
+export async function getAllEvents() {
+  return db.select().from(activeEventsTable);
+}
+
+export async function setEventDecreeMessage(id: number, decreeMessageId: string) {
+  await db.update(activeEventsTable).set({ decreeMessageId }).where(eq(activeEventsTable.id, id));
+}
+
+export async function deleteEvent(id: number) {
+  await db.delete(eventParticipantsTable).where(eq(eventParticipantsTable.eventId, id));
+  await db.delete(activeEventsTable).where(eq(activeEventsTable.id, id));
+}
+
 export async function deactivateEvent(id: number) {
   await db.update(activeEventsTable).set({ isActive: false }).where(eq(activeEventsTable.id, id));
 }

@@ -1,7 +1,7 @@
 import { Client, TextChannel, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import { logger } from "../lib/logger";
 import { buildStartEmbed, buildExpiredCronica, buildChestEmbed } from "./survival";
-import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants } from "./db";
+import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent } from "./db";
 
 const EVENT_CHANNEL_ID = "1472579703457190042";
 const MAIN_CHANNEL_ID = "1382042144717410385";
@@ -100,13 +100,47 @@ export async function fireChest(client: Client) {
   }
 }
 
+async function cleanupOldEvents(client: Client) {
+  const old = await getAllEvents();
+  if (old.length === 0) return;
+
+  const eventChannel = await client.channels.fetch(EVENT_CHANNEL_ID).catch(() => null);
+  const mainChannel = await client.channels.fetch(MAIN_CHANNEL_ID).catch(() => null);
+
+  for (const ev of old) {
+    try {
+      if (eventChannel instanceof TextChannel) {
+        const msg = await eventChannel.messages.fetch(ev.messageId).catch(() => null);
+        if (msg) await msg.delete().catch(() => null);
+      }
+      if (ev.decreeMessageId && mainChannel instanceof TextChannel) {
+        const decree = await mainChannel.messages.fetch(ev.decreeMessageId).catch(() => null);
+        if (decree) await decree.delete().catch(() => null);
+      }
+      await deleteEvent(ev.id);
+    } catch (err) {
+      logger.error({ err, eventId: ev.id }, "Failed to cleanup old event");
+    }
+  }
+  logger.info({ count: old.length }, "Old events cleaned up");
+}
+
+let firingEvent = false;
+
 export async function fireEvent(client: Client) {
+  if (firingEvent) {
+    logger.warn("fireEvent already in progress, skipping duplicate trigger");
+    return;
+  }
+  firingEvent = true;
   try {
     const channel = await client.channels.fetch(EVENT_CHANNEL_ID);
     if (!(channel instanceof TextChannel)) {
       logger.error({ channelId: EVENT_CHANNEL_ID }, "Event channel not found");
       return;
     }
+
+    await cleanupOldEvents(client);
 
     const expiresAt = new Date(Date.now() + EVENT_DURATION_MS);
     const placeholder = await channel.send({ content: "🔥 *Umbrele se mișcă…*" });
@@ -125,13 +159,14 @@ export async function fireEvent(client: Client) {
     try {
       const mainChannel = await client.channels.fetch(MAIN_CHANNEL_ID);
       if (mainChannel instanceof TextChannel) {
-        await mainChannel.send(
+        const decree = await mainChannel.send(
           `⚔️📜 **DECRET AL CURȚII CENUȘII**  📜⚔️\n\n` +
           `Umbrele s-au mișcat, iar cenușa s-a ridicat din adâncuri.\n` +
           `Un nou eveniment a fost declanșat în Regat.\n\n` +
           `Verifică sanctuarul umbrelor:\n👉 <#${EVENT_CHANNEL_ID}>\n\n` +
           `Acolo începe lupta.\nAcolo se scrie destinul.\nAcolo se ridică eroii… și cad cei slabi.`,
         );
+        await setEventDecreeMessage(ev.id, decree.id);
       }
     } catch (err) {
       logger.error({ err }, "Failed to send main channel notification");
@@ -140,6 +175,8 @@ export async function fireEvent(client: Client) {
     logger.info({ eventId: ev.id }, "Ora Umbrelor fired");
   } catch (err) {
     logger.error({ err }, "Failed to fire event");
+  } finally {
+    firingEvent = false;
   }
 }
 

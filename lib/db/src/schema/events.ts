@@ -4,6 +4,7 @@ export const activeEventsTable = pgTable("active_events", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   eventType: text("event_type").notNull(),
   messageId: text("message_id").notNull(),
+  decreeMessageId: text("decree_message_id"),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
