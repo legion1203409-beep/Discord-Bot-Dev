@@ -7,7 +7,10 @@ import {
   ChatInputCommandInteraction,
 } from "discord.js";
 import { commands } from "./commands";
+import { gameCommands } from "./gameCommands";
 import { logger } from "../lib/logger";
+
+const allCommands = [...commands, ...gameCommands];
 
 export async function startBot() {
   const token = process.env["DISCORD_TOKEN"];
@@ -25,7 +28,7 @@ export async function startBot() {
   client.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
-    const command = commands.find((c) => c.data.name === interaction.commandName);
+    const command = allCommands.find((c) => c.data.name === interaction.commandName);
     if (!command) return;
 
     try {
@@ -44,7 +47,7 @@ export async function startBot() {
   const rest = new REST().setToken(token);
   const applicationId = "1472675543777280071";
 
-  const commandData = commands.map((c) => c.data.toJSON());
+  const commandData = allCommands.map((c) => c.data.toJSON());
 
   try {
     await rest.put(Routes.applicationCommands(applicationId), {
