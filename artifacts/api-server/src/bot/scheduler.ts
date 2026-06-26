@@ -210,21 +210,22 @@ export async function fireEvent(client: Client) {
 
     await placeholder.edit({ content: "", embeds: [buildStartEmbed()], components: [joinRow] });
 
-    try {
-      const mainChannel = await client.channels.fetch(MAIN_CHANNEL_ID);
-      if (mainChannel instanceof TextChannel) {
-        const decree = await mainChannel.send(
-          `⚔️📜 **DECRET AL CURȚII CENUȘII**  📜⚔️\n\n` +
-          `Umbrele s-au mișcat, iar cenușa s-a ridicat din adâncuri.\n` +
-          `Un nou eveniment a fost declanșat în Regat.\n\n` +
-          `Verifică sanctuarul umbrelor:\n👉 <#${EVENT_CHANNEL_ID}>\n\n` +
-          `Acolo începe lupta.\nAcolo se scrie destinul.\nAcolo se ridică eroii… și cad cei slabi.`,
-        );
-        await setEventDecreeMessage(ev.id, decree.id);
-      }
-    } catch (err) {
-      logger.error({ err }, "Failed to send main channel notification");
-    }
+    // Main channel decree disabled — user requested only chest in chat
+    // try {
+    //   const mainChannel = await client.channels.fetch(MAIN_CHANNEL_ID);
+    //   if (mainChannel instanceof TextChannel) {
+    //     const decree = await mainChannel.send(
+    //       `⚔️📜 **DECRET AL CURȚII CENUȘII**  📜⚔️\n\n` +
+    //       `Umbrele s-au mișcat, iar cenușa s-a ridicat din adâncuri.\n` +
+    //       `Un nou eveniment a fost declanșat în Regat.\n\n` +
+    //       `Verifică sanctuarul umbrelor:\n👉 <#${EVENT_CHANNEL_ID}>\n\n` +
+    //       `Acolo începe lupta.\nAcolo se scrie destinul.\nAcolo se ridică eroii… și cad cei slabi.`,
+    //     );
+    //     await setEventDecreeMessage(ev.id, decree.id);
+    //   }
+    // } catch (err) {
+    //   logger.error({ err }, "Failed to send main channel notification");
+    // }
 
     const fbTimeout = setTimeout(() => { void fireFinalBoss(client, ev.id); }, EVENT_DURATION_MS - 60 * 1000);
     fbTimeout.unref?.();
@@ -298,8 +299,9 @@ export function startScheduler(client: Client) {
   setInterval(() => { void fireChest(client); }, CHEST_INTERVAL_MS);
   logger.info({ everyMinutes: CHEST_INTERVAL_MS / 60000 }, "Chest scheduler started — fixed interval");
 
-  setInterval(() => { void fireOracle(client); }, ORACLE_INTERVAL_MS);
-  logger.info({ everyMinutes: ORACLE_INTERVAL_MS / 60000 }, "Oracle scheduler started");
+  // Oracle messages disabled — user requested only chest in chat
+  // setInterval(() => { void fireOracle(client); }, ORACLE_INTERVAL_MS);
+  // logger.info({ everyMinutes: ORACLE_INTERVAL_MS / 60000 }, "Oracle scheduler started");
 
   setInterval(() => { void fireBattleEvent(client); }, BATTLE_EVENT_INTERVAL_MS);
   logger.info({ everyMinutes: BATTLE_EVENT_INTERVAL_MS / 60000 }, "Battle-event scheduler started");
