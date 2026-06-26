@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { useVideoPlayer } from '../../../../lib/video/hooks';
+import { useVideoPlayer } from '@/lib/video/hooks';
 import { Scene1 } from './scenes/Scene1';
 import { Scene2 } from './scenes/Scene2';
 import { Scene3 } from './scenes/Scene3';
