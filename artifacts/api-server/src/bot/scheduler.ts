@@ -273,7 +273,7 @@ export async function fireEvent(client: Client) {
   }
 }
 
-async function fireFinalBoss(client: Client, eventId: number) {
+export async function fireFinalBoss(client: Client, eventId: number) {
   try {
     const ev = await getActiveEvent(eventId);
     if (!ev || !ev.isActive || ev.expiresAt.getTime() < Date.now()) return;

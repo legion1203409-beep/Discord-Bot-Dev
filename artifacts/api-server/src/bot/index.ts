@@ -15,7 +15,7 @@ import {
 } from "discord.js";
 import { logger } from "../lib/logger";
 import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./alert";
-import { startScheduler, APPLICATION_ID, fireEvent, fireChest, claimedChests, activeBossMap } from "./scheduler";
+import { startScheduler, APPLICATION_ID, fireEvent, fireChest, fireFinalBoss, claimedChests, activeBossMap } from "./scheduler";
 import {
   upsertPlayer,
   joinEvent,
@@ -119,6 +119,10 @@ const slashCommands = [
     .setName("cufar")
     .setDescription("📦 [Admin] Generează manual un cufăr cu Oboli.")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+  new SlashCommandBuilder()
+    .setName("spawnboss")
+    .setDescription("🐉 [Admin] Invocă manual Dragonul Stins pentru test.")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 ];
 
 async function avatarById(discordId: string): Promise<string | null> {
@@ -164,6 +168,17 @@ async function handleSpawnChest(interaction: ChatInputCommandInteraction) {
   if (!(await isOwner(interaction))) return;
   await interaction.reply({ content: "📦 *Cenușa se ridică…* Un cufăr apare în Regat!", ephemeral: true });
   if (botClient) await fireChest(botClient);
+}
+
+async function handleSpawnBoss(interaction: ChatInputCommandInteraction) {
+  if (!(await isOwner(interaction))) return;
+  const ev = await import("./db").then(m => m.getLatestActiveEvent());
+  if (!ev) {
+    await interaction.reply({ content: "❌ Nu există niciun event activ. Pornește mai întâi `/startevent`.", ephemeral: true });
+    return;
+  }
+  await interaction.reply({ content: "🐉 *Cenușa se întunecă…* Dragonul Stins coboară din Abis!", ephemeral: true });
+  if (botClient) await fireFinalBoss(botClient, ev.id);
 }
 
 async function handleClasament(interaction: ChatInputCommandInteraction) {
@@ -846,6 +861,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
         if (interaction.commandName === "companion") await handleCompanion(interaction);
         if (interaction.commandName === "startevent") await handleStartEvent(interaction);
         if (interaction.commandName === "cufar") await handleSpawnChest(interaction);
+        if (interaction.commandName === "spawnboss") await handleSpawnBoss(interaction);
       } else if (interaction.isButton()) {
         await handleButton(interaction as ButtonInteraction);
       }
