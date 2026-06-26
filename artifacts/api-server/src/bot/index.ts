@@ -6,6 +6,7 @@ import {
   Routes,
   Events,
   MessageFlags,
+  ActivityType,
   ButtonInteraction,
   ChatInputCommandInteraction,
   SlashCommandBuilder,
@@ -126,6 +127,22 @@ const slashCommands = [
     .setName("spawnboss")
     .setDescription("🐉 [Admin] Invocă manual Dragonul Stins pentru test.")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+  new SlashCommandBuilder()
+    .setName("admin")
+    .setDescription("⚙️ [Admin] Controlează botul.")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .addSubcommand((sub) =>
+      sub.setName("offline").setDescription("🔴 Trece botul în modul offline (invizibil)."),
+    )
+    .addSubcommand((sub) =>
+      sub.setName("online").setDescription("🟢 Readuce botul online."),
+    )
+    .addSubcommand((sub) =>
+      sub.setName("restart").setDescription("🔄 Repornește botul complet."),
+    )
+    .addSubcommand((sub) =>
+      sub.setName("status").setDescription("📊 Verifică starea botului (uptime, events, boss)."),
+    ),
 ];
 
 async function avatarById(discordId: string): Promise<string | null> {
@@ -182,6 +199,78 @@ async function handleSpawnBoss(interaction: ChatInputCommandInteraction) {
   }
   await interaction.reply({ content: "🐉 *Cenușa se întunecă…* Dragonul Stins coboară din Abis!", ephemeral: true });
   if (botClient) await fireFinalBoss(botClient, ev.id);
+}
+
+async function handleAdmin(interaction: ChatInputCommandInteraction) {
+  if (!(await isOwner(interaction))) return;
+  const sub = interaction.options.getSubcommand();
+
+  if (sub === "offline") {
+    botClient?.user?.setPresence({ status: "invisible" });
+    await interaction.reply({
+      content: "🔴 **Botul a intrat în modul offline.** Apare invizibil pentru utilizatori, dar continuă să ruleze în fundal.",
+      ephemeral: true,
+    });
+    logger.info("Admin: bot set to invisible");
+    return;
+  }
+
+  if (sub === "online") {
+    botClient?.user?.setPresence({
+      status: "online",
+      activities: [{ name: "Regatul Cenușii", type: ActivityType.Watching }],
+    });
+    await interaction.reply({
+      content: "🟢 **Botul este din nou online!** Stare restaurată.",
+      ephemeral: true,
+    });
+    logger.info("Admin: bot set to online");
+    return;
+  }
+
+  if (sub === "restart") {
+    await interaction.reply({
+      content: "🔄 **Repornire în curs…** Botul se va reconecta în câteva secunde.",
+      ephemeral: true,
+    });
+    logger.info("Admin: restart requested — exiting process");
+    setTimeout(() => process.exit(0), 1500);
+    return;
+  }
+
+  if (sub === "status") {
+    const uptime = botReadyAt
+      ? Math.floor((Date.now() - botReadyAt.getTime()) / 1000)
+      : null;
+    const uptimeStr = uptime === null
+      ? "necunoscut"
+      : uptime < 60
+        ? `${uptime}s`
+        : uptime < 3600
+          ? `${Math.floor(uptime / 60)}m ${uptime % 60}s`
+          : `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`;
+
+    const bossInfo = activeBossMap.size > 0
+      ? [...activeBossMap.values()].map((b) =>
+          `🐉 Boss Event #${b.eventId} — HP: ${b.currentHp.toLocaleString()}/${b.maxHp.toLocaleString()} | Luptători: ${b.damageBy.size}`,
+        ).join("\n")
+      : "⚠️ Niciun boss activ";
+
+    await interaction.reply({
+      ephemeral: true,
+      embeds: [{
+        color: 0x2ecc71,
+        title: "⚙️ Status Bot — Oracolul Cenușii",
+        fields: [
+          { name: "🟢 Stare", value: botClient?.isReady() ? "Online" : "Offline", inline: true },
+          { name: "⏱️ Uptime", value: uptimeStr, inline: true },
+          { name: "🐉 Boss", value: bossInfo },
+        ],
+        timestamp: new Date().toISOString(),
+      }],
+    });
+    return;
+  }
 }
 
 async function handleClasament(interaction: ChatInputCommandInteraction) {
@@ -907,6 +996,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
         if (interaction.commandName === "startevent") await handleStartEvent(interaction);
         if (interaction.commandName === "cufar") await handleSpawnChest(interaction);
         if (interaction.commandName === "spawnboss") await handleSpawnBoss(interaction);
+        if (interaction.commandName === "admin") await handleAdmin(interaction);
       } else if (interaction.isButton()) {
         await handleButton(interaction as ButtonInteraction);
       }
