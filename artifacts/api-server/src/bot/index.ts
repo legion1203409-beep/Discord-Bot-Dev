@@ -5,6 +5,7 @@ import {
   REST,
   Routes,
   Events,
+  MessageFlags,
   ButtonInteraction,
   ChatInputCommandInteraction,
   SlashCommandBuilder,
@@ -221,14 +222,14 @@ async function handleClasament(interaction: ChatInputCommandInteraction) {
 }
 
 async function handleViewProfile(interaction: ButtonInteraction, discordId: string) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const player = await getPlayerById(discordId);
   if (!player) {
-    await interaction.reply({ content: "❌ Jucătorul nu a fost găsit.", ephemeral: true });
+    await interaction.editReply({ content: "❌ Jucătorul nu a fost găsit." });
     return;
   }
-  await interaction.reply({
+  await interaction.editReply({
     embeds: [buildProfileEmbed(player, undefined, await avatarById(discordId))],
-    ephemeral: true,
   });
 }
 
@@ -296,24 +297,25 @@ async function handleJoin(interaction: ButtonInteraction, eventId: number) {
 }
 
 async function handleAttack(interaction: ButtonInteraction, eventId: number) {
+  await interaction.deferUpdate();
   const p = await getParticipant(eventId, interaction.user.id);
   if (!p) {
-    await interaction.reply({ content: "❌ Intră mai întâi în luptă!", ephemeral: true });
+    await interaction.followUp({ content: "❌ Intră mai întâi în luptă!", flags: MessageFlags.Ephemeral });
     return;
   }
   if (!p.isAlive) {
-    await interaction.update({ embeds: [p.fled ? buildRetreatEmbed(p.monsterLevel) : buildDeathEmbed()], components: [] });
+    await interaction.editReply({ embeds: [p.fled ? buildRetreatEmbed(p.monsterLevel) : buildDeathEmbed()], components: [] });
     return;
   }
   if (p.pendingLevelup) {
     const lvl = Math.floor(p.monsterLevel / LEVELUP_INTERVAL);
-    await interaction.update({ embeds: [buildLevelupEmbed(lvl)], components: levelupRows(eventId) });
+    await interaction.editReply({ embeds: [buildLevelupEmbed(lvl)], components: levelupRows(eventId) });
     return;
   }
 
   const ev = await getActiveEvent(eventId);
   if (!ev || !ev.isActive || ev.expiresAt.getTime() < Date.now()) {
-    await interaction.update({ content: "⌛ Ora Umbrelor s-a încheiat!", embeds: [], components: [] });
+    await interaction.editReply({ content: "⌛ Ora Umbrelor s-a încheiat!", embeds: [], components: [] });
     return;
   }
 
@@ -338,7 +340,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
       deductPlayerGold(p.discordId, lost),
       recordPlayerDeath(p.discordId, p.monsterLevel),
     ]);
-    await interaction.update({ embeds: [buildDeathEmbed(lost)], components: [] });
+    await interaction.editReply({ embeds: [buildDeathEmbed(lost)], components: [] });
     return;
   }
 
@@ -363,7 +365,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
       empowerNext: false,
       shieldNext: false,
     });
-    await interaction.update({ embeds: [buildLevelupEmbed(newLevel)], components: levelupRows(eventId) });
+    await interaction.editReply({ embeds: [buildLevelupEmbed(newLevel)], components: levelupRows(eventId) });
     return;
   }
 
@@ -378,30 +380,32 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
     shieldNext: false,
   });
 
-  await interaction.update({ embeds: [buildCombatEmbed(updated, extra, interaction.user.displayAvatarURL({ size: 256 }))], components: [combatRow(eventId, updated)] });
+  await interaction.editReply({ embeds: [buildCombatEmbed(updated, extra, interaction.user.displayAvatarURL({ size: 256 }))], components: [combatRow(eventId, updated)] });
 }
 
 async function handleRetreat(interaction: ButtonInteraction, eventId: number) {
+  await interaction.deferUpdate();
   const p = await getParticipant(eventId, interaction.user.id);
   if (!p) {
-    await interaction.reply({ content: "❌ Nu ești în nicio luptă!", ephemeral: true });
+    await interaction.followUp({ content: "❌ Nu ești în nicio luptă!", flags: MessageFlags.Ephemeral });
     return;
   }
   if (!p.isAlive) {
-    await interaction.update({ embeds: [p.fled ? buildRetreatEmbed(p.monsterLevel) : buildDeathEmbed()], components: [] });
+    await interaction.editReply({ embeds: [p.fled ? buildRetreatEmbed(p.monsterLevel) : buildDeathEmbed()], components: [] });
     return;
   }
   const ev = await getActiveEvent(eventId);
   if (!ev || !ev.isActive || ev.expiresAt.getTime() < Date.now()) {
-    await interaction.update({ content: "⌛ Ora Umbrelor s-a încheiat!", embeds: [], components: [] });
+    await interaction.editReply({ content: "⌛ Ora Umbrelor s-a încheiat!", embeds: [], components: [] });
     return;
   }
   await updateParticipant(p.id, { isAlive: false, fled: true });
   await recordPlayerRetreat(p.discordId, p.monsterLevel);
-  await interaction.update({ embeds: [buildRetreatEmbed(p.monsterLevel)], components: [] });
+  await interaction.editReply({ embeds: [buildRetreatEmbed(p.monsterLevel)], components: [] });
 }
 
 async function handleBuy(interaction: ButtonInteraction, key: ShopKey) {
+  await interaction.deferUpdate();
   const p = await upsertPlayer(interaction.user.id, interaction.user.username);
   const cost = shopPrice(key, p[SHOP_COUNT_KEY[key]] as number);
   const updated = await buyPlayerUpgrade(interaction.user.id, key, cost);
@@ -409,13 +413,14 @@ async function handleBuy(interaction: ButtonInteraction, key: ShopKey) {
     await applyUpgradeToActiveParticipant(interaction.user.id, key);
   }
   const player = updated ?? p;
-  await interaction.update({ embeds: [buildShopEmbed(player)], components: shopStatsRows(player) });
+  await interaction.editReply({ embeds: [buildShopEmbed(player)], components: shopStatsRows(player) });
 }
 
 async function handleLevelup(interaction: ButtonInteraction, eventId: number, bonus: string) {
+  await interaction.deferUpdate();
   const p = await getParticipant(eventId, interaction.user.id);
   if (!p || !p.isAlive || !p.pendingLevelup) {
-    await interaction.reply({ content: "❌ Nu ai un level-up disponibil!", ephemeral: true });
+    await interaction.followUp({ content: "❌ Nu ai un level-up disponibil!", flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -429,7 +434,7 @@ async function handleLevelup(interaction: ButtonInteraction, eventId: number, bo
 
   const bonusValues = bonusMap[bonus] ?? {};
   const updated = await updateParticipant(p.id, { ...bonusValues, pendingLevelup: false });
-  await interaction.update({ embeds: [buildCombatEmbed(updated, "✨ **Bonus ales! Umbrele îți recunosc puterea.**", interaction.user.displayAvatarURL({ size: 256 }))], components: [combatRow(eventId, updated)] });
+  await interaction.editReply({ embeds: [buildCombatEmbed(updated, "✨ **Bonus ales! Umbrele îți recunosc puterea.**", interaction.user.displayAvatarURL({ size: 256 }))], components: [combatRow(eventId, updated)] });
 }
 
 async function handleClasa(interaction: ChatInputCommandInteraction) {
@@ -442,17 +447,18 @@ async function handleClasa(interaction: ChatInputCommandInteraction) {
 }
 
 async function handleClassPick(interaction: ButtonInteraction, key: string) {
+  await interaction.deferUpdate();
   await upsertPlayer(interaction.user.id, interaction.user.username);
   const updated = await setPlayerClass(interaction.user.id, key);
   if (!updated) {
     const cur = await getPlayerById(interaction.user.id);
-    await interaction.update({
+    await interaction.editReply({
       embeds: [cur ? buildClassEmbed(cur) : buildClassEmbed({ class: null } as never)],
       components: [],
     });
     return;
   }
-  await interaction.update({ embeds: [buildClassEmbed(updated)], components: [] });
+  await interaction.editReply({ embeds: [buildClassEmbed(updated)], components: [] });
 }
 
 async function handleCompanion(interaction: ChatInputCommandInteraction) {
@@ -466,48 +472,55 @@ async function handleCompanion(interaction: ChatInputCommandInteraction) {
 
 // Shop nav handlers — each opens its sub-page or returns to main.
 async function handleShopNavStats(interaction: ButtonInteraction) {
+  await interaction.deferUpdate();
   const p = await upsertPlayer(interaction.user.id, interaction.user.username);
-  await interaction.update({ embeds: [buildShopEmbed(p)], components: shopStatsRows(p) });
+  await interaction.editReply({ embeds: [buildShopEmbed(p)], components: shopStatsRows(p) });
 }
 
 async function handleShopNavComp(interaction: ButtonInteraction) {
+  await interaction.deferUpdate();
   const p = await upsertPlayer(interaction.user.id, interaction.user.username);
-  await interaction.update({ embeds: [buildShopEmbed(p)], components: shopCompRows(p) });
+  await interaction.editReply({ embeds: [buildShopEmbed(p)], components: shopCompRows(p) });
 }
 
 async function handleShopNavAbil(interaction: ButtonInteraction) {
+  await interaction.deferUpdate();
   const p = await upsertPlayer(interaction.user.id, interaction.user.username);
-  await interaction.update({ embeds: [buildShopEmbed(p)], components: shopAbilRows(p) });
+  await interaction.editReply({ embeds: [buildShopEmbed(p)], components: shopAbilRows(p) });
 }
 
 async function handleShopBack(interaction: ButtonInteraction) {
+  await interaction.deferUpdate();
   const p = await upsertPlayer(interaction.user.id, interaction.user.username);
-  await interaction.update({ embeds: [buildShopEmbed(p)], components: shopRows(p) });
+  await interaction.editReply({ embeds: [buildShopEmbed(p)], components: shopRows(p) });
 }
 
 async function handleCompBuy(interaction: ButtonInteraction, key: string) {
+  await interaction.deferUpdate();
   await upsertPlayer(interaction.user.id, interaction.user.username);
   if (!isCompanionKey(key)) return;
   const updated = await buyCompanion(interaction.user.id, key, COMPANION_BUY_COST);
   if (!updated) {
-    await interaction.reply({ content: `❌ Nu poți cumpăra acest companion — ai nevoie de **${COMPANION_BUY_COST} Oboli** și să nu ai deja unul.`, ephemeral: true });
+    await interaction.followUp({ content: `❌ Nu poți cumpăra acest companion — ai nevoie de **${COMPANION_BUY_COST} Oboli** și să nu ai deja unul.`, flags: MessageFlags.Ephemeral });
     return;
   }
-  await interaction.update({ embeds: [buildShopEmbed(updated)], components: shopCompRows(updated) });
+  await interaction.editReply({ embeds: [buildShopEmbed(updated)], components: shopCompRows(updated) });
 }
 
 async function handleCompUpgrade(interaction: ButtonInteraction) {
+  await interaction.deferUpdate();
   const p = await upsertPlayer(interaction.user.id, interaction.user.username);
   const cost = upgradeCost(p.companionLevel);
   const updated = await upgradeCompanion(interaction.user.id, p.companionLevel, cost, UPGRADE_XP_COST);
   if (!updated) {
-    await interaction.reply({ content: `❌ Upgrade eșuat — ai nevoie de un companion, **${cost} Oboli** și **${UPGRADE_XP_COST} XP**.`, ephemeral: true });
+    await interaction.followUp({ content: `❌ Upgrade eșuat — ai nevoie de un companion, **${cost} Oboli** și **${UPGRADE_XP_COST} XP**.`, flags: MessageFlags.Ephemeral });
     return;
   }
-  await interaction.update({ embeds: [buildShopEmbed(updated)], components: shopCompRows(updated) });
+  await interaction.editReply({ embeds: [buildShopEmbed(updated)], components: shopCompRows(updated) });
 }
 
 async function handleAbilBuy(interaction: ButtonInteraction, kind: string) {
+  await interaction.deferUpdate();
   await upsertPlayer(interaction.user.id, interaction.user.username);
   if (!isAbilityKey(kind)) return;
   const updated = await buyAbility(interaction.user.id, kind as AbilityKind, ABILITY_BUY_COST);
@@ -516,13 +529,14 @@ async function handleAbilBuy(interaction: ButtonInteraction, kind: string) {
     await applyAbilityLevelToActiveParticipant(interaction.user.id, kind as AbilityKind, lvl);
   }
   if (!updated) {
-    await interaction.reply({ content: `❌ Nu poți debloca abilitatea — ai nevoie de **${ABILITY_BUY_COST} Oboli** și să nu o deții deja.`, ephemeral: true });
+    await interaction.followUp({ content: `❌ Nu poți debloca abilitatea — ai nevoie de **${ABILITY_BUY_COST} Oboli** și să nu o deții deja.`, flags: MessageFlags.Ephemeral });
     return;
   }
-  await interaction.update({ embeds: [buildShopEmbed(updated)], components: shopAbilRows(updated) });
+  await interaction.editReply({ embeds: [buildShopEmbed(updated)], components: shopAbilRows(updated) });
 }
 
 async function handleAbilUpgrade(interaction: ButtonInteraction, kind: string) {
+  await interaction.deferUpdate();
   const p = await upsertPlayer(interaction.user.id, interaction.user.username);
   if (!isAbilityKey(kind)) return;
   const curLvl = kind === "empower" ? p.abilityEmpowerLevel : p.abilityShieldLevel;
@@ -533,40 +547,41 @@ async function handleAbilUpgrade(interaction: ButtonInteraction, kind: string) {
     await applyAbilityLevelToActiveParticipant(interaction.user.id, kind as AbilityKind, lvl);
   }
   if (!updated) {
-    await interaction.reply({ content: `❌ Upgrade eșuat — ai nevoie de abilitate, **${cost} Oboli** și **${UPGRADE_XP_COST} XP**.`, ephemeral: true });
+    await interaction.followUp({ content: `❌ Upgrade eșuat — ai nevoie de abilitate, **${cost} Oboli** și **${UPGRADE_XP_COST} XP**.`, flags: MessageFlags.Ephemeral });
     return;
   }
-  await interaction.update({ embeds: [buildShopEmbed(updated)], components: shopAbilRows(updated) });
+  await interaction.editReply({ embeds: [buildShopEmbed(updated)], components: shopAbilRows(updated) });
 }
 
 async function handleAbility(interaction: ButtonInteraction, eventId: number, kind: string) {
+  await interaction.deferUpdate();
   const p = await getParticipant(eventId, interaction.user.id);
   if (!p || !p.isAlive) {
-    await interaction.reply({ content: "❌ Trebuie să fii în luptă ca să folosești abilități!", ephemeral: true });
+    await interaction.followUp({ content: "❌ Trebuie să fii în luptă ca să folosești abilități!", flags: MessageFlags.Ephemeral });
     return;
   }
   if (p.pendingLevelup) {
     const lvl = Math.floor(p.monsterLevel / LEVELUP_INTERVAL);
-    await interaction.update({ embeds: [buildLevelupEmbed(lvl)], components: levelupRows(eventId) });
+    await interaction.editReply({ embeds: [buildLevelupEmbed(lvl)], components: levelupRows(eventId) });
     return;
   }
   const ev = await getActiveEvent(eventId);
   if (!ev || !ev.isActive || ev.expiresAt.getTime() < Date.now()) {
-    await interaction.update({ content: "⌛ Ora Umbrelor s-a încheiat!", embeds: [], components: [] });
+    await interaction.editReply({ content: "⌛ Ora Umbrelor s-a încheiat!", embeds: [], components: [] });
     return;
   }
   if (p.abilityReadyAt && p.abilityReadyAt.getTime() > Date.now()) {
-    await interaction.reply({ content: `⏳ Abilitatea e pe cooldown — mai așteaptă **${formatCooldown(p.abilityReadyAt)}**.`, ephemeral: true });
+    await interaction.followUp({ content: `⏳ Abilitatea e pe cooldown — mai așteaptă **${formatCooldown(p.abilityReadyAt)}**.`, flags: MessageFlags.Ephemeral });
     return;
   }
 
   const readyAt = new Date(Date.now() + ABILITY_COOLDOWN_MS);
-  const flags = kind === "shield" ? { shieldNext: true } : { empowerNext: true };
+  const abilityFlags = kind === "shield" ? { shieldNext: true } : { empowerNext: true };
   const note = kind === "shield"
     ? "🛡️ **Scut de Cenușă activat!** Următorul atac primit va fi înjumătățit."
     : "🌑 **Lovitura Umbrei pregătită!** Următoarea ta lovitură va fi dublă.";
-  const updated = await updateParticipant(p.id, { ...flags, abilityReadyAt: readyAt });
-  await interaction.update({
+  const updated = await updateParticipant(p.id, { ...abilityFlags, abilityReadyAt: readyAt });
+  await interaction.editReply({
     embeds: [buildCombatEmbed(updated, note, interaction.user.displayAvatarURL({ size: 256 }))],
     components: [combatRow(eventId, updated)],
   });
@@ -576,24 +591,25 @@ const BOSS_HIT_COOLDOWN_MS = 4000;
 const EVENT_CHANNEL_ID = "1472579703457190042";
 
 async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) {
+  await interaction.deferUpdate();
   // Boss fight happens AFTER the event ends — check activeBossMap, not DB active status
   const boss = activeBossMap.get(eventId);
   if (!boss) {
-    await interaction.reply({ content: "⌛ Dragonul nu a fost invocat încă.", ephemeral: true });
+    await interaction.followUp({ content: "⌛ Dragonul nu a fost invocat încă.", flags: MessageFlags.Ephemeral });
     return;
   }
   if (boss.defeated) {
-    await interaction.reply({ content: "💀 Dragonul Stins a fost deja înfrânt de Regat!", ephemeral: true });
+    await interaction.followUp({ content: "💀 Dragonul Stins a fost deja înfrânt de Regat!", flags: MessageFlags.Ephemeral });
     return;
   }
 
   const p = await getParticipant(eventId, interaction.user.id);
   if (!p) {
-    await interaction.reply({ content: "❌ Doar cei care au intrat în luptă pot lovi Dragonul Stins!", ephemeral: true });
+    await interaction.followUp({ content: "❌ Doar cei care au intrat în luptă pot lovi Dragonul Stins!", flags: MessageFlags.Ephemeral });
     return;
   }
   if (!p.isAlive) {
-    await interaction.reply({ content: "💀 Doar cei vii îl pot lovi pe Dragonul Stins.", ephemeral: true });
+    await interaction.followUp({ content: "💀 Doar cei vii îl pot lovi pe Dragonul Stins.", flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -607,7 +623,7 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
 
   // Dead players can't attack
   if (myHp <= 0) {
-    await interaction.reply({ content: "💀 Ești căzut în luptă! Dragonul te-a doborât — nu mai poți lovi.", ephemeral: true });
+    await interaction.followUp({ content: "💀 Ești căzut în luptă! Dragonul te-a doborât — nu mai poți lovi.", flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -616,9 +632,9 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
   const elapsed = Date.now() - lastHit;
   if (elapsed < BOSS_HIT_COOLDOWN_MS) {
     const remaining = Math.ceil((BOSS_HIT_COOLDOWN_MS - elapsed) / 1000);
-    await interaction.reply({
+    await interaction.followUp({
       content: `⏳ Recuperare… mai poți lovi în **${remaining}s**!\n❤️ Viața ta: **${myHp} HP** | 🐉 Dragon: **${boss.currentHp.toLocaleString()} / ${boss.maxHp.toLocaleString()} HP**`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -678,7 +694,7 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
       }
     } catch { /* ignore */ }
 
-    await interaction.reply({
+    await interaction.followUp({
       content:
         `⚔️ **${interaction.user.username}** a dat lovitura finală! **${playerDmg.toLocaleString()} daune**!\n` +
         `💀 **Dragonul Stins a căzut!** Regatul este salvat!\n` +
