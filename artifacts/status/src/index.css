@@ -413,7 +413,31 @@ a { color: inherit; text-decoration: none; }
   position: relative;
   overflow: hidden;
   cursor: default;
+  text-decoration: none;
+  color: inherit;
+  display: block;
   transition: border-color 0.25s, transform 0.25s, box-shadow 0.25s;
+}
+
+.zone-card--link {
+  cursor: pointer;
+}
+.zone-card--link:hover {
+  border-color: var(--zone-color);
+  transform: translateY(-4px);
+  box-shadow: 0 10px 36px var(--zone-glow), 0 2px 8px rgba(0,0,0,0.5);
+}
+.zone-card--link:hover::after {
+  content: '→ Intră în Discord';
+  position: absolute;
+  bottom: 0.9rem;
+  right: 1.1rem;
+  font-size: 0.7rem;
+  font-family: 'Inter', sans-serif;
+  color: var(--zone-color);
+  opacity: 0.85;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .zone-card::before {

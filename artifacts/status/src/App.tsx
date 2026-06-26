@@ -164,15 +164,18 @@ function MapPage() {
 
         <div className="zones-grid">
           {zones.map((zone) => (
-            <div
+            <a
               key={zone.id}
-              className="zone-card"
+              href={DISCORD_INVITE}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="zone-card zone-card--link"
               style={{ "--zone-color": zone.color, "--zone-glow": zone.glow } as React.CSSProperties}
             >
               <div className="zone-icon">{zone.icon}</div>
               <h3 className="zone-name">{zone.name}</h3>
               <p className="zone-desc">{zone.desc}</p>
-            </div>
+            </a>
           ))}
 
           <SoulStoneWidget />
@@ -307,12 +310,6 @@ function GatePage({ onEnter }: { onEnter: () => void }) {
       >
         ⚔️ INTRĂ ÎN REGAT
       </button>
-
-      <p className="gate-link">
-        <a href={DISCORD_INVITE} target="_blank" rel="noopener noreferrer">
-          discord.gg/JNYsGeMhzm
-        </a>
-      </p>
     </div>
   );
 }
