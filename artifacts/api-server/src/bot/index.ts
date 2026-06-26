@@ -105,6 +105,12 @@ export function getShardStatus(): string {
   return shardStatus;
 }
 
+export function getBotClient(): Client | null {
+  return botClient;
+}
+
+export { GUILD_ID };
+
 // Discord Gateway close codes that mean the session cannot be resumed.
 // discord.js will NOT auto-reconnect for these; the supervisor must restart.
 const FATAL_CLOSE_CODES = new Set([4004, 4010, 4011, 4013, 4014]);
