@@ -1,5 +1,6 @@
 import {
   Client,
+  TextChannel,
   GatewayIntentBits,
   REST,
   Routes,
@@ -14,7 +15,7 @@ import {
 } from "discord.js";
 import { logger } from "../lib/logger";
 import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./alert";
-import { startScheduler, APPLICATION_ID, fireEvent, fireChest, claimedChests } from "./scheduler";
+import { startScheduler, APPLICATION_ID, fireEvent, fireChest, claimedChests, activeBossMap } from "./scheduler";
 import {
   upsertPlayer,
   joinEvent,
@@ -38,7 +39,6 @@ import {
   buyAbility,
   upgradeAbility,
   applyAbilityLevelToActiveParticipant,
-  recordFinalBossHit,
   type AbilityKind,
 } from "./db";
 import {
@@ -74,7 +74,10 @@ import {
   SHOP_COUNT_KEY,
   LEVELUP_INTERVAL,
   ABILITY_COOLDOWN_MS,
+  buildFinalBossEmbed,
+  finalBossRow,
   type ShopKey,
+  type BossRarity,
 } from "./survival";
 
 const GUILD_ID = "1382035307607883816";
@@ -553,12 +556,26 @@ async function handleAbility(interaction: ButtonInteraction, eventId: number, ki
   });
 }
 
+const BOSS_HIT_COOLDOWN_MS = 4000;
+const EVENT_CHANNEL_ID = "1472579703457190042";
+
 async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) {
   const ev = await getActiveEvent(eventId);
   if (!ev || !ev.isActive || ev.expiresAt.getTime() < Date.now()) {
     await interaction.reply({ content: "⌛ Dragonul Stins s-a întors în Abis — Ora Umbrelor s-a încheiat.", ephemeral: true });
     return;
   }
+
+  const boss = activeBossMap.get(eventId);
+  if (!boss) {
+    await interaction.reply({ content: "⌛ Dragonul nu a fost invocat încă.", ephemeral: true });
+    return;
+  }
+  if (boss.defeated) {
+    await interaction.reply({ content: "💀 Dragonul Stins a fost deja înfrânt de Regat!", ephemeral: true });
+    return;
+  }
+
   const p = await getParticipant(eventId, interaction.user.id);
   if (!p) {
     await interaction.reply({ content: "❌ Doar cei care au intrat în luptă pot lovi Dragonul Stins!", ephemeral: true });
@@ -568,22 +585,94 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
     await interaction.reply({ content: "💀 Doar cei vii îl pot lovi pe Dragonul Stins.", ephemeral: true });
     return;
   }
-  await upsertPlayer(interaction.user.id, interaction.user.username);
-  const first = await recordFinalBossHit(eventId, interaction.user.id);
-  if (!first) {
-    await interaction.reply({ content: "🐉 Ai lovit deja Dragonul Stins! Fiecare luptător lovește o singură dată.", ephemeral: true });
+
+  // 4-second cooldown per player
+  const lastHit = boss.lastHitAt.get(interaction.user.id) ?? 0;
+  const elapsed = Date.now() - lastHit;
+  if (elapsed < BOSS_HIT_COOLDOWN_MS) {
+    const remaining = Math.ceil((BOSS_HIT_COOLDOWN_MS - elapsed) / 1000);
+    await interaction.reply({ content: `⏳ Recuperare… mai poți lovi în **${remaining}s**!`, ephemeral: true });
     return;
   }
-  await Promise.all([
-    addPlayerReputation(interaction.user.id, 50),
-    addPlayerGold(interaction.user.id, 150),
-    addPlayerXp(interaction.user.id, 250),
-  ]);
+
+  // Player damage based on attack stat
+  const minDmg = Math.max(30, p.attackBonus * 5 + 20);
+  const maxDmg = Math.max(80, p.attackBonus * 15 + 60);
+  const playerDmg = Math.floor(Math.random() * (maxDmg - minDmg + 1)) + minDmg;
+  // Boss counter-attack (flavor only)
+  const bossHit = Math.floor(Math.random() * 101) + 100;
+
+  // Apply damage to shared boss HP
+  boss.lastHitAt.set(interaction.user.id, Date.now());
+  boss.damageBy.set(interaction.user.id, (boss.damageBy.get(interaction.user.id) ?? 0) + playerDmg);
+  boss.currentHp = Math.max(0, boss.currentHp - playerDmg);
+
+  const bossDefeated = boss.currentHp <= 0 && !boss.defeated;
+
+  if (bossDefeated) {
+    boss.defeated = true;
+    // Reward everyone who dealt damage
+    const damagers = [...boss.damageBy.keys()];
+    await Promise.all(damagers.flatMap((discordId) => [
+      addPlayerReputation(discordId, 50),
+      addPlayerGold(discordId, 150),
+      addPlayerXp(discordId, 250),
+    ]));
+
+    // Update boss message to show defeated
+    try {
+      const ch = await interaction.client.channels.fetch(EVENT_CHANNEL_ID);
+      if (ch instanceof TextChannel) {
+        const bossMsg = await ch.messages.fetch(boss.messageId).catch(() => null);
+        if (bossMsg) {
+          const deadRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder()
+              .setCustomId(`finalboss_dead_${eventId}`)
+              .setLabel("Dragonul a căzut!")
+              .setEmoji("💀")
+              .setStyle(ButtonStyle.Secondary)
+              .setDisabled(true),
+          );
+          await bossMsg.edit({
+            embeds: [buildFinalBossEmbed(boss.level, boss.rarity, 0, boss.maxHp)],
+            components: [deadRow],
+          }).catch(() => null);
+        }
+      }
+    } catch { /* ignore */ }
+
+    await interaction.reply({
+      content:
+        `⚔️ **${interaction.user.username}** a dat lovitura finală! **${playerDmg.toLocaleString()} daune**!\n` +
+        `💀 **Dragonul Stins a căzut!** Regatul este salvat!\n` +
+        `🏅 Toți ${damagers.length} luptători primesc: **+50 Reputație, +150 Oboli, +250 XP**!`,
+    });
+    return;
+  }
+
+  // Update boss embed with new HP
+  try {
+    const ch = await interaction.client.channels.fetch(EVENT_CHANNEL_ID);
+    if (ch instanceof TextChannel) {
+      const bossMsg = await ch.messages.fetch(boss.messageId).catch(() => null);
+      if (bossMsg) {
+        await bossMsg.edit({
+          embeds: [buildFinalBossEmbed(boss.level, boss.rarity, boss.currentHp, boss.maxHp)],
+          components: [finalBossRow(eventId)],
+        }).catch(() => null);
+      }
+    }
+  } catch { /* ignore */ }
+
   await interaction.reply({
-    content: "🐉⚔️ Ai lovit **Dragonul Stins**! Recompensă: **+50 Reputație, +150 Oboli, +250 XP**!",
+    content:
+      `⚔️ **${playerDmg.toLocaleString()} daune** infligate Dragonului!\n` +
+      `🐉 Dragonul te lovește pentru **${bossHit} daune**!\n` +
+      `❤️ Viața Dragonului: **${boss.currentHp.toLocaleString()} / ${boss.maxHp.toLocaleString()} HP**`,
     ephemeral: true,
   });
 }
+
 
 async function handleButton(interaction: ButtonInteraction) {
   const id = interaction.customId;

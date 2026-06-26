@@ -1,6 +1,6 @@
 import { Client, TextChannel, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import { logger } from "../lib/logger";
-import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, rollChest, oracleMessage, buildFinalBossEmbed, finalBossRow } from "./survival";
+import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, rollChest, oracleMessage, buildFinalBossEmbed, finalBossRow, bossMaxHp, type BossRarity } from "./survival";
 import { triggerRandomBattleEvent } from "./combat-events";
 import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle } from "./db";
 
@@ -18,6 +18,32 @@ const ORACLE_INTERVAL_MS = 25 * 60 * 1000;
 const BATTLE_EVENT_INTERVAL_MS = 7 * 60 * 1000;
 
 export const claimedChests = new Set<string>();
+
+// ─── Boss shared HP state ─────────────────────────────────────────────────────
+export interface BossState {
+  eventId: number;
+  level: number;
+  rarity: BossRarity;
+  maxHp: number;
+  currentHp: number;
+  messageId: string;
+  lastHitAt: Map<string, number>;  // discordId → timestamp of last hit
+  damageBy: Map<string, number>;   // discordId → total damage dealt
+  defeated: boolean;
+}
+export const activeBossMap = new Map<number, BossState>();
+
+const BOSS_RARITY_WEIGHTS: [BossRarity, number][] = [
+  ["comun", 60], ["rar", 25], ["epic", 12], ["legendar", 3],
+];
+function rollBossRarity(): BossRarity {
+  const total = BOSS_RARITY_WEIGHTS.reduce((s, [, w]) => s + w, 0);
+  let roll = Math.random() * total;
+  for (const [r, w] of BOSS_RARITY_WEIGHTS) {
+    if ((roll -= w) <= 0) return r;
+  }
+  return "comun";
+}
 
 let lastChestMessageId: string | null = null;
 let lastChestTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -109,12 +135,27 @@ export async function fireChest(client: Client) {
     const msg = await channel.send({ content: "✨ *Ceva strălucește în cenușă…*" });
     lastChestMessageId = msg.id;
 
+    const lockedRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(chestId)
+        .setLabel("⏳ Disponibil în 5 secunde…")
+        .setEmoji("🔒")
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(true),
+    );
+
     await sleep(900);
     await msg.edit({ content: "✨📦 *Un cufăr se ridică din adâncuri…*" }).catch(() => null);
     await sleep(900);
-    await msg.edit({ content: "💫📦✨", embeds: [buildChestEmbed(gold, rarity)], components: [row] }).catch(() => null);
+    await msg.edit({ content: "💫📦✨", embeds: [buildChestEmbed(gold, rarity)], components: [lockedRow] }).catch(() => null);
     await sleep(600);
-    await msg.edit({ content: "", embeds: [buildChestEmbed(gold, rarity)], components: [row] }).catch(() => null);
+    await msg.edit({ content: "", embeds: [buildChestEmbed(gold, rarity)], components: [lockedRow] }).catch(() => null);
+
+    // Enable claim button after 5 seconds
+    await sleep(5000);
+    if (!claimedChests.has(chestId)) {
+      await msg.edit({ embeds: [buildChestEmbed(gold, rarity)], components: [row] }).catch(() => null);
+    }
 
     logger.info({ chestId, gold, rarity: rarity.key }, "Chest spawned");
 
@@ -241,11 +282,32 @@ async function fireFinalBoss(client: Client, eventId: number) {
     if (!(channel instanceof TextChannel)) return;
 
     const participants = await getEventParticipants(eventId);
-    const maxLevel = participants.reduce((m, p) => Math.max(m, p.monsterLevel), 1);
-    const bossLevel = Math.max(50, maxLevel + 10);
+    const aliveParticipants = participants.filter((p) => p.isAlive);
+    const avgLevel = aliveParticipants.length
+      ? Math.ceil(aliveParticipants.reduce((s, p) => s + p.monsterLevel, 0) / aliveParticipants.length)
+      : 1;
+    const bossLevel = Math.max(5, Math.ceil(avgLevel / 2));
+    const rarity = rollBossRarity();
+    const maxHp = bossMaxHp(bossLevel, rarity);
 
-    await channel.send({ embeds: [buildFinalBossEmbed(bossLevel)], components: [finalBossRow(eventId)] });
-    logger.info({ eventId, bossLevel }, "Final boss summoned");
+    const msg = await channel.send({
+      embeds: [buildFinalBossEmbed(bossLevel, rarity, maxHp, maxHp)],
+      components: [finalBossRow(eventId)],
+    });
+
+    activeBossMap.set(eventId, {
+      eventId,
+      level: bossLevel,
+      rarity,
+      maxHp,
+      currentHp: maxHp,
+      messageId: msg.id,
+      lastHitAt: new Map(),
+      damageBy: new Map(),
+      defeated: false,
+    });
+
+    logger.info({ eventId, bossLevel, rarity, maxHp }, "Final boss summoned");
   } catch (err) {
     logger.error({ err, eventId }, "Failed to summon final boss");
   }

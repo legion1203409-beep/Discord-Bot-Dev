@@ -760,20 +760,68 @@ export function oracleMessage(): string {
 }
 
 // ─── Final boss ──────────────────────────────────────────────────────────────
-export function buildFinalBossEmbed(level: number): EmbedBuilder {
-  return new EmbedBuilder()
-    .setColor(0x7f1d1d)
-    .setTitle(`🐉  DRAGONUL STINS – NIVEL ${level}  🐉`)
-    .setDescription(
-      "Cerul Regatului se întunecă, iar cenușa se ridică în vârtejuri.\n" +
-      "**Ultima încercare a Regatului a sosit.**\n\n" +
+export type BossRarity = "comun" | "rar" | "epic" | "legendar";
+
+export const BOSS_RARITY_DATA: Record<BossRarity, { label: string; emoji: string; color: number; hpMult: number }> = {
+  comun:    { label: "Comun",    emoji: "⚪", color: 0x7f1d1d, hpMult: 1   },
+  rar:      { label: "Rar",      emoji: "🔵", color: 0x1e3a8a, hpMult: 1.5 },
+  epic:     { label: "Epic",     emoji: "🟣", color: 0x5b21b6, hpMult: 2.5 },
+  legendar: { label: "Legendar", emoji: "🟠", color: 0xb45309, hpMult: 4   },
+};
+
+export function bossMaxHp(level: number, rarity: BossRarity): number {
+  return Math.round(level * 2000 * BOSS_RARITY_DATA[rarity].hpMult);
+}
+
+export function buildHpBar(current: number, max: number, size = 18): string {
+  const pct = Math.max(0, Math.min(1, current / max));
+  const filled = Math.round(pct * size);
+  return "█".repeat(filled) + "░".repeat(size - filled);
+}
+
+export function buildFinalBossEmbed(
+  level: number,
+  rarity: BossRarity = "comun",
+  currentHp?: number,
+  maxHp?: number,
+): EmbedBuilder {
+  const rd = BOSS_RARITY_DATA[rarity];
+  const defeated = currentHp !== undefined && currentHp <= 0;
+
+  let desc =
+    "Cerul Regatului se întunecă, iar cenușa se ridică în vârtejuri.\n" +
+    "**Ultima încercare a Regatului a sosit.**\n\n" +
+    `${rd.emoji} **Raritate: ${rd.label}**\n`;
+
+  if (currentHp !== undefined && maxHp !== undefined) {
+    const bar = buildHpBar(currentHp, maxHp);
+    const pct = Math.round((Math.max(0, currentHp) / maxHp) * 100);
+    desc += `❤️ **${Math.max(0, currentHp).toLocaleString()} / ${maxHp.toLocaleString()} HP**\n\`[${bar}]\` ${pct}%\n\n`;
+  } else {
+    desc += "\n";
+  }
+
+  if (defeated) {
+    desc += "💀 **Dragonul Stins a căzut! Regatul este salvat!**\n\nToți participanții au primit recompensa!";
+  } else {
+    desc +=
       "🐉 Dragonul Stins coboară din Abis. Doar cei vii îl pot lovi.\n" +
       "Cei care îndrăznesc să-l lovească primesc un **dar special**:\n" +
       "🏅 **+50 Reputație, +150 Oboli, +250 XP**\n\n" +
-      "⚔️ Lovește acum — fiecare luptător poate lovi o singură dată!",
-    )
-    .setImage(IMG.monster)
-    .setFooter({ text: "Eventul se încheie în curând…" });
+      "⚔️ Lovește-l împreună cu echipa! Cooldown per jucător: **4 secunde**.";
+  }
+
+  const embed = new EmbedBuilder()
+    .setColor(rd.color)
+    .setTitle(`🐉  DRAGONUL STINS – NIVEL ${level}  🐉`)
+    .setDescription(desc)
+    .setImage(IMG.monster);
+
+  if (!defeated) {
+    embed.setFooter({ text: "Eventul se încheie în curând…" });
+  }
+
+  return embed;
 }
 
 export function finalBossRow(eventId: number): ActionRowBuilder<ButtonBuilder> {
