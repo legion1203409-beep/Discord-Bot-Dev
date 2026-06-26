@@ -1,6 +1,6 @@
 import { Client, TextChannel, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import { logger } from "../lib/logger";
-import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, rollChest, oracleMessage, buildFinalBossEmbed, finalBossRow, bossMaxHp, type BossRarity } from "./survival";
+import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, rollChest, oracleMessage, buildFinalBossEmbed, buildBossLeaderboard, finalBossRow, bossMaxHp, type BossRarity } from "./survival";
 import { triggerRandomBattleEvent } from "./combat-events";
 import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle } from "./db";
 
@@ -27,8 +27,10 @@ export interface BossState {
   maxHp: number;
   currentHp: number;
   messageId: string;
-  lastHitAt: Map<string, number>;  // discordId → timestamp of last hit
-  damageBy: Map<string, number>;   // discordId → total damage dealt
+  lastHitAt: Map<string, number>;   // discordId → timestamp of last hit
+  damageBy: Map<string, number>;    // discordId → total damage dealt to boss
+  playerHp: Map<string, number>;    // discordId → current HP during boss fight
+  participants: Array<{ username: string; discordId: string; monsterLevel: number; totalDamage: number; isAlive: boolean }>;
   defeated: boolean;
 }
 export const activeBossMap = new Map<number, BossState>();
@@ -92,6 +94,8 @@ async function expireOldEvents(client: Client) {
           }
         }
       }
+      // Spawn boss AFTER event ends (before deactivation so isActive check passes)
+      await fireFinalBoss(client, ev.id);
       await deactivateEvent(ev.id);
       logger.info({ eventId: ev.id }, "Event expired");
     } catch (err) {
@@ -262,9 +266,6 @@ export async function fireEvent(client: Client) {
     //   logger.error({ err }, "Failed to send main channel notification");
     // }
 
-    const fbTimeout = setTimeout(() => { void fireFinalBoss(client, ev.id); }, EVENT_DURATION_MS - 60 * 1000);
-    fbTimeout.unref?.();
-
     logger.info({ eventId: ev.id }, "Ora Umbrelor fired");
   } catch (err) {
     logger.error({ err }, "Failed to fire event");
@@ -295,7 +296,7 @@ export async function fireFinalBoss(client: Client, eventId: number) {
       components: [finalBossRow(eventId)],
     });
 
-    activeBossMap.set(eventId, {
+    const boss: BossState = {
       eventId,
       level: bossLevel,
       rarity,
@@ -304,8 +305,48 @@ export async function fireFinalBoss(client: Client, eventId: number) {
       messageId: msg.id,
       lastHitAt: new Map(),
       damageBy: new Map(),
+      playerHp: new Map(),
+      participants: participants.map((p) => ({
+        username: p.username,
+        discordId: p.discordId,
+        monsterLevel: p.monsterLevel,
+        totalDamage: p.totalDamage,
+        isAlive: p.isAlive,
+      })),
       defeated: false,
-    });
+    };
+    activeBossMap.set(eventId, boss);
+
+    // 5-minute escape timer — if boss not defeated, it flees and we still send leaderboard
+    const escapeTimer = setTimeout(async () => {
+      if (boss.defeated) return;
+      boss.defeated = true;
+      activeBossMap.delete(eventId);
+      try {
+        const ch = await client.channels.fetch(EVENT_CHANNEL_ID).catch(() => null);
+        if (!(ch instanceof TextChannel)) return;
+        // Disable the boss button
+        const bossMsg = await ch.messages.fetch(boss.messageId).catch(() => null);
+        if (bossMsg) {
+          const deadRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder()
+              .setCustomId(`finalboss_dead_${eventId}`)
+              .setLabel("Dragonul a Scăpat…")
+              .setEmoji("💨")
+              .setStyle(ButtonStyle.Secondary)
+              .setDisabled(true),
+          );
+          await bossMsg.edit({
+            embeds: [buildFinalBossEmbed(boss.level, boss.rarity, boss.currentHp, boss.maxHp)],
+            components: [deadRow],
+          }).catch(() => null);
+        }
+        // Send leaderboard
+        const leaderboard = buildBossLeaderboard(boss, boss.damageBy, boss.participants);
+        await ch.send({ embeds: [leaderboard] }).catch(() => null);
+      } catch { /* ignore */ }
+    }, 5 * 60 * 1000);
+    escapeTimer.unref?.();
 
     logger.info({ eventId, bossLevel, rarity, maxHp }, "Final boss summoned");
   } catch (err) {

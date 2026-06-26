@@ -824,6 +824,40 @@ export function buildFinalBossEmbed(
   return embed;
 }
 
+export function buildBossLeaderboard(
+  bossInfo: { level: number; rarity: BossRarity; maxHp: number; defeated: boolean },
+  damageMap: Map<string, number>,
+  participants: Array<{ username: string; discordId: string; monsterLevel: number; totalDamage: number; isAlive: boolean }>,
+): EmbedBuilder {
+  const rd = BOSS_RARITY_DATA[bossInfo.rarity];
+  const ranked = participants
+    .map((p) => ({ ...p, bossDamage: damageMap.get(p.discordId) ?? 0 }))
+    .sort((a, b) => b.bossDamage - a.bossDamage || b.monsterLevel - a.monsterLevel);
+
+  const medals = ["🥇", "🥈", "🥉"];
+  const lines = ranked.slice(0, 10).map((p, i) => {
+    const medal = medals[i] ?? `**${i + 1}.**`;
+    const bossStr = p.bossDamage > 0
+      ? `🐉 ${p.bossDamage.toLocaleString()} daune Dragon`
+      : `🐉 Nu a lovit Dragonul`;
+    return `${medal} **${p.username}** — ${bossStr} | 🎚️ Nivel **${p.monsterLevel}** | 💥 ${p.totalDamage.toLocaleString()} daune Event`;
+  });
+
+  const title = bossInfo.defeated
+    ? "🏆 CLASAMENT FINAL — Dragonul a Căzut!"
+    : "📜 CLASAMENT FINAL — Dragonul a Scăpat…";
+
+  return new EmbedBuilder()
+    .setColor(bossInfo.defeated ? 0xffd700 : 0x555555)
+    .setTitle(title)
+    .setDescription(
+      `${rd.emoji} **Dragon Nivel ${bossInfo.level}** — ${rd.label} | HP: ${bossInfo.maxHp.toLocaleString()}\n\n` +
+      (lines.length > 0 ? lines.join("\n") : "_Niciun participant._"),
+    )
+    .setFooter({ text: "Ora Umbrelor s-a încheiat." })
+    .setTimestamp();
+}
+
 export function finalBossRow(eventId: number): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(`finalboss_${eventId}`).setLabel("Lovește Dragonul").setEmoji("🐉").setStyle(ButtonStyle.Danger),
