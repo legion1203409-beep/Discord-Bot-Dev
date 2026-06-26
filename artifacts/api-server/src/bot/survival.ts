@@ -6,7 +6,7 @@ import {
 } from "discord.js";
 import type { EventParticipant } from "@workspace/db";
 import type { Player } from "@workspace/db";
-import { IMG, COMPANION_IMG } from "./assets";
+import { IMG, COMPANION_IMG, CHEST_IMG } from "./assets";
 import { getActiveBattleEvent, consumeStormDrain } from "./combat-events";
 
 const BASE_PRICES = { atac: 50, def: 60, dodge: 70, crit: 80, hp: 40 } as const;
@@ -397,10 +397,10 @@ export interface ChestRarity {
 }
 
 export const CHEST_RARITIES: ChestRarity[] = [
-  { key: "lemn", label: "Cufăr de Lemn", emoji: "📦", color: 0x9aa0a6, min: 10, max: 40, weight: 58 },
-  { key: "argint", label: "Cufăr de Argint", emoji: "🥈", color: 0xc0c0c0, min: 40, max: 90, weight: 28 },
-  { key: "aur", label: "Cufăr de Aur", emoji: "🥇", color: 0xffd700, min: 90, max: 180, weight: 11 },
-  { key: "mitic", label: "Cufăr Mitic", emoji: "💎", color: 0xb026ff, min: 180, max: 350, weight: 3 },
+  { key: "bronz",  label: "Cufăr de Bronz",  emoji: "🪙",  color: 0xcd7f32, min: 10,  max: 40,  weight: 58 },
+  { key: "argint", label: "Cufăr de Argint", emoji: "🥈",  color: 0xc0c0c0, min: 40,  max: 90,  weight: 28 },
+  { key: "aur",    label: "Cufăr de Aur",    emoji: "🥇",  color: 0xffd700, min: 90,  max: 180, weight: 11 },
+  { key: "mitic",  label: "Cufăr Mitic",     emoji: "💎",  color: 0xb026ff, min: 180, max: 350, weight: 3  },
 ];
 
 export function rollChest(): { rarity: ChestRarity; gold: number } {
@@ -417,6 +417,7 @@ export function rollChest(): { rarity: ChestRarity; gold: number } {
 
 export function buildChestEmbed(gold: number, rarity?: ChestRarity): EmbedBuilder {
   const r = rarity ?? CHEST_RARITIES[0]!;
+  const image = CHEST_IMG[r.key] ?? IMG.chest;
   return new EmbedBuilder()
     .setColor(r.color)
     .setTitle(`${r.emoji}✨  ${r.label.toUpperCase()} A APĂRUT ÎN REGAT!  ✨${r.emoji}`)
@@ -426,7 +427,7 @@ export function buildChestEmbed(gold: number, rarity?: ChestRarity): EmbedBuilde
       `💰 **${gold} Oboli** pentru primul care revendică!\n\n` +
       "⚡ Fii primul — cufărul dispare în fumul umbrelor!",
     )
-    .setImage(IMG.chest)
+    .setImage(image)
     .setFooter({ text: "Primul click câștigă!" });
 }
 

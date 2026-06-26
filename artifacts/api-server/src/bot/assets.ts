@@ -21,6 +21,13 @@ export const IMG = {
   death: assetUrl("death.gif"),
 };
 
+export const CHEST_IMG: Record<string, string | null> = {
+  bronz:  assetUrl("chest_bronz.png"),
+  argint: assetUrl("chest_argint.png"),
+  aur:    assetUrl("chest_aur.png"),
+  mitic:  assetUrl("chest_mitic.png"),
+};
+
 export const COMPANION_IMG: Record<string, { base: string | null; evo: string | null }> = {
   lup: { base: assetUrl("companion_lup.png"), evo: assetUrl("companion_lup_evo.png") },
   corb: { base: assetUrl("companion_corb.png"), evo: assetUrl("companion_corb_evo.png") },

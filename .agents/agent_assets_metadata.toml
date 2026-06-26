@@ -1,5 +1,4 @@
 uploads = []
-outputs = []
 
 [[generated]]
 id = "qprPCRtWf-arOyHGGUKfq"
@@ -66,3 +65,51 @@ id = "D4D1jC40wwaKrgILWXlrz"
 uri = "file://artifacts/api-server/assets/companion_golem_evo.png"
 type = "image"
 title = "evolved magma golem"
+
+[[generated]]
+id = "cyjQqGhTKiNvyaGAUhgR4"
+uri = "file://artifacts/api-server/assets/chest_bronz.png"
+type = "image"
+title = "bronze chest"
+
+[[generated]]
+id = "vlxzBMSc6WdiGamu46d41"
+uri = "file://artifacts/api-server/assets/chest_argint.png"
+type = "image"
+title = "silver chest"
+
+[[generated]]
+id = "AZ44ZJjWSTbyjRUhYaCkw"
+uri = "file://artifacts/api-server/assets/chest_aur.png"
+type = "image"
+title = "gold chest"
+
+[[generated]]
+id = "0fwV-2CN1MQzYeKJ-g9K9"
+uri = "file://artifacts/api-server/assets/chest_mitic.png"
+type = "image"
+title = "mythic chest"
+
+[[outputs]]
+id = "Xv7osCIljB2ivkCRjsX9M"
+uri = "file://artifacts/api-server/assets/chest_bronz.png"
+type = "image"
+title = "🪙 Cufăr de Bronz"
+
+[[outputs]]
+id = "05f3HSBTGKSDOdJfd2T3P"
+uri = "file://artifacts/api-server/assets/chest_argint.png"
+type = "image"
+title = "🥈 Cufăr de Argint"
+
+[[outputs]]
+id = "lChn_ymS3qBF0tajPx6C5"
+uri = "file://artifacts/api-server/assets/chest_aur.png"
+type = "image"
+title = "🥇 Cufăr de Aur"
+
+[[outputs]]
+id = "RSCyyL58lsV6Gdx4GOALT"
+uri = "file://artifacts/api-server/assets/chest_mitic.png"
+type = "image"
+title = "💎 Cufăr Mitic"
