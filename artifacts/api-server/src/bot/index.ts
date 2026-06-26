@@ -888,7 +888,13 @@ export async function startBot(onReady?: () => void): Promise<void> {
     return;
   }
 
-  const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+  const client = new Client({
+    intents: [
+      GatewayIntentBits.Guilds,
+      GatewayIntentBits.GuildPresences,
+      GatewayIntentBits.GuildMembers,
+    ],
+  });
 
   // `terminated` rejects when a fatal Gateway close code is received.
   // It stays pending for non-fatal disconnects — discord.js handles those.
