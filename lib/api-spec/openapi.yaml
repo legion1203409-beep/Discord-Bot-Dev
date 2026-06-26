@@ -31,6 +31,12 @@ components:
       properties:
         status:
           type: string
+        botOnline:
+          type: boolean
+        uptime:
+          type: number
       required:
         - status
+        - botOnline
+        - uptime
 

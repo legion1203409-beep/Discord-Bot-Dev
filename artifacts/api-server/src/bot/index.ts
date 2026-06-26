@@ -80,6 +80,10 @@ const GUILD_ID = "1382035307607883816";
 
 let botClient: Client | null = null;
 
+export function isBotOnline(): boolean {
+  return botClient !== null && botClient.isReady();
+}
+
 const slashCommands = [
   new SlashCommandBuilder().setName("profil").setDescription("📜 Statisticile tale din Regatul Cenușii."),
   new SlashCommandBuilder().setName("clasament").setDescription("👑 Top 10 cei mai puternici luptători."),
