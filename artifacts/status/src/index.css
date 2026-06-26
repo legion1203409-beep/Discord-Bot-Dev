@@ -463,6 +463,17 @@ a { color: inherit; text-decoration: none; }
   opacity: 1;
   transform: translateX(-50%) translateY(0);
 }
+.map-marker-tooltip::after {
+  content: '→ Intră în canal';
+  display: block;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.65rem;
+  color: var(--zone-color);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-top: 0.4rem;
+  opacity: 0.85;
+}
 
 /* ── Soul Stone on map ── */
 .map-soul-widget {

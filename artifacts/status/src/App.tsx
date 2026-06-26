@@ -14,6 +14,7 @@ const zones = [
     glow: "rgba(139,0,0,0.45)",
     mapX: "18%",
     mapY: "62%",
+    href: "https://discord.gg/JNYsGeMhzm",
   },
   {
     id: "arena",
@@ -24,6 +25,7 @@ const zones = [
     glow: "rgba(192,57,43,0.45)",
     mapX: "75%",
     mapY: "28%",
+    href: "https://discord.gg/JNYsGeMhzm",
   },
   {
     id: "forja",
@@ -34,6 +36,7 @@ const zones = [
     glow: "rgba(184,134,11,0.45)",
     mapX: "55%",
     mapY: "68%",
+    href: "https://discord.gg/JNYsGeMhzm",
   },
   {
     id: "arhive",
@@ -44,6 +47,7 @@ const zones = [
     glow: "rgba(74,111,165,0.45)",
     mapX: "30%",
     mapY: "22%",
+    href: "https://discord.gg/JNYsGeMhzm",
   },
   {
     id: "turnul",
@@ -54,6 +58,7 @@ const zones = [
     glow: "rgba(46,125,50,0.45)",
     mapX: "80%",
     mapY: "72%",
+    href: "https://discord.gg/JNYsGeMhzm",
   },
 ];
 
@@ -134,7 +139,7 @@ function MapPage() {
             {zones.map((zone) => (
               <a
                 key={zone.id}
-                href={DISCORD_INVITE}
+                href={zone.href}
                 target="_blank"
                 rel="noopener noreferrer"
                 className={`map-marker ${activeZone === zone.id ? "map-marker--active" : ""}`}
