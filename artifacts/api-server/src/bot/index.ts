@@ -592,7 +592,7 @@ async function handleButton(interaction: ButtonInteraction) {
     return handleViewProfile(interaction, id.replace("profile_view_", ""));
   }
 
-  if (id.startsWith("chest_") && !id.endsWith("_claimed") && !id.endsWith("_expired")) {
+  if (id.startsWith("chest_") && !id.endsWith("_claimed") && !id.endsWith("_expired") && !id.endsWith("_opening")) {
     const match = id.match(/^(chest_\d+)_(\d+)$/);
     if (match) {
       return handleChestClaim(interaction, match[1]!, parseInt(match[2]!));
@@ -762,6 +762,13 @@ export async function startBot(onReady?: () => void): Promise<void> {
       }
     } catch (err) {
       logger.error({ err }, "Interaction error");
+      try {
+        if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
+          await interaction.reply({ content: "❌ A apărut o eroare. Încearcă din nou.", ephemeral: true });
+        }
+      } catch {
+        // ignore — interaction window may have expired
+      }
     }
   });
 
