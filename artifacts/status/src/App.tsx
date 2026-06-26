@@ -85,7 +85,7 @@ function useSoulStoneStats() {
 
   useEffect(() => {
     void fetchStats();
-    const id = setInterval(() => void fetchStats(), 30_000);
+    const id = setInterval(() => void fetchStats(), 10_000);
     return () => clearInterval(id);
   }, [fetchStats]);
 
@@ -172,7 +172,10 @@ function MapPage() {
               <div className="map-soul-orb">🔮</div>
               <div className="map-soul-label">Piatra de Suflete</div>
               <div className="map-soul-stats">
-                <span title="Suflete treze">
+                <span title="Suflete treze" className="map-soul-online">
+                  {stats !== null && stats.onlineCount !== null && (
+                    <span className="map-soul-online-dot" />
+                  )}
                   ✨ {stats === null ? "…" : stats.onlineCount !== null ? stats.onlineCount : "—"}
                 </span>
                 <span title="Locuitori">
