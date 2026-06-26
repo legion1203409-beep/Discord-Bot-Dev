@@ -1,7 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { startBot } from "./bot/index";
-import { sendAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./bot/alert";
+import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./bot/alert";
 
 process.on("uncaughtException", (err) => {
   logger.error({ err }, "Uncaught exception — process continues");
@@ -20,6 +20,7 @@ const BOT_STABLE_THRESHOLD_MS = 60_000;
 async function startBotWithRetry() {
   let attempt = 0;
   let supervisorAlertTimer: ReturnType<typeof setTimeout> | null = null;
+  let supervisorOutageStartedAt: Date | null = null;
 
   function scheduleSupervisorAlert(currentAttempt: number) {
     if (supervisorAlertTimer) return; // already scheduled
@@ -32,10 +33,21 @@ async function startBotWithRetry() {
     }, DISCONNECT_ALERT_THRESHOLD_MS);
   }
 
+  // Cancel a pending supervisor alert (bot came back within threshold) or send
+  // a recovery alert if the outage alert already fired.
+  // supervisorOutageStartedAt set + timer pending  → alert not sent yet, suppress it
+  // supervisorOutageStartedAt set + timer null     → alert already sent, send recovery
   function cancelSupervisorAlert() {
     if (supervisorAlertTimer) {
       clearTimeout(supervisorAlertTimer);
       supervisorAlertTimer = null;
+      supervisorOutageStartedAt = null;
+      logger.info("Supervisor alert suppressed — bot restarted within threshold");
+    } else if (supervisorOutageStartedAt) {
+      const startedAt = supervisorOutageStartedAt;
+      supervisorOutageStartedAt = null;
+      logger.info("Sending supervisor recovery alert — bot restarted after outage");
+      void sendRecoveryAlert(startedAt);
     }
   }
 
@@ -43,8 +55,8 @@ async function startBotWithRetry() {
     const connectTime = Date.now();
     try {
       await startBot(() => {
-        // Bot is ready after a restart — cancel the supervisor alert so it
-        // doesn't fire if the bot recovered within the threshold.
+        // Bot is ready after a restart — cancel or recover from the supervisor
+        // alert depending on whether it already fired.
         cancelSupervisorAlert();
       });
       // startBot() resolved without error = DISCORD_TOKEN not set; stop looping.
@@ -60,6 +72,12 @@ async function startBotWithRetry() {
       attempt++;
       const delay = Math.min(BOT_RETRY_BASE_MS * Math.pow(2, attempt - 1), BOT_RETRY_MAX_MS);
       logger.error({ err, attempt, delayMs: delay, uptimeMs }, "Bot terminated — restarting with back-off");
+
+      // Record the start of this outage window on the first failure only
+      // (subsequent retries within the same window leave the timer running).
+      if (!supervisorAlertTimer && !supervisorOutageStartedAt) {
+        supervisorOutageStartedAt = new Date();
+      }
 
       // Schedule the alert timer on the first failure of this outage window.
       // It fires after the threshold regardless of how many retries happen in between.

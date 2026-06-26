@@ -6,6 +6,24 @@ export const DISCONNECT_ALERT_THRESHOLD_MS = (() => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 5 * 60_000;
 })();
 
+function formatDuration(ms: number): string {
+  const totalSeconds = Math.round(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const parts: string[] = [];
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0) parts.push(`${minutes}m`);
+  if (seconds > 0 || parts.length === 0) parts.push(`${seconds}s`);
+  return parts.join(" ");
+}
+
+export async function sendRecoveryAlert(outageStartedAt: Date): Promise<void> {
+  const downtimeMs = Date.now() - outageStartedAt.getTime();
+  const duration = formatDuration(downtimeMs);
+  await sendAlert(`✅ **Bot is back online** after being offline for **${duration}**.`);
+}
+
 export async function sendAlert(message: string): Promise<void> {
   const webhookUrl = process.env["DISCORD_ALERT_WEBHOOK_URL"];
   if (!webhookUrl) {

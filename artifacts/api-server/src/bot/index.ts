@@ -13,7 +13,7 @@ import {
   PermissionFlagsBits,
 } from "discord.js";
 import { logger } from "../lib/logger";
-import { sendAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./alert";
+import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./alert";
 import { startScheduler, APPLICATION_ID, fireEvent, fireChest, claimedChests } from "./scheduler";
 import {
   upsertPlayer,
@@ -82,6 +82,7 @@ const GUILD_ID = "1382035307607883816";
 let botClient: Client | null = null;
 let schedulerStarted = false;
 let disconnectAlertTimer: ReturnType<typeof setTimeout> | null = null;
+let disconnectStartedAt: Date | null = null;
 let botReadyAt: Date | null = null;
 let shardStatus: string = "disconnected";
 
@@ -671,6 +672,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
   });
 
   // Schedule a delayed alert when the shard disconnects non-fatally.
+  // disconnectStartedAt must be set by the caller before invoking this.
   function scheduleDisconnectAlert(closeCode: number) {
     if (disconnectAlertTimer) return; // already pending
     const thresholdMin = Math.round(DISCONNECT_ALERT_THRESHOLD_MS / 60_000);
@@ -682,12 +684,21 @@ export async function startBot(onReady?: () => void): Promise<void> {
     }, DISCONNECT_ALERT_THRESHOLD_MS);
   }
 
-  // Cancel a pending disconnect alert when any reconnection path succeeds.
+  // Cancel a pending disconnect alert (bot reconnected in time) or send a
+  // recovery alert if the outage alert already fired.
+  // disconnectStartedAt set + timer pending  → alert not yet sent, suppress it
+  // disconnectStartedAt set + timer null     → alert already sent, send recovery
   function clearDisconnectAlert(reason: string) {
     if (disconnectAlertTimer) {
       clearTimeout(disconnectAlertTimer);
       disconnectAlertTimer = null;
+      disconnectStartedAt = null;
       logger.info({ reason }, "Disconnect alert suppressed — bot reconnected within threshold");
+    } else if (disconnectStartedAt) {
+      const startedAt = disconnectStartedAt;
+      disconnectStartedAt = null;
+      logger.info({ reason }, "Sending recovery alert — bot back online after outage");
+      void sendRecoveryAlert(startedAt);
     }
   }
 
@@ -710,6 +721,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
         "Discord shard disconnected — discord.js will reconnect automatically",
       );
       shardStatus = "disconnected";
+      if (!disconnectStartedAt) disconnectStartedAt = new Date();
       scheduleDisconnectAlert(event.code);
     }
   });
