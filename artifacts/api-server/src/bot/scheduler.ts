@@ -1,8 +1,8 @@
 import { Client, TextChannel, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import { logger } from "../lib/logger";
-import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, rollChest, oracleMessage, buildFinalBossEmbed, buildBossLeaderboard, finalBossRow, bossMaxHp, type BossRarity } from "./survival";
+import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, rollChest, oracleMessage, buildFinalBossEmbed, buildBossLeaderboard, computeBossRewards, finalBossRow, bossMaxHp, type BossRarity } from "./survival";
 import { triggerRandomBattleEvent } from "./combat-events";
-import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle } from "./db";
+import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle, addPlayerReputation, addPlayerGold, addPlayerXp } from "./db";
 
 const EVENT_CHANNEL_ID = "1472579703457190042";
 const MAIN_CHANNEL_ID = "1382042144717410385";
@@ -327,10 +327,17 @@ export async function fireFinalBoss(client: Client, eventId: number) {
       try {
         const ch = await client.channels.fetch(EVENT_CHANNEL_ID).catch(() => null);
         if (!(ch instanceof TextChannel)) return;
+        // Reward fighters scaled by rank + rarity
+        const bossRewards = computeBossRewards(boss.damageBy, boss.rarity);
+        await Promise.all([...bossRewards.entries()].flatMap(([discordId, r]) => [
+          addPlayerReputation(discordId, r.rep),
+          addPlayerGold(discordId, r.gold),
+          addPlayerXp(discordId, r.xp),
+        ]));
         // Delete the boss message, then send leaderboard
         const bossMsg = await ch.messages.fetch(boss.messageId).catch(() => null);
         await bossMsg?.delete().catch(() => null);
-        const leaderboard = buildBossLeaderboard(boss, boss.damageBy, boss.participants);
+        const leaderboard = buildBossLeaderboard(boss, boss.damageBy, boss.participants, boss.playerNames, boss.playerHp);
         await ch.send({ embeds: [leaderboard] }).catch(() => null);
       } catch { /* ignore */ }
     }, 5 * 60 * 1000);

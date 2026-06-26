@@ -77,6 +77,7 @@ import {
   ABILITY_COOLDOWN_MS,
   buildFinalBossEmbed,
   buildBossLeaderboard,
+  computeBossRewards,
   finalBossRow,
   type ShopKey,
   type BossRarity,
@@ -658,12 +659,12 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
     boss.defeated = true;
     activeBossMap.delete(eventId);
 
-    // Reward everyone who dealt damage
-    const damagers = [...boss.damageBy.keys()];
-    await Promise.all(damagers.flatMap((discordId) => [
-      addPlayerReputation(discordId, 50),
-      addPlayerGold(discordId, 150),
-      addPlayerXp(discordId, 250),
+    // Reward everyone who dealt damage — scaled by rank + boss rarity
+    const bossRewards = computeBossRewards(boss.damageBy, boss.rarity);
+    await Promise.all([...bossRewards.entries()].flatMap(([discordId, r]) => [
+      addPlayerReputation(discordId, r.rep),
+      addPlayerGold(discordId, r.gold),
+      addPlayerXp(discordId, r.xp),
     ]));
 
     // Delete boss message and send leaderboard
@@ -672,16 +673,21 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
       if (ch instanceof TextChannel) {
         const bossMsg = await ch.messages.fetch(boss.messageId).catch(() => null);
         await bossMsg?.delete().catch(() => null);
-        const leaderboard = buildBossLeaderboard(boss, boss.damageBy, boss.participants, boss.playerNames);
+        const leaderboard = buildBossLeaderboard(boss, boss.damageBy, boss.participants, boss.playerNames, boss.playerHp);
         await ch.send({ embeds: [leaderboard] }).catch(() => null);
       }
     } catch { /* ignore */ }
+
+    const myReward = bossRewards.get(interaction.user.id);
+    const rewLine = myReward
+      ? `🏅 Tu primești: **+${myReward.rep} Rep, +${myReward.gold} Oboli, +${myReward.xp} XP**!`
+      : `🏅 Recompensele au fost distribuite!`;
 
     await interaction.followUp({
       content:
         `⚔️ **${interaction.user.username}** a dat lovitura finală! **${playerDmg.toLocaleString()} daune**!\n` +
         `💀 **Dragonul Stins a căzut!** Regatul este salvat!\n` +
-        `🏅 Toți ${damagers.length} luptători primesc: **+50 Reputație, +150 Oboli, +250 XP**!`,
+        rewLine,
     });
     return;
   }

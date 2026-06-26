@@ -836,13 +836,36 @@ export function buildFinalBossEmbed(
   return embed;
 }
 
+const RARITY_MULT: Record<BossRarity, number> = { comun: 1, rar: 1.5, epic: 2, legendar: 3 };
+const BASE_REP = 50, BASE_GOLD = 150, BASE_XP = 250;
+
+export function computeBossRewards(
+  damageBy: Map<string, number>,
+  rarity: BossRarity,
+): Map<string, { rep: number; gold: number; xp: number }> {
+  const rm = RARITY_MULT[rarity];
+  const sorted = [...damageBy.entries()].sort((a, b) => b[1] - a[1]);
+  const result = new Map<string, { rep: number; gold: number; xp: number }>();
+  sorted.forEach(([id], i) => {
+    const rankMult = i === 0 ? 3 : i < 3 ? 2 : 1;
+    result.set(id, {
+      rep:  Math.round(BASE_REP  * rankMult * rm),
+      gold: Math.round(BASE_GOLD * rankMult * rm),
+      xp:   Math.round(BASE_XP   * rankMult * rm),
+    });
+  });
+  return result;
+}
+
 export function buildBossLeaderboard(
   bossInfo: { level: number; rarity: BossRarity; maxHp: number; defeated: boolean },
   damageMap: Map<string, number>,
   participants: Array<{ username: string; discordId: string; monsterLevel: number; totalDamage: number; isAlive: boolean }>,
   playerNames?: Map<string, string>,
+  playerHp?: Map<string, number>,
 ): EmbedBuilder {
   const rd = BOSS_RARITY_DATA[bossInfo.rarity];
+  const rewards = computeBossRewards(damageMap, bossInfo.rarity);
 
   // Build a unified map of everyone who did damage
   const allIds = new Set([...damageMap.keys(), ...participants.map((p) => p.discordId)]);
@@ -866,15 +889,32 @@ export function buildBossLeaderboard(
   const medals = ["🥇", "🥈", "🥉"];
   const lines = ranked.slice(0, 10).map((p, i) => {
     const medal = medals[i] ?? `**${i + 1}.**`;
+
+    // HP status
+    const hp = playerHp?.get(p.discordId);
+    const hpStr = hp === undefined
+      ? ""
+      : hp <= 0
+        ? " | ⚰️ Doborât"
+        : ` | ❤️ ${hp} HP rămase`;
+
+    // Reward line
+    const rew = rewards.get(p.discordId);
+    const rewStr = rew
+      ? ` | 🏅 +${rew.rep} Rep  +${rew.gold} Oboli  +${rew.xp} XP`
+      : "";
+
     const bossStr = p.bossDamage > 0
-      ? `🐉 ${p.bossDamage.toLocaleString()} daune Dragon`
-      : `🐉 Nu a lovit Dragonul`;
+      ? `🐉 ${p.bossDamage.toLocaleString()} dmg`
+      : `🐉 Nu a lovit`;
+
     if (p.inEvent) {
-      return `${medal} **${p.username}** — ${bossStr} | 🎚️ Nivel **${p.monsterLevel}** | 💥 ${p.totalDamage.toLocaleString()} daune Event`;
+      return `${medal} **${p.username}** — ${bossStr}${hpStr} | 🎚️ Niv.**${p.monsterLevel}** | 💥 ${p.totalDamage.toLocaleString()} Event${rewStr}`;
     }
-    return `${medal} **${p.username}** — ${bossStr}`;
+    return `${medal} **${p.username}** — ${bossStr}${hpStr}${rewStr}`;
   });
 
+  const rarityBonus = RARITY_MULT[bossInfo.rarity] > 1 ? ` ✨ Bonus raritate ×${RARITY_MULT[bossInfo.rarity]}` : "";
   const title = bossInfo.defeated
     ? "🏆 CLASAMENT FINAL — Dragonul a Căzut!"
     : "📜 CLASAMENT FINAL — Dragonul a Scăpat…";
@@ -883,10 +923,10 @@ export function buildBossLeaderboard(
     .setColor(bossInfo.defeated ? 0xffd700 : 0x555555)
     .setTitle(title)
     .setDescription(
-      `${rd.emoji} **Dragon Nivel ${bossInfo.level}** — ${rd.label} | HP: ${bossInfo.maxHp.toLocaleString()}\n\n` +
+      `${rd.emoji} **Dragon Nivel ${bossInfo.level}** — ${rd.label} | HP: ${bossInfo.maxHp.toLocaleString()}${rarityBonus}\n\n` +
       (lines.length > 0 ? lines.join("\n") : "_Niciun participant._"),
     )
-    .setFooter({ text: "Ora Umbrelor s-a încheiat." })
+    .setFooter({ text: "Recompensele au fost distribuite automat." })
     .setTimestamp();
 }
 
