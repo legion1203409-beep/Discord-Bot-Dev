@@ -189,26 +189,20 @@ export async function fireEvent(client: Client) {
     await cleanupOldEvents(client);
 
     const expiresAt = new Date(Date.now() + EVENT_DURATION_MS);
-    const placeholder = await channel.send({ content: "🌑 *Liniște deplină se așterne peste Regat…*" });
+
+    // Send embed first (no button yet — need event ID for customId)
+    const placeholder = await channel.send({ embeds: [buildStartEmbed()] });
     const ev = await createEvent("ora_umbrelor", placeholder.id, expiresAt);
 
-    await sleep(1100);
-    await placeholder.edit({ content: "🌑🔥 *Umbrele se trezesc în adâncuri…*" }).catch(() => null);
-    await sleep(1100);
-    await placeholder.edit({ content: "🌫️🔥 *Cenușa se ridică… ceva se apropie…*" }).catch(() => null);
-    await sleep(1100);
-    await placeholder.edit({ content: "⚔️🔥💀 *A SOSIT CEASUL!*" }).catch(() => null);
-    await sleep(700);
-
-    const joinRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    // Edit with correct button now that we have the event ID
+    const joinRowFinal = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
         .setCustomId(`ora_join_${ev.id}`)
         .setLabel("Intră în Luptă")
         .setEmoji("⚔️")
         .setStyle(ButtonStyle.Danger),
     );
-
-    await placeholder.edit({ content: "", embeds: [buildStartEmbed()], components: [joinRow] });
+    await placeholder.edit({ embeds: [buildStartEmbed()], components: [joinRowFinal] }).catch(() => null);
 
     // Main channel decree disabled — user requested only chest in chat
     // try {
