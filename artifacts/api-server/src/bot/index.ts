@@ -13,6 +13,7 @@ import {
   PermissionFlagsBits,
 } from "discord.js";
 import { logger } from "../lib/logger";
+import { sendAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./alert";
 import { startScheduler, APPLICATION_ID, fireEvent, fireChest, claimedChests } from "./scheduler";
 import {
   upsertPlayer,
@@ -80,6 +81,7 @@ const GUILD_ID = "1382035307607883816";
 
 let botClient: Client | null = null;
 let schedulerStarted = false;
+let disconnectAlertTimer: ReturnType<typeof setTimeout> | null = null;
 
 // Discord Gateway close codes that mean the session cannot be resumed.
 // discord.js will NOT auto-reconnect for these; the supervisor must restart.
@@ -624,7 +626,7 @@ async function handleButton(interaction: ButtonInteraction) {
   }
 }
 
-export async function startBot(): Promise<void> {
+export async function startBot(onReady?: () => void): Promise<void> {
   const token = process.env["DISCORD_TOKEN"];
   if (!token) {
     logger.warn("DISCORD_TOKEN not set — bot will not start");
@@ -649,11 +651,33 @@ export async function startBot(): Promise<void> {
     } else {
       logger.info("Scheduler already running — skipping re-init after restart");
     }
+    if (onReady) onReady();
   });
 
   client.on(Events.Error, (err) => {
     logger.error({ err }, "Discord client error");
   });
+
+  // Schedule a delayed alert when the shard disconnects non-fatally.
+  function scheduleDisconnectAlert(closeCode: number) {
+    if (disconnectAlertTimer) return; // already pending
+    const thresholdMin = Math.round(DISCONNECT_ALERT_THRESHOLD_MS / 60_000);
+    disconnectAlertTimer = setTimeout(() => {
+      disconnectAlertTimer = null;
+      void sendAlert(
+        `⚠️ **Bot has been offline for over ${thresholdMin} minute${thresholdMin === 1 ? "" : "s"}** and has not reconnected yet.\nShard disconnected with code ${closeCode}. Check server logs for details.`,
+      );
+    }, DISCONNECT_ALERT_THRESHOLD_MS);
+  }
+
+  // Cancel a pending disconnect alert when any reconnection path succeeds.
+  function clearDisconnectAlert(reason: string) {
+    if (disconnectAlertTimer) {
+      clearTimeout(disconnectAlertTimer);
+      disconnectAlertTimer = null;
+      logger.info({ reason }, "Disconnect alert suppressed — bot reconnected within threshold");
+    }
+  }
 
   client.on(Events.ShardDisconnect, (event, shardId) => {
     if (FATAL_CLOSE_CODES.has(event.code)) {
@@ -663,12 +687,16 @@ export async function startBot(): Promise<void> {
       );
       botClient = null;
       client.destroy();
+      void sendAlert(
+        `🚨 **Bot offline — fatal disconnect (code ${event.code}).**\nDiscord will not auto-reconnect. The bot supervisor is restarting. If it remains offline, check logs and verify \`DISCORD_TOKEN\`.`,
+      );
       rejectTerminated(new Error(`Fatal Discord Gateway close code ${event.code}`));
     } else {
       logger.warn(
         { code: event.code, shardId },
         "Discord shard disconnected — discord.js will reconnect automatically",
       );
+      scheduleDisconnectAlert(event.code);
     }
   });
 
@@ -676,8 +704,16 @@ export async function startBot(): Promise<void> {
     logger.info({ shardId }, "Discord shard reconnecting…");
   });
 
+  // Session resumed — bot reconnected via the existing session.
   client.on(Events.ShardResume, (shardId, replayedEvents) => {
+    clearDisconnectAlert("ShardResume");
     logger.info({ shardId, replayedEvents }, "Discord shard resumed");
+  });
+
+  // Shard ready — bot reconnected via a fresh identify (session expired / not resumable).
+  client.on(Events.ShardReady, (shardId) => {
+    clearDisconnectAlert("ShardReady");
+    logger.info({ shardId }, "Discord shard ready (fresh identify)");
   });
 
   client.on(Events.InteractionCreate, async (interaction) => {
