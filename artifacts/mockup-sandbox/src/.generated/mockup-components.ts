@@ -2,5 +2,12 @@
 type ModuleMap = Record<string, () => Promise<Record<string, unknown>>>;
 export const modules: ModuleMap = {
   "./components/mockups/site-a/VariantA.tsx": () => import("../components/mockups/site-a/VariantA.tsx"),
-  "./components/mockups/site-b/VariantB.tsx": () => import("../components/mockups/site-b/VariantB.tsx")
+  "./components/mockups/site-b/VariantB.tsx": () => import("../components/mockups/site-b/VariantB.tsx"),
+  "./components/mockups/video-oracolul/VideoTemplate.tsx": () => import("../components/mockups/video-oracolul/VideoTemplate.tsx"),
+  "./components/mockups/video-oracolul/index.tsx": () => import("../components/mockups/video-oracolul/index.tsx"),
+  "./components/mockups/video-oracolul/scenes/Scene1.tsx": () => import("../components/mockups/video-oracolul/scenes/Scene1.tsx"),
+  "./components/mockups/video-oracolul/scenes/Scene2.tsx": () => import("../components/mockups/video-oracolul/scenes/Scene2.tsx"),
+  "./components/mockups/video-oracolul/scenes/Scene3.tsx": () => import("../components/mockups/video-oracolul/scenes/Scene3.tsx"),
+  "./components/mockups/video-oracolul/scenes/Scene4.tsx": () => import("../components/mockups/video-oracolul/scenes/Scene4.tsx"),
+  "./components/mockups/video-oracolul/scenes/Scene5.tsx": () => import("../components/mockups/video-oracolul/scenes/Scene5.tsx")
 };
