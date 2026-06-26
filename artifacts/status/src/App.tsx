@@ -52,7 +52,6 @@ function shardLabel(status: string | null): string {
     case "reconnecting": return "Reconectare…";
     case "disconnected": return "Deconectat";
     case "fatal_disconnect": return "Eroare fatală";
-    case "disconnected": return "Deconectat";
     default: return status ?? "Necunoscut";
   }
 }

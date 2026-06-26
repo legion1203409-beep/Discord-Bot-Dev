@@ -70,7 +70,11 @@ async function startBotWithRetry() {
   }
 }
 
-startBotWithRetry();
+if (process.env.NODE_ENV === "production") {
+  startBotWithRetry();
+} else {
+  logger.info("Bot disabled in development mode — set NODE_ENV=production to enable");
+}
 
 const rawPort = process.env["PORT"];
 
