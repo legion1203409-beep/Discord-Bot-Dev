@@ -126,19 +126,16 @@ export async function fireChest(client: Client) {
     }
 
     const { rarity, gold } = rollChest();
-    const chestId = `chest_${Date.now()}`;
+    const chestId = `chest_${Date.now()}_${rarity.key}_${gold}`;
     const expireAt = Date.now() + CHEST_EXPIRE_MS;
 
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
         .setCustomId(chestId)
         .setLabel("Revendică Cufărul")
-        .setEmoji("📦")
+        .setEmoji(rarity.emoji)
         .setStyle(ButtonStyle.Success),
     );
-
-    const msg = await channel.send({ content: "✨ *Ceva strălucește în cenușă…*" });
-    lastChestMessageId = msg.id;
 
     const lockedRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
@@ -149,11 +146,41 @@ export async function fireChest(client: Client) {
         .setDisabled(true),
     );
 
-    await sleep(900);
-    await msg.edit({ content: "✨📦 *Un cufăr se ridică din adâncuri…*" }).catch(() => null);
-    await sleep(900);
-    await msg.edit({ content: "💫📦✨", embeds: [buildChestEmbed(gold, rarity)], components: [lockedRow] }).catch(() => null);
-    await sleep(600);
+    // Per-rarity reveal frames
+    const frames: Array<{ content: string; delay: number }> =
+      rarity.key === "mitic"
+        ? [
+            { content: "🌑 *Cenușa înnegrește cerul…*", delay: 700 },
+            { content: "💜 *O energie arcană pulsează prin aer…*", delay: 700 },
+            { content: "⚡💎⚡ *Puterea veche se trezește!*", delay: 700 },
+            { content: "💎🔮💎 **UN CUFĂR MITIC ÎȘI FACE APARIȚIA!!**", delay: 800 },
+          ]
+        : rarity.key === "aur"
+        ? [
+            { content: "✨ *O lumină aurie pâlpâie în depărtare…*", delay: 800 },
+            { content: "🟡✨ *Podeaua tremură. Ceva prețios se ridică…*", delay: 800 },
+            { content: "🥇🌟💰 **UN CUFĂR DE AUR!**", delay: 800 },
+          ]
+        : rarity.key === "argint"
+        ? [
+            { content: "🌫️ *Un fior rece trece prin aer…*", delay: 800 },
+            { content: "🥈✨ *Un cufăr argintiu apare din ceață!*", delay: 900 },
+          ]
+        : [
+            { content: "✨ *Ceva strălucește în cenușă…*", delay: 900 },
+            { content: "🪙📦 *Un cufăr de bronz răsare din praf…*", delay: 900 },
+          ];
+
+    const msg = await channel.send({ content: frames[0]!.content });
+    lastChestMessageId = msg.id;
+
+    for (let i = 1; i < frames.length; i++) {
+      await sleep(frames[i - 1]!.delay);
+      await msg.edit({ content: frames[i]!.content }).catch(() => null);
+    }
+    await sleep(frames[frames.length - 1]!.delay);
+    await msg.edit({ content: `${rarity.emoji}✨`, embeds: [buildChestEmbed(gold, rarity)], components: [lockedRow] }).catch(() => null);
+    await sleep(500);
     await msg.edit({ content: "", embeds: [buildChestEmbed(gold, rarity)], components: [lockedRow] }).catch(() => null);
 
     // Enable claim button after 5 seconds

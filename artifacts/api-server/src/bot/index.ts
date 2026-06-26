@@ -234,7 +234,14 @@ async function handleViewProfile(interaction: ButtonInteraction, discordId: stri
   });
 }
 
-async function handleChestClaim(interaction: ButtonInteraction, chestId: string, gold: number) {
+const CHEST_CLAIM_MSG: Record<string, (user: string, gold: number) => string> = {
+  bronz:  (u, g) => `🪙 **${u}** a deschis **Cufărul de Bronz** și a câștigat **${g} Oboli**!`,
+  argint: (u, g) => `✨🥈 **${u}** a deschis **Cufărul de Argint** și a câștigat **${g} Oboli**! Argintul strălucește!`,
+  aur:    (u, g) => `🌟🥇 **${u}** a deschis **Cufărul de Aur**! **${g} Oboli** aurii se revarsă! 💰💰`,
+  mitic:  (u, g) => `💎⚡ **${u}** a deschis un **CUFĂR MITIC**!! **${g} Oboli** răsar din adâncurile timpului! ⚡💎`,
+};
+
+async function handleChestClaim(interaction: ButtonInteraction, chestId: string, rarityKey: string, gold: number) {
   if (claimedChests.has(chestId)) {
     await interaction.reply({ content: "😔 Cineva a fost mai rapid! Cufărul a fost deja revendicat.", ephemeral: true });
     return;
@@ -263,13 +270,13 @@ async function handleChestClaim(interaction: ButtonInteraction, chestId: string,
   );
 
   await interaction.update({ components: [openingRow] });
-  await new Promise<void>((r) => setTimeout(r, 800));
+  await new Promise<void>((r) => setTimeout(r, 900));
   await interaction.message.edit({ components: [disabledRow] }).catch(() => null);
-  await interaction.followUp({
-    content: `🎉✨ **${interaction.user.username}** a deschis cufărul și a câștigat **${gold} Oboli**! 💰🪙`,
-  });
 
-  logger.info({ discordId: interaction.user.id, chestId, gold }, "Chest claimed");
+  const claimMsg = CHEST_CLAIM_MSG[rarityKey] ?? CHEST_CLAIM_MSG["bronz"]!;
+  await interaction.followUp({ content: claimMsg(interaction.user.username, gold) });
+
+  logger.info({ discordId: interaction.user.id, chestId, rarityKey, gold }, "Chest claimed");
 }
 
 async function handleJoin(interaction: ButtonInteraction, eventId: number) {
@@ -728,16 +735,23 @@ async function handleButton(interaction: ButtonInteraction) {
   }
 
   if (id.startsWith("chest_") && !id.endsWith("_claimed") && !id.endsWith("_expired") && !id.endsWith("_opening")) {
-    const match = id.match(/^(chest_\d+)_(\d+)$/);
-    if (match) {
-      return handleChestClaim(interaction, match[1]!, parseInt(match[2]!));
+    // New format: chest_{ts}_{rarityKey}_{gold}
+    const newMatch = id.match(/^(chest_\d+)_(\w+)_(\d+)$/);
+    if (newMatch) {
+      return handleChestClaim(interaction, newMatch[1]!, newMatch[2]!, parseInt(newMatch[3]!));
     }
+    // Legacy format: chest_{ts}_{gold}
+    const legacyMatch = id.match(/^(chest_\d+)_(\d+)$/);
+    if (legacyMatch) {
+      return handleChestClaim(interaction, legacyMatch[1]!, "bronz", parseInt(legacyMatch[2]!));
+    }
+    // Oldest format: chest_{ts} — extract gold from embed
     const simpleMatch = id.match(/^(chest_\d+)$/);
     if (simpleMatch) {
       const msgEmbed = interaction.message.embeds[0];
       const goldMatch = msgEmbed?.description?.match(/\*\*(\d+) Oboli\*\*/);
       const gold = goldMatch ? parseInt(goldMatch[1]!) : 50;
-      return handleChestClaim(interaction, simpleMatch[1]!, gold);
+      return handleChestClaim(interaction, simpleMatch[1]!, "bronz", gold);
     }
   }
 

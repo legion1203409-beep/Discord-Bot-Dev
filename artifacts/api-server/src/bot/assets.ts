@@ -22,10 +22,10 @@ export const IMG = {
 };
 
 export const CHEST_IMG: Record<string, string | null> = {
-  bronz:  assetUrl("chest_bronz.png"),
-  argint: assetUrl("chest_argint.png"),
-  aur:    assetUrl("chest_aur.png"),
-  mitic:  assetUrl("chest_mitic.png"),
+  bronz:  assetUrl("chest_bronz.gif"),
+  argint: assetUrl("chest_argint.gif"),
+  aur:    assetUrl("chest_aur.gif"),
+  mitic:  assetUrl("chest_mitic.gif"),
 };
 
 export const COMPANION_IMG: Record<string, { base: string | null; evo: string | null }> = {
