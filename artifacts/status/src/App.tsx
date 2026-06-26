@@ -1,6 +1,6 @@
 import "./index.css";
 
-const DISCORD_INVITE = "https://discord.gg/regatul-cenusii";
+const DISCORD_INVITE = "https://discord.gg/JNYsGeMhzm";
 
 const features = [
   {
