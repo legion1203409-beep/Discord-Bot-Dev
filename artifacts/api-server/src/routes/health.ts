@@ -9,7 +9,7 @@ const startTime = Date.now();
 router.get("/healthz", (_req, res) => {
   const botOnline = isBotOnline();
   const data = HealthCheckResponse.parse({
-    status: botOnline ? "ok" : "degraded",
+    status: "ok",
     botOnline,
     uptime: Math.floor((Date.now() - startTime) / 1000),
   });

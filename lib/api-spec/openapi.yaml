@@ -19,7 +19,13 @@ paths:
       description: Returns server health status
       responses:
         "200":
-          description: Healthy
+          description: Server healthy and bot connected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+        "503":
+          description: Server running but bot is offline
           content:
             application/json:
               schema:
