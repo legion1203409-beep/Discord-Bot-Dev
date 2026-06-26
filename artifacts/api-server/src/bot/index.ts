@@ -82,14 +82,24 @@ const GUILD_ID = "1382035307607883816";
 let botClient: Client | null = null;
 let schedulerStarted = false;
 let disconnectAlertTimer: ReturnType<typeof setTimeout> | null = null;
-
-// Discord Gateway close codes that mean the session cannot be resumed.
-// discord.js will NOT auto-reconnect for these; the supervisor must restart.
-const FATAL_CLOSE_CODES = new Set([4004, 4010, 4011, 4013, 4014]);
+let botReadyAt: Date | null = null;
+let shardStatus: string = "disconnected";
 
 export function isBotOnline(): boolean {
   return botClient !== null && botClient.isReady();
 }
+
+export function getBotReadyAt(): Date | null {
+  return botReadyAt;
+}
+
+export function getShardStatus(): string {
+  return shardStatus;
+}
+
+// Discord Gateway close codes that mean the session cannot be resumed.
+// discord.js will NOT auto-reconnect for these; the supervisor must restart.
+const FATAL_CLOSE_CODES = new Set([4004, 4010, 4011, 4013, 4014]);
 
 const slashCommands = [
   new SlashCommandBuilder().setName("profil").setDescription("📜 Statisticile tale din Regatul Cenușii."),
@@ -645,6 +655,8 @@ export async function startBot(onReady?: () => void): Promise<void> {
   client.once(Events.ClientReady, async (c) => {
     logger.info({ tag: c.user.tag }, "✅ Discord bot online and ready");
     botClient = client;
+    botReadyAt = new Date();
+    shardStatus = "ready";
     if (!schedulerStarted) {
       schedulerStarted = true;
       startScheduler(client);
@@ -686,6 +698,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
         "Fatal Discord disconnect — discord.js will not reconnect; bot supervisor will restart",
       );
       botClient = null;
+      shardStatus = "fatal_disconnect";
       client.destroy();
       void sendAlert(
         `🚨 **Bot offline — fatal disconnect (code ${event.code}).**\nDiscord will not auto-reconnect. The bot supervisor is restarting. If it remains offline, check logs and verify \`DISCORD_TOKEN\`.`,
@@ -696,23 +709,29 @@ export async function startBot(onReady?: () => void): Promise<void> {
         { code: event.code, shardId },
         "Discord shard disconnected — discord.js will reconnect automatically",
       );
+      shardStatus = "disconnected";
       scheduleDisconnectAlert(event.code);
     }
   });
 
   client.on(Events.ShardReconnecting, (shardId) => {
     logger.info({ shardId }, "Discord shard reconnecting…");
+    shardStatus = "reconnecting";
   });
 
   // Session resumed — bot reconnected via the existing session.
   client.on(Events.ShardResume, (shardId, replayedEvents) => {
     clearDisconnectAlert("ShardResume");
+    shardStatus = "ready";
+    botReadyAt = new Date();
     logger.info({ shardId, replayedEvents }, "Discord shard resumed");
   });
 
   // Shard ready — bot reconnected via a fresh identify (session expired / not resumable).
   client.on(Events.ShardReady, (shardId) => {
     clearDisconnectAlert("ShardReady");
+    shardStatus = "ready";
+    botReadyAt = new Date();
     logger.info({ shardId }, "Discord shard ready (fresh identify)");
   });
 

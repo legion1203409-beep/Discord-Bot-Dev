@@ -9,5 +9,11 @@ export interface HealthStatus {
   status: string;
   botOnline: boolean;
   uptime: number;
+  /** ISO timestamp of when the bot last became ready/reconnected (null if never connected) */
+  botReadyAt: string | null;
+  /** Seconds since the bot last became ready (0 if never connected or currently offline) */
+  botUptime: number;
+  /** Current shard connection state */
+  shardStatus: string | null;
 }
 

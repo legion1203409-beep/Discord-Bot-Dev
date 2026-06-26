@@ -15,7 +15,10 @@ import * as zod from 'zod';
 export const HealthCheckResponse = zod.object({
   "status": zod.string(),
   "botOnline": zod.boolean(),
-  "uptime": zod.number()
+  "uptime": zod.number(),
+  "botReadyAt": zod.string().nullable().describe('ISO timestamp of when the bot last became ready\/reconnected (null if never connected)'),
+  "botUptime": zod.number().describe('Seconds since the bot last became ready (0 if never connected or currently offline)'),
+  "shardStatus": zod.string().nullable().describe('Current shard connection state')
 })
 
 

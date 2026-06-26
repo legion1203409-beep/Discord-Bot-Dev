@@ -41,8 +41,22 @@ components:
           type: boolean
         uptime:
           type: number
+        botReadyAt:
+          type: string
+          nullable: true
+          description: ISO timestamp of when the bot last became ready/reconnected (null if never connected)
+        botUptime:
+          type: number
+          description: Seconds since the bot last became ready (0 if never connected or currently offline)
+        shardStatus:
+          type: string
+          nullable: true
+          description: Current shard connection state
       required:
         - status
         - botOnline
         - uptime
+        - botReadyAt
+        - botUptime
+        - shardStatus
 

@@ -1,3 +1,5 @@
+import { useQuery } from "@tanstack/react-query";
+import { getHealthCheckQueryOptions } from "@workspace/api-client-react";
 import "./index.css";
 
 const DISCORD_INVITE = "https://discord.gg/JNYsGeMhzm";
@@ -18,6 +20,97 @@ const companions = [
   { name: "Golem de Fum", icon: "🗿", bonus: "-1 dmg primit" },
 ];
 
+function formatDuration(seconds: number): string {
+  if (seconds === 0) return "—";
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (d > 0) return `${d}z ${h}h ${m}m`;
+  if (h > 0) return `${h}h ${m}m ${s}s`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
+function formatLastSeen(isoString: string | null): string {
+  if (!isoString) return "Niciodată";
+  const date = new Date(isoString);
+  return date.toLocaleString("ro-RO", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+}
+
+function shardLabel(status: string | null): string {
+  switch (status) {
+    case "ready": return "Conectat";
+    case "reconnecting": return "Reconectare…";
+    case "disconnected": return "Deconectat";
+    case "fatal_disconnect": return "Eroare fatală";
+    case "disconnected": return "Deconectat";
+    default: return status ?? "Necunoscut";
+  }
+}
+
+function BotStatus() {
+  const { data, isLoading, isError } = useQuery({
+    ...getHealthCheckQueryOptions(),
+    refetchInterval: 15_000,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="bot-status-card bot-status-loading">
+        <div className="bot-status-indicator bot-status-indicator--pulse" />
+        <span className="bot-status-text">Se încarcă…</span>
+      </div>
+    );
+  }
+
+  if (isError || !data) {
+    return (
+      <div className="bot-status-card bot-status-offline">
+        <div className="bot-status-indicator bot-status-indicator--offline" />
+        <span className="bot-status-text">Server API indisponibil</span>
+      </div>
+    );
+  }
+
+  const online = data.botOnline;
+
+  return (
+    <div className={`bot-status-card ${online ? "bot-status-online" : "bot-status-offline"}`}>
+      <div className="bot-status-header">
+        <div className={`bot-status-indicator ${online ? "bot-status-indicator--online" : "bot-status-indicator--offline"}`} />
+        <span className="bot-status-badge">{online ? "Online" : "Offline"}</span>
+        <span className="bot-status-name">Oracolul Cenușii</span>
+      </div>
+      <div className="bot-status-grid">
+        <div className="bot-status-item">
+          <span className="bot-status-label">Uptime bot</span>
+          <span className="bot-status-value">{online ? formatDuration(data.botUptime) : "—"}</span>
+        </div>
+        <div className="bot-status-item">
+          <span className="bot-status-label">Ultima conectare</span>
+          <span className="bot-status-value">{formatLastSeen(data.botReadyAt)}</span>
+        </div>
+        <div className="bot-status-item">
+          <span className="bot-status-label">Stare shard</span>
+          <span className={`bot-status-value bot-status-shard ${online ? "bot-status-shard--ok" : "bot-status-shard--err"}`}>
+            {shardLabel(data.shardStatus)}
+          </span>
+        </div>
+      </div>
+      <p className="bot-status-refresh">Actualizat automat la fiecare 15 secunde</p>
+    </div>
+  );
+}
+
 export default function App() {
   return (
     <div className="site-root">
@@ -25,6 +118,7 @@ export default function App() {
       <nav className="nav">
         <span className="nav-logo">⚰ Regatul Cenușii</span>
         <div className="nav-links">
+          <a href="#status">Status</a>
           <a href="#sisteme">Sisteme</a>
           <a href="#tovarasi">Tovarăși</a>
           <a href={DISCORD_INVITE} target="_blank" rel="noopener noreferrer" className="btn-discord-sm">
@@ -56,6 +150,15 @@ export default function App() {
               <div className="stat-label">{l}</div>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* BOT STATUS */}
+      <section id="status" className="section-status">
+        <div className="section-status-inner">
+          <h2 className="section-title">Status Bot</h2>
+          <p className="section-sub">Starea în timp real a Oracolului Cenușii</p>
+          <BotStatus />
         </div>
       </section>
 
