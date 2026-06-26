@@ -159,4 +159,5 @@ overrides:
   "@esbuild-kit/esm-loader": "npm:tsx@^4.21.0"
   esbuild: "0.28.1"
   # undici <6.27.0 has multiple CVEs (GHSA-vxpw-j846-p89q, GHSA-p88m-4jfj-68fv, GHSA-35p6-xmwp-9g52, GHSA-g8m3-5g58-fq7m)
-  undici: ">=6.27.0"
+  # Capped at <7 because discord.js is incompatible with undici 8.x (Symbol(sensitiveHeaders) breaks Headers ctor)
+  undici: "^6.27.0"
