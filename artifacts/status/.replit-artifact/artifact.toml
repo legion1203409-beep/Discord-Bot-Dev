@@ -12,7 +12,7 @@ version = "1.0.0"
 
 [[services]]
 name = "web"
-paths = ["/", "/api"]
+paths = ["/"]
 localPort = 25104
 
 [services.development]
@@ -26,16 +26,5 @@ args = ["sh", "-c", "pnpm --filter @workspace/status run build && pnpm --filter 
 [services.production.build.env]
 NODE_ENV = "production"
 
-[services.production.run]
-args = ["node", "--enable-source-maps", "artifacts/api-server/dist/index.mjs"]
-
-[services.production.run.env]
-PORT = "25104"
-NODE_ENV = "production"
-
 [services.production.health.startup]
-path = "/api/healthz"
-
-[services.env]
-PORT = "25104"
-BASE_PATH = "/"
+path = "/"
