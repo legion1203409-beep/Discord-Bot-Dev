@@ -30,6 +30,7 @@ export interface BossState {
   lastHitAt: Map<string, number>;   // discordId → timestamp of last hit
   damageBy: Map<string, number>;    // discordId → total damage dealt to boss
   playerHp: Map<string, number>;    // discordId → current HP during boss fight
+  playerNames: Map<string, string>; // discordId → username (for embed + leaderboard)
   participants: Array<{ username: string; discordId: string; monsterLevel: number; totalDamage: number; isAlive: boolean }>;
   defeated: boolean;
 }
@@ -306,6 +307,7 @@ export async function fireFinalBoss(client: Client, eventId: number) {
       lastHitAt: new Map(),
       damageBy: new Map(),
       playerHp: new Map(),
+      playerNames: new Map(),
       participants: participants.map((p) => ({
         username: p.username,
         discordId: p.discordId,
@@ -325,23 +327,9 @@ export async function fireFinalBoss(client: Client, eventId: number) {
       try {
         const ch = await client.channels.fetch(EVENT_CHANNEL_ID).catch(() => null);
         if (!(ch instanceof TextChannel)) return;
-        // Disable the boss button
+        // Delete the boss message, then send leaderboard
         const bossMsg = await ch.messages.fetch(boss.messageId).catch(() => null);
-        if (bossMsg) {
-          const deadRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-            new ButtonBuilder()
-              .setCustomId(`finalboss_dead_${eventId}`)
-              .setLabel("Dragonul a Scăpat…")
-              .setEmoji("💨")
-              .setStyle(ButtonStyle.Secondary)
-              .setDisabled(true),
-          );
-          await bossMsg.edit({
-            embeds: [buildFinalBossEmbed(boss.level, boss.rarity, boss.currentHp, boss.maxHp)],
-            components: [deadRow],
-          }).catch(() => null);
-        }
-        // Send leaderboard
+        await bossMsg?.delete().catch(() => null);
         const leaderboard = buildBossLeaderboard(boss, boss.damageBy, boss.participants);
         await ch.send({ embeds: [leaderboard] }).catch(() => null);
       } catch { /* ignore */ }

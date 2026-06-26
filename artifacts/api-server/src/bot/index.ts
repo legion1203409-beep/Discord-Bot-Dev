@@ -603,23 +603,20 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
     return;
   }
 
-  const p = await getParticipant(eventId, interaction.user.id);
-  if (!p) {
-    await interaction.followUp({ content: "❌ Doar cei care au intrat în luptă pot lovi Dragonul Stins!", flags: MessageFlags.Ephemeral });
-    return;
-  }
-  if (!p.isAlive) {
-    await interaction.followUp({ content: "💀 Doar cei vii îl pot lovi pe Dragonul Stins.", flags: MessageFlags.Ephemeral });
-    return;
-  }
+  // Anyone can fight the boss — just need to be registered
+  const player = await upsertPlayer(interaction.user.id, interaction.user.username);
 
   const uid = interaction.user.id;
 
-  // Initialize player HP from their remaining HP at end of event (first hit)
+  // Store username for embed + leaderboard
+  boss.playerNames.set(uid, interaction.user.username);
+
+  // Initialize player HP from global max HP (first hit only)
   if (!boss.playerHp.has(uid)) {
-    boss.playerHp.set(uid, Math.max(10, p.currentHp));
+    boss.playerHp.set(uid, Math.max(10, 100 + player.maxHpBonus));
   }
   const myHp = boss.playerHp.get(uid)!;
+  const myMaxHp = 100 + player.maxHpBonus;
 
   // Dead players can't attack
   if (myHp <= 0) {
@@ -633,21 +630,20 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
   if (elapsed < BOSS_HIT_COOLDOWN_MS) {
     const remaining = Math.ceil((BOSS_HIT_COOLDOWN_MS - elapsed) / 1000);
     await interaction.followUp({
-      content: `⏳ Recuperare… mai poți lovi în **${remaining}s**!\n❤️ Viața ta: **${myHp} HP** | 🐉 Dragon: **${boss.currentHp.toLocaleString()} / ${boss.maxHp.toLocaleString()} HP**`,
+      content: `⏳ Recuperare… mai poți lovi în **${remaining}s**!\n❤️ Viața ta: **${myHp} / ${myMaxHp} HP** | 🐉 Dragon: **${boss.currentHp.toLocaleString()} / ${boss.maxHp.toLocaleString()} HP**`,
       flags: MessageFlags.Ephemeral,
     });
     return;
   }
 
-  // Player damage based on attack stat
-  const minDmg = Math.max(30, p.attackBonus * 5 + 20);
-  const maxDmg = Math.max(80, p.attackBonus * 15 + 60);
+  // Player damage based on global attack stat
+  const minDmg = Math.max(30, player.attackBonus * 5 + 20);
+  const maxDmg = Math.max(80, player.attackBonus * 15 + 60);
   const playerDmg = Math.floor(Math.random() * (maxDmg - minDmg + 1)) + minDmg;
 
   // Boss counter-attack — REAL damage to player HP
   const rawBossHit = Math.floor(Math.random() * 121) + 80; // 80–200
-  const shieldActive = false; // future: p.shieldNext
-  const bossHit = shieldActive ? Math.floor(rawBossHit / 2) : rawBossHit;
+  const bossHit = rawBossHit;
   const newPlayerHp = Math.max(0, myHp - bossHit);
 
   // Apply damage
@@ -670,26 +666,13 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
       addPlayerXp(discordId, 250),
     ]));
 
-    // Update boss message + send leaderboard
+    // Delete boss message and send leaderboard
     try {
       const ch = await interaction.client.channels.fetch(EVENT_CHANNEL_ID);
       if (ch instanceof TextChannel) {
         const bossMsg = await ch.messages.fetch(boss.messageId).catch(() => null);
-        if (bossMsg) {
-          const deadRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-            new ButtonBuilder()
-              .setCustomId(`finalboss_dead_${eventId}`)
-              .setLabel("Dragonul a căzut!")
-              .setEmoji("💀")
-              .setStyle(ButtonStyle.Secondary)
-              .setDisabled(true),
-          );
-          await bossMsg.edit({
-            embeds: [buildFinalBossEmbed(boss.level, boss.rarity, 0, boss.maxHp)],
-            components: [deadRow],
-          }).catch(() => null);
-        }
-        const leaderboard = buildBossLeaderboard(boss, boss.damageBy, boss.participants);
+        await bossMsg?.delete().catch(() => null);
+        const leaderboard = buildBossLeaderboard(boss, boss.damageBy, boss.participants, boss.playerNames);
         await ch.send({ embeds: [leaderboard] }).catch(() => null);
       }
     } catch { /* ignore */ }
@@ -703,14 +686,14 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
     return;
   }
 
-  // Update boss embed with new HP
+  // Update boss embed with new HP + live damage list
   try {
     const ch = await interaction.client.channels.fetch(EVENT_CHANNEL_ID);
     if (ch instanceof TextChannel) {
       const bossMsg = await ch.messages.fetch(boss.messageId).catch(() => null);
       if (bossMsg) {
         await bossMsg.edit({
-          embeds: [buildFinalBossEmbed(boss.level, boss.rarity, boss.currentHp, boss.maxHp)],
+          embeds: [buildFinalBossEmbed(boss.level, boss.rarity, boss.currentHp, boss.maxHp, boss.damageBy, boss.playerNames)],
           components: [finalBossRow(eventId)],
         }).catch(() => null);
       }
@@ -719,9 +702,9 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
 
   const playerStatus = newPlayerHp <= 0
     ? `💀 **Ai fost doborât de Dragon!** Nu mai poți lovi.`
-    : `❤️ Viața ta: **${newPlayerHp} / ${Math.max(10, p.currentHp)} HP**`;
+    : `❤️ Viața ta: **${newPlayerHp} / ${myMaxHp} HP**`;
 
-  await interaction.reply({
+  await interaction.followUp({
     content:
       `⚔️ Ai lovit Dragonul pentru **${playerDmg.toLocaleString()} daune**!\n` +
       `🐉 Dragonul te lovește pentru **${bossHit} daune**! ${playerStatus}\n` +

@@ -784,6 +784,8 @@ export function buildFinalBossEmbed(
   rarity: BossRarity = "comun",
   currentHp?: number,
   maxHp?: number,
+  damageBy?: Map<string, number>,
+  playerNames?: Map<string, string>,
 ): EmbedBuilder {
   const rd = BOSS_RARITY_DATA[rarity];
   const defeated = currentHp !== undefined && currentHp <= 0;
@@ -796,19 +798,29 @@ export function buildFinalBossEmbed(
   if (currentHp !== undefined && maxHp !== undefined) {
     const bar = buildHpBar(currentHp, maxHp);
     const pct = Math.round((Math.max(0, currentHp) / maxHp) * 100);
-    desc += `❤️ **${Math.max(0, currentHp).toLocaleString()} / ${maxHp.toLocaleString()} HP**\n\`[${bar}]\` ${pct}%\n\n`;
+    desc += `❤️ **${Math.max(0, currentHp).toLocaleString()} / ${maxHp.toLocaleString()} HP**\n\`[${bar}]\` ${pct}%\n`;
   } else {
     desc += "\n";
   }
 
+  // Live damage leaderboard
+  if (damageBy && damageBy.size > 0 && playerNames) {
+    const sorted = [...damageBy.entries()].sort((a, b) => b[1] - a[1]);
+    const medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"];
+    const lines = sorted.slice(0, 5).map(([id, dmg], i) => {
+      const name = playerNames.get(id) ?? "???";
+      return `${medals[i] ?? `${i + 1}.`} **${name}** — ${dmg.toLocaleString()} dmg`;
+    });
+    desc += `\n⚔️ **Luptători:**\n${lines.join("\n")}\n`;
+  }
+
   if (defeated) {
-    desc += "💀 **Dragonul Stins a căzut! Regatul este salvat!**\n\nToți participanții au primit recompensa!";
+    desc += "\n💀 **Dragonul Stins a căzut! Regatul este salvat!**\n\nToți participanții au primit recompensa!";
   } else {
     desc +=
-      "🐉 Dragonul Stins coboară din Abis. Doar cei vii îl pot lovi.\n" +
-      "Cei care îndrăznesc să-l lovească primesc un **dar special**:\n" +
-      "🏅 **+50 Reputație, +150 Oboli, +250 XP**\n\n" +
-      "⚔️ Lovește-l împreună cu echipa! Cooldown per jucător: **4 secunde**.";
+      "\n🐉 Lovește-l împreună cu echipa! Oricine poate participa.\n" +
+      "🏅 **+50 Reputație, +150 Oboli, +250 XP** pentru toți luptătorii\n" +
+      "⏱️ Cooldown per jucător: **4 secunde**";
   }
 
   const embed = new EmbedBuilder()
@@ -818,7 +830,7 @@ export function buildFinalBossEmbed(
     .setImage(IMG.monster);
 
   if (!defeated) {
-    embed.setFooter({ text: "Eventul se încheie în curând…" });
+    embed.setFooter({ text: "Boss activ — 5 minute" });
   }
 
   return embed;
@@ -828,10 +840,27 @@ export function buildBossLeaderboard(
   bossInfo: { level: number; rarity: BossRarity; maxHp: number; defeated: boolean },
   damageMap: Map<string, number>,
   participants: Array<{ username: string; discordId: string; monsterLevel: number; totalDamage: number; isAlive: boolean }>,
+  playerNames?: Map<string, string>,
 ): EmbedBuilder {
   const rd = BOSS_RARITY_DATA[bossInfo.rarity];
-  const ranked = participants
-    .map((p) => ({ ...p, bossDamage: damageMap.get(p.discordId) ?? 0 }))
+
+  // Build a unified map of everyone who did damage
+  const allIds = new Set([...damageMap.keys(), ...participants.map((p) => p.discordId)]);
+  const participantMap = new Map(participants.map((p) => [p.discordId, p]));
+
+  const ranked = [...allIds]
+    .map((id) => {
+      const p = participantMap.get(id);
+      const name = p?.username ?? playerNames?.get(id) ?? "???";
+      return {
+        discordId: id,
+        username: name,
+        bossDamage: damageMap.get(id) ?? 0,
+        monsterLevel: p?.monsterLevel ?? 0,
+        totalDamage: p?.totalDamage ?? 0,
+        inEvent: !!p,
+      };
+    })
     .sort((a, b) => b.bossDamage - a.bossDamage || b.monsterLevel - a.monsterLevel);
 
   const medals = ["🥇", "🥈", "🥉"];
@@ -840,7 +869,10 @@ export function buildBossLeaderboard(
     const bossStr = p.bossDamage > 0
       ? `🐉 ${p.bossDamage.toLocaleString()} daune Dragon`
       : `🐉 Nu a lovit Dragonul`;
-    return `${medal} **${p.username}** — ${bossStr} | 🎚️ Nivel **${p.monsterLevel}** | 💥 ${p.totalDamage.toLocaleString()} daune Event`;
+    if (p.inEvent) {
+      return `${medal} **${p.username}** — ${bossStr} | 🎚️ Nivel **${p.monsterLevel}** | 💥 ${p.totalDamage.toLocaleString()} daune Event`;
+    }
+    return `${medal} **${p.username}** — ${bossStr}`;
   });
 
   const title = bossInfo.defeated
