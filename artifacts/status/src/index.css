@@ -324,17 +324,17 @@ a { color: inherit; text-decoration: none; }
   aspect-ratio: 16 / 9;
   min-height: 340px;
   background:
-    radial-gradient(ellipse at 30% 40%, rgba(139,0,0,0.07) 0%, transparent 55%),
-    radial-gradient(ellipse at 75% 65%, rgba(88,101,242,0.06) 0%, transparent 50%),
-    radial-gradient(ellipse at 50% 50%, rgba(212,160,23,0.04) 0%, transparent 70%),
-    linear-gradient(155deg, #0c0a10 0%, #0a080e 40%, #0e0a0c 100%);
-  border: 1px solid rgba(200,170,110,0.15);
+    radial-gradient(ellipse at 30% 40%, rgba(139,0,0,0.18) 0%, transparent 45%),
+    radial-gradient(ellipse at 75% 65%, rgba(88,101,242,0.12) 0%, transparent 40%),
+    linear-gradient(155deg, rgba(8,6,10,0.72) 0%, rgba(6,5,8,0.65) 100%),
+    url('/map-bg.png') center / cover no-repeat;
+  border: 1px solid rgba(200,170,110,0.2);
   border-radius: 12px;
   overflow: visible;
   box-shadow:
-    0 0 0 1px rgba(200,170,110,0.06),
+    0 0 0 1px rgba(200,170,110,0.08),
     0 0 60px rgba(0,0,0,0.6),
-    inset 0 0 80px rgba(0,0,0,0.4);
+    inset 0 0 120px rgba(0,0,0,0.55);
 }
 
 /* Corner ornaments */

@@ -90,6 +90,12 @@ uri = "file://artifacts/api-server/assets/chest_mitic.png"
 type = "image"
 title = "mythic chest"
 
+[[generated]]
+id = "Fa_2JCHanwrLm-uLcK9rA"
+uri = "file://artifacts/status/public/map-bg.png"
+type = "image"
+title = "generated_image"
+
 [[outputs]]
 id = "Xv7osCIljB2ivkCRjsX9M"
 uri = "file://artifacts/api-server/assets/chest_bronz.png"
@@ -113,3 +119,9 @@ id = "RSCyyL58lsV6Gdx4GOALT"
 uri = "file://artifacts/api-server/assets/chest_mitic.png"
 type = "image"
 title = "💎 Cufăr Mitic"
+
+[[outputs]]
+id = "70n4GhlR09OsrR1BGS32k"
+uri = "file://artifacts/status/public/map-bg.png"
+type = "image"
+title = "Harta generată — fundal Pagina 2"
