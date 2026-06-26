@@ -79,6 +79,11 @@ import {
 const GUILD_ID = "1382035307607883816";
 
 let botClient: Client | null = null;
+let schedulerStarted = false;
+
+// Discord Gateway close codes that mean the session cannot be resumed.
+// discord.js will NOT auto-reconnect for these; the supervisor must restart.
+const FATAL_CLOSE_CODES = new Set([4004, 4010, 4011, 4013, 4014]);
 
 export function isBotOnline(): boolean {
   return botClient !== null && botClient.isReady();
@@ -619,16 +624,60 @@ async function handleButton(interaction: ButtonInteraction) {
   }
 }
 
-export async function startBot() {
+export async function startBot(): Promise<void> {
   const token = process.env["DISCORD_TOKEN"];
-  if (!token) { logger.warn("DISCORD_TOKEN not set"); return; }
+  if (!token) {
+    logger.warn("DISCORD_TOKEN not set — bot will not start");
+    return;
+  }
 
   const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
+  // `terminated` rejects when a fatal Gateway close code is received.
+  // It stays pending for non-fatal disconnects — discord.js handles those.
+  let rejectTerminated!: (err: Error) => void;
+  const terminated = new Promise<void>((_, reject) => {
+    rejectTerminated = reject;
+  });
+
   client.once(Events.ClientReady, async (c) => {
-    logger.info({ tag: c.user.tag }, "Discord bot ready");
+    logger.info({ tag: c.user.tag }, "✅ Discord bot online and ready");
     botClient = client;
-    startScheduler(client);
+    if (!schedulerStarted) {
+      schedulerStarted = true;
+      startScheduler(client);
+    } else {
+      logger.info("Scheduler already running — skipping re-init after restart");
+    }
+  });
+
+  client.on(Events.Error, (err) => {
+    logger.error({ err }, "Discord client error");
+  });
+
+  client.on(Events.ShardDisconnect, (event, shardId) => {
+    if (FATAL_CLOSE_CODES.has(event.code)) {
+      logger.error(
+        { code: event.code, shardId },
+        "Fatal Discord disconnect — discord.js will not reconnect; bot supervisor will restart",
+      );
+      botClient = null;
+      client.destroy();
+      rejectTerminated(new Error(`Fatal Discord Gateway close code ${event.code}`));
+    } else {
+      logger.warn(
+        { code: event.code, shardId },
+        "Discord shard disconnected — discord.js will reconnect automatically",
+      );
+    }
+  });
+
+  client.on(Events.ShardReconnecting, (shardId) => {
+    logger.info({ shardId }, "Discord shard reconnecting…");
+  });
+
+  client.on(Events.ShardResume, (shardId, replayedEvents) => {
+    logger.info({ shardId, replayedEvents }, "Discord shard resumed");
   });
 
   client.on(Events.InteractionCreate, async (interaction) => {
@@ -656,4 +705,7 @@ export async function startBot() {
   await rest.put(Routes.applicationCommands(APPLICATION_ID), { body: [] });
   await rest.put(Routes.applicationGuildCommands(APPLICATION_ID, GUILD_ID), { body });
   logger.info("Commands registered");
+
+  // Hold here until a fatal disconnect signals the supervisor to restart.
+  await terminated;
 }
