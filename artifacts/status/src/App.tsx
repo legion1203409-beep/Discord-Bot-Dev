@@ -203,6 +203,15 @@ function MapPage() {
   );
 }
 
+const EMBERS = Array.from({ length: 26 }, (_, i) => ({
+  id: i,
+  left: Math.random() * 100,
+  delay: Math.random() * 8,
+  duration: 6 + Math.random() * 7,
+  size: 2 + Math.random() * 4,
+  drift: (Math.random() - 0.5) * 120,
+}));
+
 function GatePage({ onEnter }: { onEnter: () => void }) {
   const [opening, setOpening] = useState(false);
 
@@ -214,20 +223,38 @@ function GatePage({ onEnter }: { onEnter: () => void }) {
 
   return (
     <div className={`gate-page ${opening ? "gate-page--opening" : ""}`}>
+      {/* Gate image */}
+      <div className="gate-img-wrap">
+        <img src="/gate.png" alt="Poarta Regatului Cenușii" className="gate-img" />
+        <div className="gate-img-vignette" />
+      </div>
+
       {/* Smoke layers */}
       <div className="smoke smoke-1" />
       <div className="smoke smoke-2" />
       <div className="smoke smoke-3" />
       <div className="smoke smoke-4" />
 
+      {/* Floating embers */}
+      <div className="embers">
+        {EMBERS.map((e) => (
+          <span
+            key={e.id}
+            className="ember"
+            style={{
+              left: `${e.left}%`,
+              width: `${e.size}px`,
+              height: `${e.size}px`,
+              animationDelay: `${e.delay}s`,
+              animationDuration: `${e.duration}s`,
+              "--drift": `${e.drift}px`,
+            } as React.CSSProperties}
+          />
+        ))}
+      </div>
+
       {/* Light flash on open */}
       <div className={`gate-flash ${opening ? "gate-flash--active" : ""}`} />
-
-      {/* Gate image */}
-      <div className="gate-img-wrap">
-        <img src="/gate.png" alt="Poarta Regatului Cenușii" className="gate-img" />
-        <div className="gate-img-vignette" />
-      </div>
 
       {/* Overlay content */}
       <div className="gate-overlay">
@@ -240,6 +267,7 @@ function GatePage({ onEnter }: { onEnter: () => void }) {
         >
           ⚔️ INTRĂ ÎN REGAT
         </button>
+        <span className="gate-scroll-hint">▾</span>
       </div>
     </div>
   );
