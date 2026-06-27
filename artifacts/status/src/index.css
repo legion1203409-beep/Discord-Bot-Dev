@@ -391,11 +391,7 @@ a { color: inherit; text-decoration: none; }
   width: 100%;
   aspect-ratio: 16 / 9;
   min-height: 340px;
-  background:
-    radial-gradient(ellipse at 30% 40%, rgba(139,0,0,0.18) 0%, transparent 45%),
-    radial-gradient(ellipse at 75% 65%, rgba(88,101,242,0.12) 0%, transparent 40%),
-    linear-gradient(155deg, rgba(8,6,10,0.72) 0%, rgba(6,5,8,0.65) 100%),
-    url('/map-bg.png') center / cover no-repeat;
+  background: #08060a;
   border: 1px solid rgba(200,170,110,0.2);
   border-radius: 12px;
   overflow: visible;
@@ -403,6 +399,74 @@ a { color: inherit; text-decoration: none; }
     0 0 0 1px rgba(200,170,110,0.08),
     0 0 60px rgba(0,0,0,0.6),
     inset 0 0 120px rgba(0,0,0,0.55);
+}
+
+/* Zooming clips the scaled background inside the frame */
+.fantasy-map-frame--zooming {
+  overflow: hidden;
+}
+
+/* Background image layer — zooms toward the clicked zone */
+.map-bg-img {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: 12px;
+  background:
+    radial-gradient(ellipse at 30% 40%, rgba(139,0,0,0.18) 0%, transparent 45%),
+    radial-gradient(ellipse at 75% 65%, rgba(88,101,242,0.12) 0%, transparent 40%),
+    linear-gradient(155deg, rgba(8,6,10,0.72) 0%, rgba(6,5,8,0.65) 100%),
+    url('/map-bg.png') center / cover no-repeat;
+  transform: scale(1);
+  transition: transform 1.4s cubic-bezier(0.7, 0, 0.2, 1);
+  will-change: transform;
+}
+
+/* Elements that fade away during the zoom-in */
+.map-faded {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transition: opacity 0.6s ease !important;
+  animation: none !important;
+}
+
+/* Zone name that fades in while zooming */
+.map-zoom-label {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 30%, rgba(6,5,8,0.55) 100%);
+  opacity: 0;
+  animation: zoom-label-in 1.6s ease forwards;
+}
+.map-zoom-icon {
+  font-size: clamp(2.5rem, 8vw, 4.5rem);
+  filter: drop-shadow(0 0 24px rgba(212,160,23,0.7));
+  animation: zoom-icon-pop 1.4s cubic-bezier(0.16,1,0.3,1) forwards;
+}
+.map-zoom-name {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-weight: 900;
+  font-size: clamp(1.4rem, 5vw, 2.6rem);
+  letter-spacing: 0.12em;
+  color: #e8d5b0;
+  text-shadow: 0 0 30px rgba(212,160,23,0.6), 0 2px 12px rgba(0,0,0,0.9);
+}
+@keyframes zoom-label-in {
+  0%   { opacity: 0; }
+  45%  { opacity: 0; }
+  100% { opacity: 1; }
+}
+@keyframes zoom-icon-pop {
+  0%   { transform: scale(0.4); opacity: 0; }
+  45%  { transform: scale(0.4); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
 }
 
 /* Corner ornaments */
@@ -672,4 +736,18 @@ a { color: inherit; text-decoration: none; }
   .map-marker-pin { width: 38px; height: 38px; }
   .map-marker-icon { font-size: 1.1rem; }
   .gate-btn { padding: 0.9rem 2rem; }
+}
+
+/* ── Reduced motion: honour the user's OS preference ── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  /* Force entrance elements to their final visible state */
+  .gate-title, .gate-sub, .gate-btn, .gate-scroll-hint, .map-marker { opacity: 1 !important; }
+  /* Drop purely decorative motion layers */
+  .embers, .gate-smoke, .gate-flash, .map-marker-pulse { display: none !important; }
 }

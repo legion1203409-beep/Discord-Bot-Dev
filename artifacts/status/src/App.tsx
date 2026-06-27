@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import "./index.css";
 
 const DISCORD_INVITE = "https://discord.gg/JNYsGeMhzm";
@@ -92,9 +92,50 @@ function useSoulStoneStats() {
   return stats;
 }
 
+type Zone = (typeof zones)[number];
+
 function MapPage() {
   const [activeZone, setActiveZone] = useState<string | null>(null);
+  const [zoomTarget, setZoomTarget] = useState<Zone | null>(null);
   const stats = useSoulStoneStats();
+  const zoomingRef = useRef(false);
+  const timersRef = useRef<number[]>([]);
+
+  useEffect(() => {
+    const timers = timersRef.current;
+    return () => timers.forEach((t) => window.clearTimeout(t));
+  }, []);
+
+  function handleZoneClick(e: React.MouseEvent, zone: Zone) {
+    e.preventDefault();
+    if (zoomingRef.current) return;
+    zoomingRef.current = true;
+    setActiveZone(null);
+    setZoomTarget(zone);
+
+    // Open the tab now (preserves the user gesture, avoids popup blocking),
+    // then navigate it to Discord once the zoom-in has played.
+    const newTab = window.open("about:blank", "_blank");
+    if (newTab) newTab.opener = null;
+
+    const openTimer = window.setTimeout(() => {
+      if (newTab && !newTab.closed) {
+        newTab.location.href = zone.href;
+      } else {
+        // Popup was blocked — fall back to navigating the current tab.
+        window.location.href = zone.href;
+      }
+    }, 1100);
+
+    const resetTimer = window.setTimeout(() => {
+      setZoomTarget(null);
+      zoomingRef.current = false;
+    }, 2200);
+
+    timersRef.current.push(openTimer, resetTimer);
+  }
+
+  const zooming = zoomTarget !== null;
 
   return (
     <div className="map-page">
@@ -112,12 +153,27 @@ function MapPage() {
       <main className="map-main">
         <div className="map-title-block">
           <h2 className="map-title">Harta Regatului</h2>
-          <p className="map-subtitle">Cinci domenii, o singură legendă</p>
+          <p className="map-subtitle">
+            {zooming ? `Intri în ${zoomTarget?.name}…` : "Cinci domenii, o singură legendă"}
+          </p>
         </div>
 
         {/* Fantasy map */}
         <div className="fantasy-map">
-          <div className="fantasy-map-frame">
+          <div className={`fantasy-map-frame ${zooming ? "fantasy-map-frame--zooming" : ""}`}>
+
+            {/* Background that zooms toward the clicked zone */}
+            <div
+              className="map-bg-img"
+              style={
+                zooming
+                  ? {
+                      transform: "scale(3.6)",
+                      transformOrigin: `${zoomTarget?.mapX} ${zoomTarget?.mapY}`,
+                    }
+                  : undefined
+              }
+            />
 
             {/* Decorative corner ornaments */}
             <span className="map-corner map-corner--tl">✦</span>
@@ -126,7 +182,11 @@ function MapPage() {
             <span className="map-corner map-corner--br">✦</span>
 
             {/* SVG paths between zones */}
-            <svg className="map-paths" viewBox="0 0 100 100" preserveAspectRatio="none">
+            <svg
+              className={`map-paths ${zooming ? "map-faded" : ""}`}
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
+            >
               <path d="M18,62 Q35,45 30,22" className="map-path" />
               <path d="M30,22 Q52,25 75,28" className="map-path" />
               <path d="M18,62 Q36,65 55,68" className="map-path" />
@@ -142,15 +202,16 @@ function MapPage() {
                 href={zone.href}
                 target="_blank"
                 rel="noopener noreferrer"
-                className={`map-marker ${activeZone === zone.id ? "map-marker--active" : ""}`}
+                className={`map-marker ${activeZone === zone.id ? "map-marker--active" : ""} ${zooming ? "map-faded" : ""}`}
                 style={{
                   left: zone.mapX,
                   top: zone.mapY,
                   "--zone-color": zone.color,
                   "--zone-glow": zone.glow,
                 } as React.CSSProperties}
-                onMouseEnter={() => setActiveZone(zone.id)}
+                onMouseEnter={() => !zooming && setActiveZone(zone.id)}
                 onMouseLeave={() => setActiveZone(null)}
+                onClick={(e) => handleZoneClick(e, zone)}
               >
                 <div className="map-marker-pin">
                   <span className="map-marker-icon">{zone.icon}</span>
@@ -165,8 +226,8 @@ function MapPage() {
 
             {/* Soul Stone widget — center of map */}
             <div
-              className="map-soul-widget"
-              onMouseEnter={() => setActiveZone("soul")}
+              className={`map-soul-widget ${zooming ? "map-faded" : ""}`}
+              onMouseEnter={() => !zooming && setActiveZone("soul")}
               onMouseLeave={() => setActiveZone(null)}
             >
               <div className="map-soul-orb">🔮</div>
@@ -188,6 +249,14 @@ function MapPage() {
                 </span>
               )}
             </div>
+
+            {/* Zoom title overlay */}
+            {zooming && (
+              <div className="map-zoom-label">
+                <span className="map-zoom-icon">{zoomTarget?.icon}</span>
+                <span className="map-zoom-name">{zoomTarget?.name}</span>
+              </div>
+            )}
 
           </div>
         </div>
