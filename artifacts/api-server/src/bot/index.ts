@@ -158,6 +158,31 @@ async function consumeOracleFellBackMarker(): Promise<boolean> {
   }
 }
 
+// Checks whether the Oracle just recovered to full-reply mode after a prior
+// portal-toggle fallback, and fires the one-time operator alert if so.
+// Extracted from the ClientReady handler so it can be unit-tested with
+// injected dependencies — the real call site passes the live implementations.
+// Correctness requirements:
+//   • Only alerts when mode is "full" AND a marker was actually recorded —
+//     no noise on a normal first-time full-mode boot.
+//   • Does NOT consume the marker when mode is degraded (short-circuits before
+//     the consume call) so a future full-mode boot still sees the marker.
+//   • Alert fires exactly once because consumeMarker is an atomic DELETE …
+//     RETURNING — only one concurrent boot wins the row.
+export async function maybeAlertOracleRecovery(
+  getMode: () => OracleReplyMode,
+  consumeMarker: () => Promise<boolean>,
+  alert: (msg: string) => Promise<unknown>,
+): Promise<void> {
+  if (getMode().mode !== "full") return;
+  if (!(await consumeMarker())) return;
+  logger.info("Oracle recovered to full-reply mode after a prior fallback — sending recovery alert");
+  await alert(
+    "\u2705 **Oracolul r\u0103spunde din nou la fiecare reply.**\n" +
+      "Inten\u021bia privilegiat\u0103 \u201eMessage Content\u201d este activ\u0103 \u2014 Oracolul a revenit la modul complet \u0219i r\u0103spunde acum la toate mesajele, nu doar la @mention \u0219i reply-uri cu ping.",
+  );
+}
+
 export function isBotOnline(): boolean {
   return botClient !== null && botClient.isReady();
 }
@@ -1341,16 +1366,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
     }
     if (onReady) onReady();
 
-    // If the Oracle is back to answering every reply after a prior portal-toggle
-    // fallback, confirm the recovery to operators — one-time, only when a fallback
-    // was actually recorded (no noise on normal first-time full-mode boots).
-    if (getOracleReplyMode().mode === "full" && (await consumeOracleFellBackMarker())) {
-      logger.info("Oracle recovered to full-reply mode after a prior fallback — sending recovery alert");
-      void sendAlert(
-        "✅ **Oracolul răspunde din nou la fiecare reply.**\n" +
-          "Intenția privilegiată „Message Content” este activă — Oracolul a revenit la modul complet și răspunde acum la toate mesajele, nu doar la @mention și reply-uri cu ping.",
-      );
-    }
+    await maybeAlertOracleRecovery(getOracleReplyMode, consumeOracleFellBackMarker, sendAlert);
   });
 
   client.on(Events.Error, (err) => {
