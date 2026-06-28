@@ -17,9 +17,6 @@ import {
   ButtonStyle,
   PermissionFlagsBits,
 } from "discord.js";
-import { promises as fs } from "fs";
-import os from "os";
-import path from "path";
 import { logger } from "../lib/logger";
 import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./alert";
 import { startScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, claimedChests, activeBossMap, type BossState, type BossPlayerStats } from "./scheduler";
@@ -125,20 +122,22 @@ let shardStatus: string = "disconnected";
 // to enable the Message Content toggle in the Discord Developer Portal.
 let privilegedIntentFellBack = false;
 
-// On-disk marker recording that the Oracle fell back to degraded mode because the
+// Durable marker recording that the Oracle fell back to degraded mode because the
 // "Message Content" portal toggle was missing (code 4014). `privilegedIntentFellBack`
 // is in-memory and resets on every process restart — which is exactly the recovery
 // path (operator flips the toggle, then restarts) — so it cannot tell a fresh
-// process that it had previously fallen back. This marker survives a process
-// restart within the same container so the recovery alert can fire once the Oracle
-// boots back in full-reply mode. Kept out of the DB to match the bot's convention
-// of holding transient operational state outside the database.
-const FELLBACK_MARKER_PATH = path.join(os.tmpdir(), "oracle-fellback.flag");
+// process that it had previously fallen back. The marker is persisted in the DB
+// (see recordOracleFellBack/consumeOracleFellBack in ./db) so it survives not just
+// an in-container restart but a full redeploy or autoscale instance swap — a fresh
+// container wipes os.tmpdir(), which would otherwise silently drop the pending
+// recovery alert. The recovery alert then fires once the Oracle boots back in
+// full-reply mode.
 
 // Record that we fell back, so a later full-mode boot can confirm the recovery.
 async function markOracleFellBack(): Promise<void> {
   try {
-    await fs.writeFile(FELLBACK_MARKER_PATH, new Date().toISOString(), "utf8");
+    const { recordOracleFellBack } = await import("./db");
+    await recordOracleFellBack();
   } catch (err) {
     logger.warn(
       { err },
@@ -151,16 +150,12 @@ async function markOracleFellBack(): Promise<void> {
 // ClientReady in full mode to send a one-time recovery alert.
 async function consumeOracleFellBackMarker(): Promise<boolean> {
   try {
-    await fs.access(FELLBACK_MARKER_PATH);
-  } catch {
+    const { consumeOracleFellBack } = await import("./db");
+    return await consumeOracleFellBack();
+  } catch (err) {
+    logger.warn({ err }, "Could not read/clear the Oracle fallback marker after recovery");
     return false;
   }
-  try {
-    await fs.unlink(FELLBACK_MARKER_PATH);
-  } catch (err) {
-    logger.warn({ err }, "Could not clear the Oracle fallback marker after recovery");
-  }
-  return true;
 }
 
 export function isBotOnline(): boolean {

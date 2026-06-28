@@ -1,5 +1,5 @@
 import { db } from "@workspace/db";
-import { playersTable, activeEventsTable, eventParticipantsTable, eventClaimsTable } from "@workspace/db";
+import { playersTable, activeEventsTable, eventParticipantsTable, eventClaimsTable, botStateTable } from "@workspace/db";
 import { eq, and, gte, gt, inArray, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import type { Player, EventParticipant } from "@workspace/db";
@@ -344,4 +344,35 @@ export async function consumePlayerKey(discordId: string, keyType: KeyType): Pro
     .where(and(eq(playersTable.discordId, discordId), gte(col, 1)))
     .returning();
   return u != null;
+}
+
+// Durable marker (in the DB, not os.tmpdir()) recording that the Oracle fell
+// back to degraded reply mode because the "Message Content" portal toggle was
+// missing (code 4014). Stored in the DB so the state survives a full redeploy
+// or autoscale instance swap — a fresh container wipes os.tmpdir(), which would
+// otherwise silently drop the pending recovery alert.
+const ORACLE_FELLBACK_KEY = "oracle_fellback";
+
+// Record that the Oracle fell back, so a later full-mode boot can confirm the
+// recovery. Idempotent — repeated fallbacks just refresh the timestamp.
+export async function recordOracleFellBack(): Promise<void> {
+  const now = new Date();
+  await db
+    .insert(botStateTable)
+    .values({ key: ORACLE_FELLBACK_KEY, value: now.toISOString() })
+    .onConflictDoUpdate({
+      target: botStateTable.key,
+      set: { value: now.toISOString(), updatedAt: now },
+    });
+}
+
+// Atomically clear the fallback marker and report whether one was set. The
+// DELETE ... RETURNING is atomic, so if several boots race (autoscale), only
+// the boot that actually removed the row sees `true` — no duplicate alerts.
+export async function consumeOracleFellBack(): Promise<boolean> {
+  const [deleted] = await db
+    .delete(botStateTable)
+    .where(eq(botStateTable.key, ORACLE_FELLBACK_KEY))
+    .returning();
+  return deleted != null;
 }

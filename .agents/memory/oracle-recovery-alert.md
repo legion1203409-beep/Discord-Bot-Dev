@@ -14,9 +14,14 @@ Within a single process, once it falls back it boots degraded for the rest of
 that process's life (the boot gate uses the flag). So a ClientReady check that
 reads only the in-memory flag would never fire on the real recovery path.
 
-**How to apply:** A separate on-disk marker (`os.tmpdir()`, kept out of the DB
-to match the bot's transient-state convention) is written on the 4014 fallback
-paths and consumed once at ClientReady when in full mode. It survives an
-in-container process restart but is ephemeral across a full redeploy / new
-autoscale container — so the alert can be missed after a redeploy (tracked as a
-follow-up to persist it durably if needed).
+**How to apply:** A durable marker is written on the 4014 fallback paths and
+consumed once at ClientReady when in full mode. It lives in the DB
+(`bot_state` key/value table, key `oracle_fellback`; helpers
+`recordOracleFellBack`/`consumeOracleFellBack` in `bot/db.ts`), NOT in
+`os.tmpdir()` — a tmpdir marker survives an in-container restart but is wiped on
+a full redeploy / new autoscale container, silently dropping the recovery alert.
+The DB store survives redeploys. `consumeOracleFellBack` uses
+`DELETE ... RETURNING` so concurrent boots race atomically and only one fires the
+alert (no duplicates). This is a deliberate exception to the bot's
+"transient state out of the DB" convention, justified by the cross-container
+durability requirement.
