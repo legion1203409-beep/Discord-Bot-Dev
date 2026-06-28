@@ -282,7 +282,7 @@ export async function fireChestForced(client: Client, rarityKey: string, mult?: 
         const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
           new ButtonBuilder()
             .setCustomId(`${chestId}_expired`)
-            .setLabel("Cufărul a dispărut...")
+            .setLabel(mult != null ? "Cufărul binecuvântat a dispărut…" : "Cufărul a dispărut...")
             .setEmoji("💨")
             .setStyle(ButtonStyle.Secondary)
             .setDisabled(true),
@@ -407,7 +407,7 @@ export async function fireChest(client: Client) {
         const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
           new ButtonBuilder()
             .setCustomId(`${chestId}_expired`)
-            .setLabel("Cufărul a dispărut...")
+            .setLabel(blessMult != null ? "Cufărul binecuvântat a dispărut…" : "Cufărul a dispărut...")
             .setEmoji("💨")
             .setStyle(ButtonStyle.Secondary)
             .setDisabled(true),
