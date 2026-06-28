@@ -8,6 +8,8 @@ import {
   MessageFlags,
   ActivityType,
   ButtonInteraction,
+  StringSelectMenuBuilder,
+  StringSelectMenuInteraction,
   ChatInputCommandInteraction,
   SlashCommandBuilder,
   ActionRowBuilder,
@@ -80,6 +82,8 @@ import {
   buildBossLeaderboard,
   computeBossRewards,
   finalBossRow,
+  THEME_COLOR,
+  BRAND_FOOTER,
   type ShopKey,
   type BossRarity,
 } from "./survival";
@@ -116,11 +120,17 @@ export { GUILD_ID };
 const FATAL_CLOSE_CODES = new Set([4004, 4010, 4011, 4013, 4014]);
 
 const slashCommands = [
-  new SlashCommandBuilder().setName("profil").setDescription("📜 Statisticile tale din Regatul Cenușii."),
+  new SlashCommandBuilder()
+    .setName("profil")
+    .setDescription("📜 Statisticile tale din Regatul Cenușii.")
+    .addUserOption((opt) =>
+      opt.setName("jucator").setDescription("Vezi profilul altui luptător (opțional).").setRequired(false),
+    ),
   new SlashCommandBuilder().setName("clasament").setDescription("👑 Top 10 cei mai puternici luptători."),
   new SlashCommandBuilder().setName("magazin").setDescription("🏺 Forja Cenușii — upgrade-uri permanente, mereu disponibilă."),
   new SlashCommandBuilder().setName("clasa").setDescription("🧬 Alege-ți clasa RPG (alegere permanentă)."),
   new SlashCommandBuilder().setName("companion").setDescription("🐾 Vezi companionul tău (cumpără și fă upgrade din /magazin)."),
+  new SlashCommandBuilder().setName("ajutor").setDescription("❓ Ghidul comenzilor din Regatul Cenușii."),
   new SlashCommandBuilder()
     .setName("startevent")
     .setDescription("🔥 [Admin] Pornește manual Ora Umbrelor.")
@@ -163,6 +173,23 @@ async function avatarById(discordId: string): Promise<string | null> {
 }
 
 async function handleProfil(interaction: ChatInputCommandInteraction) {
+  const target = interaction.options.getUser("jucator");
+  // Viewing another player: read-only lookup, never create a record for them.
+  if (target && target.id !== interaction.user.id) {
+    const player = await getPlayerById(target.id);
+    if (!player) {
+      await interaction.reply({
+        content: `❌ **${target.username}** nu a pășit încă în Regatul Cenușii — nu există un profil pentru acest jucător.`,
+        ephemeral: true,
+      });
+      return;
+    }
+    await interaction.reply({
+      embeds: [buildProfileEmbed(player, undefined, target.displayAvatarURL({ size: 256 }))],
+      ephemeral: true,
+    });
+    return;
+  }
   const p = await upsertPlayer(interaction.user.id, interaction.user.username);
   await interaction.reply({
     embeds: [buildProfileEmbed(p, undefined, interaction.user.displayAvatarURL({ size: 256 }))],
@@ -170,9 +197,48 @@ async function handleProfil(interaction: ChatInputCommandInteraction) {
   });
 }
 
+async function handleAjutor(interaction: ChatInputCommandInteraction) {
+  await interaction.reply({
+    embeds: [
+      {
+        color: THEME_COLOR,
+        title: "❓ Ghidul Regatului Cenușii",
+        description: "Toate comenzile și evenimentele, grupate pe categorii.",
+        fields: [
+          {
+            name: "📜 Profil & Progres",
+            value:
+              "**/profil** — profilul tău *(sau `/profil @jucător` pentru altcineva)*\n" +
+              "**/clasament** — top 10 luptători *(vezi profilul oricăruia din meniu)*\n" +
+              "**/clasa** — alege-ți clasa RPG *(permanent)*\n" +
+              "**/companion** — vezi companionul tău",
+          },
+          {
+            name: "🏺 Economie",
+            value: "**/magazin** — Forja Cenușii: puteri permanente, companioni și abilități de luptă",
+          },
+          {
+            name: "⚔️ Evenimente automate",
+            value:
+              "🔥 **Ora Umbrelor** — apare periodic; luptă cu monștri pentru XP și Oboli\n" +
+              "📦 **Cufere** — apar prin surprindere; primul care apasă câștigă Obolii\n" +
+              "🐉 **Dragonul Stins** — bossul final pe care întregul Regat îl înfruntă împreună",
+          },
+          {
+            name: "⚙️ Administrare",
+            value: "**/startevent**, **/cufar**, **/spawnboss**, **/admin** — doar pentru administratori",
+          },
+        ],
+        footer: { text: BRAND_FOOTER },
+      },
+    ],
+    ephemeral: true,
+  });
+}
+
 async function handleMagazin(interaction: ChatInputCommandInteraction) {
   const p = await upsertPlayer(interaction.user.id, interaction.user.username);
-  await interaction.reply({ embeds: [buildShopEmbed(p)], components: shopRows(p), ephemeral: true });
+  await interaction.reply({ embeds: [buildShopEmbed(p, "overview")], components: shopRows(p), ephemeral: true });
 }
 
 async function isOwner(interaction: ChatInputCommandInteraction): Promise<boolean> {
@@ -290,34 +356,41 @@ async function handleClasament(interaction: ChatInputCommandInteraction) {
     return `${medals[i] ?? `**${i + 1}.**`} **${p.username}** — 🎖️ ${levelTitle(p.maxLevel)} · ${p.xp} XP${deathStr}${fledStr}`;
   }).join("\n");
 
-  const buttons = top.slice(0, 5).map((p, i) =>
-    new ButtonBuilder()
-      .setCustomId(`profile_view_${p.discordId}`)
-      .setLabel(`${medals[i] ?? `#${i + 1}`} ${p.username}`)
-      .setStyle(ButtonStyle.Secondary),
-  );
-
-  const rows: ActionRowBuilder<ButtonBuilder>[] = [];
-  for (let i = 0; i < buttons.length; i += 5) {
-    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(buttons.slice(i, i + 5)));
+  // One select menu listing every player shown — pick any to view their full profile.
+  const components: ActionRowBuilder<StringSelectMenuBuilder>[] = [];
+  if (top.length > 0) {
+    const select = new StringSelectMenuBuilder()
+      .setCustomId("leaderboard_profile_select")
+      .setPlaceholder("📜 Vezi profilul unui luptător…")
+      .addOptions(
+        top.map((p, i) => ({
+          label: `${medals[i] ?? `#${i + 1}`} ${p.username}`.slice(0, 100),
+          description: `${levelTitle(p.maxLevel)} · ${p.xp} XP`.slice(0, 100),
+          value: p.discordId,
+        })),
+      );
+    components.push(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select));
   }
 
   await interaction.reply({
     embeds: [
       {
-        color: 0x8a4a2f,
+        color: THEME_COLOR,
         title: "👑 Clasament – Regatul Cenușii",
         description: lines || "*Nimeni nu a luptat încă.*",
         ...(champAvatar ? { thumbnail: { url: champAvatar } } : {}),
-        footer: { text: "Apasă un buton pentru a vedea profilul complet al unui luptător" },
+        footer: { text: top.length > 0 ? "Alege un luptător din meniu pentru profilul complet" : BRAND_FOOTER },
         timestamp: new Date().toISOString(),
       },
     ],
-    components: rows,
+    components,
   });
 }
 
-async function handleViewProfile(interaction: ButtonInteraction, discordId: string) {
+async function handleViewProfile(
+  interaction: ButtonInteraction | StringSelectMenuInteraction,
+  discordId: string,
+) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const player = await getPlayerById(discordId);
   if (!player) {
@@ -327,6 +400,11 @@ async function handleViewProfile(interaction: ButtonInteraction, discordId: stri
   await interaction.editReply({
     embeds: [buildProfileEmbed(player, undefined, await avatarById(discordId))],
   });
+}
+
+async function handleClasamentSelect(interaction: StringSelectMenuInteraction) {
+  const discordId = interaction.values[0];
+  await handleViewProfile(interaction, discordId);
 }
 
 const CHEST_CLAIM_MSG: Record<string, (user: string, gold: number) => string> = {
@@ -516,7 +594,7 @@ async function handleBuy(interaction: ButtonInteraction, key: ShopKey) {
     await applyUpgradeToActiveParticipant(interaction.user.id, key);
   }
   const player = updated ?? p;
-  await interaction.editReply({ embeds: [buildShopEmbed(player)], components: shopStatsRows(player) });
+  await interaction.editReply({ embeds: [buildShopEmbed(player, "stats")], components: shopStatsRows(player) });
 }
 
 async function handleLevelup(interaction: ButtonInteraction, eventId: number, bonus: string) {
@@ -577,25 +655,25 @@ async function handleCompanion(interaction: ChatInputCommandInteraction) {
 async function handleShopNavStats(interaction: ButtonInteraction) {
   await interaction.deferUpdate();
   const p = await upsertPlayer(interaction.user.id, interaction.user.username);
-  await interaction.editReply({ embeds: [buildShopEmbed(p)], components: shopStatsRows(p) });
+  await interaction.editReply({ embeds: [buildShopEmbed(p, "stats")], components: shopStatsRows(p) });
 }
 
 async function handleShopNavComp(interaction: ButtonInteraction) {
   await interaction.deferUpdate();
   const p = await upsertPlayer(interaction.user.id, interaction.user.username);
-  await interaction.editReply({ embeds: [buildShopEmbed(p)], components: shopCompRows(p) });
+  await interaction.editReply({ embeds: [buildShopEmbed(p, "comp")], components: shopCompRows(p) });
 }
 
 async function handleShopNavAbil(interaction: ButtonInteraction) {
   await interaction.deferUpdate();
   const p = await upsertPlayer(interaction.user.id, interaction.user.username);
-  await interaction.editReply({ embeds: [buildShopEmbed(p)], components: shopAbilRows(p) });
+  await interaction.editReply({ embeds: [buildShopEmbed(p, "abil")], components: shopAbilRows(p) });
 }
 
 async function handleShopBack(interaction: ButtonInteraction) {
   await interaction.deferUpdate();
   const p = await upsertPlayer(interaction.user.id, interaction.user.username);
-  await interaction.editReply({ embeds: [buildShopEmbed(p)], components: shopRows(p) });
+  await interaction.editReply({ embeds: [buildShopEmbed(p, "overview")], components: shopRows(p) });
 }
 
 async function handleCompBuy(interaction: ButtonInteraction, key: string) {
@@ -607,7 +685,7 @@ async function handleCompBuy(interaction: ButtonInteraction, key: string) {
     await interaction.followUp({ content: `❌ Nu poți cumpăra acest companion — ai nevoie de **${COMPANION_BUY_COST} Oboli** și să nu ai deja unul.`, flags: MessageFlags.Ephemeral });
     return;
   }
-  await interaction.editReply({ embeds: [buildShopEmbed(updated)], components: shopCompRows(updated) });
+  await interaction.editReply({ embeds: [buildShopEmbed(updated, "comp")], components: shopCompRows(updated) });
 }
 
 async function handleCompUpgrade(interaction: ButtonInteraction) {
@@ -619,7 +697,7 @@ async function handleCompUpgrade(interaction: ButtonInteraction) {
     await interaction.followUp({ content: `❌ Upgrade eșuat — ai nevoie de un companion, **${cost} Oboli** și **${UPGRADE_XP_COST} XP**.`, flags: MessageFlags.Ephemeral });
     return;
   }
-  await interaction.editReply({ embeds: [buildShopEmbed(updated)], components: shopCompRows(updated) });
+  await interaction.editReply({ embeds: [buildShopEmbed(updated, "comp")], components: shopCompRows(updated) });
 }
 
 async function handleAbilBuy(interaction: ButtonInteraction, kind: string) {
@@ -635,7 +713,7 @@ async function handleAbilBuy(interaction: ButtonInteraction, kind: string) {
     await interaction.followUp({ content: `❌ Nu poți debloca abilitatea — ai nevoie de **${ABILITY_BUY_COST} Oboli** și să nu o deții deja.`, flags: MessageFlags.Ephemeral });
     return;
   }
-  await interaction.editReply({ embeds: [buildShopEmbed(updated)], components: shopAbilRows(updated) });
+  await interaction.editReply({ embeds: [buildShopEmbed(updated, "abil")], components: shopAbilRows(updated) });
 }
 
 async function handleAbilUpgrade(interaction: ButtonInteraction, kind: string) {
@@ -653,7 +731,7 @@ async function handleAbilUpgrade(interaction: ButtonInteraction, kind: string) {
     await interaction.followUp({ content: `❌ Upgrade eșuat — ai nevoie de abilitate, **${cost} Oboli** și **${UPGRADE_XP_COST} XP**.`, flags: MessageFlags.Ephemeral });
     return;
   }
-  await interaction.editReply({ embeds: [buildShopEmbed(updated)], components: shopAbilRows(updated) });
+  await interaction.editReply({ embeds: [buildShopEmbed(updated, "abil")], components: shopAbilRows(updated) });
 }
 
 async function handleAbility(interaction: ButtonInteraction, eventId: number, kind: string) {
@@ -1005,12 +1083,17 @@ export async function startBot(onReady?: () => void): Promise<void> {
         if (interaction.commandName === "magazin") await handleMagazin(interaction);
         if (interaction.commandName === "clasa") await handleClasa(interaction);
         if (interaction.commandName === "companion") await handleCompanion(interaction);
+        if (interaction.commandName === "ajutor") await handleAjutor(interaction);
         if (interaction.commandName === "startevent") await handleStartEvent(interaction);
         if (interaction.commandName === "cufar") await handleSpawnChest(interaction);
         if (interaction.commandName === "spawnboss") await handleSpawnBoss(interaction);
         if (interaction.commandName === "admin") await handleAdmin(interaction);
       } else if (interaction.isButton()) {
         await handleButton(interaction as ButtonInteraction);
+      } else if (interaction.isStringSelectMenu()) {
+        if (interaction.customId === "leaderboard_profile_select") {
+          await handleClasamentSelect(interaction);
+        }
       }
     } catch (err) {
       logger.error({ err }, "Interaction error");
