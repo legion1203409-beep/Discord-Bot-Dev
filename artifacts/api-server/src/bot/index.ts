@@ -134,6 +134,23 @@ export function getShardStatus(): string {
   return shardStatus;
 }
 
+export type OracleReplyMode = {
+  mode: "full" | "degraded";
+  reason: "active" | "disabled" | "portal_toggle_missing";
+};
+
+// Whether the Oracle is currently answering every reply ("full") or only
+// @mentions and ping-on replies ("degraded"). Full mode requires the privileged
+// MessageContent intent, which needs BOTH the env flag AND the Developer-Portal
+// toggle. The reason distinguishes the operator not enabling the feature at all
+// from the runtime 4014 fallback (toggle missing in the portal).
+export function getOracleReplyMode(): OracleReplyMode {
+  const enabled = process.env.ORACLE_MESSAGE_CONTENT_ENABLED === "true";
+  if (!enabled) return { mode: "degraded", reason: "disabled" };
+  if (privilegedIntentFellBack) return { mode: "degraded", reason: "portal_toggle_missing" };
+  return { mode: "full", reason: "active" };
+}
+
 export function getBotClient(): Client | null {
   return botClient;
 }

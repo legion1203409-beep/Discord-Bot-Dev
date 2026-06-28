@@ -69,6 +69,84 @@ interface DiscordStats {
   lastJoined: string | null;
 }
 
+interface OracleHealth {
+  reachable: boolean;
+  botOnline: boolean;
+  oracleReplyMode: "full" | "degraded";
+  oracleReplyReason: "active" | "disabled" | "portal_toggle_missing";
+}
+
+function useOracleHealth() {
+  const [health, setHealth] = useState<OracleHealth | null>(null);
+
+  const fetchHealth = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/healthz`);
+      if (!res.ok) throw new Error("bad response");
+      const data = await res.json();
+      setHealth({
+        reachable: true,
+        botOnline: Boolean(data.botOnline),
+        oracleReplyMode: data.oracleReplyMode === "full" ? "full" : "degraded",
+        oracleReplyReason:
+          data.oracleReplyReason === "active" ||
+          data.oracleReplyReason === "portal_toggle_missing"
+            ? data.oracleReplyReason
+            : "disabled",
+      });
+    } catch {
+      setHealth(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchHealth();
+    const id = setInterval(() => void fetchHealth(), 15_000);
+    return () => clearInterval(id);
+  }, [fetchHealth]);
+
+  return health;
+}
+
+function OracleStatusBadge() {
+  const health = useOracleHealth();
+
+  let tone: "loading" | "full" | "warn" | "danger";
+  let label: string;
+  let detail: string;
+
+  if (health === null) {
+    tone = "loading";
+    label = "Oracolul…";
+    detail = "Se verifică starea Oracolului.";
+  } else if (health.oracleReplyMode === "full") {
+    tone = "full";
+    label = "Oracol: răspunde la tot";
+    detail = "Oracolul răspunde la fiecare reply, mențiune și ping.";
+  } else if (health.oracleReplyReason === "portal_toggle_missing") {
+    tone = "danger";
+    label = "Oracol: mod redus";
+    detail =
+      "Comutatorul „Message Content” lipsește din Discord Developer Portal. " +
+      "Oracolul răspunde doar la @mention și la reply-uri cu ping. " +
+      "Activează comutatorul în portal, apoi repornește botul.";
+  } else {
+    tone = "warn";
+    label = "Oracol: mod redus";
+    detail =
+      "Răspunsul la toate reply-urile este dezactivat. " +
+      "Oracolul răspunde doar la @mention și la reply-uri cu ping.";
+  }
+
+  return (
+    <div className={`oracle-badge oracle-badge--${tone}`} title={detail}>
+      <span className="oracle-badge-dot" />
+      <span className="oracle-badge-label">{label}</span>
+      <span className="oracle-badge-detail">{detail}</span>
+    </div>
+  );
+}
+
 function useSoulStoneStats() {
   const [stats, setStats] = useState<DiscordStats | null>(null);
 
@@ -144,9 +222,12 @@ function MapPage() {
       <header className="map-header">
         <div className="map-header-inner">
           <span className="map-logo">🏰 REGATUL CENUȘII</span>
-          <a href={DISCORD_INVITE} target="_blank" rel="noopener noreferrer" className="map-join-btn">
-            ⚔️ Alătură-te
-          </a>
+          <div className="map-header-right">
+            <OracleStatusBadge />
+            <a href={DISCORD_INVITE} target="_blank" rel="noopener noreferrer" className="map-join-btn">
+              ⚔️ Alătură-te
+            </a>
+          </div>
         </div>
       </header>
 

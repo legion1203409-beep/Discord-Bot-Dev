@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { HealthCheckResponse } from "@workspace/api-zod";
-import { isBotOnline, getBotReadyAt, getShardStatus } from "../bot/index";
+import { isBotOnline, getBotReadyAt, getShardStatus, getOracleReplyMode } from "../bot/index";
 
 const router: IRouter = Router();
 
@@ -12,6 +12,7 @@ router.get("/healthz", (_req, res) => {
   const botUptime = botReadyAt && botOnline
     ? Math.floor((Date.now() - botReadyAt.getTime()) / 1000)
     : 0;
+  const oracleReply = getOracleReplyMode();
   const data = HealthCheckResponse.parse({
     status: "ok",
     botOnline,
@@ -19,6 +20,8 @@ router.get("/healthz", (_req, res) => {
     botReadyAt: botReadyAt ? botReadyAt.toISOString() : null,
     botUptime,
     shardStatus: getShardStatus(),
+    oracleReplyMode: oracleReply.mode,
+    oracleReplyReason: oracleReply.reason,
   });
   res.status(200).json(data);
 });

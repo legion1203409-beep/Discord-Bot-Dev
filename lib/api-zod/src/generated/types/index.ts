@@ -7,3 +7,5 @@
  */
 
 export * from './healthStatus';
+export * from './healthStatusOracleReplyMode';
+export * from './healthStatusOracleReplyReason';

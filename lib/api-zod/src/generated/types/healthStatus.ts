@@ -5,6 +5,8 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { HealthStatusOracleReplyMode } from './healthStatusOracleReplyMode';
+import type { HealthStatusOracleReplyReason } from './healthStatusOracleReplyReason';
 
 export interface HealthStatus {
   status: string;
@@ -16,4 +18,8 @@ export interface HealthStatus {
   botUptime: number;
   /** Current shard connection state */
   shardStatus: string | null;
+  /** "full" when the Oracle answers every reply (MessageContent intent active); "degraded" when it only answers @mentions and ping-on replies. */
+  oracleReplyMode: HealthStatusOracleReplyMode;
+  /** Why the Oracle is in its current reply mode. "active": full mode running. "disabled": MessageContent feature not enabled by the operator. "portal_toggle_missing": feature enabled but Discord rejected the privileged intent (code 4014) so the bot fell back. */
+  oracleReplyReason: HealthStatusOracleReplyReason;
 }

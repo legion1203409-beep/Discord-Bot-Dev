@@ -5,6 +5,29 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+/**
+ * "full" when the Oracle answers every reply (MessageContent intent active); "degraded" when it only answers @mentions and ping-on replies.
+ */
+export type HealthStatusOracleReplyMode = typeof HealthStatusOracleReplyMode[keyof typeof HealthStatusOracleReplyMode];
+
+
+export const HealthStatusOracleReplyMode = {
+  full: 'full',
+  degraded: 'degraded',
+} as const;
+
+/**
+ * Why the Oracle is in its current reply mode. "active": full mode running. "disabled": MessageContent feature not enabled by the operator. "portal_toggle_missing": feature enabled but Discord rejected the privileged intent (code 4014) so the bot fell back.
+ */
+export type HealthStatusOracleReplyReason = typeof HealthStatusOracleReplyReason[keyof typeof HealthStatusOracleReplyReason];
+
+
+export const HealthStatusOracleReplyReason = {
+  active: 'active',
+  disabled: 'disabled',
+  portal_toggle_missing: 'portal_toggle_missing',
+} as const;
+
 export interface HealthStatus {
   status: string;
   botOnline: boolean;
@@ -15,5 +38,9 @@ export interface HealthStatus {
   botUptime: number;
   /** Current shard connection state */
   shardStatus: string | null;
+  /** "full" when the Oracle answers every reply (MessageContent intent active); "degraded" when it only answers @mentions and ping-on replies. */
+  oracleReplyMode: HealthStatusOracleReplyMode;
+  /** Why the Oracle is in its current reply mode. "active": full mode running. "disabled": MessageContent feature not enabled by the operator. "portal_toggle_missing": feature enabled but Discord rejected the privileged intent (code 4014) so the bot fell back. */
+  oracleReplyReason: HealthStatusOracleReplyReason;
 }
 
