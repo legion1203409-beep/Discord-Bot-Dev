@@ -246,6 +246,10 @@ async function buildRecentMemory(
     }
     totalScanned += batch.size;
 
+    // Stop if Discord returned fewer messages than we asked for: that means we
+    // reached the channel start and further fetches would yield nothing new.
+    if (batch.size < batchSize) break;
+
     // Stop if we've found enough of the current speaker's turns, or if a full
     // batch came back entirely outside the time window (no point scanning older).
     const oldestInBatch = Math.min(...batch.map((m) => m.createdTimestamp));
