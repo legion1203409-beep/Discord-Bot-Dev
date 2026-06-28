@@ -134,8 +134,16 @@ function cleanMentionTokens(text: string): string {
  * Returns the turns (oldest-first) plus the set of source message IDs so the
  * caller can avoid duplicating the explicitly replied-to line. Only the Oracle's
  * own chat replies (messages that are themselves replies — not event/announcement
- * posts) and player messages addressed to the Oracle are kept. Best-effort: any
- * failure yields an empty memory rather than blocking the reply. Never logs content.
+ * posts) and player messages addressed to the Oracle are kept.
+ *
+ * When the conversation overflows MAX_MEMORY_TURNS, the current speaker's own
+ * turns (their messages plus the Oracle's replies aimed back at them) are retained
+ * ahead of unrelated speakers', so a back-and-forth with one player stays
+ * continuous even amid heavy cross-chatter. Total turn count, time window and
+ * per-turn length stay bounded regardless.
+ *
+ * Best-effort: any failure yields an empty memory rather than blocking the reply.
+ * Never logs content.
  */
 async function buildRecentMemory(
   message: Message,
@@ -170,13 +178,27 @@ async function buildRecentMemory(
     return empty;
   }
 
+  // Map every fetched message to its author so we can tell who the Oracle was
+  // replying to (used to keep the current speaker's thread intact below). The
+  // reference target may sit outside the time window, so build this from the full
+  // fetch, with a cache fallback for anything not in the batch.
+  const authorByMsgId = new Map<string, string>();
+  for (const m of fetched.values()) authorByMsgId.set(m.id, m.author.id);
+  const resolveAuthor = (msgId: string): string | undefined =>
+    authorByMsgId.get(msgId) ??
+    ("messages" in message.channel
+      ? message.channel.messages.cache.get(msgId)?.author.id
+      : undefined);
+
   const cutoff = Date.now() - MEMORY_WINDOW_MS;
   // Discord returns newest-first; sort oldest-first for chronological context.
   const ordered = [...fetched.values()]
     .filter((m) => m.createdTimestamp >= cutoff)
     .sort((a, b) => a.createdTimestamp - b.createdTimestamp);
 
-  const turns: { id: string; msg: ChatMessage }[] = [];
+  // `mine` marks turns belonging to the current speaker's own thread with the
+  // Oracle, so they survive trimming ahead of unrelated cross-chatter.
+  const turns: { id: string; msg: ChatMessage; mine: boolean }[] = [];
   for (const m of ordered) {
     if (m.author.id === botId) {
       // Only the Oracle's own chat replies (which are replies to a user), never
@@ -184,7 +206,13 @@ async function buildRecentMemory(
       if (!m.reference?.messageId) continue;
       const text = (m.content || m.embeds[0]?.description || "").trim();
       if (!text) continue;
-      turns.push({ id: m.id, msg: { role: "assistant", content: text.slice(0, MEMORY_TURN_CHARS) } });
+      // A reply the Oracle aimed back at the current speaker is part of their thread.
+      const mine = resolveAuthor(m.reference.messageId) === message.author.id;
+      turns.push({
+        id: m.id,
+        msg: { role: "assistant", content: text.slice(0, MEMORY_TURN_CHARS) },
+        mine,
+      });
     } else {
       if (m.author.bot) continue;
       const refId = m.reference?.messageId;
@@ -201,13 +229,27 @@ async function buildRecentMemory(
       turns.push({
         id: m.id,
         msg: { role: "user", content: `${alias}: ${text.slice(0, MEMORY_TURN_CHARS)}` },
+        mine: m.author.id === message.author.id,
       });
     }
   }
 
-  // Cap to the most recent N turns to bound cost, latency and context size.
-  const capped = turns.slice(-MAX_MEMORY_TURNS);
-  return { turns: capped.map((t) => t.msg), ids: new Set(capped.map((t) => t.id)), speakerAlias };
+  // Cap to MAX_MEMORY_TURNS to bound cost, latency and context size. When there's
+  // overflow, retain the current speaker's own turns first so their back-and-forth
+  // with the Oracle stays continuous even when other players are crowding the
+  // channel; fill any remaining slots with the most recent other turns. The final
+  // selection is re-filtered from `turns` to preserve chronological order.
+  let kept: typeof turns;
+  if (turns.length <= MAX_MEMORY_TURNS) {
+    kept = turns;
+  } else {
+    const keptOwn = turns.filter((t) => t.mine).slice(-MAX_MEMORY_TURNS);
+    const remaining = MAX_MEMORY_TURNS - keptOwn.length;
+    const keptOthers = remaining > 0 ? turns.filter((t) => !t.mine).slice(-remaining) : [];
+    const keptIds = new Set([...keptOwn, ...keptOthers].map((t) => t.id));
+    kept = turns.filter((t) => keptIds.has(t.id));
+  }
+  return { turns: kept.map((t) => t.msg), ids: new Set(kept.map((t) => t.id)), speakerAlias };
 }
 
 async function generateOracleReply(
