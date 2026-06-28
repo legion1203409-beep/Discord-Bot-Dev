@@ -1,5 +1,5 @@
-import { db, pool } from "@workspace/db";
-import { playersTable, activeEventsTable, eventParticipantsTable, eventClaimsTable, botStateTable } from "@workspace/db";
+import { db } from "@workspace/db";
+import { playersTable, activeEventsTable, eventParticipantsTable, eventClaimsTable } from "@workspace/db";
 import { eq, and, gte, gt, inArray, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import type { Player, EventParticipant } from "@workspace/db";
@@ -307,50 +307,6 @@ export async function getTopPlayers(): Promise<Player[]> {
   return rows.slice(-10).reverse();
 }
 
-// ─── Bot state persistence ─────────────────────────────────────────────────────
-
-export async function ensureBotStateTable(): Promise<void> {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS bot_state (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL,
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-}
-
-export interface PersistedProphecy {
-  rarityKey: string;
-  mult: 2 | 3;
-  expiresAt: number;
-}
-
-export async function saveProphecy(prophecy: PersistedProphecy): Promise<void> {
-  await db.insert(botStateTable)
-    .values({ key: "active_prophecy", value: JSON.stringify(prophecy) })
-    .onConflictDoUpdate({
-      target: botStateTable.key,
-      set: { value: JSON.stringify(prophecy), updatedAt: sql`NOW()` },
-    });
-}
-
-export async function clearProphecy(): Promise<void> {
-  await db.delete(botStateTable).where(eq(botStateTable.key, "active_prophecy"));
-}
-
-export async function loadProphecy(): Promise<PersistedProphecy | null> {
-  const [row] = await db.select().from(botStateTable).where(eq(botStateTable.key, "active_prophecy"));
-  if (!row) return null;
-  try {
-    const p = JSON.parse(row.value) as PersistedProphecy;
-    if (typeof p.rarityKey !== "string" || (p.mult !== 2 && p.mult !== 3) || typeof p.expiresAt !== "number") {
-      return null;
-    }
-    return p;
-  } catch {
-    return null;
-  }
-}
 
 // ─── Key inventory ────────────────────────────────────────────────────────────
 export type KeyType = "rar" | "epic" | "regal";
