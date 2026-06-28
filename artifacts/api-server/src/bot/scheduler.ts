@@ -1,6 +1,6 @@
 import { Client, TextChannel, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import { logger } from "../lib/logger";
-import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, rollChest, oracleMessage, buildProphecyMessage, CHEST_RARITIES, buildFinalBossEmbed, buildBossLeaderboard, buildLockedChestEmbed, buildKeyChestEmbed, spawnLockedChest, rollKeyChestType, computeBossRewards, finalBossRow, bossMaxHp, THEME_COLOR, BRAND_FOOTER, type BossRarity, type BossPlayerStats } from "./survival";
+import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, buildExpiredChestEmbed, rollChest, oracleMessage, buildProphecyMessage, CHEST_RARITIES, buildFinalBossEmbed, buildBossLeaderboard, buildLockedChestEmbed, buildKeyChestEmbed, spawnLockedChest, rollKeyChestType, computeBossRewards, finalBossRow, bossMaxHp, THEME_COLOR, BRAND_FOOTER, type BossRarity, type BossPlayerStats } from "./survival";
 import { triggerRandomBattleEvent } from "./combat-events";
 import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle, addPlayerReputation, addPlayerGold, addPlayerXp, saveProphecy, loadProphecy, ensureBotStateTable } from "./db";
 
@@ -312,7 +312,7 @@ export async function fireChestForced(client: Client, rarityKey: string, mult?: 
             .setStyle(ButtonStyle.Secondary)
             .setDisabled(true),
         );
-        await msg.edit({ embeds: [bce(gold, rarity, mult)], components: [disabledRow] }).catch(() => null);
+        await msg.edit({ embeds: [buildExpiredChestEmbed(gold, rarity, mult)], components: [disabledRow] }).catch(() => null);
         logger.info({ chestId }, "Chest expired unclaimed (forced)");
       }
     }, CHEST_EXPIRE_MS);
@@ -437,7 +437,7 @@ export async function fireChest(client: Client) {
             .setStyle(ButtonStyle.Secondary)
             .setDisabled(true),
         );
-        await msg.edit({ embeds: [buildChestEmbed(gold, rarity, blessMult)], components: [disabledRow] }).catch(() => null);
+        await msg.edit({ embeds: [buildExpiredChestEmbed(gold, rarity, blessMult)], components: [disabledRow] }).catch(() => null);
         logger.info({ chestId }, "Chest expired unclaimed");
       }
     }, CHEST_EXPIRE_MS);

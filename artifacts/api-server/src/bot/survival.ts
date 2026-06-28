@@ -573,6 +573,34 @@ export function buildChestEmbed(gold: number, rarity?: ChestRarity, mult?: 2 | 3
     .setFooter({ text: "Primul click câștigă!" });
 }
 
+export function buildExpiredChestEmbed(gold: number, rarity?: ChestRarity, mult?: 2 | 3): EmbedBuilder {
+  const r = rarity ?? CHEST_RARITIES[0]!;
+  const image = CHEST_IMG[r.key] ?? IMG.chest;
+  if (mult != null) {
+    return new EmbedBuilder()
+      .setColor(0x555555)
+      .setTitle(`💨  ${r.label.toUpperCase()} — NERECLAMAT  💨`)
+      .setDescription(
+        `Cufărul binecuvântat a dispărut nereclamat în fumul umbrelor.\n\n` +
+        `💰 ~~${gold} Oboli~~\n` +
+        `🔮 ~~Profeție activă — ×${mult} Oboli~~ *(bonus pierdut)*\n\n` +
+        `*Nimeni nu a fost destul de rapid de data aceasta…*`,
+      )
+      .setImage(image)
+      .setFooter({ text: "Cufărul a dispărut." });
+  }
+  return new EmbedBuilder()
+    .setColor(0x555555)
+    .setTitle(`💨  ${r.label.toUpperCase()} — DISPĂRUT  💨`)
+    .setDescription(
+      `Cufărul a dispărut în fumul umbrelor, nereclamat.\n\n` +
+      `💰 ~~${gold} Oboli~~\n\n` +
+      `*Nimeni nu a fost destul de rapid de data aceasta…*`,
+    )
+    .setImage(image)
+    .setFooter({ text: "Cufărul a dispărut." });
+}
+
 export function buildLockedChestEmbed(rarityKey: string, gold: number): EmbedBuilder {
   const rarity = CHEST_RARITIES.find((r) => r.key === rarityKey) ?? CHEST_RARITIES[0]!;
   const keyType = CHEST_KEY_REQUIRED[rarityKey] ?? "rar";
