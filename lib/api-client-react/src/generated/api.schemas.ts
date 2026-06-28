@@ -42,5 +42,9 @@ export interface HealthStatus {
   oracleReplyMode: HealthStatusOracleReplyMode;
   /** Why the Oracle is in its current reply mode. "active": full mode running. "disabled": MessageContent feature not enabled by the operator. "portal_toggle_missing": feature enabled but Discord rejected the privileged intent (code 4014) so the bot fell back. */
   oracleReplyReason: HealthStatusOracleReplyReason;
+  /** Whether DISCORD_ALERT_WEBHOOK_URL is set. When false, outage and recovery push alerts are silently suppressed — operators will NOT be notified of disconnects. */
+  alertsConfigured: boolean;
+  /** Grace period in milliseconds before a transient disconnect escalates to an outage alert (DISCONNECT_ALERT_THRESHOLD_MS, default 300000). */
+  alertThresholdMs: number;
 }
 

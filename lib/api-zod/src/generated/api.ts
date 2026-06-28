@@ -20,7 +20,9 @@ export const HealthCheckResponse = zod.object({
   "botUptime": zod.number().describe('Seconds since the bot last became ready (0 if never connected or currently offline)'),
   "shardStatus": zod.string().nullable().describe('Current shard connection state'),
   "oracleReplyMode": zod.enum(['full', 'degraded']).describe('\"full\" when the Oracle answers every reply (MessageContent intent active); \"degraded\" when it only answers @mentions and ping-on replies.'),
-  "oracleReplyReason": zod.enum(['active', 'disabled', 'portal_toggle_missing']).describe('Why the Oracle is in its current reply mode. \"active\": full mode running. \"disabled\": MessageContent feature not enabled by the operator. \"portal_toggle_missing\": feature enabled but Discord rejected the privileged intent (code 4014) so the bot fell back.')
+  "oracleReplyReason": zod.enum(['active', 'disabled', 'portal_toggle_missing']).describe('Why the Oracle is in its current reply mode. \"active\": full mode running. \"disabled\": MessageContent feature not enabled by the operator. \"portal_toggle_missing\": feature enabled but Discord rejected the privileged intent (code 4014) so the bot fell back.'),
+  "alertsConfigured": zod.boolean().describe('Whether DISCORD_ALERT_WEBHOOK_URL is set. When false, outage and recovery push alerts are silently suppressed — operators will NOT be notified of disconnects.'),
+  "alertThresholdMs": zod.number().describe('Grace period in milliseconds before a transient disconnect escalates to an outage alert (DISCONNECT_ALERT_THRESHOLD_MS, default 300000).')
 })
 
 

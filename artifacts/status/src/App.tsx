@@ -76,6 +76,8 @@ interface OracleHealth {
   botUptime: number;
   oracleReplyMode: "full" | "degraded";
   oracleReplyReason: "active" | "disabled" | "portal_toggle_missing";
+  alertsConfigured: boolean;
+  alertThresholdMs: number;
 }
 
 function useOracleHealth() {
@@ -97,6 +99,8 @@ function useOracleHealth() {
           data.oracleReplyReason === "portal_toggle_missing"
             ? data.oracleReplyReason
             : "disabled",
+        alertsConfigured: Boolean(data.alertsConfigured),
+        alertThresholdMs: typeof data.alertThresholdMs === "number" ? data.alertThresholdMs : 300_000,
       });
     } catch {
       setHealth(null);
@@ -473,6 +477,29 @@ function OperatorHealthPage() {
 
   const unreachable = health === null;
 
+  let alertTone: "loading" | "ok" | "danger";
+  let alertLabel: string;
+  let alertDetail: string;
+  if (health === null) {
+    alertTone = "loading";
+    alertLabel = "Se verifică…";
+    alertDetail = "Se interoghează /api/healthz.";
+  } else if (health.alertsConfigured) {
+    const thresholdSec = Math.round(health.alertThresholdMs / 1000);
+    const thresholdLabel =
+      thresholdSec >= 60
+        ? `${Math.round(thresholdSec / 60)}m`
+        : `${thresholdSec}s`;
+    alertTone = "ok";
+    alertLabel = "Alerte: ACTIVE";
+    alertDetail = `Webhook configurat. Alertele de deconectare se trimit după ${thresholdLabel} de inactivitate.`;
+  } else {
+    alertTone = "danger";
+    alertLabel = "Alerte: OPRITE";
+    alertDetail =
+      "DISCORD_ALERT_WEBHOOK_URL nu este setat. Nu vei fi notificat de nicio deconectare sau recuperare.";
+  }
+
   return (
     <div className="ops-page">
       <div className="ops-panel">
@@ -515,6 +542,15 @@ function OperatorHealthPage() {
               {replyLabel}
             </span>
             <span className="ops-card-detail">{replyDetail}</span>
+          </div>
+
+          <div className={`ops-card ops-card--${alertTone}`}>
+            <span className="ops-card-label">Alerte push</span>
+            <span className="ops-card-value">
+              <span className="ops-dot" />
+              {alertLabel}
+            </span>
+            <span className="ops-card-detail">{alertDetail}</span>
           </div>
         </div>
 

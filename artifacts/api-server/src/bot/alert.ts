@@ -6,6 +6,10 @@ export const DISCONNECT_ALERT_THRESHOLD_MS = (() => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 5 * 60_000;
 })();
 
+export function isAlertsConfigured(): boolean {
+  return Boolean(process.env["DISCORD_ALERT_WEBHOOK_URL"]);
+}
+
 function formatDuration(ms: number): string {
   const totalSeconds = Math.round(ms / 1000);
   const hours = Math.floor(totalSeconds / 3600);

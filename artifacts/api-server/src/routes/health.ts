@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { HealthCheckResponse } from "@workspace/api-zod";
 import { isBotOnline, getBotReadyAt, getShardStatus, getOracleReplyMode } from "../bot/index";
+import { isAlertsConfigured, DISCONNECT_ALERT_THRESHOLD_MS } from "../bot/alert";
 
 const router: IRouter = Router();
 
@@ -22,6 +23,8 @@ router.get("/healthz", (_req, res) => {
     shardStatus: getShardStatus(),
     oracleReplyMode: oracleReply.mode,
     oracleReplyReason: oracleReply.reason,
+    alertsConfigured: isAlertsConfigured(),
+    alertThresholdMs: DISCONNECT_ALERT_THRESHOLD_MS,
   });
   res.status(200).json(data);
 });
