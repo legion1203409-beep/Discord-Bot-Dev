@@ -39,10 +39,7 @@ function buildProphecyPinEmbed(prophecy: Prophecy | null): object {
   }
   const rarity = CHEST_RARITIES.find((r) => r.key === prophecy.rarityKey);
   const rarityLabel = rarity ? `${rarity.emoji ?? ""} ${rarity.label}`.trim() : prophecy.rarityKey;
-  const msLeft = prophecy.expiresAt - Date.now();
-  const hoursLeft = Math.floor(msLeft / (60 * 60 * 1000));
-  const minutesLeft = Math.floor((msLeft % (60 * 60 * 1000)) / 60000);
-  const timeStr = hoursLeft > 0 ? `${hoursLeft}h ${minutesLeft}m` : `${minutesLeft}m`;
+  const expiryUnix = Math.floor(prophecy.expiresAt / 1000);
   return {
     color: THEME_COLOR,
     title: "🔮 Profeția Oracolului Cenușii",
@@ -50,7 +47,7 @@ function buildProphecyPinEmbed(prophecy: Prophecy | null): object {
       `Oracolul a vorbit. Un cufăr este binecuvântat azi cu putere înmulțită.\n\n` +
       `**Cufăr binecuvântat:** ${rarityLabel}\n` +
       `**Bonus Oboli:** ×${prophecy.mult}\n` +
-      `**Timp rămas:** ${timeStr}`,
+      `**Expiră:** <t:${expiryUnix}:f> (<t:${expiryUnix}:R>)`,
     footer: { text: BRAND_FOOTER },
   };
 }
