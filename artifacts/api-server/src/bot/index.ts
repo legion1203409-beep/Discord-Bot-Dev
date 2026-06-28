@@ -614,6 +614,7 @@ async function handleChestClaim(interaction: ButtonInteraction, chestId: string,
   await interaction.editReply({ components: [openingRow] });
   await new Promise<void>((r) => setTimeout(r, 900));
   await interaction.message.edit({ components: [disabledRow] }).catch(() => null);
+  setTimeout(() => { void interaction.message.delete().catch(() => {}); }, CLAIM_TTL_MS);
 
   const claimMsg = CHEST_CLAIM_MSG[rarityKey] ?? CHEST_CLAIM_MSG["bronz"]!;
   const claimReply = await interaction.followUp({ content: claimMsg(interaction.user.username, totalGold) });
@@ -686,6 +687,7 @@ async function handleLockedChestClaim(interaction: ButtonInteraction, chestId: s
       .setDisabled(true),
   );
   await interaction.message.edit({ components: [disabledRow] }).catch(() => null);
+  setTimeout(() => { void interaction.message.delete().catch(() => {}); }, CLAIM_TTL_MS);
 
   const rarity = CHEST_RARITIES.find((r) => r.key === rarityKey);
   const rarityLabel = rarity?.label ?? rarityKey;
@@ -720,6 +722,7 @@ async function handleKeyChestClaim(interaction: ButtonInteraction, chestId: stri
       .setDisabled(true),
   );
   await interaction.message.edit({ components: [disabledRow] }).catch(() => null);
+  setTimeout(() => { void interaction.message.delete().catch(() => {}); }, CLAIM_TTL_MS);
 
   const keyChestReply = await interaction.followUp({ content: buildKeyChestClaimMessage(interaction.user.username, keyType) });
   setTimeout(() => { void keyChestReply.delete().catch(() => {}); }, CLAIM_TTL_MS);
