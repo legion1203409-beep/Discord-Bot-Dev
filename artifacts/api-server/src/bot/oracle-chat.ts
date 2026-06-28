@@ -18,14 +18,22 @@ const AI_ENABLED = !!process.env.OPENAI_API_KEY;
  * Read a positive-integer tuning value from the environment, falling back to the
  * default when the var is unset, empty, non-numeric, or not a positive integer.
  * Keeps an operator's typo from crashing the bot or silently disabling a guard.
+ *
+ * When `max` is provided, a value above the bound is clamped down to `max` (with a
+ * warning) rather than passed through — so an over-large knob can't brick replies
+ * (e.g. Discord's hard 100-message fetch cap) or quietly inflate cost/latency.
  */
-function envInt(name: string, fallback: number): number {
+function envInt(name: string, fallback: number, max?: number): number {
   const raw = process.env[name];
   if (raw === undefined || raw.trim() === "") return fallback;
   const parsed = Number(raw);
   if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed <= 0) {
     logger.warn({ name, value: raw, fallback }, "Invalid Oracle tuning value — using default");
     return fallback;
+  }
+  if (max !== undefined && parsed > max) {
+    logger.warn({ name, value: raw, max }, "Oracle tuning value above max — clamping");
+    return max;
   }
   return parsed;
 }
@@ -55,16 +63,20 @@ const DISCORD_MAX_CHARS = 2000;
 // to protect cost/latency and stay within the model context. All four are tunable
 // via env vars so an operator can adjust continuity/cost without a redeploy;
 // invalid values fall back to the defaults below.
-const MEMORY_FETCH_LIMIT = envInt("ORACLE_MEMORY_FETCH_LIMIT", 25); // raw messages scanned per reply
-const MAX_MEMORY_TURNS = envInt("ORACLE_MAX_MEMORY_TURNS", 8); // exchanges kept (player + Oracle), most recent
-const MEMORY_TURN_CHARS = envInt("ORACLE_MEMORY_TURN_CHARS", 400); // per-turn truncation
-const MEMORY_WINDOW_MS = envInt("ORACLE_MEMORY_WINDOW_MS", 30 * 60 * 1000); // only recent messages count
+// raw messages scanned per reply — hard-capped at 100 because Discord's
+// messages.fetch({ limit }) rejects anything above 100, which would throw and
+// silently degrade every reply to no-memory.
+const MEMORY_FETCH_LIMIT = envInt("ORACLE_MEMORY_FETCH_LIMIT", 25, 100);
+const MAX_MEMORY_TURNS = envInt("ORACLE_MAX_MEMORY_TURNS", 8, 50); // exchanges kept (player + Oracle), most recent
+const MEMORY_TURN_CHARS = envInt("ORACLE_MEMORY_TURN_CHARS", 400, 4000); // per-turn truncation
+const MEMORY_WINDOW_MS = envInt("ORACLE_MEMORY_WINDOW_MS", 30 * 60 * 1000, 24 * 60 * 60 * 1000); // only recent messages count
 
 // Model request bounds: how long to wait before falling back to the in-character
 // silence line, and the upper bound on reply tokens. Tunable so an operator can
-// trade latency/cost; invalid values fall back to the defaults below.
-const MODEL_TIMEOUT_MS = envInt("ORACLE_MODEL_TIMEOUT_MS", 25_000);
-const MODEL_MAX_COMPLETION_TOKENS = envInt("ORACLE_MODEL_MAX_COMPLETION_TOKENS", 8192);
+// trade latency/cost; invalid values fall back to the defaults below and
+// over-large values are clamped so a typo can't stall replies or runaway cost.
+const MODEL_TIMEOUT_MS = envInt("ORACLE_MODEL_TIMEOUT_MS", 25_000, 120_000);
+const MODEL_MAX_COMPLETION_TOKENS = envInt("ORACLE_MODEL_MAX_COMPLETION_TOKENS", 8192, 32_768);
 
 type ChatMessage = OpenAI.Chat.Completions.ChatCompletionMessageParam;
 
