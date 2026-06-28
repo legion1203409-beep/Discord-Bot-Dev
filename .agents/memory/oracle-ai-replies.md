@@ -27,6 +27,16 @@ empty we cannot personalize, so non-ping replies are intentionally skipped while
 **gpt-5 family params:** use `max_completion_tokens` (NOT `max_tokens`); `temperature` is
 not specifiable (always 1). Applies to any gpt-5* call in this repo.
 
+**Updating the key in prod:** a running production deployment keeps the OLD secret
+value in its process env — changing/replacing `OPENAI_API_KEY` does NOT take effect
+until the app is republished/redeployed. After any key change, redeploy.
+
+**Key-shape gotchas (seen in support):** a valid OpenAI key starts with `sk-` and is
+long (~150+ chars). The `key_...` value OpenAI shows in the keys table is the *Tracking
+ID*, not the secret — pasting it yields 401 `invalid_api_key`. The real secret is shown
+only once at creation. A correctly-shaped key that returns 429 `insufficient_quota` means
+the OpenAI account has no billing/credit (not a code problem).
+
 **Cost/abuse guards:** per-user cooldown + global hourly cap. Reserve the global slot
 synchronously (check-then-push with no await between) right before generating, or
 concurrent mentions overshoot the cap. Never log message content (length/mood only).
