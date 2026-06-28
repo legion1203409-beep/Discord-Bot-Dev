@@ -1,6 +1,6 @@
 import { Client, TextChannel, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import { logger } from "../lib/logger";
-import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, rollChest, oracleMessage, buildFinalBossEmbed, buildBossLeaderboard, computeBossRewards, finalBossRow, bossMaxHp, type BossRarity } from "./survival";
+import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, rollChest, oracleMessage, buildProphecyMessage, CHEST_RARITIES, buildFinalBossEmbed, buildBossLeaderboard, computeBossRewards, finalBossRow, bossMaxHp, type BossRarity } from "./survival";
 import { triggerRandomBattleEvent } from "./combat-events";
 import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle, addPlayerReputation, addPlayerGold, addPlayerXp } from "./db";
 
@@ -18,6 +18,11 @@ const ORACLE_INTERVAL_MS = 25 * 60 * 1000;
 const BATTLE_EVENT_INTERVAL_MS = 7 * 60 * 1000;
 
 export const claimedChests = new Set<string>();
+
+// ─── Active prophecy ──────────────────────────────────────────────────────────
+interface Prophecy { rarityKey: string; mult: 2 | 3; expiresAt: number }
+let activeProphecy: Prophecy | null = null;
+export function getActiveProphecy(): Prophecy | null { return activeProphecy; }
 
 // ─── Boss shared HP state ─────────────────────────────────────────────────────
 export interface BossState {
@@ -105,7 +110,7 @@ async function expireOldEvents(client: Client) {
   }
 }
 
-export async function fireChestForced(client: Client, rarityKey: string) {
+export async function fireChestForced(client: Client, rarityKey: string, mult?: 2 | 3) {
   if (firingChest) {
     logger.warn("fireChestForced already in progress, skipping duplicate trigger");
     return null;
@@ -129,7 +134,10 @@ export async function fireChestForced(client: Client, rarityKey: string) {
     const result = sc(rarityKey);
     if (!result) return null;
     const { rarity, gold } = result;
-    const chestId = `chest_${Date.now()}_${rarity.key}_${gold}`;
+    // Encode mult in customId so the claim handler knows the bonus without extra state
+    const chestId = mult != null
+      ? `chest_${Date.now()}_${rarity.key}_${gold}_x${mult}`
+      : `chest_${Date.now()}_${rarity.key}_${gold}`;
     const expireAt = Date.now() + CHEST_EXPIRE_MS;
 
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -149,19 +157,23 @@ export async function fireChestForced(client: Client, rarityKey: string) {
         .setDisabled(true),
     );
 
+    const content = mult != null
+      ? `🔮 **Cufăr Binecuvântat** — ${rarity.label} apare în Regat! **×${mult} Oboli** pentru cel mai rapid!`
+      : `📦 Cufăr de **${rarity.label}** apare în Regat! Revendică-l repede!`;
+
     const msg = await channel.send({
-      content: `📦 Cufăr de **${rarity.label}** apare în Regat! Revendică-l repede!`,
-      embeds: [bce(gold, rarity)],
+      content,
+      embeds: [bce(gold, rarity, mult)],
       components: [lockedRow],
     });
     lastChestMessageId = msg.id;
 
     await sleep(5000);
     if (!claimedChests.has(chestId)) {
-      await msg.edit({ embeds: [bce(gold, rarity)], components: [row] }).catch(() => null);
+      await msg.edit({ embeds: [bce(gold, rarity, mult)], components: [row] }).catch(() => null);
     }
 
-    logger.info({ chestId, gold, rarity: rarity.key }, "Chest spawned (forced)");
+    logger.info({ chestId, gold, rarity: rarity.key, mult }, "Chest spawned (forced)");
 
     const timeout = setTimeout(async () => {
       if (!claimedChests.has(chestId)) {
@@ -174,7 +186,7 @@ export async function fireChestForced(client: Client, rarityKey: string) {
             .setStyle(ButtonStyle.Secondary)
             .setDisabled(true),
         );
-        await msg.edit({ embeds: [bce(gold, rarity)], components: [disabledRow] }).catch(() => null);
+        await msg.edit({ embeds: [bce(gold, rarity, mult)], components: [disabledRow] }).catch(() => null);
         logger.info({ chestId }, "Chest expired unclaimed (forced)");
       }
     }, CHEST_EXPIRE_MS);
@@ -472,6 +484,26 @@ async function fireOracle(client: Client) {
   }
 }
 
+async function fireProphecy(client: Client) {
+  try {
+    const channel = await client.channels.fetch(MAIN_CHANNEL_ID).catch(() => null);
+    if (!(channel instanceof TextChannel)) return;
+
+    // Equal chance for each rarity — makes mitic/aur achievable daily prophecies
+    const rarityKey = CHEST_RARITIES[Math.floor(Math.random() * CHEST_RARITIES.length)]!.key;
+    // ×2 with 70% probability, ×3 with 30%
+    const mult: 2 | 3 = Math.random() < 0.7 ? 2 : 3;
+
+    activeProphecy = { rarityKey, mult, expiresAt: Date.now() + 24 * 60 * 60 * 1000 };
+
+    const msg = buildProphecyMessage(rarityKey, mult);
+    await channel.send({ content: msg });
+    logger.info({ rarityKey, mult }, "Daily prophecy fired");
+  } catch (err) {
+    logger.error({ err }, "Failed to fire prophecy");
+  }
+}
+
 async function fireBattleEvent(client: Client) {
   try {
     const ev = await getLatestActiveEvent();
@@ -507,6 +539,13 @@ export function startScheduler(client: Client) {
   // Oracle messages disabled — user requested only chest in chat
   // setInterval(() => { void fireOracle(client); }, ORACLE_INTERVAL_MS);
   // logger.info({ everyMinutes: ORACLE_INTERVAL_MS / 60000 }, "Oracle scheduler started");
+
+  // Daily prophecy: first fires 1 minute after boot, then every 24h
+  setTimeout(async () => {
+    await fireProphecy(client);
+    setInterval(() => { void fireProphecy(client); }, 24 * 60 * 60 * 1000);
+  }, 60 * 1000);
+  logger.info("First prophecy in 1 minute, then every 24h");
 
   setInterval(() => { void fireBattleEvent(client); }, BATTLE_EVENT_INTERVAL_MS);
   logger.info({ everyMinutes: BATTLE_EVENT_INTERVAL_MS / 60000 }, "Battle-event scheduler started");

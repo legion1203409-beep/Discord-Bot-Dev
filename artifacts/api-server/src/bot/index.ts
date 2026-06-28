@@ -19,7 +19,7 @@ import {
 } from "discord.js";
 import { logger } from "../lib/logger";
 import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./alert";
-import { startScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, claimedChests, activeBossMap, type BossState } from "./scheduler";
+import { startScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, claimedChests, activeBossMap, getActiveProphecy, type BossState } from "./scheduler";
 import {
   upsertPlayer,
   joinEvent,
@@ -151,6 +151,17 @@ const slashCommands = [
           { name: "🥈 Cufăr de Argint", value: "argint" },
           { name: "🥉 Cufăr de Bronz", value: "bronz" },
         ),
+    )
+    .addStringOption((opt) =>
+      opt
+        .setName("multiplicator")
+        .setDescription("Bonus Oboli pentru cufărul generat (implicit fără bonus)")
+        .setRequired(false)
+        .addChoices(
+          { name: "1× — Fără bonus", value: "1" },
+          { name: "2× — Dublu Oboli", value: "2" },
+          { name: "3× — Triplu Oboli", value: "3" },
+        ),
     ),
   new SlashCommandBuilder()
     .setName("spawnboss")
@@ -273,12 +284,14 @@ async function handleStartEvent(interaction: ChatInputCommandInteraction) {
 async function handleSpawnChest(interaction: ChatInputCommandInteraction) {
   if (!(await isOwner(interaction))) return;
   const rarityOpt = interaction.options.getString("raritate") ?? "random";
+  const multStr = interaction.options.getString("multiplicator") ?? "1";
+  const mult = (multStr === "2" || multStr === "3") ? (parseInt(multStr) as 2 | 3) : undefined;
   await interaction.reply({ content: "📦 *Cenușa se ridică…* Un cufăr apare în Regat!", ephemeral: true });
   if (botClient) {
     if (rarityOpt === "random") {
       await fireChest(botClient);
     } else {
-      await fireChestForced(botClient, rarityOpt);
+      await fireChestForced(botClient, rarityOpt, mult);
     }
   }
 }
@@ -437,7 +450,7 @@ const CHEST_CLAIM_MSG: Record<string, (user: string, gold: number) => string> = 
   mitic:  (u, g) => `💎⚡ **${u}** a deschis un **CUFĂR MITIC**!! **${g} Oboli** răsar din adâncurile timpului! ⚡💎`,
 };
 
-async function handleChestClaim(interaction: ButtonInteraction, chestId: string, rarityKey: string, gold: number) {
+async function handleChestClaim(interaction: ButtonInteraction, chestId: string, rarityKey: string, gold: number, multOverride: number = 1) {
   // Ack immediately so the DB writes below can't blow past Discord's 3s deadline
   // (DiscordAPIError 10062). deferUpdate keeps the chest message intact for now.
   await interaction.deferUpdate();
@@ -449,8 +462,19 @@ async function handleChestClaim(interaction: ButtonInteraction, chestId: string,
   }
   claimedChests.add(chestId);
 
+  // Determine effective multiplier: explicit (_x2/_x3 in customId from admin spawn)
+  // takes priority; otherwise fall back to the active daily prophecy.
+  let effectiveMult = multOverride;
+  if (effectiveMult <= 1) {
+    const prophecy = getActiveProphecy();
+    if (prophecy && prophecy.rarityKey === rarityKey && prophecy.expiresAt > Date.now()) {
+      effectiveMult = prophecy.mult;
+    }
+  }
+  const totalGold = gold * effectiveMult;
+
   await upsertPlayer(interaction.user.id, interaction.user.username);
-  await addPlayerGold(interaction.user.id, gold);
+  await addPlayerGold(interaction.user.id, totalGold);
 
   const openingRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
@@ -475,9 +499,15 @@ async function handleChestClaim(interaction: ButtonInteraction, chestId: string,
   await interaction.message.edit({ components: [disabledRow] }).catch(() => null);
 
   const claimMsg = CHEST_CLAIM_MSG[rarityKey] ?? CHEST_CLAIM_MSG["bronz"]!;
-  await interaction.followUp({ content: claimMsg(interaction.user.username, gold) });
+  await interaction.followUp({ content: claimMsg(interaction.user.username, totalGold) });
 
-  logger.info({ discordId: interaction.user.id, chestId, rarityKey, gold }, "Chest claimed");
+  if (effectiveMult > 1) {
+    await interaction.followUp({
+      content: `🔮 **Profeția s-a împlinit!** Ai primit de **×${effectiveMult}** mai mulți Oboli! (${gold} × ${effectiveMult} = **${totalGold} Oboli**)`,
+    });
+  }
+
+  logger.info({ discordId: interaction.user.id, chestId, rarityKey, gold, effectiveMult, totalGold }, "Chest claimed");
 }
 
 async function handleJoin(interaction: ButtonInteraction, eventId: number) {
@@ -936,10 +966,11 @@ async function handleButton(interaction: ButtonInteraction) {
   }
 
   if (id.startsWith("chest_") && !id.endsWith("_claimed") && !id.endsWith("_expired") && !id.endsWith("_opening")) {
-    // New format: chest_{ts}_{rarityKey}_{gold}
-    const newMatch = id.match(/^(chest_\d+)_(\w+)_(\d+)$/);
+    // New format: chest_{ts}_{rarityKey}_{gold} or with optional _x2/_x3 bonus suffix
+    const newMatch = id.match(/^(chest_\d+)_(\w+)_(\d+)(?:_x([23]))?$/);
     if (newMatch) {
-      return handleChestClaim(interaction, newMatch[1]!, newMatch[2]!, parseInt(newMatch[3]!));
+      const mult = newMatch[4] ? (parseInt(newMatch[4]!) as 2 | 3) : 1;
+      return handleChestClaim(interaction, newMatch[1]!, newMatch[2]!, parseInt(newMatch[3]!), mult);
     }
     // Legacy format: chest_{ts}_{gold}
     const legacyMatch = id.match(/^(chest_\d+)_(\d+)$/);
