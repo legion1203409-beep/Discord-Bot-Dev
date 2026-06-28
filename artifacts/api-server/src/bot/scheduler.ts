@@ -1,6 +1,6 @@
 import { Client, TextChannel, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import { logger } from "../lib/logger";
-import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, rollChest, oracleMessage, buildProphecyMessage, CHEST_RARITIES, buildFinalBossEmbed, buildBossLeaderboard, buildLockedChestEmbed, computeBossRewards, finalBossRow, bossMaxHp, type BossRarity, type BossPlayerStats } from "./survival";
+import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, rollChest, oracleMessage, buildProphecyMessage, CHEST_RARITIES, buildFinalBossEmbed, buildBossLeaderboard, buildLockedChestEmbed, computeBossRewards, finalBossRow, bossMaxHp, THEME_COLOR, BRAND_FOOTER, type BossRarity, type BossPlayerStats } from "./survival";
 import { triggerRandomBattleEvent } from "./combat-events";
 import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle, addPlayerReputation, addPlayerGold, addPlayerXp } from "./db";
 
@@ -23,6 +23,106 @@ export const claimedChests = new Set<string>();
 interface Prophecy { rarityKey: string; mult: 2 | 3; expiresAt: number }
 let activeProphecy: Prophecy | null = null;
 export function getActiveProphecy(): Prophecy | null { return activeProphecy; }
+
+// ID of the pinned oracle message in the main channel (module-level; recovered on startup)
+let prophecyPinnedMsgId: string | null = null;
+
+function buildProphecyPinEmbed(prophecy: Prophecy | null): object {
+  if (!prophecy || prophecy.expiresAt <= Date.now()) {
+    return {
+      color: 0x4a4a4a,
+      title: "🔮 Oracolul Cenușii",
+      description: "*Oracolul tace…*\n\nNicio profeție nu este activă în acest moment.",
+      footer: { text: BRAND_FOOTER },
+    };
+  }
+  const rarity = CHEST_RARITIES.find((r) => r.key === prophecy.rarityKey);
+  const rarityLabel = rarity ? `${rarity.emoji ?? ""} ${rarity.label}`.trim() : prophecy.rarityKey;
+  const msLeft = prophecy.expiresAt - Date.now();
+  const hoursLeft = Math.floor(msLeft / (60 * 60 * 1000));
+  const minutesLeft = Math.floor((msLeft % (60 * 60 * 1000)) / 60000);
+  const timeStr = hoursLeft > 0 ? `${hoursLeft}h ${minutesLeft}m` : `${minutesLeft}m`;
+  return {
+    color: THEME_COLOR,
+    title: "🔮 Profeția Oracolului Cenușii",
+    description:
+      `Oracolul a vorbit. Un cufăr este binecuvântat azi cu putere înmulțită.\n\n` +
+      `**Cufăr binecuvântat:** ${rarityLabel}\n` +
+      `**Bonus Oboli:** ×${prophecy.mult}\n` +
+      `**Timp rămas:** ${timeStr}`,
+    footer: { text: BRAND_FOOTER },
+  };
+}
+
+async function updateProphecyPin(client: Client): Promise<void> {
+  try {
+    const channel = await client.channels.fetch(MAIN_CHANNEL_ID).catch(() => null);
+    if (!(channel instanceof TextChannel)) return;
+
+    const embed = buildProphecyPinEmbed(activeProphecy);
+
+    if (prophecyPinnedMsgId) {
+      const existing = await channel.messages.fetch(prophecyPinnedMsgId).catch(() => null);
+      if (existing) {
+        await existing.edit({ embeds: [embed] });
+        logger.info({ msgId: prophecyPinnedMsgId }, "Prophecy pin updated");
+        return;
+      }
+      // Message was deleted externally — fall through to create a new one
+      prophecyPinnedMsgId = null;
+    }
+
+    // No existing pin: send a new message and pin it
+    const msg = await channel.send({ embeds: [embed] });
+    prophecyPinnedMsgId = msg.id;
+    await msg.pin().catch((err) => logger.warn({ err }, "Failed to pin prophecy message"));
+
+    // Discord sends a "pinned a message" system notification; try to clean it up
+    await channel.messages
+      .fetch({ limit: 5, after: msg.id })
+      .then(async (recent) => {
+        const sysMsg = recent.find((m) => m.type === 6 /* ChannelPinnedMessage */);
+        if (sysMsg) await sysMsg.delete().catch(() => null);
+      })
+      .catch(() => null);
+
+    logger.info({ msgId: msg.id }, "Prophecy pin created");
+  } catch (err) {
+    logger.error({ err }, "Failed to update prophecy pin");
+  }
+}
+
+/**
+ * Called once at bot startup: scans pinned messages in the main channel to
+ * recover an existing oracle pin (so we edit instead of creating a new one),
+ * then syncs the embed to the current prophecy state.
+ */
+export async function initOraclePinOnStartup(client: Client): Promise<void> {
+  try {
+    const channel = await client.channels.fetch(MAIN_CHANNEL_ID).catch(() => null);
+    if (!(channel instanceof TextChannel)) return;
+
+    const botId = client.user?.id;
+    if (botId) {
+      const pins = await channel.messages.fetchPinned().catch(() => null);
+      if (pins) {
+        const existing = pins.find(
+          (m) =>
+            m.author.id === botId &&
+            m.embeds.some((e) => e.title?.includes("Oracolul Cenușii")),
+        );
+        if (existing) {
+          prophecyPinnedMsgId = existing.id;
+          logger.info({ msgId: existing.id }, "Recovered existing oracle pin");
+        }
+      }
+    }
+
+    await updateProphecyPin(client);
+  } catch (err) {
+    logger.error({ err }, "Failed to init oracle pin on startup");
+  }
+}
 
 // ─── Boss shared HP state ─────────────────────────────────────────────────────
 export type { BossPlayerStats };
@@ -563,8 +663,13 @@ async function fireProphecy(client: Client) {
 
     activeProphecy = { rarityKey, mult, expiresAt: Date.now() + 24 * 60 * 60 * 1000 };
 
+    // Announce the new prophecy dramatically in chat
     const msg = buildProphecyMessage(rarityKey, mult);
     await channel.send({ content: msg });
+
+    // Update (or create) the pinned oracle message so players can always find it
+    await updateProphecyPin(client);
+
     logger.info({ rarityKey, mult }, "Daily prophecy fired");
   } catch (err) {
     logger.error({ err }, "Failed to fire prophecy");
@@ -613,6 +718,10 @@ export function startScheduler(client: Client) {
     setInterval(() => { void fireProphecy(client); }, 24 * 60 * 60 * 1000);
   }, 60 * 1000);
   logger.info("First prophecy in 1 minute, then every 24h");
+
+  // Sync the pinned oracle message immediately on startup (shows "Oracolul tace…"
+  // until the first fireProphecy runs, and recovers the existing pin after restarts)
+  void initOraclePinOnStartup(client);
 
   setInterval(() => { void fireBattleEvent(client); }, BATTLE_EVENT_INTERVAL_MS);
   logger.info({ everyMinutes: BATTLE_EVENT_INTERVAL_MS / 60000 }, "Battle-event scheduler started");
