@@ -30,6 +30,9 @@ export const playersTable = pgTable("players", {
   shopDodgeCount: integer("shop_dodge_count").notNull().default(0),
   shopCritCount: integer("shop_crit_count").notNull().default(0),
   shopHpCount: integer("shop_hp_count").notNull().default(0),
+  keyRar:   integer("key_rar").notNull().default(0),
+  keyEpic:  integer("key_epic").notNull().default(0),
+  keyRegal: integer("key_regal").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

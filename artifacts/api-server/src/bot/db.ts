@@ -306,3 +306,41 @@ export async function getTopPlayers(): Promise<Player[]> {
   const rows = await db.select().from(playersTable).orderBy(playersTable.xp);
   return rows.slice(-10).reverse();
 }
+
+// ─── Key inventory ────────────────────────────────────────────────────────────
+export type KeyType = "rar" | "epic" | "regal";
+
+export async function getPlayerKeys(discordId: string): Promise<{ rar: number; epic: number; regal: number } | null> {
+  const [p] = await db.select({
+    keyRar: playersTable.keyRar,
+    keyEpic: playersTable.keyEpic,
+    keyRegal: playersTable.keyRegal,
+  }).from(playersTable).where(eq(playersTable.discordId, discordId));
+  if (!p) return null;
+  return { rar: p.keyRar, epic: p.keyEpic, regal: p.keyRegal };
+}
+
+export async function addPlayerKey(discordId: string, keyType: KeyType): Promise<void> {
+  const setObj =
+    keyType === "rar"   ? { keyRar:   sql`${playersTable.keyRar}   + 1` } :
+    keyType === "epic"  ? { keyEpic:  sql`${playersTable.keyEpic}  + 1` } :
+                          { keyRegal: sql`${playersTable.keyRegal} + 1` };
+  await db.update(playersTable).set(setObj).where(eq(playersTable.discordId, discordId));
+}
+
+// Returns true if a key was consumed, false if the player had none.
+export async function consumePlayerKey(discordId: string, keyType: KeyType): Promise<boolean> {
+  const col =
+    keyType === "rar"   ? playersTable.keyRar   :
+    keyType === "epic"  ? playersTable.keyEpic  :
+                          playersTable.keyRegal;
+  const setObj =
+    keyType === "rar"   ? { keyRar:   sql`${playersTable.keyRar}   - 1` } :
+    keyType === "epic"  ? { keyEpic:  sql`${playersTable.keyEpic}  - 1` } :
+                          { keyRegal: sql`${playersTable.keyRegal} - 1` };
+  const [u] = await db.update(playersTable)
+    .set(setObj)
+    .where(and(eq(playersTable.discordId, discordId), gte(col, 1)))
+    .returning();
+  return u != null;
+}

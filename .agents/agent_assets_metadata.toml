@@ -96,6 +96,30 @@ uri = "file://artifacts/status/public/map-bg.png"
 type = "image"
 title = "generated_image"
 
+[[generated]]
+id = "27qccNQLj_UmpYnIfyW6a"
+uri = "file://artifacts/api-server/assets/chest_regal.png"
+type = "image"
+title = "regal chest dark fantasy"
+
+[[generated]]
+id = "q_5lOfpn9Kew6_eu8oU2H"
+uri = "file://artifacts/api-server/assets/key_rar.png"
+type = "image"
+title = "silver rare key glow"
+
+[[generated]]
+id = "5hWMmIKtRpFh4ybD3DLil"
+uri = "file://artifacts/api-server/assets/key_epic.png"
+type = "image"
+title = "epic purple gold key"
+
+[[generated]]
+id = "T1Ov-pFwcacGPRVg8jReY"
+uri = "file://artifacts/api-server/assets/key_regal.png"
+type = "image"
+title = "royal blue gold key"
+
 [[outputs]]
 id = "Xv7osCIljB2ivkCRjsX9M"
 uri = "file://artifacts/api-server/assets/chest_bronz.png"

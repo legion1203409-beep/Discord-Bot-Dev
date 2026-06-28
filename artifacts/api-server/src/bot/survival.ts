@@ -6,7 +6,7 @@ import {
 } from "discord.js";
 import type { EventParticipant } from "@workspace/db";
 import type { Player } from "@workspace/db";
-import { IMG, COMPANION_IMG, CHEST_IMG } from "./assets";
+import { IMG, COMPANION_IMG, CHEST_IMG, KEY_IMG } from "./assets";
 import { getActiveBattleEvent, consumeStormDrain } from "./combat-events";
 
 const BASE_PRICES = { atac: 50, def: 60, dodge: 70, crit: 80, hp: 40 } as const;
@@ -415,7 +415,45 @@ export const CHEST_RARITIES: ChestRarity[] = [
   { key: "argint", label: "Cufăr de Argint", emoji: "🥈",  color: 0xc0c0c0, min: 40,  max: 90,  weight: 28 },
   { key: "aur",    label: "Cufăr de Aur",    emoji: "🥇",  color: 0xffd700, min: 90,  max: 180, weight: 11 },
   { key: "mitic",  label: "Cufăr Mitic",     emoji: "💎",  color: 0xb026ff, min: 180, max: 350, weight: 3  },
+  { key: "regal",  label: "Cufărul Regal",   emoji: "👑",  color: 0x1a3a8c, min: 600, max: 1500, weight: 0 },
 ];
+
+// ─── Key chain system ─────────────────────────────────────────────────────────
+// Which key type does each chest rarity drop (and at what chance)?
+export const KEY_DROP: Record<string, { keyType: string; chance: number } | null> = {
+  bronz:  { keyType: "rar",   chance: 0.40 },
+  argint: { keyType: "epic",  chance: 0.30 },
+  aur:    { keyType: "regal", chance: 0.20 },
+  mitic:  { keyType: "regal", chance: 0.12 },
+  regal:  null,
+};
+
+// Which key type is required to open a locked chest of each rarity?
+export const CHEST_KEY_REQUIRED: Record<string, string> = {
+  argint: "rar",
+  aur:    "epic",
+  regal:  "regal",
+};
+
+export const KEY_LABEL: Record<string, string> = {
+  rar:   "Cheie de Rar",
+  epic:  "Cheie de Epic",
+  regal: "Cheie Regală",
+};
+
+// Human-readable name for the source chest that drops each key
+export const KEY_SOURCE_LABEL: Record<string, string> = {
+  rar:   "cufere de Bronz",
+  epic:  "cufere de Argint",
+  regal: "cufere de Aur sau Mitic",
+};
+
+// Target locked chest name for each key type
+export const KEY_TARGET_LABEL: Record<string, string> = {
+  rar:   "Cufăr Blocat de Argint",
+  epic:  "Cufăr Blocat de Aur",
+  regal: "Cufărul Regal",
+};
 
 export function rollChest(): { rarity: ChestRarity; gold: number } {
   const total = CHEST_RARITIES.reduce((s, r) => s + r.weight, 0);
@@ -443,17 +481,55 @@ export function buildChestEmbed(gold: number, rarity?: ChestRarity, mult?: 2 | 3
   const blessingLine = mult != null
     ? `\n🔮 **Profeție activă — ×${mult} Oboli!** Câștigă **${gold * mult}** Oboli!`
     : "";
+  const keyDrop = KEY_DROP[r.key];
+  const keyHintLine = keyDrop
+    ? `\n🗝️ *Poate ascunde o ${KEY_LABEL[keyDrop.keyType]}...*`
+    : "";
   return new EmbedBuilder()
     .setColor(r.color)
     .setTitle(`${r.emoji}✨  ${r.label.toUpperCase()} A APĂRUT ÎN REGAT!  ✨${r.emoji}`)
     .setDescription(
       "Cenușa s-a ridicat și a dezvăluit un cufăr misterios!\n" +
       "Obolii zac în el, așteptând mâna celui mai rapid.\n\n" +
-      `💰 **${gold} Oboli** pentru primul care revendică!${blessingLine}\n\n` +
+      `💰 **${gold} Oboli** pentru primul care revendică!${blessingLine}${keyHintLine}\n\n` +
       "⚡ Fii primul — cufărul dispare în fumul umbrelor!",
     )
     .setImage(image)
     .setFooter({ text: "Primul click câștigă!" });
+}
+
+export function buildLockedChestEmbed(rarityKey: string, gold: number): EmbedBuilder {
+  const rarity = CHEST_RARITIES.find((r) => r.key === rarityKey) ?? CHEST_RARITIES[0]!;
+  const keyType = CHEST_KEY_REQUIRED[rarityKey] ?? "rar";
+  const keyLabel = KEY_LABEL[keyType] ?? "Cheie";
+  const sourceLabel = KEY_SOURCE_LABEL[keyType] ?? "cufere comune";
+  const chestImage = CHEST_IMG[rarityKey] ?? IMG.chest;
+  const keyImage = KEY_IMG[keyType];
+
+  return new EmbedBuilder()
+    .setColor(rarity.color)
+    .setTitle(`🔒 ${rarity.emoji}  ${rarity.label.toUpperCase()} — BLOCAT  ${rarity.emoji}🔒`)
+    .setDescription(
+      `*O forță misterioasă ține cufărul închis cu ${keyLabel}.*\n\n` +
+      `💰 **${gold} Oboli** ascunși înăuntru\n` +
+      `🗝️ Necesită: **${keyLabel}**\n` +
+      `📜 Obți cheia revendicând **${sourceLabel}**\n\n` +
+      `⚡ Un singur jucător poate folosi cheia — fii primul!`,
+    )
+    .setThumbnail(keyImage)
+    .setImage(chestImage)
+    .setFooter({ text: "Cufăr blocat — expiră în 10 minute" });
+}
+
+export function buildKeyDropMessage(fromRarityKey: string, keyType: string): string {
+  const rarity = CHEST_RARITIES.find((r) => r.key === fromRarityKey);
+  const keyLabel = KEY_LABEL[keyType] ?? "Cheie Misterioasă";
+  const targetLabel = KEY_TARGET_LABEL[keyType] ?? "cufăr blocat";
+  const emoji = rarity?.emoji ?? "📦";
+  return (
+    `🗝️ **${emoji} ${rarity?.label ?? fromRarityKey}** a dezvăluit o **${keyLabel}**!\n` +
+    `Folosește-o pentru a deschide un **${targetLabel}**!`
+  );
 }
 
 export type ShopCategory = "overview" | "stats" | "comp" | "abil";

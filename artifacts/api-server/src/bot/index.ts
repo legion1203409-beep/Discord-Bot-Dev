@@ -19,7 +19,7 @@ import {
 } from "discord.js";
 import { logger } from "../lib/logger";
 import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./alert";
-import { startScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, claimedChests, activeBossMap, getActiveProphecy, type BossState, type BossPlayerStats } from "./scheduler";
+import { startScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, claimedChests, activeBossMap, getActiveProphecy, type BossState, type BossPlayerStats } from "./scheduler";
 import {
   upsertPlayer,
   joinEvent,
@@ -43,7 +43,10 @@ import {
   buyAbility,
   upgradeAbility,
   applyAbilityLevelToActiveParticipant,
+  addPlayerKey,
+  consumePlayerKey,
   type AbilityKind,
+  type KeyType,
 } from "./db";
 import {
   doCombat,
@@ -80,9 +83,15 @@ import {
   ABILITY_COOLDOWN_MS,
   buildFinalBossEmbed,
   buildBossLeaderboard,
+  buildLockedChestEmbed,
+  buildKeyDropMessage,
   computeBossRewards,
   finalBossRow,
   CHEST_RARITIES,
+  KEY_DROP,
+  CHEST_KEY_REQUIRED,
+  KEY_LABEL,
+  KEY_SOURCE_LABEL,
   THEME_COLOR,
   BRAND_FOOTER,
   type ShopKey,
@@ -152,6 +161,17 @@ const slashCommands = [
           { name: "💎 Cufăr Mitic", value: "mitic" },
           { name: "🥈 Cufăr de Argint", value: "argint" },
           { name: "🥉 Cufăr de Bronz", value: "bronz" },
+          { name: "👑 Cufărul Regal (blocat automat)", value: "regal" },
+        ),
+    )
+    .addStringOption((opt) =>
+      opt
+        .setName("tip")
+        .setDescription("Tip cufăr: normal (click liber) sau blocat (necesită cheie)")
+        .setRequired(false)
+        .addChoices(
+          { name: "📦 Normal — oricine poate revendica", value: "normal" },
+          { name: "🔒 Blocat — necesită cheie", value: "blocat" },
         ),
     )
     .addStringOption((opt) =>
@@ -331,14 +351,24 @@ async function handleStartEvent(interaction: ChatInputCommandInteraction) {
 async function handleSpawnChest(interaction: ChatInputCommandInteraction) {
   if (!(await isOwner(interaction))) return;
   const rarityOpt = interaction.options.getString("raritate") ?? "random";
+  const tipOpt = interaction.options.getString("tip") ?? "normal";
   const multStr = interaction.options.getString("multiplicator") ?? "1";
   const mult = (multStr === "2" || multStr === "3") ? (parseInt(multStr) as 2 | 3) : undefined;
-  await interaction.reply({ content: "📦 *Cenușa se ridică…* Un cufăr apare în Regat!", ephemeral: true });
-  if (botClient) {
-    if (rarityOpt === "random") {
-      await fireChest(botClient);
-    } else {
-      await fireChestForced(botClient, rarityOpt, mult);
+
+  const isLocked = tipOpt === "blocat" || rarityOpt === "regal";
+
+  if (isLocked) {
+    const lockedRarity = rarityOpt === "random" ? "argint" : rarityOpt;
+    await interaction.reply({ content: "🔒 *Cenușa se ridică…* Un cufăr blocat apare în Regat!", ephemeral: true });
+    if (botClient) await fireLockedChest(botClient, lockedRarity);
+  } else {
+    await interaction.reply({ content: "📦 *Cenușa se ridică…* Un cufăr apare în Regat!", ephemeral: true });
+    if (botClient) {
+      if (rarityOpt === "random") {
+        await fireChest(botClient);
+      } else {
+        await fireChestForced(botClient, rarityOpt, mult);
+      }
     }
   }
 }
@@ -554,7 +584,75 @@ async function handleChestClaim(interaction: ButtonInteraction, chestId: string,
     });
   }
 
+  // Key drop roll
+  const keyDrop = KEY_DROP[rarityKey];
+  if (keyDrop && Math.random() < keyDrop.chance) {
+    const keyType = keyDrop.keyType as KeyType;
+    await addPlayerKey(interaction.user.id, keyType);
+    await interaction.followUp({ content: buildKeyDropMessage(rarityKey, keyType) });
+    logger.info({ discordId: interaction.user.id, chestId, rarityKey, keyType }, "Key dropped");
+  }
+
   logger.info({ discordId: interaction.user.id, chestId, rarityKey, gold, effectiveMult, totalGold }, "Chest claimed");
+}
+
+async function handleLockedChestClaim(interaction: ButtonInteraction, chestId: string, rarityKey: string, gold: number) {
+  await interaction.deferUpdate();
+
+  const keyType = CHEST_KEY_REQUIRED[rarityKey] as KeyType | undefined;
+  if (!keyType) {
+    await interaction.followUp({ content: "❌ Cufăr necunoscut.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  const keyLabel = KEY_LABEL[keyType] ?? "Cheie";
+  const sourceLabel = KEY_SOURCE_LABEL[keyType] ?? "cufere comune";
+
+  // Atomic key consume — if returns false, player has no key
+  const keyConsumed = await consumePlayerKey(interaction.user.id, keyType);
+  if (!keyConsumed) {
+    await interaction.followUp({
+      content:
+        `🔒 **Nu ai ${keyLabel}!**\n` +
+        `Obți cheia revendicând **${sourceLabel}** — ai noroc la revendicare!`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  // Key was consumed — try to be first claimer
+  if (claimedChests.has(chestId)) {
+    // Someone else already opened it — refund the key
+    await addPlayerKey(interaction.user.id, keyType);
+    await interaction.followUp({
+      content: `😔 Cineva a fost mai rapid! **${keyLabel}** ta a fost returnată. Folosește-o la alt cufăr blocat!`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  claimedChests.add(chestId);
+
+  await upsertPlayer(interaction.user.id, interaction.user.username);
+  await addPlayerGold(interaction.user.id, gold);
+
+  const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${chestId}_claimed`)
+      .setLabel(`Deschis de ${interaction.user.username}`)
+      .setEmoji("✅")
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(true),
+  );
+  await interaction.message.edit({ components: [disabledRow] }).catch(() => null);
+
+  const rarity = CHEST_RARITIES.find((r) => r.key === rarityKey);
+  const rarityLabel = rarity?.label ?? rarityKey;
+  await interaction.followUp({
+    content:
+      `🗝️ **${interaction.user.username}** a folosit **${keyLabel}** și a deschis **${rarityLabel}**!\n` +
+      `💰 **${gold} Oboli** eliberați din cufărul blocat!`,
+  });
+
+  logger.info({ discordId: interaction.user.id, chestId, rarityKey, gold, keyType }, "Locked chest claimed");
 }
 
 async function handleJoin(interaction: ButtonInteraction, eventId: number) {
@@ -1020,6 +1118,11 @@ async function handleButton(interaction: ButtonInteraction) {
 
   if (id.startsWith("profile_view_")) {
     return handleViewProfile(interaction, id.replace("profile_view_", ""));
+  }
+
+  if (id.startsWith("lockchest_") && !id.endsWith("_claimed") && !id.endsWith("_expired")) {
+    const m = id.match(/^(lockchest_\d+)_(\w+)_(\d+)$/);
+    if (m) return handleLockedChestClaim(interaction, m[1]!, m[2]!, parseInt(m[3]!));
   }
 
   if (id.startsWith("chest_") && !id.endsWith("_claimed") && !id.endsWith("_expired") && !id.endsWith("_opening")) {

@@ -9,3 +9,4 @@
 - [api-server is /api-only](api-server-is-api-only.md) — don't serve the status SPA from api-server; status is a separate web artifact on "/", else GET /api 500s via a broken catch-all.
 - [Discord embed field markdown](discord-embed-field-markdown.md) — embed field NAMES render markdown literally (raw `**`); use plain dividers there, keep bold for description/value only.
 - [Delayed window.open popup-block](delayed-window-open-popup-block.md) — click→animate→open: open about:blank synchronously on click (opener=null, no noopener flag), set location after delay.
+- [Locked chest race guard](locked-chest-race-guard.md) — consumePlayerKey is atomic (WHERE key>=1); but two key-holders can both pass claimedChests.has() before either adds — fix: consume first, then check+add to claimedChests, refund on collision.

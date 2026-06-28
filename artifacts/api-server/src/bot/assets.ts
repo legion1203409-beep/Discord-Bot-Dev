@@ -26,6 +26,13 @@ export const CHEST_IMG: Record<string, string | null> = {
   argint: assetUrl("chest_argint.gif"),
   aur:    assetUrl("chest_aur.gif"),
   mitic:  assetUrl("chest_mitic.gif"),
+  regal:  assetUrl("chest_regal.png"),
+};
+
+export const KEY_IMG: Record<string, string | null> = {
+  rar:   assetUrl("key_rar.png"),
+  epic:  assetUrl("key_epic.png"),
+  regal: assetUrl("key_regal.png"),
 };
 
 export const COMPANION_IMG: Record<string, { base: string | null; evo: string | null }> = {

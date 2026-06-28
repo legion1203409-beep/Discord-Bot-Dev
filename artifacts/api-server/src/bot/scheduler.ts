@@ -1,6 +1,6 @@
 import { Client, TextChannel, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import { logger } from "../lib/logger";
-import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, rollChest, oracleMessage, buildProphecyMessage, CHEST_RARITIES, buildFinalBossEmbed, buildBossLeaderboard, computeBossRewards, finalBossRow, bossMaxHp, type BossRarity, type BossPlayerStats } from "./survival";
+import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, rollChest, oracleMessage, buildProphecyMessage, CHEST_RARITIES, buildFinalBossEmbed, buildBossLeaderboard, buildLockedChestEmbed, computeBossRewards, finalBossRow, bossMaxHp, type BossRarity, type BossPlayerStats } from "./survival";
 import { triggerRandomBattleEvent } from "./combat-events";
 import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle, addPlayerReputation, addPlayerGold, addPlayerXp } from "./db";
 
@@ -486,6 +486,56 @@ export async function fireFinalBoss(client: Client, eventId: number) {
     logger.info({ eventId, bossLevel, rarity, maxHp }, "Final boss summoned");
   } catch (err) {
     logger.error({ err, eventId }, "Failed to summon final boss");
+  }
+}
+
+export async function fireLockedChest(client: Client, rarityKey: string): Promise<void> {
+  try {
+    const channel = await client.channels.fetch(MAIN_CHANNEL_ID).catch(() => null);
+    if (!(channel instanceof TextChannel)) return;
+
+    const { spawnChest: sc } = await import("./survival");
+    const result = sc(rarityKey);
+    if (!result) {
+      logger.warn({ rarityKey }, "fireLockedChest: invalid rarity");
+      return;
+    }
+    const { rarity, gold } = result;
+    const chestId = `lockchest_${Date.now()}_${rarity.key}_${gold}`;
+
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(chestId)
+        .setLabel("🗝️ Deschide cu Cheia")
+        .setStyle(ButtonStyle.Primary),
+    );
+
+    const msg = await channel.send({
+      content: `🔒 **Cufăr Blocat** apare în Regat! Cel cu cheia potrivită îl poate deschide!`,
+      embeds: [buildLockedChestEmbed(rarity.key, gold)],
+      components: [row],
+    });
+
+    logger.info({ chestId, rarityKey: rarity.key, gold }, "Locked chest spawned");
+
+    const timeout = setTimeout(async () => {
+      if (!claimedChests.has(chestId)) {
+        claimedChests.add(chestId);
+        const expiredRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`${chestId}_expired`)
+            .setLabel("Cufărul a dispărut...")
+            .setEmoji("💨")
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(true),
+        );
+        await msg.edit({ components: [expiredRow] }).catch(() => null);
+        logger.info({ chestId }, "Locked chest expired unclaimed");
+      }
+    }, CHEST_EXPIRE_MS);
+    timeout.unref?.();
+  } catch (err) {
+    logger.error({ err }, "Failed to fire locked chest");
   }
 }
 
