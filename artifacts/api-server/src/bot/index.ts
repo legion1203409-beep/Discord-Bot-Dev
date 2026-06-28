@@ -558,7 +558,7 @@ async function handleClasamentSelect(interaction: StringSelectMenuInteraction) {
   await handleViewProfile(interaction, discordId);
 }
 
-const CLAIM_TTL_MS = 2 * 60 * 1000;
+const CLAIM_TTL_MS = 10 * 60 * 1000;
 
 const CHEST_CLAIM_MSG: Record<string, (user: string, gold: number) => string> = {
   bronz:  (u, g) => `🪙 **${u}** a deschis **Cufărul de Bronz** și a câștigat **${g} Oboli**!`,
