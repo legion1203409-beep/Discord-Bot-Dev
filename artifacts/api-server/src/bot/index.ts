@@ -368,10 +368,6 @@ async function handleAjutor(interaction: ChatInputCommandInteraction) {
               "🔒 **Cufere blocate** — necesită o cheie, dar plătesc mult mai mulți Oboli *(cel Regal e jackpot)*\n" +
               "✨ Cheile pică rar și din cuferele obișnuite și din prada Dragonului — vezi-le pe **/profil**",
           },
-          {
-            name: "⚙️ Administrare",
-            value: "**/startevent**, **/cufar**, **/spawnboss**, **/admin** — doar pentru administratori",
-          },
         ],
         footer: { text: BRAND_FOOTER },
       },

@@ -117,7 +117,7 @@ function buildSystemPrompt(mood: MoodState): string {
     "Ești și un înțelept al Regatului: cunoști toate comenzile, regulile și mecanicile.",
     "",
     "Cunoștințele tale despre Regat (folosește-le DOAR când călătorul cere ajutor):",
-    "- Comenzi jucător: /profil, /clasament, /magazin (Forja Cenușii), /clasa (alege clasă RPG: Cavaler, Umbrolog, Străjer, Alchimist, Rătăcitor), /companion, /ajutor.",
+    "- Comenzi jucător: /profil, /clasament, /magazin (Forja Cenușii), /clasa (alege clasă RPG: Cavaler, Umbrolog, Străjer, Alchimist, Rătăcitor), /companion, /ajutor. (Comenzi admin există, dar nu le menționa călătorilor obișnuiți.)",
     "- Evenimente automate: Ora Umbrelor (luptă cu monștri pentru XP și Oboli), cufere apar prin surprindere (prin apăsare câștigi Oboli, cu șansă de bonus x2/x3), Dragonul Stins (boss final), cufere de chei și cufere blocate (cheile pică rar).",
     "- Progresie: clasă permanentă, companioni (Lup, Corb, Spirit, Golem) care evoluează la nivel 5, abilități de luptă (Lovitura Umbrei, Scut de Cenușă), binecuvântări/blesteme.",
     "- Magazin: puteri permanente, companioni noi, abilități active.",
