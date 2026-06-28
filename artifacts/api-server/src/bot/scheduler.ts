@@ -1,6 +1,6 @@
 import { Client, TextChannel, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import { logger } from "../lib/logger";
-import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, rollChest, oracleMessage, buildProphecyMessage, CHEST_RARITIES, buildFinalBossEmbed, buildBossLeaderboard, computeBossRewards, finalBossRow, bossMaxHp, type BossRarity } from "./survival";
+import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, rollChest, oracleMessage, buildProphecyMessage, CHEST_RARITIES, buildFinalBossEmbed, buildBossLeaderboard, computeBossRewards, finalBossRow, bossMaxHp, type BossRarity, type BossPlayerStats } from "./survival";
 import { triggerRandomBattleEvent } from "./combat-events";
 import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle, addPlayerReputation, addPlayerGold, addPlayerXp } from "./db";
 
@@ -25,6 +25,8 @@ let activeProphecy: Prophecy | null = null;
 export function getActiveProphecy(): Prophecy | null { return activeProphecy; }
 
 // ─── Boss shared HP state ─────────────────────────────────────────────────────
+export type { BossPlayerStats };
+
 export interface BossState {
   eventId: number;
   level: number;
@@ -32,10 +34,11 @@ export interface BossState {
   maxHp: number;
   currentHp: number;
   messageId: string;
-  lastHitAt: Map<string, number>;   // discordId → timestamp of last hit
-  damageBy: Map<string, number>;    // discordId → total damage dealt to boss
-  playerHp: Map<string, number>;    // discordId → current HP during boss fight
-  playerNames: Map<string, string>; // discordId → username (for embed + leaderboard)
+  lastHitAt: Map<string, number>;         // discordId → timestamp of last hit
+  damageBy: Map<string, number>;          // discordId → total damage dealt to boss
+  playerHp: Map<string, number>;          // discordId → current HP during boss fight
+  playerNames: Map<string, string>;       // discordId → username (for embed + leaderboard)
+  playerStats: Map<string, BossPlayerStats>; // discordId → global player stats at first hit
   participants: Array<{ username: string; discordId: string; monsterLevel: number; totalDamage: number; isAlive: boolean }>;
   defeated: boolean;
 }
@@ -444,6 +447,7 @@ export async function fireFinalBoss(client: Client, eventId: number) {
       damageBy: new Map(),
       playerHp: new Map(),
       playerNames: new Map(),
+      playerStats: new Map(),
       participants: participants.map((p) => ({
         username: p.username,
         discordId: p.discordId,

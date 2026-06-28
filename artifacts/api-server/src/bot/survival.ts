@@ -943,6 +943,14 @@ export function buildHpBar(current: number, max: number, size = 18): string {
   return "█".repeat(filled) + "░".repeat(size - filled);
 }
 
+export interface BossPlayerStats {
+  atk: number;
+  def: number;
+  dodge: number;
+  crit: number;
+  maxHp: number;
+}
+
 export function buildFinalBossEmbed(
   level: number,
   rarity: BossRarity = "comun",
@@ -950,41 +958,62 @@ export function buildFinalBossEmbed(
   maxHp?: number,
   damageBy?: Map<string, number>,
   playerNames?: Map<string, string>,
+  playerHp?: Map<string, number>,
+  playerStats?: Map<string, BossPlayerStats>,
 ): EmbedBuilder {
   const rd = BOSS_RARITY_DATA[rarity];
   const defeated = currentHp !== undefined && currentHp <= 0;
 
-  let desc =
-    "Cerul Regatului se întunecă, iar cenușa se ridică în vârtejuri.\n" +
-    "**Ultima încercare a Regatului a sosit.**\n\n" +
-    `${rd.emoji} **Raritate: ${rd.label}**\n`;
+  // ── Header ──────────────────────────────────────────────────────────────────
+  let desc = defeated
+    ? "*Cenușa se ridică, iar tăcerea cuprinde câmpul de luptă.*\n\n"
+    : "*Cerul Regatului se întunecă, iar cenușa se ridică în vârtejuri.*\n**Ultima încercare a Regatului a sosit.**\n\n";
 
+  // ── HP bar ───────────────────────────────────────────────────────────────────
   if (currentHp !== undefined && maxHp !== undefined) {
     const bar = buildHpBar(currentHp, maxHp);
     const pct = Math.round((Math.max(0, currentHp) / maxHp) * 100);
-    desc += `❤️ **${Math.max(0, currentHp).toLocaleString()} / ${maxHp.toLocaleString()} HP**\n\`[${bar}]\` ${pct}%\n`;
+    desc += `${rd.emoji} Raritate: **${rd.label}**\n`;
+    desc += `❤️ **${Math.max(0, currentHp).toLocaleString()} / ${maxHp.toLocaleString()} HP**\n`;
+    desc += `\`[${bar}]\` ${pct}%\n`;
   } else {
-    desc += "\n";
+    desc += `${rd.emoji} Raritate: **${rd.label}**\n`;
   }
 
-  // Live damage leaderboard
-  if (damageBy && damageBy.size > 0 && playerNames) {
-    const sorted = [...damageBy.entries()].sort((a, b) => b[1] - a[1]);
-    const medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"];
-    const lines = sorted.slice(0, 5).map(([id, dmg], i) => {
-      const name = playerNames.get(id) ?? "???";
-      return `${medals[i] ?? `${i + 1}.`} **${name}** — ${dmg.toLocaleString()} dmg`;
-    });
-    desc += `\n⚔️ **Luptători:**\n${lines.join("\n")}\n`;
-  }
-
+  // ── Body ─────────────────────────────────────────────────────────────────────
   if (defeated) {
-    desc += "\n💀 **Dragonul Stins a căzut! Regatul este salvat!**\n\nToți participanții au primit recompensa!";
+    desc += "\n💀 **DRAGONUL STINS A CĂZUT! REGATUL ESTE SALVAT!**\n\nToți participanții au primit recompensa!";
   } else {
     desc +=
       "\n🐉 Lovește-l împreună cu echipa! Oricine poate participa.\n" +
-      "🏅 **+50 Reputație, +150 Oboli, +250 XP** pentru toți luptătorii\n" +
+      "🏅 **+50 Rep · +150 Oboli · +250 XP** pentru toți luptătorii\n" +
       "⏱️ Cooldown per jucător: **4 secunde**";
+  }
+
+  // ── Per-player leaderboard ────────────────────────────────────────────────────
+  if (damageBy && damageBy.size > 0 && playerNames) {
+    const sorted = [...damageBy.entries()].sort((a, b) => b[1] - a[1]);
+    const medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣"];
+    const lines = sorted.slice(0, 8).map(([id, dmg], i) => {
+      const name = playerNames.get(id) ?? "???";
+      const medal = medals[i] ?? `${i + 1}.`;
+      const hp = playerHp?.get(id);
+      const stats = playerStats?.get(id);
+      const maxHpVal = stats?.maxHp ?? 100;
+
+      const hpStr = hp === undefined
+        ? ""
+        : hp <= 0
+          ? "  ·  ⚰️ Doborât"
+          : `  ·  ❤️ ${hp}/${maxHpVal} HP`;
+
+      const statsStr = stats
+        ? `\n↳ ⚔️+${stats.atk} · 🛡️+${stats.def} · 🌀${stats.dodge}% · 💥${stats.crit}%`
+        : "";
+
+      return `${medal} **${name}** — 🎯 ${dmg.toLocaleString()} dmg${hpStr}${statsStr}`;
+    });
+    desc += `\n\n━━━━━━━━━━━━━━━━━━\n⚔️ **LUPTĂTORI (${sorted.length})**\n\n${lines.join("\n")}`;
   }
 
   const embed = new EmbedBuilder()

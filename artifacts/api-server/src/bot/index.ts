@@ -19,7 +19,7 @@ import {
 } from "discord.js";
 import { logger } from "../lib/logger";
 import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./alert";
-import { startScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, claimedChests, activeBossMap, getActiveProphecy, type BossState } from "./scheduler";
+import { startScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, claimedChests, activeBossMap, getActiveProphecy, type BossState, type BossPlayerStats } from "./scheduler";
 import {
   upsertPlayer,
   joinEvent,
@@ -897,9 +897,19 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
   // Store username for embed + leaderboard
   boss.playerNames.set(uid, interaction.user.username);
 
-  // Initialize player HP from global max HP (first hit only)
+  // Initialize player HP + stats from global player record (first hit only)
   if (!boss.playerHp.has(uid)) {
     boss.playerHp.set(uid, Math.max(10, 100 + player.maxHpBonus));
+  }
+  if (!boss.playerStats.has(uid)) {
+    const stats: BossPlayerStats = {
+      atk: player.attackBonus,
+      def: player.defenseBonus,
+      dodge: player.dodgeBonus,
+      crit: player.critBonus,
+      maxHp: 100 + player.maxHpBonus,
+    };
+    boss.playerStats.set(uid, stats);
   }
   const myHp = boss.playerHp.get(uid)!;
   const myMaxHp = 100 + player.maxHpBonus;
@@ -984,7 +994,7 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
       const bossMsg = await ch.messages.fetch(boss.messageId).catch(() => null);
       if (bossMsg) {
         await bossMsg.edit({
-          embeds: [buildFinalBossEmbed(boss.level, boss.rarity, boss.currentHp, boss.maxHp, boss.damageBy, boss.playerNames)],
+          embeds: [buildFinalBossEmbed(boss.level, boss.rarity, boss.currentHp, boss.maxHp, boss.damageBy, boss.playerNames, boss.playerHp, boss.playerStats)],
           components: [finalBossRow(eventId)],
         }).catch(() => null);
       }
