@@ -770,10 +770,24 @@ async function fireBattleEvent(client: Client) {
   }
 }
 
+// Periodic check: if the active prophecy has expired, reset the pin to "tace"
+// and clear the in-memory state so the next fireProphecy starts fresh.
+async function checkProphecyExpiry(client: Client): Promise<void> {
+  if (activeProphecy && activeProphecy.expiresAt <= Date.now()) {
+    activeProphecy = null;
+    await updateProphecyPin(client);
+    logger.info("Active prophecy expired — oracle pin reset to silent state");
+  }
+}
+
 // Recursive helper: fires a prophecy after `delayMs`, then schedules the next
 // one 24h later. Anchors the cadence from actual fire time rather than boot time.
 function scheduleProphecy(client: Client, delayMs: number): void {
   const t = setTimeout(async () => {
+    // Reset the pin to "tace" first so there is no stale embed visible
+    // between the old prophecy expiring and the new one being announced.
+    activeProphecy = null;
+    await updateProphecyPin(client);
     await fireProphecy(client);
     scheduleProphecy(client, 24 * 60 * 60 * 1000);
   }, delayMs);
@@ -815,6 +829,11 @@ export function startScheduler(client: Client) {
 
   // Prophecy is in-memory only: a fresh cycle starts on every boot/redeploy.
   void initProphecyScheduler(client);
+
+  // Safety net: every minute check whether the active prophecy has expired and
+  // reset the pin to "Oracolul tace…" if so. This covers any edge cases where the
+  // 24h timer fires slightly late or the bot is under load.
+  setInterval(() => { void checkProphecyExpiry(client); }, 60 * 1000);
 
   setInterval(() => { void fireBattleEvent(client); }, BATTLE_EVENT_INTERVAL_MS);
   logger.info({ everyMinutes: BATTLE_EVENT_INTERVAL_MS / 60000 }, "Battle-event scheduler started");
