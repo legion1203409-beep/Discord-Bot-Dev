@@ -554,8 +554,10 @@ async function fireProphecy(client: Client) {
     const channel = await client.channels.fetch(MAIN_CHANNEL_ID).catch(() => null);
     if (!(channel instanceof TextChannel)) return;
 
-    // Equal chance for each rarity — makes mitic/aur achievable daily prophecies
-    const rarityKey = CHEST_RARITIES[Math.floor(Math.random() * CHEST_RARITIES.length)]!.key;
+    // Only target rarities that can actually spawn naturally (weight > 0).
+    // Regal has weight 0 (admin/locked-only) and must never be a daily prophecy target.
+    const spawnable = CHEST_RARITIES.filter((r) => r.weight > 0);
+    const rarityKey = spawnable[Math.floor(Math.random() * spawnable.length)]!.key;
     // ×2 with 70% probability, ×3 with 30%
     const mult: 2 | 3 = Math.random() < 0.7 ? 2 : 3;
 

@@ -85,6 +85,7 @@ import {
   buildBossLeaderboard,
   buildLockedChestEmbed,
   buildKeyDropMessage,
+  rollChest,
   computeBossRewards,
   finalBossRow,
   CHEST_RARITIES,
@@ -365,7 +366,14 @@ async function handleSpawnChest(interaction: ChatInputCommandInteraction) {
     await interaction.reply({ content: "📦 *Cenușa se ridică…* Un cufăr apare în Regat!", ephemeral: true });
     if (botClient) {
       if (rarityOpt === "random") {
-        await fireChest(botClient);
+        if (mult != null) {
+          // Admin picked a specific multiplier — roll a rarity and use fireChestForced
+          // so the bonus is encoded in the customId and applied at claim time.
+          const { rarity } = rollChest();
+          await fireChestForced(botClient, rarity.key, mult);
+        } else {
+          await fireChest(botClient);
+        }
       } else {
         await fireChestForced(botClient, rarityOpt, mult);
       }
