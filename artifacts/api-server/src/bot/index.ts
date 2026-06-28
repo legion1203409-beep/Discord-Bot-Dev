@@ -82,6 +82,7 @@ import {
   buildBossLeaderboard,
   computeBossRewards,
   finalBossRow,
+  CHEST_RARITIES,
   THEME_COLOR,
   BRAND_FOOTER,
   type ShopKey,
@@ -131,6 +132,7 @@ const slashCommands = [
   new SlashCommandBuilder().setName("clasa").setDescription("🧬 Alege-ți clasa RPG (alegere permanentă)."),
   new SlashCommandBuilder().setName("companion").setDescription("🐾 Vezi companionul tău (cumpără și fă îmbunătățiri din /magazin)."),
   new SlashCommandBuilder().setName("ajutor").setDescription("❓ Ghidul comenzilor din Regatul Cenușii."),
+  new SlashCommandBuilder().setName("profetie").setDescription("🔮 Afișează profeția activă a Oracolului Cenușii."),
   new SlashCommandBuilder()
     .setName("startevent")
     .setDescription("🔥 [Admin] Pornește manual Ora Umbrelor.")
@@ -242,6 +244,10 @@ async function handleAjutor(interaction: ChatInputCommandInteraction) {
             value: "**/magazin** — Forja Cenușii: puteri permanente, companioni și abilități de luptă",
           },
           {
+            name: "🔮 Oracol",
+            value: "**/profetie** — profeția zilei: ce cufăr este binecuvântat și cât timp mai e valabilă",
+          },
+          {
             name: "⚔️ Evenimente automate",
             value:
               "🔥 **Ora Umbrelor** — apare periodic; luptă cu monștri pentru XP și Oboli\n" +
@@ -257,6 +263,47 @@ async function handleAjutor(interaction: ChatInputCommandInteraction) {
       },
     ],
     ephemeral: true,
+  });
+}
+
+async function handleProfetie(interaction: ChatInputCommandInteraction) {
+  const prophecy = getActiveProphecy();
+  if (!prophecy || prophecy.expiresAt <= Date.now()) {
+    await interaction.reply({
+      embeds: [
+        {
+          color: 0x4a4a4a,
+          title: "🔮 Oracolul Cenușii",
+          description: "*Oracolul tace…*\n\nNicio profeție nu este activă în acest moment. Revino mai târziu.",
+          footer: { text: BRAND_FOOTER },
+        },
+      ],
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const rarity = CHEST_RARITIES.find((r) => r.key === prophecy.rarityKey);
+  const rarityLabel = rarity ? `${rarity.emoji ?? ""} ${rarity.label}`.trim() : prophecy.rarityKey;
+  const msLeft = prophecy.expiresAt - Date.now();
+  const hoursLeft = Math.floor(msLeft / (60 * 60 * 1000));
+  const minutesLeft = Math.floor((msLeft % (60 * 60 * 1000)) / 60000);
+  const timeStr = hoursLeft > 0 ? `${hoursLeft}h ${minutesLeft}m` : `${minutesLeft}m`;
+
+  await interaction.reply({
+    embeds: [
+      {
+        color: THEME_COLOR,
+        title: "🔮 Profeția Oracolului Cenușii",
+        description:
+          `Oracolul a vorbit. Un cufăr este binecuvântat azi cu putere înmulțită.\n\n` +
+          `**Cufăr binecuvântat:** ${rarityLabel}\n` +
+          `**Bonus Oboli:** ×${prophecy.mult}\n` +
+          `**Timp rămas:** ${timeStr}`,
+        footer: { text: BRAND_FOOTER },
+      },
+    ],
+    flags: MessageFlags.Ephemeral,
   });
 }
 
@@ -1143,6 +1190,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
         if (interaction.commandName === "clasa") await handleClasa(interaction);
         if (interaction.commandName === "companion") await handleCompanion(interaction);
         if (interaction.commandName === "ajutor") await handleAjutor(interaction);
+        if (interaction.commandName === "profetie") await handleProfetie(interaction);
         if (interaction.commandName === "startevent") await handleStartEvent(interaction);
         if (interaction.commandName === "cufar") await handleSpawnChest(interaction);
         if (interaction.commandName === "spawnboss") await handleSpawnBoss(interaction);
