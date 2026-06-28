@@ -10,4 +10,5 @@
 - [Discord embed field markdown](discord-embed-field-markdown.md) — embed field NAMES render markdown literally (raw `**`); use plain dividers there, keep bold for description/value only.
 - [Delayed window.open popup-block](delayed-window-open-popup-block.md) — click→animate→open: open about:blank synchronously on click (opener=null, no noopener flag), set location after delay.
 - [Locked chest race guard](locked-chest-race-guard.md) — consumePlayerKey is atomic (WHERE key>=1); but two key-holders can both pass claimedChests.has() before either adds — fix: consume first, then check+add to claimedChests, refund on collision.
+- [Oracle AI replies](oracle-ai-replies.md) — Oracle answers mentions/pinging-replies via gpt-5-mini on user's own OPENAI_API_KEY; Discord gives content on mention/ping-reply w/o MessageContent intent, non-ping replies skipped.
 - [Privileged intent gating](discord-privileged-intent-gating.md) — gate MessageContent behind an env flag (default off); always request GuildMessages, else a missing portal toggle bricks login (4014, prod-only).

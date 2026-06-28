@@ -21,6 +21,7 @@ import { logger } from "../lib/logger";
 import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./alert";
 import { startScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, claimedChests, activeBossMap, type BossState, type BossPlayerStats } from "./scheduler";
 import { recordMessage } from "./oracle";
+import { maybeReplyAsOracle, logOracleChatStatus } from "./oracle-chat";
 import { getRewardMultipliers } from "./status-effects";
 import {
   upsertPlayer,
@@ -1258,6 +1259,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
     if (!schedulerStarted) {
       schedulerStarted = true;
       startScheduler(client);
+      logOracleChatStatus();
     } else {
       logger.info("Scheduler already running — skipping re-init after restart");
     }
@@ -1280,6 +1282,9 @@ export async function startBot(onReady?: () => void): Promise<void> {
     } catch (err) {
       logger.error({ err }, "Oracle messageCreate handler failed");
     }
+    // When the Oracle is addressed (@mention or reply to its own message), answer
+    // in character. Fire-and-forget — it never throws back into this handler.
+    void maybeReplyAsOracle(client, message);
   });
 
   // Schedule a delayed alert when the shard disconnects non-fatally.
