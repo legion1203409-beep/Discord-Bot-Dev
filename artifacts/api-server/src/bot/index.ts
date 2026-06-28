@@ -19,7 +19,7 @@ import {
 } from "discord.js";
 import { logger } from "../lib/logger";
 import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./alert";
-import { startScheduler, APPLICATION_ID, fireEvent, fireChest, fireFinalBoss, claimedChests, activeBossMap, type BossState } from "./scheduler";
+import { startScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, claimedChests, activeBossMap, type BossState } from "./scheduler";
 import {
   upsertPlayer,
   joinEvent,
@@ -138,7 +138,20 @@ const slashCommands = [
   new SlashCommandBuilder()
     .setName("cufar")
     .setDescription("📦 [Admin] Generează manual un cufăr cu Oboli.")
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .addStringOption((opt) =>
+      opt
+        .setName("raritate")
+        .setDescription("Raritatea cufărului (random dacă nu alegi)")
+        .setRequired(false)
+        .addChoices(
+          { name: "📦 Random (automat)", value: "random" },
+          { name: "🥇 Cufăr de Aur", value: "aur" },
+          { name: "💎 Cufăr Mitic", value: "mitic" },
+          { name: "🥈 Cufăr de Argint", value: "argint" },
+          { name: "🥉 Cufăr de Bronz", value: "bronz" },
+        ),
+    ),
   new SlashCommandBuilder()
     .setName("spawnboss")
     .setDescription("🐉 [Admin] Invocă manual Dragonul Stins pentru test.")
@@ -259,8 +272,15 @@ async function handleStartEvent(interaction: ChatInputCommandInteraction) {
 
 async function handleSpawnChest(interaction: ChatInputCommandInteraction) {
   if (!(await isOwner(interaction))) return;
+  const rarityOpt = interaction.options.getString("raritate") ?? "random";
   await interaction.reply({ content: "📦 *Cenușa se ridică…* Un cufăr apare în Regat!", ephemeral: true });
-  if (botClient) await fireChest(botClient);
+  if (botClient) {
+    if (rarityOpt === "random") {
+      await fireChest(botClient);
+    } else {
+      await fireChestForced(botClient, rarityOpt);
+    }
+  }
 }
 
 async function handleSpawnBoss(interaction: ChatInputCommandInteraction) {

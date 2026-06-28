@@ -105,6 +105,92 @@ async function expireOldEvents(client: Client) {
   }
 }
 
+export async function fireChestForced(client: Client, rarityKey: string) {
+  if (firingChest) {
+    logger.warn("fireChestForced already in progress, skipping duplicate trigger");
+    return null;
+  }
+  firingChest = true;
+  try {
+    const channel = await client.channels.fetch(MAIN_CHANNEL_ID);
+    if (!(channel instanceof TextChannel)) return null;
+
+    if (lastChestTimeout) {
+      clearTimeout(lastChestTimeout);
+      lastChestTimeout = null;
+    }
+    if (lastChestMessageId) {
+      const old = await channel.messages.fetch(lastChestMessageId).catch(() => null);
+      if (old) await old.delete().catch(() => null);
+      lastChestMessageId = null;
+    }
+
+    const { buildChestEmbed: bce, spawnChest: sc } = await import("./survival");
+    const result = sc(rarityKey);
+    if (!result) return null;
+    const { rarity, gold } = result;
+    const chestId = `chest_${Date.now()}_${rarity.key}_${gold}`;
+    const expireAt = Date.now() + CHEST_EXPIRE_MS;
+
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(chestId)
+        .setLabel("Revendică Cufărul")
+        .setEmoji(rarity.emoji)
+        .setStyle(ButtonStyle.Success),
+    );
+
+    const lockedRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(chestId)
+        .setLabel("⏳ Disponibil în 5 secunde…")
+        .setEmoji("🔒")
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(true),
+    );
+
+    const msg = await channel.send({
+      content: `📦 Cufăr de **${rarity.label}** apare în Regat! Revendică-l repede!`,
+      embeds: [bce(gold, rarity)],
+      components: [lockedRow],
+    });
+    lastChestMessageId = msg.id;
+
+    await sleep(5000);
+    if (!claimedChests.has(chestId)) {
+      await msg.edit({ embeds: [bce(gold, rarity)], components: [row] }).catch(() => null);
+    }
+
+    logger.info({ chestId, gold, rarity: rarity.key }, "Chest spawned (forced)");
+
+    const timeout = setTimeout(async () => {
+      if (!claimedChests.has(chestId)) {
+        claimedChests.add(chestId);
+        const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`${chestId}_expired`)
+            .setLabel("Cufărul a dispărut...")
+            .setEmoji("💨")
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(true),
+        );
+        await msg.edit({ embeds: [bce(gold, rarity)], components: [disabledRow] }).catch(() => null);
+        logger.info({ chestId }, "Chest expired unclaimed (forced)");
+      }
+    }, CHEST_EXPIRE_MS);
+
+    timeout.unref?.();
+    lastChestTimeout = timeout;
+
+    return { chestId, gold, expireAt };
+  } catch (err) {
+    logger.error({ err }, "Failed to fire chest (forced)");
+    return null;
+  } finally {
+    firingChest = false;
+  }
+}
+
 export async function fireChest(client: Client) {
   if (firingChest) {
     logger.warn("fireChest already in progress, skipping duplicate trigger");

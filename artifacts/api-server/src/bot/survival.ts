@@ -429,6 +429,14 @@ export function rollChest(): { rarity: ChestRarity; gold: number } {
   return { rarity, gold };
 }
 
+/** Spawn a chest of a specific rarity (admin override). */
+export function spawnChest(rarityKey: string): { rarity: ChestRarity; gold: number } | null {
+  const rarity = CHEST_RARITIES.find((r) => r.key === rarityKey);
+  if (!rarity) return null;
+  const gold = Math.floor(Math.random() * (rarity.max - rarity.min + 1)) + rarity.min;
+  return { rarity, gold };
+}
+
 export function buildChestEmbed(gold: number, rarity?: ChestRarity): EmbedBuilder {
   const r = rarity ?? CHEST_RARITIES[0]!;
   const image = CHEST_IMG[r.key] ?? IMG.chest;
