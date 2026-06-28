@@ -14,3 +14,4 @@
 - [Discord bot must deploy as Reserved VM](discord-bot-deploy-vm.md) — Autoscale sleeps the process (gateway drops, scheduler stops) → bot "replies once then dies"; must be Reserved VM (user-only change in Deploy pane).
 - [Privileged intent gating](discord-privileged-intent-gating.md) — gate MessageContent behind an env flag (default off); always request GuildMessages, else a missing portal toggle bricks login (4014, prod-only).
 - [Oracle reply-mode status](oracle-reply-mode-status.md) — healthz exposes oracleReplyMode/Reason from env flag + privilegedIntentFellBack; reflects config intent, not connectivity (live shown separately).
+- [Oracle recovery alert](oracle-recovery-alert.md) — recovery-to-full-mode detection needs an on-disk marker; the in-memory privilegedIntentFellBack flag resets on the restart that IS the recovery path.

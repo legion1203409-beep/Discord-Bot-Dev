@@ -17,6 +17,9 @@ import {
   ButtonStyle,
   PermissionFlagsBits,
 } from "discord.js";
+import { promises as fs } from "fs";
+import os from "os";
+import path from "path";
 import { logger } from "../lib/logger";
 import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./alert";
 import { startScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, claimedChests, activeBossMap, type BossState, type BossPlayerStats } from "./scheduler";
@@ -121,6 +124,44 @@ let shardStatus: string = "disconnected";
 // flipping ORACLE_MESSAGE_CONTENT_ENABLED on safe even if the operator forgets
 // to enable the Message Content toggle in the Discord Developer Portal.
 let privilegedIntentFellBack = false;
+
+// On-disk marker recording that the Oracle fell back to degraded mode because the
+// "Message Content" portal toggle was missing (code 4014). `privilegedIntentFellBack`
+// is in-memory and resets on every process restart — which is exactly the recovery
+// path (operator flips the toggle, then restarts) — so it cannot tell a fresh
+// process that it had previously fallen back. This marker survives a process
+// restart within the same container so the recovery alert can fire once the Oracle
+// boots back in full-reply mode. Kept out of the DB to match the bot's convention
+// of holding transient operational state outside the database.
+const FELLBACK_MARKER_PATH = path.join(os.tmpdir(), "oracle-fellback.flag");
+
+// Record that we fell back, so a later full-mode boot can confirm the recovery.
+async function markOracleFellBack(): Promise<void> {
+  try {
+    await fs.writeFile(FELLBACK_MARKER_PATH, new Date().toISOString(), "utf8");
+  } catch (err) {
+    logger.warn(
+      { err },
+      "Could not persist Oracle fallback marker — the recovery alert may not fire after restart",
+    );
+  }
+}
+
+// Returns true (and clears the marker) when a prior fallback is recorded. Used at
+// ClientReady in full mode to send a one-time recovery alert.
+async function consumeOracleFellBackMarker(): Promise<boolean> {
+  try {
+    await fs.access(FELLBACK_MARKER_PATH);
+  } catch {
+    return false;
+  }
+  try {
+    await fs.unlink(FELLBACK_MARKER_PATH);
+  } catch (err) {
+    logger.warn({ err }, "Could not clear the Oracle fallback marker after recovery");
+  }
+  return true;
+}
 
 export function isBotOnline(): boolean {
   return botClient !== null && botClient.isReady();
@@ -1308,6 +1349,17 @@ export async function startBot(onReady?: () => void): Promise<void> {
       logger.info("Scheduler already running — skipping re-init after restart");
     }
     if (onReady) onReady();
+
+    // If the Oracle is back to answering every reply after a prior portal-toggle
+    // fallback, confirm the recovery to operators — one-time, only when a fallback
+    // was actually recorded (no noise on normal first-time full-mode boots).
+    if (getOracleReplyMode().mode === "full" && (await consumeOracleFellBackMarker())) {
+      logger.info("Oracle recovered to full-reply mode after a prior fallback — sending recovery alert");
+      void sendAlert(
+        "✅ **Oracolul răspunde din nou la fiecare reply.**\n" +
+          "Intenția privilegiată „Message Content” este activă — Oracolul a revenit la modul complet și răspunde acum la toate mesajele, nu doar la @mention și reply-uri cu ping.",
+      );
+    }
   });
 
   client.on(Events.Error, (err) => {
@@ -1373,6 +1425,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
           "Restarting WITHOUT it; the Oracle will only answer @mentions and ping-on replies until the toggle is enabled.",
       );
       privilegedIntentFellBack = true;
+      void markOracleFellBack();
       botClient = null;
       shardStatus = "fatal_disconnect";
       client.destroy();
@@ -1478,6 +1531,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
           "Enable the 'Message Content Intent' toggle in the Discord Developer Portal.",
       );
       privilegedIntentFellBack = true;
+      void markOracleFellBack();
       void sendAlert(
         "⚠️ **Oracolul nu a putut activa intenția „Message Content”.**\nIntenția privilegiată nu este activată în Discord Developer Portal. " +
           "Botul repornește fără ea — răspunde doar la @mention și la reply-uri cu ping. Activează comutatorul în portal, apoi repornește botul.",
