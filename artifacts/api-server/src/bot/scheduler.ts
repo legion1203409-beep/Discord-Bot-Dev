@@ -47,7 +47,8 @@ function buildProphecyPinEmbed(prophecy: Prophecy | null): object {
       `Oracolul a vorbit. Un cufăr este binecuvântat azi cu putere înmulțită.\n\n` +
       `**Cufăr binecuvântat:** ${rarityLabel}\n` +
       `**Bonus Oboli:** ×${prophecy.mult}\n` +
-      `**Expiră:** <t:${expiryUnix}:f> (<t:${expiryUnix}:R>)`,
+      `**Expiră:** <t:${expiryUnix}:R>\n` +
+      `-# 🕯️ La <t:${expiryUnix}:F>`,
     footer: { text: BRAND_FOOTER },
   };
 }
