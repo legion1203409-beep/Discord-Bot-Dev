@@ -124,8 +124,11 @@ function underGlobalCap(now: number): boolean {
  * Answer when the Oracle is addressed. Detects both a direct @mention and a reply
  * to one of the bot's own messages (a reply with the ping on lists the bot in
  * `mentions.users`). Discord delivers `content` for messages that mention the bot
- * even without the privileged Message Content intent, so this works regardless of
- * ORACLE_MESSAGE_CONTENT_ENABLED. Fire-and-forget: never throws to the caller.
+ * even without the privileged Message Content intent, so @mentions and ping-on
+ * replies always work. A reply with the ping turned OFF only carries `content`
+ * when ORACLE_MESSAGE_CONTENT_ENABLED is on (privileged intent active); with it
+ * off, `content` is empty and that reply is skipped below. Fire-and-forget:
+ * never throws to the caller.
  */
 export async function maybeReplyAsOracle(discordClient: Client, message: Message): Promise<void> {
   try {

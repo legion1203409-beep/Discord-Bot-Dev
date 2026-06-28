@@ -114,6 +114,13 @@ let disconnectAlertTimer: ReturnType<typeof setTimeout> | null = null;
 let disconnectStartedAt: Date | null = null;
 let botReadyAt: Date | null = null;
 let shardStatus: string = "disconnected";
+// Set when a login attempt that requested the privileged MessageContent intent
+// is rejected with code 4014 ("Disallowed intent"). On the supervisor's next
+// restart the bot then boots WITHOUT the privileged intent (degraded — only
+// mention/ping-reply behavior) instead of looping forever bricked. This makes
+// flipping ORACLE_MESSAGE_CONTENT_ENABLED on safe even if the operator forgets
+// to enable the Message Content toggle in the Discord Developer Portal.
+let privilegedIntentFellBack = false;
 
 export function isBotOnline(): boolean {
   return botClient !== null && botClient.isReady();
@@ -136,6 +143,17 @@ export { GUILD_ID };
 // Discord Gateway close codes that mean the session cannot be resumed.
 // discord.js will NOT auto-reconnect for these; the supervisor must restart.
 const FATAL_CLOSE_CODES = new Set([4004, 4010, 4011, 4013, 4014]);
+
+// Whether a thrown login error is Discord rejecting a privileged intent we asked
+// for (code 4014 / "Disallowed intents"). discord.js raises this in different
+// shapes across versions, so match on code and message text defensively.
+function isDisallowedIntentError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const e = err as { code?: unknown; message?: unknown };
+  if (e.code === 4014 || e.code === "DisallowedIntents") return true;
+  const msg = typeof e.message === "string" ? e.message.toLowerCase() : "";
+  return msg.includes("disallowed intent") || msg.includes("privileged intent");
+}
 
 const slashCommands = [
   new SlashCommandBuilder()
@@ -1239,8 +1257,17 @@ export async function startBot(onReady?: () => void): Promise<void> {
   ];
   // MessageContent is privileged — only request it when explicitly enabled so a
   // missing Developer-Portal toggle can never brick the bot at login (code 4014).
-  if (process.env.ORACLE_MESSAGE_CONTENT_ENABLED === "true") {
+  // If a previous attempt was rejected with 4014, fall back to running without it
+  // so the bot still boots (degraded) instead of looping forever.
+  const wantsMessageContent =
+    process.env.ORACLE_MESSAGE_CONTENT_ENABLED === "true" && !privilegedIntentFellBack;
+  if (wantsMessageContent) {
     intents.push(GatewayIntentBits.MessageContent);
+  } else if (process.env.ORACLE_MESSAGE_CONTENT_ENABLED === "true" && privilegedIntentFellBack) {
+    logger.warn(
+      "MessageContent intent was rejected (code 4014) on a prior attempt — booting WITHOUT it. " +
+        "Enable the 'Message Content Intent' toggle in the Discord Developer Portal, then restart the bot.",
+    );
   }
   const client = new Client({ intents });
 
@@ -1319,6 +1346,26 @@ export async function startBot(onReady?: () => void): Promise<void> {
   }
 
   client.on(Events.ShardDisconnect, (event, shardId) => {
+    // Disallowed intent: we requested MessageContent but the portal toggle is off.
+    // Mark the fallback so the supervisor's next restart drops the privileged
+    // intent and the bot boots (degraded) instead of bricking in a restart loop.
+    if (event.code === 4014 && wantsMessageContent) {
+      logger.error(
+        { shardId },
+        "Discord rejected the MessageContent intent (code 4014) — it is not enabled in the Developer Portal. " +
+          "Restarting WITHOUT it; the Oracle will only answer @mentions and ping-on replies until the toggle is enabled.",
+      );
+      privilegedIntentFellBack = true;
+      botClient = null;
+      shardStatus = "fatal_disconnect";
+      client.destroy();
+      void sendAlert(
+        "⚠️ **Oracolul nu a putut activa intenția „Message Content”.**\nIntenția privilegiată nu este activată în Discord Developer Portal. " +
+          "Botul repornește fără ea — răspunde doar la @mention și la reply-uri cu ping. Activează comutatorul în portal, apoi repornește botul.",
+      );
+      rejectTerminated(new Error("Disallowed MessageContent intent (4014) — falling back without it"));
+      return;
+    }
     if (FATAL_CLOSE_CODES.has(event.code)) {
       logger.error(
         { code: event.code, shardId },
@@ -1401,7 +1448,26 @@ export async function startBot(onReady?: () => void): Promise<void> {
     }
   });
 
-  await client.login(token);
+  try {
+    await client.login(token);
+  } catch (err) {
+    // Some discord.js versions surface a disallowed privileged intent here rather
+    // than via ShardDisconnect. Detect it and fall back so the next restart drops
+    // the privileged intent instead of looping forever on a fatal login error.
+    if (wantsMessageContent && isDisallowedIntentError(err)) {
+      logger.error(
+        { err },
+        "Login rejected for the MessageContent intent (disallowed) — restarting WITHOUT it. " +
+          "Enable the 'Message Content Intent' toggle in the Discord Developer Portal.",
+      );
+      privilegedIntentFellBack = true;
+      void sendAlert(
+        "⚠️ **Oracolul nu a putut activa intenția „Message Content”.**\nIntenția privilegiată nu este activată în Discord Developer Portal. " +
+          "Botul repornește fără ea — răspunde doar la @mention și la reply-uri cu ping. Activează comutatorul în portal, apoi repornește botul.",
+      );
+    }
+    throw err;
+  }
 
   const rest = new REST().setToken(token);
   const body = slashCommands.map((c) => c.toJSON());

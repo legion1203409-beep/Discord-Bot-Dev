@@ -24,3 +24,13 @@ Features that depend on the privileged data must degrade gracefully when it is
 absent (e.g. activity tracking still works from message metadata even when
 message *content* is unavailable). Log a warning at startup when the privileged
 feature is disabled so the operator knows why it is inactive.
+
+**Runtime fallback (belt-and-suspenders):** the env flag alone is not enough —
+if the operator sets the flag but forgets the portal toggle, the supervisor
+loop restarts the bricked bot forever, re-requesting the intent each time. So
+also catch the 4014 at runtime (both the `client.login()` rejection AND the
+`ShardDisconnect` event — discord.js surfaces it in different shapes by
+version), set a module-level "fell back" flag, and on the supervisor's next
+restart drop the privileged intent so the bot boots degraded instead of
+looping. This is what makes flipping the flag actually *safe* even when the
+portal toggle is missing.
