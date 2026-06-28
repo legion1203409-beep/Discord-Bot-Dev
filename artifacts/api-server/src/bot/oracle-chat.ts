@@ -45,9 +45,49 @@ function envString(name: string, fallback: string): string {
   return raw.trim();
 }
 
+/**
+ * Known-valid OpenAI chat-completion model name patterns.
+ * Covers the GPT family (gpt-*) and the reasoning/O-series (o followed by digits,
+ * optionally a dash and more chars — e.g. o1, o3-mini, o4-mini).
+ * A name that matches none of these is almost certainly a typo.
+ */
+const KNOWN_MODEL_PATTERNS: RegExp[] = [
+  /^gpt-/,       // gpt-4o, gpt-4o-mini, gpt-4-turbo, gpt-5-mini, …
+  /^o\d/,        // o1, o1-mini, o3, o3-mini, o4-mini, …
+  /^text-/,      // legacy text-* completions
+  /^chatgpt-/,   // chatgpt-4o-latest style aliases
+];
+
+/**
+ * Read an OpenAI model name from the environment, validate it against the known
+ * pattern list, and fall back to `fallback` (with a startup warning) when the
+ * supplied value looks like a typo. Logs the resolved model at INFO so operators
+ * always see which model is active even when the var is unset.
+ */
+function envModel(name: string, fallback: string): string {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === "") {
+    logger.info({ model: fallback }, `${name} not set — using default Oracle model`);
+    return fallback;
+  }
+  const value = raw.trim();
+  const valid = KNOWN_MODEL_PATTERNS.some((re) => re.test(value));
+  if (!valid) {
+    logger.warn(
+      { name, value, fallback },
+      `${name} does not match any known OpenAI model pattern — falling back to default. ` +
+        "Check for a typo (e.g. \"gpt5-mini\" instead of \"gpt-5-mini\").",
+    );
+    return fallback;
+  }
+  logger.info({ model: value }, `Oracle model set via ${name}`);
+  return value;
+}
+
 // gpt-5-mini: a good balance of creative Romanian prose and cost for chat volume.
 // Operators can override the model without a code change via ORACLE_AI_MODEL.
-const MODEL = envString("ORACLE_AI_MODEL", "gpt-5-mini");
+// An unrecognised name (typo) is caught at startup and falls back to the default.
+const MODEL = envModel("ORACLE_AI_MODEL", "gpt-5-mini");
 
 // Guardrails so a popular channel can't spam the model or rack up cost. All four
 // are tunable via env vars so a server owner can adjust responsiveness/cost
