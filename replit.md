@@ -10,6 +10,8 @@ _Replace the heading above with the project's name, and this line with one sente
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
 - Required env: `DATABASE_URL` — Postgres connection string
+- Optional ops env: `DISCORD_ALERT_WEBHOOK_URL` — Discord webhook URL for an operator channel. When set, the bot pushes an alert when it goes offline (shard/fatal disconnect or a failing reconnect loop) and a recovery alert when it comes back. **If unset, all offline/recovery alerts are silently suppressed** (a warning is logged), so set this to actually get notified.
+- Optional ops env: `DISCONNECT_ALERT_THRESHOLD_MS` — grace period before a transient disconnect (or stalled reconnect loop) escalates to an offline alert. Defaults to 5 minutes; debounces routine self-healing shard blips so the ops channel isn't spammed.
 
 ## Stack
 
