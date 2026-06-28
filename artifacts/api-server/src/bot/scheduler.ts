@@ -224,13 +224,24 @@ export async function fireChest(client: Client) {
     }
 
     const { rarity, gold } = rollChest();
-    const chestId = `chest_${Date.now()}_${rarity.key}_${gold}`;
+
+    // Check if the active prophecy blesses this chest's rarity
+    const prophecy = getActiveProphecy();
+    const blessMult: 2 | 3 | undefined =
+      prophecy && prophecy.expiresAt > Date.now() && prophecy.rarityKey === rarity.key
+        ? prophecy.mult
+        : undefined;
+
+    // Encode mult in customId so claim handler applies the bonus (mirrors fireChestForced)
+    const chestId = blessMult != null
+      ? `chest_${Date.now()}_${rarity.key}_${gold}_x${blessMult}`
+      : `chest_${Date.now()}_${rarity.key}_${gold}`;
     const expireAt = Date.now() + CHEST_EXPIRE_MS;
 
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
         .setCustomId(chestId)
-        .setLabel("Revendică Cufărul")
+        .setLabel(blessMult != null ? "🔮 Revendică Cufărul Binecuvântat" : "Revendică Cufărul")
         .setEmoji(rarity.emoji)
         .setStyle(ButtonStyle.Success),
     );
@@ -277,17 +288,17 @@ export async function fireChest(client: Client) {
       await msg.edit({ content: frames[i]!.content }).catch(() => null);
     }
     await sleep(frames[frames.length - 1]!.delay);
-    await msg.edit({ content: `${rarity.emoji}✨`, embeds: [buildChestEmbed(gold, rarity)], components: [lockedRow] }).catch(() => null);
+    await msg.edit({ content: `${rarity.emoji}✨`, embeds: [buildChestEmbed(gold, rarity, blessMult)], components: [lockedRow] }).catch(() => null);
     await sleep(500);
-    await msg.edit({ content: "", embeds: [buildChestEmbed(gold, rarity)], components: [lockedRow] }).catch(() => null);
+    await msg.edit({ content: "", embeds: [buildChestEmbed(gold, rarity, blessMult)], components: [lockedRow] }).catch(() => null);
 
     // Enable claim button after 5 seconds
     await sleep(5000);
     if (!claimedChests.has(chestId)) {
-      await msg.edit({ embeds: [buildChestEmbed(gold, rarity)], components: [row] }).catch(() => null);
+      await msg.edit({ embeds: [buildChestEmbed(gold, rarity, blessMult)], components: [row] }).catch(() => null);
     }
 
-    logger.info({ chestId, gold, rarity: rarity.key }, "Chest spawned");
+    logger.info({ chestId, gold, rarity: rarity.key, blessMult }, "Chest spawned");
 
     const timeout = setTimeout(async () => {
       if (!claimedChests.has(chestId)) {
@@ -300,7 +311,7 @@ export async function fireChest(client: Client) {
             .setStyle(ButtonStyle.Secondary)
             .setDisabled(true),
         );
-        await msg.edit({ embeds: [buildChestEmbed(gold, rarity)], components: [disabledRow] }).catch(() => null);
+        await msg.edit({ embeds: [buildChestEmbed(gold, rarity, blessMult)], components: [disabledRow] }).catch(() => null);
         logger.info({ chestId }, "Chest expired unclaimed");
       }
     }, CHEST_EXPIRE_MS);
