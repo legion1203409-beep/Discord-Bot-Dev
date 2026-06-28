@@ -19,7 +19,7 @@ import {
 } from "discord.js";
 import { logger } from "../lib/logger";
 import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./alert";
-import { startScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, claimedChests, activeBossMap, getActiveProphecy, type BossState, type BossPlayerStats } from "./scheduler";
+import { startScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, claimedChests, activeBossMap, getActiveProphecy, type BossState, type BossPlayerStats } from "./scheduler";
 import {
   upsertPlayer,
   joinEvent,
@@ -93,6 +93,9 @@ import {
   CHEST_KEY_REQUIRED,
   KEY_LABEL,
   KEY_SOURCE_LABEL,
+  KEY_EMOJI,
+  buildKeyChestClaimMessage,
+  rollEventKeyDrops,
   THEME_COLOR,
   BRAND_FOOTER,
   type ShopKey,
@@ -173,6 +176,19 @@ const slashCommands = [
         .addChoices(
           { name: "📦 Normal — oricine poate revendica", value: "normal" },
           { name: "🔒 Blocat — necesită cheie", value: "blocat" },
+          { name: "🗝️ Cufăr de chei — dă o cheie", value: "cheie" },
+        ),
+    )
+    .addStringOption((opt) =>
+      opt
+        .setName("cheie")
+        .setDescription("Ce cheie dă cufărul de chei (doar pentru tip: cheie)")
+        .setRequired(false)
+        .addChoices(
+          { name: "🗝️ Random (automat)", value: "random" },
+          { name: "🗝️ Cheie de Rar", value: "rar" },
+          { name: "🔑 Cheie de Epic", value: "epic" },
+          { name: "⚜️ Cheie Regală", value: "regal" },
         ),
     )
     .addStringOption((opt) =>
@@ -276,6 +292,13 @@ async function handleAjutor(interaction: ChatInputCommandInteraction) {
               "🐉 **Dragonul Stins** — bossul final pe care întregul Regat îl înfruntă împreună",
           },
           {
+            name: "🗝️ Chei & Cufere blocate",
+            value:
+              "🗝️ **Cufere de chei** — apar din când în când; primul care apasă ia cheia\n" +
+              "🔒 **Cufere blocate** — necesită o cheie, dar plătesc mult mai mulți Oboli *(cel Regal e jackpot)*\n" +
+              "✨ Cheile pică rar și din cuferele obișnuite și din prada Dragonului — vezi-le pe **/profil**",
+          },
+          {
             name: "⚙️ Administrare",
             value: "**/startevent**, **/cufar**, **/spawnboss**, **/admin** — doar pentru administratori",
           },
@@ -355,6 +378,13 @@ async function handleSpawnChest(interaction: ChatInputCommandInteraction) {
   const tipOpt = interaction.options.getString("tip") ?? "normal";
   const multStr = interaction.options.getString("multiplicator") ?? "1";
   const mult = (multStr === "2" || multStr === "3") ? (parseInt(multStr) as 2 | 3) : undefined;
+
+  if (tipOpt === "cheie") {
+    const keyOpt = interaction.options.getString("cheie") ?? "random";
+    await interaction.reply({ content: "🗝️ *Cenușa zornăie…* Un cufăr de chei apare în Regat!", ephemeral: true });
+    if (botClient) await fireKeyChest(botClient, keyOpt);
+    return;
+  }
 
   const isLocked = tipOpt === "blocat" || rarityOpt === "regal";
 
@@ -661,6 +691,32 @@ async function handleLockedChestClaim(interaction: ButtonInteraction, chestId: s
   });
 
   logger.info({ discordId: interaction.user.id, chestId, rarityKey, gold, keyType }, "Locked chest claimed");
+}
+
+async function handleKeyChestClaim(interaction: ButtonInteraction, chestId: string, keyType: string) {
+  await interaction.deferUpdate();
+  // has()/add() stay adjacent (no await between) so concurrent clicks can't double-claim.
+  if (claimedChests.has(chestId)) {
+    await interaction.followUp({ content: "😔 Cineva a fost mai rapid! Cheia a fost deja luată.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  claimedChests.add(chestId);
+
+  await upsertPlayer(interaction.user.id, interaction.user.username);
+  await addPlayerKey(interaction.user.id, keyType as KeyType);
+
+  const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${chestId}_claimed`)
+      .setLabel(`Luat de ${interaction.user.username}`)
+      .setEmoji("✅")
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(true),
+  );
+  await interaction.message.edit({ components: [disabledRow] }).catch(() => null);
+
+  await interaction.followUp({ content: buildKeyChestClaimMessage(interaction.user.username, keyType) });
+  logger.info({ discordId: interaction.user.id, chestId, keyType }, "Key chest claimed");
 }
 
 async function handleJoin(interaction: ButtonInteraction, eventId: number) {
@@ -1062,11 +1118,16 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
 
     // Reward everyone who dealt damage — scaled by rank + boss rarity
     const bossRewards = computeBossRewards(boss.damageBy, boss.rarity);
-    await Promise.all([...bossRewards.entries()].flatMap(([discordId, r]) => [
-      addPlayerReputation(discordId, r.rep),
-      addPlayerGold(discordId, r.gold),
-      addPlayerXp(discordId, r.xp),
-    ]));
+    // Random key drops for fighters — keys can also be found during events.
+    const eventKeyDrops = rollEventKeyDrops([...boss.damageBy.keys()]);
+    await Promise.all([
+      ...[...bossRewards.entries()].flatMap(([discordId, r]) => [
+        addPlayerReputation(discordId, r.rep),
+        addPlayerGold(discordId, r.gold),
+        addPlayerXp(discordId, r.xp),
+      ]),
+      ...[...eventKeyDrops.entries()].map(([discordId, kt]) => addPlayerKey(discordId, kt as KeyType)),
+    ]);
 
     // Delete boss message and send leaderboard
     try {
@@ -1076,6 +1137,12 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
         await bossMsg?.delete().catch(() => null);
         const leaderboard = buildBossLeaderboard(boss, boss.damageBy, boss.participants, boss.playerNames, boss.playerHp);
         await ch.send({ embeds: [leaderboard] }).catch(() => null);
+        if (eventKeyDrops.size > 0) {
+          const lines = [...eventKeyDrops.entries()].map(
+            ([id, kt]) => `${KEY_EMOJI[kt] ?? "🗝️"} <@${id}> a găsit o **${KEY_LABEL[kt] ?? "Cheie"}**!`,
+          );
+          await ch.send({ content: `🗝️ **Prada ascunsă a Dragonului:**\n${lines.join("\n")}` }).catch(() => null);
+        }
       }
     } catch { /* ignore */ }
 
@@ -1131,6 +1198,11 @@ async function handleButton(interaction: ButtonInteraction) {
   if (id.startsWith("lockchest_") && !id.endsWith("_claimed") && !id.endsWith("_expired")) {
     const m = id.match(/^(lockchest_\d+)_(\w+)_(\d+)$/);
     if (m) return handleLockedChestClaim(interaction, m[1]!, m[2]!, parseInt(m[3]!));
+  }
+
+  if (id.startsWith("keychest_") && !id.endsWith("_claimed") && !id.endsWith("_expired")) {
+    const m = id.match(/^keychest_\d+_(\w+)$/);
+    if (m) return handleKeyChestClaim(interaction, id, m[1]!);
   }
 
   if (id.startsWith("chest_") && !id.endsWith("_claimed") && !id.endsWith("_expired") && !id.endsWith("_opening")) {

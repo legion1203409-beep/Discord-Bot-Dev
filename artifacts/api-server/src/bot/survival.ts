@@ -268,10 +268,11 @@ export function buildStartEmbed(): EmbedBuilder {
       "Umbrele se ridică din adâncuri, iar cenușa dansează în aer.\n" +
       "Regatul Cenușii cheamă luptătorii să își dovedească puterea.\n\n" +
       "Un val nesfârșit de creaturi se pregătește să vă înfrunte.\n" +
-      "Apasă pe butonul sacru și intră în luptă.\n\n" +
-      "💀 **Atenție:**\n" +
-      "Moartea în acest eveniment este definitivă.\n" +
-      "Cei căzuți în Umbre nu mai pot continua până la următoarea chemare.",
+      "Apasă pe butonul sacru și intră în luptă.\n" +
+      sectionTitle("Atenție") + "\n" +
+      "💀 Moartea în acest eveniment este **definitivă**.\n" +
+      "Cei căzuți în Umbre nu mai pot continua până la următoarea chemare.\n" +
+      "🗝️ Învingând Dragonul poți găsi și **chei** ascunse în pradă.",
     )
     .setFooter({ text: "⏳ Eveniment activ timp de 1 oră." })
     .setTimestamp();
@@ -380,6 +381,11 @@ export function buildProfileEmbed(player: Player, title?: string, avatarUrl?: st
     ? `${player.retreats}× (ultima: Nivel ${player.retreatLevel})`
     : "Niciodată";
 
+  const totalKeys = player.keyRar + player.keyEpic + player.keyRegal;
+  const keysValue = totalKeys > 0
+    ? `${KEY_EMOJI["rar"]} **${player.keyRar}** ${KEY_LABEL["rar"]}   ·   ${KEY_EMOJI["epic"]} **${player.keyEpic}** ${KEY_LABEL["epic"]}   ·   ${KEY_EMOJI["regal"]} **${player.keyRegal}** ${KEY_LABEL["regal"]}`
+    : "*Niciun trofeu sub formă de cheie încă — caută cuferele de chei!*";
+
   const embed = new EmbedBuilder()
     .setColor(THEME_COLOR)
     .setTitle(title ?? `📜 Profilul lui ${player.username}`)
@@ -392,6 +398,7 @@ export function buildProfileEmbed(player: Player, title?: string, avatarUrl?: st
       { name: "🐾 Companion", value: compValue, inline: true },
       { name: "🎯 Abilități", value: abilValue, inline: false },
       { name: "━━━ Resurse ━━━", value: `⭐ **${player.xp}** XP   ·   🪙 **${player.gold}** Oboli   ·   🏅 **${player.reputation}** Reputație`, inline: false },
+      { name: "━━━ Chei ━━━", value: keysValue, inline: false },
       { name: "━━━ Istoric de luptă ━━━", value: `💀 Morți: **${deathInfo}**\n🏳️ Retrageri: **${retreatInfo}**`, inline: false },
     )
     .setFooter({ text: BRAND_FOOTER })
@@ -455,6 +462,74 @@ export const KEY_TARGET_LABEL: Record<string, string> = {
   regal: "Cufărul Regal",
 };
 
+// Accent emoji per key type (used in messages + profile)
+export const KEY_EMOJI: Record<string, string> = {
+  rar:   "🗝️",
+  epic:  "🔑",
+  regal: "⚜️",
+};
+
+// Color per key type (silver / gold / royal blue)
+export const KEY_COLOR: Record<string, number> = {
+  rar:   0xc0c0c0,
+  epic:  0xffd700,
+  regal: 0x1a3a8c,
+};
+
+// ─── Dedicated key chests ───────────────────────────────────────────────────
+// Standalone chests whose reward IS a key (separate from the gold chests).
+// Lower tiers are common, the Regal key is a rare prize.
+const KEY_CHEST_WEIGHTS: Array<{ keyType: string; weight: number }> = [
+  { keyType: "rar",   weight: 60 },
+  { keyType: "epic",  weight: 30 },
+  { keyType: "regal", weight: 10 },
+];
+
+/** Pick a key type for a random key-chest spawn (weighted toward lower tiers). */
+export function rollKeyChestType(): string {
+  const total = KEY_CHEST_WEIGHTS.reduce((s, k) => s + k.weight, 0);
+  let roll = Math.random() * total;
+  for (const k of KEY_CHEST_WEIGHTS) {
+    if (roll < k.weight) return k.keyType;
+    roll -= k.weight;
+  }
+  return "rar";
+}
+
+// ─── Locked-chest jackpot economy ───────────────────────────────────────────
+// Locked chests cost a key to open, so they pay much MORE Oboli than the
+// matching free chest — the Regal one is a true jackpot.
+export const LOCKED_CHEST_GOLD: Record<string, { min: number; max: number }> = {
+  argint: { min: 150,  max: 350  },
+  aur:    { min: 400,  max: 800  },
+  regal:  { min: 2000, max: 5000 },
+};
+
+/** Roll the Oboli payout for a locked chest of a given rarity (boosted ranges). */
+export function spawnLockedChest(rarityKey: string): { rarity: ChestRarity; gold: number } | null {
+  const rarity = CHEST_RARITIES.find((r) => r.key === rarityKey);
+  if (!rarity) return null;
+  const range = LOCKED_CHEST_GOLD[rarityKey] ?? { min: rarity.min * 2, max: rarity.max * 2 };
+  const gold = Math.floor(Math.random() * (range.max - range.min + 1)) + range.min;
+  return { rarity, gold };
+}
+
+// ─── Event key drops ────────────────────────────────────────────────────────
+// During events, fighters can randomly find keys. Each gets a chance to drop
+// a single weighted key.
+const EVENT_KEY_DROP_CHANCE = 0.35;
+
+/** Roll key drops for a set of event participants → map of who found which key. */
+export function rollEventKeyDrops(discordIds: string[]): Map<string, string> {
+  const drops = new Map<string, string>();
+  for (const id of discordIds) {
+    if (Math.random() < EVENT_KEY_DROP_CHANCE) {
+      drops.set(id, rollKeyChestType());
+    }
+  }
+  return drops;
+}
+
 export function rollChest(): { rarity: ChestRarity; gold: number } {
   const total = CHEST_RARITIES.reduce((s, r) => s + r.weight, 0);
   let roll = Math.random() * total;
@@ -506,19 +581,61 @@ export function buildLockedChestEmbed(rarityKey: string, gold: number): EmbedBui
   const chestImage = CHEST_IMG[rarityKey] ?? IMG.chest;
   const keyImage = KEY_IMG[keyType];
 
+  const keyEmoji = KEY_EMOJI[keyType] ?? "🗝️";
+  const isRegal = rarityKey === "regal";
+  const jackpotLine = isRegal
+    ? "\n\n👑 *Comoara coroanei — cea mai bogată pradă din tot Regatul!*"
+    : "";
+
   return new EmbedBuilder()
     .setColor(rarity.color)
-    .setTitle(`🔒 ${rarity.emoji}  ${rarity.label.toUpperCase()} — BLOCAT  ${rarity.emoji}🔒`)
+    .setTitle(`🔒 ${rarity.emoji}  ${rarity.label.toUpperCase()} — BLOCAT  ${rarity.emoji} 🔒`)
     .setDescription(
-      `*O forță misterioasă ține cufărul închis cu ${keyLabel}.*\n\n` +
-      `💰 **${gold} Oboli** ascunși înăuntru\n` +
-      `🗝️ Necesită: **${keyLabel}**\n` +
-      `📜 Obți cheia revendicând **${sourceLabel}**\n\n` +
-      `⚡ Un singur jucător poate folosi cheia — fii primul!`,
+      `*O forță veche ține cufărul ferecat. Doar ${keyEmoji} **${keyLabel}** îl poate deschide.*\n` +
+      `${sectionTitle("Pradă")}\n` +
+      `💰 **${gold.toLocaleString()} Oboli** ascunși înăuntru — mult peste un cufăr obișnuit!\n` +
+      `${sectionTitle("Cheia")}\n` +
+      `${keyEmoji} Necesită: **${keyLabel}**\n` +
+      `📜 O găsești în **cufere de chei** sau revendicând **${sourceLabel}**` +
+      jackpotLine +
+      `\n\n⚡ Un singur jucător poate folosi cheia — fii primul!`,
     )
     .setThumbnail(keyImage)
     .setImage(chestImage)
     .setFooter({ text: "Cufăr blocat — expiră în 10 minute" });
+}
+
+/** Embed for a dedicated key chest — the prize is a key, not Oboli. */
+export function buildKeyChestEmbed(keyType: string): EmbedBuilder {
+  const keyLabel = KEY_LABEL[keyType] ?? "Cheie";
+  const keyEmoji = KEY_EMOJI[keyType] ?? "🗝️";
+  const targetLabel = KEY_TARGET_LABEL[keyType] ?? "cufăr blocat";
+  const keyImage = KEY_IMG[keyType];
+  const color = KEY_COLOR[keyType] ?? 0xc0c0c0;
+
+  return new EmbedBuilder()
+    .setColor(color)
+    .setTitle(`${keyEmoji}✨  CUFĂR DE CHEI A APĂRUT!  ✨${keyEmoji}`)
+    .setDescription(
+      "Cenușa s-a despicat și a scos la iveală un cufăr ce nu ascunde Oboli, ci o **cheie prețioasă**!\n" +
+      `${sectionTitle("Răsplata")}\n` +
+      `${keyEmoji} O **${keyLabel}** pentru primul care revendică!\n` +
+      `🔓 Deschide cu ea un **${targetLabel}** și ia comoara dinăuntru.\n\n` +
+      "⚡ Fii primul — cheia se topește în fumul umbrelor!",
+    )
+    .setImage(keyImage)
+    .setFooter({ text: "Primul click ia cheia!" });
+}
+
+/** Message shown when a player claims a key chest. */
+export function buildKeyChestClaimMessage(username: string, keyType: string): string {
+  const keyLabel = KEY_LABEL[keyType] ?? "Cheie";
+  const keyEmoji = KEY_EMOJI[keyType] ?? "🗝️";
+  const targetLabel = KEY_TARGET_LABEL[keyType] ?? "cufăr blocat";
+  return (
+    `${keyEmoji} **${username}** a revendicat **${keyLabel}**!\n` +
+    `Păstreaz-o pentru a deschide un **${targetLabel}**.`
+  );
 }
 
 export function buildKeyDropMessage(fromRarityKey: string, keyType: string): string {
@@ -642,6 +759,7 @@ export function buildShopEmbed(p: Player, category: ShopCategory = "overview"): 
       "⚔️ **Puteri** — statistici permanente (atac, apărare, evitare, critic, HP)\n" +
       "🐾 **Companion** — un aliat de luptă care crește odată cu tine\n" +
       "🎯 **Abilități** — puteri active folosite în luptă\n\n" +
+      "🗝️ *Caută cuferele de chei — cu ele deschizi cuferele blocate pline de Oboli.*\n\n" +
       "👇 Apasă un buton de mai jos pentru a deschide o categorie.",
     );
 }

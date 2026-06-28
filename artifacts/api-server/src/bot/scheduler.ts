@@ -1,6 +1,6 @@
 import { Client, TextChannel, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import { logger } from "../lib/logger";
-import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, rollChest, oracleMessage, buildProphecyMessage, CHEST_RARITIES, buildFinalBossEmbed, buildBossLeaderboard, buildLockedChestEmbed, computeBossRewards, finalBossRow, bossMaxHp, THEME_COLOR, BRAND_FOOTER, type BossRarity, type BossPlayerStats } from "./survival";
+import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, rollChest, oracleMessage, buildProphecyMessage, CHEST_RARITIES, buildFinalBossEmbed, buildBossLeaderboard, buildLockedChestEmbed, buildKeyChestEmbed, spawnLockedChest, rollKeyChestType, computeBossRewards, finalBossRow, bossMaxHp, THEME_COLOR, BRAND_FOOTER, type BossRarity, type BossPlayerStats } from "./survival";
 import { triggerRandomBattleEvent } from "./combat-events";
 import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle, addPlayerReputation, addPlayerGold, addPlayerXp, saveProphecy, loadProphecy, ensureBotStateTable } from "./db";
 
@@ -12,6 +12,7 @@ const MIN_COOLDOWN_MS = 2 * 60 * 60 * 1000;
 const MAX_COOLDOWN_MS = 4 * 60 * 60 * 1000;
 
 const CHEST_INTERVAL_MS = 30 * 60 * 1000;
+const KEY_CHEST_INTERVAL_MS = 45 * 60 * 1000;
 const CHEST_EXPIRE_MS = 10 * 60 * 1000;
 
 const ORACLE_INTERVAL_MS = 25 * 60 * 1000;
@@ -616,8 +617,7 @@ export async function fireLockedChest(client: Client, rarityKey: string): Promis
     const channel = await client.channels.fetch(MAIN_CHANNEL_ID).catch(() => null);
     if (!(channel instanceof TextChannel)) return;
 
-    const { spawnChest: sc } = await import("./survival");
-    const result = sc(rarityKey);
+    const result = spawnLockedChest(rarityKey);
     if (!result) {
       logger.warn({ rarityKey }, "fireLockedChest: invalid rarity");
       return;
@@ -658,6 +658,83 @@ export async function fireLockedChest(client: Client, rarityKey: string): Promis
     timeout.unref?.();
   } catch (err) {
     logger.error({ err }, "Failed to fire locked chest");
+  }
+}
+
+let firingKeyChest = false;
+
+/** Spawn a dedicated key chest in the main channel. keyType "random" picks a weighted tier. */
+export async function fireKeyChest(client: Client, keyType?: string): Promise<{ chestId: string } | null> {
+  if (firingKeyChest) {
+    logger.warn("fireKeyChest already in progress, skipping duplicate trigger");
+    return null;
+  }
+  firingKeyChest = true;
+  try {
+    const channel = await client.channels.fetch(MAIN_CHANNEL_ID).catch(() => null);
+    if (!(channel instanceof TextChannel)) return null;
+
+    const kt = keyType && keyType !== "random" ? keyType : rollKeyChestType();
+    const chestId = `keychest_${Date.now()}_${kt}`;
+
+    const lockedRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(chestId)
+        .setLabel("⏳ Disponibil în 5 secunde…")
+        .setEmoji("🔒")
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(true),
+    );
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(chestId)
+        .setLabel("🗝️ Revendică Cheia")
+        .setStyle(ButtonStyle.Primary),
+    );
+
+    const frames: Array<{ content: string; delay: number }> = [
+      { content: "🌫️ *Ceva metalic zornăie în cenușă…*", delay: 800 },
+      { content: "🗝️✨ *Un cufăr de chei se ridică din umbre!*", delay: 900 },
+    ];
+
+    const msg = await channel.send({ content: frames[0]!.content });
+    for (let i = 1; i < frames.length; i++) {
+      await sleep(frames[i - 1]!.delay);
+      await msg.edit({ content: frames[i]!.content }).catch(() => null);
+    }
+    await sleep(frames[frames.length - 1]!.delay);
+    await msg.edit({ content: "", embeds: [buildKeyChestEmbed(kt)], components: [lockedRow] }).catch(() => null);
+
+    await sleep(5000);
+    if (!claimedChests.has(chestId)) {
+      await msg.edit({ embeds: [buildKeyChestEmbed(kt)], components: [row] }).catch(() => null);
+    }
+
+    logger.info({ chestId, keyType: kt }, "Key chest spawned");
+
+    const timeout = setTimeout(async () => {
+      if (!claimedChests.has(chestId)) {
+        claimedChests.add(chestId);
+        const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`${chestId}_expired`)
+            .setLabel("Cheia s-a topit în fum...")
+            .setEmoji("💨")
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(true),
+        );
+        await msg.edit({ components: [disabledRow] }).catch(() => null);
+        logger.info({ chestId }, "Key chest expired unclaimed");
+      }
+    }, CHEST_EXPIRE_MS);
+    timeout.unref?.();
+
+    return { chestId };
+  } catch (err) {
+    logger.error({ err }, "Failed to fire key chest");
+    return null;
+  } finally {
+    firingKeyChest = false;
   }
 }
 
@@ -765,6 +842,11 @@ export function startScheduler(client: Client) {
 
   setInterval(() => { void fireChest(client); }, CHEST_INTERVAL_MS);
   logger.info({ everyMinutes: CHEST_INTERVAL_MS / 60000 }, "Chest scheduler started — fixed interval");
+
+  // Dedicated key chests on their own (slower) cadence, first one shortly after boot.
+  setTimeout(() => { void fireKeyChest(client); }, 12 * 60 * 1000);
+  setInterval(() => { void fireKeyChest(client); }, KEY_CHEST_INTERVAL_MS);
+  logger.info({ everyMinutes: KEY_CHEST_INTERVAL_MS / 60000 }, "Key-chest scheduler started");
 
   // Oracle messages disabled — user requested only chest in chat
   // setInterval(() => { void fireOracle(client); }, ORACLE_INTERVAL_MS);
