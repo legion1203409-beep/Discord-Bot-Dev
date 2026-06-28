@@ -2,7 +2,7 @@ import { Client, TextChannel, ActionRowBuilder, ButtonBuilder, ButtonStyle } fro
 import { logger } from "../lib/logger";
 import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, rollChest, oracleMessage, buildProphecyMessage, CHEST_RARITIES, buildFinalBossEmbed, buildBossLeaderboard, buildLockedChestEmbed, computeBossRewards, finalBossRow, bossMaxHp, THEME_COLOR, BRAND_FOOTER, type BossRarity, type BossPlayerStats } from "./survival";
 import { triggerRandomBattleEvent } from "./combat-events";
-import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle, addPlayerReputation, addPlayerGold, addPlayerXp } from "./db";
+import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle, addPlayerReputation, addPlayerGold, addPlayerXp, saveProphecy, loadProphecy, ensureBotStateTable } from "./db";
 
 const EVENT_CHANNEL_ID = "1472579703457190042";
 const MAIN_CHANNEL_ID = "1382042144717410385";
@@ -93,12 +93,34 @@ async function updateProphecyPin(client: Client): Promise<void> {
 }
 
 /**
- * Called once at bot startup: scans pinned messages in the main channel to
+ * Called once at bot startup: ensures the bot_state table exists, restores any
+ * active prophecy from the DB, scans pinned messages in the main channel to
  * recover an existing oracle pin (so we edit instead of creating a new one),
  * then syncs the embed to the current prophecy state.
  */
 export async function initOraclePinOnStartup(client: Client): Promise<void> {
   try {
+    // Ensure the bot_state table exists before any read/write
+    await ensureBotStateTable().catch((err) =>
+      logger.error({ err }, "Failed to ensure bot_state table"),
+    );
+
+    // Restore the persisted prophecy if it hasn't expired yet
+    try {
+      const persisted = await loadProphecy();
+      if (persisted && persisted.expiresAt > Date.now()) {
+        activeProphecy = persisted;
+        logger.info(
+          { rarityKey: persisted.rarityKey, mult: persisted.mult, expiresAt: persisted.expiresAt },
+          "Restored active prophecy from DB",
+        );
+      } else if (persisted) {
+        logger.info("Persisted prophecy found but already expired — ignoring");
+      }
+    } catch (err) {
+      logger.error({ err }, "Failed to load prophecy from DB");
+    }
+
     const channel = await client.channels.fetch(MAIN_CHANNEL_ID).catch(() => null);
     if (!(channel instanceof TextChannel)) return;
 
@@ -663,6 +685,11 @@ async function fireProphecy(client: Client) {
 
     activeProphecy = { rarityKey, mult, expiresAt: Date.now() + 24 * 60 * 60 * 1000 };
 
+    // Persist so the prophecy survives bot restarts
+    await saveProphecy(activeProphecy).catch((err) =>
+      logger.error({ err }, "Failed to persist prophecy to DB"),
+    );
+
     // Announce the new prophecy dramatically in chat
     const msg = buildProphecyMessage(rarityKey, mult);
     await channel.send({ content: msg });
@@ -693,6 +720,37 @@ async function fireBattleEvent(client: Client) {
   }
 }
 
+// Recursive helper: fires a prophecy after `delayMs`, then schedules the next
+// one 24h later. Anchors the cadence from actual fire time rather than boot time.
+function scheduleProphecy(client: Client, delayMs: number): void {
+  const t = setTimeout(async () => {
+    await fireProphecy(client);
+    scheduleProphecy(client, 24 * 60 * 60 * 1000);
+  }, delayMs);
+  t.unref?.();
+}
+
+// Awaits oracle-pin / prophecy restoration from DB, then schedules the first
+// prophecy fire at the right time:
+//   - if a restored prophecy is still active → fire when it expires
+//   - otherwise → fire fresh in 1 minute (first-run or expired-on-restart case)
+async function initProphecyScheduler(client: Client): Promise<void> {
+  await initOraclePinOnStartup(client);
+
+  const now = Date.now();
+  if (activeProphecy && activeProphecy.expiresAt > now) {
+    const msUntilExpiry = activeProphecy.expiresAt - now;
+    logger.info(
+      { hoursLeft: (msUntilExpiry / 3_600_000).toFixed(2) },
+      "Restored prophecy still active — next fire scheduled at expiry",
+    );
+    scheduleProphecy(client, msUntilExpiry);
+  } else {
+    logger.info("No active prophecy on startup — first fire in 1 minute");
+    scheduleProphecy(client, 60 * 1000);
+  }
+}
+
 export function startScheduler(client: Client) {
   setInterval(() => expireOldEvents(client), 60 * 1000);
 
@@ -712,16 +770,9 @@ export function startScheduler(client: Client) {
   // setInterval(() => { void fireOracle(client); }, ORACLE_INTERVAL_MS);
   // logger.info({ everyMinutes: ORACLE_INTERVAL_MS / 60000 }, "Oracle scheduler started");
 
-  // Daily prophecy: first fires 1 minute after boot, then every 24h
-  setTimeout(async () => {
-    await fireProphecy(client);
-    setInterval(() => { void fireProphecy(client); }, 24 * 60 * 60 * 1000);
-  }, 60 * 1000);
-  logger.info("First prophecy in 1 minute, then every 24h");
-
-  // Sync the pinned oracle message immediately on startup (shows "Oracolul tace…"
-  // until the first fireProphecy runs, and recovers the existing pin after restarts)
-  void initOraclePinOnStartup(client);
+  // Prophecy scheduling is expiry-aware: initProphecyScheduler awaits DB restoration
+  // first, then fires at expiry of the restored prophecy (or in 1 min if none).
+  void initProphecyScheduler(client);
 
   setInterval(() => { void fireBattleEvent(client); }, BATTLE_EVENT_INTERVAL_MS);
   logger.info({ everyMinutes: BATTLE_EVENT_INTERVAL_MS / 60000 }, "Battle-event scheduler started");
