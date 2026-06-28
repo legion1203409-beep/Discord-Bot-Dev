@@ -106,6 +106,11 @@ function buildSystemPrompt(mood: MoodState): string {
     "  învăluit în mister.",
     "- Nu inventa mecanici de joc concrete (recompense, comenzi, niveluri) și nu",
     "  promite lucruri pe care nu le poți oferi.",
+    "- Mai mulți călători îți pot vorbi în același loc. Fiecare replică a unui",
+    '  jucător e însemnată cu o etichetă precum „Călător 1:". Răspunde DOAR',
+    "  ultimului călător care ți s-a adresat; nu amesteca vorbele, întrebările sau",
+    "  soarta altor călători cu ale lui. Nu rosti și nu pomeni niciodată aceste",
+    "  etichete în răspunsul tău.",
     "",
     `Starea ta de spirit acum: ${label} — ${tone}. Lasă această stare să-ți coloreze tonul.`,
   ].join("\n");
@@ -127,8 +132,24 @@ function cleanMentionTokens(text: string): string {
 async function buildRecentMemory(
   message: Message,
   botId: string,
-): Promise<{ turns: ChatMessage[]; ids: Set<string> }> {
-  const empty = { turns: [] as ChatMessage[], ids: new Set<string>() };
+): Promise<{ turns: ChatMessage[]; ids: Set<string>; speakerAlias: string }> {
+  // Assign each distinct player a stable, non-identifying per-conversation alias
+  // ("Călător 1", "Călător 2", …) so the model can tell speakers apart in a
+  // multi-player channel without ever seeing a real name or ID. Seed the current
+  // speaker first so they are consistently "Călător 1" and the reply stays
+  // anchored to them. Aliases are local to this single prompt — never persisted.
+  const aliasByAuthor = new Map<string, string>();
+  const aliasOf = (authorId: string): string => {
+    let alias = aliasByAuthor.get(authorId);
+    if (!alias) {
+      alias = `Călător ${aliasByAuthor.size + 1}`;
+      aliasByAuthor.set(authorId, alias);
+    }
+    return alias;
+  };
+  const speakerAlias = aliasOf(message.author.id);
+
+  const empty = { turns: [] as ChatMessage[], ids: new Set<string>(), speakerAlias };
   if (!message.channel.isTextBased() || !("messages" in message.channel)) return empty;
 
   let fetched;
@@ -168,13 +189,17 @@ async function buildRecentMemory(
       if (!addressedToOracle) continue;
       const text = cleanMentionTokens(m.content ?? "");
       if (!text) continue;
-      turns.push({ id: m.id, msg: { role: "user", content: text.slice(0, MEMORY_TURN_CHARS) } });
+      const alias = aliasOf(m.author.id);
+      turns.push({
+        id: m.id,
+        msg: { role: "user", content: `${alias}: ${text.slice(0, MEMORY_TURN_CHARS)}` },
+      });
     }
   }
 
   // Cap to the most recent N turns to bound cost, latency and context size.
   const capped = turns.slice(-MAX_MEMORY_TURNS);
-  return { turns: capped.map((t) => t.msg), ids: new Set(capped.map((t) => t.id)) };
+  return { turns: capped.map((t) => t.msg), ids: new Set(capped.map((t) => t.id)), speakerAlias };
 }
 
 async function generateOracleReply(
@@ -182,6 +207,7 @@ async function generateOracleReply(
   history: ChatMessage[],
   repliedBotText: string | undefined,
   mood: MoodState,
+  speakerAlias: string,
 ): Promise<string | null> {
   const client = getClient();
   if (!client) return null;
@@ -195,7 +221,9 @@ async function generateOracleReply(
   if (repliedBotText) {
     messages.push({ role: "assistant", content: repliedBotText });
   }
-  messages.push({ role: "user", content: userText.slice(0, MAX_INPUT_CHARS) });
+  // Tag the current message with the same alias used in memory so the reply
+  // stays anchored to this speaker even when others are chatting with the Oracle.
+  messages.push({ role: "user", content: `${speakerAlias}: ${userText.slice(0, MAX_INPUT_CHARS)}` });
 
   const completion = await client.chat.completions.create(
     {
@@ -285,7 +313,7 @@ export async function maybeReplyAsOracle(discordClient: Client, message: Message
 
     // Pull a short rolling memory of the recent exchange so the reply stays
     // continuous. Best-effort and bounded; never blocks on failure.
-    const { turns: memory, ids: memoryIds } = await buildRecentMemory(message, botId);
+    const { turns: memory, ids: memoryIds, speakerAlias } = await buildRecentMemory(message, botId);
 
     // Only feed the explicitly replied-to line separately when the rolling memory
     // didn't already capture it (older than the window or out of scan range).
@@ -300,7 +328,7 @@ export async function maybeReplyAsOracle(discordClient: Client, message: Message
     }
 
     const mood = getCurrentMood();
-    const reply = await generateOracleReply(cleaned, memory, repliedBotText, mood);
+    const reply = await generateOracleReply(cleaned, memory, repliedBotText, mood, speakerAlias);
     if (!reply) {
       await sendFallback(message);
       return;
