@@ -127,9 +127,9 @@ const slashCommands = [
       opt.setName("jucator").setDescription("Vezi profilul altui luptător (opțional).").setRequired(false),
     ),
   new SlashCommandBuilder().setName("clasament").setDescription("👑 Top 10 cei mai puternici luptători."),
-  new SlashCommandBuilder().setName("magazin").setDescription("🏺 Forja Cenușii — upgrade-uri permanente, mereu disponibilă."),
+  new SlashCommandBuilder().setName("magazin").setDescription("🏺 Forja Cenușii — îmbunătățiri permanente, mereu disponibilă."),
   new SlashCommandBuilder().setName("clasa").setDescription("🧬 Alege-ți clasa RPG (alegere permanentă)."),
-  new SlashCommandBuilder().setName("companion").setDescription("🐾 Vezi companionul tău (cumpără și fă upgrade din /magazin)."),
+  new SlashCommandBuilder().setName("companion").setDescription("🐾 Vezi companionul tău (cumpără și fă îmbunătățiri din /magazin)."),
   new SlashCommandBuilder().setName("ajutor").setDescription("❓ Ghidul comenzilor din Regatul Cenușii."),
   new SlashCommandBuilder()
     .setName("startevent")
@@ -694,7 +694,7 @@ async function handleCompUpgrade(interaction: ButtonInteraction) {
   const cost = upgradeCost(p.companionLevel);
   const updated = await upgradeCompanion(interaction.user.id, p.companionLevel, cost, UPGRADE_XP_COST);
   if (!updated) {
-    await interaction.followUp({ content: `❌ Upgrade eșuat — ai nevoie de un companion, **${cost} Oboli** și **${UPGRADE_XP_COST} XP**.`, flags: MessageFlags.Ephemeral });
+    await interaction.followUp({ content: `❌ Îmbunătățire eșuată — ai nevoie de un companion, **${cost} Oboli** și **${UPGRADE_XP_COST} XP**.`, flags: MessageFlags.Ephemeral });
     return;
   }
   await interaction.editReply({ embeds: [buildShopEmbed(updated, "comp")], components: shopCompRows(updated) });
@@ -728,7 +728,7 @@ async function handleAbilUpgrade(interaction: ButtonInteraction, kind: string) {
     await applyAbilityLevelToActiveParticipant(interaction.user.id, kind as AbilityKind, lvl);
   }
   if (!updated) {
-    await interaction.followUp({ content: `❌ Upgrade eșuat — ai nevoie de abilitate, **${cost} Oboli** și **${UPGRADE_XP_COST} XP**.`, flags: MessageFlags.Ephemeral });
+    await interaction.followUp({ content: `❌ Îmbunătățire eșuată — ai nevoie de abilitate, **${cost} Oboli** și **${UPGRADE_XP_COST} XP**.`, flags: MessageFlags.Ephemeral });
     return;
   }
   await interaction.editReply({ embeds: [buildShopEmbed(updated, "abil")], components: shopAbilRows(updated) });

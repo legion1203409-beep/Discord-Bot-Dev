@@ -106,7 +106,7 @@ export const CLASSES: Record<ClassKey, {
   label: string; emoji: string; desc: string;
   attack: number; hp: number; dodge: number; crit: number; xpMult: number; oboliMult: number;
 }> = {
-  cavaler: { label: "Cavaler al Cenușii", emoji: "🛡️", desc: "+2 damage, +5 HP", attack: 2, hp: 5, dodge: 0, crit: 0, xpMult: 1, oboliMult: 1 },
+  cavaler: { label: "Cavaler al Cenușii", emoji: "🛡️", desc: "+2 daune, +5 HP", attack: 2, hp: 5, dodge: 0, crit: 0, xpMult: 1, oboliMult: 1 },
   umbrolog: { label: "Umbrolog", emoji: "🌀", desc: "+3% evitare, +1% critic", attack: 0, hp: 0, dodge: 3, crit: 1, xpMult: 1, oboliMult: 1 },
   strajer: { label: "Străjerul Arșiței", emoji: "🔥", desc: "+10% XP câștigat", attack: 0, hp: 0, dodge: 0, crit: 0, xpMult: 1.1, oboliMult: 1 },
   alchimist: { label: "Alchimist Stins", emoji: "⚗️", desc: "+20% Oboli câștigați", attack: 0, hp: 0, dodge: 0, crit: 0, xpMult: 1, oboliMult: 1.2 },
@@ -150,10 +150,10 @@ export const COMPANIONS: Record<CompanionKey, {
   label: string; emoji: string; desc: string; evoLabel: string; lore: string;
   attack: number; hp: number; crit: number; defense: number;
 }> = {
-  lup: { label: "Lupul de Cenușă", emoji: "🐺", desc: "+2 damage", evoLabel: "Alfa de Cenușă", lore: "Un lup spectral, credincios până în Abis.", attack: 2, hp: 0, crit: 0, defense: 0 },
+  lup: { label: "Lupul de Cenușă", emoji: "🐺", desc: "+2 daune", evoLabel: "Alfa de Cenușă", lore: "Un lup spectral, credincios până în Abis.", attack: 2, hp: 0, crit: 0, defense: 0 },
   corb: { label: "Corbul Umbrelor", emoji: "🐦‍⬛", desc: "+3% critic", evoLabel: "Corbul de Jar", lore: "Ochii lui văd slăbiciunea oricărui monstru.", attack: 0, hp: 0, crit: 3, defense: 0 },
   spirit: { label: "Spiritul Stins", emoji: "👻", desc: "+5 HP", evoLabel: "Străjerul Eteric", lore: "O umbră blândă ce te ține în viață.", attack: 0, hp: 5, crit: 0, defense: 0 },
-  golem: { label: "Golem de Fum", emoji: "🗿", desc: "-1 damage primit", evoLabel: "Colosul de Magmă", lore: "Un zid de cenușă între tine și moarte.", attack: 0, hp: 0, crit: 0, defense: 1 },
+  golem: { label: "Golem de Fum", emoji: "🗿", desc: "-1 daune primite", evoLabel: "Colosul de Magmă", lore: "Un zid de cenușă între tine și moarte.", attack: 0, hp: 0, crit: 0, defense: 1 },
 };
 export function isCompanionKey(k: string): k is CompanionKey { return k in COMPANIONS; }
 
@@ -172,14 +172,14 @@ export function companionStats(key: CompanionKey, level: number): { attack: numb
     defense: Math.round(c.defense * m),
   };
 }
-// Precise (unrounded) effective bonus for display, e.g. "+2.6 damage".
+// Precise (unrounded) effective bonus for display, e.g. "+2.6 daune".
 export function companionEffectiveDesc(key: CompanionKey, level: number): string {
   const c = COMPANIONS[key];
   const m = bonusMult(level);
-  if (c.attack) return `+${(c.attack * m).toFixed(1)} damage`;
+  if (c.attack) return `+${(c.attack * m).toFixed(1)} daune`;
   if (c.crit) return `+${(c.crit * m).toFixed(1)}% critic`;
   if (c.hp) return `+${(c.hp * m).toFixed(1)} HP`;
-  if (c.defense) return `-${(c.defense * m).toFixed(1)} damage primit`;
+  if (c.defense) return `-${(c.defense * m).toFixed(1)} daune primite`;
   return c.desc;
 }
 
@@ -298,7 +298,7 @@ export function buildCombatEmbed(p: EventParticipant, extra = "", avatarUrl?: st
       (battle ? `${battle.emoji} *${battle.title} e activ acum!*\n\n` : "") +
       (extra ? `${extra}\n\n` : "") +
       `❤️ HP Monstru: **${p.monsterCurrentHp}/${mMaxHp}** ${hpBar(p.monsterCurrentHp, mMaxHp)}\n` +
-      `⚔️ Damage: **${mn} – ${mx}**\n` +
+      `⚔️ Daune: **${mn} – ${mx}**\n` +
       `🎯 Șansă lovitură: **${monsterHitPct(p.monsterLevel).toFixed(0)}%**\n` +
       `💰 Reward: **${reward.xp} XP, ${reward.oboli} Oboli**\n\n` +
       `━━━━━━━━━━━━━━━━━━\n` +
@@ -312,9 +312,9 @@ export function buildCombatEmbed(p: EventParticipant, extra = "", avatarUrl?: st
 }
 
 const CRIT_LINES = [
-  "💥 **LOVITURĂ DEVASTATOARE** 💥\nUmbrele se rup în două sub puterea ta!\nAi provocat **{dmg} damage critic**!",
-  "🔥 **FURIA CENUȘII SE DEZLĂNȚUIE** 🔥\nLovitura ta a sfâșiat creatura pentru **{dmg} damage**!",
-  "⚡ **IMPACT CATACLISMIC** ⚡\nCenușa explodează în jurul creaturii — **{dmg} damage**!",
+  "💥 **LOVITURĂ DEVASTATOARE** 💥\nUmbrele se rup în două sub puterea ta!\nAi provocat **{dmg} daune critice**!",
+  "🔥 **FURIA CENUȘII SE DEZLĂNȚUIE** 🔥\nLovitura ta a sfâșiat creatura pentru **{dmg} daune**!",
+  "⚡ **IMPACT CATACLISMIC** ⚡\nCenușa explodează în jurul creaturii — **{dmg} daune**!",
 ];
 
 export function buildResultText(r: CombatResult): string {
@@ -324,7 +324,7 @@ export function buildResultText(r: CombatResult): string {
   if (r.isCrit) {
     txt += CRIT_LINES[Math.floor(Math.random() * CRIT_LINES.length)]!.replace("{dmg}", String(r.playerDmg)) + "\n\n";
   } else {
-    txt += `⚔️ **AI LOVIT MONSTRUL!**\nLovitura ta a atins creatura pentru **${r.playerDmg} damage**.\nUmbrele se clatină în jurul ei.\n\n`;
+    txt += `⚔️ **AI LOVIT MONSTRUL!**\nLovitura ta a atins creatura pentru **${r.playerDmg} daune**.\nUmbrele se clatină în jurul ei.\n\n`;
   }
   if (r.stormDrain > 0) txt += `🌪️ Furtuna de Fum îți arde **${r.stormDrain} HP**!\n`;
   if (r.monsterDefeated) {
@@ -336,7 +336,7 @@ export function buildResultText(r: CombatResult): string {
     }
   } else if (r.monsterHit) {
     if (r.playerDodged) txt += "🌀 **AI EVITAT ATACUL!** Umbrele te-au ferit.";
-    else txt += `💀 **MONSTRUL RIPOSTEAZĂ!**\nCreatura îți aplică **${r.monsterDmg} damage**.\nUmbrele îți apasă umerii, iar sângele îți pulsează în tâmple.`;
+    else txt += `💀 **MONSTRUL RIPOSTEAZĂ!**\nCreatura îți aplică **${r.monsterDmg} daune**.\nUmbrele îți apasă umerii, iar sângele îți pulsează în tâmple.`;
   } else {
     txt += "💨 Monstrul a ratat atacul!";
   }
@@ -457,11 +457,11 @@ function shopStatsText(p: Player): string {
     return `${emoji} **${label}** — **${price} Oboli**\n   ↳ acum ${now} → ${next}\n`;
   };
   return (
-    line("atac", "⚔️", "Atac", `+${p.attackBonus} damage`, `+${p.attackBonus + 2} damage`) +
-    line("def", "🛡️", "Apărare", `-${p.defenseBonus} damage primit`, `-${p.defenseBonus + 2} damage primit`) +
+    line("atac", "⚔️", "Atac", `+${p.attackBonus} daune`, `+${p.attackBonus + 2} daune`) +
+    line("def", "🛡️", "Apărare", `-${p.defenseBonus} daune primite`, `-${p.defenseBonus + 2} daune primite`) +
     line("dodge", "🌀", "Evitare", `${p.dodgeBonus}%`, `${p.dodgeBonus + 3}%`) +
     line("crit", "💥", "Critic", `${p.critBonus}%`, `${p.critBonus + 2}%`) +
-    line("hp", "❤️", "HP Max", `+${p.maxHpBonus} HP`, `+${p.maxHpBonus + 10} HP`)
+    line("hp", "❤️", "HP maxim", `+${p.maxHpBonus} HP`, `+${p.maxHpBonus + 10} HP`)
   );
 }
 
@@ -473,7 +473,7 @@ function shopCompText(p: Player): string {
     return (
       `${c.emoji} **${evolved ? c.evoLabel : c.label}** Nv.${p.companionLevel}${evolved ? " ✨" : ""}\n` +
       `🎁 Bonus activ: ${companionEffectiveDesc(p.companion, p.companionLevel)}\n\n` +
-      `🔼 **Upgrade Nv.${p.companionLevel} → ${p.companionLevel + 1}**\n` +
+      `🔼 **Îmbunătățire Nv.${p.companionLevel} → ${p.companionLevel + 1}**\n` +
       `   ↳ cost: **${cost} Oboli + ${UPGRADE_XP_COST} XP**\n` +
       (evolved ? "" : `   ↳ evoluează la Nv.${COMPANION_EVOLVE_LEVEL} în forma legendară\n`)
     );
@@ -494,7 +494,7 @@ function shopAbilText(p: Player): string {
       return (
         `${a.emoji} **${a.label}** Nv.${lvl}\n` +
         `   ↳ ${a.desc}\n` +
-        `   🔼 Upgrade → Nv.${lvl + 1}: **${cost} Oboli + ${UPGRADE_XP_COST} XP**\n`
+        `   🔼 Îmbunătățire → Nv.${lvl + 1}: **${cost} Oboli + ${UPGRADE_XP_COST} XP**\n`
       );
     }
     return (
@@ -569,7 +569,7 @@ export function buildLevelupEmbed(newLevel: number): EmbedBuilder {
       "**Alege un bonus special:**\n\n" +
       "🔹 **+5 XP bonus** la fiecare monstru ucis\n" +
       "🔹 **+3% șansă de evitare**\n" +
-      "🔹 **+2 damage** permanent\n" +
+      "🔹 **+2 daune** permanent\n" +
       "🔹 **+5 HP** permanent (și vindecare)\n" +
       "🔹 **+1% șansă critică**\n\n" +
       "Fiecare alegere îți schimbă destinul.\nUmbrele privesc… și judecă.",
@@ -697,7 +697,7 @@ export function shopStatsRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
     ),
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       mk("crit", "💥", "Critic"),
-      mk("hp", "❤️", "HP Max"),
+      mk("hp", "❤️", "HP maxim"),
     ),
     shopBackRow(),
   ];
@@ -711,7 +711,7 @@ export function shopCompRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
       new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
           .setCustomId("shop_compup")
-          .setLabel(`Upgrade Nv.${p.companionLevel} → ${p.companionLevel + 1} (${cost} Oboli + ${UPGRADE_XP_COST} XP)`)
+          .setLabel(`Îmbunătățire Nv.${p.companionLevel} → ${p.companionLevel + 1} (${cost} Oboli + ${UPGRADE_XP_COST} XP)`)
           .setEmoji(COMPANIONS[p.companion].emoji)
           .setStyle(ButtonStyle.Success)
           .setDisabled(p.gold < cost || p.xp < UPGRADE_XP_COST),
@@ -767,7 +767,7 @@ export function levelupRows(eventId: number): ActionRowBuilder<ButtonBuilder>[] 
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId(`ora_lvlup_${eventId}_xp`).setLabel("+5 XP/monstru").setEmoji("🔹").setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId(`ora_lvlup_${eventId}_dodge`).setLabel("+3% Evitare").setEmoji("🔹").setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId(`ora_lvlup_${eventId}_atac`).setLabel("+2 Damage").setEmoji("🔹").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(`ora_lvlup_${eventId}_atac`).setLabel("+2 Daune").setEmoji("🔹").setStyle(ButtonStyle.Success),
     ),
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId(`ora_lvlup_${eventId}_hp`).setLabel("+5 HP").setEmoji("🔹").setStyle(ButtonStyle.Success),
@@ -828,7 +828,7 @@ export function buildCompanionEmbed(player: Player): EmbedBuilder {
         `🎁 **Bonus activ:** ${companionEffectiveDesc(player.companion, player.companionLevel)}\n\n` +
         (evolved
           ? "Companionul tău a evoluat la forma sa legendară!"
-          : `🔓 Evoluează la **Nivel ${COMPANION_EVOLVE_LEVEL}** companion — fă upgrade din **/magazin**.`),
+          : `🔓 Evoluează la **Nivel ${COMPANION_EVOLVE_LEVEL}** companion — fă îmbunătățire din **/magazin**.`),
       )
       .setFooter({ text: BRAND_FOOTER });
     const url = evolved ? img?.evo : img?.base;
@@ -1006,7 +1006,7 @@ export function buildBossLeaderboard(
       : "";
 
     const bossStr = p.bossDamage > 0
-      ? `🐉 ${p.bossDamage.toLocaleString()} dmg`
+      ? `🐉 ${p.bossDamage.toLocaleString()} daune`
       : `🐉 Nu a lovit`;
 
     if (p.inEvent) {

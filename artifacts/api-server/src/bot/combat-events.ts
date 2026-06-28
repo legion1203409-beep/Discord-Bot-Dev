@@ -23,7 +23,7 @@ const POOL: Omit<BattleEvent, "expiresAt">[] = [
     emoji: "💥",
     title: "Explozie de Cenușă",
     announce:
-      "💥 **EXPLOZIE DE CENUȘĂ!** 💥\nO undă de putere mătură Regatul — loviturile voastre ard mai tare!\n*(+10% damage timp de 1 minut)*",
+      "💥 **EXPLOZIE DE CENUȘĂ!** 💥\nO undă de putere mătură Regatul — loviturile voastre ard mai tare!\n*(+10% daune timp de 1 minut)*",
     damageMult: 1.1,
     monsterMissBonus: 0,
     hpDrain: 0,
