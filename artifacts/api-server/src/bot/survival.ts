@@ -270,7 +270,7 @@ export function buildStartEmbed(): EmbedBuilder {
       "Un val nesfârșit de creaturi se pregătește să vă înfrunte.\n" +
       "Apasă pe butonul sacru și intră în luptă.\n\n" +
       "💀 **Atenție:**\n" +
-      "Moartea în acest event este definitivă.\n" +
+      "Moartea în acest eveniment este definitivă.\n" +
       "Cei căzuți în Umbre nu mai pot continua până la următoarea chemare.",
     )
     .setFooter({ text: "⏳ Eveniment activ timp de 1 oră." })
@@ -294,16 +294,16 @@ export function buildCombatEmbed(p: EventParticipant, extra = "", avatarUrl?: st
     .setTitle(title)
     .setDescription(
       `🗺️ *${zone.name}* — ${zone.intro}\n\n` +
-      (boss ? "💀 O prezență colosală blochează drumul. Reward dublu pentru cel care o doboară!\n\n" : "") +
+      (boss ? "💀 O prezență colosală blochează drumul. Recompensă dublă pentru cel care o doboară!\n\n" : "") +
       (battle ? `${battle.emoji} *${battle.title} e activ acum!*\n\n` : "") +
       (extra ? `${extra}\n\n` : "") +
       `❤️ HP Monstru: **${p.monsterCurrentHp}/${mMaxHp}** ${hpBar(p.monsterCurrentHp, mMaxHp)}\n` +
       `⚔️ Daune: **${mn} – ${mx}**\n` +
       `🎯 Șansă lovitură: **${monsterHitPct(p.monsterLevel).toFixed(0)}%**\n` +
-      `💰 Reward: **${reward.xp} XP, ${reward.oboli} Oboli**\n\n` +
+      `💰 Recompensă: **${reward.xp} XP, ${reward.oboli} Oboli**\n\n` +
       `━━━━━━━━━━━━━━━━━━\n` +
       `❤️ HP-ul tău: **${p.currentHp}/${p.maxHp}** ${hpBar(p.currentHp, p.maxHp)}\n` +
-      `🪙 Oboli strânși în event: **${p.oboli}** *(20% se pierd la moarte)*`,
+      `🪙 Oboli strânși în eveniment: **${p.oboli}** *(20% se pierd la moarte)*`,
     )
     .setImage(IMG.monster)
     .setFooter({ text: `⚔️ +${p.attackBonus} | 🛡️ +${p.defenseBonus} | 🌀 ${p.dodgeBonus}% | 💥 ${p.critBonus}% | ❤️ +${p.maxHp - 100}` });
@@ -349,8 +349,8 @@ export function buildDeathEmbed(lostOboli = 0): EmbedBuilder {
     .setTitle("💀  AI CĂZUT ÎN UMBRE 💀")
     .setDescription(
       "Umbrele te-au revendicat, iar cenușa îți acoperă pașii.\n" +
-      "Nu mai poți continua acest event.\n\n" +
-      (lostOboli > 0 ? `🪙 Ai pierdut **${lostOboli} Oboli** (20% din ce ai strâns în event).\n\n` : "") +
+      "Nu mai poți continua acest eveniment.\n\n" +
+      (lostOboli > 0 ? `🪙 Ai pierdut **${lostOboli} Oboli** (20% din ce ai strâns în eveniment).\n\n` : "") +
       "Trupul tău pământesc a cedat,\n" +
       "dar numele tău va rămâne scris în cronica celor căzuți.\n\n" +
       "Magazinul rămâne deschis — folosește **/magazin** ca să te întărești pentru următoarea chemare.",
@@ -604,7 +604,7 @@ export function buildExpiredCronica(
     .setColor(0x8a4a2f)
     .setTitle("🏆📜  CRONICA SUPRAVIEȚUITORILOR  📜🏆")
     .setDescription(
-      "Eventul s-a încheiat.\nUmbrele se retrag, iar cenușa cade încet peste Regat.\n\n" +
+      "Evenimentul s-a încheiat.\nUmbrele se retrag, iar cenușa cade încet peste Regat.\n\n" +
       `**Eroii care au rezistat cel mai mult:**\n${top}\n\n` +
       `**Cei Căzuți în Umbre:**\n${topFallen}\n\n` +
       (topFled ? `**Cei care au abandonat și au fugit:**\n${topFled}\n\n` : "") +
@@ -1010,7 +1010,7 @@ export function buildBossLeaderboard(
       : `🐉 Nu a lovit`;
 
     if (p.inEvent) {
-      return `${medal} **${p.username}** — ${bossStr}${hpStr} | 🎚️ Niv.**${p.monsterLevel}** | 💥 ${p.totalDamage.toLocaleString()} Event${rewStr}`;
+      return `${medal} **${p.username}** — ${bossStr}${hpStr} | 🎚️ Niv.**${p.monsterLevel}** | 💥 ${p.totalDamage.toLocaleString()} Eveniment${rewStr}`;
     }
     return `${medal} **${p.username}** — ${bossStr}${hpStr}${rewStr}`;
   });
