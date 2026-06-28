@@ -1,7 +1,16 @@
+import { pool } from "@workspace/db";
 import app from "./app";
 import { logger } from "./lib/logger";
 import { startBot } from "./bot/index";
 import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./bot/alert";
+
+// Warm the DB connection pool at boot so the first slash command isn't delayed
+// by a cold TLS handshake — that latency can otherwise push interaction replies
+// past Discord's 3s deadline (DiscordAPIError 10062 "Unknown interaction").
+void pool
+  .query("SELECT 1")
+  .then(() => logger.info("DB pool warmed"))
+  .catch((err: unknown) => logger.error({ err }, "DB pool warmup failed"));
 
 process.on("uncaughtException", (err) => {
   logger.error({ err }, "Uncaught exception — process continues");

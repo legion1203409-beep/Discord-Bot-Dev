@@ -173,27 +173,27 @@ async function avatarById(discordId: string): Promise<string | null> {
 }
 
 async function handleProfil(interaction: ChatInputCommandInteraction) {
+  // Defer first (instant ACK) so a slow DB call can't blow past Discord's 3s
+  // interaction deadline and trigger "Unknown interaction" (10062).
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const target = interaction.options.getUser("jucator");
   // Viewing another player: read-only lookup, never create a record for them.
   if (target && target.id !== interaction.user.id) {
     const player = await getPlayerById(target.id);
     if (!player) {
-      await interaction.reply({
+      await interaction.editReply({
         content: `❌ **${target.username}** nu a pășit încă în Regatul Cenușii — nu există un profil pentru acest jucător.`,
-        ephemeral: true,
       });
       return;
     }
-    await interaction.reply({
+    await interaction.editReply({
       embeds: [buildProfileEmbed(player, undefined, target.displayAvatarURL({ size: 256 }))],
-      ephemeral: true,
     });
     return;
   }
   const p = await upsertPlayer(interaction.user.id, interaction.user.username);
-  await interaction.reply({
+  await interaction.editReply({
     embeds: [buildProfileEmbed(p, undefined, interaction.user.displayAvatarURL({ size: 256 }))],
-    ephemeral: true,
   });
 }
 
@@ -237,8 +237,9 @@ async function handleAjutor(interaction: ChatInputCommandInteraction) {
 }
 
 async function handleMagazin(interaction: ChatInputCommandInteraction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const p = await upsertPlayer(interaction.user.id, interaction.user.username);
-  await interaction.reply({ embeds: [buildShopEmbed(p, "overview")], components: shopRows(p), ephemeral: true });
+  await interaction.editReply({ embeds: [buildShopEmbed(p, "overview")], components: shopRows(p) });
 }
 
 async function isOwner(interaction: ChatInputCommandInteraction): Promise<boolean> {
@@ -264,12 +265,13 @@ async function handleSpawnChest(interaction: ChatInputCommandInteraction) {
 
 async function handleSpawnBoss(interaction: ChatInputCommandInteraction) {
   if (!(await isOwner(interaction))) return;
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const ev = await import("./db").then(m => m.getLatestActiveEvent());
   if (!ev) {
-    await interaction.reply({ content: "❌ Nu există niciun event activ. Pornește mai întâi `/startevent`.", ephemeral: true });
+    await interaction.editReply({ content: "❌ Nu există niciun event activ. Pornește mai întâi `/startevent`." });
     return;
   }
-  await interaction.reply({ content: "🐉 *Cenușa se întunecă…* Dragonul Stins coboară din Abis!", ephemeral: true });
+  await interaction.editReply({ content: "🐉 *Cenușa se întunecă…* Dragonul Stins coboară din Abis!" });
   if (botClient) await fireFinalBoss(botClient, ev.id);
 }
 
@@ -346,6 +348,7 @@ async function handleAdmin(interaction: ChatInputCommandInteraction) {
 }
 
 async function handleClasament(interaction: ChatInputCommandInteraction) {
+  await interaction.deferReply();
   const top = await getTopPlayers();
   const medals = ["🥇", "🥈", "🥉"];
   const champAvatar = top[0] ? await avatarById(top[0].discordId) : null;
@@ -372,7 +375,7 @@ async function handleClasament(interaction: ChatInputCommandInteraction) {
     components.push(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select));
   }
 
-  await interaction.reply({
+  await interaction.editReply({
     embeds: [
       {
         color: THEME_COLOR,
@@ -415,8 +418,13 @@ const CHEST_CLAIM_MSG: Record<string, (user: string, gold: number) => string> = 
 };
 
 async function handleChestClaim(interaction: ButtonInteraction, chestId: string, rarityKey: string, gold: number) {
+  // Ack immediately so the DB writes below can't blow past Discord's 3s deadline
+  // (DiscordAPIError 10062). deferUpdate keeps the chest message intact for now.
+  await interaction.deferUpdate();
+  // has()/add() stay adjacent (no await between) so concurrent clicks can't
+  // both pass the guard and double-claim.
   if (claimedChests.has(chestId)) {
-    await interaction.reply({ content: "😔 Cineva a fost mai rapid! Cufărul a fost deja revendicat.", ephemeral: true });
+    await interaction.followUp({ content: "😔 Cineva a fost mai rapid! Cufărul a fost deja revendicat.", flags: MessageFlags.Ephemeral });
     return;
   }
   claimedChests.add(chestId);
@@ -442,7 +450,7 @@ async function handleChestClaim(interaction: ButtonInteraction, chestId: string,
       .setDisabled(true),
   );
 
-  await interaction.update({ components: [openingRow] });
+  await interaction.editReply({ components: [openingRow] });
   await new Promise<void>((r) => setTimeout(r, 900));
   await interaction.message.edit({ components: [disabledRow] }).catch(() => null);
 
@@ -619,11 +627,11 @@ async function handleLevelup(interaction: ButtonInteraction, eventId: number, bo
 }
 
 async function handleClasa(interaction: ChatInputCommandInteraction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const p = await upsertPlayer(interaction.user.id, interaction.user.username);
-  await interaction.reply({
+  await interaction.editReply({
     embeds: [buildClassEmbed(p)],
     components: p.class ? [] : classRows(),
-    ephemeral: true,
   });
 }
 
@@ -643,11 +651,11 @@ async function handleClassPick(interaction: ButtonInteraction, key: string) {
 }
 
 async function handleCompanion(interaction: ChatInputCommandInteraction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const p = await upsertPlayer(interaction.user.id, interaction.user.username);
-  await interaction.reply({
+  await interaction.editReply({
     embeds: [buildCompanionEmbed(p)],
     components: [],
-    ephemeral: true,
   });
 }
 
@@ -1098,8 +1106,14 @@ export async function startBot(onReady?: () => void): Promise<void> {
     } catch (err) {
       logger.error({ err }, "Interaction error");
       try {
-        if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
-          await interaction.reply({ content: "❌ A apărut o eroare. Încearcă din nou.", ephemeral: true });
+        if (interaction.isRepliable()) {
+          if (interaction.deferred && !interaction.replied) {
+            await interaction.editReply({ content: "❌ A apărut o eroare. Încearcă din nou." });
+          } else if (!interaction.deferred && !interaction.replied) {
+            await interaction.reply({ content: "❌ A apărut o eroare. Încearcă din nou.", flags: MessageFlags.Ephemeral });
+          } else {
+            await interaction.followUp({ content: "❌ A apărut o eroare. Încearcă din nou.", flags: MessageFlags.Ephemeral });
+          }
         }
       } catch {
         // ignore — interaction window may have expired

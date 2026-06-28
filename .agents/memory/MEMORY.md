@@ -5,5 +5,7 @@
 - [Final boss reward auth](final-boss-auth.md) — reward buttons tied to an event must re-check active+not-expired+participant+isAlive server-side; stale button messages otherwise let non-eligible users claim.
 - [Escalating upgrade guard](escalating-upgrade-guard.md) — tier-priced upgrades must guard UPDATE...WHERE on expectedLevel, not just balance, or concurrent clicks double-upgrade at the cheap tier.
 - [undici discord.js compat](undici-discordjs-compat.md) — pin undici override to ^6.x (not >=6.27.0); undici 8.x breaks discord.js REST via Symbol(sensitiveHeaders) in Headers ctor.
+- [Discord interaction defer](discord-interaction-defer.md) — handlers doing DB/network work must deferReply/deferUpdate first or prod DB latency causes 10062; bot is prod-only so it's invisible in dev.
+- [api-server is /api-only](api-server-is-api-only.md) — don't serve the status SPA from api-server; status is a separate web artifact on "/", else GET /api 500s via a broken catch-all.
 - [Discord embed field markdown](discord-embed-field-markdown.md) — embed field NAMES render markdown literally (raw `**`); use plain dividers there, keep bold for description/value only.
 - [Delayed window.open popup-block](delayed-window-open-popup-block.md) — click→animate→open: open about:blank synchronously on click (opener=null, no noopener flag), set location after delay.
