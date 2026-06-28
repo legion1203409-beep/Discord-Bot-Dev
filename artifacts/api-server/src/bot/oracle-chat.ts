@@ -14,13 +14,39 @@ import { MOOD_META, type MoodState } from "./oracle-content";
 // simply stays silent on mentions (degrade gracefully — never crash the bot).
 const AI_ENABLED = !!process.env.OPENAI_API_KEY;
 
-// gpt-5-mini: a good balance of creative Romanian prose and cost for chat volume.
-const MODEL = "gpt-5-mini";
+/**
+ * Read a positive-integer tuning value from the environment, falling back to the
+ * default when the var is unset, empty, non-numeric, or not a positive integer.
+ * Keeps an operator's typo from crashing the bot or silently disabling a guard.
+ */
+function envInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed <= 0) {
+    logger.warn({ name, value: raw, fallback }, "Invalid Oracle tuning value — using default");
+    return fallback;
+  }
+  return parsed;
+}
 
-// Guardrails so a popular channel can't spam the model or rack up cost.
-const USER_COOLDOWN_MS = 12_000;
-const GLOBAL_HOURLY_CAP = 80;
-const MAX_INPUT_CHARS = 600;
+/** Read a non-empty string env var, falling back to the default otherwise. */
+function envString(name: string, fallback: string): string {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === "") return fallback;
+  return raw.trim();
+}
+
+// gpt-5-mini: a good balance of creative Romanian prose and cost for chat volume.
+// Operators can override the model without a code change via ORACLE_AI_MODEL.
+const MODEL = envString("ORACLE_AI_MODEL", "gpt-5-mini");
+
+// Guardrails so a popular channel can't spam the model or rack up cost. All four
+// are tunable via env vars so a server owner can adjust responsiveness/cost
+// without a redeploy; invalid values fall back to the defaults below.
+const USER_COOLDOWN_MS = envInt("ORACLE_USER_COOLDOWN_MS", 12_000);
+const GLOBAL_HOURLY_CAP = envInt("ORACLE_GLOBAL_HOURLY_CAP", 80);
+const MAX_INPUT_CHARS = envInt("ORACLE_MAX_INPUT_CHARS", 600);
 const DISCORD_MAX_CHARS = 2000;
 
 // Rolling conversation memory: the Oracle sees the last few exchanges from the
@@ -297,7 +323,15 @@ export async function maybeReplyAsOracle(discordClient: Client, message: Message
 /** Logged once at startup so operators can see whether AI replies are active. */
 export function logOracleChatStatus(): void {
   if (AI_ENABLED) {
-    logger.info({ model: MODEL }, "Oracle AI replies enabled");
+    logger.info(
+      {
+        model: MODEL,
+        userCooldownMs: USER_COOLDOWN_MS,
+        globalHourlyCap: GLOBAL_HOURLY_CAP,
+        maxInputChars: MAX_INPUT_CHARS,
+      },
+      "Oracle AI replies enabled",
+    );
   } else {
     logger.warn(
       "Oracle AI replies are OFF — set the OPENAI_API_KEY secret to let the Oracle answer mentions and replies.",
