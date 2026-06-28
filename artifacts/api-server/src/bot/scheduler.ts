@@ -1,6 +1,6 @@
 import { Client, TextChannel, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import { logger } from "../lib/logger";
-import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, buildExpiredChestEmbed, rollChest, oracleMessage, buildProphecyMessage, CHEST_RARITIES, buildFinalBossEmbed, buildBossLeaderboard, buildLockedChestEmbed, buildKeyChestEmbed, spawnLockedChest, rollKeyChestType, computeBossRewards, finalBossRow, bossMaxHp, THEME_COLOR, BRAND_FOOTER, type BossRarity, type BossPlayerStats } from "./survival";
+import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, buildExpiredChestEmbed, rollChest, oracleMessage, buildFinalBossEmbed, buildBossLeaderboard, buildLockedChestEmbed, buildKeyChestEmbed, spawnLockedChest, rollKeyChestType, computeBossRewards, finalBossRow, bossMaxHp, type BossRarity, type BossPlayerStats } from "./survival";
 import { triggerRandomBattleEvent } from "./combat-events";
 import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle, addPlayerReputation, addPlayerGold, addPlayerXp } from "./db";
 
@@ -19,109 +19,6 @@ const ORACLE_INTERVAL_MS = 25 * 60 * 1000;
 const BATTLE_EVENT_INTERVAL_MS = 7 * 60 * 1000;
 
 export const claimedChests = new Set<string>();
-
-// ─── Active prophecy ──────────────────────────────────────────────────────────
-interface Prophecy { rarityKey: string; mult: 2 | 3; expiresAt: number }
-let activeProphecy: Prophecy | null = null;
-export function getActiveProphecy(): Prophecy | null { return activeProphecy; }
-
-// ID of the pinned oracle message in the main channel (module-level; recovered on startup)
-let prophecyPinnedMsgId: string | null = null;
-
-function buildProphecyPinEmbed(prophecy: Prophecy | null): object {
-  if (!prophecy || prophecy.expiresAt <= Date.now()) {
-    return {
-      color: 0x4a4a4a,
-      title: "🔮 Oracolul Cenușii",
-      description: "*Oracolul tace…*\n\nNicio profeție nu este activă în acest moment.",
-      footer: { text: BRAND_FOOTER },
-    };
-  }
-  const rarity = CHEST_RARITIES.find((r) => r.key === prophecy.rarityKey);
-  const rarityLabel = rarity ? `${rarity.emoji ?? ""} ${rarity.label}`.trim() : prophecy.rarityKey;
-  const expiryUnix = Math.floor(prophecy.expiresAt / 1000);
-  return {
-    color: THEME_COLOR,
-    title: "🔮 Profeția Oracolului Cenușii",
-    description:
-      `Oracolul a vorbit. Un cufăr este binecuvântat azi cu putere înmulțită.\n\n` +
-      `**Cufăr binecuvântat:** ${rarityLabel}\n` +
-      `**Bonus Oboli:** ×${prophecy.mult}\n` +
-      `**Expiră:** <t:${expiryUnix}:R>\n` +
-      `-# 🕯️ La <t:${expiryUnix}:F>`,
-    footer: { text: BRAND_FOOTER },
-  };
-}
-
-async function updateProphecyPin(client: Client): Promise<void> {
-  try {
-    const channel = await client.channels.fetch(MAIN_CHANNEL_ID).catch(() => null);
-    if (!(channel instanceof TextChannel)) return;
-
-    const embed = buildProphecyPinEmbed(activeProphecy);
-
-    if (prophecyPinnedMsgId) {
-      const existing = await channel.messages.fetch(prophecyPinnedMsgId).catch(() => null);
-      if (existing) {
-        await existing.edit({ embeds: [embed] });
-        logger.info({ msgId: prophecyPinnedMsgId }, "Prophecy pin updated");
-        return;
-      }
-      // Message was deleted externally — fall through to create a new one
-      prophecyPinnedMsgId = null;
-    }
-
-    // No existing pin: send a new message and pin it
-    const msg = await channel.send({ embeds: [embed] });
-    prophecyPinnedMsgId = msg.id;
-    await msg.pin().catch((err) => logger.warn({ err }, "Failed to pin prophecy message"));
-
-    // Discord sends a "pinned a message" system notification; try to clean it up
-    await channel.messages
-      .fetch({ limit: 5, after: msg.id })
-      .then(async (recent) => {
-        const sysMsg = recent.find((m) => m.type === 6 /* ChannelPinnedMessage */);
-        if (sysMsg) await sysMsg.delete().catch(() => null);
-      })
-      .catch(() => null);
-
-    logger.info({ msgId: msg.id }, "Prophecy pin created");
-  } catch (err) {
-    logger.error({ err }, "Failed to update prophecy pin");
-  }
-}
-
-/**
- * Called once at bot startup: scans pinned messages in the main channel to
- * recover an existing oracle pin (so we edit instead of creating a new one),
- * then syncs the embed to the current prophecy state.
- */
-export async function initOraclePinOnStartup(client: Client): Promise<void> {
-  try {
-    const channel = await client.channels.fetch(MAIN_CHANNEL_ID).catch(() => null);
-    if (!(channel instanceof TextChannel)) return;
-
-    const botId = client.user?.id;
-    if (botId) {
-      const pins = await channel.messages.fetchPinned().catch(() => null);
-      if (pins) {
-        const existing = pins.find(
-          (m) =>
-            m.author.id === botId &&
-            m.embeds.some((e) => e.title?.includes("Oracolul Cenușii")),
-        );
-        if (existing) {
-          prophecyPinnedMsgId = existing.id;
-          logger.info({ msgId: existing.id }, "Recovered existing oracle pin");
-        }
-      }
-    }
-
-    await updateProphecyPin(client);
-  } catch (err) {
-    logger.error({ err }, "Failed to init oracle pin on startup");
-  }
-}
 
 // ─── Boss shared HP state ─────────────────────────────────────────────────────
 export type { BossPlayerStats };
@@ -327,23 +224,14 @@ export async function fireChest(client: Client) {
 
     const { rarity, gold } = rollChest();
 
-    // Check if the active prophecy blesses this chest's rarity
-    const prophecy = getActiveProphecy();
-    const blessMult: 2 | 3 | undefined =
-      prophecy && prophecy.expiresAt > Date.now() && prophecy.rarityKey === rarity.key
-        ? prophecy.mult
-        : undefined;
-
-    // Encode mult in customId so claim handler applies the bonus (mirrors fireChestForced)
-    const chestId = blessMult != null
-      ? `chest_${Date.now()}_${rarity.key}_${gold}_x${blessMult}`
-      : `chest_${Date.now()}_${rarity.key}_${gold}`;
+    // Multiplier is a surprise rolled at claim time, so no bonus is encoded here.
+    const chestId = `chest_${Date.now()}_${rarity.key}_${gold}`;
     const expireAt = Date.now() + CHEST_EXPIRE_MS;
 
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
         .setCustomId(chestId)
-        .setLabel(blessMult != null ? "🔮 Revendică Cufărul Binecuvântat" : "Revendică Cufărul")
+        .setLabel("Revendică Cufărul")
         .setEmoji(rarity.emoji)
         .setStyle(ButtonStyle.Success),
     );
@@ -390,17 +278,17 @@ export async function fireChest(client: Client) {
       await msg.edit({ content: frames[i]!.content }).catch(() => null);
     }
     await sleep(frames[frames.length - 1]!.delay);
-    await msg.edit({ content: `${rarity.emoji}✨`, embeds: [buildChestEmbed(gold, rarity, blessMult)], components: [lockedRow] }).catch(() => null);
+    await msg.edit({ content: `${rarity.emoji}✨`, embeds: [buildChestEmbed(gold, rarity)], components: [lockedRow] }).catch(() => null);
     await sleep(500);
-    await msg.edit({ content: "", embeds: [buildChestEmbed(gold, rarity, blessMult)], components: [lockedRow] }).catch(() => null);
+    await msg.edit({ content: "", embeds: [buildChestEmbed(gold, rarity)], components: [lockedRow] }).catch(() => null);
 
     // Enable claim button after 5 seconds
     await sleep(5000);
     if (!claimedChests.has(chestId)) {
-      await msg.edit({ embeds: [buildChestEmbed(gold, rarity, blessMult)], components: [row] }).catch(() => null);
+      await msg.edit({ embeds: [buildChestEmbed(gold, rarity)], components: [row] }).catch(() => null);
     }
 
-    logger.info({ chestId, gold, rarity: rarity.key, blessMult }, "Chest spawned");
+    logger.info({ chestId, gold, rarity: rarity.key }, "Chest spawned");
 
     const timeout = setTimeout(async () => {
       if (!claimedChests.has(chestId)) {
@@ -408,12 +296,12 @@ export async function fireChest(client: Client) {
         const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
           new ButtonBuilder()
             .setCustomId(`${chestId}_expired`)
-            .setLabel(blessMult != null ? "Cufărul binecuvântat a dispărut…" : "Cufărul a dispărut...")
+            .setLabel("Cufărul a dispărut...")
             .setEmoji("💨")
             .setStyle(ButtonStyle.Secondary)
             .setDisabled(true),
         );
-        await msg.edit({ embeds: [buildExpiredChestEmbed(gold, rarity, blessMult)], components: [disabledRow] }).catch(() => null);
+        await msg.edit({ embeds: [buildExpiredChestEmbed(gold, rarity)], components: [disabledRow] }).catch(() => null);
         logger.info({ chestId }, "Chest expired unclaimed");
       }
     }, CHEST_EXPIRE_MS);
@@ -724,33 +612,6 @@ async function fireOracle(client: Client) {
   }
 }
 
-async function fireProphecy(client: Client) {
-  try {
-    const channel = await client.channels.fetch(MAIN_CHANNEL_ID).catch(() => null);
-    if (!(channel instanceof TextChannel)) return;
-
-    // Only target rarities that can actually spawn naturally (weight > 0).
-    // Regal has weight 0 (admin/locked-only) and must never be a daily prophecy target.
-    const spawnable = CHEST_RARITIES.filter((r) => r.weight > 0);
-    const rarityKey = spawnable[Math.floor(Math.random() * spawnable.length)]!.key;
-    // ×2 with 70% probability, ×3 with 30%
-    const mult: 2 | 3 = Math.random() < 0.7 ? 2 : 3;
-
-    activeProphecy = { rarityKey, mult, expiresAt: Date.now() + 24 * 60 * 60 * 1000 };
-
-    // Announce the new prophecy dramatically in chat
-    const msg = buildProphecyMessage(rarityKey, mult);
-    await channel.send({ content: msg });
-
-    // Update (or create) the pinned oracle message so players can always find it
-    await updateProphecyPin(client);
-
-    logger.info({ rarityKey, mult }, "Daily prophecy fired");
-  } catch (err) {
-    logger.error({ err }, "Failed to fire prophecy");
-  }
-}
-
 async function fireBattleEvent(client: Client) {
   try {
     const ev = await getLatestActiveEvent();
@@ -766,39 +627,6 @@ async function fireBattleEvent(client: Client) {
   } catch (err) {
     logger.error({ err }, "Failed to trigger battle event");
   }
-}
-
-// Periodic check: if the active prophecy has expired, reset the pin to "tace"
-// and clear the in-memory state so the next fireProphecy starts fresh.
-async function checkProphecyExpiry(client: Client): Promise<void> {
-  if (activeProphecy && activeProphecy.expiresAt <= Date.now()) {
-    activeProphecy = null;
-    await updateProphecyPin(client);
-    logger.info("Active prophecy expired — oracle pin reset to silent state");
-  }
-}
-
-// Recursive helper: fires a prophecy after `delayMs`, then schedules the next
-// one 24h later. Anchors the cadence from actual fire time rather than boot time.
-function scheduleProphecy(client: Client, delayMs: number): void {
-  const t = setTimeout(async () => {
-    // Reset the pin to "tace" first so there is no stale embed visible
-    // between the old prophecy expiring and the new one being announced.
-    activeProphecy = null;
-    await updateProphecyPin(client);
-    await fireProphecy(client);
-    scheduleProphecy(client, 24 * 60 * 60 * 1000);
-  }, delayMs);
-  t.unref?.();
-}
-
-// Prophecy is in-memory only: every bot start (including redeploys) begins a
-// fresh cycle — recover the oracle pin, then fire the first prophecy in 1 minute
-// and every 24h thereafter.
-async function initProphecyScheduler(client: Client): Promise<void> {
-  await initOraclePinOnStartup(client);
-  logger.info("Fresh prophecy cycle on startup — first fire in 1 minute");
-  scheduleProphecy(client, 60 * 1000);
 }
 
 export function startScheduler(client: Client) {
@@ -824,14 +652,6 @@ export function startScheduler(client: Client) {
   // Oracle messages disabled — user requested only chest in chat
   // setInterval(() => { void fireOracle(client); }, ORACLE_INTERVAL_MS);
   // logger.info({ everyMinutes: ORACLE_INTERVAL_MS / 60000 }, "Oracle scheduler started");
-
-  // Prophecy is in-memory only: a fresh cycle starts on every boot/redeploy.
-  void initProphecyScheduler(client);
-
-  // Safety net: every minute check whether the active prophecy has expired and
-  // reset the pin to "Oracolul tace…" if so. This covers any edge cases where the
-  // 24h timer fires slightly late or the bot is under load.
-  setInterval(() => { void checkProphecyExpiry(client); }, 60 * 1000);
 
   setInterval(() => { void fireBattleEvent(client); }, BATTLE_EVENT_INTERVAL_MS);
   logger.info({ everyMinutes: BATTLE_EVENT_INTERVAL_MS / 60000 }, "Battle-event scheduler started");

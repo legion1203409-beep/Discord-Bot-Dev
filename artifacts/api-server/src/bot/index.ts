@@ -19,7 +19,7 @@ import {
 } from "discord.js";
 import { logger } from "../lib/logger";
 import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./alert";
-import { startScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, claimedChests, activeBossMap, getActiveProphecy, type BossState, type BossPlayerStats } from "./scheduler";
+import { startScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, claimedChests, activeBossMap, type BossState, type BossPlayerStats } from "./scheduler";
 import {
   upsertPlayer,
   joinEvent,
@@ -86,6 +86,7 @@ import {
   buildLockedChestEmbed,
   buildKeyDropMessage,
   rollChest,
+  rollChestMultiplier,
   computeBossRewards,
   finalBossRow,
   CHEST_RARITIES,
@@ -145,7 +146,6 @@ const slashCommands = [
   new SlashCommandBuilder().setName("clasa").setDescription("🧬 Alege-ți clasa RPG (alegere permanentă)."),
   new SlashCommandBuilder().setName("companion").setDescription("🐾 Vezi companionul tău (cumpără și fă îmbunătățiri din /magazin)."),
   new SlashCommandBuilder().setName("ajutor").setDescription("❓ Ghidul comenzilor din Regatul Cenușii."),
-  new SlashCommandBuilder().setName("profetie").setDescription("🔮 Afișează profeția activă a Oracolului Cenușii."),
   new SlashCommandBuilder()
     .setName("startevent")
     .setDescription("🔥 [Admin] Pornește manual Ora Umbrelor.")
@@ -194,12 +194,12 @@ const slashCommands = [
     .addStringOption((opt) =>
       opt
         .setName("multiplicator")
-        .setDescription("Bonus Oboli pentru cufărul generat (implicit fără bonus)")
+        .setDescription("Bonus garantat (implicit: lasă șansa surpriză ×1/×2/×3 la deschidere)")
         .setRequired(false)
         .addChoices(
-          { name: "1× — Fără bonus", value: "1" },
-          { name: "2× — Dublu Oboli", value: "2" },
-          { name: "3× — Triplu Oboli", value: "3" },
+          { name: "1× — Surpriză random (implicit)", value: "1" },
+          { name: "2× — Dublu garantat", value: "2" },
+          { name: "3× — Triplu garantat", value: "3" },
         ),
     ),
   new SlashCommandBuilder()
@@ -281,14 +281,10 @@ async function handleAjutor(interaction: ChatInputCommandInteraction) {
             value: "**/magazin** — Forja Cenușii: puteri permanente, companioni și abilități de luptă",
           },
           {
-            name: "🔮 Oracol",
-            value: "**/profetie** — profeția zilei: ce cufăr este binecuvântat și cât timp mai e valabilă",
-          },
-          {
             name: "⚔️ Evenimente automate",
             value:
               "🔥 **Ora Umbrelor** — apare periodic; luptă cu monștri pentru XP și Oboli\n" +
-              "📦 **Cufere** — apar prin surprindere; primul care apasă câștigă Obolii\n" +
+              "📦 **Cufere** — apar prin surprindere; primul care apasă câștigă Obolii *(cu șansă de bonus ×2 sau ×3 la deschidere!)*\n" +
               "🐉 **Dragonul Stins** — bossul final pe care întregul Regat îl înfruntă împreună",
           },
           {
@@ -307,47 +303,6 @@ async function handleAjutor(interaction: ChatInputCommandInteraction) {
       },
     ],
     ephemeral: true,
-  });
-}
-
-async function handleProfetie(interaction: ChatInputCommandInteraction) {
-  const prophecy = getActiveProphecy();
-  if (!prophecy || prophecy.expiresAt <= Date.now()) {
-    await interaction.reply({
-      embeds: [
-        {
-          color: 0x4a4a4a,
-          title: "🔮 Oracolul Cenușii",
-          description: "*Oracolul tace…*\n\nNicio profeție nu este activă în acest moment. Revino mai târziu.",
-          footer: { text: BRAND_FOOTER },
-        },
-      ],
-      flags: MessageFlags.Ephemeral,
-    });
-    return;
-  }
-
-  const rarity = CHEST_RARITIES.find((r) => r.key === prophecy.rarityKey);
-  const rarityLabel = rarity ? `${rarity.emoji ?? ""} ${rarity.label}`.trim() : prophecy.rarityKey;
-  const msLeft = prophecy.expiresAt - Date.now();
-  const hoursLeft = Math.floor(msLeft / (60 * 60 * 1000));
-  const minutesLeft = Math.floor((msLeft % (60 * 60 * 1000)) / 60000);
-  const timeStr = hoursLeft > 0 ? `${hoursLeft}h ${minutesLeft}m` : `${minutesLeft}m`;
-
-  await interaction.reply({
-    embeds: [
-      {
-        color: THEME_COLOR,
-        title: "🔮 Profeția Oracolului Cenușii",
-        description:
-          `Oracolul a vorbit. Un cufăr este binecuvântat azi cu putere înmulțită.\n\n` +
-          `**Cufăr binecuvântat:** ${rarityLabel}\n` +
-          `**Bonus Oboli:** ×${prophecy.mult}\n` +
-          `**Timp rămas:** ${timeStr}`,
-        footer: { text: BRAND_FOOTER },
-      },
-    ],
-    flags: MessageFlags.Ephemeral,
   });
 }
 
@@ -579,15 +534,9 @@ async function handleChestClaim(interaction: ButtonInteraction, chestId: string,
   }
   claimedChests.add(chestId);
 
-  // Determine effective multiplier: explicit (_x2/_x3 in customId from admin spawn)
-  // takes priority; otherwise fall back to the active daily prophecy.
-  let effectiveMult = multOverride;
-  if (effectiveMult <= 1) {
-    const prophecy = getActiveProphecy();
-    if (prophecy && prophecy.rarityKey === rarityKey && prophecy.expiresAt > Date.now()) {
-      effectiveMult = prophecy.mult;
-    }
-  }
+  // Determine effective multiplier: an admin-forced bonus (_x2/_x3 in customId)
+  // takes priority; otherwise roll a surprise multiplier (×1/×2/×3) at claim time.
+  const effectiveMult = multOverride > 1 ? multOverride : rollChestMultiplier();
   const totalGold = gold * effectiveMult;
 
   await upsertPlayer(interaction.user.id, interaction.user.username);
@@ -620,12 +569,12 @@ async function handleChestClaim(interaction: ButtonInteraction, chestId: string,
   const claimReply = await interaction.followUp({ content: claimMsg(interaction.user.username, totalGold) });
   setTimeout(() => { void claimReply.delete().catch(() => {}); }, CLAIM_TTL_MS);
 
-  if (effectiveMult > 1) {
-    const bonusReply = await interaction.followUp({
-      content: `🔮 **Profeția s-a împlinit!** Ai primit de **×${effectiveMult}** mai mulți Oboli! (${gold} × ${effectiveMult} = **${totalGold} Oboli**)`,
-    });
-    setTimeout(() => { void bonusReply.delete().catch(() => {}); }, CLAIM_TTL_MS);
-  }
+  // Reveal the surprise multiplier — every claim shows what landed.
+  const revealContent = effectiveMult > 1
+    ? `🎲 **Norocul Cenușii!** A picat **×${effectiveMult}**! Obolii s-au înmulțit (${gold} × ${effectiveMult} = **${totalGold} Oboli**)! ${effectiveMult === 3 ? "🔥🔥🔥" : "✨"}`
+    : `🎲 **Norocul Cenușii:** a picat **×1** de data asta — fără bonus. Ai primit **${gold} Oboli**.`;
+  const bonusReply = await interaction.followUp({ content: revealContent });
+  setTimeout(() => { void bonusReply.delete().catch(() => {}); }, CLAIM_TTL_MS);
 
   // Key drop roll
   const keyDrop = KEY_DROP[rarityKey];
@@ -1393,7 +1342,6 @@ export async function startBot(onReady?: () => void): Promise<void> {
         if (interaction.commandName === "clasa") await handleClasa(interaction);
         if (interaction.commandName === "companion") await handleCompanion(interaction);
         if (interaction.commandName === "ajutor") await handleAjutor(interaction);
-        if (interaction.commandName === "profetie") await handleProfetie(interaction);
         if (interaction.commandName === "startevent") await handleStartEvent(interaction);
         if (interaction.commandName === "cufar") await handleSpawnChest(interaction);
         if (interaction.commandName === "spawnboss") await handleSpawnBoss(interaction);

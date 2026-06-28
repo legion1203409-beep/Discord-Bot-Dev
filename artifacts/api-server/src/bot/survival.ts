@@ -550,12 +550,12 @@ export function spawnChest(rarityKey: string): { rarity: ChestRarity; gold: numb
   return { rarity, gold };
 }
 
-export function buildChestEmbed(gold: number, rarity?: ChestRarity, mult?: 2 | 3): EmbedBuilder {
+export function buildChestEmbed(gold: number, rarity?: ChestRarity, forcedMult?: 2 | 3): EmbedBuilder {
   const r = rarity ?? CHEST_RARITIES[0]!;
   const image = CHEST_IMG[r.key] ?? IMG.chest;
-  const blessingLine = mult != null
-    ? `\n🔮 **Profeție activă — ×${mult} Oboli!** Câștigă **${gold * mult}** Oboli!`
-    : "";
+  const bonusLine = forcedMult != null
+    ? `\n🔮 **Cufăr binecuvântat — ×${forcedMult} Oboli garantat!** Câștigă **${gold * forcedMult}** Oboli!`
+    : `\n🎲 **Norocul Cenușii:** la deschidere Obolii pot fi înmulțiți **×1, ×2 sau ×3** — nimeni nu știe până nu apeși!`;
   const keyDrop = KEY_DROP[r.key];
   const keyHintLine = keyDrop
     ? `\n🗝️ *Poate ascunde o ${KEY_LABEL[keyDrop.keyType]}...*`
@@ -566,24 +566,36 @@ export function buildChestEmbed(gold: number, rarity?: ChestRarity, mult?: 2 | 3
     .setDescription(
       "Cenușa s-a ridicat și a dezvăluit un cufăr misterios!\n" +
       "Obolii zac în el, așteptând mâna celui mai rapid.\n\n" +
-      `💰 **${gold} Oboli** pentru primul care revendică!${blessingLine}${keyHintLine}\n\n` +
+      `💰 **${gold} Oboli** pentru primul care revendică!${bonusLine}${keyHintLine}\n\n` +
       "⚡ Fii primul — cufărul dispare în fumul umbrelor!",
     )
     .setImage(image)
     .setFooter({ text: "Primul click câștigă!" });
 }
 
-export function buildExpiredChestEmbed(gold: number, rarity?: ChestRarity, mult?: 2 | 3): EmbedBuilder {
+/**
+ * Surprise reward multiplier rolled at claim time, not at spawn. Most chests
+ * give ×1 (no bonus); ×2 is uncommon and ×3 is rare — the gamble at open is
+ * the whole point. Used only when the chest has no admin-forced multiplier.
+ */
+export function rollChestMultiplier(): 1 | 2 | 3 {
+  const roll = Math.random();
+  if (roll < 0.08) return 3; // 8%
+  if (roll < 0.30) return 2; // 22%
+  return 1; // 70%
+}
+
+export function buildExpiredChestEmbed(gold: number, rarity?: ChestRarity, forcedMult?: 2 | 3): EmbedBuilder {
   const r = rarity ?? CHEST_RARITIES[0]!;
   const image = CHEST_IMG[r.key] ?? IMG.chest;
-  if (mult != null) {
+  if (forcedMult != null) {
     return new EmbedBuilder()
       .setColor(0x555555)
       .setTitle(`💨  ${r.label.toUpperCase()} — NERECLAMAT  💨`)
       .setDescription(
         `Cufărul binecuvântat a dispărut nereclamat în fumul umbrelor.\n\n` +
         `💰 ~~${gold} Oboli~~\n` +
-        `🔮 ~~Profeție activă — ×${mult} Oboli~~ *(bonus pierdut)*\n\n` +
+        `🔮 ~~Cufăr binecuvântat — ×${forcedMult} Oboli~~ *(bonus pierdut)*\n\n` +
         `*Nimeni nu a fost destul de rapid de data aceasta…*`,
       )
       .setImage(image)
@@ -1091,58 +1103,6 @@ const ORACLE_LINES = [
 ];
 export function oracleMessage(): string {
   return ORACLE_LINES[Math.floor(Math.random() * ORACLE_LINES.length)]!;
-}
-
-// ─── Profeții zilnice ─────────────────────────────────────────────────────────
-const PROPHECY_LINES: Record<string, Record<number, string[]>> = {
-  bronz: {
-    2: [
-      "🔮 **ORACOLUL CENUȘII ȘOPTEȘTE** 🔮\n*Cenușa umilă ascunde o binecuvântare dublă...*\n**Cufărul de Bronz** va dărui de **două ori** mai mult azi! 🪙×2",
-      "🕯️ *Flăcările bronzului ard mai puternic astăzi.*\n🔮 **Cufărul de Bronz** — recompensă **×2** până la miezul nopții!",
-    ],
-    3: [
-      "🔮 **ORACOLUL CENUȘII ȘOPTEȘTE** 🔮\n*Din scrumul umil răsar bogății triple...*\n**Cufărul de Bronz** va dărui de **trei ori** mai mult azi! 🪙×3",
-      "🕯️ *Bronzul strălucește ca aurul în lumina Oracolului.*\n🔮 **Cufărul de Bronz** — triplu binecuvântat **×3**!",
-    ],
-  },
-  argint: {
-    2: [
-      "🔮 **ORACOLUL CENUȘII ȘOPTEȘTE** 🔮\n*Argintul curge dublu prin văile cenușii...*\n**Cufărul de Argint** va dărui de **două ori** mai mult azi! 🥈×2",
-      "🌫️ *O ceață argintie coboară — semn bun pentru cei rapizi.*\n🔮 **Cufărul de Argint** — recompensă **×2** azi!",
-    ],
-    3: [
-      "🔮 **ORACOLUL CENUȘII ȘOPTEȘTE** 🔮\n*Umbrele argintii poartă trei daruri azi...*\n**Cufărul de Argint** va dărui de **trei ori** mai mult! 🥈×3",
-      "🌑 *Oracolul vede… argintul curge în triple șuvoaie.*\n🔮 **Cufărul de Argint** — recompensă **×3** azi!",
-    ],
-  },
-  aur: {
-    2: [
-      "🔮 **ORACOLUL CENUȘII ȘOPTEȘTE** 🔮\n*Aurul soarelui se înmulțește prin puterea Oracolului...*\n**Cufărul de Aur** va dărui de **două ori** mai mult azi! 🥇×2",
-      "✨ *O lumină aurie pulsează în profeție.*\n🔮 **Cufărul de Aur** — binecuvântat **×2** azi!",
-    ],
-    3: [
-      "🔮 **ORACOLUL CENUȘII ȘOPTEȘTE** 🔮\n*Aurul cade în ploaie triplă din bolta cenușie...*\n🥇 **Cufărul de Aur** va dărui de **trei ori** mai mult azi! ×3",
-      "🌟 *Profeția arde ca soarele: aurul se triplează.*\n🔮 **Cufărul de Aur** — recompensă **×3**!",
-    ],
-  },
-  mitic: {
-    2: [
-      "🔮 **ORACOLUL CENUȘII ȘOPTEȘTE** 🔮\n*Puterea mitică se înmulțește în umbrele timpului...*\n💎 **Cufărul Mitic** va dărui de **două ori** mai mult azi! ×2",
-      "⚡ *Energii arcanice duble pulsează în cenușă.*\n🔮 **Cufărul Mitic** — binecuvântat **×2**!",
-    ],
-    3: [
-      "🔮 **ORACOLUL CENUȘII ȘOPTEȘTE** 🔮\n*Din adâncurile timpului răsar de trei ori mai mulți Oboli...*\n💎⚡ **CUFĂRUL MITIC** — recompensă **×3** azi! ⚡💎",
-      "🌑⚡ *Oracolul tremură. Puterea veche curge de trei ori.*\n🔮 **Cufărul Mitic** — **×3**! Cel mai mare dar al zilei!",
-    ],
-  },
-};
-
-export function buildProphecyMessage(rarityKey: string, mult: 2 | 3): string {
-  const lines = PROPHECY_LINES[rarityKey]?.[mult];
-  if (!lines || lines.length === 0) {
-    return `🔮 **ORACOLUL CENUȘII ȘOPTEȘTE** 🔮\nUn cufăr misterios este binecuvântat **×${mult}** azi!`;
-  }
-  return lines[Math.floor(Math.random() * lines.length)]!;
 }
 
 // ─── Final boss ──────────────────────────────────────────────────────────────
