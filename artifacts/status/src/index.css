@@ -829,3 +829,116 @@ a { color: inherit; text-decoration: none; }
   /* Drop purely decorative motion layers */
   .embers, .gate-smoke, .gate-flash, .map-marker-pulse { display: none !important; }
 }
+
+/* ═══════════════════════════════════════════
+   OPERATOR HEALTH PAGE — #ops / #status
+   ═══════════════════════════════════════════ */
+
+.ops-page {
+  min-height: 100vh;
+  background:
+    radial-gradient(1200px 600px at 50% -10%, rgba(212,160,23,0.07), transparent 60%),
+    var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1.25rem;
+}
+.ops-panel {
+  width: 100%;
+  max-width: 720px;
+  border: 1px solid rgba(200,170,110,0.18);
+  border-radius: 14px;
+  background: rgba(14,11,9,0.85);
+  box-shadow: 0 24px 70px rgba(0,0,0,0.55);
+  padding: 1.75rem;
+}
+.ops-head { margin-bottom: 1.4rem; }
+.ops-title {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-weight: 900;
+  font-size: clamp(1.2rem, 4vw, 1.6rem);
+  color: #e8d5b0;
+  letter-spacing: 0.04em;
+}
+.ops-sub {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  margin-top: 0.3rem;
+}
+.ops-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.85rem;
+}
+@media (max-width: 540px) {
+  .ops-grid { grid-template-columns: 1fr; }
+}
+.ops-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.95rem 1.1rem;
+  border-radius: 10px;
+  border: 1px solid rgba(200,170,110,0.14);
+  background: rgba(20,16,12,0.6);
+}
+.ops-card-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-mute);
+}
+.ops-card-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: 'Inter', sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+}
+.ops-card-detail {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.72rem;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+.ops-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--text-mute);
+}
+.ops-card--loading .ops-card-value { color: var(--text-dim); }
+.ops-card--ok .ops-card-value { color: #2ecc71; }
+.ops-card--ok .ops-dot {
+  background: #27ae60;
+  box-shadow: 0 0 6px #2ecc71;
+  animation: online-dot-pulse 1.8s ease-in-out infinite;
+}
+.ops-card--warn .ops-card-value { color: #e0a020; }
+.ops-card--warn .ops-dot { background: #e0a020; box-shadow: 0 0 6px #e0a020; }
+.ops-card--danger .ops-card-value { color: #e06b5a; }
+.ops-card--danger .ops-dot {
+  background: var(--red);
+  box-shadow: 0 0 6px var(--red);
+  animation: soul-live-blink 2s infinite;
+}
+.ops-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(200,170,110,0.12);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.78rem;
+}
+.ops-foot a { color: var(--gold); transition: opacity 0.15s; }
+.ops-foot a:hover { opacity: 0.75; }

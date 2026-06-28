@@ -72,6 +72,8 @@ interface DiscordStats {
 interface OracleHealth {
   reachable: boolean;
   botOnline: boolean;
+  shardStatus: string | null;
+  botUptime: number;
   oracleReplyMode: "full" | "degraded";
   oracleReplyReason: "active" | "disabled" | "portal_toggle_missing";
 }
@@ -87,6 +89,8 @@ function useOracleHealth() {
       setHealth({
         reachable: true,
         botOnline: Boolean(data.botOnline),
+        shardStatus: typeof data.shardStatus === "string" ? data.shardStatus : null,
+        botUptime: typeof data.botUptime === "number" ? data.botUptime : 0,
         oracleReplyMode: data.oracleReplyMode === "full" ? "full" : "degraded",
         oracleReplyReason:
           data.oracleReplyReason === "active" ||
@@ -423,8 +427,123 @@ function GatePage({ onEnter }: { onEnter: () => void }) {
   );
 }
 
+function formatUptime(seconds: number): string {
+  if (seconds <= 0) return "—";
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  const parts: string[] = [];
+  if (d) parts.push(`${d}z`);
+  if (h) parts.push(`${h}h`);
+  if (m) parts.push(`${m}m`);
+  if (!d && !h) parts.push(`${s}s`);
+  return parts.join(" ");
+}
+
+function OperatorHealthPage() {
+  const health = useOracleHealth();
+
+  const botTone = health === null ? "loading" : health.botOnline ? "ok" : "danger";
+  const botLabel =
+    health === null ? "Se verifică…" : health.botOnline ? "Online" : "Offline";
+
+  let replyTone: "loading" | "ok" | "warn" | "danger";
+  let replyLabel: string;
+  let replyDetail: string;
+  if (health === null) {
+    replyTone = "loading";
+    replyLabel = "Se verifică…";
+    replyDetail = "Se interoghează /api/healthz.";
+  } else if (health.oracleReplyMode === "full") {
+    replyTone = "ok";
+    replyLabel = "Complet (active)";
+    replyDetail = "Răspunde la fiecare reply, mențiune și ping.";
+  } else if (health.oracleReplyReason === "portal_toggle_missing") {
+    replyTone = "danger";
+    replyLabel = "Redus (portal_toggle_missing)";
+    replyDetail =
+      "Comutatorul „Message Content” lipsește din Developer Portal. " +
+      "Activează-l, apoi repornește botul.";
+  } else {
+    replyTone = "warn";
+    replyLabel = "Redus (disabled)";
+    replyDetail = "Răspunsul la toate reply-urile este dezactivat din configurare.";
+  }
+
+  const unreachable = health === null;
+
+  return (
+    <div className="ops-page">
+      <div className="ops-panel">
+        <header className="ops-head">
+          <h1 className="ops-title">🔮 Oracol — Stare operator</h1>
+          <p className="ops-sub">
+            {unreachable
+              ? "Nu se poate contacta /api/healthz."
+              : "Date live din /api/healthz · reîmprospătare la 15s"}
+          </p>
+        </header>
+
+        <div className="ops-grid">
+          <div className={`ops-card ops-card--${botTone}`}>
+            <span className="ops-card-label">Bot</span>
+            <span className="ops-card-value">
+              <span className="ops-dot" />
+              {botLabel}
+            </span>
+          </div>
+
+          <div className="ops-card">
+            <span className="ops-card-label">Shard</span>
+            <span className="ops-card-value">
+              {health === null ? "…" : (health.shardStatus ?? "—")}
+            </span>
+          </div>
+
+          <div className="ops-card">
+            <span className="ops-card-label">Uptime bot</span>
+            <span className="ops-card-value">
+              {health === null ? "…" : formatUptime(health.botUptime)}
+            </span>
+          </div>
+
+          <div className={`ops-card ops-card--${replyTone}`}>
+            <span className="ops-card-label">Mod răspuns</span>
+            <span className="ops-card-value">
+              <span className="ops-dot" />
+              {replyLabel}
+            </span>
+            <span className="ops-card-detail">{replyDetail}</span>
+          </div>
+        </div>
+
+        <footer className="ops-foot">
+          <a href={`${API_BASE}/api/healthz`} target="_blank" rel="noopener noreferrer">
+            Vezi JSON brut
+          </a>
+          <a href="#">← Înapoi la hartă</a>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+function useHashRoute() {
+  const [hash, setHash] = useState(() => window.location.hash);
+  useEffect(() => {
+    const onHash = () => setHash(window.location.hash);
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+  return hash;
+}
+
 export default function App() {
   const [entered, setEntered] = useState(false);
+  const hash = useHashRoute();
+
+  if (hash === "#ops" || hash === "#status") return <OperatorHealthPage />;
 
   return entered
     ? <MapPage />
