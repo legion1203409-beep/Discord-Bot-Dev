@@ -558,6 +558,8 @@ async function handleClasamentSelect(interaction: StringSelectMenuInteraction) {
   await handleViewProfile(interaction, discordId);
 }
 
+const CLAIM_TTL_MS = 2 * 60 * 1000;
+
 const CHEST_CLAIM_MSG: Record<string, (user: string, gold: number) => string> = {
   bronz:  (u, g) => `🪙 **${u}** a deschis **Cufărul de Bronz** și a câștigat **${g} Oboli**!`,
   argint: (u, g) => `✨🥈 **${u}** a deschis **Cufărul de Argint** și a câștigat **${g} Oboli**! Argintul strălucește!`,
@@ -614,12 +616,14 @@ async function handleChestClaim(interaction: ButtonInteraction, chestId: string,
   await interaction.message.edit({ components: [disabledRow] }).catch(() => null);
 
   const claimMsg = CHEST_CLAIM_MSG[rarityKey] ?? CHEST_CLAIM_MSG["bronz"]!;
-  await interaction.followUp({ content: claimMsg(interaction.user.username, totalGold) });
+  const claimReply = await interaction.followUp({ content: claimMsg(interaction.user.username, totalGold) });
+  setTimeout(() => { void claimReply.delete().catch(() => {}); }, CLAIM_TTL_MS);
 
   if (effectiveMult > 1) {
-    await interaction.followUp({
+    const bonusReply = await interaction.followUp({
       content: `🔮 **Profeția s-a împlinit!** Ai primit de **×${effectiveMult}** mai mulți Oboli! (${gold} × ${effectiveMult} = **${totalGold} Oboli**)`,
     });
+    setTimeout(() => { void bonusReply.delete().catch(() => {}); }, CLAIM_TTL_MS);
   }
 
   // Key drop roll
@@ -627,7 +631,8 @@ async function handleChestClaim(interaction: ButtonInteraction, chestId: string,
   if (keyDrop && Math.random() < keyDrop.chance) {
     const keyType = keyDrop.keyType as KeyType;
     await addPlayerKey(interaction.user.id, keyType);
-    await interaction.followUp({ content: buildKeyDropMessage(rarityKey, keyType) });
+    const keyDropReply = await interaction.followUp({ content: buildKeyDropMessage(rarityKey, keyType) });
+    setTimeout(() => { void keyDropReply.delete().catch(() => {}); }, CLAIM_TTL_MS);
     logger.info({ discordId: interaction.user.id, chestId, rarityKey, keyType }, "Key dropped");
   }
 
@@ -684,11 +689,12 @@ async function handleLockedChestClaim(interaction: ButtonInteraction, chestId: s
 
   const rarity = CHEST_RARITIES.find((r) => r.key === rarityKey);
   const rarityLabel = rarity?.label ?? rarityKey;
-  await interaction.followUp({
+  const lockedReply = await interaction.followUp({
     content:
       `🗝️ **${interaction.user.username}** a folosit **${keyLabel}** și a deschis **${rarityLabel}**!\n` +
       `💰 **${gold} Oboli** eliberați din cufărul blocat!`,
   });
+  setTimeout(() => { void lockedReply.delete().catch(() => {}); }, CLAIM_TTL_MS);
 
   logger.info({ discordId: interaction.user.id, chestId, rarityKey, gold, keyType }, "Locked chest claimed");
 }
@@ -715,7 +721,8 @@ async function handleKeyChestClaim(interaction: ButtonInteraction, chestId: stri
   );
   await interaction.message.edit({ components: [disabledRow] }).catch(() => null);
 
-  await interaction.followUp({ content: buildKeyChestClaimMessage(interaction.user.username, keyType) });
+  const keyChestReply = await interaction.followUp({ content: buildKeyChestClaimMessage(interaction.user.username, keyType) });
+  setTimeout(() => { void keyChestReply.delete().catch(() => {}); }, CLAIM_TTL_MS);
   logger.info({ discordId: interaction.user.id, chestId, keyType }, "Key chest claimed");
 }
 
