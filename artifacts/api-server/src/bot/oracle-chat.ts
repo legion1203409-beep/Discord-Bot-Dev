@@ -52,11 +52,19 @@ const DISCORD_MAX_CHARS = 2000;
 // Rolling conversation memory: the Oracle sees the last few exchanges from the
 // same channel/thread so a short back-and-forth feels continuous instead of each
 // reply being generated in isolation. Bounded by count, age and per-turn length
-// to protect cost/latency and stay within the model context.
-const MEMORY_FETCH_LIMIT = 25; // raw messages scanned per reply
-const MAX_MEMORY_TURNS = 8; // exchanges kept (player + Oracle), most recent
-const MEMORY_TURN_CHARS = 400; // per-turn truncation
-const MEMORY_WINDOW_MS = 30 * 60 * 1000; // only the last 30 minutes counts as "recent"
+// to protect cost/latency and stay within the model context. All four are tunable
+// via env vars so an operator can adjust continuity/cost without a redeploy;
+// invalid values fall back to the defaults below.
+const MEMORY_FETCH_LIMIT = envInt("ORACLE_MEMORY_FETCH_LIMIT", 25); // raw messages scanned per reply
+const MAX_MEMORY_TURNS = envInt("ORACLE_MAX_MEMORY_TURNS", 8); // exchanges kept (player + Oracle), most recent
+const MEMORY_TURN_CHARS = envInt("ORACLE_MEMORY_TURN_CHARS", 400); // per-turn truncation
+const MEMORY_WINDOW_MS = envInt("ORACLE_MEMORY_WINDOW_MS", 30 * 60 * 1000); // only recent messages count
+
+// Model request bounds: how long to wait before falling back to the in-character
+// silence line, and the upper bound on reply tokens. Tunable so an operator can
+// trade latency/cost; invalid values fall back to the defaults below.
+const MODEL_TIMEOUT_MS = envInt("ORACLE_MODEL_TIMEOUT_MS", 25_000);
+const MODEL_MAX_COMPLETION_TOKENS = envInt("ORACLE_MODEL_MAX_COMPLETION_TOKENS", 8192);
 
 type ChatMessage = OpenAI.Chat.Completions.ChatCompletionMessageParam;
 
@@ -228,11 +236,11 @@ async function generateOracleReply(
   const completion = await client.chat.completions.create(
     {
       model: MODEL,
-      max_completion_tokens: 8192,
+      max_completion_tokens: MODEL_MAX_COMPLETION_TOKENS,
       messages,
     },
     // Don't make a player stare at a typing indicator forever — fall back fast.
-    { timeout: 25_000, maxRetries: 1 },
+    { timeout: MODEL_TIMEOUT_MS, maxRetries: 1 },
   );
   const text = completion.choices[0]?.message?.content?.trim();
   return text && text.length > 0 ? text : null;
