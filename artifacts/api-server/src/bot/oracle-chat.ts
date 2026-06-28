@@ -52,9 +52,9 @@ const MODEL = envString("ORACLE_AI_MODEL", "gpt-5-mini");
 // Guardrails so a popular channel can't spam the model or rack up cost. All four
 // are tunable via env vars so a server owner can adjust responsiveness/cost
 // without a redeploy; invalid values fall back to the defaults below.
-const USER_COOLDOWN_MS = envInt("ORACLE_USER_COOLDOWN_MS", 12_000);
-const GLOBAL_HOURLY_CAP = envInt("ORACLE_GLOBAL_HOURLY_CAP", 80);
-const MAX_INPUT_CHARS = envInt("ORACLE_MAX_INPUT_CHARS", 600);
+const USER_COOLDOWN_MS = envInt("ORACLE_USER_COOLDOWN_MS", 12_000, 3_600_000); // max 1 h
+const GLOBAL_HOURLY_CAP = envInt("ORACLE_GLOBAL_HOURLY_CAP", 80, 1_000); // max 1 000 calls/h
+const MAX_INPUT_CHARS = envInt("ORACLE_MAX_INPUT_CHARS", 600, 4_000); // max 4 000 chars
 const DISCORD_MAX_CHARS = 2000;
 
 // Rolling conversation memory: the Oracle sees the last few exchanges from the
