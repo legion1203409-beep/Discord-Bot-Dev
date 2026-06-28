@@ -60,13 +60,26 @@ const DISCORD_MAX_CHARS = 2000;
 // Rolling conversation memory: the Oracle sees the last few exchanges from the
 // same channel/thread so a short back-and-forth feels continuous instead of each
 // reply being generated in isolation. Bounded by count, age and per-turn length
-// to protect cost/latency and stay within the model context. All four are tunable
+// to protect cost/latency and stay within the model context. All five are tunable
 // via env vars so an operator can adjust continuity/cost without a redeploy;
 // invalid values fall back to the defaults below.
-// raw messages scanned per reply — hard-capped at 100 because Discord's
-// messages.fetch({ limit }) rejects anything above 100, which would throw and
-// silently degrade every reply to no-memory.
+//
+// Adaptive fetch: the first batch uses MEMORY_FETCH_LIMIT (cheap, fast). When the
+// current speaker's own turns found so far are below SPEAKER_TURNS_MIN AND the
+// total messages scanned so far are below MEMORY_FETCH_MAX, additional batches are
+// fetched (paging backwards) until the target is met or MEMORY_FETCH_MAX is hit.
+// Each individual Discord fetch is capped at 100 (Discord's hard limit); the total
+// scan cap MEMORY_FETCH_MAX is enforced across all batches to bound cost/latency.
+//
+// MEMORY_FETCH_LIMIT: per-batch size (hard-capped at 100, Discord's fetch limit).
 const MEMORY_FETCH_LIMIT = envInt("ORACLE_MEMORY_FETCH_LIMIT", 25, 100);
+// SPEAKER_TURNS_MIN: how many of the current speaker's own messages we try to find
+// before stopping extra fetches. Once we hit this target (or exhaust FETCH_MAX) we
+// stop paging. Must be ≥ 1; set to 1 to minimize extra fetches.
+const SPEAKER_TURNS_MIN = envInt("ORACLE_SPEAKER_TURNS_MIN", 2, 50);
+// MEMORY_FETCH_MAX: total raw messages scanned across all batches per reply. Must
+// be at least MEMORY_FETCH_LIMIT; clamped to 500 to avoid runaway cost/latency.
+const MEMORY_FETCH_MAX = envInt("ORACLE_MEMORY_FETCH_MAX", 150, 500);
 const MAX_MEMORY_TURNS = envInt("ORACLE_MAX_MEMORY_TURNS", 8, 50); // exchanges kept (player + Oracle), most recent
 const MEMORY_TURN_CHARS = envInt("ORACLE_MEMORY_TURN_CHARS", 400, 4000); // per-turn truncation
 const MEMORY_WINDOW_MS = envInt("ORACLE_MEMORY_WINDOW_MS", 30 * 60 * 1000, 24 * 60 * 60 * 1000); // only recent messages count
@@ -191,31 +204,74 @@ async function buildRecentMemory(
   const empty = { turns: [] as ChatMessage[], ids: new Set<string>(), speakerAlias };
   if (!message.channel.isTextBased() || !("messages" in message.channel)) return empty;
 
-  let fetched;
-  try {
-    fetched = await message.channel.messages.fetch({
-      limit: MEMORY_FETCH_LIMIT,
-      before: message.id,
-    });
-  } catch {
-    return empty;
+  // Adaptive multi-batch fetch. The first batch uses MEMORY_FETCH_LIMIT messages
+  // (cheap, fast path for quiet channels). If the current speaker's own turns found
+  // so far are still below SPEAKER_TURNS_MIN and we haven't hit MEMORY_FETCH_MAX,
+  // we page backwards (using the oldest message id as the `before` cursor) until
+  // the target is met or the total scan budget is exhausted. This keeps the reply
+  // anchored to the current speaker even when one or more noisy players have flooded
+  // the most-recent window with their own messages.
+  const authorByMsgId = new Map<string, string>();
+  const allFetched: import("discord.js").Message[] = [];
+  const cutoff = Date.now() - MEMORY_WINDOW_MS;
+
+  let cursor: string = message.id;
+  let totalScanned = 0;
+  let speakerTurnsFound = 0;
+
+  while (totalScanned < MEMORY_FETCH_MAX) {
+    const batchSize = Math.min(MEMORY_FETCH_LIMIT, MEMORY_FETCH_MAX - totalScanned, 100);
+    let batch: import("discord.js").Collection<string, import("discord.js").Message>;
+    try {
+      batch = await message.channel.messages.fetch({ limit: batchSize, before: cursor });
+    } catch {
+      break;
+    }
+    if (batch.size === 0) break;
+
+    for (const m of batch.values()) {
+      authorByMsgId.set(m.id, m.author.id);
+      allFetched.push(m);
+      // Count only the current speaker's own (non-bot) messages so we know when
+      // to stop fetching more. We deliberately exclude bot replies here: resolving
+      // whether a bot reply was directed at the current speaker requires looking up
+      // the referenced message's author, which may not yet be in authorByMsgId
+      // (pagination goes backwards, so the referenced user message appears in a
+      // later, older batch). Counting only the speaker's own messages avoids that
+      // forward-reference ambiguity and is the clearest signal the Oracle uses to
+      // stop: if we can see the speaker's last N messages, we have their context.
+      if (!m.author.bot && m.author.id === message.author.id) {
+        speakerTurnsFound++;
+      }
+    }
+    totalScanned += batch.size;
+
+    // Stop if we've found enough of the current speaker's turns, or if a full
+    // batch came back entirely outside the time window (no point scanning older).
+    const oldestInBatch = Math.min(...batch.map((m) => m.createdTimestamp));
+    if (speakerTurnsFound >= SPEAKER_TURNS_MIN) break;
+    if (oldestInBatch < cutoff) break;
+
+    // Advance cursor to the oldest message in this batch for the next page.
+    cursor = batch.last()!.id;
   }
 
-  // Map every fetched message to its author so we can tell who the Oracle was
-  // replying to (used to keep the current speaker's thread intact below). The
-  // reference target may sit outside the time window, so build this from the full
-  // fetch, with a cache fallback for anything not in the batch.
-  const authorByMsgId = new Map<string, string>();
-  for (const m of fetched.values()) authorByMsgId.set(m.id, m.author.id);
+  if (totalScanned > MEMORY_FETCH_LIMIT) {
+    logger.debug(
+      { totalScanned, speakerTurnsFound, speakerTurnsMin: SPEAKER_TURNS_MIN },
+      "Oracle memory: adaptive fetch extended scan window",
+    );
+  }
+
   const resolveAuthor = (msgId: string): string | undefined =>
     authorByMsgId.get(msgId) ??
     ("messages" in message.channel
       ? message.channel.messages.cache.get(msgId)?.author.id
       : undefined);
 
-  const cutoff = Date.now() - MEMORY_WINDOW_MS;
-  // Discord returns newest-first; sort oldest-first for chronological context.
-  const ordered = [...fetched.values()]
+  // Discord returns newest-first per batch; sort all collected messages oldest-first
+  // for chronological context building.
+  const ordered = allFetched
     .filter((m) => m.createdTimestamp >= cutoff)
     .sort((a, b) => a.createdTimestamp - b.createdTimestamp);
 
@@ -430,6 +486,11 @@ export function logOracleChatStatus(): void {
         userCooldownMs: USER_COOLDOWN_MS,
         globalHourlyCap: GLOBAL_HOURLY_CAP,
         maxInputChars: MAX_INPUT_CHARS,
+        memoryFetchLimit: MEMORY_FETCH_LIMIT,
+        speakerTurnsMin: SPEAKER_TURNS_MIN,
+        memoryFetchMax: MEMORY_FETCH_MAX,
+        maxMemoryTurns: MAX_MEMORY_TURNS,
+        memoryWindowMs: MEMORY_WINDOW_MS,
       },
       "Oracle AI replies enabled",
     );
