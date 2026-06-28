@@ -20,6 +20,8 @@ import {
 import { logger } from "../lib/logger";
 import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./alert";
 import { startScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, claimedChests, activeBossMap, type BossState, type BossPlayerStats } from "./scheduler";
+import { recordMessage } from "./oracle";
+import { getRewardMultipliers } from "./status-effects";
 import {
   upsertPlayer,
   joinEvent,
@@ -736,6 +738,10 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
       result.xpGained = Math.round(result.xpGained * cls.xpMult);
       result.oboliGained = Math.round(result.oboliGained * cls.oboliMult);
     }
+    // Oracle blessings/curses also scale combat rewards.
+    const rmods = getRewardMultipliers(p.discordId);
+    result.xpGained = Math.round(result.xpGained * rmods.xpMult);
+    result.oboliGained = Math.round(result.oboliGained * rmods.goldMult);
   }
 
   const extra = buildResultText(result);
@@ -1224,13 +1230,18 @@ export async function startBot(onReady?: () => void): Promise<void> {
     return;
   }
 
-  const client = new Client({
-    intents: [
-      GatewayIntentBits.Guilds,
-      GatewayIntentBits.GuildPresences,
-      GatewayIntentBits.GuildMembers,
-    ],
-  });
+  const intents = [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildPresences,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessages,
+  ];
+  // MessageContent is privileged — only request it when explicitly enabled so a
+  // missing Developer-Portal toggle can never brick the bot at login (code 4014).
+  if (process.env.ORACLE_MESSAGE_CONTENT_ENABLED === "true") {
+    intents.push(GatewayIntentBits.MessageContent);
+  }
+  const client = new Client({ intents });
 
   // `terminated` rejects when a fatal Gateway close code is received.
   // It stays pending for non-fatal disconnects — discord.js handles those.
@@ -1255,6 +1266,20 @@ export async function startBot(onReady?: () => void): Promise<void> {
 
   client.on(Events.Error, (err) => {
     logger.error({ err }, "Discord client error");
+  });
+
+  // Feed the Oracle activity/toxicity tracker. Never logs message content.
+  client.on(Events.MessageCreate, (message) => {
+    if (message.author.bot || !message.guildId) return;
+    try {
+      recordMessage(
+        message.author.id,
+        message.member?.displayName ?? message.author.username,
+        message.content ?? "",
+      );
+    } catch (err) {
+      logger.error({ err }, "Oracle messageCreate handler failed");
+    }
   });
 
   // Schedule a delayed alert when the shard disconnects non-fatally.

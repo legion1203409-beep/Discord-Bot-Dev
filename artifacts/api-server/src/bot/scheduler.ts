@@ -2,6 +2,7 @@ import { Client, TextChannel, ActionRowBuilder, ButtonBuilder, ButtonStyle } fro
 import { logger } from "../lib/logger";
 import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, buildExpiredChestEmbed, rollChest, oracleMessage, buildFinalBossEmbed, buildBossLeaderboard, buildLockedChestEmbed, buildKeyChestEmbed, spawnLockedChest, rollKeyChestType, computeBossRewards, finalBossRow, bossMaxHp, type BossRarity, type BossPlayerStats } from "./survival";
 import { triggerRandomBattleEvent } from "./combat-events";
+import { startOracle, setOracleExtatic } from "./oracle";
 import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle, addPlayerReputation, addPlayerGold, addPlayerXp } from "./db";
 
 const EVENT_CHANNEL_ID = "1472579703457190042";
@@ -445,6 +446,7 @@ export async function fireFinalBoss(client: Client, eventId: number) {
       defeated: false,
     };
     activeBossMap.set(eventId, boss);
+    setOracleExtatic();
 
     // 5-minute escape timer — if boss not defeated, it flees and we still send leaderboard
     const escapeTimer = setTimeout(async () => {
@@ -655,6 +657,8 @@ export function startScheduler(client: Client) {
 
   setInterval(() => { void fireBattleEvent(client); }, BATTLE_EVENT_INTERVAL_MS);
   logger.info({ everyMinutes: BATTLE_EVENT_INTERVAL_MS / 60000 }, "Battle-event scheduler started");
+
+  startOracle(client, MAIN_CHANNEL_ID);
 }
 
 export { APPLICATION_ID };

@@ -1,0 +1,131 @@
+// In-memory, per-player temporary buffs (blessings) and debuffs (curses) the
+// Oracle grants based on behavior. Ephemeral by design: they last minutes and
+// reset on restart, mirroring combat-events.ts. Combat and reward code read them
+// LIVE (by discordId, at attack/reward time) via getCombatModifiers /
+// getRewardMultipliers, so an effect granted mid-event applies immediately
+// without mutating the event_participants snapshot.
+
+export type EffectKind = "blessing" | "curse";
+
+export type EffectMods = {
+  /** Flat +/- to crit chance, in percentage points. */
+  critAdd?: number;
+  /** Multiplier on damage dealt (e.g. 1.1 = +10%, 0.9 = -10%). */
+  damageMult?: number;
+  /** Multiplier on damage received (e.g. 0.85 = takes less, 1.15 = takes more). */
+  damageTakenMult?: number;
+  /** Multiplier on XP rewards. */
+  xpMult?: number;
+  /** Multiplier on Oboli rewards. */
+  goldMult?: number;
+};
+
+export type EffectDef = {
+  id: string;
+  kind: EffectKind;
+  label: string;
+  emoji: string;
+  /** Short Romanian description of the mechanical effect. */
+  flavor: string;
+  durationMs: number;
+  mods: EffectMods;
+};
+
+const MIN = 60 * 1000;
+
+export const BLESSINGS: EffectDef[] = [
+  { id: "lumina_cenusii",      kind: "blessing", label: "Lumina Cenușii",       emoji: "✨", flavor: "+10% XP în luptă",            durationMs: 10 * MIN, mods: { xpMult: 1.1 } },
+  { id: "ochiul_oracolului",   kind: "blessing", label: "Ochiul Oracolului",    emoji: "🔮", flavor: "+15% șansă de lovitură critică", durationMs: 10 * MIN, mods: { critAdd: 15 } },
+  { id: "pasul_umbrelor",      kind: "blessing", label: "Pasul Umbrelor",       emoji: "💨", flavor: "+10% daune în luptă",        durationMs: 10 * MIN, mods: { damageMult: 1.1 } },
+  { id: "respiratia_regatului",kind: "blessing", label: "Respirația Regatului", emoji: "🍃", flavor: "+10% Oboli în luptă",        durationMs: 10 * MIN, mods: { goldMult: 1.1 } },
+  { id: "spiritul_protector",  kind: "blessing", label: "Spiritul Protector",   emoji: "🛡️", flavor: "primești cu 15% mai puține daune", durationMs: 10 * MIN, mods: { damageTakenMult: 0.85 } },
+  { id: "cenusa_vie",          kind: "blessing", label: "Cenușa Vie",           emoji: "🔥", flavor: "+15% daune și +10% XP",      durationMs: 10 * MIN, mods: { damageMult: 1.15, xpMult: 1.1 } },
+];
+
+export const CURSES: EffectDef[] = [
+  { id: "ghinionul_umbrelor", kind: "curse", label: "Ghinionul Umbrelor",  emoji: "🌑", flavor: "-10% Oboli în luptă",            durationMs: 8 * MIN, mods: { goldMult: 0.9 } },
+  { id: "degetele_tremurande",kind: "curse", label: "Degetele Tremurânde", emoji: "🥶", flavor: "-10% șansă de lovitură critică", durationMs: 8 * MIN, mods: { critAdd: -10 } },
+  { id: "umbra_schioapa",     kind: "curse", label: "Umbra Șchioapă",      emoji: "🦶", flavor: "-10% daune în luptă",            durationMs: 8 * MIN, mods: { damageMult: 0.9 } },
+  { id: "limba_cenusii",      kind: "curse", label: "Limba Cenușii",       emoji: "👅", flavor: "primești cu 15% mai multe daune", durationMs: 8 * MIN, mods: { damageTakenMult: 1.15 } },
+  { id: "capul_in_nori",      kind: "curse", label: "Capul în Nori",       emoji: "🌫️", flavor: "-10% XP în luptă",               durationMs: 8 * MIN, mods: { xpMult: 0.9 } },
+];
+
+type ActiveEffect = { def: EffectDef; expiresAt: number };
+
+const store = new Map<string, ActiveEffect[]>();
+const MAX_EFFECTS_PER_USER = 4;
+
+function pruned(discordId: string): ActiveEffect[] {
+  const now = Date.now();
+  const list = (store.get(discordId) ?? []).filter((e) => e.expiresAt > now);
+  if (list.length === 0) store.delete(discordId);
+  else store.set(discordId, list);
+  return list;
+}
+
+/** Grants a specific effect to a player, refreshing it if already active. */
+export function grantEffect(discordId: string, def: EffectDef): ActiveEffect {
+  const list = pruned(discordId).filter((e) => e.def.id !== def.id);
+  const eff: ActiveEffect = { def, expiresAt: Date.now() + def.durationMs };
+  list.push(eff);
+  // Keep only the most-recent effects so buffs/curses can't stack unbounded.
+  store.set(discordId, list.slice(-MAX_EFFECTS_PER_USER));
+  return eff;
+}
+
+export function grantRandomBlessing(discordId: string): EffectDef {
+  const def = BLESSINGS[Math.floor(Math.random() * BLESSINGS.length)]!;
+  grantEffect(discordId, def);
+  return def;
+}
+
+export function grantRandomCurse(discordId: string): EffectDef {
+  const def = CURSES[Math.floor(Math.random() * CURSES.length)]!;
+  grantEffect(discordId, def);
+  return def;
+}
+
+export function getActiveEffects(discordId: string): { def: EffectDef; msLeft: number }[] {
+  const now = Date.now();
+  return pruned(discordId).map((e) => ({ def: e.def, msLeft: e.expiresAt - now }));
+}
+
+export type CombatModifiers = { critAdd: number; damageMult: number; damageTakenMult: number };
+
+export function getCombatModifiers(discordId: string): CombatModifiers {
+  const mods: CombatModifiers = { critAdd: 0, damageMult: 1, damageTakenMult: 1 };
+  for (const { def } of pruned(discordId)) {
+    if (def.mods.critAdd) mods.critAdd += def.mods.critAdd;
+    if (def.mods.damageMult) mods.damageMult *= def.mods.damageMult;
+    if (def.mods.damageTakenMult) mods.damageTakenMult *= def.mods.damageTakenMult;
+  }
+  return mods;
+}
+
+export type RewardMultipliers = { xpMult: number; goldMult: number };
+
+export function getRewardMultipliers(discordId: string): RewardMultipliers {
+  const mult: RewardMultipliers = { xpMult: 1, goldMult: 1 };
+  for (const { def } of pruned(discordId)) {
+    if (def.mods.xpMult) mult.xpMult *= def.mods.xpMult;
+    if (def.mods.goldMult) mult.goldMult *= def.mods.goldMult;
+  }
+  return mult;
+}
+
+/** Drops expired effects for every tracked user — cheap periodic hygiene. */
+export function pruneAllEffects(): void {
+  for (const id of [...store.keys()]) pruned(id);
+}
+
+/** Renders active effects for the profile embed, or "" when there are none. */
+export function formatActiveEffects(discordId: string): string {
+  const active = getActiveEffects(discordId);
+  if (active.length === 0) return "";
+  return active
+    .map(({ def, msLeft }) => {
+      const min = Math.max(1, Math.round(msLeft / MIN));
+      return `${def.emoji} **${def.label}** — ${def.flavor} *(${min}m)*`;
+    })
+    .join("\n");
+}

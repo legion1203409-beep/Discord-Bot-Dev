@@ -8,6 +8,7 @@ import type { EventParticipant } from "@workspace/db";
 import type { Player } from "@workspace/db";
 import { IMG, COMPANION_IMG, CHEST_IMG, KEY_IMG } from "./assets";
 import { getActiveBattleEvent, consumeStormDrain } from "./combat-events";
+import { getCombatModifiers, formatActiveEffects } from "./status-effects";
 
 const BASE_PRICES = { atac: 50, def: 60, dodge: 70, crit: 80, hp: 40 } as const;
 export type ShopKey = keyof typeof BASE_PRICES;
@@ -210,14 +211,16 @@ export type CombatResult = {
 
 export function doCombat(p: EventParticipant): CombatResult {
   const battle = getActiveBattleEvent();
+  const mods = getCombatModifiers(p.discordId);
   const usedEmpower = p.empowerNext;
   const usedShield = p.shieldNext;
 
-  const isCrit = Math.random() * 100 < p.critBonus;
+  const isCrit = Math.random() * 100 < Math.min(100, Math.max(0, p.critBonus + mods.critAdd));
   let base = rand(10, 20) + p.attackBonus;
   if (isCrit) base *= 2;
   if (usedEmpower) base = Math.round(base * empowerMult(p.empowerLevel));
   if (battle) base = Math.round(base * battle.damageMult);
+  if (mods.damageMult !== 1) base = Math.round(base * mods.damageMult);
   const playerDmg = base;
   const newMHp = Math.max(0, p.monsterCurrentHp - playerDmg);
   const monsterDefeated = newMHp <= 0;
@@ -246,6 +249,7 @@ export function doCombat(p: EventParticipant): CombatResult {
         const [mn, mx] = monsterDmgRange(p.monsterLevel);
         monsterDmg = Math.max(1, rand(mn, mx) - p.defenseBonus);
         if (usedShield) monsterDmg = Math.max(1, Math.round(monsterDmg * (1 - shieldReduction(p.shieldLevel))));
+        if (mods.damageTakenMult !== 1) monsterDmg = Math.max(1, Math.round(monsterDmg * mods.damageTakenMult));
         newPlayerHp = Math.max(0, newPlayerHp - monsterDmg);
         playerDied = newPlayerHp <= 0;
       }
@@ -403,6 +407,8 @@ export function buildProfileEmbed(player: Player, title?: string, avatarUrl?: st
     )
     .setFooter({ text: BRAND_FOOTER })
     .setTimestamp();
+  const effects = formatActiveEffects(player.discordId);
+  if (effects) embed.addFields({ name: "━━━ Binecuvântări & Blesteme ━━━", value: effects, inline: false });
   if (avatarUrl) embed.setThumbnail(avatarUrl);
   return embed;
 }
