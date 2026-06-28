@@ -23,6 +23,17 @@ const GLOBAL_HOURLY_CAP = 80;
 const MAX_INPUT_CHARS = 600;
 const DISCORD_MAX_CHARS = 2000;
 
+// Rolling conversation memory: the Oracle sees the last few exchanges from the
+// same channel/thread so a short back-and-forth feels continuous instead of each
+// reply being generated in isolation. Bounded by count, age and per-turn length
+// to protect cost/latency and stay within the model context.
+const MEMORY_FETCH_LIMIT = 25; // raw messages scanned per reply
+const MAX_MEMORY_TURNS = 8; // exchanges kept (player + Oracle), most recent
+const MEMORY_TURN_CHARS = 400; // per-turn truncation
+const MEMORY_WINDOW_MS = 30 * 60 * 1000; // only the last 30 minutes counts as "recent"
+
+type ChatMessage = OpenAI.Chat.Completions.ChatCompletionMessageParam;
+
 // One in-character line for the rare case the model call fails entirely.
 const FALLBACK_LINE = "🕯️ *Cețurile dintre lumi sunt prea dese acum… Oracolul tace.*";
 
@@ -74,17 +85,87 @@ function buildSystemPrompt(mood: MoodState): string {
   ].join("\n");
 }
 
+/** Strip raw Discord mention tokens so the model never sees "<@id>" noise. */
+function cleanMentionTokens(text: string): string {
+  return text.replace(/<@!?\d+>/g, "").trim();
+}
+
+/**
+ * Build a short rolling memory of the recent conversation in this channel/thread.
+ * Returns the turns (oldest-first) plus the set of source message IDs so the
+ * caller can avoid duplicating the explicitly replied-to line. Only the Oracle's
+ * own chat replies (messages that are themselves replies — not event/announcement
+ * posts) and player messages addressed to the Oracle are kept. Best-effort: any
+ * failure yields an empty memory rather than blocking the reply. Never logs content.
+ */
+async function buildRecentMemory(
+  message: Message,
+  botId: string,
+): Promise<{ turns: ChatMessage[]; ids: Set<string> }> {
+  const empty = { turns: [] as ChatMessage[], ids: new Set<string>() };
+  if (!message.channel.isTextBased() || !("messages" in message.channel)) return empty;
+
+  let fetched;
+  try {
+    fetched = await message.channel.messages.fetch({
+      limit: MEMORY_FETCH_LIMIT,
+      before: message.id,
+    });
+  } catch {
+    return empty;
+  }
+
+  const cutoff = Date.now() - MEMORY_WINDOW_MS;
+  // Discord returns newest-first; sort oldest-first for chronological context.
+  const ordered = [...fetched.values()]
+    .filter((m) => m.createdTimestamp >= cutoff)
+    .sort((a, b) => a.createdTimestamp - b.createdTimestamp);
+
+  const turns: { id: string; msg: ChatMessage }[] = [];
+  for (const m of ordered) {
+    if (m.author.id === botId) {
+      // Only the Oracle's own chat replies (which are replies to a user), never
+      // its event/announcement embeds, which would pollute the conversation.
+      if (!m.reference?.messageId) continue;
+      const text = (m.content || m.embeds[0]?.description || "").trim();
+      if (!text) continue;
+      turns.push({ id: m.id, msg: { role: "assistant", content: text.slice(0, MEMORY_TURN_CHARS) } });
+    } else {
+      if (m.author.bot) continue;
+      const refId = m.reference?.messageId;
+      const addressedToOracle =
+        m.mentions.users.has(botId) ||
+        (!!refId &&
+          ("messages" in m.channel
+            ? m.channel.messages.cache.get(refId)?.author.id === botId
+            : false));
+      if (!addressedToOracle) continue;
+      const text = cleanMentionTokens(m.content ?? "");
+      if (!text) continue;
+      turns.push({ id: m.id, msg: { role: "user", content: text.slice(0, MEMORY_TURN_CHARS) } });
+    }
+  }
+
+  // Cap to the most recent N turns to bound cost, latency and context size.
+  const capped = turns.slice(-MAX_MEMORY_TURNS);
+  return { turns: capped.map((t) => t.msg), ids: new Set(capped.map((t) => t.id)) };
+}
+
 async function generateOracleReply(
   userText: string,
+  history: ChatMessage[],
   repliedBotText: string | undefined,
   mood: MoodState,
 ): Promise<string | null> {
   const client = getClient();
   if (!client) return null;
 
-  const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+  const messages: ChatMessage[] = [
     { role: "system", content: buildSystemPrompt(mood) },
+    ...history,
   ];
+  // If the player replied to a specific Oracle line the rolling memory didn't
+  // already capture (e.g. older than the window), anchor the answer to it.
   if (repliedBotText) {
     messages.push({ role: "assistant", content: repliedBotText });
   }
@@ -176,8 +257,14 @@ export async function maybeReplyAsOracle(discordClient: Client, message: Message
     replyTimestamps.push(now);
     lastReplyAt.set(message.author.id, now);
 
+    // Pull a short rolling memory of the recent exchange so the reply stays
+    // continuous. Best-effort and bounded; never blocks on failure.
+    const { turns: memory, ids: memoryIds } = await buildRecentMemory(message, botId);
+
+    // Only feed the explicitly replied-to line separately when the rolling memory
+    // didn't already capture it (older than the window or out of scan range).
     let repliedBotText: string | undefined;
-    if (isReplyToBot && repliedBotMessage) {
+    if (isReplyToBot && repliedBotMessage && !memoryIds.has(repliedBotMessage.id)) {
       const refText = repliedBotMessage.content || repliedBotMessage.embeds[0]?.description || "";
       repliedBotText = refText ? refText.slice(0, MAX_INPUT_CHARS) : undefined;
     }
@@ -187,7 +274,7 @@ export async function maybeReplyAsOracle(discordClient: Client, message: Message
     }
 
     const mood = getCurrentMood();
-    const reply = await generateOracleReply(cleaned, repliedBotText, mood);
+    const reply = await generateOracleReply(cleaned, memory, repliedBotText, mood);
     if (!reply) {
       await sendFallback(message);
       return;
@@ -197,7 +284,10 @@ export async function maybeReplyAsOracle(discordClient: Client, message: Message
       content: reply.slice(0, DISCORD_MAX_CHARS),
       allowedMentions: { repliedUser: true, parse: [] },
     });
-    logger.info({ userId: message.author.id, mood, len: reply.length }, "Oracle AI reply sent");
+    logger.info(
+      { userId: message.author.id, mood, len: reply.length, memoryTurns: memory.length },
+      "Oracle AI reply sent",
+    );
   } catch (err) {
     logger.error({ err }, "Oracle AI reply failed");
     await sendFallback(message);
