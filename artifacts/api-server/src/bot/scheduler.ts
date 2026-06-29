@@ -14,7 +14,7 @@ const EVENT_TOP_CHANNEL_ID = "1521185741961695434";
 const BOSS_TOP_CHANNEL_ID  = "1521186981525327993";
 const APPLICATION_ID = "1472675543777280071";
 export const EVENT_DURATION_MS = 60 * 60 * 1000;
-const FINAL_BOSS_ACTIVE_MS = 5 * 60 * 1000; // final boss flees after 5 minutes
+const FINAL_BOSS_ACTIVE_MS = 30 * 60 * 1000; // final boss flees after 30 minutes
 const MIN_COOLDOWN_MS = 2 * 60 * 60 * 1000;
 const MAX_COOLDOWN_MS = 4 * 60 * 60 * 1000;
 
@@ -533,7 +533,7 @@ export async function fireFinalBoss(client: Client, eventId: number) {
 
 const STANDALONE_BOSS_MIN_MS = 30 * 60_000;
 const STANDALONE_BOSS_MAX_MS = 60 * 60_000;
-const STANDALONE_BOSS_ACTIVE_MS = 60 * 60_000; // active for 1 hour
+const STANDALONE_BOSS_ACTIVE_MS = 30 * 60_000; // active for 30 minutes
 
 let standaloneBossId: number | null = null;
 
