@@ -46,6 +46,23 @@ import { checkBossEligibility, type BossState } from "../scheduler";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/**
+ * Test fixture factory for BossState.
+ *
+ * MAINTAINER CONTRACT — read before editing:
+ *   The return type is the concrete `BossState` interface (not `Partial<BossState>`).
+ *   This means TypeScript will produce a compile error inside this function body
+ *   whenever a *new required field* is added to `BossState` in scheduler.ts.
+ *   That compile error is intentional — it is the mechanism that keeps the fixture
+ *   in sync with the interface.
+ *
+ *   When you add a required field to `BossState`:
+ *     1. Add a sensible default value for that field in the object literal below.
+ *     2. Do NOT change the return type to `Partial<BossState>` or add a cast —
+ *        that would silence the error and defeat the purpose of this pattern.
+ *
+ *   Individual tests can still override any field via the `overrides` argument.
+ */
 function makeBoss(overrides: Partial<BossState> = {}): BossState {
   return {
     eventId: 1,
