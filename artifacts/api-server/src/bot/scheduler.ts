@@ -533,7 +533,7 @@ export async function fireFinalBoss(client: Client, eventId: number) {
 
 const STANDALONE_BOSS_MIN_MS = 30 * 60_000;
 const STANDALONE_BOSS_MAX_MS = 60 * 60_000;
-const STANDALONE_BOSS_ACTIVE_MS = 30 * 60_000; // active for 30 minutes
+const STANDALONE_BOSS_ACTIVE_MS = 60 * 60_000; // active for 1 hour
 
 let standaloneBossId: number | null = null;
 
