@@ -5,9 +5,13 @@ import { triggerRandomBattleEvent } from "./combat-events";
 import { startOracle, setOracleExtatic } from "./oracle";
 import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle, addPlayerReputation, addPlayerGold, addPlayerXp } from "./db";
 
-const EVENT_CHANNEL_ID = "1521180114652758178";
-const BOSS_CHANNEL_ID  = "1521180064455200889";
-const MAIN_CHANNEL_ID  = "1382042144717410385";
+const EVENT_CHANNEL_ID    = "1521180114652758178";
+const BOSS_CHANNEL_ID     = "1521180064455200889";
+const MAIN_CHANNEL_ID     = "1382042144717410385";
+/** Dedicated channel where the Ora Umbrelor cronica is posted permanently. */
+const EVENT_TOP_CHANNEL_ID = "1521178866549264584";
+/** Dedicated channel where boss leaderboards are posted permanently. */
+const BOSS_TOP_CHANNEL_ID  = "1521178974183751921";
 const APPLICATION_ID = "1472675543777280071";
 export const EVENT_DURATION_MS = 60 * 60 * 1000;
 const MIN_COOLDOWN_MS = 2 * 60 * 60 * 1000;
@@ -89,6 +93,12 @@ async function expireOldEvents(client: Client) {
               .setDisabled(true),
           );
           await msg.edit({ embeds: [cronica], components: [disabledRow] });
+
+          // Also post cronica permanently in the dedicated top channel.
+          const topCh = await client.channels.fetch(EVENT_TOP_CHANNEL_ID).catch(() => null);
+          if (topCh instanceof TextChannel) {
+            await topCh.send({ embeds: [cronica] }).catch(() => null);
+          }
 
           const ranked = [...participants].sort((a, b) => {
             if (a.isAlive !== b.isAlive) return a.isAlive ? -1 : 1;
@@ -458,20 +468,25 @@ export async function fireFinalBoss(client: Client, eventId: number) {
       boss.defeated = true;
       activeBossMap.delete(eventId);
       try {
-        const ch = await client.channels.fetch(BOSS_CHANNEL_ID).catch(() => null);
-        if (!(ch instanceof TextChannel)) return;
-        // Reward fighters scaled by rank + rarity
+        // Delete the boss embed from the fight channel.
+        const fightCh = await client.channels.fetch(BOSS_CHANNEL_ID).catch(() => null);
+        if (fightCh instanceof TextChannel) {
+          const bossMsg = await fightCh.messages.fetch(boss.messageId).catch(() => null);
+          await bossMsg?.delete().catch(() => null);
+        }
+        // Reward fighters scaled by rank + rarity.
         const bossRewards = computeBossRewards(boss.damageBy, boss.rarity);
         await Promise.all([...bossRewards.entries()].flatMap(([discordId, r]) => [
           addPlayerReputation(discordId, r.rep),
           addPlayerGold(discordId, r.gold),
           addPlayerXp(discordId, r.xp),
         ]));
-        // Delete the boss message, then send leaderboard
-        const bossMsg = await ch.messages.fetch(boss.messageId).catch(() => null);
-        await bossMsg?.delete().catch(() => null);
-        const leaderboard = buildBossLeaderboard(boss, boss.damageBy, boss.participants, boss.playerNames, boss.playerHp);
-        await ch.send({ embeds: [leaderboard] }).catch(() => null);
+        // Post leaderboard permanently in the dedicated boss-top channel.
+        const topCh = await client.channels.fetch(BOSS_TOP_CHANNEL_ID).catch(() => null);
+        if (topCh instanceof TextChannel) {
+          const leaderboard = buildBossLeaderboard(boss, boss.damageBy, boss.participants, boss.playerNames, boss.playerHp);
+          await topCh.send({ embeds: [leaderboard] }).catch(() => null);
+        }
       } catch { /* ignore */ }
     }, 5 * 60 * 1000);
     escapeTimer.unref?.();
@@ -541,18 +556,24 @@ export async function fireStandaloneBoss(client: Client) {
       activeBossMap.delete(bossId);
       if (standaloneBossId === bossId) standaloneBossId = null;
       try {
-        const ch = await client.channels.fetch(BOSS_CHANNEL_ID).catch(() => null);
-        if (!(ch instanceof TextChannel)) return;
+        // Delete the boss embed from the fight channel.
+        const fightCh = await client.channels.fetch(BOSS_CHANNEL_ID).catch(() => null);
+        if (fightCh instanceof TextChannel) {
+          const bossMsg = await fightCh.messages.fetch(boss.messageId).catch(() => null);
+          await bossMsg?.delete().catch(() => null);
+        }
         const bossRewards = computeBossRewards(boss.damageBy, boss.rarity);
         await Promise.all([...bossRewards.entries()].flatMap(([discordId, r]) => [
           addPlayerReputation(discordId, r.rep),
           addPlayerGold(discordId, r.gold),
           addPlayerXp(discordId, r.xp),
         ]));
-        const bossMsg = await ch.messages.fetch(boss.messageId).catch(() => null);
-        await bossMsg?.delete().catch(() => null);
-        const leaderboard = buildBossLeaderboard(boss, boss.damageBy, boss.participants, boss.playerNames, boss.playerHp);
-        await ch.send({ embeds: [leaderboard] }).catch(() => null);
+        // Post leaderboard permanently in the dedicated boss-top channel.
+        const topCh = await client.channels.fetch(BOSS_TOP_CHANNEL_ID).catch(() => null);
+        if (topCh instanceof TextChannel) {
+          const leaderboard = buildBossLeaderboard(boss, boss.damageBy, boss.participants, boss.playerNames, boss.playerHp);
+          await topCh.send({ embeds: [leaderboard] }).catch(() => null);
+        }
       } catch { /* ignore */ }
     }, STANDALONE_BOSS_ACTIVE_MS);
     escapeTimer.unref?.();

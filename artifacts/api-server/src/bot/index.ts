@@ -1095,8 +1095,10 @@ async function handleAbility(interaction: ButtonInteraction, eventId: number, ki
 }
 
 const BOSS_HIT_COOLDOWN_MS = 4000;
-const EVENT_CHANNEL_ID = "1521180114652758178";
-const BOSS_CHANNEL_ID  = "1521180064455200889";
+const EVENT_CHANNEL_ID   = "1521180114652758178";
+const BOSS_CHANNEL_ID    = "1521180064455200889";
+/** Dedicated channel where boss leaderboards are posted permanently. */
+const BOSS_TOP_CHANNEL_ID = "1521178974183751921";
 
 async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) {
   await interaction.deferUpdate();
@@ -1189,19 +1191,22 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
       ...[...eventKeyDrops.entries()].map(([discordId, kt]) => addPlayerKey(discordId, kt as KeyType)),
     ]);
 
-    // Delete boss message and send leaderboard
+    // Delete boss message from fight channel; send leaderboard to permanent top channel.
     try {
-      const ch = await interaction.client.channels.fetch(boss.channelId);
-      if (ch instanceof TextChannel) {
-        const bossMsg = await ch.messages.fetch(boss.messageId).catch(() => null);
+      const fightCh = await interaction.client.channels.fetch(boss.channelId).catch(() => null);
+      if (fightCh instanceof TextChannel) {
+        const bossMsg = await fightCh.messages.fetch(boss.messageId).catch(() => null);
         await bossMsg?.delete().catch(() => null);
+      }
+      const topCh = await interaction.client.channels.fetch(BOSS_TOP_CHANNEL_ID).catch(() => null);
+      if (topCh instanceof TextChannel) {
         const leaderboard = buildBossLeaderboard(boss, boss.damageBy, boss.participants, boss.playerNames, boss.playerHp);
-        await ch.send({ embeds: [leaderboard] }).catch(() => null);
+        await topCh.send({ embeds: [leaderboard] }).catch(() => null);
         if (eventKeyDrops.size > 0) {
           const lines = [...eventKeyDrops.entries()].map(
             ([id, kt]) => `${KEY_EMOJI[kt] ?? "🗝️"} <@${id}> a găsit o **${KEY_LABEL[kt] ?? "Cheie"}**!`,
           );
-          await ch.send({ content: `🗝️ **Prada ascunsă a Dragonului:**\n${lines.join("\n")}` }).catch(() => null);
+          await topCh.send({ content: `🗝️ **Prada ascunsă a Dragonului:**\n${lines.join("\n")}` }).catch(() => null);
         }
       }
     } catch { /* ignore */ }
