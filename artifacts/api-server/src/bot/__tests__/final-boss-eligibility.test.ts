@@ -73,7 +73,7 @@ function makeBoss(overrides: Partial<BossState> = {}): BossState {
 
 // ─── checkBossEligibility ─────────────────────────────────────────────────────
 
-describe("checkBossEligibility — expired event (no boss)", () => {
+describe("checkBossEligibility - expired event (no boss)", () => {
   it("returns not-ok with reason 'no_boss' when boss is undefined", () => {
     const result = checkBossEligibility(undefined, "alice");
     expect(result.ok).toBe(false);
@@ -85,7 +85,7 @@ describe("checkBossEligibility — expired event (no boss)", () => {
   });
 });
 
-describe("checkBossEligibility — already-defeated boss", () => {
+describe("checkBossEligibility - already-defeated boss", () => {
   it("returns not-ok with reason 'defeated' when boss.defeated is true", () => {
     const boss = makeBoss({ defeated: true });
     const result = checkBossEligibility(boss, "alice");
@@ -100,37 +100,7 @@ describe("checkBossEligibility — already-defeated boss", () => {
   });
 });
 
-describe("checkBossEligibility — non-participant", () => {
-  it("returns not-ok with reason 'not_participant' for a user not in participants list", () => {
-    const boss = makeBoss();
-    const result = checkBossEligibility(boss, "unknown-user");
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.reason).toBe("not_participant");
-  });
-
-  it("rejects a user who registered after the boss spawned (not in snapshot)", () => {
-    const boss = makeBoss();
-    const result = checkBossEligibility(boss, "late-joiner");
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.reason).toBe("not_participant");
-  });
-});
-
-describe("checkBossEligibility — dead player", () => {
-  it("returns not-ok with reason 'dead' when participant snapshot isAlive is false (died in event before boss spawned)", () => {
-    const participants = [{ username: "Alice", discordId: "alice", monsterLevel: 5, totalDamage: 0, isAlive: false }];
-    const boss = makeBoss({ participants });
-    const result = checkBossEligibility(boss, "alice");
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.reason).toBe("dead");
-  });
-
-  it("rejects an event-dead participant even if they never took boss-fight damage (playerHp not set)", () => {
-    const participants = [{ username: "Alice", discordId: "alice", monsterLevel: 5, totalDamage: 0, isAlive: false }];
-    const boss = makeBoss({ participants });
-    expect(checkBossEligibility(boss, "alice").ok).toBe(false);
-  });
-
+describe("checkBossEligibility - dead player", () => {
   it("returns not-ok with reason 'dead' when player's boss-fight HP is 0 (downed during boss fight)", () => {
     const playerHp = new Map([["alice", 0]]);
     const boss = makeBoss({ playerHp });
@@ -146,7 +116,7 @@ describe("checkBossEligibility — dead player", () => {
   });
 });
 
-describe("checkBossEligibility — eligible player", () => {
+describe("checkBossEligibility - eligible player", () => {
   it("returns ok for a participant whose HP has not been set yet (first hit)", () => {
     const boss = makeBoss();
     const result = checkBossEligibility(boss, "alice");
@@ -160,7 +130,20 @@ describe("checkBossEligibility — eligible player", () => {
     expect(result.ok).toBe(true);
   });
 
-  it("only checks the requesting uid — other players being dead does not block an alive player", () => {
+  it("allows a user who never joined the event (not in participants snapshot)", () => {
+    const boss = makeBoss();
+    const result = checkBossEligibility(boss, "late-joiner");
+    expect(result.ok).toBe(true);
+  });
+
+  it("allows a player whose event-participant isAlive is false (they may still fight the boss)", () => {
+    const participants = [{ username: "Alice", discordId: "alice", monsterLevel: 5, totalDamage: 0, isAlive: false }];
+    const boss = makeBoss({ participants });
+    const result = checkBossEligibility(boss, "alice");
+    expect(result.ok).toBe(true);
+  });
+
+  it("only checks the requesting uid - other players being dead does not block an alive player", () => {
     const playerHp = new Map([["alice", 0], ["bob", 80]]);
     const participants = [
       { username: "Alice", discordId: "alice", monsterLevel: 5, totalDamage: 0, isAlive: true },
@@ -170,19 +153,23 @@ describe("checkBossEligibility — eligible player", () => {
     expect(checkBossEligibility(boss, "bob").ok).toBe(true);
   });
 
-  it("check order: no_boss before defeated before not_participant before dead", () => {
+  it("check order: no_boss before defeated before dead", () => {
     expect(checkBossEligibility(undefined, "alice").ok).toBe(false);
     const defeatedBoss = makeBoss({ defeated: true });
     expect(checkBossEligibility(defeatedBoss, "unknown").ok).toBe(false);
     if (!checkBossEligibility(defeatedBoss, "unknown").ok) {
       expect((checkBossEligibility(defeatedBoss, "unknown") as { ok: false; reason: string }).reason).toBe("defeated");
     }
+    const deadBoss = makeBoss({ playerHp: new Map([["alice", 0]]) });
+    const deadResult = checkBossEligibility(deadBoss, "alice");
+    expect(deadResult.ok).toBe(false);
+    if (!deadResult.ok) expect(deadResult.reason).toBe("dead");
   });
 });
 
-// ─── recordFinalBossHit — idempotency ─────────────────────────────────────────
+// ─── recordFinalBossHit - idempotency ─────────────────────────────────────────
 
-describe("recordFinalBossHit — idempotency via onConflictDoNothing", () => {
+describe("recordFinalBossHit - idempotency via onConflictDoNothing", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -211,7 +198,7 @@ describe("recordFinalBossHit — idempotency via onConflictDoNothing", () => {
     expect(result).toBe(false);
   });
 
-  it("is independent per player — different discordId gets its own first claim", async () => {
+  it("is independent per player - different discordId gets its own first claim", async () => {
     mockInsertReturning
       .mockResolvedValueOnce([{ eventId: 1, discordId: "alice" }])
       .mockResolvedValueOnce([{ eventId: 1, discordId: "bob" }]);
@@ -220,7 +207,7 @@ describe("recordFinalBossHit — idempotency via onConflictDoNothing", () => {
     expect(await recordFinalBossHit(1, "bob")).toBe(true);
   });
 
-  it("is independent per event — same discordId on a different eventId gets its own first claim", async () => {
+  it("is independent per event - same discordId on a different eventId gets its own first claim", async () => {
     mockInsertReturning
       .mockResolvedValueOnce([{ eventId: 1, discordId: "alice" }])
       .mockResolvedValueOnce([{ eventId: 2, discordId: "alice" }]);
@@ -229,7 +216,7 @@ describe("recordFinalBossHit — idempotency via onConflictDoNothing", () => {
     expect(await recordFinalBossHit(2, "alice")).toBe(true);
   });
 
-  it("second call for same (eventId, discordId) returns false — no double-reward", async () => {
+  it("second call for same (eventId, discordId) returns false - no double-reward", async () => {
     mockInsertReturning
       .mockResolvedValueOnce([{ eventId: 1, discordId: "alice" }])
       .mockResolvedValueOnce([]);

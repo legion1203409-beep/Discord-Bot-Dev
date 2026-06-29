@@ -1111,10 +1111,9 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
   const eligibility = checkBossEligibility(boss, uid);
   if (!eligibility.ok) {
     const msg: Record<string, string> = {
-      no_boss:         "⌛ Dragonul nu a fost invocat încă.",
-      defeated:        "💀 Dragonul Stins a fost deja înfrânt de Regat!",
-      not_participant: "❌ Nu ai participat la eveniment — nu poți lupta cu Dragonul.",
-      dead:            "💀 Ești căzut în luptă! Dragonul te-a doborât — nu mai poți lovi.",
+      no_boss:  "⌛ Dragonul nu a fost invocat încă.",
+      defeated: "💀 Dragonul Stins a fost deja înfrânt de Regat!",
+      dead:     "💀 Ești căzut în luptă! Dragonul te-a doborât — nu mai poți lovi.",
     };
     await interaction.followUp({ content: msg[eligibility.reason] ?? "❌ Nu poți participa.", flags: MessageFlags.Ephemeral });
     return;
@@ -1290,10 +1289,9 @@ async function handleBossAbility(interaction: ButtonInteraction, eventId: number
   const eligibility = checkBossEligibility(boss, uid);
   if (!eligibility.ok) {
     const msg: Record<string, string> = {
-      no_boss:         "⌛ Dragonul nu a fost invocat încă.",
-      defeated:        "💀 Dragonul Stins a fost deja înfrânt de Regat!",
-      not_participant: "❌ Nu ai participat la eveniment — nu poți lupta cu Dragonul.",
-      dead:            "💀 Ești căzut în luptă! Dragonul te-a doborât — nu mai poți folosi abilități.",
+      no_boss:  "⌛ Dragonul nu a fost invocat încă.",
+      defeated: "💀 Dragonul Stins a fost deja înfrânt de Regat!",
+      dead:     "💀 Ești căzut în luptă! Dragonul te-a doborât — nu mai poți folosi abilități.",
     };
     await interaction.followUp({ content: msg[eligibility.reason] ?? "❌ Nu poți participa.", flags: MessageFlags.Ephemeral });
     return;

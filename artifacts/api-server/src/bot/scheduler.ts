@@ -16,8 +16,8 @@ const BOSS_TOP_CHANNEL_ID  = "1521186981525327993";
 const APPLICATION_ID = "1472675543777280071";
 export const EVENT_DURATION_MS = 60 * 60 * 1000;
 const FINAL_BOSS_ACTIVE_MS = 30 * 60 * 1000; // final boss flees after 30 minutes
-const MIN_COOLDOWN_MS = 2 * 60 * 60 * 1000;
-const MAX_COOLDOWN_MS = 4 * 60 * 60 * 1000;
+const MIN_COOLDOWN_MS = 10 * 60 * 1000;
+const MAX_COOLDOWN_MS = 2 * 60 * 60 * 1000;
 
 const CHEST_INTERVAL_MS = 30 * 60 * 1000;
 const KEY_CHEST_INTERVAL_MS = 45 * 60 * 1000;
@@ -64,7 +64,7 @@ export const activeBossMap = new Map<number, BossState>();
 // Pure function — no I/O — so it can be unit-tested without mocking Discord or DB.
 export type BossEligibilityResult =
   | { ok: true }
-  | { ok: false; reason: "no_boss" | "defeated" | "not_participant" | "dead" };
+  | { ok: false; reason: "no_boss" | "defeated" | "dead" };
 
 export function checkBossEligibility(
   boss: BossState | undefined,
@@ -75,12 +75,6 @@ export function checkBossEligibility(
   // Reject players downed during the boss fight itself (applies to all boss types)
   const bossHp = boss.playerHp.get(uid);
   if (bossHp !== undefined && bossHp <= 0) return { ok: false, reason: "dead" };
-  // Standalone bosses are open to all — skip event-participant checks
-  if (boss.standalone) return { ok: true };
-  const participant = boss.participants.find((p) => p.discordId === uid);
-  if (!participant) return { ok: false, reason: "not_participant" };
-  // Reject players who died during the event before the boss spawned
-  if (!participant.isAlive) return { ok: false, reason: "dead" };
   return { ok: true };
 }
 
