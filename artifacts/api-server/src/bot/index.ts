@@ -19,7 +19,7 @@ import {
 } from "discord.js";
 import { logger } from "../lib/logger";
 import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./alert";
-import { startScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, claimedChests, activeBossMap, checkBossEligibility, checkBossHitCooldown, BOSS_HIT_COOLDOWN_MS, type BossState, type BossPlayerStats } from "./scheduler";
+import { startScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, claimedChests, activeBossMap, checkBossEligibility, checkBossHitCooldown, BOSS_HIT_COOLDOWN_MS, persistBossState, type BossState, type BossPlayerStats } from "./scheduler";
 import { recordMessage } from "./oracle";
 import { maybeReplyAsOracle, logOracleChatStatus } from "./oracle-chat";
 import { handleToxicity } from "./oracle-guard";
@@ -49,6 +49,7 @@ import {
   applyAbilityLevelToActiveParticipant,
   addPlayerKey,
   consumePlayerKey,
+  deleteActiveBoss,
   type AbilityKind,
   type KeyType,
 } from "./db";
@@ -1190,6 +1191,11 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
   if (bossDefeated) {
     activeBoss.defeated = true;
     activeBossMap.delete(eventId);
+    // Await the DB delete so a crash immediately after rewarding cannot
+    // leave a stale row that gets rehydrated as a live boss.
+    await deleteActiveBoss(eventId).catch(err =>
+      logger.error({ err, eventId }, "Failed to delete defeated boss row — stale row may persist until next restart")
+    );
 
     // Reward everyone who dealt damage — scaled by rank + boss rarity
     const bossRewards = computeBossRewards(activeBoss.damageBy, activeBoss.rarity);
@@ -1244,6 +1250,9 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
     });
     return;
   }
+
+  // Snapshot the updated fight state to DB so a restart can resume the fight.
+  void persistBossState(activeBoss);
 
   // Update boss embed with new HP + live damage list
   try {
@@ -1317,6 +1326,8 @@ async function handleBossAbility(interaction: ButtonInteraction, eventId: number
     activeBoss.empowerNext.add(uid);
     await interaction.followUp({ content: "🌑 **Lovitura Umbrei pregătită!** Următoarea ta lovitură în Dragon va fi dublă.", flags: MessageFlags.Ephemeral });
   }
+  // Persist ability state so a restart doesn't lose queued abilities/cooldowns.
+  void persistBossState(activeBoss);
 }
 
 

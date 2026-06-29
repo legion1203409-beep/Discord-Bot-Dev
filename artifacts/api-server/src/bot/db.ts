@@ -1,5 +1,6 @@
-import { db } from "@workspace/db";
-import { playersTable, activeEventsTable, eventParticipantsTable, eventClaimsTable, botStateTable } from "@workspace/db";
+import { db, pool } from "@workspace/db";
+import { playersTable, activeEventsTable, eventParticipantsTable, eventClaimsTable, botStateTable, activeBossesTable } from "@workspace/db";
+import type { ActiveBossRow } from "@workspace/db";
 import { eq, and, gte, gt, inArray, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import type { Player, EventParticipant } from "@workspace/db";
@@ -344,6 +345,42 @@ export async function consumePlayerKey(discordId: string, keyType: KeyType): Pro
     .where(and(eq(playersTable.discordId, discordId), gte(col, 1)))
     .returning();
   return u != null;
+}
+
+// ─── Active boss persistence ───────────────────────────────────────────────────
+// Creates the active_bosses table if it doesn't exist yet. Called once at bot
+// startup so schema changes apply without a manual migration step.
+export async function createActiveBossesTableIfNotExists(): Promise<void> {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS active_bosses (
+      event_id  bigint      PRIMARY KEY,
+      state_json text       NOT NULL,
+      expires_at timestamptz NOT NULL,
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+}
+
+// Upsert the serialized boss state. Called after every meaningful change so
+// a restart can reconstruct the fight from the latest snapshot.
+export async function persistActiveBoss(eventId: number, stateJson: string, expiresAt: Date): Promise<void> {
+  const now = new Date();
+  await db.insert(activeBossesTable)
+    .values({ eventId, stateJson, expiresAt, updatedAt: now })
+    .onConflictDoUpdate({
+      target: activeBossesTable.eventId,
+      set: { stateJson, expiresAt, updatedAt: now },
+    });
+}
+
+// Load all persisted rows — used on startup to rehydrate activeBossMap.
+export async function loadAllActiveBossRows(): Promise<ActiveBossRow[]> {
+  return db.select().from(activeBossesTable);
+}
+
+// Remove a row once a boss is defeated or flees. Idempotent.
+export async function deleteActiveBoss(eventId: number): Promise<void> {
+  await db.delete(activeBossesTable).where(eq(activeBossesTable.eventId, eventId));
 }
 
 // Durable marker (in the DB, not os.tmpdir()) recording that the Oracle fell

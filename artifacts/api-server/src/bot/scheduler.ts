@@ -4,7 +4,7 @@ import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, buildExpiredChes
 import { triggerRandomBattleEvent } from "./combat-events";
 import { getRewardMultipliers } from "./status-effects";
 import { startOracle, setOracleExtatic } from "./oracle";
-import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle, addPlayerReputation, addPlayerGold, addPlayerXp } from "./db";
+import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle, addPlayerReputation, addPlayerGold, addPlayerXp, persistActiveBoss, loadAllActiveBossRows, deleteActiveBoss, createActiveBossesTableIfNotExists } from "./db";
 
 const EVENT_CHANNEL_ID    = "1521185682200989726";
 const BOSS_CHANNEL_ID     = "1521186913476673556";
@@ -59,6 +59,92 @@ export interface BossState {
   defeated: boolean;
 }
 export const activeBossMap = new Map<number, BossState>();
+
+// ─── Boss state serialization / deserialization ────────────────────────────────
+// BossState contains Maps and Sets which aren't JSON-native. We convert them to
+// arrays for storage and reconstruct them on load.
+
+interface SerializedBossState {
+  eventId: number;
+  level: number;
+  rarity: BossRarity;
+  maxHp: number;
+  currentHp: number;
+  messageId: string;
+  channelId: string;
+  lastHitAt: [string, number][];
+  damageBy: [string, number][];
+  playerHp: [string, number][];
+  playerNames: [string, string][];
+  playerStats: [string, BossPlayerStats][];
+  participants: Array<{ username: string; discordId: string; monsterLevel: number; totalDamage: number; isAlive: boolean }>;
+  expiresAt: number;
+  standalone: boolean;
+  abilityReadyAt: [string, number][];
+  empowerNext: string[];
+  shieldNext: string[];
+  defeated: boolean;
+}
+
+function serializeBoss(boss: BossState): string {
+  const s: SerializedBossState = {
+    eventId: boss.eventId,
+    level: boss.level,
+    rarity: boss.rarity,
+    maxHp: boss.maxHp,
+    currentHp: boss.currentHp,
+    messageId: boss.messageId,
+    channelId: boss.channelId,
+    lastHitAt: [...boss.lastHitAt.entries()],
+    damageBy: [...boss.damageBy.entries()],
+    playerHp: [...boss.playerHp.entries()],
+    playerNames: [...boss.playerNames.entries()],
+    playerStats: [...boss.playerStats.entries()],
+    participants: boss.participants,
+    expiresAt: boss.expiresAt,
+    standalone: boss.standalone,
+    abilityReadyAt: [...boss.abilityReadyAt.entries()],
+    empowerNext: [...boss.empowerNext],
+    shieldNext: [...boss.shieldNext],
+    defeated: boss.defeated,
+  };
+  return JSON.stringify(s);
+}
+
+function deserializeBoss(json: string): BossState {
+  const s = JSON.parse(json) as SerializedBossState;
+  return {
+    eventId: s.eventId,
+    level: s.level,
+    rarity: s.rarity,
+    maxHp: s.maxHp,
+    currentHp: s.currentHp,
+    messageId: s.messageId,
+    channelId: s.channelId,
+    lastHitAt: new Map(s.lastHitAt),
+    damageBy: new Map(s.damageBy),
+    playerHp: new Map(s.playerHp),
+    playerNames: new Map(s.playerNames),
+    playerStats: new Map(s.playerStats),
+    participants: s.participants,
+    expiresAt: s.expiresAt,
+    standalone: s.standalone,
+    abilityReadyAt: new Map(s.abilityReadyAt),
+    empowerNext: new Set(s.empowerNext),
+    shieldNext: new Set(s.shieldNext),
+    defeated: s.defeated,
+  };
+}
+
+// Persist the current snapshot of a boss fight to DB. Swallows errors so a
+// transient DB issue never crashes the combat flow.
+export async function persistBossState(boss: BossState): Promise<void> {
+  try {
+    await persistActiveBoss(boss.eventId, serializeBoss(boss), new Date(boss.expiresAt));
+  } catch (err) {
+    logger.error({ err, eventId: boss.eventId }, "Failed to persist boss state");
+  }
+}
 
 // ─── Final-boss eligibility guard ─────────────────────────────────────────────
 // Pure function — no I/O — so it can be unit-tested without mocking Discord or DB.
@@ -519,42 +605,9 @@ export async function fireFinalBoss(client: Client, eventId: number) {
       defeated: false,
     };
     activeBossMap.set(eventId, boss);
+    await persistBossState(boss);
     setOracleExtatic();
-
-    // 5-minute escape timer — if boss not defeated, it flees and we still send leaderboard
-    const escapeTimer = setTimeout(async () => {
-      if (boss.defeated) return;
-      boss.defeated = true;
-      activeBossMap.delete(eventId);
-      try {
-        // Delete the boss embed from the fight channel.
-        const fightCh = await client.channels.fetch(BOSS_CHANNEL_ID).catch(() => null);
-        if (fightCh instanceof TextChannel) {
-          const bossMsg = await fightCh.messages.fetch(boss.messageId).catch(() => null);
-          await bossMsg?.delete().catch(() => null);
-        }
-        // Reward fighters scaled by rank + rarity.
-        const bossRewards = computeBossRewards(boss.damageBy, boss.rarity);
-        // Oracle blessings/curses scale each fighter's boss rewards (XP + Oboli).
-        for (const [discordId, r] of bossRewards) {
-          const rmods = getRewardMultipliers(discordId);
-          r.gold = Math.round(r.gold * rmods.goldMult);
-          r.xp = Math.round(r.xp * rmods.xpMult);
-        }
-        await Promise.all([...bossRewards.entries()].flatMap(([discordId, r]) => [
-          addPlayerReputation(discordId, r.rep),
-          addPlayerGold(discordId, r.gold),
-          addPlayerXp(discordId, r.xp),
-        ]));
-        // Post leaderboard permanently in the dedicated boss-top channel.
-        const topCh = await client.channels.fetch(BOSS_TOP_CHANNEL_ID).catch(() => null);
-        if (topCh instanceof TextChannel) {
-          const leaderboard = buildBossLeaderboard(boss, boss.damageBy, boss.participants, boss.playerNames, boss.playerHp);
-          await topCh.send({ embeds: [leaderboard] }).catch(() => null);
-        }
-      } catch { /* ignore */ }
-    }, Math.max(0, bossExpiresAt - Date.now()));
-    escapeTimer.unref?.();
+    scheduleEscapeTimer(boss, client);
 
     logger.info({ eventId, bossLevel, rarity, maxHp }, "Final boss summoned");
   } catch (err) {
@@ -569,6 +622,104 @@ const STANDALONE_BOSS_MAX_MS = 60 * 60_000;
 const STANDALONE_BOSS_ACTIVE_MS = 60 * 60_000; // active for 1 hour
 
 let standaloneBossId: number | null = null;
+
+// ─── Flee resolution ───────────────────────────────────────────────────────────
+// Shared flee-resolution path: delete the Discord boss message, distribute
+// scaled rewards to all fighters, and post the final leaderboard. Called both
+// from the in-process escape timer and from rehydration when a fight already
+// expired while the bot was down.
+async function runFleeResolution(boss: BossState, client: Client): Promise<void> {
+  try {
+    const fightCh = await client.channels.fetch(boss.channelId).catch(() => null);
+    if (fightCh instanceof TextChannel) {
+      const bossMsg = await fightCh.messages.fetch(boss.messageId).catch(() => null);
+      await bossMsg?.delete().catch(() => null);
+    }
+    const bossRewards = computeBossRewards(boss.damageBy, boss.rarity);
+    for (const [discordId, r] of bossRewards) {
+      const rmods = getRewardMultipliers(discordId);
+      r.gold = Math.round(r.gold * rmods.goldMult);
+      r.xp = Math.round(r.xp * rmods.xpMult);
+    }
+    await Promise.all([...bossRewards.entries()].flatMap(([discordId, r]) => [
+      addPlayerReputation(discordId, r.rep),
+      addPlayerGold(discordId, r.gold),
+      addPlayerXp(discordId, r.xp),
+    ]));
+    const topCh = await client.channels.fetch(BOSS_TOP_CHANNEL_ID).catch(() => null);
+    if (topCh instanceof TextChannel) {
+      const leaderboard = buildBossLeaderboard(boss, boss.damageBy, boss.participants, boss.playerNames, boss.playerHp);
+      await topCh.send({ embeds: [leaderboard] }).catch(() => null);
+    }
+  } catch { /* ignore */ }
+}
+
+// ─── Shared escape timer ───────────────────────────────────────────────────────
+// Extracted so both fireFinalBoss, fireStandaloneBoss, and rehydrateActiveBosses
+// can all use identical flee/reward logic without duplication.
+function scheduleEscapeTimer(boss: BossState, client: Client): ReturnType<typeof setTimeout> {
+  const remaining = Math.max(0, boss.expiresAt - Date.now());
+  const timer = setTimeout(async () => {
+    if (boss.defeated) return;
+    boss.defeated = true;
+    activeBossMap.delete(boss.eventId);
+    if (boss.standalone && standaloneBossId === boss.eventId) standaloneBossId = null;
+    // Remove the persisted row now that the fight is over.
+    await deleteActiveBoss(boss.eventId).catch(() => null);
+    await runFleeResolution(boss, client);
+  }, remaining);
+  timer.unref?.();
+  return timer;
+}
+
+// ─── Startup rehydration ───────────────────────────────────────────────────────
+// On bot restart, reconstruct in-progress boss fights from DB snapshots and
+// reinstate their escape timers so fights continue transparently.
+async function rehydrateActiveBosses(client: Client): Promise<void> {
+  try {
+    await createActiveBossesTableIfNotExists();
+    const rows = await loadAllActiveBossRows();
+    if (rows.length === 0) return;
+
+    const now = Date.now();
+    let loaded = 0;
+
+    for (const row of rows) {
+      if (row.expiresAt.getTime() <= now) {
+        // Boss expired while the bot was down. Deserialize and run the same
+        // flee-resolution logic (rewards + leaderboard) as the escape timer
+        // would have done, so players who fought don't lose their progress.
+        try {
+          const expiredBoss = deserializeBoss(row.stateJson);
+          logger.info({ eventId: row.eventId, damageBy: expiredBoss.damageBy.size }, "Resolving flee for boss that expired during downtime");
+          await runFleeResolution(expiredBoss, client);
+        } catch (err) {
+          logger.error({ err, eventId: row.eventId }, "Failed to resolve expired boss on startup — rewards may be lost");
+        }
+        await deleteActiveBoss(row.eventId).catch(() => null);
+        continue;
+      }
+      try {
+        const boss = deserializeBoss(row.stateJson);
+        boss.defeated = false; // always false — defeated bosses are deleted before this
+        activeBossMap.set(boss.eventId, boss);
+        if (boss.standalone) standaloneBossId = boss.eventId;
+        scheduleEscapeTimer(boss, client);
+        loaded++;
+        logger.info({ eventId: boss.eventId, remainingMs: boss.expiresAt - now }, "Boss fight rehydrated from DB");
+      } catch (err) {
+        logger.error({ err, eventId: row.eventId }, "Failed to deserialize boss state — dropping row");
+        await deleteActiveBoss(row.eventId).catch(() => null);
+      }
+    }
+
+    if (loaded > 0) {
+      logger.info({ count: loaded }, "Active boss fights restored from DB");
+    }
+  } catch (err) {
+    logger.error({ err }, "Failed to rehydrate active bosses on startup");
+  }
+}
 
 export async function fireStandaloneBoss(client: Client) {
   // Don't spawn if a standalone boss is already active.
@@ -618,42 +769,9 @@ export async function fireStandaloneBoss(client: Client) {
     };
     activeBossMap.set(bossId, boss);
     standaloneBossId = bossId;
+    await persistBossState(boss);
     setOracleExtatic();
-
-    // 1-hour escape timer — boss flees if not defeated in time
-    const escapeTimer = setTimeout(async () => {
-      if (boss.defeated) return;
-      boss.defeated = true;
-      activeBossMap.delete(bossId);
-      if (standaloneBossId === bossId) standaloneBossId = null;
-      try {
-        // Delete the boss embed from the fight channel.
-        const fightCh = await client.channels.fetch(BOSS_CHANNEL_ID).catch(() => null);
-        if (fightCh instanceof TextChannel) {
-          const bossMsg = await fightCh.messages.fetch(boss.messageId).catch(() => null);
-          await bossMsg?.delete().catch(() => null);
-        }
-        const bossRewards = computeBossRewards(boss.damageBy, boss.rarity);
-        // Oracle blessings/curses scale each fighter's boss rewards (XP + Oboli).
-        for (const [discordId, r] of bossRewards) {
-          const rmods = getRewardMultipliers(discordId);
-          r.gold = Math.round(r.gold * rmods.goldMult);
-          r.xp = Math.round(r.xp * rmods.xpMult);
-        }
-        await Promise.all([...bossRewards.entries()].flatMap(([discordId, r]) => [
-          addPlayerReputation(discordId, r.rep),
-          addPlayerGold(discordId, r.gold),
-          addPlayerXp(discordId, r.xp),
-        ]));
-        // Post leaderboard permanently in the dedicated boss-top channel.
-        const topCh = await client.channels.fetch(BOSS_TOP_CHANNEL_ID).catch(() => null);
-        if (topCh instanceof TextChannel) {
-          const leaderboard = buildBossLeaderboard(boss, boss.damageBy, boss.participants, boss.playerNames, boss.playerHp);
-          await topCh.send({ embeds: [leaderboard] }).catch(() => null);
-        }
-      } catch { /* ignore */ }
-    }, Math.max(0, bossExpiresAt - Date.now()));
-    escapeTimer.unref?.();
+    scheduleEscapeTimer(boss, client);
 
     logger.info({ bossId, level, rarity, maxHp }, "Standalone boss summoned");
   } catch (err) {
@@ -816,6 +934,9 @@ async function fireBattleEvent(client: Client) {
 }
 
 export function startScheduler(client: Client) {
+  // Restore any boss fights that were in progress before the last restart.
+  void rehydrateActiveBosses(client);
+
   setInterval(() => expireOldEvents(client), 60 * 1000);
 
   const scheduleNext = () => {
