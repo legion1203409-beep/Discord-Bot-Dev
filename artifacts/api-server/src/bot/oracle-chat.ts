@@ -10,6 +10,7 @@ import { PermissionFlagsBits } from "discord.js";
 import { logger } from "../lib/logger";
 import { getCurrentMood } from "./oracle";
 import { MOOD_META, type MoodState } from "./oracle-content";
+import { handleJustice } from "./oracle-guard";
 
 // The feature is keyed on the user's own OpenAI key. When it is absent the Oracle
 // simply stays silent on mentions (degrade gracefully — never crash the bot).
@@ -621,6 +622,13 @@ export async function maybeReplyAsOracle(discordClient: Client, message: Message
       ? message.author.id === ownerId || message.guild?.ownerId === message.author.id
       : message.guild?.ownerId === message.author.id ||
         (message.member?.permissions.has(PermissionFlagsBits.Administrator) ?? false);
+
+    // Justice mode: owner commands the Oracle to punish recent channel offenders.
+    // Handled entirely in oracle-guard; returns true → skip AI reply.
+    if (isAdmin) {
+      const justiceHandled = await handleJustice(discordClient, message);
+      if (justiceHandled) return;
+    }
 
     const mood = getCurrentMood();
     const reply = await generateOracleReply(cleaned, memory, repliedBotText, mood, speakerAlias, isAdmin);

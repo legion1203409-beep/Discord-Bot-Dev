@@ -10,6 +10,7 @@
 import { PermissionFlagsBits } from "discord.js";
 import type { Client, Message } from "discord.js";
 import { logger } from "../lib/logger";
+import { grantRandomCurse } from "./status-effects";
 
 // ── Swear-word detection ─────────────────────────────────────────────────────
 
@@ -140,6 +141,173 @@ function curseMessage(offenseCount: number, muteMin: number, muted: boolean): st
     ` Regatul s-a săturat de limba ta.` +
     noMuteNote
   );
+}
+
+// ── Justice trigger detection ────────────────────────────────────────────────
+
+/**
+ * Phrases (normalised, diacritic-stripped) that the owner can use to command
+ * the Oracle to scan the channel and punish recent offenders. Checked only after
+ * confirming the requester is the owner/admin, so broad matches are acceptable.
+ */
+const JUSTICE_PHRASES = [
+  "fa dreptate", "face dreptate",
+  "judeca-i", "judecati",
+  "penalizeaza", "penalizeaza-i",
+  "curata canalul",
+  "fa ordine",
+  "aplica blestemul",
+  "pedepseste-i", "pedepseste",
+  "executa dreptatea", "executa judecata",
+];
+
+/**
+ * Returns true when the (normalised, mention-stripped) text is a justice command
+ * from the owner. Substring match is intentional — the check only ever runs for
+ * the designated owner, so false positives don't affect regular players.
+ */
+export function isJusticeRequest(text: string): boolean {
+  const n = normalise(text);
+  return JUSTICE_PHRASES.some((phrase) => n.includes(phrase));
+}
+
+// ── Channel scan & justice execution ─────────────────────────────────────────
+
+const JUSTICE_WINDOW_MS = 30 * 60_000; // look back 30 minutes
+const JUSTICE_SCAN_LIMIT = 100;         // max messages to inspect
+
+/**
+ * When the owner @mentions the Oracle with a justice trigger phrase, scan the
+ * last 100 messages (up to 30 min back), find every user who used prohibited
+ * words, apply an escalating timeout + a random game curse to each, and reply
+ * with an in-character verdict list.
+ *
+ * Returns `true` when it handled the message so the caller can skip the normal
+ * AI reply path. Returns `false` for all non-justice messages.
+ */
+export async function handleJustice(client: Client, message: Message): Promise<boolean> {
+  try {
+    const botId = client.user?.id;
+    if (!botId) return false;
+
+    // Confirm the requester is the designated owner or guild owner.
+    const ownerId = process.env.ORACLE_OWNER_ID?.trim();
+    const isOwner = ownerId
+      ? message.author.id === ownerId || message.guild?.ownerId === message.author.id
+      : message.guild?.ownerId === message.author.id ||
+        (message.member?.permissions.has(PermissionFlagsBits.Administrator) ?? false);
+    if (!isOwner) return false;
+
+    const text = (message.content ?? "").replace(/<@!?\d+>/g, "").trim();
+    if (!isJusticeRequest(text)) return false;
+
+    // Scan the channel for recent offending messages.
+    const channel = message.channel;
+    if (!channel.isTextBased() || !("messages" in channel)) return false;
+
+    const cutoff = Date.now() - JUSTICE_WINDOW_MS;
+    let fetched: import("discord.js").Collection<string, import("discord.js").Message>;
+    try {
+      fetched = await channel.messages.fetch({ limit: JUSTICE_SCAN_LIMIT, before: message.id });
+    } catch (err) {
+      logger.warn({ err }, "Oracle justice: failed to fetch channel messages");
+      return false;
+    }
+
+    // Collect unique offenders — skip bot messages and the owner's own messages.
+    const offenderNames = new Map<string, string>(); // userId → displayName
+    for (const m of fetched.values()) {
+      if (m.author.bot) continue;
+      if (m.author.id === message.author.id) continue;
+      if (m.createdTimestamp < cutoff) continue;
+      if (containsSwear(m.content ?? "")) {
+        if (!offenderNames.has(m.author.id)) {
+          offenderNames.set(
+            m.author.id,
+            m.member?.displayName ?? m.author.username,
+          );
+        }
+      }
+    }
+
+    if (offenderNames.size === 0) {
+      await message.reply({
+        content:
+          "*Oracolul cercetează umbrele canalului...* ✨\n" +
+          "Canalul este curat, Stăpâne. Niciun glas necurat n-a profanat Regatul în această vreme.",
+        allowedMentions: { repliedUser: true, parse: [] },
+      });
+      logger.info({ requesterId: message.author.id }, "Oracle justice: no offenders found");
+      return true;
+    }
+
+    // Apply timeout + game curse to each offender and collect verdicts.
+    type Verdict = {
+      name: string;
+      muteMin: number;
+      muted: boolean;
+      curseLabel: string;
+      curseEmoji: string;
+    };
+    const verdicts: Verdict[] = [];
+
+    for (const [userId, name] of offenderNames) {
+      const offenseCount = recordOffense(userId);
+      const muteMs  = muteDurationMs(offenseCount);
+      const muteMin = muteDurationMin(offenseCount);
+
+      let muted = false;
+      const member = await message.guild?.members.fetch(userId).catch(() => null);
+      if (member) {
+        const botMember = message.guild?.members.me;
+        const hasPermission =
+          botMember?.permissions.has(PermissionFlagsBits.ModerateMembers) ?? false;
+        const canTimeout = hasPermission && !!botMember && member.manageable;
+        if (canTimeout) {
+          try {
+            await member.timeout(muteMs, "Oracolul — dreptate la porunca stăpânului");
+            muted = true;
+          } catch (err) {
+            logger.warn({ err, userId }, "Oracle justice: timeout failed for offender");
+          }
+        }
+      }
+
+      const curse = grantRandomCurse(userId);
+      verdicts.push({ name, muteMin, muted, curseLabel: curse.label, curseEmoji: curse.emoji });
+      logger.info(
+        { userId, offenseCount, muteMin, muted, curse: curse.id },
+        "Oracle justice: penalty applied",
+      );
+    }
+
+    // Build in-character verdict announcement.
+    const count = verdicts.length;
+    const lines: string[] = [
+      `*Oracolul Cenușii a deschis Cartea Judecății, Stăpâne...* ⚖️`,
+      ``,
+      `Am cercetat umbrele și am găsit **${count}** ${count === 1 ? "limbă necurată" : "limbi necurate"}:`,
+      ``,
+      ...verdicts.map(({ name, muteMin, muted, curseLabel, curseEmoji }) => {
+        const dur = formatDuration(muteMin);
+        const muteStr = muted
+          ? `tăcere forțată ${dur}`
+          : `blestem (fără putere de amuțire)`;
+        return `🌑 **${name}** — ${muteStr} + ${curseEmoji} *${curseLabel}*`;
+      }),
+      ``,
+      `Dreptatea cenușii a fost împlinită.`,
+    ];
+
+    await message.reply({
+      content: lines.join("\n").slice(0, 2000),
+      allowedMentions: { repliedUser: true, parse: [] },
+    });
+    return true;
+  } catch (err) {
+    logger.error({ err }, "Oracle justice: handleJustice failed");
+    return false;
+  }
 }
 
 // ── Main guard ───────────────────────────────────────────────────────────────
