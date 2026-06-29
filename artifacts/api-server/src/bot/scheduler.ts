@@ -5,7 +5,7 @@ import { triggerRandomBattleEvent } from "./combat-events";
 import { startOracle, setOracleExtatic } from "./oracle";
 import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle, addPlayerReputation, addPlayerGold, addPlayerXp } from "./db";
 
-const EVENT_CHANNEL_ID = "1472579703457190042";
+const EVENT_CHANNEL_ID = "1521180114652758178";
 const MAIN_CHANNEL_ID = "1382042144717410385";
 const APPLICATION_ID = "1472675543777280071";
 export const EVENT_DURATION_MS = 60 * 60 * 1000;

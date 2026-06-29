@@ -1095,7 +1095,7 @@ async function handleAbility(interaction: ButtonInteraction, eventId: number, ki
 }
 
 const BOSS_HIT_COOLDOWN_MS = 4000;
-const EVENT_CHANNEL_ID = "1472579703457190042";
+const EVENT_CHANNEL_ID = "1521180114652758178";
 
 async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) {
   await interaction.deferUpdate();
