@@ -183,7 +183,7 @@ export function isJusticeRequest(text: string): boolean {
  * integer. When `max` is provided, values above the bound are clamped (with a
  * warning) so a misconfigured knob can't silently break behaviour.
  */
-function envInt(name: string, fallback: number, max?: number): number {
+export function envInt(name: string, fallback: number, max?: number): number {
   const raw = process.env[name];
   if (raw === undefined || raw.trim() === "") return fallback;
   const parsed = Number(raw);

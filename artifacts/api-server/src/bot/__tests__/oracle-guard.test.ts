@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // ── Mock discord.js — only PermissionFlagsBits is used at runtime ─────────────
 vi.mock("discord.js", () => ({
@@ -11,7 +11,7 @@ vi.mock("../../lib/logger", () => ({
 }));
 
 // Import after mocks are registered
-import { containsSwear, handleToxicity } from "../oracle-guard";
+import { containsSwear, handleToxicity, envInt } from "../oracle-guard";
 import type { Client, Message } from "discord.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -257,5 +257,95 @@ describe("handleToxicity", () => {
     });
     const result = await handleToxicity(makeClient(BOT_ID), msg as unknown as Message);
     expect(result).toBe(true);
+  });
+});
+
+// ─── envInt ────────────────────────────────────────────────────────────────────
+
+describe("envInt", () => {
+  const VAR = "TEST_ORACLE_ENVINT";
+
+  afterEach(() => {
+    delete process.env[VAR];
+  });
+
+  it("returns the fallback when the env var is not set", () => {
+    delete process.env[VAR];
+    expect(envInt(VAR, 30)).toBe(30);
+  });
+
+  it("returns the fallback when the env var is an empty string", () => {
+    process.env[VAR] = "";
+    expect(envInt(VAR, 30)).toBe(30);
+  });
+
+  it("returns the fallback and warns when the env var is a non-numeric string", async () => {
+    const { logger } = await import("../../lib/logger");
+    process.env[VAR] = "banana";
+    const result = envInt(VAR, 30);
+    expect(result).toBe(30);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ name: VAR, value: "banana", fallback: 30 }),
+      expect.any(String),
+    );
+  });
+
+  it("returns the fallback and warns when the env var is zero", async () => {
+    const { logger } = await import("../../lib/logger");
+    process.env[VAR] = "0";
+    const result = envInt(VAR, 30);
+    expect(result).toBe(30);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ name: VAR, value: "0", fallback: 30 }),
+      expect.any(String),
+    );
+  });
+
+  it("returns the fallback and warns when the env var is a negative number", async () => {
+    const { logger } = await import("../../lib/logger");
+    process.env[VAR] = "-5";
+    const result = envInt(VAR, 30);
+    expect(result).toBe(30);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ name: VAR, value: "-5", fallback: 30 }),
+      expect.any(String),
+    );
+  });
+
+  it("returns the fallback and warns when the env var is a float", async () => {
+    const { logger } = await import("../../lib/logger");
+    process.env[VAR] = "3.14";
+    const result = envInt(VAR, 30);
+    expect(result).toBe(30);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ name: VAR, value: "3.14", fallback: 30 }),
+      expect.any(String),
+    );
+  });
+
+  it("clamps to max and warns when the value exceeds the allowed maximum", async () => {
+    const { logger } = await import("../../lib/logger");
+    process.env[VAR] = "9999";
+    const result = envInt(VAR, 30, 1440);
+    expect(result).toBe(1440);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ name: VAR, value: "9999", max: 1440 }),
+      expect.any(String),
+    );
+  });
+
+  it("returns the value as-is when it is valid and within the max", () => {
+    process.env[VAR] = "60";
+    expect(envInt(VAR, 30, 1440)).toBe(60);
+  });
+
+  it("returns the value when it exactly equals the max", () => {
+    process.env[VAR] = "1440";
+    expect(envInt(VAR, 30, 1440)).toBe(1440);
+  });
+
+  it("returns the value as-is when no max is provided, even for a large number", () => {
+    process.env[VAR] = "9999";
+    expect(envInt(VAR, 30)).toBe(9999);
   });
 });
