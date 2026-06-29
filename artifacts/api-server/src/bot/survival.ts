@@ -488,7 +488,7 @@ export const KEY_COLOR: Record<string, number> = {
 // ─── Dedicated key chests ───────────────────────────────────────────────────
 // Standalone chests whose reward IS a key (separate from the gold chests).
 // Lower tiers are common, the Regal key is a rare prize.
-const KEY_CHEST_WEIGHTS: Array<{ keyType: string; weight: number }> = [
+export const KEY_CHEST_WEIGHTS: Array<{ keyType: string; weight: number }> = [
   { keyType: "rar",   weight: 60 },
   { keyType: "epic",  weight: 30 },
   { keyType: "regal", weight: 10 },

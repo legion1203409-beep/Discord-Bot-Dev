@@ -46,11 +46,13 @@ vi.mock("../status-effects", () => ({
 // Import pure functions from survival after mocks are set up
 import {
   CHEST_RARITIES,
+  KEY_CHEST_WEIGHTS,
   LOCKED_CHEST_GOLD,
   computeBossRewards,
   bossMaxHp,
   rollChest,
   rollChestMultiplier,
+  rollKeyChestType,
   spawnChest,
   spawnLockedChest,
 } from "../survival";
@@ -490,5 +492,61 @@ describe("spawnLockedChest gold payout range (10 000 rolls per rarity)", () => {
 
   it("returns null for an unknown locked rarity key", () => {
     expect(spawnLockedChest("nonexistent")).toBeNull();
+  });
+});
+
+// ─── rollKeyChestType ──────────────────────────────────────────────────────────
+
+const VALID_KEY_TYPES = ["rar", "epic", "regal"] as const;
+
+describe("rollKeyChestType weight pool integrity", () => {
+  it("KEY_CHEST_WEIGHTS entries sum to 100 (roll range matches weight pool)", () => {
+    // Reads from the live production array — fails immediately if weights are
+    // edited without this expectation being updated, catching silent economy drift.
+    const total = KEY_CHEST_WEIGHTS.reduce((s, k) => s + k.weight, 0);
+    expect(total).toBe(100);
+  });
+
+  it("every keyType in KEY_CHEST_WEIGHTS is one of the known valid types", () => {
+    for (const { keyType } of KEY_CHEST_WEIGHTS) {
+      expect(VALID_KEY_TYPES).toContain(keyType);
+    }
+  });
+});
+
+describe("rollKeyChestType: every result is a valid key type (10 000 rolls)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("never produces an unknown key type across 10 000 random rolls", () => {
+    for (let i = 0; i < 10_000; i++) {
+      const result = rollKeyChestType();
+      expect(VALID_KEY_TYPES).toContain(result);
+    }
+  });
+
+  it('fallback path (Math.random === 1.0) returns "rar" (a valid key type)', () => {
+    vi.spyOn(Math, "random").mockReturnValue(1.0);
+    const result = rollKeyChestType();
+    expect(result).toBe("rar");
+    expect(VALID_KEY_TYPES).toContain(result);
+  });
+
+  it('returns "rar" when roll lands in the first bucket (Math.random = 0)', () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    expect(rollKeyChestType()).toBe("rar");
+  });
+
+  it('returns "epic" when roll lands in the epic bucket (Math.random = 0.65)', () => {
+    // 0.65 * 100 = 65; past rar(60) → roll=5; 5 < 30 (epic) → "epic"
+    vi.spyOn(Math, "random").mockReturnValue(0.65);
+    expect(rollKeyChestType()).toBe("epic");
+  });
+
+  it('returns "regal" when roll lands in the regal bucket (Math.random = 0.95)', () => {
+    // 0.95 * 100 = 95; past rar(60) → 35; past epic(30) → 5; 5 < 10 (regal) → "regal"
+    vi.spyOn(Math, "random").mockReturnValue(0.95);
+    expect(rollKeyChestType()).toBe("regal");
   });
 });
