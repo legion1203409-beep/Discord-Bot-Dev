@@ -866,6 +866,66 @@ export function buildExpiredCronica(
     );
 }
 
+export function buildEventLeaderboard(
+  participants: Array<{
+    username: string;
+    discordId: string;
+    monsterLevel: number;
+    monsterRarity: string;
+    totalDamage: number;
+    oboli: number;
+    isAlive: boolean;
+    fled: boolean;
+    currentHp: number;
+    maxHp: number;
+  }>,
+): EmbedBuilder {
+  const medals = ["🥇", "🥈", "🥉"];
+
+  const ranked = [...participants].sort((a, b) => {
+    if (a.isAlive !== b.isAlive) return a.isAlive ? -1 : 1;
+    if (b.monsterLevel !== a.monsterLevel) return b.monsterLevel - a.monsterLevel;
+    if (b.totalDamage !== a.totalDamage) return b.totalDamage - a.totalDamage;
+    return b.oboli - a.oboli;
+  });
+
+  const lines = ranked.slice(0, 10).map((p, i) => {
+    const medal = medals[i] ?? `**${i + 1}.**`;
+    const rarityEmoji = RARITY[p.monsterRarity as Rarity]?.emoji ?? "👹";
+
+    let status: string;
+    if (!p.isAlive && p.fled) {
+      status = "🏳️ A fugit";
+    } else if (!p.isAlive) {
+      status = "💀 Căzut";
+    } else {
+      status = `❤️ ${p.currentHp}/${p.maxHp} HP`;
+    }
+
+    return (
+      `${medal} **${p.username}** — ${rarityEmoji} Niv.${p.monsterLevel} | ` +
+      `⚔️ ${p.totalDamage.toLocaleString()} daune | 🪙 ${p.oboli} Oboli | ${status}`
+    );
+  });
+
+  const survivorCount = participants.filter((p) => p.isAlive).length;
+  const fallenCount = participants.filter((p) => !p.isAlive && !p.fled).length;
+  const fledCount = participants.filter((p) => !p.isAlive && p.fled).length;
+
+  return new EmbedBuilder()
+    .setColor(0x8a4a2f)
+    .setTitle("🏆 CLASAMENT EVENIMENT — Ora Umbrelor")
+    .setDescription(
+      `👤 **${participants.length}** participanți | ` +
+      `❤️ **${survivorCount}** supraviețuitori | ` +
+      `💀 **${fallenCount}** căzuți | ` +
+      `🏳️ **${fledCount}** au fugit\n\n` +
+      (lines.length > 0 ? lines.join("\n") : "_Niciun participant._"),
+    )
+    .setFooter({ text: "Clasament generat la finalul evenimentului." })
+    .setTimestamp();
+}
+
 export function combatRow(eventId: number, p?: EventParticipant): ActionRowBuilder<ButtonBuilder> {
   const onCooldown = p?.abilityReadyAt ? p.abilityReadyAt.getTime() > Date.now() : false;
   const hasEmpower = (p?.empowerLevel ?? 0) >= 1;

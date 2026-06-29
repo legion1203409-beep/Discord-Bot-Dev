@@ -1,6 +1,6 @@
 import { Client, TextChannel, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import { logger } from "../lib/logger";
-import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, buildExpiredChestEmbed, rollChest, oracleMessage, buildFinalBossEmbed, buildBossLeaderboard, buildLockedChestEmbed, buildKeyChestEmbed, spawnLockedChest, rollKeyChestType, computeBossRewards, finalBossRow, bossMaxHp, type BossRarity, type BossPlayerStats } from "./survival";
+import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, buildExpiredChestEmbed, rollChest, oracleMessage, buildFinalBossEmbed, buildBossLeaderboard, buildEventLeaderboard, buildLockedChestEmbed, buildKeyChestEmbed, spawnLockedChest, rollKeyChestType, computeBossRewards, finalBossRow, bossMaxHp, type BossRarity, type BossPlayerStats } from "./survival";
 import { triggerRandomBattleEvent } from "./combat-events";
 import { getRewardMultipliers } from "./status-effects";
 import { startOracle, setOracleExtatic } from "./oracle";
@@ -124,10 +124,12 @@ async function expireOldEvents(client: Client) {
           );
           await msg.edit({ embeds: [cronica], components: [disabledRow] });
 
-          // Also post cronica permanently in the dedicated top channel.
+          // Also post cronica + detailed leaderboard permanently in the dedicated top channel.
           const topCh = await client.channels.fetch(EVENT_TOP_CHANNEL_ID).catch(() => null);
           if (topCh instanceof TextChannel) {
             await topCh.send({ embeds: [cronica] }).catch(() => null);
+            const leaderboard = buildEventLeaderboard(participants);
+            await topCh.send({ embeds: [leaderboard] }).catch(() => null);
           }
 
           const ranked = [...participants].sort((a, b) => {
