@@ -10,8 +10,15 @@ vi.mock("../../lib/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
+// ── Mock status-effects so tests control clearCurses return value ─────────────
+vi.mock("../status-effects", () => ({
+  clearCurses: vi.fn().mockReturnValue(0),
+  grantRandomCurse: vi.fn().mockReturnValue({ id: "curse-test", label: "Blestem Test", emoji: "🌑" }),
+}));
+
 // Import after mocks are registered
-import { containsSwear, handleToxicity, envInt } from "../oracle-guard";
+import { containsSwear, handleToxicity, handlePardon, isPardonRequest, envInt } from "../oracle-guard";
+import { clearCurses } from "../status-effects";
 import type { Client, Message } from "discord.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -407,5 +414,293 @@ describe("envInt", () => {
   it("returns the value as-is when no max is provided, even for a large number", () => {
     process.env[VAR] = "9999";
     expect(envInt(VAR, 30)).toBe(9999);
+  });
+});
+
+// ─── isPardonRequest ───────────────────────────────────────────────────────────
+
+describe("isPardonRequest", () => {
+  it("returns true for 'iarta'", () => {
+    expect(isPardonRequest("iarta")).toBe(true);
+  });
+
+  it("returns true for 'iarta-l' (with suffix)", () => {
+    expect(isPardonRequest("iarta-l")).toBe(true);
+  });
+
+  it("returns true for 'reseteaza blestemul'", () => {
+    expect(isPardonRequest("reseteaza blestemul")).toBe(true);
+  });
+
+  it("returns true for 'pardoneaza-l'", () => {
+    expect(isPardonRequest("pardoneaza-l")).toBe(true);
+  });
+
+  it("returns false for plain justice text", () => {
+    expect(isPardonRequest("fa dreptate")).toBe(false);
+  });
+
+  it("returns false for clean unrelated text", () => {
+    expect(isPardonRequest("buna ziua oracolule")).toBe(false);
+  });
+});
+
+// ─── handlePardon ─────────────────────────────────────────────────────────────
+
+/**
+ * Build a minimal fake Message for handlePardon tests.
+ * `targetIds` are the users that appear in message.mentions.users.
+ */
+function makePardonMessage(opts: {
+  authorId: string;
+  content: string;
+  guildOwnerId?: string;
+  targetIds?: string[];
+  targetBot?: boolean;
+  hasPermission?: boolean;
+  memberManageable?: boolean;
+  timeoutFn?: ReturnType<typeof vi.fn>;
+}) {
+  const {
+    authorId,
+    content,
+    guildOwnerId = "guild-owner-id",
+    targetIds = [],
+    targetBot = false,
+    hasPermission = true,
+    memberManageable = true,
+  } = opts;
+
+  const mockTimeout = opts.timeoutFn ?? vi.fn().mockResolvedValue(undefined);
+
+  // Build the members map for mentions.users
+  const mentionedUsers = new Map(
+    targetIds.map((id) => [
+      id,
+      { id, bot: targetBot, username: `user-${id}` },
+    ]),
+  );
+
+  const targetMember = {
+    displayName: `DisplayName-${targetIds[0] ?? "?"}`,
+    manageable: memberManageable,
+    timeout: mockTimeout,
+  };
+
+  const botMember = {
+    permissions: { has: vi.fn().mockReturnValue(hasPermission) },
+  };
+
+  const mockReply = vi.fn().mockResolvedValue(undefined);
+
+  const msg = {
+    content,
+    author: { id: authorId, bot: false },
+    guild: {
+      ownerId: guildOwnerId,
+      members: {
+        me: botMember,
+        fetch: vi.fn().mockResolvedValue(targetMember),
+      },
+    },
+    mentions: {
+      users: {
+        filter: (pred: (u: { id: string; bot: boolean }) => boolean) => {
+          const filtered = new Map<string, { id: string; bot: boolean; username: string }>();
+          for (const [id, u] of mentionedUsers) {
+            if (pred(u as { id: string; bot: boolean })) filtered.set(id, u);
+          }
+          return filtered;
+        },
+        size: mentionedUsers.size,
+      },
+    },
+    reply: mockReply,
+    _reply: mockReply,
+    _timeout: mockTimeout,
+    _botMember: botMember,
+  };
+
+  return msg;
+}
+
+describe("handlePardon", () => {
+  const OWNER_ID = "pardon-owner-id";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.ORACLE_OWNER_ID = OWNER_ID;
+  });
+
+  afterEach(() => {
+    delete process.env.ORACLE_OWNER_ID;
+  });
+
+  it("returns false when the author is not the owner", async () => {
+    const msg = makePardonMessage({
+      authorId: "random-user-999",
+      content: "iarta-l pe acest om",
+      targetIds: ["target-u1"],
+    });
+    const result = await handlePardon({} as Client, msg as unknown as Message);
+    expect(result).toBe(false);
+    expect(msg._reply).not.toHaveBeenCalled();
+  });
+
+  it("returns false when the content is not a pardon request", async () => {
+    const msg = makePardonMessage({
+      authorId: OWNER_ID,
+      content: "fa dreptate oracolule",
+      targetIds: ["target-u2"],
+    });
+    const result = await handlePardon({} as Client, msg as unknown as Message);
+    expect(result).toBe(false);
+    expect(msg._reply).not.toHaveBeenCalled();
+  });
+
+  it("returns false when there are no non-bot, non-owner targets mentioned", async () => {
+    const msg = makePardonMessage({
+      authorId: OWNER_ID,
+      content: "iarta",
+      targetIds: [],
+    });
+    const result = await handlePardon({} as Client, msg as unknown as Message);
+    expect(result).toBe(false);
+    expect(msg._reply).not.toHaveBeenCalled();
+  });
+
+  it("returns false when only the bot itself is mentioned", async () => {
+    const msg = makePardonMessage({
+      authorId: OWNER_ID,
+      content: "iarta",
+      targetIds: ["bot-id-xyz"],
+      targetBot: true,
+    });
+    const result = await handlePardon({} as Client, msg as unknown as Message);
+    expect(result).toBe(false);
+    expect(msg._reply).not.toHaveBeenCalled();
+  });
+
+  it("returns true and replies with the absolution message for a valid pardon", async () => {
+    const msg = makePardonMessage({
+      authorId: OWNER_ID,
+      content: "iarta-l",
+      targetIds: ["target-u3"],
+    });
+    const result = await handlePardon({} as Client, msg as unknown as Message);
+    expect(result).toBe(true);
+    expect(msg._reply).toHaveBeenCalledOnce();
+    const replyContent: string = (msg._reply.mock.calls[0] as [{ content: string }])[0].content;
+    expect(replyContent).toContain("Cartea Iertării");
+  });
+
+  it("clears game curses for the pardoned user", async () => {
+    const clearCursesMock = vi.mocked(clearCurses);
+    clearCursesMock.mockReturnValue(2); // had 2 active curses
+
+    const msg = makePardonMessage({
+      authorId: OWNER_ID,
+      content: "reseteaza blestemul",
+      targetIds: ["target-u4"],
+    });
+    await handlePardon({} as Client, msg as unknown as Message);
+    expect(clearCursesMock).toHaveBeenCalledWith("target-u4");
+  });
+
+  it("mentions lifted curses in the reply when the user had active curses", async () => {
+    vi.mocked(clearCurses).mockReturnValue(1); // had curses
+
+    const msg = makePardonMessage({
+      authorId: OWNER_ID,
+      content: "ierta",
+      targetIds: ["target-u5"],
+    });
+    await handlePardon({} as Client, msg as unknown as Message);
+    const replyContent: string = (msg._reply.mock.calls[0] as [{ content: string }])[0].content;
+    expect(replyContent).toContain("blestemurile ridicate");
+  });
+
+  it("calls member.timeout(null) to lift an active Discord timeout", async () => {
+    const mockTimeout = vi.fn().mockResolvedValue(undefined);
+    const msg = makePardonMessage({
+      authorId: OWNER_ID,
+      content: "iarta-l",
+      targetIds: ["target-u6"],
+      hasPermission: true,
+      memberManageable: true,
+      timeoutFn: mockTimeout,
+    });
+    await handlePardon({} as Client, msg as unknown as Message);
+    expect(mockTimeout).toHaveBeenCalledWith(null, expect.any(String));
+  });
+
+  it("does NOT call member.timeout(null) when bot lacks ModerateMembers permission", async () => {
+    const mockTimeout = vi.fn().mockResolvedValue(undefined);
+    const msg = makePardonMessage({
+      authorId: OWNER_ID,
+      content: "pardoneaza-l",
+      targetIds: ["target-u7"],
+      hasPermission: false,
+      memberManageable: true,
+      timeoutFn: mockTimeout,
+    });
+    await handlePardon({} as Client, msg as unknown as Message);
+    expect(mockTimeout).not.toHaveBeenCalled();
+  });
+
+  it("does NOT call member.timeout(null) when member is not manageable", async () => {
+    const mockTimeout = vi.fn().mockResolvedValue(undefined);
+    const msg = makePardonMessage({
+      authorId: OWNER_ID,
+      content: "iarta",
+      targetIds: ["target-u8"],
+      hasPermission: true,
+      memberManageable: false,
+      timeoutFn: mockTimeout,
+    });
+    await handlePardon({} as Client, msg as unknown as Message);
+    expect(mockTimeout).not.toHaveBeenCalled();
+  });
+
+  it("still returns true and replies even if member.timeout(null) throws", async () => {
+    const mockTimeout = vi.fn().mockRejectedValue(new Error("Missing Access"));
+    const msg = makePardonMessage({
+      authorId: OWNER_ID,
+      content: "ierta",
+      targetIds: ["target-u9"],
+      hasPermission: true,
+      memberManageable: true,
+      timeoutFn: mockTimeout,
+    });
+    const result = await handlePardon({} as Client, msg as unknown as Message);
+    expect(result).toBe(true);
+    expect(msg._reply).toHaveBeenCalledOnce();
+  });
+
+  it("shows 'already clean' message when the user had no offenses and no curses", async () => {
+    vi.mocked(clearCurses).mockReturnValue(0); // no curses
+    // No prior offense recorded for this unique user id
+
+    const msg = makePardonMessage({
+      authorId: OWNER_ID,
+      content: "ierta",
+      targetIds: ["target-u-clean-slate"],
+    });
+    await handlePardon({} as Client, msg as unknown as Message);
+    const replyContent: string = (msg._reply.mock.calls[0] as [{ content: string }])[0].content;
+    expect(replyContent).toContain("sufletul acestui muritor era deja curat");
+  });
+
+  it("accepts the guild owner as the pardoning authority when ORACLE_OWNER_ID is not set", async () => {
+    delete process.env.ORACLE_OWNER_ID;
+
+    const msg = makePardonMessage({
+      authorId: "guild-owner-id",
+      content: "iarta-l",
+      guildOwnerId: "guild-owner-id",
+      targetIds: ["target-u10"],
+    });
+    const result = await handlePardon({} as Client, msg as unknown as Message);
+    expect(result).toBe(true);
   });
 });

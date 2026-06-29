@@ -424,6 +424,21 @@ export async function handlePardon(_client: Client, message: Message): Promise<b
       const member = await message.guild?.members.fetch(userId).catch(() => null);
       const displayName = member?.displayName ?? user.username;
 
+      // Lift any active Discord timeout so the pardon takes effect immediately.
+      if (member) {
+        const botMember = message.guild?.members.me;
+        const hasPermission =
+          botMember?.permissions.has(PermissionFlagsBits.ModerateMembers) ?? false;
+        const canModify = hasPermission && !!botMember && member.manageable;
+        if (canModify) {
+          try {
+            await member.timeout(null, "Oracolul — iertare la porunca stăpânului");
+          } catch (err) {
+            logger.warn({ err, userId }, "Oracle pardon: failed to lift Discord timeout");
+          }
+        }
+      }
+
       if (!hadOffenses && !hadCurses) {
         lines.push(
           `✨ **${displayName}** — sufletul acestui muritor era deja curat. Cenușa nu ține minte nicio vină.`,
