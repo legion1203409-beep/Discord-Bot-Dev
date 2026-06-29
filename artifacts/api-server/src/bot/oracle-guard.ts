@@ -177,8 +177,33 @@ export function isJusticeRequest(text: string): boolean {
 
 // ── Channel scan & justice execution ─────────────────────────────────────────
 
-const JUSTICE_WINDOW_MS = 30 * 60_000; // look back 30 minutes
-const JUSTICE_SCAN_LIMIT = 100;         // max messages to inspect
+/**
+ * Read a positive-integer tuning value from the environment, falling back to
+ * `fallback` when the var is unset, empty, non-numeric, or not a positive
+ * integer. When `max` is provided, values above the bound are clamped (with a
+ * warning) so a misconfigured knob can't silently break behaviour.
+ */
+function envInt(name: string, fallback: number, max?: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed <= 0) {
+    logger.warn({ name, value: raw, fallback }, "Invalid Oracle tuning value — using default");
+    return fallback;
+  }
+  if (max !== undefined && parsed > max) {
+    logger.warn({ name, value: raw, max }, "Oracle tuning value above max — clamping");
+    return max;
+  }
+  return parsed;
+}
+
+/** How far back (ms) to scan for justice targets. Env: ORACLE_JUSTICE_WINDOW_MINUTES (default 30, max 1440). */
+const JUSTICE_WINDOW_MS =
+  envInt("ORACLE_JUSTICE_WINDOW_MINUTES", 30, 1440) * 60_000;
+
+/** Max messages to inspect per justice scan. Env: ORACLE_JUSTICE_SCAN_LIMIT (default 100, max 500). */
+const JUSTICE_SCAN_LIMIT = envInt("ORACLE_JUSTICE_SCAN_LIMIT", 100, 500);
 
 /**
  * When the owner @mentions the Oracle with a justice trigger phrase, scan the

@@ -12,6 +12,8 @@ _Replace the heading above with the project's name, and this line with one sente
 - Required env: `DATABASE_URL` — Postgres connection string
 - Optional ops env: `DISCORD_ALERT_WEBHOOK_URL` — Discord webhook URL for an operator channel. When set, the bot pushes an alert when it goes offline (shard/fatal disconnect or a failing reconnect loop) and a recovery alert when it comes back. **If unset, all offline/recovery alerts are silently suppressed** (a warning is logged), so set this to actually get notified.
 - Optional ops env: `DISCONNECT_ALERT_THRESHOLD_MS` — grace period before a transient disconnect (or stalled reconnect loop) escalates to an offline alert. Defaults to 5 minutes; debounces routine self-healing shard blips so the ops channel isn't spammed.
+- Optional ops env: `ORACLE_JUSTICE_WINDOW_MINUTES` — how far back (in minutes) the justice scan looks for toxic messages. Default 30, max 1440. Invalid values fall back to default with a warning.
+- Optional ops env: `ORACLE_JUSTICE_SCAN_LIMIT` — max number of channel messages inspected per justice scan. Default 100, max 500. Invalid values fall back to default with a warning.
 
 ## Stack
 
