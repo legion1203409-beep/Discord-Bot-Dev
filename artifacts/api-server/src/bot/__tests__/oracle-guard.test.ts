@@ -173,6 +173,35 @@ describe("containsSwear", () => {
     expect(containsSwear("ce animal de companie sa aleg?")).toBe(false);
     expect(containsSwear("un curent de aer rece")).toBe(false);
   });
+
+  it("catches 'dracu' and inflected forms (previously missing)", () => {
+    expect(containsSwear("de dracu")).toBe(true);
+    expect(containsSwear("la dracu cu tine")).toBe(true);
+    expect(containsSwear("dracului de oracle")).toBe(true);
+    expect(containsSwear("draci")).toBe(true);
+    expect(containsSwear("dracilor")).toBe(true);
+    expect(containsSwear("ei drace")).toBe(true);
+  });
+
+  it("does not false-positive on RPG terms that start with 'drac'", () => {
+    expect(containsSwear("abilitate draconika")).toBe(false);
+    expect(containsSwear("draconic power")).toBe(false);
+  });
+
+  it("catches 'cacat' and inflected forms", () => {
+    expect(containsSwear("esti un cacat")).toBe(true);
+    expect(containsSwear("cacati")).toBe(true);
+  });
+
+  it("catches 'netrebnic' and vocative forms", () => {
+    expect(containsSwear("netrebnicule")).toBe(true);
+    expect(containsSwear("netrebnicilor")).toBe(true);
+  });
+
+  it("catches 'ticalos' and feminine forms (normalised without diacritics)", () => {
+    expect(containsSwear("esti un ticalos")).toBe(true);
+    expect(containsSwear("ticaloasa")).toBe(true);
+  });
 });
 
 // ─── buildPatterns ─────────────────────────────────────────────────────────────

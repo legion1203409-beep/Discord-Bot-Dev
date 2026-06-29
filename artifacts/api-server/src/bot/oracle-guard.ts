@@ -40,14 +40,23 @@ const SWEAR_STEMS = [
   "tembel", "retard", "nesimtit", "nemernic", "jeg", "gunoi", "labagiu",
   "labar", "dobitoc", "dobitoac", "javr", "scarb", "mucos", "handicapat",
   "magar", "bou",
+  // additional insults reported as missing
+  "cacat",     // cacat, cacati, cacata (no innocent Romanian word starts with "cacat")
+  "netrebnic", // netrebnicule, netrebnicilor
+  "tical",     // ticalos, ticaloasa (normalised form of "ticălos" without diacritics)
 ];
 
 // Short words matched as WHOLE words only (`\bword\b`), so they never hit an
 // innocent word that merely starts the same way ("boi" ≠ "boiler",
 // "vaca" ≠ "vacanță", "porc" ≠ "porțelan"). "bou" is a stem above (no innocent
 // Romanian word starts with "bou"), which also catches "boul"/"boule"/"boului".
+//
+// "drac*" forms are listed individually here (not as a stem) to avoid hitting
+// innocent RPG terms like "draconic" that start with the same prefix.
 const SWEAR_EXACT = [
   "boi", "boilor", "vaca", "vaci", "vaco", "porc", "porci", "porcule",
+  // all common inflections of "drac" (devil) used as profanity in Romanian
+  "drac", "dracu", "dracului", "draci", "dracilor", "drace",
 ];
 
 function escapeRe(word: string): string {
