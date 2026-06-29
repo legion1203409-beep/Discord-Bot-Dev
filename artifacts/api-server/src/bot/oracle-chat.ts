@@ -429,6 +429,57 @@ function underGlobalCap(now: number): boolean {
 }
 
 /**
+ * Returns true when the message text is substantial enough to merit an Oracle
+ * reply. Filters out drive-by tags with no content ("@oracle gg", "@oracle 😂")
+ * while preserving questions, help requests, and game-related messages.
+ *
+ * Heuristic (any match → reply):
+ *  1. Contains a question mark.
+ *  2. Starts with or contains a Romanian question word.
+ *  3. Contains a help / complaint keyword.
+ *  4. Contains a game-mechanic term the Oracle knows about.
+ *  5. Is at least 5 words long (probably a real sentence even without keywords).
+ *
+ * Matching is case-insensitive and diacritic-tolerant (compares normalised forms).
+ */
+function isWorthReplying(text: string): boolean {
+  if (text.includes("?")) return true;
+
+  // Normalise: lowercase + strip diacritics so "când"/"cand", "clasă"/"clasa" both match.
+  const norm = text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  const QUESTION_WORDS = [
+    "cum", "ce", "cand", "unde", "cine", "de ce", "oare", "daca",
+    "cum de", "de unde", "cat", "cata", "cati", "cate",
+  ];
+  const HELP_WORDS = [
+    "ajutor", "ajuta", "nu stiu", "nu inteleg", "nu merge", "nu functioneaza",
+    "nu pot", "nu am", "nu stie", "explica", "spune", "vreau", "inseamna",
+    "ce fac", "ce trebuie", "cum fac", "nu reusesc", "plang", "suparat",
+    "trist", "rau", "nu am reusit", "am pierdut", "am murit",
+  ];
+  const GAME_WORDS = [
+    "profil", "magazin", "clasa", "clasament", "companion", "oboli", "obol",
+    "cufar", "cheie", "chei", "event", "eveniment", "boss", "dragon", "lup",
+    "corb", "spirit", "golem", "abilitate", "forja", "umbrelor", "xp", "nivel",
+    "atac", "daune", "hp", "viata", "blestem", "binecuvantare", "reputatie",
+    "lovitura", "scut", "regal", "jackpot", "multiplicator", "clasa", "start",
+  ];
+
+  for (const kw of [...QUESTION_WORDS, ...HELP_WORDS, ...GAME_WORDS]) {
+    if (norm.includes(kw)) return true;
+  }
+
+  // Fallback: a message of ≥ 5 words is probably a real sentence.
+  if (norm.trim().split(/\s+/).length >= 5) return true;
+
+  return false;
+}
+
+/**
  * Answer when the Oracle is addressed. Detects both a direct @mention and a reply
  * to one of the bot's own messages (a reply with the ping on lists the bot in
  * `mentions.users`). Discord delivers `content` for messages that mention the bot
@@ -456,6 +507,13 @@ export async function maybeReplyAsOracle(discordClient: Client, message: Message
     // turned off while the privileged Message Content intent is disabled — Discord
     // then withholds the text, so the Oracle has nothing to answer.
     if (!cleaned) return;
+
+    // Filter drive-by tags with no meaningful content ("@oracle gg", "@oracle 😂").
+    // Complete silence — no fallback line — so the Oracle feels selective, not broken.
+    if (!isWorthReplying(cleaned)) {
+      logger.debug({ len: cleaned.length }, "Oracle ignoring low-signal message");
+      return;
+    }
 
     // Read-only pre-filter: skip needless network/model work for throttled users
     // or once the hourly cap is already spent.
