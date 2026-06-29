@@ -17,8 +17,16 @@ vi.mock("../status-effects", () => ({
 }));
 
 // Import after mocks are registered
-import { containsSwear, handleToxicity, handlePardon, isPardonRequest, envInt } from "../oracle-guard";
-import { clearCurses } from "../status-effects";
+import {
+  containsSwear,
+  handleToxicity,
+  handlePardon,
+  handleJustice,
+  isPardonRequest,
+  isJusticeRequest,
+  envInt,
+} from "../oracle-guard";
+import { clearCurses, grantRandomCurse } from "../status-effects";
 import type { Client, Message } from "discord.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -702,5 +710,588 @@ describe("handlePardon", () => {
     });
     const result = await handlePardon({} as Client, msg as unknown as Message);
     expect(result).toBe(true);
+  });
+});
+
+// ─── isJusticeRequest ──────────────────────────────────────────────────────────
+
+describe("isJusticeRequest", () => {
+  it("detects 'fa dreptate'", () => {
+    expect(isJusticeRequest("fa dreptate")).toBe(true);
+  });
+
+  it("detects 'face dreptate'", () => {
+    expect(isJusticeRequest("face dreptate")).toBe(true);
+  });
+
+  it("detects 'judeca-i'", () => {
+    expect(isJusticeRequest("judeca-i")).toBe(true);
+  });
+
+  it("detects 'judecati'", () => {
+    expect(isJusticeRequest("judecati")).toBe(true);
+  });
+
+  it("detects 'penalizeaza'", () => {
+    expect(isJusticeRequest("penalizeaza")).toBe(true);
+  });
+
+  it("detects 'curata canalul'", () => {
+    expect(isJusticeRequest("curata canalul")).toBe(true);
+  });
+
+  it("detects 'fa ordine'", () => {
+    expect(isJusticeRequest("fa ordine")).toBe(true);
+  });
+
+  it("detects 'aplica blestemul'", () => {
+    expect(isJusticeRequest("aplica blestemul")).toBe(true);
+  });
+
+  it("detects 'pedepseste'", () => {
+    expect(isJusticeRequest("pedepseste")).toBe(true);
+  });
+
+  it("detects 'executa dreptatea'", () => {
+    expect(isJusticeRequest("executa dreptatea")).toBe(true);
+  });
+
+  it("normalises diacritics — 'fă dreptate' matches 'fa dreptate' pattern", () => {
+    expect(isJusticeRequest("fă dreptate")).toBe(true);
+  });
+
+  it("returns false for a pardon phrase", () => {
+    expect(isJusticeRequest("iarta-l")).toBe(false);
+  });
+
+  it("returns false for plain conversation text", () => {
+    expect(isJusticeRequest("buna ziua oracolule")).toBe(false);
+  });
+
+  it("returns false for a swear word (not a justice command)", () => {
+    expect(isJusticeRequest("pula ta")).toBe(false);
+  });
+});
+
+// ─── handleJustice ─────────────────────────────────────────────────────────────
+
+/**
+ * Build a minimal fake Message for handleJustice tests.
+ *
+ * `channelMessages` is a list of fake past messages that will be returned by
+ * `channel.messages.fetch()`. Each entry specifies the author, content, and
+ * how old the message is (in ms relative to now).
+ */
+function makeJusticeMessage(opts: {
+  authorId: string;
+  content: string;
+  guildOwnerId?: string;
+  channelMessages?: Array<{
+    id: string;
+    authorId: string;
+    authorBot?: boolean;
+    content: string;
+    ageMs: number;
+    displayName?: string;
+  }>;
+  fetchThrows?: boolean;
+  hasPermission?: boolean;
+  memberManageable?: boolean;
+  offenderTimeoutFn?: ReturnType<typeof vi.fn>;
+}) {
+  const {
+    authorId,
+    content,
+    guildOwnerId = "guild-owner-id",
+    channelMessages = [],
+    fetchThrows = false,
+    hasPermission = true,
+    memberManageable = true,
+  } = opts;
+
+  const offenderTimeout = opts.offenderTimeoutFn ?? vi.fn().mockResolvedValue(undefined);
+  const mockReply = vi.fn().mockResolvedValue(undefined);
+
+  const now = Date.now();
+
+  // Build the past-message collection (Map, which has .values())
+  const fetchedMap = new Map(
+    channelMessages.map((m) => [
+      m.id,
+      {
+        author: { id: m.authorId, bot: m.authorBot ?? false },
+        content: m.content,
+        createdTimestamp: now - m.ageMs,
+        member: m.displayName ? { displayName: m.displayName } : null,
+      },
+    ]),
+  );
+
+  const botMember = {
+    permissions: { has: vi.fn().mockReturnValue(hasPermission) },
+  };
+
+  const offenderMember = {
+    manageable: memberManageable,
+    timeout: offenderTimeout,
+  };
+
+  const channel = {
+    isTextBased: () => true,
+    messages: {
+      fetch: fetchThrows
+        ? vi.fn().mockRejectedValue(new Error("Missing Access"))
+        : vi.fn().mockResolvedValue(fetchedMap),
+    },
+  };
+
+  const msg = {
+    content,
+    id: "justice-trigger-msg-id",
+    author: { id: authorId },
+    channel,
+    guild: {
+      ownerId: guildOwnerId,
+      members: {
+        me: botMember,
+        fetch: vi.fn().mockResolvedValue(offenderMember),
+      },
+    },
+    reply: mockReply,
+    _reply: mockReply,
+    _offenderTimeout: offenderTimeout,
+    _botMember: botMember,
+  };
+
+  // Add "messages" as a property to satisfy the `"messages" in channel` check.
+  Object.defineProperty(msg.channel, "messages", {
+    value: msg.channel.messages,
+    enumerable: true,
+  });
+
+  return msg;
+}
+
+describe("handleJustice", () => {
+  const OWNER_ID = "justice-owner-id";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.ORACLE_OWNER_ID = OWNER_ID;
+  });
+
+  afterEach(() => {
+    delete process.env.ORACLE_OWNER_ID;
+  });
+
+  it("returns false when client.user is null (bot not ready)", async () => {
+    const msg = makeJusticeMessage({ authorId: OWNER_ID, content: "fa dreptate" });
+    const client = { user: null } as unknown as Client;
+    const result = await handleJustice(client, msg as unknown as Message);
+    expect(result).toBe(false);
+    expect(msg._reply).not.toHaveBeenCalled();
+  });
+
+  it("returns false when the author is not the owner", async () => {
+    const msg = makeJusticeMessage({
+      authorId: "random-user-abc",
+      content: "fa dreptate",
+    });
+    const result = await handleJustice(
+      { user: { id: "bot-id" } } as unknown as Client,
+      msg as unknown as Message,
+    );
+    expect(result).toBe(false);
+    expect(msg._reply).not.toHaveBeenCalled();
+  });
+
+  it("returns false when the message is not a justice request", async () => {
+    const msg = makeJusticeMessage({
+      authorId: OWNER_ID,
+      content: "buna ziua oracolule",
+    });
+    const result = await handleJustice(
+      { user: { id: "bot-id" } } as unknown as Client,
+      msg as unknown as Message,
+    );
+    expect(result).toBe(false);
+    expect(msg._reply).not.toHaveBeenCalled();
+  });
+
+  it("strips @mention tokens before checking for justice phrase", async () => {
+    // Use a realistic numeric Discord snowflake so the regex /<@!?\d+>/g actually strips it.
+    // The content is ONLY the mention followed by the justice phrase — without stripping,
+    // the leading `<@` chars before `fa` would prevent the \b boundary match in isJusticeRequest.
+    const msg = makeJusticeMessage({
+      authorId: OWNER_ID,
+      content: "<@123456789012345678>fa dreptate",
+      channelMessages: [],
+    });
+    const result = await handleJustice(
+      { user: { id: "123456789012345678" } } as unknown as Client,
+      msg as unknown as Message,
+    );
+    // No offenders → replies with clean-channel message and returns true.
+    // If the mention were NOT stripped, `<@digits>fa` would break the \b boundary on "fa".
+    expect(result).toBe(true);
+    const replyContent: string = (msg._reply.mock.calls[0] as [{ content: string }])[0].content;
+    expect(replyContent).toContain("Canalul este curat");
+  });
+
+  it("returns false when channel.messages.fetch throws", async () => {
+    const msg = makeJusticeMessage({
+      authorId: OWNER_ID,
+      content: "fa dreptate",
+      fetchThrows: true,
+    });
+    const result = await handleJustice(
+      { user: { id: "bot-id" } } as unknown as Client,
+      msg as unknown as Message,
+    );
+    expect(result).toBe(false);
+    expect(msg._reply).not.toHaveBeenCalled();
+  });
+
+  it("replies with the clean-channel message when no offenders are found", async () => {
+    const msg = makeJusticeMessage({
+      authorId: OWNER_ID,
+      content: "fa dreptate",
+      channelMessages: [
+        { id: "m1", authorId: "innocent-user", content: "buna ziua", ageMs: 1000 },
+      ],
+    });
+    const result = await handleJustice(
+      { user: { id: "bot-id" } } as unknown as Client,
+      msg as unknown as Message,
+    );
+    expect(result).toBe(true);
+    expect(msg._reply).toHaveBeenCalledOnce();
+    const replyContent: string = (msg._reply.mock.calls[0] as [{ content: string }])[0].content;
+    expect(replyContent).toContain("Canalul este curat");
+  });
+
+  it("skips bot messages — bots are never penalised", async () => {
+    const msg = makeJusticeMessage({
+      authorId: OWNER_ID,
+      content: "fa dreptate",
+      channelMessages: [
+        { id: "m-bot", authorId: "some-bot-id", authorBot: true, content: "pula", ageMs: 1000 },
+      ],
+    });
+    const result = await handleJustice(
+      { user: { id: "bot-id" } } as unknown as Client,
+      msg as unknown as Message,
+    );
+    expect(result).toBe(true);
+    const replyContent: string = (msg._reply.mock.calls[0] as [{ content: string }])[0].content;
+    expect(replyContent).toContain("Canalul este curat");
+  });
+
+  it("skips the owner's own messages — owner is never penalised", async () => {
+    const msg = makeJusticeMessage({
+      authorId: OWNER_ID,
+      content: "fa dreptate",
+      channelMessages: [
+        { id: "m-owner", authorId: OWNER_ID, content: "pula", ageMs: 1000 },
+      ],
+    });
+    const result = await handleJustice(
+      { user: { id: "bot-id" } } as unknown as Client,
+      msg as unknown as Message,
+    );
+    expect(result).toBe(true);
+    const replyContent: string = (msg._reply.mock.calls[0] as [{ content: string }])[0].content;
+    expect(replyContent).toContain("Canalul este curat");
+  });
+
+  it("respects the time cutoff — messages older than the window are ignored", async () => {
+    // Default window is 30 min = 1_800_000 ms; use 31 min old message
+    const msg = makeJusticeMessage({
+      authorId: OWNER_ID,
+      content: "fa dreptate",
+      channelMessages: [
+        {
+          id: "m-old",
+          authorId: "offender-old",
+          content: "pula",
+          ageMs: 31 * 60 * 1000, // 31 minutes old → outside the 30-min default window
+        },
+      ],
+    });
+    const result = await handleJustice(
+      { user: { id: "bot-id" } } as unknown as Client,
+      msg as unknown as Message,
+    );
+    expect(result).toBe(true);
+    const replyContent: string = (msg._reply.mock.calls[0] as [{ content: string }])[0].content;
+    expect(replyContent).toContain("Canalul este curat");
+  });
+
+  it("includes messages within the time window as offenders", async () => {
+    const mockTimeout = vi.fn().mockResolvedValue(undefined);
+    const msg = makeJusticeMessage({
+      authorId: OWNER_ID,
+      content: "fa dreptate",
+      channelMessages: [
+        {
+          id: "m-recent",
+          authorId: "offender-recent-u1",
+          content: "muie",
+          ageMs: 5 * 60 * 1000, // 5 minutes old → inside the 30-min window
+          displayName: "BadUser",
+        },
+      ],
+      offenderTimeoutFn: mockTimeout,
+    });
+    const result = await handleJustice(
+      { user: { id: "bot-id" } } as unknown as Client,
+      msg as unknown as Message,
+    );
+    expect(result).toBe(true);
+    const replyContent: string = (msg._reply.mock.calls[0] as [{ content: string }])[0].content;
+    expect(replyContent).toContain("Cartea Judecății");
+    expect(replyContent).toContain("BadUser");
+  });
+
+  it("applies grantRandomCurse to each unique offender", async () => {
+    const grantCurseMock = vi.mocked(grantRandomCurse);
+
+    const msg = makeJusticeMessage({
+      authorId: OWNER_ID,
+      content: "fa dreptate",
+      channelMessages: [
+        { id: "m1", authorId: "offender-j1", content: "pizda", ageMs: 1000 },
+        { id: "m2", authorId: "offender-j2", content: "muie", ageMs: 2000 },
+      ],
+    });
+    await handleJustice(
+      { user: { id: "bot-id" } } as unknown as Client,
+      msg as unknown as Message,
+    );
+    // One curse per unique offender
+    expect(grantCurseMock).toHaveBeenCalledTimes(2);
+    expect(grantCurseMock).toHaveBeenCalledWith("offender-j1");
+    expect(grantCurseMock).toHaveBeenCalledWith("offender-j2");
+  });
+
+  it("applies the Discord timeout to each offender when bot has permission", async () => {
+    const mockTimeout = vi.fn().mockResolvedValue(undefined);
+    const msg = makeJusticeMessage({
+      authorId: OWNER_ID,
+      content: "fa dreptate",
+      channelMessages: [
+        { id: "mx1", authorId: "offender-to1", content: "pula", ageMs: 1000 },
+      ],
+      hasPermission: true,
+      memberManageable: true,
+      offenderTimeoutFn: mockTimeout,
+    });
+    await handleJustice(
+      { user: { id: "bot-id" } } as unknown as Client,
+      msg as unknown as Message,
+    );
+    expect(mockTimeout).toHaveBeenCalledOnce();
+    // First arg is duration in ms (positive number), second is the reason string
+    const [durationArg, reasonArg] = mockTimeout.mock.calls[0] as [number, string];
+    expect(durationArg).toBeGreaterThan(0);
+    expect(reasonArg).toContain("dreptate");
+  });
+
+  it("does not apply Discord timeout when bot lacks ModerateMembers permission", async () => {
+    const mockTimeout = vi.fn().mockResolvedValue(undefined);
+    const msg = makeJusticeMessage({
+      authorId: OWNER_ID,
+      content: "fa dreptate",
+      channelMessages: [
+        { id: "mx2", authorId: "offender-noperm", content: "pula", ageMs: 1000 },
+      ],
+      hasPermission: false,
+      memberManageable: true,
+      offenderTimeoutFn: mockTimeout,
+    });
+    await handleJustice(
+      { user: { id: "bot-id" } } as unknown as Client,
+      msg as unknown as Message,
+    );
+    expect(mockTimeout).not.toHaveBeenCalled();
+  });
+
+  it("does not apply Discord timeout when member is not manageable", async () => {
+    const mockTimeout = vi.fn().mockResolvedValue(undefined);
+    const msg = makeJusticeMessage({
+      authorId: OWNER_ID,
+      content: "fa dreptate",
+      channelMessages: [
+        { id: "mx3", authorId: "offender-unmanageable", content: "pula", ageMs: 1000 },
+      ],
+      hasPermission: true,
+      memberManageable: false,
+      offenderTimeoutFn: mockTimeout,
+    });
+    await handleJustice(
+      { user: { id: "bot-id" } } as unknown as Client,
+      msg as unknown as Message,
+    );
+    expect(mockTimeout).not.toHaveBeenCalled();
+  });
+
+  it("still returns true and posts verdict when member.timeout throws", async () => {
+    const mockTimeout = vi.fn().mockRejectedValue(new Error("Missing Access"));
+    const msg = makeJusticeMessage({
+      authorId: OWNER_ID,
+      content: "fa dreptate",
+      channelMessages: [
+        { id: "mx4", authorId: "offender-throw", content: "muie", ageMs: 1000, displayName: "ThrowUser" },
+      ],
+      hasPermission: true,
+      memberManageable: true,
+      offenderTimeoutFn: mockTimeout,
+    });
+    const result = await handleJustice(
+      { user: { id: "bot-id" } } as unknown as Client,
+      msg as unknown as Message,
+    );
+    expect(result).toBe(true);
+    expect(msg._reply).toHaveBeenCalledOnce();
+  });
+
+  it("deduplicates offenders — multiple toxic messages from the same user count once", async () => {
+    const grantCurseMock = vi.mocked(grantRandomCurse);
+
+    const msg = makeJusticeMessage({
+      authorId: OWNER_ID,
+      content: "fa dreptate",
+      channelMessages: [
+        { id: "dup1", authorId: "offender-dup", content: "pula", ageMs: 1000 },
+        { id: "dup2", authorId: "offender-dup", content: "muie", ageMs: 2000 },
+        { id: "dup3", authorId: "offender-dup", content: "idiot", ageMs: 3000 },
+      ],
+    });
+    await handleJustice(
+      { user: { id: "bot-id" } } as unknown as Client,
+      msg as unknown as Message,
+    );
+    // Should be called exactly once for the deduplicated offender
+    expect(grantCurseMock).toHaveBeenCalledTimes(1);
+    expect(grantCurseMock).toHaveBeenCalledWith("offender-dup");
+  });
+
+  it("verdict reply contains the offender count and closing phrase", async () => {
+    const msg = makeJusticeMessage({
+      authorId: OWNER_ID,
+      content: "fa dreptate",
+      channelMessages: [
+        { id: "vd1", authorId: "offender-vd1", content: "pula", ageMs: 1000, displayName: "VerdictUser" },
+      ],
+    });
+    await handleJustice(
+      { user: { id: "bot-id" } } as unknown as Client,
+      msg as unknown as Message,
+    );
+    const replyContent: string = (msg._reply.mock.calls[0] as [{ content: string }])[0].content;
+    expect(replyContent).toContain("1");
+    expect(replyContent).toContain("Dreptatea cenușii");
+  });
+
+  it("verdict reply includes the curse emoji and label from grantRandomCurse", async () => {
+    vi.mocked(grantRandomCurse).mockReturnValue({
+      id: "frozen", kind: "curse", label: "Îngheț Total", emoji: "❄️",
+      flavor: "test", durationMs: 1000, mods: {},
+    });
+
+    const msg = makeJusticeMessage({
+      authorId: OWNER_ID,
+      content: "fa dreptate",
+      channelMessages: [
+        { id: "ce1", authorId: "offender-ce1", content: "pula", ageMs: 1000, displayName: "FrozenUser" },
+      ],
+    });
+    await handleJustice(
+      { user: { id: "bot-id" } } as unknown as Client,
+      msg as unknown as Message,
+    );
+    const replyContent: string = (msg._reply.mock.calls[0] as [{ content: string }])[0].content;
+    expect(replyContent).toContain("❄️");
+    expect(replyContent).toContain("Îngheț Total");
+  });
+
+  it("accepts the guild owner as the justice authority when ORACLE_OWNER_ID is not set", async () => {
+    delete process.env.ORACLE_OWNER_ID;
+
+    const msg = makeJusticeMessage({
+      authorId: "guild-owner-id",
+      content: "fa dreptate",
+      guildOwnerId: "guild-owner-id",
+      channelMessages: [],
+    });
+    const result = await handleJustice(
+      { user: { id: "bot-id" } } as unknown as Client,
+      msg as unknown as Message,
+    );
+    // No offenders → clean-channel reply, but still handled (true)
+    expect(result).toBe(true);
+  });
+
+  it("verdict reply marks the timeout as 'fără putere de amuțire' when mute was skipped", async () => {
+    const msg = makeJusticeMessage({
+      authorId: OWNER_ID,
+      content: "fa dreptate",
+      channelMessages: [
+        { id: "np1", authorId: "offender-np1", content: "pula", ageMs: 1000, displayName: "NoPowerUser" },
+      ],
+      hasPermission: false,
+    });
+    await handleJustice(
+      { user: { id: "bot-id" } } as unknown as Client,
+      msg as unknown as Message,
+    );
+    const replyContent: string = (msg._reply.mock.calls[0] as [{ content: string }])[0].content;
+    expect(replyContent).toContain("fără putere de amuțire");
+  });
+
+  it("verdict reply shows timed mute string when timeout succeeds", async () => {
+    const msg = makeJusticeMessage({
+      authorId: OWNER_ID,
+      content: "fa dreptate",
+      channelMessages: [
+        { id: "ok1", authorId: "offender-ok1", content: "pula", ageMs: 1000, displayName: "MutedUser" },
+      ],
+      hasPermission: true,
+      memberManageable: true,
+    });
+    await handleJustice(
+      { user: { id: "bot-id" } } as unknown as Client,
+      msg as unknown as Message,
+    );
+    const replyContent: string = (msg._reply.mock.calls[0] as [{ content: string }])[0].content;
+    expect(replyContent).toContain("tăcere forțată");
+    expect(replyContent).not.toContain("fără putere de amuțire");
+  });
+
+  it("applies a timeout to EACH unique offender, not just the first", async () => {
+    const mockTimeout = vi.fn().mockResolvedValue(undefined);
+    const msg = makeJusticeMessage({
+      authorId: OWNER_ID,
+      content: "fa dreptate",
+      channelMessages: [
+        { id: "mo1", authorId: "offender-multi-a", content: "pula", ageMs: 1000, displayName: "UserA" },
+        { id: "mo2", authorId: "offender-multi-b", content: "muie", ageMs: 2000, displayName: "UserB" },
+        { id: "mo3", authorId: "offender-multi-c", content: "idiot", ageMs: 3000, displayName: "UserC" },
+      ],
+      hasPermission: true,
+      memberManageable: true,
+      offenderTimeoutFn: mockTimeout,
+    });
+    await handleJustice(
+      { user: { id: "bot-id" } } as unknown as Client,
+      msg as unknown as Message,
+    );
+    // guild.members.fetch is called once per unique offender
+    expect(msg.guild.members.fetch).toHaveBeenCalledTimes(3);
+    // timeout is applied to each offender
+    expect(mockTimeout).toHaveBeenCalledTimes(3);
+    // verdict lists all 3
+    const replyContent: string = (msg._reply.mock.calls[0] as [{ content: string }])[0].content;
+    expect(replyContent).toContain("3");
   });
 });
