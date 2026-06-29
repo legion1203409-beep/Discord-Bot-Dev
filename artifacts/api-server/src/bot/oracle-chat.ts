@@ -435,46 +435,53 @@ function underGlobalCap(now: number): boolean {
  *
  * Heuristic (any match → reply):
  *  1. Contains a question mark.
- *  2. Starts with or contains a Romanian question word.
- *  3. Contains a help / complaint keyword.
- *  4. Contains a game-mechanic term the Oracle knows about.
- *  5. Is at least 5 words long (probably a real sentence even without keywords).
+ *  2. At least 3 words OR at least 20 characters — likely a real sentence.
+ *  3. For shorter messages: a keyword matches at a word boundary so that
+ *     accidental substring hits ("rece" containing "ce") are not false-positives.
  *
- * Matching is case-insensitive and diacritic-tolerant (compares normalised forms).
+ * Matching is case-insensitive and diacritic-tolerant (NFD normalisation strips
+ * combining marks so "când"/"cand", "clasă"/"clasa" all match the same keyword).
  */
 function isWorthReplying(text: string): boolean {
   if (text.includes("?")) return true;
 
-  // Normalise: lowercase + strip diacritics so "când"/"cand", "clasă"/"clasa" both match.
+  // Normalise: lowercase + strip diacritics so Romanian chars become plain ASCII.
+  // After this, \b word-boundary assertions work correctly on all tokens.
   const norm = text
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
 
-  const QUESTION_WORDS = [
+  const words = norm.trim().split(/\s+/).filter(Boolean);
+
+  // A message with ≥3 words or ≥20 chars is almost certainly a real sentence —
+  // no keyword scan needed.
+  if (words.length >= 3 || norm.length >= 20) return true;
+
+  // Short message: only reply if it contains a meaningful keyword at a word
+  // boundary. "rece" must NOT match keyword "ce"; "de ce" must match as a phrase.
+  const KEYWORDS = [
+    // Romanian question words
     "cum", "ce", "cand", "unde", "cine", "de ce", "oare", "daca",
     "cum de", "de unde", "cat", "cata", "cati", "cate",
-  ];
-  const HELP_WORDS = [
+    // Help / complaint words
     "ajutor", "ajuta", "nu stiu", "nu inteleg", "nu merge", "nu functioneaza",
-    "nu pot", "nu am", "nu stie", "explica", "spune", "vreau", "inseamna",
-    "ce fac", "ce trebuie", "cum fac", "nu reusesc", "plang", "suparat",
-    "trist", "rau", "nu am reusit", "am pierdut", "am murit",
-  ];
-  const GAME_WORDS = [
+    "nu pot", "nu stie", "explica", "vreau", "inseamna",
+    // Game-mechanic terms
     "profil", "magazin", "clasa", "clasament", "companion", "oboli", "obol",
-    "cufar", "cheie", "chei", "event", "eveniment", "boss", "dragon", "lup",
-    "corb", "spirit", "golem", "abilitate", "forja", "umbrelor", "xp", "nivel",
-    "atac", "daune", "hp", "viata", "blestem", "binecuvantare", "reputatie",
-    "lovitura", "scut", "regal", "jackpot", "multiplicator", "clasa", "start",
+    "cufar", "cheie", "chei", "boss", "dragon", "lup", "corb", "spirit",
+    "golem", "abilitate", "forja", "umbrelor", "xp", "nivel", "blestem",
+    "binecuvantare", "reputatie", "lovitura", "scut", "regal",
   ];
 
-  for (const kw of [...QUESTION_WORDS, ...HELP_WORDS, ...GAME_WORDS]) {
-    if (norm.includes(kw)) return true;
+  for (const kw of KEYWORDS) {
+    // Escape the keyword and replace inner spaces with \s+ so multi-word phrases
+    // like "de ce" or "nu stiu" match even if the player typed extra spaces.
+    const pattern = new RegExp(
+      "\\b" + kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+") + "\\b",
+    );
+    if (pattern.test(norm)) return true;
   }
-
-  // Fallback: a message of ≥ 5 words is probably a real sentence.
-  if (norm.trim().split(/\s+/).length >= 5) return true;
 
   return false;
 }
