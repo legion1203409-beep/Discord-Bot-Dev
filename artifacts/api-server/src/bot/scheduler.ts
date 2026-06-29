@@ -6,7 +6,8 @@ import { startOracle, setOracleExtatic } from "./oracle";
 import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle, addPlayerReputation, addPlayerGold, addPlayerXp } from "./db";
 
 const EVENT_CHANNEL_ID = "1521180114652758178";
-const MAIN_CHANNEL_ID = "1382042144717410385";
+const BOSS_CHANNEL_ID  = "1521180064455200889";
+const MAIN_CHANNEL_ID  = "1382042144717410385";
 const APPLICATION_ID = "1472675543777280071";
 export const EVENT_DURATION_MS = 60 * 60 * 1000;
 const MIN_COOLDOWN_MS = 2 * 60 * 60 * 1000;
@@ -31,6 +32,8 @@ export interface BossState {
   maxHp: number;
   currentHp: number;
   messageId: string;
+  /** Discord channel ID where this boss was spawned — used to post leaderboard. */
+  channelId: string;
   lastHitAt: Map<string, number>;         // discordId → timestamp of last hit
   damageBy: Map<string, number>;          // discordId → total damage dealt to boss
   playerHp: Map<string, number>;          // discordId → current HP during boss fight
@@ -407,7 +410,7 @@ export async function fireFinalBoss(client: Client, eventId: number) {
     const ev = await getActiveEvent(eventId);
     if (!ev || !ev.isActive || ev.expiresAt.getTime() < Date.now()) return;
 
-    const channel = await client.channels.fetch(EVENT_CHANNEL_ID).catch(() => null);
+    const channel = await client.channels.fetch(BOSS_CHANNEL_ID).catch(() => null);
     if (!(channel instanceof TextChannel)) return;
 
     const participants = await getEventParticipants(eventId);
@@ -431,6 +434,7 @@ export async function fireFinalBoss(client: Client, eventId: number) {
       maxHp,
       currentHp: maxHp,
       messageId: msg.id,
+      channelId: BOSS_CHANNEL_ID,
       lastHitAt: new Map(),
       damageBy: new Map(),
       playerHp: new Map(),
@@ -454,7 +458,7 @@ export async function fireFinalBoss(client: Client, eventId: number) {
       boss.defeated = true;
       activeBossMap.delete(eventId);
       try {
-        const ch = await client.channels.fetch(EVENT_CHANNEL_ID).catch(() => null);
+        const ch = await client.channels.fetch(BOSS_CHANNEL_ID).catch(() => null);
         if (!(ch instanceof TextChannel)) return;
         // Reward fighters scaled by rank + rarity
         const bossRewards = computeBossRewards(boss.damageBy, boss.rarity);
@@ -475,6 +479,88 @@ export async function fireFinalBoss(client: Client, eventId: number) {
     logger.info({ eventId, bossLevel, rarity, maxHp }, "Final boss summoned");
   } catch (err) {
     logger.error({ err, eventId }, "Failed to summon final boss");
+  }
+}
+
+// ─── Standalone boss (independent of Ora Umbrelor) ───────────────────────────
+
+const STANDALONE_BOSS_MIN_MS = 30 * 60_000;
+const STANDALONE_BOSS_MAX_MS = 60 * 60_000;
+const STANDALONE_BOSS_ACTIVE_MS = 60 * 60_000; // active for 1 hour
+
+let standaloneBossId: number | null = null;
+
+export async function fireStandaloneBoss(client: Client) {
+  // Don't spawn if a standalone boss is already active.
+  if (standaloneBossId !== null && activeBossMap.has(standaloneBossId)) {
+    logger.info({ standaloneBossId }, "Standalone boss already active, skipping spawn");
+    return;
+  }
+
+  try {
+    const channel = await client.channels.fetch(BOSS_CHANNEL_ID).catch(() => null);
+    if (!(channel instanceof TextChannel)) {
+      logger.error({ channelId: BOSS_CHANNEL_ID }, "Boss channel not found");
+      return;
+    }
+
+    const bossId = Date.now(); // unique key — timestamps won't collide with small DB event IDs
+    const level = Math.floor(Math.random() * 21) + 10; // 10–30
+    const rarity = rollBossRarity();
+    const maxHp = bossMaxHp(level, rarity);
+
+    const msg = await channel.send({
+      embeds: [buildFinalBossEmbed(level, rarity, maxHp, maxHp)],
+      components: [finalBossRow(bossId)],
+    });
+
+    const boss: BossState = {
+      eventId: bossId,
+      level,
+      rarity,
+      maxHp,
+      currentHp: maxHp,
+      messageId: msg.id,
+      channelId: BOSS_CHANNEL_ID,
+      lastHitAt: new Map(),
+      damageBy: new Map(),
+      playerHp: new Map(),
+      playerNames: new Map(),
+      playerStats: new Map(),
+      participants: [], // standalone — no event participants required
+      defeated: false,
+    };
+    activeBossMap.set(bossId, boss);
+    standaloneBossId = bossId;
+    setOracleExtatic();
+
+    // 1-hour escape timer — boss flees if not defeated in time
+    const escapeTimer = setTimeout(async () => {
+      if (boss.defeated) return;
+      boss.defeated = true;
+      activeBossMap.delete(bossId);
+      if (standaloneBossId === bossId) standaloneBossId = null;
+      try {
+        const ch = await client.channels.fetch(BOSS_CHANNEL_ID).catch(() => null);
+        if (!(ch instanceof TextChannel)) return;
+        const bossRewards = computeBossRewards(boss.damageBy, boss.rarity);
+        await Promise.all([...bossRewards.entries()].flatMap(([discordId, r]) => [
+          addPlayerReputation(discordId, r.rep),
+          addPlayerGold(discordId, r.gold),
+          addPlayerXp(discordId, r.xp),
+        ]));
+        const bossMsg = await ch.messages.fetch(boss.messageId).catch(() => null);
+        await bossMsg?.delete().catch(() => null);
+        const leaderboard = buildBossLeaderboard(boss, boss.damageBy, boss.participants, boss.playerNames, boss.playerHp);
+        await ch.send({ embeds: [leaderboard] }).catch(() => null);
+      } catch { /* ignore */ }
+    }, STANDALONE_BOSS_ACTIVE_MS);
+    escapeTimer.unref?.();
+
+    logger.info({ bossId, level, rarity, maxHp }, "Standalone boss summoned");
+  } catch (err) {
+    logger.error({ err }, "Failed to summon standalone boss");
+    standaloneBossId = null;
   }
 }
 
@@ -657,6 +743,19 @@ export function startScheduler(client: Client) {
 
   setInterval(() => { void fireBattleEvent(client); }, BATTLE_EVENT_INTERVAL_MS);
   logger.info({ everyMinutes: BATTLE_EVENT_INTERVAL_MS / 60000 }, "Battle-event scheduler started");
+
+  // Standalone boss — spawns every 30–60 min regardless of active events.
+  const scheduleNextStandaloneBoss = () => {
+    const delay = STANDALONE_BOSS_MIN_MS +
+      Math.floor(Math.random() * (STANDALONE_BOSS_MAX_MS - STANDALONE_BOSS_MIN_MS + 1));
+    const t = setTimeout(async () => {
+      await fireStandaloneBoss(client);
+      scheduleNextStandaloneBoss();
+    }, delay);
+    t.unref?.();
+    logger.info({ nextInMinutes: (delay / 60_000).toFixed(1) }, "Next standalone boss scheduled");
+  };
+  scheduleNextStandaloneBoss();
 
   startOracle(client, MAIN_CHANNEL_ID);
 }

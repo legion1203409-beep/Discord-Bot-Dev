@@ -1096,6 +1096,7 @@ async function handleAbility(interaction: ButtonInteraction, eventId: number, ki
 
 const BOSS_HIT_COOLDOWN_MS = 4000;
 const EVENT_CHANNEL_ID = "1521180114652758178";
+const BOSS_CHANNEL_ID  = "1521180064455200889";
 
 async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) {
   await interaction.deferUpdate();
@@ -1190,7 +1191,7 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
 
     // Delete boss message and send leaderboard
     try {
-      const ch = await interaction.client.channels.fetch(EVENT_CHANNEL_ID);
+      const ch = await interaction.client.channels.fetch(boss.channelId);
       if (ch instanceof TextChannel) {
         const bossMsg = await ch.messages.fetch(boss.messageId).catch(() => null);
         await bossMsg?.delete().catch(() => null);
@@ -1221,7 +1222,7 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
 
   // Update boss embed with new HP + live damage list
   try {
-    const ch = await interaction.client.channels.fetch(EVENT_CHANNEL_ID);
+    const ch = await interaction.client.channels.fetch(boss.channelId);
     if (ch instanceof TextChannel) {
       const bossMsg = await ch.messages.fetch(boss.messageId).catch(() => null);
       if (bossMsg) {
