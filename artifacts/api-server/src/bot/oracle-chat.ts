@@ -613,11 +613,14 @@ export async function maybeReplyAsOracle(discordClient: Client, message: Message
       await message.channel.sendTyping().catch(() => {});
     }
 
-    // Admins (Administrator permission or guild owner) get a loyal-servant persona
-    // instead of the distant cryptic oracle.
-    const isAdmin =
-      message.guild?.ownerId === message.author.id ||
-      (message.member?.permissions.has(PermissionFlagsBits.Administrator) ?? false);
+    // When ORACLE_OWNER_ID is set, only that specific user (plus the guild owner)
+    // gets the loyal-servant persona. When unset, anyone with Administrator
+    // permission qualifies — useful for single-admin servers without the env var.
+    const ownerId = process.env.ORACLE_OWNER_ID?.trim();
+    const isAdmin = ownerId
+      ? message.author.id === ownerId || message.guild?.ownerId === message.author.id
+      : message.guild?.ownerId === message.author.id ||
+        (message.member?.permissions.has(PermissionFlagsBits.Administrator) ?? false);
 
     const mood = getCurrentMood();
     const reply = await generateOracleReply(cleaned, memory, repliedBotText, mood, speakerAlias, isAdmin);

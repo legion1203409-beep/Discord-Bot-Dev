@@ -26,3 +26,4 @@ channel = "stable-25_05"
 
 [userenv.shared]
 ORACLE_MESSAGE_CONTENT_ENABLED = "true"
+ORACLE_OWNER_ID = "585841275765522442"
