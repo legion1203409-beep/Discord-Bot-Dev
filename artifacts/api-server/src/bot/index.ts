@@ -24,6 +24,7 @@ import { recordMessage } from "./oracle";
 import { maybeReplyAsOracle, logOracleChatStatus } from "./oracle-chat";
 import { handleToxicity } from "./oracle-guard";
 import { getRewardMultipliers, getCombatModifiers, formatActiveEffects } from "./status-effects";
+import { handleBlestem, handleAdminGhid } from "./oracle-blestem";
 import {
   upsertPlayer,
   joinEvent,
@@ -310,6 +311,13 @@ const slashCommands = [
     .setDescription("🐉 [Admin] Invocă manual Dragonul Stins pentru test.")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
   new SlashCommandBuilder()
+    .setName("blestem")
+    .setDescription("☠️ [Admin] Oracolul aruncă un blestem asupra unui jucător.")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .addUserOption((opt) =>
+      opt.setName("jucator").setDescription("Jucătorul blestemat.").setRequired(true),
+    ),
+  new SlashCommandBuilder()
     .setName("admin")
     .setDescription("⚙️ [Admin] Controlează botul.")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
@@ -324,6 +332,9 @@ const slashCommands = [
     )
     .addSubcommand((sub) =>
       sub.setName("status").setDescription("📊 Verifică starea botului (uptime, events, boss)."),
+    )
+    .addSubcommand((sub) =>
+      sub.setName("ghid").setDescription("📖 Lista completă a comenzilor de admin și combinațiilor cu Oracolul."),
     ),
 ];
 
@@ -478,8 +489,10 @@ async function handleSpawnBoss(interaction: ChatInputCommandInteraction) {
 }
 
 async function handleAdmin(interaction: ChatInputCommandInteraction) {
-  if (!(await isOwner(interaction))) return;
   const sub = interaction.options.getSubcommand();
+  // ghid is available to any admin — no owner check needed
+  if (sub === "ghid") { await handleAdminGhid(interaction); return; }
+  if (!(await isOwner(interaction))) return;
 
   if (sub === "offline") {
     botClient?.user?.setPresence({ status: "invisible" });
@@ -1590,6 +1603,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
         if (interaction.commandName === "startevent") await handleStartEvent(interaction);
         if (interaction.commandName === "cufar") await handleSpawnChest(interaction);
         if (interaction.commandName === "spawnboss") await handleSpawnBoss(interaction);
+        if (interaction.commandName === "blestem") await handleBlestem(interaction);
         if (interaction.commandName === "admin") await handleAdmin(interaction);
       } else if (interaction.isButton()) {
         await handleButton(interaction as ButtonInteraction);
