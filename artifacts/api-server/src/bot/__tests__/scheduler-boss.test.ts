@@ -46,10 +46,13 @@ vi.mock("../status-effects", () => ({
 // Import pure functions from survival after mocks are set up
 import {
   CHEST_RARITIES,
+  LOCKED_CHEST_GOLD,
   computeBossRewards,
   bossMaxHp,
   rollChest,
   rollChestMultiplier,
+  spawnChest,
+  spawnLockedChest,
 } from "../survival";
 
 // ─── CHEST_RARITIES weight pool ────────────────────────────────────────────────
@@ -431,5 +434,61 @@ describe("BOSS_RARITY_WEIGHTS pool", () => {
   it("covers exactly the 4 boss rarities: comun, rar, epic, legendar", () => {
     const keys = BOSS_RARITY_WEIGHTS.map(([k]) => k).sort();
     expect(keys).toEqual(["comun", "epic", "legendar", "rar"]);
+  });
+});
+
+// ─── Fuzz: rollChest gold payout always within [min, max] ─────────────────────
+
+describe("rollChest gold payout range (10 000 rolls)", () => {
+  it("every gold value is within [rarity.min, rarity.max] for every roll", () => {
+    const RUNS = 10_000;
+    for (let i = 0; i < RUNS; i++) {
+      const { rarity, gold } = rollChest();
+      expect(gold).toBeGreaterThanOrEqual(rarity.min);
+      expect(gold).toBeLessThanOrEqual(rarity.max);
+    }
+  });
+});
+
+// ─── Fuzz: spawnChest gold payout always within [min, max] ────────────────────
+
+describe("spawnChest gold payout range (10 000 rolls per rarity)", () => {
+  const RUNS = 10_000;
+  for (const rarity of CHEST_RARITIES) {
+    it(`every gold value is within [${rarity.min}, ${rarity.max}] for rarity "${rarity.key}"`, () => {
+      for (let i = 0; i < RUNS; i++) {
+        const result = spawnChest(rarity.key);
+        expect(result).not.toBeNull();
+        expect(result!.gold).toBeGreaterThanOrEqual(rarity.min);
+        expect(result!.gold).toBeLessThanOrEqual(rarity.max);
+      }
+    });
+  }
+
+  it("returns null for an unknown rarity key", () => {
+    expect(spawnChest("nonexistent")).toBeNull();
+  });
+});
+
+// ─── Fuzz: spawnLockedChest gold payout always within LOCKED_CHEST_GOLD ranges ─
+
+describe("spawnLockedChest gold payout range (10 000 rolls per rarity)", () => {
+  const RUNS = 10_000;
+  const lockedKeys = Object.keys(LOCKED_CHEST_GOLD);
+
+  for (const key of lockedKeys) {
+    const range = LOCKED_CHEST_GOLD[key]!;
+    it(`every gold value is within [${range.min}, ${range.max}] for locked rarity "${key}"`, () => {
+      for (let i = 0; i < RUNS; i++) {
+        const result = spawnLockedChest(key);
+        expect(result).not.toBeNull();
+        expect(result!.gold).toBeGreaterThanOrEqual(range.min);
+        expect(result!.gold).toBeLessThanOrEqual(range.max);
+      }
+    });
+  }
+
+  it("returns null for an unknown locked rarity key", () => {
+    expect(spawnLockedChest("nonexistent")).toBeNull();
   });
 });
