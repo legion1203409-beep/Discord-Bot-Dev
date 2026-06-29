@@ -1228,7 +1228,9 @@ export function computeBossRewards(
   rarity: BossRarity,
 ): Map<string, { rep: number; gold: number; xp: number }> {
   const rm = RARITY_MULT[rarity];
-  const sorted = [...damageBy.entries()].sort((a, b) => b[1] - a[1]);
+  const sorted = [...damageBy.entries()]
+    .filter(([, dmg]) => dmg > 0)
+    .sort((a, b) => b[1] - a[1]);
   const result = new Map<string, { rep: number; gold: number; xp: number }>();
   sorted.forEach(([id], i) => {
     const rankMult = i === 0 ? 3 : i < 3 ? 2 : 1;

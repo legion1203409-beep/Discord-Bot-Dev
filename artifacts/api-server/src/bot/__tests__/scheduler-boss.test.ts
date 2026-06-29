@@ -322,6 +322,49 @@ describe("computeBossRewards — damage tracking and distribution", () => {
     const rewards = computeBossRewards(damage, "comun");
     expect(rewards.get("solo")).toEqual({ rep: 150, gold: 450, xp: 750 });
   });
+
+  // Guard: entries with damage <= 0 must be skipped regardless of how they
+  // ended up in damageBy (e.g. duplicate interaction bug writing 0 damage).
+  // Players who never hit the boss should not receive rewards even if they
+  // appear in the map with a zero or negative value.
+  it("skips entries with damage === 0 (player present but never hit)", () => {
+    const damage = new Map([["hitter", 400], ["ghost", 0]]);
+    const rewards = computeBossRewards(damage, "comun");
+    expect(rewards.has("ghost")).toBe(false);
+    expect(rewards.has("hitter")).toBe(true);
+  });
+
+  it("skips entries with damage < 0 (defensive: impossible in practice but guarded)", () => {
+    const damage = new Map([["hitter", 200], ["invalid", -50]]);
+    const rewards = computeBossRewards(damage, "comun");
+    expect(rewards.has("invalid")).toBe(false);
+    expect(rewards.has("hitter")).toBe(true);
+  });
+
+  it("returns empty map when all entries have damage <= 0", () => {
+    const damage = new Map([["ghost1", 0], ["ghost2", -1]]);
+    const rewards = computeBossRewards(damage, "comun");
+    expect(rewards.size).toBe(0);
+  });
+
+  it("zero-damage player does not shift rank multipliers for real hitters", () => {
+    // "ghost" at index 0 before filtering would have stolen the ×3 rank slot;
+    // after the guard, "alice" (top hitter) must still receive the ×3 multiplier.
+    const damage = new Map([["ghost", 0], ["alice", 500], ["bob", 200]]);
+    const rewards = computeBossRewards(damage, "comun");
+    expect(rewards.get("alice")).toEqual({ rep: 150, gold: 450, xp: 750 });
+    expect(rewards.get("bob")).toEqual({ rep: 100, gold: 300, xp: 500 });
+    expect(rewards.has("ghost")).toBe(false);
+  });
+
+  // Design decision: escape rewards use the same formula as kill rewards.
+  // Rationale: players who dealt damage to a boss that escaped still invested
+  // resources (HP, abilities) and deserve recognition proportional to their
+  // contribution. Full-kill rewards for a kill; same scaled rewards for an
+  // escape (the boss "won", so the economy impact is already lower because
+  // fewer players typically survive to the escape timer with meaningful damage).
+  // If a reduced-reward escape path is desired in future, add a `escaped`
+  // boolean parameter and apply a separate multiplier here.
 });
 
 // ─── Boss level formula (inline in fireFinalBoss) ─────────────────────────────
