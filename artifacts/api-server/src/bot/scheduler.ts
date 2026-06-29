@@ -48,6 +48,28 @@ export interface BossState {
 }
 export const activeBossMap = new Map<number, BossState>();
 
+// ─── Final-boss eligibility guard ─────────────────────────────────────────────
+// Pure function — no I/O — so it can be unit-tested without mocking Discord or DB.
+export type BossEligibilityResult =
+  | { ok: true }
+  | { ok: false; reason: "no_boss" | "defeated" | "not_participant" | "dead" };
+
+export function checkBossEligibility(
+  boss: BossState | undefined,
+  uid: string,
+): BossEligibilityResult {
+  if (!boss) return { ok: false, reason: "no_boss" };
+  if (boss.defeated) return { ok: false, reason: "defeated" };
+  const participant = boss.participants.find((p) => p.discordId === uid);
+  if (!participant) return { ok: false, reason: "not_participant" };
+  // Reject players who died during the event before the boss spawned
+  if (!participant.isAlive) return { ok: false, reason: "dead" };
+  // Reject players downed during the boss fight itself
+  const bossHp = boss.playerHp.get(uid);
+  if (bossHp !== undefined && bossHp <= 0) return { ok: false, reason: "dead" };
+  return { ok: true };
+}
+
 export const BOSS_RARITY_WEIGHTS: [BossRarity, number][] = [
   ["comun", 60], ["rar", 25], ["epic", 12], ["legendar", 3],
 ];
