@@ -155,7 +155,7 @@ describe("upgradeCompanion — escalating expectedLevel guard", () => {
     // eq() should have been called with (companionLevel, 7) at some point
     const { eq } = await import("drizzle-orm");
     const calls = vi.mocked(eq).mock.calls;
-    const hasExpectedLevelGuard = calls.some(([col, val]) => col === "companionLevel" && val === 7);
+    const hasExpectedLevelGuard = calls.some(([col, val]) => String(col) === "companionLevel" && val === 7);
     expect(hasExpectedLevelGuard).toBe(true);
   });
 });

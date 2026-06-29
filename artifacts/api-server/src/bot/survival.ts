@@ -36,7 +36,7 @@ export const RARITY: Record<Rarity, { label: string; emoji: string; color: numbe
   mitic: { label: "Mitic", emoji: "🔴", color: 0xef4444, rewardMult: 8 },
   boss: { label: "MINI-BOSS", emoji: "🔥", color: 0xb91c1c, rewardMult: 2 },
 };
-const RARITY_WEIGHTS: [Exclude<Rarity, "boss">, number][] = [
+export const RARITY_WEIGHTS: [Exclude<Rarity, "boss">, number][] = [
   ["comun", 690], ["rar", 220], ["epic", 80], ["legendar", 9], ["mitic", 1],
 ];
 
