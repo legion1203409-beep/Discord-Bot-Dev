@@ -411,7 +411,7 @@ async function handleMagazin(interaction: ChatInputCommandInteraction) {
 async function isOwner(interaction: ChatInputCommandInteraction): Promise<boolean> {
   if (interaction.guild && interaction.user.id === interaction.guild.ownerId) return true;
   await interaction.reply({
-    content: "🔒 Doar Stăpânul Regatului poate folosi această comandă.",
+    content: "🔒 Doar creatorul Regatului poate folosi această comandă.",
     ephemeral: true,
   });
   return false;

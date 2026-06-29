@@ -265,7 +265,7 @@ export async function handleJustice(client: Client, message: Message): Promise<b
       await message.reply({
         content:
           "*Oracolul cercetează umbrele canalului...* ✨\n" +
-          "Canalul este curat, Stăpâne. Niciun glas necurat n-a profanat Regatul în această vreme.",
+          "Canalul este curat. Niciun glas necurat n-a profanat Regatul în această vreme.",
         allowedMentions: { repliedUser: true, parse: [] },
       });
       logger.info({ requesterId: message.author.id }, "Oracle justice: no offenders found");
@@ -315,7 +315,7 @@ export async function handleJustice(client: Client, message: Message): Promise<b
     // Build in-character verdict announcement.
     const count = verdicts.length;
     const lines: string[] = [
-      `*Oracolul Cenușii a deschis Cartea Judecății, Stăpâne...* ⚖️`,
+      `*Oracolul Cenușii a deschis Cartea Judecății...* ⚖️`,
       ``,
       `Am cercetat umbrele și am găsit **${count}** ${count === 1 ? "limbă necurată" : "limbi necurate"}:`,
       ``,
@@ -392,7 +392,7 @@ export async function handlePardon(_client: Client, message: Message): Promise<b
     if (targets.size === 0) return false;
 
     const lines: string[] = [
-      `*Oracolul Cenușii a deschis Cartea Iertării, Stăpâne...* 🕊️`,
+      `*Oracolul Cenușii a deschis Cartea Iertării...* 🕊️`,
       ``,
     ];
 
@@ -426,7 +426,7 @@ export async function handlePardon(_client: Client, message: Message): Promise<b
       );
     }
 
-    lines.push(``, `Iertarea Stăpânului a fost rostită. Cenușa ascultă și uită.`);
+    lines.push(``, `Iertarea a fost rostită. Cenușa ascultă și uită.`);
 
     await message.reply({
       content: lines.join("\n").slice(0, 2000),
