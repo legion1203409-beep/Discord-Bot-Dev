@@ -118,6 +118,19 @@ export function pruneAllEffects(): void {
   for (const id of [...store.keys()]) pruned(id);
 }
 
+/**
+ * Removes all active curses from a player (blessings are left untouched).
+ * Returns the number of curses that were removed.
+ */
+export function clearCurses(discordId: string): number {
+  const list = pruned(discordId);
+  const remaining = list.filter((e) => e.def.kind !== "curse");
+  const removed = list.length - remaining.length;
+  if (remaining.length === 0) store.delete(discordId);
+  else store.set(discordId, remaining);
+  return removed;
+}
+
 /** Renders active effects for the profile embed, or "" when there are none. */
 export function formatActiveEffects(discordId: string): string {
   const active = getActiveEffects(discordId);

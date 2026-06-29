@@ -10,7 +10,7 @@
 import { PermissionFlagsBits } from "discord.js";
 import type { Client, Message } from "discord.js";
 import { logger } from "../lib/logger";
-import { grantRandomCurse } from "./status-effects";
+import { clearCurses, grantRandomCurse } from "./status-effects";
 
 // ── Swear-word detection ─────────────────────────────────────────────────────
 
@@ -312,6 +312,104 @@ export async function handleJustice(client: Client, message: Message): Promise<b
     return true;
   } catch (err) {
     logger.error({ err }, "Oracle justice: handleJustice failed");
+    return false;
+  }
+}
+
+// ── Pardon detection & execution ─────────────────────────────────────────────
+
+/**
+ * Patterns that identify a pardon (forgiveness) command from the owner.
+ * Matched against the NFD-normalised, diacritic-stripped, mention-stripped text.
+ */
+const PARDON_PATTERNS: RegExp[] = [
+  /\biarta(-l|-o)?\b/,
+  /\biertare\b/,
+  /\bgratiaza(-l|-o)?\b/,
+  /\bierta\b/,
+  /\breseteaza\s+blestemul\b/,
+  /\bridicã?\s+blestemul\b/,
+  /\bridicã?\s+pedeapsa\b/,
+  /\bpardoneaza(-l|-o)?\b/,
+];
+
+/**
+ * Returns true when the (normalised, mention-stripped) text is an unambiguous
+ * pardon command directed by the owner at a mentioned user.
+ */
+export function isPardonRequest(text: string): boolean {
+  const n = normalise(text);
+  return PARDON_PATTERNS.some((re) => re.test(n));
+}
+
+/**
+ * When the owner @mentions the Oracle with a pardon phrase AND mentions another
+ * user, resets that user's offense counter and clears any active game curses.
+ * Replies in-character with a medieval absolution message.
+ *
+ * Returns `true` when handled so the caller skips the normal AI reply path.
+ */
+export async function handlePardon(_client: Client, message: Message): Promise<boolean> {
+  try {
+    const ownerId = process.env.ORACLE_OWNER_ID?.trim();
+    const isOwner = ownerId
+      ? message.author.id === ownerId || message.guild?.ownerId === message.author.id
+      : message.guild?.ownerId === message.author.id;
+    if (!isOwner) return false;
+
+    const text = (message.content ?? "").replace(/<@!?\d+>/g, "").trim();
+    if (!isPardonRequest(text)) return false;
+
+    // Collect all non-bot, non-owner mentioned users.
+    const targets = message.mentions.users.filter(
+      (u) => !u.bot && u.id !== message.author.id,
+    );
+    if (targets.size === 0) return false;
+
+    const lines: string[] = [
+      `*Oracolul Cenușii a deschis Cartea Iertării, Stăpâne...* 🕊️`,
+      ``,
+    ];
+
+    for (const [userId, user] of targets) {
+      const rec = offenses.get(userId);
+      const hadOffenses = rec && rec.count > 0;
+      const hadCurses = clearCurses(userId) > 0;
+
+      // Reset the offense record entirely.
+      offenses.delete(userId);
+
+      const member = await message.guild?.members.fetch(userId).catch(() => null);
+      const displayName = member?.displayName ?? user.username;
+
+      if (!hadOffenses && !hadCurses) {
+        lines.push(
+          `✨ **${displayName}** — sufletul acestui muritor era deja curat. Cenușa nu ține minte nicio vină.`,
+        );
+      } else {
+        const parts: string[] = [];
+        if (hadOffenses) parts.push("ofensele șterse");
+        if (hadCurses)   parts.push("blestemurile ridicate");
+        lines.push(
+          `🕊️ **${displayName}** — ${parts.join(" și ")}. Cartea Judecății îl arată acum fără pată.`,
+        );
+      }
+
+      logger.info(
+        { userId, hadOffenses, hadCurses, requesterId: message.author.id },
+        "Oracle pardon: player absolved",
+      );
+    }
+
+    lines.push(``, `Iertarea Stăpânului a fost rostită. Cenușa ascultă și uită.`);
+
+    await message.reply({
+      content: lines.join("\n").slice(0, 2000),
+      allowedMentions: { repliedUser: true, parse: [] },
+    });
+    return true;
+  } catch (err) {
+    logger.error({ err }, "Oracle pardon: handlePardon failed");
     return false;
   }
 }

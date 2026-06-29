@@ -10,7 +10,7 @@ import { PermissionFlagsBits } from "discord.js";
 import { logger } from "../lib/logger";
 import { getCurrentMood } from "./oracle";
 import { MOOD_META, type MoodState } from "./oracle-content";
-import { handleJustice } from "./oracle-guard";
+import { handleJustice, handlePardon } from "./oracle-guard";
 
 // The feature is keyed on the user's own OpenAI key. When it is absent the Oracle
 // simply stays silent on mentions (degrade gracefully — never crash the bot).
@@ -628,6 +628,11 @@ export async function maybeReplyAsOracle(discordClient: Client, message: Message
     if (isAdmin) {
       const justiceHandled = await handleJustice(discordClient, message);
       if (justiceHandled) return;
+
+      // Pardon mode: owner commands the Oracle to forgive a mentioned player
+      // (resets offense counter + lifts active game curses).
+      const pardonHandled = await handlePardon(discordClient, message);
+      if (pardonHandled) return;
     }
 
     const mood = getCurrentMood();
