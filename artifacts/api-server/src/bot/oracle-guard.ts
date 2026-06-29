@@ -239,12 +239,14 @@ export function envInt(name: string, fallback: number, max?: number): number {
   return parsed;
 }
 
-/** How far back (ms) to scan for justice targets. Env: ORACLE_JUSTICE_WINDOW_MINUTES (default 30, max 1440). */
-const JUSTICE_WINDOW_MS =
-  envInt("ORACLE_JUSTICE_WINDOW_MINUTES", 30, 1440) * 60_000;
+/** How far back (minutes) to scan for justice targets. Env: ORACLE_JUSTICE_WINDOW_MINUTES (default 30, max 1440). */
+export const JUSTICE_WINDOW_MINUTES = envInt("ORACLE_JUSTICE_WINDOW_MINUTES", 30, 1440);
+
+/** How far back (ms) to scan for justice targets. Derived from JUSTICE_WINDOW_MINUTES. */
+const JUSTICE_WINDOW_MS = JUSTICE_WINDOW_MINUTES * 60_000;
 
 /** Max messages to inspect per justice scan. Env: ORACLE_JUSTICE_SCAN_LIMIT (default 100, max 500). */
-const JUSTICE_SCAN_LIMIT = envInt("ORACLE_JUSTICE_SCAN_LIMIT", 100, 500);
+export const JUSTICE_SCAN_LIMIT = envInt("ORACLE_JUSTICE_SCAN_LIMIT", 100, 500);
 
 /**
  * When the owner @mentions the Oracle with a justice trigger phrase, scan the

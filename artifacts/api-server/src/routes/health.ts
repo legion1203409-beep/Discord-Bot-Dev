@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { HealthCheckResponse } from "@workspace/api-zod";
 import { isBotOnline, getBotReadyAt, getShardStatus, getOracleReplyMode } from "../bot/index";
 import { isAlertsConfigured, DISCONNECT_ALERT_THRESHOLD_MS } from "../bot/alert";
+import { JUSTICE_WINDOW_MINUTES, JUSTICE_SCAN_LIMIT } from "../bot/oracle-guard";
 
 const router: IRouter = Router();
 
@@ -25,6 +26,8 @@ router.get("/healthz", (_req, res) => {
     oracleReplyReason: oracleReply.reason,
     alertsConfigured: isAlertsConfigured(),
     alertThresholdMs: DISCONNECT_ALERT_THRESHOLD_MS,
+    justiceWindowMinutes: JUSTICE_WINDOW_MINUTES,
+    justiceScanLimit: JUSTICE_SCAN_LIMIT,
   });
   res.status(200).json(data);
 });

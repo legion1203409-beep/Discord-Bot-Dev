@@ -46,5 +46,9 @@ export interface HealthStatus {
   alertsConfigured: boolean;
   /** Grace period in milliseconds before a transient disconnect escalates to an outage alert (DISCONNECT_ALERT_THRESHOLD_MS, default 300000). */
   alertThresholdMs: number;
+  /** How far back (in minutes) the justice scan looks for toxic messages. Reflects the active ORACLE_JUSTICE_WINDOW_MINUTES value (default 30, max 1440). Read once at startup; requires a restart to change. */
+  justiceWindowMinutes: number;
+  /** Maximum number of channel messages inspected per justice scan. Reflects the active ORACLE_JUSTICE_SCAN_LIMIT value (default 100, max 500). Read once at startup; requires a restart to change. */
+  justiceScanLimit: number;
 }
 

@@ -22,7 +22,9 @@ export const HealthCheckResponse = zod.object({
   "oracleReplyMode": zod.enum(['full', 'degraded']).describe('\"full\" when the Oracle answers every reply (MessageContent intent active); \"degraded\" when it only answers @mentions and ping-on replies.'),
   "oracleReplyReason": zod.enum(['active', 'disabled', 'portal_toggle_missing']).describe('Why the Oracle is in its current reply mode. \"active\": full mode running. \"disabled\": MessageContent feature not enabled by the operator. \"portal_toggle_missing\": feature enabled but Discord rejected the privileged intent (code 4014) so the bot fell back.'),
   "alertsConfigured": zod.boolean().describe('Whether DISCORD_ALERT_WEBHOOK_URL is set. When false, outage and recovery push alerts are silently suppressed — operators will NOT be notified of disconnects.'),
-  "alertThresholdMs": zod.number().describe('Grace period in milliseconds before a transient disconnect escalates to an outage alert (DISCONNECT_ALERT_THRESHOLD_MS, default 300000).')
+  "alertThresholdMs": zod.number().describe('Grace period in milliseconds before a transient disconnect escalates to an outage alert (DISCONNECT_ALERT_THRESHOLD_MS, default 300000).'),
+  "justiceWindowMinutes": zod.number().describe('How far back (in minutes) the justice scan looks for toxic messages. Reflects the active ORACLE_JUSTICE_WINDOW_MINUTES value (default 30, max 1440). Read once at startup; requires a restart to change.'),
+  "justiceScanLimit": zod.number().describe('Maximum number of channel messages inspected per justice scan. Reflects the active ORACLE_JUSTICE_SCAN_LIMIT value (default 100, max 500). Read once at startup; requires a restart to change.')
 })
 
 
