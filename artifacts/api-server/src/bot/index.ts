@@ -22,6 +22,7 @@ import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./a
 import { startScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, claimedChests, activeBossMap, type BossState, type BossPlayerStats } from "./scheduler";
 import { recordMessage } from "./oracle";
 import { maybeReplyAsOracle, logOracleChatStatus } from "./oracle-chat";
+import { handleToxicity } from "./oracle-guard";
 import { getRewardMultipliers } from "./status-effects";
 import {
   upsertPlayer,
@@ -1385,9 +1386,11 @@ export async function startBot(onReady?: () => void): Promise<void> {
     } catch (err) {
       logger.error({ err }, "Oracle messageCreate handler failed");
     }
-    // When the Oracle is addressed (@mention or reply to its own message), answer
-    // in character. Fire-and-forget — it never throws back into this handler.
-    void maybeReplyAsOracle(client, message);
+    // Toxicity guard first: if the user swore at the bot, apply the curse and
+    // skip the normal Oracle reply. Both paths are fire-and-forget.
+    void handleToxicity(client, message).then((handled) => {
+      if (!handled) void maybeReplyAsOracle(client, message);
+    });
   });
 
   // Schedule a delayed alert when the shard disconnects non-fatally.

@@ -15,3 +15,4 @@
 - [Privileged intent gating](discord-privileged-intent-gating.md) — gate MessageContent behind an env flag (default off); always request GuildMessages, else a missing portal toggle bricks login (4014, prod-only).
 - [Oracle reply-mode status](oracle-reply-mode-status.md) — healthz exposes oracleReplyMode/Reason from env flag + privilegedIntentFellBack; reflects config intent, not connectivity (live shown separately).
 - [Oracle recovery alert](oracle-recovery-alert.md) — recovery-to-full-mode detection needs an on-disk marker; the in-memory privilegedIntentFellBack flag resets on the restart that IS the recovery path.
+- [Oracle toxicity guard](oracle-guard.md) — ModerateMembers permission + bot role above target required for timeout to land; without it Oracle still posts the warning but can't enforce silence.
