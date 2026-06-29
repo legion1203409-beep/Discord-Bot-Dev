@@ -2,6 +2,7 @@ import { Client, TextChannel, ActionRowBuilder, ButtonBuilder, ButtonStyle } fro
 import { logger } from "../lib/logger";
 import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, buildExpiredChestEmbed, rollChest, oracleMessage, buildFinalBossEmbed, buildBossLeaderboard, buildLockedChestEmbed, buildKeyChestEmbed, spawnLockedChest, rollKeyChestType, computeBossRewards, finalBossRow, bossMaxHp, type BossRarity, type BossPlayerStats } from "./survival";
 import { triggerRandomBattleEvent } from "./combat-events";
+import { getRewardMultipliers } from "./status-effects";
 import { startOracle, setOracleExtatic } from "./oracle";
 import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle, addPlayerReputation, addPlayerGold, addPlayerXp } from "./db";
 
@@ -508,6 +509,12 @@ export async function fireFinalBoss(client: Client, eventId: number) {
         }
         // Reward fighters scaled by rank + rarity.
         const bossRewards = computeBossRewards(boss.damageBy, boss.rarity);
+        // Oracle blessings/curses scale each fighter's boss rewards (XP + Oboli).
+        for (const [discordId, r] of bossRewards) {
+          const rmods = getRewardMultipliers(discordId);
+          r.gold = Math.round(r.gold * rmods.goldMult);
+          r.xp = Math.round(r.xp * rmods.xpMult);
+        }
         await Promise.all([...bossRewards.entries()].flatMap(([discordId, r]) => [
           addPlayerReputation(discordId, r.rep),
           addPlayerGold(discordId, r.gold),
@@ -598,6 +605,12 @@ export async function fireStandaloneBoss(client: Client) {
           await bossMsg?.delete().catch(() => null);
         }
         const bossRewards = computeBossRewards(boss.damageBy, boss.rarity);
+        // Oracle blessings/curses scale each fighter's boss rewards (XP + Oboli).
+        for (const [discordId, r] of bossRewards) {
+          const rmods = getRewardMultipliers(discordId);
+          r.gold = Math.round(r.gold * rmods.goldMult);
+          r.xp = Math.round(r.xp * rmods.xpMult);
+        }
         await Promise.all([...bossRewards.entries()].flatMap(([discordId, r]) => [
           addPlayerReputation(discordId, r.rep),
           addPlayerGold(discordId, r.gold),

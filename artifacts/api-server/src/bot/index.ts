@@ -23,7 +23,7 @@ import { startScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, 
 import { recordMessage } from "./oracle";
 import { maybeReplyAsOracle, logOracleChatStatus } from "./oracle-chat";
 import { handleToxicity } from "./oracle-guard";
-import { getRewardMultipliers } from "./status-effects";
+import { getRewardMultipliers, getCombatModifiers, formatActiveEffects } from "./status-effects";
 import {
   upsertPlayer,
   joinEvent,
@@ -1154,14 +1154,21 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
     return;
   }
 
-  // Player damage based on global attack stat
+  // Oracle blessings/curses apply live in boss fights too.
+  const mods = getCombatModifiers(uid);
+
+  // Player damage based on global attack stat, with crit + effect multipliers
   const minDmg = Math.max(30, player.attackBonus * 5 + 20);
   const maxDmg = Math.max(80, player.attackBonus * 15 + 60);
-  const playerDmg = Math.floor(Math.random() * (maxDmg - minDmg + 1)) + minDmg;
+  let playerDmg = Math.floor(Math.random() * (maxDmg - minDmg + 1)) + minDmg;
+  const isCrit = Math.random() * 100 < Math.min(100, Math.max(0, player.critBonus + mods.critAdd));
+  if (isCrit) playerDmg *= 2;
+  if (mods.damageMult !== 1) playerDmg = Math.round(playerDmg * mods.damageMult);
+  const critTag = isCrit ? " 💥 **CRITIC!**" : "";
 
-  // Boss counter-attack — REAL damage to player HP
-  const rawBossHit = Math.floor(Math.random() * 121) + 80; // 80–200
-  const bossHit = rawBossHit;
+  // Boss counter-attack — REAL damage to player HP, scaled by damage-taken effects
+  let bossHit = Math.floor(Math.random() * 121) + 80; // 80–200
+  if (mods.damageTakenMult !== 1) bossHit = Math.max(1, Math.round(bossHit * mods.damageTakenMult));
   const newPlayerHp = Math.max(0, myHp - bossHit);
 
   // Apply damage
@@ -1178,6 +1185,12 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
 
     // Reward everyone who dealt damage — scaled by rank + boss rarity
     const bossRewards = computeBossRewards(activeBoss.damageBy, activeBoss.rarity);
+    // Oracle blessings/curses scale each fighter's boss rewards (XP + Oboli).
+    for (const [discordId, r] of bossRewards) {
+      const rmods = getRewardMultipliers(discordId);
+      r.gold = Math.round(r.gold * rmods.goldMult);
+      r.xp = Math.round(r.xp * rmods.xpMult);
+    }
     // Random key drops for fighters — keys can also be found during events.
     const eventKeyDrops = rollEventKeyDrops([...activeBoss.damageBy.keys()]);
     await Promise.all([
@@ -1216,7 +1229,7 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
 
     await interaction.followUp({
       content:
-        `⚔️ **${interaction.user.username}** a dat lovitura finală! **${playerDmg.toLocaleString()} daune**!\n` +
+        `⚔️ **${interaction.user.username}** a dat lovitura finală! **${playerDmg.toLocaleString()} daune**!${critTag}\n` +
         `💀 **Dragonul Stins a căzut!** Regatul este salvat!\n` +
         rewLine,
     });
@@ -1241,11 +1254,13 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
     ? `💀 **Ai fost doborât de Dragon!** Nu mai poți lovi.`
     : `❤️ Viața ta: **${newPlayerHp} / ${myMaxHp} HP**`;
 
+  const effectsLine = formatActiveEffects(uid);
   await interaction.followUp({
     content:
-      `⚔️ Ai lovit Dragonul pentru **${playerDmg.toLocaleString()} daune**!\n` +
+      `⚔️ Ai lovit Dragonul pentru **${playerDmg.toLocaleString()} daune**!${critTag}\n` +
       `🐉 Dragonul te lovește pentru **${bossHit} daune**! ${playerStatus}\n` +
-      `🩸 Dragon: **${activeBoss.currentHp.toLocaleString()} / ${activeBoss.maxHp.toLocaleString()} HP**`,
+      `🩸 Dragon: **${activeBoss.currentHp.toLocaleString()} / ${activeBoss.maxHp.toLocaleString()} HP**` +
+      (effectsLine ? `\n✨ **Efecte active:**\n${effectsLine}` : ""),
     ephemeral: true,
   });
 }
