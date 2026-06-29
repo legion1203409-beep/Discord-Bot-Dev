@@ -264,7 +264,10 @@ export function doCombat(p: EventParticipant): CombatResult {
   };
 }
 
-export function buildStartEmbed(): EmbedBuilder {
+export function buildStartEmbed(expiresAt?: Date): EmbedBuilder {
+  const timerLine = expiresAt
+    ? `\n${sectionTitle("Timp rămas")}\n⏳ Evenimentul se încheie **<t:${Math.floor(expiresAt.getTime() / 1000)}:R>**`
+    : "";
   return new EmbedBuilder()
     .setColor(0x1a0000)
     .setTitle("⚔️🔥  ORA UMBRELOR A ÎNCEPUT  🔥⚔️")
@@ -276,9 +279,9 @@ export function buildStartEmbed(): EmbedBuilder {
       sectionTitle("Atenție") + "\n" +
       "💀 Moartea în acest eveniment este **definitivă**.\n" +
       "Cei căzuți în Umbre nu mai pot continua până la următoarea chemare.\n" +
-      "🗝️ Învingând Dragonul poți găsi și **chei** ascunse în pradă.",
+      "🗝️ Învingând Dragonul poți găsi și **chei** ascunse în pradă." +
+      timerLine,
     )
-    .setFooter({ text: "⏳ Eveniment activ timp de 1 oră." })
     .setTimestamp();
 }
 
@@ -1148,6 +1151,7 @@ export function buildFinalBossEmbed(
   playerNames?: Map<string, string>,
   playerHp?: Map<string, number>,
   playerStats?: Map<string, BossPlayerStats>,
+  expiresAt?: number,
 ): EmbedBuilder {
   const rd = BOSS_RARITY_DATA[rarity];
   const defeated = currentHp !== undefined && currentHp <= 0;
@@ -1176,6 +1180,9 @@ export function buildFinalBossEmbed(
       "\n🐉 Lovește-l împreună cu echipa! Oricine poate participa.\n" +
       "🏅 **+50 Rep · +150 Oboli · +250 XP** pentru toți luptătorii\n" +
       "⏱️ Cooldown per jucător: **4 secunde**";
+    if (expiresAt) {
+      desc += `\n⏳ Bossul fuge **<t:${Math.floor(expiresAt / 1000)}:R>**`;
+    }
   }
 
   // ── Per-player leaderboard ────────────────────────────────────────────────────
@@ -1209,10 +1216,6 @@ export function buildFinalBossEmbed(
     .setTitle(`🐉  DRAGONUL STINS – NIVEL ${level}  🐉`)
     .setDescription(desc)
     .setImage(IMG.monster);
-
-  if (!defeated) {
-    embed.setFooter({ text: "Boss activ — 5 minute" });
-  }
 
   return embed;
 }

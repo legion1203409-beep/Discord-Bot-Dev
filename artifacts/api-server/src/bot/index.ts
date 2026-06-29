@@ -1230,7 +1230,7 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
       const bossMsg = await ch.messages.fetch(activeBoss.messageId).catch(() => null);
       if (bossMsg) {
         await bossMsg.edit({
-          embeds: [buildFinalBossEmbed(activeBoss.level, activeBoss.rarity, activeBoss.currentHp, activeBoss.maxHp, activeBoss.damageBy, activeBoss.playerNames, activeBoss.playerHp, activeBoss.playerStats)],
+          embeds: [buildFinalBossEmbed(activeBoss.level, activeBoss.rarity, activeBoss.currentHp, activeBoss.maxHp, activeBoss.damageBy, activeBoss.playerNames, activeBoss.playerHp, activeBoss.playerStats, activeBoss.expiresAt)],
           components: [finalBossRow(eventId)],
         }).catch(() => null);
       }

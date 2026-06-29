@@ -14,6 +14,7 @@ const EVENT_TOP_CHANNEL_ID = "1521185741961695434";
 const BOSS_TOP_CHANNEL_ID  = "1521186981525327993";
 const APPLICATION_ID = "1472675543777280071";
 export const EVENT_DURATION_MS = 60 * 60 * 1000;
+const FINAL_BOSS_ACTIVE_MS = 5 * 60 * 1000; // final boss flees after 5 minutes
 const MIN_COOLDOWN_MS = 2 * 60 * 60 * 1000;
 const MAX_COOLDOWN_MS = 4 * 60 * 60 * 1000;
 
@@ -44,6 +45,8 @@ export interface BossState {
   playerNames: Map<string, string>;       // discordId → username (for embed + leaderboard)
   playerStats: Map<string, BossPlayerStats>; // discordId → global player stats at first hit
   participants: Array<{ username: string; discordId: string; monsterLevel: number; totalDamage: number; isAlive: boolean }>;
+  /** Epoch ms when this boss flees if not defeated — drives the live countdown in the embed. */
+  expiresAt: number;
   defeated: boolean;
 }
 export const activeBossMap = new Map<number, BossState>();
@@ -410,7 +413,7 @@ export async function fireEvent(client: Client) {
         .setEmoji("⚔️")
         .setStyle(ButtonStyle.Danger),
     );
-    await placeholder.edit({ embeds: [buildStartEmbed()], components: [joinRowFinal] }).catch(() => null);
+    await placeholder.edit({ embeds: [buildStartEmbed(expiresAt)], components: [joinRowFinal] }).catch(() => null);
 
     // Main channel decree disabled — user requested only chest in chat
     // try {
@@ -453,9 +456,10 @@ export async function fireFinalBoss(client: Client, eventId: number) {
     const bossLevel = Math.max(5, Math.ceil(avgLevel / 2));
     const rarity = rollBossRarity();
     const maxHp = bossMaxHp(bossLevel, rarity);
+    const bossExpiresAt = Date.now() + FINAL_BOSS_ACTIVE_MS;
 
     const msg = await channel.send({
-      embeds: [buildFinalBossEmbed(bossLevel, rarity, maxHp, maxHp)],
+      embeds: [buildFinalBossEmbed(bossLevel, rarity, maxHp, maxHp, undefined, undefined, undefined, undefined, bossExpiresAt)],
       components: [finalBossRow(eventId)],
     });
 
@@ -467,6 +471,7 @@ export async function fireFinalBoss(client: Client, eventId: number) {
       currentHp: maxHp,
       messageId: msg.id,
       channelId: BOSS_CHANNEL_ID,
+      expiresAt: bossExpiresAt,
       lastHitAt: new Map(),
       damageBy: new Map(),
       playerHp: new Map(),
@@ -510,7 +515,7 @@ export async function fireFinalBoss(client: Client, eventId: number) {
           await topCh.send({ embeds: [leaderboard] }).catch(() => null);
         }
       } catch { /* ignore */ }
-    }, 5 * 60 * 1000);
+    }, Math.max(0, bossExpiresAt - Date.now()));
     escapeTimer.unref?.();
 
     logger.info({ eventId, bossLevel, rarity, maxHp }, "Final boss summoned");
@@ -545,9 +550,10 @@ export async function fireStandaloneBoss(client: Client) {
     const level = Math.floor(Math.random() * 21) + 10; // 10–30
     const rarity = rollBossRarity();
     const maxHp = bossMaxHp(level, rarity);
+    const bossExpiresAt = Date.now() + STANDALONE_BOSS_ACTIVE_MS;
 
     const msg = await channel.send({
-      embeds: [buildFinalBossEmbed(level, rarity, maxHp, maxHp)],
+      embeds: [buildFinalBossEmbed(level, rarity, maxHp, maxHp, undefined, undefined, undefined, undefined, bossExpiresAt)],
       components: [finalBossRow(bossId)],
     });
 
@@ -559,6 +565,7 @@ export async function fireStandaloneBoss(client: Client) {
       currentHp: maxHp,
       messageId: msg.id,
       channelId: BOSS_CHANNEL_ID,
+      expiresAt: bossExpiresAt,
       lastHitAt: new Map(),
       damageBy: new Map(),
       playerHp: new Map(),
@@ -597,7 +604,7 @@ export async function fireStandaloneBoss(client: Client) {
           await topCh.send({ embeds: [leaderboard] }).catch(() => null);
         }
       } catch { /* ignore */ }
-    }, STANDALONE_BOSS_ACTIVE_MS);
+    }, Math.max(0, bossExpiresAt - Date.now()));
     escapeTimer.unref?.();
 
     logger.info({ bossId, level, rarity, maxHp }, "Standalone boss summoned");
