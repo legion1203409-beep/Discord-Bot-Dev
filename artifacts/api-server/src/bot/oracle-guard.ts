@@ -146,29 +146,33 @@ function curseMessage(offenseCount: number, muteMin: number, muted: boolean): st
 // ── Justice trigger detection ────────────────────────────────────────────────
 
 /**
- * Phrases (normalised, diacritic-stripped) that the owner can use to command
- * the Oracle to scan the channel and punish recent offenders. Checked only after
- * confirming the requester is the owner/admin, so broad matches are acceptable.
+ * Boundary-aware patterns (matched against the NFD-normalised, diacritic-stripped,
+ * mention-stripped text) that identify a justice command from the owner.
+ * Word boundaries (\b) prevent accidental matches inside larger words/phrases.
+ * Multi-word phrases use \s+ so extra spaces don't break detection.
  */
-const JUSTICE_PHRASES = [
-  "fa dreptate", "face dreptate",
-  "judeca-i", "judecati",
-  "penalizeaza", "penalizeaza-i",
-  "curata canalul",
-  "fa ordine",
-  "aplica blestemul",
-  "pedepseste-i", "pedepseste",
-  "executa dreptatea", "executa judecata",
+const JUSTICE_PATTERNS: RegExp[] = [
+  /\bfa\s+dreptate\b/,
+  /\bface\s+dreptate\b/,
+  /\bjudeca-i\b/,
+  /\bjudecati\b/,
+  /\bpenalizeaza(-i)?\b/,
+  /\bcurata\s+canalul\b/,
+  /\bfa\s+ordine\b/,
+  /\baplica\s+blestemul\b/,
+  /\bpedepseste(-i)?\b/,
+  /\bexecuta\s+(dreptatea|judecata)\b/,
 ];
 
 /**
- * Returns true when the (normalised, mention-stripped) text is a justice command
- * from the owner. Substring match is intentional — the check only ever runs for
- * the designated owner, so false positives don't affect regular players.
+ * Returns true when the (normalised, mention-stripped) text is an unambiguous
+ * justice command. Uses word-boundary regex so "face dreptate" does not
+ * accidentally fire on a longer sentence that happens to contain those words
+ * in a different context.
  */
 export function isJusticeRequest(text: string): boolean {
   const n = normalise(text);
-  return JUSTICE_PHRASES.some((phrase) => n.includes(phrase));
+  return JUSTICE_PATTERNS.some((re) => re.test(n));
 }
 
 // ── Channel scan & justice execution ─────────────────────────────────────────
@@ -190,12 +194,14 @@ export async function handleJustice(client: Client, message: Message): Promise<b
     const botId = client.user?.id;
     if (!botId) return false;
 
-    // Confirm the requester is the designated owner or guild owner.
+    // Justice is restricted to the designated owner (ORACLE_OWNER_ID) or the
+    // guild owner. Unlike the Oracle's general admin-persona gate, there is NO
+    // fallback to the Administrator permission here — mass-scanning and timing
+    // out multiple users is too powerful an action to delegate to all admins.
     const ownerId = process.env.ORACLE_OWNER_ID?.trim();
     const isOwner = ownerId
       ? message.author.id === ownerId || message.guild?.ownerId === message.author.id
-      : message.guild?.ownerId === message.author.id ||
-        (message.member?.permissions.has(PermissionFlagsBits.Administrator) ?? false);
+      : message.guild?.ownerId === message.author.id;
     if (!isOwner) return false;
 
     const text = (message.content ?? "").replace(/<@!?\d+>/g, "").trim();
