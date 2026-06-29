@@ -19,7 +19,7 @@ import {
 } from "discord.js";
 import { logger } from "../lib/logger";
 import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./alert";
-import { startScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, claimedChests, activeBossMap, checkBossEligibility, type BossState, type BossPlayerStats } from "./scheduler";
+import { startScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, claimedChests, activeBossMap, checkBossEligibility, checkBossHitCooldown, BOSS_HIT_COOLDOWN_MS, type BossState, type BossPlayerStats } from "./scheduler";
 import { recordMessage } from "./oracle";
 import { maybeReplyAsOracle, logOracleChatStatus } from "./oracle-chat";
 import { handleToxicity } from "./oracle-guard";
@@ -1096,7 +1096,6 @@ async function handleAbility(interaction: ButtonInteraction, eventId: number, ki
   });
 }
 
-const BOSS_HIT_COOLDOWN_MS = 4000;
 const EVENT_CHANNEL_ID   = "1521185682200989726";
 const BOSS_CHANNEL_ID    = "1521186913476673556";
 /** Dedicated channel where boss leaderboards are posted permanently. */
@@ -1144,12 +1143,10 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
   const myMaxHp = 100 + player.maxHpBonus;
 
   // 4-second cooldown per player
-  const lastHit = activeBoss.lastHitAt.get(uid) ?? 0;
-  const elapsed = Date.now() - lastHit;
-  if (elapsed < BOSS_HIT_COOLDOWN_MS) {
-    const remaining = Math.ceil((BOSS_HIT_COOLDOWN_MS - elapsed) / 1000);
+  const cooldown = checkBossHitCooldown(activeBoss.lastHitAt, uid);
+  if (cooldown.onCooldown) {
     await interaction.followUp({
-      content: `⏳ Recuperare… mai poți lovi în **${remaining}s**!\n❤️ Viața ta: **${myHp} / ${myMaxHp} HP** | 🐉 Dragon: **${activeBoss.currentHp.toLocaleString()} / ${activeBoss.maxHp.toLocaleString()} HP**`,
+      content: `⏳ Recuperare… mai poți lovi în **${cooldown.remainingSeconds}s**!\n❤️ Viața ta: **${myHp} / ${myMaxHp} HP** | 🐉 Dragon: **${activeBoss.currentHp.toLocaleString()} / ${activeBoss.maxHp.toLocaleString()} HP**`,
       flags: MessageFlags.Ephemeral,
     });
     return;

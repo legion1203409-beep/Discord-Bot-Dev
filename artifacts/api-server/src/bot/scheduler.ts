@@ -78,6 +78,27 @@ export function checkBossEligibility(
   return { ok: true };
 }
 
+// ─── Boss hit cooldown guard ───────────────────────────────────────────────────
+// Pure function — no I/O — keeps the 4-second spam-prevention window testable.
+export const BOSS_HIT_COOLDOWN_MS = 4000;
+
+export type BossCooldownResult =
+  | { onCooldown: false }
+  | { onCooldown: true; remainingSeconds: number };
+
+export function checkBossHitCooldown(
+  lastHitAt: Map<string, number>,
+  uid: string,
+  now = Date.now(),
+): BossCooldownResult {
+  const lastHit = lastHitAt.get(uid) ?? 0;
+  const elapsed = now - lastHit;
+  if (elapsed < BOSS_HIT_COOLDOWN_MS) {
+    return { onCooldown: true, remainingSeconds: Math.ceil((BOSS_HIT_COOLDOWN_MS - elapsed) / 1000) };
+  }
+  return { onCooldown: false };
+}
+
 export const BOSS_RARITY_WEIGHTS: [BossRarity, number][] = [
   ["comun", 60], ["rar", 25], ["epic", 12], ["legendar", 3],
 ];
