@@ -1095,10 +1095,10 @@ async function handleAbility(interaction: ButtonInteraction, eventId: number, ki
 }
 
 const BOSS_HIT_COOLDOWN_MS = 4000;
-const EVENT_CHANNEL_ID   = "1521180114652758178";
-const BOSS_CHANNEL_ID    = "1521180064455200889";
+const EVENT_CHANNEL_ID   = "1521185682200989726";
+const BOSS_CHANNEL_ID    = "1521186913476673556";
 /** Dedicated channel where boss leaderboards are posted permanently. */
-const BOSS_TOP_CHANNEL_ID = "1521178974183751921";
+const BOSS_TOP_CHANNEL_ID = "1521186981525327993";
 
 async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) {
   await interaction.deferUpdate();

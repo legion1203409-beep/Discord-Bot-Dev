@@ -5,13 +5,13 @@ import { triggerRandomBattleEvent } from "./combat-events";
 import { startOracle, setOracleExtatic } from "./oracle";
 import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle, addPlayerReputation, addPlayerGold, addPlayerXp } from "./db";
 
-const EVENT_CHANNEL_ID    = "1521180114652758178";
-const BOSS_CHANNEL_ID     = "1521180064455200889";
+const EVENT_CHANNEL_ID    = "1521185682200989726";
+const BOSS_CHANNEL_ID     = "1521186913476673556";
 const MAIN_CHANNEL_ID     = "1382042144717410385";
 /** Dedicated channel where the Ora Umbrelor cronica is posted permanently. */
-const EVENT_TOP_CHANNEL_ID = "1521178866549264584";
+const EVENT_TOP_CHANNEL_ID = "1521185741961695434";
 /** Dedicated channel where boss leaderboards are posted permanently. */
-const BOSS_TOP_CHANNEL_ID  = "1521178974183751921";
+const BOSS_TOP_CHANNEL_ID  = "1521186981525327993";
 const APPLICATION_ID = "1472675543777280071";
 export const EVENT_DURATION_MS = 60 * 60 * 1000;
 const MIN_COOLDOWN_MS = 2 * 60 * 60 * 1000;
