@@ -23,32 +23,49 @@ function normalise(text: string): string {
 }
 
 /**
- * Unambiguously offensive Romanian words that constitute a personal insult
- * when directed at the Oracle. Intentionally minimal to avoid false positives.
+ * Offensive Romanian words that constitute a personal insult when directed at
+ * the Oracle. Curated to keep false-positive timeouts rare, but broad enough to
+ * catch how people actually insult the bot (vocative/plural forms).
  *
- * Operators can append extra words via ORACLE_SWEAR_WORDS (comma-separated,
- * plain text with or without diacritics, e.g. "idiotule,imbecilule").
+ * Stems matched as a PREFIX at a word boundary (`\bstem`), so every inflected /
+ * vocative form is caught: "prost" hits "prost", "prostule", "proștilor";
+ * "fut" hits "fute", "futut", "futu-te".
  */
-const BASE_SWEAR_WORDS = [
-  "pula", "pulii",
-  "pizda", "pizdei",
-  "muie",
-  "futu-te", "futut", "fututi", "futu",
+const SWEAR_STEMS = [
+  // hard profanity
+  "pula", "puli", "pizd", "muie", "muist", "fut", "curv", "coaie",
+  // common Romanian insults — both masc. and fem. stems are listed so feminine
+  // forms ("proasto", "idioată", "dobitoacă") are caught alongside the masc.
+  "prost", "proast", "idiot", "idioat", "imbecil", "cretin", "tampit",
+  "tembel", "retard", "nesimtit", "nemernic", "jeg", "gunoi", "labagiu",
+  "labar", "dobitoc", "dobitoac", "javr", "scarb", "mucos", "handicapat",
+  "magar", "bou",
 ];
 
-function buildPatterns(words: string[]): RegExp[] {
-  return words.map((w) => {
-    const escaped = normalise(w).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    return new RegExp("\\b" + escaped + "\\b");
-  });
+// Short words matched as WHOLE words only (`\bword\b`), so they never hit an
+// innocent word that merely starts the same way ("boi" ≠ "boiler",
+// "vaca" ≠ "vacanță", "porc" ≠ "porțelan"). "bou" is a stem above (no innocent
+// Romanian word starts with "bou"), which also catches "boul"/"boule"/"boului".
+const SWEAR_EXACT = [
+  "boi", "boilor", "vaca", "vaci", "vaco", "porc", "porci", "porcule",
+];
+
+function escapeRe(word: string): string {
+  return normalise(word).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+// Operators can append extra words via ORACLE_SWEAR_WORDS (comma-separated,
+// with or without diacritics). Matched as whole words, like SWEAR_EXACT.
 const EXTRA_WORDS = (process.env.ORACLE_SWEAR_WORDS ?? "")
   .split(",")
   .map((w) => w.trim())
   .filter(Boolean);
 
-const SWEAR_PATTERNS: RegExp[] = buildPatterns([...BASE_SWEAR_WORDS, ...EXTRA_WORDS]);
+const SWEAR_PATTERNS: RegExp[] = [
+  ...SWEAR_STEMS.map((w) => new RegExp("\\b" + escapeRe(w))),
+  ...SWEAR_EXACT.map((w) => new RegExp("\\b" + escapeRe(w) + "\\b")),
+  ...EXTRA_WORDS.map((w) => new RegExp("\\b" + escapeRe(w) + "\\b")),
+];
 
 /** Returns true when `text` contains at least one prohibited word. */
 export function containsSwear(text: string): boolean {

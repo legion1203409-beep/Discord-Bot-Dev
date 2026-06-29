@@ -16,6 +16,7 @@
 - [Privileged intent gating](discord-privileged-intent-gating.md) — gate MessageContent behind an env flag (default off); always request GuildMessages, else a missing portal toggle bricks login (4014, prod-only).
 - [Oracle reply-mode status](oracle-reply-mode-status.md) — healthz exposes oracleReplyMode/Reason from env flag + privilegedIntentFellBack; reflects config intent, not connectivity (live shown separately).
 - [Oracle recovery alert](oracle-recovery-alert.md) — recovery-to-full-mode detection needs an on-disk marker; the in-memory privilegedIntentFellBack flag resets on the restart that IS the recovery path.
+- [Oracle swear/insult matching](oracle-swear-matching.md) — auto-mute guard uses prefix-stem matching (\bstem) to catch Romanian vocative forms; short collision words stay whole-word; separate from isToxic mood list.
 - [Oracle toxicity guard](oracle-guard.md) — ModerateMembers permission + bot role above target required for timeout to land; without it Oracle still posts the warning but can't enforce silence.
 - [Vitest discord.js mock pattern](vitest-discordjs-mock.md) — mocking discord.js classes (ActionRowBuilder, ButtonBuilder, EmbedBuilder) for scheduler tests requires real class bodies, not arrow-function factories; fake timers need advanceTimersByTimeAsync not runAllTimers for chest expiry.
 - [Discord live countdown](discord-live-countdown.md) — `<t:UNIX:R>` countdown must use a stored absolute expiresAt that ALSO schedules the expiry setTimeout (delay = expiresAt - Date.now()); footers can't render it.

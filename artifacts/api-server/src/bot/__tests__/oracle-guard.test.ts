@@ -113,6 +113,50 @@ describe("containsSwear", () => {
     // "formula" contains "la" but not a swear word as a whole token
     expect(containsSwear("formula magica")).toBe(false);
   });
+
+  it("catches vocative / inflected insult forms (how insults are actually used)", () => {
+    expect(containsSwear("esti prost")).toBe(true);
+    expect(containsSwear("prostule")).toBe(true);
+    expect(containsSwear("idiotule")).toBe(true);
+    expect(containsSwear("imbecilule")).toBe(true);
+    expect(containsSwear("cretinule ce esti")).toBe(true);
+    expect(containsSwear("boule")).toBe(true);
+    expect(containsSwear("magarule")).toBe(true);
+  });
+
+  it("catches feminine insult forms via dedicated stems", () => {
+    expect(containsSwear("esti proasta")).toBe(true);
+    expect(containsSwear("proasto")).toBe(true);
+    expect(containsSwear("idioata")).toBe(true);
+    expect(containsSwear("idioată")).toBe(true);
+    expect(containsSwear("dobitoaca")).toBe(true);
+  });
+
+  it("catches 'bou' inflections via stem (boul/boului/boilor)", () => {
+    expect(containsSwear("esti un bou")).toBe(true);
+    expect(containsSwear("boul")).toBe(true);
+    expect(containsSwear("boului")).toBe(true);
+    expect(containsSwear("boilor")).toBe(true);
+  });
+
+  it("catches profanity inflections via stem match", () => {
+    expect(containsSwear("futu-te")).toBe(true);
+    expect(containsSwear("te fut")).toBe(true);
+    expect(containsSwear("muist")).toBe(true);
+  });
+
+  it("does not false-positive on innocent words that start like a short insult", () => {
+    expect(containsSwear("merg in vacanta")).toBe(false);
+    expect(containsSwear("ce curaj ai")).toBe(false);
+    expect(containsSwear("imi place puloverul")).toBe(false);
+    expect(containsSwear("porti un boiler")).toBe(false);
+    expect(containsSwear("vasul e din portelan")).toBe(false);
+  });
+
+  it("does not mute innocent RPG/game talk (no overly broad animal triggers)", () => {
+    expect(containsSwear("ce animal de companie sa aleg?")).toBe(false);
+    expect(containsSwear("un curent de aer rece")).toBe(false);
+  });
 });
 
 // ─── handleToxicity ───────────────────────────────────────────────────────────
@@ -159,6 +203,22 @@ describe("handleToxicity", () => {
     const msg = makeMessage({ botId: BOT_ID, content: "pula", authorId: "u-swear-basic" });
     const result = await handleToxicity(makeClient(BOT_ID), msg as unknown as Message);
     expect(result).toBe(true);
+    expect(msg._reply).toHaveBeenCalledOnce();
+  });
+
+  it("mutes + warns on a plain insult (no hard profanity), e.g. 'prostule'", async () => {
+    const mockTimeout = vi.fn().mockResolvedValue(undefined);
+    const msg = makeMessage({
+      botId: BOT_ID,
+      content: "esti prostule",
+      authorId: "u-insult-prostule",
+      hasPermission: true,
+      memberManageable: true,
+      timeoutFn: mockTimeout,
+    });
+    const result = await handleToxicity(makeClient(BOT_ID), msg as unknown as Message);
+    expect(result).toBe(true);
+    expect(mockTimeout).toHaveBeenCalledOnce();
     expect(msg._reply).toHaveBeenCalledOnce();
   });
 
