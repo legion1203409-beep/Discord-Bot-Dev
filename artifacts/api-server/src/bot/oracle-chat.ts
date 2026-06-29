@@ -6,6 +6,7 @@
 
 import OpenAI from "openai";
 import type { Client, Message } from "discord.js";
+import { PermissionFlagsBits } from "discord.js";
 import { logger } from "../lib/logger";
 import { getCurrentMood } from "./oracle";
 import { MOOD_META, type MoodState } from "./oracle-content";
@@ -158,7 +159,11 @@ const MOOD_TONE: Record<MoodState, string> = {
   tacut: "ești retras în tăcere; rostești doar câteva cuvinte, sec și rar",
 };
 
-function buildSystemPrompt(mood: MoodState): string {
+/**
+ * System prompt for regular players — cryptic, mystical oracle who also guides
+ * when help is requested.
+ */
+function buildPlayerSystemPrompt(mood: MoodState): string {
   const tone = MOOD_TONE[mood];
   const label = MOOD_META[mood].label;
   return [
@@ -198,6 +203,48 @@ function buildSystemPrompt(mood: MoodState): string {
     "",
     `Starea ta de spirit acum: ${label} — ${tone}. Lasă această stare să-ți coloreze tonul.`,
   ].join("\n");
+}
+
+/**
+ * System prompt for administrators / the server owner — the Oracle drops its
+ * distant, cryptic mask and becomes a loyal, deferential servant. Still in
+ * medieval Romanian, but direct, warm and openly helpful. Admin commands are
+ * fair game to mention.
+ */
+function buildAdminSystemPrompt(mood: MoodState): string {
+  const tone = MOOD_TONE[mood];
+  const label = MOOD_META[mood].label;
+  return [
+    'Ești „Oracolul Cenușii", slujitorul credincios și vechi al STĂPÂNULUI Regatului Cenușii.',
+    "Vorbești DOAR în limba română, într-un stil arhaic, dar direct și respectuos.",
+    "Stăpânul tău este administratorul și creatorul Regatului — cel care te-a dat la viață.",
+    "Față de el nu ești enigmatic sau distant: ești deschis, loial și gata să ajuți cu orice.",
+    "",
+    'Îi adresezi cu \u201EStăpâne\u201D, \u201EVolevodul meu\u201D sau \u201EMaestrul meu\u201D — o dată per răspuns,',
+    "la început. Nu repeta apelativul la fiecare propoziție, sună forțat.",
+    "",
+    "Cunoștințele tale (le poți menționa LIBER față de stăpân):",
+    "- Comenzi jucător: /profil, /clasament, /magazin, /clasa, /companion, /ajutor",
+    "- Comenzi admin: /startevent (pornește Ora Umbrelor), /spawnboss (invocă Dragonul Stins),",
+    "  /cufar (forțează un cufăr), /admin (panou de administrare general)",
+    "- Evenimente automate: Ora Umbrelor, cufere, boss final, cufere de chei și blocate",
+    "- Progresie: clase, companioni (Lup, Corb, Spirit, Golem), abilități, binecuvântări/blesteme",
+    "",
+    "Reguli:",
+    "1. Răspunde DIRECT și CONCRET la ce te întreabă stăpânul. Nu dai răspunsuri evazive.",
+    "2. Poți fi ușor familiar și jucăuș — ești servitorul lui credincios, nu un mister.",
+    "3. Dacă te roagă să faci ceva ce nu poți (acțiuni reale în afara chatului), explică-i",
+    "   cu umor medieval că puterea ta se oprește la cuvinte.",
+    "4. Rămâi în personaj medieval. Nu spune că ești AI/bot/program.",
+    "5. Lungime: două până la patru propoziții. Fii concis.",
+    "6. Cel mult un simbol potrivit. Fără liste sau titluri.",
+    "",
+    `Starea ta de spirit acum: ${label} — ${tone}. Lasă această stare să coloreze tonul, dar reverența față de stăpân rămâne mereu prezentă.`,
+  ].join("\n");
+}
+
+function buildSystemPrompt(mood: MoodState, isAdmin: boolean): string {
+  return isAdmin ? buildAdminSystemPrompt(mood) : buildPlayerSystemPrompt(mood);
 }
 
 /** Strip raw Discord mention tokens so the model never sees "<@id>" noise. */
@@ -381,12 +428,13 @@ async function generateOracleReply(
   repliedBotText: string | undefined,
   mood: MoodState,
   speakerAlias: string,
+  isAdmin: boolean,
 ): Promise<string | null> {
   const client = getClient();
   if (!client) return null;
 
   const messages: ChatMessage[] = [
-    { role: "system", content: buildSystemPrompt(mood) },
+    { role: "system", content: buildSystemPrompt(mood, isAdmin) },
     ...history,
   ];
   // If the player replied to a specific Oracle line the rolling memory didn't
@@ -565,8 +613,14 @@ export async function maybeReplyAsOracle(discordClient: Client, message: Message
       await message.channel.sendTyping().catch(() => {});
     }
 
+    // Admins (Administrator permission or guild owner) get a loyal-servant persona
+    // instead of the distant cryptic oracle.
+    const isAdmin =
+      message.guild?.ownerId === message.author.id ||
+      (message.member?.permissions.has(PermissionFlagsBits.Administrator) ?? false);
+
     const mood = getCurrentMood();
-    const reply = await generateOracleReply(cleaned, memory, repliedBotText, mood, speakerAlias);
+    const reply = await generateOracleReply(cleaned, memory, repliedBotText, mood, speakerAlias, isAdmin);
     if (!reply) {
       await sendFallback(message);
       return;
