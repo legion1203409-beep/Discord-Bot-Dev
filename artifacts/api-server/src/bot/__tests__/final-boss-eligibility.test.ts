@@ -56,6 +56,7 @@ function makeBoss(overrides: Partial<BossState> = {}): BossState {
     messageId: "msg-1",
     channelId: "channel-1",
     expiresAt: Date.now() + 5 * 60 * 1000,
+    standalone: false,
     lastHitAt: new Map(),
     damageBy: new Map(),
     playerHp: new Map(),

@@ -47,6 +47,8 @@ export interface BossState {
   participants: Array<{ username: string; discordId: string; monsterLevel: number; totalDamage: number; isAlive: boolean }>;
   /** Epoch ms when this boss flees if not defeated — drives the live countdown in the embed. */
   expiresAt: number;
+  /** True for bosses spawned independently of Ora Umbrelor — any player may join, no event participation required. */
+  standalone: boolean;
   defeated: boolean;
 }
 export const activeBossMap = new Map<number, BossState>();
@@ -63,13 +65,15 @@ export function checkBossEligibility(
 ): BossEligibilityResult {
   if (!boss) return { ok: false, reason: "no_boss" };
   if (boss.defeated) return { ok: false, reason: "defeated" };
+  // Reject players downed during the boss fight itself (applies to all boss types)
+  const bossHp = boss.playerHp.get(uid);
+  if (bossHp !== undefined && bossHp <= 0) return { ok: false, reason: "dead" };
+  // Standalone bosses are open to all — skip event-participant checks
+  if (boss.standalone) return { ok: true };
   const participant = boss.participants.find((p) => p.discordId === uid);
   if (!participant) return { ok: false, reason: "not_participant" };
   // Reject players who died during the event before the boss spawned
   if (!participant.isAlive) return { ok: false, reason: "dead" };
-  // Reject players downed during the boss fight itself
-  const bossHp = boss.playerHp.get(uid);
-  if (bossHp !== undefined && bossHp <= 0) return { ok: false, reason: "dead" };
   return { ok: true };
 }
 
@@ -472,6 +476,7 @@ export async function fireFinalBoss(client: Client, eventId: number) {
       messageId: msg.id,
       channelId: BOSS_CHANNEL_ID,
       expiresAt: bossExpiresAt,
+      standalone: false,
       lastHitAt: new Map(),
       damageBy: new Map(),
       playerHp: new Map(),
@@ -566,12 +571,13 @@ export async function fireStandaloneBoss(client: Client) {
       messageId: msg.id,
       channelId: BOSS_CHANNEL_ID,
       expiresAt: bossExpiresAt,
+      standalone: true,
       lastHitAt: new Map(),
       damageBy: new Map(),
       playerHp: new Map(),
       playerNames: new Map(),
       playerStats: new Map(),
-      participants: [], // standalone — no event participants required
+      participants: [],
       defeated: false,
     };
     activeBossMap.set(bossId, boss);
