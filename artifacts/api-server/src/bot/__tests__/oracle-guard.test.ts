@@ -18,6 +18,7 @@ vi.mock("../status-effects", () => ({
 
 // Import after mocks are registered
 import {
+  buildPatterns,
   containsSwear,
   handleToxicity,
   handlePardon,
@@ -171,6 +172,155 @@ describe("containsSwear", () => {
   it("does not mute innocent RPG/game talk (no overly broad animal triggers)", () => {
     expect(containsSwear("ce animal de companie sa aleg?")).toBe(false);
     expect(containsSwear("un curent de aer rece")).toBe(false);
+  });
+});
+
+// ─── buildPatterns ─────────────────────────────────────────────────────────────
+//
+// buildPatterns() is the pure function that compiles the RegExp list from the
+// built-in stems/words plus any operator-supplied extras.  Testing it directly
+// (without touching process.env or reloading the module) is the cleanest way
+// to verify the pattern-compilation logic in isolation.
+
+describe("buildPatterns", () => {
+  it("returns patterns that still catch built-in swear stems when no extras are given", () => {
+    const patterns = buildPatterns([]);
+    const hit = (text: string) =>
+      patterns.some((re) => re.test(text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")));
+
+    expect(hit("pula")).toBe(true);
+    expect(hit("muie")).toBe(true);
+    expect(hit("prost")).toBe(true);
+    expect(hit("bou")).toBe(true);
+    expect(hit("buna ziua")).toBe(false);
+  });
+
+  it("extra words are detected when passed to buildPatterns", () => {
+    const patterns = buildPatterns(["hacker", "spam"]);
+    const hit = (text: string) =>
+      patterns.some((re) => re.test(text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")));
+
+    expect(hit("hacker rau")).toBe(true);
+    expect(hit("trimiti spam")).toBe(true);
+    expect(hit("clean message")).toBe(false);
+  });
+
+  it("diacritic variants of extra words are normalised and still match", () => {
+    // "spămos" added with diacritic; the normalised form "spamos" should match
+    // both the diacritic and the plain form in the checked text.
+    const patterns = buildPatterns(["spămos"]);
+    const normalise = (t: string) =>
+      t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const hit = (text: string) => patterns.some((re) => re.test(normalise(text)));
+
+    expect(hit("spamos")).toBe(true);   // plain form
+    expect(hit("spămos")).toBe(true);   // diacritic form (normalised before match)
+    expect(hit("alt cuvant")).toBe(false);
+  });
+
+  it("extra words with special regex characters are escaped and still match literally", () => {
+    // Words containing regex metacharacters must be treated as literals so they
+    // neither throw nor match the wrong text.  We use words where the special
+    // char sits between two word-char letters so both \b anchors fire normally.
+    const patterns = buildPatterns(["f.ck", "s+it"]);
+    const hit = (text: string) =>
+      patterns.some((re) =>
+        re.test(text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")),
+      );
+
+    expect(hit("f.ck")).toBe(true);   // literal dot matched
+    expect(hit("s+it")).toBe(true);   // literal plus matched
+    expect(hit("fick")).toBe(false);  // "fick" does NOT match "f.ck" (dot is literal, not wildcard)
+    expect(hit("sxit")).toBe(false);  // "sxit" does NOT match "s+it" (plus is literal, not quantifier)
+  });
+
+  it("extra words are matched as whole words — they do not fire on longer containing words", () => {
+    const patterns = buildPatterns(["rau"]);
+    const hit = (text: string) =>
+      patterns.some((re) =>
+        re.test(text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")),
+      );
+
+    expect(hit("rau")).toBe(true);        // standalone — should match
+    expect(hit("rau de tot")).toBe(true); // word boundary before space
+    expect(hit("raul Dunarea")).toBe(false); // "raul" is a different word (river)
+    expect(hit("brau")).toBe(false);      // inside "brau" — no leading boundary
+  });
+
+  it("empty string items in the extra-word list are ignored", () => {
+    // Split of a string with trailing commas can produce empty strings;
+    // they should not produce an always-matching empty pattern.
+    const patterns = buildPatterns(["", "  ", "spam"]);
+    const hit = (text: string) =>
+      patterns.some((re) =>
+        re.test(text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")),
+      );
+
+    expect(hit("buna ziua")).toBe(false); // empty pattern would match everything
+    expect(hit("spam")).toBe(true);
+  });
+});
+
+// ─── ORACLE_SWEAR_WORDS env var (module-reload tests) ─────────────────────────
+//
+// The pattern list is compiled once at module-load time.  These tests use
+// vi.resetModules() + dynamic import to load a fresh copy of oracle-guard with
+// a controlled ORACLE_SWEAR_WORDS value, confirming that:
+//   • operator-added words are detected after a restart,
+//   • an empty env var leaves the base list unchanged, and
+//   • a change while the module is running has NO effect (load-time snapshot).
+
+describe("ORACLE_SWEAR_WORDS env var — module-reload behaviour", () => {
+  afterEach(() => {
+    delete process.env.ORACLE_SWEAR_WORDS;
+    vi.resetModules();
+  });
+
+  it("extra words set in ORACLE_SWEAR_WORDS are detected after module load", async () => {
+    process.env.ORACLE_SWEAR_WORDS = "interzis,blocat";
+    vi.resetModules();
+
+    const { containsSwear: cs } = await import("../oracle-guard");
+
+    expect(cs("mesaj interzis")).toBe(true);
+    expect(cs("cont blocat acum")).toBe(true);
+    expect(cs("mesaj normal")).toBe(false);
+  });
+
+  it("an empty ORACLE_SWEAR_WORDS string leaves only the built-in base list", async () => {
+    process.env.ORACLE_SWEAR_WORDS = "";
+    vi.resetModules();
+
+    const { containsSwear: cs } = await import("../oracle-guard");
+
+    // Built-in words still work
+    expect(cs("pula")).toBe(true);
+    // A custom word that was NOT in the base list is not detected
+    expect(cs("interzis")).toBe(false);
+  });
+
+  it("ORACLE_SWEAR_WORDS with whitespace-padded entries is handled correctly", async () => {
+    process.env.ORACLE_SWEAR_WORDS = "  cuvant1  ,  cuvant2  ";
+    vi.resetModules();
+
+    const { containsSwear: cs } = await import("../oracle-guard");
+
+    expect(cs("scriu cuvant1 aici")).toBe(true);
+    expect(cs("si cuvant2 de asemenea")).toBe(true);
+  });
+
+  it("changing ORACLE_SWEAR_WORDS after module load has no effect on the running instance", async () => {
+    process.env.ORACLE_SWEAR_WORDS = "";
+    vi.resetModules();
+
+    const { containsSwear: cs } = await import("../oracle-guard");
+
+    // Module is loaded without "secret" in the list
+    expect(cs("secret")).toBe(false);
+
+    // Changing the env var now should have no effect on the already-loaded module
+    process.env.ORACLE_SWEAR_WORDS = "secret";
+    expect(cs("secret")).toBe(false); // still false — list is frozen at load time
   });
 });
 

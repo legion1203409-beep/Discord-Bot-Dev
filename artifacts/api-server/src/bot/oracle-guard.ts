@@ -54,18 +54,33 @@ function escapeRe(word: string): string {
   return normalise(word).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/**
+ * Compile the full pattern list from the static built-in stems/words plus any
+ * caller-supplied extra words. Exported so unit tests can build isolated
+ * pattern sets without touching the module-level singleton.
+ *
+ * Extra words are matched as **whole words** (like `SWEAR_EXACT`), so a
+ * single-character or short word won't accidentally hit innocent prefixes.
+ */
+export function buildPatterns(extraWords: string[]): RegExp[] {
+  const extras = extraWords.map((w) => w.trim()).filter(Boolean);
+  return [
+    ...SWEAR_STEMS.map((w) => new RegExp("\\b" + escapeRe(w))),
+    ...SWEAR_EXACT.map((w) => new RegExp("\\b" + escapeRe(w) + "\\b")),
+    ...extras.map((w) => new RegExp("\\b" + escapeRe(w) + "\\b")),
+  ];
+}
+
 // Operators can append extra words via ORACLE_SWEAR_WORDS (comma-separated,
 // with or without diacritics). Matched as whole words, like SWEAR_EXACT.
+// NOTE: read once at module-load time — a change only takes effect after
+// a bot restart (intentional; keeps the hot path allocation-free).
 const EXTRA_WORDS = (process.env.ORACLE_SWEAR_WORDS ?? "")
   .split(",")
   .map((w) => w.trim())
   .filter(Boolean);
 
-const SWEAR_PATTERNS: RegExp[] = [
-  ...SWEAR_STEMS.map((w) => new RegExp("\\b" + escapeRe(w))),
-  ...SWEAR_EXACT.map((w) => new RegExp("\\b" + escapeRe(w) + "\\b")),
-  ...EXTRA_WORDS.map((w) => new RegExp("\\b" + escapeRe(w) + "\\b")),
-];
+const SWEAR_PATTERNS: RegExp[] = buildPatterns(EXTRA_WORDS);
 
 /** Returns true when `text` contains at least one prohibited word. */
 export function containsSwear(text: string): boolean {
