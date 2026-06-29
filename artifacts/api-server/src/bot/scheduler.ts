@@ -8,7 +8,7 @@ import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipa
 const EVENT_CHANNEL_ID = "1472579703457190042";
 const MAIN_CHANNEL_ID = "1382042144717410385";
 const APPLICATION_ID = "1472675543777280071";
-const EVENT_DURATION_MS = 60 * 60 * 1000;
+export const EVENT_DURATION_MS = 60 * 60 * 1000;
 const MIN_COOLDOWN_MS = 2 * 60 * 60 * 1000;
 const MAX_COOLDOWN_MS = 4 * 60 * 60 * 1000;
 
@@ -41,7 +41,7 @@ export interface BossState {
 }
 export const activeBossMap = new Map<number, BossState>();
 
-const BOSS_RARITY_WEIGHTS: [BossRarity, number][] = [
+export const BOSS_RARITY_WEIGHTS: [BossRarity, number][] = [
   ["comun", 60], ["rar", 25], ["epic", 12], ["legendar", 3],
 ];
 function rollBossRarity(): BossRarity {

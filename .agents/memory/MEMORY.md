@@ -16,3 +16,4 @@
 - [Oracle reply-mode status](oracle-reply-mode-status.md) — healthz exposes oracleReplyMode/Reason from env flag + privilegedIntentFellBack; reflects config intent, not connectivity (live shown separately).
 - [Oracle recovery alert](oracle-recovery-alert.md) — recovery-to-full-mode detection needs an on-disk marker; the in-memory privilegedIntentFellBack flag resets on the restart that IS the recovery path.
 - [Oracle toxicity guard](oracle-guard.md) — ModerateMembers permission + bot role above target required for timeout to land; without it Oracle still posts the warning but can't enforce silence.
+- [Vitest discord.js mock pattern](vitest-discordjs-mock.md) — mocking discord.js classes (ActionRowBuilder, ButtonBuilder, EmbedBuilder) for scheduler tests requires real class bodies, not arrow-function factories; fake timers need advanceTimersByTimeAsync not runAllTimers for chest expiry.
