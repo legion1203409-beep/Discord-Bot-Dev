@@ -50,6 +50,12 @@ export interface BossState {
   expiresAt: number;
   /** True for bosses spawned independently of Ora Umbrelor — any player may join, no event participation required. */
   standalone: boolean;
+  /** discordId → epoch ms when their boss ability comes off cooldown. */
+  abilityReadyAt: Map<string, number>;
+  /** discordIds with a queued empower — their next hit on the boss is doubled. */
+  empowerNext: Set<string>;
+  /** discordIds with a queued shield — their next hit taken from the boss is reduced. */
+  shieldNext: Set<string>;
   defeated: boolean;
 }
 export const activeBossMap = new Map<number, BossState>();
@@ -490,6 +496,9 @@ export async function fireFinalBoss(client: Client, eventId: number) {
         totalDamage: p.totalDamage,
         isAlive: p.isAlive,
       })),
+      abilityReadyAt: new Map(),
+      empowerNext: new Set(),
+      shieldNext: new Set(),
       defeated: false,
     };
     activeBossMap.set(eventId, boss);
@@ -585,6 +594,9 @@ export async function fireStandaloneBoss(client: Client) {
       playerNames: new Map(),
       playerStats: new Map(),
       participants: [],
+      abilityReadyAt: new Map(),
+      empowerNext: new Set(),
+      shieldNext: new Set(),
       defeated: false,
     };
     activeBossMap.set(bossId, boss);

@@ -22,6 +22,16 @@ not on flee. Defeat and flee are mutually exclusive (defeat sets
 plain objects — safe to mutate `r.gold`/`r.xp` in place before granting +
 displaying so the shown reward matches what's granted.
 
+**Abilities (empower/shield) in boss fights** can't reuse the normal-combat
+queue flags: those live on the *event participant*, which no longer exists once
+the event ended (and never exists for standalone bosses). So the boss queue +
+cooldown state must live on `BossState` itself, keyed by discordId
+(`abilityReadyAt`/`empowerNext`/`shieldNext`). The shared boss message can't gate
+buttons per-player, so the handler validates ownership server-side against the
+global `player.abilityEmpowerLevel`/`abilityShieldLevel`. Adding required fields
+to `BossState` means updating BOTH constructions in `scheduler.ts` AND the test
+fixture `makeBoss`.
+
 **Why:** the two combat paths diverged historically; boss damage was a plain
 attackBonus roll with no crit/effects. Easy to "fix combat" in `doCombat` and
 forget bosses entirely.

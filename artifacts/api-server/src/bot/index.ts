@@ -85,6 +85,8 @@ import {
   SHOP_COUNT_KEY,
   LEVELUP_INTERVAL,
   ABILITY_COOLDOWN_MS,
+  empowerMult,
+  shieldReduction,
   buildFinalBossEmbed,
   buildBossLeaderboard,
   buildLockedChestEmbed,
@@ -1157,19 +1159,29 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
   // Oracle blessings/curses apply live in boss fights too.
   const mods = getCombatModifiers(uid);
 
-  // Player damage based on global attack stat, with crit + effect multipliers
+  // Player damage based on global attack stat, with crit + ability + effect multipliers
   const minDmg = Math.max(30, player.attackBonus * 5 + 20);
   const maxDmg = Math.max(80, player.attackBonus * 15 + 60);
   let playerDmg = Math.floor(Math.random() * (maxDmg - minDmg + 1)) + minDmg;
   const isCrit = Math.random() * 100 < Math.min(100, Math.max(0, player.critBonus + mods.critAdd));
   if (isCrit) playerDmg *= 2;
+  // Lovitura Umbrei (empower) — consume any queued empower for this player.
+  const usedEmpower = activeBoss.empowerNext.delete(uid) && player.abilityEmpowerLevel >= 1;
+  if (usedEmpower) playerDmg = Math.round(playerDmg * empowerMult(player.abilityEmpowerLevel));
   if (mods.damageMult !== 1) playerDmg = Math.round(playerDmg * mods.damageMult);
   const critTag = isCrit ? " 💥 **CRITIC!**" : "";
 
-  // Boss counter-attack — REAL damage to player HP, scaled by damage-taken effects
+  // Boss counter-attack — REAL damage to player HP, scaled by shield + damage-taken effects
   let bossHit = Math.floor(Math.random() * 121) + 80; // 80–200
+  // Scut de Cenușă (shield) — consume any queued shield for this player.
+  const usedShield = activeBoss.shieldNext.delete(uid) && player.abilityShieldLevel >= 1;
+  if (usedShield) bossHit = Math.max(1, Math.round(bossHit * (1 - shieldReduction(player.abilityShieldLevel))));
   if (mods.damageTakenMult !== 1) bossHit = Math.max(1, Math.round(bossHit * mods.damageTakenMult));
   const newPlayerHp = Math.max(0, myHp - bossHit);
+
+  const abilityLine =
+    (usedEmpower ? "🌑 **LOVITURA UMBREI!** Puterea Umbrelor ți-a dublat lovitura!\n" : "") +
+    (usedShield ? "🛡️ **SCUT DE CENUȘĂ activ!** Daunele primite au fost reduse.\n" : "");
 
   // Apply damage
   activeBoss.lastHitAt.set(uid, Date.now());
@@ -1229,6 +1241,7 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
 
     await interaction.followUp({
       content:
+        abilityLine +
         `⚔️ **${interaction.user.username}** a dat lovitura finală! **${playerDmg.toLocaleString()} daune**!${critTag}\n` +
         `💀 **Dragonul Stins a căzut!** Regatul este salvat!\n` +
         rewLine,
@@ -1257,12 +1270,58 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
   const effectsLine = formatActiveEffects(uid);
   await interaction.followUp({
     content:
+      abilityLine +
       `⚔️ Ai lovit Dragonul pentru **${playerDmg.toLocaleString()} daune**!${critTag}\n` +
       `🐉 Dragonul te lovește pentru **${bossHit} daune**! ${playerStatus}\n` +
       `🩸 Dragon: **${activeBoss.currentHp.toLocaleString()} / ${activeBoss.maxHp.toLocaleString()} HP**` +
       (effectsLine ? `\n✨ **Efecte active:**\n${effectsLine}` : ""),
     ephemeral: true,
   });
+}
+
+// Activate Lovitura Umbrei (empower) or Scut de Cenușă (shield) during a boss
+// fight. Abilities are boss-local here (the event/participant is gone), so the
+// queued flag + cooldown live on BossState, keyed by discordId.
+async function handleBossAbility(interaction: ButtonInteraction, eventId: number, kind: string) {
+  await interaction.deferUpdate();
+  const uid = interaction.user.id;
+  const boss = activeBossMap.get(eventId);
+
+  const eligibility = checkBossEligibility(boss, uid);
+  if (!eligibility.ok) {
+    const msg: Record<string, string> = {
+      no_boss:         "⌛ Dragonul nu a fost invocat încă.",
+      defeated:        "💀 Dragonul Stins a fost deja înfrânt de Regat!",
+      not_participant: "❌ Nu ai participat la eveniment — nu poți lupta cu Dragonul.",
+      dead:            "💀 Ești căzut în luptă! Dragonul te-a doborât — nu mai poți folosi abilități.",
+    };
+    await interaction.followUp({ content: msg[eligibility.reason] ?? "❌ Nu poți participa.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  const activeBoss = boss!;
+  const player = await upsertPlayer(uid, interaction.user.username);
+
+  const owns = kind === "shield" ? player.abilityShieldLevel >= 1 : player.abilityEmpowerLevel >= 1;
+  if (!owns) {
+    await interaction.followUp({ content: "🔒 Nu deții această abilitate. O poți debloca din Forja Cenușii (`/magazin`).", flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  const readyAt = activeBoss.abilityReadyAt.get(uid) ?? 0;
+  if (readyAt > Date.now()) {
+    const remaining = Math.ceil((readyAt - Date.now()) / 1000);
+    await interaction.followUp({ content: `⏳ Abilitatea e pe cooldown — mai așteaptă **${remaining}s**.`, flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  activeBoss.abilityReadyAt.set(uid, Date.now() + ABILITY_COOLDOWN_MS);
+  if (kind === "shield") {
+    activeBoss.shieldNext.add(uid);
+    await interaction.followUp({ content: "🛡️ **Scut de Cenușă activat!** Următorul atac primit de la Dragon va fi redus.", flags: MessageFlags.Ephemeral });
+  } else {
+    activeBoss.empowerNext.add(uid);
+    await interaction.followUp({ content: "🌑 **Lovitura Umbrei pregătită!** Următoarea ta lovitură în Dragon va fi dublă.", flags: MessageFlags.Ephemeral });
+  }
 }
 
 
@@ -1313,6 +1372,10 @@ async function handleButton(interaction: ButtonInteraction) {
   }
   if (id.startsWith("ora_retreat_")) return handleRetreat(interaction, parseInt(id.replace("ora_retreat_", "")));
   if (id.startsWith("finalboss_")) return handleFinalBoss(interaction, parseInt(id.replace("finalboss_", "")));
+  if (id.startsWith("bossability_")) {
+    const parts = id.split("_"); // bossability_<eventId>_<kind>
+    return handleBossAbility(interaction, parseInt(parts[1]!), parts[2]!);
+  }
   if (id.startsWith("class_pick_")) return handleClassPick(interaction, id.replace("class_pick_", ""));
 
   if (id === "shop_nav_stats") return handleShopNavStats(interaction);
