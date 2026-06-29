@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import "./index.css";
+import { computeAlertCard } from "./lib/alert-card";
 
 const DISCORD_INVITE = "https://discord.gg/JNYsGeMhzm";
 const API_BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
@@ -477,28 +478,7 @@ function OperatorHealthPage() {
 
   const unreachable = health === null;
 
-  let alertTone: "loading" | "ok" | "danger";
-  let alertLabel: string;
-  let alertDetail: string;
-  if (health === null) {
-    alertTone = "loading";
-    alertLabel = "Se verifică…";
-    alertDetail = "Se interoghează /api/healthz.";
-  } else if (health.alertsConfigured) {
-    const thresholdSec = Math.round(health.alertThresholdMs / 1000);
-    const thresholdLabel =
-      thresholdSec >= 60
-        ? `${Math.round(thresholdSec / 60)}m`
-        : `${thresholdSec}s`;
-    alertTone = "ok";
-    alertLabel = "Alerte: ACTIVE";
-    alertDetail = `Webhook configurat. Alertele de deconectare se trimit după ${thresholdLabel} de inactivitate.`;
-  } else {
-    alertTone = "danger";
-    alertLabel = "Alerte: OPRITE";
-    alertDetail =
-      "DISCORD_ALERT_WEBHOOK_URL nu este setat. Nu vei fi notificat de nicio deconectare sau recuperare.";
-  }
+  const { tone: alertTone, label: alertLabel, detail: alertDetail } = computeAlertCard(health);
 
   return (
     <div className="ops-page">
