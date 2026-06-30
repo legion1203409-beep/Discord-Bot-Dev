@@ -859,30 +859,42 @@ Obți cheia revendicând cufere de chei sau învingând evenimente!`,
     return;
   }
 
-  // Succes — calculează aurul și îl acordă.
+  // Succes — calculează aurul, aplică multiplicatorul surpriză și îl acordă.
   const result = spawnLockedChest(rarityKey);
+  const mult = rollChestMultiplier();
   if (!result) {
     // Fallback teoretic — nu ar trebui să se întâmple, dar întotdeauna avem fallback.
-    const gold = Math.floor(Math.random() * 200) + 100;
+    const baseGold = Math.floor(Math.random() * 200) + 100;
+    const gold = baseGold * mult;
     await addPlayerGold(interaction.user.id, gold);
+    const multEmoji = mult === 3 ? "🔥×3" : mult === 2 ? "✨×2" : "🍀×1";
+    const bonusLine = mult > 1 ? `\n🎰 **Multiplicator: ${multEmoji}** \u2014 Norocul Cenușii ține cu tine!` : "";
     await interaction.editReply({
-      content: `🎉 **Cheia a funcționat!** Ai găsit **${gold} Oboli** în cufărul întâmplător!`,
+      content: `🎉 **Cheia a funcționat!** Ai găsit **${gold} Oboli** în cufărul întâmplător!${bonusLine}`,
     });
-    logger.info({ discordId: interaction.user.id, rarityKey, gold, result: "success-fallback" }, "Trader success (fallback)");
+    logger.info({ discordId: interaction.user.id, rarityKey, gold, mult, result: "success-fallback" }, "Trader success (fallback)");
     return;
   }
 
+  const totalGold = result.gold * mult;
   await upsertPlayer(interaction.user.id, interaction.user.username);
-  await addPlayerGold(interaction.user.id, result.gold);
+  await addPlayerGold(interaction.user.id, totalGold);
+
+  const multEmoji = mult === 3 ? "🔥×3" : mult === 2 ? "✨×2" : "🍀×1";
+  const bonusLine = mult > 1
+    ? `\n🎰 **Multiplicator ${multEmoji}!** — Cufărul ascundea mai mult decât părea!`
+    : "";
 
   const lines = [
     `🎉 **Cheia ta a funcționat!**`,
     `\n👑 Ai deschis **${offer.emoji} ${offer.label}**!`,
-    `💰 **${result.gold} Oboli** eliberați!`,
+    `💰 **${totalGold} Oboli** eliberați!` +
+      (mult > 1 ? ` *(baza: ${result.gold} × ${mult})*` : ""),
+    bonusLine,
     `\n✨ *Negustorul închide cufărul cu un zâmbet subțel...*`,
   ];
   await interaction.editReply({ content: lines.join("\n") });
-  logger.info({ discordId: interaction.user.id, rarityKey, gold: result.gold, result: "success" }, "Trader chest opened");
+  logger.info({ discordId: interaction.user.id, rarityKey, gold: totalGold, baseGold: result.gold, mult, result: "success" }, "Trader chest opened");
 }
 
 async function handleJoin(interaction: ButtonInteraction, eventId: number) {
