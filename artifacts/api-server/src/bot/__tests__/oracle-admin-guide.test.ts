@@ -111,6 +111,8 @@ vi.mock("../db", () => ({
   saveTraderMessageId: vi.fn(),
   loadTraderMessageId: vi.fn(),
   clearTraderMessageId: vi.fn(),
+  saveTraderEmbedSig: vi.fn(),
+  loadTraderEmbedSig: vi.fn(),
   ensureBotStateTable: vi.fn(),
   getLatestActiveEvent: vi.fn(),
 }));

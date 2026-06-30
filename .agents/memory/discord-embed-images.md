@@ -21,3 +21,16 @@ gracefully when no domain env is present.
 `artifacts/api-server/assets/`, add it to `IMG` in `bot/assets.ts`, and reference
 it. Images must be public-internet reachable for Discord to render them — the
 Replit dev/prod domains already are.
+
+**Edit does NOT re-render a changed embed image (only a fresh POST does).**
+Freshly-sent messages (chest/monster spawns, shop per `/magazin`) always render
+their embed image. But a permanent message that is EDITED in place (the trader,
+`setupTrader`) keeps its prior image render — Discord does not reliably re-fetch a
+changed embed image URL on `message.edit`, so swapping the URL silently leaves the
+old/blank image. **Why:** caused the trader (negustor) image to stay blank after
+the GIF was swapped, while the shop (fresh post) fixed itself with the same asset.
+**How to apply:** for edit-in-place embeds, store an image *signature* in
+`botStateTable` (`trader_embed_sig`) and when it differs from the current URL,
+DELETE the old message and POST a fresh one (only after the delete succeeds — else
+you duplicate the permanent message); edit in place only when the image is
+unchanged so reconnects don't churn the channel.

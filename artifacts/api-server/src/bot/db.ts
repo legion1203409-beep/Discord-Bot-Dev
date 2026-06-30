@@ -499,6 +499,29 @@ export async function clearTraderMessageId(): Promise<void> {
   await db.delete(botStateTable).where(eq(botStateTable.key, TRADER_MESSAGE_KEY));
 }
 
+// Signature of the trader embed's image, so setupTrader can detect when the
+// image URL changed and re-post the message (Discord does NOT reliably re-fetch
+// a changed embed image on a plain message edit — only a fresh post renders it).
+const TRADER_EMBED_SIG_KEY = "trader_embed_sig";
+
+export async function saveTraderEmbedSig(sig: string): Promise<void> {
+  await ensureBotStateTable();
+  const now = new Date();
+  await db
+    .insert(botStateTable)
+    .values({ key: TRADER_EMBED_SIG_KEY, value: sig })
+    .onConflictDoUpdate({
+      target: botStateTable.key,
+      set: { value: sig, updatedAt: now },
+    });
+}
+
+export async function loadTraderEmbedSig(): Promise<string | null> {
+  await ensureBotStateTable();
+  const [row] = await db.select().from(botStateTable).where(eq(botStateTable.key, TRADER_EMBED_SIG_KEY));
+  return row?.value ?? null;
+}
+
 export async function persistActiveChest(record: ActiveChestRecord, dbKey = ACTIVE_CHEST_KEY): Promise<void> {
   await ensureBotStateTable();
   const now = new Date();

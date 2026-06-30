@@ -58,6 +58,8 @@ import {
   saveTraderMessageId,
   loadTraderMessageId,
   clearTraderMessageId,
+  saveTraderEmbedSig,
+  loadTraderEmbedSig,
   ensureBotStateTable,
   type AbilityKind,
   type KeyType,
@@ -1611,13 +1613,41 @@ async function setupTrader(client: Client): Promise<void> {
       traderMessageId = await loadTraderMessageId();
     }
 
-    // Try to edit the existing message — never post a new one if it still exists.
+    // Discord renders an embed image reliably only when the message is POSTED
+    // fresh — editing an existing message does NOT force it to re-fetch a
+    // changed image URL (the old/blank render sticks). So track the image URL
+    // as a signature: edit in place when it's unchanged (cheap, no channel
+    // churn on reconnects), but replace the message when the image changed.
+    const currentSig = IMG.trader ?? "";
+    const storedSig = await loadTraderEmbedSig();
+    const imageChanged = storedSig !== currentSig;
+
+    // Try to edit (or, when the image changed, replace) the existing message —
+    // never blindly post a new one if it still exists.
     if (traderMessageId) {
       try {
         const oldMsg = await channel.messages.fetch(traderMessageId);
-        await oldMsg.edit({ embeds: [embed], components: rows });
-        logger.info({ traderMessageId }, "Trader message edited on reconnect");
-        return;
+        if (!imageChanged) {
+          await oldMsg.edit({ embeds: [embed], components: rows });
+          logger.info({ traderMessageId }, "Trader message edited on reconnect");
+          return;
+        }
+        // Image changed → a plain edit won't re-render it. Delete the stale
+        // message and fall through to post a fresh one. Only proceed to re-post
+        // if the delete actually succeeded (or the message was already gone),
+        // so a transient delete failure can never duplicate the trader.
+        try {
+          await oldMsg.delete();
+        } catch (delErr) {
+          const delCode = (delErr as { code?: number } | null)?.code;
+          if (delCode !== 10008) {
+            logger.warn({ delErr, traderMessageId }, "Trader delete failed (transient) — keeping message, will retry next restart");
+            return;
+          }
+        }
+        logger.info({ traderMessageId }, "Trader image changed — replacing message so the new image renders");
+        traderMessageId = null;
+        await clearTraderMessageId().catch(() => null);
       } catch (err) {
         // Only treat a genuinely missing message (10008 "Unknown Message") as
         // deleted and re-post. For ANY other error (network blip, rate limit,
@@ -1634,10 +1664,12 @@ async function setupTrader(client: Client): Promise<void> {
       }
     }
 
-    // First time (or after manual deletion): send exactly one new message.
+    // First time (or after manual deletion / image change): send exactly one
+    // new message, then persist its ID and the image signature together.
     const msg = await channel.send({ embeds: [embed], components: rows });
     traderMessageId = msg.id;
     await saveTraderMessageId(msg.id);
+    await saveTraderEmbedSig(currentSig);
     logger.info({ traderMessageId, channelId: TRADER_CHANNEL_ID }, "Trader message posted and persisted");
   } catch (err) {
     logger.error({ err }, "Failed to set up trader");
