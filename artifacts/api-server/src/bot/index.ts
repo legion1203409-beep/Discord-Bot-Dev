@@ -590,7 +590,11 @@ async function handleClasament(interaction: ChatInputCommandInteraction) {
   const lines = top.map((p, i) => {
     const deathStr = p.deaths > 0 ? ` | 💀 ${p.deaths}×(Niv.${p.deathLevel})` : "";
     const fledStr = p.retreats > 0 ? ` | 🏳️ ${p.retreats}× a fugit` : "";
-    return `${medals[i] ?? `**${i + 1}.**`} **${p.username}** — 🎖️ ${levelTitle(p.maxLevel)} · ${p.xp} XP${deathStr}${fledStr}`;
+    const totalKeys = p.keyRar + p.keyEpic + p.keyRegal;
+    const keysStr = totalKeys > 0
+      ? ` | 🗝️ ${totalKeys} cheie${totalKeys > 1 ? "i" : ""}`
+      : "";
+    return `${medals[i] ?? `**${i + 1}.**`} **${p.username}** — 🎖️ ${levelTitle(p.maxLevel)} · ${p.xp} XP${keysStr}${deathStr}${fledStr}`;
   }).join("\n");
 
   // One select menu listing every player shown — pick any to view their full profile.
