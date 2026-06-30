@@ -762,7 +762,10 @@ function shopAbilText(p: Player): string {
 // Category-aware shop: each sub-page renders ONLY its own category so the embed
 // matches the buttons shown below it. Prices are always bold for clarity.
 export function buildShopEmbed(p: Player, category: ShopCategory = "overview"): EmbedBuilder {
-  const embed = new EmbedBuilder().setColor(THEME_COLOR).setFooter({ text: BRAND_FOOTER });
+  const embed = new EmbedBuilder()
+    .setColor(THEME_COLOR)
+    .setFooter({ text: BRAND_FOOTER })
+    .setThumbnail(IMG.shop);
 
   if (category === "stats") {
     return embed
@@ -799,6 +802,8 @@ export function buildShopEmbed(p: Player, category: ShopCategory = "overview"): 
   }
 
   return embed
+    .setThumbnail(null)
+    .setImage(IMG.shop)
     .setTitle("🔥🏺 Forja Cenușii — Magazinul Regal")
     .setDescription(
       "În adâncul cetății, focul nu se stinge niciodată.\n" +

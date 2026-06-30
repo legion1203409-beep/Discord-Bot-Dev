@@ -19,7 +19,8 @@ export const IMG = {
   monster: assetUrl("monster.gif"),
   chest: assetUrl("chest.gif"),
   death: assetUrl("death.gif"),
-  trader: assetUrl("trader.png"),
+  trader: assetUrl("trader.gif"),
+  shop: assetUrl("shop.gif"),
 };
 
 export const CHEST_IMG: Record<string, string | null> = {

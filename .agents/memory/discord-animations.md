@@ -22,6 +22,10 @@ clip duration so the loop is seamless, e.g.
 **Gotcha:** the `hue` filter does NOT support `eval=frame` ("Option not found").
 For per-frame color shifts use `eq` (`gamma_r`/`gamma_b`) instead.
 
+**Size:** keep embed GIFs roughly ≲4MB for reliable Discord embedding via URL.
+A 16:9 source at `scale=640`, `fps=15`, 4s (~60 frames) lands ~6.6MB (too big);
+`scale=512`, `fps=12`, 4s (~48 frames) lands ~4MB and still looks smooth.
+
 ## Edit-based motion
 
 `fireChest` and `fireEvent` send a placeholder, then run a few `await sleep(...)` +

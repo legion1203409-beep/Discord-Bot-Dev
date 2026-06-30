@@ -126,6 +126,12 @@ uri = "file://artifacts/api-server/assets/trader.png"
 type = "image"
 title = "ash merchant trader"
 
+[[generated]]
+id = "jqiu1DW1t_XlXbphf2XC7"
+uri = "file://artifacts/api-server/assets/shop.png"
+type = "image"
+title = "ash royal forge shop"
+
 [[outputs]]
 id = "Xv7osCIljB2ivkCRjsX9M"
 uri = "file://artifacts/api-server/assets/chest_bronz.png"
