@@ -519,7 +519,8 @@ async function handleSpawnBoss(interaction: ChatInputCommandInteraction) {
   if (botClient) await fireFinalBoss(botClient, ev.id);
 }
 
-async function handleAdmin(interaction: ChatInputCommandInteraction) {
+/** @internal — exported for unit-testing the admin routing/guard logic */
+export async function handleAdmin(interaction: ChatInputCommandInteraction) {
   const sub = interaction.options.getSubcommand();
   // ghid is available to any admin — no owner check needed
   if (sub === "ghid") { await handleAdminGhid(interaction); return; }
