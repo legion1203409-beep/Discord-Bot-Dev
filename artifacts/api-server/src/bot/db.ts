@@ -361,6 +361,36 @@ export async function createActiveBossesTableIfNotExists(): Promise<void> {
   `);
 }
 
+// Ensure the durable key/value store exists. The production DB may not have had
+// the Drizzle migration applied, so chest rehydration, the Oracle recovery
+// marker and the trader message ID all fail with `relation "bot_state" does not
+// exist`. Creating it idempotently at startup self-heals a missing migration.
+export async function createBotStateTableIfNotExists(): Promise<void> {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS bot_state (
+      key        text        PRIMARY KEY,
+      value      text        NOT NULL,
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+}
+
+// Cached promise so the CREATE TABLE runs at most once, regardless of which
+// bot_state-dependent path fires first (ShardReady trader setup, ClientReady
+// rehydration, or the login-error Oracle marker). Every bot_state helper awaits
+// this first, so a missing migration can never surface as a runtime query error.
+// On failure the cache is reset so a later call retries.
+let botStateTableReady: Promise<void> | null = null;
+export function ensureBotStateTable(): Promise<void> {
+  if (!botStateTableReady) {
+    botStateTableReady = createBotStateTableIfNotExists().catch((err) => {
+      botStateTableReady = null;
+      throw err;
+    });
+  }
+  return botStateTableReady;
+}
+
 // Upsert the serialized boss state. Called after every meaningful change so
 // a restart can reconstruct the fight from the latest snapshot.
 export async function persistActiveBoss(eventId: number, stateJson: string, expiresAt: Date): Promise<void> {
@@ -393,6 +423,7 @@ const ORACLE_FELLBACK_KEY = "oracle_fellback";
 // Record that the Oracle fell back, so a later full-mode boot can confirm the
 // recovery. Idempotent — repeated fallbacks just refresh the timestamp.
 export async function recordOracleFellBack(): Promise<void> {
+  await ensureBotStateTable();
   const now = new Date();
   await db
     .insert(botStateTable)
@@ -407,6 +438,7 @@ export async function recordOracleFellBack(): Promise<void> {
 // DELETE ... RETURNING is atomic, so if several boots race (autoscale), only
 // the boot that actually removed the row sees `true` — no duplicate alerts.
 export async function consumeOracleFellBack(): Promise<boolean> {
+  await ensureBotStateTable();
   const [deleted] = await db
     .delete(botStateTable)
     .where(eq(botStateTable.key, ORACLE_FELLBACK_KEY))
@@ -445,6 +477,7 @@ export interface ActiveChestRecord {
 const TRADER_MESSAGE_KEY = "trader_message_id";
 
 export async function saveTraderMessageId(messageId: string): Promise<void> {
+  await ensureBotStateTable();
   const now = new Date();
   await db
     .insert(botStateTable)
@@ -456,15 +489,18 @@ export async function saveTraderMessageId(messageId: string): Promise<void> {
 }
 
 export async function loadTraderMessageId(): Promise<string | null> {
+  await ensureBotStateTable();
   const [row] = await db.select().from(botStateTable).where(eq(botStateTable.key, TRADER_MESSAGE_KEY));
   return row?.value ?? null;
 }
 
 export async function clearTraderMessageId(): Promise<void> {
+  await ensureBotStateTable();
   await db.delete(botStateTable).where(eq(botStateTable.key, TRADER_MESSAGE_KEY));
 }
 
 export async function persistActiveChest(record: ActiveChestRecord, dbKey = ACTIVE_CHEST_KEY): Promise<void> {
+  await ensureBotStateTable();
   const now = new Date();
   await db
     .insert(botStateTable)
@@ -476,6 +512,7 @@ export async function persistActiveChest(record: ActiveChestRecord, dbKey = ACTI
 }
 
 export async function loadActiveChest(dbKey = ACTIVE_CHEST_KEY): Promise<ActiveChestRecord | null> {
+  await ensureBotStateTable();
   const [row] = await db.select().from(botStateTable).where(eq(botStateTable.key, dbKey));
   if (!row) return null;
   try {
@@ -486,5 +523,6 @@ export async function loadActiveChest(dbKey = ACTIVE_CHEST_KEY): Promise<ActiveC
 }
 
 export async function clearActiveChest(dbKey = ACTIVE_CHEST_KEY): Promise<void> {
+  await ensureBotStateTable();
   await db.delete(botStateTable).where(eq(botStateTable.key, dbKey));
 }

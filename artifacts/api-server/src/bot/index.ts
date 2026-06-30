@@ -58,6 +58,7 @@ import {
   saveTraderMessageId,
   loadTraderMessageId,
   clearTraderMessageId,
+  ensureBotStateTable,
   type AbilityKind,
   type KeyType,
 } from "./db";
@@ -142,6 +143,12 @@ const TRADER_OFFERS: Array<{ rarityKey: string; keyType: KeyType; label: string;
 
 let traderMessageId: string | null = null;
 let traderSetupInProgress = false;
+
+// De-dup recently handled interaction IDs to drop double-delivered gateway
+// events (ShardResume replays). TTL exceeds Discord's 15-min interaction token
+// lifetime (plus buffer) so a late replay can't slip past the window.
+const seenInteractionIds = new Set<string>();
+const INTERACTION_DEDUP_TTL_MS = 17 * 60 * 1000;
 // Set when a login attempt that requested the privileged MessageContent intent
 // is rejected with code 4014 ("Disallowed intent"). On the supervisor's next
 // restart the bot then boots WITHOUT the privileged intent (degraded — only
@@ -1590,9 +1597,17 @@ async function setupTrader(client: Client): Promise<void> {
         await oldMsg.edit({ embeds: [embed], components: rows });
         logger.info({ traderMessageId }, "Trader message edited on reconnect");
         return;
-      } catch {
-        // Message was deleted manually — clear DB and fall through to send once.
-        logger.warn({ traderMessageId }, "Trader message not found, will re-post");
+      } catch (err) {
+        // Only treat a genuinely missing message (10008 "Unknown Message") as
+        // deleted and re-post. For ANY other error (network blip, rate limit,
+        // missing permissions) keep the stored ID and abort — re-posting on a
+        // transient failure is exactly what duplicates the permanent trader.
+        const code = (err as { code?: number } | null)?.code;
+        if (code !== 10008) {
+          logger.warn({ err, traderMessageId }, "Trader edit failed (transient) — keeping message, will retry next restart");
+          return;
+        }
+        logger.warn({ traderMessageId }, "Trader message no longer exists (10008) — re-posting once");
         traderMessageId = null;
         await clearTraderMessageId().catch(() => null);
       }
@@ -1651,6 +1666,13 @@ export async function startBot(onReady?: () => void): Promise<void> {
     botClient = client;
     botReadyAt = new Date();
     shardStatus = "ready";
+    // Self-heal a missing bot_state table (production may lack the migration)
+    // BEFORE anything reads it: chest rehydration, trader ID, Oracle marker.
+    // Every bot_state helper also awaits this internally, so callers from the
+    // ShardReady path are covered too — this just warms the cache early.
+    await ensureBotStateTable().catch((err) =>
+      logger.error({ err }, "Failed to ensure bot_state table exists"),
+    );
     if (!schedulerStarted) {
       schedulerStarted = true;
       startScheduler(client);
@@ -1786,6 +1808,19 @@ export async function startBot(onReady?: () => void): Promise<void> {
   });
 
   client.on(Events.InteractionCreate, async (interaction) => {
+    // Guard against the same interaction being delivered twice. On an unstable
+    // gateway connection discord.js replays buffered events after a ShardResume,
+    // so a single button click can fire this handler twice — the second pass
+    // hits `deferUpdate`/`deferReply` on an already-acknowledged interaction
+    // (DiscordAPIError 40060) and the click appears stuck. Skipping duplicates
+    // also prevents double DB writes / double rewards.
+    if (seenInteractionIds.has(interaction.id)) {
+      logger.warn({ interactionId: interaction.id }, "Duplicate interaction delivery — skipping");
+      return;
+    }
+    seenInteractionIds.add(interaction.id);
+    setTimeout(() => seenInteractionIds.delete(interaction.id), INTERACTION_DEDUP_TTL_MS).unref?.();
+
     try {
       if (interaction.isChatInputCommand()) {
         if (interaction.commandName === "profil") await handleProfil(interaction);

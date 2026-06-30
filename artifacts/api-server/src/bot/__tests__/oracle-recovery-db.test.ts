@@ -20,6 +20,9 @@ vi.mock("@workspace/db", () => {
 
   return {
     db: { insert: mockInsert, delete: mockDelete },
+    // ensureBotStateTable() runs CREATE TABLE IF NOT EXISTS via pool.query before
+    // every bot_state helper; resolve it so the helper logic under test runs.
+    pool: { query: vi.fn().mockResolvedValue({ rows: [] }) },
     botStateTable: { key: "key_col", value: "value_col", updatedAt: "updated_at_col" },
     playersTable: {},
     activeEventsTable: {},
