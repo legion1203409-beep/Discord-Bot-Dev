@@ -413,3 +413,46 @@ export async function consumeOracleFellBack(): Promise<boolean> {
     .returning();
   return deleted != null;
 }
+
+// ─── Active chest persistence ─────────────────────────────────────────────────
+// Persists the currently-live chest message so it can be expired cleanly on
+// restart instead of leaving a stale interactive button in Discord.
+
+const ACTIVE_CHEST_KEY = "active_chest";
+
+export interface ActiveChestRecord {
+  messageId: string;
+  channelId: string;
+  chestId: string;
+  gold: number;
+  rarityKey: string;
+  /** Admin-forced multiplier (×2/×3). Absent for scheduler chests. */
+  mult?: 2 | 3;
+  /** Expiry epoch ms — when the chest button should be disabled. */
+  expiresAt: number;
+}
+
+export async function persistActiveChest(record: ActiveChestRecord): Promise<void> {
+  const now = new Date();
+  await db
+    .insert(botStateTable)
+    .values({ key: ACTIVE_CHEST_KEY, value: JSON.stringify(record) })
+    .onConflictDoUpdate({
+      target: botStateTable.key,
+      set: { value: JSON.stringify(record), updatedAt: now },
+    });
+}
+
+export async function loadActiveChest(): Promise<ActiveChestRecord | null> {
+  const [row] = await db.select().from(botStateTable).where(eq(botStateTable.key, ACTIVE_CHEST_KEY));
+  if (!row) return null;
+  try {
+    return JSON.parse(row.value) as ActiveChestRecord;
+  } catch {
+    return null;
+  }
+}
+
+export async function clearActiveChest(): Promise<void> {
+  await db.delete(botStateTable).where(eq(botStateTable.key, ACTIVE_CHEST_KEY));
+}

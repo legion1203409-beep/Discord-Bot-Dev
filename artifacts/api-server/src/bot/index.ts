@@ -51,6 +51,7 @@ import {
   addPlayerKey,
   consumePlayerKey,
   deleteActiveBoss,
+  clearActiveChest,
   type AbilityKind,
   type KeyType,
 } from "./db";
