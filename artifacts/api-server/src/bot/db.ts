@@ -441,6 +441,29 @@ export interface ActiveChestRecord {
   keyType?: string;
 }
 
+// ── Trader message ID persistence ───────────────────────────────────────────
+const TRADER_MESSAGE_KEY = "trader_message_id";
+
+export async function saveTraderMessageId(messageId: string): Promise<void> {
+  const now = new Date();
+  await db
+    .insert(botStateTable)
+    .values({ key: TRADER_MESSAGE_KEY, value: messageId })
+    .onConflictDoUpdate({
+      target: botStateTable.key,
+      set: { value: messageId, updatedAt: now },
+    });
+}
+
+export async function loadTraderMessageId(): Promise<string | null> {
+  const [row] = await db.select().from(botStateTable).where(eq(botStateTable.key, TRADER_MESSAGE_KEY));
+  return row?.value ?? null;
+}
+
+export async function clearTraderMessageId(): Promise<void> {
+  await db.delete(botStateTable).where(eq(botStateTable.key, TRADER_MESSAGE_KEY));
+}
+
 export async function persistActiveChest(record: ActiveChestRecord, dbKey = ACTIVE_CHEST_KEY): Promise<void> {
   const now = new Date();
   await db

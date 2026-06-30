@@ -55,6 +55,9 @@ import {
   clearActiveChest,
   KEYCHEST_DBKEY,
   LOCKCHEST_DBKEY,
+  saveTraderMessageId,
+  loadTraderMessageId,
+  clearTraderMessageId,
   type AbilityKind,
   type KeyType,
 } from "./db";
@@ -1566,7 +1569,6 @@ async function setupTrader(client: Client): Promise<void> {
     const rows: ActionRowBuilder<ButtonBuilder>[] = [];
     for (const offer of TRADER_OFFERS) {
       const keyType  = offer.keyType;
-      const keyLabel = KEY_LABEL[keyType] ?? "Cheie";
       const keyEmoji = KEY_EMOJI[keyType] ?? "🗝️";
       const btn = new ButtonBuilder()
         .setCustomId(`trader_${offer.rarityKey}`)
@@ -1576,26 +1578,35 @@ async function setupTrader(client: Client): Promise<void> {
       rows.push(row);
     }
 
-    // If we know a previous message ID, try to edit it (survives bot restart).
+    // Load persisted message ID from DB so it survives bot restarts.
+    if (!traderMessageId) {
+      traderMessageId = await loadTraderMessageId();
+    }
+
+    // Try to edit the existing message — never post a new one if it still exists.
     if (traderMessageId) {
       try {
         const oldMsg = await channel.messages.fetch(traderMessageId);
-        if (oldMsg) {
-          await oldMsg.edit({ embeds: [embed], components: rows });
-          logger.info({ traderMessageId }, "Trader message updated on reconnect");
-          return;
-        }
+        await oldMsg.edit({ embeds: [embed], components: rows });
+        logger.info({ traderMessageId }, "Trader message edited on reconnect");
+        return;
       } catch {
-        // Message was deleted — fall through to send a new one.
+        // Message was deleted manually — clear DB and fall through to send once.
+        logger.warn({ traderMessageId }, "Trader message not found, will re-post");
         traderMessageId = null;
+        await clearTraderMessageId().catch(() => null);
       }
     }
 
+    // First time (or after manual deletion): send exactly one new message.
     const msg = await channel.send({ embeds: [embed], components: rows });
     traderMessageId = msg.id;
-    logger.info({ traderMessageId, channelId: TRADER_CHANNEL_ID }, "Trader message posted");
+    await saveTraderMessageId(msg.id);
+    logger.info({ traderMessageId, channelId: TRADER_CHANNEL_ID }, "Trader message posted and persisted");
   } catch (err) {
     logger.error({ err }, "Failed to set up trader");
+  } finally {
+    traderSetupInProgress = false;
   }
 }
 
