@@ -185,6 +185,22 @@ export function checkBossHitCooldown(
   return { onCooldown: false };
 }
 
+// ─── Boss ability cooldown guard ──────────────────────────────────────────────
+// Pure function — no I/O — keeps the ability spam-prevention window testable.
+// `abilityReadyAt` stores the absolute timestamp at which the ability becomes
+// available again (i.e. Date.now() + ABILITY_COOLDOWN_MS set at activation).
+export function checkBossAbilityCooldown(
+  abilityReadyAt: Map<string, number>,
+  uid: string,
+  now = Date.now(),
+): BossCooldownResult {
+  const readyAt = abilityReadyAt.get(uid) ?? 0;
+  if (readyAt > now) {
+    return { onCooldown: true, remainingSeconds: Math.ceil((readyAt - now) / 1000) };
+  }
+  return { onCooldown: false };
+}
+
 export const BOSS_RARITY_WEIGHTS: [BossRarity, number][] = [
   ["comun", 60], ["rar", 25], ["epic", 12], ["legendar", 3],
 ];

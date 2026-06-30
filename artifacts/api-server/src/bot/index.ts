@@ -20,7 +20,7 @@ import {
 } from "discord.js";
 import { logger } from "../lib/logger";
 import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./alert";
-import { startScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, claimedChests, activeBossMap, checkBossEligibility, checkBossHitCooldown, BOSS_HIT_COOLDOWN_MS, persistBossState, type BossState, type BossPlayerStats } from "./scheduler";
+import { startScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, claimedChests, activeBossMap, checkBossEligibility, checkBossHitCooldown, BOSS_HIT_COOLDOWN_MS, checkBossAbilityCooldown, persistBossState, type BossState, type BossPlayerStats } from "./scheduler";
 import { recordMessage } from "./oracle";
 import { maybeReplyAsOracle, logOracleChatStatus } from "./oracle-chat";
 import { handleToxicity } from "./oracle-guard";
@@ -1442,10 +1442,9 @@ async function handleBossAbility(interaction: ButtonInteraction, eventId: number
     return;
   }
 
-  const readyAt = activeBoss.abilityReadyAt.get(uid) ?? 0;
-  if (readyAt > Date.now()) {
-    const remaining = Math.ceil((readyAt - Date.now()) / 1000);
-    await interaction.followUp({ content: `⏳ Abilitatea e pe cooldown — mai așteaptă **${remaining}s**.`, flags: MessageFlags.Ephemeral });
+  const abilityCooldown = checkBossAbilityCooldown(activeBoss.abilityReadyAt, uid);
+  if (abilityCooldown.onCooldown) {
+    await interaction.followUp({ content: `⏳ Abilitatea e pe cooldown — mai așteaptă **${abilityCooldown.remainingSeconds}s**.`, flags: MessageFlags.Ephemeral });
     return;
   }
 
