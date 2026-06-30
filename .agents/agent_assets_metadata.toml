@@ -120,6 +120,12 @@ uri = "file://artifacts/api-server/assets/key_regal.png"
 type = "image"
 title = "royal blue gold key"
 
+[[generated]]
+id = "gOFwNU1dKi0abVuZAWNbs"
+uri = "file://artifacts/api-server/assets/trader.png"
+type = "image"
+title = "ash merchant trader"
+
 [[outputs]]
 id = "Xv7osCIljB2ivkCRjsX9M"
 uri = "file://artifacts/api-server/assets/chest_bronz.png"

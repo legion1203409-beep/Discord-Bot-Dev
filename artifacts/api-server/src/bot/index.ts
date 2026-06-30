@@ -120,6 +120,7 @@ import {
   type ShopKey,
   type BossRarity,
 } from "./survival";
+import { IMG } from "./assets";
 
 const GUILD_ID = "1382035307607883816";
 
@@ -138,7 +139,7 @@ const TRADER_SUCCESS_CHANCE  = 0.30;
 const TRADER_OFFERS: Array<{ rarityKey: string; keyType: KeyType; label: string; emoji: string }> = [
   { rarityKey: "argint", keyType: "rar",   label: "Cufăr Blocat de Argint", emoji: "🥈" },
   { rarityKey: "aur",    keyType: "epic",  label: "Cufăr Blocat de Aur",    emoji: "👑" },
-  { rarityKey: "regal",  keyType: "regal", label: "Cufărul Regal",          emoji: "👑" },
+  { rarityKey: "regal",  keyType: "regal", label: "Cufărul Regal",          emoji: "⚜️" },
 ];
 
 let traderMessageId: string | null = null;
@@ -830,7 +831,7 @@ async function handleKeyChestClaim(interaction: ButtonInteraction, chestId: stri
 /**
  * Handle a claim on the permanent trader message.
  * The trader offers locked chests in exchange for the matching key type.
- * 30% success: player gets the gold from the locked chest (cheia funcținează).
+ * 30% success: player gets the gold from the locked chest (cheia funcționează).
  * 70% failure: the key breaks (cheia se rupe) — key is consumed, nothing awarded.
  * All feedback is ephemeral (only the player sees it).
  */
@@ -902,7 +903,7 @@ Obți cheia revendicând cufere de chei sau învingând evenimente!`,
     `💰 **${totalGold} Oboli** eliberați!` +
       (mult > 1 ? ` *(baza: ${result.gold} × ${mult})*` : ""),
     bonusLine,
-    `\n✨ *Negustorul închide cufărul cu un zâmbet subțel...*`,
+    `\n✨ *Negustorul închide cufărul cu un zâmbet subțire...*`,
   ];
   await interaction.editReply({ content: lines.join("\n") });
   logger.info({ discordId: interaction.user.id, rarityKey, gold: totalGold, baseGold: result.gold, mult, result: "success" }, "Trader chest opened");
@@ -1559,27 +1560,47 @@ async function setupTrader(client: Client): Promise<void> {
     }
 
     const embed = new EmbedBuilder()
-      .setColor(0x8b5a2b)
+      .setColor(0xc9a227)
+      .setAuthor({ name: "Taraba din Umbră • Regatul Cenușii" })
       .setTitle("🏪 Negustorul Misterios al Cenușii")
       .setDescription(
-        "Un bătrân cu pălăria lăsată pe ochi te observă din umbră...\n\n" +
-        "— *«Am cufere din înverșunările țarilor... dar știu să încerci să le deschizi." +
-        " O cheie pentru un cufăr. Poate câștigi, poate cheia se rupe. Așa e norocul.»*\n\n" +
-        "💰 **În 30% din cazuri cheia funcținează și cufărul se deschide.**\n" +
-        "❌ **În 70% din cazuri cheia se rupe și cufărul rămâne închis.**\n\n" +
-        "Fiecare cufăr necesită cheia sa potrivită.\n" +
-        "🥈 Argint → Cheie de Rar   |   👑 Aur → Cheie de Epic   |   👑 Regal → Cheie Regală",
+        "*Un bătrân cu pălăria lăsată pe ochi te cântărește din umbră, fără să-și ridice privirea...*\n\n" +
+        "> 🗣️ *«Am cufere smulse din lăcomia țarilor morți... dar norocul ți-l vinzi singur.*\n" +
+        "> *O cheie pentru un cufăr. Poate se deschide, poate cheia se frânge. Așa-i jocul Cenușii.»*\n\n" +
+        "Alege un cufăr de mai jos — **dacă ai cheia potrivită**, negustorul îți încearcă norocul.",
       )
-      .setFooter({ text: "Deschide doar cu chei pe care le ai!" });
+      .addFields(
+        {
+          name: "🎲 Norocul Negustorului",
+          value:
+            "🟢 **30%** — cheia se rotește, cufărul se deschide, Obolii sunt ai tăi.\n" +
+            "🔴 **70%** — cheia se frânge în broască și comoara rămâne ferecată.",
+        },
+        {
+          name: "🗝️ Ofertele de azi",
+          value:
+            "🥈 **Cufăr Blocat de Argint** — necesită 🗝️ Cheie de Rar\n" +
+            "👑 **Cufăr Blocat de Aur** — necesită 🔑 Cheie de Epic\n" +
+            "⚜️ **Cufărul Regal** — necesită ⚜️ Cheie Regală",
+        },
+      )
+      .setImage(IMG.trader)
+      .setFooter({ text: `Deschide doar cu cheile pe care le ai • ${BRAND_FOOTER}` });
+
+    // Tier-distinct button styling: grey for silver, blurple for gold,
+    // royal crimson for regal — gives the offers a clear premium hierarchy.
+    const STYLE_BY_RARITY: Record<string, ButtonStyle> = {
+      argint: ButtonStyle.Secondary,
+      aur:    ButtonStyle.Primary,
+      regal:  ButtonStyle.Danger,
+    };
 
     const rows: ActionRowBuilder<ButtonBuilder>[] = [];
     for (const offer of TRADER_OFFERS) {
-      const keyType  = offer.keyType;
-      const keyEmoji = KEY_EMOJI[keyType] ?? "🗝️";
       const btn = new ButtonBuilder()
         .setCustomId(`trader_${offer.rarityKey}`)
-        .setLabel(`${keyEmoji} ${offer.label}`)
-        .setStyle(ButtonStyle.Primary);
+        .setLabel(`${offer.emoji} ${offer.label}`)
+        .setStyle(STYLE_BY_RARITY[offer.rarityKey] ?? ButtonStyle.Primary);
       const row = new ActionRowBuilder<ButtonBuilder>().addComponents(btn);
       rows.push(row);
     }
