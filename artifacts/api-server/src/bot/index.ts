@@ -16,6 +16,7 @@ import {
   ButtonBuilder,
   ButtonStyle,
   PermissionFlagsBits,
+  EmbedBuilder,
 } from "discord.js";
 import { logger } from "../lib/logger";
 import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./alert";
@@ -96,6 +97,8 @@ import {
   buildBossLeaderboard,
   buildLockedChestEmbed,
   buildKeyDropMessage,
+  LOCKED_CHEST_GOLD,
+  spawnLockedChest,
   rollChest,
   rollChestMultiplier,
   computeBossRewards,
@@ -122,6 +125,19 @@ let disconnectAlertTimer: ReturnType<typeof setTimeout> | null = null;
 let disconnectStartedAt: Date | null = null;
 let botReadyAt: Date | null = null;
 let shardStatus: string = "disconnected";
+
+// ── Permanent Trader ────────────────────────────────────────────────────────────
+const TRADER_CHANNEL_ID      = "1521418965732036628";
+const TRADER_SUCCESS_CHANCE  = 0.30;
+
+/** Locked-chest rarities the trader offers (each needs its matching key). */
+const TRADER_OFFERS: Array<{ rarityKey: string; keyType: KeyType; label: string; emoji: string }> = [
+  { rarityKey: "argint", keyType: "rar",   label: "Cufăr Blocat de Argint", emoji: "🥈" },
+  { rarityKey: "aur",    keyType: "epic",  label: "Cufăr Blocat de Aur",    emoji: "👑" },
+  { rarityKey: "regal",  keyType: "regal", label: "Cufărul Regal",          emoji: "👑" },
+];
+
+let traderMessageId: string | null = null;
 // Set when a login attempt that requested the privileged MessageContent intent
 // is rejected with code 4014 ("Disallowed intent"). On the supervisor's next
 // restart the bot then boots WITHOUT the privileged intent (degraded — only
@@ -796,6 +812,75 @@ async function handleKeyChestClaim(interaction: ButtonInteraction, chestId: stri
   logger.info({ discordId: interaction.user.id, chestId, keyType }, "Key chest claimed");
 }
 
+/**
+ * Handle a claim on the permanent trader message.
+ * The trader offers locked chests in exchange for the matching key type.
+ * 30% success: player gets the gold from the locked chest (cheia funcținează).
+ * 70% failure: the key breaks (cheia se rupe) — key is consumed, nothing awarded.
+ * All feedback is ephemeral (only the player sees it).
+ */
+async function handleTraderClaim(interaction: ButtonInteraction, rarityKey: string) {
+  await interaction.deferReply({ ephemeral: true });
+
+  const offer = TRADER_OFFERS.find((o) => o.rarityKey === rarityKey);
+  if (!offer) {
+    await interaction.editReply({ content: "❌ Ofertă necunoscută la negustor." });
+    return;
+  }
+
+  // Atomic key consume — if none, tell the player immediately.
+  const keyConsumed = await consumePlayerKey(interaction.user.id, offer.keyType);
+  if (!keyConsumed) {
+    const keyLabel = KEY_LABEL[offer.keyType] ?? "Cheie";
+    await interaction.editReply({
+      content: `🔒 **Nu ai ${keyLabel}!**
+Negustorul închide gratiile către tine...
+Obți cheia revendicând cufere de chei sau învingând evenimente!`,
+    });
+    return;
+  }
+
+  const success = Math.random() < TRADER_SUCCESS_CHANCE;
+
+  if (!success) {
+    const keyLabel = KEY_LABEL[offer.keyType] ?? "Cheie";
+    const lines = [
+      `💥 **Cheia ta ${keyLabel} s-a rupt în broască!**`,
+      `
+✨ *Negustorul scutură capul în tăcere...*`,
+      `💀 Cheia s-a sfărâmat și comoara rămâne închisă.`,
+    ];
+    await interaction.editReply({ content: lines.join("\n") });
+    logger.info({ discordId: interaction.user.id, rarityKey, keyType: offer.keyType, result: "broken" }, "Trader key broke");
+    return;
+  }
+
+  // Succes — calculează aurul și îl acordă.
+  const result = spawnLockedChest(rarityKey);
+  if (!result) {
+    // Fallback teoretic — nu ar trebui să se întâmple, dar întotdeauna avem fallback.
+    const gold = Math.floor(Math.random() * 200) + 100;
+    await addPlayerGold(interaction.user.id, gold);
+    await interaction.editReply({
+      content: `🎉 **Cheia a funcționat!** Ai găsit **${gold} Oboli** în cufărul întâmplător!`,
+    });
+    logger.info({ discordId: interaction.user.id, rarityKey, gold, result: "success-fallback" }, "Trader success (fallback)");
+    return;
+  }
+
+  await upsertPlayer(interaction.user.id, interaction.user.username);
+  await addPlayerGold(interaction.user.id, result.gold);
+
+  const lines = [
+    `🎉 **Cheia ta a funcționat!**`,
+    `\n👑 Ai deschis **${offer.emoji} ${offer.label}**!`,
+    `💰 **${result.gold} Oboli** eliberați!`,
+    `\n✨ *Negustorul închide cufărul cu un zâmbet subțel...*`,
+  ];
+  await interaction.editReply({ content: lines.join("\n") });
+  logger.info({ discordId: interaction.user.id, rarityKey, gold: result.gold, result: "success" }, "Trader chest opened");
+}
+
 async function handleJoin(interaction: ButtonInteraction, eventId: number) {
   await interaction.deferReply({ ephemeral: true });
   const ev = await getActiveEvent(eventId);
@@ -1357,6 +1442,11 @@ async function handleButton(interaction: ButtonInteraction) {
     return handleViewProfile(interaction, id.replace("profile_view_", ""));
   }
 
+  if (id.startsWith("trader_")) {
+    const m = id.match(/^trader_(\w+)$/);
+    if (m) return handleTraderClaim(interaction, m[1]!);
+  }
+
   if (id.startsWith("lockchest_") && !id.endsWith("_claimed") && !id.endsWith("_expired")) {
     const m = id.match(/^(lockchest_\d+)_(\w+)_(\d+)$/);
     if (m) return handleLockedChestClaim(interaction, m[1]!, m[2]!, parseInt(m[3]!));
@@ -1424,6 +1514,69 @@ async function handleButton(interaction: ButtonInteraction) {
   }
 }
 
+/**
+ * Send (or update) the permanent trader message in the designated channel.
+ * If a previous traderMessageId is known, try to edit the existing message;
+ * otherwise send a fresh one. This runs on every bot startup/reconnect.
+ */
+async function setupTrader(client: Client): Promise<void> {
+  try {
+    const channel = await client.channels.fetch(TRADER_CHANNEL_ID).catch(() => null);
+    if (!(channel instanceof TextChannel)) {
+      logger.warn({ channelId: TRADER_CHANNEL_ID }, "Trader channel not found");
+      return;
+    }
+
+    const embed = new EmbedBuilder()
+      .setColor(0x8b5a2b)
+      .setTitle("🏪 Negustorul Misterios al Cenușii")
+      .setDescription(
+        "Un bătrân cu pălăria lăsată pe ochi te observă din umbră...\n\n" +
+        "— *«Am cufere din înverșunările țarilor... dar știu să încerci să le deschizi." +
+        " O cheie pentru un cufăr. Poate câștigi, poate cheia se rupe. Așa e norocul.»*\n\n" +
+        "💰 **În 30% din cazuri cheia funcținează și cufărul se deschide.**\n" +
+        "❌ **În 70% din cazuri cheia se rupe și cufărul rămâne închis.**\n\n" +
+        "Fiecare cufăr necesită cheia sa potrivită.\n" +
+        "🥈 Argint → Cheie de Rar   |   👑 Aur → Cheie de Epic   |   👑 Regal → Cheie Regală",
+      )
+      .setFooter({ text: "Deschide doar cu chei pe care le ai!" });
+
+    const rows: ActionRowBuilder<ButtonBuilder>[] = [];
+    for (const offer of TRADER_OFFERS) {
+      const keyType  = offer.keyType;
+      const keyLabel = KEY_LABEL[keyType] ?? "Cheie";
+      const keyEmoji = KEY_EMOJI[keyType] ?? "🗝️";
+      const btn = new ButtonBuilder()
+        .setCustomId(`trader_${offer.rarityKey}`)
+        .setLabel(`${keyEmoji} ${offer.label}`)
+        .setStyle(ButtonStyle.Primary);
+      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(btn);
+      rows.push(row);
+    }
+
+    // If we know a previous message ID, try to edit it (survives bot restart).
+    if (traderMessageId) {
+      try {
+        const oldMsg = await channel.messages.fetch(traderMessageId);
+        if (oldMsg) {
+          await oldMsg.edit({ embeds: [embed], components: rows });
+          logger.info({ traderMessageId }, "Trader message updated on reconnect");
+          return;
+        }
+      } catch {
+        // Message was deleted — fall through to send a new one.
+        traderMessageId = null;
+      }
+    }
+
+    const msg = await channel.send({ embeds: [embed], components: rows });
+    traderMessageId = msg.id;
+    logger.info({ traderMessageId, channelId: TRADER_CHANNEL_ID }, "Trader message posted");
+  } catch (err) {
+    logger.error({ err }, "Failed to set up trader");
+  }
+}
+
 export async function startBot(onReady?: () => void): Promise<void> {
   const token = process.env["DISCORD_TOKEN"];
   if (!token) {
@@ -1472,6 +1625,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
     } else {
       logger.info("Scheduler already running — skipping re-init after restart");
     }
+    void setupTrader(client);
     if (onReady) onReady();
 
     await maybeAlertOracleRecovery(getOracleReplyMode, consumeOracleFellBackMarker, sendAlert);
@@ -1594,6 +1748,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
     clearDisconnectAlert("ShardReady");
     shardStatus = "ready";
     botReadyAt = new Date();
+    void setupTrader(client);
     logger.info({ shardId }, "Discord shard ready (fresh identify)");
   });
 
