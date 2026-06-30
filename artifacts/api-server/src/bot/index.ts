@@ -138,6 +138,7 @@ const TRADER_OFFERS: Array<{ rarityKey: string; keyType: KeyType; label: string;
 ];
 
 let traderMessageId: string | null = null;
+let traderSetupInProgress = false;
 // Set when a login attempt that requested the privileged MessageContent intent
 // is rejected with code 4014 ("Disallowed intent"). On the supervisor's next
 // restart the bot then boots WITHOUT the privileged intent (degraded — only
@@ -1536,6 +1537,11 @@ async function handleButton(interaction: ButtonInteraction) {
  * otherwise send a fresh one. This runs on every bot startup/reconnect.
  */
 async function setupTrader(client: Client): Promise<void> {
+  if (traderSetupInProgress) {
+    logger.info("Trader setup already in progress — skipping duplicate call");
+    return;
+  }
+  traderSetupInProgress = true;
   try {
     const channel = await client.channels.fetch(TRADER_CHANNEL_ID).catch(() => null);
     if (!(channel instanceof TextChannel)) {
