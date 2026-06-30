@@ -52,6 +52,7 @@ import {
   bossMaxHp,
   rollChest,
   rollChestMultiplier,
+  rollEventKeyDrops,
   rollKeyChestType,
   spawnChest,
   spawnLockedChest,
@@ -631,5 +632,35 @@ describe("rollKeyChestType: every result is a valid key type (10 000 rolls)", ()
     // 0.95 * 100 = 95; past rar(60) → 35; past epic(30) → 5; 5 < 10 (regal) → "regal"
     vi.spyOn(Math, "random").mockReturnValue(0.95);
     expect(rollKeyChestType()).toBe("regal");
+  });
+});
+
+// ─── rollEventKeyDrops ─────────────────────────────────────────────────────────
+
+describe("rollEventKeyDrops: every awarded key type is valid", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("every value in the returned map is one of the known valid key types when all participants drop", () => {
+    // Math.random = 0.0 is below the 0.35 drop-chance threshold, so every
+    // participant receives a key. rollKeyChestType also reads Math.random and
+    // maps 0.0 * 100 = 0 → first bucket → "rar", which is a valid key type.
+    vi.spyOn(Math, "random").mockReturnValue(0.0);
+    const ids = ["u1", "u2", "u3", "u4", "u5"];
+    const drops = rollEventKeyDrops(ids);
+    expect(drops.size).toBe(ids.length);
+    for (const [, keyType] of drops) {
+      expect(VALID_KEY_TYPES).toContain(keyType);
+    }
+  });
+
+  it("participants who do not win the drop chance are absent from the returned map", () => {
+    // Math.random = 0.5 is above the 0.35 drop-chance threshold, so no
+    // participant receives a key and the map must be empty.
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    const ids = ["u1", "u2", "u3", "u4", "u5"];
+    const drops = rollEventKeyDrops(ids);
+    expect(drops.size).toBe(0);
   });
 });
