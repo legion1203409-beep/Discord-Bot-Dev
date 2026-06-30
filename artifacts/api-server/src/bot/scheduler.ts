@@ -319,6 +319,7 @@ export async function fireChestForced(client: Client, rarityKey: string, mult?: 
       components: [lockedRow],
     });
     lastChestMessageId = msg.id;
+    void persistActiveChest({ messageId: msg.id, channelId: MAIN_CHANNEL_ID, chestId, gold, rarityKey: rarity.key, mult, expiresAt: expireAt }).catch(() => null);
 
     await sleep(5000);
     if (!claimedChests.has(chestId)) {
@@ -341,6 +342,7 @@ export async function fireChestForced(client: Client, rarityKey: string, mult?: 
         await msg.edit({ embeds: [buildExpiredChestEmbed(gold, rarity, mult)], components: [disabledRow] }).catch(() => null);
         logger.info({ chestId }, "Chest expired unclaimed (forced)");
       }
+      void clearActiveChest().catch(() => null);
     }, CHEST_EXPIRE_MS);
 
     timeout.unref?.();
@@ -425,6 +427,7 @@ export async function fireChest(client: Client) {
 
     const msg = await channel.send({ content: frames[0]!.content });
     lastChestMessageId = msg.id;
+    void persistActiveChest({ messageId: msg.id, channelId: MAIN_CHANNEL_ID, chestId, gold, rarityKey: rarity.key, expiresAt: expireAt }).catch(() => null);
 
     for (let i = 1; i < frames.length; i++) {
       await sleep(frames[i - 1]!.delay);
@@ -457,6 +460,7 @@ export async function fireChest(client: Client) {
         await msg.edit({ embeds: [buildExpiredChestEmbed(gold, rarity)], components: [disabledRow] }).catch(() => null);
         logger.info({ chestId }, "Chest expired unclaimed");
       }
+      void clearActiveChest().catch(() => null);
     }, CHEST_EXPIRE_MS);
 
     timeout.unref?.();
@@ -721,6 +725,76 @@ async function rehydrateActiveBosses(client: Client): Promise<void> {
   }
 }
 
+// ─── Startup chest rehydration ────────────────────────────────────────────────
+// On restart, any chest message left in Discord still has its claim button
+// active. If the window has passed, we immediately expire the embed so players
+// don't see a dead interactive button. If time remains, we reschedule the timer.
+export async function rehydrateActiveChest(client: Client): Promise<void> {
+  try {
+    const record = await loadActiveChest();
+    if (!record) return;
+
+    const now = Date.now();
+    const ch = await client.channels.fetch(record.channelId).catch(() => null);
+    if (!(ch instanceof TextChannel)) {
+      await clearActiveChest().catch(() => null);
+      logger.warn({ chestId: record.chestId }, "Chest channel not found on rehydration — row cleared");
+      return;
+    }
+
+    const msg = await ch.messages.fetch(record.messageId).catch(() => null);
+    const rarity = CHEST_RARITIES.find((r) => r.key === record.rarityKey) ?? CHEST_RARITIES[0]!;
+
+    if (now >= record.expiresAt || !msg) {
+      if (msg) {
+        const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`${record.chestId}_expired`)
+            .setLabel(record.mult != null ? "Cufărul binecuvântat a dispărut…" : "Cufărul a dispărut...")
+            .setEmoji("💨")
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(true),
+        );
+        await msg.edit({ embeds: [buildExpiredChestEmbed(record.gold, rarity, record.mult)], components: [disabledRow] }).catch(() => null);
+      }
+      claimedChests.add(record.chestId);
+      lastChestMessageId = null;
+      await clearActiveChest().catch(() => null);
+      logger.info({ chestId: record.chestId, hadMessage: !!msg }, "Stale chest expired on bot restart");
+      return;
+    }
+
+    // Still within the claim window — re-register and schedule the expiry timer.
+    lastChestMessageId = record.messageId;
+    const remaining = record.expiresAt - now;
+
+    const timeout = setTimeout(async () => {
+      if (!claimedChests.has(record.chestId)) {
+        claimedChests.add(record.chestId);
+        const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`${record.chestId}_expired`)
+            .setLabel(record.mult != null ? "Cufărul binecuvântat a dispărut…" : "Cufărul a dispărut...")
+            .setEmoji("💨")
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(true),
+        );
+        await msg.edit({ embeds: [buildExpiredChestEmbed(record.gold, rarity, record.mult)], components: [disabledRow] }).catch(() => null);
+        logger.info({ chestId: record.chestId }, "Rehydrated chest expired unclaimed");
+      }
+      lastChestMessageId = null;
+      await clearActiveChest().catch(() => null);
+    }, remaining);
+
+    timeout.unref?.();
+    lastChestTimeout = timeout;
+
+    logger.info({ chestId: record.chestId, remainingMs: remaining }, "Active chest rehydrated from DB");
+  } catch (err) {
+    logger.error({ err }, "Failed to rehydrate active chest on startup");
+  }
+}
+
 export async function fireStandaloneBoss(client: Client) {
   // Don't spawn if a standalone boss is already active.
   if (standaloneBossId !== null && activeBossMap.has(standaloneBossId)) {
@@ -936,6 +1010,8 @@ async function fireBattleEvent(client: Client) {
 export function startScheduler(client: Client) {
   // Restore any boss fights that were in progress before the last restart.
   void rehydrateActiveBosses(client);
+  // Expire or re-arm any chest message left open before the last restart.
+  void rehydrateActiveChest(client);
 
   setInterval(() => expireOldEvents(client), 60 * 1000);
 

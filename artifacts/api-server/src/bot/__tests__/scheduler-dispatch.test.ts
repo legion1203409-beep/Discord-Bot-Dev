@@ -124,19 +124,28 @@ const mockGetEventParticipants = vi.fn();
 const mockGetAllEvents         = vi.fn();
 
 vi.mock("../db", () => ({
-  createEvent:            (...a: unknown[]) => mockCreateEvent(...a),
-  deactivateEvent:        vi.fn().mockResolvedValue(undefined),
-  getExpiredActiveEvents: vi.fn().mockResolvedValue([]),
-  getEventParticipants:   (...a: unknown[]) => mockGetEventParticipants(...a),
-  getAllEvents:            (...a: unknown[]) => mockGetAllEvents(...a),
-  setEventDecreeMessage:  vi.fn().mockResolvedValue(undefined),
-  deleteEvent:            vi.fn().mockResolvedValue(undefined),
-  getLatestActiveEvent:   vi.fn().mockResolvedValue(null),
-  getActiveEvent:         (...a: unknown[]) => mockGetActiveEvent(...a),
-  setHonorTitle:          vi.fn().mockResolvedValue(undefined),
-  addPlayerReputation:    vi.fn().mockResolvedValue(undefined),
-  addPlayerGold:          vi.fn().mockResolvedValue(undefined),
-  addPlayerXp:            vi.fn().mockResolvedValue(undefined),
+  createEvent:                    (...a: unknown[]) => mockCreateEvent(...a),
+  deactivateEvent:                vi.fn().mockResolvedValue(undefined),
+  getExpiredActiveEvents:         vi.fn().mockResolvedValue([]),
+  getEventParticipants:           (...a: unknown[]) => mockGetEventParticipants(...a),
+  getAllEvents:                    (...a: unknown[]) => mockGetAllEvents(...a),
+  setEventDecreeMessage:          vi.fn().mockResolvedValue(undefined),
+  deleteEvent:                    vi.fn().mockResolvedValue(undefined),
+  getLatestActiveEvent:           vi.fn().mockResolvedValue(null),
+  getActiveEvent:                 (...a: unknown[]) => mockGetActiveEvent(...a),
+  setHonorTitle:                  vi.fn().mockResolvedValue(undefined),
+  addPlayerReputation:            vi.fn().mockResolvedValue(undefined),
+  addPlayerGold:                  vi.fn().mockResolvedValue(undefined),
+  addPlayerXp:                    vi.fn().mockResolvedValue(undefined),
+  // Boss persistence
+  persistActiveBoss:              vi.fn().mockResolvedValue(undefined),
+  loadAllActiveBossRows:          vi.fn().mockResolvedValue([]),
+  deleteActiveBoss:               vi.fn().mockResolvedValue(undefined),
+  createActiveBossesTableIfNotExists: vi.fn().mockResolvedValue(undefined),
+  // Chest persistence
+  persistActiveChest:             vi.fn().mockResolvedValue(undefined),
+  loadActiveChest:                vi.fn().mockResolvedValue(null),
+  clearActiveChest:               vi.fn().mockResolvedValue(undefined),
 }));
 
 // ── 5. Mock oracle & combat-events ────────────────────────────────────────────

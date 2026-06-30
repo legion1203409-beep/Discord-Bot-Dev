@@ -646,6 +646,7 @@ async function handleChestClaim(interaction: ButtonInteraction, chestId: string,
     return;
   }
   claimedChests.add(chestId);
+  void clearActiveChest().catch(() => null);
 
   // Determine effective multiplier: an admin-forced bonus (_x2/_x3 in customId)
   // takes priority; otherwise roll a surprise multiplier (×1/×2/×3) at claim time.
