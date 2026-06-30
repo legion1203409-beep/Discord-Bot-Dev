@@ -22,9 +22,15 @@ clip duration so the loop is seamless, e.g.
 **Gotcha:** the `hue` filter does NOT support `eval=frame` ("Option not found").
 For per-frame color shifts use `eq` (`gamma_r`/`gamma_b`) instead.
 
-**Size:** keep embed GIFs roughly ≲4MB for reliable Discord embedding via URL.
-A 16:9 source at `scale=640`, `fps=15`, 4s (~60 frames) lands ~6.6MB (too big);
-`scale=512`, `fps=12`, 4s (~48 frames) lands ~4MB and still looks smooth.
+**Size (critical):** Discord's embed media proxy silently refuses to render
+animated GIFs above ~3MB — it fetches the file but shows no image (the embed
+appears with no picture). Keep embed GIFs ≤~2.7MB and match the proven-working
+profile: 480px wide, ≤30 frames. A `scale=512`, `fps=12`, 4s (~48 frames) GIF
+lands ~4MB and does NOT render (this was the trader/shop image bug); `scale=480`,
+`fps=10`, 3s (~30 frames) lands ~2.1-2.3MB and renders fine, like monster.gif
+(480×262 / 30fr / 2.0MB). When re-encoding an embed GIF that previously failed,
+save it under a NEW filename — Discord caches the old URL's failed proxy result,
+so reusing the same name can keep showing nothing.
 
 ## Edit-based motion
 
