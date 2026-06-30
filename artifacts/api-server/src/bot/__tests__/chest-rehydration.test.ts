@@ -32,6 +32,8 @@ vi.mock("../db", () => ({
   loadActiveChest: (...args: unknown[]) => mockLoadActiveChest(...args),
   clearActiveChest: (...args: unknown[]) => mockClearActiveChest(...args),
   persistActiveChest: (...args: unknown[]) => mockPersistActiveChest(...args),
+  KEYCHEST_DBKEY: "active_keychest",
+  LOCKCHEST_DBKEY: "active_lockchest",
   createEvent: vi.fn(),
   deactivateEvent: vi.fn(),
   getExpiredActiveEvents: vi.fn().mockResolvedValue([]),
@@ -81,26 +83,27 @@ vi.mock("../status-effects", () => ({ getRewardMultipliers: vi.fn().mockReturnVa
 
 // ── Import after mocks ─────────────────────────────────────────────────────────
 
-import { rehydrateActiveChest, claimedChests } from "../scheduler";
+import { rehydrateActiveChest, rehydrateSimpleChest, claimedChests } from "../scheduler";
 import { logger } from "../../lib/logger";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function makeClient(msgExists = true, isTextChannel = true) {
-  const msgEdit = vi.fn().mockResolvedValue(undefined);
-  const fetchMsg = vi.fn().mockResolvedValue(msgExists ? { edit: msgEdit } : null);
-  const fetchChannel = vi.fn().mockResolvedValue(
-    isTextChannel
-      ? { constructor: { name: "TextChannel" }, messages: { fetch: fetchMsg }, _isTextChannel: true }
-      : { _isTextChannel: false },
-  );
-  return { channels: { fetch: fetchChannel }, _msgEdit: msgEdit };
+/** Build a TextChannel-prototype'd mock channel. Must be awaited (uses dynamic import). */
+async function makeChannel(msgEdit: ReturnType<typeof vi.fn> | null) {
+  const { TextChannel } = await import("discord.js");
+  const ch = Object.create(TextChannel.prototype) as {
+    messages: { fetch: ReturnType<typeof vi.fn> };
+  };
+  ch.messages = {
+    fetch: vi.fn().mockResolvedValue(msgEdit ? { edit: msgEdit } : null),
+  };
+  return ch;
 }
 
 const FUTURE = Date.now() + 60_000;
 const PAST   = Date.now() - 1;
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
+// ── rehydrateActiveChest ───────────────────────────────────────────────────────
 
 describe("rehydrateActiveChest", () => {
   beforeEach(() => {
@@ -124,15 +127,9 @@ describe("rehydrateActiveChest", () => {
       rarityKey: "bronz",
       expiresAt: PAST,
     });
-    const client = makeClient(true, true);
-    // Mock TextChannel instanceof check
-    const { TextChannel } = await import("discord.js");
-    const ch = { constructor: TextChannel, messages: { fetch: vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) }) } };
-    (client.channels.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(ch);
-    Object.setPrototypeOf(ch, TextChannel.prototype);
-
-    await rehydrateActiveChest(client as never);
-
+    const msgEdit = vi.fn().mockResolvedValue(undefined);
+    const ch = await makeChannel(msgEdit);
+    await rehydrateActiveChest({ channels: { fetch: vi.fn().mockResolvedValue(ch) } } as never);
     expect(mockClearActiveChest).toHaveBeenCalledOnce();
     expect(claimedChests.has("chest_111_bronz_20")).toBe(true);
   });
@@ -160,9 +157,7 @@ describe("rehydrateActiveChest", () => {
       rarityKey: "bronz",
       expiresAt: PAST,
     });
-    const { TextChannel } = await import("discord.js");
-    const ch = Object.create(TextChannel.prototype);
-    ch.messages = { fetch: vi.fn().mockResolvedValue(null) };
+    const ch = await makeChannel(null);
     await rehydrateActiveChest({ channels: { fetch: vi.fn().mockResolvedValue(ch) } } as never);
     expect(logger.info).toHaveBeenCalledWith(
       expect.objectContaining({ chestId: "chest_333_bronz_15" }),
@@ -173,6 +168,150 @@ describe("rehydrateActiveChest", () => {
   it("does not crash and calls clearActiveChest when loadActiveChest returns malformed data", async () => {
     mockLoadActiveChest.mockRejectedValue(new Error("DB error"));
     await rehydrateActiveChest({ channels: { fetch: vi.fn() } } as never);
+    expect(logger.error).toHaveBeenCalled();
+    expect(mockClearActiveChest).not.toHaveBeenCalled();
+  });
+});
+
+// ── rehydrateSimpleChest — key chest ──────────────────────────────────────────
+
+describe("rehydrateSimpleChest (keychest)", () => {
+  const KEYCHEST_DBKEY = "active_keychest";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    claimedChests.clear();
+    mockLoadActiveChest.mockResolvedValue(null);
+  });
+
+  it("returns immediately when no persisted key-chest record exists", async () => {
+    await rehydrateSimpleChest({ channels: { fetch: vi.fn() } } as never, KEYCHEST_DBKEY);
+    expect(mockClearActiveChest).not.toHaveBeenCalled();
+  });
+
+  it("expires stale key-chest, marks chestId claimed, and clears DB row", async () => {
+    mockLoadActiveChest.mockResolvedValue({
+      messageId: "msg-kc1",
+      channelId: "ch-001",
+      chestId: "keychest_111_rar",
+      gold: 0,
+      rarityKey: "rar",
+      kind: "keychest",
+      keyType: "rar",
+      expiresAt: PAST,
+    });
+    const msgEdit = vi.fn().mockResolvedValue(undefined);
+    const ch = await makeChannel(msgEdit);
+    await rehydrateSimpleChest({ channels: { fetch: vi.fn().mockResolvedValue(ch) } } as never, KEYCHEST_DBKEY);
+    expect(mockClearActiveChest).toHaveBeenCalledWith(KEYCHEST_DBKEY);
+    expect(claimedChests.has("keychest_111_rar")).toBe(true);
+  });
+
+  it("uses 'Cheia s-a topit în fum...' label when expiring a key chest", async () => {
+    mockLoadActiveChest.mockResolvedValue({
+      messageId: "msg-kc2",
+      channelId: "ch-001",
+      chestId: "keychest_222_epic",
+      gold: 0,
+      rarityKey: "epic",
+      kind: "keychest",
+      expiresAt: PAST,
+    });
+    const msgEdit = vi.fn().mockResolvedValue(undefined);
+    const ch = await makeChannel(msgEdit);
+    await rehydrateSimpleChest({ channels: { fetch: vi.fn().mockResolvedValue(ch) } } as never, KEYCHEST_DBKEY);
+    expect(msgEdit).toHaveBeenCalledOnce();
+    const [[editArg]] = msgEdit.mock.calls as [{ components: Array<{ components: Array<{ data: { label: string } }> }> }][];
+    expect(editArg.components[0]!.components[0]!.data.label).toBe("Cheia s-a topit în fum...");
+  });
+
+  it("clears row and warns when key-chest channel is not found", async () => {
+    mockLoadActiveChest.mockResolvedValue({
+      messageId: "msg-kc3",
+      channelId: "ch-gone",
+      chestId: "keychest_333_rar",
+      gold: 0,
+      rarityKey: "rar",
+      kind: "keychest",
+      expiresAt: FUTURE,
+    });
+    await rehydrateSimpleChest({ channels: { fetch: vi.fn().mockResolvedValue(null) } } as never, KEYCHEST_DBKEY);
+    expect(mockClearActiveChest).toHaveBeenCalledWith(KEYCHEST_DBKEY);
+    expect(logger.warn).toHaveBeenCalled();
+  });
+
+  it("swallows DB errors without crashing on key-chest rehydration", async () => {
+    mockLoadActiveChest.mockRejectedValue(new Error("DB down"));
+    await rehydrateSimpleChest({ channels: { fetch: vi.fn() } } as never, KEYCHEST_DBKEY);
+    expect(logger.error).toHaveBeenCalled();
+    expect(mockClearActiveChest).not.toHaveBeenCalled();
+  });
+});
+
+// ── rehydrateSimpleChest — locked chest ───────────────────────────────────────
+
+describe("rehydrateSimpleChest (lockchest)", () => {
+  const LOCKCHEST_DBKEY = "active_lockchest";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    claimedChests.clear();
+    mockLoadActiveChest.mockResolvedValue(null);
+  });
+
+  it("expires stale locked-chest, marks chestId claimed, and clears DB row", async () => {
+    mockLoadActiveChest.mockResolvedValue({
+      messageId: "msg-lc1",
+      channelId: "ch-001",
+      chestId: "lockchest_111_argint_60",
+      gold: 60,
+      rarityKey: "argint",
+      kind: "lockchest",
+      expiresAt: PAST,
+    });
+    const msgEdit = vi.fn().mockResolvedValue(undefined);
+    const ch = await makeChannel(msgEdit);
+    await rehydrateSimpleChest({ channels: { fetch: vi.fn().mockResolvedValue(ch) } } as never, LOCKCHEST_DBKEY);
+    expect(mockClearActiveChest).toHaveBeenCalledWith(LOCKCHEST_DBKEY);
+    expect(claimedChests.has("lockchest_111_argint_60")).toBe(true);
+  });
+
+  it("uses 'Cufărul a dispărut...' label when expiring a locked chest", async () => {
+    mockLoadActiveChest.mockResolvedValue({
+      messageId: "msg-lc2",
+      channelId: "ch-001",
+      chestId: "lockchest_222_bronz_30",
+      gold: 30,
+      rarityKey: "bronz",
+      kind: "lockchest",
+      expiresAt: PAST,
+    });
+    const msgEdit = vi.fn().mockResolvedValue(undefined);
+    const ch = await makeChannel(msgEdit);
+    await rehydrateSimpleChest({ channels: { fetch: vi.fn().mockResolvedValue(ch) } } as never, LOCKCHEST_DBKEY);
+    expect(msgEdit).toHaveBeenCalledOnce();
+    const [[editArg]] = msgEdit.mock.calls as [{ components: Array<{ components: Array<{ data: { label: string } }> }> }][];
+    expect(editArg.components[0]!.components[0]!.data.label).toBe("Cufărul a dispărut...");
+  });
+
+  it("clears row and warns when locked-chest channel is not found", async () => {
+    mockLoadActiveChest.mockResolvedValue({
+      messageId: "msg-lc3",
+      channelId: "ch-gone",
+      chestId: "lockchest_333_argint_80",
+      gold: 80,
+      rarityKey: "argint",
+      kind: "lockchest",
+      expiresAt: FUTURE,
+    });
+    await rehydrateSimpleChest({ channels: { fetch: vi.fn().mockResolvedValue(null) } } as never, LOCKCHEST_DBKEY);
+    expect(mockClearActiveChest).toHaveBeenCalledWith(LOCKCHEST_DBKEY);
+    expect(logger.warn).toHaveBeenCalled();
+  });
+
+  it("swallows DB errors without crashing on locked-chest rehydration", async () => {
+    mockLoadActiveChest.mockRejectedValue(new Error("DB down"));
+    await rehydrateSimpleChest({ channels: { fetch: vi.fn() } } as never, LOCKCHEST_DBKEY);
     expect(logger.error).toHaveBeenCalled();
     expect(mockClearActiveChest).not.toHaveBeenCalled();
   });

@@ -4,7 +4,7 @@ import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, buildExpiredChes
 import { triggerRandomBattleEvent } from "./combat-events";
 import { getRewardMultipliers } from "./status-effects";
 import { startOracle, setOracleExtatic } from "./oracle";
-import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle, addPlayerReputation, addPlayerGold, addPlayerXp, persistActiveBoss, loadAllActiveBossRows, deleteActiveBoss, createActiveBossesTableIfNotExists, persistActiveChest, loadActiveChest, clearActiveChest } from "./db";
+import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle, addPlayerReputation, addPlayerGold, addPlayerXp, persistActiveBoss, loadAllActiveBossRows, deleteActiveBoss, createActiveBossesTableIfNotExists, persistActiveChest, loadActiveChest, clearActiveChest, KEYCHEST_DBKEY, LOCKCHEST_DBKEY } from "./db";
 
 const EVENT_CHANNEL_ID    = "1521185682200989726";
 const BOSS_CHANNEL_ID     = "1521186913476673556";
@@ -795,6 +795,71 @@ export async function rehydrateActiveChest(client: Client): Promise<void> {
   }
 }
 
+/**
+ * Rehydrate a key-chest or locked-chest record on startup.
+ * These chest types don't track lastChestMessageId/lastChestTimeout, so the
+ * logic is simpler: expire immediately if past, or re-arm the timer if still live.
+ */
+export async function rehydrateSimpleChest(client: Client, dbKey: string): Promise<void> {
+  try {
+    const record = await loadActiveChest(dbKey);
+    if (!record) return;
+
+    const now = Date.now();
+    const ch = await client.channels.fetch(record.channelId).catch(() => null);
+    if (!(ch instanceof TextChannel)) {
+      await clearActiveChest(dbKey).catch(() => null);
+      logger.warn({ chestId: record.chestId, dbKey }, "Simple chest channel not found on rehydration — row cleared");
+      return;
+    }
+
+    const msg = await ch.messages.fetch(record.messageId).catch(() => null);
+    const expiredLabel = record.kind === "keychest" ? "Cheia s-a topit în fum..." : "Cufărul a dispărut...";
+
+    if (now >= record.expiresAt || !msg) {
+      if (msg) {
+        const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`${record.chestId}_expired`)
+            .setLabel(expiredLabel)
+            .setEmoji("💨")
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(true),
+        );
+        await msg.edit({ components: [disabledRow] }).catch(() => null);
+      }
+      claimedChests.add(record.chestId);
+      await clearActiveChest(dbKey).catch(() => null);
+      logger.info({ chestId: record.chestId, dbKey, hadMessage: !!msg }, "Stale simple chest expired on bot restart");
+      return;
+    }
+
+    // Still within the claim window — re-arm the expiry timer.
+    const remaining = record.expiresAt - now;
+    const timeout = setTimeout(async () => {
+      if (!claimedChests.has(record.chestId)) {
+        claimedChests.add(record.chestId);
+        const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`${record.chestId}_expired`)
+            .setLabel(expiredLabel)
+            .setEmoji("💨")
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(true),
+        );
+        await msg.edit({ components: [disabledRow] }).catch(() => null);
+        logger.info({ chestId: record.chestId }, "Rehydrated simple chest expired unclaimed");
+      }
+      await clearActiveChest(dbKey).catch(() => null);
+    }, remaining);
+    timeout.unref?.();
+
+    logger.info({ chestId: record.chestId, dbKey, remainingMs: remaining }, "Simple chest rehydrated from DB");
+  } catch (err) {
+    logger.error({ err, dbKey }, "Failed to rehydrate simple chest on startup");
+  }
+}
+
 export async function fireStandaloneBoss(client: Client) {
   // Don't spawn if a standalone boss is already active.
   if (standaloneBossId !== null && activeBossMap.has(standaloneBossId)) {
@@ -866,6 +931,7 @@ export async function fireLockedChest(client: Client, rarityKey: string): Promis
     }
     const { rarity, gold } = result;
     const chestId = `lockchest_${Date.now()}_${rarity.key}_${gold}`;
+    const expiresAt = Date.now() + CHEST_EXPIRE_MS;
 
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
@@ -881,6 +947,7 @@ export async function fireLockedChest(client: Client, rarityKey: string): Promis
     });
 
     logger.info({ chestId, rarityKey: rarity.key, gold }, "Locked chest spawned");
+    void persistActiveChest({ messageId: msg.id, channelId: MAIN_CHANNEL_ID, chestId, gold, rarityKey: rarity.key, kind: "lockchest", expiresAt }, LOCKCHEST_DBKEY).catch(() => null);
 
     const timeout = setTimeout(async () => {
       if (!claimedChests.has(chestId)) {
@@ -896,6 +963,7 @@ export async function fireLockedChest(client: Client, rarityKey: string): Promis
         await msg.edit({ components: [expiredRow] }).catch(() => null);
         logger.info({ chestId }, "Locked chest expired unclaimed");
       }
+      void clearActiveChest(LOCKCHEST_DBKEY).catch(() => null);
     }, CHEST_EXPIRE_MS);
     timeout.unref?.();
   } catch (err) {
@@ -918,6 +986,7 @@ export async function fireKeyChest(client: Client, keyType?: string): Promise<{ 
 
     const kt = keyType && keyType !== "random" ? keyType : rollKeyChestType();
     const chestId = `keychest_${Date.now()}_${kt}`;
+    const expiresAt = Date.now() + CHEST_EXPIRE_MS;
 
     const lockedRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
@@ -953,6 +1022,7 @@ export async function fireKeyChest(client: Client, keyType?: string): Promise<{ 
     }
 
     logger.info({ chestId, keyType: kt }, "Key chest spawned");
+    void persistActiveChest({ messageId: msg.id, channelId: MAIN_CHANNEL_ID, chestId, gold: 0, rarityKey: kt, keyType: kt, kind: "keychest", expiresAt }, KEYCHEST_DBKEY).catch(() => null);
 
     const timeout = setTimeout(async () => {
       if (!claimedChests.has(chestId)) {
@@ -968,6 +1038,7 @@ export async function fireKeyChest(client: Client, keyType?: string): Promise<{ 
         await msg.edit({ components: [disabledRow] }).catch(() => null);
         logger.info({ chestId }, "Key chest expired unclaimed");
       }
+      void clearActiveChest(KEYCHEST_DBKEY).catch(() => null);
     }, CHEST_EXPIRE_MS);
     timeout.unref?.();
 
@@ -1012,6 +1083,8 @@ export function startScheduler(client: Client) {
   void rehydrateActiveBosses(client);
   // Expire or re-arm any chest message left open before the last restart.
   void rehydrateActiveChest(client);
+  void rehydrateSimpleChest(client, KEYCHEST_DBKEY);
+  void rehydrateSimpleChest(client, LOCKCHEST_DBKEY);
 
   setInterval(() => expireOldEvents(client), 60 * 1000);
 

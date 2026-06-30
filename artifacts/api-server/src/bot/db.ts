@@ -420,6 +420,11 @@ export async function consumeOracleFellBack(): Promise<boolean> {
 
 const ACTIVE_CHEST_KEY = "active_chest";
 
+/** DB key constants for each chest variant — exported for use in scheduler. */
+export const CHEST_DBKEY     = "active_chest";
+export const KEYCHEST_DBKEY  = "active_keychest";
+export const LOCKCHEST_DBKEY = "active_lockchest";
+
 export interface ActiveChestRecord {
   messageId: string;
   channelId: string;
@@ -430,21 +435,25 @@ export interface ActiveChestRecord {
   mult?: 2 | 3;
   /** Expiry epoch ms — when the chest button should be disabled. */
   expiresAt: number;
+  /** Chest variant — drives expiry label and embed choice during rehydration. */
+  kind?: "chest" | "keychest" | "lockchest";
+  /** Key type for key-chest records (e.g. "rar", "epic", "regal"). */
+  keyType?: string;
 }
 
-export async function persistActiveChest(record: ActiveChestRecord): Promise<void> {
+export async function persistActiveChest(record: ActiveChestRecord, dbKey = ACTIVE_CHEST_KEY): Promise<void> {
   const now = new Date();
   await db
     .insert(botStateTable)
-    .values({ key: ACTIVE_CHEST_KEY, value: JSON.stringify(record) })
+    .values({ key: dbKey, value: JSON.stringify(record) })
     .onConflictDoUpdate({
       target: botStateTable.key,
       set: { value: JSON.stringify(record), updatedAt: now },
     });
 }
 
-export async function loadActiveChest(): Promise<ActiveChestRecord | null> {
-  const [row] = await db.select().from(botStateTable).where(eq(botStateTable.key, ACTIVE_CHEST_KEY));
+export async function loadActiveChest(dbKey = ACTIVE_CHEST_KEY): Promise<ActiveChestRecord | null> {
+  const [row] = await db.select().from(botStateTable).where(eq(botStateTable.key, dbKey));
   if (!row) return null;
   try {
     return JSON.parse(row.value) as ActiveChestRecord;
@@ -453,6 +462,6 @@ export async function loadActiveChest(): Promise<ActiveChestRecord | null> {
   }
 }
 
-export async function clearActiveChest(): Promise<void> {
-  await db.delete(botStateTable).where(eq(botStateTable.key, ACTIVE_CHEST_KEY));
+export async function clearActiveChest(dbKey = ACTIVE_CHEST_KEY): Promise<void> {
+  await db.delete(botStateTable).where(eq(botStateTable.key, dbKey));
 }

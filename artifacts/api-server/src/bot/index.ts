@@ -52,6 +52,8 @@ import {
   consumePlayerKey,
   deleteActiveBoss,
   clearActiveChest,
+  KEYCHEST_DBKEY,
+  LOCKCHEST_DBKEY,
   type AbilityKind,
   type KeyType,
 } from "./db";
@@ -737,6 +739,7 @@ async function handleLockedChestClaim(interaction: ButtonInteraction, chestId: s
     return;
   }
   claimedChests.add(chestId);
+  void clearActiveChest(LOCKCHEST_DBKEY).catch(() => null);
 
   await upsertPlayer(interaction.user.id, interaction.user.username);
   await addPlayerGold(interaction.user.id, gold);
@@ -772,6 +775,7 @@ async function handleKeyChestClaim(interaction: ButtonInteraction, chestId: stri
     return;
   }
   claimedChests.add(chestId);
+  void clearActiveChest(KEYCHEST_DBKEY).catch(() => null);
 
   await upsertPlayer(interaction.user.id, interaction.user.username);
   await addPlayerKey(interaction.user.id, keyType as KeyType);
