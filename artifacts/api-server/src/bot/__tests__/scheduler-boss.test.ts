@@ -538,6 +538,46 @@ describe("spawnLockedChest gold payout range (10 000 rolls per rarity)", () => {
   });
 });
 
+// ─── Fuzz: spawnLockedChest fallback (rarity.min×2 / rarity.max×2) economy ─────
+// Exercises the untested fallback path: a rarity present in CHEST_RARITIES but
+// absent from LOCKED_CHEST_GOLD. If a new locked rarity tier is ever added
+// without a matching LOCKED_CHEST_GOLD entry, the payout doubles the base chest
+// range. These tests pin that formula so the fallback can't silently drift into
+// off-economy territory.
+
+describe("spawnLockedChest fallback gold payout range (10 000 rolls per rarity)", () => {
+  const RUNS = 10_000;
+  const fallbackRarities = CHEST_RARITIES.filter(
+    (r) => !(r.key in LOCKED_CHEST_GOLD),
+  );
+
+  it("there is at least one CHEST_RARITY without a LOCKED_CHEST_GOLD entry (fallback is reachable)", () => {
+    expect(fallbackRarities.length).toBeGreaterThan(0);
+  });
+
+  for (const rarity of fallbackRarities) {
+    const expectedMin = rarity.min * 2;
+    const expectedMax = rarity.max * 2;
+    it(`every fallback gold value is within [${expectedMin}, ${expectedMax}] for rarity "${rarity.key}"`, () => {
+      let sawMin = false;
+      let sawMax = false;
+      for (let i = 0; i < RUNS; i++) {
+        const result = spawnLockedChest(rarity.key);
+        expect(result).not.toBeNull();
+        expect(result!.rarity.key).toBe(rarity.key);
+        expect(result!.gold).toBeGreaterThanOrEqual(expectedMin);
+        expect(result!.gold).toBeLessThanOrEqual(expectedMax);
+        if (result!.gold === expectedMin) sawMin = true;
+        if (result!.gold === expectedMax) sawMax = true;
+      }
+      // Across 10 000 rolls the full inclusive range should be hit, confirming
+      // the formula spans exactly [min×2, max×2] with no off-by-one truncation.
+      expect(sawMin).toBe(true);
+      expect(sawMax).toBe(true);
+    });
+  }
+});
+
 // ─── rollKeyChestType ──────────────────────────────────────────────────────────
 
 const VALID_KEY_TYPES = ["rar", "epic", "regal"] as const;
