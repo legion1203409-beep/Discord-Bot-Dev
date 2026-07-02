@@ -4,7 +4,7 @@ import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, buildExpiredChes
 import { triggerRandomBattleEvent } from "./combat-events";
 import { getRewardMultipliers } from "./status-effects";
 import { startOracle, setOracleExtatic } from "./oracle";
-import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle, addPlayerReputation, addPlayerGold, addPlayerXp, persistActiveBoss, loadAllActiveBossRows, deleteActiveBoss, createActiveBossesTableIfNotExists, persistActiveChest, loadActiveChest, clearActiveChest, KEYCHEST_DBKEY, LOCKCHEST_DBKEY, runMultiGuildMigrations } from "./db";
+import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle, addPlayerReputation, addPlayerGold, addPlayerXp, persistActiveBoss, loadActiveBossRowsByGuild, deleteActiveBoss, createActiveBossesTableIfNotExists, persistActiveChest, loadActiveChest, clearActiveChest, KEYCHEST_DBKEY, LOCKCHEST_DBKEY, runMultiGuildMigrations } from "./db";
 import { getChannel, initChannelConfig } from "./channel-config";
 
 const APPLICATION_ID = "1472675543777280071";
@@ -32,6 +32,7 @@ interface GuildSchedulerState {
   lastChestTimeout: ReturnType<typeof setTimeout> | null;
   standaloneBossId: number | null;
   started: boolean;
+  stopped: boolean;
 }
 
 export const guildStates = new Map<string, GuildSchedulerState>();
@@ -49,10 +50,24 @@ function getOrCreateGuildState(guildId: string): GuildSchedulerState {
       lastChestTimeout: null,
       standaloneBossId: null,
       started: false,
+      stopped: false,
     };
     guildStates.set(guildId, state);
   }
   return state;
+}
+
+/** Stop the scheduler for a guild (e.g. bot left the server). Future timer
+ *  callbacks will no-op via the stopped flag; existing timers cannot be
+ *  cancelled without tracking refs, but they become inert after this call. */
+export function stopGuildScheduler(guildId: string) {
+  const gs = guildStates.get(guildId);
+  if (gs) {
+    gs.stopped = true;
+    gs.started = false;
+  }
+  guildStates.delete(guildId);
+  logger.info({ guildId }, "Guild scheduler stopped — bot left guild");
 }
 
 /** Get the claimedChests set for a guild (creates state if missing). */
@@ -701,17 +716,17 @@ function scheduleEscapeTimer(boss: BossState, client: Client): ReturnType<typeof
 
 // ─── Startup rehydration ──────────────────────────────────────────────────────
 
-async function rehydrateActiveBosses(client: Client): Promise<void> {
+async function rehydrateActiveBosses(client: Client, guildId: string): Promise<void> {
   try {
     await createActiveBossesTableIfNotExists();
-    const rows = await loadAllActiveBossRows();
+    const rows = await loadActiveBossRowsByGuild(guildId);
     if (rows.length === 0) return;
 
     const now = Date.now();
     let loaded = 0;
 
     for (const row of rows) {
-      const rowGuildId = (row as { guildId?: string }).guildId ?? "1382035307607883816";
+      const rowGuildId = guildId;
       if (row.expiresAt.getTime() <= now) {
         try {
           const expiredBoss = deserializeBoss(row.stateJson, rowGuildId);
@@ -1110,41 +1125,44 @@ export function startGuildScheduler(client: Client, guildId: string) {
   }
   gs.started = true;
 
-  void rehydrateActiveBosses(client);
+  void rehydrateActiveBosses(client, guildId);
   void rehydrateActiveChest(client, guildId);
   void rehydrateSimpleChest(client, guildId, KEYCHEST_DBKEY);
   void rehydrateSimpleChest(client, guildId, LOCKCHEST_DBKEY);
 
-  setInterval(() => expireOldEvents(client, guildId), 60 * 1000);
+  const isStopped = () => guildStates.get(guildId)?.stopped === true;
+
+  setInterval(() => { if (!isStopped()) void expireOldEvents(client, guildId); }, 60 * 1000);
 
   const scheduleNext = () => {
+    if (isStopped()) return;
     const cooldown = randomCooldown();
     logger.info({ nextInHours: (cooldown / 3600000).toFixed(2), guildId }, "Next event scheduled");
-    setTimeout(async () => { await fireEvent(client, guildId); scheduleNext(); }, cooldown);
+    setTimeout(async () => { if (!isStopped()) { await fireEvent(client, guildId); scheduleNext(); } }, cooldown);
   };
 
-  setTimeout(async () => { await fireEvent(client, guildId); scheduleNext(); }, 5 * 60 * 1000);
+  setTimeout(async () => { if (!isStopped()) { await fireEvent(client, guildId); scheduleNext(); } }, 5 * 60 * 1000);
   logger.info({ guildId }, "First Ora Umbrelor in 5 minutes");
 
-  setInterval(() => { void fireChest(client, guildId); }, CHEST_INTERVAL_MS);
+  setInterval(() => { if (!isStopped()) void fireChest(client, guildId); }, CHEST_INTERVAL_MS);
   logger.info({ everyMinutes: CHEST_INTERVAL_MS / 60000, guildId }, "Chest scheduler started — fixed interval");
 
-  setTimeout(() => { void fireKeyChest(client, guildId); }, 12 * 60 * 1000);
-  setInterval(() => { void fireKeyChest(client, guildId); }, KEY_CHEST_INTERVAL_MS);
+  setTimeout(() => { if (!isStopped()) void fireKeyChest(client, guildId); }, 12 * 60 * 1000);
+  setInterval(() => { if (!isStopped()) void fireKeyChest(client, guildId); }, KEY_CHEST_INTERVAL_MS);
   logger.info({ everyMinutes: KEY_CHEST_INTERVAL_MS / 60000, guildId }, "Key-chest scheduler started");
 
   // Oracle messages disabled — user requested only chest in chat
   // setInterval(() => { void fireOracle(client, guildId); }, ORACLE_INTERVAL_MS);
 
-  setInterval(() => { void fireBattleEvent(client, guildId); }, BATTLE_EVENT_INTERVAL_MS);
+  setInterval(() => { if (!isStopped()) void fireBattleEvent(client, guildId); }, BATTLE_EVENT_INTERVAL_MS);
   logger.info({ everyMinutes: BATTLE_EVENT_INTERVAL_MS / 60000, guildId }, "Battle-event scheduler started");
 
   const scheduleNextStandaloneBoss = () => {
+    if (isStopped()) return;
     const delay = STANDALONE_BOSS_MIN_MS +
       Math.floor(Math.random() * (STANDALONE_BOSS_MAX_MS - STANDALONE_BOSS_MIN_MS + 1));
     const t = setTimeout(async () => {
-      await fireStandaloneBoss(client, guildId);
-      scheduleNextStandaloneBoss();
+      if (!isStopped()) { await fireStandaloneBoss(client, guildId); scheduleNextStandaloneBoss(); }
     }, delay);
     t.unref?.();
     logger.info({ nextInMinutes: (delay / 60_000).toFixed(1), guildId }, "Next standalone boss scheduled");

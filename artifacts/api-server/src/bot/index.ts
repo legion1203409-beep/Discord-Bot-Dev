@@ -20,7 +20,7 @@ import {
 } from "discord.js";
 import { logger } from "../lib/logger";
 import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./alert";
-import { startGuildScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, getGuildClaimedChests, getGuildActiveBossMap, checkBossEligibility, checkBossHitCooldown, BOSS_HIT_COOLDOWN_MS, checkBossAbilityCooldown, persistBossState, type BossState, type BossPlayerStats } from "./scheduler";
+import { startGuildScheduler, stopGuildScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, getGuildClaimedChests, getGuildActiveBossMap, checkBossEligibility, checkBossHitCooldown, BOSS_HIT_COOLDOWN_MS, checkBossAbilityCooldown, persistBossState, type BossState, type BossPlayerStats } from "./scheduler";
 import { getChannel, getAllChannels, setChannel, resetChannel, resetAllChannels, initChannelConfig, EVENT_LABELS, type EventType } from "./channel-config";
 import { recordMessage } from "./oracle";
 import { maybeReplyAsOracle, logOracleChatStatus } from "./oracle-chat";
@@ -684,7 +684,7 @@ async function handleClasament(interaction: ChatInputCommandInteraction) {
     const keysStr = totalKeys > 0
       ? ` | 🗝️ ${totalKeys} cheie${totalKeys > 1 ? "i" : ""}`
       : "";
-    const serverTag = isGlobal ? ` *(Server: ${p.guildId})* ` : "";
+    const serverTag = isGlobal ? ` *(Server: ${interaction.client.guilds.cache.get(p.guildId)?.name ?? p.guildId})* ` : "";
     return `${medals[i] ?? `**${i + 1}.**`} **${p.username}**${serverTag} — 🎖️ ${levelTitle(p.maxLevel)} · ${p.xp} XP${keysStr}${deathStr}${fledStr}`;
   }).join("\n");
 
@@ -1781,6 +1781,14 @@ export async function startBot(onReady?: () => void): Promise<void> {
     void setupTrader(client, guild.id);
   });
 
+  // When the bot leaves a guild, clean up in-memory state
+  client.on(Events.GuildDelete, (guild) => {
+    logger.info({ guildId: guild.id, guildName: guild.name }, "Bot left guild — cleaning up scheduler state");
+    stopGuildScheduler(guild.id);
+    traderMessageIds.delete(guild.id);
+    traderSetupInProgress.delete(guild.id);
+  });
+
   client.on(Events.Error, (err) => {
     logger.error({ err }, "Discord client error");
   });
@@ -1898,6 +1906,9 @@ export async function startBot(onReady?: () => void): Promise<void> {
     }
     seenInteractionIds.add(interaction.id);
     setTimeout(() => seenInteractionIds.delete(interaction.id), INTERACTION_DEDUP_TTL_MS).unref?.();
+
+    // Ignore DM interactions — all commands require a guild context
+    if (!interaction.guildId) return;
 
     try {
       if (interaction.isChatInputCommand()) {

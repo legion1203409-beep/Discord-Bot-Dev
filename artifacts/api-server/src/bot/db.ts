@@ -434,6 +434,11 @@ export async function loadAllActiveBossRows(): Promise<ActiveBossRow[]> {
   return db.select().from(activeBossesTable);
 }
 
+// Load boss rows for a single guild — used for per-guild startup rehydration.
+export async function loadActiveBossRowsByGuild(guildId: string): Promise<ActiveBossRow[]> {
+  return db.select().from(activeBossesTable).where(eq(activeBossesTable.guildId, guildId));
+}
+
 // Remove a row once a boss is defeated or flees.
 export async function deleteActiveBoss(eventId: number): Promise<void> {
   await db.delete(activeBossesTable).where(eq(activeBossesTable.eventId, eventId));
