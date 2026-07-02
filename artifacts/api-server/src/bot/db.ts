@@ -13,6 +13,7 @@ export type UpgradeKey = "atac" | "def" | "dodge" | "crit" | "hp";
 // through interactive Drizzle push (production DB has blocking drift).
 
 export async function runMultiGuildMigrations(): Promise<void> {
+  // players: add guild_id + composite PK
   await pool.query(`
     DO $$
     BEGIN
@@ -28,11 +29,44 @@ export async function runMultiGuildMigrations(): Promise<void> {
       END IF;
     END $$;
   `);
+  // active_events: add guild_id
   await pool.query(`
     ALTER TABLE active_events ADD COLUMN IF NOT EXISTS guild_id text NOT NULL DEFAULT '1382035307607883816';
   `);
+  // active_bosses: migrate from single-column PK (event_id) to composite (event_id, guild_id).
+  // Data is ephemeral boss-fight state — loss during this one-time migration is acceptable.
   await pool.query(`
-    ALTER TABLE active_bosses ADD COLUMN IF NOT EXISTS guild_id text NOT NULL DEFAULT '1382035307607883816';
+    DO $$
+    BEGIN
+      IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'active_bosses') THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'active_bosses' AND column_name = 'guild_id'
+        ) THEN
+          -- Old schema (no guild_id) — drop and let createActiveBossesTableIfNotExists recreate
+          DROP TABLE active_bosses;
+        ELSE
+          -- guild_id exists but PK may still be single-column; upgrade to composite if needed
+          IF EXISTS (
+            SELECT 1 FROM pg_constraint c
+            JOIN pg_class t ON t.oid = c.conrelid
+            WHERE t.relname = 'active_bosses' AND c.contype = 'p'
+              AND array_length(c.conkey, 1) = 1
+          ) THEN
+            ALTER TABLE active_bosses DROP CONSTRAINT IF EXISTS active_bosses_pkey;
+            ALTER TABLE active_bosses ADD PRIMARY KEY (event_id, guild_id);
+          END IF;
+        END IF;
+      END IF;
+    END $$;
+  `);
+  // event_participants: add guild_id (transitive isolation via eventId, but explicit column for completeness)
+  await pool.query(`
+    ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS guild_id text NOT NULL DEFAULT '1382035307607883816';
+  `);
+  // event_claims: add guild_id
+  await pool.query(`
+    ALTER TABLE event_claims ADD COLUMN IF NOT EXISTS guild_id text NOT NULL DEFAULT '1382035307607883816';
   `);
 }
 
@@ -388,11 +422,12 @@ export async function consumePlayerKey(discordId: string, guildId: string, keyTy
 export async function createActiveBossesTableIfNotExists(): Promise<void> {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS active_bosses (
-      event_id   bigint      PRIMARY KEY,
+      event_id   bigint      NOT NULL,
       guild_id   text        NOT NULL DEFAULT '1382035307607883816',
       state_json text        NOT NULL,
       expires_at timestamptz NOT NULL,
-      updated_at timestamptz NOT NULL DEFAULT now()
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (event_id, guild_id)
     )
   `);
 }
@@ -424,8 +459,8 @@ export async function persistActiveBoss(eventId: number, guildId: string, stateJ
   await db.insert(activeBossesTable)
     .values({ eventId, guildId, stateJson, expiresAt, updatedAt: now })
     .onConflictDoUpdate({
-      target: activeBossesTable.eventId,
-      set: { guildId, stateJson, expiresAt, updatedAt: now },
+      target: [activeBossesTable.eventId, activeBossesTable.guildId],
+      set: { stateJson, expiresAt, updatedAt: now },
     });
 }
 
@@ -440,8 +475,8 @@ export async function loadActiveBossRowsByGuild(guildId: string): Promise<Active
 }
 
 // Remove a row once a boss is defeated or flees.
-export async function deleteActiveBoss(eventId: number): Promise<void> {
-  await db.delete(activeBossesTable).where(eq(activeBossesTable.eventId, eventId));
+export async function deleteActiveBoss(eventId: number, guildId: string): Promise<void> {
+  await db.delete(activeBossesTable).where(and(eq(activeBossesTable.eventId, eventId), eq(activeBossesTable.guildId, guildId)));
 }
 
 // ─── Bot state key helpers ─────────────────────────────────────────────────────

@@ -1391,7 +1391,7 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
   if (bossDefeated) {
     activeBoss.defeated = true;
     activeBossMap.delete(eventId);
-    await deleteActiveBoss(eventId).catch(err =>
+    await deleteActiveBoss(eventId, activeBoss.guildId).catch(err =>
       logger.error({ err, eventId }, "Failed to delete defeated boss row — stale row may persist until next restart")
     );
 

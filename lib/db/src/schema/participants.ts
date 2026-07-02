@@ -5,6 +5,7 @@ export const eventParticipantsTable = pgTable(
   {
     id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
     eventId: integer("event_id").notNull(),
+    guildId: text("guild_id").notNull().default("1382035307607883816"),
     discordId: text("discord_id").notNull(),
     username: text("username").notNull(),
     currentHp: integer("current_hp").notNull().default(100),

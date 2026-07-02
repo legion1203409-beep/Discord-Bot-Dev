@@ -65,8 +65,11 @@ export function stopGuildScheduler(guildId: string) {
   if (gs) {
     gs.stopped = true;
     gs.started = false;
+    // Keep the state object in the Map so isStopped() closures (which read
+    // guildStates.get(guildId)?.stopped) correctly see stopped=true even after
+    // the guild is gone. If the bot later rejoins, startGuildScheduler resets
+    // the flags before registering new timers.
   }
-  guildStates.delete(guildId);
   logger.info({ guildId }, "Guild scheduler stopped — bot left guild");
 }
 
@@ -707,7 +710,7 @@ function scheduleEscapeTimer(boss: BossState, client: Client): ReturnType<typeof
       gs.activeBossMap.delete(boss.eventId);
       if (boss.standalone && gs.standaloneBossId === boss.eventId) gs.standaloneBossId = null;
     }
-    await deleteActiveBoss(boss.eventId).catch(() => null);
+    await deleteActiveBoss(boss.eventId, boss.guildId).catch(() => null);
     await runFleeResolution(boss, client);
   }, remaining);
   timer.unref?.();
@@ -735,7 +738,7 @@ async function rehydrateActiveBosses(client: Client, guildId: string): Promise<v
         } catch (err) {
           logger.error({ err, eventId: row.eventId }, "Failed to resolve expired boss on startup — rewards may be lost");
         }
-        await deleteActiveBoss(row.eventId).catch(() => null);
+        await deleteActiveBoss(row.eventId, rowGuildId).catch(() => null);
         continue;
       }
       try {
@@ -749,7 +752,7 @@ async function rehydrateActiveBosses(client: Client, guildId: string): Promise<v
         logger.info({ eventId: boss.eventId, guildId: boss.guildId, remainingMs: boss.expiresAt - now }, "Boss fight rehydrated from DB");
       } catch (err) {
         logger.error({ err, eventId: row.eventId }, "Failed to deserialize boss state — dropping row");
-        await deleteActiveBoss(row.eventId).catch(() => null);
+        await deleteActiveBoss(row.eventId, rowGuildId).catch(() => null);
       }
     }
 
@@ -1123,6 +1126,7 @@ export function startGuildScheduler(client: Client, guildId: string) {
     logger.info({ guildId }, "Guild scheduler already running — skipping re-init");
     return;
   }
+  gs.stopped = false; // reset in case the bot had previously left and rejoined this guild
   gs.started = true;
 
   void rehydrateActiveBosses(client, guildId);

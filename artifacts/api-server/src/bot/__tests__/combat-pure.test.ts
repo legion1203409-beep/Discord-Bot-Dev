@@ -71,6 +71,7 @@ function makeParticipant(overrides: Partial<EventParticipant> = {}): EventPartic
   return {
     id: 1,
     eventId: 10,
+    guildId: "1382035307607883816",
     discordId: "user1",
     username: "Tester",
     maxHp: 100,
