@@ -51,6 +51,16 @@ export function getAllChannels(guildId: string): Required<ChannelConfig> {
   return { ...DEFAULT_CHANNELS, ...(cachedByGuild.get(guildId) ?? {}) };
 }
 
+/**
+ * Returns true if the guild has at least one explicitly configured channel.
+ * The original guild is always considered configured (uses hardcoded defaults).
+ */
+export function hasAnyChannelConfigured(guildId: string): boolean {
+  if (guildId === ORIGINAL_GUILD_ID) return true;
+  const cfg = cachedByGuild.get(guildId);
+  return cfg !== null && cfg !== undefined && Object.keys(cfg).length > 0;
+}
+
 /** Reset one channel back to its default for a guild. */
 export async function resetChannel(guildId: string, type: keyof ChannelConfig): Promise<void> {
   const cfg: ChannelConfig = { ...(cachedByGuild.get(guildId) ?? {}) };

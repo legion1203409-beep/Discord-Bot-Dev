@@ -5,7 +5,7 @@ import { triggerRandomBattleEvent } from "./combat-events";
 import { getRewardMultipliers } from "./status-effects";
 import { startOracle, setOracleExtatic } from "./oracle";
 import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle, addPlayerReputation, addPlayerGold, addPlayerXp, persistActiveBoss, loadActiveBossRowsByGuild, deleteActiveBoss, createActiveBossesTableIfNotExists, persistActiveChest, loadActiveChest, clearActiveChest, KEYCHEST_DBKEY, LOCKCHEST_DBKEY, runMultiGuildMigrations } from "./db";
-import { getChannel, initChannelConfig, type EventType } from "./channel-config";
+import { getChannel, initChannelConfig, hasAnyChannelConfigured, type EventType } from "./channel-config";
 
 const APPLICATION_ID = "1472675543777280071";
 export const EVENT_DURATION_MS = 60 * 60 * 1000;
@@ -1185,6 +1185,13 @@ export function startGuildScheduler(client: Client, guildId: string) {
     logger.info({ nextInMinutes: (delay / 60_000).toFixed(1), guildId }, "Next standalone boss scheduled");
   };
   scheduleNextStandaloneBoss();
+
+  if (!hasAnyChannelConfigured(guildId)) {
+    logger.warn(
+      { guildId },
+      "Guild has no channel config — scheduled events will be skipped on each tick until /setcanale is run by a server admin",
+    );
+  }
 
   const oracleChannelId = getChannel("main", guildId);
   if (oracleChannelId) startOracle(client, oracleChannelId);

@@ -1,5 +1,6 @@
 import {
   Client,
+  Guild,
   TextChannel,
   GatewayIntentBits,
   REST,
@@ -21,7 +22,7 @@ import {
 import { logger } from "../lib/logger";
 import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./alert";
 import { startGuildScheduler, stopGuildScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, getGuildClaimedChests, getGuildActiveBossMap, checkBossEligibility, checkBossHitCooldown, BOSS_HIT_COOLDOWN_MS, checkBossAbilityCooldown, persistBossState, type BossState, type BossPlayerStats } from "./scheduler";
-import { getChannel, getAllChannels, setChannel, resetChannel, resetAllChannels, initChannelConfig, EVENT_LABELS, type EventType } from "./channel-config";
+import { getChannel, getAllChannels, setChannel, resetChannel, resetAllChannels, initChannelConfig, hasAnyChannelConfigured, EVENT_LABELS, type EventType } from "./channel-config";
 import { recordMessage } from "./oracle";
 import { maybeReplyAsOracle, logOracleChatStatus } from "./oracle-chat";
 import { handleToxicity } from "./oracle-guard";
@@ -182,6 +183,44 @@ async function consumeOracleFellBackMarker(): Promise<boolean> {
     logger.warn({ err }, "Could not read/clear the Oracle fallback marker after recovery");
     return false;
   }
+}
+
+async function sendOnboardingMessage(guild: Guild): Promise<void> {
+  const message =
+    "👋 **Bun venit în Regatul Cenușii!**\n\n" +
+    "Botul a fost adăugat pe serverul tău, dar **nu are canalele configurate** încă.\n" +
+    "Folosește comanda `/setcanale seteaza` pentru a configura canalele unde botul va posta:\n\n" +
+    "📺 **Cufere și Oracol** — cufere, chei și mesaje Oracol\n" +
+    "🔥 **Ora Umbrelor** — evenimentele principale de luptă\n" +
+    "🐉 **Dragonul Stins** — boss final\n" +
+    "🏺 **Negustorul** — magazinul permanent\n" +
+    "🏆 **Top Ora Umbrelor** — clasamentul evenimentelor\n" +
+    "🏆 **Top Dragonul Stins** — clasamentul boss-urilor\n\n" +
+    "Rulează `/setcanale vezi` pentru a vedea configurația curentă și ce lipsește.";
+
+  try {
+    const ownerMember = await guild.fetchOwner().catch(() => null);
+    if (ownerMember) {
+      await ownerMember.user.send({ content: message });
+      logger.info({ guildId: guild.id }, "Sent onboarding DM to guild owner");
+      return;
+    }
+  } catch (err) {
+    logger.warn({ err, guildId: guild.id }, "Could not DM guild owner — trying system channel");
+  }
+
+  const systemChannel = guild.systemChannel;
+  if (systemChannel) {
+    try {
+      await systemChannel.send({ content: message });
+      logger.info({ guildId: guild.id }, "Sent onboarding message to system channel");
+      return;
+    } catch (err) {
+      logger.warn({ err, guildId: guild.id }, "Could not post onboarding message in system channel");
+    }
+  }
+
+  logger.warn({ guildId: guild.id }, "No DM or system channel available — onboarding message not delivered");
 }
 
 export async function maybeAlertOracleRecovery(
@@ -627,14 +666,20 @@ async function handleSetCanale(interaction: ChatInputCommandInteraction) {
   const sub = interaction.options.getSubcommand();
 
   if (sub === "vezi") {
-    const cfg = getAllChannels(guildId);
-    const lines = (Object.keys(EVENT_LABELS) as EventType[]).map((k) => {
-      const id = cfg[k];
-      return `📺 **${EVENT_LABELS[k]}**
-> Canal: <#${id}> (\`${id}\`)`;
+    const keys = Object.keys(EVENT_LABELS) as EventType[];
+    const lines = keys.map((k) => {
+      const id = getChannel(k, guildId);
+      if (id) {
+        return `✅ **${EVENT_LABELS[k]}**\n> Canal: <#${id}> (\`${id}\`)`;
+      }
+      return `❌ **${EVENT_LABELS[k]}**\n> *Neconfigurat — folosește \`/setcanale seteaza\` pentru a seta canalul.*`;
     });
+    const allConfigured = keys.every((k) => getChannel(k, guildId) !== null);
+    const header = allConfigured
+      ? "✅ Toate canalele sunt configurate.\n\n"
+      : "⚠️ **Unele canale lipsesc.** Botul va sări evenimentele pentru canalele neconfigurate.\nFolosește `/setcanale seteaza` pentru a le configura.\n\n";
     await interaction.reply({
-      content: lines.join("\n\n"),
+      content: header + lines.join("\n\n"),
       ephemeral: true,
     });
     return;
@@ -1795,10 +1840,15 @@ export async function startBot(onReady?: () => void): Promise<void> {
     const guilds = c.guilds.cache;
     logger.info({ guildCount: guilds.size }, "Bot is in guilds — initializing per-guild scheduler");
 
-    for (const [guildId] of guilds) {
+    for (const [guildId, guild] of guilds) {
       await initChannelConfig(guildId).catch((err) =>
         logger.error({ err, guildId }, "Failed to load channel config for guild"),
       );
+      if (!hasAnyChannelConfigured(guildId)) {
+        void sendOnboardingMessage(guild).catch((err) =>
+          logger.warn({ err, guildId }, "Failed to send onboarding message"),
+        );
+      }
       startGuildScheduler(client, guildId);
       void setupTrader(client, guildId);
     }
@@ -1820,6 +1870,11 @@ export async function startBot(onReady?: () => void): Promise<void> {
     await initChannelConfig(guild.id).catch((err) =>
       logger.error({ err, guildId: guild.id }, "Failed to init channel config for new guild"),
     );
+    if (!hasAnyChannelConfigured(guild.id)) {
+      void sendOnboardingMessage(guild).catch((err) =>
+        logger.warn({ err, guildId: guild.id }, "Failed to send onboarding message"),
+      );
+    }
     startGuildScheduler(client, guild.id);
     void setupTrader(client, guild.id);
   });
