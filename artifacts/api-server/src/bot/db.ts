@@ -382,6 +382,21 @@ export async function getGlobalTopPlayers(): Promise<Player[]> {
   return rows;
 }
 
+export type ServerRankRow = { guildId: string; totalXp: number; playerCount: number };
+
+export async function getServerRanking(): Promise<ServerRankRow[]> {
+  const rows = await db.select({
+    guildId: playersTable.guildId,
+    totalXp: sql<number>`cast(sum(${playersTable.xp}) as int)`,
+    playerCount: sql<number>`cast(count(*) as int)`,
+  })
+  .from(playersTable)
+  .groupBy(playersTable.guildId)
+  .orderBy(desc(sql`sum(${playersTable.xp})`))
+  .limit(15);
+  return rows;
+}
+
 // ─── Key inventory ─────────────────────────────────────────────────────────────
 export type KeyType = "rar" | "epic" | "regal";
 

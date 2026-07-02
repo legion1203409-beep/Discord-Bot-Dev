@@ -41,6 +41,8 @@ import {
   applyUpgradeToActiveParticipant,
   getTopPlayers,
   getGlobalTopPlayers,
+  getServerRanking,
+  type ServerRankRow,
   recordPlayerDeath,
   recordPlayerRetreat,
   getPlayerById,
@@ -245,12 +247,15 @@ const slashCommands = [
     ),
   new SlashCommandBuilder()
     .setName("clasament")
-    .setDescription("👑 Top 10 cei mai puternici luptători.")
+    .setDescription("👑 Clasamentele Regatelor Cenușii.")
     .addSubcommand((sub) =>
-      sub.setName("server").setDescription("Top 10 pe serverul curent."),
+      sub.setName("server").setDescription("Top 10 luptători pe serverul curent."),
     )
     .addSubcommand((sub) =>
-      sub.setName("global").setDescription("Top 10 din toate serverele (clasament global)."),
+      sub.setName("global").setDescription("Top 10 luptători din toate serverele."),
+    )
+    .addSubcommand((sub) =>
+      sub.setName("servere").setDescription("🏆 Clasamentul regatelor — cele mai puternice servere."),
     ),
   new SlashCommandBuilder().setName("magazin").setDescription("🏺 Forja Cenușii — îmbunătățiri permanente, mereu disponibilă."),
   new SlashCommandBuilder().setName("clasa").setDescription("🧬 Alege-ți clasa RPG (alegere permanentă)."),
@@ -674,8 +679,34 @@ async function handleSetCanale(interaction: ChatInputCommandInteraction) {
 async function handleClasament(interaction: ChatInputCommandInteraction) {
   await interaction.deferReply();
   const guildId = interaction.guildId!;
-  const isGlobal = interaction.options.getSubcommand(false) === "global";
+  const sub = interaction.options.getSubcommand(false);
 
+  // ── /clasament servere ──────────────────────────────────────────────────────
+  if (sub === "servere") {
+    const ranking = await getServerRanking();
+    const medals = ["🥇", "🥈", "🥉"];
+    const lines = ranking.map((row: ServerRankRow, i) => {
+      const name = interaction.client.guilds.cache.get(row.guildId)?.name ?? `Regat necunoscut`;
+      const playerWord = row.playerCount === 1 ? "luptător" : "luptători";
+      return `${medals[i] ?? `**${i + 1}.**`} **${name}** — ✨ ${row.totalXp.toLocaleString("ro-RO")} XP total · 👥 ${row.playerCount} ${playerWord}`;
+    }).join("\n");
+
+    await interaction.editReply({
+      embeds: [
+        {
+          color: THEME_COLOR,
+          title: "🏆 Clasamentul Regatelor Cenușii",
+          description: lines || "*Niciun regat nu și-a scris încă legenda.*",
+          footer: { text: "Clasament calculat după XP-ul total acumulat de toți luptătorii" },
+          timestamp: new Date().toISOString(),
+        },
+      ],
+    });
+    return;
+  }
+
+  // ── /clasament server | /clasament global ──────────────────────────────────
+  const isGlobal = sub === "global";
   const top = isGlobal ? await getGlobalTopPlayers() : await getTopPlayers(guildId);
   const medals = ["🥇", "🥈", "🥉"];
   const champAvatar = top[0] ? await avatarById(top[0].discordId) : null;
@@ -687,7 +718,7 @@ async function handleClasament(interaction: ChatInputCommandInteraction) {
     const keysStr = totalKeys > 0
       ? ` | 🗝️ ${totalKeys} cheie${totalKeys > 1 ? "i" : ""}`
       : "";
-    const serverTag = isGlobal ? ` *(Server: ${interaction.client.guilds.cache.get(p.guildId)?.name ?? p.guildId})* ` : "";
+    const serverTag = isGlobal ? ` *(${interaction.client.guilds.cache.get(p.guildId)?.name ?? "Regat necunoscut"})* ` : "";
     return `${medals[i] ?? `**${i + 1}.**`} **${p.username}**${serverTag} — 🎖️ ${levelTitle(p.maxLevel)} · ${p.xp} XP${keysStr}${deathStr}${fledStr}`;
   }).join("\n");
 
@@ -1781,6 +1812,11 @@ export async function startBot(onReady?: () => void): Promise<void> {
   // When the bot joins a new guild, start the scheduler for it
   client.on(Events.GuildCreate, async (guild) => {
     logger.info({ guildId: guild.id, guildName: guild.name }, "Bot joined new guild");
+    // Clear any guild-specific commands so only global commands show (prevents duplicates)
+    void new REST().setToken(token!).put(
+      Routes.applicationGuildCommands(APPLICATION_ID, guild.id),
+      { body: [] },
+    ).catch((err) => logger.warn({ err, guildId: guild.id }, "Could not clear guild commands on join"));
     await initChannelConfig(guild.id).catch((err) =>
       logger.error({ err, guildId: guild.id }, "Failed to init channel config for new guild"),
     );
@@ -1980,6 +2016,17 @@ export async function startBot(onReady?: () => void): Promise<void> {
   const body = slashCommands.map((c) => c.toJSON());
   await rest.put(Routes.applicationCommands(APPLICATION_ID), { body });
   logger.info("Commands registered globally");
+
+  // Remove any leftover guild-specific commands (can cause duplicates in Discord)
+  const clearGuildCommands = async (guildId: string) => {
+    try {
+      await rest.put(Routes.applicationGuildCommands(APPLICATION_ID, guildId), { body: [] });
+    } catch (err) {
+      logger.warn({ err, guildId }, "Could not clear guild commands (non-fatal)");
+    }
+  };
+  await Promise.all([...client.guilds.cache.keys()].map(clearGuildCommands));
+  logger.info({ count: client.guilds.cache.size }, "Cleared guild-specific commands for all guilds");
 
   await terminated;
 }
