@@ -549,3 +549,38 @@ export async function clearActiveChest(dbKey = ACTIVE_CHEST_KEY): Promise<void> 
   await ensureBotStateTable();
   await db.delete(botStateTable).where(eq(botStateTable.key, dbKey));
 }
+
+// ── Channel configuration persistence ─────────────────────────────────────────
+const CHANNEL_CONFIG_KEY = "channel_config";
+
+export interface ChannelConfig {
+  main?: string;
+  event?: string;
+  boss?: string;
+  trader?: string;
+  eventTop?: string;
+  bossTop?: string;
+}
+
+export async function saveChannelConfig(config: ChannelConfig): Promise<void> {
+  await ensureBotStateTable();
+  const now = new Date();
+  await db
+    .insert(botStateTable)
+    .values({ key: CHANNEL_CONFIG_KEY, value: JSON.stringify(config) })
+    .onConflictDoUpdate({
+      target: botStateTable.key,
+      set: { value: JSON.stringify(config), updatedAt: now },
+    });
+}
+
+export async function loadChannelConfig(): Promise<ChannelConfig | null> {
+  await ensureBotStateTable();
+  const [row] = await db.select().from(botStateTable).where(eq(botStateTable.key, CHANNEL_CONFIG_KEY));
+  if (!row) return null;
+  try {
+    return JSON.parse(row.value) as ChannelConfig;
+  } catch {
+    return null;
+  }
+}

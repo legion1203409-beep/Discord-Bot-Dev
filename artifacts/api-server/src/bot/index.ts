@@ -21,6 +21,7 @@ import {
 import { logger } from "../lib/logger";
 import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./alert";
 import { startScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, claimedChests, activeBossMap, checkBossEligibility, checkBossHitCooldown, BOSS_HIT_COOLDOWN_MS, checkBossAbilityCooldown, persistBossState, type BossState, type BossPlayerStats } from "./scheduler";
+import { getChannel, getAllChannels, setChannel, resetChannel, resetAllChannels, EVENT_LABELS, type EventType } from "./channel-config";
 import { recordMessage } from "./oracle";
 import { maybeReplyAsOracle, logOracleChatStatus } from "./oracle-chat";
 import { handleToxicity } from "./oracle-guard";
@@ -369,6 +370,53 @@ const slashCommands = [
     .addSubcommand((sub) =>
       sub.setName("ghid").setDescription("📖 Lista completă a comenzilor de admin și combinațiilor cu Oracolul."),
     ),
+  new SlashCommandBuilder()
+    .setName("setcanale")
+    .setDescription("📺 [Admin] Configurează canalele pentru evenimentele botului.")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .addSubcommand((sub) =>
+      sub.setName("vezi").setDescription("👁️ Vezi configurația curentă a canalelor."),
+    )
+    .addSubcommand((sub) =>
+      sub.setName("seteaza").setDescription("✏️ Setează canalul pentru un eveniment.")
+        .addStringOption((opt) =>
+          opt.setName("eveniment")
+            .setDescription("Tipul de eveniment")
+            .setRequired(true)
+            .addChoices(
+              { name: "Cufere și Oracol", value: "main" },
+              { name: "Ora Umbrelor", value: "event" },
+              { name: "Dragonul Stins", value: "boss" },
+              { name: "Negustorul (Forja Cenușii)", value: "trader" },
+              { name: "Top Ora Umbrelor", value: "eventTop" },
+              { name: "Top Dragonul Stins", value: "bossTop" },
+            ),
+        )
+        .addChannelOption((opt) =>
+          opt.setName("canal")
+            .setDescription("Canalul țintă")
+            .setRequired(true),
+        ),
+    )
+    .addSubcommand((sub) =>
+      sub.setName("reset").setDescription("🔄 Resetează canalul unui eveniment la valoarea implicită.")
+        .addStringOption((opt) =>
+          opt.setName("eveniment")
+            .setDescription("Tipul de eveniment")
+            .setRequired(true)
+            .addChoices(
+              { name: "Cufere și Oracol", value: "main" },
+              { name: "Ora Umbrelor", value: "event" },
+              { name: "Dragonul Stins", value: "boss" },
+              { name: "Negustorul (Forja Cenușii)", value: "trader" },
+              { name: "Top Ora Umbrelor", value: "eventTop" },
+              { name: "Top Dragonul Stins", value: "bossTop" },
+            ),
+        ),
+    )
+    .addSubcommand((sub) =>
+      sub.setName("resetall").setDescription("🔄 Resetează toate canalele la valorile implicite."),
+    ),
 ];
 
 async function avatarById(discordId: string): Promise<string | null> {
@@ -591,6 +639,60 @@ export async function handleAdmin(interaction: ChatInputCommandInteraction) {
         ],
         timestamp: new Date().toISOString(),
       }],
+    });
+    return;
+  }
+}
+
+async function handleSetCanale(interaction: ChatInputCommandInteraction) {
+  if (!(await isOwner(interaction))) return;
+  const sub = interaction.options.getSubcommand();
+
+  if (sub === "vezi") {
+    const cfg = getAllChannels();
+    const lines = (Object.keys(EVENT_LABELS) as EventType[]).map((k) => {
+      const id = cfg[k];
+      return `📺 **${EVENT_LABELS[k]}**
+> Canal: <#${id}> (\`${id}\`)`;
+    });
+    await interaction.reply({
+      content: lines.join("\n\n"),
+      ephemeral: true,
+    });
+    return;
+  }
+
+  if (sub === "seteaza") {
+    const eventKey = interaction.options.getString("eveniment", true) as EventType;
+    const channel = interaction.options.getChannel("canal", true);
+    if (!channel) {
+      await interaction.reply({ content: "❌ Alege un canal valid.", ephemeral: true });
+      return;
+    }
+    await setChannel(eventKey, channel.id);
+    await interaction.reply({
+      content: `✅ **${EVENT_LABELS[eventKey]}** va fi acum postat în <#${channel.id}>`,
+      ephemeral: true,
+    });
+    logger.info({ eventKey, channelId: channel.id, userId: interaction.user.id }, "Channel configured via /setcanale");
+    return;
+  }
+
+  if (sub === "reset") {
+    const eventKey = interaction.options.getString("eveniment", true) as EventType;
+    await resetChannel(eventKey);
+    await interaction.reply({
+      content: `🔄 Canalul pentru **${EVENT_LABELS[eventKey]}** a fost resetat la valoarea implicită.`,
+      ephemeral: true,
+    });
+    return;
+  }
+
+  if (sub === "resetall") {
+    await resetAllChannels();
+    await interaction.reply({
+      content: "🔄 Toate canalele au fost resetate la valorile implicite.",
+      ephemeral: true,
     });
     return;
   }
@@ -1556,9 +1658,9 @@ async function setupTrader(client: Client): Promise<void> {
   }
   traderSetupInProgress = true;
   try {
-    const channel = await client.channels.fetch(TRADER_CHANNEL_ID).catch(() => null);
+    const channel = await client.channels.fetch(getChannel("trader")).catch(() => null);
     if (!(channel instanceof TextChannel)) {
-      logger.warn({ channelId: TRADER_CHANNEL_ID }, "Trader channel not found");
+      logger.warn({ channelId: getChannel("trader") }, "Trader channel not found");
       return;
     }
 
@@ -1670,7 +1772,7 @@ async function setupTrader(client: Client): Promise<void> {
     traderMessageId = msg.id;
     await saveTraderMessageId(msg.id);
     await saveTraderEmbedSig(currentSig);
-    logger.info({ traderMessageId, channelId: TRADER_CHANNEL_ID }, "Trader message posted and persisted");
+    logger.info({ traderMessageId, channelId: getChannel("trader") }, "Trader message posted and persisted");
   } catch (err) {
     logger.error({ err }, "Failed to set up trader");
   } finally {
@@ -1725,6 +1827,11 @@ export async function startBot(onReady?: () => void): Promise<void> {
     // ShardReady path are covered too — this just warms the cache early.
     await ensureBotStateTable().catch((err) =>
       logger.error({ err }, "Failed to ensure bot_state table exists"),
+    );
+    // Load any custom channel configuration from bot_state before events start.
+    const { initChannelConfig } = await import("./channel-config");
+    await initChannelConfig().catch((err) =>
+      logger.error({ err }, "Failed to load channel config"),
     );
     if (!schedulerStarted) {
       schedulerStarted = true;
@@ -1887,6 +1994,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
         if (interaction.commandName === "spawnboss") await handleSpawnBoss(interaction);
         if (interaction.commandName === "blestem") await handleBlestem(interaction);
         if (interaction.commandName === "admin") await handleAdmin(interaction);
+        if (interaction.commandName === "setcanale") await handleSetCanale(interaction);
       } else if (interaction.isButton()) {
         await handleButton(interaction as ButtonInteraction);
       } else if (interaction.isStringSelectMenu()) {

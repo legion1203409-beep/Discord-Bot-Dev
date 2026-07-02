@@ -5,6 +5,7 @@ import { triggerRandomBattleEvent } from "./combat-events";
 import { getRewardMultipliers } from "./status-effects";
 import { startOracle, setOracleExtatic } from "./oracle";
 import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle, addPlayerReputation, addPlayerGold, addPlayerXp, persistActiveBoss, loadAllActiveBossRows, deleteActiveBoss, createActiveBossesTableIfNotExists, persistActiveChest, loadActiveChest, clearActiveChest, KEYCHEST_DBKEY, LOCKCHEST_DBKEY } from "./db";
+import { getChannel } from "./channel-config";
 
 const EVENT_CHANNEL_ID    = "1521185682200989726";
 const BOSS_CHANNEL_ID     = "1521186913476673556";
@@ -228,7 +229,7 @@ async function expireOldEvents(client: Client) {
   const expired = await getExpiredActiveEvents();
   for (const ev of expired) {
     try {
-      const channel = await client.channels.fetch(EVENT_CHANNEL_ID);
+      const channel = await client.channels.fetch(getChannel("event"));
       if (channel instanceof TextChannel) {
         const msg = await channel.messages.fetch(ev.messageId).catch(() => null);
         if (msg) {
@@ -248,7 +249,7 @@ async function expireOldEvents(client: Client) {
           await msg.edit({ embeds: [cronica], components: [disabledRow] });
 
           // Also post cronica + detailed leaderboard permanently in the dedicated top channel.
-          const topCh = await client.channels.fetch(EVENT_TOP_CHANNEL_ID).catch(() => null);
+          const topCh = await client.channels.fetch(getChannel("eventTop")).catch(() => null);
           if (topCh instanceof TextChannel) {
             await topCh.send({ embeds: [cronica] }).catch(() => null);
             const leaderboard = buildEventLeaderboard(participants);
@@ -285,7 +286,7 @@ export async function fireChestForced(client: Client, rarityKey: string, mult?: 
   }
   firingChest = true;
   try {
-    const channel = await client.channels.fetch(MAIN_CHANNEL_ID);
+    const channel = await client.channels.fetch(getChannel("main"));
     if (!(channel instanceof TextChannel)) return null;
 
     if (lastChestTimeout) {
@@ -335,7 +336,7 @@ export async function fireChestForced(client: Client, rarityKey: string, mult?: 
       components: [lockedRow],
     });
     lastChestMessageId = msg.id;
-    void persistActiveChest({ messageId: msg.id, channelId: MAIN_CHANNEL_ID, chestId, gold, rarityKey: rarity.key, mult, expiresAt: expireAt }).catch(() => null);
+    void persistActiveChest({ messageId: msg.id, channelId: getChannel("main"), chestId, gold, rarityKey: rarity.key, mult, expiresAt: expireAt }).catch(() => null);
 
     await sleep(5000);
     if (!claimedChests.has(chestId)) {
@@ -380,7 +381,7 @@ export async function fireChest(client: Client) {
   }
   firingChest = true;
   try {
-    const channel = await client.channels.fetch(MAIN_CHANNEL_ID);
+    const channel = await client.channels.fetch(getChannel("main"));
     if (!(channel instanceof TextChannel)) return null;
 
     if (lastChestTimeout) {
@@ -443,7 +444,7 @@ export async function fireChest(client: Client) {
 
     const msg = await channel.send({ content: frames[0]!.content });
     lastChestMessageId = msg.id;
-    void persistActiveChest({ messageId: msg.id, channelId: MAIN_CHANNEL_ID, chestId, gold, rarityKey: rarity.key, expiresAt: expireAt }).catch(() => null);
+    void persistActiveChest({ messageId: msg.id, channelId: getChannel("main"), chestId, gold, rarityKey: rarity.key, expiresAt: expireAt }).catch(() => null);
 
     for (let i = 1; i < frames.length; i++) {
       await sleep(frames[i - 1]!.delay);
@@ -495,8 +496,8 @@ async function cleanupOldEvents(client: Client) {
   const old = await getAllEvents();
   if (old.length === 0) return;
 
-  const eventChannel = await client.channels.fetch(EVENT_CHANNEL_ID).catch(() => null);
-  const mainChannel = await client.channels.fetch(MAIN_CHANNEL_ID).catch(() => null);
+  const eventChannel = await client.channels.fetch(getChannel("event")).catch(() => null);
+  const mainChannel = await client.channels.fetch(getChannel("main")).catch(() => null);
 
   for (const ev of old) {
     try {
@@ -525,9 +526,9 @@ export async function fireEvent(client: Client) {
   }
   firingEvent = true;
   try {
-    const channel = await client.channels.fetch(EVENT_CHANNEL_ID);
+    const channel = await client.channels.fetch(getChannel("event"));
     if (!(channel instanceof TextChannel)) {
-      logger.error({ channelId: EVENT_CHANNEL_ID }, "Event channel not found");
+      logger.error({ channelId: getChannel("event") }, "Event channel not found");
       return;
     }
 
@@ -579,7 +580,7 @@ export async function fireFinalBoss(client: Client, eventId: number) {
     const ev = await getActiveEvent(eventId);
     if (!ev || !ev.isActive || ev.expiresAt.getTime() < Date.now()) return;
 
-    const channel = await client.channels.fetch(BOSS_CHANNEL_ID).catch(() => null);
+    const channel = await client.channels.fetch(getChannel("boss")).catch(() => null);
     if (!(channel instanceof TextChannel)) return;
 
     const participants = await getEventParticipants(eventId);
@@ -604,7 +605,7 @@ export async function fireFinalBoss(client: Client, eventId: number) {
       maxHp,
       currentHp: maxHp,
       messageId: msg.id,
-      channelId: BOSS_CHANNEL_ID,
+      channelId: getChannel("boss"),
       expiresAt: bossExpiresAt,
       standalone: false,
       lastHitAt: new Map(),
@@ -666,7 +667,7 @@ async function runFleeResolution(boss: BossState, client: Client): Promise<void>
       addPlayerGold(discordId, r.gold),
       addPlayerXp(discordId, r.xp),
     ]));
-    const topCh = await client.channels.fetch(BOSS_TOP_CHANNEL_ID).catch(() => null);
+    const topCh = await client.channels.fetch(getChannel("bossTop")).catch(() => null);
     if (topCh instanceof TextChannel) {
       const leaderboard = buildBossLeaderboard(boss, boss.damageBy, boss.participants, boss.playerNames, boss.playerHp);
       await topCh.send({ embeds: [leaderboard] }).catch(() => null);
@@ -884,9 +885,9 @@ export async function fireStandaloneBoss(client: Client) {
   }
 
   try {
-    const channel = await client.channels.fetch(BOSS_CHANNEL_ID).catch(() => null);
+    const channel = await client.channels.fetch(getChannel("boss")).catch(() => null);
     if (!(channel instanceof TextChannel)) {
-      logger.error({ channelId: BOSS_CHANNEL_ID }, "Boss channel not found");
+      logger.error({ channelId: getChannel("boss") }, "Boss channel not found");
       return;
     }
 
@@ -908,7 +909,7 @@ export async function fireStandaloneBoss(client: Client) {
       maxHp,
       currentHp: maxHp,
       messageId: msg.id,
-      channelId: BOSS_CHANNEL_ID,
+      channelId: getChannel("boss"),
       expiresAt: bossExpiresAt,
       standalone: true,
       lastHitAt: new Map(),
@@ -937,7 +938,7 @@ export async function fireStandaloneBoss(client: Client) {
 
 export async function fireLockedChest(client: Client, rarityKey: string): Promise<void> {
   try {
-    const channel = await client.channels.fetch(MAIN_CHANNEL_ID).catch(() => null);
+    const channel = await client.channels.fetch(getChannel("main")).catch(() => null);
     if (!(channel instanceof TextChannel)) return;
 
     const result = spawnLockedChest(rarityKey);
@@ -963,7 +964,7 @@ export async function fireLockedChest(client: Client, rarityKey: string): Promis
     });
 
     logger.info({ chestId, rarityKey: rarity.key, gold }, "Locked chest spawned");
-    void persistActiveChest({ messageId: msg.id, channelId: MAIN_CHANNEL_ID, chestId, gold, rarityKey: rarity.key, kind: "lockchest", expiresAt }, LOCKCHEST_DBKEY).catch(() => null);
+    void persistActiveChest({ messageId: msg.id, channelId: getChannel("main"), chestId, gold, rarityKey: rarity.key, kind: "lockchest", expiresAt }, LOCKCHEST_DBKEY).catch(() => null);
 
     const timeout = setTimeout(async () => {
       if (!claimedChests.has(chestId)) {
@@ -997,7 +998,7 @@ export async function fireKeyChest(client: Client, keyType?: string): Promise<{ 
   }
   firingKeyChest = true;
   try {
-    const channel = await client.channels.fetch(MAIN_CHANNEL_ID).catch(() => null);
+    const channel = await client.channels.fetch(getChannel("main")).catch(() => null);
     if (!(channel instanceof TextChannel)) return null;
 
     const kt = keyType && keyType !== "random" ? keyType : rollKeyChestType();
@@ -1038,7 +1039,7 @@ export async function fireKeyChest(client: Client, keyType?: string): Promise<{ 
     }
 
     logger.info({ chestId, keyType: kt }, "Key chest spawned");
-    void persistActiveChest({ messageId: msg.id, channelId: MAIN_CHANNEL_ID, chestId, gold: 0, rarityKey: kt, keyType: kt, kind: "keychest", expiresAt }, KEYCHEST_DBKEY).catch(() => null);
+    void persistActiveChest({ messageId: msg.id, channelId: getChannel("main"), chestId, gold: 0, rarityKey: kt, keyType: kt, kind: "keychest", expiresAt }, KEYCHEST_DBKEY).catch(() => null);
 
     const timeout = setTimeout(async () => {
       if (!claimedChests.has(chestId)) {
@@ -1069,7 +1070,7 @@ export async function fireKeyChest(client: Client, keyType?: string): Promise<{ 
 
 async function fireOracle(client: Client) {
   try {
-    const channel = await client.channels.fetch(MAIN_CHANNEL_ID).catch(() => null);
+    const channel = await client.channels.fetch(getChannel("main")).catch(() => null);
     if (!(channel instanceof TextChannel)) return;
     await channel.send({ content: oracleMessage() });
   } catch (err) {
@@ -1081,7 +1082,7 @@ async function fireBattleEvent(client: Client) {
   try {
     const ev = await getLatestActiveEvent();
     if (!ev) return;
-    const channel = await client.channels.fetch(EVENT_CHANNEL_ID).catch(() => null);
+    const channel = await client.channels.fetch(getChannel("event")).catch(() => null);
     if (!(channel instanceof TextChannel)) return;
     const battle = triggerRandomBattleEvent();
     const sent = await channel.send({ content: battle.announce });
@@ -1141,7 +1142,7 @@ export function startScheduler(client: Client) {
   };
   scheduleNextStandaloneBoss();
 
-  startOracle(client, MAIN_CHANNEL_ID);
+  startOracle(client, getChannel("main"));
 }
 
 export { APPLICATION_ID };
