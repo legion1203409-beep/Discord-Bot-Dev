@@ -1,76 +1,106 @@
 import { db, pool } from "@workspace/db";
 import { playersTable, activeEventsTable, eventParticipantsTable, eventClaimsTable, botStateTable, activeBossesTable } from "@workspace/db";
 import type { ActiveBossRow } from "@workspace/db";
-import { eq, and, gte, gt, inArray, sql } from "drizzle-orm";
+import { eq, and, gte, gt, inArray, sql, desc } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import type { Player, EventParticipant } from "@workspace/db";
 import { CLASSES, isClassKey, rollRarity, isCompanionKey, companionStats } from "./survival";
 
 export type UpgradeKey = "atac" | "def" | "dodge" | "crit" | "hp";
 
-export async function upsertPlayer(discordId: string, username: string): Promise<Player> {
-  const [existing] = await db.select().from(playersTable).where(eq(playersTable.discordId, discordId));
+// ─── Multi-guild DB migration ─────────────────────────────────────────────────
+// Called once at bot startup. Applies additive schema changes that cannot go
+// through interactive Drizzle push (production DB has blocking drift).
+
+export async function runMultiGuildMigrations(): Promise<void> {
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'players' AND column_name = 'guild_id'
+      ) THEN
+        ALTER TABLE players ADD COLUMN guild_id text;
+        UPDATE players SET guild_id = '1382035307607883816' WHERE guild_id IS NULL;
+        ALTER TABLE players ALTER COLUMN guild_id SET NOT NULL;
+        ALTER TABLE players DROP CONSTRAINT IF EXISTS players_pkey;
+        ALTER TABLE players ADD PRIMARY KEY (discord_id, guild_id);
+      END IF;
+    END $$;
+  `);
+  await pool.query(`
+    ALTER TABLE active_events ADD COLUMN IF NOT EXISTS guild_id text NOT NULL DEFAULT '1382035307607883816';
+  `);
+  await pool.query(`
+    ALTER TABLE active_bosses ADD COLUMN IF NOT EXISTS guild_id text NOT NULL DEFAULT '1382035307607883816';
+  `);
+}
+
+// ─── Player helpers ────────────────────────────────────────────────────────────
+
+function playerWhere(discordId: string, guildId: string) {
+  return and(eq(playersTable.discordId, discordId), eq(playersTable.guildId, guildId));
+}
+
+export async function upsertPlayer(discordId: string, guildId: string, username: string): Promise<Player> {
+  const [existing] = await db.select().from(playersTable).where(playerWhere(discordId, guildId));
   if (existing) {
-    const [u] = await db.update(playersTable).set({ username }).where(eq(playersTable.discordId, discordId)).returning();
+    const [u] = await db.update(playersTable).set({ username }).where(playerWhere(discordId, guildId)).returning();
     return u!;
   }
-  const [c] = await db.insert(playersTable).values({ discordId, username }).returning();
+  const [c] = await db.insert(playersTable).values({ discordId, guildId, username }).returning();
   return c!;
 }
 
-export async function recordPlayerDeath(discordId: string, deathLevel: number): Promise<void> {
-  const [p] = await db.select().from(playersTable).where(eq(playersTable.discordId, discordId));
+export async function recordPlayerDeath(discordId: string, guildId: string, deathLevel: number): Promise<void> {
+  const [p] = await db.select().from(playersTable).where(playerWhere(discordId, guildId));
   if (!p) return;
   await db.update(playersTable)
     .set({ deaths: p.deaths + 1, deathLevel })
-    .where(eq(playersTable.discordId, discordId));
+    .where(playerWhere(discordId, guildId));
 }
 
-export async function recordPlayerRetreat(discordId: string, retreatLevel: number): Promise<void> {
-  const [p] = await db.select().from(playersTable).where(eq(playersTable.discordId, discordId));
+export async function recordPlayerRetreat(discordId: string, guildId: string, retreatLevel: number): Promise<void> {
+  const [p] = await db.select().from(playersTable).where(playerWhere(discordId, guildId));
   if (!p) return;
   await db.update(playersTable)
     .set({ retreats: p.retreats + 1, retreatLevel })
-    .where(eq(playersTable.discordId, discordId));
+    .where(playerWhere(discordId, guildId));
 }
 
-export async function getPlayerById(discordId: string): Promise<Player | null> {
-  const [p] = await db.select().from(playersTable).where(eq(playersTable.discordId, discordId));
+export async function getPlayerById(discordId: string, guildId: string): Promise<Player | null> {
+  const [p] = await db.select().from(playersTable).where(playerWhere(discordId, guildId));
   return p ?? null;
 }
 
-export async function updateMaxLevel(discordId: string, level: number): Promise<void> {
+export async function updateMaxLevel(discordId: string, guildId: string, level: number): Promise<void> {
   await db.update(playersTable)
     .set({ maxLevel: sql`GREATEST(${playersTable.maxLevel}, ${level})` })
-    .where(eq(playersTable.discordId, discordId));
+    .where(playerWhere(discordId, guildId));
 }
 
-// Permanent: only sets the class if the player has none yet. Returns the
-// updated player, or null if a class was already chosen.
-export async function setPlayerClass(discordId: string, classKey: string): Promise<Player | null> {
+// Permanent: only sets the class if the player has none yet.
+export async function setPlayerClass(discordId: string, guildId: string, classKey: string): Promise<Player | null> {
   if (!isClassKey(classKey)) return null;
   const [u] = await db.update(playersTable)
     .set({ class: classKey })
-    .where(and(eq(playersTable.discordId, discordId), sql`${playersTable.class} IS NULL`))
+    .where(and(playerWhere(discordId, guildId), sql`${playersTable.class} IS NULL`))
     .returning();
   return u ?? null;
 }
 
-// Buys a companion with Oboli (gold). Permanent: only if the player has none
-// yet and can afford it. Returns the updated player, or null on failure.
-export async function buyCompanion(discordId: string, companionKey: string, cost: number): Promise<Player | null> {
+// Buys a companion with Oboli. Permanent: only if the player has none yet.
+export async function buyCompanion(discordId: string, guildId: string, companionKey: string, cost: number): Promise<Player | null> {
   if (!isCompanionKey(companionKey)) return null;
   const [u] = await db.update(playersTable)
     .set({ companion: companionKey, companionLevel: 1, gold: sql`${playersTable.gold} - ${cost}` })
-    .where(and(eq(playersTable.discordId, discordId), sql`${playersTable.companion} IS NULL`, gte(playersTable.gold, cost)))
+    .where(and(playerWhere(discordId, guildId), sql`${playersTable.companion} IS NULL`, gte(playersTable.gold, cost)))
     .returning();
   return u ?? null;
 }
 
-// Upgrades the owned companion: consumes Oboli + XP, raises companion_level.
-// `expectedLevel` guards against concurrent clicks paying the same lower tier:
-// the row only updates if its level still matches the one the price was based on.
-export async function upgradeCompanion(discordId: string, expectedLevel: number, cost: number, xpCost: number): Promise<Player | null> {
+// Upgrades the owned companion; `expectedLevel` guards concurrent clicks.
+export async function upgradeCompanion(discordId: string, guildId: string, expectedLevel: number, cost: number, xpCost: number): Promise<Player | null> {
   const [u] = await db.update(playersTable)
     .set({
       companionLevel: sql`${playersTable.companionLevel} + 1`,
@@ -78,7 +108,7 @@ export async function upgradeCompanion(discordId: string, expectedLevel: number,
       xp: sql`${playersTable.xp} - ${xpCost}`,
     })
     .where(and(
-      eq(playersTable.discordId, discordId),
+      playerWhere(discordId, guildId),
       sql`${playersTable.companion} IS NOT NULL`,
       eq(playersTable.companionLevel, expectedLevel),
       gte(playersTable.gold, cost),
@@ -90,39 +120,36 @@ export async function upgradeCompanion(discordId: string, expectedLevel: number,
 
 export type AbilityKind = "empower" | "shield";
 
-// Unlocks an ability (level 0 → 1) with Oboli. Returns null if already owned
-// or unaffordable.
-export async function buyAbility(discordId: string, kind: AbilityKind, cost: number): Promise<Player | null> {
+// Unlocks an ability (level 0 → 1) with Oboli.
+export async function buyAbility(discordId: string, guildId: string, kind: AbilityKind, cost: number): Promise<Player | null> {
   const col = kind === "empower" ? playersTable.abilityEmpowerLevel : playersTable.abilityShieldLevel;
   const setObj = kind === "empower" ? { abilityEmpowerLevel: 1 } : { abilityShieldLevel: 1 };
   const [u] = await db.update(playersTable)
     .set({ ...setObj, gold: sql`${playersTable.gold} - ${cost}` })
-    .where(and(eq(playersTable.discordId, discordId), eq(col, 0), gte(playersTable.gold, cost)))
+    .where(and(playerWhere(discordId, guildId), eq(col, 0), gte(playersTable.gold, cost)))
     .returning();
   return u ?? null;
 }
 
-// Upgrades an owned ability: consumes Oboli + XP, raises its level.
-// `expectedLevel` guards against concurrent clicks paying the same lower tier.
-export async function upgradeAbility(discordId: string, kind: AbilityKind, expectedLevel: number, cost: number, xpCost: number): Promise<Player | null> {
+// Upgrades an owned ability; `expectedLevel` guards concurrent clicks.
+export async function upgradeAbility(discordId: string, guildId: string, kind: AbilityKind, expectedLevel: number, cost: number, xpCost: number): Promise<Player | null> {
   const col = kind === "empower" ? playersTable.abilityEmpowerLevel : playersTable.abilityShieldLevel;
   const setObj = kind === "empower"
     ? { abilityEmpowerLevel: sql`${playersTable.abilityEmpowerLevel} + 1` }
     : { abilityShieldLevel: sql`${playersTable.abilityShieldLevel} + 1` };
   const [u] = await db.update(playersTable)
     .set({ ...setObj, gold: sql`${playersTable.gold} - ${cost}`, xp: sql`${playersTable.xp} - ${xpCost}` })
-    .where(and(eq(playersTable.discordId, discordId), eq(col, expectedLevel), gte(col, 1), gte(playersTable.gold, cost), gte(playersTable.xp, xpCost)))
+    .where(and(playerWhere(discordId, guildId), eq(col, expectedLevel), gte(col, 1), gte(playersTable.gold, cost), gte(playersTable.xp, xpCost)))
     .returning();
   return u ?? null;
 }
 
-// Mirrors a freshly-bought/upgraded ability level onto the active participant so
-// it becomes usable in the current fight (participants snapshot at join time).
-export async function applyAbilityLevelToActiveParticipant(discordId: string, kind: AbilityKind, level: number): Promise<void> {
+// Mirrors a freshly-bought/upgraded ability level onto the active participant.
+export async function applyAbilityLevelToActiveParticipant(discordId: string, guildId: string, kind: AbilityKind, level: number): Promise<void> {
   const activeIds = db
     .select({ id: activeEventsTable.id })
     .from(activeEventsTable)
-    .where(and(eq(activeEventsTable.isActive, true), gt(activeEventsTable.expiresAt, new Date())));
+    .where(and(eq(activeEventsTable.isActive, true), gt(activeEventsTable.expiresAt, new Date()), eq(activeEventsTable.guildId, guildId)));
   const setObj = kind === "empower" ? { empowerLevel: level } : { shieldLevel: level };
   await db.update(eventParticipantsTable)
     .set(setObj)
@@ -133,12 +160,11 @@ export async function applyAbilityLevelToActiveParticipant(discordId: string, ki
     ));
 }
 
-export async function setHonorTitle(discordId: string, title: string): Promise<void> {
-  await db.update(playersTable).set({ honorTitle: title }).where(eq(playersTable.discordId, discordId));
+export async function setHonorTitle(discordId: string, guildId: string, title: string): Promise<void> {
+  await db.update(playersTable).set({ honorTitle: title }).where(playerWhere(discordId, guildId));
 }
 
-// Records a one-time final-boss hit using the unique (eventId, discordId)
-// claim row. Returns true only on the first hit per player per event.
+// Records a one-time final-boss hit using the unique (eventId, discordId) claim row.
 export async function recordFinalBossHit(eventId: number, discordId: string): Promise<boolean> {
   try {
     const [row] = await db.insert(eventClaimsTable)
@@ -151,16 +177,16 @@ export async function recordFinalBossHit(eventId: number, discordId: string): Pr
   }
 }
 
-export async function addPlayerGold(discordId: string, amount: number): Promise<void> {
+export async function addPlayerGold(discordId: string, guildId: string, amount: number): Promise<void> {
   await db.update(playersTable)
     .set({ gold: sql`${playersTable.gold} + ${amount}` })
-    .where(eq(playersTable.discordId, discordId));
+    .where(playerWhere(discordId, guildId));
 }
 
-export async function deductPlayerGold(discordId: string, amount: number): Promise<void> {
+export async function deductPlayerGold(discordId: string, guildId: string, amount: number): Promise<void> {
   await db.update(playersTable)
     .set({ gold: sql`GREATEST(0, ${playersTable.gold} - ${amount})` })
-    .where(eq(playersTable.discordId, discordId));
+    .where(playerWhere(discordId, guildId));
 }
 
 export const UPGRADE_DELTA: Record<UpgradeKey, number> = { atac: 2, def: 2, dodge: 3, crit: 2, hp: 10 };
@@ -173,9 +199,6 @@ const UPGRADE_SET: Record<UpgradeKey, Record<string, SQL>> = {
   hp: { maxHpBonus: sql`${playersTable.maxHpBonus} + ${UPGRADE_DELTA.hp}`, shopHpCount: sql`${playersTable.shopHpCount} + 1` },
 };
 
-// Mirrors UPGRADE_SET deltas onto the active event participant so a mid-event
-// purchase takes effect in the current fight (the participant snapshots player
-// bonuses at join time and would otherwise stay stale until the next event).
 const PARTICIPANT_UPGRADE_SET: Record<UpgradeKey, Record<string, SQL>> = {
   atac: { attackBonus: sql`${eventParticipantsTable.attackBonus} + ${UPGRADE_DELTA.atac}` },
   def: { defenseBonus: sql`${eventParticipantsTable.defenseBonus} + ${UPGRADE_DELTA.def}` },
@@ -187,19 +210,19 @@ const PARTICIPANT_UPGRADE_SET: Record<UpgradeKey, Record<string, SQL>> = {
   },
 };
 
-export async function buyPlayerUpgrade(discordId: string, key: UpgradeKey, cost: number): Promise<Player | null> {
+export async function buyPlayerUpgrade(discordId: string, guildId: string, key: UpgradeKey, cost: number): Promise<Player | null> {
   const [u] = await db.update(playersTable)
     .set({ gold: sql`${playersTable.gold} - ${cost}`, ...UPGRADE_SET[key] })
-    .where(and(eq(playersTable.discordId, discordId), gte(playersTable.gold, cost)))
+    .where(and(playerWhere(discordId, guildId), gte(playersTable.gold, cost)))
     .returning();
   return u ?? null;
 }
 
-export async function applyUpgradeToActiveParticipant(discordId: string, key: UpgradeKey): Promise<void> {
+export async function applyUpgradeToActiveParticipant(discordId: string, guildId: string, key: UpgradeKey): Promise<void> {
   const activeIds = db
     .select({ id: activeEventsTable.id })
     .from(activeEventsTable)
-    .where(and(eq(activeEventsTable.isActive, true), gt(activeEventsTable.expiresAt, new Date())));
+    .where(and(eq(activeEventsTable.isActive, true), gt(activeEventsTable.expiresAt, new Date()), eq(activeEventsTable.guildId, guildId)));
   await db.update(eventParticipantsTable)
     .set(PARTICIPANT_UPGRADE_SET[key])
     .where(and(
@@ -209,8 +232,10 @@ export async function applyUpgradeToActiveParticipant(discordId: string, key: Up
     ));
 }
 
-export async function createEvent(type: string, messageId: string, expiresAt: Date) {
-  const [ev] = await db.insert(activeEventsTable).values({ eventType: type, messageId, expiresAt }).returning();
+// ─── Event helpers ─────────────────────────────────────────────────────────────
+
+export async function createEvent(guildId: string, type: string, messageId: string, expiresAt: Date) {
+  const [ev] = await db.insert(activeEventsTable).values({ guildId, eventType: type, messageId, expiresAt }).returning();
   return ev!;
 }
 
@@ -219,19 +244,21 @@ export async function getActiveEvent(id: number) {
   return ev ?? null;
 }
 
-export async function getLatestActiveEvent() {
-  const all = await db.select().from(activeEventsTable).where(eq(activeEventsTable.isActive, true));
+export async function getLatestActiveEvent(guildId: string) {
+  const all = await db.select().from(activeEventsTable)
+    .where(and(eq(activeEventsTable.isActive, true), eq(activeEventsTable.guildId, guildId)));
   const valid = all.filter((e) => e.expiresAt.getTime() > Date.now());
   return valid.sort((a, b) => b.id - a.id)[0] ?? null;
 }
 
-export async function getExpiredActiveEvents() {
-  const all = await db.select().from(activeEventsTable).where(eq(activeEventsTable.isActive, true));
+export async function getExpiredActiveEvents(guildId: string) {
+  const all = await db.select().from(activeEventsTable)
+    .where(and(eq(activeEventsTable.isActive, true), eq(activeEventsTable.guildId, guildId)));
   return all.filter((e) => e.expiresAt.getTime() < Date.now());
 }
 
-export async function getAllEvents() {
-  return db.select().from(activeEventsTable);
+export async function getAllEvents(guildId: string) {
+  return db.select().from(activeEventsTable).where(eq(activeEventsTable.guildId, guildId));
 }
 
 export async function setEventDecreeMessage(id: number, decreeMessageId: string) {
@@ -247,11 +274,11 @@ export async function deactivateEvent(id: number) {
   await db.update(activeEventsTable).set({ isActive: false }).where(eq(activeEventsTable.id, id));
 }
 
-export async function joinEvent(eventId: number, discordId: string, username: string): Promise<EventParticipant | null> {
+export async function joinEvent(guildId: string, eventId: number, discordId: string, username: string): Promise<EventParticipant | null> {
   const [existing] = await db.select().from(eventParticipantsTable)
     .where(and(eq(eventParticipantsTable.eventId, eventId), eq(eventParticipantsTable.discordId, discordId)));
   if (existing) return existing;
-  const player = await getPlayerById(discordId);
+  const player = await getPlayerById(discordId, guildId);
   const cls = player?.class && isClassKey(player.class) ? CLASSES[player.class] : null;
   const comp = player?.companion && isCompanionKey(player.companion)
     ? companionStats(player.companion, player.companionLevel ?? 1)
@@ -291,47 +318,56 @@ export async function getEventParticipants(eventId: number): Promise<EventPartic
   return db.select().from(eventParticipantsTable).where(eq(eventParticipantsTable.eventId, eventId));
 }
 
-export async function addPlayerReputation(discordId: string, amount: number): Promise<void> {
+export async function addPlayerReputation(discordId: string, guildId: string, amount: number): Promise<void> {
   await db.update(playersTable)
     .set({ reputation: sql`${playersTable.reputation} + ${amount}` })
-    .where(eq(playersTable.discordId, discordId));
+    .where(playerWhere(discordId, guildId));
 }
 
-export async function addPlayerXp(discordId: string, amount: number): Promise<void> {
+export async function addPlayerXp(discordId: string, guildId: string, amount: number): Promise<void> {
   await db.update(playersTable)
     .set({ xp: sql`${playersTable.xp} + ${amount}` })
-    .where(eq(playersTable.discordId, discordId));
+    .where(playerWhere(discordId, guildId));
 }
 
-export async function getTopPlayers(): Promise<Player[]> {
-  const rows = await db.select().from(playersTable).orderBy(playersTable.xp);
-  return rows.slice(-10).reverse();
+export async function getTopPlayers(guildId: string): Promise<Player[]> {
+  const rows = await db.select().from(playersTable)
+    .where(eq(playersTable.guildId, guildId))
+    .orderBy(desc(playersTable.xp))
+    .limit(10);
+  return rows;
 }
 
+export async function getGlobalTopPlayers(): Promise<Player[]> {
+  const rows = await db.select().from(playersTable)
+    .orderBy(desc(playersTable.xp))
+    .limit(10);
+  return rows;
+}
 
-// ─── Key inventory ────────────────────────────────────────────────────────────
+// ─── Key inventory ─────────────────────────────────────────────────────────────
 export type KeyType = "rar" | "epic" | "regal";
 
-export async function getPlayerKeys(discordId: string): Promise<{ rar: number; epic: number; regal: number } | null> {
+export async function getPlayerKeys(discordId: string, guildId: string): Promise<{ rar: number; epic: number; regal: number } | null> {
   const [p] = await db.select({
     keyRar: playersTable.keyRar,
     keyEpic: playersTable.keyEpic,
     keyRegal: playersTable.keyRegal,
-  }).from(playersTable).where(eq(playersTable.discordId, discordId));
+  }).from(playersTable).where(playerWhere(discordId, guildId));
   if (!p) return null;
   return { rar: p.keyRar, epic: p.keyEpic, regal: p.keyRegal };
 }
 
-export async function addPlayerKey(discordId: string, keyType: KeyType): Promise<void> {
+export async function addPlayerKey(discordId: string, guildId: string, keyType: KeyType): Promise<void> {
   const setObj =
     keyType === "rar"   ? { keyRar:   sql`${playersTable.keyRar}   + 1` } :
     keyType === "epic"  ? { keyEpic:  sql`${playersTable.keyEpic}  + 1` } :
                           { keyRegal: sql`${playersTable.keyRegal} + 1` };
-  await db.update(playersTable).set(setObj).where(eq(playersTable.discordId, discordId));
+  await db.update(playersTable).set(setObj).where(playerWhere(discordId, guildId));
 }
 
 // Returns true if a key was consumed, false if the player had none.
-export async function consumePlayerKey(discordId: string, keyType: KeyType): Promise<boolean> {
+export async function consumePlayerKey(discordId: string, guildId: string, keyType: KeyType): Promise<boolean> {
   const col =
     keyType === "rar"   ? playersTable.keyRar   :
     keyType === "epic"  ? playersTable.keyEpic  :
@@ -342,29 +378,25 @@ export async function consumePlayerKey(discordId: string, keyType: KeyType): Pro
                           { keyRegal: sql`${playersTable.keyRegal} - 1` };
   const [u] = await db.update(playersTable)
     .set(setObj)
-    .where(and(eq(playersTable.discordId, discordId), gte(col, 1)))
+    .where(and(playerWhere(discordId, guildId), gte(col, 1)))
     .returning();
   return u != null;
 }
 
 // ─── Active boss persistence ───────────────────────────────────────────────────
-// Creates the active_bosses table if it doesn't exist yet. Called once at bot
-// startup so schema changes apply without a manual migration step.
+
 export async function createActiveBossesTableIfNotExists(): Promise<void> {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS active_bosses (
-      event_id  bigint      PRIMARY KEY,
-      state_json text       NOT NULL,
+      event_id   bigint      PRIMARY KEY,
+      guild_id   text        NOT NULL DEFAULT '1382035307607883816',
+      state_json text        NOT NULL,
       expires_at timestamptz NOT NULL,
       updated_at timestamptz NOT NULL DEFAULT now()
     )
   `);
 }
 
-// Ensure the durable key/value store exists. The production DB may not have had
-// the Drizzle migration applied, so chest rehydration, the Oracle recovery
-// marker and the trader message ID all fail with `relation "bot_state" does not
-// exist`. Creating it idempotently at startup self-heals a missing migration.
 export async function createBotStateTableIfNotExists(): Promise<void> {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS bot_state (
@@ -375,11 +407,6 @@ export async function createBotStateTableIfNotExists(): Promise<void> {
   `);
 }
 
-// Cached promise so the CREATE TABLE runs at most once, regardless of which
-// bot_state-dependent path fires first (ShardReady trader setup, ClientReady
-// rehydration, or the login-error Oracle marker). Every bot_state helper awaits
-// this first, so a missing migration can never surface as a runtime query error.
-// On failure the cache is reset so a later call retries.
 let botStateTableReady: Promise<void> | null = null;
 export function ensureBotStateTable(): Promise<void> {
   if (!botStateTableReady) {
@@ -391,37 +418,37 @@ export function ensureBotStateTable(): Promise<void> {
   return botStateTableReady;
 }
 
-// Upsert the serialized boss state. Called after every meaningful change so
-// a restart can reconstruct the fight from the latest snapshot.
-export async function persistActiveBoss(eventId: number, stateJson: string, expiresAt: Date): Promise<void> {
+// Upsert the serialized boss state.
+export async function persistActiveBoss(eventId: number, guildId: string, stateJson: string, expiresAt: Date): Promise<void> {
   const now = new Date();
   await db.insert(activeBossesTable)
-    .values({ eventId, stateJson, expiresAt, updatedAt: now })
+    .values({ eventId, guildId, stateJson, expiresAt, updatedAt: now })
     .onConflictDoUpdate({
       target: activeBossesTable.eventId,
-      set: { stateJson, expiresAt, updatedAt: now },
+      set: { guildId, stateJson, expiresAt, updatedAt: now },
     });
 }
 
-// Load all persisted rows — used on startup to rehydrate activeBossMap.
+// Load all persisted boss rows — used on startup to rehydrate activeBossMap.
 export async function loadAllActiveBossRows(): Promise<ActiveBossRow[]> {
   return db.select().from(activeBossesTable);
 }
 
-// Remove a row once a boss is defeated or flees. Idempotent.
+// Remove a row once a boss is defeated or flees.
 export async function deleteActiveBoss(eventId: number): Promise<void> {
   await db.delete(activeBossesTable).where(eq(activeBossesTable.eventId, eventId));
 }
 
-// Durable marker (in the DB, not os.tmpdir()) recording that the Oracle fell
-// back to degraded reply mode because the "Message Content" portal toggle was
-// missing (code 4014). Stored in the DB so the state survives a full redeploy
-// or autoscale instance swap — a fresh container wipes os.tmpdir(), which would
-// otherwise silently drop the pending recovery alert.
+// ─── Bot state key helpers ─────────────────────────────────────────────────────
+
+/** Prefix a bot_state key with guildId for isolation. */
+function guildKey(guildId: string, key: string): string {
+  return `${guildId}:${key}`;
+}
+
+// ─── Oracle fallback marker (global — not per-guild) ──────────────────────────
 const ORACLE_FELLBACK_KEY = "oracle_fellback";
 
-// Record that the Oracle fell back, so a later full-mode boot can confirm the
-// recovery. Idempotent — repeated fallbacks just refresh the timestamp.
 export async function recordOracleFellBack(): Promise<void> {
   await ensureBotStateTable();
   const now = new Date();
@@ -434,9 +461,6 @@ export async function recordOracleFellBack(): Promise<void> {
     });
 }
 
-// Atomically clear the fallback marker and report whether one was set. The
-// DELETE ... RETURNING is atomic, so if several boots race (autoscale), only
-// the boot that actually removed the row sees `true` — no duplicate alerts.
 export async function consumeOracleFellBack(): Promise<boolean> {
   await ensureBotStateTable();
   const [deleted] = await db
@@ -446,13 +470,9 @@ export async function consumeOracleFellBack(): Promise<boolean> {
   return deleted != null;
 }
 
-// ─── Active chest persistence ─────────────────────────────────────────────────
-// Persists the currently-live chest message so it can be expired cleanly on
-// restart instead of leaving a stale interactive button in Discord.
+// ─── Active chest persistence ──────────────────────────────────────────────────
 
-const ACTIVE_CHEST_KEY = "active_chest";
-
-/** DB key constants for each chest variant — exported for use in scheduler. */
+/** DB key suffixes for each chest variant — combined with guildId prefix. */
 export const CHEST_DBKEY     = "active_chest";
 export const KEYCHEST_DBKEY  = "active_keychest";
 export const LOCKCHEST_DBKEY = "active_lockchest";
@@ -473,70 +493,70 @@ export interface ActiveChestRecord {
   keyType?: string;
 }
 
-// ── Trader message ID persistence ───────────────────────────────────────────
+// ─── Trader message ID persistence ────────────────────────────────────────────
 const TRADER_MESSAGE_KEY = "trader_message_id";
 
-export async function saveTraderMessageId(messageId: string): Promise<void> {
+export async function saveTraderMessageId(guildId: string, messageId: string): Promise<void> {
   await ensureBotStateTable();
+  const key = guildKey(guildId, TRADER_MESSAGE_KEY);
   const now = new Date();
   await db
     .insert(botStateTable)
-    .values({ key: TRADER_MESSAGE_KEY, value: messageId })
+    .values({ key, value: messageId })
     .onConflictDoUpdate({
       target: botStateTable.key,
       set: { value: messageId, updatedAt: now },
     });
 }
 
-export async function loadTraderMessageId(): Promise<string | null> {
+export async function loadTraderMessageId(guildId: string): Promise<string | null> {
   await ensureBotStateTable();
-  const [row] = await db.select().from(botStateTable).where(eq(botStateTable.key, TRADER_MESSAGE_KEY));
+  const [row] = await db.select().from(botStateTable).where(eq(botStateTable.key, guildKey(guildId, TRADER_MESSAGE_KEY)));
   return row?.value ?? null;
 }
 
-export async function clearTraderMessageId(): Promise<void> {
+export async function clearTraderMessageId(guildId: string): Promise<void> {
   await ensureBotStateTable();
-  await db.delete(botStateTable).where(eq(botStateTable.key, TRADER_MESSAGE_KEY));
+  await db.delete(botStateTable).where(eq(botStateTable.key, guildKey(guildId, TRADER_MESSAGE_KEY)));
 }
 
-// Signature of the trader embed's image, so setupTrader can detect when the
-// image URL changed and re-post the message (Discord does NOT reliably re-fetch
-// a changed embed image on a plain message edit — only a fresh post renders it).
 const TRADER_EMBED_SIG_KEY = "trader_embed_sig";
 
-export async function saveTraderEmbedSig(sig: string): Promise<void> {
+export async function saveTraderEmbedSig(guildId: string, sig: string): Promise<void> {
   await ensureBotStateTable();
+  const key = guildKey(guildId, TRADER_EMBED_SIG_KEY);
   const now = new Date();
   await db
     .insert(botStateTable)
-    .values({ key: TRADER_EMBED_SIG_KEY, value: sig })
+    .values({ key, value: sig })
     .onConflictDoUpdate({
       target: botStateTable.key,
       set: { value: sig, updatedAt: now },
     });
 }
 
-export async function loadTraderEmbedSig(): Promise<string | null> {
+export async function loadTraderEmbedSig(guildId: string): Promise<string | null> {
   await ensureBotStateTable();
-  const [row] = await db.select().from(botStateTable).where(eq(botStateTable.key, TRADER_EMBED_SIG_KEY));
+  const [row] = await db.select().from(botStateTable).where(eq(botStateTable.key, guildKey(guildId, TRADER_EMBED_SIG_KEY)));
   return row?.value ?? null;
 }
 
-export async function persistActiveChest(record: ActiveChestRecord, dbKey = ACTIVE_CHEST_KEY): Promise<void> {
+export async function persistActiveChest(guildId: string, record: ActiveChestRecord, dbKey = CHEST_DBKEY): Promise<void> {
   await ensureBotStateTable();
+  const key = guildKey(guildId, dbKey);
   const now = new Date();
   await db
     .insert(botStateTable)
-    .values({ key: dbKey, value: JSON.stringify(record) })
+    .values({ key, value: JSON.stringify(record) })
     .onConflictDoUpdate({
       target: botStateTable.key,
       set: { value: JSON.stringify(record), updatedAt: now },
     });
 }
 
-export async function loadActiveChest(dbKey = ACTIVE_CHEST_KEY): Promise<ActiveChestRecord | null> {
+export async function loadActiveChest(guildId: string, dbKey = CHEST_DBKEY): Promise<ActiveChestRecord | null> {
   await ensureBotStateTable();
-  const [row] = await db.select().from(botStateTable).where(eq(botStateTable.key, dbKey));
+  const [row] = await db.select().from(botStateTable).where(eq(botStateTable.key, guildKey(guildId, dbKey)));
   if (!row) return null;
   try {
     return JSON.parse(row.value) as ActiveChestRecord;
@@ -545,12 +565,12 @@ export async function loadActiveChest(dbKey = ACTIVE_CHEST_KEY): Promise<ActiveC
   }
 }
 
-export async function clearActiveChest(dbKey = ACTIVE_CHEST_KEY): Promise<void> {
+export async function clearActiveChest(guildId: string, dbKey = CHEST_DBKEY): Promise<void> {
   await ensureBotStateTable();
-  await db.delete(botStateTable).where(eq(botStateTable.key, dbKey));
+  await db.delete(botStateTable).where(eq(botStateTable.key, guildKey(guildId, dbKey)));
 }
 
-// ── Channel configuration persistence ─────────────────────────────────────────
+// ─── Channel configuration persistence ────────────────────────────────────────
 const CHANNEL_CONFIG_KEY = "channel_config";
 
 export interface ChannelConfig {
@@ -562,21 +582,22 @@ export interface ChannelConfig {
   bossTop?: string;
 }
 
-export async function saveChannelConfig(config: ChannelConfig): Promise<void> {
+export async function saveChannelConfig(guildId: string, config: ChannelConfig): Promise<void> {
   await ensureBotStateTable();
+  const key = guildKey(guildId, CHANNEL_CONFIG_KEY);
   const now = new Date();
   await db
     .insert(botStateTable)
-    .values({ key: CHANNEL_CONFIG_KEY, value: JSON.stringify(config) })
+    .values({ key, value: JSON.stringify(config) })
     .onConflictDoUpdate({
       target: botStateTable.key,
       set: { value: JSON.stringify(config), updatedAt: now },
     });
 }
 
-export async function loadChannelConfig(): Promise<ChannelConfig | null> {
+export async function loadChannelConfig(guildId: string): Promise<ChannelConfig | null> {
   await ensureBotStateTable();
-  const [row] = await db.select().from(botStateTable).where(eq(botStateTable.key, CHANNEL_CONFIG_KEY));
+  const [row] = await db.select().from(botStateTable).where(eq(botStateTable.key, guildKey(guildId, CHANNEL_CONFIG_KEY)));
   if (!row) return null;
   try {
     return JSON.parse(row.value) as ChannelConfig;

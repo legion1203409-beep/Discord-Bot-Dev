@@ -4,19 +4,12 @@ import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, buildExpiredChes
 import { triggerRandomBattleEvent } from "./combat-events";
 import { getRewardMultipliers } from "./status-effects";
 import { startOracle, setOracleExtatic } from "./oracle";
-import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle, addPlayerReputation, addPlayerGold, addPlayerXp, persistActiveBoss, loadAllActiveBossRows, deleteActiveBoss, createActiveBossesTableIfNotExists, persistActiveChest, loadActiveChest, clearActiveChest, KEYCHEST_DBKEY, LOCKCHEST_DBKEY } from "./db";
-import { getChannel } from "./channel-config";
+import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle, addPlayerReputation, addPlayerGold, addPlayerXp, persistActiveBoss, loadAllActiveBossRows, deleteActiveBoss, createActiveBossesTableIfNotExists, persistActiveChest, loadActiveChest, clearActiveChest, KEYCHEST_DBKEY, LOCKCHEST_DBKEY, runMultiGuildMigrations } from "./db";
+import { getChannel, initChannelConfig } from "./channel-config";
 
-const EVENT_CHANNEL_ID    = "1521185682200989726";
-const BOSS_CHANNEL_ID     = "1521186913476673556";
-const MAIN_CHANNEL_ID     = "1382042144717410385";
-/** Dedicated channel where the Ora Umbrelor cronica is posted permanently. */
-const EVENT_TOP_CHANNEL_ID = "1521185741961695434";
-/** Dedicated channel where boss leaderboards are posted permanently. */
-const BOSS_TOP_CHANNEL_ID  = "1521186981525327993";
 const APPLICATION_ID = "1472675543777280071";
 export const EVENT_DURATION_MS = 60 * 60 * 1000;
-const FINAL_BOSS_ACTIVE_MS = 30 * 60 * 1000; // final boss flees after 30 minutes
+const FINAL_BOSS_ACTIVE_MS = 30 * 60 * 1000;
 const MIN_COOLDOWN_MS = 10 * 60 * 1000;
 const MAX_COOLDOWN_MS = 2 * 60 * 60 * 1000;
 
@@ -27,46 +20,83 @@ const CHEST_EXPIRE_MS = 10 * 60 * 1000;
 const ORACLE_INTERVAL_MS = 25 * 60 * 1000;
 const BATTLE_EVENT_INTERVAL_MS = 7 * 60 * 1000;
 
-export const claimedChests = new Set<string>();
+// ─── Per-guild scheduler state ─────────────────────────────────────────────────
+
+interface GuildSchedulerState {
+  claimedChests: Set<string>;
+  activeBossMap: Map<number, BossState>;
+  firingChest: boolean;
+  firingKeyChest: boolean;
+  firingEvent: boolean;
+  lastChestMessageId: string | null;
+  lastChestTimeout: ReturnType<typeof setTimeout> | null;
+  standaloneBossId: number | null;
+  started: boolean;
+}
+
+export const guildStates = new Map<string, GuildSchedulerState>();
+
+function getOrCreateGuildState(guildId: string): GuildSchedulerState {
+  let state = guildStates.get(guildId);
+  if (!state) {
+    state = {
+      claimedChests: new Set(),
+      activeBossMap: new Map(),
+      firingChest: false,
+      firingKeyChest: false,
+      firingEvent: false,
+      lastChestMessageId: null,
+      lastChestTimeout: null,
+      standaloneBossId: null,
+      started: false,
+    };
+    guildStates.set(guildId, state);
+  }
+  return state;
+}
+
+/** Get the claimedChests set for a guild (creates state if missing). */
+export function getGuildClaimedChests(guildId: string): Set<string> {
+  return getOrCreateGuildState(guildId).claimedChests;
+}
+
+/** Get the activeBossMap for a guild (creates state if missing). */
+export function getGuildActiveBossMap(guildId: string): Map<number, BossState> {
+  return getOrCreateGuildState(guildId).activeBossMap;
+}
 
 // ─── Boss shared HP state ─────────────────────────────────────────────────────
 export type { BossPlayerStats };
 
 export interface BossState {
   eventId: number;
+  /** Guild this boss belongs to — used for DB calls and channel lookups. */
+  guildId: string;
   level: number;
   rarity: BossRarity;
   maxHp: number;
   currentHp: number;
   messageId: string;
-  /** Discord channel ID where this boss was spawned — used to post leaderboard. */
   channelId: string;
-  lastHitAt: Map<string, number>;         // discordId → timestamp of last hit
-  damageBy: Map<string, number>;          // discordId → total damage dealt to boss
-  playerHp: Map<string, number>;          // discordId → current HP during boss fight
-  playerNames: Map<string, string>;       // discordId → username (for embed + leaderboard)
-  playerStats: Map<string, BossPlayerStats>; // discordId → global player stats at first hit
+  lastHitAt: Map<string, number>;
+  damageBy: Map<string, number>;
+  playerHp: Map<string, number>;
+  playerNames: Map<string, string>;
+  playerStats: Map<string, BossPlayerStats>;
   participants: Array<{ username: string; discordId: string; monsterLevel: number; totalDamage: number; isAlive: boolean }>;
-  /** Epoch ms when this boss flees if not defeated — drives the live countdown in the embed. */
   expiresAt: number;
-  /** True for bosses spawned independently of Ora Umbrelor — any player may join, no event participation required. */
   standalone: boolean;
-  /** discordId → epoch ms when their boss ability comes off cooldown. */
   abilityReadyAt: Map<string, number>;
-  /** discordIds with a queued empower — their next hit on the boss is doubled. */
   empowerNext: Set<string>;
-  /** discordIds with a queued shield — their next hit taken from the boss is reduced. */
   shieldNext: Set<string>;
   defeated: boolean;
 }
-export const activeBossMap = new Map<number, BossState>();
 
 // ─── Boss state serialization / deserialization ────────────────────────────────
-// BossState contains Maps and Sets which aren't JSON-native. We convert them to
-// arrays for storage and reconstruct them on load.
 
 interface SerializedBossState {
   eventId: number;
+  guildId: string;
   level: number;
   rarity: BossRarity;
   maxHp: number;
@@ -90,6 +120,7 @@ interface SerializedBossState {
 function serializeBoss(boss: BossState): string {
   const s: SerializedBossState = {
     eventId: boss.eventId,
+    guildId: boss.guildId,
     level: boss.level,
     rarity: boss.rarity,
     maxHp: boss.maxHp,
@@ -112,10 +143,11 @@ function serializeBoss(boss: BossState): string {
   return JSON.stringify(s);
 }
 
-function deserializeBoss(json: string): BossState {
+function deserializeBoss(json: string, fallbackGuildId?: string): BossState {
   const s = JSON.parse(json) as SerializedBossState;
   return {
     eventId: s.eventId,
+    guildId: s.guildId ?? fallbackGuildId ?? "1382035307607883816",
     level: s.level,
     rarity: s.rarity,
     maxHp: s.maxHp,
@@ -137,18 +169,16 @@ function deserializeBoss(json: string): BossState {
   };
 }
 
-// Persist the current snapshot of a boss fight to DB. Swallows errors so a
-// transient DB issue never crashes the combat flow.
+// Persist the current snapshot of a boss fight to DB.
 export async function persistBossState(boss: BossState): Promise<void> {
   try {
-    await persistActiveBoss(boss.eventId, serializeBoss(boss), new Date(boss.expiresAt));
+    await persistActiveBoss(boss.eventId, boss.guildId, serializeBoss(boss), new Date(boss.expiresAt));
   } catch (err) {
     logger.error({ err, eventId: boss.eventId }, "Failed to persist boss state");
   }
 }
 
 // ─── Final-boss eligibility guard ─────────────────────────────────────────────
-// Pure function — no I/O — so it can be unit-tested without mocking Discord or DB.
 export type BossEligibilityResult =
   | { ok: true }
   | { ok: false; reason: "no_boss" | "defeated" | "dead" };
@@ -159,14 +189,12 @@ export function checkBossEligibility(
 ): BossEligibilityResult {
   if (!boss) return { ok: false, reason: "no_boss" };
   if (boss.defeated) return { ok: false, reason: "defeated" };
-  // Reject players downed during the boss fight itself (applies to all boss types)
   const bossHp = boss.playerHp.get(uid);
   if (bossHp !== undefined && bossHp <= 0) return { ok: false, reason: "dead" };
   return { ok: true };
 }
 
 // ─── Boss hit cooldown guard ───────────────────────────────────────────────────
-// Pure function — no I/O — keeps the 4-second spam-prevention window testable.
 export const BOSS_HIT_COOLDOWN_MS = 4000;
 
 export type BossCooldownResult =
@@ -187,9 +215,6 @@ export function checkBossHitCooldown(
 }
 
 // ─── Boss ability cooldown guard ──────────────────────────────────────────────
-// Pure function — no I/O — keeps the ability spam-prevention window testable.
-// `abilityReadyAt` stores the absolute timestamp at which the ability becomes
-// available again (i.e. Date.now() + ABILITY_COOLDOWN_MS set at activation).
 export function checkBossAbilityCooldown(
   abilityReadyAt: Map<string, number>,
   uid: string,
@@ -214,22 +239,19 @@ function rollBossRarity(): BossRarity {
   return "comun";
 }
 
-let lastChestMessageId: string | null = null;
-let lastChestTimeout: ReturnType<typeof setTimeout> | null = null;
-let firingChest = false;
-
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 function randomCooldown() {
   return Math.floor(Math.random() * (MAX_COOLDOWN_MS - MIN_COOLDOWN_MS + 1)) + MIN_COOLDOWN_MS;
 }
 
+// ─── Event expiry ──────────────────────────────────────────────────────────────
 
-async function expireOldEvents(client: Client) {
-  const expired = await getExpiredActiveEvents();
+async function expireOldEvents(client: Client, guildId: string) {
+  const expired = await getExpiredActiveEvents(guildId);
   for (const ev of expired) {
     try {
-      const channel = await client.channels.fetch(getChannel("event"));
+      const channel = await client.channels.fetch(getChannel("event", guildId));
       if (channel instanceof TextChannel) {
         const msg = await channel.messages.fetch(ev.messageId).catch(() => null);
         if (msg) {
@@ -248,8 +270,7 @@ async function expireOldEvents(client: Client) {
           );
           await msg.edit({ embeds: [cronica], components: [disabledRow] });
 
-          // Also post cronica + detailed leaderboard permanently in the dedicated top channel.
-          const topCh = await client.channels.fetch(getChannel("eventTop")).catch(() => null);
+          const topCh = await client.channels.fetch(getChannel("eventTop", guildId)).catch(() => null);
           if (topCh instanceof TextChannel) {
             await topCh.send({ embeds: [cronica] }).catch(() => null);
             const leaderboard = buildEventLeaderboard(participants);
@@ -265,45 +286,46 @@ async function expireOldEvents(client: Client) {
           for (let i = 0; i < Math.min(3, ranked.length); i++) {
             const r = ranked[i]!;
             if (r.monsterLevel <= 1) continue;
-            await setHonorTitle(r.discordId, HONOR_TITLES[i]!).catch(() => null);
+            await setHonorTitle(r.discordId, guildId, HONOR_TITLES[i]!).catch(() => null);
           }
         }
       }
-      // Spawn boss AFTER event ends (before deactivation so isActive check passes)
-      await fireFinalBoss(client, ev.id);
+      await fireFinalBoss(client, guildId, ev.id);
       await deactivateEvent(ev.id);
-      logger.info({ eventId: ev.id }, "Event expired");
+      logger.info({ eventId: ev.id, guildId }, "Event expired");
     } catch (err) {
-      logger.error({ err, eventId: ev.id }, "Failed to expire event");
+      logger.error({ err, eventId: ev.id, guildId }, "Failed to expire event");
     }
   }
 }
 
-export async function fireChestForced(client: Client, rarityKey: string, mult?: 2 | 3) {
-  if (firingChest) {
-    logger.warn("fireChestForced already in progress, skipping duplicate trigger");
+// ─── Chest — forced (admin) ────────────────────────────────────────────────────
+
+export async function fireChestForced(client: Client, guildId: string, rarityKey: string, mult?: 2 | 3) {
+  const gs = getOrCreateGuildState(guildId);
+  if (gs.firingChest) {
+    logger.warn({ guildId }, "fireChestForced already in progress, skipping duplicate trigger");
     return null;
   }
-  firingChest = true;
+  gs.firingChest = true;
   try {
-    const channel = await client.channels.fetch(getChannel("main"));
+    const channel = await client.channels.fetch(getChannel("main", guildId));
     if (!(channel instanceof TextChannel)) return null;
 
-    if (lastChestTimeout) {
-      clearTimeout(lastChestTimeout);
-      lastChestTimeout = null;
+    if (gs.lastChestTimeout) {
+      clearTimeout(gs.lastChestTimeout);
+      gs.lastChestTimeout = null;
     }
-    if (lastChestMessageId) {
-      const old = await channel.messages.fetch(lastChestMessageId).catch(() => null);
+    if (gs.lastChestMessageId) {
+      const old = await channel.messages.fetch(gs.lastChestMessageId).catch(() => null);
       if (old) await old.delete().catch(() => null);
-      lastChestMessageId = null;
+      gs.lastChestMessageId = null;
     }
 
     const { buildChestEmbed: bce, spawnChest: sc } = await import("./survival");
     const result = sc(rarityKey);
     if (!result) return null;
     const { rarity, gold } = result;
-    // Encode mult in customId so the claim handler knows the bonus without extra state
     const chestId = mult != null
       ? `chest_${Date.now()}_${rarity.key}_${gold}_x${mult}`
       : `chest_${Date.now()}_${rarity.key}_${gold}`;
@@ -335,19 +357,19 @@ export async function fireChestForced(client: Client, rarityKey: string, mult?: 
       embeds: [bce(gold, rarity, mult)],
       components: [lockedRow],
     });
-    lastChestMessageId = msg.id;
-    void persistActiveChest({ messageId: msg.id, channelId: getChannel("main"), chestId, gold, rarityKey: rarity.key, mult, expiresAt: expireAt }).catch(() => null);
+    gs.lastChestMessageId = msg.id;
+    void persistActiveChest(guildId, { messageId: msg.id, channelId: getChannel("main", guildId), chestId, gold, rarityKey: rarity.key, mult, expiresAt: expireAt }).catch(() => null);
 
     await sleep(5000);
-    if (!claimedChests.has(chestId)) {
+    if (!gs.claimedChests.has(chestId)) {
       await msg.edit({ embeds: [bce(gold, rarity, mult)], components: [row] }).catch(() => null);
     }
 
-    logger.info({ chestId, gold, rarity: rarity.key, mult }, "Chest spawned (forced)");
+    logger.info({ chestId, gold, rarity: rarity.key, mult, guildId }, "Chest spawned (forced)");
 
     const timeout = setTimeout(async () => {
-      if (!claimedChests.has(chestId)) {
-        claimedChests.add(chestId);
+      if (!gs.claimedChests.has(chestId)) {
+        gs.claimedChests.add(chestId);
         const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
           new ButtonBuilder()
             .setCustomId(`${chestId}_expired`)
@@ -357,46 +379,48 @@ export async function fireChestForced(client: Client, rarityKey: string, mult?: 
             .setDisabled(true),
         );
         await msg.edit({ embeds: [buildExpiredChestEmbed(gold, rarity, mult)], components: [disabledRow] }).catch(() => null);
-        logger.info({ chestId }, "Chest expired unclaimed (forced)");
+        logger.info({ chestId, guildId }, "Chest expired unclaimed (forced)");
       }
-      void clearActiveChest().catch(() => null);
+      void clearActiveChest(guildId).catch(() => null);
     }, CHEST_EXPIRE_MS);
 
     timeout.unref?.();
-    lastChestTimeout = timeout;
+    gs.lastChestTimeout = timeout;
 
     return { chestId, gold, expireAt };
   } catch (err) {
-    logger.error({ err }, "Failed to fire chest (forced)");
+    logger.error({ err, guildId }, "Failed to fire chest (forced)");
     return null;
   } finally {
-    firingChest = false;
+    gs.firingChest = false;
   }
 }
 
-export async function fireChest(client: Client) {
-  if (firingChest) {
-    logger.warn("fireChest already in progress, skipping duplicate trigger");
+// ─── Chest — scheduled ────────────────────────────────────────────────────────
+
+export async function fireChest(client: Client, guildId: string) {
+  const gs = getOrCreateGuildState(guildId);
+  if (gs.firingChest) {
+    logger.warn({ guildId }, "fireChest already in progress, skipping duplicate trigger");
     return null;
   }
-  firingChest = true;
+  gs.firingChest = true;
   try {
-    const channel = await client.channels.fetch(getChannel("main"));
+    const channel = await client.channels.fetch(getChannel("main", guildId));
     if (!(channel instanceof TextChannel)) return null;
 
-    if (lastChestTimeout) {
-      clearTimeout(lastChestTimeout);
-      lastChestTimeout = null;
+    if (gs.lastChestTimeout) {
+      clearTimeout(gs.lastChestTimeout);
+      gs.lastChestTimeout = null;
     }
-    if (lastChestMessageId) {
-      const old = await channel.messages.fetch(lastChestMessageId).catch(() => null);
+    if (gs.lastChestMessageId) {
+      const old = await channel.messages.fetch(gs.lastChestMessageId).catch(() => null);
       if (old) await old.delete().catch(() => null);
-      lastChestMessageId = null;
+      gs.lastChestMessageId = null;
     }
 
     const { rarity, gold } = rollChest();
 
-    // Multiplier is a surprise rolled at claim time, so no bonus is encoded here.
     const chestId = `chest_${Date.now()}_${rarity.key}_${gold}`;
     const expireAt = Date.now() + CHEST_EXPIRE_MS;
 
@@ -417,7 +441,6 @@ export async function fireChest(client: Client) {
         .setDisabled(true),
     );
 
-    // Per-rarity reveal frames
     const frames: Array<{ content: string; delay: number }> =
       rarity.key === "mitic"
         ? [
@@ -443,8 +466,8 @@ export async function fireChest(client: Client) {
           ];
 
     const msg = await channel.send({ content: frames[0]!.content });
-    lastChestMessageId = msg.id;
-    void persistActiveChest({ messageId: msg.id, channelId: getChannel("main"), chestId, gold, rarityKey: rarity.key, expiresAt: expireAt }).catch(() => null);
+    gs.lastChestMessageId = msg.id;
+    void persistActiveChest(guildId, { messageId: msg.id, channelId: getChannel("main", guildId), chestId, gold, rarityKey: rarity.key, expiresAt: expireAt }).catch(() => null);
 
     for (let i = 1; i < frames.length; i++) {
       await sleep(frames[i - 1]!.delay);
@@ -455,17 +478,16 @@ export async function fireChest(client: Client) {
     await sleep(500);
     await msg.edit({ content: "", embeds: [buildChestEmbed(gold, rarity)], components: [lockedRow] }).catch(() => null);
 
-    // Enable claim button after 5 seconds
     await sleep(5000);
-    if (!claimedChests.has(chestId)) {
+    if (!gs.claimedChests.has(chestId)) {
       await msg.edit({ embeds: [buildChestEmbed(gold, rarity)], components: [row] }).catch(() => null);
     }
 
-    logger.info({ chestId, gold, rarity: rarity.key }, "Chest spawned");
+    logger.info({ chestId, gold, rarity: rarity.key, guildId }, "Chest spawned");
 
     const timeout = setTimeout(async () => {
-      if (!claimedChests.has(chestId)) {
-        claimedChests.add(chestId);
+      if (!gs.claimedChests.has(chestId)) {
+        gs.claimedChests.add(chestId);
         const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
           new ButtonBuilder()
             .setCustomId(`${chestId}_expired`)
@@ -475,29 +497,31 @@ export async function fireChest(client: Client) {
             .setDisabled(true),
         );
         await msg.edit({ embeds: [buildExpiredChestEmbed(gold, rarity)], components: [disabledRow] }).catch(() => null);
-        logger.info({ chestId }, "Chest expired unclaimed");
+        logger.info({ chestId, guildId }, "Chest expired unclaimed");
       }
-      void clearActiveChest().catch(() => null);
+      void clearActiveChest(guildId).catch(() => null);
     }, CHEST_EXPIRE_MS);
 
     timeout.unref?.();
-    lastChestTimeout = timeout;
+    gs.lastChestTimeout = timeout;
 
     return { chestId, gold, expireAt };
   } catch (err) {
-    logger.error({ err }, "Failed to fire chest");
+    logger.error({ err, guildId }, "Failed to fire chest");
     return null;
   } finally {
-    firingChest = false;
+    gs.firingChest = false;
   }
 }
 
-async function cleanupOldEvents(client: Client) {
-  const old = await getAllEvents();
+// ─── Old event cleanup ────────────────────────────────────────────────────────
+
+async function cleanupOldEvents(client: Client, guildId: string) {
+  const old = await getAllEvents(guildId);
   if (old.length === 0) return;
 
-  const eventChannel = await client.channels.fetch(getChannel("event")).catch(() => null);
-  const mainChannel = await client.channels.fetch(getChannel("main")).catch(() => null);
+  const eventChannel = await client.channels.fetch(getChannel("event", guildId)).catch(() => null);
+  const mainChannel = await client.channels.fetch(getChannel("main", guildId)).catch(() => null);
 
   for (const ev of old) {
     try {
@@ -511,36 +535,35 @@ async function cleanupOldEvents(client: Client) {
       }
       await deleteEvent(ev.id);
     } catch (err) {
-      logger.error({ err, eventId: ev.id }, "Failed to cleanup old event");
+      logger.error({ err, eventId: ev.id, guildId }, "Failed to cleanup old event");
     }
   }
-  logger.info({ count: old.length }, "Old events cleaned up");
+  logger.info({ count: old.length, guildId }, "Old events cleaned up");
 }
 
-let firingEvent = false;
+// ─── Fire event ───────────────────────────────────────────────────────────────
 
-export async function fireEvent(client: Client) {
-  if (firingEvent) {
-    logger.warn("fireEvent already in progress, skipping duplicate trigger");
+export async function fireEvent(client: Client, guildId: string) {
+  const gs = getOrCreateGuildState(guildId);
+  if (gs.firingEvent) {
+    logger.warn({ guildId }, "fireEvent already in progress, skipping duplicate trigger");
     return;
   }
-  firingEvent = true;
+  gs.firingEvent = true;
   try {
-    const channel = await client.channels.fetch(getChannel("event"));
+    const channel = await client.channels.fetch(getChannel("event", guildId));
     if (!(channel instanceof TextChannel)) {
-      logger.error({ channelId: getChannel("event") }, "Event channel not found");
+      logger.error({ channelId: getChannel("event", guildId), guildId }, "Event channel not found");
       return;
     }
 
-    await cleanupOldEvents(client);
+    await cleanupOldEvents(client, guildId);
 
     const expiresAt = new Date(Date.now() + EVENT_DURATION_MS);
 
-    // Send embed first (no button yet — need event ID for customId)
     const placeholder = await channel.send({ embeds: [buildStartEmbed()] });
-    const ev = await createEvent("ora_umbrelor", placeholder.id, expiresAt);
+    const ev = await createEvent(guildId, "ora_umbrelor", placeholder.id, expiresAt);
 
-    // Edit with correct button now that we have the event ID
     const joinRowFinal = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
         .setCustomId(`ora_join_${ev.id}`)
@@ -550,37 +573,23 @@ export async function fireEvent(client: Client) {
     );
     await placeholder.edit({ embeds: [buildStartEmbed(expiresAt)], components: [joinRowFinal] }).catch(() => null);
 
-    // Main channel decree disabled — user requested only chest in chat
-    // try {
-    //   const mainChannel = await client.channels.fetch(MAIN_CHANNEL_ID);
-    //   if (mainChannel instanceof TextChannel) {
-    //     const decree = await mainChannel.send(
-    //       `⚔️📜 **DECRET AL CURȚII CENUȘII**  📜⚔️\n\n` +
-    //       `Umbrele s-au mișcat, iar cenușa s-a ridicat din adâncuri.\n` +
-    //       `Un nou eveniment a fost declanșat în Regat.\n\n` +
-    //       `Verifică sanctuarul umbrelor:\n👉 <#${EVENT_CHANNEL_ID}>\n\n` +
-    //       `Acolo începe lupta.\nAcolo se scrie destinul.\nAcolo se ridică eroii… și cad cei slabi.`,
-    //     );
-    //     await setEventDecreeMessage(ev.id, decree.id);
-    //   }
-    // } catch (err) {
-    //   logger.error({ err }, "Failed to send main channel notification");
-    // }
-
-    logger.info({ eventId: ev.id }, "Ora Umbrelor fired");
+    logger.info({ eventId: ev.id, guildId }, "Ora Umbrelor fired");
   } catch (err) {
-    logger.error({ err }, "Failed to fire event");
+    logger.error({ err, guildId }, "Failed to fire event");
   } finally {
-    firingEvent = false;
+    gs.firingEvent = false;
   }
 }
 
-export async function fireFinalBoss(client: Client, eventId: number) {
+// ─── Final boss ───────────────────────────────────────────────────────────────
+
+export async function fireFinalBoss(client: Client, guildId: string, eventId: number) {
+  const gs = getOrCreateGuildState(guildId);
   try {
     const ev = await getActiveEvent(eventId);
     if (!ev || !ev.isActive || ev.expiresAt.getTime() < Date.now()) return;
 
-    const channel = await client.channels.fetch(getChannel("boss")).catch(() => null);
+    const channel = await client.channels.fetch(getChannel("boss", guildId)).catch(() => null);
     if (!(channel instanceof TextChannel)) return;
 
     const participants = await getEventParticipants(eventId);
@@ -600,12 +609,13 @@ export async function fireFinalBoss(client: Client, eventId: number) {
 
     const boss: BossState = {
       eventId,
+      guildId,
       level: bossLevel,
       rarity,
       maxHp,
       currentHp: maxHp,
       messageId: msg.id,
-      channelId: getChannel("boss"),
+      channelId: getChannel("boss", guildId),
       expiresAt: bossExpiresAt,
       standalone: false,
       lastHitAt: new Map(),
@@ -625,30 +635,25 @@ export async function fireFinalBoss(client: Client, eventId: number) {
       shieldNext: new Set(),
       defeated: false,
     };
-    activeBossMap.set(eventId, boss);
+    gs.activeBossMap.set(eventId, boss);
     await persistBossState(boss);
     setOracleExtatic();
     scheduleEscapeTimer(boss, client);
 
-    logger.info({ eventId, bossLevel, rarity, maxHp }, "Final boss summoned");
+    logger.info({ eventId, bossLevel, rarity, maxHp, guildId }, "Final boss summoned");
   } catch (err) {
-    logger.error({ err, eventId }, "Failed to summon final boss");
+    logger.error({ err, eventId, guildId }, "Failed to summon final boss");
   }
 }
 
-// ─── Standalone boss (independent of Ora Umbrelor) ───────────────────────────
+// ─── Standalone boss ──────────────────────────────────────────────────────────
 
 const STANDALONE_BOSS_MIN_MS = 30 * 60_000;
 const STANDALONE_BOSS_MAX_MS = 60 * 60_000;
-const STANDALONE_BOSS_ACTIVE_MS = 60 * 60_000; // active for 1 hour
+const STANDALONE_BOSS_ACTIVE_MS = 60 * 60_000;
 
-let standaloneBossId: number | null = null;
+// ─── Flee resolution ──────────────────────────────────────────────────────────
 
-// ─── Flee resolution ───────────────────────────────────────────────────────────
-// Shared flee-resolution path: delete the Discord boss message, distribute
-// scaled rewards to all fighters, and post the final leaderboard. Called both
-// from the in-process escape timer and from rehydration when a fight already
-// expired while the bot was down.
 async function runFleeResolution(boss: BossState, client: Client): Promise<void> {
   try {
     const fightCh = await client.channels.fetch(boss.channelId).catch(() => null);
@@ -663,11 +668,11 @@ async function runFleeResolution(boss: BossState, client: Client): Promise<void>
       r.xp = Math.round(r.xp * rmods.xpMult);
     }
     await Promise.all([...bossRewards.entries()].flatMap(([discordId, r]) => [
-      addPlayerReputation(discordId, r.rep),
-      addPlayerGold(discordId, r.gold),
-      addPlayerXp(discordId, r.xp),
+      addPlayerReputation(discordId, boss.guildId, r.rep),
+      addPlayerGold(discordId, boss.guildId, r.gold),
+      addPlayerXp(discordId, boss.guildId, r.xp),
     ]));
-    const topCh = await client.channels.fetch(getChannel("bossTop")).catch(() => null);
+    const topCh = await client.channels.fetch(getChannel("bossTop", boss.guildId)).catch(() => null);
     if (topCh instanceof TextChannel) {
       const leaderboard = buildBossLeaderboard(boss, boss.damageBy, boss.participants, boss.playerNames, boss.playerHp);
       await topCh.send({ embeds: [leaderboard] }).catch(() => null);
@@ -675,17 +680,18 @@ async function runFleeResolution(boss: BossState, client: Client): Promise<void>
   } catch { /* ignore */ }
 }
 
-// ─── Shared escape timer ───────────────────────────────────────────────────────
-// Extracted so both fireFinalBoss, fireStandaloneBoss, and rehydrateActiveBosses
-// can all use identical flee/reward logic without duplication.
+// ─── Shared escape timer ──────────────────────────────────────────────────────
+
 function scheduleEscapeTimer(boss: BossState, client: Client): ReturnType<typeof setTimeout> {
   const remaining = Math.max(0, boss.expiresAt - Date.now());
   const timer = setTimeout(async () => {
     if (boss.defeated) return;
     boss.defeated = true;
-    activeBossMap.delete(boss.eventId);
-    if (boss.standalone && standaloneBossId === boss.eventId) standaloneBossId = null;
-    // Remove the persisted row now that the fight is over.
+    const gs = guildStates.get(boss.guildId);
+    if (gs) {
+      gs.activeBossMap.delete(boss.eventId);
+      if (boss.standalone && gs.standaloneBossId === boss.eventId) gs.standaloneBossId = null;
+    }
     await deleteActiveBoss(boss.eventId).catch(() => null);
     await runFleeResolution(boss, client);
   }, remaining);
@@ -693,9 +699,8 @@ function scheduleEscapeTimer(boss: BossState, client: Client): ReturnType<typeof
   return timer;
 }
 
-// ─── Startup rehydration ───────────────────────────────────────────────────────
-// On bot restart, reconstruct in-progress boss fights from DB snapshots and
-// reinstate their escape timers so fights continue transparently.
+// ─── Startup rehydration ──────────────────────────────────────────────────────
+
 async function rehydrateActiveBosses(client: Client): Promise<void> {
   try {
     await createActiveBossesTableIfNotExists();
@@ -706,12 +711,10 @@ async function rehydrateActiveBosses(client: Client): Promise<void> {
     let loaded = 0;
 
     for (const row of rows) {
+      const rowGuildId = (row as { guildId?: string }).guildId ?? "1382035307607883816";
       if (row.expiresAt.getTime() <= now) {
-        // Boss expired while the bot was down. Deserialize and run the same
-        // flee-resolution logic (rewards + leaderboard) as the escape timer
-        // would have done, so players who fought don't lose their progress.
         try {
-          const expiredBoss = deserializeBoss(row.stateJson);
+          const expiredBoss = deserializeBoss(row.stateJson, rowGuildId);
           logger.info({ eventId: row.eventId, damageBy: expiredBoss.damageBy.size }, "Resolving flee for boss that expired during downtime");
           await runFleeResolution(expiredBoss, client);
         } catch (err) {
@@ -721,13 +724,14 @@ async function rehydrateActiveBosses(client: Client): Promise<void> {
         continue;
       }
       try {
-        const boss = deserializeBoss(row.stateJson);
-        boss.defeated = false; // always false — defeated bosses are deleted before this
-        activeBossMap.set(boss.eventId, boss);
-        if (boss.standalone) standaloneBossId = boss.eventId;
+        const boss = deserializeBoss(row.stateJson, rowGuildId);
+        boss.defeated = false;
+        const gs = getOrCreateGuildState(boss.guildId);
+        gs.activeBossMap.set(boss.eventId, boss);
+        if (boss.standalone) gs.standaloneBossId = boss.eventId;
         scheduleEscapeTimer(boss, client);
         loaded++;
-        logger.info({ eventId: boss.eventId, remainingMs: boss.expiresAt - now }, "Boss fight rehydrated from DB");
+        logger.info({ eventId: boss.eventId, guildId: boss.guildId, remainingMs: boss.expiresAt - now }, "Boss fight rehydrated from DB");
       } catch (err) {
         logger.error({ err, eventId: row.eventId }, "Failed to deserialize boss state — dropping row");
         await deleteActiveBoss(row.eventId).catch(() => null);
@@ -742,20 +746,19 @@ async function rehydrateActiveBosses(client: Client): Promise<void> {
   }
 }
 
-// ─── Startup chest rehydration ────────────────────────────────────────────────
-// On restart, any chest message left in Discord still has its claim button
-// active. If the window has passed, we immediately expire the embed so players
-// don't see a dead interactive button. If time remains, we reschedule the timer.
-export async function rehydrateActiveChest(client: Client): Promise<void> {
+// ─── Chest rehydration ────────────────────────────────────────────────────────
+
+export async function rehydrateActiveChest(client: Client, guildId: string): Promise<void> {
+  const gs = getOrCreateGuildState(guildId);
   try {
-    const record = await loadActiveChest();
+    const record = await loadActiveChest(guildId);
     if (!record) return;
 
     const now = Date.now();
     const ch = await client.channels.fetch(record.channelId).catch(() => null);
     if (!(ch instanceof TextChannel)) {
-      await clearActiveChest().catch(() => null);
-      logger.warn({ chestId: record.chestId }, "Chest channel not found on rehydration — row cleared");
+      await clearActiveChest(guildId).catch(() => null);
+      logger.warn({ chestId: record.chestId, guildId }, "Chest channel not found on rehydration — row cleared");
       return;
     }
 
@@ -774,20 +777,19 @@ export async function rehydrateActiveChest(client: Client): Promise<void> {
         );
         await msg.edit({ embeds: [buildExpiredChestEmbed(record.gold, rarity, record.mult)], components: [disabledRow] }).catch(() => null);
       }
-      claimedChests.add(record.chestId);
-      lastChestMessageId = null;
-      await clearActiveChest().catch(() => null);
-      logger.info({ chestId: record.chestId, hadMessage: !!msg }, "Stale chest expired on bot restart");
+      gs.claimedChests.add(record.chestId);
+      gs.lastChestMessageId = null;
+      await clearActiveChest(guildId).catch(() => null);
+      logger.info({ chestId: record.chestId, hadMessage: !!msg, guildId }, "Stale chest expired on bot restart");
       return;
     }
 
-    // Still within the claim window — re-register and schedule the expiry timer.
-    lastChestMessageId = record.messageId;
+    gs.lastChestMessageId = record.messageId;
     const remaining = record.expiresAt - now;
 
     const timeout = setTimeout(async () => {
-      if (!claimedChests.has(record.chestId)) {
-        claimedChests.add(record.chestId);
+      if (!gs.claimedChests.has(record.chestId)) {
+        gs.claimedChests.add(record.chestId);
         const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
           new ButtonBuilder()
             .setCustomId(`${record.chestId}_expired`)
@@ -797,36 +799,32 @@ export async function rehydrateActiveChest(client: Client): Promise<void> {
             .setDisabled(true),
         );
         await msg.edit({ embeds: [buildExpiredChestEmbed(record.gold, rarity, record.mult)], components: [disabledRow] }).catch(() => null);
-        logger.info({ chestId: record.chestId }, "Rehydrated chest expired unclaimed");
+        logger.info({ chestId: record.chestId, guildId }, "Rehydrated chest expired unclaimed");
       }
-      lastChestMessageId = null;
-      await clearActiveChest().catch(() => null);
+      gs.lastChestMessageId = null;
+      await clearActiveChest(guildId).catch(() => null);
     }, remaining);
 
     timeout.unref?.();
-    lastChestTimeout = timeout;
+    gs.lastChestTimeout = timeout;
 
-    logger.info({ chestId: record.chestId, remainingMs: remaining }, "Active chest rehydrated from DB");
+    logger.info({ chestId: record.chestId, remainingMs: remaining, guildId }, "Active chest rehydrated from DB");
   } catch (err) {
-    logger.error({ err }, "Failed to rehydrate active chest on startup");
+    logger.error({ err, guildId }, "Failed to rehydrate active chest on startup");
   }
 }
 
-/**
- * Rehydrate a key-chest or locked-chest record on startup.
- * These chest types don't track lastChestMessageId/lastChestTimeout, so the
- * logic is simpler: expire immediately if past, or re-arm the timer if still live.
- */
-export async function rehydrateSimpleChest(client: Client, dbKey: string): Promise<void> {
+export async function rehydrateSimpleChest(client: Client, guildId: string, dbKey: string): Promise<void> {
+  const gs = getOrCreateGuildState(guildId);
   try {
-    const record = await loadActiveChest(dbKey);
+    const record = await loadActiveChest(guildId, dbKey);
     if (!record) return;
 
     const now = Date.now();
     const ch = await client.channels.fetch(record.channelId).catch(() => null);
     if (!(ch instanceof TextChannel)) {
-      await clearActiveChest(dbKey).catch(() => null);
-      logger.warn({ chestId: record.chestId, dbKey }, "Simple chest channel not found on rehydration — row cleared");
+      await clearActiveChest(guildId, dbKey).catch(() => null);
+      logger.warn({ chestId: record.chestId, dbKey, guildId }, "Simple chest channel not found on rehydration — row cleared");
       return;
     }
 
@@ -845,17 +843,16 @@ export async function rehydrateSimpleChest(client: Client, dbKey: string): Promi
         );
         await msg.edit({ components: [disabledRow] }).catch(() => null);
       }
-      claimedChests.add(record.chestId);
-      await clearActiveChest(dbKey).catch(() => null);
-      logger.info({ chestId: record.chestId, dbKey, hadMessage: !!msg }, "Stale simple chest expired on bot restart");
+      gs.claimedChests.add(record.chestId);
+      await clearActiveChest(guildId, dbKey).catch(() => null);
+      logger.info({ chestId: record.chestId, dbKey, hadMessage: !!msg, guildId }, "Stale simple chest expired on bot restart");
       return;
     }
 
-    // Still within the claim window — re-arm the expiry timer.
     const remaining = record.expiresAt - now;
     const timeout = setTimeout(async () => {
-      if (!claimedChests.has(record.chestId)) {
-        claimedChests.add(record.chestId);
+      if (!gs.claimedChests.has(record.chestId)) {
+        gs.claimedChests.add(record.chestId);
         const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
           new ButtonBuilder()
             .setCustomId(`${record.chestId}_expired`)
@@ -865,34 +862,36 @@ export async function rehydrateSimpleChest(client: Client, dbKey: string): Promi
             .setDisabled(true),
         );
         await msg.edit({ components: [disabledRow] }).catch(() => null);
-        logger.info({ chestId: record.chestId }, "Rehydrated simple chest expired unclaimed");
+        logger.info({ chestId: record.chestId, guildId }, "Rehydrated simple chest expired unclaimed");
       }
-      await clearActiveChest(dbKey).catch(() => null);
+      await clearActiveChest(guildId, dbKey).catch(() => null);
     }, remaining);
     timeout.unref?.();
 
-    logger.info({ chestId: record.chestId, dbKey, remainingMs: remaining }, "Simple chest rehydrated from DB");
+    logger.info({ chestId: record.chestId, dbKey, remainingMs: remaining, guildId }, "Simple chest rehydrated from DB");
   } catch (err) {
-    logger.error({ err, dbKey }, "Failed to rehydrate simple chest on startup");
+    logger.error({ err, dbKey, guildId }, "Failed to rehydrate simple chest on startup");
   }
 }
 
-export async function fireStandaloneBoss(client: Client) {
-  // Don't spawn if a standalone boss is already active.
-  if (standaloneBossId !== null && activeBossMap.has(standaloneBossId)) {
-    logger.info({ standaloneBossId }, "Standalone boss already active, skipping spawn");
+// ─── Standalone boss ──────────────────────────────────────────────────────────
+
+export async function fireStandaloneBoss(client: Client, guildId: string) {
+  const gs = getOrCreateGuildState(guildId);
+  if (gs.standaloneBossId !== null && gs.activeBossMap.has(gs.standaloneBossId)) {
+    logger.info({ standaloneBossId: gs.standaloneBossId, guildId }, "Standalone boss already active, skipping spawn");
     return;
   }
 
   try {
-    const channel = await client.channels.fetch(getChannel("boss")).catch(() => null);
+    const channel = await client.channels.fetch(getChannel("boss", guildId)).catch(() => null);
     if (!(channel instanceof TextChannel)) {
-      logger.error({ channelId: getChannel("boss") }, "Boss channel not found");
+      logger.error({ channelId: getChannel("boss", guildId), guildId }, "Boss channel not found");
       return;
     }
 
-    const bossId = Date.now(); // unique key — timestamps won't collide with small DB event IDs
-    const level = Math.floor(Math.random() * 21) + 10; // 10–30
+    const bossId = Date.now();
+    const level = Math.floor(Math.random() * 21) + 10;
     const rarity = rollBossRarity();
     const maxHp = bossMaxHp(level, rarity);
     const bossExpiresAt = Date.now() + STANDALONE_BOSS_ACTIVE_MS;
@@ -904,12 +903,13 @@ export async function fireStandaloneBoss(client: Client) {
 
     const boss: BossState = {
       eventId: bossId,
+      guildId,
       level,
       rarity,
       maxHp,
       currentHp: maxHp,
       messageId: msg.id,
-      channelId: getChannel("boss"),
+      channelId: getChannel("boss", guildId),
       expiresAt: bossExpiresAt,
       standalone: true,
       lastHitAt: new Map(),
@@ -923,27 +923,31 @@ export async function fireStandaloneBoss(client: Client) {
       shieldNext: new Set(),
       defeated: false,
     };
-    activeBossMap.set(bossId, boss);
-    standaloneBossId = bossId;
+    gs.activeBossMap.set(bossId, boss);
+    gs.standaloneBossId = bossId;
     await persistBossState(boss);
     setOracleExtatic();
     scheduleEscapeTimer(boss, client);
 
-    logger.info({ bossId, level, rarity, maxHp }, "Standalone boss summoned");
+    logger.info({ bossId, level, rarity, maxHp, guildId }, "Standalone boss summoned");
   } catch (err) {
-    logger.error({ err }, "Failed to summon standalone boss");
-    standaloneBossId = null;
+    logger.error({ err, guildId }, "Failed to summon standalone boss");
+    const gs2 = guildStates.get(guildId);
+    if (gs2) gs2.standaloneBossId = null;
   }
 }
 
-export async function fireLockedChest(client: Client, rarityKey: string): Promise<void> {
+// ─── Locked chest ─────────────────────────────────────────────────────────────
+
+export async function fireLockedChest(client: Client, guildId: string, rarityKey: string): Promise<void> {
+  const gs = getOrCreateGuildState(guildId);
   try {
-    const channel = await client.channels.fetch(getChannel("main")).catch(() => null);
+    const channel = await client.channels.fetch(getChannel("main", guildId)).catch(() => null);
     if (!(channel instanceof TextChannel)) return;
 
     const result = spawnLockedChest(rarityKey);
     if (!result) {
-      logger.warn({ rarityKey }, "fireLockedChest: invalid rarity");
+      logger.warn({ rarityKey, guildId }, "fireLockedChest: invalid rarity");
       return;
     }
     const { rarity, gold } = result;
@@ -963,12 +967,12 @@ export async function fireLockedChest(client: Client, rarityKey: string): Promis
       components: [row],
     });
 
-    logger.info({ chestId, rarityKey: rarity.key, gold }, "Locked chest spawned");
-    void persistActiveChest({ messageId: msg.id, channelId: getChannel("main"), chestId, gold, rarityKey: rarity.key, kind: "lockchest", expiresAt }, LOCKCHEST_DBKEY).catch(() => null);
+    logger.info({ chestId, rarityKey: rarity.key, gold, guildId }, "Locked chest spawned");
+    void persistActiveChest(guildId, { messageId: msg.id, channelId: getChannel("main", guildId), chestId, gold, rarityKey: rarity.key, kind: "lockchest", expiresAt }, LOCKCHEST_DBKEY).catch(() => null);
 
     const timeout = setTimeout(async () => {
-      if (!claimedChests.has(chestId)) {
-        claimedChests.add(chestId);
+      if (!gs.claimedChests.has(chestId)) {
+        gs.claimedChests.add(chestId);
         const expiredRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
           new ButtonBuilder()
             .setCustomId(`${chestId}_expired`)
@@ -978,27 +982,27 @@ export async function fireLockedChest(client: Client, rarityKey: string): Promis
             .setDisabled(true),
         );
         await msg.edit({ components: [expiredRow] }).catch(() => null);
-        logger.info({ chestId }, "Locked chest expired unclaimed");
+        logger.info({ chestId, guildId }, "Locked chest expired unclaimed");
       }
-      void clearActiveChest(LOCKCHEST_DBKEY).catch(() => null);
+      void clearActiveChest(guildId, LOCKCHEST_DBKEY).catch(() => null);
     }, CHEST_EXPIRE_MS);
     timeout.unref?.();
   } catch (err) {
-    logger.error({ err }, "Failed to fire locked chest");
+    logger.error({ err, guildId }, "Failed to fire locked chest");
   }
 }
 
-let firingKeyChest = false;
+// ─── Key chest ────────────────────────────────────────────────────────────────
 
-/** Spawn a dedicated key chest in the main channel. keyType "random" picks a weighted tier. */
-export async function fireKeyChest(client: Client, keyType?: string): Promise<{ chestId: string } | null> {
-  if (firingKeyChest) {
-    logger.warn("fireKeyChest already in progress, skipping duplicate trigger");
+export async function fireKeyChest(client: Client, guildId: string, keyType?: string): Promise<{ chestId: string } | null> {
+  const gs = getOrCreateGuildState(guildId);
+  if (gs.firingKeyChest) {
+    logger.warn({ guildId }, "fireKeyChest already in progress, skipping duplicate trigger");
     return null;
   }
-  firingKeyChest = true;
+  gs.firingKeyChest = true;
   try {
-    const channel = await client.channels.fetch(getChannel("main")).catch(() => null);
+    const channel = await client.channels.fetch(getChannel("main", guildId)).catch(() => null);
     if (!(channel instanceof TextChannel)) return null;
 
     const kt = keyType && keyType !== "random" ? keyType : rollKeyChestType();
@@ -1034,16 +1038,16 @@ export async function fireKeyChest(client: Client, keyType?: string): Promise<{ 
     await msg.edit({ content: "", embeds: [buildKeyChestEmbed(kt)], components: [lockedRow] }).catch(() => null);
 
     await sleep(5000);
-    if (!claimedChests.has(chestId)) {
+    if (!gs.claimedChests.has(chestId)) {
       await msg.edit({ embeds: [buildKeyChestEmbed(kt)], components: [row] }).catch(() => null);
     }
 
-    logger.info({ chestId, keyType: kt }, "Key chest spawned");
-    void persistActiveChest({ messageId: msg.id, channelId: getChannel("main"), chestId, gold: 0, rarityKey: kt, keyType: kt, kind: "keychest", expiresAt }, KEYCHEST_DBKEY).catch(() => null);
+    logger.info({ chestId, keyType: kt, guildId }, "Key chest spawned");
+    void persistActiveChest(guildId, { messageId: msg.id, channelId: getChannel("main", guildId), chestId, gold: 0, rarityKey: kt, keyType: kt, kind: "keychest", expiresAt }, KEYCHEST_DBKEY).catch(() => null);
 
     const timeout = setTimeout(async () => {
-      if (!claimedChests.has(chestId)) {
-        claimedChests.add(chestId);
+      if (!gs.claimedChests.has(chestId)) {
+        gs.claimedChests.add(chestId);
         const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
           new ButtonBuilder()
             .setCustomId(`${chestId}_expired`)
@@ -1053,96 +1057,101 @@ export async function fireKeyChest(client: Client, keyType?: string): Promise<{ 
             .setDisabled(true),
         );
         await msg.edit({ components: [disabledRow] }).catch(() => null);
-        logger.info({ chestId }, "Key chest expired unclaimed");
+        logger.info({ chestId, guildId }, "Key chest expired unclaimed");
       }
-      void clearActiveChest(KEYCHEST_DBKEY).catch(() => null);
+      void clearActiveChest(guildId, KEYCHEST_DBKEY).catch(() => null);
     }, CHEST_EXPIRE_MS);
     timeout.unref?.();
 
     return { chestId };
   } catch (err) {
-    logger.error({ err }, "Failed to fire key chest");
+    logger.error({ err, guildId }, "Failed to fire key chest");
     return null;
   } finally {
-    firingKeyChest = false;
+    gs.firingKeyChest = false;
   }
 }
 
-async function fireOracle(client: Client) {
+// ─── Oracle / battle event ────────────────────────────────────────────────────
+
+async function fireOracle(client: Client, guildId: string) {
   try {
-    const channel = await client.channels.fetch(getChannel("main")).catch(() => null);
+    const channel = await client.channels.fetch(getChannel("main", guildId)).catch(() => null);
     if (!(channel instanceof TextChannel)) return;
     await channel.send({ content: oracleMessage() });
   } catch (err) {
-    logger.error({ err }, "Failed to send oracle message");
+    logger.error({ err, guildId }, "Failed to send oracle message");
   }
 }
 
-async function fireBattleEvent(client: Client) {
+async function fireBattleEvent(client: Client, guildId: string) {
   try {
-    const ev = await getLatestActiveEvent();
+    const ev = await getLatestActiveEvent(guildId);
     if (!ev) return;
-    const channel = await client.channels.fetch(getChannel("event")).catch(() => null);
+    const channel = await client.channels.fetch(getChannel("event", guildId)).catch(() => null);
     if (!(channel instanceof TextChannel)) return;
     const battle = triggerRandomBattleEvent();
     const sent = await channel.send({ content: battle.announce });
-    // Auto-delete the announcement once the battle event's effect ends.
     const ttl = Math.max(0, battle.expiresAt - Date.now());
     setTimeout(() => { void sent.delete().catch(() => {}); }, ttl);
-    logger.info({ eventId: ev.id, battle: battle.key }, "Battle event triggered");
+    logger.info({ eventId: ev.id, battle: battle.key, guildId }, "Battle event triggered");
   } catch (err) {
-    logger.error({ err }, "Failed to trigger battle event");
+    logger.error({ err, guildId }, "Failed to trigger battle event");
   }
 }
 
-export function startScheduler(client: Client) {
-  // Restore any boss fights that were in progress before the last restart.
-  void rehydrateActiveBosses(client);
-  // Expire or re-arm any chest message left open before the last restart.
-  void rehydrateActiveChest(client);
-  void rehydrateSimpleChest(client, KEYCHEST_DBKEY);
-  void rehydrateSimpleChest(client, LOCKCHEST_DBKEY);
+// ─── Per-guild scheduler startup ──────────────────────────────────────────────
 
-  setInterval(() => expireOldEvents(client), 60 * 1000);
+export function startGuildScheduler(client: Client, guildId: string) {
+  const gs = getOrCreateGuildState(guildId);
+  if (gs.started) {
+    logger.info({ guildId }, "Guild scheduler already running — skipping re-init");
+    return;
+  }
+  gs.started = true;
+
+  void rehydrateActiveBosses(client);
+  void rehydrateActiveChest(client, guildId);
+  void rehydrateSimpleChest(client, guildId, KEYCHEST_DBKEY);
+  void rehydrateSimpleChest(client, guildId, LOCKCHEST_DBKEY);
+
+  setInterval(() => expireOldEvents(client, guildId), 60 * 1000);
 
   const scheduleNext = () => {
     const cooldown = randomCooldown();
-    logger.info({ nextInHours: (cooldown / 3600000).toFixed(2) }, "Next event scheduled");
-    setTimeout(async () => { await fireEvent(client); scheduleNext(); }, cooldown);
+    logger.info({ nextInHours: (cooldown / 3600000).toFixed(2), guildId }, "Next event scheduled");
+    setTimeout(async () => { await fireEvent(client, guildId); scheduleNext(); }, cooldown);
   };
 
-  setTimeout(async () => { await fireEvent(client); scheduleNext(); }, 5 * 60 * 1000);
-  logger.info("First Ora Umbrelor in 5 minutes");
+  setTimeout(async () => { await fireEvent(client, guildId); scheduleNext(); }, 5 * 60 * 1000);
+  logger.info({ guildId }, "First Ora Umbrelor in 5 minutes");
 
-  setInterval(() => { void fireChest(client); }, CHEST_INTERVAL_MS);
-  logger.info({ everyMinutes: CHEST_INTERVAL_MS / 60000 }, "Chest scheduler started — fixed interval");
+  setInterval(() => { void fireChest(client, guildId); }, CHEST_INTERVAL_MS);
+  logger.info({ everyMinutes: CHEST_INTERVAL_MS / 60000, guildId }, "Chest scheduler started — fixed interval");
 
-  // Dedicated key chests on their own (slower) cadence, first one shortly after boot.
-  setTimeout(() => { void fireKeyChest(client); }, 12 * 60 * 1000);
-  setInterval(() => { void fireKeyChest(client); }, KEY_CHEST_INTERVAL_MS);
-  logger.info({ everyMinutes: KEY_CHEST_INTERVAL_MS / 60000 }, "Key-chest scheduler started");
+  setTimeout(() => { void fireKeyChest(client, guildId); }, 12 * 60 * 1000);
+  setInterval(() => { void fireKeyChest(client, guildId); }, KEY_CHEST_INTERVAL_MS);
+  logger.info({ everyMinutes: KEY_CHEST_INTERVAL_MS / 60000, guildId }, "Key-chest scheduler started");
 
   // Oracle messages disabled — user requested only chest in chat
-  // setInterval(() => { void fireOracle(client); }, ORACLE_INTERVAL_MS);
-  // logger.info({ everyMinutes: ORACLE_INTERVAL_MS / 60000 }, "Oracle scheduler started");
+  // setInterval(() => { void fireOracle(client, guildId); }, ORACLE_INTERVAL_MS);
 
-  setInterval(() => { void fireBattleEvent(client); }, BATTLE_EVENT_INTERVAL_MS);
-  logger.info({ everyMinutes: BATTLE_EVENT_INTERVAL_MS / 60000 }, "Battle-event scheduler started");
+  setInterval(() => { void fireBattleEvent(client, guildId); }, BATTLE_EVENT_INTERVAL_MS);
+  logger.info({ everyMinutes: BATTLE_EVENT_INTERVAL_MS / 60000, guildId }, "Battle-event scheduler started");
 
-  // Standalone boss — spawns every 30–60 min regardless of active events.
   const scheduleNextStandaloneBoss = () => {
     const delay = STANDALONE_BOSS_MIN_MS +
       Math.floor(Math.random() * (STANDALONE_BOSS_MAX_MS - STANDALONE_BOSS_MIN_MS + 1));
     const t = setTimeout(async () => {
-      await fireStandaloneBoss(client);
+      await fireStandaloneBoss(client, guildId);
       scheduleNextStandaloneBoss();
     }, delay);
     t.unref?.();
-    logger.info({ nextInMinutes: (delay / 60_000).toFixed(1) }, "Next standalone boss scheduled");
+    logger.info({ nextInMinutes: (delay / 60_000).toFixed(1), guildId }, "Next standalone boss scheduled");
   };
   scheduleNextStandaloneBoss();
 
-  startOracle(client, getChannel("main"));
+  startOracle(client, getChannel("main", guildId));
 }
 
 export { APPLICATION_ID };

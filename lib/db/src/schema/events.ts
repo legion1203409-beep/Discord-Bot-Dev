@@ -2,6 +2,7 @@ import { pgTable, text, integer, boolean, timestamp, unique } from "drizzle-orm/
 
 export const activeEventsTable = pgTable("active_events", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  guildId: text("guild_id").notNull(),
   eventType: text("event_type").notNull(),
   messageId: text("message_id").notNull(),
   decreeMessageId: text("decree_message_id"),

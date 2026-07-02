@@ -6,6 +6,7 @@ import { pgTable, text, timestamp, bigint } from "drizzle-orm/pg-core";
 // JSON blob; Maps and Sets are encoded as arrays.
 export const activeBossesTable = pgTable("active_bosses", {
   eventId: bigint("event_id", { mode: "number" }).primaryKey(),
+  guildId: text("guild_id").notNull(),
   stateJson: text("state_json").notNull(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

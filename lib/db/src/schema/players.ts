@@ -1,9 +1,10 @@
-import { pgTable, text, integer, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, timestamp, primaryKey } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
 export const playersTable = pgTable("players", {
-  discordId: text("discord_id").primaryKey(),
+  discordId: text("discord_id").notNull(),
+  guildId: text("guild_id").notNull(),
   username: text("username").notNull(),
   xp: integer("xp").notNull().default(0),
   gold: integer("gold").notNull().default(0),
@@ -34,7 +35,7 @@ export const playersTable = pgTable("players", {
   keyEpic:  integer("key_epic").notNull().default(0),
   keyRegal: integer("key_regal").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [primaryKey({ columns: [t.discordId, t.guildId] })]);
 
 export const insertPlayerSchema = createInsertSchema(playersTable).omit({ createdAt: true });
 export type InsertPlayer = z.infer<typeof insertPlayerSchema>;

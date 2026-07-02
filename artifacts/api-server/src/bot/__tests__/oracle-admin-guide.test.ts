@@ -15,6 +15,7 @@ vi.mock("discord.js", () => ({
   SlashCommandBuilder: class {
     setName() { return this; }
     setDescription() { return this; }
+    addBooleanOption() { return this; }
     addSubcommand() { return this; }
     addUserOption() { return this; }
     addStringOption() { return this; }
@@ -39,7 +40,7 @@ vi.mock("../alert", () => ({
 }));
 
 vi.mock("../scheduler", () => ({
-  startScheduler: vi.fn(),
+  startGuildScheduler: vi.fn(),
   APPLICATION_ID: "app-id-test",
   fireEvent: vi.fn(),
   fireChest: vi.fn(),
@@ -47,8 +48,8 @@ vi.mock("../scheduler", () => ({
   fireFinalBoss: vi.fn(),
   fireLockedChest: vi.fn(),
   fireKeyChest: vi.fn(),
-  claimedChests: new Set(),
-  activeBossMap: new Map(),
+  getGuildClaimedChests: vi.fn(() => new Set()),
+  getGuildActiveBossMap: vi.fn(() => new Map()),
   checkBossEligibility: vi.fn().mockResolvedValue(true),
   checkBossHitCooldown: vi.fn().mockResolvedValue(true),
   BOSS_HIT_COOLDOWN_MS: 30_000,
@@ -114,7 +115,9 @@ vi.mock("../db", () => ({
   saveTraderEmbedSig: vi.fn(),
   loadTraderEmbedSig: vi.fn(),
   ensureBotStateTable: vi.fn(),
+  runMultiGuildMigrations: vi.fn(),
   getLatestActiveEvent: vi.fn(),
+  getGlobalTopPlayers: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock("../survival", () => ({

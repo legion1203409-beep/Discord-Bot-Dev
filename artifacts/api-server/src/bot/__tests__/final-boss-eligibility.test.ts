@@ -66,6 +66,7 @@ import { checkBossEligibility, type BossState } from "../scheduler";
 function makeBoss(overrides: Partial<BossState> = {}): BossState {
   return {
     eventId: 1,
+    guildId: "test-guild-1",
     level: 5,
     rarity: "comun",
     maxHp: 10000,

@@ -14,6 +14,7 @@ vi.mock("@workspace/db", () => {
     db: { update: mockUpdate },
     playersTable: {
       discordId: "discordId",
+      guildId: "guildId",
       companion: "companion",
       companionLevel: "companionLevel",
       gold: "gold",
@@ -65,8 +66,11 @@ import { upgradeCompanion, upgradeAbility } from "../db";
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+const TEST_GUILD_ID = "test-guild-1";
+
 const FAKE_PLAYER = {
   discordId: "user1",
+  guildId: TEST_GUILD_ID,
   username: "Tester",
   companion: "lup",
   companionLevel: 2,
@@ -95,6 +99,7 @@ const FAKE_PLAYER = {
   honorTitle: null,
   abilityEmpowerLevel: 1,
   abilityShieldLevel: 0,
+  hp: 100,
   createdAt: new Date(),
 };
 
@@ -108,7 +113,7 @@ describe("upgradeCompanion — escalating expectedLevel guard", () => {
   it("returns the updated player when WHERE expectedLevel matches DB level", async () => {
     mockReturning.mockResolvedValueOnce([{ ...FAKE_PLAYER, companionLevel: 3 }]);
 
-    const result = await upgradeCompanion("user1", 2, 230, 100);
+    const result = await upgradeCompanion("user1", TEST_GUILD_ID, 2, 230, 100);
 
     expect(result).not.toBeNull();
     expect(result?.companionLevel).toBe(3);
@@ -116,10 +121,9 @@ describe("upgradeCompanion — escalating expectedLevel guard", () => {
   });
 
   it("returns null when expectedLevel does NOT match (concurrent click, stale level)", async () => {
-    // DB already advanced the level; WHERE eq(companionLevel, expectedLevel) fails
     mockReturning.mockResolvedValueOnce([]);
 
-    const result = await upgradeCompanion("user1", 1, 200, 100);
+    const result = await upgradeCompanion("user1", TEST_GUILD_ID, 1, 200, 100);
 
     expect(result).toBeNull();
   });
@@ -127,20 +131,19 @@ describe("upgradeCompanion — escalating expectedLevel guard", () => {
   it("returns null when gold is insufficient (WHERE gte(gold, cost) fails)", async () => {
     mockReturning.mockResolvedValueOnce([]);
 
-    const result = await upgradeCompanion("user1", 2, 99999, 100);
+    const result = await upgradeCompanion("user1", TEST_GUILD_ID, 2, 99999, 100);
 
     expect(result).toBeNull();
   });
 
   it("prevents double-upgrade: second concurrent click at same level returns null", async () => {
-    // First succeeds, second fails the WHERE guard
     mockReturning
       .mockResolvedValueOnce([{ ...FAKE_PLAYER, companionLevel: 3 }])
       .mockResolvedValueOnce([]);
 
     const [first, second] = await Promise.all([
-      upgradeCompanion("user1", 2, 230, 100),
-      upgradeCompanion("user1", 2, 230, 100),
+      upgradeCompanion("user1", TEST_GUILD_ID, 2, 230, 100),
+      upgradeCompanion("user1", TEST_GUILD_ID, 2, 230, 100),
     ]);
 
     expect(first).not.toBeNull();
@@ -150,9 +153,8 @@ describe("upgradeCompanion — escalating expectedLevel guard", () => {
   it("passes expectedLevel into the WHERE clause (not just player id)", async () => {
     mockReturning.mockResolvedValueOnce([]);
 
-    await upgradeCompanion("user1", 7, 500, 100);
+    await upgradeCompanion("user1", TEST_GUILD_ID, 7, 500, 100);
 
-    // eq() should have been called with (companionLevel, 7) at some point
     const { eq } = await import("drizzle-orm");
     const calls = vi.mocked(eq).mock.calls;
     const hasExpectedLevelGuard = calls.some(([col, val]) => String(col) === "companionLevel" && val === 7);
@@ -170,7 +172,7 @@ describe("upgradeAbility — escalating expectedLevel guard", () => {
   it("returns updated player when expectedLevel matches for empower", async () => {
     mockReturning.mockResolvedValueOnce([{ ...FAKE_PLAYER, abilityEmpowerLevel: 2 }]);
 
-    const result = await upgradeAbility("user1", "empower", 1, 230, 100);
+    const result = await upgradeAbility("user1", TEST_GUILD_ID, "empower", 1, 230, 100);
 
     expect(result).not.toBeNull();
     expect(result?.abilityEmpowerLevel).toBe(2);
@@ -179,7 +181,7 @@ describe("upgradeAbility — escalating expectedLevel guard", () => {
   it("returns updated player when expectedLevel matches for shield", async () => {
     mockReturning.mockResolvedValueOnce([{ ...FAKE_PLAYER, abilityShieldLevel: 2 }]);
 
-    const result = await upgradeAbility("user1", "shield", 1, 230, 100);
+    const result = await upgradeAbility("user1", TEST_GUILD_ID, "shield", 1, 230, 100);
 
     expect(result).not.toBeNull();
     expect(result?.abilityShieldLevel).toBe(2);
@@ -188,7 +190,7 @@ describe("upgradeAbility — escalating expectedLevel guard", () => {
   it("returns null when expectedLevel does NOT match (concurrent click already advanced it)", async () => {
     mockReturning.mockResolvedValueOnce([]);
 
-    const result = await upgradeAbility("user1", "empower", 1, 230, 100);
+    const result = await upgradeAbility("user1", TEST_GUILD_ID, "empower", 1, 230, 100);
 
     expect(result).toBeNull();
   });
@@ -199,8 +201,8 @@ describe("upgradeAbility — escalating expectedLevel guard", () => {
       .mockResolvedValueOnce([]);
 
     const [first, second] = await Promise.all([
-      upgradeAbility("user1", "empower", 1, 230, 100),
-      upgradeAbility("user1", "empower", 1, 230, 100),
+      upgradeAbility("user1", TEST_GUILD_ID, "empower", 1, 230, 100),
+      upgradeAbility("user1", TEST_GUILD_ID, "empower", 1, 230, 100),
     ]);
 
     expect(first).not.toBeNull();
@@ -210,20 +212,18 @@ describe("upgradeAbility — escalating expectedLevel guard", () => {
   it("passes the expectedLevel into the WHERE clause", async () => {
     mockReturning.mockResolvedValueOnce([]);
 
-    await upgradeAbility("user1", "empower", 5, 500, 100);
+    await upgradeAbility("user1", TEST_GUILD_ID, "empower", 5, 500, 100);
 
     const { eq } = await import("drizzle-orm");
     const calls = vi.mocked(eq).mock.calls;
-    // eq is called with the ability level column and the expected value
     const hasGuard = calls.some(([, val]) => val === 5);
     expect(hasGuard).toBe(true);
   });
 
   it("returns null if level is below 1 (ability not yet owned)", async () => {
-    // The WHERE guard includes gte(col, 1); if level is 0 the DB returns nothing
     mockReturning.mockResolvedValueOnce([]);
 
-    const result = await upgradeAbility("user1", "empower", 0, 230, 100);
+    const result = await upgradeAbility("user1", TEST_GUILD_ID, "empower", 0, 230, 100);
 
     expect(result).toBeNull();
   });

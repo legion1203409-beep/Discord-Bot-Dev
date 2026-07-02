@@ -1,6 +1,8 @@
 import { loadChannelConfig, saveChannelConfig, type ChannelConfig } from "./db";
 
 // Default channel IDs — used as fallback when no custom config is stored.
+// These defaults are only meaningful for the original guild; new guilds should
+// always configure their own channels via /setcanale.
 const DEFAULT_CHANNELS: Required<ChannelConfig> = {
   main:       "1382042144717410385",
   event:      "1521185682200989726",
@@ -10,42 +12,54 @@ const DEFAULT_CHANNELS: Required<ChannelConfig> = {
   bossTop:    "1521186981525327993",
 };
 
-let cached: ChannelConfig | null = null;
+const ORIGINAL_GUILD_ID = "1382035307607883816";
 
-/** Load the persisted channel configuration (or null if none exists). */
-export async function initChannelConfig(): Promise<void> {
-  cached = await loadChannelConfig();
+// Per-guild channel config cache. Populated lazily on first getChannel call.
+const cachedByGuild = new Map<string, ChannelConfig | null>();
+
+/** Load the persisted channel configuration for a guild into the cache. */
+export async function initChannelConfig(guildId: string): Promise<void> {
+  const cfg = await loadChannelConfig(guildId);
+  cachedByGuild.set(guildId, cfg);
 }
 
-/** Get the configured channel ID for an event type, falling back to the default. */
-export function getChannel(type: keyof ChannelConfig): string {
-  return cached?.[type] ?? DEFAULT_CHANNELS[type];
+/** Get the configured channel ID for a type, falling back to the default. */
+export function getChannel(type: keyof ChannelConfig, guildId: string): string {
+  const cached = cachedByGuild.get(guildId);
+  const override = cached?.[type];
+  if (override) return override;
+  // Only apply hardcoded defaults for the original guild — other guilds must
+  // use /setcanale to configure their channels.
+  if (guildId === ORIGINAL_GUILD_ID) return DEFAULT_CHANNELS[type];
+  // For unknown guilds, return the default as a last resort so the bot doesn't
+  // crash before the server owner has configured channels.
+  return DEFAULT_CHANNELS[type];
 }
 
-/** Set a single channel and persist immediately. */
-export async function setChannel(type: keyof ChannelConfig, channelId: string): Promise<void> {
-  const cfg: ChannelConfig = { ...(cached ?? {}), [type]: channelId };
-  await saveChannelConfig(cfg);
-  cached = cfg;
+/** Set a single channel for a guild and persist immediately. */
+export async function setChannel(guildId: string, type: keyof ChannelConfig, channelId: string): Promise<void> {
+  const cfg: ChannelConfig = { ...(cachedByGuild.get(guildId) ?? {}), [type]: channelId };
+  await saveChannelConfig(guildId, cfg);
+  cachedByGuild.set(guildId, cfg);
 }
 
-/** Return the full current configuration (defaults merged in). */
-export function getAllChannels(): Required<ChannelConfig> {
-  return { ...DEFAULT_CHANNELS, ...(cached ?? {}) };
+/** Return the full current configuration for a guild (defaults merged in). */
+export function getAllChannels(guildId: string): Required<ChannelConfig> {
+  return { ...DEFAULT_CHANNELS, ...(cachedByGuild.get(guildId) ?? {}) };
 }
 
-/** Reset one channel back to its default. */
-export async function resetChannel(type: keyof ChannelConfig): Promise<void> {
-  const cfg: ChannelConfig = { ...(cached ?? {}) };
+/** Reset one channel back to its default for a guild. */
+export async function resetChannel(guildId: string, type: keyof ChannelConfig): Promise<void> {
+  const cfg: ChannelConfig = { ...(cachedByGuild.get(guildId) ?? {}) };
   delete cfg[type];
-  await saveChannelConfig(Object.keys(cfg).length ? cfg : {});
-  cached = Object.keys(cfg).length ? cfg : null;
+  await saveChannelConfig(guildId, Object.keys(cfg).length ? cfg : {});
+  cachedByGuild.set(guildId, Object.keys(cfg).length ? cfg : null);
 }
 
-/** Reset every channel back to default. */
-export async function resetAllChannels(): Promise<void> {
-  await saveChannelConfig({});
-  cached = null;
+/** Reset every channel back to default for a guild. */
+export async function resetAllChannels(guildId: string): Promise<void> {
+  await saveChannelConfig(guildId, {});
+  cachedByGuild.set(guildId, null);
 }
 
 /** Human-readable Romanian labels for each event type. */

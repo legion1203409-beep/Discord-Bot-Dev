@@ -20,8 +20,8 @@ import {
 } from "discord.js";
 import { logger } from "../lib/logger";
 import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./alert";
-import { startScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, claimedChests, activeBossMap, checkBossEligibility, checkBossHitCooldown, BOSS_HIT_COOLDOWN_MS, checkBossAbilityCooldown, persistBossState, type BossState, type BossPlayerStats } from "./scheduler";
-import { getChannel, getAllChannels, setChannel, resetChannel, resetAllChannels, EVENT_LABELS, type EventType } from "./channel-config";
+import { startGuildScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, getGuildClaimedChests, getGuildActiveBossMap, checkBossEligibility, checkBossHitCooldown, BOSS_HIT_COOLDOWN_MS, checkBossAbilityCooldown, persistBossState, type BossState, type BossPlayerStats } from "./scheduler";
+import { getChannel, getAllChannels, setChannel, resetChannel, resetAllChannels, initChannelConfig, EVENT_LABELS, type EventType } from "./channel-config";
 import { recordMessage } from "./oracle";
 import { maybeReplyAsOracle, logOracleChatStatus } from "./oracle-chat";
 import { handleToxicity } from "./oracle-guard";
@@ -40,6 +40,7 @@ import {
   buyPlayerUpgrade,
   applyUpgradeToActiveParticipant,
   getTopPlayers,
+  getGlobalTopPlayers,
   recordPlayerDeath,
   recordPlayerRetreat,
   getPlayerById,
@@ -62,6 +63,7 @@ import {
   saveTraderEmbedSig,
   loadTraderEmbedSig,
   ensureBotStateTable,
+  runMultiGuildMigrations,
   type AbilityKind,
   type KeyType,
 } from "./db";
@@ -125,68 +127,51 @@ import {
 } from "./survival";
 import { IMG } from "./assets";
 
-const GUILD_ID = "1382035307607883816";
+const DEFAULT_GUILD_ID = "1382035307607883816";
 
 let botClient: Client | null = null;
-let schedulerStarted = false;
 let disconnectAlertTimer: ReturnType<typeof setTimeout> | null = null;
 let disconnectStartedAt: Date | null = null;
 let botReadyAt: Date | null = null;
 let shardStatus: string = "disconnected";
 
-// ── Permanent Trader ────────────────────────────────────────────────────────────
-const TRADER_CHANNEL_ID      = "1521418965732036628";
+// ── Per-guild trader state ───────────────────────────────────────────────────
 const TRADER_SUCCESS_CHANCE  = 0.30;
 
-/** Locked-chest rarities the trader offers (each needs its matching key). */
 const TRADER_OFFERS: Array<{ rarityKey: string; keyType: KeyType; label: string; emoji: string }> = [
   { rarityKey: "argint", keyType: "rar",   label: "Cufăr Blocat de Argint", emoji: "🥈" },
   { rarityKey: "aur",    keyType: "epic",  label: "Cufăr Blocat de Aur",    emoji: "👑" },
   { rarityKey: "regal",  keyType: "regal", label: "Cufărul Regal",          emoji: "⚜️" },
 ];
 
-let traderMessageId: string | null = null;
-let traderSetupInProgress = false;
+const traderMessageIds = new Map<string, string | null>();
+const traderSetupInProgress = new Map<string, boolean>();
 
-// De-dup recently handled interaction IDs to drop double-delivered gateway
-// events (ShardResume replays). TTL exceeds Discord's 15-min interaction token
-// lifetime (plus buffer) so a late replay can't slip past the window.
+function getTraderMessageId(guildId: string): string | null {
+  return traderMessageIds.get(guildId) ?? null;
+}
+function setTraderMessageId(guildId: string, id: string | null) {
+  traderMessageIds.set(guildId, id);
+}
+function isTraderSetupInProgress(guildId: string): boolean {
+  return traderSetupInProgress.get(guildId) ?? false;
+}
+
+// De-dup recently handled interaction IDs
 const seenInteractionIds = new Set<string>();
 const INTERACTION_DEDUP_TTL_MS = 17 * 60 * 1000;
-// Set when a login attempt that requested the privileged MessageContent intent
-// is rejected with code 4014 ("Disallowed intent"). On the supervisor's next
-// restart the bot then boots WITHOUT the privileged intent (degraded — only
-// mention/ping-reply behavior) instead of looping forever bricked. This makes
-// flipping ORACLE_MESSAGE_CONTENT_ENABLED on safe even if the operator forgets
-// to enable the Message Content toggle in the Discord Developer Portal.
+
 let privilegedIntentFellBack = false;
 
-// Durable marker recording that the Oracle fell back to degraded mode because the
-// "Message Content" portal toggle was missing (code 4014). `privilegedIntentFellBack`
-// is in-memory and resets on every process restart — which is exactly the recovery
-// path (operator flips the toggle, then restarts) — so it cannot tell a fresh
-// process that it had previously fallen back. The marker is persisted in the DB
-// (see recordOracleFellBack/consumeOracleFellBack in ./db) so it survives not just
-// an in-container restart but a full redeploy or autoscale instance swap — a fresh
-// container wipes os.tmpdir(), which would otherwise silently drop the pending
-// recovery alert. The recovery alert then fires once the Oracle boots back in
-// full-reply mode.
-
-// Record that we fell back, so a later full-mode boot can confirm the recovery.
 async function markOracleFellBack(): Promise<void> {
   try {
     const { recordOracleFellBack } = await import("./db");
     await recordOracleFellBack();
   } catch (err) {
-    logger.warn(
-      { err },
-      "Could not persist Oracle fallback marker — the recovery alert may not fire after restart",
-    );
+    logger.warn({ err }, "Could not persist Oracle fallback marker — the recovery alert may not fire after restart");
   }
 }
 
-// Returns true (and clears the marker) when a prior fallback is recorded. Used at
-// ClientReady in full mode to send a one-time recovery alert.
 async function consumeOracleFellBackMarker(): Promise<boolean> {
   try {
     const { consumeOracleFellBack } = await import("./db");
@@ -197,17 +182,6 @@ async function consumeOracleFellBackMarker(): Promise<boolean> {
   }
 }
 
-// Checks whether the Oracle just recovered to full-reply mode after a prior
-// portal-toggle fallback, and fires the one-time operator alert if so.
-// Extracted from the ClientReady handler so it can be unit-tested with
-// injected dependencies — the real call site passes the live implementations.
-// Correctness requirements:
-//   • Only alerts when mode is "full" AND a marker was actually recorded —
-//     no noise on a normal first-time full-mode boot.
-//   • Does NOT consume the marker when mode is degraded (short-circuits before
-//     the consume call) so a future full-mode boot still sees the marker.
-//   • Alert fires exactly once because consumeMarker is an atomic DELETE …
-//     RETURNING — only one concurrent boot wins the row.
 export async function maybeAlertOracleRecovery(
   getMode: () => OracleReplyMode,
   consumeMarker: () => Promise<boolean>,
@@ -239,11 +213,6 @@ export type OracleReplyMode = {
   reason: "active" | "disabled" | "portal_toggle_missing";
 };
 
-// Whether the Oracle is currently answering every reply ("full") or only
-// @mentions and ping-on replies ("degraded"). Full mode requires the privileged
-// MessageContent intent, which needs BOTH the env flag AND the Developer-Portal
-// toggle. The reason distinguishes the operator not enabling the feature at all
-// from the runtime 4014 fallback (toggle missing in the portal).
 export function getOracleReplyMode(): OracleReplyMode {
   const enabled = process.env.ORACLE_MESSAGE_CONTENT_ENABLED === "true";
   if (!enabled) return { mode: "degraded", reason: "disabled" };
@@ -255,15 +224,10 @@ export function getBotClient(): Client | null {
   return botClient;
 }
 
-export { GUILD_ID };
+export { DEFAULT_GUILD_ID as GUILD_ID };
 
-// Discord Gateway close codes that mean the session cannot be resumed.
-// discord.js will NOT auto-reconnect for these; the supervisor must restart.
 const FATAL_CLOSE_CODES = new Set([4004, 4010, 4011, 4013, 4014]);
 
-// Whether a thrown login error is Discord rejecting a privileged intent we asked
-// for (code 4014 / "Disallowed intents"). discord.js raises this in different
-// shapes across versions, so match on code and message text defensively.
 function isDisallowedIntentError(err: unknown): boolean {
   if (!err || typeof err !== "object") return false;
   const e = err as { code?: unknown; message?: unknown };
@@ -279,7 +243,12 @@ const slashCommands = [
     .addUserOption((opt) =>
       opt.setName("jucator").setDescription("Vezi profilul altui luptător (opțional).").setRequired(false),
     ),
-  new SlashCommandBuilder().setName("clasament").setDescription("👑 Top 10 cei mai puternici luptători."),
+  new SlashCommandBuilder()
+    .setName("clasament")
+    .setDescription("👑 Top 10 cei mai puternici luptători.")
+    .addBooleanOption((opt) =>
+      opt.setName("global").setDescription("Afișează clasamentul global (toate serverele)?").setRequired(false),
+    ),
   new SlashCommandBuilder().setName("magazin").setDescription("🏺 Forja Cenușii — îmbunătățiri permanente, mereu disponibilă."),
   new SlashCommandBuilder().setName("clasa").setDescription("🧬 Alege-ți clasa RPG (alegere permanentă)."),
   new SlashCommandBuilder().setName("companion").setDescription("🐾 Vezi companionul tău (cumpără și fă îmbunătățiri din /magazin)."),
@@ -431,13 +400,11 @@ async function avatarById(discordId: string): Promise<string | null> {
 }
 
 async function handleProfil(interaction: ChatInputCommandInteraction) {
-  // Defer first (instant ACK) so a slow DB call can't blow past Discord's 3s
-  // interaction deadline and trigger "Unknown interaction" (10062).
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const guildId = interaction.guildId!;
   const target = interaction.options.getUser("jucator");
-  // Viewing another player: read-only lookup, never create a record for them.
   if (target && target.id !== interaction.user.id) {
-    const player = await getPlayerById(target.id);
+    const player = await getPlayerById(target.id, guildId);
     if (!player) {
       await interaction.editReply({
         content: `❌ **${target.username}** nu a pășit încă în Regatul Cenușii — nu există un profil pentru acest jucător.`,
@@ -449,7 +416,7 @@ async function handleProfil(interaction: ChatInputCommandInteraction) {
     });
     return;
   }
-  const p = await upsertPlayer(interaction.user.id, interaction.user.username);
+  const p = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
   await interaction.editReply({
     embeds: [buildProfileEmbed(p, undefined, interaction.user.displayAvatarURL({ size: 256 }))],
   });
@@ -499,7 +466,8 @@ async function handleAjutor(interaction: ChatInputCommandInteraction) {
 
 async function handleMagazin(interaction: ChatInputCommandInteraction) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-  const p = await upsertPlayer(interaction.user.id, interaction.user.username);
+  const guildId = interaction.guildId!;
+  const p = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
   await interaction.editReply({ embeds: [buildShopEmbed(p, "overview")], components: shopRows(p) });
 }
 
@@ -514,12 +482,14 @@ async function isOwner(interaction: ChatInputCommandInteraction): Promise<boolea
 
 async function handleStartEvent(interaction: ChatInputCommandInteraction) {
   if (!(await isOwner(interaction))) return;
+  const guildId = interaction.guildId!;
   await interaction.reply({ content: "🔥 *Umbrele se mișcă…* Evenimentul pornește!", ephemeral: true });
-  if (botClient) await fireEvent(botClient);
+  if (botClient) await fireEvent(botClient, guildId);
 }
 
 async function handleSpawnChest(interaction: ChatInputCommandInteraction) {
   if (!(await isOwner(interaction))) return;
+  const guildId = interaction.guildId!;
   const rarityOpt = interaction.options.getString("raritate") ?? "random";
   const tipOpt = interaction.options.getString("tip") ?? "normal";
   const multStr = interaction.options.getString("multiplicator") ?? "1";
@@ -528,7 +498,7 @@ async function handleSpawnChest(interaction: ChatInputCommandInteraction) {
   if (tipOpt === "cheie") {
     const keyOpt = interaction.options.getString("cheie") ?? "random";
     await interaction.reply({ content: "🗝️ *Cenușa zornăie…* Un cufăr de chei apare în Regat!", ephemeral: true });
-    if (botClient) await fireKeyChest(botClient, keyOpt);
+    if (botClient) await fireKeyChest(botClient, guildId, keyOpt);
     return;
   }
 
@@ -537,21 +507,19 @@ async function handleSpawnChest(interaction: ChatInputCommandInteraction) {
   if (isLocked) {
     const lockedRarity = rarityOpt === "random" ? "argint" : rarityOpt;
     await interaction.reply({ content: "🔒 *Cenușa se ridică…* Un cufăr blocat apare în Regat!", ephemeral: true });
-    if (botClient) await fireLockedChest(botClient, lockedRarity);
+    if (botClient) await fireLockedChest(botClient, guildId, lockedRarity);
   } else {
     await interaction.reply({ content: "📦 *Cenușa se ridică…* Un cufăr apare în Regat!", ephemeral: true });
     if (botClient) {
       if (rarityOpt === "random") {
         if (mult != null) {
-          // Admin picked a specific multiplier — roll a rarity and use fireChestForced
-          // so the bonus is encoded in the customId and applied at claim time.
           const { rarity } = rollChest();
-          await fireChestForced(botClient, rarity.key, mult);
+          await fireChestForced(botClient, guildId, rarity.key, mult);
         } else {
-          await fireChest(botClient);
+          await fireChest(botClient, guildId);
         }
       } else {
-        await fireChestForced(botClient, rarityOpt, mult);
+        await fireChestForced(botClient, guildId, rarityOpt, mult);
       }
     }
   }
@@ -559,22 +527,22 @@ async function handleSpawnChest(interaction: ChatInputCommandInteraction) {
 
 async function handleSpawnBoss(interaction: ChatInputCommandInteraction) {
   if (!(await isOwner(interaction))) return;
+  const guildId = interaction.guildId!;
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-  const ev = await import("./db").then(m => m.getLatestActiveEvent());
+  const ev = await import("./db").then(m => m.getLatestActiveEvent(guildId));
   if (!ev) {
     await interaction.editReply({ content: "❌ Nu există niciun event activ. Pornește mai întâi `/startevent`." });
     return;
   }
   await interaction.editReply({ content: "🐉 *Cenușa se întunecă…* Dragonul Stins coboară din Abis!" });
-  if (botClient) await fireFinalBoss(botClient, ev.id);
+  if (botClient) await fireFinalBoss(botClient, guildId, ev.id);
 }
 
-/** @internal — exported for unit-testing the admin routing/guard logic */
 export async function handleAdmin(interaction: ChatInputCommandInteraction) {
   const sub = interaction.options.getSubcommand();
-  // ghid is available to any admin — no owner check needed
   if (sub === "ghid") { await handleAdminGhid(interaction); return; }
   if (!(await isOwner(interaction))) return;
+  const guildId = interaction.guildId!;
 
   if (sub === "offline") {
     botClient?.user?.setPresence({ status: "invisible" });
@@ -621,6 +589,7 @@ export async function handleAdmin(interaction: ChatInputCommandInteraction) {
           ? `${Math.floor(uptime / 60)}m ${uptime % 60}s`
           : `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`;
 
+    const activeBossMap = getGuildActiveBossMap(guildId);
     const bossInfo = activeBossMap.size > 0
       ? [...activeBossMap.values()].map((b) =>
           `🐉 Boss Event #${b.eventId} — HP: ${b.currentHp.toLocaleString()}/${b.maxHp.toLocaleString()} | Luptători: ${b.damageBy.size}`,
@@ -646,10 +615,11 @@ export async function handleAdmin(interaction: ChatInputCommandInteraction) {
 
 async function handleSetCanale(interaction: ChatInputCommandInteraction) {
   if (!(await isOwner(interaction))) return;
+  const guildId = interaction.guildId!;
   const sub = interaction.options.getSubcommand();
 
   if (sub === "vezi") {
-    const cfg = getAllChannels();
+    const cfg = getAllChannels(guildId);
     const lines = (Object.keys(EVENT_LABELS) as EventType[]).map((k) => {
       const id = cfg[k];
       return `📺 **${EVENT_LABELS[k]}**
@@ -669,18 +639,18 @@ async function handleSetCanale(interaction: ChatInputCommandInteraction) {
       await interaction.reply({ content: "❌ Alege un canal valid.", ephemeral: true });
       return;
     }
-    await setChannel(eventKey, channel.id);
+    await setChannel(guildId, eventKey, channel.id);
     await interaction.reply({
       content: `✅ **${EVENT_LABELS[eventKey]}** va fi acum postat în <#${channel.id}>`,
       ephemeral: true,
     });
-    logger.info({ eventKey, channelId: channel.id, userId: interaction.user.id }, "Channel configured via /setcanale");
+    logger.info({ eventKey, channelId: channel.id, userId: interaction.user.id, guildId }, "Channel configured via /setcanale");
     return;
   }
 
   if (sub === "reset") {
     const eventKey = interaction.options.getString("eveniment", true) as EventType;
-    await resetChannel(eventKey);
+    await resetChannel(guildId, eventKey);
     await interaction.reply({
       content: `🔄 Canalul pentru **${EVENT_LABELS[eventKey]}** a fost resetat la valoarea implicită.`,
       ephemeral: true,
@@ -689,7 +659,7 @@ async function handleSetCanale(interaction: ChatInputCommandInteraction) {
   }
 
   if (sub === "resetall") {
-    await resetAllChannels();
+    await resetAllChannels(guildId);
     await interaction.reply({
       content: "🔄 Toate canalele au fost resetate la valorile implicite.",
       ephemeral: true,
@@ -700,7 +670,10 @@ async function handleSetCanale(interaction: ChatInputCommandInteraction) {
 
 async function handleClasament(interaction: ChatInputCommandInteraction) {
   await interaction.deferReply();
-  const top = await getTopPlayers();
+  const guildId = interaction.guildId!;
+  const isGlobal = interaction.options.getBoolean("global") ?? false;
+
+  const top = isGlobal ? await getGlobalTopPlayers() : await getTopPlayers(guildId);
   const medals = ["🥇", "🥈", "🥉"];
   const champAvatar = top[0] ? await avatarById(top[0].discordId) : null;
 
@@ -711,10 +684,10 @@ async function handleClasament(interaction: ChatInputCommandInteraction) {
     const keysStr = totalKeys > 0
       ? ` | 🗝️ ${totalKeys} cheie${totalKeys > 1 ? "i" : ""}`
       : "";
-    return `${medals[i] ?? `**${i + 1}.**`} **${p.username}** — 🎖️ ${levelTitle(p.maxLevel)} · ${p.xp} XP${keysStr}${deathStr}${fledStr}`;
+    const serverTag = isGlobal ? ` *(Server: ${p.guildId})* ` : "";
+    return `${medals[i] ?? `**${i + 1}.**`} **${p.username}**${serverTag} — 🎖️ ${levelTitle(p.maxLevel)} · ${p.xp} XP${keysStr}${deathStr}${fledStr}`;
   }).join("\n");
 
-  // One select menu listing every player shown — pick any to view their full profile.
   const components: ActionRowBuilder<StringSelectMenuBuilder>[] = [];
   if (top.length > 0) {
     const select = new StringSelectMenuBuilder()
@@ -730,11 +703,15 @@ async function handleClasament(interaction: ChatInputCommandInteraction) {
     components.push(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select));
   }
 
+  const title = isGlobal
+    ? "🌍 Clasament Global — Toate Regatele Cenușii"
+    : "👑 Clasament — Regatul Cenușii";
+
   await interaction.editReply({
     embeds: [
       {
         color: THEME_COLOR,
-        title: "👑 Clasament – Regatul Cenușii",
+        title,
         description: lines || "*Nimeni nu a luptat încă.*",
         ...(champAvatar ? { thumbnail: { url: champAvatar } } : {}),
         footer: { text: top.length > 0 ? "Alege un luptător din meniu pentru profilul complet" : BRAND_FOOTER },
@@ -750,7 +727,8 @@ async function handleViewProfile(
   discordId: string,
 ) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-  const player = await getPlayerById(discordId);
+  const guildId = interaction.guildId!;
+  const player = await getPlayerById(discordId, guildId);
   if (!player) {
     await interaction.editReply({ content: "❌ Jucătorul nu a fost găsit." });
     return;
@@ -775,25 +753,22 @@ const CHEST_CLAIM_MSG: Record<string, (user: string, gold: number) => string> = 
 };
 
 async function handleChestClaim(interaction: ButtonInteraction, chestId: string, rarityKey: string, gold: number, multOverride: number = 1) {
-  // Ack immediately so the DB writes below can't blow past Discord's 3s deadline
-  // (DiscordAPIError 10062). deferUpdate keeps the chest message intact for now.
   await interaction.deferUpdate();
-  // has()/add() stay adjacent (no await between) so concurrent clicks can't
-  // both pass the guard and double-claim.
+  const guildId = interaction.guildId!;
+  const claimedChests = getGuildClaimedChests(guildId);
+
   if (claimedChests.has(chestId)) {
     await interaction.followUp({ content: "😔 Cineva a fost mai rapid! Cufărul a fost deja revendicat.", flags: MessageFlags.Ephemeral });
     return;
   }
   claimedChests.add(chestId);
-  void clearActiveChest().catch(() => null);
+  void clearActiveChest(guildId).catch(() => null);
 
-  // Determine effective multiplier: an admin-forced bonus (_x2/_x3 in customId)
-  // takes priority; otherwise roll a surprise multiplier (×1/×2/×3) at claim time.
   const effectiveMult = multOverride > 1 ? multOverride : rollChestMultiplier();
   const totalGold = gold * effectiveMult;
 
-  await upsertPlayer(interaction.user.id, interaction.user.username);
-  await addPlayerGold(interaction.user.id, totalGold);
+  await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
+  await addPlayerGold(interaction.user.id, guildId, totalGold);
 
   const openingRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
@@ -822,18 +797,16 @@ async function handleChestClaim(interaction: ButtonInteraction, chestId: string,
   const claimReply = await interaction.followUp({ content: claimMsg(interaction.user.username, totalGold) });
   setTimeout(() => { void claimReply.delete().catch(() => {}); }, CLAIM_TTL_MS);
 
-  // Reveal the surprise multiplier — every claim shows what landed.
   const revealContent = effectiveMult > 1
     ? `🎲 **Norocul Cenușii!** A picat **×${effectiveMult}**! Obolii s-au înmulțit (${gold} × ${effectiveMult} = **${totalGold} Oboli**)! ${effectiveMult === 3 ? "🔥🔥🔥" : "✨"}`
     : `🎲 **Norocul Cenușii:** a picat **×1** de data asta — fără bonus. Ai primit **${gold} Oboli**.`;
   const bonusReply = await interaction.followUp({ content: revealContent });
   setTimeout(() => { void bonusReply.delete().catch(() => {}); }, CLAIM_TTL_MS);
 
-  // Key drop roll
   const keyDrop = KEY_DROP[rarityKey];
   if (keyDrop && Math.random() < keyDrop.chance) {
     const keyType = keyDrop.keyType as KeyType;
-    await addPlayerKey(interaction.user.id, keyType);
+    await addPlayerKey(interaction.user.id, guildId, keyType);
     const keyDropReply = await interaction.followUp({ content: buildKeyDropMessage(rarityKey, keyType) });
     setTimeout(() => { void keyDropReply.delete().catch(() => {}); }, CLAIM_TTL_MS);
     logger.info({ discordId: interaction.user.id, chestId, rarityKey, keyType }, "Key dropped");
@@ -844,6 +817,8 @@ async function handleChestClaim(interaction: ButtonInteraction, chestId: string,
 
 async function handleLockedChestClaim(interaction: ButtonInteraction, chestId: string, rarityKey: string, gold: number) {
   await interaction.deferUpdate();
+  const guildId = interaction.guildId!;
+  const claimedChests = getGuildClaimedChests(guildId);
 
   const keyType = CHEST_KEY_REQUIRED[rarityKey] as KeyType | undefined;
   if (!keyType) {
@@ -853,8 +828,7 @@ async function handleLockedChestClaim(interaction: ButtonInteraction, chestId: s
   const keyLabel = KEY_LABEL[keyType] ?? "Cheie";
   const sourceLabel = KEY_SOURCE_LABEL[keyType] ?? "cufere comune";
 
-  // Atomic key consume — if returns false, player has no key
-  const keyConsumed = await consumePlayerKey(interaction.user.id, keyType);
+  const keyConsumed = await consumePlayerKey(interaction.user.id, guildId, keyType);
   if (!keyConsumed) {
     await interaction.followUp({
       content:
@@ -865,10 +839,8 @@ async function handleLockedChestClaim(interaction: ButtonInteraction, chestId: s
     return;
   }
 
-  // Key was consumed — try to be first claimer
   if (claimedChests.has(chestId)) {
-    // Someone else already opened it — refund the key
-    await addPlayerKey(interaction.user.id, keyType);
+    await addPlayerKey(interaction.user.id, guildId, keyType);
     await interaction.followUp({
       content: `😔 Cineva a fost mai rapid! **${keyLabel}** ta a fost returnată. Folosește-o la alt cufăr blocat!`,
       flags: MessageFlags.Ephemeral,
@@ -876,10 +848,10 @@ async function handleLockedChestClaim(interaction: ButtonInteraction, chestId: s
     return;
   }
   claimedChests.add(chestId);
-  void clearActiveChest(LOCKCHEST_DBKEY).catch(() => null);
+  void clearActiveChest(guildId, LOCKCHEST_DBKEY).catch(() => null);
 
-  await upsertPlayer(interaction.user.id, interaction.user.username);
-  await addPlayerGold(interaction.user.id, gold);
+  await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
+  await addPlayerGold(interaction.user.id, guildId, gold);
 
   const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
@@ -906,16 +878,18 @@ async function handleLockedChestClaim(interaction: ButtonInteraction, chestId: s
 
 async function handleKeyChestClaim(interaction: ButtonInteraction, chestId: string, keyType: string) {
   await interaction.deferUpdate();
-  // has()/add() stay adjacent (no await between) so concurrent clicks can't double-claim.
+  const guildId = interaction.guildId!;
+  const claimedChests = getGuildClaimedChests(guildId);
+
   if (claimedChests.has(chestId)) {
     await interaction.followUp({ content: "😔 Cineva a fost mai rapid! Cheia a fost deja luată.", flags: MessageFlags.Ephemeral });
     return;
   }
   claimedChests.add(chestId);
-  void clearActiveChest(KEYCHEST_DBKEY).catch(() => null);
+  void clearActiveChest(guildId, KEYCHEST_DBKEY).catch(() => null);
 
-  await upsertPlayer(interaction.user.id, interaction.user.username);
-  await addPlayerKey(interaction.user.id, keyType as KeyType);
+  await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
+  await addPlayerKey(interaction.user.id, guildId, keyType as KeyType);
 
   const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
@@ -933,15 +907,9 @@ async function handleKeyChestClaim(interaction: ButtonInteraction, chestId: stri
   logger.info({ discordId: interaction.user.id, chestId, keyType }, "Key chest claimed");
 }
 
-/**
- * Handle a claim on the permanent trader message.
- * The trader offers locked chests in exchange for the matching key type.
- * 30% success: player gets the gold from the locked chest (cheia funcționează).
- * 70% failure: the key breaks (cheia se rupe) — key is consumed, nothing awarded.
- * All feedback is ephemeral (only the player sees it).
- */
 async function handleTraderClaim(interaction: ButtonInteraction, rarityKey: string) {
   await interaction.deferReply({ ephemeral: true });
+  const guildId = interaction.guildId!;
 
   const offer = TRADER_OFFERS.find((o) => o.rarityKey === rarityKey);
   if (!offer) {
@@ -949,8 +917,7 @@ async function handleTraderClaim(interaction: ButtonInteraction, rarityKey: stri
     return;
   }
 
-  // Atomic key consume — if none, tell the player immediately.
-  const keyConsumed = await consumePlayerKey(interaction.user.id, offer.keyType);
+  const keyConsumed = await consumePlayerKey(interaction.user.id, guildId, offer.keyType);
   if (!keyConsumed) {
     const keyLabel = KEY_LABEL[offer.keyType] ?? "Cheie";
     await interaction.editReply({
@@ -976,14 +943,12 @@ Obți cheia revendicând cufere de chei sau învingând evenimente!`,
     return;
   }
 
-  // Succes — calculează aurul, aplică multiplicatorul surpriză și îl acordă.
   const result = spawnLockedChest(rarityKey);
   const mult = rollChestMultiplier();
   if (!result) {
-    // Fallback teoretic — nu ar trebui să se întâmple, dar întotdeauna avem fallback.
     const baseGold = Math.floor(Math.random() * 200) + 100;
     const gold = baseGold * mult;
-    await addPlayerGold(interaction.user.id, gold);
+    await addPlayerGold(interaction.user.id, guildId, gold);
     const multEmoji = mult === 3 ? "🔥×3" : mult === 2 ? "✨×2" : "🍀×1";
     const bonusLine = mult > 1 ? `\n🎰 **Multiplicator: ${multEmoji}** \u2014 Norocul Cenușii ține cu tine!` : "";
     await interaction.editReply({
@@ -994,8 +959,8 @@ Obți cheia revendicând cufere de chei sau învingând evenimente!`,
   }
 
   const totalGold = result.gold * mult;
-  await upsertPlayer(interaction.user.id, interaction.user.username);
-  await addPlayerGold(interaction.user.id, totalGold);
+  await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
+  await addPlayerGold(interaction.user.id, guildId, totalGold);
 
   const multEmoji = mult === 3 ? "🔥×3" : mult === 2 ? "✨×2" : "🍀×1";
   const bonusLine = mult > 1
@@ -1016,13 +981,14 @@ Obți cheia revendicând cufere de chei sau învingând evenimente!`,
 
 async function handleJoin(interaction: ButtonInteraction, eventId: number) {
   await interaction.deferReply({ ephemeral: true });
+  const guildId = interaction.guildId!;
   const ev = await getActiveEvent(eventId);
   if (!ev || !ev.isActive || ev.expiresAt.getTime() < Date.now()) {
     await interaction.editReply({ content: "⌛ Ora Umbrelor s-a încheiat!" });
     return;
   }
-  await upsertPlayer(interaction.user.id, interaction.user.username);
-  const participant = await joinEvent(eventId, interaction.user.id, interaction.user.username);
+  await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
+  const participant = await joinEvent(guildId, eventId, interaction.user.id, interaction.user.username);
   if (!participant) {
     await interaction.editReply({ content: "⚠️ Eroare la intrarea în event." });
     return;
@@ -1041,6 +1007,7 @@ async function handleJoin(interaction: ButtonInteraction, eventId: number) {
 
 async function handleAttack(interaction: ButtonInteraction, eventId: number) {
   await interaction.deferUpdate();
+  const guildId = interaction.guildId!;
   const p = await getParticipant(eventId, interaction.user.id);
   if (!p) {
     await interaction.followUp({ content: "❌ Intră mai întâi în luptă!", flags: MessageFlags.Ephemeral });
@@ -1064,15 +1031,13 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
 
   const result = doCombat(p);
 
-  // Class reward multipliers (only matter when a monster is defeated).
   if (result.oboliGained > 0) {
-    const pl = await getPlayerById(p.discordId);
+    const pl = await getPlayerById(p.discordId, guildId);
     const cls = pl?.class && isClassKey(pl.class) ? CLASSES[pl.class] : null;
     if (cls) {
       result.xpGained = Math.round(result.xpGained * cls.xpMult);
       result.oboliGained = Math.round(result.oboliGained * cls.oboliMult);
     }
-    // Oracle blessings/curses also scale combat rewards.
     const rmods = getRewardMultipliers(p.discordId);
     result.xpGained = Math.round(result.xpGained * rmods.xpMult);
     result.oboliGained = Math.round(result.oboliGained * rmods.goldMult);
@@ -1084,8 +1049,8 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
     const lost = Math.floor(p.oboli * 0.2);
     await updateParticipant(p.id, { isAlive: false, currentHp: 0, empowerNext: false, shieldNext: false });
     await Promise.all([
-      deductPlayerGold(p.discordId, lost),
-      recordPlayerDeath(p.discordId, p.monsterLevel),
+      deductPlayerGold(p.discordId, guildId, lost),
+      recordPlayerDeath(p.discordId, guildId, p.monsterLevel),
     ]);
     await interaction.editReply({ embeds: [buildDeathEmbed(lost)], components: [] });
     return;
@@ -1093,9 +1058,9 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
 
   if (result.oboliGained > 0) {
     await Promise.all([
-      addPlayerGold(p.discordId, result.oboliGained),
-      addPlayerXp(p.discordId, result.xpGained),
-      updateMaxLevel(p.discordId, result.newMonsterLevel),
+      addPlayerGold(p.discordId, guildId, result.oboliGained),
+      addPlayerXp(p.discordId, guildId, result.xpGained),
+      updateMaxLevel(p.discordId, guildId, result.newMonsterLevel),
     ]);
   }
 
@@ -1112,7 +1077,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
       empowerNext: false,
       shieldNext: false,
     });
-    await interaction.editReply({ embeds: [buildLevelupEmbed(newLevel)], components: levelupRows(eventId) });
+    await interaction.editReply({ embeds: [buildLevelupEmbed(Math.floor(result.newMonsterLevel / LEVELUP_INTERVAL))], components: levelupRows(eventId) });
     return;
   }
 
@@ -1132,6 +1097,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
 
 async function handleRetreat(interaction: ButtonInteraction, eventId: number) {
   await interaction.deferUpdate();
+  const guildId = interaction.guildId!;
   const p = await getParticipant(eventId, interaction.user.id);
   if (!p) {
     await interaction.followUp({ content: "❌ Nu ești în nicio luptă!", flags: MessageFlags.Ephemeral });
@@ -1147,17 +1113,18 @@ async function handleRetreat(interaction: ButtonInteraction, eventId: number) {
     return;
   }
   await updateParticipant(p.id, { isAlive: false, fled: true });
-  await recordPlayerRetreat(p.discordId, p.monsterLevel);
+  await recordPlayerRetreat(p.discordId, guildId, p.monsterLevel);
   await interaction.editReply({ embeds: [buildRetreatEmbed(p.monsterLevel)], components: [] });
 }
 
 async function handleBuy(interaction: ButtonInteraction, key: ShopKey) {
   await interaction.deferUpdate();
-  const p = await upsertPlayer(interaction.user.id, interaction.user.username);
+  const guildId = interaction.guildId!;
+  const p = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
   const cost = shopPrice(key, p[SHOP_COUNT_KEY[key]] as number);
-  const updated = await buyPlayerUpgrade(interaction.user.id, key, cost);
+  const updated = await buyPlayerUpgrade(interaction.user.id, guildId, key, cost);
   if (updated) {
-    await applyUpgradeToActiveParticipant(interaction.user.id, key);
+    await applyUpgradeToActiveParticipant(interaction.user.id, guildId, key);
   }
   const player = updated ?? p;
   await interaction.editReply({ embeds: [buildShopEmbed(player, "stats")], components: shopStatsRows(player) });
@@ -1186,7 +1153,8 @@ async function handleLevelup(interaction: ButtonInteraction, eventId: number, bo
 
 async function handleClasa(interaction: ChatInputCommandInteraction) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-  const p = await upsertPlayer(interaction.user.id, interaction.user.username);
+  const guildId = interaction.guildId!;
+  const p = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
   await interaction.editReply({
     embeds: [buildClassEmbed(p)],
     components: p.class ? [] : classRows(),
@@ -1195,10 +1163,11 @@ async function handleClasa(interaction: ChatInputCommandInteraction) {
 
 async function handleClassPick(interaction: ButtonInteraction, key: string) {
   await interaction.deferUpdate();
-  await upsertPlayer(interaction.user.id, interaction.user.username);
-  const updated = await setPlayerClass(interaction.user.id, key);
+  const guildId = interaction.guildId!;
+  await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
+  const updated = await setPlayerClass(interaction.user.id, guildId, key);
   if (!updated) {
-    const cur = await getPlayerById(interaction.user.id);
+    const cur = await getPlayerById(interaction.user.id, guildId);
     await interaction.editReply({
       embeds: [cur ? buildClassEmbed(cur) : buildClassEmbed({ class: null } as never)],
       components: [],
@@ -1210,43 +1179,48 @@ async function handleClassPick(interaction: ButtonInteraction, key: string) {
 
 async function handleCompanion(interaction: ChatInputCommandInteraction) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-  const p = await upsertPlayer(interaction.user.id, interaction.user.username);
+  const guildId = interaction.guildId!;
+  const p = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
   await interaction.editReply({
     embeds: [buildCompanionEmbed(p)],
     components: [],
   });
 }
 
-// Shop nav handlers — each opens its sub-page or returns to main.
 async function handleShopNavStats(interaction: ButtonInteraction) {
   await interaction.deferUpdate();
-  const p = await upsertPlayer(interaction.user.id, interaction.user.username);
+  const guildId = interaction.guildId!;
+  const p = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
   await interaction.editReply({ embeds: [buildShopEmbed(p, "stats")], components: shopStatsRows(p) });
 }
 
 async function handleShopNavComp(interaction: ButtonInteraction) {
   await interaction.deferUpdate();
-  const p = await upsertPlayer(interaction.user.id, interaction.user.username);
+  const guildId = interaction.guildId!;
+  const p = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
   await interaction.editReply({ embeds: [buildShopEmbed(p, "comp")], components: shopCompRows(p) });
 }
 
 async function handleShopNavAbil(interaction: ButtonInteraction) {
   await interaction.deferUpdate();
-  const p = await upsertPlayer(interaction.user.id, interaction.user.username);
+  const guildId = interaction.guildId!;
+  const p = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
   await interaction.editReply({ embeds: [buildShopEmbed(p, "abil")], components: shopAbilRows(p) });
 }
 
 async function handleShopBack(interaction: ButtonInteraction) {
   await interaction.deferUpdate();
-  const p = await upsertPlayer(interaction.user.id, interaction.user.username);
+  const guildId = interaction.guildId!;
+  const p = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
   await interaction.editReply({ embeds: [buildShopEmbed(p, "overview")], components: shopRows(p) });
 }
 
 async function handleCompBuy(interaction: ButtonInteraction, key: string) {
   await interaction.deferUpdate();
-  await upsertPlayer(interaction.user.id, interaction.user.username);
+  const guildId = interaction.guildId!;
+  await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
   if (!isCompanionKey(key)) return;
-  const updated = await buyCompanion(interaction.user.id, key, COMPANION_BUY_COST);
+  const updated = await buyCompanion(interaction.user.id, guildId, key, COMPANION_BUY_COST);
   if (!updated) {
     await interaction.followUp({ content: `❌ Nu poți cumpăra acest companion — ai nevoie de **${COMPANION_BUY_COST} Oboli** și să nu ai deja unul.`, flags: MessageFlags.Ephemeral });
     return;
@@ -1256,9 +1230,10 @@ async function handleCompBuy(interaction: ButtonInteraction, key: string) {
 
 async function handleCompUpgrade(interaction: ButtonInteraction) {
   await interaction.deferUpdate();
-  const p = await upsertPlayer(interaction.user.id, interaction.user.username);
+  const guildId = interaction.guildId!;
+  const p = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
   const cost = upgradeCost(p.companionLevel);
-  const updated = await upgradeCompanion(interaction.user.id, p.companionLevel, cost, UPGRADE_XP_COST);
+  const updated = await upgradeCompanion(interaction.user.id, guildId, p.companionLevel, cost, UPGRADE_XP_COST);
   if (!updated) {
     await interaction.followUp({ content: `❌ Îmbunătățire eșuată — ai nevoie de un companion, **${cost} Oboli** și **${UPGRADE_XP_COST} XP**.`, flags: MessageFlags.Ephemeral });
     return;
@@ -1268,12 +1243,13 @@ async function handleCompUpgrade(interaction: ButtonInteraction) {
 
 async function handleAbilBuy(interaction: ButtonInteraction, kind: string) {
   await interaction.deferUpdate();
-  await upsertPlayer(interaction.user.id, interaction.user.username);
+  const guildId = interaction.guildId!;
+  await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
   if (!isAbilityKey(kind)) return;
-  const updated = await buyAbility(interaction.user.id, kind as AbilityKind, ABILITY_BUY_COST);
+  const updated = await buyAbility(interaction.user.id, guildId, kind as AbilityKind, ABILITY_BUY_COST);
   if (updated) {
     const lvl = kind === "empower" ? updated.abilityEmpowerLevel : updated.abilityShieldLevel;
-    await applyAbilityLevelToActiveParticipant(interaction.user.id, kind as AbilityKind, lvl);
+    await applyAbilityLevelToActiveParticipant(interaction.user.id, guildId, kind as AbilityKind, lvl);
   }
   if (!updated) {
     await interaction.followUp({ content: `❌ Nu poți debloca abilitatea — ai nevoie de **${ABILITY_BUY_COST} Oboli** și să nu o deții deja.`, flags: MessageFlags.Ephemeral });
@@ -1284,14 +1260,15 @@ async function handleAbilBuy(interaction: ButtonInteraction, kind: string) {
 
 async function handleAbilUpgrade(interaction: ButtonInteraction, kind: string) {
   await interaction.deferUpdate();
-  const p = await upsertPlayer(interaction.user.id, interaction.user.username);
+  const guildId = interaction.guildId!;
+  const p = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
   if (!isAbilityKey(kind)) return;
   const curLvl = kind === "empower" ? p.abilityEmpowerLevel : p.abilityShieldLevel;
   const cost = upgradeCost(curLvl);
-  const updated = await upgradeAbility(interaction.user.id, kind as AbilityKind, curLvl, cost, UPGRADE_XP_COST);
+  const updated = await upgradeAbility(interaction.user.id, guildId, kind as AbilityKind, curLvl, cost, UPGRADE_XP_COST);
   if (updated) {
     const lvl = kind === "empower" ? updated.abilityEmpowerLevel : updated.abilityShieldLevel;
-    await applyAbilityLevelToActiveParticipant(interaction.user.id, kind as AbilityKind, lvl);
+    await applyAbilityLevelToActiveParticipant(interaction.user.id, guildId, kind as AbilityKind, lvl);
   }
   if (!updated) {
     await interaction.followUp({ content: `❌ Îmbunătățire eșuată — ai nevoie de abilitate, **${cost} Oboli** și **${UPGRADE_XP_COST} XP**.`, flags: MessageFlags.Ephemeral });
@@ -1334,15 +1311,11 @@ async function handleAbility(interaction: ButtonInteraction, eventId: number, ki
   });
 }
 
-const EVENT_CHANNEL_ID   = "1521185682200989726";
-const BOSS_CHANNEL_ID    = "1521186913476673556";
-/** Dedicated channel where boss leaderboards are posted permanently. */
-const BOSS_TOP_CHANNEL_ID = "1521186981525327993";
-
 async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) {
   await interaction.deferUpdate();
-  // Boss fight happens AFTER the event ends — check activeBossMap, not DB active status
   const uid = interaction.user.id;
+  const guildId = interaction.guildId!;
+  const activeBossMap = getGuildActiveBossMap(guildId);
   const boss = activeBossMap.get(eventId);
 
   const eligibility = checkBossEligibility(boss, uid);
@@ -1356,14 +1329,11 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
     return;
   }
 
-  // Participant confirmed — register in DB if needed
   const activeBoss = boss!;
-  const player = await upsertPlayer(uid, interaction.user.username);
+  const player = await upsertPlayer(uid, guildId, interaction.user.username);
 
-  // Store username for embed + leaderboard
   activeBoss.playerNames.set(uid, interaction.user.username);
 
-  // Initialize player HP + stats from global player record (first hit only)
   if (!activeBoss.playerHp.has(uid)) {
     activeBoss.playerHp.set(uid, Math.max(10, 100 + player.maxHpBonus));
   }
@@ -1380,7 +1350,6 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
   const myHp = activeBoss.playerHp.get(uid)!;
   const myMaxHp = 100 + player.maxHpBonus;
 
-  // 4-second cooldown per player
   const cooldown = checkBossHitCooldown(activeBoss.lastHitAt, uid);
   if (cooldown.onCooldown) {
     await interaction.followUp({
@@ -1390,24 +1359,19 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
     return;
   }
 
-  // Oracle blessings/curses apply live in boss fights too.
   const mods = getCombatModifiers(uid);
 
-  // Player damage based on global attack stat, with crit + ability + effect multipliers
   const minDmg = Math.max(30, player.attackBonus * 5 + 20);
   const maxDmg = Math.max(80, player.attackBonus * 15 + 60);
   let playerDmg = Math.floor(Math.random() * (maxDmg - minDmg + 1)) + minDmg;
   const isCrit = Math.random() * 100 < Math.min(100, Math.max(0, player.critBonus + mods.critAdd));
   if (isCrit) playerDmg *= 2;
-  // Lovitura Umbrei (empower) — consume any queued empower for this player.
   const usedEmpower = activeBoss.empowerNext.delete(uid) && player.abilityEmpowerLevel >= 1;
   if (usedEmpower) playerDmg = Math.round(playerDmg * empowerMult(player.abilityEmpowerLevel));
   if (mods.damageMult !== 1) playerDmg = Math.round(playerDmg * mods.damageMult);
   const critTag = isCrit ? " 💥 **CRITIC!**" : "";
 
-  // Boss counter-attack — REAL damage to player HP, scaled by shield + damage-taken effects
-  let bossHit = Math.floor(Math.random() * 121) + 80; // 80–200
-  // Scut de Cenușă (shield) — consume any queued shield for this player.
+  let bossHit = Math.floor(Math.random() * 121) + 80;
   const usedShield = activeBoss.shieldNext.delete(uid) && player.abilityShieldLevel >= 1;
   if (usedShield) bossHit = Math.max(1, Math.round(bossHit * (1 - shieldReduction(player.abilityShieldLevel))));
   if (mods.damageTakenMult !== 1) bossHit = Math.max(1, Math.round(bossHit * mods.damageTakenMult));
@@ -1417,7 +1381,6 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
     (usedEmpower ? "🌑 **LOVITURA UMBREI!** Puterea Umbrelor ți-a dublat lovitura!\n" : "") +
     (usedShield ? "🛡️ **SCUT DE CENUȘĂ activ!** Daunele primite au fost reduse.\n" : "");
 
-  // Apply damage
   activeBoss.lastHitAt.set(uid, Date.now());
   activeBoss.damageBy.set(uid, (activeBoss.damageBy.get(uid) ?? 0) + playerDmg);
   activeBoss.currentHp = Math.max(0, activeBoss.currentHp - playerDmg);
@@ -1428,39 +1391,33 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
   if (bossDefeated) {
     activeBoss.defeated = true;
     activeBossMap.delete(eventId);
-    // Await the DB delete so a crash immediately after rewarding cannot
-    // leave a stale row that gets rehydrated as a live boss.
     await deleteActiveBoss(eventId).catch(err =>
       logger.error({ err, eventId }, "Failed to delete defeated boss row — stale row may persist until next restart")
     );
 
-    // Reward everyone who dealt damage — scaled by rank + boss rarity
     const bossRewards = computeBossRewards(activeBoss.damageBy, activeBoss.rarity);
-    // Oracle blessings/curses scale each fighter's boss rewards (XP + Oboli).
     for (const [discordId, r] of bossRewards) {
       const rmods = getRewardMultipliers(discordId);
       r.gold = Math.round(r.gold * rmods.goldMult);
       r.xp = Math.round(r.xp * rmods.xpMult);
     }
-    // Random key drops for fighters — keys can also be found during events.
     const eventKeyDrops = rollEventKeyDrops([...activeBoss.damageBy.keys()]);
     await Promise.all([
       ...[...bossRewards.entries()].flatMap(([discordId, r]) => [
-        addPlayerReputation(discordId, r.rep),
-        addPlayerGold(discordId, r.gold),
-        addPlayerXp(discordId, r.xp),
+        addPlayerReputation(discordId, guildId, r.rep),
+        addPlayerGold(discordId, guildId, r.gold),
+        addPlayerXp(discordId, guildId, r.xp),
       ]),
-      ...[...eventKeyDrops.entries()].map(([discordId, kt]) => addPlayerKey(discordId, kt as KeyType)),
+      ...[...eventKeyDrops.entries()].map(([discordId, kt]) => addPlayerKey(discordId, guildId, kt as KeyType)),
     ]);
 
-    // Delete boss message from fight channel; send leaderboard to permanent top channel.
     try {
       const fightCh = await interaction.client.channels.fetch(activeBoss.channelId).catch(() => null);
       if (fightCh instanceof TextChannel) {
         const bossMsg = await fightCh.messages.fetch(activeBoss.messageId).catch(() => null);
         await bossMsg?.delete().catch(() => null);
       }
-      const topCh = await interaction.client.channels.fetch(BOSS_TOP_CHANNEL_ID).catch(() => null);
+      const topCh = await interaction.client.channels.fetch(getChannel("bossTop", guildId)).catch(() => null);
       if (topCh instanceof TextChannel) {
         const leaderboard = buildBossLeaderboard(activeBoss, activeBoss.damageBy, activeBoss.participants, activeBoss.playerNames, activeBoss.playerHp);
         await topCh.send({ embeds: [leaderboard] }).catch(() => null);
@@ -1488,10 +1445,8 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
     return;
   }
 
-  // Snapshot the updated fight state to DB so a restart can resume the fight.
   void persistBossState(activeBoss);
 
-  // Update boss embed with new HP + live damage list
   try {
     const ch = await interaction.client.channels.fetch(activeBoss.channelId);
     if (ch instanceof TextChannel) {
@@ -1521,12 +1476,11 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
   });
 }
 
-// Activate Lovitura Umbrei (empower) or Scut de Cenușă (shield) during a boss
-// fight. Abilities are boss-local here (the event/participant is gone), so the
-// queued flag + cooldown live on BossState, keyed by discordId.
 async function handleBossAbility(interaction: ButtonInteraction, eventId: number, kind: string) {
   await interaction.deferUpdate();
   const uid = interaction.user.id;
+  const guildId = interaction.guildId!;
+  const activeBossMap = getGuildActiveBossMap(guildId);
   const boss = activeBossMap.get(eventId);
 
   const eligibility = checkBossEligibility(boss, uid);
@@ -1540,7 +1494,7 @@ async function handleBossAbility(interaction: ButtonInteraction, eventId: number
     return;
   }
   const activeBoss = boss!;
-  const player = await upsertPlayer(uid, interaction.user.username);
+  const player = await upsertPlayer(uid, guildId, interaction.user.username);
 
   const owns = kind === "shield" ? player.abilityShieldLevel >= 1 : player.abilityEmpowerLevel >= 1;
   if (!owns) {
@@ -1562,10 +1516,8 @@ async function handleBossAbility(interaction: ButtonInteraction, eventId: number
     activeBoss.empowerNext.add(uid);
     await interaction.followUp({ content: "🌑 **Lovitura Umbrei pregătită!** Următoarea ta lovitură în Dragon va fi dublă.", flags: MessageFlags.Ephemeral });
   }
-  // Persist ability state so a restart doesn't lose queued abilities/cooldowns.
   void persistBossState(activeBoss);
 }
-
 
 async function handleButton(interaction: ButtonInteraction) {
   const id = interaction.customId;
@@ -1590,18 +1542,15 @@ async function handleButton(interaction: ButtonInteraction) {
   }
 
   if (id.startsWith("chest_") && !id.endsWith("_claimed") && !id.endsWith("_expired") && !id.endsWith("_opening")) {
-    // New format: chest_{ts}_{rarityKey}_{gold} or with optional _x2/_x3 bonus suffix
     const newMatch = id.match(/^(chest_\d+)_(\w+)_(\d+)(?:_x([23]))?$/);
     if (newMatch) {
       const mult = newMatch[4] ? (parseInt(newMatch[4]!) as 2 | 3) : 1;
       return handleChestClaim(interaction, newMatch[1]!, newMatch[2]!, parseInt(newMatch[3]!), mult);
     }
-    // Legacy format: chest_{ts}_{gold}
     const legacyMatch = id.match(/^(chest_\d+)_(\d+)$/);
     if (legacyMatch) {
       return handleChestClaim(interaction, legacyMatch[1]!, "bronz", parseInt(legacyMatch[2]!));
     }
-    // Oldest format: chest_{ts} — extract gold from embed
     const simpleMatch = id.match(/^(chest_\d+)$/);
     if (simpleMatch) {
       const msgEmbed = interaction.message.embeds[0];
@@ -1614,13 +1563,13 @@ async function handleButton(interaction: ButtonInteraction) {
   if (id.startsWith("ora_join_")) return handleJoin(interaction, parseInt(id.replace("ora_join_", "")));
   if (id.startsWith("ora_attack_")) return handleAttack(interaction, parseInt(id.replace("ora_attack_", "")));
   if (id.startsWith("ora_ability_")) {
-    const parts = id.split("_"); // ora_ability_<eventId>_<kind>
+    const parts = id.split("_");
     return handleAbility(interaction, parseInt(parts[2]!), parts[3]!);
   }
   if (id.startsWith("ora_retreat_")) return handleRetreat(interaction, parseInt(id.replace("ora_retreat_", "")));
   if (id.startsWith("finalboss_")) return handleFinalBoss(interaction, parseInt(id.replace("finalboss_", "")));
   if (id.startsWith("bossability_")) {
-    const parts = id.split("_"); // bossability_<eventId>_<kind>
+    const parts = id.split("_");
     return handleBossAbility(interaction, parseInt(parts[1]!), parts[2]!);
   }
   if (id.startsWith("class_pick_")) return handleClassPick(interaction, id.replace("class_pick_", ""));
@@ -1646,21 +1595,16 @@ async function handleButton(interaction: ButtonInteraction) {
   }
 }
 
-/**
- * Send (or update) the permanent trader message in the designated channel.
- * If a previous traderMessageId is known, try to edit the existing message;
- * otherwise send a fresh one. This runs on every bot startup/reconnect.
- */
-async function setupTrader(client: Client): Promise<void> {
-  if (traderSetupInProgress) {
-    logger.info("Trader setup already in progress — skipping duplicate call");
+async function setupTrader(client: Client, guildId: string): Promise<void> {
+  if (isTraderSetupInProgress(guildId)) {
+    logger.info({ guildId }, "Trader setup already in progress — skipping duplicate call");
     return;
   }
-  traderSetupInProgress = true;
+  traderSetupInProgress.set(guildId, true);
   try {
-    const channel = await client.channels.fetch(getChannel("trader")).catch(() => null);
+    const channel = await client.channels.fetch(getChannel("trader", guildId)).catch(() => null);
     if (!(channel instanceof TextChannel)) {
-      logger.warn({ channelId: getChannel("trader") }, "Trader channel not found");
+      logger.warn({ channelId: getChannel("trader", guildId), guildId }, "Trader channel not found");
       return;
     }
 
@@ -1692,8 +1636,6 @@ async function setupTrader(client: Client): Promise<void> {
       .setImage(IMG.trader)
       .setFooter({ text: `Deschide doar cu cheile pe care le ai • ${BRAND_FOOTER}` });
 
-    // Tier-distinct button styling: grey for silver, blurple for gold,
-    // royal crimson for regal — gives the offers a clear premium hierarchy.
     const STYLE_BY_RARITY: Record<string, ButtonStyle> = {
       argint: ButtonStyle.Secondary,
       aur:    ButtonStyle.Primary,
@@ -1710,73 +1652,59 @@ async function setupTrader(client: Client): Promise<void> {
       rows.push(row);
     }
 
-    // Load persisted message ID from DB so it survives bot restarts.
-    if (!traderMessageId) {
-      traderMessageId = await loadTraderMessageId();
+    let msgId = getTraderMessageId(guildId);
+    if (!msgId) {
+      msgId = await loadTraderMessageId(guildId);
+      setTraderMessageId(guildId, msgId);
     }
 
-    // Discord renders an embed image reliably only when the message is POSTED
-    // fresh — editing an existing message does NOT force it to re-fetch a
-    // changed image URL (the old/blank render sticks). So track the image URL
-    // as a signature: edit in place when it's unchanged (cheap, no channel
-    // churn on reconnects), but replace the message when the image changed.
     const currentSig = IMG.trader ?? "";
-    const storedSig = await loadTraderEmbedSig();
+    const storedSig = await loadTraderEmbedSig(guildId);
     const imageChanged = storedSig !== currentSig;
 
-    // Try to edit (or, when the image changed, replace) the existing message —
-    // never blindly post a new one if it still exists.
-    if (traderMessageId) {
+    if (msgId) {
       try {
-        const oldMsg = await channel.messages.fetch(traderMessageId);
+        const oldMsg = await channel.messages.fetch(msgId);
         if (!imageChanged) {
           await oldMsg.edit({ embeds: [embed], components: rows });
-          logger.info({ traderMessageId }, "Trader message edited on reconnect");
+          logger.info({ traderMessageId: msgId, guildId }, "Trader message edited on reconnect");
           return;
         }
-        // Image changed → a plain edit won't re-render it. Delete the stale
-        // message and fall through to post a fresh one. Only proceed to re-post
-        // if the delete actually succeeded (or the message was already gone),
-        // so a transient delete failure can never duplicate the trader.
         try {
           await oldMsg.delete();
         } catch (delErr) {
           const delCode = (delErr as { code?: number } | null)?.code;
           if (delCode !== 10008) {
-            logger.warn({ delErr, traderMessageId }, "Trader delete failed (transient) — keeping message, will retry next restart");
+            logger.warn({ delErr, traderMessageId: msgId, guildId }, "Trader delete failed (transient) — keeping message, will retry next restart");
             return;
           }
         }
-        logger.info({ traderMessageId }, "Trader image changed — replacing message so the new image renders");
-        traderMessageId = null;
-        await clearTraderMessageId().catch(() => null);
+        logger.info({ traderMessageId: msgId, guildId }, "Trader image changed — replacing message so the new image renders");
+        setTraderMessageId(guildId, null);
+        await clearTraderMessageId(guildId).catch(() => null);
+        msgId = null;
       } catch (err) {
-        // Only treat a genuinely missing message (10008 "Unknown Message") as
-        // deleted and re-post. For ANY other error (network blip, rate limit,
-        // missing permissions) keep the stored ID and abort — re-posting on a
-        // transient failure is exactly what duplicates the permanent trader.
         const code = (err as { code?: number } | null)?.code;
         if (code !== 10008) {
-          logger.warn({ err, traderMessageId }, "Trader edit failed (transient) — keeping message, will retry next restart");
+          logger.warn({ err, traderMessageId: msgId, guildId }, "Trader edit failed (transient) — keeping message, will retry next restart");
           return;
         }
-        logger.warn({ traderMessageId }, "Trader message no longer exists (10008) — re-posting once");
-        traderMessageId = null;
-        await clearTraderMessageId().catch(() => null);
+        logger.warn({ traderMessageId: msgId, guildId }, "Trader message no longer exists (10008) — re-posting once");
+        setTraderMessageId(guildId, null);
+        await clearTraderMessageId(guildId).catch(() => null);
+        msgId = null;
       }
     }
 
-    // First time (or after manual deletion / image change): send exactly one
-    // new message, then persist its ID and the image signature together.
     const msg = await channel.send({ embeds: [embed], components: rows });
-    traderMessageId = msg.id;
-    await saveTraderMessageId(msg.id);
-    await saveTraderEmbedSig(currentSig);
-    logger.info({ traderMessageId, channelId: getChannel("trader") }, "Trader message posted and persisted");
+    setTraderMessageId(guildId, msg.id);
+    await saveTraderMessageId(guildId, msg.id);
+    await saveTraderEmbedSig(guildId, currentSig);
+    logger.info({ traderMessageId: msg.id, channelId: getChannel("trader", guildId), guildId }, "Trader message posted and persisted");
   } catch (err) {
-    logger.error({ err }, "Failed to set up trader");
+    logger.error({ err, guildId }, "Failed to set up trader");
   } finally {
-    traderSetupInProgress = false;
+    traderSetupInProgress.set(guildId, false);
   }
 }
 
@@ -1793,10 +1721,6 @@ export async function startBot(onReady?: () => void): Promise<void> {
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
   ];
-  // MessageContent is privileged — only request it when explicitly enabled so a
-  // missing Developer-Portal toggle can never brick the bot at login (code 4014).
-  // If a previous attempt was rejected with 4014, fall back to running without it
-  // so the bot still boots (degraded) instead of looping forever.
   const wantsMessageContent =
     process.env.ORACLE_MESSAGE_CONTENT_ENABLED === "true" && !privilegedIntentFellBack;
   if (wantsMessageContent) {
@@ -1809,8 +1733,6 @@ export async function startBot(onReady?: () => void): Promise<void> {
   }
   const client = new Client({ intents });
 
-  // `terminated` rejects when a fatal Gateway close code is received.
-  // It stays pending for non-fatal disconnects — discord.js handles those.
   let rejectTerminated!: (err: Error) => void;
   const terminated = new Promise<void>((_, reject) => {
     rejectTerminated = reject;
@@ -1821,36 +1743,48 @@ export async function startBot(onReady?: () => void): Promise<void> {
     botClient = client;
     botReadyAt = new Date();
     shardStatus = "ready";
-    // Self-heal a missing bot_state table (production may lack the migration)
-    // BEFORE anything reads it: chest rehydration, trader ID, Oracle marker.
-    // Every bot_state helper also awaits this internally, so callers from the
-    // ShardReady path are covered too — this just warms the cache early.
+
     await ensureBotStateTable().catch((err) =>
       logger.error({ err }, "Failed to ensure bot_state table exists"),
     );
-    // Load any custom channel configuration from bot_state before events start.
-    const { initChannelConfig } = await import("./channel-config");
-    await initChannelConfig().catch((err) =>
-      logger.error({ err }, "Failed to load channel config"),
+
+    // Run multi-guild migrations once at startup
+    await runMultiGuildMigrations().catch((err) =>
+      logger.error({ err }, "Failed to run multi-guild migrations"),
     );
-    if (!schedulerStarted) {
-      schedulerStarted = true;
-      startScheduler(client);
-      logOracleChatStatus();
-    } else {
-      logger.info("Scheduler already running — skipping re-init after restart");
+
+    // Initialize each guild the bot is in
+    const guilds = c.guilds.cache;
+    logger.info({ guildCount: guilds.size }, "Bot is in guilds — initializing per-guild scheduler");
+
+    for (const [guildId] of guilds) {
+      await initChannelConfig(guildId).catch((err) =>
+        logger.error({ err, guildId }, "Failed to load channel config for guild"),
+      );
+      startGuildScheduler(client, guildId);
+      void setupTrader(client, guildId);
     }
-    void setupTrader(client);
+
+    logOracleChatStatus();
     if (onReady) onReady();
 
     await maybeAlertOracleRecovery(getOracleReplyMode, consumeOracleFellBackMarker, sendAlert);
+  });
+
+  // When the bot joins a new guild, start the scheduler for it
+  client.on(Events.GuildCreate, async (guild) => {
+    logger.info({ guildId: guild.id, guildName: guild.name }, "Bot joined new guild");
+    await initChannelConfig(guild.id).catch((err) =>
+      logger.error({ err, guildId: guild.id }, "Failed to init channel config for new guild"),
+    );
+    startGuildScheduler(client, guild.id);
+    void setupTrader(client, guild.id);
   });
 
   client.on(Events.Error, (err) => {
     logger.error({ err }, "Discord client error");
   });
 
-  // Feed the Oracle activity/toxicity tracker. Never logs message content.
   client.on(Events.MessageCreate, (message) => {
     if (message.author.bot || !message.guildId) return;
     try {
@@ -1862,17 +1796,13 @@ export async function startBot(onReady?: () => void): Promise<void> {
     } catch (err) {
       logger.error({ err }, "Oracle messageCreate handler failed");
     }
-    // Toxicity guard first: if the user swore at the bot, apply the curse and
-    // skip the normal Oracle reply. Both paths are fire-and-forget.
     void handleToxicity(client, message).then((handled) => {
       if (!handled) void maybeReplyAsOracle(client, message);
     });
   });
 
-  // Schedule a delayed alert when the shard disconnects non-fatally.
-  // disconnectStartedAt must be set by the caller before invoking this.
   function scheduleDisconnectAlert(closeCode: number) {
-    if (disconnectAlertTimer) return; // already pending
+    if (disconnectAlertTimer) return;
     const thresholdMin = Math.round(DISCONNECT_ALERT_THRESHOLD_MS / 60_000);
     disconnectAlertTimer = setTimeout(() => {
       disconnectAlertTimer = null;
@@ -1882,10 +1812,6 @@ export async function startBot(onReady?: () => void): Promise<void> {
     }, DISCONNECT_ALERT_THRESHOLD_MS);
   }
 
-  // Cancel a pending disconnect alert (bot reconnected in time) or send a
-  // recovery alert if the outage alert already fired.
-  // disconnectStartedAt set + timer pending  → alert not yet sent, suppress it
-  // disconnectStartedAt set + timer null     → alert already sent, send recovery
   function clearDisconnectAlert(reason: string) {
     if (disconnectAlertTimer) {
       clearTimeout(disconnectAlertTimer);
@@ -1901,9 +1827,6 @@ export async function startBot(onReady?: () => void): Promise<void> {
   }
 
   client.on(Events.ShardDisconnect, (event, shardId) => {
-    // Disallowed intent: we requested MessageContent but the portal toggle is off.
-    // Mark the fallback so the supervisor's next restart drops the privileged
-    // intent and the bot boots (degraded) instead of bricking in a restart loop.
     if (event.code === 4014 && wantsMessageContent) {
       logger.error(
         { shardId },
@@ -1916,7 +1839,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
       shardStatus = "fatal_disconnect";
       client.destroy();
       void sendAlert(
-        "⚠️ **Oracolul nu a putut activa intenția „Message Content”.**\nIntenția privilegiată nu este activată în Discord Developer Portal. " +
+        "⚠️ **Oracolul nu a putut activa intenția \u201eMessage Content\u201d.**\nIntenția privilegiată nu este activată în Discord Developer Portal. " +
           "Botul repornește fără ea — răspunde doar la @mention și la reply-uri cu ping. Activează comutatorul în portal, apoi repornește botul.",
       );
       rejectTerminated(new Error("Disallowed MessageContent intent (4014) — falling back without it"));
@@ -1950,7 +1873,6 @@ export async function startBot(onReady?: () => void): Promise<void> {
     shardStatus = "reconnecting";
   });
 
-  // Session resumed — bot reconnected via the existing session.
   client.on(Events.ShardResume, (shardId, replayedEvents) => {
     clearDisconnectAlert("ShardResume");
     shardStatus = "ready";
@@ -1958,22 +1880,18 @@ export async function startBot(onReady?: () => void): Promise<void> {
     logger.info({ shardId, replayedEvents }, "Discord shard resumed");
   });
 
-  // Shard ready — bot reconnected via a fresh identify (session expired / not resumable).
   client.on(Events.ShardReady, (shardId) => {
     clearDisconnectAlert("ShardReady");
     shardStatus = "ready";
     botReadyAt = new Date();
-    void setupTrader(client);
+    // Re-setup trader for all known guilds on reconnect
+    for (const [guildId] of client.guilds.cache) {
+      void setupTrader(client, guildId);
+    }
     logger.info({ shardId }, "Discord shard ready (fresh identify)");
   });
 
   client.on(Events.InteractionCreate, async (interaction) => {
-    // Guard against the same interaction being delivered twice. On an unstable
-    // gateway connection discord.js replays buffered events after a ShardResume,
-    // so a single button click can fire this handler twice — the second pass
-    // hits `deferUpdate`/`deferReply` on an already-acknowledged interaction
-    // (DiscordAPIError 40060) and the click appears stuck. Skipping duplicates
-    // also prevents double DB writes / double rewards.
     if (seenInteractionIds.has(interaction.id)) {
       logger.warn({ interactionId: interaction.id }, "Duplicate interaction delivery — skipping");
       return;
@@ -2023,9 +1941,6 @@ export async function startBot(onReady?: () => void): Promise<void> {
   try {
     await client.login(token);
   } catch (err) {
-    // Some discord.js versions surface a disallowed privileged intent here rather
-    // than via ShardDisconnect. Detect it and fall back so the next restart drops
-    // the privileged intent instead of looping forever on a fatal login error.
     if (wantsMessageContent && isDisallowedIntentError(err)) {
       logger.error(
         { err },
@@ -2035,19 +1950,18 @@ export async function startBot(onReady?: () => void): Promise<void> {
       privilegedIntentFellBack = true;
       void markOracleFellBack();
       void sendAlert(
-        "⚠️ **Oracolul nu a putut activa intenția „Message Content”.**\nIntenția privilegiată nu este activată în Discord Developer Portal. " +
+        "⚠️ **Oracolul nu a putut activa intenția \u201eMessage Content\u201d.**\nIntenția privilegiată nu este activată în Discord Developer Portal. " +
           "Botul repornește fără ea — răspunde doar la @mention și la reply-uri cu ping. Activează comutatorul în portal, apoi repornește botul.",
       );
     }
     throw err;
   }
 
+  // Register commands globally so they appear on every server
   const rest = new REST().setToken(token);
   const body = slashCommands.map((c) => c.toJSON());
-  await rest.put(Routes.applicationCommands(APPLICATION_ID), { body: [] });
-  await rest.put(Routes.applicationGuildCommands(APPLICATION_ID, GUILD_ID), { body });
-  logger.info("Commands registered");
+  await rest.put(Routes.applicationCommands(APPLICATION_ID), { body });
+  logger.info("Commands registered globally");
 
-  // Hold here until a fatal disconnect signals the supervisor to restart.
   await terminated;
 }

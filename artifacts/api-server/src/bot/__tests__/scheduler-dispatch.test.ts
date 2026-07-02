@@ -16,12 +16,9 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
+const TEST_GUILD_ID = "test-guild-1";
+
 // ── Hoist: WeakSet-backed TextChannel so instanceof works across module scopes ─
-//
-// vitest.mock factories are hoisted above imports. Using vi.hoisted lets us
-// define the mock class before the factory runs. We use Symbol.hasInstance
-// backed by a WeakSet rather than relying on prototype-chain identity (which
-// can be fragile when modules are loaded in separate vm contexts).
 const { MockTextChannel } = vi.hoisted(() => {
   const _instances = new WeakSet<object>();
 
@@ -43,9 +40,6 @@ const { MockTextChannel } = vi.hoisted(() => {
 });
 
 // ── 1. Mock discord.js ────────────────────────────────────────────────────────
-// ActionRowBuilder, ButtonBuilder, and EmbedBuilder must be real classes (not
-// arrow-function factories) because the scheduler calls them with `new`.
-// Arrow functions are not constructors and will throw a TypeError.
 vi.mock("discord.js", () => {
   class MockEmbedBuilder {
     setColor()     { return this; }
@@ -158,18 +152,13 @@ import {
   fireFinalBoss,
   fireChest,
   fireLockedChest,
-  activeBossMap,
-  claimedChests,
+  getGuildActiveBossMap,
+  getGuildClaimedChests,
   BOSS_RARITY_WEIGHTS,
   EVENT_DURATION_MS,
 } from "../scheduler";
 
 // ── Helper: build a fresh mock Discord client ─────────────────────────────────
-//
-// Creates a new MockTextChannel instance per test (fresh vi.fn() spies) and
-// wires a stub Discord Client whose channels.fetch resolves to that channel.
-// Passing `overrideChannel` allows testing the branch where the channel is NOT
-// a TextChannel (e.g. passing a plain `{}`).
 function makeMockClient(overrideChannel?: unknown): {
   client: import("discord.js").Client;
   channel: InstanceType<typeof MockTextChannel>;
@@ -196,8 +185,8 @@ function makeMockClient(overrideChannel?: unknown): {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  activeBossMap.clear();
-  claimedChests.clear();
+  getGuildActiveBossMap(TEST_GUILD_ID).clear();
+  getGuildClaimedChests(TEST_GUILD_ID).clear();
 
   mockCreateEvent.mockResolvedValue({ id: 42, messageId: "mock-msg-id" });
   mockGetActiveEvent.mockResolvedValue(null);
@@ -254,11 +243,12 @@ describe("fireEvent", () => {
   it("calls createEvent with expiresAt approximately 1 hour from now", async () => {
     const { client } = makeMockClient();
     const before = Date.now();
-    await fireEvent(client);
+    await fireEvent(client, TEST_GUILD_ID);
     const after = Date.now();
 
     expect(mockCreateEvent).toHaveBeenCalledOnce();
-    const [, , expiresAt] = mockCreateEvent.mock.calls[0]!;
+    // createEvent(guildId, type, messageId, expiresAt) — expiresAt is at index 3
+    const [, , , expiresAt] = mockCreateEvent.mock.calls[0]!;
     const ms = (expiresAt as Date).getTime();
 
     expect(ms).toBeGreaterThanOrEqual(before + EVENT_DURATION_MS);
@@ -267,35 +257,37 @@ describe("fireEvent", () => {
 
   it("calls createEvent with event type 'ora_umbrelor'", async () => {
     const { client } = makeMockClient();
-    await fireEvent(client);
+    await fireEvent(client, TEST_GUILD_ID);
 
-    expect(mockCreateEvent.mock.calls[0]![0]).toBe("ora_umbrelor");
+    // guildId is index 0, type is index 1
+    expect(mockCreateEvent.mock.calls[0]![1]).toBe("ora_umbrelor");
   });
 
   it("calls createEvent with the message ID from the placeholder send", async () => {
     const { client } = makeMockClient();
-    await fireEvent(client);
+    await fireEvent(client, TEST_GUILD_ID);
 
-    expect(mockCreateEvent.mock.calls[0]![1]).toBe("mock-msg-id");
+    // messageId is index 2
+    expect(mockCreateEvent.mock.calls[0]![2]).toBe("mock-msg-id");
   });
 
   it("edits the placeholder message to wire the join button after obtaining the event ID", async () => {
     const { client, msg } = makeMockClient();
-    await fireEvent(client);
+    await fireEvent(client, TEST_GUILD_ID);
 
     expect(msg.edit).toHaveBeenCalled();
   });
 
   it("does nothing when the event channel is not a TextChannel", async () => {
     const { client } = makeMockClient({});
-    await fireEvent(client);
+    await fireEvent(client, TEST_GUILD_ID);
 
     expect(mockCreateEvent).not.toHaveBeenCalled();
   });
 
   it("resolves without throwing when createEvent succeeds", async () => {
     const { client } = makeMockClient();
-    await expect(fireEvent(client)).resolves.toBeUndefined();
+    await expect(fireEvent(client, TEST_GUILD_ID)).resolves.toBeUndefined();
   });
 });
 
@@ -309,8 +301,8 @@ describe("fireFinalBoss", () => {
   it("does nothing when the event is not found in the DB", async () => {
     mockGetActiveEvent.mockResolvedValueOnce(null);
     const { client } = makeMockClient();
-    await fireFinalBoss(client, 99);
-    expect(activeBossMap.has(99)).toBe(false);
+    await fireFinalBoss(client, TEST_GUILD_ID, 99);
+    expect(getGuildActiveBossMap(TEST_GUILD_ID).has(99)).toBe(false);
   });
 
   it("does nothing when the event is already expired", async () => {
@@ -318,8 +310,8 @@ describe("fireFinalBoss", () => {
       id: 1, isActive: true, expiresAt: new Date(Date.now() - 1000),
     });
     const { client } = makeMockClient();
-    await fireFinalBoss(client, 1);
-    expect(activeBossMap.has(1)).toBe(false);
+    await fireFinalBoss(client, TEST_GUILD_ID, 1);
+    expect(getGuildActiveBossMap(TEST_GUILD_ID).has(1)).toBe(false);
   });
 
   it("does nothing when the event is marked inactive", async () => {
@@ -327,8 +319,8 @@ describe("fireFinalBoss", () => {
       id: 2, isActive: false, expiresAt: new Date(Date.now() + 60_000),
     });
     const { client } = makeMockClient();
-    await fireFinalBoss(client, 2);
-    expect(activeBossMap.has(2)).toBe(false);
+    await fireFinalBoss(client, TEST_GUILD_ID, 2);
+    expect(getGuildActiveBossMap(TEST_GUILD_ID).has(2)).toBe(false);
   });
 
   it("adds the boss to activeBossMap when event is active", async () => {
@@ -336,9 +328,9 @@ describe("fireFinalBoss", () => {
     mockGetEventParticipants.mockResolvedValueOnce([]);
     const { client } = makeMockClient();
 
-    await fireFinalBoss(client, 10);
+    await fireFinalBoss(client, TEST_GUILD_ID, 10);
 
-    expect(activeBossMap.has(10)).toBe(true);
+    expect(getGuildActiveBossMap(TEST_GUILD_ID).has(10)).toBe(true);
   });
 
   it("falls back to boss level 5 when there are no alive participants", async () => {
@@ -346,9 +338,9 @@ describe("fireFinalBoss", () => {
     mockGetEventParticipants.mockResolvedValueOnce([]);
     const { client } = makeMockClient();
 
-    await fireFinalBoss(client, 11);
+    await fireFinalBoss(client, TEST_GUILD_ID, 11);
 
-    expect(activeBossMap.get(11)!.level).toBe(5);
+    expect(getGuildActiveBossMap(TEST_GUILD_ID).get(11)!.level).toBe(5);
   });
 
   it("computes boss level from alive participant monster levels", async () => {
@@ -360,9 +352,9 @@ describe("fireFinalBoss", () => {
     ]);
     const { client } = makeMockClient();
 
-    await fireFinalBoss(client, 12);
+    await fireFinalBoss(client, TEST_GUILD_ID, 12);
 
-    expect(activeBossMap.get(12)!.level).toBe(10);
+    expect(getGuildActiveBossMap(TEST_GUILD_ID).get(12)!.level).toBe(10);
   });
 
   it("excludes dead participants from the average level calculation", async () => {
@@ -374,9 +366,9 @@ describe("fireFinalBoss", () => {
     ]);
     const { client } = makeMockClient();
 
-    await fireFinalBoss(client, 13);
+    await fireFinalBoss(client, TEST_GUILD_ID, 13);
 
-    expect(activeBossMap.get(13)!.level).toBe(5);
+    expect(getGuildActiveBossMap(TEST_GUILD_ID).get(13)!.level).toBe(5);
   });
 
   it("stores all participants (alive and dead) in the boss state", async () => {
@@ -387,9 +379,9 @@ describe("fireFinalBoss", () => {
     ]);
     const { client } = makeMockClient();
 
-    await fireFinalBoss(client, 14);
+    await fireFinalBoss(client, TEST_GUILD_ID, 14);
 
-    const boss = activeBossMap.get(14)!;
+    const boss = getGuildActiveBossMap(TEST_GUILD_ID).get(14)!;
     expect(boss.participants).toHaveLength(2);
     expect(boss.participants.find((p) => p.discordId === "u1")!.isAlive).toBe(true);
     expect(boss.participants.find((p) => p.discordId === "u2")!.isAlive).toBe(false);
@@ -400,9 +392,9 @@ describe("fireFinalBoss", () => {
     mockGetEventParticipants.mockResolvedValueOnce([]);
     const { client } = makeMockClient();
 
-    await fireFinalBoss(client, 15);
+    await fireFinalBoss(client, TEST_GUILD_ID, 15);
 
-    const boss = activeBossMap.get(15)!;
+    const boss = getGuildActiveBossMap(TEST_GUILD_ID).get(15)!;
     expect(boss.currentHp).toBe(boss.maxHp);
     expect(boss.currentHp).toBeGreaterThan(0);
   });
@@ -412,9 +404,9 @@ describe("fireFinalBoss", () => {
     mockGetEventParticipants.mockResolvedValueOnce([]);
     const { client } = makeMockClient();
 
-    await fireFinalBoss(client, 16);
+    await fireFinalBoss(client, TEST_GUILD_ID, 16);
 
-    const boss = activeBossMap.get(16)!;
+    const boss = getGuildActiveBossMap(TEST_GUILD_ID).get(16)!;
     expect(boss.damageBy.size).toBe(0);
     expect(boss.lastHitAt.size).toBe(0);
   });
@@ -424,9 +416,9 @@ describe("fireFinalBoss", () => {
     mockGetEventParticipants.mockResolvedValueOnce([]);
     const { client } = makeMockClient();
 
-    await fireFinalBoss(client, 17);
+    await fireFinalBoss(client, TEST_GUILD_ID, 17);
 
-    expect(activeBossMap.get(17)!.defeated).toBe(false);
+    expect(getGuildActiveBossMap(TEST_GUILD_ID).get(17)!.defeated).toBe(false);
   });
 
   it("passes the computed boss level to bossMaxHp", async () => {
@@ -435,17 +427,13 @@ describe("fireFinalBoss", () => {
     mockGetEventParticipants.mockResolvedValueOnce([]);
     const { client } = makeMockClient();
 
-    await fireFinalBoss(client, 18);
+    await fireFinalBoss(client, TEST_GUILD_ID, 18);
 
     expect(mockBossMaxHp).toHaveBeenCalledWith(5, expect.any(String));
   });
 });
 
 // ─── fireChest ───────────────────────────────────────────────────────────────
-//
-// fireChest has multi-second sleep() calls for the cinematic reveal animation.
-// We use fake timers so the sleeps resolve instantly; vi.runAllTimersAsync()
-// drains both pending timers and the microtask queue between advances.
 
 describe("fireChest", () => {
   beforeEach(() => {
@@ -456,11 +444,8 @@ describe("fireChest", () => {
     vi.useRealTimers();
   });
 
-  // Advance fake time by 30 s — enough to drain all animation sleeps (< 10 s
-  // total) but NOT the 10-minute chest-expiry timer, so claimedChests stays
-  // clean for assertions.
   async function runFireChest(client: import("discord.js").Client) {
-    const p = fireChest(client);
+    const p = fireChest(client, TEST_GUILD_ID);
     await vi.advanceTimersByTimeAsync(30_000);
     return p;
   }
@@ -510,14 +495,11 @@ describe("fireChest", () => {
     const { client } = makeMockClient();
     const result = await runFireChest(client);
 
-    expect(claimedChests.has(result!.chestId)).toBe(false);
+    expect(getGuildClaimedChests(TEST_GUILD_ID).has(result!.chestId)).toBe(false);
   });
 });
 
 // ─── fireLockedChest ──────────────────────────────────────────────────────────
-//
-// No cinematic sleeps — just a single send() + a background expiry setTimeout
-// (which unref()s itself so it doesn't block the test runner).
 
 describe("fireLockedChest", () => {
   beforeEach(() => {
@@ -530,7 +512,7 @@ describe("fireLockedChest", () => {
 
   it("sends a locked-chest message to the main channel", async () => {
     const { client, channel } = makeMockClient();
-    await fireLockedChest(client, "argint");
+    await fireLockedChest(client, TEST_GUILD_ID, "argint");
 
     expect(channel.send).toHaveBeenCalledOnce();
   });
@@ -540,20 +522,20 @@ describe("fireLockedChest", () => {
     mockSpawnLockedChest.mockReturnValueOnce(null as any);
     const { client, channel } = makeMockClient();
 
-    await fireLockedChest(client, "invalid_rarity");
+    await fireLockedChest(client, TEST_GUILD_ID, "invalid_rarity");
 
     expect(channel.send).not.toHaveBeenCalled();
   });
 
   it("does nothing when channel is not a TextChannel", async () => {
     const { client } = makeMockClient({});
-    await fireLockedChest(client, "argint");
+    await fireLockedChest(client, TEST_GUILD_ID, "argint");
 
     expect(mockSpawnLockedChest).not.toHaveBeenCalled();
   });
 
   it("resolves without throwing for a valid rarity", async () => {
     const { client } = makeMockClient();
-    await expect(fireLockedChest(client, "argint")).resolves.toBeUndefined();
+    await expect(fireLockedChest(client, TEST_GUILD_ID, "argint")).resolves.toBeUndefined();
   });
 });

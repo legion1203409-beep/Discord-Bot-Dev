@@ -2,23 +2,11 @@
  * scheduler-boss-escape.test.ts
  *
  * End-to-end (scheduler-level) test for the final-boss escape timer.
- *
- * fireFinalBoss schedules an escape timer (FINAL_BOSS_ACTIVE_MS). When it
- * fires, runFleeResolution distributes rewards via the REAL computeBossRewards
- * and the real getRewardMultipliers wiring. This test fires that timer for a
- * boss whose damageBy map contains both real hitters and zero-damage
- * participants, then asserts the reward DB calls (addPlayerReputation /
- * addPlayerGold / addPlayerXp) land for hitters ONLY — never for participants
- * who appear in the map with 0 damage.
- *
- * Unlike scheduler-dispatch.test.ts (which fully mocks survival), this test
- * uses the REAL survival module so the damage>0 guard is exercised through the
- * actual escape-timer path, not a stub. This locks in the guarantee against a
- * future refactor that bypasses computeBossRewards (e.g. calling addPlayerGold
- * directly or passing a different map).
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+
+const TEST_GUILD_ID = "test-guild-1";
 
 // ── Hoisted WeakSet-backed TextChannel so instanceof works across modules ─────
 const { MockTextChannel } = vi.hoisted(() => {
@@ -137,7 +125,7 @@ vi.mock("../db", () => ({
 vi.mock("../oracle", () => ({ startOracle: vi.fn(), setOracleExtatic: vi.fn() }));
 
 // ── Import scheduler after all mocks are registered ──────────────────────────
-import { fireFinalBoss, activeBossMap } from "../scheduler";
+import { fireFinalBoss, getGuildActiveBossMap } from "../scheduler";
 
 const FINAL_BOSS_ACTIVE_MS = 30 * 60 * 1000;
 
@@ -158,12 +146,9 @@ function makeMockClient(): import("discord.js").Client {
 }
 
 function makeActiveEvent(eventId: number) {
-  // Event must outlive the boss so fireFinalBoss proceeds.
   return { id: eventId, isActive: true, expiresAt: new Date(Date.now() + 2 * FINAL_BOSS_ACTIVE_MS) };
 }
 
-// Spawn a boss via fireFinalBoss, then overwrite its damageBy/rarity so the
-// escape timer resolves against a known damage distribution.
 async function spawnBossWithDamage(
   client: import("discord.js").Client,
   eventId: number,
@@ -181,8 +166,8 @@ async function spawnBossWithDamage(
       fled: false,
     })),
   );
-  await fireFinalBoss(client, eventId);
-  const boss = activeBossMap.get(eventId)!;
+  await fireFinalBoss(client, TEST_GUILD_ID, eventId);
+  const boss = getGuildActiveBossMap(TEST_GUILD_ID).get(eventId)!;
   boss.damageBy = new Map(damage);
   boss.rarity = rarity;
   for (const [discordId] of damage) {
@@ -196,7 +181,7 @@ async function spawnBossWithDamage(
 beforeEach(() => {
   vi.clearAllMocks();
   vi.useFakeTimers();
-  activeBossMap.clear();
+  getGuildActiveBossMap(TEST_GUILD_ID).clear();
 });
 
 afterEach(() => {
@@ -215,10 +200,11 @@ describe("escape timer reward distribution (end-to-end via real computeBossRewar
     await vi.advanceTimersByTimeAsync(FINAL_BOSS_ACTIVE_MS);
 
     // Hitters received all three reward types.
+    // Signatures: addPlayerReputation(discordId, guildId, amount)
     for (const id of ["hitter1", "hitter2"]) {
-      expect(mockAddPlayerReputation).toHaveBeenCalledWith(id, expect.any(Number));
-      expect(mockAddPlayerGold).toHaveBeenCalledWith(id, expect.any(Number));
-      expect(mockAddPlayerXp).toHaveBeenCalledWith(id, expect.any(Number));
+      expect(mockAddPlayerReputation).toHaveBeenCalledWith(id, expect.any(String), expect.any(Number));
+      expect(mockAddPlayerGold).toHaveBeenCalledWith(id, expect.any(String), expect.any(Number));
+      expect(mockAddPlayerXp).toHaveBeenCalledWith(id, expect.any(String), expect.any(Number));
     }
 
     // The 0-damage participant received nothing.
@@ -239,7 +225,6 @@ describe("escape timer reward distribution (end-to-end via real computeBossRewar
 
     await vi.advanceTimersByTimeAsync(FINAL_BOSS_ACTIVE_MS);
 
-    // Two hitters → exactly two calls each, never three.
     expect(mockAddPlayerReputation).toHaveBeenCalledTimes(2);
     expect(mockAddPlayerGold).toHaveBeenCalledTimes(2);
     expect(mockAddPlayerXp).toHaveBeenCalledTimes(2);
@@ -269,7 +254,7 @@ describe("escape timer reward distribution (end-to-end via real computeBossRewar
     await vi.advanceTimersByTimeAsync(FINAL_BOSS_ACTIVE_MS);
 
     expect(mockAddPlayerGold).toHaveBeenCalledTimes(1);
-    expect(mockAddPlayerGold).toHaveBeenCalledWith("hitter", expect.any(Number));
+    expect(mockAddPlayerGold).toHaveBeenCalledWith("hitter", expect.any(String), expect.any(Number));
     expect(mockAddPlayerGold.mock.calls.map((c) => c[0])).not.toContain("weird");
   });
 
@@ -284,7 +269,7 @@ describe("escape timer reward distribution (end-to-end via real computeBossRewar
     await vi.advanceTimersByTimeAsync(FINAL_BOSS_ACTIVE_MS);
 
     const goldFor = (id: string) =>
-      mockAddPlayerGold.mock.calls.find((c) => c[0] === id)?.[1] as number;
+      mockAddPlayerGold.mock.calls.find((c) => c[0] === id)?.[2] as number;
     expect(goldFor("top")).toBeGreaterThan(goldFor("low"));
     expect(mockAddPlayerGold.mock.calls.map((c) => c[0])).not.toContain("ghost");
   });
@@ -295,7 +280,6 @@ describe("escape timer reward distribution (end-to-end via real computeBossRewar
       ["hitter1", 400],
       ["ghost", 0],
     ]);
-    // Simulate the boss being killed (e.g. final blow) before the escape timer.
     boss.defeated = true;
 
     await vi.advanceTimersByTimeAsync(FINAL_BOSS_ACTIVE_MS);

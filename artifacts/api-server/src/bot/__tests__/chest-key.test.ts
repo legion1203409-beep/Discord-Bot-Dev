@@ -15,6 +15,7 @@ vi.mock("@workspace/db", () => {
     db: { update: mockUpdate },
     playersTable: {
       discordId: "discordId",
+      guildId: "guildId",
       keyRar: "keyRar",
       keyEpic: "keyEpic",
       keyRegal: "keyRegal",
@@ -67,8 +68,11 @@ import { gte } from "drizzle-orm";
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+const TEST_GUILD_ID = "test-guild-1";
+
 const FAKE_PLAYER_WITH_KEY = {
   discordId: "user1",
+  guildId: TEST_GUILD_ID,
   keyRar: 1,
   keyEpic: 0,
   keyRegal: 0,
@@ -84,7 +88,7 @@ describe("consumePlayerKey — atomic key deduction", () => {
   it("returns true when a rar key is successfully consumed", async () => {
     mockReturning.mockResolvedValueOnce([FAKE_PLAYER_WITH_KEY]);
 
-    const result = await consumePlayerKey("user1", "rar");
+    const result = await consumePlayerKey("user1", TEST_GUILD_ID, "rar");
 
     expect(result).toBe(true);
   });
@@ -93,7 +97,7 @@ describe("consumePlayerKey — atomic key deduction", () => {
     // DB UPDATE ... WHERE key >= 1 returns empty because key = 0
     mockReturning.mockResolvedValueOnce([]);
 
-    const result = await consumePlayerKey("user1", "rar");
+    const result = await consumePlayerKey("user1", TEST_GUILD_ID, "rar");
 
     expect(result).toBe(false);
   });
@@ -101,7 +105,7 @@ describe("consumePlayerKey — atomic key deduction", () => {
   it("returns true when an epic key is consumed", async () => {
     mockReturning.mockResolvedValueOnce([{ ...FAKE_PLAYER_WITH_KEY, keyEpic: 1 }]);
 
-    const result = await consumePlayerKey("user1", "epic");
+    const result = await consumePlayerKey("user1", TEST_GUILD_ID, "epic");
 
     expect(result).toBe(true);
   });
@@ -109,7 +113,7 @@ describe("consumePlayerKey — atomic key deduction", () => {
   it("returns false when the player has no epic key", async () => {
     mockReturning.mockResolvedValueOnce([]);
 
-    const result = await consumePlayerKey("user1", "epic");
+    const result = await consumePlayerKey("user1", TEST_GUILD_ID, "epic");
 
     expect(result).toBe(false);
   });
@@ -117,7 +121,7 @@ describe("consumePlayerKey — atomic key deduction", () => {
   it("returns true when a regal key is consumed", async () => {
     mockReturning.mockResolvedValueOnce([{ ...FAKE_PLAYER_WITH_KEY, keyRegal: 1 }]);
 
-    const result = await consumePlayerKey("user1", "regal");
+    const result = await consumePlayerKey("user1", TEST_GUILD_ID, "regal");
 
     expect(result).toBe(true);
   });
@@ -125,7 +129,7 @@ describe("consumePlayerKey — atomic key deduction", () => {
   it("returns false when the player has no regal key", async () => {
     mockReturning.mockResolvedValueOnce([]);
 
-    const result = await consumePlayerKey("user1", "regal");
+    const result = await consumePlayerKey("user1", TEST_GUILD_ID, "regal");
 
     expect(result).toBe(false);
   });
@@ -135,7 +139,7 @@ describe("consumePlayerKey — atomic key deduction", () => {
   it("uses WHERE key >= 1 guard to prevent negative keys", async () => {
     mockReturning.mockResolvedValueOnce([]);
 
-    await consumePlayerKey("user1", "rar");
+    await consumePlayerKey("user1", TEST_GUILD_ID, "rar");
 
     // gte() must have been called with the key column and 1 to enforce atomicity
     expect(vi.mocked(gte)).toHaveBeenCalledWith("keyRar", 1);
@@ -144,17 +148,17 @@ describe("consumePlayerKey — atomic key deduction", () => {
   it("uses the correct column for each key type", async () => {
     mockReturning.mockResolvedValue([]);
 
-    await consumePlayerKey("user1", "rar");
+    await consumePlayerKey("user1", TEST_GUILD_ID, "rar");
     expect(vi.mocked(gte)).toHaveBeenCalledWith("keyRar", 1);
 
     vi.clearAllMocks();
     mockReturning.mockResolvedValue([]);
-    await consumePlayerKey("user1", "epic");
+    await consumePlayerKey("user1", TEST_GUILD_ID, "epic");
     expect(vi.mocked(gte)).toHaveBeenCalledWith("keyEpic", 1);
 
     vi.clearAllMocks();
     mockReturning.mockResolvedValue([]);
-    await consumePlayerKey("user1", "regal");
+    await consumePlayerKey("user1", TEST_GUILD_ID, "regal");
     expect(vi.mocked(gte)).toHaveBeenCalledWith("keyRegal", 1);
   });
 
@@ -168,8 +172,8 @@ describe("consumePlayerKey — atomic key deduction", () => {
       .mockResolvedValueOnce([]);                    // second caller loses
 
     const [a, b] = await Promise.all([
-      consumePlayerKey("user1", "rar"),
-      consumePlayerKey("user1", "rar"),
+      consumePlayerKey("user1", TEST_GUILD_ID, "rar"),
+      consumePlayerKey("user1", TEST_GUILD_ID, "rar"),
     ]);
 
     const wins = [a, b].filter(Boolean);
@@ -185,8 +189,8 @@ describe("consumePlayerKey — atomic key deduction", () => {
       .mockResolvedValueOnce([{ ...FAKE_PLAYER_WITH_KEY, keyRar: 1 }]);
 
     const [a, b] = await Promise.all([
-      consumePlayerKey("user1", "rar"),
-      consumePlayerKey("user1", "rar"),
+      consumePlayerKey("user1", TEST_GUILD_ID, "rar"),
+      consumePlayerKey("user1", TEST_GUILD_ID, "rar"),
     ]);
 
     expect(a).toBe(true);
@@ -197,7 +201,7 @@ describe("consumePlayerKey — atomic key deduction", () => {
     // Wrong user — WHERE eq(discordId, ...) fails
     mockReturning.mockResolvedValueOnce([]);
 
-    const result = await consumePlayerKey("different_user", "rar");
+    const result = await consumePlayerKey("different_user", TEST_GUILD_ID, "rar");
 
     expect(result).toBe(false);
   });
