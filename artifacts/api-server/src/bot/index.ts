@@ -246,8 +246,11 @@ const slashCommands = [
   new SlashCommandBuilder()
     .setName("clasament")
     .setDescription("👑 Top 10 cei mai puternici luptători.")
-    .addBooleanOption((opt) =>
-      opt.setName("global").setDescription("Afișează clasamentul global (toate serverele)?").setRequired(false),
+    .addSubcommand((sub) =>
+      sub.setName("server").setDescription("Top 10 pe serverul curent."),
+    )
+    .addSubcommand((sub) =>
+      sub.setName("global").setDescription("Top 10 din toate serverele (clasament global)."),
     ),
   new SlashCommandBuilder().setName("magazin").setDescription("🏺 Forja Cenușii — îmbunătățiri permanente, mereu disponibilă."),
   new SlashCommandBuilder().setName("clasa").setDescription("🧬 Alege-ți clasa RPG (alegere permanentă)."),
@@ -671,7 +674,7 @@ async function handleSetCanale(interaction: ChatInputCommandInteraction) {
 async function handleClasament(interaction: ChatInputCommandInteraction) {
   await interaction.deferReply();
   const guildId = interaction.guildId!;
-  const isGlobal = interaction.options.getBoolean("global") ?? false;
+  const isGlobal = interaction.options.getSubcommand(false) === "global";
 
   const top = isGlobal ? await getGlobalTopPlayers() : await getTopPlayers(guildId);
   const medals = ["🥇", "🥈", "🥉"];
@@ -982,7 +985,7 @@ Obți cheia revendicând cufere de chei sau învingând evenimente!`,
 async function handleJoin(interaction: ButtonInteraction, eventId: number) {
   await interaction.deferReply({ ephemeral: true });
   const guildId = interaction.guildId!;
-  const ev = await getActiveEvent(eventId);
+  const ev = await getActiveEvent(eventId, guildId);
   if (!ev || !ev.isActive || ev.expiresAt.getTime() < Date.now()) {
     await interaction.editReply({ content: "⌛ Ora Umbrelor s-a încheiat!" });
     return;
@@ -1008,7 +1011,7 @@ async function handleJoin(interaction: ButtonInteraction, eventId: number) {
 async function handleAttack(interaction: ButtonInteraction, eventId: number) {
   await interaction.deferUpdate();
   const guildId = interaction.guildId!;
-  const p = await getParticipant(eventId, interaction.user.id);
+  const p = await getParticipant(eventId, guildId, interaction.user.id);
   if (!p) {
     await interaction.followUp({ content: "❌ Intră mai întâi în luptă!", flags: MessageFlags.Ephemeral });
     return;
@@ -1023,7 +1026,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
     return;
   }
 
-  const ev = await getActiveEvent(eventId);
+  const ev = await getActiveEvent(eventId, guildId);
   if (!ev || !ev.isActive || ev.expiresAt.getTime() < Date.now()) {
     await interaction.editReply({ content: "⌛ Ora Umbrelor s-a încheiat!", embeds: [], components: [] });
     return;
@@ -1098,7 +1101,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
 async function handleRetreat(interaction: ButtonInteraction, eventId: number) {
   await interaction.deferUpdate();
   const guildId = interaction.guildId!;
-  const p = await getParticipant(eventId, interaction.user.id);
+  const p = await getParticipant(eventId, guildId, interaction.user.id);
   if (!p) {
     await interaction.followUp({ content: "❌ Nu ești în nicio luptă!", flags: MessageFlags.Ephemeral });
     return;
@@ -1107,7 +1110,7 @@ async function handleRetreat(interaction: ButtonInteraction, eventId: number) {
     await interaction.editReply({ embeds: [p.fled ? buildRetreatEmbed(p.monsterLevel) : buildDeathEmbed()], components: [] });
     return;
   }
-  const ev = await getActiveEvent(eventId);
+  const ev = await getActiveEvent(eventId, guildId);
   if (!ev || !ev.isActive || ev.expiresAt.getTime() < Date.now()) {
     await interaction.editReply({ content: "⌛ Ora Umbrelor s-a încheiat!", embeds: [], components: [] });
     return;
@@ -1132,7 +1135,8 @@ async function handleBuy(interaction: ButtonInteraction, key: ShopKey) {
 
 async function handleLevelup(interaction: ButtonInteraction, eventId: number, bonus: string) {
   await interaction.deferUpdate();
-  const p = await getParticipant(eventId, interaction.user.id);
+  const guildId = interaction.guildId!;
+  const p = await getParticipant(eventId, guildId, interaction.user.id);
   if (!p || !p.isAlive || !p.pendingLevelup) {
     await interaction.followUp({ content: "❌ Nu ai un level-up disponibil!", flags: MessageFlags.Ephemeral });
     return;
@@ -1279,7 +1283,8 @@ async function handleAbilUpgrade(interaction: ButtonInteraction, kind: string) {
 
 async function handleAbility(interaction: ButtonInteraction, eventId: number, kind: string) {
   await interaction.deferUpdate();
-  const p = await getParticipant(eventId, interaction.user.id);
+  const guildId = interaction.guildId!;
+  const p = await getParticipant(eventId, guildId, interaction.user.id);
   if (!p || !p.isAlive) {
     await interaction.followUp({ content: "❌ Trebuie să fii în luptă ca să folosești abilități!", flags: MessageFlags.Ephemeral });
     return;
@@ -1289,7 +1294,7 @@ async function handleAbility(interaction: ButtonInteraction, eventId: number, ki
     await interaction.editReply({ embeds: [buildLevelupEmbed(lvl)], components: levelupRows(eventId) });
     return;
   }
-  const ev = await getActiveEvent(eventId);
+  const ev = await getActiveEvent(eventId, guildId);
   if (!ev || !ev.isActive || ev.expiresAt.getTime() < Date.now()) {
     await interaction.editReply({ content: "⌛ Ora Umbrelor s-a încheiat!", embeds: [], components: [] });
     return;
@@ -1417,7 +1422,8 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
         const bossMsg = await fightCh.messages.fetch(activeBoss.messageId).catch(() => null);
         await bossMsg?.delete().catch(() => null);
       }
-      const topCh = await interaction.client.channels.fetch(getChannel("bossTop", guildId)).catch(() => null);
+      const bossTopId = getChannel("bossTop", guildId);
+      const topCh = bossTopId ? await interaction.client.channels.fetch(bossTopId).catch(() => null) : null;
       if (topCh instanceof TextChannel) {
         const leaderboard = buildBossLeaderboard(activeBoss, activeBoss.damageBy, activeBoss.participants, activeBoss.playerNames, activeBoss.playerHp);
         await topCh.send({ embeds: [leaderboard] }).catch(() => null);
@@ -1602,9 +1608,10 @@ async function setupTrader(client: Client, guildId: string): Promise<void> {
   }
   traderSetupInProgress.set(guildId, true);
   try {
-    const channel = await client.channels.fetch(getChannel("trader", guildId)).catch(() => null);
+    const traderChannelId = getChannel("trader", guildId);
+    const channel = traderChannelId ? await client.channels.fetch(traderChannelId).catch(() => null) : null;
     if (!(channel instanceof TextChannel)) {
-      logger.warn({ channelId: getChannel("trader", guildId), guildId }, "Trader channel not found");
+      logger.warn({ channelId: traderChannelId, guildId }, "Trader channel not found");
       return;
     }
 

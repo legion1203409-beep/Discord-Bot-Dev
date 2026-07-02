@@ -146,6 +146,16 @@ vi.mock("../db", () => ({
 vi.mock("../oracle",        () => ({ startOracle: vi.fn(), setOracleExtatic: vi.fn() }));
 vi.mock("../combat-events", () => ({ triggerRandomBattleEvent: vi.fn() }));
 
+// ── 6. Mock channel-config — return a dummy channel ID for every guild/type ──
+vi.mock("../channel-config", () => ({
+  getChannel:       vi.fn(() => "mock-channel-id"),
+  initChannelConfig: vi.fn(),
+  getAllChannels:    vi.fn(() => ({})),
+  setChannel:       vi.fn(),
+  resetChannel:     vi.fn(),
+  resetAllChannels: vi.fn(),
+}));
+
 // ── Import scheduler after all mocks are registered ──────────────────────────
 import {
   fireEvent,

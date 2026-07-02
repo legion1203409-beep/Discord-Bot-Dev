@@ -273,8 +273,9 @@ export async function createEvent(guildId: string, type: string, messageId: stri
   return ev!;
 }
 
-export async function getActiveEvent(id: number) {
-  const [ev] = await db.select().from(activeEventsTable).where(eq(activeEventsTable.id, id));
+export async function getActiveEvent(id: number, guildId: string) {
+  const [ev] = await db.select().from(activeEventsTable)
+    .where(and(eq(activeEventsTable.id, id), eq(activeEventsTable.guildId, guildId)));
   return ev ?? null;
 }
 
@@ -321,6 +322,7 @@ export async function joinEvent(guildId: string, eventId: number, discordId: str
   try {
     const [p] = await db.insert(eventParticipantsTable).values({
       eventId,
+      guildId,
       discordId,
       username,
       maxHp,
@@ -337,9 +339,9 @@ export async function joinEvent(guildId: string, eventId: number, discordId: str
   } catch { return null; }
 }
 
-export async function getParticipant(eventId: number, discordId: string): Promise<EventParticipant | null> {
+export async function getParticipant(eventId: number, guildId: string, discordId: string): Promise<EventParticipant | null> {
   const [p] = await db.select().from(eventParticipantsTable)
-    .where(and(eq(eventParticipantsTable.eventId, eventId), eq(eventParticipantsTable.discordId, discordId)));
+    .where(and(eq(eventParticipantsTable.eventId, eventId), eq(eventParticipantsTable.guildId, guildId), eq(eventParticipantsTable.discordId, discordId)));
   return p ?? null;
 }
 
@@ -348,8 +350,9 @@ export async function updateParticipant(id: number, values: Partial<Omit<EventPa
   return u!;
 }
 
-export async function getEventParticipants(eventId: number): Promise<EventParticipant[]> {
-  return db.select().from(eventParticipantsTable).where(eq(eventParticipantsTable.eventId, eventId));
+export async function getEventParticipants(eventId: number, guildId: string): Promise<EventParticipant[]> {
+  return db.select().from(eventParticipantsTable)
+    .where(and(eq(eventParticipantsTable.eventId, eventId), eq(eventParticipantsTable.guildId, guildId)));
 }
 
 export async function addPlayerReputation(discordId: string, guildId: string, amount: number): Promise<void> {

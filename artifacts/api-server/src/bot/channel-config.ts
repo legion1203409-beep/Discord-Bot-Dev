@@ -23,17 +23,20 @@ export async function initChannelConfig(guildId: string): Promise<void> {
   cachedByGuild.set(guildId, cfg);
 }
 
-/** Get the configured channel ID for a type, falling back to the default. */
-export function getChannel(type: keyof ChannelConfig, guildId: string): string {
+/**
+ * Get the configured channel ID for a type.
+ * Returns null for guilds that have not configured this channel yet.
+ * Callers must guard on null and skip the action rather than falling through
+ * to the original guild's channel IDs.
+ */
+export function getChannel(type: keyof ChannelConfig, guildId: string): string | null {
   const cached = cachedByGuild.get(guildId);
   const override = cached?.[type];
   if (override) return override;
-  // Only apply hardcoded defaults for the original guild — other guilds must
-  // use /setcanale to configure their channels.
+  // Apply hardcoded defaults only for the original guild.
   if (guildId === ORIGINAL_GUILD_ID) return DEFAULT_CHANNELS[type];
-  // For unknown guilds, return the default as a last resort so the bot doesn't
-  // crash before the server owner has configured channels.
-  return DEFAULT_CHANNELS[type];
+  // Other guilds must configure channels via /setcanale before the bot acts.
+  return null;
 }
 
 /** Set a single channel for a guild and persist immediately. */
