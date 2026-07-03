@@ -385,6 +385,26 @@ const slashCommands = [
     )
     .addSubcommand((sub) =>
       sub.setName("ghid").setDescription("📖 Lista completă a comenzilor de admin și combinațiilor cu Oracolul."),
+    )
+    .addSubcommand((sub) =>
+      sub.setName("daoboli")
+        .setDescription("💰 [Admin] Adaugă Oboli unui jucător.")
+        .addUserOption((opt) =>
+          opt.setName("jucator").setDescription("Jucătorul care primește Obolii.").setRequired(true),
+        )
+        .addIntegerOption((opt) =>
+          opt.setName("cantitate").setDescription("Numărul de Oboli (1–9999999).").setRequired(true).setMinValue(1).setMaxValue(9_999_999),
+        ),
+    )
+    .addSubcommand((sub) =>
+      sub.setName("daxp")
+        .setDescription("✨ [Admin] Adaugă XP unui jucător.")
+        .addUserOption((opt) =>
+          opt.setName("jucator").setDescription("Jucătorul care primește XP-ul.").setRequired(true),
+        )
+        .addIntegerOption((opt) =>
+          opt.setName("cantitate").setDescription("Numărul de XP (1–9999999).").setRequired(true).setMinValue(1).setMaxValue(9_999_999),
+        ),
     ),
   new SlashCommandBuilder()
     .setName("setcanale")
@@ -621,6 +641,46 @@ export async function handleAdmin(interaction: ChatInputCommandInteraction) {
     });
     logger.info("Admin: restart requested — exiting process");
     setTimeout(() => process.exit(0), 1500);
+    return;
+  }
+
+  if (sub === "daoboli") {
+    const target = interaction.options.getUser("jucator", true);
+    const amount = interaction.options.getInteger("cantitate", true);
+    const player = await getPlayerById(target.id, guildId);
+    if (!player) {
+      await interaction.reply({ content: `❌ **${target.username}** nu are încă un profil pe acest server.`, ephemeral: true });
+      return;
+    }
+    await addPlayerGold(target.id, guildId, amount);
+    await interaction.reply({
+      ephemeral: true,
+      embeds: [{
+        color: THEME_COLOR,
+        description: `💰 **+${amount.toLocaleString("ro-RO")} Oboli** adăugați lui **${target.username}**.\nNou total: **${(player.gold + amount).toLocaleString("ro-RO")} Oboli**.`,
+      }],
+    });
+    logger.info({ targetId: target.id, guildId, amount }, "Admin: gold granted");
+    return;
+  }
+
+  if (sub === "daxp") {
+    const target = interaction.options.getUser("jucator", true);
+    const amount = interaction.options.getInteger("cantitate", true);
+    const player = await getPlayerById(target.id, guildId);
+    if (!player) {
+      await interaction.reply({ content: `❌ **${target.username}** nu are încă un profil pe acest server.`, ephemeral: true });
+      return;
+    }
+    await addPlayerXp(target.id, guildId, amount);
+    await interaction.reply({
+      ephemeral: true,
+      embeds: [{
+        color: THEME_COLOR,
+        description: `✨ **+${amount.toLocaleString("ro-RO")} XP** adăugat lui **${target.username}**.\nNou total: **${(player.xp + amount).toLocaleString("ro-RO")} XP**.`,
+      }],
+    });
+    logger.info({ targetId: target.id, guildId, amount }, "Admin: XP granted");
     return;
   }
 
