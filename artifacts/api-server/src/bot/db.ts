@@ -5,6 +5,7 @@ import { eq, and, gte, gt, inArray, sql, desc } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import type { Player, EventParticipant } from "@workspace/db";
 import { CLASSES, isClassKey, rollRarity, isCompanionKey, companionStats } from "./survival";
+import { logger } from "../lib/logger";
 
 export type UpgradeKey = "atac" | "def" | "dodge" | "crit" | "hp";
 
@@ -13,28 +14,40 @@ export type UpgradeKey = "atac" | "def" | "dodge" | "crit" | "hp";
 // through interactive Drizzle push (production DB has blocking drift).
 
 export async function runMultiGuildMigrations(): Promise<void> {
-  // players: add guild_id + composite PK
-  await pool.query(`
+  const DEFAULT_GUILD_ID = "1382035307607883816";
+  logger.info("multi-guild migrations: starting");
+
+  // players: add guild_id + composite PK (backfill existing rows before NOT NULL)
+  const { rowCount: playersBackfilled } = await pool.query(`
     DO $$
+    DECLARE
+      backfilled int;
     BEGIN
       IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE table_name = 'players' AND column_name = 'guild_id'
       ) THEN
         ALTER TABLE players ADD COLUMN guild_id text;
-        UPDATE players SET guild_id = '1382035307607883816' WHERE guild_id IS NULL;
+        UPDATE players SET guild_id = '${DEFAULT_GUILD_ID}' WHERE guild_id IS NULL;
+        GET DIAGNOSTICS backfilled = ROW_COUNT;
+        RAISE NOTICE 'players: backfilled % rows with default guild_id', backfilled;
         ALTER TABLE players ALTER COLUMN guild_id SET NOT NULL;
         ALTER TABLE players DROP CONSTRAINT IF EXISTS players_pkey;
         ALTER TABLE players ADD PRIMARY KEY (discord_id, guild_id);
+        RAISE NOTICE 'players: composite PK applied';
       END IF;
     END $$;
   `);
-  // active_events: add guild_id
+  logger.info({ playersBackfilled }, "multi-guild migrations: players done");
+
+  // active_events: add guild_id column
   await pool.query(`
-    ALTER TABLE active_events ADD COLUMN IF NOT EXISTS guild_id text NOT NULL DEFAULT '1382035307607883816';
+    ALTER TABLE active_events ADD COLUMN IF NOT EXISTS guild_id text NOT NULL DEFAULT '${DEFAULT_GUILD_ID}';
   `);
+  logger.info("multi-guild migrations: active_events done");
+
   // active_bosses: migrate from single-column PK (event_id) to composite (event_id, guild_id).
-  // Data is ephemeral boss-fight state — loss during this one-time migration is acceptable.
+  // Boss fight state is ephemeral — acceptable to drop the old table on first migration.
   await pool.query(`
     DO $$
     BEGIN
@@ -43,10 +56,9 @@ export async function runMultiGuildMigrations(): Promise<void> {
           SELECT 1 FROM information_schema.columns
           WHERE table_name = 'active_bosses' AND column_name = 'guild_id'
         ) THEN
-          -- Old schema (no guild_id) — drop and let createActiveBossesTableIfNotExists recreate
           DROP TABLE active_bosses;
+          RAISE NOTICE 'active_bosses: old single-PK table dropped (ephemeral data)';
         ELSE
-          -- guild_id exists but PK may still be single-column; upgrade to composite if needed
           IF EXISTS (
             SELECT 1 FROM pg_constraint c
             JOIN pg_class t ON t.oid = c.conrelid
@@ -55,19 +67,61 @@ export async function runMultiGuildMigrations(): Promise<void> {
           ) THEN
             ALTER TABLE active_bosses DROP CONSTRAINT IF EXISTS active_bosses_pkey;
             ALTER TABLE active_bosses ADD PRIMARY KEY (event_id, guild_id);
+            RAISE NOTICE 'active_bosses: upgraded to composite PK';
           END IF;
         END IF;
       END IF;
     END $$;
   `);
-  // event_participants: add guild_id (transitive isolation via eventId, but explicit column for completeness)
+  logger.info("multi-guild migrations: active_bosses done");
+
+  // event_participants: add guild_id
   await pool.query(`
-    ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS guild_id text NOT NULL DEFAULT '1382035307607883816';
+    ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS guild_id text NOT NULL DEFAULT '${DEFAULT_GUILD_ID}';
   `);
+  logger.info("multi-guild migrations: event_participants done");
+
   // event_claims: add guild_id
   await pool.query(`
-    ALTER TABLE event_claims ADD COLUMN IF NOT EXISTS guild_id text NOT NULL DEFAULT '1382035307607883816';
+    ALTER TABLE event_claims ADD COLUMN IF NOT EXISTS guild_id text NOT NULL DEFAULT '${DEFAULT_GUILD_ID}';
   `);
+  logger.info("multi-guild migrations: event_claims done");
+
+  // Post-migration verification: confirm every required column is present
+  const { rows: missingCols } = await pool.query<{ table_name: string; column_name: string }>(`
+    SELECT v.table_name, v.column_name
+    FROM (VALUES
+      ('players',           'guild_id'),
+      ('active_events',     'guild_id'),
+      ('event_participants','guild_id'),
+      ('event_claims',      'guild_id')
+    ) AS v(table_name, column_name)
+    WHERE NOT EXISTS (
+      SELECT 1 FROM information_schema.columns c
+      WHERE c.table_name = v.table_name AND c.column_name = v.column_name
+    )
+  `);
+  if (missingCols.length > 0) {
+    logger.error({ missingCols }, "multi-guild migrations: verification FAILED — columns still missing after migration");
+    throw new Error(`Multi-guild migration verification failed: missing columns ${JSON.stringify(missingCols)}`);
+  }
+
+  // Verify players composite PK
+  const { rows: pkCols } = await pool.query<{ column_name: string }>(`
+    SELECT kcu.column_name
+    FROM information_schema.table_constraints tc
+    JOIN information_schema.key_column_usage kcu
+      ON tc.constraint_name = kcu.constraint_name
+    WHERE tc.table_name = 'players' AND tc.constraint_type = 'PRIMARY KEY'
+    ORDER BY kcu.ordinal_position
+  `);
+  const pkColNames = pkCols.map((r) => r.column_name);
+  if (!pkColNames.includes("guild_id")) {
+    logger.error({ pkColNames }, "multi-guild migrations: verification FAILED — players PK does not include guild_id");
+    throw new Error("Multi-guild migration verification failed: players PK missing guild_id");
+  }
+
+  logger.info({ pkColNames }, "multi-guild migrations: verification passed — all columns and PKs confirmed");
 }
 
 // ─── Player helpers ────────────────────────────────────────────────────────────
