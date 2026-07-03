@@ -2245,43 +2245,33 @@ export async function startBot(onReady?: () => void): Promise<void> {
     // Ignore DM interactions — all commands require a guild context
     if (!interaction.guildId) return;
 
-    try {
-      if (interaction.isChatInputCommand()) {
-        if (interaction.commandName === "profil") await handleProfil(interaction);
-        if (interaction.commandName === "clasament") await handleClasament(interaction);
-        if (interaction.commandName === "magazin") await handleMagazin(interaction);
-        if (interaction.commandName === "clasa") await handleClasa(interaction);
-        if (interaction.commandName === "companion") await handleCompanion(interaction);
-        if (interaction.commandName === "ajutor") await handleAjutor(interaction);
-        if (interaction.commandName === "startevent") await handleStartEvent(interaction);
-        if (interaction.commandName === "cufar") await handleSpawnChest(interaction);
-        if (interaction.commandName === "spawnboss") await handleSpawnBoss(interaction);
-        if (interaction.commandName === "blestem") await handleBlestem(interaction);
-        if (interaction.commandName === "admin") await handleAdmin(interaction);
-        if (interaction.commandName === "setcanale") await handleSetCanale(interaction);
-      } else if (interaction.isButton()) {
-        await handleButton(interaction as ButtonInteraction);
-      } else if (interaction.isStringSelectMenu()) {
-        if (interaction.customId === "leaderboard_profile_select") {
-          await handleClasamentSelect(interaction);
-        }
-      }
-    } catch (err) {
-      logger.error({ err }, "Interaction error");
-      try {
-        if (interaction.isRepliable()) {
-          if (interaction.deferred && !interaction.replied) {
-            await interaction.editReply({ content: "❌ A apărut o eroare. Încearcă din nou." });
-          } else if (!interaction.deferred && !interaction.replied) {
-            await interaction.reply({ content: "❌ A apărut o eroare. Încearcă din nou.", flags: MessageFlags.Ephemeral });
-          } else {
-            await interaction.followUp({ content: "❌ A apărut o eroare. Încearcă din nou.", flags: MessageFlags.Ephemeral });
-          }
-        }
-      } catch {
-        // ignore — interaction window may have expired
+    function dispatch(p: Promise<unknown>) {
+      p.catch((err) => {
+        logger.error({ err }, "Interaction error");
+      });
+    }
+
+    if (interaction.isChatInputCommand()) {
+      if (interaction.commandName === "profil") dispatch(handleProfil(interaction));
+      if (interaction.commandName === "clasament") dispatch(handleClasament(interaction));
+      if (interaction.commandName === "magazin") dispatch(handleMagazin(interaction));
+      if (interaction.commandName === "clasa") dispatch(handleClasa(interaction));
+      if (interaction.commandName === "companion") dispatch(handleCompanion(interaction));
+      if (interaction.commandName === "ajutor") dispatch(handleAjutor(interaction));
+      if (interaction.commandName === "startevent") dispatch(handleStartEvent(interaction));
+      if (interaction.commandName === "cufar") dispatch(handleSpawnChest(interaction));
+      if (interaction.commandName === "spawnboss") dispatch(handleSpawnBoss(interaction));
+      if (interaction.commandName === "blestem") dispatch(handleBlestem(interaction));
+      if (interaction.commandName === "admin") dispatch(handleAdmin(interaction));
+      if (interaction.commandName === "setcanale") dispatch(handleSetCanale(interaction));
+    } else if (interaction.isButton()) {
+      dispatch(handleButton(interaction as ButtonInteraction));
+    } else if (interaction.isStringSelectMenu()) {
+      if (interaction.customId === "leaderboard_profile_select") {
+        dispatch(handleClasamentSelect(interaction));
       }
     }
+
   });
 
   try {
