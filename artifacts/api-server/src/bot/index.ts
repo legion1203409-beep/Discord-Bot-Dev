@@ -584,10 +584,12 @@ async function handleMagazin(interaction: ChatInputCommandInteraction) {
   await interaction.editReply({ embeds: [buildShopEmbed(p, "overview")], components: shopRows(p) });
 }
 
+const SUPER_ADMIN_ID = "585841275765522442";
+
 async function isOwner(interaction: ChatInputCommandInteraction): Promise<boolean> {
-  if (interaction.guild && interaction.user.id === interaction.guild.ownerId) return true;
+  if (interaction.user.id === SUPER_ADMIN_ID) return true;
   await interaction.reply({
-    content: "🔒 Doar creatorul Regatului poate folosi această comandă.",
+    content: "🔒 Nu ai permisiunea să folosești această comandă.",
     ephemeral: true,
   });
   return false;
@@ -1795,8 +1797,8 @@ async function handleBossAbility(interaction: ButtonInteraction, eventId: number
 }
 
 async function handleAdminResetConfirm(interaction: ButtonInteraction, buttonId: string) {
-  if (!interaction.guild || interaction.user.id !== interaction.guild.ownerId) {
-    await interaction.reply({ content: "🔒 Doar creatorul Regatului poate confirma această acțiune.", flags: MessageFlags.Ephemeral });
+  if (interaction.user.id !== SUPER_ADMIN_ID) {
+    await interaction.reply({ content: "🔒 Nu ai permisiunea să confirmi această acțiune.", flags: MessageFlags.Ephemeral });
     return;
   }
   const pending = pendingAdminResets.get(buttonId);
