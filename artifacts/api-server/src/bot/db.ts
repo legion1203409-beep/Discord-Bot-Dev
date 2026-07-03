@@ -122,6 +122,52 @@ export async function runMultiGuildMigrations(): Promise<void> {
   }
 
   logger.info({ pkColNames }, "multi-guild migrations: verification passed — all columns and PKs confirmed");
+
+  // ── One-time data restoration (migration data-loss recovery, 2026-07-03) ────
+  // The multi-guild schema migration accidentally wiped player progress on the
+  // original guild. Restore known values from the last-seen clasament screenshot.
+  // Guard: only runs if xp < snapshot (idempotent — safe to re-run on any restart).
+  const ORIGINAL_GUILD = "1382035307607883816";
+  type SnapshotRow = {
+    discordId: string;
+    xp: number;
+    maxLevel: number;
+    deaths: number;
+    deathLevel: number;
+    retreats: number;
+    retreatLevel: number;
+  };
+  const SNAPSHOT: SnapshotRow[] = [
+    { discordId: "585841275765522442",  xp: 47150, maxLevel: 20, deaths:  7, deathLevel: 20, retreats: 4, retreatLevel: 20 }, // _legion09
+    { discordId: "1304191735710355472", xp: 44210, maxLevel: 20, deaths: 19, deathLevel: 20, retreats: 0, retreatLevel:  0 }, // _amyiguess_k
+    { discordId: "1427614108227862542", xp: 40948, maxLevel: 20, deaths:  7, deathLevel: 20, retreats: 7, retreatLevel: 20 }, // ace_13plm
+    { discordId: "693524178275401739",  xp: 20860, maxLevel: 18, deaths: 10, deathLevel: 18, retreats: 9, retreatLevel: 18 }, // nrobert7
+    { discordId: "1374099824420458648", xp: 14055, maxLevel: 10, deaths:  2, deathLevel: 10, retreats: 7, retreatLevel: 10 }, // apathosp
+    { discordId: "1515718494338027741", xp:   860, maxLevel:  6, deaths:  4, deathLevel:  5, retreats: 0, retreatLevel:  0 }, // sally_is_here00
+  ];
+  let restored = 0;
+  for (const s of SNAPSHOT) {
+    const { rowCount } = await pool.query(
+      `UPDATE players
+         SET xp           = $1,
+             max_level    = $2,
+             deaths       = $3,
+             death_level  = $4,
+             retreats     = $5,
+             retreat_level = $6
+       WHERE discord_id = $7
+         AND guild_id   = $8
+         AND xp         < $1`,
+      [s.xp, s.maxLevel, s.deaths, s.deathLevel, s.retreats, s.retreatLevel,
+       s.discordId, ORIGINAL_GUILD],
+    );
+    if (rowCount && rowCount > 0) restored++;
+  }
+  if (restored > 0) {
+    logger.info({ restored }, "multi-guild migrations: data-loss restoration applied");
+  } else {
+    logger.info("multi-guild migrations: data-loss restoration — already up-to-date, skipped");
+  }
 }
 
 // ─── Player helpers ────────────────────────────────────────────────────────────
