@@ -38,6 +38,7 @@ import {
   addPlayerGold,
   addPlayerReputation,
   deductPlayerGold,
+  deductPlayerXp,
   buyPlayerUpgrade,
   applyUpgradeToActiveParticipant,
   getTopPlayers,
@@ -408,6 +409,26 @@ const slashCommands = [
         )
         .addIntegerOption((opt) =>
           opt.setName("cantitate").setDescription("Numărul de XP (1–9999999).").setRequired(true).setMinValue(1).setMaxValue(9_999_999),
+        ),
+    )
+    .addSubcommand((sub) =>
+      sub.setName("removeoboli")
+        .setDescription("💸 [Admin] Scade Oboli unui jucător.")
+        .addUserOption((opt) =>
+          opt.setName("jucator").setDescription("Jucătorul de la care se scad Obolii.").setRequired(true),
+        )
+        .addIntegerOption((opt) =>
+          opt.setName("cantitate").setDescription("Numărul de Oboli de scăzut (1–9999999).").setRequired(true).setMinValue(1).setMaxValue(9_999_999),
+        ),
+    )
+    .addSubcommand((sub) =>
+      sub.setName("removexp")
+        .setDescription("💔 [Admin] Scade XP unui jucător.")
+        .addUserOption((opt) =>
+          opt.setName("jucator").setDescription("Jucătorul de la care se scade XP-ul.").setRequired(true),
+        )
+        .addIntegerOption((opt) =>
+          opt.setName("cantitate").setDescription("Numărul de XP de scăzut (1–9999999).").setRequired(true).setMinValue(1).setMaxValue(9_999_999),
         ),
     )
     .addSubcommand((sub) =>
@@ -811,6 +832,48 @@ export async function handleAdmin(interaction: ChatInputCommandInteraction) {
       }],
     });
     logger.info({ targetId: target.id, guildId, amount }, "Admin: XP granted");
+    return;
+  }
+
+  if (sub === "removeoboli") {
+    const target = interaction.options.getUser("jucator", true);
+    const amount = interaction.options.getInteger("cantitate", true);
+    const player = await getPlayerById(target.id, guildId);
+    if (!player) {
+      await interaction.reply({ content: `❌ **${target.username}** nu are încă un profil pe acest server.`, ephemeral: true });
+      return;
+    }
+    await deductPlayerGold(target.id, guildId, amount);
+    const newGold = Math.max(0, player.gold - amount);
+    await interaction.reply({
+      ephemeral: true,
+      embeds: [{
+        color: THEME_COLOR,
+        description: `💸 **-${amount.toLocaleString("ro-RO")} Oboli** scăzuți de la **${target.username}**.\nNou total: **${newGold.toLocaleString("ro-RO")} Oboli**.`,
+      }],
+    });
+    logger.info({ targetId: target.id, guildId, amount }, "Admin: gold removed");
+    return;
+  }
+
+  if (sub === "removexp") {
+    const target = interaction.options.getUser("jucator", true);
+    const amount = interaction.options.getInteger("cantitate", true);
+    const player = await getPlayerById(target.id, guildId);
+    if (!player) {
+      await interaction.reply({ content: `❌ **${target.username}** nu are încă un profil pe acest server.`, ephemeral: true });
+      return;
+    }
+    await deductPlayerXp(target.id, guildId, amount);
+    const newXp = Math.max(0, player.xp - amount);
+    await interaction.reply({
+      ephemeral: true,
+      embeds: [{
+        color: THEME_COLOR,
+        description: `💔 **-${amount.toLocaleString("ro-RO")} XP** scăzut de la **${target.username}**.\nNou total: **${newXp.toLocaleString("ro-RO")} XP**.`,
+      }],
+    });
+    logger.info({ targetId: target.id, guildId, amount }, "Admin: XP removed");
     return;
   }
 

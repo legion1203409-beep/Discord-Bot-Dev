@@ -487,6 +487,12 @@ export async function addPlayerXp(discordId: string, guildId: string, amount: nu
     .where(playerWhere(discordId, guildId));
 }
 
+export async function deductPlayerXp(discordId: string, guildId: string, amount: number): Promise<void> {
+  await db.update(playersTable)
+    .set({ xp: sql`GREATEST(0, ${playersTable.xp} - ${amount})` })
+    .where(playerWhere(discordId, guildId));
+}
+
 export async function getTopPlayers(guildId: string): Promise<Player[]> {
   const rows = await db.select().from(playersTable)
     .where(eq(playersTable.guildId, guildId))
