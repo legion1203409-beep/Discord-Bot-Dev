@@ -26,7 +26,7 @@ import { getChannel, getAllChannels, setChannel, resetChannel, resetAllChannels,
 import { recordMessage } from "./oracle";
 import { maybeReplyAsOracle, logOracleChatStatus } from "./oracle-chat";
 import { handleToxicity } from "./oracle-guard";
-import { getRewardMultipliers, getCombatModifiers, formatActiveEffects } from "./status-effects";
+import { getRewardMultipliers, getCombatModifiers, formatActiveEffects, grantGuildBoost, grantAdminPlayerBoost } from "./status-effects";
 import { handleBlestem, handleAdminGhid } from "./oracle-blestem";
 import {
   upsertPlayer,
@@ -67,6 +67,8 @@ import {
   loadTraderEmbedSig,
   ensureBotStateTable,
   runMultiGuildMigrations,
+  resetPlayer,
+  resetAllPlayersInGuild,
   type AbilityKind,
   type KeyType,
 } from "./db";
@@ -137,6 +139,8 @@ let disconnectAlertTimer: ReturnType<typeof setTimeout> | null = null;
 let disconnectStartedAt: Date | null = null;
 let botReadyAt: Date | null = null;
 let shardStatus: string = "disconnected";
+
+const pendingAdminResets = new Map<string, { targetId: string; targetUsername: string; guildId: string }>();
 
 // ── Per-guild trader state ───────────────────────────────────────────────────
 const TRADER_SUCCESS_CHANCE  = 0.30;
@@ -405,6 +409,48 @@ const slashCommands = [
         .addIntegerOption((opt) =>
           opt.setName("cantitate").setDescription("Numărul de XP (1–9999999).").setRequired(true).setMinValue(1).setMaxValue(9_999_999),
         ),
+    )
+    .addSubcommand((sub) =>
+      sub.setName("resetprogres")
+        .setDescription("⚠️ [Admin] Resetează complet progresul unui jucător (XP, Oboli, nivel, upgrades, chei).")
+        .addUserOption((opt) =>
+          opt.setName("jucator").setDescription("Jucătorul al cărui progres va fi resetat.").setRequired(true),
+        ),
+    )
+    .addSubcommand((sub) =>
+      sub.setName("resetall")
+        .setDescription("💀 [Admin] Resetează progresul TUTUROR jucătorilor de pe server."),
+    )
+    .addSubcommand((sub) =>
+      sub.setName("boost")
+        .setDescription("⚡ [Admin] Activează un boost de recompense temporar pentru un jucător sau tot serverul.")
+        .addStringOption((opt) =>
+          opt.setName("tip")
+            .setDescription("Ce tip de recompensă să fie amplificată.")
+            .setRequired(true)
+            .addChoices(
+              { name: "XP", value: "xp" },
+              { name: "Oboli (gold)", value: "oboli" },
+              { name: "Ambele (XP + Oboli)", value: "ambele" },
+            ),
+        )
+        .addNumberOption((opt) =>
+          opt.setName("multiplicator")
+            .setDescription("Factorul de amplificare (ex: 2 = dublu, 1.5 = +50%).")
+            .setRequired(true)
+            .setMinValue(1.1)
+            .setMaxValue(10),
+        )
+        .addIntegerOption((opt) =>
+          opt.setName("durata")
+            .setDescription("Durata boost-ului în minute (1–1440).")
+            .setRequired(true)
+            .setMinValue(1)
+            .setMaxValue(1440),
+        )
+        .addUserOption((opt) =>
+          opt.setName("jucator").setDescription("Aplică boost-ul doar acestui jucător (gol = tot serverul).").setRequired(false),
+        ),
     ),
   new SlashCommandBuilder()
     .setName("setcanale")
@@ -641,6 +687,88 @@ export async function handleAdmin(interaction: ChatInputCommandInteraction) {
     });
     logger.info("Admin: restart requested — exiting process");
     setTimeout(() => process.exit(0), 1500);
+    return;
+  }
+
+  if (sub === "resetprogres") {
+    const target = interaction.options.getUser("jucator", true);
+    const confirmId = `admin_reset_confirm_${target.id}_${guildId}`;
+    pendingAdminResets.set(confirmId, { targetId: target.id, targetUsername: target.username, guildId });
+    setTimeout(() => pendingAdminResets.delete(confirmId), 2 * 60 * 1000);
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId(confirmId).setLabel("✅ Da, resetează").setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId("admin_reset_cancel").setLabel("❌ Anulează").setStyle(ButtonStyle.Secondary),
+    );
+    await interaction.reply({
+      ephemeral: true,
+      content:
+        `⚠️ **Confirmare necesară**\n\nEști sigur că vrei să resetezi **COMPLET** progresul lui **${target.username}**?\n\n` +
+        `> XP, Oboli, nivel, clasă, companion, abilități, upgrade-uri, chei — **totul** se șterge.\n> Această acțiune **nu poate fi anulată**.`,
+      components: [row],
+    });
+    return;
+  }
+
+  if (sub === "resetall") {
+    const confirmId = `admin_resetall_confirm_${guildId}`;
+    pendingAdminResets.set(confirmId, { targetId: "ALL", targetUsername: "TOȚI JUCĂTORII", guildId });
+    setTimeout(() => pendingAdminResets.delete(confirmId), 2 * 60 * 1000);
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId(confirmId).setLabel("💀 Da, resetează tot serverul").setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId("admin_reset_cancel").setLabel("❌ Anulează").setStyle(ButtonStyle.Secondary),
+    );
+    await interaction.reply({
+      ephemeral: true,
+      content:
+        `💀 **ATENȚIE MAXIMĂ**\n\nEști pe cale să resetezi progresul **TUTUROR** jucătorilor de pe server!\n\n` +
+        `> Aceasta va șterge tot XP, Oboli, nivel, clase, companioane, upgrades și chei pentru fiecare jucător.\n> Această acțiune **NU POATE FI ANULATĂ**.`,
+      components: [row],
+    });
+    return;
+  }
+
+  if (sub === "boost") {
+    const tip = interaction.options.getString("tip", true) as "xp" | "oboli" | "ambele";
+    const multiplicator = interaction.options.getNumber("multiplicator", true);
+    const durata = interaction.options.getInteger("durata", true);
+    const target = interaction.options.getUser("jucator", false);
+    const durationMs = durata * 60 * 1000;
+    const xpMult = tip === "oboli" ? 1 : multiplicator;
+    const goldMult = tip === "xp" ? 1 : multiplicator;
+    const tipLabel = tip === "xp" ? "XP" : tip === "oboli" ? "Oboli" : "XP + Oboli";
+    const durataLabel = durata >= 60 ? `${Math.floor(durata / 60)}h${durata % 60 > 0 ? ` ${durata % 60}m` : ""}` : `${durata}m`;
+    if (target) {
+      const player = await getPlayerById(target.id, guildId);
+      if (!player) {
+        await interaction.reply({ content: `❌ **${target.username}** nu are profil pe acest server.`, ephemeral: true });
+        return;
+      }
+      grantAdminPlayerBoost(target.id, xpMult, goldMult, durationMs);
+      await interaction.reply({
+        ephemeral: true,
+        embeds: [{
+          color: THEME_COLOR,
+          description:
+            `⚡ **Boost activat pentru ${target.username}!**\n\n` +
+            `🎯 Tip: **${tipLabel}** × **${multiplicator}**\n⏳ Durată: **${durataLabel}**\n\n` +
+            `*Se aplică la toate recompensele din luptă și cufere.*`,
+        }],
+      });
+      logger.info({ targetId: target.id, guildId, tip, multiplicator, durata }, "Admin: player boost granted");
+    } else {
+      grantGuildBoost(guildId, xpMult, goldMult, durationMs);
+      await interaction.reply({
+        ephemeral: true,
+        embeds: [{
+          color: THEME_COLOR,
+          description:
+            `⚡ **Boost SERVER activat!**\n\n` +
+            `🎯 Tip: **${tipLabel}** × **${multiplicator}**\n⏳ Durată: **${durataLabel}**\n\n` +
+            `*Toți jucătorii de pe server primesc acest bonus la recompensele din luptă și cufere.*`,
+        }],
+      });
+      logger.info({ guildId, tip, multiplicator, durata }, "Admin: guild boost granted");
+    }
     return;
   }
 
@@ -904,7 +1032,8 @@ async function handleChestClaim(interaction: ButtonInteraction, chestId: string,
   void clearActiveChest(guildId).catch(() => null);
 
   const effectiveMult = multOverride > 1 ? multOverride : rollChestMultiplier();
-  const totalGold = gold * effectiveMult;
+  const rmods = getRewardMultipliers(interaction.user.id, guildId);
+  const totalGold = Math.round(gold * effectiveMult * rmods.goldMult);
 
   await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
   await addPlayerGold(interaction.user.id, guildId, totalGold);
@@ -990,7 +1119,9 @@ async function handleLockedChestClaim(interaction: ButtonInteraction, chestId: s
   void clearActiveChest(guildId, LOCKCHEST_DBKEY).catch(() => null);
 
   await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
-  await addPlayerGold(interaction.user.id, guildId, gold);
+  const lockedRmods = getRewardMultipliers(interaction.user.id, guildId);
+  const boostedGold = Math.round(gold * lockedRmods.goldMult);
+  await addPlayerGold(interaction.user.id, guildId, boostedGold);
 
   const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
@@ -1005,10 +1136,11 @@ async function handleLockedChestClaim(interaction: ButtonInteraction, chestId: s
 
   const rarity = CHEST_RARITIES.find((r) => r.key === rarityKey);
   const rarityLabel = rarity?.label ?? rarityKey;
+  const boostLine = lockedRmods.goldMult > 1.01 ? ` *(boost ×${lockedRmods.goldMult.toFixed(2)} activ!)*` : "";
   const lockedReply = await interaction.followUp({
     content:
       `🗝️ **${interaction.user.username}** a folosit **${keyLabel}** și a deschis **${rarityLabel}**!\n` +
-      `💰 **${gold} Oboli** eliberați din cufărul blocat!`,
+      `💰 **${boostedGold} Oboli** eliberați din cufărul blocat!${boostLine}`,
   });
   setTimeout(() => { void lockedReply.delete().catch(() => {}); }, CLAIM_TTL_MS);
 
@@ -1084,9 +1216,10 @@ Obți cheia revendicând cufere de chei sau învingând evenimente!`,
 
   const result = spawnLockedChest(rarityKey);
   const mult = rollChestMultiplier();
+  const traderRmods = getRewardMultipliers(interaction.user.id, guildId);
   if (!result) {
     const baseGold = Math.floor(Math.random() * 200) + 100;
-    const gold = baseGold * mult;
+    const gold = Math.round(baseGold * mult * traderRmods.goldMult);
     await addPlayerGold(interaction.user.id, guildId, gold);
     const multEmoji = mult === 3 ? "🔥×3" : mult === 2 ? "✨×2" : "🍀×1";
     const bonusLine = mult > 1 ? `\n🎰 **Multiplicator: ${multEmoji}** \u2014 Norocul Cenușii ține cu tine!` : "";
@@ -1097,7 +1230,7 @@ Obți cheia revendicând cufere de chei sau învingând evenimente!`,
     return;
   }
 
-  const totalGold = result.gold * mult;
+  const totalGold = Math.round(result.gold * mult * traderRmods.goldMult);
   await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
   await addPlayerGold(interaction.user.id, guildId, totalGold);
 
@@ -1177,7 +1310,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
       result.xpGained = Math.round(result.xpGained * cls.xpMult);
       result.oboliGained = Math.round(result.oboliGained * cls.oboliMult);
     }
-    const rmods = getRewardMultipliers(p.discordId);
+    const rmods = getRewardMultipliers(p.discordId, guildId);
     result.xpGained = Math.round(result.xpGained * rmods.xpMult);
     result.oboliGained = Math.round(result.oboliGained * rmods.goldMult);
   }
@@ -1538,7 +1671,7 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
 
     const bossRewards = computeBossRewards(activeBoss.damageBy, activeBoss.rarity);
     for (const [discordId, r] of bossRewards) {
-      const rmods = getRewardMultipliers(discordId);
+      const rmods = getRewardMultipliers(discordId, activeBoss.guildId);
       r.gold = Math.round(r.gold * rmods.goldMult);
       r.xp = Math.round(r.xp * rmods.xpMult);
     }
@@ -1661,8 +1794,50 @@ async function handleBossAbility(interaction: ButtonInteraction, eventId: number
   void persistBossState(activeBoss);
 }
 
+async function handleAdminResetConfirm(interaction: ButtonInteraction, buttonId: string) {
+  if (!interaction.guild || interaction.user.id !== interaction.guild.ownerId) {
+    await interaction.reply({ content: "🔒 Doar creatorul Regatului poate confirma această acțiune.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  const pending = pendingAdminResets.get(buttonId);
+  if (!pending) {
+    await interaction.update({ content: "⌛ Sesiunea de confirmare a expirat (2 minute). Rulează comanda din nou.", components: [] });
+    return;
+  }
+  pendingAdminResets.delete(buttonId);
+  if (pending.targetId === "ALL") {
+    const count = await resetAllPlayersInGuild(pending.guildId);
+    await interaction.update({
+      content: `💀 **Resetare completă!** Progresul a **${count}** jucători de pe server a fost șters complet.`,
+      components: [],
+    });
+    logger.info({ guildId: pending.guildId, count }, "Admin: all players reset");
+  } else {
+    const ok = await resetPlayer(pending.targetId, pending.guildId);
+    if (!ok) {
+      await interaction.update({ content: `❌ **${pending.targetUsername}** nu a fost găsit în baza de date.`, components: [] });
+      return;
+    }
+    await interaction.update({
+      content:
+        `✅ **Progresul lui ${pending.targetUsername} a fost resetat complet.**\n` +
+        `> XP, Oboli, nivel, clasă, companion, abilități, upgrade-uri și chei — toate șterse.`,
+      components: [],
+    });
+    logger.info({ targetId: pending.targetId, guildId: pending.guildId }, "Admin: player progress reset");
+  }
+}
+
 async function handleButton(interaction: ButtonInteraction) {
   const id = interaction.customId;
+
+  if (id.startsWith("admin_reset_confirm_") || id.startsWith("admin_resetall_confirm_")) {
+    return handleAdminResetConfirm(interaction, id);
+  }
+  if (id === "admin_reset_cancel") {
+    await interaction.update({ content: "❌ **Resetare anulată.**", components: [] });
+    return;
+  }
 
   if (id.startsWith("profile_view_")) {
     return handleViewProfile(interaction, id.replace("profile_view_", ""));

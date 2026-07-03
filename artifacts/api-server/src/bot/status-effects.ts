@@ -104,11 +104,52 @@ export function getCombatModifiers(discordId: string): CombatModifiers {
 
 export type RewardMultipliers = { xpMult: number; goldMult: number };
 
-export function getRewardMultipliers(discordId: string): RewardMultipliers {
+// ─── Guild-level admin boosts ─────────────────────────────────────────────────
+
+type GuildBoost = { xpMult: number; goldMult: number; expiresAt: number };
+const guildBoostStore = new Map<string, GuildBoost>();
+
+export function grantGuildBoost(guildId: string, xpMult: number, goldMult: number, durationMs: number): GuildBoost {
+  const boost: GuildBoost = { xpMult, goldMult, expiresAt: Date.now() + durationMs };
+  guildBoostStore.set(guildId, boost);
+  return boost;
+}
+
+export function getGuildBoost(guildId: string): GuildBoost | null {
+  const b = guildBoostStore.get(guildId);
+  if (!b || b.expiresAt <= Date.now()) { guildBoostStore.delete(guildId); return null; }
+  return b;
+}
+
+export function clearGuildBoost(guildId: string): void { guildBoostStore.delete(guildId); }
+
+export function grantAdminPlayerBoost(discordId: string, xpMult: number, goldMult: number, durationMs: number): ActiveEffect {
+  const parts: string[] = [];
+  if (xpMult > 1) parts.push(`+${Math.round((xpMult - 1) * 100)}% XP`);
+  if (goldMult > 1) parts.push(`+${Math.round((goldMult - 1) * 100)}% Oboli`);
+  const def: EffectDef = {
+    id: "admin_boost",
+    kind: "blessing",
+    label: "Bonus Admin",
+    emoji: "⚡",
+    flavor: parts.join(", ") || "boost activ",
+    durationMs,
+    mods: { xpMult: xpMult > 1 ? xpMult : undefined, goldMult: goldMult > 1 ? goldMult : undefined },
+  };
+  return grantEffect(discordId, def);
+}
+
+// ─── Reward multipliers (player effects + optional guild boost) ───────────────
+
+export function getRewardMultipliers(discordId: string, guildId?: string): RewardMultipliers {
   const mult: RewardMultipliers = { xpMult: 1, goldMult: 1 };
   for (const { def } of pruned(discordId)) {
     if (def.mods.xpMult) mult.xpMult *= def.mods.xpMult;
     if (def.mods.goldMult) mult.goldMult *= def.mods.goldMult;
+  }
+  if (guildId) {
+    const gb = getGuildBoost(guildId);
+    if (gb) { mult.xpMult *= gb.xpMult; mult.goldMult *= gb.goldMult; }
   }
   return mult;
 }

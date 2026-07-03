@@ -207,6 +207,26 @@ export async function getPlayerById(discordId: string, guildId: string): Promise
   return p ?? null;
 }
 
+const PLAYER_RESET = {
+  xp: 0, gold: 0, reputation: 0, hp: 100, maxLevel: 0,
+  class: null as string | null, companion: null as string | null, companionLevel: 1,
+  abilityEmpowerLevel: 0, abilityShieldLevel: 0,
+  honorTitle: null as string | null, deaths: 0, deathLevel: 0, retreats: 0, retreatLevel: 0,
+  attackBonus: 0, defenseBonus: 0, dodgeBonus: 0, critBonus: 0, maxHpBonus: 0,
+  shopAttackCount: 0, shopDefenseCount: 0, shopDodgeCount: 0, shopCritCount: 0, shopHpCount: 0,
+  keyRar: 0, keyEpic: 0, keyRegal: 0,
+};
+
+export async function resetPlayer(discordId: string, guildId: string): Promise<boolean> {
+  const res = await db.update(playersTable).set(PLAYER_RESET).where(playerWhere(discordId, guildId)).returning({ id: playersTable.discordId });
+  return res.length > 0;
+}
+
+export async function resetAllPlayersInGuild(guildId: string): Promise<number> {
+  const res = await db.update(playersTable).set(PLAYER_RESET).where(eq(playersTable.guildId, guildId)).returning({ id: playersTable.discordId });
+  return res.length;
+}
+
 export async function updateMaxLevel(discordId: string, guildId: string, level: number): Promise<void> {
   await db.update(playersTable)
     .set({ maxLevel: sql`GREATEST(${playersTable.maxLevel}, ${level})` })
