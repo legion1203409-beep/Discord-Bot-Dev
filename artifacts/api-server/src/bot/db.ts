@@ -496,29 +496,30 @@ export async function deductPlayerXp(discordId: string, guildId: string, amount:
 export async function getTopPlayers(guildId: string): Promise<Player[]> {
   const rows = await db.select().from(playersTable)
     .where(eq(playersTable.guildId, guildId))
-    .orderBy(desc(playersTable.xp))
+    .orderBy(desc(playersTable.reputation), desc(playersTable.maxLevel))
     .limit(10);
   return rows;
 }
 
 export async function getGlobalTopPlayers(): Promise<Player[]> {
   const rows = await db.select().from(playersTable)
-    .orderBy(desc(playersTable.xp))
+    .orderBy(desc(playersTable.reputation), desc(playersTable.maxLevel))
     .limit(10);
   return rows;
 }
 
-export type ServerRankRow = { guildId: string; totalXp: number; playerCount: number };
+export type ServerRankRow = { guildId: string; totalReputation: number; maxEventLevel: number; playerCount: number };
 
 export async function getServerRanking(): Promise<ServerRankRow[]> {
   const rows = await db.select({
     guildId: playersTable.guildId,
-    totalXp: sql<number>`cast(sum(${playersTable.xp}) as int)`,
+    totalReputation: sql<number>`cast(sum(${playersTable.reputation}) as int)`,
+    maxEventLevel: sql<number>`cast(max(${playersTable.maxLevel}) as int)`,
     playerCount: sql<number>`cast(count(*) as int)`,
   })
   .from(playersTable)
   .groupBy(playersTable.guildId)
-  .orderBy(desc(sql`sum(${playersTable.xp})`))
+  .orderBy(desc(sql`sum(${playersTable.reputation})`))
   .limit(15);
   return rows;
 }

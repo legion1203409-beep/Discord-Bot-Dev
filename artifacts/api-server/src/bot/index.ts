@@ -986,7 +986,7 @@ async function handleClasament(interaction: ChatInputCommandInteraction) {
     const lines = ranking.map((row: ServerRankRow, i) => {
       const name = interaction.client.guilds.cache.get(row.guildId)?.name ?? `Regat necunoscut`;
       const playerWord = row.playerCount === 1 ? "luptător" : "luptători";
-      return `${medals[i] ?? `**${i + 1}.**`} **${name}** — ✨ ${row.totalXp.toLocaleString("ro-RO")} XP total · 👥 ${row.playerCount} ${playerWord}`;
+      return `${medals[i] ?? `**${i + 1}.**`} **${name}** — ⭐ ${row.totalReputation.toLocaleString("ro-RO")} Reputație · 🏅 Niv. ${row.maxEventLevel} · 👥 ${row.playerCount} ${playerWord}`;
     }).join("\n");
 
     await interaction.editReply({
@@ -995,7 +995,7 @@ async function handleClasament(interaction: ChatInputCommandInteraction) {
           color: THEME_COLOR,
           title: "🏆 Clasamentul Regatelor Cenușii",
           description: lines || "*Niciun regat nu și-a scris încă legenda.*",
-          footer: { text: "Clasament calculat după XP-ul total acumulat de toți luptătorii" },
+          footer: { text: "Clasament calculat după reputația totală acumulată de toți luptătorii" },
           timestamp: new Date().toISOString(),
         },
       ],
@@ -1010,14 +1010,11 @@ async function handleClasament(interaction: ChatInputCommandInteraction) {
   const champAvatar = top[0] ? await avatarById(top[0].discordId) : null;
 
   const lines = top.map((p, i) => {
-    const deathStr = p.deaths > 0 ? ` | 💀 ${p.deaths}×(Niv.${p.deathLevel})` : "";
-    const fledStr = p.retreats > 0 ? ` | 🏳️ ${p.retreats}× a fugit` : "";
-    const totalKeys = p.keyRar + p.keyEpic + p.keyRegal;
-    const keysStr = totalKeys > 0
-      ? ` | 🗝️ ${totalKeys} cheie${totalKeys > 1 ? "i" : ""}`
-      : "";
+    const deathStr = p.deaths > 0 ? ` | 💀 ${p.deaths}×` : "";
     const serverTag = isGlobal ? ` *(${interaction.client.guilds.cache.get(p.guildId)?.name ?? "Regat necunoscut"})* ` : "";
-    return `${medals[i] ?? `**${i + 1}.**`} **${p.username}**${serverTag} — 🎖️ ${levelTitle(p.maxLevel)} · ${p.xp} XP${keysStr}${deathStr}${fledStr}`;
+    const repStr = p.reputation > 0 ? `⭐ ${p.reputation.toLocaleString("ro-RO")} Rep.` : "⭐ 0 Rep.";
+    const levelStr = p.maxLevel > 0 ? ` · 🏅 Niv. ${p.maxLevel}` : "";
+    return `${medals[i] ?? `**${i + 1}.**`} **${p.username}**${serverTag} — ${repStr}${levelStr}${deathStr}`;
   }).join("\n");
 
   const components: ActionRowBuilder<StringSelectMenuBuilder>[] = [];
@@ -1028,7 +1025,7 @@ async function handleClasament(interaction: ChatInputCommandInteraction) {
       .addOptions(
         top.map((p, i) => ({
           label: `${medals[i] ?? `#${i + 1}`} ${p.username}`.slice(0, 100),
-          description: `${levelTitle(p.maxLevel)} · ${p.xp} XP`.slice(0, 100),
+          description: `⭐ ${p.reputation.toLocaleString("ro-RO")} Rep. · 🏅 Niv. ${p.maxLevel}`.slice(0, 100),
           value: p.discordId,
         })),
       );
@@ -1046,7 +1043,7 @@ async function handleClasament(interaction: ChatInputCommandInteraction) {
         title,
         description: lines || "*Nimeni nu a luptat încă.*",
         ...(champAvatar ? { thumbnail: { url: champAvatar } } : {}),
-        footer: { text: top.length > 0 ? "Alege un luptător din meniu pentru profilul complet" : BRAND_FOOTER },
+        footer: { text: top.length > 0 ? "Clasament după Reputație și Nivel Eveniment · Alege un luptător pentru profil complet" : BRAND_FOOTER },
         timestamp: new Date().toISOString(),
       },
     ],

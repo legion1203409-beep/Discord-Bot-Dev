@@ -270,22 +270,22 @@ describe("/admin offline — isOwner regression guard", () => {
       guildOwnerId: "guild-owner-111",
     });
     await handleAdmin(interaction as never);
-    // isOwner sends the blocking reply when the user is not the guild owner
+    // isOwner sends the blocking reply when the user is not SUPER_ADMIN_ID
     expect(interaction._reply).toHaveBeenCalledWith(
       expect.objectContaining({
-        content: expect.stringContaining("Doar creatorul Regatului"),
+        content: expect.stringContaining("Nu ai permisiunea"),
       }),
     );
   });
 
-  it("does NOT block the guild owner from /admin offline", async () => {
+  it("does NOT block the super admin from /admin offline", async () => {
     const interaction = makeAdminInteraction({
       sub: "offline",
-      userId: "guild-owner-111",
+      userId: "585841275765522442", // SUPER_ADMIN_ID
       guildOwnerId: "guild-owner-111",
     });
     await handleAdmin(interaction as never);
-    // The reply for the owner should be the success message, not the restriction
+    // The reply for the super admin should be the success message, not the restriction
     expect(interaction._reply).toHaveBeenCalledWith(
       expect.objectContaining({
         content: expect.stringContaining("offline"),
@@ -293,7 +293,7 @@ describe("/admin offline — isOwner regression guard", () => {
     );
     expect(interaction._reply).not.toHaveBeenCalledWith(
       expect.objectContaining({
-        content: expect.stringContaining("Doar creatorul Regatului"),
+        content: expect.stringContaining("Nu ai permisiunea"),
       }),
     );
   });
