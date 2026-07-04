@@ -70,6 +70,8 @@ import {
   runMultiGuildMigrations,
   resetPlayer,
   resetAllPlayersInGuild,
+  buyPrestige,
+  prestigeXpCost,
   type AbilityKind,
   type KeyType,
 } from "./db";
@@ -91,6 +93,7 @@ import {
   shopStatsRows,
   shopCompRows,
   shopAbilRows,
+  shopPrestigeRows,
   levelupRows,
   shopPrice,
   monsterMaxHp,
@@ -1543,6 +1546,23 @@ async function handleShopNavAbil(interaction: ButtonInteraction) {
   await interaction.editReply({ embeds: [buildShopEmbed(p, "abil")], components: shopAbilRows(p) });
 }
 
+async function handleShopNavPrestige(interaction: ButtonInteraction) {
+  await interaction.deferUpdate();
+  const guildId = interaction.guildId!;
+  const p = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
+  await interaction.editReply({ embeds: [buildShopEmbed(p, "prestige")], components: shopPrestigeRows(p) });
+}
+
+async function handlePrestigeBuy(interaction: ButtonInteraction) {
+  await interaction.deferUpdate();
+  const guildId = interaction.guildId!;
+  const p = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
+  const cost = prestigeXpCost(p.prestigeLevel);
+  const updated = await buyPrestige(interaction.user.id, guildId, p.prestigeLevel, cost);
+  const player = updated ?? p;
+  await interaction.editReply({ embeds: [buildShopEmbed(player, "prestige")], components: shopPrestigeRows(player) });
+}
+
 async function handleShopBack(interaction: ButtonInteraction) {
   await interaction.deferUpdate();
   const guildId = interaction.guildId!;
@@ -1670,21 +1690,22 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
 
   activeBoss.playerNames.set(uid, interaction.user.username);
 
+  const prestigeMaxHp = 100 + player.maxHpBonus + player.prestigeHpBonus;
   if (!activeBoss.playerHp.has(uid)) {
-    activeBoss.playerHp.set(uid, Math.max(10, 100 + player.maxHpBonus));
+    activeBoss.playerHp.set(uid, Math.max(10, prestigeMaxHp));
   }
   if (!activeBoss.playerStats.has(uid)) {
     const stats: BossPlayerStats = {
-      atk: player.attackBonus,
-      def: player.defenseBonus,
-      dodge: player.dodgeBonus,
-      crit: player.critBonus,
-      maxHp: 100 + player.maxHpBonus,
+      atk: player.attackBonus + player.prestigeAttackBonus,
+      def: player.defenseBonus + player.prestigeDefenseBonus,
+      dodge: player.dodgeBonus + player.prestigeDodgeBonus,
+      crit: player.critBonus + player.prestigeCritBonus,
+      maxHp: prestigeMaxHp,
     };
     activeBoss.playerStats.set(uid, stats);
   }
   const myHp = activeBoss.playerHp.get(uid)!;
-  const myMaxHp = 100 + player.maxHpBonus;
+  const myMaxHp = prestigeMaxHp;
 
   const cooldown = checkBossHitCooldown(activeBoss.lastHitAt, uid);
   if (cooldown.onCooldown) {
@@ -1697,10 +1718,13 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
 
   const mods = getCombatModifiers(uid);
 
-  const minDmg = Math.max(30, player.attackBonus * 5 + 20);
-  const maxDmg = Math.max(80, player.attackBonus * 15 + 60);
+  const totalAtk = player.attackBonus + player.prestigeAttackBonus;
+  const totalCrit = player.critBonus + player.prestigeCritBonus;
+  const totalDef = player.defenseBonus + player.prestigeDefenseBonus;
+  const minDmg = Math.max(30, totalAtk * 5 + 20);
+  const maxDmg = Math.max(80, totalAtk * 15 + 60);
   let playerDmg = Math.floor(Math.random() * (maxDmg - minDmg + 1)) + minDmg;
-  const isCrit = Math.random() * 100 < Math.min(100, Math.max(0, player.critBonus + mods.critAdd));
+  const isCrit = Math.random() * 100 < Math.min(100, Math.max(0, totalCrit + mods.critAdd));
   if (isCrit) playerDmg *= 2;
   const usedEmpower = activeBoss.empowerNext.delete(uid) && player.abilityEmpowerLevel >= 1;
   if (usedEmpower) playerDmg = Math.round(playerDmg * empowerMult(player.abilityEmpowerLevel));
@@ -1710,6 +1734,7 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
   let bossHit = Math.floor(Math.random() * 121) + 80;
   const usedShield = activeBoss.shieldNext.delete(uid) && player.abilityShieldLevel >= 1;
   if (usedShield) bossHit = Math.max(1, Math.round(bossHit * (1 - shieldReduction(player.abilityShieldLevel))));
+  bossHit = Math.max(1, bossHit - totalDef);
   if (mods.damageTakenMult !== 1) bossHit = Math.max(1, Math.round(bossHit * mods.damageTakenMult));
   const newPlayerHp = Math.max(0, myHp - bossHit);
 
@@ -1956,6 +1981,8 @@ async function handleButton(interaction: ButtonInteraction) {
   if (id === "shop_nav_stats") return handleShopNavStats(interaction);
   if (id === "shop_nav_comp") return handleShopNavComp(interaction);
   if (id === "shop_nav_abil") return handleShopNavAbil(interaction);
+  if (id === "shop_nav_prestige") return handleShopNavPrestige(interaction);
+  if (id === "shop_prestigebuy") return handlePrestigeBuy(interaction);
   if (id === "shop_back") return handleShopBack(interaction);
 
   if (id.startsWith("shop_buy_")) {

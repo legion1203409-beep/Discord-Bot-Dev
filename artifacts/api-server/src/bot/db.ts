@@ -215,6 +215,8 @@ const PLAYER_RESET = {
   attackBonus: 0, defenseBonus: 0, dodgeBonus: 0, critBonus: 0, maxHpBonus: 0,
   shopAttackCount: 0, shopDefenseCount: 0, shopDodgeCount: 0, shopCritCount: 0, shopHpCount: 0,
   keyRar: 0, keyEpic: 0, keyRegal: 0,
+  prestigeLevel: 0, prestigeAttackBonus: 0, prestigeDefenseBonus: 0,
+  prestigeDodgeBonus: 0, prestigeCritBonus: 0, prestigeHpBonus: 0,
 };
 
 export async function resetPlayer(discordId: string, guildId: string): Promise<boolean> {
@@ -448,10 +450,10 @@ export async function joinEvent(guildId: string, eventId: number, discordId: str
       maxHp,
       currentHp: maxHp,
       monsterRarity: rollRarity(1),
-      attackBonus: (player?.attackBonus ?? 0) + (cls?.attack ?? 0) + (comp?.attack ?? 0),
-      defenseBonus: (player?.defenseBonus ?? 0) + (comp?.defense ?? 0),
-      dodgeBonus: (player?.dodgeBonus ?? 0) + (cls?.dodge ?? 0),
-      critBonus: (player?.critBonus ?? 0) + (cls?.crit ?? 0) + (comp?.crit ?? 0),
+      attackBonus: (player?.attackBonus ?? 0) + (player?.prestigeAttackBonus ?? 0) + (cls?.attack ?? 0) + (comp?.attack ?? 0),
+      defenseBonus: (player?.defenseBonus ?? 0) + (player?.prestigeDefenseBonus ?? 0) + (comp?.defense ?? 0),
+      dodgeBonus: (player?.dodgeBonus ?? 0) + (player?.prestigeDodgeBonus ?? 0) + (cls?.dodge ?? 0),
+      critBonus: (player?.critBonus ?? 0) + (player?.prestigeCritBonus ?? 0) + (cls?.crit ?? 0) + (comp?.crit ?? 0),
       empowerLevel: player?.abilityEmpowerLevel ?? 0,
       shieldLevel: player?.abilityShieldLevel ?? 0,
     }).returning();
@@ -491,6 +493,38 @@ export async function deductPlayerXp(discordId: string, guildId: string, amount:
   await db.update(playersTable)
     .set({ xp: sql`GREATEST(0, ${playersTable.xp} - ${amount})` })
     .where(playerWhere(discordId, guildId));
+}
+
+export const PRESTIGE_BASE_XP = 10_000;
+export const PRESTIGE_COST_MULT = 1.5;
+export const PRESTIGE_ATK_BONUS = 5;
+export const PRESTIGE_DEF_BONUS = 5;
+export const PRESTIGE_DODGE_BONUS = 3;
+export const PRESTIGE_CRIT_BONUS = 3;
+export const PRESTIGE_HP_BONUS = 20;
+
+export function prestigeXpCost(level: number): number {
+  return Math.floor(PRESTIGE_BASE_XP * Math.pow(PRESTIGE_COST_MULT, level));
+}
+
+export async function buyPrestige(discordId: string, guildId: string, expectedLevel: number, xpCost: number): Promise<Player | null> {
+  const [u] = await db.update(playersTable)
+    .set({
+      prestigeLevel: sql`${playersTable.prestigeLevel} + 1`,
+      prestigeAttackBonus: sql`${playersTable.prestigeAttackBonus} + ${PRESTIGE_ATK_BONUS}`,
+      prestigeDefenseBonus: sql`${playersTable.prestigeDefenseBonus} + ${PRESTIGE_DEF_BONUS}`,
+      prestigeDodgeBonus: sql`${playersTable.prestigeDodgeBonus} + ${PRESTIGE_DODGE_BONUS}`,
+      prestigeCritBonus: sql`${playersTable.prestigeCritBonus} + ${PRESTIGE_CRIT_BONUS}`,
+      prestigeHpBonus: sql`${playersTable.prestigeHpBonus} + ${PRESTIGE_HP_BONUS}`,
+      xp: sql`${playersTable.xp} - ${xpCost}`,
+    })
+    .where(and(
+      playerWhere(discordId, guildId),
+      eq(playersTable.prestigeLevel, expectedLevel),
+      gte(playersTable.xp, xpCost),
+    ))
+    .returning();
+  return u ?? null;
 }
 
 export async function getTopPlayers(guildId: string): Promise<Player[]> {

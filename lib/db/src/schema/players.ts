@@ -34,6 +34,12 @@ export const playersTable = pgTable("players", {
   keyRar:   integer("key_rar").notNull().default(0),
   keyEpic:  integer("key_epic").notNull().default(0),
   keyRegal: integer("key_regal").notNull().default(0),
+  prestigeLevel: integer("prestige_level").notNull().default(0),
+  prestigeAttackBonus: integer("prestige_attack_bonus").notNull().default(0),
+  prestigeDefenseBonus: integer("prestige_defense_bonus").notNull().default(0),
+  prestigeDodgeBonus: integer("prestige_dodge_bonus").notNull().default(0),
+  prestigeCritBonus: integer("prestige_crit_bonus").notNull().default(0),
+  prestigeHpBonus: integer("prestige_hp_bonus").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [primaryKey({ columns: [t.discordId, t.guildId] })]);
 

@@ -393,6 +393,10 @@ export function buildProfileEmbed(player: Player, title?: string, avatarUrl?: st
     ? `${KEY_EMOJI["rar"]} **${player.keyRar}** ${KEY_LABEL["rar"]}   ·   ${KEY_EMOJI["epic"]} **${player.keyEpic}** ${KEY_LABEL["epic"]}   ·   ${KEY_EMOJI["regal"]} **${player.keyRegal}** ${KEY_LABEL["regal"]}`
     : "*Niciun trofeu sub formă de cheie încă — caută cuferele de chei!*";
 
+  const prestigeValue = player.prestigeLevel > 0
+    ? `⭐ **Nivel ${player.prestigeLevel}**\n⚔️ +${player.prestigeAttackBonus} · 🛡️ +${player.prestigeDefenseBonus} · 🌀 +${player.prestigeDodgeBonus}% · 💥 +${player.prestigeCritBonus}% · ❤️ +${player.prestigeHpBonus}`
+    : "*Fără prestigiu* — `/magazin → Prestigiu`";
+
   const embed = new EmbedBuilder()
     .setColor(THEME_COLOR)
     .setTitle(title ?? `📜 Profilul lui ${player.username}`)
@@ -404,6 +408,7 @@ export function buildProfileEmbed(player: Player, title?: string, avatarUrl?: st
       { name: "🧬 Clasă", value: classValue, inline: true },
       { name: "🐾 Companion", value: compValue, inline: true },
       { name: "🎯 Abilități", value: abilValue, inline: false },
+      { name: "━━━ Prestigiu ━━━", value: prestigeValue, inline: false },
       { name: "━━━ Resurse ━━━", value: `⭐ **${player.xp}** XP   ·   🪙 **${player.gold}** Oboli   ·   🏅 **${player.reputation}** Reputație`, inline: false },
       { name: "━━━ Chei ━━━", value: keysValue, inline: false },
       { name: "━━━ Istoric de luptă ━━━", value: `💀 Morți: **${deathInfo}**\n🏳️ Retrageri: **${retreatInfo}**`, inline: false },
@@ -698,9 +703,12 @@ export function buildKeyDropMessage(fromRarityKey: string, keyType: string): str
   );
 }
 
-export type ShopCategory = "overview" | "stats" | "comp" | "abil";
+export type ShopCategory = "overview" | "stats" | "comp" | "abil" | "prestige";
 
-const SHOP_BALANCE = (p: Player) => `🪙 **Oboli: ${p.gold}**   ·   ⭐ **XP: ${p.xp}**`;
+const SHOP_BALANCE = (p: Player) => {
+  const prestigeLine = p.prestigeLevel > 0 ? `   ·   ⭐ Prestigiu **${p.prestigeLevel}**` : "";
+  return `🪙 **Oboli: ${p.gold}**   ·   ⭐ **XP: ${p.xp}**${prestigeLine}`;
+};
 
 // Five permanent stat upgrades — shows current bonus → value after purchase,
 // with the price in bold so the cost is unmistakable.
@@ -798,6 +806,27 @@ export function buildShopEmbed(p: Player, category: ShopCategory = "overview"): 
         sectionTitle("Abilități de luptă") + "\n" +
         shopAbilText(p) +
         "\n*Abilitățile se aplică imediat, chiar în lupta curentă.*",
+      );
+  }
+
+  if (category === "prestige") {
+    const cost = prestigeCost(p.prestigeLevel);
+    const total = prestigeTotalBonuses(p);
+    const next = prestigeNextBonuses(p.prestigeLevel);
+    return embed
+      .setTitle("💎 Forja Cenușii — Prestigiu")
+      .setDescription(
+        SHOP_BALANCE(p) + "\n\n" +
+        sectionTitle("Prestigiu Permanent") + "\n" +
+        "Fiecare nivel de prestigiu consumă **XP** și oferă bonusuri permanente\n" +
+        "care se aplică în **TOATE** luptele normale și în lupta cu Dragonul Stins.\n\n" +
+        (p.prestigeLevel > 0
+          ? `**🎯 Nivel Prestigiu: ${p.prestigeLevel}**\n${total}\n\n`
+          : "") +
+        `**🔰 Următorul nivel (${p.prestigeLevel + 1}):**\n` +
+        `   → ${next}\n` +
+        `   → cost: **${cost.toLocaleString("ro-RO")} XP**\n\n` +
+        "*Costul crește cu 50% la fiecare nivel de prestigiu.*",
       );
   }
 
@@ -981,6 +1010,7 @@ export function shopNavRow(): ActionRowBuilder<ButtonBuilder> {
     new ButtonBuilder().setCustomId("shop_nav_stats").setLabel("Puteri").setEmoji("⚔️").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId("shop_nav_comp").setLabel("Companion").setEmoji("🐾").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId("shop_nav_abil").setLabel("Abilități").setEmoji("🎯").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("shop_nav_prestige").setLabel("Prestigiu").setEmoji("⭐").setStyle(ButtonStyle.Secondary),
   );
 }
 
@@ -994,6 +1024,29 @@ export function shopBackRow(): ActionRowBuilder<ButtonBuilder> {
 /** Main page rows (just the nav). */
 export function shopRows(_p: Player): ActionRowBuilder<ButtonBuilder>[] {
   return [shopNavRow()];
+}
+
+function prestigeCost(level: number): number {
+  return Math.floor(10_000 * Math.pow(1.5, level));
+}
+
+function prestigeNextBonuses(level: number): string {
+  const next = level + 1;
+  const mult = Math.pow(1.5, level - 1);
+  const atk  = Math.round(5 * mult);
+  const def  = Math.round(5 * mult);
+  const dodge = Math.round(3 * mult);
+  const crit  = Math.round(3 * mult);
+  const hp    = Math.round(20 * mult);
+  return `⚔️ +${atk} daune · 🛡️ +${def} apărare · 🌀 +${dodge}% evitare · 💥 +${crit}% critic · ❤️ +${hp} HP`;
+}
+
+function prestigeTotalBonuses(p: Player): string {
+  if (p.prestigeLevel <= 0) return "";
+  return (
+    `⚔️ +${p.prestigeAttackBonus} daune · 🛡️ +${p.prestigeDefenseBonus} apărare\n` +
+    `🌀 +${p.prestigeDodgeBonus}% evitare · 💥 +${p.prestigeCritBonus}% critic · ❤️ +${p.prestigeHpBonus} HP`
+  );
 }
 
 /** Puteri (stat upgrades) sub-page rows. */
@@ -1079,6 +1132,23 @@ export function shopAbilRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
     new ActionRowBuilder<ButtonBuilder>().addComponents(abilBtn("empower"), abilBtn("shield")),
     shopBackRow(),
   ];
+}
+
+/** Prestige sub-page rows. */
+export function shopPrestigeRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
+  const cost = prestigeCost(p.prestigeLevel);
+  const rows: ActionRowBuilder<ButtonBuilder>[] = [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId("shop_prestigebuy")
+        .setLabel(`⭐ Prestigiu Nv.${p.prestigeLevel} → ${p.prestigeLevel + 1} (${cost.toLocaleString("ro-RO")} XP)`)
+        .setEmoji("💎")
+        .setStyle(ButtonStyle.Success)
+        .setDisabled(p.xp < cost),
+    ),
+    shopBackRow(),
+  ];
+  return rows;
 }
 
 export function levelupRows(eventId: number): ActionRowBuilder<ButtonBuilder>[] {
