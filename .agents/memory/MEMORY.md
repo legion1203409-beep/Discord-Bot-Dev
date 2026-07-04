@@ -7,7 +7,7 @@
 - [Escalating upgrade guard](escalating-upgrade-guard.md) — tier-priced upgrades must guard UPDATE...WHERE on expectedLevel, not just balance, or concurrent clicks double-upgrade at the cheap tier.
 - [undici discord.js compat](undici-discordjs-compat.md) — pin undici override to ^6.x (not >=6.27.0); undici 8.x breaks discord.js REST via Symbol(sensitiveHeaders) in Headers ctor.
 - [Discord interaction defer](discord-interaction-defer.md) — handlers doing DB/network work must deferReply/deferUpdate first or prod DB latency causes 10062; bot is prod-only so it's invisible in dev.
-- [Discord dispatcher must be fire-and-forget](discord-dispatcher-pattern.md) — interactionCreate handler must use void/dispatch() not await for each handler; sequential await causes 10062 when many users click simultaneously (each handler queues behind the previous DB work).
+- [Discord dispatcher must be fire-and-forget](discord-dispatcher-pattern.md) — interactionCreate must dispatch handlers with void, not await; sequential await causes 10062 under concurrent clicks.
 - [api-server is /api-only](api-server-is-api-only.md) — don't serve the status SPA from api-server; status is a separate web artifact on "/", else GET /api 500s via a broken catch-all.
 - [Discord embed field markdown](discord-embed-field-markdown.md) — embed field NAMES render markdown literally (raw `**`); use plain dividers there, keep bold for description/value only.
 - [Delayed window.open popup-block](delayed-window-open-popup-block.md) — click→animate→open: open about:blank synchronously on click (opener=null, no noopener flag), set location after delay.
@@ -23,4 +23,5 @@
 - [Discord live countdown](discord-live-countdown.md) — `<t:UNIX:R>` countdown must use a stored absolute expiresAt that ALSO schedules the expiry setTimeout (delay = expiresAt - Date.now()); footers can't render it.
 - [bot_state table self-heal](bot-state-table-self-heal.md) — guard EVERY bot_state helper with singleton ensureBotStateTable() (idempotent CREATE TABLE); ShardReady/ClientReady race a one-shot startup create.
 - [Permanent trader repost guard](permanent-trader-repost-guard.md) — re-post the single persistent trader only on Discord 10008; treating any fetch/edit error as deleted duplicates it on transient blips.
-- [Multi-guild channel routing](multi-guild-channel-routing.md) — getChannel() returns null for unconfigured guilds; scheduler uses fetchChannel() helper; tests must vi.mock("../channel-config") or null causes all actions to silently short-circuit.
+- [Multi-guild channel routing](multi-guild-channel-routing.md) — getChannel() returns null for unconfigured guilds; scheduler uses fetchChannel(); tests must vi.mock channel-config or actions silently no-op.
+- [DB pool & interaction latency](db-pool-interaction-latency.md) — default pg Pool (max 10) congests the event loop under concurrent clicks, delaying even deferUpdate past 3s → 10062; size pool + timeouts.

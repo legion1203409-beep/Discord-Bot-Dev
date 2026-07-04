@@ -193,14 +193,19 @@ function makeAdminInteraction({
   guildOwnerId?: string;
 }) {
   const reply = vi.fn().mockResolvedValue(undefined);
+  const editReply = vi.fn().mockResolvedValue(undefined);
+  const deferReply = vi.fn().mockResolvedValue(undefined);
   return {
     reply,
+    editReply,
+    deferReply,
     user: { id: userId },
     guild: { ownerId: guildOwnerId },
     options: {
       getSubcommand: vi.fn().mockReturnValue(sub),
     },
     _reply: reply,
+    _editReply: editReply,
   };
 }
 
@@ -285,8 +290,9 @@ describe("/admin offline — isOwner regression guard", () => {
       guildOwnerId: "guild-owner-111",
     });
     await handleAdmin(interaction as never);
-    // The reply for the super admin should be the success message, not the restriction
-    expect(interaction._reply).toHaveBeenCalledWith(
+    // The success message for the super admin is sent via editReply (after deferReply)
+    expect(interaction.deferReply).toHaveBeenCalledOnce();
+    expect(interaction._editReply).toHaveBeenCalledWith(
       expect.objectContaining({
         content: expect.stringContaining("offline"),
       }),

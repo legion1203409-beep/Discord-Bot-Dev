@@ -683,12 +683,12 @@ export async function handleAdmin(interaction: ChatInputCommandInteraction) {
   if (sub === "ghid") { await handleAdminGhid(interaction); return; }
   if (!(await isOwner(interaction))) return;
   const guildId = interaction.guildId!;
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   if (sub === "offline") {
     botClient?.user?.setPresence({ status: "invisible" });
-    await interaction.reply({
+    await interaction.editReply({
       content: "🔴 **Botul a intrat în modul offline.** Apare invizibil pentru utilizatori, dar continuă să ruleze în fundal.",
-      ephemeral: true,
     });
     logger.info("Admin: bot set to invisible");
     return;
@@ -699,18 +699,16 @@ export async function handleAdmin(interaction: ChatInputCommandInteraction) {
       status: "online",
       activities: [{ name: "Regatul Cenușii", type: ActivityType.Watching }],
     });
-    await interaction.reply({
+    await interaction.editReply({
       content: "🟢 **Botul este din nou online!** Stare restaurată.",
-      ephemeral: true,
     });
     logger.info("Admin: bot set to online");
     return;
   }
 
   if (sub === "restart") {
-    await interaction.reply({
+    await interaction.editReply({
       content: "🔄 **Repornire în curs…** Botul se va reconecta în câteva secunde.",
-      ephemeral: true,
     });
     logger.info("Admin: restart requested — exiting process");
     setTimeout(() => process.exit(0), 1500);
@@ -726,8 +724,7 @@ export async function handleAdmin(interaction: ChatInputCommandInteraction) {
       new ButtonBuilder().setCustomId(confirmId).setLabel("✅ Da, resetează").setStyle(ButtonStyle.Danger),
       new ButtonBuilder().setCustomId("admin_reset_cancel").setLabel("❌ Anulează").setStyle(ButtonStyle.Secondary),
     );
-    await interaction.reply({
-      ephemeral: true,
+    await interaction.editReply({
       content:
         `⚠️ **Confirmare necesară**\n\nEști sigur că vrei să resetezi **COMPLET** progresul lui **${target.username}**?\n\n` +
         `> XP, Oboli, nivel, clasă, companion, abilități, upgrade-uri, chei — **totul** se șterge.\n> Această acțiune **nu poate fi anulată**.`,
@@ -744,8 +741,7 @@ export async function handleAdmin(interaction: ChatInputCommandInteraction) {
       new ButtonBuilder().setCustomId(confirmId).setLabel("💀 Da, resetează tot serverul").setStyle(ButtonStyle.Danger),
       new ButtonBuilder().setCustomId("admin_reset_cancel").setLabel("❌ Anulează").setStyle(ButtonStyle.Secondary),
     );
-    await interaction.reply({
-      ephemeral: true,
+    await interaction.editReply({
       content:
         `💀 **ATENȚIE MAXIMĂ**\n\nEști pe cale să resetezi progresul **TUTUROR** jucătorilor de pe server!\n\n` +
         `> Aceasta va șterge tot XP, Oboli, nivel, clase, companioane, upgrades și chei pentru fiecare jucător.\n> Această acțiune **NU POATE FI ANULATĂ**.`,
@@ -767,12 +763,11 @@ export async function handleAdmin(interaction: ChatInputCommandInteraction) {
     if (target) {
       const player = await getPlayerById(target.id, guildId);
       if (!player) {
-        await interaction.reply({ content: `❌ **${target.username}** nu are profil pe acest server.`, ephemeral: true });
+        await interaction.editReply({ content: `❌ **${target.username}** nu are profil pe acest server.` });
         return;
       }
       grantAdminPlayerBoost(target.id, xpMult, goldMult, durationMs);
-      await interaction.reply({
-        ephemeral: true,
+      await interaction.editReply({
         embeds: [{
           color: THEME_COLOR,
           description:
@@ -784,8 +779,7 @@ export async function handleAdmin(interaction: ChatInputCommandInteraction) {
       logger.info({ targetId: target.id, guildId, tip, multiplicator, durata }, "Admin: player boost granted");
     } else {
       grantGuildBoost(guildId, xpMult, goldMult, durationMs);
-      await interaction.reply({
-        ephemeral: true,
+      await interaction.editReply({
         embeds: [{
           color: THEME_COLOR,
           description:
@@ -804,12 +798,11 @@ export async function handleAdmin(interaction: ChatInputCommandInteraction) {
     const amount = interaction.options.getInteger("cantitate", true);
     const player = await getPlayerById(target.id, guildId);
     if (!player) {
-      await interaction.reply({ content: `❌ **${target.username}** nu are încă un profil pe acest server.`, ephemeral: true });
+      await interaction.editReply({ content: `❌ **${target.username}** nu are încă un profil pe acest server.` });
       return;
     }
     await addPlayerGold(target.id, guildId, amount);
-    await interaction.reply({
-      ephemeral: true,
+    await interaction.editReply({
       embeds: [{
         color: THEME_COLOR,
         description: `💰 **+${amount.toLocaleString("ro-RO")} Oboli** adăugați lui **${target.username}**.\nNou total: **${(player.gold + amount).toLocaleString("ro-RO")} Oboli**.`,
@@ -824,12 +817,11 @@ export async function handleAdmin(interaction: ChatInputCommandInteraction) {
     const amount = interaction.options.getInteger("cantitate", true);
     const player = await getPlayerById(target.id, guildId);
     if (!player) {
-      await interaction.reply({ content: `❌ **${target.username}** nu are încă un profil pe acest server.`, ephemeral: true });
+      await interaction.editReply({ content: `❌ **${target.username}** nu are încă un profil pe acest server.` });
       return;
     }
     await addPlayerXp(target.id, guildId, amount);
-    await interaction.reply({
-      ephemeral: true,
+    await interaction.editReply({
       embeds: [{
         color: THEME_COLOR,
         description: `✨ **+${amount.toLocaleString("ro-RO")} XP** adăugat lui **${target.username}**.\nNou total: **${(player.xp + amount).toLocaleString("ro-RO")} XP**.`,
@@ -844,13 +836,12 @@ export async function handleAdmin(interaction: ChatInputCommandInteraction) {
     const amount = interaction.options.getInteger("cantitate", true);
     const player = await getPlayerById(target.id, guildId);
     if (!player) {
-      await interaction.reply({ content: `❌ **${target.username}** nu are încă un profil pe acest server.`, ephemeral: true });
+      await interaction.editReply({ content: `❌ **${target.username}** nu are încă un profil pe acest server.` });
       return;
     }
     await deductPlayerGold(target.id, guildId, amount);
     const newGold = Math.max(0, player.gold - amount);
-    await interaction.reply({
-      ephemeral: true,
+    await interaction.editReply({
       embeds: [{
         color: THEME_COLOR,
         description: `💸 **-${amount.toLocaleString("ro-RO")} Oboli** scăzuți de la **${target.username}**.\nNou total: **${newGold.toLocaleString("ro-RO")} Oboli**.`,
@@ -865,13 +856,12 @@ export async function handleAdmin(interaction: ChatInputCommandInteraction) {
     const amount = interaction.options.getInteger("cantitate", true);
     const player = await getPlayerById(target.id, guildId);
     if (!player) {
-      await interaction.reply({ content: `❌ **${target.username}** nu are încă un profil pe acest server.`, ephemeral: true });
+      await interaction.editReply({ content: `❌ **${target.username}** nu are încă un profil pe acest server.` });
       return;
     }
     await deductPlayerXp(target.id, guildId, amount);
     const newXp = Math.max(0, player.xp - amount);
-    await interaction.reply({
-      ephemeral: true,
+    await interaction.editReply({
       embeds: [{
         color: THEME_COLOR,
         description: `💔 **-${amount.toLocaleString("ro-RO")} XP** scăzut de la **${target.username}**.\nNou total: **${newXp.toLocaleString("ro-RO")} XP**.`,
@@ -900,8 +890,7 @@ export async function handleAdmin(interaction: ChatInputCommandInteraction) {
         ).join("\n")
       : "⚠️ Niciun boss activ";
 
-    await interaction.reply({
-      ephemeral: true,
+    await interaction.editReply({
       embeds: [{
         color: 0x2ecc71,
         title: "⚙️ Status Bot — Oracolul Cenușii",
@@ -921,6 +910,7 @@ async function handleSetCanale(interaction: ChatInputCommandInteraction) {
   if (!(await isOwner(interaction))) return;
   const guildId = interaction.guildId!;
   const sub = interaction.options.getSubcommand();
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   if (sub === "vezi") {
     const keys = Object.keys(EVENT_LABELS) as EventType[];
@@ -935,9 +925,8 @@ async function handleSetCanale(interaction: ChatInputCommandInteraction) {
     const header = allConfigured
       ? "✅ Toate canalele sunt configurate.\n\n"
       : "⚠️ **Unele canale lipsesc.** Botul va sări evenimentele pentru canalele neconfigurate.\nFolosește `/setcanale seteaza` pentru a le configura.\n\n";
-    await interaction.reply({
+    await interaction.editReply({
       content: header + lines.join("\n\n"),
-      ephemeral: true,
     });
     return;
   }
@@ -946,13 +935,12 @@ async function handleSetCanale(interaction: ChatInputCommandInteraction) {
     const eventKey = interaction.options.getString("eveniment", true) as EventType;
     const channel = interaction.options.getChannel("canal", true);
     if (!channel) {
-      await interaction.reply({ content: "❌ Alege un canal valid.", ephemeral: true });
+      await interaction.editReply({ content: "❌ Alege un canal valid." });
       return;
     }
     await setChannel(guildId, eventKey, channel.id);
-    await interaction.reply({
+    await interaction.editReply({
       content: `✅ **${EVENT_LABELS[eventKey]}** va fi acum postat în <#${channel.id}>`,
-      ephemeral: true,
     });
     logger.info({ eventKey, channelId: channel.id, userId: interaction.user.id, guildId }, "Channel configured via /setcanale");
     return;
@@ -961,18 +949,16 @@ async function handleSetCanale(interaction: ChatInputCommandInteraction) {
   if (sub === "reset") {
     const eventKey = interaction.options.getString("eveniment", true) as EventType;
     await resetChannel(guildId, eventKey);
-    await interaction.reply({
+    await interaction.editReply({
       content: `🔄 Canalul pentru **${EVENT_LABELS[eventKey]}** a fost resetat la valoarea implicită.`,
-      ephemeral: true,
     });
     return;
   }
 
   if (sub === "resetall") {
     await resetAllChannels(guildId);
-    await interaction.reply({
+    await interaction.editReply({
       content: "🔄 Toate canalele au fost resetate la valorile implicite.",
-      ephemeral: true,
     });
     return;
   }
@@ -1908,15 +1894,16 @@ async function handleAdminResetConfirm(interaction: ButtonInteraction, buttonId:
     await interaction.reply({ content: "🔒 Nu ai permisiunea să confirmi această acțiune.", flags: MessageFlags.Ephemeral });
     return;
   }
+  await interaction.deferUpdate();
   const pending = pendingAdminResets.get(buttonId);
   if (!pending) {
-    await interaction.update({ content: "⌛ Sesiunea de confirmare a expirat (2 minute). Rulează comanda din nou.", components: [] });
+    await interaction.editReply({ content: "⌛ Sesiunea de confirmare a expirat (2 minute). Rulează comanda din nou.", components: [] });
     return;
   }
   pendingAdminResets.delete(buttonId);
   if (pending.targetId === "ALL") {
     const count = await resetAllPlayersInGuild(pending.guildId);
-    await interaction.update({
+    await interaction.editReply({
       content: `💀 **Resetare completă!** Progresul a **${count}** jucători de pe server a fost șters complet.`,
       components: [],
     });
@@ -1924,10 +1911,10 @@ async function handleAdminResetConfirm(interaction: ButtonInteraction, buttonId:
   } else {
     const ok = await resetPlayer(pending.targetId, pending.guildId);
     if (!ok) {
-      await interaction.update({ content: `❌ **${pending.targetUsername}** nu a fost găsit în baza de date.`, components: [] });
+      await interaction.editReply({ content: `❌ **${pending.targetUsername}** nu a fost găsit în baza de date.`, components: [] });
       return;
     }
-    await interaction.update({
+    await interaction.editReply({
       content:
         `✅ **Progresul lui ${pending.targetUsername} a fost resetat complet.**\n` +
         `> XP, Oboli, nivel, clasă, companion, abilități, upgrade-uri și chei — toate șterse.`,
