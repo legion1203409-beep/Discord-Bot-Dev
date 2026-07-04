@@ -710,7 +710,7 @@ export function buildKeyDropMessage(fromRarityKey: string, keyType: string): str
   );
 }
 
-export type ShopCategory = "overview" | "stats" | "comp" | "abil" | "prestige";
+export type ShopCategory = "overview" | "stats" | "comp" | "abil" | "prestige" | "class";
 
 const SHOP_BALANCE = (p: Player) => {
   const prestigeLine = p.prestigeLevel > 0 ? `   ·   ⭐ Prestigiu **${p.prestigeLevel}**` : "";
@@ -816,6 +816,33 @@ export function buildShopEmbed(p: Player, category: ShopCategory = "overview"): 
       );
   }
 
+  if (category === "class") {
+    const cls = p.class && isClassKey(p.class) ? CLASSES[p.class] : null;
+    if (cls) {
+      return embed
+        .setTitle("🧬 Forja Cenușii — Clasă")
+        .setDescription(
+          SHOP_BALANCE(p) + "\n\n" +
+          sectionTitle("Calea ta") + "\n" +
+          `${cls.emoji} **${cls.label}**\n` +
+          `> *${cls.desc}*\n\n` +
+          "✅ Ți-ai ales deja calea, iar ea este **permanentă**.\n" +
+          "Bonusurile clasei se aplică automat la fiecare intrare în Ora Umbrelor.",
+        );
+    }
+    return embed
+      .setTitle("🧬 Forja Cenușii — Clasă")
+      .setDescription(
+        SHOP_BALANCE(p) + "\n\n" +
+        sectionTitle("Alege-ți calea") + "\n" +
+        "⚠️ *Alegerea este **permanentă** — cântărește-o cu grijă.*\n\n" +
+        Object.values(CLASSES)
+          .map((c) => `${c.emoji} **${c.label}**\n   ↳ ${c.desc}`)
+          .join("\n") +
+        "\n\n👇 Apasă butonul clasei dorite pentru a o alege.",
+      );
+  }
+
   if (category === "prestige") {
     const cost = prestigeCost(p.prestigeLevel);
     const total = prestigeTotalBonuses(p);
@@ -850,7 +877,9 @@ export function buildShopEmbed(p: Player, category: ShopCategory = "overview"): 
       sectionTitle("Alege o categorie") + "\n" +
       "⚔️ **Puteri** — statistici permanente (atac, apărare, evitare, critic, HP)\n" +
       "🐾 **Companion** — un aliat de luptă care crește odată cu tine\n" +
-      "🎯 **Abilități** — puteri active folosite în luptă\n\n" +
+      "🎯 **Abilități** — puteri active folosite în luptă\n" +
+      "🧬 **Clasă** — alege-ți calea și bonusul permanent\n" +
+      "⭐ **Prestigiu** — sacrifică XP pentru putere nemuritoare\n\n" +
       "🗝️ *Caută cuferele de chei — cu ele deschizi cuferele blocate pline de Oboli.*\n\n" +
       "👇 Apasă un buton de mai jos pentru a deschide o categorie.",
     );
@@ -1013,12 +1042,13 @@ export const SHOP_COUNT_KEY: Record<ShopKey, keyof Player> = {
 
 // ─── Shop navigation ─────────────────────────────────────────────────────────
 
-/** Main nav row — 3 category buttons shown on the landing page. */
+/** Main nav row — category buttons shown on the landing page. */
 export function shopNavRow(): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId("shop_nav_stats").setLabel("Puteri").setEmoji("⚔️").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId("shop_nav_comp").setLabel("Companion").setEmoji("🐾").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId("shop_nav_abil").setLabel("Abilități").setEmoji("🎯").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("shop_nav_class").setLabel("Clasă").setEmoji("🧬").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId("shop_nav_prestige").setLabel("Prestigiu").setEmoji("⭐").setStyle(ButtonStyle.Secondary),
   );
 }
@@ -1162,6 +1192,25 @@ export function shopPrestigeRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
     shopBackRow(),
   ];
   return rows;
+}
+
+/** Class sub-page rows — pickers if unchosen, just Back once a class is set. */
+export function shopClassRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
+  if (p.class && isClassKey(p.class)) {
+    return [shopBackRow()];
+  }
+  const keys = Object.keys(CLASSES) as ClassKey[];
+  const btn = (k: ClassKey) =>
+    new ButtonBuilder()
+      .setCustomId(`shop_class_${k}`)
+      .setLabel(CLASSES[k].label)
+      .setEmoji(CLASSES[k].emoji)
+      .setStyle(ButtonStyle.Primary);
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(keys.slice(0, 3).map(btn)),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(keys.slice(3).map(btn)),
+    shopBackRow(),
+  ];
 }
 
 export function levelupRows(eventId: number): ActionRowBuilder<ButtonBuilder>[] {

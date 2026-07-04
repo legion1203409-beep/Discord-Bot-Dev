@@ -94,6 +94,7 @@ import {
   shopCompRows,
   shopAbilRows,
   shopPrestigeRows,
+  shopClassRows,
   levelupRows,
   shopPrice,
   monsterMaxHp,
@@ -1554,6 +1555,26 @@ async function handleShopNavPrestige(interaction: ButtonInteraction) {
   await interaction.editReply({ embeds: [buildShopEmbed(p, "prestige")], components: shopPrestigeRows(p) });
 }
 
+async function handleShopNavClass(interaction: ButtonInteraction) {
+  await interaction.deferUpdate();
+  const guildId = interaction.guildId!;
+  const p = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
+  await interaction.editReply({ embeds: [buildShopEmbed(p, "class")], components: shopClassRows(p) });
+}
+
+async function handleShopClassPick(interaction: ButtonInteraction, key: string) {
+  await interaction.deferUpdate();
+  const guildId = interaction.guildId!;
+  await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
+  const updated = await setPlayerClass(interaction.user.id, guildId, key);
+  const player = updated ?? (await getPlayerById(interaction.user.id, guildId));
+  if (!player) return;
+  if (!updated) {
+    await interaction.followUp({ content: "❌ Ți-ai ales deja o clasă — alegerea este permanentă.", flags: MessageFlags.Ephemeral });
+  }
+  await interaction.editReply({ embeds: [buildShopEmbed(player, "class")], components: shopClassRows(player) });
+}
+
 async function handlePrestigeBuy(interaction: ButtonInteraction) {
   await interaction.deferUpdate();
   const guildId = interaction.guildId!;
@@ -1983,6 +2004,8 @@ async function handleButton(interaction: ButtonInteraction) {
   if (id === "shop_nav_comp") return handleShopNavComp(interaction);
   if (id === "shop_nav_abil") return handleShopNavAbil(interaction);
   if (id === "shop_nav_prestige") return handleShopNavPrestige(interaction);
+  if (id === "shop_nav_class") return handleShopNavClass(interaction);
+  if (id.startsWith("shop_class_")) return handleShopClassPick(interaction, id.replace("shop_class_", ""));
   if (id === "shop_prestigebuy") return handlePrestigeBuy(interaction);
   if (id === "shop_back") return handleShopBack(interaction);
 
