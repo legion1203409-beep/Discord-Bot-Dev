@@ -1017,7 +1017,8 @@ async function handleClasament(interaction: ChatInputCommandInteraction) {
     const serverTag = isGlobal ? ` *(${interaction.client.guilds.cache.get(p.guildId)?.name ?? "Regat necunoscut"})* ` : "";
     const repStr = p.reputation > 0 ? `⭐ ${p.reputation.toLocaleString("ro-RO")} Rep.` : "⭐ 0 Rep.";
     const levelStr = p.maxLevel > 0 ? ` · 🏅 Niv. ${p.maxLevel}` : "";
-    return `${medals[i] ?? `**${i + 1}.**`} **${p.username}**${serverTag} — ${repStr}${levelStr}${deathStr}`;
+    const prestigeStr = p.prestigeLevel > 0 ? ` · 💎 Prestigiu ${p.prestigeLevel}` : "";
+    return `${medals[i] ?? `**${i + 1}.**`} **${p.username}**${serverTag} — ${repStr}${levelStr}${prestigeStr}${deathStr}`;
   }).join("\n");
 
   const components: ActionRowBuilder<StringSelectMenuBuilder>[] = [];
@@ -1028,7 +1029,7 @@ async function handleClasament(interaction: ChatInputCommandInteraction) {
       .addOptions(
         top.map((p, i) => ({
           label: `${medals[i] ?? `#${i + 1}`} ${p.username}`.slice(0, 100),
-          description: `⭐ ${p.reputation.toLocaleString("ro-RO")} Rep. · 🏅 Niv. ${p.maxLevel}`.slice(0, 100),
+          description: `⭐ ${p.reputation.toLocaleString("ro-RO")} Rep. · 🏅 Niv. ${p.maxLevel}${p.prestigeLevel > 0 ? ` · 💎 Prestigiu ${p.prestigeLevel}` : ""}`.slice(0, 100),
           value: p.discordId,
         })),
       );
