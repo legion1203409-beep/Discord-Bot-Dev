@@ -4,7 +4,7 @@ import type { ActiveBossRow } from "@workspace/db";
 import { eq, and, gte, gt, inArray, sql, desc } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import type { Player, EventParticipant } from "@workspace/db";
-import { CLASSES, isClassKey, rollRarity, isCompanionKey, companionStats } from "./survival";
+import { CLASSES, isClassKey, rollRarity, isCompanionKey, companionStats, prestigeStartLevel, monsterMaxHp } from "./survival";
 import { logger } from "../lib/logger";
 
 export type UpgradeKey = "atac" | "def" | "dodge" | "crit" | "hp";
@@ -87,6 +87,21 @@ export async function runMultiGuildMigrations(): Promise<void> {
   `);
   logger.info("multi-guild migrations: event_claims done");
 
+  // ─── Prestige system columns (2026-07-04) ─────────────────────────────────
+  const prestigeCols = [
+    "prestige_level integer NOT NULL DEFAULT 0",
+    "prestige_attack_bonus integer NOT NULL DEFAULT 0",
+    "prestige_defense_bonus integer NOT NULL DEFAULT 0",
+    "prestige_dodge_bonus integer NOT NULL DEFAULT 0",
+    "prestige_crit_bonus integer NOT NULL DEFAULT 0",
+    "prestige_hp_bonus integer NOT NULL DEFAULT 0",
+  ];
+  for (const colDef of prestigeCols) {
+    const colName = colDef.split(" ")[0];
+    await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS ${colDef}`);
+    logger.info(`multi-guild migrations: prestige column ${colName} ensured`);
+  }
+
   // Post-migration verification: confirm every required column is present
   const { rows: missingCols } = await pool.query<{ table_name: string; column_name: string }>(`
     SELECT v.table_name, v.column_name
@@ -94,7 +109,13 @@ export async function runMultiGuildMigrations(): Promise<void> {
       ('players',           'guild_id'),
       ('active_events',     'guild_id'),
       ('event_participants','guild_id'),
-      ('event_claims',      'guild_id')
+      ('event_claims',      'guild_id'),
+      ('players',           'prestige_level'),
+      ('players',           'prestige_attack_bonus'),
+      ('players',           'prestige_defense_bonus'),
+      ('players',           'prestige_dodge_bonus'),
+      ('players',           'prestige_crit_bonus'),
+      ('players',           'prestige_hp_bonus')
     ) AS v(table_name, column_name)
     WHERE NOT EXISTS (
       SELECT 1 FROM information_schema.columns c
@@ -440,7 +461,10 @@ export async function joinEvent(guildId: string, eventId: number, discordId: str
   const comp = player?.companion && isCompanionKey(player.companion)
     ? companionStats(player.companion, player.companionLevel ?? 1)
     : null;
-  const maxHp = 100 + (player?.maxHpBonus ?? 0) + (cls?.hp ?? 0) + (comp?.hp ?? 0);
+  const prestigeLevel = player?.prestigeLevel ?? 0;
+  const startLevel = prestigeStartLevel(prestigeLevel);
+  const startMonsterHp = monsterMaxHp(startLevel);
+  const maxHp = 100 + (player?.maxHpBonus ?? 0) + (player?.prestigeHpBonus ?? 0) + (cls?.hp ?? 0) + (comp?.hp ?? 0);
   try {
     const [p] = await db.insert(eventParticipantsTable).values({
       eventId,
@@ -449,7 +473,9 @@ export async function joinEvent(guildId: string, eventId: number, discordId: str
       username,
       maxHp,
       currentHp: maxHp,
-      monsterRarity: rollRarity(1),
+      monsterLevel: startLevel,
+      monsterCurrentHp: startMonsterHp,
+      monsterRarity: rollRarity(startLevel),
       attackBonus: (player?.attackBonus ?? 0) + (player?.prestigeAttackBonus ?? 0) + (cls?.attack ?? 0) + (comp?.attack ?? 0),
       defenseBonus: (player?.defenseBonus ?? 0) + (player?.prestigeDefenseBonus ?? 0) + (comp?.defense ?? 0),
       dodgeBonus: (player?.dodgeBonus ?? 0) + (player?.prestigeDodgeBonus ?? 0) + (cls?.dodge ?? 0),
