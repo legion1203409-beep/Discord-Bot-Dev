@@ -397,6 +397,12 @@ export function buildProfileEmbed(player: Player, title?: string, avatarUrl?: st
     ? `⭐ **Nivel ${player.prestigeLevel}**\n⚔️ +${player.prestigeAttackBonus} · 🛡️ +${player.prestigeDefenseBonus} · 🌀 +${player.prestigeDodgeBonus}% · 💥 +${player.prestigeCritBonus}% · ❤️ +${player.prestigeHpBonus}`
     : "*Fără prestigiu* — `/magazin → Prestigiu`";
 
+  const hasShopUpgrades = player.shopAttackCount > 0 || player.shopDefenseCount > 0 || player.shopDodgeCount > 0 || player.shopCritCount > 0 || player.shopHpCount > 0;
+  const shopStatsValue = hasShopUpgrades
+    ? `⚔️ +${player.attackBonus} daune (${player.shopAttackCount}×) · 🛡️ -${player.defenseBonus} daune primite (${player.shopDefenseCount}×)\n` +
+      `🌀 ${player.dodgeBonus}% evitare (${player.shopDodgeCount}×) · 💥 ${player.critBonus}% critic (${player.shopCritCount}×) · ❤️ +${player.maxHpBonus} HP (${player.shopHpCount}×)`
+    : "*Fără upgrade-uri de putere* — `/magazin → Puteri`";
+
   const embed = new EmbedBuilder()
     .setColor(THEME_COLOR)
     .setTitle(title ?? `📜 Profilul lui ${player.username}`)
@@ -409,6 +415,7 @@ export function buildProfileEmbed(player: Player, title?: string, avatarUrl?: st
       { name: "🐾 Companion", value: compValue, inline: true },
       { name: "🎯 Abilități", value: abilValue, inline: false },
       { name: "━━━ Prestigiu ━━━", value: prestigeValue, inline: false },
+      { name: "━━━ Puteri din Magazin ━━━", value: shopStatsValue, inline: false },
       { name: "━━━ Resurse ━━━", value: `⭐ **${player.xp}** XP   ·   🪙 **${player.gold}** Oboli   ·   🏅 **${player.reputation}** Reputație`, inline: false },
       { name: "━━━ Chei ━━━", value: keysValue, inline: false },
       { name: "━━━ Istoric de luptă ━━━", value: `💀 Morți: **${deathInfo}**\n🏳️ Retrageri: **${retreatInfo}**`, inline: false },
