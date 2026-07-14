@@ -42,7 +42,7 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- **Always run `pnpm --filter @workspace/db run push-force` (dev DB sync) after any schema change, BEFORE publishing.** Replit's Publish flow diffs the development *database* against production and drops prod columns that are missing in dev — this is what wiped player prestige. The bot only runs in production, so its startup migrations never update the dev DB; schema files alone are not enough.
 
 ## Pointers
 
