@@ -1873,7 +1873,7 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
       r.xp = Math.round(r.xp * rmods.xpMult);
     }
     const eventKeyDrops = rollEventKeyDrops([...activeBoss.damageBy.keys()]);
-    const bossItemKey = activeBoss.rarity === "legendar"
+    const bossItemKey = (activeBoss.rarity === "epic" || activeBoss.rarity === "legendar")
       ? "inima_abisului"
       : "coama_dragonului";
     await Promise.all([
@@ -1910,13 +1910,16 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
     const rewLine = myReward
       ? `🏅 Tu primești: **+${myReward.rep} Rep, +${myReward.gold} Oboli, +${myReward.xp} XP**!`
       : `🏅 Recompensele au fost distribuite!`;
+    const bossItemInfo = ITEMS[bossItemKey];
+    const itemLine = `${bossItemInfo.emoji} Toți participanții au primit **${bossItemInfo.label}** în inventar!`;
 
     await interaction.followUp({
       content:
         abilityLine +
         `⚔️ **${interaction.user.username}** a dat lovitura finală! **${playerDmg.toLocaleString()} daune**!${critTag}\n` +
         `💀 **Dragonul Stins a căzut!** Regatul este salvat!\n` +
-        rewLine,
+        rewLine + "\n" +
+        itemLine,
     });
     return;
   }

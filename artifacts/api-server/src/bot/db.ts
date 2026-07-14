@@ -665,29 +665,44 @@ export async function addPlayerItem(discordId: string, guildId: string, itemKey:
     });
 }
 
-/** Atomically deduct item costs. Returns false if player lacks any of the required items. */
+/**
+ * Atomically deduct item costs inside a single DB transaction.
+ * Returns false if the player lacks any required items (pre-check or concurrent race).
+ * Each UPDATE uses WHERE quantity >= need; if 0 rows are affected the transaction rolls back.
+ */
 export async function consumePlayerItems(discordId: string, guildId: string, costs: Record<string, number>): Promise<boolean> {
-  const rows = await db.select().from(playerItemsTable)
-    .where(and(eq(playerItemsTable.discordId, discordId), eq(playerItemsTable.guildId, guildId)));
-  const inv = Object.fromEntries(rows.map((r) => [r.itemKey, r.quantity]));
+  try {
+    return await db.transaction(async (tx) => {
+      const rows = await tx.select().from(playerItemsTable)
+        .where(and(eq(playerItemsTable.discordId, discordId), eq(playerItemsTable.guildId, guildId)));
+      const inv = Object.fromEntries(rows.map((r) => [r.itemKey, r.quantity]));
 
-  for (const [key, need] of Object.entries(costs)) {
-    if ((inv[key] ?? 0) < need) return false;
+      for (const [key, need] of Object.entries(costs)) {
+        if ((inv[key] ?? 0) < need) return false;
+      }
+
+      const results = await Promise.all(
+        Object.entries(costs).map(([key, need]) =>
+          tx.update(playerItemsTable)
+            .set({ quantity: sql`${playerItemsTable.quantity} - ${need}` })
+            .where(and(
+              eq(playerItemsTable.discordId, discordId),
+              eq(playerItemsTable.guildId, guildId),
+              eq(playerItemsTable.itemKey, key),
+              gte(playerItemsTable.quantity, need),
+            ))
+            .returning({ id: playerItemsTable.discordId })
+        )
+      );
+
+      // If any UPDATE hit 0 rows a concurrent deduction raced us — abort
+      if (results.some((r) => r.length === 0)) return false;
+
+      return true;
+    });
+  } catch {
+    return false;
   }
-
-  await Promise.all(
-    Object.entries(costs).map(([key, need]) =>
-      db.update(playerItemsTable)
-        .set({ quantity: sql`${playerItemsTable.quantity} - ${need}` })
-        .where(and(
-          eq(playerItemsTable.discordId, discordId),
-          eq(playerItemsTable.guildId, guildId),
-          eq(playerItemsTable.itemKey, key),
-          gte(playerItemsTable.quantity, need),
-        ))
-    )
-  );
-  return true;
 }
 
 // ─── Active boss persistence ───────────────────────────────────────────────────

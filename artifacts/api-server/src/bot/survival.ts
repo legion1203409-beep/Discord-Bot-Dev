@@ -210,13 +210,13 @@ export function rollItemDrop(monsterLevel: number): ItemKey | null {
   if (Math.random() > 0.20) return null;
   const common: ItemKey[] = ["fragment_cenusa", "esenta_umbrei", "sange_monstru", "picatura_otr"];
   if (monsterLevel < 20) {
-    return common[Math.floor(Math.random() * 2)]!;
+    return common[Math.floor(Math.random() * common.length)]!;
   }
   if (monsterLevel < 50) {
-    return common[Math.floor(Math.random() * 4)]!;
+    return common[Math.floor(Math.random() * common.length)]!;
   }
   if (Math.random() < 0.10) return "coama_dragonului";
-  return common[Math.floor(Math.random() * 4)]!;
+  return common[Math.floor(Math.random() * common.length)]!;
 }
 
 // ─── Talisman system ──────────────────────────────────────────────────────────
@@ -318,10 +318,10 @@ export function doCombat(p: EventParticipant, talismanKey?: string | null, talis
       if (!playerDodged) {
         const [mn, mx] = monsterDmgRange(p.monsterLevel);
         monsterDmg = Math.max(1, rand(mn, mx) - p.defenseBonus);
-        // giulgiul_stins: flat damage reduction from monsters
+        // giulgiul_stins: flat damage reduction from monsters (can reduce to 0)
         if (talismanKey === "giulgiul_stins") {
           const reduction = talismanLevel >= 2 ? 7 : 3;
-          monsterDmg = Math.max(1, monsterDmg - reduction);
+          monsterDmg = Math.max(0, monsterDmg - reduction);
         }
         if (usedShield) monsterDmg = Math.max(1, Math.round(monsterDmg * (1 - shieldReduction(p.shieldLevel))));
         if (mods.damageTakenMult !== 1) monsterDmg = Math.max(1, Math.round(monsterDmg * mods.damageTakenMult));
