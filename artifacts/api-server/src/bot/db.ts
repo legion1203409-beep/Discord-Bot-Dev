@@ -1,6 +1,6 @@
 import { db, pool } from "@workspace/db";
-import { playersTable, activeEventsTable, eventParticipantsTable, eventClaimsTable, botStateTable, activeBossesTable, playerItemsTable } from "@workspace/db";
-import type { ActiveBossRow, PlayerItem } from "@workspace/db";
+import { playersTable, activeEventsTable, eventParticipantsTable, eventClaimsTable, botStateTable, activeBossesTable, playerItemsTable, playerDailyQuestsTable } from "@workspace/db";
+import type { ActiveBossRow, PlayerItem, PlayerDailyQuest } from "@workspace/db";
 import { eq, and, gte, gt, inArray, sql, desc } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import type { Player, EventParticipant } from "@workspace/db";
@@ -120,6 +120,21 @@ export async function runMultiGuildMigrations(): Promise<void> {
     )
   `);
   logger.info("multi-guild migrations: player_items table ensured");
+
+  // ─── Player daily quests table ─────────────────────────────────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS player_daily_quests (
+      discord_id   text    NOT NULL,
+      guild_id     text    NOT NULL,
+      quest_key    text    NOT NULL,
+      quest_date   text    NOT NULL,
+      progress     integer NOT NULL DEFAULT 0,
+      completed    boolean NOT NULL DEFAULT false,
+      reward_given boolean NOT NULL DEFAULT false,
+      PRIMARY KEY (discord_id, guild_id, quest_key)
+    )
+  `);
+  logger.info("multi-guild migrations: player_daily_quests table ensured");
 
   // Post-migration verification: confirm every required column is present
   const { rows: missingCols } = await pool.query<{ table_name: string; column_name: string }>(`
@@ -703,6 +718,81 @@ export async function consumePlayerItems(discordId: string, guildId: string, cos
   } catch {
     return false;
   }
+}
+
+// ─── Daily quest helpers ───────────────────────────────────────────────────────
+
+export type { PlayerDailyQuest };
+
+export function todayDateUTC(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/** Returns the player's current daily quest row, or null if none exists. */
+export async function getDailyQuestProgress(
+  discordId: string, guildId: string, questKey: string,
+): Promise<PlayerDailyQuest | null> {
+  const [row] = await db.select().from(playerDailyQuestsTable)
+    .where(and(
+      eq(playerDailyQuestsTable.discordId, discordId),
+      eq(playerDailyQuestsTable.guildId, guildId),
+      eq(playerDailyQuestsTable.questKey, questKey),
+    ));
+  return row ?? null;
+}
+
+/**
+ * Atomically increment the kill count for the "kill_10" daily quest.
+ * Resets automatically if the stored date differs from today (UTC).
+ * Returns { newProgress, justCompleted }:
+ *   justCompleted = true only on the single call that flips reward_given from false to true.
+ */
+export async function incrementDailyQuestKill(
+  discordId: string, guildId: string,
+): Promise<{ newProgress: number; justCompleted: boolean }> {
+  const today = todayDateUTC();
+  const TARGET = 10;
+
+  // Step 1: Atomically upsert progress (handles reset on new day, completed guard)
+  const { rows } = await pool.query<{ progress: number; completed: boolean }>(`
+    INSERT INTO player_daily_quests
+      (discord_id, guild_id, quest_key, quest_date, progress, completed, reward_given)
+    VALUES ($1, $2, 'kill_10', $3, 1, ($4 <= 1), false)
+    ON CONFLICT (discord_id, guild_id, quest_key) DO UPDATE SET
+      quest_date   = EXCLUDED.quest_date,
+      progress     = CASE
+        WHEN player_daily_quests.completed = true  AND player_daily_quests.quest_date = $3 THEN player_daily_quests.progress
+        WHEN player_daily_quests.quest_date != $3                                           THEN 1
+        ELSE player_daily_quests.progress + 1
+      END,
+      completed    = CASE
+        WHEN player_daily_quests.completed = true  AND player_daily_quests.quest_date = $3 THEN true
+        WHEN player_daily_quests.quest_date != $3                                           THEN ($4 <= 1)
+        ELSE (player_daily_quests.progress + 1 >= $4)
+      END,
+      reward_given = CASE
+        WHEN player_daily_quests.quest_date != $3 THEN false
+        ELSE player_daily_quests.reward_given
+      END
+    RETURNING progress, completed
+  `, [discordId, guildId, today, TARGET]);
+
+  const row = rows[0]!;
+  if (!row.completed) return { newProgress: row.progress, justCompleted: false };
+
+  // Step 2: Atomically claim reward — only the first call to reach completion wins
+  const { rowCount } = await pool.query(`
+    UPDATE player_daily_quests
+    SET reward_given = true
+    WHERE discord_id = $1
+      AND guild_id   = $2
+      AND quest_key  = 'kill_10'
+      AND quest_date = $3
+      AND completed  = true
+      AND reward_given = false
+  `, [discordId, guildId, today]);
+
+  return { newProgress: row.progress, justCompleted: (rowCount ?? 0) > 0 };
 }
 
 // ─── Active boss persistence ───────────────────────────────────────────────────

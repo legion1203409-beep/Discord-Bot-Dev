@@ -219,6 +219,64 @@ export function rollItemDrop(monsterLevel: number): ItemKey | null {
   return common[Math.floor(Math.random() * common.length)]!;
 }
 
+// ─── Daily quest system ───────────────────────────────────────────────────────
+
+export const DAILY_QUESTS = {
+  kill_10: {
+    label: "Ucide 10 monștri",
+    description: "Combate 10 monștri în Ora Umbrelor.",
+    target: 10,
+    reward: { itemKey: "coama_dragonului" as ItemKey, qty: 1 },
+    emoji: "⚔️",
+  },
+} as const;
+
+export type DailyQuestKey = keyof typeof DAILY_QUESTS;
+
+function buildProgressBar(current: number, target: number, width: number): string {
+  const filled = Math.min(width, Math.round((current / target) * width));
+  return `[${"█".repeat(filled)}${"░".repeat(width - filled)}]`;
+}
+
+export function buildMissionEmbed(
+  questKey: DailyQuestKey,
+  progress: number,
+  completed: boolean,
+  rewardGiven: boolean,
+  questDate: string | null,
+  today: string,
+): EmbedBuilder {
+  const quest = DAILY_QUESTS[questKey];
+  const isToday = questDate === today;
+  const cur = isToday ? progress : 0;
+  const done = isToday && completed;
+  const bar = buildProgressBar(cur, quest.target, 10);
+  const rewardItem = ITEMS[quest.reward.itemKey];
+
+  let statusLine: string;
+  if (done && isToday && rewardGiven) {
+    statusLine = "✅ **Misiune completată!** Recompensa a fost acordată.";
+  } else if (done && isToday && !rewardGiven) {
+    statusLine = "✅ **Misiune completată!** Recompensa va fi acordată la uciderea unui monstru.";
+  } else {
+    statusLine = `${quest.emoji} ${bar} **${cur}/${quest.target}**`;
+  }
+
+  return new EmbedBuilder()
+    .setTitle("📜 Misiunea Zilnică")
+    .setColor(THEME_COLOR)
+    .setDescription(
+      `${sectionTitle("Misiunea de Azi")}\n` +
+      `**${quest.label}**\n` +
+      `${quest.description}\n\n` +
+      `${statusLine}\n\n` +
+      `${sectionTitle("Recompensă")}\n` +
+      `${rewardItem.emoji} **${quest.reward.qty}× ${rewardItem.label}**\n\n` +
+      `*Misiunile se resetează automat la miezul nopții (UTC).*`,
+    )
+    .setFooter({ text: BRAND_FOOTER });
+}
+
 // ─── Talisman system ──────────────────────────────────────────────────────────
 export const TALISMANS = {
   crista_vietii: {
