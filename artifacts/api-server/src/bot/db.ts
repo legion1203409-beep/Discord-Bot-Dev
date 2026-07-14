@@ -1,7 +1,7 @@
 import { db, pool } from "@workspace/db";
 import { playersTable, activeEventsTable, eventParticipantsTable, eventClaimsTable, botStateTable, activeBossesTable, playerItemsTable, playerDailyQuestsTable } from "@workspace/db";
 import type { ActiveBossRow, PlayerItem, PlayerDailyQuest } from "@workspace/db";
-import { eq, and, gte, gt, inArray, sql, desc } from "drizzle-orm";
+import { eq, and, gte, gt, lt, inArray, sql, desc } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import type { Player, EventParticipant } from "@workspace/db";
 
@@ -363,18 +363,18 @@ export async function upgradeClass(
   goldCost: number, xpCost: number, items: { item: string; qty: number }[],
 ): Promise<Player | null> {
   if (!isClassKey(classKey)) return null;
+  if (expectedLevel < 1 || expectedLevel >= 10) return null;
   const costs: Record<string, number> = {};
   for (const req of items) costs[req.item] = req.qty;
 
+  // Any guard failure inside the transaction throws ROLLBACK_ERR so the whole
+  // transaction rolls back — otherwise Drizzle commits on a normal return and
+  // already-deducted materials would be lost without the upgrade applying.
+  const ROLLBACK_ERR = new Error("upgrade_class_rollback");
   try {
     return await db.transaction(async (tx) => {
-      const [rows] = await tx.select().from(playerItemsTable)
-        .where(and(eq(playerItemsTable.discordId, discordId), eq(playerItemsTable.guildId, guildId)));
-      const inv = Object.fromEntries(rows.map((r) => [r.itemKey, r.quantity]));
-      for (const [key, need] of Object.entries(costs)) {
-        if ((inv[key] ?? 0) < need) return null;
-      }
-
+      // Deduct each required item atomically; the `gte(quantity, need)` guard
+      // makes an insufficient stack return 0 rows, which aborts everything.
       const results = await Promise.all(
         Object.entries(costs).map(([key, need]) =>
           tx.update(playerItemsTable)
@@ -388,7 +388,7 @@ export async function upgradeClass(
             .returning({ id: playerItemsTable.discordId })
         )
       );
-      if (results.some((r) => r.length === 0)) return null;
+      if (results.some((r) => r.length === 0)) throw ROLLBACK_ERR;
 
       const [u] = await tx.update(playersTable)
         .set({
@@ -400,11 +400,13 @@ export async function upgradeClass(
           playerWhere(discordId, guildId),
           eq(playersTable.class, classKey),
           eq(playersTable.classLevel, expectedLevel),
+          lt(playersTable.classLevel, 10),
           gte(playersTable.gold, goldCost),
           gte(playersTable.xp, xpCost),
         ))
         .returning();
-      return u ?? null;
+      if (!u) throw ROLLBACK_ERR;
+      return u;
     });
   } catch {
     return null;

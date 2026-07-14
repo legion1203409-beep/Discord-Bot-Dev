@@ -76,6 +76,7 @@ import {
   equipTalisman,
   tryUpgradeTalismanLevel,
   getPlayerItems,
+  upgradeClass,
   addPlayerItem,
   consumePlayerItems,
   getDailyQuestProgress,

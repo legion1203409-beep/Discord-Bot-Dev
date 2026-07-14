@@ -25,6 +25,7 @@ import {
   handleJustice,
   isPardonRequest,
   isJusticeRequest,
+  isMockery,
   envInt,
 } from "../oracle-guard";
 import { clearCurses, grantRandomCurse } from "../status-effects";
@@ -210,6 +211,44 @@ describe("containsSwear", () => {
 // built-in stems/words plus any operator-supplied extras.  Testing it directly
 // (without touching process.env or reloading the module) is the cleanest way
 // to verify the pattern-compilation logic in isolation.
+
+describe("isMockery", () => {
+  it("returns false for clean, respectful text", () => {
+    expect(isMockery("Bună ziua, Oracolule, ce evenimente urmează?")).toBe(false);
+  });
+
+  it("detects 'ia la misto' phrases", () => {
+    expect(isMockery("iei la misto pe toata lumea")).toBe(true);
+    expect(isMockery("ia la mișto botul asta")).toBe(true);
+  });
+
+  it("detects belittling 'esti X' phrases", () => {
+    expect(isMockery("esti praf")).toBe(true);
+    expect(isMockery("ești jalnic")).toBe(true);
+    expect(isMockery("esti o gluma")).toBe(true);
+  });
+
+  it("detects 'bot X' mockery", () => {
+    expect(isMockery("ce bot penibil")).toBe(true);
+    expect(isMockery("botul asta e un bot inutil")).toBe(true);
+  });
+
+  it("detects mock words like clovn/papagal/taci", () => {
+    expect(isMockery("taci odata")).toBe(true);
+    expect(isMockery("esti un clovn")).toBe(true);
+    expect(isMockery("papagalule")).toBe(true);
+  });
+
+  it("detects 'habar n-ai' / 'nu stii nimic'", () => {
+    expect(isMockery("habar n-ai despre ce vorbesti")).toBe(true);
+    expect(isMockery("nu stii nimic")).toBe(true);
+  });
+
+  it("does not fire on normal game questions", () => {
+    expect(isMockery("cand apare boss-ul final?")).toBe(false);
+    expect(isMockery("vreau sa cumpar un talisman")).toBe(false);
+  });
+});
 
 describe("buildPatterns", () => {
   it("returns patterns that still catch built-in swear stems when no extras are given", () => {

@@ -184,6 +184,76 @@ function curseMessage(offenseCount: number, muteMin: number, muted: boolean): st
   );
 }
 
+// ── Mockery detection ────────────────────────────────────────────────────────
+
+/**
+ * Phrases that mock or belittle the Oracle without hard profanity ("ia la
+ * mișto"). Matched against the NFD-normalised, diacritic-stripped,
+ * mention-stripped text, and ONLY when the message is directed at the bot
+ * (mention or reply), so casual chatter between players never triggers it.
+ */
+const MOCKERY_PATTERNS: RegExp[] = [
+  /\b(ia|iei|iau|luam|luati|luat)\s+la\s+misto\b/,
+  /\bmisto\s+de\s+(tine|el|asta|bot)/,
+  /\b(rad|razi|rade|radem|radeti)\s+de\s+(tine|el|bot)/,
+  /\bras\s+de\s+(tine|el|bot)/,
+  /\bbati?\s+joc\b/,
+  /\besti\s+(praf|varza|jalnic|penibil|inutil|slab|nasol|aiurea|ridicol|caraghios|de\s+ras|o\s+gluma|un\s+nimic|zero)\b/,
+  /\bbot(ul)?\s+(jalnic|penibil|inutil|nasol|slab|varza|praf|aiurea|ridicol|caraghios|de\s+ras|de\s+nimic|de\s+doi\s+bani)\b/,
+  /\b(jalnic|penibil|inutil|nasol|varza|ridicol|caraghios)\s+bot(ul|ule)?\b/,
+  /\bce\s+bot\s+(jalnic|penibil|inutil|nasol|slab|varza|praf|aiurea|ridicol|caraghios)\b/,
+  /\bnu\s+esti\s+bun\s+de\s+nimic\b/,
+  /\bnu\s+stii\s+nimic\b/,
+  /\bhabar\s+(n-?ai|nu\s+ai|nu\s+are)\b/,
+  /\btaci\b/,
+  /\bclovn/,
+  /\bpapagal/,
+  /\bbufon/,
+  /\bcircar/,
+];
+
+/** Returns true when `text` mocks/belittles the Oracle (mild, non-profane). */
+export function isMockery(text: string): boolean {
+  const n = normalise(text);
+  return MOCKERY_PATTERNS.some((re) => re.test(n));
+}
+
+function mockeryCurseMessage(offenseCount: number, muteMin: number, muted: boolean): string {
+  const dur = formatDuration(muteMin);
+  const noMuteNote = muted
+    ? ""
+    : "\n*(Oracolul nu deține puterea să te amuțească acum — dar Regatul te vede și ține minte.)*";
+
+  if (offenseCount === 1) {
+    return (
+      `*Îndrăznești să iei în derâdere Oracolul Cenușii, muritorule?* 🌑\n` +
+      `Batjocura ta a stârnit cenușa — **Blestemul Tăcerii** te învăluie ${dur}.` +
+      ` Râzi în liniște, dacă mai poți.` +
+      noMuteNote
+    );
+  }
+  if (offenseCount === 2) {
+    return (
+      `*Din nou râzi de puterile străvechi? Nesăbuință...* 🌑\n` +
+      `**Blestemul se adâncește** — ${dur} de tăcere, să înveți respectul pe care nu-l cunoști.` +
+      noMuteNote
+    );
+  }
+  if (offenseCount === 3) {
+    return (
+      `*Batjocura ta a devenit obrăznicie, iar obrăznicia are preț.* 🌑\n` +
+      `**Blestemul Etern** te cuprinde — ${dur} de muțenie deplină.` +
+      ` Cenușa nu e de râs, muritorule.` +
+      noMuteNote
+    );
+  }
+  return (
+    `*Cel care râde de Oracol sfârșește prin a fi el însuși de râsul Regatului.* 🌑\n` +
+    `**Blestemul Suprem** te amuțește ${dur}. Nimeni nu-și mai amintește glumele tale.` +
+    noMuteNote
+  );
+}
+
 // ── Justice trigger detection ────────────────────────────────────────────────
 
 /**
@@ -511,11 +581,21 @@ export async function handleToxicity(client: Client, message: Message): Promise<
     const botId = client.user?.id;
     if (!botId) return false;
 
-    // Only act when the user is talking directly to the Oracle.
-    if (!message.mentions.users.has(botId)) return false;
+    // Only act when the user is talking directly to the Oracle: an @mention,
+    // or a reply to one of the Oracle's own messages.
+    let directedAtBot = message.mentions.users.has(botId);
+    if (!directedAtBot && message.reference?.messageId) {
+      const referenced = await message
+        .fetchReference()
+        .catch(() => null);
+      directedAtBot = referenced?.author?.id === botId;
+    }
+    if (!directedAtBot) return false;
 
     const text = (message.content ?? "").replace(/<@!?\d+>/g, "").trim();
-    if (!containsSwear(text)) return false;
+    const isSwear = containsSwear(text);
+    const isMock = !isSwear && isMockery(text);
+    if (!isSwear && !isMock) return false;
 
     const offenseCount = recordOffense(message.author.id);
     const muteMs  = muteDurationMs(offenseCount);
@@ -536,7 +616,12 @@ export async function handleToxicity(client: Client, message: Message): Promise<
 
       if (canTimeout) {
         try {
-          await member.timeout(muteMs, `Oracolul — limbaj interzis (ofensa #${offenseCount})`);
+          await member.timeout(
+            muteMs,
+            isMock
+              ? `Oracolul — batjocură la adresa Oracolului (ofensa #${offenseCount})`
+              : `Oracolul — limbaj interzis (ofensa #${offenseCount})`,
+          );
           muted = true;
         } catch (err) {
           logger.warn({ err, userId: message.author.id }, "Oracle guard: timeout call failed");
@@ -550,12 +635,14 @@ export async function handleToxicity(client: Client, message: Message): Promise<
     }
 
     await message.reply({
-      content: curseMessage(offenseCount, muteMin, muted),
+      content: isMock
+        ? mockeryCurseMessage(offenseCount, muteMin, muted)
+        : curseMessage(offenseCount, muteMin, muted),
       allowedMentions: { repliedUser: true, parse: [] },
     });
 
     logger.info(
-      { userId: message.author.id, offenseCount, muteMin, muted },
+      { userId: message.author.id, offenseCount, muteMin, muted, kind: isMock ? "mockery" : "swear" },
       "Oracle guard: toxicity action taken",
     );
     return true;

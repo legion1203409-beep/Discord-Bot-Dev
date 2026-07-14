@@ -5,6 +5,7 @@
 - [drizzle push blocked](drizzle-push-blocked.md) — db push is interactive; unrelated destructive drift blocks it. Apply additive columns via ALTER TABLE ... ADD COLUMN IF NOT EXISTS + edit schema file.
 - [Publish DB diff drops prod columns](publish-db-diff-drops-prod-columns.md) — publish diffs the dev DATABASE vs prod; prod-only columns get dropped (prestige wipe). Always push-force dev DB after schema changes.
 - [Final boss reward auth](final-boss-auth.md) — reward buttons tied to an event must re-check active+not-expired+participant+isAlive server-side; stale button messages otherwise let non-eligible users claim.
+- [Drizzle tx return commits](drizzle-tx-return-commits.md) — returning null from db.transaction COMMITS; guard failures must throw a sentinel to roll back earlier deductions.
 - [Escalating upgrade guard](escalating-upgrade-guard.md) — tier-priced upgrades must guard UPDATE...WHERE on expectedLevel, not just balance, or concurrent clicks double-upgrade at the cheap tier.
 - [undici discord.js compat](undici-discordjs-compat.md) — pin undici override to ^6.x (not >=6.27.0); undici 8.x breaks discord.js REST via Symbol(sensitiveHeaders) in Headers ctor.
 - [Discord interaction defer](discord-interaction-defer.md) — handlers doing DB/network work must deferReply/deferUpdate first or prod DB latency causes 10062; bot is prod-only so it's invisible in dev.
