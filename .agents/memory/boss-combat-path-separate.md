@@ -35,3 +35,5 @@ fixture `makeBoss`.
 **Why:** the two combat paths diverged historically; boss damage was a plain
 attackBonus roll with no crit/effects. Easy to "fix combat" in `doCombat` and
 forget bosses entirely.
+
+Nuance: wiring getRewardMultipliers is not enough — it must receive the guildId argument in EVERY reward path (defeat + flee/escape), or the guild-wide admin boost silently does not apply there (player effects still work, masking the gap).

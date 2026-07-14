@@ -695,7 +695,8 @@ async function runFleeResolution(boss: BossState, client: Client): Promise<void>
     }
     const bossRewards = computeBossRewards(boss.damageBy, boss.rarity);
     for (const [discordId, r] of bossRewards) {
-      const rmods = getRewardMultipliers(discordId);
+      // Pass guildId so the guild-wide admin boost applies here too, matching the boss-defeat path
+      const rmods = getRewardMultipliers(discordId, boss.guildId);
       r.gold = Math.round(r.gold * rmods.goldMult);
       r.xp = Math.round(r.xp * rmods.xpMult);
     }
