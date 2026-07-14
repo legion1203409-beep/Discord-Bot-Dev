@@ -58,7 +58,9 @@ import {
   levelTitle,
   shopPrice,
   doCombat,
+  buildResultText,
   RARITY_WEIGHTS,
+  type CombatResult,
 } from "../survival";
 
 import { getActiveBattleEvent, consumeStormDrain } from "../combat-events";
@@ -481,5 +483,60 @@ describe("doCombat", () => {
     expect(r.monsterDefeated).toBe(true);
     expect(r.newMonsterLevel).toBe(5);
     expect(r.levelUp).toBe(true);
+  });
+});
+
+describe("buildResultText breakdown lines", () => {
+  const baseResult: CombatResult = {
+    playerDmg: 15, isCrit: false, baseDmg: 15,
+    monsterDefeated: false, monsterHit: false, monsterDmg: 0, playerDodged: false,
+    playerDied: false, newMonsterHp: 50, newPlayerHp: 100,
+    xpGained: 0, oboliGained: 0, levelUp: false, newMonsterLevel: 1, newMonsterRarity: "comun",
+    usedEmpower: false, usedShield: false, stormDrain: 0, battleEventEmoji: "", hpRegen: 0,
+  };
+
+  it("shows no breakdown when damage is unmodified", () => {
+    const txt = buildResultText(baseResult);
+    expect(txt).not.toContain("Daune normale");
+  });
+
+  it("shows crit breakdown with base and boosted damage", () => {
+    const txt = buildResultText({ ...baseResult, isCrit: true, playerDmg: 30 });
+    expect(txt).toContain("Daune normale: **15**");
+    expect(txt).toContain("critică ×2");
+    expect(txt).toContain("**30**");
+  });
+
+  it("shows empower breakdown", () => {
+    const txt = buildResultText({ ...baseResult, usedEmpower: true, playerDmg: 23 });
+    expect(txt).toContain("abilitate");
+    expect(txt).toContain("Daune normale: **15**");
+  });
+
+  it("falls back to a generic label when damage changed for an unlisted reason", () => {
+    const txt = buildResultText({ ...baseResult, playerDmg: 20 });
+    expect(txt).toContain("cu bonusuri: **20**");
+    expect(txt).not.toContain("cu : ");
+  });
+
+  it("shows XP/Oboli base vs boosted only when they differ", () => {
+    const kill = { ...baseResult, monsterDefeated: true, xpGained: 125, oboliGained: 40 };
+    const boosted = buildResultText(kill, null, { baseXp: 100, baseOboli: 40 });
+    expect(boosted).toContain("+125 XP *(normal 100)*");
+    expect(boosted).toContain("+40 Oboli");
+    expect(boosted).not.toContain("Oboli *(normal");
+  });
+
+  it("shows Crista Vieții heal line when provided", () => {
+    const kill = { ...baseResult, monsterDefeated: true, xpGained: 10, oboliGained: 5 };
+    const txt = buildResultText(kill, null, { baseXp: 10, baseOboli: 5, cristaHeal: 30 });
+    expect(txt).toContain("Crista Vieții");
+    expect(txt).toContain("+30 HP");
+  });
+
+  it("shows Runa Sângelui life-steal line from hpRegen", () => {
+    const txt = buildResultText({ ...baseResult, isCrit: true, playerDmg: 30, hpRegen: 8 });
+    expect(txt).toContain("Runa Sângelui");
+    expect(txt).toContain("+8 HP");
   });
 });

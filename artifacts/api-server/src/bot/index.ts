@@ -1407,6 +1407,8 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
   const talismanKey = pl?.talisman ?? null;
   const talismanLevel = pl?.talismanLevel ?? 1;
   const result = doCombat(p, talismanKey, talismanLevel);
+  const baseXp = result.xpGained;
+  const baseOboli = result.oboliGained;
 
   if (result.oboliGained > 0) {
     const cls = pl?.class && isClassKey(pl.class) ? CLASSES[pl.class] : null;
@@ -1424,7 +1426,11 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
 
   // Roll item drop before buildResultText so the drop line can appear in the combat embed
   const itemDrop = result.oboliGained > 0 ? rollItemDrop(p.monsterLevel) : null;
-  const extra = buildResultText(result, itemDrop);
+  const cristaHeal =
+    result.oboliGained > 0 && !result.playerDied && talismanKey === "crista_vietii"
+      ? (talismanLevel >= 2 ? 30 : 15)
+      : 0;
+  const extra = buildResultText(result, itemDrop, { baseXp, baseOboli, cristaHeal });
 
   if (result.playerDied) {
     const lost = Math.floor(p.oboli * 0.2);
@@ -1439,8 +1445,8 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
 
   // crista_vietii: +HP after kill; runa_sangelui: life steal on crit
   let finalPlayerHp = result.newPlayerHp;
-  if (result.oboliGained > 0 && talismanKey === "crista_vietii") {
-    finalPlayerHp = Math.min(p.maxHp, finalPlayerHp + (talismanLevel >= 2 ? 30 : 15));
+  if (cristaHeal > 0) {
+    finalPlayerHp = Math.min(p.maxHp, finalPlayerHp + cristaHeal);
   } else if (result.hpRegen > 0) {
     finalPlayerHp = Math.min(p.maxHp, finalPlayerHp + result.hpRegen);
   }
@@ -1918,7 +1924,8 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
   const totalDef = player.defenseBonus + player.prestigeDefenseBonus + (comp?.defense ?? 0);
   const minDmg = Math.max(30, totalAtk * 5 + 20);
   const maxDmg = Math.max(80, totalAtk * 15 + 60);
-  let playerDmg = Math.floor(Math.random() * (maxDmg - minDmg + 1)) + minDmg;
+  const baseBossDmg = Math.floor(Math.random() * (maxDmg - minDmg + 1)) + minDmg;
+  let playerDmg = baseBossDmg;
   const isCrit = Math.random() * 100 < Math.min(100, Math.max(0, totalCrit + mods.critAdd));
   if (isCrit) playerDmg *= 2;
   const usedEmpower = activeBoss.empowerNext.delete(uid) && player.abilityEmpowerLevel >= 1;
@@ -1933,9 +1940,18 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
   if (mods.damageTakenMult !== 1) bossHit = Math.max(1, Math.round(bossHit * mods.damageTakenMult));
   const newPlayerHp = Math.max(0, myHp - bossHit);
 
+  const dmgBreakdownLine = (() => {
+    if (playerDmg === baseBossDmg) return "";
+    const parts: string[] = [];
+    if (isCrit) parts.push("💥 critică ×2");
+    if (usedEmpower) parts.push("🌑 abilitate");
+    return `🗡️ Daune normale: **${baseBossDmg}** → cu ${parts.length ? parts.join(" + ") : "bonusuri"}: **${playerDmg}**\n`;
+  })();
+
   const abilityLine =
     (usedEmpower ? "🌑 **LOVITURA UMBREI!** Puterea Umbrelor ți-a dublat lovitura!\n" : "") +
-    (usedShield ? "🛡️ **SCUT DE CENUȘĂ activ!** Daunele primite au fost reduse.\n" : "");
+    (usedShield ? "🛡️ **SCUT DE CENUȘĂ activ!** Daunele primite au fost reduse.\n" : "") +
+    dmgBreakdownLine;
 
   activeBoss.lastHitAt.set(uid, Date.now());
   activeBoss.damageBy.set(uid, (activeBoss.damageBy.get(uid) ?? 0) + playerDmg);
@@ -1953,6 +1969,7 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
     );
 
     const bossRewards = computeBossRewards(activeBoss.damageBy, activeBoss.rarity, activeBoss.hitsBy);
+    const baseRewards = new Map([...bossRewards.entries()].map(([id, r]) => [id, { gold: r.gold, xp: r.xp }]));
     for (const [discordId, r] of bossRewards) {
       const rmods = getRewardMultipliers(discordId, activeBoss.guildId);
       r.gold = Math.round(r.gold * rmods.goldMult);
@@ -1993,8 +2010,15 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
     } catch { /* ignore */ }
 
     const myReward = bossRewards.get(interaction.user.id);
+    const myBase = baseRewards.get(interaction.user.id);
+    const goldStr = myReward && myBase && myBase.gold !== myReward.gold
+      ? `**+${myReward.gold} Oboli** *(normal ${myBase.gold})*`
+      : `**+${myReward?.gold ?? 0} Oboli**`;
+    const xpStr = myReward && myBase && myBase.xp !== myReward.xp
+      ? `**+${myReward.xp} XP** *(normal ${myBase.xp})*`
+      : `**+${myReward?.xp ?? 0} XP**`;
     const rewLine = myReward
-      ? `🏅 Tu primești: **+${myReward.rep} Rep, +${myReward.gold} Oboli, +${myReward.xp} XP**!`
+      ? `🏅 Tu primești: **+${myReward.rep} Rep**, ${goldStr}, ${xpStr}!`
       : `🏅 Recompensele au fost distribuite!`;
     const bossItemInfo = ITEMS[bossItemKey];
     const itemLine = `${bossItemInfo.emoji} Toți participanții au primit **${bossItemInfo.label}** în inventar!`;

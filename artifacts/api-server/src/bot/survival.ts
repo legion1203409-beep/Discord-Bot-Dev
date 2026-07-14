@@ -356,6 +356,8 @@ function hpBar(cur: number, max: number) {
 
 export type CombatResult = {
   playerDmg: number; isCrit: boolean;
+  /** Damage before crit/empower/battle-event multipliers — for the breakdown line. */
+  baseDmg: number;
   monsterDefeated: boolean;
   monsterHit: boolean; monsterDmg: number; playerDodged: boolean;
   playerDied: boolean;
@@ -379,7 +381,8 @@ export function doCombat(p: EventParticipant, talismanKey?: string | null, talis
     talismanKey === "sfera_abisului" ? (talismanLevel >= 2 ? 12 : 5) : 0;
 
   const isCrit = Math.random() * 100 < Math.min(100, Math.max(0, p.critBonus + mods.critAdd + talismanCritAdd));
-  let base = rand(10, 20) + p.attackBonus;
+  const baseDmg = rand(10, 20) + p.attackBonus;
+  let base = baseDmg;
   if (isCrit) base *= 2;
   if (usedEmpower) base = Math.round(base * empowerMult(p.empowerLevel));
   if (battle) base = Math.round(base * battle.damageMult);
@@ -431,7 +434,7 @@ export function doCombat(p: EventParticipant, talismanKey?: string | null, talis
       : 0;
 
   return {
-    playerDmg, isCrit, monsterDefeated, monsterHit, monsterDmg, playerDodged,
+    playerDmg, isCrit, baseDmg, monsterDefeated, monsterHit, monsterDmg, playerDodged,
     playerDied, newMonsterHp: monsterDefeated ? monsterMaxHp(newMonsterLevel) : newMHp,
     newPlayerHp, xpGained, oboliGained, levelUp, newMonsterLevel, newMonsterRarity,
     usedEmpower, usedShield, stormDrain, battleEventEmoji: battle?.emoji ?? "", hpRegen,
@@ -499,19 +502,44 @@ const CRIT_LINES = [
   "⚡ **IMPACT CATACLISMIC** ⚡\nCenușa explodează în jurul creaturii — **{dmg} daune**!",
 ];
 
-export function buildResultText(r: CombatResult, itemDrop?: ItemKey | null): string {
+export type RewardBreakdown = {
+  /** XP/Oboli before class/effect/talisman multipliers (r.xpGained/oboliGained hold the final values). */
+  baseXp: number;
+  baseOboli: number;
+  /** HP restored by Crista Vieții after the kill (0 = none). */
+  cristaHeal?: number;
+};
+
+export function buildResultText(r: CombatResult, itemDrop?: ItemKey | null, breakdown?: RewardBreakdown): string {
   let txt = "";
   if (r.usedEmpower) txt += "🌑 **LOVITURA UMBREI!** Puterea Umbrelor îți dublează lovitura!\n";
   if (r.usedShield) txt += "🛡️ **SCUT DE CENUȘĂ activ!** Daunele primite sunt înjumătățite.\n";
   if (r.isCrit) {
-    txt += CRIT_LINES[Math.floor(Math.random() * CRIT_LINES.length)]!.replace("{dmg}", String(r.playerDmg)) + "\n\n";
+    txt += CRIT_LINES[Math.floor(Math.random() * CRIT_LINES.length)]!.replace("{dmg}", String(r.playerDmg)) + "\n";
   } else {
-    txt += `⚔️ **AI LOVIT MONSTRUL!**\nLovitura ta a atins creatura pentru **${r.playerDmg} daune**.\nUmbrele se clatină în jurul ei.\n\n`;
+    txt += `⚔️ **AI LOVIT MONSTRUL!**\nLovitura ta a atins creatura pentru **${r.playerDmg} daune**.\nUmbrele se clatină în jurul ei.\n`;
   }
+  if (r.playerDmg !== r.baseDmg) {
+    const parts: string[] = [];
+    if (r.isCrit) parts.push("💥 critică ×2");
+    if (r.usedEmpower) parts.push("🌑 abilitate");
+    if (r.battleEventEmoji) parts.push(`${r.battleEventEmoji} eveniment`);
+    txt += `🗡️ Daune normale: **${r.baseDmg}** → cu ${parts.length ? parts.join(" + ") : "bonusuri"}: **${r.playerDmg}**\n`;
+  }
+  txt += "\n";
   if (r.stormDrain > 0) txt += `🌪️ Furtuna de Fum îți arde **${r.stormDrain} HP**!\n`;
   if (r.hpRegen > 0) txt += `🩸 **Runa Sângelui pulsează!** Absorbi **+${r.hpRegen} HP** din rana creaturii.\n`;
+  if (breakdown?.cristaHeal) txt += `🔮 **Crista Vieții strălucește!** Recuperezi **+${breakdown.cristaHeal} HP** după victorie.\n`;
   if (r.monsterDefeated) {
-    txt += `💀 **MONSTRUL A CĂZUT!** +${r.xpGained} XP, +${r.oboliGained} Oboli\n`;
+    const xpStr =
+      breakdown && breakdown.baseXp !== r.xpGained
+        ? `+${r.xpGained} XP *(normal ${breakdown.baseXp})*`
+        : `+${r.xpGained} XP`;
+    const oboliStr =
+      breakdown && breakdown.baseOboli !== r.oboliGained
+        ? `+${r.oboliGained} Oboli *(normal ${breakdown.baseOboli})*`
+        : `+${r.oboliGained} Oboli`;
+    txt += `💀 **MONSTRUL A CĂZUT!** ${xpStr}, ${oboliStr}\n`;
     if (itemDrop) {
       txt += `${ITEMS[itemDrop].emoji} **${ITEMS[itemDrop].label}** a căzut din monstru!\n`;
     }
