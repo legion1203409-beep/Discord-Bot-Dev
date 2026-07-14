@@ -74,6 +74,7 @@ import {
   buyPrestige,
   prestigeXpCost,
   equipTalisman,
+  tryUpgradeTalismanLevel,
   getPlayerItems,
   addPlayerItem,
   consumePlayerItems,
@@ -1673,7 +1674,17 @@ async function handleShopTalismanUpgrade(interaction: ButtonInteraction) {
     await interaction.followUp({ content: "❌ Nu ai materialele necesare pentru evoluție.", flags: MessageFlags.Ephemeral });
     return;
   }
-  await equipTalisman(interaction.user.id, guildId, equippedKey, 2);
+  // Atomic level guard: only write level 2 if talisman_level is still 1 (prevents double-upgrade race)
+  const upgraded = await tryUpgradeTalismanLevel(interaction.user.id, guildId, 1, 2);
+  if (!upgraded) {
+    // Another concurrent click already upgraded — refund the consumed items
+    await Promise.all([
+      addPlayerItem(interaction.user.id, guildId, t.upgradeItems.common, t.upgradeItems.commonQty),
+      addPlayerItem(interaction.user.id, guildId, t.upgradeItems.rare, 1),
+    ]);
+    await interaction.followUp({ content: "❌ Talismanul a fost deja evoluat.", flags: MessageFlags.Ephemeral });
+    return;
+  }
   const [updated, updatedItems] = await Promise.all([
     upsertPlayer(interaction.user.id, guildId, interaction.user.username),
     getPlayerItems(interaction.user.id, guildId),

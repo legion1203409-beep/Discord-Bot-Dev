@@ -666,6 +666,24 @@ export async function equipTalisman(discordId: string, guildId: string, talisman
     .where(playerWhere(discordId, guildId));
 }
 
+/**
+ * Atomically upgrades talisman_level from `fromLevel` to `toLevel`.
+ * Returns true if the row was updated (this call won the race).
+ * Returns false if talisman_level was already !== fromLevel (concurrent upgrade already landed).
+ */
+export async function tryUpgradeTalismanLevel(
+  discordId: string, guildId: string, fromLevel: number, toLevel: number,
+): Promise<boolean> {
+  const { rowCount } = await pool.query(`
+    UPDATE players
+    SET talisman_level = $1
+    WHERE discord_id   = $2
+      AND guild_id     = $3
+      AND talisman_level = $4
+  `, [toLevel, discordId, guildId, fromLevel]);
+  return (rowCount ?? 0) > 0;
+}
+
 export async function getPlayerItems(discordId: string, guildId: string): Promise<PlayerItem[]> {
   return db.select().from(playerItemsTable)
     .where(and(eq(playerItemsTable.discordId, discordId), eq(playerItemsTable.guildId, guildId)));
