@@ -1041,13 +1041,14 @@ export function buildShopEmbed(p: Player, category: ShopCategory = "overview"): 
     );
 }
 
-export function buildLevelupEmbed(newLevel: number): EmbedBuilder {
+export function buildLevelupEmbed(newLevel: number, dropLine?: string): EmbedBuilder {
   return new EmbedBuilder()
     .setColor(0xffd700)
     .setTitle(`✨  AI AVANSAT LA NIVELUL ${newLevel}  ✨`)
     .setDescription(
       "Cenușa se ridică în jurul tău, iar Umbrele îți recunosc puterea.\n" +
       "Regatul Cenușii îți oferă un dar pentru progresul tău.\n\n" +
+      (dropLine ? `${dropLine}\n\n` : "") +
       "**Alege un bonus special:**\n\n" +
       "🔹 **+5 XP bonus** la fiecare monstru ucis\n" +
       "🔹 **+3% șansă de evitare**\n" +

@@ -1472,7 +1472,8 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
       empowerNext: false,
       shieldNext: false,
     });
-    await interaction.editReply({ embeds: [buildLevelupEmbed(Math.floor(result.newMonsterLevel / LEVELUP_INTERVAL))], components: levelupRows(eventId) });
+    const lvlDropLine = itemDrop ? `${ITEMS[itemDrop].emoji} **${ITEMS[itemDrop].label}** a căzut din monstru!` : undefined;
+    await interaction.editReply({ embeds: [buildLevelupEmbed(Math.floor(result.newMonsterLevel / LEVELUP_INTERVAL), lvlDropLine)], components: levelupRows(eventId) });
     return;
   }
 
