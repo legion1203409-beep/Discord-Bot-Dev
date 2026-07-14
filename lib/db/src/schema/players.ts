@@ -40,6 +40,8 @@ export const playersTable = pgTable("players", {
   prestigeDodgeBonus: integer("prestige_dodge_bonus").notNull().default(0),
   prestigeCritBonus: integer("prestige_crit_bonus").notNull().default(0),
   prestigeHpBonus: integer("prestige_hp_bonus").notNull().default(0),
+  talisman: text("talisman"),
+  talismanLevel: integer("talisman_level").notNull().default(1),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [primaryKey({ columns: [t.discordId, t.guildId] })]);
 

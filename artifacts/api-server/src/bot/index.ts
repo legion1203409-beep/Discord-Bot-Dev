@@ -73,6 +73,10 @@ import {
   resetAllPlayersInGuild,
   buyPrestige,
   prestigeXpCost,
+  equipTalisman,
+  getPlayerItems,
+  addPlayerItem,
+  consumePlayerItems,
   type AbilityKind,
   type KeyType,
 } from "./db";
@@ -133,6 +137,14 @@ import {
   rollEventKeyDrops,
   THEME_COLOR,
   BRAND_FOOTER,
+  buildTalismanPage,
+  shopTalismanRows,
+  shopNavRow2,
+  TALISMANS,
+  ITEMS,
+  isTalismanKey,
+  isItemKey,
+  rollItemDrop,
   type ShopKey,
   type BossRarity,
 } from "./survival";
@@ -543,7 +555,10 @@ async function handleProfil(interaction: ChatInputCommandInteraction) {
   const guildId = interaction.guildId!;
   const target = interaction.options.getUser("jucator");
   if (target && target.id !== interaction.user.id) {
-    const player = await getPlayerById(target.id, guildId);
+    const [player, items] = await Promise.all([
+      getPlayerById(target.id, guildId),
+      getPlayerItems(target.id, guildId),
+    ]);
     if (!player) {
       await interaction.editReply({
         content: `❌ **${target.username}** nu a pășit încă în Regatul Cenușii — nu există un profil pentru acest jucător.`,
@@ -551,13 +566,16 @@ async function handleProfil(interaction: ChatInputCommandInteraction) {
       return;
     }
     await interaction.editReply({
-      embeds: [buildProfileEmbed(player, undefined, target.displayAvatarURL({ size: 256 }))],
+      embeds: [buildProfileEmbed(player, undefined, target.displayAvatarURL({ size: 256 }), items)],
     });
     return;
   }
-  const p = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
+  const [p, items] = await Promise.all([
+    upsertPlayer(interaction.user.id, guildId, interaction.user.username),
+    getPlayerItems(interaction.user.id, guildId),
+  ]);
   await interaction.editReply({
-    embeds: [buildProfileEmbed(p, undefined, interaction.user.displayAvatarURL({ size: 256 }))],
+    embeds: [buildProfileEmbed(p, undefined, interaction.user.displayAvatarURL({ size: 256 }), items)],
   });
 }
 
@@ -1332,7 +1350,10 @@ async function handleJoin(interaction: ButtonInteraction, eventId: number) {
 async function handleAttack(interaction: ButtonInteraction, eventId: number) {
   await interaction.deferUpdate();
   const guildId = interaction.guildId!;
-  const p = await getParticipant(eventId, guildId, interaction.user.id);
+  const [p, pl] = await Promise.all([
+    getParticipant(eventId, guildId, interaction.user.id),
+    getPlayerById(interaction.user.id, guildId),
+  ]);
   if (!p) {
     await interaction.followUp({ content: "❌ Intră mai întâi în luptă!", flags: MessageFlags.Ephemeral });
     return;
@@ -1353,10 +1374,11 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
     return;
   }
 
-  const result = doCombat(p);
+  const talismanKey = pl?.talisman ?? null;
+  const talismanLevel = pl?.talismanLevel ?? 1;
+  const result = doCombat(p, talismanKey, talismanLevel);
 
   if (result.oboliGained > 0) {
-    const pl = await getPlayerById(p.discordId, guildId);
     const cls = pl?.class && isClassKey(pl.class) ? CLASSES[pl.class] : null;
     if (cls) {
       result.xpGained = Math.round(result.xpGained * cls.xpMult);
@@ -1365,6 +1387,9 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
     const rmods = getRewardMultipliers(p.discordId, guildId);
     result.xpGained = Math.round(result.xpGained * rmods.xpMult);
     result.oboliGained = Math.round(result.oboliGained * rmods.goldMult);
+    if (talismanKey === "piatra_eco") {
+      result.xpGained = Math.round(result.xpGained * (talismanLevel >= 2 ? 1.60 : 1.25));
+    }
   }
 
   const extra = buildResultText(result);
@@ -1380,18 +1405,33 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
     return;
   }
 
+  // crista_vietii: +HP after kill; runa_sangelui: life steal on crit
+  let finalPlayerHp = result.newPlayerHp;
+  if (result.oboliGained > 0 && talismanKey === "crista_vietii") {
+    finalPlayerHp = Math.min(p.maxHp, finalPlayerHp + (talismanLevel >= 2 ? 30 : 15));
+  } else if (result.hpRegen > 0) {
+    finalPlayerHp = Math.min(p.maxHp, finalPlayerHp + result.hpRegen);
+  }
+
   if (result.oboliGained > 0) {
+    const itemDrop = rollItemDrop(p.monsterLevel);
     await Promise.all([
       addPlayerGold(p.discordId, guildId, result.oboliGained),
       addPlayerXp(p.discordId, guildId, result.xpGained),
       updateMaxLevel(p.discordId, guildId, result.newMonsterLevel),
+      ...(itemDrop ? [addPlayerItem(p.discordId, guildId, itemDrop)] : []),
     ]);
+    if (itemDrop) {
+      void interaction.followUp({
+        content: `${ITEMS[itemDrop].emoji} Ai obținut **${ITEMS[itemDrop].label}** din luptă!`,
+        flags: MessageFlags.Ephemeral,
+      });
+    }
   }
 
   if (result.levelUp) {
-    const newLevel = Math.floor(result.newMonsterLevel / LEVELUP_INTERVAL);
     await updateParticipant(p.id, {
-      currentHp: result.newPlayerHp,
+      currentHp: finalPlayerHp,
       monsterLevel: result.newMonsterLevel,
       monsterCurrentHp: monsterMaxHp(result.newMonsterLevel),
       monsterRarity: result.newMonsterRarity,
@@ -1406,7 +1446,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
   }
 
   const updated = await updateParticipant(p.id, {
-    currentHp: result.newPlayerHp,
+    currentHp: finalPlayerHp,
     monsterLevel: result.newMonsterLevel,
     monsterCurrentHp: result.newMonsterHp,
     monsterRarity: result.newMonsterRarity,
@@ -1545,6 +1585,69 @@ async function handleShopNavClass(interaction: ButtonInteraction) {
   const guildId = interaction.guildId!;
   const p = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
   await interaction.editReply({ embeds: [buildShopEmbed(p, "class")], components: shopClassRows(p) });
+}
+
+async function handleShopNavTalisman(interaction: ButtonInteraction) {
+  await interaction.deferUpdate();
+  const guildId = interaction.guildId!;
+  const [p, items] = await Promise.all([
+    upsertPlayer(interaction.user.id, guildId, interaction.user.username),
+    getPlayerItems(interaction.user.id, guildId),
+  ]);
+  await interaction.editReply({ embeds: [buildTalismanPage(p, items)], components: shopTalismanRows(p, items) });
+}
+
+async function handleShopTalismanPick(interaction: ButtonInteraction, key: string) {
+  await interaction.deferUpdate();
+  const guildId = interaction.guildId!;
+  if (!isTalismanKey(key)) return;
+  const p = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
+  const t = TALISMANS[key];
+  if (p.talisman === key) return;
+  if (p.gold < t.price) {
+    await interaction.followUp({
+      content: `❌ Nu ai suficienți Oboli! Ai **${p.gold}** / **${t.price}** Oboli.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  await deductPlayerGold(interaction.user.id, guildId, t.price);
+  await equipTalisman(interaction.user.id, guildId, key, 1);
+  const [updated, items] = await Promise.all([
+    upsertPlayer(interaction.user.id, guildId, interaction.user.username),
+    getPlayerItems(interaction.user.id, guildId),
+  ]);
+  await interaction.editReply({ embeds: [buildTalismanPage(updated, items)], components: shopTalismanRows(updated, items) });
+}
+
+async function handleShopTalismanUpgrade(interaction: ButtonInteraction) {
+  await interaction.deferUpdate();
+  const guildId = interaction.guildId!;
+  const [p, items] = await Promise.all([
+    upsertPlayer(interaction.user.id, guildId, interaction.user.username),
+    getPlayerItems(interaction.user.id, guildId),
+  ]);
+  const equippedKey = p.talisman && isTalismanKey(p.talisman) ? p.talisman : null;
+  if (!equippedKey || (p.talismanLevel ?? 1) >= 2) {
+    await interaction.followUp({ content: "❌ Nu poți evolua acest talisman.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  const t = TALISMANS[equippedKey];
+  const ok = await consumePlayerItems(interaction.user.id, guildId, {
+    [t.upgradeItems.common]: t.upgradeItems.commonQty,
+    [t.upgradeItems.rare]: 1,
+  });
+  if (!ok) {
+    await interaction.followUp({ content: "❌ Nu ai materialele necesare pentru evoluție.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  await equipTalisman(interaction.user.id, guildId, equippedKey, 2);
+  const [updated, updatedItems] = await Promise.all([
+    upsertPlayer(interaction.user.id, guildId, interaction.user.username),
+    getPlayerItems(interaction.user.id, guildId),
+  ]);
+  await interaction.followUp({ content: `✨ **${t.label}** a evoluat la **Nv.2**! Pasivul tău este acum mai puternic.`, flags: MessageFlags.Ephemeral });
+  await interaction.editReply({ embeds: [buildTalismanPage(updated, updatedItems)], components: shopTalismanRows(updated, updatedItems) });
 }
 
 async function handleShopClassPick(interaction: ButtonInteraction, key: string) {
@@ -1770,6 +1873,9 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
       r.xp = Math.round(r.xp * rmods.xpMult);
     }
     const eventKeyDrops = rollEventKeyDrops([...activeBoss.damageBy.keys()]);
+    const bossItemKey = activeBoss.rarity === "legendar"
+      ? "inima_abisului"
+      : "coama_dragonului";
     await Promise.all([
       ...[...bossRewards.entries()].flatMap(([discordId, r]) => [
         addPlayerReputation(discordId, guildId, r.rep),
@@ -1777,6 +1883,7 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
         addPlayerXp(discordId, guildId, r.xp),
       ]),
       ...[...eventKeyDrops.entries()].map(([discordId, kt]) => addPlayerKey(discordId, guildId, kt as KeyType)),
+      ...[...activeBoss.damageBy.keys()].map((discordId) => addPlayerItem(discordId, guildId, bossItemKey)),
     ]);
 
     try {
@@ -1991,6 +2098,9 @@ async function handleButton(interaction: ButtonInteraction) {
   if (id === "shop_nav_abil") return handleShopNavAbil(interaction);
   if (id === "shop_nav_prestige") return handleShopNavPrestige(interaction);
   if (id === "shop_nav_class") return handleShopNavClass(interaction);
+  if (id === "shop_nav_talisman") return handleShopNavTalisman(interaction);
+  if (id.startsWith("shop_talisman_") && id !== "shop_talisman_upgrade") return handleShopTalismanPick(interaction, id.replace("shop_talisman_", ""));
+  if (id === "shop_talisman_upgrade") return handleShopTalismanUpgrade(interaction);
   if (id.startsWith("shop_class_")) return handleShopClassPick(interaction, id.replace("shop_class_", ""));
   if (id === "shop_prestigebuy") return handlePrestigeBuy(interaction);
   if (id === "shop_back") return handleShopBack(interaction);

@@ -1,9 +1,11 @@
 import { db, pool } from "@workspace/db";
-import { playersTable, activeEventsTable, eventParticipantsTable, eventClaimsTable, botStateTable, activeBossesTable } from "@workspace/db";
-import type { ActiveBossRow } from "@workspace/db";
+import { playersTable, activeEventsTable, eventParticipantsTable, eventClaimsTable, botStateTable, activeBossesTable, playerItemsTable } from "@workspace/db";
+import type { ActiveBossRow, PlayerItem } from "@workspace/db";
 import { eq, and, gte, gt, inArray, sql, desc } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import type { Player, EventParticipant } from "@workspace/db";
+
+export type { PlayerItem };
 import { CLASSES, isClassKey, rollRarity, isCompanionKey, companionStats, prestigeStartLevel, monsterMaxHp } from "./survival";
 import { logger } from "../lib/logger";
 
@@ -87,7 +89,7 @@ export async function runMultiGuildMigrations(): Promise<void> {
   `);
   logger.info("multi-guild migrations: event_claims done");
 
-  // ─── Prestige system columns (2026-07-04) ─────────────────────────────────
+  // ─── Prestige system columns ───────────────────────────────────────────────
   const prestigeCols = [
     "prestige_level integer NOT NULL DEFAULT 0",
     "prestige_attack_bonus integer NOT NULL DEFAULT 0",
@@ -102,6 +104,23 @@ export async function runMultiGuildMigrations(): Promise<void> {
     logger.info(`multi-guild migrations: prestige column ${colName} ensured`);
   }
 
+  // ─── Talisman system columns ───────────────────────────────────────────────
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS talisman text`);
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS talisman_level integer NOT NULL DEFAULT 1`);
+  logger.info("multi-guild migrations: talisman columns ensured");
+
+  // ─── Player items table ────────────────────────────────────────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS player_items (
+      discord_id text        NOT NULL,
+      guild_id   text        NOT NULL,
+      item_key   text        NOT NULL,
+      quantity   integer     NOT NULL DEFAULT 1,
+      PRIMARY KEY (discord_id, guild_id, item_key)
+    )
+  `);
+  logger.info("multi-guild migrations: player_items table ensured");
+
   // Post-migration verification: confirm every required column is present
   const { rows: missingCols } = await pool.query<{ table_name: string; column_name: string }>(`
     SELECT v.table_name, v.column_name
@@ -115,7 +134,8 @@ export async function runMultiGuildMigrations(): Promise<void> {
       ('players',           'prestige_defense_bonus'),
       ('players',           'prestige_dodge_bonus'),
       ('players',           'prestige_crit_bonus'),
-      ('players',           'prestige_hp_bonus')
+      ('players',           'prestige_hp_bonus'),
+      ('players',           'talisman_level')
     ) AS v(table_name, column_name)
     WHERE NOT EXISTS (
       SELECT 1 FROM information_schema.columns c
@@ -238,6 +258,7 @@ const PLAYER_RESET = {
   keyRar: 0, keyEpic: 0, keyRegal: 0,
   prestigeLevel: 0, prestigeAttackBonus: 0, prestigeDefenseBonus: 0,
   prestigeDodgeBonus: 0, prestigeCritBonus: 0, prestigeHpBonus: 0,
+  talisman: null as string | null, talismanLevel: 1,
 };
 
 export async function resetPlayer(discordId: string, guildId: string): Promise<boolean> {
@@ -620,6 +641,53 @@ export async function consumePlayerKey(discordId: string, guildId: string, keyTy
     .where(and(playerWhere(discordId, guildId), gte(col, 1)))
     .returning();
   return u != null;
+}
+
+// ─── Talisman & item helpers ───────────────────────────────────────────────────
+
+export async function equipTalisman(discordId: string, guildId: string, talismanKey: string, level = 1): Promise<void> {
+  await db.update(playersTable)
+    .set({ talisman: talismanKey, talismanLevel: level })
+    .where(playerWhere(discordId, guildId));
+}
+
+export async function getPlayerItems(discordId: string, guildId: string): Promise<PlayerItem[]> {
+  return db.select().from(playerItemsTable)
+    .where(and(eq(playerItemsTable.discordId, discordId), eq(playerItemsTable.guildId, guildId)));
+}
+
+export async function addPlayerItem(discordId: string, guildId: string, itemKey: string, qty = 1): Promise<void> {
+  await db.insert(playerItemsTable)
+    .values({ discordId, guildId, itemKey, quantity: qty })
+    .onConflictDoUpdate({
+      target: [playerItemsTable.discordId, playerItemsTable.guildId, playerItemsTable.itemKey],
+      set: { quantity: sql`${playerItemsTable.quantity} + ${qty}` },
+    });
+}
+
+/** Atomically deduct item costs. Returns false if player lacks any of the required items. */
+export async function consumePlayerItems(discordId: string, guildId: string, costs: Record<string, number>): Promise<boolean> {
+  const rows = await db.select().from(playerItemsTable)
+    .where(and(eq(playerItemsTable.discordId, discordId), eq(playerItemsTable.guildId, guildId)));
+  const inv = Object.fromEntries(rows.map((r) => [r.itemKey, r.quantity]));
+
+  for (const [key, need] of Object.entries(costs)) {
+    if ((inv[key] ?? 0) < need) return false;
+  }
+
+  await Promise.all(
+    Object.entries(costs).map(([key, need]) =>
+      db.update(playerItemsTable)
+        .set({ quantity: sql`${playerItemsTable.quantity} - ${need}` })
+        .where(and(
+          eq(playerItemsTable.discordId, discordId),
+          eq(playerItemsTable.guildId, guildId),
+          eq(playerItemsTable.itemKey, key),
+          gte(playerItemsTable.quantity, need),
+        ))
+    )
+  );
+  return true;
 }
 
 // ─── Active boss persistence ───────────────────────────────────────────────────
