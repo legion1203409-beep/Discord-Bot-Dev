@@ -1669,7 +1669,7 @@ export function buildFinalBossEmbed(
 const RARITY_MULT: Record<BossRarity, number> = { comun: 1, rar: 1.5, epic: 2, legendar: 3 };
 const BASE_REP = 50, BASE_GOLD = 150, BASE_XP = 250;
 
-const HIT_BONUS_XP = 5, HIT_BONUS_GOLD = 3;
+const HIT_BONUS_XP = 5, HIT_BONUS_GOLD = 3, HIT_BONUS_REP = 2;
 
 export function computeBossRewards(
   damageBy: Map<string, number>,
@@ -1686,8 +1686,9 @@ export function computeBossRewards(
     const hits = hitsBy?.get(id) ?? 0;
     const hitBonusXp = hits * HIT_BONUS_XP * rm;
     const hitBonusGold = hits * HIT_BONUS_GOLD * rm;
+    const hitBonusRep = hits * HIT_BONUS_REP * rm;
     result.set(id, {
-      rep:  Math.round(BASE_REP  * rankMult * rm),
+      rep:  Math.round(BASE_REP  * rankMult * rm + hitBonusRep),
       gold: Math.round(BASE_GOLD * rankMult * rm + hitBonusGold),
       xp:   Math.round(BASE_XP   * rankMult * rm + hitBonusXp),
     });
