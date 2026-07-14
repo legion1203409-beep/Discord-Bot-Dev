@@ -1417,7 +1417,9 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
     }
   }
 
-  const extra = buildResultText(result);
+  // Roll item drop before buildResultText so the drop line can appear in the combat embed
+  const itemDrop = result.oboliGained > 0 ? rollItemDrop(p.monsterLevel) : null;
+  const extra = buildResultText(result, itemDrop);
 
   if (result.playerDied) {
     const lost = Math.floor(p.oboli * 0.2);
@@ -1439,7 +1441,6 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
   }
 
   if (result.oboliGained > 0) {
-    const itemDrop = rollItemDrop(p.monsterLevel);
     const questResult = await incrementDailyQuestKill(p.discordId, guildId);
     await Promise.all([
       addPlayerGold(p.discordId, guildId, result.oboliGained),
@@ -1448,12 +1449,6 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
       ...(itemDrop ? [addPlayerItem(p.discordId, guildId, itemDrop)] : []),
       ...(questResult.justCompleted ? [addPlayerItem(p.discordId, guildId, DAILY_QUESTS.kill_10.reward.itemKey)] : []),
     ]);
-    if (itemDrop) {
-      void interaction.followUp({
-        content: `${ITEMS[itemDrop].emoji} Ai obținut **${ITEMS[itemDrop].label}** din luptă!`,
-        flags: MessageFlags.Ephemeral,
-      });
-    }
     if (questResult.justCompleted) {
       void interaction.followUp({
         content:

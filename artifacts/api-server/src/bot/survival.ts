@@ -464,7 +464,7 @@ const CRIT_LINES = [
   "⚡ **IMPACT CATACLISMIC** ⚡\nCenușa explodează în jurul creaturii — **{dmg} daune**!",
 ];
 
-export function buildResultText(r: CombatResult): string {
+export function buildResultText(r: CombatResult, itemDrop?: ItemKey | null): string {
   let txt = "";
   if (r.usedEmpower) txt += "🌑 **LOVITURA UMBREI!** Puterea Umbrelor îți dublează lovitura!\n";
   if (r.usedShield) txt += "🛡️ **SCUT DE CENUȘĂ activ!** Daunele primite sunt înjumătățite.\n";
@@ -476,6 +476,9 @@ export function buildResultText(r: CombatResult): string {
   if (r.stormDrain > 0) txt += `🌪️ Furtuna de Fum îți arde **${r.stormDrain} HP**!\n`;
   if (r.monsterDefeated) {
     txt += `💀 **MONSTRUL A CĂZUT!** +${r.xpGained} XP, +${r.oboliGained} Oboli\n`;
+    if (itemDrop) {
+      txt += `${ITEMS[itemDrop].emoji} **${ITEMS[itemDrop].label}** a căzut din monstru!\n`;
+    }
     if (!r.levelUp) {
       const meta = RARITY[r.newMonsterRarity] ?? RARITY.comun;
       const label = r.newMonsterRarity === "boss" ? "🔥 UN MINI-BOSS" : `${meta.emoji} Un monstru ${meta.label}`;
