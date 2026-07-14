@@ -98,6 +98,7 @@ export interface BossState {
   channelId: string;
   lastHitAt: Map<string, number>;
   damageBy: Map<string, number>;
+  hitsBy: Map<string, number>; // attack count per player (for reward scaling)
   playerHp: Map<string, number>;
   playerNames: Map<string, string>;
   playerStats: Map<string, BossPlayerStats>;
@@ -123,6 +124,7 @@ interface SerializedBossState {
   channelId: string;
   lastHitAt: [string, number][];
   damageBy: [string, number][];
+  hitsBy: [string, number][];
   playerHp: [string, number][];
   playerNames: [string, string][];
   playerStats: [string, BossPlayerStats][];
@@ -147,6 +149,7 @@ function serializeBoss(boss: BossState): string {
     channelId: boss.channelId,
     lastHitAt: [...boss.lastHitAt.entries()],
     damageBy: [...boss.damageBy.entries()],
+    hitsBy: [...boss.hitsBy.entries()],
     playerHp: [...boss.playerHp.entries()],
     playerNames: [...boss.playerNames.entries()],
     playerStats: [...boss.playerStats.entries()],
@@ -174,6 +177,7 @@ function deserializeBoss(json: string, fallbackGuildId?: string): BossState {
     channelId: s.channelId,
     lastHitAt: new Map(s.lastHitAt),
     damageBy: new Map(s.damageBy),
+    hitsBy: new Map(s.hitsBy ?? []),
     playerHp: new Map(s.playerHp),
     playerNames: new Map(s.playerNames),
     playerStats: new Map(s.playerStats),
@@ -637,6 +641,7 @@ export async function fireFinalBoss(client: Client, guildId: string, eventId: nu
       standalone: false,
       lastHitAt: new Map(),
       damageBy: new Map(),
+      hitsBy: new Map(),
       playerHp: new Map(),
       playerNames: new Map(),
       playerStats: new Map(),
@@ -693,7 +698,7 @@ async function runFleeResolution(boss: BossState, client: Client): Promise<void>
       const bossMsg = await fightCh.messages.fetch(boss.messageId).catch(() => null);
       await bossMsg?.delete().catch(() => null);
     }
-    const bossRewards = computeBossRewards(boss.damageBy, boss.rarity);
+    const bossRewards = computeBossRewards(boss.damageBy, boss.rarity, boss.hitsBy);
     for (const [discordId, r] of bossRewards) {
       // Pass guildId so the guild-wide admin boost applies here too, matching the boss-defeat path
       const rmods = getRewardMultipliers(discordId, boss.guildId);
@@ -707,7 +712,7 @@ async function runFleeResolution(boss: BossState, client: Client): Promise<void>
     ]));
     const topCh = await fetchChannel(client, "bossTop", boss.guildId);
     if (topCh instanceof TextChannel) {
-      const leaderboard = buildBossLeaderboard(boss, boss.damageBy, boss.participants, boss.playerNames, boss.playerHp);
+      const leaderboard = buildBossLeaderboard(boss, boss.damageBy, boss.participants, boss.playerNames, boss.playerHp, boss.hitsBy);
       await topCh.send({ embeds: [leaderboard] }).catch(() => null);
     }
   } catch { /* ignore */ }
@@ -946,6 +951,7 @@ export async function fireStandaloneBoss(client: Client, guildId: string) {
       standalone: true,
       lastHitAt: new Map(),
       damageBy: new Map(),
+      hitsBy: new Map(),
       playerHp: new Map(),
       playerNames: new Map(),
       playerStats: new Map(),

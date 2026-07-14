@@ -1897,6 +1897,7 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
 
   activeBoss.lastHitAt.set(uid, Date.now());
   activeBoss.damageBy.set(uid, (activeBoss.damageBy.get(uid) ?? 0) + playerDmg);
+  activeBoss.hitsBy.set(uid, (activeBoss.hitsBy.get(uid) ?? 0) + 1);
   activeBoss.currentHp = Math.max(0, activeBoss.currentHp - playerDmg);
   activeBoss.playerHp.set(uid, newPlayerHp);
 
@@ -1909,7 +1910,7 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
       logger.error({ err, eventId }, "Failed to delete defeated boss row — stale row may persist until next restart")
     );
 
-    const bossRewards = computeBossRewards(activeBoss.damageBy, activeBoss.rarity);
+    const bossRewards = computeBossRewards(activeBoss.damageBy, activeBoss.rarity, activeBoss.hitsBy);
     for (const [discordId, r] of bossRewards) {
       const rmods = getRewardMultipliers(discordId, activeBoss.guildId);
       r.gold = Math.round(r.gold * rmods.goldMult);
@@ -1938,7 +1939,7 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
       const bossTopId = getChannel("bossTop", guildId);
       const topCh = bossTopId ? await interaction.client.channels.fetch(bossTopId).catch(() => null) : null;
       if (topCh instanceof TextChannel) {
-        const leaderboard = buildBossLeaderboard(activeBoss, activeBoss.damageBy, activeBoss.participants, activeBoss.playerNames, activeBoss.playerHp);
+        const leaderboard = buildBossLeaderboard(activeBoss, activeBoss.damageBy, activeBoss.participants, activeBoss.playerNames, activeBoss.playerHp, activeBoss.hitsBy);
         await topCh.send({ embeds: [leaderboard] }).catch(() => null);
         if (eventKeyDrops.size > 0) {
           const lines = [...eventKeyDrops.entries()].map(

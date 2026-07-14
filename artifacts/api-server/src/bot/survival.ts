@@ -1669,9 +1669,12 @@ export function buildFinalBossEmbed(
 const RARITY_MULT: Record<BossRarity, number> = { comun: 1, rar: 1.5, epic: 2, legendar: 3 };
 const BASE_REP = 50, BASE_GOLD = 150, BASE_XP = 250;
 
+const HIT_BONUS_XP = 5, HIT_BONUS_GOLD = 3;
+
 export function computeBossRewards(
   damageBy: Map<string, number>,
   rarity: BossRarity,
+  hitsBy?: Map<string, number>,
 ): Map<string, { rep: number; gold: number; xp: number }> {
   const rm = RARITY_MULT[rarity];
   const sorted = [...damageBy.entries()]
@@ -1680,10 +1683,13 @@ export function computeBossRewards(
   const result = new Map<string, { rep: number; gold: number; xp: number }>();
   sorted.forEach(([id], i) => {
     const rankMult = i === 0 ? 3 : i < 3 ? 2 : 1;
+    const hits = hitsBy?.get(id) ?? 0;
+    const hitBonusXp = hits * HIT_BONUS_XP * rm;
+    const hitBonusGold = hits * HIT_BONUS_GOLD * rm;
     result.set(id, {
       rep:  Math.round(BASE_REP  * rankMult * rm),
-      gold: Math.round(BASE_GOLD * rankMult * rm),
-      xp:   Math.round(BASE_XP   * rankMult * rm),
+      gold: Math.round(BASE_GOLD * rankMult * rm + hitBonusGold),
+      xp:   Math.round(BASE_XP   * rankMult * rm + hitBonusXp),
     });
   });
   return result;
@@ -1695,9 +1701,10 @@ export function buildBossLeaderboard(
   participants: Array<{ username: string; discordId: string; monsterLevel: number; totalDamage: number; isAlive: boolean }>,
   playerNames?: Map<string, string>,
   playerHp?: Map<string, number>,
+  hitsBy?: Map<string, number>,
 ): EmbedBuilder {
   const rd = BOSS_RARITY_DATA[bossInfo.rarity];
-  const rewards = computeBossRewards(damageMap, bossInfo.rarity);
+  const rewards = computeBossRewards(damageMap, bossInfo.rarity, hitsBy);
 
   // Build a unified map of everyone who did damage
   const allIds = new Set([...damageMap.keys(), ...participants.map((p) => p.discordId)]);
@@ -1736,14 +1743,17 @@ export function buildBossLeaderboard(
       ? ` | 🏅 +${rew.rep} Rep  +${rew.gold} Oboli  +${rew.xp} XP`
       : "";
 
+    const hits = hitsBy?.get(p.discordId) ?? 0;
+    const hitsStr = hits > 0 ? ` | ⚔️ ${hits} lovituri` : "";
+
     const bossStr = p.bossDamage > 0
       ? `🐉 ${p.bossDamage.toLocaleString()} daune`
       : `🐉 Nu a lovit`;
 
     if (p.inEvent) {
-      return `${medal} **${p.username}** — ${bossStr}${hpStr} | 🎚️ Niv.**${p.monsterLevel}** | 💥 ${p.totalDamage.toLocaleString()} Eveniment${rewStr}`;
+      return `${medal} **${p.username}** — ${bossStr}${hitsStr}${hpStr} | 🎚️ Niv.**${p.monsterLevel}** | 💥 ${p.totalDamage.toLocaleString()} Eveniment${rewStr}`;
     }
-    return `${medal} **${p.username}** — ${bossStr}${hpStr}${rewStr}`;
+    return `${medal} **${p.username}** — ${bossStr}${hitsStr}${hpStr}${rewStr}`;
   });
 
   const rarityBonus = RARITY_MULT[bossInfo.rarity] > 1 ? ` ✨ Bonus raritate ×${RARITY_MULT[bossInfo.rarity]}` : "";

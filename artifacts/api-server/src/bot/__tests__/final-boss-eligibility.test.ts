@@ -77,6 +77,7 @@ function makeBoss(overrides: Partial<BossState> = {}): BossState {
     standalone: false,
     lastHitAt: new Map(),
     damageBy: new Map(),
+    hitsBy: new Map(),
     playerHp: new Map(),
     playerNames: new Map(),
     playerStats: new Map(),
