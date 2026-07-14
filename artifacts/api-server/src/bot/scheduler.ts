@@ -578,7 +578,7 @@ export async function fireEvent(client: Client, guildId: string) {
       return;
     }
 
-    await cleanupOldEvents(client, guildId);
+    void cleanupOldEvents(client, guildId).catch(() => null);
 
     const expiresAt = new Date(Date.now() + EVENT_DURATION_MS);
 

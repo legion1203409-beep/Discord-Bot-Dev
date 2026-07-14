@@ -1453,13 +1453,13 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
 
   if (result.oboliGained > 0) {
     const questResult = await incrementDailyQuestKill(p.discordId, guildId);
-    await Promise.all([
+    void Promise.all([
       addPlayerGold(p.discordId, guildId, result.oboliGained),
       addPlayerXp(p.discordId, guildId, result.xpGained),
       updateMaxLevel(p.discordId, guildId, result.newMonsterLevel),
       ...(itemDrop ? [addPlayerItem(p.discordId, guildId, itemDrop)] : []),
       ...(questResult.justCompleted ? [addPlayerItem(p.discordId, guildId, DAILY_QUESTS.kill_10.reward.itemKey)] : []),
-    ]);
+    ]).catch((err) => logger.error({ err, discordId: p.discordId, guildId }, "Async combat writes failed"));
     if (questResult.justCompleted) {
       void interaction.followUp({
         content:
