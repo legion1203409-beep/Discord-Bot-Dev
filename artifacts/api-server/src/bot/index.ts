@@ -2350,6 +2350,20 @@ export async function startBot(onReady?: () => void): Promise<void> {
   }
   const client = new Client({ intents });
 
+  // Event-loop lag monitor: if the loop is blocked, interactions pile up and
+  // expire (10062). A tick scheduled every second should fire ~on time.
+  {
+    let lastTick = Date.now();
+    setInterval(() => {
+      const now = Date.now();
+      const lagMs = now - lastTick - 1000;
+      lastTick = now;
+      if (lagMs > 500) {
+        logger.warn({ lagMs }, "Event loop lag detected — something is blocking the process");
+      }
+    }, 1000).unref?.();
+  }
+
   let rejectTerminated!: (err: Error) => void;
   const terminated = new Promise<void>((_, reject) => {
     rejectTerminated = reject;
@@ -2542,10 +2556,34 @@ export async function startBot(onReady?: () => void): Promise<void> {
     // Ignore DM interactions — all commands require a guild context
     if (!interaction.guildId) return;
 
+    const label = interaction.isChatInputCommand()
+      ? `/${interaction.commandName}`
+      : "customId" in interaction
+        ? String(interaction.customId)
+        : interaction.type.toString();
+
+    // Diagnose latency: how old was this interaction when it reached us?
+    const ageMs = Date.now() - interaction.createdTimestamp;
+    if (ageMs > 1500) {
+      logger.warn(
+        { ageMs, label, wsPing: client.ws.ping },
+        "Interaction arrived late — gateway/event-loop lag (>3s causes 10062)",
+      );
+    }
+
     function dispatch(p: Promise<unknown>) {
-      p.catch((err) => {
-        logger.error({ err }, "Interaction error");
-      });
+      const startedAt = Date.now();
+      p.then(
+        () => {
+          const durationMs = Date.now() - startedAt;
+          if (durationMs > 2500) {
+            logger.warn({ durationMs, label }, "Slow interaction handler");
+          }
+        },
+        (err) => {
+          logger.error({ err, label, ageMs, durationMs: Date.now() - startedAt }, "Interaction error");
+        },
+      );
     }
 
     if (interaction.isChatInputCommand()) {
