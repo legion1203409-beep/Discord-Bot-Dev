@@ -1010,12 +1010,10 @@ export function buildShopEmbed(p: Player, category: ShopCategory = "overview"): 
         "Fiecare nivel de prestigiu consumă **XP** și oferă bonusuri permanente\n" +
         "care se aplică în **TOATE** luptele normale și în lupta cu Dragonul Stins.\n\n" +
         (p.prestigeLevel > 0
-          ? `**🎯 Nivel Prestigiu: ${p.prestigeLevel}**\n${total}\n` +
-            `🚀 Start event la nivelul **${prestigeStartLevel(p.prestigeLevel)}**\n\n`
+          ? `**🎯 Nivel Prestigiu: ${p.prestigeLevel}**\n${total}\n\n`
           : "") +
         `**🔰 Următorul nivel (${p.prestigeLevel + 1}):**\n` +
         `   → ${next}\n` +
-        `   → 🚀 Start event la nivelul **${prestigeStartLevel(p.prestigeLevel + 1)}**\n` +
         `   → cost: **${cost.toLocaleString("ro-RO")} XP**\n\n` +
         "*Costul crește cu 50% la fiecare nivel de prestigiu.*",
       );
@@ -1233,8 +1231,8 @@ function prestigeCost(level: number): number {
   return Math.floor(10_000 * Math.pow(1.5, level));
 }
 
-export function prestigeStartLevel(prestigeLevel: number): number {
-  return prestigeLevel * 10;
+export function prestigeStartLevel(_prestigeLevel: number): number {
+  return 1; // Prestige no longer raises the event start level; bonuses only
 }
 
 function prestigeNextBonuses(level: number): string {
