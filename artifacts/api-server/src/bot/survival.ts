@@ -1406,6 +1406,7 @@ export function buildTalismanPage(p: Player, items: PlayerItem[]): EmbedBuilder 
   return new EmbedBuilder()
     .setColor(THEME_COLOR)
     .setFooter({ text: BRAND_FOOTER })
+    .setThumbnail(IMG.shop)
     .setTitle("🔮 Forja Cenușii — Talismane")
     .setDescription(
       SHOP_BALANCE(p) +

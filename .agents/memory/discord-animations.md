@@ -22,6 +22,10 @@ clip duration so the loop is seamless, e.g.
 **Gotcha:** the `hue` filter does NOT support `eval=frame` ("Option not found").
 For per-frame color shifts use `eq` (`gamma_r`/`gamma_b`) instead.
 
+All chest/key/companion art now ships as `*_anim.gif` (the PNGs remain on disk
+only as ffmpeg sources). For these large/noisy PNG sources, 480px output blew past
+3MB — use `scale=384`, `fps=10`, `t=3` (lands 1.5–2.6MB).
+
 **Size (critical):** Discord's embed media proxy silently refuses to render
 animated GIFs above ~3MB — it fetches the file but shows no image (the embed
 appears with no picture). Keep embed GIFs ≤~2.7MB and match the proven-working
