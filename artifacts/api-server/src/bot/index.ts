@@ -328,7 +328,7 @@ const slashCommands = [
   new SlashCommandBuilder().setName("clasa").setDescription("🧬 Alege-ți clasa RPG (alegere permanentă)."),
   new SlashCommandBuilder().setName("companion").setDescription("🐾 Vezi companionul tău (cumpără și fă îmbunătățiri din /magazin)."),
   new SlashCommandBuilder().setName("ajutor").setDescription("❓ Ghidul comenzilor din Regatul Cenușii."),
-  new SlashCommandBuilder().setName("misiune").setDescription("📜 Misiunea ta zilnică — progres și recompensă."),
+  new SlashCommandBuilder().setName("misiuni").setDescription("📜 Misiunea ta zilnică — progres și recompensă."),
   new SlashCommandBuilder()
     .setName("startevent")
     .setDescription("🔥 [Admin] Pornește manual Ora Umbrelor.")
@@ -606,7 +606,7 @@ async function handleAjutor(interaction: ChatInputCommandInteraction) {
             name: "🏺 Economie",
             value:
               "**/magazin** — Forja Cenușii: puteri permanente, companioni și abilități de luptă\n" +
-              "**/misiune** — misiunea ta zilnică *(ucide 10 monștri → Coamă de Dragon)*",
+              "**/misiuni** — misiunea ta zilnică *(ucide 10 monștri → Coamă de Dragon)*",
           },
           {
             name: "⚔️ Evenimente automate",
@@ -1455,7 +1455,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
         content:
           `📜 **Misiunea zilnică completată!**\n` +
           `${ITEMS[DAILY_QUESTS.kill_10.reward.itemKey].emoji} Ai primit **${DAILY_QUESTS.kill_10.reward.qty}× ${ITEMS[DAILY_QUESTS.kill_10.reward.itemKey].label}** ca recompensă!\n` +
-          `Folosește \`/misiune\` pentru detalii.`,
+          `Folosește \`/misiuni\` pentru detalii.`,
         flags: MessageFlags.Ephemeral,
       });
     }
@@ -2512,7 +2512,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
       if (interaction.commandName === "clasa") dispatch(handleClasa(interaction));
       if (interaction.commandName === "companion") dispatch(handleCompanion(interaction));
       if (interaction.commandName === "ajutor") dispatch(handleAjutor(interaction));
-      if (interaction.commandName === "misiune") dispatch(handleMisiune(interaction));
+      if (interaction.commandName === "misiuni") dispatch(handleMisiune(interaction));
       if (interaction.commandName === "startevent") dispatch(handleStartEvent(interaction));
       if (interaction.commandName === "cufar") dispatch(handleSpawnChest(interaction));
       if (interaction.commandName === "spawnboss") dispatch(handleSpawnBoss(interaction));
