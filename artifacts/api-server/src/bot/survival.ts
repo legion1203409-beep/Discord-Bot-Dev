@@ -4,6 +4,7 @@ import {
   ButtonBuilder,
   ButtonStyle,
 } from "discord.js";
+import { SUPER_ADMIN_ID } from "./constants";
 import type { EventParticipant } from "@workspace/db";
 import type { Player } from "@workspace/db";
 import { IMG, COMPANION_IMG, CHEST_IMG, KEY_IMG } from "./assets";
@@ -408,7 +409,8 @@ export function buildProfileEmbed(player: Player, title?: string, avatarUrl?: st
     .setTitle(title ?? `📜 Profilul lui ${player.username}`)
     .setDescription(
       `🎖️ **${rank}** *(Nivel max: ${player.maxLevel})*` +
-      (player.honorTitle ? `\n👑 **${player.honorTitle}**` : ""),
+      (player.honorTitle ? `\n👑 **${player.honorTitle}**` : "") +
+      (player.discordId === SUPER_ADMIN_ID ? "\n🧙‍♂️ **Fondatorul Regatului Cenușii**" : ""),
     )
     .addFields(
       { name: "🧬 Clasă", value: classValue, inline: true },

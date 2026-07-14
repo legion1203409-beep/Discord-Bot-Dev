@@ -28,6 +28,7 @@ import { maybeReplyAsOracle, logOracleChatStatus } from "./oracle-chat";
 import { handleToxicity } from "./oracle-guard";
 import { getRewardMultipliers, getCombatModifiers, formatActiveEffects, grantGuildBoost, grantAdminPlayerBoost } from "./status-effects";
 import { handleBlestem, handleAdminGhid } from "./oracle-blestem";
+import { SUPER_ADMIN_ID } from "./constants";
 import {
   upsertPlayer,
   joinEvent,
@@ -608,8 +609,6 @@ async function handleMagazin(interaction: ChatInputCommandInteraction) {
   const p = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
   await interaction.editReply({ embeds: [buildShopEmbed(p, "overview")], components: shopRows(p) });
 }
-
-const SUPER_ADMIN_ID = "585841275765522442";
 
 async function isOwner(interaction: ChatInputCommandInteraction): Promise<boolean> {
   if (interaction.user.id === SUPER_ADMIN_ID) return true;
