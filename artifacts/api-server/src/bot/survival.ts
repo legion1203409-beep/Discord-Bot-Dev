@@ -218,6 +218,16 @@ export const ABILITIES = {
 export type AbilityKey = keyof typeof ABILITIES;
 export function isAbilityKey(k: string): k is AbilityKey { return k in ABILITIES; }
 
+// Effective ability bonus at a given level, for display ("+105% daune", "-52% daune primite").
+export function abilityEffectiveDesc(kind: AbilityKey, level: number): string {
+  if (kind === "empower") {
+    const pct = Math.round((empowerMult(level) - 1) * 100);
+    return `+${pct}% daune la următoarea lovitură`;
+  }
+  const pct = Math.round(shieldReduction(level) * 100);
+  return `-${pct}% daune la următorul atac primit`;
+}
+
 // ─── Item drop system ─────────────────────────────────────────────────────────
 export const ITEMS = {
   fragment_cenusa: { label: "Fragment de Cenușă",  emoji: "🪨", rarity: "common" },
@@ -499,6 +509,7 @@ export function buildResultText(r: CombatResult, itemDrop?: ItemKey | null): str
     txt += `⚔️ **AI LOVIT MONSTRUL!**\nLovitura ta a atins creatura pentru **${r.playerDmg} daune**.\nUmbrele se clatină în jurul ei.\n\n`;
   }
   if (r.stormDrain > 0) txt += `🌪️ Furtuna de Fum îți arde **${r.stormDrain} HP**!\n`;
+  if (r.hpRegen > 0) txt += `🩸 **Runa Sângelui pulsează!** Absorbi **+${r.hpRegen} HP** din rana creaturii.\n`;
   if (r.monsterDefeated) {
     txt += `💀 **MONSTRUL A CĂZUT!** +${r.xpGained} XP, +${r.oboliGained} Oboli\n`;
     if (itemDrop) {
@@ -543,9 +554,9 @@ export function buildProfileEmbed(player: Player, title?: string, avatarUrl?: st
     : "*Fără companion* — `/magazin`";
   const abilValue = (player.abilityEmpowerLevel >= 1 || player.abilityShieldLevel >= 1)
     ? [
-        player.abilityEmpowerLevel >= 1 ? `${ABILITIES.empower.emoji} ${ABILITIES.empower.label} Nv.${player.abilityEmpowerLevel}` : null,
-        player.abilityShieldLevel >= 1 ? `${ABILITIES.shield.emoji} ${ABILITIES.shield.label} Nv.${player.abilityShieldLevel}` : null,
-      ].filter(Boolean).join("  ·  ")
+        player.abilityEmpowerLevel >= 1 ? `${ABILITIES.empower.emoji} ${ABILITIES.empower.label} Nv.${player.abilityEmpowerLevel} (${abilityEffectiveDesc("empower", player.abilityEmpowerLevel)})` : null,
+        player.abilityShieldLevel >= 1 ? `${ABILITIES.shield.emoji} ${ABILITIES.shield.label} Nv.${player.abilityShieldLevel} (${abilityEffectiveDesc("shield", player.abilityShieldLevel)})` : null,
+      ].filter(Boolean).join("\n")
     : "*Fără abilități* — `/magazin`";
 
   const equippedTalismanKey = player.talisman && isTalismanKey(player.talisman) ? player.talisman : null;
@@ -920,8 +931,9 @@ function shopCompText(p: Player): string {
     const cost = upgradeCost(p.companionLevel);
     return (
       `${c.emoji} **${evolved ? c.evoLabel : c.label}** Nv.${p.companionLevel}${evolved ? " ✨" : ""}\n` +
-      `🎁 Bonus activ: ${companionEffectiveDesc(p.companion, p.companionLevel)}\n\n` +
+      `🎁 Bonus activ: **${companionEffectiveDesc(p.companion, p.companionLevel)}**\n\n` +
       `🔼 **Îmbunătățire Nv.${p.companionLevel} → ${p.companionLevel + 1}**\n` +
+      `   ↳ bonus nou: **${companionEffectiveDesc(p.companion, p.companionLevel + 1)}**\n` +
       `   ↳ cost: **${cost} Oboli + ${UPGRADE_XP_COST} XP**\n` +
       (evolved ? "" : `   ↳ evoluează la Nv.${COMPANION_EVOLVE_LEVEL} în forma legendară\n`)
     );
@@ -941,13 +953,15 @@ function shopAbilText(p: Player): string {
       const cost = upgradeCost(lvl);
       return (
         `${a.emoji} **${a.label}** Nv.${lvl}\n` +
-        `   ↳ ${a.desc}\n` +
-        `   🔼 Îmbunătățire → Nv.${lvl + 1}: **${cost} Oboli + ${UPGRADE_XP_COST} XP**\n`
+        `   🎁 Bonus activ: **${abilityEffectiveDesc(kind, lvl)}**\n` +
+        `   🔼 Îmbunătățire → Nv.${lvl + 1}: **${abilityEffectiveDesc(kind, lvl + 1)}**\n` +
+        `   ↳ cost: **${cost} Oboli + ${UPGRADE_XP_COST} XP**\n`
       );
     }
     return (
       `${a.emoji} 🔒 **${a.label}**\n` +
       `   ↳ ${a.desc}\n` +
+      `   ↳ la Nv.1: **${abilityEffectiveDesc(kind, 1)}**\n` +
       `   🛒 Deblochează: **${ABILITY_BUY_COST} Oboli**\n`
     );
   };
@@ -1593,7 +1607,8 @@ export function buildCompanionEmbed(player: Player): EmbedBuilder {
         `${c.emoji} **${evolved ? c.evoLabel : c.label}**${evolved ? "  ✨*(Evoluat)*" : ""}\n` +
         `*${c.lore}*\n\n` +
         `🏅 **Nivel ${player.companionLevel}**\n` +
-        `🎁 **Bonus activ:** ${companionEffectiveDesc(player.companion, player.companionLevel)}\n\n` +
+        `🎁 **Bonus activ:** ${companionEffectiveDesc(player.companion, player.companionLevel)}\n` +
+        `🔼 **La Nv.${player.companionLevel + 1}:** ${companionEffectiveDesc(player.companion, player.companionLevel + 1)} — îmbunătățire din **/magazin**\n\n` +
         (evolved
           ? "Companionul tău a evoluat la forma sa legendară!"
           : `🔓 Evoluează la **Nivel ${COMPANION_EVOLVE_LEVEL}** companion — fă îmbunătățire din **/magazin**.`),
