@@ -97,6 +97,7 @@ import {
   classRows,
   buildCompanionEmbed,
   isCompanionKey,
+  companionStats,
   combatRow,
   shopRows,
   shopStatsRows,
@@ -111,6 +112,8 @@ import {
   levelTitle,
   CLASSES,
   isClassKey,
+  classStats,
+  classUpgradeCost,
   isAbilityKey,
   upgradeCost,
   COMPANION_BUY_COST,
@@ -1555,7 +1558,7 @@ async function handleClasa(interaction: ChatInputCommandInteraction) {
   const p = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
   await interaction.editReply({
     embeds: [buildClassEmbed(p)],
-    components: p.class ? [] : classRows(),
+    components: p.class && isClassKey(p.class) ? shopClassRows(p) : classRows(),
   });
 }
 
@@ -1749,6 +1752,38 @@ async function handleCompUpgrade(interaction: ButtonInteraction) {
   await interaction.editReply({ embeds: [buildShopEmbed(updated, "comp")], components: shopCompRows(updated) });
 }
 
+async function handleClassUpgrade(interaction: ButtonInteraction) {
+  await interaction.deferUpdate();
+  const guildId = interaction.guildId!;
+  const p = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
+  if (!p.class || !isClassKey(p.class)) {
+    await interaction.followUp({ content: "❌ Nu ai o clasă aleasă. Folosește `/clasa` pentru a alege una.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  const level = p.classLevel ?? 1;
+  const cost = classUpgradeCost(level);
+  const items = await getPlayerItems(interaction.user.id, guildId);
+  const inv = Object.fromEntries(items.map((i) => [i.itemKey, i.quantity]));
+  const canAfford =
+    p.gold >= cost.gold &&
+    p.xp >= cost.xp &&
+    cost.items.every((req) => (inv[req.item] ?? 0) >= req.qty);
+  if (!canAfford) {
+    const itemLines = cost.items.map((req) => `   · ${req.qty}× ${ITEMS[req.item].emoji} ${ITEMS[req.item].label}`).join("\n");
+    await interaction.followUp({
+      content: `❌ Resurse insuficiente pentru upgrade la Nv.${level + 1}.\n\n**Cost:**\n   · ${cost.gold} Oboli\n   · ${cost.xp} XP${itemLines ? "\n" + itemLines : ""}`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  const updated = await upgradeClass(interaction.user.id, guildId, p.class, level, cost.gold, cost.xp, cost.items);
+  if (!updated) {
+    await interaction.followUp({ content: "❌ Upgrade eșuat — resursele s-au schimbat între timp.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  await interaction.editReply({ embeds: [buildClassEmbed(updated)], components: shopClassRows(updated) });
+}
+
 async function handleAbilBuy(interaction: ButtonInteraction, kind: string) {
   await interaction.deferUpdate();
   const guildId = interaction.guildId!;
@@ -1843,16 +1878,22 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
 
   activeBoss.playerNames.set(uid, interaction.user.username);
 
-  const prestigeMaxHp = 100 + player.maxHpBonus + player.prestigeHpBonus;
+  const clsKey = player.class && isClassKey(player.class) ? player.class : null;
+  const cls = clsKey ? classStats(clsKey, player.classLevel ?? 1) : null;
+  const comp = player.companion && isCompanionKey(player.companion)
+    ? companionStats(player.companion, player.companionLevel ?? 1)
+    : null;
+
+  const prestigeMaxHp = 100 + player.maxHpBonus + player.prestigeHpBonus + (cls?.hp ?? 0) + (comp?.hp ?? 0);
   if (!activeBoss.playerHp.has(uid)) {
     activeBoss.playerHp.set(uid, Math.max(10, prestigeMaxHp));
   }
   if (!activeBoss.playerStats.has(uid)) {
     const stats: BossPlayerStats = {
-      atk: player.attackBonus + player.prestigeAttackBonus,
-      def: player.defenseBonus + player.prestigeDefenseBonus,
-      dodge: player.dodgeBonus + player.prestigeDodgeBonus,
-      crit: player.critBonus + player.prestigeCritBonus,
+      atk: player.attackBonus + player.prestigeAttackBonus + (cls?.attack ?? 0) + (comp?.attack ?? 0),
+      def: player.defenseBonus + player.prestigeDefenseBonus + (comp?.defense ?? 0),
+      dodge: player.dodgeBonus + player.prestigeDodgeBonus + (cls?.dodge ?? 0),
+      crit: player.critBonus + player.prestigeCritBonus + (cls?.crit ?? 0) + (comp?.crit ?? 0),
       maxHp: prestigeMaxHp,
     };
     activeBoss.playerStats.set(uid, stats);
@@ -1871,9 +1912,9 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
 
   const mods = getCombatModifiers(uid);
 
-  const totalAtk = player.attackBonus + player.prestigeAttackBonus;
-  const totalCrit = player.critBonus + player.prestigeCritBonus;
-  const totalDef = player.defenseBonus + player.prestigeDefenseBonus;
+  const totalAtk = player.attackBonus + player.prestigeAttackBonus + (cls?.attack ?? 0) + (comp?.attack ?? 0);
+  const totalCrit = player.critBonus + player.prestigeCritBonus + (cls?.crit ?? 0) + (comp?.crit ?? 0);
+  const totalDef = player.defenseBonus + player.prestigeDefenseBonus + (comp?.defense ?? 0);
   const minDmg = Math.max(30, totalAtk * 5 + 20);
   const maxDmg = Math.max(80, totalAtk * 15 + 60);
   let playerDmg = Math.floor(Math.random() * (maxDmg - minDmg + 1)) + minDmg;
@@ -2157,6 +2198,7 @@ async function handleButton(interaction: ButtonInteraction) {
   }
   if (id.startsWith("shop_compbuy_")) return handleCompBuy(interaction, id.replace("shop_compbuy_", ""));
   if (id === "shop_compup") return handleCompUpgrade(interaction);
+  if (id === "shop_classup") return handleClassUpgrade(interaction);
   if (id.startsWith("shop_abilbuy_")) return handleAbilBuy(interaction, id.replace("shop_abilbuy_", ""));
   if (id.startsWith("shop_abilup_")) return handleAbilUpgrade(interaction, id.replace("shop_abilup_", ""));
 

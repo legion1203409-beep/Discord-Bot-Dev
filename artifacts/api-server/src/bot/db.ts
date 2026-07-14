@@ -6,7 +6,7 @@ import type { SQL } from "drizzle-orm";
 import type { Player, EventParticipant } from "@workspace/db";
 
 export type { PlayerItem };
-import { CLASSES, isClassKey, rollRarity, isCompanionKey, companionStats, prestigeStartLevel, monsterMaxHp } from "./survival";
+import { CLASSES, isClassKey, classStats, rollRarity, isCompanionKey, companionStats, prestigeStartLevel, monsterMaxHp } from "./survival";
 import { logger } from "../lib/logger";
 
 export type UpgradeKey = "atac" | "def" | "dodge" | "crit" | "hp";
@@ -357,6 +357,60 @@ export async function upgradeAbility(discordId: string, guildId: string, kind: A
   return u ?? null;
 }
 
+// Upgrades the player's class level; `expectedLevel` + `classKey` guard concurrent clicks.
+export async function upgradeClass(
+  discordId: string, guildId: string, classKey: string, expectedLevel: number,
+  goldCost: number, xpCost: number, items: { item: string; qty: number }[],
+): Promise<Player | null> {
+  if (!isClassKey(classKey)) return null;
+  const costs: Record<string, number> = {};
+  for (const req of items) costs[req.item] = req.qty;
+
+  try {
+    return await db.transaction(async (tx) => {
+      const [rows] = await tx.select().from(playerItemsTable)
+        .where(and(eq(playerItemsTable.discordId, discordId), eq(playerItemsTable.guildId, guildId)));
+      const inv = Object.fromEntries(rows.map((r) => [r.itemKey, r.quantity]));
+      for (const [key, need] of Object.entries(costs)) {
+        if ((inv[key] ?? 0) < need) return null;
+      }
+
+      const results = await Promise.all(
+        Object.entries(costs).map(([key, need]) =>
+          tx.update(playerItemsTable)
+            .set({ quantity: sql`${playerItemsTable.quantity} - ${need}` })
+            .where(and(
+              eq(playerItemsTable.discordId, discordId),
+              eq(playerItemsTable.guildId, guildId),
+              eq(playerItemsTable.itemKey, key),
+              gte(playerItemsTable.quantity, need),
+            ))
+            .returning({ id: playerItemsTable.discordId })
+        )
+      );
+      if (results.some((r) => r.length === 0)) return null;
+
+      const [u] = await tx.update(playersTable)
+        .set({
+          classLevel: sql`${playersTable.classLevel} + 1`,
+          gold: sql`${playersTable.gold} - ${goldCost}`,
+          xp: sql`${playersTable.xp} - ${xpCost}`,
+        })
+        .where(and(
+          playerWhere(discordId, guildId),
+          eq(playersTable.class, classKey),
+          eq(playersTable.classLevel, expectedLevel),
+          gte(playersTable.gold, goldCost),
+          gte(playersTable.xp, xpCost),
+        ))
+        .returning();
+      return u ?? null;
+    });
+  } catch {
+    return null;
+  }
+}
+
 // Mirrors a freshly-bought/upgraded ability level onto the active participant.
 export async function applyAbilityLevelToActiveParticipant(discordId: string, guildId: string, kind: AbilityKind, level: number): Promise<void> {
   const activeIds = db
@@ -493,7 +547,8 @@ export async function joinEvent(guildId: string, eventId: number, discordId: str
     .where(and(eq(eventParticipantsTable.eventId, eventId), eq(eventParticipantsTable.discordId, discordId)));
   if (existing) return existing;
   const player = await getPlayerById(discordId, guildId);
-  const cls = player?.class && isClassKey(player.class) ? CLASSES[player.class] : null;
+  const clsKey = player?.class && isClassKey(player.class) ? player.class : null;
+  const cls = clsKey ? classStats(clsKey, player?.classLevel ?? 1) : null;
   const comp = player?.companion && isCompanionKey(player.companion)
     ? companionStats(player.companion, player.companionLevel ?? 1)
     : null;

@@ -117,6 +117,31 @@ export const CLASSES: Record<ClassKey, {
 };
 export function isClassKey(k: string): k is ClassKey { return k in CLASSES; }
 
+// Effective class bonuses at a given level (base × 1.05^(level-1), like companions).
+export function classStats(key: ClassKey, level: number): { attack: number; hp: number; dodge: number; crit: number } {
+  const c = CLASSES[key];
+  const m = bonusMult(level);
+  return {
+    attack: Math.round(c.attack * m),
+    hp: Math.round(c.hp * m),
+    dodge: Math.round(c.dodge * m),
+    crit: Math.round(c.crit * m),
+  };
+}
+
+// Cost for class upgrade: Oboli + XP + materials (scales with level).
+export function classUpgradeCost(level: number): { gold: number; xp: number; items: { item: ItemKey; qty: number }[] } {
+  const gold = Math.ceil(UPGRADE_BASE_COST * Math.pow(UPGRADE_COST_GROWTH, Math.max(0, level - 1)));
+  const xp = UPGRADE_XP_COST;
+  const items: { item: ItemKey; qty: number }[] = [
+    { item: "fragment_cenusa", qty: level * 2 },
+    { item: "sange_monstru",   qty: Math.ceil(level / 2) },
+  ];
+  if (level >= 3) items.push({ item: "esenta_umbrei", qty: Math.ceil(level / 3) });
+  if (level >= 5) items.push({ item: "picatura_otr",    qty: Math.ceil(level / 5) });
+  return { gold, xp, items };
+}
+
 // ─── Shop economy: companions & abilities ─────────────────────────────────────
 // Companions and abilities are bought with Oboli (gold) and then leveled up.
 // Each upgrade consumes XP and Oboli; cost grows 15%/level, the offered bonus
@@ -1356,10 +1381,24 @@ export function shopPrestigeRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
   return rows;
 }
 
-/** Class sub-page rows — pickers if unchosen, just Back once a class is set. */
+/** Class sub-page rows — pickers if unchosen, upgrade button once a class is set. */
 export function shopClassRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
   if (p.class && isClassKey(p.class)) {
-    return [shopBackRow()];
+    const level = p.classLevel ?? 1;
+    if (level >= 10) return [shopBackRow()];
+    const cost = classUpgradeCost(level);
+    const rows: ActionRowBuilder<ButtonBuilder>[] = [
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId("shop_classup")
+          .setLabel(`\u2b06\ufe0f Upgrade Clas\u0103 Nv.${level} \u2192 ${level + 1}`)
+          .setEmoji("💎")
+          .setStyle(ButtonStyle.Success)
+          .setDisabled(false),
+      ),
+      shopBackRow(),
+    ];
+    return rows;
   }
   const keys = Object.keys(CLASSES) as ClassKey[];
   const btn = (k: ClassKey) =>
@@ -1478,17 +1517,46 @@ export function levelupRows(eventId: number): ActionRowBuilder<ButtonBuilder>[] 
 
 // ─── Classes ─────────────────────────────────────────────────────────────────
 export function buildClassEmbed(player: Player): EmbedBuilder {
-  const cls = player.class && isClassKey(player.class) ? CLASSES[player.class] : null;
-  if (cls) {
-    return new EmbedBuilder()
-      .setColor(0x6d28d9)
-      .setTitle("🧬  CLASA TA ÎN REGATUL CENUȘII")
-      .setDescription(
-        `Ai ales deja calea ta, iar ea este **permanentă**.\n\n` +
-        `${cls.emoji} **${cls.label}**\n*${cls.desc}*\n\n` +
-        "Bonusurile clasei se aplică automat la fiecare intrare în Ora Umbrelor.",
-      )
-      .setFooter({ text: BRAND_FOOTER });
+  const classKey = player.class;
+  if (classKey && isClassKey(classKey)) {
+    const cls = CLASSES[classKey];
+    const level = player.classLevel ?? 1;
+    const stats = classStats(classKey, level);
+    const next = level < 10 ? classStats(classKey, level + 1) : null;
+      const cost = classUpgradeCost(level);
+
+      const bonusLine = (label: string, val: number, nxt?: number | null) =>
+        val > 0 || (nxt ?? 0) > 0
+          ? `   · ${label}: **+${val}**${nxt && nxt > val ? ` → +${nxt}` : ""}`
+          : "";
+
+      const costLines = cost.items.length > 0
+        ? cost.items.map((req) => `   · ${req.qty}× ${ITEMS[req.item].emoji} ${ITEMS[req.item].label}`).join("\n")
+        : "";
+
+      const upgradeBlock = level >= 10
+        ? "⭐ **Nivel maxim atins!** Calea ta este desăvârșită."
+        : `\n\n⬆️ **Upgrade la Nv.${level + 1}**\n` +
+          `   · ${cost.gold} Oboli\n` +
+          `   · ${cost.xp} XP${costLines ? "\n" + costLines : ""}`;
+
+      const desc =
+        `${cls.emoji} **${cls.label}** (Nv.${level})\n` +
+        `> *${cls.desc}*\n\n` +
+        bonusLine("⚔️ Daune", stats.attack, next?.attack) + "\n" +
+        bonusLine("❤️ HP", stats.hp, next?.hp) + "\n" +
+        bonusLine("🌀 Evitare", stats.dodge, next?.dodge) + "\n" +
+        bonusLine("💥 Critic", stats.crit, next?.crit) + "\n" +
+        (cls.xpMult !== 1 ? `   · 📚 XP ×${cls.xpMult}` : "") +
+        (cls.oboliMult !== 1 ? `   · 💰 Oboli ×${cls.oboliMult}` : "") +
+        `\n\n✅ Calea este **permanentă** și bonusurile se aplică automat.` +
+        upgradeBlock;
+
+      return new EmbedBuilder()
+        .setColor(0x6d28d9)
+        .setTitle("🧀  CLASA TA ÎN REGATUL CENUȘII")
+        .setDescription(desc)
+        .setFooter({ text: BRAND_FOOTER });
   }
   return new EmbedBuilder()
     .setColor(0x6d28d9)
