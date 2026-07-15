@@ -19,6 +19,7 @@ import {
   PermissionFlagsBits,
   EmbedBuilder,
 } from "discord.js";
+import { randomUUID } from "node:crypto";
 import { logger } from "../lib/logger";
 import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./alert";
 import { startGuildScheduler, stopGuildScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, getGuildClaimedChests, getGuildActiveBossMap, checkBossEligibility, checkBossHitCooldown, BOSS_HIT_COOLDOWN_MS, checkBossAbilityCooldown, persistBossState, type BossState, type BossPlayerStats } from "./scheduler";
@@ -68,6 +69,8 @@ import {
   saveTraderEmbedSig,
   loadTraderEmbedSig,
   ensureBotStateTable,
+  claimBotInstance,
+  getBotInstanceHolder,
   runMultiGuildMigrations,
   resetPlayer,
   resetAllPlayersInGuild,
@@ -171,6 +174,15 @@ import { IMG } from "./assets";
 const DEFAULT_GUILD_ID = "1382035307607883816";
 
 let botClient: Client | null = null;
+
+/** Disconnect the Discord client promptly — used by the SIGTERM/SIGINT handler
+ *  so a redeploy never leaves a zombie gateway session behind. */
+export async function destroyBotClientForShutdown(): Promise<void> {
+  const c = botClient;
+  botClient = null;
+  if (c) await c.destroy();
+}
+
 let disconnectAlertTimer: ReturnType<typeof setTimeout> | null = null;
 let disconnectStartedAt: Date | null = null;
 let botReadyAt: Date | null = null;
@@ -203,6 +215,19 @@ function isTraderSetupInProgress(guildId: string): boolean {
 // De-dup recently handled interaction IDs
 const seenInteractionIds = new Set<string>();
 const INTERACTION_DEDUP_TTL_MS = 17 * 60 * 1000;
+
+// ── Single-instance guard ─────────────────────────────────────────────────────
+// How often a running instance re-checks the bot_instance marker in the DB.
+const INSTANCE_WATCHDOG_INTERVAL_MS = 60_000;
+
+/**
+ * True when the bot_instance marker in the DB belongs to ANOTHER process,
+ * meaning a newer instance claimed leadership and this one must yield.
+ * A null holder (row missing / never claimed) never triggers a yield.
+ */
+export function shouldYieldLeadership(holder: string | null, instanceId: string): boolean {
+  return holder != null && holder !== instanceId;
+}
 
 let privilegedIntentFellBack = false;
 
@@ -2472,9 +2497,15 @@ export async function startBot(onReady?: () => void): Promise<void> {
   }
 
   let rejectTerminated!: (err: Error) => void;
-  const terminated = new Promise<void>((_, reject) => {
+  let resolveTerminated!: () => void;
+  const terminated = new Promise<void>((resolve, reject) => {
+    resolveTerminated = resolve;
     rejectTerminated = reject;
   });
+
+  // Set when a newer bot instance claims leadership in the DB and this one
+  // shuts itself down — suppresses disconnect alerts caused by our own destroy().
+  let yieldedLeadership = false;
 
   client.once(Events.ClientReady, async (c) => {
     logger.info({ tag: c.user.tag }, "✅ Discord bot online and ready");
@@ -2512,6 +2543,49 @@ export async function startBot(onReady?: () => void): Promise<void> {
     if (onReady) onReady();
 
     await maybeAlertOracleRecovery(getOracleReplyMode, consumeOracleFellBackMarker, sendAlert);
+
+    // ── Single-instance guard ─────────────────────────────────────────────────
+    // Claim leadership (last writer wins), then periodically re-check the
+    // marker. If a NEWER process claims it (e.g. after a redeploy while this
+    // old VM is still alive), shut this bot down so two gateway sessions never
+    // race to acknowledge the same interactions (40060/10062 → laggy bot).
+    const instanceId = randomUUID();
+    try {
+      await claimBotInstance(instanceId);
+      logger.info({ instanceId }, "Claimed bot instance leadership");
+    } catch (err) {
+      // Could not claim — skip the watchdog entirely so a stale marker from a
+      // previous instance can never make THIS legitimate instance yield.
+      logger.error({ err }, "Failed to claim bot instance leadership — watchdog disabled");
+      return;
+    }
+
+    const watchdog = setInterval(() => {
+      void getBotInstanceHolder()
+        .then((holder) => {
+          if (yieldedLeadership || !shouldYieldLeadership(holder, instanceId)) return;
+          yieldedLeadership = true;
+          clearInterval(watchdog);
+          logger.error(
+            { holder, instanceId },
+            "Another bot instance claimed leadership — yielding: stopping schedulers and disconnecting this bot",
+          );
+          shardStatus = "yielded";
+          botClient = null;
+          for (const [guildId] of client.guilds.cache) {
+            stopGuildScheduler(guildId);
+          }
+          void sendAlert(
+            "⚠️ **Instanță duplicată detectată.** O instanță mai nouă a botului a preluat controlul — instanța veche s-a oprit singură pentru a evita răspunsuri duble/lente.",
+          );
+          void client.destroy();
+          resolveTerminated();
+        })
+        .catch((err) => {
+          logger.warn({ err }, "Bot instance watchdog check failed — will retry");
+        });
+    }, INSTANCE_WATCHDOG_INTERVAL_MS);
+    watchdog.unref?.();
   });
 
   // When the bot joins a new guild, start the scheduler for it
@@ -2588,6 +2662,8 @@ export async function startBot(onReady?: () => void): Promise<void> {
   }
 
   client.on(Events.ShardDisconnect, (event, shardId) => {
+    // Deliberate self-shutdown after losing instance leadership — not an outage.
+    if (yieldedLeadership) return;
     if (event.code === 4014 && wantsMessageContent) {
       logger.error(
         { shardId },

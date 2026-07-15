@@ -43,6 +43,7 @@ _Populate as you build — explicit user instructions worth remembering across s
 ## Gotchas
 
 - **Always run `pnpm --filter @workspace/db run push-force` (dev DB sync) after any schema change, BEFORE publishing.** Replit's Publish flow diffs the development *database* against production and drops prod columns that are missing in dev — this is what wiped player prestige. The bot only runs in production, so its startup migrations never update the dev DB; schema files alone are not enough.
+- **Duplicate bot instance after publish** ("merge greu", 40060 errors at the first deferUpdate): a zombie VM from the previous revision holds a second gateway session. Code defends itself (SIGTERM fast-exit + `bot_instance` DB leadership marker, old instance yields with an ops alert "Instanță duplicată detectată" and healthz `shardStatus: "yielded"`). If that alert fires unexpectedly or the fresh deploy shows `yielded`, fully stop the deployment in the Publishing pane, wait ~1 min, then Publish again.
 
 ## Pointers
 

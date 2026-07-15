@@ -1003,6 +1003,34 @@ function guildKey(guildId: string, key: string): string {
   return `${guildId}:${key}`;
 }
 
+// ─── Bot instance leadership marker (global — not per-guild) ──────────────────
+// Last writer wins: each bot process claims this key once at startup. A running
+// instance that later sees a DIFFERENT id in the row knows a newer instance has
+// taken over (e.g. after a redeploy) and must shut its bot down to avoid two
+// gateway sessions racing to acknowledge the same interactions (40060/10062).
+const BOT_INSTANCE_KEY = "bot_instance";
+
+export async function claimBotInstance(instanceId: string): Promise<void> {
+  await ensureBotStateTable();
+  const now = new Date();
+  await db
+    .insert(botStateTable)
+    .values({ key: BOT_INSTANCE_KEY, value: instanceId })
+    .onConflictDoUpdate({
+      target: botStateTable.key,
+      set: { value: instanceId, updatedAt: now },
+    });
+}
+
+export async function getBotInstanceHolder(): Promise<string | null> {
+  await ensureBotStateTable();
+  const [row] = await db
+    .select()
+    .from(botStateTable)
+    .where(eq(botStateTable.key, BOT_INSTANCE_KEY));
+  return row?.value ?? null;
+}
+
 // ─── Oracle fallback marker (global — not per-guild) ──────────────────────────
 const ORACLE_FELLBACK_KEY = "oracle_fellback";
 

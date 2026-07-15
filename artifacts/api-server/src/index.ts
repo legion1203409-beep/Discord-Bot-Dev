@@ -1,7 +1,7 @@
 import { pool } from "@workspace/db";
 import app from "./app";
 import { logger } from "./lib/logger";
-import { startBot } from "./bot/index";
+import { startBot, destroyBotClientForShutdown } from "./bot/index";
 import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./bot/alert";
 
 // Warm the DB connection pool at boot so the first slash command isn't delayed
@@ -19,6 +19,34 @@ process.on("uncaughtException", (err) => {
 process.on("unhandledRejection", (reason) => {
   logger.error({ reason }, "Unhandled promise rejection — process continues");
 });
+
+// Fast, clean shutdown on redeploy: disconnect the Discord gateway session
+// immediately so the old VM never lingers as a second bot instance racing the
+// new one to acknowledge interactions (40060/10062 → laggy bot).
+let shuttingDown = false;
+function shutdown(signal: string) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  logger.info({ signal }, "Shutdown signal received — disconnecting bot and exiting");
+  // Hard deadline: exit even if cleanup hangs.
+  const deadline = setTimeout(() => process.exit(0), 3_000);
+  deadline.unref?.();
+  void (async () => {
+    try {
+      await destroyBotClientForShutdown();
+    } catch (err) {
+      logger.warn({ err }, "Error while destroying bot client during shutdown");
+    }
+    try {
+      await pool.end();
+    } catch {
+      // pool may already be closed — ignore
+    }
+    process.exit(0);
+  })();
+}
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
 
 const BOT_RETRY_BASE_MS = 2_000;
 const BOT_RETRY_MAX_MS = 5 * 60_000;
@@ -68,7 +96,8 @@ async function startBotWithRetry() {
         // alert depending on whether it already fired.
         cancelSupervisorAlert();
       });
-      // startBot() resolved without error = DISCORD_TOKEN not set; stop looping.
+      // startBot() resolved without error = DISCORD_TOKEN not set, or this
+      // instance yielded leadership to a newer one; stop looping either way.
       return;
     } catch (err) {
       const uptimeMs = Date.now() - connectTime;
