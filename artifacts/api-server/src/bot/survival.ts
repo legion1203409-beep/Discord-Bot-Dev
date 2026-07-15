@@ -10,7 +10,7 @@ import type { Player } from "@workspace/db";
 import type { PlayerItem } from "@workspace/db";
 import { IMG, COMPANION_IMG, CHEST_IMG, KEY_IMG } from "./assets";
 import { getActiveBattleEvent, consumeStormDrain } from "./combat-events";
-import { getCombatModifiers, formatActiveEffects } from "./status-effects";
+import { getCombatModifiers, formatActiveEffects, formatCombatEffects } from "./status-effects";
 
 const BASE_PRICES = { atac: 50, def: 60, dodge: 70, crit: 80, hp: 40 } as const;
 export type ShopKey = keyof typeof BASE_PRICES;
@@ -474,6 +474,10 @@ export function buildCombatEmbed(p: EventParticipant, extra = "", avatarUrl?: st
     ? `🔥 MINI-BOSS NIVEL ${p.monsterLevel} – ${monsterName(p.monsterLevel)} 🔥`
     : `${meta.emoji} MONSTRU ${meta.label.toUpperCase()} NIVEL ${p.monsterLevel} – ${monsterName(p.monsterLevel)}`;
   const battle = getActiveBattleEvent();
+  const effectsText = formatCombatEffects(p.discordId);
+  const effectsSection = effectsText
+    ? `\n\n🔮 **Efectele tale active:**\n${effectsText}`
+    : "";
   const embed = new EmbedBuilder()
     .setColor(meta.color)
     .setTitle(title)
@@ -488,7 +492,8 @@ export function buildCombatEmbed(p: EventParticipant, extra = "", avatarUrl?: st
       `💰 Recompensă: **${reward.xp} XP, ${reward.oboli} Oboli**\n\n` +
       `━━━━━━━━━━━━━━━━━━\n` +
       `❤️ HP-ul tău: **${p.currentHp}/${p.maxHp}** ${hpBar(p.currentHp, p.maxHp)}\n` +
-      `🪙 Oboli strânși în eveniment: **${p.oboli}** *(20% se pierd la moarte)*`,
+      `🪙 Oboli strânși în eveniment: **${p.oboli}** *(20% se pierd la moarte)*` +
+      effectsSection,
     )
     .setImage(IMG.monster)
     .setFooter({ text: `⚔️ +${p.attackBonus} | 🛡️ +${p.defenseBonus} | 🌀 ${p.dodgeBonus}% | 💥 ${p.critBonus}% | ❤️ +${p.maxHp - 100}` });

@@ -26,7 +26,7 @@ import { getChannel, getAllChannels, setChannel, resetChannel, resetAllChannels,
 import { recordMessage } from "./oracle";
 import { maybeReplyAsOracle, logOracleChatStatus } from "./oracle-chat";
 import { handleToxicity } from "./oracle-guard";
-import { getRewardMultipliers, getCombatModifiers, formatActiveEffects, grantGuildBoost, grantAdminPlayerBoost, rollChestEffectKind, grantRandomBlessing, grantRandomCurse, buildChestEffectMessage } from "./status-effects";
+import { getRewardMultipliers, getCombatModifiers, formatActiveEffects, formatCombatEffects, grantGuildBoost, grantAdminPlayerBoost, rollChestEffectKind, grantRandomBlessing, grantRandomCurse, buildChestEffectMessage } from "./status-effects";
 import { handleBlestem, handleAdminGhid } from "./oracle-blestem";
 import { SUPER_ADMIN_ID } from "./constants";
 import {
@@ -2079,14 +2079,14 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
     ? `💀 **Ai fost doborât de Dragon!** Nu mai poți lovi.`
     : `❤️ Viața ta: **${newPlayerHp} / ${myMaxHp} HP**`;
 
-  const effectsLine = formatActiveEffects(uid);
+  const effectsLine = formatCombatEffects(uid);
   await interaction.followUp({
     content:
       abilityLine +
       `⚔️ Ai lovit Dragonul pentru **${playerDmg.toLocaleString()} daune**!${critTag}\n` +
       `🐉 Dragonul te lovește pentru **${bossHit} daune**! ${playerStatus}\n` +
       `🩸 Dragon: **${activeBoss.currentHp.toLocaleString()} / ${activeBoss.maxHp.toLocaleString()} HP**` +
-      (effectsLine ? `\n✨ **Efecte active:**\n${effectsLine}` : ""),
+      (effectsLine ? `\n🔮 **Efectele tale active:**\n${effectsLine}` : ""),
     ephemeral: true,
   });
 }

@@ -233,3 +233,35 @@ export function formatActiveEffects(discordId: string): string {
     })
     .join("\n");
 }
+
+/** Turns an effect's mods into explicit "+X% / -X%" parts (what goes up, what goes down). */
+export function describeEffectMods(mods: EffectMods): string {
+  const pct = (mult: number) => `${mult >= 1 ? "+" : "-"}${Math.round(Math.abs(mult - 1) * 100)}%`;
+  const parts: string[] = [];
+  if (mods.damageMult != null && mods.damageMult !== 1) parts.push(`${pct(mods.damageMult)} daune`);
+  if (mods.critAdd != null && mods.critAdd !== 0) parts.push(`${mods.critAdd > 0 ? "+" : ""}${mods.critAdd}% șansă critică`);
+  if (mods.damageTakenMult != null && mods.damageTakenMult !== 1) {
+    parts.push(`${pct(mods.damageTakenMult)} daune primite`);
+  }
+  if (mods.xpMult != null && mods.xpMult !== 1) parts.push(`${pct(mods.xpMult)} XP`);
+  if (mods.goldMult != null && mods.goldMult !== 1) parts.push(`${pct(mods.goldMult)} Oboli`);
+  return parts.join(", ");
+}
+
+/**
+ * Compact per-round effect display for the combat embed: green/red dot per
+ * blessing/curse, plus the exact bonuses/penalties and time left.
+ * Returns "" when the player has no active effects.
+ */
+export function formatCombatEffects(discordId: string): string {
+  const active = getActiveEffects(discordId);
+  if (active.length === 0) return "";
+  return active
+    .map(({ def, msLeft }) => {
+      const min = Math.max(1, Math.round(msLeft / MIN));
+      const dot = def.kind === "blessing" ? "🟢" : "🔴";
+      const desc = describeEffectMods(def.mods) || def.flavor;
+      return `${dot} ${def.emoji} **${def.label}** — ${desc} *(${min}m)*`;
+    })
+    .join("\n");
+}

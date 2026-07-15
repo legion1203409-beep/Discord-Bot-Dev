@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { grantEffect, getCombatModifiers, getRewardMultipliers, rollChestEffectKind, buildChestEffectMessage, CHEST_EFFECT_ODDS, LOCKED_CHEST_EFFECT_ODDS } from "../status-effects";
+import { grantEffect, getCombatModifiers, getRewardMultipliers, rollChestEffectKind, buildChestEffectMessage, describeEffectMods, formatCombatEffects, CHEST_EFFECT_ODDS, LOCKED_CHEST_EFFECT_ODDS } from "../status-effects";
 import type { EffectDef } from "../status-effects";
 
 // Each test uses a unique ID to avoid cross-test state contamination in the
@@ -286,5 +286,83 @@ describe("buildChestEffectMessage", () => {
     const msg = buildChestEffectMessage("Tester", def);
     expect(msg).toContain("1 minut");
     expect(msg).not.toContain("1 minute");
+  });
+});
+
+// ─── describeEffectMods ────────────────────────────────────────────────────────
+
+describe("describeEffectMods", () => {
+  it("shows +% for boosting multipliers", () => {
+    expect(describeEffectMods({ damageMult: 1.15 })).toBe("+15% daune");
+    expect(describeEffectMods({ xpMult: 1.1 })).toBe("+10% XP");
+    expect(describeEffectMods({ goldMult: 1.1 })).toBe("+10% Oboli");
+  });
+
+  it("shows -% for reducing multipliers", () => {
+    expect(describeEffectMods({ damageMult: 0.9 })).toBe("-10% daune");
+    expect(describeEffectMods({ xpMult: 0.9 })).toBe("-10% XP");
+    expect(describeEffectMods({ goldMult: 0.9 })).toBe("-10% Oboli");
+  });
+
+  it("formats critAdd with explicit sign", () => {
+    expect(describeEffectMods({ critAdd: 15 })).toBe("+15% șansă critică");
+    expect(describeEffectMods({ critAdd: -10 })).toBe("-10% șansă critică");
+  });
+
+  it("damageTakenMult below 1 shows as fewer damage taken, above 1 as more", () => {
+    expect(describeEffectMods({ damageTakenMult: 0.85 })).toBe("-15% daune primite");
+    expect(describeEffectMods({ damageTakenMult: 1.15 })).toBe("+15% daune primite");
+  });
+
+  it("joins multiple mods with commas", () => {
+    expect(describeEffectMods({ damageMult: 1.15, xpMult: 1.1 })).toBe("+15% daune, +10% XP");
+  });
+
+  it("returns empty string for neutral/empty mods", () => {
+    expect(describeEffectMods({})).toBe("");
+    expect(describeEffectMods({ damageMult: 1, xpMult: 1, goldMult: 1, damageTakenMult: 1, critAdd: 0 })).toBe("");
+  });
+});
+
+// ─── formatCombatEffects ───────────────────────────────────────────────────────
+
+describe("formatCombatEffects", () => {
+  it("returns empty string when player has no effects", () => {
+    expect(formatCombatEffects(uid())).toBe("");
+  });
+
+  it("shows green dot + explicit bonus for a blessing", () => {
+    const id = uid();
+    grantEffect(id, makeEffect({ id: "fmt_bless", label: "Lumina Cenușii", emoji: "✨", mods: { xpMult: 1.1 } }));
+    const txt = formatCombatEffects(id);
+    expect(txt).toContain("🟢");
+    expect(txt).toContain("Lumina Cenușii");
+    expect(txt).toContain("+10% XP");
+    expect(txt).toMatch(/\(\d+m\)/);
+  });
+
+  it("shows red dot + explicit penalty for a curse", () => {
+    const id = uid();
+    grantEffect(id, makeEffect({ id: "fmt_curse", kind: "curse", label: "Umbra Șchioapă", emoji: "🦶", mods: { damageMult: 0.9 } }));
+    const txt = formatCombatEffects(id);
+    expect(txt).toContain("🔴");
+    expect(txt).toContain("Umbra Șchioapă");
+    expect(txt).toContain("-10% daune");
+  });
+
+  it("lists blessing and curse together on separate lines", () => {
+    const id = uid();
+    grantEffect(id, makeEffect({ id: "fmt_b2", mods: { goldMult: 1.1 } }));
+    grantEffect(id, makeEffect({ id: "fmt_c2", kind: "curse", mods: { critAdd: -10 } }));
+    const lines = formatCombatEffects(id).split("\n");
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toContain("🟢");
+    expect(lines[1]).toContain("🔴");
+  });
+
+  it("falls back to flavor text when mods are empty", () => {
+    const id = uid();
+    grantEffect(id, makeEffect({ id: "fmt_flavor", flavor: "efect misterios", mods: {} }));
+    expect(formatCombatEffects(id)).toContain("efect misterios");
   });
 });
