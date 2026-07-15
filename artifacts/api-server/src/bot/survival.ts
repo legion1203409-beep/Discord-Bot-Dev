@@ -822,13 +822,14 @@ export function buildChestEmbed(gold: number, rarity?: ChestRarity, forcedMult?:
   const keyHintLine = keyDrop
     ? `\n🗝️ *Poate ascunde o ${KEY_LABEL[keyDrop.keyType]}...*`
     : "";
+  const effectHintLine = "\n🔮 *Se zvonește că unele cufere ascund o **binecuvântare**… sau un **blestem**!*";
   return new EmbedBuilder()
     .setColor(r.color)
     .setTitle(`${r.emoji}✨  ${r.label.toUpperCase()} A APĂRUT ÎN REGAT!  ✨${r.emoji}`)
     .setDescription(
       "Cenușa s-a ridicat și a dezvăluit un cufăr misterios!\n" +
       "Obolii zac în el, așteptând mâna celui mai rapid.\n\n" +
-      `💰 **${gold} Oboli** pentru primul care revendică!${bonusLine}${keyHintLine}\n\n` +
+      `💰 **${gold} Oboli** pentru primul care revendică!${bonusLine}${keyHintLine}${effectHintLine}\n\n` +
       "⚡ Fii primul — cufărul dispare în fumul umbrelor!",
     )
     .setImage(image)
@@ -888,6 +889,9 @@ export function buildLockedChestEmbed(rarityKey: string, gold: number): EmbedBui
   const jackpotLine = isRegal
     ? "\n\n👑 *Comoara coroanei — cea mai bogată pradă din tot Regatul!*"
     : "";
+  const blessingLine = isRegal
+    ? "\n✨ **Binecuvântare garantată** la deschidere — fără blesteme!"
+    : "\n✨ *Poate ascunde o **binecuvântare** — cuferele blocate nu blestemă niciodată!*";
 
   return new EmbedBuilder()
     .setColor(rarity.color)
@@ -896,6 +900,7 @@ export function buildLockedChestEmbed(rarityKey: string, gold: number): EmbedBui
       `*O forță veche ține cufărul ferecat. Doar ${keyEmoji} **${keyLabel}** îl poate deschide.*\n` +
       `${sectionTitle("Pradă")}\n` +
       `💰 **${gold.toLocaleString()} Oboli** ascunși înăuntru — mult peste un cufăr obișnuit!\n` +
+      blessingLine + "\n" +
       `${sectionTitle("Cheia")}\n` +
       `${keyEmoji} Necesită: **${keyLabel}**\n` +
       `📜 O găsești în **cufere de chei** sau revendicând **${sourceLabel}**` +

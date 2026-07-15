@@ -26,7 +26,7 @@ import { getChannel, getAllChannels, setChannel, resetChannel, resetAllChannels,
 import { recordMessage } from "./oracle";
 import { maybeReplyAsOracle, logOracleChatStatus } from "./oracle-chat";
 import { handleToxicity } from "./oracle-guard";
-import { getRewardMultipliers, getCombatModifiers, formatActiveEffects, grantGuildBoost, grantAdminPlayerBoost } from "./status-effects";
+import { getRewardMultipliers, getCombatModifiers, formatActiveEffects, grantGuildBoost, grantAdminPlayerBoost, rollChestEffectKind, grantRandomBlessing, grantRandomCurse, buildChestEffectMessage } from "./status-effects";
 import { handleBlestem, handleAdminGhid } from "./oracle-blestem";
 import { SUPER_ADMIN_ID } from "./constants";
 import {
@@ -1180,6 +1180,16 @@ async function handleChestClaim(interaction: ButtonInteraction, chestId: string,
     logger.info({ discordId: interaction.user.id, chestId, rarityKey, keyType }, "Key dropped");
   }
 
+  const effectKind = rollChestEffectKind(rarityKey);
+  if (effectKind) {
+    const effectDef = effectKind === "blessing"
+      ? grantRandomBlessing(interaction.user.id)
+      : grantRandomCurse(interaction.user.id);
+    const effectReply = await interaction.followUp({ content: buildChestEffectMessage(interaction.user.username, effectDef) });
+    setTimeout(() => { void effectReply.delete().catch(() => {}); }, CLAIM_TTL_MS);
+    logger.info({ discordId: interaction.user.id, chestId, rarityKey, effectKind, effectId: effectDef.id }, "Chest effect granted");
+  }
+
   logger.info({ discordId: interaction.user.id, chestId, rarityKey, gold, effectiveMult, totalGold }, "Chest claimed");
 }
 
@@ -1243,6 +1253,14 @@ async function handleLockedChestClaim(interaction: ButtonInteraction, chestId: s
       `💰 **${boostedGold} Oboli** eliberați din cufărul blocat!${boostLine}`,
   });
   setTimeout(() => { void lockedReply.delete().catch(() => {}); }, CLAIM_TTL_MS);
+
+  const lockedEffectKind = rollChestEffectKind(rarityKey, true);
+  if (lockedEffectKind === "blessing") {
+    const effectDef = grantRandomBlessing(interaction.user.id);
+    const effectReply = await interaction.followUp({ content: buildChestEffectMessage(interaction.user.username, effectDef) });
+    setTimeout(() => { void effectReply.delete().catch(() => {}); }, CLAIM_TTL_MS);
+    logger.info({ discordId: interaction.user.id, chestId, rarityKey, effectId: effectDef.id }, "Locked chest blessing granted");
+  }
 
   logger.info({ discordId: interaction.user.id, chestId, rarityKey, gold, keyType }, "Locked chest claimed");
 }

@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
-import { grantEffect, getCombatModifiers, getRewardMultipliers } from "../status-effects";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { grantEffect, getCombatModifiers, getRewardMultipliers, rollChestEffectKind, buildChestEffectMessage, CHEST_EFFECT_ODDS, LOCKED_CHEST_EFFECT_ODDS } from "../status-effects";
 import type { EffectDef } from "../status-effects";
 
 // Each test uses a unique ID to avoid cross-test state contamination in the
@@ -193,5 +193,98 @@ describe("getRewardMultipliers", () => {
     const mult = getRewardMultipliers(id);
     expect(mult.xpMult).toBeCloseTo(1.1);
     expect(mult.goldMult).toBe(1);
+  });
+});
+
+// ─── rollChestEffectKind ───────────────────────────────────────────────────────
+
+describe("rollChestEffectKind", () => {
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  function mockRolls(...values: number[]) {
+    let i = 0;
+    vi.spyOn(Math, "random").mockImplementation(() => values[Math.min(i++, values.length - 1)]!);
+  }
+
+  it("returns null for unknown rarity", () => {
+    expect(rollChestEffectKind("necunoscut")).toBeNull();
+    expect(rollChestEffectKind("necunoscut", true)).toBeNull();
+  });
+
+  it("returns null when the chance roll fails", () => {
+    mockRolls(0.99);
+    expect(rollChestEffectKind("bronz")).toBeNull();
+  });
+
+  it("returns blessing when chance passes and share roll is low", () => {
+    mockRolls(0.0, 0.0);
+    expect(rollChestEffectKind("bronz")).toBe("blessing");
+  });
+
+  it("returns curse when chance passes but share roll is high", () => {
+    mockRolls(0.0, 0.99);
+    expect(rollChestEffectKind("bronz")).toBe("curse");
+  });
+
+  it("regal free chest never curses (blessingShare = 1)", () => {
+    mockRolls(0.0, 0.999999);
+    expect(rollChestEffectKind("regal")).toBe("blessing");
+  });
+
+  it("locked chests never curse for any rarity", () => {
+    for (const rarity of Object.keys(LOCKED_CHEST_EFFECT_ODDS)) {
+      mockRolls(0.0, 0.999999);
+      expect(rollChestEffectKind(rarity, true)).toBe("blessing");
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("locked regal chest guarantees a blessing (chance = 1)", () => {
+    mockRolls(0.999999, 0.0);
+    expect(rollChestEffectKind("regal", true)).toBe("blessing");
+  });
+
+  it("locked lookup does not fall back to free-chest odds (bronz has no locked entry)", () => {
+    mockRolls(0.0, 0.0);
+    expect(rollChestEffectKind("bronz", true)).toBeNull();
+  });
+
+  it("free-chest odds increase with rarity", () => {
+    const order = ["bronz", "argint", "aur", "mitic", "regal"];
+    for (let i = 1; i < order.length; i++) {
+      const prev = CHEST_EFFECT_ODDS[order[i - 1]!]!;
+      const cur = CHEST_EFFECT_ODDS[order[i]!]!;
+      expect(cur.chance).toBeGreaterThan(prev.chance);
+      expect(cur.blessingShare).toBeGreaterThanOrEqual(prev.blessingShare);
+    }
+  });
+});
+
+// ─── buildChestEffectMessage ───────────────────────────────────────────────────
+
+describe("buildChestEffectMessage", () => {
+  it("blessing message includes username, label, flavor, and duration", () => {
+    const def = makeEffect({ id: "msg_bless", label: "Lumina Cenușii", flavor: "+10% XP în luptă", durationMs: 10 * 60 * 1000 });
+    const msg = buildChestEffectMessage("Tester", def);
+    expect(msg).toContain("Tester");
+    expect(msg).toContain("Lumina Cenușii");
+    expect(msg).toContain("+10% XP în luptă");
+    expect(msg).toContain("10 minute");
+    expect(msg).toContain("binecuvântarea");
+  });
+
+  it("curse message uses the curse framing", () => {
+    const def = makeEffect({ id: "msg_curse", kind: "curse", label: "Umbra Șchioapă", flavor: "-10% daune în luptă", durationMs: 8 * 60 * 1000 });
+    const msg = buildChestEffectMessage("Tester", def);
+    expect(msg).toContain("blestemul");
+    expect(msg).toContain("Umbra Șchioapă");
+    expect(msg).toContain("8 minute");
+  });
+
+  it("duration is floored to at least 1 minute (singular form)", () => {
+    const def = makeEffect({ id: "msg_short", durationMs: 10_000 });
+    const msg = buildChestEffectMessage("Tester", def);
+    expect(msg).toContain("1 minut");
+    expect(msg).not.toContain("1 minute");
   });
 });

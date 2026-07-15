@@ -85,6 +85,56 @@ export function grantRandomCurse(discordId: string): EffectDef {
   return def;
 }
 
+// ─── Chest blessings & curses ────────────────────────────────────────────────
+// Opening a chest can unleash a blessing or a curse that applies immediately
+// (live-read in combat/rewards). Higher rarities are more likely to bless.
+
+export type ChestEffectOdds = { chance: number; blessingShare: number };
+
+export const CHEST_EFFECT_ODDS: Record<string, ChestEffectOdds> = {
+  bronz:  { chance: 0.22, blessingShare: 0.55 },
+  argint: { chance: 0.30, blessingShare: 0.65 },
+  aur:    { chance: 0.40, blessingShare: 0.80 },
+  mitic:  { chance: 0.60, blessingShare: 0.90 },
+  regal:  { chance: 0.80, blessingShare: 1.0 },
+};
+
+// Locked chests cost a key, so they never curse — only bless (Regal: guaranteed).
+export const LOCKED_CHEST_EFFECT_ODDS: Record<string, ChestEffectOdds> = {
+  argint: { chance: 0.50, blessingShare: 1.0 },
+  aur:    { chance: 0.75, blessingShare: 1.0 },
+  regal:  { chance: 1.0,  blessingShare: 1.0 },
+};
+
+/**
+ * Rolls whether a chest of the given rarity unleashes an effect.
+ * Returns "blessing", "curse", or null (no effect).
+ */
+export function rollChestEffectKind(rarityKey: string, locked = false): EffectKind | null {
+  const odds = (locked ? LOCKED_CHEST_EFFECT_ODDS : CHEST_EFFECT_ODDS)[rarityKey];
+  if (!odds) return null;
+  if (Math.random() >= odds.chance) return null;
+  return Math.random() < odds.blessingShare ? "blessing" : "curse";
+}
+
+/** Dramatic Romanian announcement for a chest-granted effect. */
+export function buildChestEffectMessage(username: string, def: EffectDef): string {
+  const mins = Math.max(1, Math.round(def.durationMs / MIN));
+  const minsLabel = mins === 1 ? "1 minut" : `${mins} minute`;
+  if (def.kind === "blessing") {
+    return (
+      `🔮✨ Din cufăr se ridică o lumină blândă…\n` +
+      `${def.emoji} **${username}** primește binecuvântarea **${def.label}**!\n` +
+      `➕ ${def.flavor} *(activă ${minsLabel})*`
+    );
+  }
+  return (
+    `🔮🌑 Din cufăr țâșnește un fum negru…\n` +
+    `${def.emoji} **${username}** e lovit de blestemul **${def.label}**!\n` +
+    `➖ ${def.flavor} *(durează ${minsLabel})*`
+  );
+}
+
 export function getActiveEffects(discordId: string): { def: EffectDef; msLeft: number }[] {
   const now = Date.now();
   return pruned(discordId).map((e) => ({ def: e.def, msLeft: e.expiresAt - now }));
