@@ -72,6 +72,12 @@ import {
   buildResultText,
   buildCombatEmbed,
   RARITY_WEIGHTS,
+  TALISMANS,
+  TALISMAN_MAX_LEVEL,
+  talismanValue,
+  talismanDesc,
+  talismanUpgradeCost,
+  type TalismanKey,
   type CombatResult,
 } from "../survival";
 
@@ -597,5 +603,69 @@ describe("buildCombatEmbed permanent bonuses", () => {
   it("omits the bonus section when there are no permanent bonuses", () => {
     const desc = buildCombatEmbed(makeParticipant()).data.description!;
     expect(desc).not.toContain("Bonusurile tale");
+  });
+});
+
+// ─── Talisman levels (per-talisman, max 5) ────────────────────────────────────
+
+describe("talisman levels", () => {
+  const keys = Object.keys(TALISMANS) as TalismanKey[];
+
+  it("every talisman has exactly TALISMAN_MAX_LEVEL strictly increasing values", () => {
+    for (const key of keys) {
+      const vals = TALISMANS[key].values;
+      expect(vals).toHaveLength(TALISMAN_MAX_LEVEL);
+      for (let i = 1; i < vals.length; i++) expect(vals[i]).toBeGreaterThan(vals[i - 1]);
+    }
+  });
+
+  it("keeps original Nv.1/Nv.2 values (backwards compat)", () => {
+    expect(talismanValue("crista_vietii", 1)).toBe(15);
+    expect(talismanValue("crista_vietii", 2)).toBe(30);
+    expect(talismanValue("runa_sangelui", 1)).toBe(8);
+    expect(talismanValue("runa_sangelui", 2)).toBe(18);
+    expect(talismanValue("giulgiul_stins", 1)).toBe(3);
+    expect(talismanValue("giulgiul_stins", 2)).toBe(7);
+    expect(talismanValue("sfera_abisului", 1)).toBe(5);
+    expect(talismanValue("sfera_abisului", 2)).toBe(12);
+    expect(talismanValue("piatra_eco", 1)).toBe(25);
+    expect(talismanValue("piatra_eco", 2)).toBe(60);
+  });
+
+  it("clamps out-of-range levels into 1..TALISMAN_MAX_LEVEL", () => {
+    expect(talismanValue("piatra_eco", 0)).toBe(talismanValue("piatra_eco", 1));
+    expect(talismanValue("piatra_eco", -3)).toBe(talismanValue("piatra_eco", 1));
+    expect(talismanValue("piatra_eco", 99)).toBe(talismanValue("piatra_eco", TALISMAN_MAX_LEVEL));
+  });
+
+  it("talismanDesc embeds the level's value", () => {
+    expect(talismanDesc("piatra_eco", 2)).toBe("+60% XP din fiecare monstru ucis");
+    expect(talismanDesc("giulgiul_stins", 5)).toContain("-22");
+  });
+
+  it("upgrade cost escalates with level and keeps the original 1→2 cost", () => {
+    const c1 = talismanUpgradeCost("crista_vietii", 1);
+    expect(c1.commonQty).toBe(3);
+    expect(c1.rareQty).toBe(1);
+    const c4 = talismanUpgradeCost("crista_vietii", 4);
+    expect(c4.commonQty).toBe(6);
+    expect(c4.rareQty).toBe(4);
+    expect(c4.common).toBe(TALISMANS.crista_vietii.upgradeItems.common);
+    expect(c4.rare).toBe(TALISMANS.crista_vietii.upgradeItems.rare);
+  });
+
+  it("doCombat applies giulgiul_stins reduction scaled by level", () => {
+    // Force the monster to hit: dodge 0, defense 0
+    const p = makeParticipant({ attackBonus: 0, critBonus: 0, dodgeBonus: 0, defenseBonus: 0, monsterCurrentHp: 9999, monsterLevel: 1 });
+    // At Nv.5 reduction is 22 — greater than max monster damage at level 1, so damage is always 0
+    const r = doCombat(p, "giulgiul_stins", 5);
+    if (r.monsterHit && !r.playerDodged) expect(r.monsterDmg).toBe(0);
+  });
+
+  it("doCombat applies runa_sangelui regen scaled by level on crit", () => {
+    const p = makeParticipant({ attackBonus: 10, critBonus: 100, dodgeBonus: 100, monsterCurrentHp: 9999 });
+    const r = doCombat(p, "runa_sangelui", 4);
+    expect(r.isCrit).toBe(true);
+    expect(r.hpRegen).toBe(40);
   });
 });

@@ -75,6 +75,9 @@ import {
   prestigeXpCost,
   equipTalisman,
   tryUpgradeTalismanLevel,
+  tryDeductPlayerGold,
+  getPlayerTalismans,
+  saveTalismanLevel,
   getPlayerItems,
   upgradeClass,
   addPlayerItem,
@@ -149,6 +152,9 @@ import {
   shopTalismanRows,
   shopNavRow2,
   TALISMANS,
+  TALISMAN_MAX_LEVEL,
+  talismanValue,
+  talismanUpgradeCost,
   ITEMS,
   DAILY_QUESTS,
   isTalismanKey,
@@ -1438,7 +1444,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
     result.xpGained = Math.round(result.xpGained * rmods.xpMult);
     result.oboliGained = Math.round(result.oboliGained * rmods.goldMult);
     if (talismanKey === "piatra_eco") {
-      result.xpGained = Math.round(result.xpGained * (talismanLevel >= 2 ? 1.60 : 1.25));
+      result.xpGained = Math.round(result.xpGained * (1 + talismanValue("piatra_eco", talismanLevel) / 100));
     }
   }
 
@@ -1446,7 +1452,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
   const itemDrop = result.oboliGained > 0 ? rollItemDrop(p.monsterLevel) : null;
   const cristaHeal =
     result.oboliGained > 0 && !result.playerDied && talismanKey === "crista_vietii"
-      ? (talismanLevel >= 2 ? 30 : 15)
+      ? talismanValue("crista_vietii", talismanLevel)
       : 0;
   const extra = buildResultText(result, itemDrop, { baseXp: killBaseXp, baseOboli: killBaseOboli, cristaHeal });
 
@@ -1659,37 +1665,63 @@ async function handleShopNavClass(interaction: ButtonInteraction) {
   await interaction.editReply({ embeds: [buildShopEmbed(p, "class")], components: shopClassRows(p) });
 }
 
+/** Build savedLevels map (talismanKey → level) from player_talismans rows. */
+function talismanLevelsMap(rows: { talismanKey: string; level: number }[]): Record<string, number> {
+  return Object.fromEntries(rows.map((r) => [r.talismanKey, r.level]));
+}
+
 async function handleShopNavTalisman(interaction: ButtonInteraction) {
   await interaction.deferUpdate();
   const guildId = interaction.guildId!;
-  const [p, items] = await Promise.all([
+  const [p, items, saved] = await Promise.all([
     upsertPlayer(interaction.user.id, guildId, interaction.user.username),
     getPlayerItems(interaction.user.id, guildId),
+    getPlayerTalismans(interaction.user.id, guildId),
   ]);
-  await interaction.editReply({ embeds: [buildTalismanPage(p, items)], components: shopTalismanRows(p, items) });
+  const savedLevels = talismanLevelsMap(saved);
+  await interaction.editReply({ embeds: [buildTalismanPage(p, items, savedLevels)], components: shopTalismanRows(p, items, savedLevels) });
 }
 
 async function handleShopTalismanPick(interaction: ButtonInteraction, key: string) {
   await interaction.deferUpdate();
   const guildId = interaction.guildId!;
   if (!isTalismanKey(key)) return;
-  const p = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
+  const [p, saved] = await Promise.all([
+    upsertPlayer(interaction.user.id, guildId, interaction.user.username),
+    getPlayerTalismans(interaction.user.id, guildId),
+  ]);
   const t = TALISMANS[key];
   if (p.talisman === key) return;
-  if (p.gold < t.price) {
-    await interaction.followUp({
-      content: `❌ Nu ai suficienți Oboli! Ai **${p.gold}** / **${t.price}** Oboli.`,
-      flags: MessageFlags.Ephemeral,
-    });
-    return;
+  const savedLevels = talismanLevelsMap(saved);
+  const owned = (savedLevels[key] ?? 0) > 0;
+  if (!owned) {
+    // Atomic deduct (WHERE gold >= price) — a double-click can't pay twice or overdraw
+    const paid = await tryDeductPlayerGold(interaction.user.id, guildId, t.price);
+    if (!paid) {
+      await interaction.followUp({
+        content: `❌ Nu ai suficienți Oboli! Ai **${p.gold}** / **${t.price}** Oboli.`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
   }
-  await deductPlayerGold(interaction.user.id, guildId, t.price);
-  await equipTalisman(interaction.user.id, guildId, key, 1);
-  const [updated, items] = await Promise.all([
+  // Save the level of the talisman being unequipped so it's never lost
+  if (p.talisman && isTalismanKey(p.talisman)) {
+    await saveTalismanLevel(interaction.user.id, guildId, p.talisman, p.talismanLevel ?? 1);
+  }
+  // Equip at the previously saved level (1 for a fresh purchase) and record ownership
+  const newLevel = savedLevels[key] ?? 1;
+  await Promise.all([
+    equipTalisman(interaction.user.id, guildId, key, newLevel),
+    saveTalismanLevel(interaction.user.id, guildId, key, newLevel),
+  ]);
+  const [updated, items, savedAfter] = await Promise.all([
     upsertPlayer(interaction.user.id, guildId, interaction.user.username),
     getPlayerItems(interaction.user.id, guildId),
+    getPlayerTalismans(interaction.user.id, guildId),
   ]);
-  await interaction.editReply({ embeds: [buildTalismanPage(updated, items)], components: shopTalismanRows(updated, items) });
+  const savedLevelsAfter = talismanLevelsMap(savedAfter);
+  await interaction.editReply({ embeds: [buildTalismanPage(updated, items, savedLevelsAfter)], components: shopTalismanRows(updated, items, savedLevelsAfter) });
 }
 
 async function handleShopTalismanUpgrade(interaction: ButtonInteraction) {
@@ -1700,36 +1732,43 @@ async function handleShopTalismanUpgrade(interaction: ButtonInteraction) {
     getPlayerItems(interaction.user.id, guildId),
   ]);
   const equippedKey = p.talisman && isTalismanKey(p.talisman) ? p.talisman : null;
-  if (!equippedKey || (p.talismanLevel ?? 1) >= 2) {
+  const fromLevel = p.talismanLevel ?? 1;
+  if (!equippedKey || fromLevel >= TALISMAN_MAX_LEVEL) {
     await interaction.followUp({ content: "❌ Nu poți evolua acest talisman.", flags: MessageFlags.Ephemeral });
     return;
   }
   const t = TALISMANS[equippedKey];
+  const cost = talismanUpgradeCost(equippedKey, fromLevel);
   const ok = await consumePlayerItems(interaction.user.id, guildId, {
-    [t.upgradeItems.common]: t.upgradeItems.commonQty,
-    [t.upgradeItems.rare]: 1,
+    [cost.common]: cost.commonQty,
+    [cost.rare]: cost.rareQty,
   });
   if (!ok) {
     await interaction.followUp({ content: "❌ Nu ai materialele necesare pentru evoluție.", flags: MessageFlags.Ephemeral });
     return;
   }
-  // Atomic level guard: only write level 2 if talisman_level is still 1 (prevents double-upgrade race)
-  const upgraded = await tryUpgradeTalismanLevel(interaction.user.id, guildId, 1, 2);
+  // Atomic level guard: only write fromLevel+1 if THIS talisman is still equipped at fromLevel
+  // (prevents double-upgrade race and the bump landing on a concurrently-switched talisman)
+  const upgraded = await tryUpgradeTalismanLevel(interaction.user.id, guildId, equippedKey, fromLevel, fromLevel + 1);
   if (!upgraded) {
     // Another concurrent click already upgraded — refund the consumed items
     await Promise.all([
-      addPlayerItem(interaction.user.id, guildId, t.upgradeItems.common, t.upgradeItems.commonQty),
-      addPlayerItem(interaction.user.id, guildId, t.upgradeItems.rare, 1),
+      addPlayerItem(interaction.user.id, guildId, cost.common, cost.commonQty),
+      addPlayerItem(interaction.user.id, guildId, cost.rare, cost.rareQty),
     ]);
     await interaction.followUp({ content: "❌ Talismanul a fost deja evoluat.", flags: MessageFlags.Ephemeral });
     return;
   }
-  const [updated, updatedItems] = await Promise.all([
+  // Persist the new level per-talisman so it survives switching
+  await saveTalismanLevel(interaction.user.id, guildId, equippedKey, fromLevel + 1);
+  const [updated, updatedItems, savedAfter] = await Promise.all([
     upsertPlayer(interaction.user.id, guildId, interaction.user.username),
     getPlayerItems(interaction.user.id, guildId),
+    getPlayerTalismans(interaction.user.id, guildId),
   ]);
-  await interaction.followUp({ content: `✨ **${t.label}** a evoluat la **Nv.2**! Pasivul tău este acum mai puternic.`, flags: MessageFlags.Ephemeral });
-  await interaction.editReply({ embeds: [buildTalismanPage(updated, updatedItems)], components: shopTalismanRows(updated, updatedItems) });
+  const savedLevelsAfter = talismanLevelsMap(savedAfter);
+  await interaction.followUp({ content: `✨ **${t.label}** a evoluat la **Nv.${fromLevel + 1}**! Pasivul tău este acum mai puternic.`, flags: MessageFlags.Ephemeral });
+  await interaction.editReply({ embeds: [buildTalismanPage(updated, updatedItems, savedLevelsAfter)], components: shopTalismanRows(updated, updatedItems, savedLevelsAfter) });
 }
 
 async function handleShopClassPick(interaction: ButtonInteraction, key: string) {

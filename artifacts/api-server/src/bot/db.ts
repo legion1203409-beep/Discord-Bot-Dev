@@ -1,6 +1,6 @@
 import { db, pool } from "@workspace/db";
-import { playersTable, activeEventsTable, eventParticipantsTable, eventClaimsTable, botStateTable, activeBossesTable, playerItemsTable, playerDailyQuestsTable } from "@workspace/db";
-import type { ActiveBossRow, PlayerItem, PlayerDailyQuest } from "@workspace/db";
+import { playersTable, activeEventsTable, eventParticipantsTable, eventClaimsTable, botStateTable, activeBossesTable, playerItemsTable, playerTalismansTable, playerDailyQuestsTable } from "@workspace/db";
+import type { ActiveBossRow, PlayerItem, PlayerTalisman, PlayerDailyQuest } from "@workspace/db";
 import { eq, and, gte, gt, lt, inArray, sql, desc } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import type { Player, EventParticipant } from "@workspace/db";
@@ -120,6 +120,18 @@ export async function runMultiGuildMigrations(): Promise<void> {
     )
   `);
   logger.info("multi-guild migrations: player_items table ensured");
+
+  // ─── Player talismans table (per-talisman saved levels) ───────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS player_talismans (
+      discord_id   text    NOT NULL,
+      guild_id     text    NOT NULL,
+      talisman_key text    NOT NULL,
+      level        integer NOT NULL DEFAULT 1,
+      PRIMARY KEY (discord_id, guild_id, talisman_key)
+    )
+  `);
+  logger.info("multi-guild migrations: player_talismans table ensured");
 
   // ─── Player daily quests table ─────────────────────────────────────────────
   await pool.query(`
@@ -458,6 +470,22 @@ export async function deductPlayerGold(discordId: string, guildId: string, amoun
     .where(playerWhere(discordId, guildId));
 }
 
+/**
+ * Atomically deduct gold only if the player can afford it (WHERE gold >= amount).
+ * Returns true if the deduction landed; false if the balance was insufficient
+ * (e.g. a concurrent purchase already spent it).
+ */
+export async function tryDeductPlayerGold(discordId: string, guildId: string, amount: number): Promise<boolean> {
+  const { rowCount } = await pool.query(`
+    UPDATE players
+    SET gold = gold - $1
+    WHERE discord_id = $2
+      AND guild_id   = $3
+      AND gold      >= $1
+  `, [amount, discordId, guildId]);
+  return (rowCount ?? 0) > 0;
+}
+
 export const UPGRADE_DELTA: Record<UpgradeKey, number> = { atac: 2, def: 2, dodge: 3, crit: 2, hp: 10 };
 
 const UPGRADE_SET: Record<UpgradeKey, Record<string, SQL>> = {
@@ -724,21 +752,43 @@ export async function equipTalisman(discordId: string, guildId: string, talisman
 }
 
 /**
- * Atomically upgrades talisman_level from `fromLevel` to `toLevel`.
- * Returns true if the row was updated (this call won the race).
- * Returns false if talisman_level was already !== fromLevel (concurrent upgrade already landed).
+ * Atomically upgrades talisman_level from `fromLevel` to `toLevel`, but only if
+ * the given talisman is still equipped. Returns true if the row was updated
+ * (this call won the race). Returns false if the level already changed OR the
+ * player switched talismans concurrently (prevents the bump landing on the
+ * wrong talisman).
  */
 export async function tryUpgradeTalismanLevel(
-  discordId: string, guildId: string, fromLevel: number, toLevel: number,
+  discordId: string, guildId: string, talismanKey: string, fromLevel: number, toLevel: number,
 ): Promise<boolean> {
   const { rowCount } = await pool.query(`
     UPDATE players
     SET talisman_level = $1
     WHERE discord_id   = $2
       AND guild_id     = $3
-      AND talisman_level = $4
-  `, [toLevel, discordId, guildId, fromLevel]);
+      AND talisman     = $4
+      AND talisman_level = $5
+  `, [toLevel, discordId, guildId, talismanKey, fromLevel]);
   return (rowCount ?? 0) > 0;
+}
+
+/** All saved talisman levels for a player (rows exist for every talisman ever owned). */
+export async function getPlayerTalismans(discordId: string, guildId: string): Promise<PlayerTalisman[]> {
+  return db.select().from(playerTalismansTable)
+    .where(and(eq(playerTalismansTable.discordId, discordId), eq(playerTalismansTable.guildId, guildId)));
+}
+
+/**
+ * Persist a talisman's level (upsert). Uses GREATEST so a stale write can
+ * never downgrade an already-saved higher level.
+ */
+export async function saveTalismanLevel(discordId: string, guildId: string, talismanKey: string, level: number): Promise<void> {
+  await db.insert(playerTalismansTable)
+    .values({ discordId, guildId, talismanKey, level })
+    .onConflictDoUpdate({
+      target: [playerTalismansTable.discordId, playerTalismansTable.guildId, playerTalismansTable.talismanKey],
+      set: { level: sql`GREATEST(${playerTalismansTable.level}, ${level})` },
+    });
 }
 
 export async function getPlayerItems(discordId: string, guildId: string): Promise<PlayerItem[]> {

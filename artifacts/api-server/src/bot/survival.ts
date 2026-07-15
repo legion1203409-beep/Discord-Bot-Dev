@@ -313,40 +313,65 @@ export function buildMissionEmbed(
 }
 
 // ─── Talisman system ──────────────────────────────────────────────────────────
+// Each talisman has 5 levels; `values[level-1]` is the passive's magnitude at
+// that level. Levels 1-2 keep the original (pre-Nv.3) values for backwards compat.
+export const TALISMAN_MAX_LEVEL = 5;
 export const TALISMANS = {
   crista_vietii: {
     label: "Crista Vieții", emoji: "🔮", price: 250,
-    passiveLabel: "Regen de viață", passiveDesc: "+15 HP după uciderea unui monstru",
-    evolvedPassiveDesc: "+30 HP după uciderea unui monstru",
-    upgradeItems: { common: "fragment_cenusa" as ItemKey, rare: "coama_dragonului" as ItemKey, commonQty: 3 },
+    passiveLabel: "Regen de viață",
+    values: [15, 30, 45, 65, 90],
+    fmt: (v: number) => `+${v} HP după uciderea unui monstru`,
+    upgradeItems: { common: "fragment_cenusa" as ItemKey, rare: "coama_dragonului" as ItemKey },
   },
   runa_sangelui: {
     label: "Runa Sângelui", emoji: "🩸", price: 300,
-    passiveLabel: "Furt de viață", passiveDesc: "+8 HP la fiecare lovitură critică",
-    evolvedPassiveDesc: "+18 HP la fiecare lovitură critică",
-    upgradeItems: { common: "sange_monstru" as ItemKey, rare: "inima_abisului" as ItemKey, commonQty: 3 },
+    passiveLabel: "Furt de viață",
+    values: [8, 18, 28, 40, 55],
+    fmt: (v: number) => `+${v} HP la fiecare lovitură critică`,
+    upgradeItems: { common: "sange_monstru" as ItemKey, rare: "inima_abisului" as ItemKey },
   },
   giulgiul_stins: {
     label: "Giulgiul Stins", emoji: "🌫️", price: 280,
-    passiveLabel: "Reducere daune", passiveDesc: "-3 din daunele primite de la monștri",
-    evolvedPassiveDesc: "-7 din daunele primite de la monștri",
-    upgradeItems: { common: "esenta_umbrei" as ItemKey, rare: "coama_dragonului" as ItemKey, commonQty: 3 },
+    passiveLabel: "Reducere daune",
+    values: [3, 7, 11, 16, 22],
+    fmt: (v: number) => `-${v} din daunele primite de la monștri`,
+    upgradeItems: { common: "esenta_umbrei" as ItemKey, rare: "coama_dragonului" as ItemKey },
   },
   sfera_abisului: {
     label: "Sfera Abisului", emoji: "🌑", price: 350,
-    passiveLabel: "Percepție abisală", passiveDesc: "+5% șansă de lovitură critică",
-    evolvedPassiveDesc: "+12% șansă de lovitură critică",
-    upgradeItems: { common: "picatura_otr" as ItemKey, rare: "inima_abisului" as ItemKey, commonQty: 3 },
+    passiveLabel: "Percepție abisală",
+    values: [5, 12, 18, 25, 35],
+    fmt: (v: number) => `+${v}% șansă de lovitură critică`,
+    upgradeItems: { common: "picatura_otr" as ItemKey, rare: "inima_abisului" as ItemKey },
   },
   piatra_eco: {
     label: "Piatra Eco", emoji: "🪨", price: 320,
-    passiveLabel: "Rezonanță XP", passiveDesc: "+25% XP din fiecare monstru ucis",
-    evolvedPassiveDesc: "+60% XP din fiecare monstru ucis",
-    upgradeItems: { common: "esenta_umbrei" as ItemKey, rare: "coama_dragonului" as ItemKey, commonQty: 3 },
+    passiveLabel: "Rezonanță XP",
+    values: [25, 60, 95, 135, 180],
+    fmt: (v: number) => `+${v}% XP din fiecare monstru ucis`,
+    upgradeItems: { common: "esenta_umbrei" as ItemKey, rare: "coama_dragonului" as ItemKey },
   },
 } as const;
 export type TalismanKey = keyof typeof TALISMANS;
 export function isTalismanKey(k: string): k is TalismanKey { return k in TALISMANS; }
+
+/** Passive magnitude for a talisman at a given level (clamped to 1..TALISMAN_MAX_LEVEL). */
+export function talismanValue(key: TalismanKey, level: number): number {
+  const idx = Math.min(Math.max(1, level), TALISMAN_MAX_LEVEL) - 1;
+  return TALISMANS[key].values[idx];
+}
+
+/** Human-readable passive description for a talisman at a given level. */
+export function talismanDesc(key: TalismanKey, level: number): string {
+  return TALISMANS[key].fmt(talismanValue(key, level));
+}
+
+/** Material cost to upgrade a talisman from `fromLevel` to `fromLevel + 1`. */
+export function talismanUpgradeCost(key: TalismanKey, fromLevel: number): { common: ItemKey; commonQty: number; rare: ItemKey; rareQty: number } {
+  const t = TALISMANS[key].upgradeItems;
+  return { common: t.common, commonQty: fromLevel + 2, rare: t.rare, rareQty: fromLevel };
+}
 
 function rand(min: number, max: number) { return Math.floor(Math.random() * (max - min + 1)) + min; }
 function hpBar(cur: number, max: number) {
@@ -378,7 +403,7 @@ export function doCombat(p: EventParticipant, talismanKey?: string | null, talis
 
   // sfera_abisului: bonus crit permanent per round
   const talismanCritAdd =
-    talismanKey === "sfera_abisului" ? (talismanLevel >= 2 ? 12 : 5) : 0;
+    talismanKey === "sfera_abisului" ? talismanValue("sfera_abisului", talismanLevel) : 0;
 
   const isCrit = Math.random() * 100 < Math.min(100, Math.max(0, p.critBonus + mods.critAdd + talismanCritAdd));
   const baseDmg = rand(10, 20) + p.attackBonus;
@@ -416,7 +441,7 @@ export function doCombat(p: EventParticipant, talismanKey?: string | null, talis
         monsterDmg = Math.max(1, rand(mn, mx) - p.defenseBonus);
         // giulgiul_stins: flat damage reduction from monsters (can reduce to 0)
         if (talismanKey === "giulgiul_stins") {
-          const reduction = talismanLevel >= 2 ? 7 : 3;
+          const reduction = talismanValue("giulgiul_stins", talismanLevel);
           monsterDmg = Math.max(0, monsterDmg - reduction);
         }
         if (usedShield) monsterDmg = Math.max(1, Math.round(monsterDmg * (1 - shieldReduction(p.shieldLevel))));
@@ -430,7 +455,7 @@ export function doCombat(p: EventParticipant, talismanKey?: string | null, talis
   // runa_sangelui: life steal on crit — only if player survived
   const hpRegen =
     talismanKey === "runa_sangelui" && isCrit && !playerDied
-      ? (talismanLevel >= 2 ? 18 : 8)
+      ? talismanValue("runa_sangelui", talismanLevel)
       : 0;
 
   return {
@@ -487,7 +512,7 @@ export function buildCombatEmbed(p: EventParticipant, extra = "", avatarUrl?: st
   if (talKey) {
     const t = TALISMANS[talKey];
     const tLvl = player?.talismanLevel ?? 1;
-    bonusLines.push(`${t.emoji} **${t.label}** Nv.${tLvl} — ${tLvl >= 2 ? t.evolvedPassiveDesc : t.passiveDesc}`);
+    bonusLines.push(`${t.emoji} **${t.label}** Nv.${tLvl} — ${talismanDesc(talKey, tLvl)}`);
   }
   if (p.xpPerKill > 0) bonusLines.push(`🔹 **+${p.xpPerKill} XP** la fiecare monstru ucis *(bonus level-up)*`);
   const bonusSection = bonusLines.length
@@ -635,7 +660,7 @@ export function buildProfileEmbed(player: Player, title?: string, avatarUrl?: st
 
   const equippedTalismanKey = player.talisman && isTalismanKey(player.talisman) ? player.talisman : null;
   const talismanValue = equippedTalismanKey
-    ? `${TALISMANS[equippedTalismanKey].emoji} **${TALISMANS[equippedTalismanKey].label}** Nv.${player.talismanLevel ?? 1}\n↳ ${TALISMANS[equippedTalismanKey].passiveLabel}: ${player.talismanLevel && player.talismanLevel >= 2 ? TALISMANS[equippedTalismanKey].evolvedPassiveDesc : TALISMANS[equippedTalismanKey].passiveDesc}`
+    ? `${TALISMANS[equippedTalismanKey].emoji} **${TALISMANS[equippedTalismanKey].label}** Nv.${player.talismanLevel ?? 1}\n↳ ${TALISMANS[equippedTalismanKey].passiveLabel}: ${talismanDesc(equippedTalismanKey, player.talismanLevel ?? 1)}`
     : "*Fără talisman* — `/magazin`";
 
   const deathInfo = player.deaths > 0
@@ -1520,22 +1545,32 @@ export function shopClassRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
   ];
 }
 
-/** Talisman sub-page embed. */
-export function buildTalismanPage(p: Player, items: PlayerItem[]): EmbedBuilder {
-  const inv = Object.fromEntries(items.map((i) => [i.itemKey, i.quantity]));
+/** Talisman sub-page embed. `savedLevels` maps talismanKey → saved level for owned talismans. */
+export function buildTalismanPage(p: Player, items: PlayerItem[], savedLevels: Record<string, number> = {}): EmbedBuilder {
   const equippedKey = p.talisman && isTalismanKey(p.talisman) ? p.talisman : null;
   const equippedLevel = p.talismanLevel ?? 1;
 
   const talismanLines = (Object.keys(TALISMANS) as TalismanKey[]).map((key) => {
     const t = TALISMANS[key];
     const isEquipped = equippedKey === key;
-    const levelTag = isEquipped ? ` ✅ **ECHIPAT** (Nv.${equippedLevel})` : "";
-    const passiveDesc = isEquipped && equippedLevel >= 2 ? t.evolvedPassiveDesc : t.passiveDesc;
-    const upgradeInfo =
-      isEquipped && equippedLevel === 1
-        ? `\n   ↳ *Upgrade Nv.2*: ${t.upgradeItems.commonQty}× ${ITEMS[t.upgradeItems.common].emoji} ${ITEMS[t.upgradeItems.common].label} + 1× ${ITEMS[t.upgradeItems.rare].emoji} ${ITEMS[t.upgradeItems.rare].label}`
+    const savedLevel = savedLevels[key] ?? 0;
+    const owned = isEquipped || savedLevel > 0;
+    const level = isEquipped ? equippedLevel : Math.max(1, savedLevel);
+    const levelTag = isEquipped
+      ? ` ✅ **ECHIPAT** (Nv.${equippedLevel})`
+      : savedLevel > 0
+        ? ` 💾 deținut (Nv.${savedLevel})`
         : "";
-    return `${t.emoji} **${t.label}**${levelTag} — **${t.price} Oboli**\n   ↳ ${t.passiveLabel}: ${passiveDesc}${upgradeInfo}`;
+    const priceTag = owned ? "*deținut*" : `**${t.price} Oboli**`;
+    const upgradeInfo = isEquipped
+      ? equippedLevel < TALISMAN_MAX_LEVEL
+        ? (() => {
+            const cost = talismanUpgradeCost(key, equippedLevel);
+            return `\n   ↳ *Upgrade Nv.${equippedLevel + 1}*: ${cost.commonQty}× ${ITEMS[cost.common].emoji} ${ITEMS[cost.common].label} + ${cost.rareQty}× ${ITEMS[cost.rare].emoji} ${ITEMS[cost.rare].label}`;
+          })()
+        : `\n   ↳ ⭐ *Nivel maxim atins!*`
+      : "";
+    return `${t.emoji} **${t.label}**${levelTag} — ${priceTag}\n   ↳ ${t.passiveLabel}: ${talismanDesc(key, level)}${upgradeInfo}`;
   });
 
   const inventoryLine =
@@ -1556,7 +1591,7 @@ export function buildTalismanPage(p: Player, items: PlayerItem[]): EmbedBuilder 
       "\n\n" +
       sectionTitle("Talismane disponibile") +
       "\n" +
-      "*Fiecare talisman oferă un pasiv unic. Poți schimba talismânul oricând.*\n\n" +
+      "*Fiecare talisman oferă un pasiv unic (max Nv.5). Nivelul rămâne salvat când schimbi talismanul, iar cele deținute se echipează gratuit.*\n\n" +
       talismanLines.join("\n") +
       "\n\n" +
       sectionTitle("Inventarul tău de materiale") +
@@ -1565,8 +1600,8 @@ export function buildTalismanPage(p: Player, items: PlayerItem[]): EmbedBuilder 
     );
 }
 
-/** Talisman sub-page action rows. */
-export function shopTalismanRows(p: Player, items: PlayerItem[]): ActionRowBuilder<ButtonBuilder>[] {
+/** Talisman sub-page action rows. `savedLevels` maps talismanKey → saved level for owned talismans. */
+export function shopTalismanRows(p: Player, items: PlayerItem[], savedLevels: Record<string, number> = {}): ActionRowBuilder<ButtonBuilder>[] {
   const inv = Object.fromEntries(items.map((i) => [i.itemKey, i.quantity]));
   const equippedKey = p.talisman && isTalismanKey(p.talisman) ? p.talisman : null;
   const equippedLevel = p.talismanLevel ?? 1;
@@ -1576,27 +1611,34 @@ export function shopTalismanRows(p: Player, items: PlayerItem[]): ActionRowBuild
     keys.map((key) => {
       const t = TALISMANS[key];
       const isEquipped = equippedKey === key;
+      const savedLevel = savedLevels[key] ?? 0;
+      const owned = isEquipped || savedLevel > 0;
+      const label = isEquipped
+        ? `✅ ${t.label}`
+        : owned
+          ? `${t.label} (Nv.${savedLevel})`
+          : `${t.label} (${t.price})`;
       return new ButtonBuilder()
         .setCustomId(`shop_talisman_${key}`)
-        .setLabel(isEquipped ? `✅ ${t.label}` : `${t.label} (${t.price})`)
+        .setLabel(label)
         .setEmoji(t.emoji)
         .setStyle(isEquipped ? ButtonStyle.Success : ButtonStyle.Primary)
-        .setDisabled(isEquipped || p.gold < t.price);
+        .setDisabled(isEquipped || (!owned && p.gold < t.price));
     }),
   );
 
   const rows: ActionRowBuilder<ButtonBuilder>[] = [buyRow];
 
-  if (equippedKey && equippedLevel === 1) {
-    const t = TALISMANS[equippedKey];
+  if (equippedKey && equippedLevel < TALISMAN_MAX_LEVEL) {
+    const cost = talismanUpgradeCost(equippedKey, equippedLevel);
     const hasItems =
-      (inv[t.upgradeItems.common] ?? 0) >= t.upgradeItems.commonQty &&
-      (inv[t.upgradeItems.rare] ?? 0) >= 1;
+      (inv[cost.common] ?? 0) >= cost.commonQty &&
+      (inv[cost.rare] ?? 0) >= cost.rareQty;
     rows.push(
       new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
           .setCustomId("shop_talisman_upgrade")
-          .setLabel(`✨ Evoluează la Nv.2 (${t.upgradeItems.commonQty}× ${ITEMS[t.upgradeItems.common].label} + 1× ${ITEMS[t.upgradeItems.rare].label})`)
+          .setLabel(`✨ Evoluează la Nv.${equippedLevel + 1} (${cost.commonQty}× ${ITEMS[cost.common].label} + ${cost.rareQty}× ${ITEMS[cost.rare].label})`)
           .setStyle(ButtonStyle.Success)
           .setDisabled(!hasItems),
       ),

@@ -4,4 +4,5 @@ export * from "./participants";
 export * from "./bot-state";
 export * from "./active-bosses";
 export * from "./player-items";
+export * from "./player-talismans";
 export * from "./player-daily-quests";
