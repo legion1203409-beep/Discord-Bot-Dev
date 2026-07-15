@@ -73,6 +73,7 @@ import {
   resetAllPlayersInGuild,
   buyPrestige,
   prestigeXpCost,
+  getPrestigeLevels,
   equipTalisman,
   tryUpgradeTalismanLevel,
   tryDeductPlayerGold,
@@ -94,6 +95,7 @@ import {
   buildResultText,
   buildDeathEmbed,
   buildRetreatEmbed,
+  prestigeGoldMult,
   buildShopEmbed,
   buildLevelupEmbed,
   buildProfileEmbed,
@@ -1390,7 +1392,7 @@ async function handleJoin(interaction: ButtonInteraction, eventId: number) {
     return;
   }
   if (!participant.isAlive) {
-    await interaction.editReply({ embeds: [buildDeathEmbed({ totalDamage: participant.totalDamage, oboli: participant.oboli, xp: participant.xp, baseOboli: participant.baseOboli, baseXp: participant.baseXp })], components: [] });
+    await interaction.editReply({ embeds: [buildDeathEmbed({ totalDamage: participant.totalDamage, oboli: participant.oboli, xp: participant.xp, baseOboli: participant.baseOboli, baseXp: participant.baseXp, itemsFarmed: participant.itemsFarmed })], components: [] });
     return;
   }
   if (participant.pendingLevelup) {
@@ -1413,7 +1415,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
     return;
   }
   if (!p.isAlive) {
-    await interaction.editReply({ embeds: [p.fled ? buildRetreatEmbed(p.monsterLevel, { totalDamage: p.totalDamage, oboli: p.oboli, xp: p.xp, baseOboli: p.baseOboli, baseXp: p.baseXp }) : buildDeathEmbed({ totalDamage: p.totalDamage, oboli: p.oboli, xp: p.xp, baseOboli: p.baseOboli, baseXp: p.baseXp })], components: [] });
+    await interaction.editReply({ embeds: [p.fled ? buildRetreatEmbed(p.monsterLevel, { totalDamage: p.totalDamage, oboli: p.oboli, xp: p.xp, baseOboli: p.baseOboli, baseXp: p.baseXp, itemsFarmed: p.itemsFarmed }) : buildDeathEmbed({ totalDamage: p.totalDamage, oboli: p.oboli, xp: p.xp, baseOboli: p.baseOboli, baseXp: p.baseXp, itemsFarmed: p.itemsFarmed })], components: [] });
     return;
   }
   if (p.pendingLevelup) {
@@ -1446,10 +1448,15 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
     if (talismanKey === "piatra_eco") {
       result.xpGained = Math.round(result.xpGained * (1 + talismanValue("piatra_eco", talismanLevel) / 100));
     }
+    // Prestige gold bonus: +5% Oboli per prestige level
+    result.oboliGained = Math.round(result.oboliGained * prestigeGoldMult(pl?.prestigeLevel ?? 0));
   }
 
   // Roll item drop before buildResultText so the drop line can appear in the combat embed
   const itemDrop = result.oboliGained > 0 ? rollItemDrop(p.monsterLevel) : null;
+  // Track everything farmed this event so the final summary can show it
+  const itemsFarmed: Record<string, number> = { ...(p.itemsFarmed ?? {}) };
+  if (itemDrop) itemsFarmed[itemDrop] = (itemsFarmed[itemDrop] ?? 0) + 1;
   const cristaHeal =
     result.oboliGained > 0 && !result.playerDied && talismanKey === "crista_vietii"
       ? talismanValue("crista_vietii", talismanLevel)
@@ -1465,7 +1472,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
       deductPlayerGold(p.discordId, guildId, lost),
       recordPlayerDeath(p.discordId, guildId, p.monsterLevel),
     ]);
-    await interaction.editReply({ embeds: [buildDeathEmbed({ lostOboli: lost, totalDamage: p.totalDamage + result.playerDmg, oboli: p.oboli, xp: p.xp, baseOboli: deathBaseOboli, baseXp: deathBaseXp })], components: [] });
+    await interaction.editReply({ embeds: [buildDeathEmbed({ lostOboli: lost, totalDamage: p.totalDamage + result.playerDmg, oboli: p.oboli, xp: p.xp, baseOboli: deathBaseOboli, baseXp: deathBaseXp, itemsFarmed: p.itemsFarmed })], components: [] });
     return;
   }
 
@@ -1487,6 +1494,8 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
       ...(questResult.justCompleted ? [addPlayerItem(p.discordId, guildId, DAILY_QUESTS.kill_10.reward.itemKey)] : []),
     ]).catch((err) => logger.error({ err, discordId: p.discordId, guildId }, "Async combat writes failed"));
     if (questResult.justCompleted) {
+      itemsFarmed[DAILY_QUESTS.kill_10.reward.itemKey] =
+        (itemsFarmed[DAILY_QUESTS.kill_10.reward.itemKey] ?? 0) + DAILY_QUESTS.kill_10.reward.qty;
       void interaction.followUp({
         content:
           `📜 **Misiunea zilnică completată!**\n` +
@@ -1508,6 +1517,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
       xp: p.xp + result.xpGained,
       baseOboli: p.baseOboli + killBaseOboli,
       baseXp: p.baseXp + killBaseXp,
+      itemsFarmed,
       pendingLevelup: true,
       empowerNext: false,
       shieldNext: false,
@@ -1527,6 +1537,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
     xp: p.xp + result.xpGained,
     baseOboli: p.baseOboli + killBaseOboli,
     baseXp: p.baseXp + killBaseXp,
+    itemsFarmed,
     empowerNext: false,
     shieldNext: false,
   });
@@ -1543,7 +1554,7 @@ async function handleRetreat(interaction: ButtonInteraction, eventId: number) {
     return;
   }
   if (!p.isAlive) {
-    await interaction.editReply({ embeds: [p.fled ? buildRetreatEmbed(p.monsterLevel, { totalDamage: p.totalDamage, oboli: p.oboli, xp: p.xp, baseOboli: p.baseOboli, baseXp: p.baseXp }) : buildDeathEmbed({ totalDamage: p.totalDamage, oboli: p.oboli, xp: p.xp, baseOboli: p.baseOboli, baseXp: p.baseXp })], components: [] });
+    await interaction.editReply({ embeds: [p.fled ? buildRetreatEmbed(p.monsterLevel, { totalDamage: p.totalDamage, oboli: p.oboli, xp: p.xp, baseOboli: p.baseOboli, baseXp: p.baseXp, itemsFarmed: p.itemsFarmed }) : buildDeathEmbed({ totalDamage: p.totalDamage, oboli: p.oboli, xp: p.xp, baseOboli: p.baseOboli, baseXp: p.baseXp, itemsFarmed: p.itemsFarmed })], components: [] });
     return;
   }
   const ev = await getActiveEvent(eventId, guildId);
@@ -1553,7 +1564,7 @@ async function handleRetreat(interaction: ButtonInteraction, eventId: number) {
   }
   await updateParticipant(p.id, { isAlive: false, fled: true });
   await recordPlayerRetreat(p.discordId, guildId, p.monsterLevel);
-  await interaction.editReply({ embeds: [buildRetreatEmbed(p.monsterLevel, { totalDamage: p.totalDamage, oboli: p.oboli, xp: p.xp, baseOboli: p.baseOboli, baseXp: p.baseXp })], components: [] });
+  await interaction.editReply({ embeds: [buildRetreatEmbed(p.monsterLevel, { totalDamage: p.totalDamage, oboli: p.oboli, xp: p.xp, baseOboli: p.baseOboli, baseXp: p.baseXp, itemsFarmed: p.itemsFarmed })], components: [] });
 }
 
 async function handleBuy(interaction: ButtonInteraction, key: ShopKey) {
@@ -2041,9 +2052,10 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
 
     const bossRewards = computeBossRewards(activeBoss.damageBy, activeBoss.rarity, activeBoss.hitsBy);
     const baseRewards = new Map([...bossRewards.entries()].map(([id, r]) => [id, { gold: r.gold, xp: r.xp }]));
+    const prestigeLevels = await getPrestigeLevels(activeBoss.guildId, [...bossRewards.keys()]).catch(() => new Map<string, number>());
     for (const [discordId, r] of bossRewards) {
       const rmods = getRewardMultipliers(discordId, activeBoss.guildId);
-      r.gold = Math.round(r.gold * rmods.goldMult);
+      r.gold = Math.round(r.gold * rmods.goldMult * prestigeGoldMult(prestigeLevels.get(discordId) ?? 0));
       r.xp = Math.round(r.xp * rmods.xpMult);
     }
     const eventKeyDrops = rollEventKeyDrops([...activeBoss.damageBy.keys()]);

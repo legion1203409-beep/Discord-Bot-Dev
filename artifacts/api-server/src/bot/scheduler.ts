@@ -1,10 +1,10 @@
 import { Client, TextChannel, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import { logger } from "../lib/logger";
-import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, buildExpiredChestEmbed, rollChest, oracleMessage, buildFinalBossEmbed, buildBossLeaderboard, buildEventLeaderboard, buildLockedChestEmbed, buildKeyChestEmbed, spawnLockedChest, rollKeyChestType, computeBossRewards, finalBossRow, bossMaxHp, CHEST_RARITIES, type BossRarity, type BossPlayerStats } from "./survival";
+import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, buildExpiredChestEmbed, rollChest, oracleMessage, buildFinalBossEmbed, buildBossLeaderboard, buildEventLeaderboard, buildLockedChestEmbed, buildKeyChestEmbed, spawnLockedChest, rollKeyChestType, computeBossRewards, prestigeGoldMult, finalBossRow, bossMaxHp, CHEST_RARITIES, type BossRarity, type BossPlayerStats } from "./survival";
 import { triggerRandomBattleEvent } from "./combat-events";
 import { getRewardMultipliers } from "./status-effects";
 import { startOracle, setOracleExtatic } from "./oracle";
-import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle, addPlayerReputation, addPlayerGold, addPlayerXp, persistActiveBoss, loadActiveBossRowsByGuild, deleteActiveBoss, createActiveBossesTableIfNotExists, persistActiveChest, loadActiveChest, clearActiveChest, KEYCHEST_DBKEY, LOCKCHEST_DBKEY, runMultiGuildMigrations } from "./db";
+import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle, addPlayerReputation, addPlayerGold, addPlayerXp, getPrestigeLevels, persistActiveBoss, loadActiveBossRowsByGuild, deleteActiveBoss, createActiveBossesTableIfNotExists, persistActiveChest, loadActiveChest, clearActiveChest, KEYCHEST_DBKEY, LOCKCHEST_DBKEY, runMultiGuildMigrations } from "./db";
 import { getChannel, initChannelConfig, hasAnyChannelConfigured, type EventType } from "./channel-config";
 
 const APPLICATION_ID = "1472675543777280071";
@@ -699,10 +699,11 @@ async function runFleeResolution(boss: BossState, client: Client): Promise<void>
       await bossMsg?.delete().catch(() => null);
     }
     const bossRewards = computeBossRewards(boss.damageBy, boss.rarity, boss.hitsBy);
+    const prestigeLevels = await getPrestigeLevels(boss.guildId, [...bossRewards.keys()]).catch(() => new Map<string, number>());
     for (const [discordId, r] of bossRewards) {
       // Pass guildId so the guild-wide admin boost applies here too, matching the boss-defeat path
       const rmods = getRewardMultipliers(discordId, boss.guildId);
-      r.gold = Math.round(r.gold * rmods.goldMult);
+      r.gold = Math.round(r.gold * rmods.goldMult * prestigeGoldMult(prestigeLevels.get(discordId) ?? 0));
       r.xp = Math.round(r.xp * rmods.xpMult);
     }
     await Promise.all([...bossRewards.entries()].flatMap(([discordId, r]) => [

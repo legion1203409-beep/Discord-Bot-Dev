@@ -49,6 +49,7 @@ vi.mock("../db", () => ({
   addPlayerReputation: vi.fn(),
   addPlayerGold: vi.fn(),
   addPlayerXp: vi.fn(),
+  getPrestigeLevels: vi.fn().mockResolvedValue(new Map()),
   persistActiveBoss: vi.fn(),
   loadAllActiveBossRows: vi.fn().mockResolvedValue([]),
   deleteActiveBoss: vi.fn(),

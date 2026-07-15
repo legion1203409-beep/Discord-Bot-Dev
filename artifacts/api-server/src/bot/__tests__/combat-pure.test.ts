@@ -77,6 +77,12 @@ import {
   talismanValue,
   talismanDesc,
   talismanUpgradeCost,
+  prestigeGoldMult,
+  PRESTIGE_GOLD_BONUS,
+  formatItemsFarmed,
+  buildDeathEmbed,
+  buildRetreatEmbed,
+  ITEMS,
   type TalismanKey,
   type CombatResult,
 } from "../survival";
@@ -121,6 +127,7 @@ function makeParticipant(overrides: Partial<EventParticipant> = {}): EventPartic
     shopCritCount: 0,
     shopHpCount: 0,
     fled: false,
+    itemsFarmed: {},
     pendingLevelup: false,
     joinedAt: new Date(),
     ...overrides,
@@ -667,5 +674,78 @@ describe("talisman levels", () => {
     const r = doCombat(p, "runa_sangelui", 4);
     expect(r.isCrit).toBe(true);
     expect(r.hpRegen).toBe(40);
+  });
+});
+
+describe("prestigeGoldMult (prestige gold bonus)", () => {
+  it("returns 1 at prestige level 0", () => {
+    expect(prestigeGoldMult(0)).toBe(1);
+  });
+
+  it("adds PRESTIGE_GOLD_BONUS % per level", () => {
+    expect(prestigeGoldMult(1)).toBeCloseTo(1 + PRESTIGE_GOLD_BONUS / 100);
+    expect(prestigeGoldMult(3)).toBeCloseTo(1 + (3 * PRESTIGE_GOLD_BONUS) / 100);
+    expect(prestigeGoldMult(10)).toBeCloseTo(1 + (10 * PRESTIGE_GOLD_BONUS) / 100);
+  });
+
+  it("never goes below 1 for negative levels", () => {
+    expect(prestigeGoldMult(-2)).toBe(1);
+  });
+
+  it("scales gold rewards as expected", () => {
+    expect(Math.round(100 * prestigeGoldMult(2))).toBe(110);
+  });
+});
+
+describe("formatItemsFarmed (event summary loot line)", () => {
+  it("returns empty string for null/undefined/empty", () => {
+    expect(formatItemsFarmed(null)).toBe("");
+    expect(formatItemsFarmed(undefined)).toBe("");
+    expect(formatItemsFarmed({})).toBe("");
+  });
+
+  it("skips zero quantities and unknown keys", () => {
+    expect(formatItemsFarmed({ coama_dragonului: 0 })).toBe("");
+    expect(formatItemsFarmed({ not_a_real_item: 3 })).toBe("");
+  });
+
+  it("renders known items with emoji, quantity and label", () => {
+    const line = formatItemsFarmed({ coama_dragonului: 2 });
+    expect(line).toContain("🎒 Pradă adunată:");
+    expect(line).toContain("2×");
+    expect(line).toContain(ITEMS.coama_dragonului.label);
+    expect(line).toContain(ITEMS.coama_dragonului.emoji);
+  });
+
+  it("joins multiple items", () => {
+    const keys = Object.keys(ITEMS);
+    const line = formatItemsFarmed({ [keys[0]!]: 1, [keys[1]!]: 3 });
+    expect(line).toContain(" · ");
+  });
+});
+
+describe("death/retreat embeds show items farmed", () => {
+  it("buildDeathEmbed includes the loot line when itemsFarmed is present", () => {
+    const embed = buildDeathEmbed({ totalDamage: 100, oboli: 50, xp: 20, itemsFarmed: { coama_dragonului: 1 } });
+    const desc = embed.data.description ?? "";
+    expect(desc).toContain("Pradă adunată");
+    expect(desc).toContain(ITEMS.coama_dragonului.label);
+  });
+
+  it("buildDeathEmbed omits the loot line when nothing was farmed", () => {
+    const embed = buildDeathEmbed({ totalDamage: 100, oboli: 50, xp: 20, itemsFarmed: {} });
+    expect(embed.data.description ?? "").not.toContain("Pradă adunată");
+  });
+
+  it("buildRetreatEmbed includes the loot line when itemsFarmed is present", () => {
+    const embed = buildRetreatEmbed(5, { totalDamage: 10, oboli: 5, xp: 2, itemsFarmed: { inima_abisului: 2 } });
+    const desc = embed.data.description ?? "";
+    expect(desc).toContain("Pradă adunată");
+    expect(desc).toContain(ITEMS.inima_abisului.label);
+  });
+
+  it("summary section appears even with zero damage if loot exists", () => {
+    const embed = buildRetreatEmbed(1, { itemsFarmed: { coama_dragonului: 1 } });
+    expect(embed.data.description ?? "").toContain("Rezumat Eveniment");
   });
 });

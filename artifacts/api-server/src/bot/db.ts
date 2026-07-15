@@ -148,6 +148,10 @@ export async function runMultiGuildMigrations(): Promise<void> {
   `);
   logger.info("multi-guild migrations: player_daily_quests table ensured");
 
+  // ─── Items farmed during an event (shown in the event summary) ────────────
+  await pool.query(`ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS items_farmed jsonb NOT NULL DEFAULT '{}'::jsonb`);
+  logger.info("multi-guild migrations: event_participants.items_farmed ensured");
+
   // Post-migration verification: confirm every required column is present
   const { rows: missingCols } = await pool.query<{ table_name: string; column_name: string }>(`
     SELECT v.table_name, v.column_name
@@ -162,7 +166,8 @@ export async function runMultiGuildMigrations(): Promise<void> {
       ('players',           'prestige_dodge_bonus'),
       ('players',           'prestige_crit_bonus'),
       ('players',           'prestige_hp_bonus'),
-      ('players',           'talisman_level')
+      ('players',           'talisman_level'),
+      ('event_participants','items_farmed')
     ) AS v(table_name, column_name)
     WHERE NOT EXISTS (
       SELECT 1 FROM information_schema.columns c
@@ -652,6 +657,15 @@ export const PRESTIGE_HP_BONUS = 20;
 
 export function prestigeXpCost(level: number): number {
   return Math.floor(PRESTIGE_BASE_XP * Math.pow(PRESTIGE_COST_MULT, level));
+}
+
+/** Prestige levels for a set of players in a guild (missing players → not in map). */
+export async function getPrestigeLevels(guildId: string, discordIds: string[]): Promise<Map<string, number>> {
+  if (discordIds.length === 0) return new Map();
+  const rows = await db.select({ discordId: playersTable.discordId, prestigeLevel: playersTable.prestigeLevel })
+    .from(playersTable)
+    .where(and(eq(playersTable.guildId, guildId), inArray(playersTable.discordId, discordIds)));
+  return new Map(rows.map((r) => [r.discordId, r.prestigeLevel]));
 }
 
 export async function buyPrestige(discordId: string, guildId: string, expectedLevel: number, xpCost: number): Promise<Player | null> {

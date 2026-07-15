@@ -131,6 +131,7 @@ vi.mock("../db", () => ({
   addPlayerReputation:            vi.fn().mockResolvedValue(undefined),
   addPlayerGold:                  vi.fn().mockResolvedValue(undefined),
   addPlayerXp:                    vi.fn().mockResolvedValue(undefined),
+  getPrestigeLevels:              vi.fn().mockResolvedValue(new Map()),
   // Boss persistence
   persistActiveBoss:              vi.fn().mockResolvedValue(undefined),
   loadAllActiveBossRows:          vi.fn().mockResolvedValue([]),

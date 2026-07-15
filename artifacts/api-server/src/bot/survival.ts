@@ -606,6 +606,15 @@ export function buildResultText(r: CombatResult, itemDrop?: ItemKey | null, brea
   return txt;
 }
 
+/** "🎒 Pradă adunată: ..." line for the event summary (empty string when nothing was farmed). */
+export function formatItemsFarmed(items?: Record<string, number> | null): string {
+  if (!items) return "";
+  const parts = Object.entries(items)
+    .filter(([k, qty]) => qty > 0 && isItemKey(k))
+    .map(([k, qty]) => `${ITEMS[k as ItemKey].emoji} **${qty}× ${ITEMS[k as ItemKey].label}**`);
+  return parts.length ? `🎒 Pradă adunată: ${parts.join(" · ")}\n` : "";
+}
+
 function formatEventReward(emoji: string, label: string, final: number, base: number): string {
   if (final <= 0) return "";
   if (final !== base && base > 0) {
@@ -621,12 +630,14 @@ export function buildDeathEmbed(opts: {
   xp?: number;
   baseOboli?: number;
   baseXp?: number;
+  itemsFarmed?: Record<string, number> | null;
 } = {}): EmbedBuilder {
-  const { lostOboli = 0, totalDamage = 0, oboli = 0, xp = 0, baseOboli = 0, baseXp = 0 } = opts;
+  const { lostOboli = 0, totalDamage = 0, oboli = 0, xp = 0, baseOboli = 0, baseXp = 0, itemsFarmed } = opts;
   const oboliLine = formatEventReward("🪙", "Oboli", oboli, baseOboli);
   const xpLine = formatEventReward("⭐", "XP", xp, baseXp);
-  const summary = totalDamage > 0 || oboli > 0 || xp > 0
-    ? `\n${sectionTitle("Rezumat Eveniment")}\n⚔️ Daune totale: **${totalDamage.toLocaleString()}**\n${oboliLine}${xpLine}\n`
+  const itemsLine = formatItemsFarmed(itemsFarmed);
+  const summary = totalDamage > 0 || oboli > 0 || xp > 0 || itemsLine
+    ? `\n${sectionTitle("Rezumat Eveniment")}\n⚔️ Daune totale: **${totalDamage.toLocaleString()}**\n${oboliLine}${xpLine}${itemsLine}\n`
     : "";
   return new EmbedBuilder()
     .setColor(0x000000)
@@ -676,7 +687,7 @@ export function buildProfileEmbed(player: Player, title?: string, avatarUrl?: st
     : "*Niciun trofeu sub formă de cheie încă — caută cuferele de chei!*";
 
   const prestigeValue = player.prestigeLevel > 0
-    ? `⭐ **Nivel ${player.prestigeLevel}**\n⚔️ +${player.prestigeAttackBonus} · 🛡️ +${player.prestigeDefenseBonus} · 🌀 +${player.prestigeDodgeBonus}% · 💥 +${player.prestigeCritBonus}% · ❤️ +${player.prestigeHpBonus}`
+    ? `⭐ **Nivel ${player.prestigeLevel}**\n⚔️ +${player.prestigeAttackBonus} · 🛡️ +${player.prestigeDefenseBonus} · 🌀 +${player.prestigeDodgeBonus}% · 💥 +${player.prestigeCritBonus}% · ❤️ +${player.prestigeHpBonus} · 🪙 +${player.prestigeLevel * PRESTIGE_GOLD_BONUS}%`
     : "*Fără prestigiu* — `/magazin → Prestigiu`";
 
   const hasShopUpgrades = player.shopAttackCount > 0 || player.shopDefenseCount > 0 || player.shopDodgeCount > 0 || player.shopCritCount > 0 || player.shopHpCount > 0;
@@ -1322,12 +1333,14 @@ export function buildRetreatEmbed(level: number, opts?: {
   xp?: number;
   baseOboli?: number;
   baseXp?: number;
+  itemsFarmed?: Record<string, number> | null;
 }): EmbedBuilder {
-  const { totalDamage = 0, oboli = 0, xp = 0, baseOboli = 0, baseXp = 0 } = opts ?? {};
+  const { totalDamage = 0, oboli = 0, xp = 0, baseOboli = 0, baseXp = 0, itemsFarmed } = opts ?? {};
   const oboliLine = formatEventReward("🪙", "Oboli", oboli, baseOboli);
   const xpLine = formatEventReward("⭐", "XP", xp, baseXp);
-  const summary = totalDamage > 0 || oboli > 0 || xp > 0
-    ? `\n${sectionTitle("Rezumat Eveniment")}\n⚔️ Daune totale: **${totalDamage.toLocaleString()}**\n${oboliLine}${xpLine}\n`
+  const itemsLine = formatItemsFarmed(itemsFarmed);
+  const summary = totalDamage > 0 || oboli > 0 || xp > 0 || itemsLine
+    ? `\n${sectionTitle("Rezumat Eveniment")}\n⚔️ Daune totale: **${totalDamage.toLocaleString()}**\n${oboliLine}${xpLine}${itemsLine}\n`
     : "";
   return new EmbedBuilder()
     .setColor(0x555555)
@@ -1387,6 +1400,14 @@ function prestigeCost(level: number): number {
   return Math.floor(10_000 * Math.pow(1.5, level));
 }
 
+/** Extra gold from monster kills and boss rewards, in % per prestige level. */
+export const PRESTIGE_GOLD_BONUS = 5;
+
+/** Gold multiplier from prestige (e.g. level 3 → ×1.15). */
+export function prestigeGoldMult(prestigeLevel: number): number {
+  return 1 + (Math.max(0, prestigeLevel) * PRESTIGE_GOLD_BONUS) / 100;
+}
+
 export function prestigeStartLevel(_prestigeLevel: number): number {
   return 1; // Prestige no longer raises the event start level; bonuses only
 }
@@ -1399,14 +1420,15 @@ function prestigeNextBonuses(level: number): string {
   const dodge = Math.round(3 * mult);
   const crit  = Math.round(3 * mult);
   const hp    = Math.round(20 * mult);
-  return `⚔️ +${atk} daune · 🛡️ +${def} apărare · 🌀 +${dodge}% evitare · 💥 +${crit}% critic · ❤️ +${hp} HP`;
+  return `⚔️ +${atk} daune · 🛡️ +${def} apărare · 🌀 +${dodge}% evitare · 💥 +${crit}% critic · ❤️ +${hp} HP · 🪙 +${PRESTIGE_GOLD_BONUS}% Oboli`;
 }
 
 function prestigeTotalBonuses(p: Player): string {
   if (p.prestigeLevel <= 0) return "";
   return (
     `⚔️ +${p.prestigeAttackBonus} daune · 🛡️ +${p.prestigeDefenseBonus} apărare\n` +
-    `🌀 +${p.prestigeDodgeBonus}% evitare · 💥 +${p.prestigeCritBonus}% critic · ❤️ +${p.prestigeHpBonus} HP`
+    `🌀 +${p.prestigeDodgeBonus}% evitare · 💥 +${p.prestigeCritBonus}% critic · ❤️ +${p.prestigeHpBonus} HP\n` +
+    `🪙 +${p.prestigeLevel * PRESTIGE_GOLD_BONUS}% Oboli din monștri și boss`
   );
 }
 

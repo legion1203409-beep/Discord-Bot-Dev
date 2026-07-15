@@ -1,4 +1,4 @@
-import { pgTable, text, integer, boolean, timestamp, unique } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, boolean, timestamp, unique, jsonb } from "drizzle-orm/pg-core";
 
 export const eventParticipantsTable = pgTable(
   "event_participants",
@@ -35,6 +35,7 @@ export const eventParticipantsTable = pgTable(
     shopHpCount: integer("shop_hp_count").notNull().default(0),
     isAlive: boolean("is_alive").notNull().default(true),
     fled: boolean("fled").notNull().default(false),
+    itemsFarmed: jsonb("items_farmed").$type<Record<string, number>>().notNull().default({}),
     pendingLevelup: boolean("pending_levelup").notNull().default(false),
     joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
   },

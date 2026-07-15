@@ -112,6 +112,7 @@ vi.mock("../db", () => ({
   addPlayerReputation:            (...a: unknown[]) => mockAddPlayerReputation(...a),
   addPlayerGold:                  (...a: unknown[]) => mockAddPlayerGold(...a),
   addPlayerXp:                    (...a: unknown[]) => mockAddPlayerXp(...a),
+  getPrestigeLevels:              vi.fn().mockResolvedValue(new Map()),
   persistActiveBoss:              vi.fn().mockResolvedValue(undefined),
   loadAllActiveBossRows:          vi.fn().mockResolvedValue([]),
   deleteActiveBoss:               vi.fn().mockResolvedValue(undefined),
