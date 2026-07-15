@@ -557,7 +557,28 @@ export function buildResultText(r: CombatResult, itemDrop?: ItemKey | null, brea
   return txt;
 }
 
-export function buildDeathEmbed(lostOboli = 0): EmbedBuilder {
+function formatEventReward(emoji: string, label: string, final: number, base: number): string {
+  if (final <= 0) return "";
+  if (final !== base && base > 0) {
+    return `${emoji} **${final.toLocaleString()} ${label}** *(baza: ${base.toLocaleString()})*\n`;
+  }
+  return `${emoji} **${final.toLocaleString()} ${label}**\n`;
+}
+
+export function buildDeathEmbed(opts: {
+  lostOboli?: number;
+  totalDamage?: number;
+  oboli?: number;
+  xp?: number;
+  baseOboli?: number;
+  baseXp?: number;
+} = {}): EmbedBuilder {
+  const { lostOboli = 0, totalDamage = 0, oboli = 0, xp = 0, baseOboli = 0, baseXp = 0 } = opts;
+  const oboliLine = formatEventReward("🪙", "Oboli", oboli, baseOboli);
+  const xpLine = formatEventReward("⭐", "XP", xp, baseXp);
+  const summary = totalDamage > 0 || oboli > 0 || xp > 0
+    ? `\n${sectionTitle("Rezumat Eveniment")}\n⚔️ Daune totale: **${totalDamage.toLocaleString()}**\n${oboliLine}${xpLine}\n`
+    : "";
   return new EmbedBuilder()
     .setColor(0x000000)
     .setTitle("💀  AI CĂZUT ÎN UMBRE 💀")
@@ -565,6 +586,7 @@ export function buildDeathEmbed(lostOboli = 0): EmbedBuilder {
       "Umbrele te-au revendicat, iar cenușa îți acoperă pașii.\n" +
       "Nu mai poți continua acest eveniment.\n\n" +
       (lostOboli > 0 ? `🪙 Ai pierdut **${lostOboli} Oboli** (20% din ce ai strâns în eveniment).\n\n` : "") +
+      summary +
       "Trupul tău pământesc a cedat,\n" +
       "dar numele tău va rămâne scris în cronica celor căzuți.\n\n" +
       "Magazinul rămâne deschis — folosește **/magazin** ca să te întărești pentru următoarea chemare.",
@@ -1240,7 +1262,19 @@ export function formatCooldown(readyAt: Date | null): string {
   return `${Math.floor(s / 60)}m ${s % 60}s`;
 }
 
-export function buildRetreatEmbed(level: number): EmbedBuilder {
+export function buildRetreatEmbed(level: number, opts?: {
+  totalDamage?: number;
+  oboli?: number;
+  xp?: number;
+  baseOboli?: number;
+  baseXp?: number;
+}): EmbedBuilder {
+  const { totalDamage = 0, oboli = 0, xp = 0, baseOboli = 0, baseXp = 0 } = opts ?? {};
+  const oboliLine = formatEventReward("🪙", "Oboli", oboli, baseOboli);
+  const xpLine = formatEventReward("⭐", "XP", xp, baseXp);
+  const summary = totalDamage > 0 || oboli > 0 || xp > 0
+    ? `\n${sectionTitle("Rezumat Eveniment")}\n⚔️ Daune totale: **${totalDamage.toLocaleString()}**\n${oboliLine}${xpLine}\n`
+    : "";
   return new EmbedBuilder()
     .setColor(0x555555)
     .setTitle("🏳️  TE-AI RETRAS DIN LUPTĂ 🏳️")
@@ -1249,6 +1283,7 @@ export function buildRetreatEmbed(level: number): EmbedBuilder {
       `Ai abandonat lupta la **Nivelul ${level}**.\n\n` +
       "🪙 Obolii strânși rămân ai tăi — fuga ți-a salvat câștigul.\n" +
       "Dar Regatul își amintește de cei care au fugit…\n\n" +
+      summary +
       "Numele tău va purta pecetea celui care **a abandonat și a fugit**.\n" +
       "Folosește **/magazin** ca să te întărești pentru următoarea chemare.",
     );

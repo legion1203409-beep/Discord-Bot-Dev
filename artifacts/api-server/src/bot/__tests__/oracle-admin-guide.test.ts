@@ -126,6 +126,7 @@ vi.mock("../survival", () => ({
   buildResultText: vi.fn().mockReturnValue(""),
   buildDeathEmbed: vi.fn().mockReturnValue({}),
   buildRetreatEmbed: vi.fn().mockReturnValue({}),
+  formatEventReward: vi.fn().mockReturnValue(""),
   buildShopEmbed: vi.fn().mockReturnValue({}),
   buildLevelupEmbed: vi.fn().mockReturnValue({}),
   buildProfileEmbed: vi.fn().mockReturnValue({}),

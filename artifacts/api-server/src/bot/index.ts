@@ -1366,7 +1366,7 @@ async function handleJoin(interaction: ButtonInteraction, eventId: number) {
     return;
   }
   if (!participant.isAlive) {
-    await interaction.editReply({ embeds: [buildDeathEmbed()], components: [] });
+    await interaction.editReply({ embeds: [buildDeathEmbed({ totalDamage: participant.totalDamage, oboli: participant.oboli, xp: participant.xp, baseOboli: participant.baseOboli, baseXp: participant.baseXp })], components: [] });
     return;
   }
   if (participant.pendingLevelup) {
@@ -1389,7 +1389,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
     return;
   }
   if (!p.isAlive) {
-    await interaction.editReply({ embeds: [p.fled ? buildRetreatEmbed(p.monsterLevel) : buildDeathEmbed()], components: [] });
+    await interaction.editReply({ embeds: [p.fled ? buildRetreatEmbed(p.monsterLevel, { totalDamage: p.totalDamage, oboli: p.oboli, xp: p.xp, baseOboli: p.baseOboli, baseXp: p.baseXp }) : buildDeathEmbed({ totalDamage: p.totalDamage, oboli: p.oboli, xp: p.xp, baseOboli: p.baseOboli, baseXp: p.baseXp })], components: [] });
     return;
   }
   if (p.pendingLevelup) {
@@ -1407,8 +1407,8 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
   const talismanKey = pl?.talisman ?? null;
   const talismanLevel = pl?.talismanLevel ?? 1;
   const result = doCombat(p, talismanKey, talismanLevel);
-  const baseXp = result.xpGained;
-  const baseOboli = result.oboliGained;
+  const killBaseXp = result.xpGained;
+  const killBaseOboli = result.oboliGained;
 
   if (result.oboliGained > 0) {
     const cls = pl?.class && isClassKey(pl.class) ? CLASSES[pl.class] : null;
@@ -1430,16 +1430,18 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
     result.oboliGained > 0 && !result.playerDied && talismanKey === "crista_vietii"
       ? (talismanLevel >= 2 ? 30 : 15)
       : 0;
-  const extra = buildResultText(result, itemDrop, { baseXp, baseOboli, cristaHeal });
+  const extra = buildResultText(result, itemDrop, { baseXp: killBaseXp, baseOboli: killBaseOboli, cristaHeal });
 
   if (result.playerDied) {
     const lost = Math.floor(p.oboli * 0.2);
+    const deathBaseOboli = p.baseOboli;
+    const deathBaseXp = p.baseXp;
     await updateParticipant(p.id, { isAlive: false, currentHp: 0, empowerNext: false, shieldNext: false });
     await Promise.all([
       deductPlayerGold(p.discordId, guildId, lost),
       recordPlayerDeath(p.discordId, guildId, p.monsterLevel),
     ]);
-    await interaction.editReply({ embeds: [buildDeathEmbed(lost)], components: [] });
+    await interaction.editReply({ embeds: [buildDeathEmbed({ lostOboli: lost, totalDamage: p.totalDamage + result.playerDmg, oboli: p.oboli, xp: p.xp, baseOboli: deathBaseOboli, baseXp: deathBaseXp })], components: [] });
     return;
   }
 
@@ -1479,6 +1481,9 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
       monsterRarity: result.newMonsterRarity,
       totalDamage: p.totalDamage + result.playerDmg,
       oboli: p.oboli + result.oboliGained,
+      xp: p.xp + result.xpGained,
+      baseOboli: p.baseOboli + killBaseOboli,
+      baseXp: p.baseXp + killBaseXp,
       pendingLevelup: true,
       empowerNext: false,
       shieldNext: false,
@@ -1495,6 +1500,9 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
     monsterRarity: result.newMonsterRarity,
     totalDamage: p.totalDamage + result.playerDmg,
     oboli: p.oboli + result.oboliGained,
+    xp: p.xp + result.xpGained,
+    baseOboli: p.baseOboli + killBaseOboli,
+    baseXp: p.baseXp + killBaseXp,
     empowerNext: false,
     shieldNext: false,
   });
@@ -1511,7 +1519,7 @@ async function handleRetreat(interaction: ButtonInteraction, eventId: number) {
     return;
   }
   if (!p.isAlive) {
-    await interaction.editReply({ embeds: [p.fled ? buildRetreatEmbed(p.monsterLevel) : buildDeathEmbed()], components: [] });
+    await interaction.editReply({ embeds: [p.fled ? buildRetreatEmbed(p.monsterLevel, { totalDamage: p.totalDamage, oboli: p.oboli, xp: p.xp, baseOboli: p.baseOboli, baseXp: p.baseXp }) : buildDeathEmbed({ totalDamage: p.totalDamage, oboli: p.oboli, xp: p.xp, baseOboli: p.baseOboli, baseXp: p.baseXp })], components: [] });
     return;
   }
   const ev = await getActiveEvent(eventId, guildId);
@@ -1521,7 +1529,7 @@ async function handleRetreat(interaction: ButtonInteraction, eventId: number) {
   }
   await updateParticipant(p.id, { isAlive: false, fled: true });
   await recordPlayerRetreat(p.discordId, guildId, p.monsterLevel);
-  await interaction.editReply({ embeds: [buildRetreatEmbed(p.monsterLevel)], components: [] });
+  await interaction.editReply({ embeds: [buildRetreatEmbed(p.monsterLevel, { totalDamage: p.totalDamage, oboli: p.oboli, xp: p.xp, baseOboli: p.baseOboli, baseXp: p.baseXp })], components: [] });
 }
 
 async function handleBuy(interaction: ButtonInteraction, key: ShopKey) {
