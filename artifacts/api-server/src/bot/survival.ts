@@ -395,7 +395,7 @@ export function doCombat(p: EventParticipant, talismanKey?: string | null, talis
   let newMonsterRarity: Rarity = p.monsterRarity as Rarity;
   if (monsterDefeated) {
     const r = monsterReward(p.monsterLevel, p.monsterRarity as Rarity);
-    xpGained = r.xp; oboliGained = r.oboli;
+    xpGained = r.xp + p.xpPerKill; oboliGained = r.oboli;
     newMonsterLevel = p.monsterLevel + 1;
     newMonsterRarity = rollRarity(newMonsterLevel);
     levelUp = newMonsterLevel % LEVELUP_INTERVAL === 0;
@@ -462,7 +462,7 @@ export function buildStartEmbed(expiresAt?: Date): EmbedBuilder {
     .setTimestamp();
 }
 
-export function buildCombatEmbed(p: EventParticipant, extra = "", avatarUrl?: string | null): EmbedBuilder {
+export function buildCombatEmbed(p: EventParticipant, extra = "", avatarUrl?: string | null, player?: Player | null): EmbedBuilder {
   const [mn, mx] = monsterDmgRange(p.monsterLevel);
   const mMaxHp = monsterMaxHp(p.monsterLevel);
   const rarity = (p.monsterRarity as Rarity) ?? "comun";
@@ -478,6 +478,24 @@ export function buildCombatEmbed(p: EventParticipant, extra = "", avatarUrl?: st
   const effectsSection = effectsText
     ? `\n\n🔮 **Efectele tale active:**\n${effectsText}`
     : "";
+  const bonusLines: string[] = [];
+  if (player?.class && isClassKey(player.class)) {
+    const cls = CLASSES[player.class];
+    bonusLines.push(`${cls.emoji} **${cls.label}** — ${cls.desc}`);
+  }
+  const talKey = player?.talisman && isTalismanKey(player.talisman) ? player.talisman : null;
+  if (talKey) {
+    const t = TALISMANS[talKey];
+    const tLvl = player?.talismanLevel ?? 1;
+    bonusLines.push(`${t.emoji} **${t.label}** Nv.${tLvl} — ${tLvl >= 2 ? t.evolvedPassiveDesc : t.passiveDesc}`);
+  }
+  if (p.xpPerKill > 0) bonusLines.push(`🔹 **+${p.xpPerKill} XP** la fiecare monstru ucis *(bonus level-up)*`);
+  const bonusSection = bonusLines.length
+    ? `\n\n📌 **Bonusurile tale:**\n${bonusLines.join("\n")}`
+    : "";
+  const rewardXpStr = p.xpPerKill > 0
+    ? `${reward.xp} XP *(+${p.xpPerKill} bonus)*`
+    : `${reward.xp} XP`;
   const embed = new EmbedBuilder()
     .setColor(meta.color)
     .setTitle(title)
@@ -489,10 +507,11 @@ export function buildCombatEmbed(p: EventParticipant, extra = "", avatarUrl?: st
       `❤️ HP Monstru: **${p.monsterCurrentHp}/${mMaxHp}** ${hpBar(p.monsterCurrentHp, mMaxHp)}\n` +
       `⚔️ Daune: **${mn} – ${mx}**\n` +
       `🎯 Șansă lovitură: **${monsterHitPct(p.monsterLevel).toFixed(0)}%**\n` +
-      `💰 Recompensă: **${reward.xp} XP, ${reward.oboli} Oboli**\n\n` +
+      `💰 Recompensă: **${rewardXpStr}, ${reward.oboli} Oboli**\n\n` +
       `━━━━━━━━━━━━━━━━━━\n` +
       `❤️ HP-ul tău: **${p.currentHp}/${p.maxHp}** ${hpBar(p.currentHp, p.maxHp)}\n` +
       `🪙 Oboli strânși în eveniment: **${p.oboli}** *(20% se pierd la moarte)*` +
+      bonusSection +
       effectsSection,
     )
     .setImage(IMG.monster)

@@ -17,6 +17,7 @@ export const eventParticipantsTable = pgTable(
     xp: integer("xp").notNull().default(0),
     baseOboli: integer("base_oboli").notNull().default(0),
     baseXp: integer("base_xp").notNull().default(0),
+    xpPerKill: integer("xp_per_kill").notNull().default(0),
     monsterRarity: text("monster_rarity").notNull().default("comun"),
     abilityReadyAt: timestamp("ability_ready_at", { withTimezone: true }),
     empowerNext: boolean("empower_next").notNull().default(false),

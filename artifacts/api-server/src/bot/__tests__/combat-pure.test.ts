@@ -2,22 +2,32 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ── Mock discord.js (survival.ts imports EmbedBuilder etc at module level) ────
 vi.mock("discord.js", () => {
-  const chain = () => {
-    const obj: Record<string, unknown> = {};
-    const methods = ["setColor", "setTitle", "setDescription", "setImage", "setFooter", "setTimestamp", "setThumbnail", "addFields"];
-    for (const m of methods) obj[m] = () => obj;
-    return obj;
-  };
+  class EmbedBuilder {
+    data: Record<string, unknown> = {};
+    setColor(v: unknown) { this.data.color = v; return this; }
+    setTitle(v: unknown) { this.data.title = v; return this; }
+    setDescription(v: unknown) { this.data.description = v; return this; }
+    setImage(v: unknown) { this.data.image = v; return this; }
+    setFooter(v: unknown) { this.data.footer = v; return this; }
+    setTimestamp() { return this; }
+    setThumbnail(v: unknown) { this.data.thumbnail = v; return this; }
+    addFields(...f: unknown[]) { this.data.fields = f; return this; }
+  }
+  class ActionRowBuilder {
+    components: unknown[] = [];
+    addComponents(...c: unknown[]) { this.components.push(...c); return this; }
+  }
+  class ButtonBuilder {
+    setCustomId() { return this; }
+    setLabel() { return this; }
+    setStyle() { return this; }
+    setEmoji() { return this; }
+    setDisabled() { return this; }
+  }
   return {
-    EmbedBuilder: vi.fn(() => chain()),
-    ActionRowBuilder: vi.fn(() => ({ addComponents: vi.fn(() => ({})) })),
-    ButtonBuilder: vi.fn(() => ({
-      setCustomId: vi.fn().mockReturnThis(),
-      setLabel: vi.fn().mockReturnThis(),
-      setStyle: vi.fn().mockReturnThis(),
-      setEmoji: vi.fn().mockReturnThis(),
-      setDisabled: vi.fn().mockReturnThis(),
-    })),
+    EmbedBuilder,
+    ActionRowBuilder,
+    ButtonBuilder,
     ButtonStyle: { Primary: 1, Secondary: 2, Success: 3, Danger: 4, Link: 5 },
   };
 });
@@ -38,6 +48,7 @@ vi.mock("../combat-events", () => ({
 vi.mock("../status-effects", () => ({
   getCombatModifiers: vi.fn(() => ({ critAdd: 0, damageMult: 1, damageTakenMult: 1 })),
   formatActiveEffects: vi.fn(() => null),
+  formatCombatEffects: vi.fn(() => ""),
   getRewardMultipliers: vi.fn(() => ({ xpMult: 1, goldMult: 1 })),
 }));
 
@@ -59,13 +70,14 @@ import {
   shopPrice,
   doCombat,
   buildResultText,
+  buildCombatEmbed,
   RARITY_WEIGHTS,
   type CombatResult,
 } from "../survival";
 
 import { getActiveBattleEvent, consumeStormDrain } from "../combat-events";
 import { getCombatModifiers } from "../status-effects";
-import type { EventParticipant } from "@workspace/db";
+import type { EventParticipant, Player } from "@workspace/db";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -95,6 +107,7 @@ function makeParticipant(overrides: Partial<EventParticipant> = {}): EventPartic
     xp: 0,
     baseOboli: 0,
     baseXp: 0,
+    xpPerKill: 0,
     abilityReadyAt: null,
     shopAttackCount: 0,
     shopDefenseCount: 0,
@@ -541,5 +554,48 @@ describe("buildResultText breakdown lines", () => {
     const txt = buildResultText({ ...baseResult, isCrit: true, playerDmg: 30, hpRegen: 8 });
     expect(txt).toContain("Runa Sângelui");
     expect(txt).toContain("+8 HP");
+  });
+});
+
+// ─── xpPerKill level-up bonus ─────────────────────────────────────────────────
+
+describe("doCombat xpPerKill bonus", () => {
+  it("adds xpPerKill on top of the monster reward when the monster dies", () => {
+    const p = makeParticipant({ attackBonus: 10000, critBonus: 100, monsterCurrentHp: 1, monsterLevel: 1, xpPerKill: 5 });
+    const r = doCombat(p);
+    expect(r.monsterDefeated).toBe(true);
+    expect(r.xpGained).toBe(monsterReward(1, "comun").xp + 5);
+  });
+
+  it("gives no bonus XP when the monster survives", () => {
+    const p = makeParticipant({ attackBonus: 0, critBonus: 0, monsterCurrentHp: 9999, xpPerKill: 5 });
+    const r = doCombat(p);
+    expect(r.xpGained).toBe(0);
+  });
+});
+
+// ─── buildCombatEmbed permanent bonuses ───────────────────────────────────────
+
+describe("buildCombatEmbed permanent bonuses", () => {
+  it("shows class, talisman and xpPerKill lines when present", () => {
+    const p = makeParticipant({ xpPerKill: 10 });
+    const player = { class: "strajer", talisman: "piatra_eco", talismanLevel: 2 } as unknown as Player;
+    const desc = buildCombatEmbed(p, "", null, player).data.description!;
+    expect(desc).toContain("Bonusurile tale");
+    expect(desc).toContain("Străjerul Arșiței");
+    expect(desc).toContain("Piatra Eco");
+    expect(desc).toContain("Nv.2");
+    expect(desc).toContain("+10 XP");
+  });
+
+  it("shows the xpPerKill bonus in the reward line", () => {
+    const p = makeParticipant({ xpPerKill: 5, monsterLevel: 1, monsterRarity: "comun" });
+    const desc = buildCombatEmbed(p).data.description!;
+    expect(desc).toContain(`${monsterReward(1, "comun").xp} XP *(+5 bonus)*`);
+  });
+
+  it("omits the bonus section when there are no permanent bonuses", () => {
+    const desc = buildCombatEmbed(makeParticipant()).data.description!;
+    expect(desc).not.toContain("Bonusurile tale");
   });
 });

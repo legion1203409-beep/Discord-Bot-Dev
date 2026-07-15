@@ -1377,7 +1377,7 @@ async function handleJoin(interaction: ButtonInteraction, eventId: number) {
     await interaction.editReply({ content: "⌛ Ora Umbrelor s-a încheiat!" });
     return;
   }
-  await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
+  const pl = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
   const participant = await joinEvent(guildId, eventId, interaction.user.id, interaction.user.username);
   if (!participant) {
     await interaction.editReply({ content: "⚠️ Eroare la intrarea în event." });
@@ -1392,7 +1392,7 @@ async function handleJoin(interaction: ButtonInteraction, eventId: number) {
     await interaction.editReply({ embeds: [buildLevelupEmbed(lvl)], components: levelupRows(eventId) });
     return;
   }
-  await interaction.editReply({ embeds: [buildCombatEmbed(participant, "", interaction.user.displayAvatarURL({ size: 256 }))], components: [combatRow(eventId, participant)] });
+  await interaction.editReply({ embeds: [buildCombatEmbed(participant, "", interaction.user.displayAvatarURL({ size: 256 }), pl)], components: [combatRow(eventId, participant)] });
 }
 
 async function handleAttack(interaction: ButtonInteraction, eventId: number) {
@@ -1525,7 +1525,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
     shieldNext: false,
   });
 
-  await interaction.editReply({ embeds: [buildCombatEmbed(updated, extra, interaction.user.displayAvatarURL({ size: 256 }))], components: [combatRow(eventId, updated)] });
+  await interaction.editReply({ embeds: [buildCombatEmbed(updated, extra, interaction.user.displayAvatarURL({ size: 256 }), pl)], components: [combatRow(eventId, updated)] });
 }
 
 async function handleRetreat(interaction: ButtonInteraction, eventId: number) {
@@ -1566,14 +1566,17 @@ async function handleBuy(interaction: ButtonInteraction, key: ShopKey) {
 async function handleLevelup(interaction: ButtonInteraction, eventId: number, bonus: string) {
   await interaction.deferUpdate();
   const guildId = interaction.guildId!;
-  const p = await getParticipant(eventId, guildId, interaction.user.id);
+  const [p, pl] = await Promise.all([
+    getParticipant(eventId, guildId, interaction.user.id),
+    getPlayerById(interaction.user.id, guildId),
+  ]);
   if (!p || !p.isAlive || !p.pendingLevelup) {
     await interaction.followUp({ content: "❌ Nu ai un level-up disponibil!", flags: MessageFlags.Ephemeral });
     return;
   }
 
   const bonusMap: Record<string, Partial<typeof p>> = {
-    xp: { oboli: p.oboli + 5 },
+    xp: { xpPerKill: p.xpPerKill + 5 },
     dodge: { dodgeBonus: p.dodgeBonus + 3 },
     atac: { attackBonus: p.attackBonus + 2 },
     hp: { maxHp: p.maxHp + 5, currentHp: Math.min(p.maxHp + 5, p.currentHp + 5) },
@@ -1582,7 +1585,7 @@ async function handleLevelup(interaction: ButtonInteraction, eventId: number, bo
 
   const bonusValues = bonusMap[bonus] ?? {};
   const updated = await updateParticipant(p.id, { ...bonusValues, pendingLevelup: false });
-  await interaction.editReply({ embeds: [buildCombatEmbed(updated, "✨ **Bonus ales! Umbrele îți recunosc puterea.**", interaction.user.displayAvatarURL({ size: 256 }))], components: [combatRow(eventId, updated)] });
+  await interaction.editReply({ embeds: [buildCombatEmbed(updated, "✨ **Bonus ales! Umbrele îți recunosc puterea.**", interaction.user.displayAvatarURL({ size: 256 }), pl)], components: [combatRow(eventId, updated)] });
 }
 
 async function handleClasa(interaction: ChatInputCommandInteraction) {
@@ -1856,7 +1859,10 @@ async function handleAbilUpgrade(interaction: ButtonInteraction, kind: string) {
 async function handleAbility(interaction: ButtonInteraction, eventId: number, kind: string) {
   await interaction.deferUpdate();
   const guildId = interaction.guildId!;
-  const p = await getParticipant(eventId, guildId, interaction.user.id);
+  const [p, pl] = await Promise.all([
+    getParticipant(eventId, guildId, interaction.user.id),
+    getPlayerById(interaction.user.id, guildId),
+  ]);
   if (!p || !p.isAlive) {
     await interaction.followUp({ content: "❌ Trebuie să fii în luptă ca să folosești abilități!", flags: MessageFlags.Ephemeral });
     return;
@@ -1883,7 +1889,7 @@ async function handleAbility(interaction: ButtonInteraction, eventId: number, ki
     : "🌑 **Lovitura Umbrei pregătită!** Următoarea ta lovitură va fi dublă.";
   const updated = await updateParticipant(p.id, { ...abilityFlags, abilityReadyAt: readyAt });
   await interaction.editReply({
-    embeds: [buildCombatEmbed(updated, note, interaction.user.displayAvatarURL({ size: 256 }))],
+    embeds: [buildCombatEmbed(updated, note, interaction.user.displayAvatarURL({ size: 256 }), pl)],
     components: [combatRow(eventId, updated)],
   });
 }
