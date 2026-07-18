@@ -758,6 +758,32 @@ async function handleSpawnBoss(interaction: ChatInputCommandInteraction) {
   if (botClient) await fireFinalBoss(botClient, guildId, ev.id);
 }
 
+// ─── /admin status — pure formatting helpers (exported for unit tests) ────────
+
+/** Human-readable time since `lastActivityAt`. Exported for unit tests. */
+export function formatLastMsgStr(lastActivityAt: number, now: number): string {
+  if (lastActivityAt === 0) return "niciodată (de la pornire)";
+  const diffSec = Math.floor((now - lastActivityAt) / 1000);
+  if (diffSec < 60) return `acum ${diffSec}s`;
+  if (diffSec < 3600) return `acum ${Math.floor(diffSec / 60)}min`;
+  return `acum ${Math.floor(diffSec / 3600)}h ${Math.floor((diffSec % 3600) / 60)}min`;
+}
+
+/** Activity gate label shown in /admin status. Exported for unit tests. */
+export function formatActivityStatus(lastActivityAt: number, now: number): string {
+  const active = isGuildActive(lastActivityAt, ACTIVITY_WINDOW_MINUTES * 60_000, now);
+  return active
+    ? `✅ Activ (fereastră: ${ACTIVITY_WINDOW_MINUTES}min)`
+    : `😴 Tăcut (niciun mesaj în ultimele ${ACTIVITY_WINDOW_MINUTES}min)`;
+}
+
+/** Chest-milestone progress string. Exported for unit tests. */
+export function formatMilestoneStr(activityMsgCount: number): string {
+  return `${activityMsgCount}/${CHEST_MSG_MILESTONE}`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function handleAdmin(interaction: ChatInputCommandInteraction) {
   const sub = interaction.options.getSubcommand();
   if (sub === "ghid") { await handleAdminGhid(interaction); return; }
@@ -976,27 +1002,9 @@ export async function handleAdmin(interaction: ChatInputCommandInteraction) {
     const lastActivityAt = gs?.lastActivityAt ?? 0;
     const activityMsgCount = gs?.activityMsgCount ?? 0;
 
-    let lastMsgStr: string;
-    if (lastActivityAt === 0) {
-      lastMsgStr = "niciodată (de la pornire)";
-    } else {
-      const diffMs = now - lastActivityAt;
-      const diffSec = Math.floor(diffMs / 1000);
-      if (diffSec < 60) {
-        lastMsgStr = `acum ${diffSec}s`;
-      } else if (diffSec < 3600) {
-        lastMsgStr = `acum ${Math.floor(diffSec / 60)}min`;
-      } else {
-        lastMsgStr = `acum ${Math.floor(diffSec / 3600)}h ${Math.floor((diffSec % 3600) / 60)}min`;
-      }
-    }
-
-    const active = isGuildActive(lastActivityAt, ACTIVITY_WINDOW_MINUTES * 60_000, now);
-    const activityStatus = active
-      ? `✅ Activ (fereastră: ${ACTIVITY_WINDOW_MINUTES}min)`
-      : `😴 Tăcut (niciun mesaj în ultimele ${ACTIVITY_WINDOW_MINUTES}min)`;
-
-    const milestoneStr = `${activityMsgCount}/${CHEST_MSG_MILESTONE}`;
+    const lastMsgStr = formatLastMsgStr(lastActivityAt, now);
+    const activityStatus = formatActivityStatus(lastActivityAt, now);
+    const milestoneStr = formatMilestoneStr(activityMsgCount);
 
     await interaction.editReply({
       embeds: [{
