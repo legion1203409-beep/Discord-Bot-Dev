@@ -1,79 +1,117 @@
 /**
  * admin-status-formatters.test.ts
  *
- * Unit tests for the three pure formatting helpers extracted from the
- * /admin status handler in index.ts:
- *   formatLastMsgStr   — human-readable time since last message
- *   formatActivityStatus — active / silent label for the activity gate
- *   formatMilestoneStr  — "N/M" chest milestone progress
+ * Two layers of tests for the /admin status embed:
  *
- * These tests guard against refactoring GuildSchedulerState (or the
- * handler itself) silently breaking the embed fields shown to admins.
+ * 1. Pure formatting helpers (formatLastMsgStr, formatActivityStatus,
+ *    formatMilestoneStr) — extracted from the handler in index.ts so
+ *    that refactoring GuildSchedulerState surfaces broken field output.
+ *
+ * 2. Handler-level integration tests — call handleAdmin with sub=status
+ *    and verify the exact embed fields sent via interaction.editReply,
+ *    covering: no activity, recent activity, and active boss scenarios.
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-// ── Heavy mocks so importing index.ts does not cause side-effects ─────────────
+// ── Hoisted shared state — accessible before any import ──────────────────────
+const { testGuildStates, mockGetGuildActiveBossMap } = vi.hoisted(() => ({
+  testGuildStates: new Map<string, { lastActivityAt: number; activityMsgCount: number; [k: string]: unknown }>(),
+  mockGetGuildActiveBossMap: vi.fn().mockReturnValue(new Map()),
+}));
+
+// ── Mocks — paths relative to this file (src/bot/__tests__/) ─────────────────
 
 vi.mock("discord.js", () => ({
-  Client: class {},
+  Client: class { isReady() { return false; } on() {} login() { return Promise.resolve(""); } },
   Guild: class {},
   TextChannel: class {},
   GatewayIntentBits: { Guilds: 1, GuildMessages: 2, GuildMembers: 4, MessageContent: 8 },
   REST: class { setToken() { return this; } put() { return Promise.resolve(); } },
   Routes: { applicationCommands: () => "" },
-  Events: { MessageCreate: "messageCreate", InteractionCreate: "interactionCreate", GuildCreate: "guildCreate", GuildDelete: "guildDelete", ClientReady: "ready", ShardReady: "shardReady", ShardDisconnect: "shardDisconnect", ShardError: "shardError", ShardReconnecting: "shardReconnecting", ShardResume: "shardResume" },
+  Events: {
+    MessageCreate: "messageCreate", InteractionCreate: "interactionCreate",
+    GuildCreate: "guildCreate", GuildDelete: "guildDelete",
+    ClientReady: "ready", ShardReady: "shardReady",
+    ShardDisconnect: "shardDisconnect", ShardError: "shardError",
+    ShardReconnecting: "shardReconnecting", ShardResume: "shardResume",
+  },
   MessageFlags: { Ephemeral: 64 },
   ActivityType: { Watching: 3 },
-  SlashCommandBuilder: class { setName() { return this; } setDescription() { return this; } setDefaultMemberPermissions() { return this; } addSubcommand() { return this; } addSubcommandGroup() { return this; } addStringOption() { return this; } addUserOption() { return this; } addIntegerOption() { return this; } addBooleanOption() { return this; } toJSON() { return {}; } },
+  SlashCommandBuilder: class {
+    setName() { return this; }
+    setDescription() { return this; }
+    setDefaultMemberPermissions() { return this; }
+    addSubcommand() { return this; }
+    addSubcommandGroup() { return this; }
+    addStringOption() { return this; }
+    addUserOption() { return this; }
+    addIntegerOption() { return this; }
+    addBooleanOption() { return this; }
+    toJSON() { return {}; }
+  },
   ActionRowBuilder: class { addComponents() { return this; } },
-  ButtonBuilder: class { setCustomId() { return this; } setLabel() { return this; } setStyle() { return this; } setEmoji() { return this; } setDisabled() { return this; } },
-  StringSelectMenuBuilder: class { setCustomId() { return this; } setPlaceholder() { return this; } addOptions() { return this; } },
-  EmbedBuilder: class { setColor() { return this; } setTitle() { return this; } setDescription() { return this; } setFooter() { return this; } setTimestamp() { return this; } addFields() { return this; } },
+  ButtonBuilder: class {
+    setCustomId() { return this; }
+    setLabel() { return this; }
+    setStyle() { return this; }
+    setEmoji() { return this; }
+    setDisabled() { return this; }
+  },
+  StringSelectMenuBuilder: class {
+    setCustomId() { return this; }
+    setPlaceholder() { return this; }
+    addOptions() { return this; }
+  },
+  EmbedBuilder: class {
+    setColor() { return this; }
+    setTitle() { return this; }
+    setDescription() { return this; }
+    setFooter() { return this; }
+    setTimestamp() { return this; }
+    addFields() { return this; }
+  },
   ButtonStyle: { Primary: 1, Secondary: 2, Success: 3, Danger: 4, Link: 5 },
-  PermissionFlagsBits: { ModerateMembers: BigInt(1), ManageMessages: BigInt(2) },
+  PermissionFlagsBits: { Administrator: BigInt(8), ModerateMembers: BigInt(1), ManageMessages: BigInt(2) },
   StringSelectMenuInteraction: class {},
 }));
 
-vi.mock("../lib/logger", () => ({
+vi.mock("../../lib/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-vi.mock("./alert", () => ({
+vi.mock("../alert", () => ({
   sendAlert: vi.fn(),
   sendRecoveryAlert: vi.fn(),
   DISCONNECT_ALERT_THRESHOLD_MS: 300_000,
 }));
 
-vi.mock("./scheduler", () => {
-  const guildStates = new Map();
-  return {
-    guildStates,
-    isGuildActive: (lastActivityAt: number, windowMs: number, now = Date.now()) =>
-      lastActivityAt > 0 && now - lastActivityAt <= windowMs,
-    ACTIVITY_WINDOW_MINUTES: 20,
-    CHEST_MSG_MILESTONE: 25,
-    startGuildScheduler: vi.fn(),
-    stopGuildScheduler: vi.fn(),
-    APPLICATION_ID: "test-app-id",
-    fireEvent: vi.fn(),
-    fireChest: vi.fn(),
-    fireChestForced: vi.fn(),
-    fireFinalBoss: vi.fn(),
-    fireLockedChest: vi.fn(),
-    fireKeyChest: vi.fn(),
-    recordGuildActivity: vi.fn(),
-    getGuildClaimedChests: vi.fn().mockReturnValue(new Set()),
-    getGuildActiveBossMap: vi.fn().mockReturnValue(new Map()),
-    checkBossEligibility: vi.fn(),
-    checkBossHitCooldown: vi.fn(),
-    BOSS_HIT_COOLDOWN_MS: 30_000,
-    checkBossAbilityCooldown: vi.fn(),
-    persistBossState: vi.fn(),
-  };
-});
+vi.mock("../scheduler", () => ({
+  guildStates: testGuildStates,
+  getGuildActiveBossMap: mockGetGuildActiveBossMap,
+  isGuildActive: (lastActivityAt: number, windowMs: number, now = Date.now()) =>
+    lastActivityAt > 0 && now - lastActivityAt <= windowMs,
+  ACTIVITY_WINDOW_MINUTES: 20,
+  CHEST_MSG_MILESTONE: 25,
+  startGuildScheduler: vi.fn(),
+  stopGuildScheduler: vi.fn(),
+  APPLICATION_ID: "test-app-id",
+  fireEvent: vi.fn(),
+  fireChest: vi.fn(),
+  fireChestForced: vi.fn(),
+  fireFinalBoss: vi.fn(),
+  fireLockedChest: vi.fn(),
+  fireKeyChest: vi.fn(),
+  recordGuildActivity: vi.fn(),
+  getGuildClaimedChests: vi.fn().mockReturnValue(new Set()),
+  checkBossEligibility: vi.fn(),
+  checkBossHitCooldown: vi.fn(),
+  BOSS_HIT_COOLDOWN_MS: 30_000,
+  checkBossAbilityCooldown: vi.fn(),
+  persistBossState: vi.fn(),
+}));
 
-vi.mock("./channel-config", () => ({
+vi.mock("../channel-config", () => ({
   getChannel: vi.fn().mockReturnValue(null),
   getAllChannels: vi.fn().mockReturnValue([]),
   setChannel: vi.fn(),
@@ -84,22 +122,22 @@ vi.mock("./channel-config", () => ({
   EVENT_LABELS: {},
 }));
 
-vi.mock("./oracle", () => ({
+vi.mock("../oracle", () => ({
   startOracle: vi.fn(),
   setOracleExtatic: vi.fn(),
   recordMessage: vi.fn(),
 }));
 
-vi.mock("./oracle-chat", () => ({
+vi.mock("../oracle-chat", () => ({
   maybeReplyAsOracle: vi.fn(),
   logOracleChatStatus: vi.fn(),
 }));
 
-vi.mock("./oracle-guard", () => ({
+vi.mock("../oracle-guard", () => ({
   handleToxicity: vi.fn().mockResolvedValue(false),
 }));
 
-vi.mock("./status-effects", () => ({
+vi.mock("../status-effects", () => ({
   getRewardMultipliers: vi.fn().mockReturnValue({ xpMult: 1, goldMult: 1 }),
   getCombatModifiers: vi.fn().mockReturnValue({}),
   formatActiveEffects: vi.fn().mockReturnValue(""),
@@ -112,44 +150,48 @@ vi.mock("./status-effects", () => ({
   buildChestEffectMessage: vi.fn().mockReturnValue(""),
 }));
 
-vi.mock("./oracle-blestem", () => ({
+vi.mock("../oracle-blestem", () => ({
   handleBlestem: vi.fn(),
   handleAdminGhid: vi.fn(),
 }));
 
-vi.mock("./constants", () => ({
+vi.mock("../constants", () => ({
   SUPER_ADMIN_ID: "super-admin-test",
 }));
 
-vi.mock("./db", () => ({
+vi.mock("../db", () => ({
   upsertPlayer: vi.fn(), joinEvent: vi.fn(), getParticipant: vi.fn(),
-  updateParticipant: vi.fn(), getActiveEvent: vi.fn(), addPlayerXp: vi.fn(),
-  addPlayerGold: vi.fn(), addPlayerReputation: vi.fn(), deductPlayerGold: vi.fn(),
-  deductPlayerXp: vi.fn(), buyPlayerUpgrade: vi.fn(),
+  updateParticipant: vi.fn(), getActiveEvent: vi.fn().mockResolvedValue(null),
+  addPlayerXp: vi.fn(), addPlayerGold: vi.fn(), addPlayerReputation: vi.fn(),
+  deductPlayerGold: vi.fn(), deductPlayerXp: vi.fn(), buyPlayerUpgrade: vi.fn(),
   applyUpgradeToActiveParticipant: vi.fn(), getTopPlayers: vi.fn(),
   getGlobalTopPlayers: vi.fn(), getServerRanking: vi.fn(),
-  recordPlayerDeath: vi.fn(), recordPlayerRetreat: vi.fn(), getPlayerById: vi.fn(),
-  updateMaxLevel: vi.fn(), setPlayerClass: vi.fn(), buyCompanion: vi.fn(),
-  upgradeCompanion: vi.fn(), buyAbility: vi.fn(), upgradeAbility: vi.fn(),
-  applyAbilityLevelToActiveParticipant: vi.fn(), addPlayerKey: vi.fn(),
-  consumePlayerKey: vi.fn(), deleteActiveBoss: vi.fn(), clearActiveChest: vi.fn(),
+  recordPlayerDeath: vi.fn(), recordPlayerRetreat: vi.fn(),
+  getPlayerById: vi.fn(), updateMaxLevel: vi.fn(), setPlayerClass: vi.fn(),
+  buyCompanion: vi.fn(), upgradeCompanion: vi.fn(), buyAbility: vi.fn(),
+  upgradeAbility: vi.fn(), applyAbilityLevelToActiveParticipant: vi.fn(),
+  addPlayerKey: vi.fn(), consumePlayerKey: vi.fn(),
+  deleteActiveBoss: vi.fn(), clearActiveChest: vi.fn(),
   KEYCHEST_DBKEY: "keychest", LOCKCHEST_DBKEY: "lockchest",
   saveTraderMessageId: vi.fn(), loadTraderMessageId: vi.fn().mockResolvedValue(null),
   clearTraderMessageId: vi.fn(), saveTraderEmbedSig: vi.fn(),
-  loadTraderEmbedSig: vi.fn().mockResolvedValue(null), ensureBotStateTable: vi.fn(),
-  claimBotInstance: vi.fn(), getBotInstanceHolder: vi.fn(),
+  loadTraderEmbedSig: vi.fn().mockResolvedValue(null),
+  ensureBotStateTable: vi.fn(), claimBotInstance: vi.fn(),
+  getBotInstanceHolder: vi.fn(),
   runMultiGuildMigrations: vi.fn().mockResolvedValue(undefined),
   resetPlayer: vi.fn(), resetAllPlayersInGuild: vi.fn(), buyPrestige: vi.fn(),
-  prestigeXpCost: vi.fn().mockReturnValue(100), getPrestigeLevels: vi.fn().mockResolvedValue([]),
+  prestigeXpCost: vi.fn().mockReturnValue(100),
+  getPrestigeLevels: vi.fn().mockResolvedValue([]),
   equipTalisman: vi.fn(), tryUpgradeTalismanLevel: vi.fn(),
   tryDeductPlayerGold: vi.fn(), getPlayerTalismans: vi.fn().mockResolvedValue([]),
   saveTalismanLevel: vi.fn(), getPlayerItems: vi.fn().mockResolvedValue([]),
   upgradeClass: vi.fn(), addPlayerItem: vi.fn(), consumePlayerItems: vi.fn(),
   getDailyQuestProgress: vi.fn().mockResolvedValue(null),
-  incrementDailyQuestKill: vi.fn(), todayDateUTC: vi.fn().mockReturnValue("2026-07-18"),
+  incrementDailyQuestKill: vi.fn(),
+  todayDateUTC: vi.fn().mockReturnValue("2026-07-18"),
 }));
 
-vi.mock("./survival", () => ({
+vi.mock("../survival", () => ({
   doCombat: vi.fn(), buildCombatEmbed: vi.fn().mockReturnValue({}),
   buildResultText: vi.fn().mockReturnValue(""), buildDeathEmbed: vi.fn().mockReturnValue({}),
   buildRetreatEmbed: vi.fn().mockReturnValue({}), prestigeGoldMult: vi.fn().mockReturnValue(1),
@@ -192,11 +234,33 @@ vi.mock("./survival", () => ({
   buildMissionEmbed: vi.fn().mockReturnValue({}),
 }));
 
-vi.mock("./assets", () => ({ IMG: {} }));
+vi.mock("../assets", () => ({ IMG: {} }));
 
-// ── Now import the pure helpers from index.ts ─────────────────────────────────
+// ── Import the module under test ──────────────────────────────────────────────
+import { formatLastMsgStr, formatActivityStatus, formatMilestoneStr, handleAdmin } from "../index";
 
-import { formatLastMsgStr, formatActivityStatus, formatMilestoneStr } from "../index";
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Build a minimal mock interaction for /admin status. */
+function makeStatusInteraction(guildId = "test-guild-status") {
+  return {
+    guildId,
+    user: { id: "super-admin-test" },
+    options: {
+      getSubcommand: () => "status" as string,
+      getString: () => null,
+      getUser: () => null,
+      getInteger: () => null,
+      getBoolean: () => null,
+      getMember: () => null,
+      getSubcommandGroup: () => null,
+    },
+    deferReply: vi.fn().mockResolvedValue(undefined),
+    editReply: vi.fn().mockResolvedValue({ id: "msg-1" }),
+    reply: vi.fn().mockResolvedValue(undefined),
+    followUp: vi.fn().mockResolvedValue(undefined),
+  };
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -219,7 +283,7 @@ describe("formatLastMsgStr — time since last message", () => {
     expect(formatLastMsgStr(NOW - 5 * 60_000, NOW)).toBe("acum 5min");
   });
 
-  it("returns minutes format at 59 minutes 59 seconds (last minute before hours)", () => {
+  it("returns minutes format at 59 minutes 59 seconds (last second before hours)", () => {
     expect(formatLastMsgStr(NOW - 3599_000, NOW)).toBe("acum 59min");
   });
 
@@ -257,8 +321,7 @@ describe("formatActivityStatus — activity gate label for /admin status", () =>
 
   it("shows 'Activ' exactly at the window boundary", () => {
     const now = Date.now();
-    const status = formatActivityStatus(now - WINDOW_MS, now);
-    expect(status).toContain("✅");
+    expect(formatActivityStatus(now - WINDOW_MS, now)).toContain("✅");
   });
 
   it("shows 'Tăcut' one millisecond past the window", () => {
@@ -270,8 +333,7 @@ describe("formatActivityStatus — activity gate label for /admin status", () =>
 
   it("shows 'Tăcut' when guild has been silent for 25 minutes", () => {
     const now = Date.now();
-    const status = formatActivityStatus(now - 25 * 60_000, now);
-    expect(status).toContain("😴");
+    expect(formatActivityStatus(now - 25 * 60_000, now)).toContain("😴");
   });
 });
 
@@ -289,10 +351,80 @@ describe("formatMilestoneStr — chest milestone progress", () => {
   it("shows 24/25 just before milestone triggers", () => {
     expect(formatMilestoneStr(24)).toBe("24/25");
   });
+});
 
-  it("shows 0/25 after counter resets at milestone (post-reset value)", () => {
-    // After milestone fires, the counter is reset to 0 in recordGuildActivity.
-    // The admin command reads activityMsgCount at that moment.
-    expect(formatMilestoneStr(0)).toBe("0/25");
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("handleAdmin status — embed fields from guildStates", () => {
+  const GUILD = "test-guild-status-handler";
+
+  beforeEach(() => {
+    testGuildStates.clear();
+    mockGetGuildActiveBossMap.mockReturnValue(new Map());
+  });
+
+  afterEach(() => {
+    testGuildStates.clear();
+    vi.restoreAllMocks();
+  });
+
+  /** Extract a named field from the editReply embed. */
+  function getEmbedField(interaction: ReturnType<typeof makeStatusInteraction>, fieldName: string) {
+    const call = interaction.editReply.mock.calls[0]?.[0] as { embeds?: Array<{ fields?: Array<{ name: string; value: string }> }> } | undefined;
+    return call?.embeds?.[0]?.fields?.find((f) => f.name === fieldName);
+  }
+
+  it("shows 'niciodată' and silent label when guild has no activity state", async () => {
+    const interaction = makeStatusInteraction(GUILD);
+    // no entry in testGuildStates → fallback 0/0
+    await handleAdmin(interaction as never);
+    expect(interaction.editReply).toHaveBeenCalledOnce();
+    expect(getEmbedField(interaction, "💬 Ultimul mesaj")?.value).toBe("niciodată (de la pornire)");
+    expect(getEmbedField(interaction, "📊 Activitate server")?.value).toContain("😴");
+    expect(getEmbedField(interaction, "🎁 Progres milestone")?.value).toBe("0/25");
+  });
+
+  it("shows relative time and active label when guild has recent activity", async () => {
+    const now = Date.now();
+    testGuildStates.set(GUILD, { lastActivityAt: now - 2 * 60_000, activityMsgCount: 12 });
+    const interaction = makeStatusInteraction(GUILD);
+    await handleAdmin(interaction as never);
+    expect(interaction.editReply).toHaveBeenCalledOnce();
+    expect(getEmbedField(interaction, "💬 Ultimul mesaj")?.value).toBe("acum 2min");
+    expect(getEmbedField(interaction, "📊 Activitate server")?.value).toContain("✅");
+    expect(getEmbedField(interaction, "🎁 Progres milestone")?.value).toBe("12/25");
+  });
+
+  it("shows silent label when last message is older than the activity window", async () => {
+    const now = Date.now();
+    testGuildStates.set(GUILD, { lastActivityAt: now - 25 * 60_000, activityMsgCount: 5 });
+    const interaction = makeStatusInteraction(GUILD);
+    await handleAdmin(interaction as never);
+    expect(getEmbedField(interaction, "📊 Activitate server")?.value).toContain("😴");
+    expect(getEmbedField(interaction, "🎁 Progres milestone")?.value).toBe("5/25");
+  });
+
+  it("shows active boss info in the Boss field when getGuildActiveBossMap is non-empty", async () => {
+    const bossState = {
+      eventId: 42,
+      currentHp: 8000,
+      maxHp: 10000,
+      damageBy: new Map([["player-1", 500]]),
+    };
+    mockGetGuildActiveBossMap.mockReturnValue(new Map([[42, bossState]]));
+    const interaction = makeStatusInteraction(GUILD);
+    await handleAdmin(interaction as never);
+    const bossField = getEmbedField(interaction, "🐉 Boss");
+    expect(bossField?.value).toContain("Boss Event #42");
+    expect(bossField?.value).toContain("8,000");
+    expect(bossField?.value).toContain("10,000");
+    expect(bossField?.value).toContain("Luptători: 1");
+  });
+
+  it("shows 'Niciun boss activ' when no boss is running", async () => {
+    mockGetGuildActiveBossMap.mockReturnValue(new Map());
+    const interaction = makeStatusInteraction(GUILD);
+    await handleAdmin(interaction as never);
+    expect(getEmbedField(interaction, "🐉 Boss")?.value).toContain("Niciun boss activ");
   });
 });
