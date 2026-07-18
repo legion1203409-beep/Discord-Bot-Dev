@@ -16,6 +16,7 @@ _Replace the heading above with the project's name, and this line with one sente
 - Optional ops env: `ORACLE_JUSTICE_SCAN_LIMIT` — max number of channel messages inspected per justice scan. Default 100, max 500. Invalid values fall back to default with a warning. **Requires a bot restart to take effect** (read once at startup).
 - Optional ops env: `ACTIVITY_WINDOW_MINUTES` — minutes of chat silence after which chest and key-chest timers skip their spawn. Default 20, max 120. Invalid values fall back to default with a warning. **Requires a bot restart to take effect** (read once at startup).
 - Optional ops env: `CHEST_MSG_MILESTONE` — number of non-bot messages per guild between bonus chest rolls (30% chance each). Default 25, max 200. Invalid values fall back to default with a warning. **Requires a bot restart to take effect** (read once at startup).
+- Optional ops env: `KEY_CHEST_MSG_MILESTONE` — number of non-bot messages per guild between bonus key-chest rolls (15% chance each; independent of chest milestone). Default 50, max 400. Invalid values fall back to default with a warning. **Requires a bot restart to take effect** (read once at startup).
 
 ## Stack
 

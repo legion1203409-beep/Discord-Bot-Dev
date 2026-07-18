@@ -67,7 +67,7 @@ vi.mock("../status-effects", () => ({
   getRewardMultipliers: vi.fn().mockReturnValue({ xpMult: 1, goldMult: 1 }),
 }));
 
-import { isGuildActive, recordGuildActivity, rollActivityRarityKey, guildStates, CHEST_MSG_MILESTONE, ACTIVITY_WINDOW_MINUTES } from "../scheduler";
+import { isGuildActive, recordGuildActivity, rollActivityRarityKey, rollActivityKeyType, guildStates, CHEST_MSG_MILESTONE, KEY_CHEST_MSG_MILESTONE, ACTIVITY_WINDOW_MINUTES } from "../scheduler";
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -215,6 +215,107 @@ describe("rollActivityRarityKey — biased rarity for activity bonus chests", ()
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+describe("rollActivityKeyType — biased key type for activity bonus key chests", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("returns 'rar' when Math.random() is below 0.60", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.00);
+    expect(rollActivityKeyType()).toBe("rar");
+  });
+
+  it("returns 'rar' at the upper edge of the 60% band (0.5999)", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.5999);
+    expect(rollActivityKeyType()).toBe("rar");
+  });
+
+  it("returns 'epic' at or above the 0.60 threshold", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.60);
+    expect(rollActivityKeyType()).toBe("epic");
+  });
+
+  it("only ever returns 'rar' or 'epic', never other key types", () => {
+    const SAMPLES = 200;
+    let idx = 0;
+    vi.spyOn(Math, "random").mockImplementation(() => idx++ / SAMPLES);
+    const results = Array.from({ length: SAMPLES }, rollActivityKeyType);
+    expect(results.every(r => r === "rar" || r === "epic")).toBe(true);
+  });
+
+  it("produces roughly 60% rar and 40% epic over many rolls", () => {
+    const SAMPLES = 10_000;
+    let idx = 0;
+    vi.spyOn(Math, "random").mockImplementation(() => (idx++ % SAMPLES) / SAMPLES);
+    let rar = 0, epic = 0;
+    for (let i = 0; i < SAMPLES; i++) {
+      if (rollActivityKeyType() === "rar") rar++; else epic++;
+    }
+    expect(rar / SAMPLES).toBeCloseTo(0.60, 1);
+    expect(epic / SAMPLES).toBeCloseTo(0.40, 1);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("recordGuildActivity — key-chest milestone (keyMsgCount)", () => {
+  const GUILD = "test-guild-key-milestone";
+  const mockClient = {} as never;
+
+  beforeEach(() => {
+    guildStates.delete(GUILD);
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("initialises keyMsgCount to 0 on first call", () => {
+    recordGuildActivity(mockClient, GUILD);
+    expect(guildStates.get(GUILD)!.keyMsgCount).toBe(1);
+  });
+
+  it("increments keyMsgCount independently of activityMsgCount", () => {
+    for (let i = 0; i < 3; i++) recordGuildActivity(mockClient, GUILD);
+    const gs = guildStates.get(GUILD)!;
+    expect(gs.keyMsgCount).toBe(3);
+    expect(gs.activityMsgCount).toBe(3);
+  });
+
+  it("resets keyMsgCount to 0 after reaching KEY_CHEST_MSG_MILESTONE", () => {
+    recordGuildActivity(mockClient, GUILD);
+    const gs = guildStates.get(GUILD)!;
+    gs.keyMsgCount = KEY_CHEST_MSG_MILESTONE - 1;
+    recordGuildActivity(mockClient, GUILD);
+    expect(gs.keyMsgCount).toBe(0);
+  });
+
+  it("does NOT reset keyMsgCount when chest milestone fires but key milestone is not reached", () => {
+    recordGuildActivity(mockClient, GUILD);
+    const gs = guildStates.get(GUILD)!;
+    // Put chest at milestone-1, key well below its milestone
+    gs.activityMsgCount = CHEST_MSG_MILESTONE - 1;
+    gs.keyMsgCount = 5;
+    recordGuildActivity(mockClient, GUILD);
+    // Chest resets, key counter just increments
+    expect(gs.activityMsgCount).toBe(0);
+    expect(gs.keyMsgCount).toBe(6);
+  });
+
+  it("does NOT trigger key chest when stopped", () => {
+    recordGuildActivity(mockClient, GUILD);
+    const gs = guildStates.get(GUILD)!;
+    gs.stopped = true;
+    const before = gs.keyMsgCount;
+    recordGuildActivity(mockClient, GUILD);
+    expect(gs.keyMsgCount).toBe(before);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 describe("env var defaults", () => {
   it("ACTIVITY_WINDOW_MINUTES defaults to 20 or is a valid positive integer", () => {
     expect(ACTIVITY_WINDOW_MINUTES).toBeGreaterThan(0);
@@ -224,5 +325,10 @@ describe("env var defaults", () => {
   it("CHEST_MSG_MILESTONE defaults to 25 or is a valid positive integer", () => {
     expect(CHEST_MSG_MILESTONE).toBeGreaterThan(0);
     expect(CHEST_MSG_MILESTONE).toBeLessThanOrEqual(200);
+  });
+
+  it("KEY_CHEST_MSG_MILESTONE defaults to 50 or is a valid positive integer", () => {
+    expect(KEY_CHEST_MSG_MILESTONE).toBeGreaterThan(0);
+    expect(KEY_CHEST_MSG_MILESTONE).toBeLessThanOrEqual(400);
   });
 });

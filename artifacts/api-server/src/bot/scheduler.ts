@@ -46,6 +46,11 @@ const ACTIVITY_WINDOW_MS = ACTIVITY_WINDOW_MINUTES * 60_000;
  *  Env: CHEST_MSG_MILESTONE (default 25, max 200). Requires bot restart. */
 export const CHEST_MSG_MILESTONE = readEnvInt("CHEST_MSG_MILESTONE", 25, 200);
 
+/** Non-bot messages in the main channel per guild between key-chest bonus rolls
+ *  (15% chance each). Independent counter from the chest milestone.
+ *  Env: KEY_CHEST_MSG_MILESTONE (default 50, max 400). Requires bot restart. */
+export const KEY_CHEST_MSG_MILESTONE = readEnvInt("KEY_CHEST_MSG_MILESTONE", 50, 400);
+
 // ─── Per-guild scheduler state ─────────────────────────────────────────────────
 
 interface GuildSchedulerState {
@@ -63,6 +68,8 @@ interface GuildSchedulerState {
   lastActivityAt: number;
   /** Rolling count of non-bot messages since the last milestone chest roll. */
   activityMsgCount: number;
+  /** Rolling count of non-bot messages since the last milestone key-chest roll. */
+  keyMsgCount: number;
 }
 
 export const guildStates = new Map<string, GuildSchedulerState>();
@@ -83,6 +90,7 @@ function getOrCreateGuildState(guildId: string): GuildSchedulerState {
       stopped: false,
       lastActivityAt: 0,
       activityMsgCount: 0,
+      keyMsgCount: 0,
     };
     guildStates.set(guildId, state);
   }
@@ -113,24 +121,44 @@ export function rollActivityRarityKey(): string {
 }
 
 /**
+ * Key type for activity-triggered bonus key chests: "rar" or "epic".
+ * Rar = 60%, Epic = 40% — intentionally skews toward the cheaper key.
+ * Exported for unit testing; call sites are within this module only.
+ */
+export function rollActivityKeyType(): "rar" | "epic" {
+  return Math.random() < 0.60 ? "rar" : "epic";
+}
+
+/**
  * Called by the MessageCreate handler for non-bot messages in the guild's
- * configured main channel only. Two effects:
+ * configured main channel only. Three effects:
  *  1. Updates the guild's last-activity timestamp — used as the gate in
  *     `fireChest` / `fireKeyChest` to suppress spawns on silent servers.
- *  2. Increments a rolling message counter; at each `CHEST_MSG_MILESTONE`
- *     a 30% roll fires a bonus chest with a Bronze/Silver-biased rarity.
- *     `fireChestForced` is used so the gate is not applied again (we know
- *     the server is active — a message just arrived).
+ *  2. Increments `activityMsgCount`; at each `CHEST_MSG_MILESTONE` a 30%
+ *     roll fires a bonus chest with a Bronze/Silver-biased rarity via
+ *     `fireChestForced` (gate bypassed — server is active by definition).
+ *  3. Increments `keyMsgCount` (independent counter); at each
+ *     `KEY_CHEST_MSG_MILESTONE` a 15% roll fires a bonus key chest
+ *     (Rar 60% / Epic 40%) via `fireKeyChest(..., bypassGate=true)`.
  */
 export function recordGuildActivity(client: Client, guildId: string): void {
   const gs = getOrCreateGuildState(guildId);
   if (gs.stopped) return;
   gs.lastActivityAt = Date.now();
+
   gs.activityMsgCount += 1;
   if (gs.activityMsgCount >= CHEST_MSG_MILESTONE) {
     gs.activityMsgCount = 0;
     if (Math.random() < 0.30) {
       void fireChestForced(client, guildId, rollActivityRarityKey());
+    }
+  }
+
+  gs.keyMsgCount += 1;
+  if (gs.keyMsgCount >= KEY_CHEST_MSG_MILESTONE) {
+    gs.keyMsgCount = 0;
+    if (Math.random() < 0.15) {
+      void fireKeyChest(client, guildId, rollActivityKeyType(), true);
     }
   }
 }
