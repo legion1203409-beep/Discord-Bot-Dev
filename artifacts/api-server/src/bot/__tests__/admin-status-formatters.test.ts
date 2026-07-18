@@ -264,39 +264,27 @@ function makeStatusInteraction(guildId = "test-guild-status") {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("formatLastMsgStr — time since last message", () => {
+describe("formatLastMsgStr — Discord relative timestamp", () => {
   const NOW = 1_700_000_000_000;
 
   it("returns 'niciodată (de la pornire)' when lastActivityAt is 0", () => {
     expect(formatLastMsgStr(0, NOW)).toBe("niciodată (de la pornire)");
   });
 
-  it("returns seconds format for activity under 60s ago", () => {
-    expect(formatLastMsgStr(NOW - 30_000, NOW)).toBe("acum 30s");
+  it("returns Discord <t:UNIX:R> format for any non-zero lastActivityAt", () => {
+    // The second argument (_now) is ignored — Discord renders the age live.
+    const ts = 1_699_999_970_000;
+    expect(formatLastMsgStr(ts, NOW)).toBe(`<t:${Math.floor(ts / 1000)}:R>`);
   });
 
-  it("returns seconds format at exactly 59s", () => {
-    expect(formatLastMsgStr(NOW - 59_000, NOW)).toBe("acum 59s");
+  it("uses Math.floor for the unix second conversion (no fractional seconds)", () => {
+    const ts = 1_700_000_001_999; // 1_700_000_001.999s → floor → 1_700_000_001
+    expect(formatLastMsgStr(ts, NOW)).toBe("<t:1700000001:R>");
   });
 
-  it("returns minutes format for activity between 1 and 59 minutes ago", () => {
-    expect(formatLastMsgStr(NOW - 5 * 60_000, NOW)).toBe("acum 5min");
-  });
-
-  it("returns minutes format at 59 minutes 59 seconds (last second before hours)", () => {
-    expect(formatLastMsgStr(NOW - 3599_000, NOW)).toBe("acum 59min");
-  });
-
-  it("switches to h+min format at exactly 3600 seconds (60 min boundary)", () => {
-    expect(formatLastMsgStr(NOW - 3600_000, NOW)).toBe("acum 1h 0min");
-  });
-
-  it("returns h+min format for activity over 60 minutes ago", () => {
-    expect(formatLastMsgStr(NOW - (2 * 3600 + 15 * 60) * 1000, NOW)).toBe("acum 2h 15min");
-  });
-
-  it("returns h+min with 0min when exactly on the hour boundary", () => {
-    expect(formatLastMsgStr(NOW - 3 * 3600_000, NOW)).toBe("acum 3h 0min");
+  it("_now parameter does not affect output for non-zero lastActivityAt", () => {
+    const ts = 1_699_000_000_000;
+    expect(formatLastMsgStr(ts, 0)).toBe(formatLastMsgStr(ts, NOW));
   });
 });
 
@@ -390,7 +378,10 @@ describe("handleAdmin status — embed fields from guildStates", () => {
     const interaction = makeStatusInteraction(GUILD);
     await handleAdmin(interaction as never);
     expect(interaction.editReply).toHaveBeenCalledOnce();
-    expect(getEmbedField(interaction, "💬 Ultimul mesaj")?.value).toBe("acum 2min");
+    const lastActivityAt = testGuildStates.get(GUILD)!.lastActivityAt;
+    expect(getEmbedField(interaction, "💬 Ultimul mesaj")?.value).toBe(
+      `<t:${Math.floor(lastActivityAt / 1000)}:R>`,
+    );
     expect(getEmbedField(interaction, "📊 Activitate server")?.value).toContain("✅");
     expect(getEmbedField(interaction, "🎁 Progres milestone")?.value).toBe("12/25");
   });
