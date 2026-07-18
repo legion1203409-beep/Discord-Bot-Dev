@@ -2631,7 +2631,13 @@ export async function startBot(onReady?: () => void): Promise<void> {
     } catch (err) {
       logger.error({ err }, "Oracle messageCreate handler failed");
     }
-    recordGuildActivity(client, message.guildId);
+    // Only messages in the configured main channel count toward the activity
+    // gate and milestone trigger — prevents unrelated channels from keeping
+    // chest spawns alive or triggering bonus chests.
+    const mainChannelId = getChannel("main", message.guildId);
+    if (mainChannelId && message.channelId === mainChannelId) {
+      recordGuildActivity(client, message.guildId);
+    }
     void handleToxicity(client, message).then((handled) => {
       if (!handled) void maybeReplyAsOracle(client, message);
     });

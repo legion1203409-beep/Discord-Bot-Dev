@@ -67,7 +67,7 @@ vi.mock("../status-effects", () => ({
   getRewardMultipliers: vi.fn().mockReturnValue({ xpMult: 1, goldMult: 1 }),
 }));
 
-import { isGuildActive, recordGuildActivity, guildStates, CHEST_MSG_MILESTONE, ACTIVITY_WINDOW_MINUTES } from "../scheduler";
+import { isGuildActive, recordGuildActivity, rollActivityRarityKey, guildStates, CHEST_MSG_MILESTONE, ACTIVITY_WINDOW_MINUTES } from "../scheduler";
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -139,7 +139,7 @@ describe("recordGuildActivity — per-guild counter and gate", () => {
     expect(gs.activityMsgCount).toBe(0);
   });
 
-  it("does NOT call fireChest when milestone not yet reached", () => {
+  it("does NOT trigger a bonus chest when milestone not yet reached", () => {
     const gs = guildStates.get(GUILD) ?? (() => {
       recordGuildActivity(mockClient, GUILD);
       return guildStates.get(GUILD)!;
@@ -163,6 +163,53 @@ describe("recordGuildActivity — per-guild counter and gate", () => {
     recordGuildActivity(mockClient, GUILD);
     // Should return early — state unchanged
     expect(gs.lastActivityAt).toBe(before);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("rollActivityRarityKey — biased rarity for activity bonus chests", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("returns 'bronz' when Math.random() is below 0.70 threshold", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.00);
+    expect(rollActivityRarityKey()).toBe("bronz");
+  });
+
+  it("returns 'bronz' at the upper edge of the 70% band (r=69.99)", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.6999);
+    expect(rollActivityRarityKey()).toBe("bronz");
+  });
+
+  it("returns 'argint' in the 70%–95% band", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.80);
+    expect(rollActivityRarityKey()).toBe("argint");
+  });
+
+  it("returns 'aur' above the 95% threshold", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.99);
+    expect(rollActivityRarityKey()).toBe("aur");
+  });
+
+  it("never returns 'mitic' or 'regal' regardless of Math.random()", () => {
+    const SAMPLES = 200;
+    let idx = 0;
+    vi.spyOn(Math, "random").mockImplementation(() => idx++ / SAMPLES);
+    const results = Array.from({ length: SAMPLES }, rollActivityRarityKey);
+    expect(results.every(r => r !== "mitic" && r !== "regal")).toBe(true);
+  });
+
+  it("produces roughly 70% bronz, 25% argint, 5% aur over many rolls", () => {
+    const SAMPLES = 10_000;
+    let idx = 0;
+    vi.spyOn(Math, "random").mockImplementation(() => (idx++ % SAMPLES) / SAMPLES);
+    const counts: Record<string, number> = { bronz: 0, argint: 0, aur: 0 };
+    for (let i = 0; i < SAMPLES; i++) counts[rollActivityRarityKey()]!++;
+    expect(counts["bronz"]! / SAMPLES).toBeCloseTo(0.70, 1);
+    expect(counts["argint"]! / SAMPLES).toBeCloseTo(0.25, 1);
+    expect(counts["aur"]! / SAMPLES).toBeCloseTo(0.05, 1);
   });
 });
 

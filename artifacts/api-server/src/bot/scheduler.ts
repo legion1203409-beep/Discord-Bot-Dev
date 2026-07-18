@@ -100,11 +100,27 @@ export function isGuildActive(lastActivityAt: number, windowMs: number, now = Da
 }
 
 /**
- * Called by the MessageCreate handler (non-bot messages only) to:
- *  1. Update the guild's last-activity timestamp (used as the activity gate in
- *     `fireChest` / `fireKeyChest`).
- *  2. Increment the rolling message counter and, at each `CHEST_MSG_MILESTONE`,
- *     fire a bonus chest with 30% probability.
+ * Biased rarity roll for activity-triggered bonus chests.
+ * Intentionally weaker than the normal timer roll: no Mitic, scarce Gold.
+ * Weights: Bronz 70%, Argint 25%, Aur 5%.
+ * Exported for unit testing; call sites are within this module only.
+ */
+export function rollActivityRarityKey(): string {
+  const r = Math.random() * 100;
+  if (r < 70) return "bronz";
+  if (r < 95) return "argint";
+  return "aur";
+}
+
+/**
+ * Called by the MessageCreate handler for non-bot messages in the guild's
+ * configured main channel only. Two effects:
+ *  1. Updates the guild's last-activity timestamp — used as the gate in
+ *     `fireChest` / `fireKeyChest` to suppress spawns on silent servers.
+ *  2. Increments a rolling message counter; at each `CHEST_MSG_MILESTONE`
+ *     a 30% roll fires a bonus chest with a Bronze/Silver-biased rarity.
+ *     `fireChestForced` is used so the gate is not applied again (we know
+ *     the server is active — a message just arrived).
  */
 export function recordGuildActivity(client: Client, guildId: string): void {
   const gs = getOrCreateGuildState(guildId);
@@ -114,9 +130,7 @@ export function recordGuildActivity(client: Client, guildId: string): void {
   if (gs.activityMsgCount >= CHEST_MSG_MILESTONE) {
     gs.activityMsgCount = 0;
     if (Math.random() < 0.30) {
-      // lastActivityAt was just set above, so the activity gate inside
-      // fireChest will always pass for this bonus spawn.
-      void fireChest(client, guildId);
+      void fireChestForced(client, guildId, rollActivityRarityKey());
     }
   }
 }
