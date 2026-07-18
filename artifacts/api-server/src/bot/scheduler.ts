@@ -20,6 +20,32 @@ const CHEST_EXPIRE_MS = 10 * 60 * 1000;
 const ORACLE_INTERVAL_MS = 25 * 60 * 1000;
 const BATTLE_EVENT_INTERVAL_MS = 7 * 60 * 1000;
 
+// ─── Activity-gated chest spawn tuning ────────────────────────────────────────
+
+function readEnvInt(name: string, fallback: number, max: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed <= 0) {
+    logger.warn({ name, value: raw, fallback }, "Invalid chest-activity tuning value — using default");
+    return fallback;
+  }
+  if (parsed > max) {
+    logger.warn({ name, value: raw, max }, "Chest-activity tuning value above max — clamping");
+    return max;
+  }
+  return parsed;
+}
+
+/** Minutes of chat silence before chest/key-chest timers skip their spawn.
+ *  Env: ACTIVITY_WINDOW_MINUTES (default 20, max 120). Requires bot restart. */
+export const ACTIVITY_WINDOW_MINUTES = readEnvInt("ACTIVITY_WINDOW_MINUTES", 20, 120);
+const ACTIVITY_WINDOW_MS = ACTIVITY_WINDOW_MINUTES * 60_000;
+
+/** Non-bot messages per guild between bonus chest rolls.
+ *  Env: CHEST_MSG_MILESTONE (default 25, max 200). Requires bot restart. */
+export const CHEST_MSG_MILESTONE = readEnvInt("CHEST_MSG_MILESTONE", 25, 200);
+
 // ─── Per-guild scheduler state ─────────────────────────────────────────────────
 
 interface GuildSchedulerState {
@@ -33,6 +59,10 @@ interface GuildSchedulerState {
   standaloneBossId: number | null;
   started: boolean;
   stopped: boolean;
+  /** Timestamp (ms) of the last non-bot message in this guild. 0 = never seen. */
+  lastActivityAt: number;
+  /** Rolling count of non-bot messages since the last milestone chest roll. */
+  activityMsgCount: number;
 }
 
 export const guildStates = new Map<string, GuildSchedulerState>();
@@ -51,10 +81,44 @@ function getOrCreateGuildState(guildId: string): GuildSchedulerState {
       standaloneBossId: null,
       started: false,
       stopped: false,
+      lastActivityAt: 0,
+      activityMsgCount: 0,
     };
     guildStates.set(guildId, state);
   }
   return state;
+}
+
+// ─── Activity tracking (per-guild) ────────────────────────────────────────────
+
+/**
+ * Pure helper — true when `lastActivityAt` is within the given window.
+ * Exported for unit tests; call site is `recordGuildActivity`.
+ */
+export function isGuildActive(lastActivityAt: number, windowMs: number, now = Date.now()): boolean {
+  return lastActivityAt > 0 && now - lastActivityAt <= windowMs;
+}
+
+/**
+ * Called by the MessageCreate handler (non-bot messages only) to:
+ *  1. Update the guild's last-activity timestamp (used as the activity gate in
+ *     `fireChest` / `fireKeyChest`).
+ *  2. Increment the rolling message counter and, at each `CHEST_MSG_MILESTONE`,
+ *     fire a bonus chest with 30% probability.
+ */
+export function recordGuildActivity(client: Client, guildId: string): void {
+  const gs = getOrCreateGuildState(guildId);
+  if (gs.stopped) return;
+  gs.lastActivityAt = Date.now();
+  gs.activityMsgCount += 1;
+  if (gs.activityMsgCount >= CHEST_MSG_MILESTONE) {
+    gs.activityMsgCount = 0;
+    if (Math.random() < 0.30) {
+      // lastActivityAt was just set above, so the activity gate inside
+      // fireChest will always pass for this bonus spawn.
+      void fireChest(client, guildId);
+    }
+  }
 }
 
 /** Stop the scheduler for a guild (e.g. bot left the server). Future timer
@@ -420,10 +484,14 @@ export async function fireChestForced(client: Client, guildId: string, rarityKey
 
 // ─── Chest — scheduled ────────────────────────────────────────────────────────
 
-export async function fireChest(client: Client, guildId: string) {
+export async function fireChest(client: Client, guildId: string, bypassGate = false) {
   const gs = getOrCreateGuildState(guildId);
   if (gs.firingChest) {
     logger.warn({ guildId }, "fireChest already in progress, skipping duplicate trigger");
+    return null;
+  }
+  if (!bypassGate && !isGuildActive(gs.lastActivityAt, ACTIVITY_WINDOW_MS)) {
+    logger.debug({ guildId, lastActivityAt: gs.lastActivityAt, windowMinutes: ACTIVITY_WINDOW_MINUTES }, "Chest spawn skipped — no recent chat activity");
     return null;
   }
   gs.firingChest = true;
@@ -1033,10 +1101,14 @@ export async function fireLockedChest(client: Client, guildId: string, rarityKey
 
 // ─── Key chest ────────────────────────────────────────────────────────────────
 
-export async function fireKeyChest(client: Client, guildId: string, keyType?: string): Promise<{ chestId: string } | null> {
+export async function fireKeyChest(client: Client, guildId: string, keyType?: string, bypassGate = false): Promise<{ chestId: string } | null> {
   const gs = getOrCreateGuildState(guildId);
   if (gs.firingKeyChest) {
     logger.warn({ guildId }, "fireKeyChest already in progress, skipping duplicate trigger");
+    return null;
+  }
+  if (!bypassGate && !isGuildActive(gs.lastActivityAt, ACTIVITY_WINDOW_MS)) {
+    logger.debug({ guildId, lastActivityAt: gs.lastActivityAt, windowMinutes: ACTIVITY_WINDOW_MINUTES }, "Key-chest spawn skipped — no recent chat activity");
     return null;
   }
   gs.firingKeyChest = true;

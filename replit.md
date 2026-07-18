@@ -14,6 +14,8 @@ _Replace the heading above with the project's name, and this line with one sente
 - Optional ops env: `DISCONNECT_ALERT_THRESHOLD_MS` — grace period before a transient disconnect (or stalled reconnect loop) escalates to an offline alert. Defaults to 5 minutes; debounces routine self-healing shard blips so the ops channel isn't spammed.
 - Optional ops env: `ORACLE_JUSTICE_WINDOW_MINUTES` — how far back (in minutes) the justice scan looks for toxic messages. Default 30, max 1440. Invalid values fall back to default with a warning. **Requires a bot restart to take effect** (read once at startup).
 - Optional ops env: `ORACLE_JUSTICE_SCAN_LIMIT` — max number of channel messages inspected per justice scan. Default 100, max 500. Invalid values fall back to default with a warning. **Requires a bot restart to take effect** (read once at startup).
+- Optional ops env: `ACTIVITY_WINDOW_MINUTES` — minutes of chat silence after which chest and key-chest timers skip their spawn. Default 20, max 120. Invalid values fall back to default with a warning. **Requires a bot restart to take effect** (read once at startup).
+- Optional ops env: `CHEST_MSG_MILESTONE` — number of non-bot messages per guild between bonus chest rolls (30% chance each). Default 25, max 200. Invalid values fall back to default with a warning. **Requires a bot restart to take effect** (read once at startup).
 
 ## Stack
 

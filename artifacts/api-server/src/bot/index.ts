@@ -22,7 +22,7 @@ import {
 import { randomUUID } from "node:crypto";
 import { logger } from "../lib/logger";
 import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./alert";
-import { startGuildScheduler, stopGuildScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, getGuildClaimedChests, getGuildActiveBossMap, checkBossEligibility, checkBossHitCooldown, BOSS_HIT_COOLDOWN_MS, checkBossAbilityCooldown, persistBossState, type BossState, type BossPlayerStats } from "./scheduler";
+import { startGuildScheduler, stopGuildScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, recordGuildActivity, getGuildClaimedChests, getGuildActiveBossMap, checkBossEligibility, checkBossHitCooldown, BOSS_HIT_COOLDOWN_MS, checkBossAbilityCooldown, persistBossState, type BossState, type BossPlayerStats } from "./scheduler";
 import { getChannel, getAllChannels, setChannel, resetChannel, resetAllChannels, initChannelConfig, hasAnyChannelConfigured, EVENT_LABELS, type EventType } from "./channel-config";
 import { recordMessage } from "./oracle";
 import { maybeReplyAsOracle, logOracleChatStatus } from "./oracle-chat";
@@ -718,7 +718,7 @@ async function handleSpawnChest(interaction: ChatInputCommandInteraction) {
   if (tipOpt === "cheie") {
     const keyOpt = interaction.options.getString("cheie") ?? "random";
     await interaction.reply({ content: "🗝️ *Cenușa zornăie…* Un cufăr de chei apare în Regat!", ephemeral: true });
-    if (botClient) await fireKeyChest(botClient, guildId, keyOpt);
+    if (botClient) await fireKeyChest(botClient, guildId, keyOpt, true);
     return;
   }
 
@@ -736,7 +736,7 @@ async function handleSpawnChest(interaction: ChatInputCommandInteraction) {
           const { rarity } = rollChest();
           await fireChestForced(botClient, guildId, rarity.key, mult);
         } else {
-          await fireChest(botClient, guildId);
+          await fireChest(botClient, guildId, true);
         }
       } else {
         await fireChestForced(botClient, guildId, rarityOpt, mult);
@@ -2631,6 +2631,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
     } catch (err) {
       logger.error({ err }, "Oracle messageCreate handler failed");
     }
+    recordGuildActivity(client, message.guildId);
     void handleToxicity(client, message).then((handled) => {
       if (!handled) void maybeReplyAsOracle(client, message);
     });

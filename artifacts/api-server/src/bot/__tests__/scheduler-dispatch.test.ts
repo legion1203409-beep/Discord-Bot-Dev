@@ -456,7 +456,9 @@ describe("fireChest", () => {
   });
 
   async function runFireChest(client: import("discord.js").Client) {
-    const p = fireChest(client, TEST_GUILD_ID);
+    // bypassGate=true: these tests cover the chest-spawn logic, not the
+    // activity gate (tested separately in scheduler-activity-gate.test.ts).
+    const p = fireChest(client, TEST_GUILD_ID, true);
     await vi.advanceTimersByTimeAsync(30_000);
     return p;
   }
