@@ -761,12 +761,9 @@ async function handleSpawnBoss(interaction: ChatInputCommandInteraction) {
 // ─── /admin status — pure formatting helpers (exported for unit tests) ────────
 
 /** Human-readable time since `lastActivityAt`. Exported for unit tests. */
-export function formatLastMsgStr(lastActivityAt: number, now: number): string {
+export function formatLastMsgStr(lastActivityAt: number, _now: number): string {
   if (lastActivityAt === 0) return "niciodată (de la pornire)";
-  const diffSec = Math.floor((now - lastActivityAt) / 1000);
-  if (diffSec < 60) return `acum ${diffSec}s`;
-  if (diffSec < 3600) return `acum ${Math.floor(diffSec / 60)}min`;
-  return `acum ${Math.floor(diffSec / 3600)}h ${Math.floor((diffSec % 3600) / 60)}min`;
+  return `<t:${Math.floor(lastActivityAt / 1000)}:R>`;
 }
 
 /** Activity gate label shown in /admin status. Exported for unit tests. */
