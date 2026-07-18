@@ -419,3 +419,81 @@ describe("handleAdmin status — embed fields from guildStates", () => {
     expect(getEmbedField(interaction, "🐉 Boss")?.value).toContain("Niciun boss activ");
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("handleAdmin status — multi-guild isolation", () => {
+  const GUILD_A = "guild-a-active";
+  const GUILD_B = "guild-b-silent";
+
+  beforeEach(() => {
+    testGuildStates.clear();
+    mockGetGuildActiveBossMap.mockReturnValue(new Map());
+  });
+
+  afterEach(() => {
+    testGuildStates.clear();
+    vi.restoreAllMocks();
+  });
+
+  function getEmbedField(interaction: ReturnType<typeof makeStatusInteraction>, fieldName: string) {
+    const call = interaction.editReply.mock.calls[0]?.[0] as { embeds?: Array<{ fields?: Array<{ name: string; value: string }> }> } | undefined;
+    return call?.embeds?.[0]?.fields?.find((f) => f.name === fieldName);
+  }
+
+  it("selects the state entry matching interaction.guildId when two guilds have different states", async () => {
+    const now = Date.now();
+    // Guild A: recent activity, 12 messages
+    testGuildStates.set(GUILD_A, { lastActivityAt: now - 2 * 60_000, activityMsgCount: 12 });
+    // Guild B: silent for 40 minutes, 3 messages
+    testGuildStates.set(GUILD_B, { lastActivityAt: now - 40 * 60_000, activityMsgCount: 3 });
+
+    const interactionA = makeStatusInteraction(GUILD_A);
+    await handleAdmin(interactionA as never);
+    expect(getEmbedField(interactionA, "📊 Activitate server")?.value).toContain("✅");
+    expect(getEmbedField(interactionA, "🎁 Progres milestone")?.value).toBe("12/25");
+    expect(getEmbedField(interactionA, "💬 Ultimul mesaj")?.value).toBe(
+      `<t:${Math.floor(testGuildStates.get(GUILD_A)!.lastActivityAt / 1000)}:R>`,
+    );
+
+    const interactionB = makeStatusInteraction(GUILD_B);
+    await handleAdmin(interactionB as never);
+    expect(getEmbedField(interactionB, "📊 Activitate server")?.value).toContain("😴");
+    expect(getEmbedField(interactionB, "🎁 Progres milestone")?.value).toBe("3/25");
+    expect(getEmbedField(interactionB, "💬 Ultimul mesaj")?.value).toBe(
+      `<t:${Math.floor(testGuildStates.get(GUILD_B)!.lastActivityAt / 1000)}:R>`,
+    );
+  });
+
+  it("calls getGuildActiveBossMap with the interaction's guildId", async () => {
+    const interaction = makeStatusInteraction(GUILD_A);
+    await handleAdmin(interaction as never);
+    expect(mockGetGuildActiveBossMap).toHaveBeenCalledWith(GUILD_A);
+  });
+
+  it("does not show guild B's active boss in guild A's status", async () => {
+    const bossB = {
+      eventId: 77,
+      currentHp: 5000,
+      maxHp: 10000,
+      damageBy: new Map([["player-9", 300]]),
+    };
+    // Per-guild boss maps: only guild B has an active boss.
+    mockGetGuildActiveBossMap.mockImplementation((guildId: string) =>
+      guildId === GUILD_B ? new Map([[77, bossB]]) : new Map(),
+    );
+
+    const interactionA = makeStatusInteraction(GUILD_A);
+    await handleAdmin(interactionA as never);
+    expect(mockGetGuildActiveBossMap).toHaveBeenCalledWith(GUILD_A);
+    const bossFieldA = getEmbedField(interactionA, "🐉 Boss");
+    expect(bossFieldA?.value).toContain("Niciun boss activ");
+    expect(bossFieldA?.value).not.toContain("#77");
+
+    const interactionB = makeStatusInteraction(GUILD_B);
+    await handleAdmin(interactionB as never);
+    const bossFieldB = getEmbedField(interactionB, "🐉 Boss");
+    expect(bossFieldB?.value).toContain("Boss Event #77");
+    expect(bossFieldB?.value).toContain("Luptători: 1");
+  });
+});
