@@ -22,7 +22,7 @@ import {
 import { randomUUID } from "node:crypto";
 import { logger } from "../lib/logger";
 import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./alert";
-import { startGuildScheduler, stopGuildScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, recordGuildActivity, getGuildClaimedChests, getGuildActiveBossMap, checkBossEligibility, checkBossHitCooldown, BOSS_HIT_COOLDOWN_MS, checkBossAbilityCooldown, persistBossState, type BossState, type BossPlayerStats } from "./scheduler";
+import { startGuildScheduler, stopGuildScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, recordGuildActivity, getGuildClaimedChests, getGuildActiveBossMap, checkBossEligibility, checkBossHitCooldown, BOSS_HIT_COOLDOWN_MS, checkBossAbilityCooldown, persistBossState, guildStates, isGuildActive, ACTIVITY_WINDOW_MINUTES, CHEST_MSG_MILESTONE, type BossState, type BossPlayerStats } from "./scheduler";
 import { getChannel, getAllChannels, setChannel, resetChannel, resetAllChannels, initChannelConfig, hasAnyChannelConfigured, EVENT_LABELS, type EventType } from "./channel-config";
 import { recordMessage } from "./oracle";
 import { maybeReplyAsOracle, logOracleChatStatus } from "./oracle-chat";
@@ -952,8 +952,10 @@ export async function handleAdmin(interaction: ChatInputCommandInteraction) {
   }
 
   if (sub === "status") {
+    const now = Date.now();
+
     const uptime = botReadyAt
-      ? Math.floor((Date.now() - botReadyAt.getTime()) / 1000)
+      ? Math.floor((now - botReadyAt.getTime()) / 1000)
       : null;
     const uptimeStr = uptime === null
       ? "necunoscut"
@@ -970,6 +972,32 @@ export async function handleAdmin(interaction: ChatInputCommandInteraction) {
         ).join("\n")
       : "⚠️ Niciun boss activ";
 
+    const gs = guildStates.get(guildId);
+    const lastActivityAt = gs?.lastActivityAt ?? 0;
+    const activityMsgCount = gs?.activityMsgCount ?? 0;
+
+    let lastMsgStr: string;
+    if (lastActivityAt === 0) {
+      lastMsgStr = "niciodată (de la pornire)";
+    } else {
+      const diffMs = now - lastActivityAt;
+      const diffSec = Math.floor(diffMs / 1000);
+      if (diffSec < 60) {
+        lastMsgStr = `acum ${diffSec}s`;
+      } else if (diffSec < 3600) {
+        lastMsgStr = `acum ${Math.floor(diffSec / 60)}min`;
+      } else {
+        lastMsgStr = `acum ${Math.floor(diffSec / 3600)}h ${Math.floor((diffSec % 3600) / 60)}min`;
+      }
+    }
+
+    const active = isGuildActive(lastActivityAt, ACTIVITY_WINDOW_MINUTES * 60_000, now);
+    const activityStatus = active
+      ? `✅ Activ (fereastră: ${ACTIVITY_WINDOW_MINUTES}min)`
+      : `😴 Tăcut (niciun mesaj în ultimele ${ACTIVITY_WINDOW_MINUTES}min)`;
+
+    const milestoneStr = `${activityMsgCount}/${CHEST_MSG_MILESTONE}`;
+
     await interaction.editReply({
       embeds: [{
         color: 0x2ecc71,
@@ -977,6 +1005,9 @@ export async function handleAdmin(interaction: ChatInputCommandInteraction) {
         fields: [
           { name: "🟢 Stare", value: botClient?.isReady() ? "Online" : "Offline", inline: true },
           { name: "⏱️ Uptime", value: uptimeStr, inline: true },
+          { name: "💬 Ultimul mesaj", value: lastMsgStr, inline: true },
+          { name: "📊 Activitate server", value: activityStatus, inline: true },
+          { name: "🎁 Progres milestone", value: milestoneStr, inline: true },
           { name: "🐉 Boss", value: bossInfo },
         ],
         timestamp: new Date().toISOString(),
