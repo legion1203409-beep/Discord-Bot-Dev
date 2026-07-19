@@ -35,9 +35,9 @@ export function monsterImg(index: number, _rarity: string): string | null {
   return assetUrl(`monster_${n}_v2.png`);
 }
 
-/** Animated art per named mini-boss — index i matches BOSSES[i] in survival.ts. */
+/** Static v2 portrait per named boss — index i matches BOSSES[i] in survival.ts. Used for mini-boss fights and the final boss embed. */
 export function bossImg(index: number): string | null {
-  return assetUrl(`boss_${String(index + 1).padStart(2, "0")}.gif`);
+  return assetUrl(`boss_${String(index + 1).padStart(2, "0")}_v2.png`);
 }
 
 /** One image per named monster — index i matches MONSTERS[i] in survival.ts. */
