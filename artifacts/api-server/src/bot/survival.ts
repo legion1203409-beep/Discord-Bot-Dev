@@ -1030,14 +1030,26 @@ const SHOP_BALANCE = (p: Player) => {
 
 // Five permanent stat upgrades — shows current bonus → value after purchase,
 // with the price in bold so the cost is unmistakable.
-const STAT_BAR_MAX = 20;
+export const STAT_BAR_MAX = 20;
+export const STAT_RANK_MAX = 100;
+
+/** Purely visual rank system: every STAT_BAR_MAX purchases = +1 rank (cap 100).
+ *  Nothing is reset — the purchase count and all bonuses keep accumulating;
+ *  the bar simply shows progress inside the current rank. */
+export function statRankInfo(count: number): { rank: number; inRank: number } {
+  const rank = Math.min(STAT_RANK_MAX, Math.floor(count / STAT_BAR_MAX));
+  const inRank = rank >= STAT_RANK_MAX ? STAT_BAR_MAX : count % STAT_BAR_MAX;
+  return { rank, inRank };
+}
 
 function shopStatsText(p: Player): string {
   const line = (key: ShopKey, emoji: string, label: string, now: string, next: string) => {
     const count = p[SHOP_COUNT_KEY[key]] as number;
     const price = shopPrice(key, count);
-    const bar = buildProgressBar(Math.min(count, STAT_BAR_MAX), STAT_BAR_MAX, 10);
-    return `${emoji} **${label}** (Nv.${count}) — **${price} Oboli**\n${bar}\n   ↳ acum ${now} → ${next}\n`;
+    const { rank, inRank } = statRankInfo(count);
+    const bar = buildProgressBar(inRank, STAT_BAR_MAX, 10);
+    const rankStr = rank > 0 ? ` · 🏅 **Rank ${rank}**` : "";
+    return `${emoji} **${label}** (Nv.${inRank}/${STAT_BAR_MAX})${rankStr} — **${price} Oboli**\n${bar}\n   ↳ acum ${now} → ${next}\n`;
   };
   return (
     line("atac", "⚔️", "Atac", `+${p.attackBonus} daune`, `+${p.attackBonus + 2} daune`) +
