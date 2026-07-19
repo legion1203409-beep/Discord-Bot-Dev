@@ -8,7 +8,7 @@ import { SUPER_ADMIN_ID } from "./constants";
 import type { EventParticipant } from "@workspace/db";
 import type { Player } from "@workspace/db";
 import type { PlayerItem } from "@workspace/db";
-import { IMG, COMPANION_IMG, CHEST_IMG, KEY_IMG, monsterImg } from "./assets";
+import { IMG, COMPANION_IMG, CHEST_IMG, KEY_IMG, monsterImg, bossImg } from "./assets";
 import { getActiveBattleEvent, consumeStormDrain } from "./combat-events";
 import { getCombatModifiers, formatActiveEffects, formatCombatEffects } from "./status-effects";
 
@@ -46,8 +46,12 @@ export function isMiniBoss(level: number): boolean {
   return level > 0 && level % 10 === 0;
 }
 
+/** Chance for a mini-boss to ambush the player at a normal (non-multiple-of-10) level. */
+export const BOSS_AMBUSH_CHANCE = 0.03;
+
 export function rollRarity(level: number): Rarity {
   if (isMiniBoss(level)) return "boss";
+  if (Math.random() < BOSS_AMBUSH_CHANCE) return "boss";
   const total = RARITY_WEIGHTS.reduce((s, [, w]) => s + w, 0);
   let roll = Math.random() * total;
   for (const [r, w] of RARITY_WEIGHTS) {
@@ -56,7 +60,29 @@ export function rollRarity(level: number): Rarity {
   return "comun";
 }
 
-const BOSS_NAMES = ["Colosul Cenușii", "Avatarul Ruinei", "Tiranul Abisului", "Stăpânul Fumegând", "Coloasul Umbrelor"];
+/** The 10 named mini-bosses — index matches boss_NN assets in assets.ts. */
+export const BOSSES: { name: string; desc: string }[] = [
+  { name: "Păstrătorul Rânced", desc: "Respirația Ciumei — un nor toxic care roade viața și armura celor prinși în el." },
+  { name: "Strigoiul Fără Maxilar", desc: "Țipătul Golului — un urlet care amuțește abilitățile și zguduie carnea." },
+  { name: "Călăul cu Masca de Fier", desc: "Execuția Finală — marchează pe cei slăbiți și lovește cu putere dublă." },
+  { name: "Păpușarul de Sânge", desc: "Corzi de Carne — leagă victimele între ele și le fură sângele prin fire vii." },
+  { name: "Cântărețul de Sub Pământ", desc: "Simfonia Fracturii — unde sonore care crapă solul și dezorientează." },
+  { name: "Femeia cu Trei Fețe", desc: "Schimbarea Destinului — trece prin foc, gheață și umbre, șocând arena la fiecare schimbare." },
+  { name: "Regele Cenușii", desc: "Furtuna Cenușii — lame de cenușă care taie vindecarea și grăbesc lovitura regelui." },
+  { name: "Mama Abisului", desc: "Privirea Abisului — o rază din ochiul central care arde tot ce stă nemișcat." },
+  { name: "Copilul cu Inima Externă", desc: "Pulsul Corupt — inima expusă absoarbe viața tuturor și o bea pentru sine." },
+  { name: "Călătorul dintre Lumi", desc: "Fractura Dimensională — se rupe în trei forme și explodează la reîntregire." },
+];
+
+/** Deterministic boss index for a level — 7 is coprime with 10, so all 10 rotate before repeating. */
+export function bossIndex(level: number): number {
+  return ((level * 7 + 3) % BOSSES.length + BOSSES.length) % BOSSES.length;
+}
+
+/** Boss rank 1–10, grows with the level the boss appears at. */
+export function bossRank(level: number): number {
+  return Math.min(10, Math.max(1, Math.ceil(level / 10)));
+}
 
 /** The 14 named monsters — index matches MONSTER_IMG in assets.ts. */
 export const MONSTERS: { name: string; desc: string }[] = [
@@ -81,23 +107,28 @@ export function monsterIndex(level: number): number {
   return ((level * 11 + 5) % MONSTERS.length + MONSTERS.length) % MONSTERS.length;
 }
 
-export function monsterName(level: number): string {
-  if (isMiniBoss(level)) return BOSS_NAMES[(level / 10 - 1) % BOSS_NAMES.length]!;
+/** True when this fight is a boss fight — either a guaranteed mini-boss level or an ambush roll. */
+export function isBossFight(level: number, rarity?: string): boolean {
+  return rarity != null ? rarity === "boss" : isMiniBoss(level);
+}
+
+export function monsterName(level: number, rarity?: string): string {
+  if (isBossFight(level, rarity)) return BOSSES[bossIndex(level)]!.name;
   return MONSTERS[monsterIndex(level)]!.name;
 }
 
 export function monsterDesc(level: number): string {
   return MONSTERS[monsterIndex(level)]!.desc;
 }
-export function monsterMaxHp(level: number) {
+export function monsterMaxHp(level: number, rarity?: string) {
   const base = 40 + level * 15;
-  return isMiniBoss(level) ? Math.round(base * 2.5) : base;
+  return isBossFight(level, rarity) ? Math.round(base * 2.5) : base;
 }
-export function monsterDmgRange(level: number): [number, number] {
-  const b = (5 + level * 1.5) * (isMiniBoss(level) ? 1.4 : 1);
+export function monsterDmgRange(level: number, rarity?: string): [number, number] {
+  const b = (5 + level * 1.5) * (isBossFight(level, rarity) ? 1.4 : 1);
   return [Math.max(1, Math.floor(b - 3)), Math.ceil(b + 3)];
 }
-export function monsterHitPct(level: number) { return Math.min(90, 35 + level * 1.2 + (isMiniBoss(level) ? 5 : 0)); }
+export function monsterHitPct(level: number, rarity?: string) { return Math.min(90, 35 + level * 1.2 + (isBossFight(level, rarity) ? 5 : 0)); }
 export function monsterReward(level: number, rarity: Rarity = "comun") {
   const mult = RARITY[rarity]?.rewardMult ?? 1;
   return { xp: Math.round(level * 10 * mult), oboli: Math.round(level * 3 * mult) };
@@ -463,11 +494,11 @@ export function doCombat(p: EventParticipant, talismanKey?: string | null, talis
 
   if (!monsterDefeated && !playerDied) {
     const missBonus = battle?.monsterMissBonus ?? 0;
-    monsterHit = Math.random() * 100 < monsterHitPct(p.monsterLevel) - missBonus;
+    monsterHit = Math.random() * 100 < monsterHitPct(p.monsterLevel, p.monsterRarity) - missBonus;
     if (monsterHit) {
       playerDodged = Math.random() * 100 < p.dodgeBonus;
       if (!playerDodged) {
-        const [mn, mx] = monsterDmgRange(p.monsterLevel);
+        const [mn, mx] = monsterDmgRange(p.monsterLevel, p.monsterRarity);
         monsterDmg = Math.max(1, rand(mn, mx) - p.defenseBonus);
         // giulgiul_stins: flat damage reduction from monsters (can reduce to 0)
         if (talismanKey === "giulgiul_stins") {
@@ -490,7 +521,7 @@ export function doCombat(p: EventParticipant, talismanKey?: string | null, talis
 
   return {
     playerDmg, isCrit, baseDmg, monsterDefeated, monsterHit, monsterDmg, playerDodged,
-    playerDied, newMonsterHp: monsterDefeated ? monsterMaxHp(newMonsterLevel) : newMHp,
+    playerDied, newMonsterHp: monsterDefeated ? monsterMaxHp(newMonsterLevel, newMonsterRarity) : newMHp,
     newPlayerHp, xpGained, oboliGained, levelUp, newMonsterLevel, newMonsterRarity,
     usedEmpower, usedShield, stormDrain, battleEventEmoji: battle?.emoji ?? "", hpRegen,
   };
@@ -518,16 +549,16 @@ export function buildStartEmbed(expiresAt?: Date): EmbedBuilder {
 }
 
 export function buildCombatEmbed(p: EventParticipant, extra = "", avatarUrl?: string | null, player?: Player | null): EmbedBuilder {
-  const [mn, mx] = monsterDmgRange(p.monsterLevel);
-  const mMaxHp = monsterMaxHp(p.monsterLevel);
   const rarity = (p.monsterRarity as Rarity) ?? "comun";
+  const [mn, mx] = monsterDmgRange(p.monsterLevel, rarity);
+  const mMaxHp = monsterMaxHp(p.monsterLevel, rarity);
   const meta = RARITY[rarity] ?? RARITY.comun;
   const reward = monsterReward(p.monsterLevel, rarity);
   const zone = zoneFor(p.monsterLevel);
-  const boss = isMiniBoss(p.monsterLevel);
+  const boss = isBossFight(p.monsterLevel, rarity);
   const title = boss
-    ? `🔥 MINI-BOSS NIVEL ${p.monsterLevel} – ${monsterName(p.monsterLevel)} 🔥`
-    : `${meta.emoji} MONSTRU ${meta.label.toUpperCase()} NIVEL ${p.monsterLevel} – ${monsterName(p.monsterLevel)}`;
+    ? `🔥 MINI-BOSS NIVEL ${p.monsterLevel} – ${monsterName(p.monsterLevel, rarity)} 🔥`
+    : `${meta.emoji} MONSTRU ${meta.label.toUpperCase()} NIVEL ${p.monsterLevel} – ${monsterName(p.monsterLevel, rarity)}`;
   const battle = getActiveBattleEvent();
   const effectsText = formatCombatEffects(p.discordId);
   const effectsSection = effectsText
@@ -557,13 +588,15 @@ export function buildCombatEmbed(p: EventParticipant, extra = "", avatarUrl?: st
     .setDescription(
       `🗺️ *${zone.name}* — ${zone.intro}\n\n` +
       (boss
-        ? "💀 O prezență colosală blochează drumul. Recompensă dublă pentru cel care o doboară!\n\n"
+        ? `👁️ *${BOSSES[bossIndex(p.monsterLevel)]!.desc}*\n` +
+          `☠️ Rang boss: **${bossRank(p.monsterLevel)}/10** ${"🔥".repeat(bossRank(p.monsterLevel))}${"▱".repeat(10 - bossRank(p.monsterLevel))}\n` +
+          `💀 O prezență colosală blochează drumul. Recompensă dublă pentru cel care o doboară!\n\n`
         : `👁️ *${monsterDesc(p.monsterLevel)}*\n\n`) +
       (battle ? `${battle.emoji} *${battle.title} e activ acum!*\n\n` : "") +
       (extra ? `${extra}\n\n` : "") +
       `❤️ HP Monstru: **${p.monsterCurrentHp}/${mMaxHp}** ${hpBar(p.monsterCurrentHp, mMaxHp)}\n` +
       `⚔️ Daune: **${mn} – ${mx}**\n` +
-      `🎯 Șansă lovitură: **${monsterHitPct(p.monsterLevel).toFixed(0)}%**\n` +
+      `🎯 Șansă lovitură: **${monsterHitPct(p.monsterLevel, rarity).toFixed(0)}%**\n` +
       `💰 Recompensă: **${rewardXpStr}, ${reward.oboli} Oboli**\n\n` +
       `━━━━━━━━━━━━━━━━━━\n` +
       `❤️ HP-ul tău: **${p.currentHp}/${p.maxHp}** ${hpBar(p.currentHp, p.maxHp)}\n` +
@@ -571,7 +604,10 @@ export function buildCombatEmbed(p: EventParticipant, extra = "", avatarUrl?: st
       bonusSection +
       effectsSection,
     )
-    .setImage(monsterImg(monsterIndex(p.monsterLevel), p.monsterRarity) ?? IMG.monster)
+    .setImage(
+      (boss ? bossImg(bossIndex(p.monsterLevel)) : monsterImg(monsterIndex(p.monsterLevel), p.monsterRarity)) ??
+        IMG.monster,
+    )
     .setFooter({ text: `⚔️ +${p.attackBonus} | 🛡️ +${p.defenseBonus} | 🌀 ${p.dodgeBonus}% | 💥 ${p.critBonus}% | ❤️ +${p.maxHp - 100}` });
   if (avatarUrl) embed.setThumbnail(avatarUrl);
   return embed;

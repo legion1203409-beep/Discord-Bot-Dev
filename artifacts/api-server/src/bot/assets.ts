@@ -37,6 +37,11 @@ export function monsterImg(index: number, rarity: string): string | null {
   return assetUrl(`monster_${n}_wide.png`);
 }
 
+/** Animated art per named mini-boss — index i matches BOSSES[i] in survival.ts. */
+export function bossImg(index: number): string | null {
+  return assetUrl(`boss_${String(index + 1).padStart(2, "0")}.gif`);
+}
+
 /** One image per named monster — index i matches MONSTERS[i] in survival.ts. */
 export const MONSTER_IMG: (string | null)[] = Array.from({ length: 14 }, (_, i) =>
   assetUrl(`monster_${String(i + 1).padStart(2, "0")}_wide.png`),

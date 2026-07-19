@@ -40,6 +40,7 @@ vi.mock("../assets", () => ({
   KEY_IMG: {},
   MONSTER_IMG: Array(14).fill(""),
   monsterImg: () => "",
+  bossImg: () => "",
 }));
 
 vi.mock("../combat-events", () => ({
@@ -310,11 +311,17 @@ describe("rollRarity", () => {
     expect(rollRarity(20)).toBe("boss");
   });
 
-  it("returns a valid non-boss rarity for normal levels", () => {
-    const valid = new Set(["comun", "rar", "epic", "legendar", "mitic"]);
+  it("returns a valid rarity for normal levels (boss allowed as rare ambush)", () => {
+    const valid = new Set(["comun", "rar", "epic", "legendar", "mitic", "boss"]);
     for (let i = 0; i < 30; i++) {
       expect(valid.has(rollRarity(1))).toBe(true);
     }
+  });
+
+  it("can ambush with a boss at a normal level when the roll is low", () => {
+    const spy = vi.spyOn(Math, "random").mockReturnValue(0.001);
+    expect(rollRarity(1)).toBe("boss");
+    spy.mockRestore();
   });
 });
 

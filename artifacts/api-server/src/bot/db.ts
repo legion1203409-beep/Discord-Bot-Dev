@@ -589,7 +589,8 @@ export async function joinEvent(guildId: string, eventId: number, discordId: str
     : null;
   const prestigeLevel = player?.prestigeLevel ?? 0;
   const startLevel = prestigeStartLevel(prestigeLevel);
-  const startMonsterHp = monsterMaxHp(startLevel);
+  const startRarity = rollRarity(startLevel);
+  const startMonsterHp = monsterMaxHp(startLevel, startRarity);
   const maxHp = 100 + (player?.maxHpBonus ?? 0) + (player?.prestigeHpBonus ?? 0) + (cls?.hp ?? 0) + (comp?.hp ?? 0);
   try {
     const [p] = await db.insert(eventParticipantsTable).values({
@@ -601,7 +602,7 @@ export async function joinEvent(guildId: string, eventId: number, discordId: str
       currentHp: maxHp,
       monsterLevel: startLevel,
       monsterCurrentHp: startMonsterHp,
-      monsterRarity: rollRarity(startLevel),
+      monsterRarity: startRarity,
       attackBonus: (player?.attackBonus ?? 0) + (player?.prestigeAttackBonus ?? 0) + (cls?.attack ?? 0) + (comp?.attack ?? 0),
       defenseBonus: (player?.defenseBonus ?? 0) + (player?.prestigeDefenseBonus ?? 0) + (comp?.defense ?? 0),
       dodgeBonus: (player?.dodgeBonus ?? 0) + (player?.prestigeDodgeBonus ?? 0) + (cls?.dodge ?? 0),

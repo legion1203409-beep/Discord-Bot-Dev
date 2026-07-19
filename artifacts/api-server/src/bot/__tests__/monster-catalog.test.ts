@@ -13,11 +13,12 @@ vi.mock("../assets", () => ({
   KEY_IMG: {},
   MONSTER_IMG: Array(14).fill(""),
   monsterImg: () => "",
+  bossImg: () => "",
 }));
 vi.mock("../combat-events", () => ({ getActiveBattleEvent: () => null, consumeStormDrain: () => 0 }));
 vi.mock("../status-effects", () => ({ getCombatModifiers: () => ({}), formatActiveEffects: () => "", formatCombatEffects: () => "" }));
 
-import { MONSTERS, monsterIndex, monsterName, monsterDesc } from "../survival";
+import { MONSTERS, BOSSES, monsterIndex, bossIndex, bossRank, monsterName, monsterDesc } from "../survival";
 
 describe("monster catalog", () => {
   it("has 14 monsters with names and descriptions", () => {
@@ -42,7 +43,29 @@ describe("monster catalog", () => {
 
   it("monsterName uses catalog for normal levels and boss names for mini-boss levels", () => {
     expect(MONSTERS.map((m) => m.name)).toContain(monsterName(3));
-    expect(monsterName(10)).toBe("Colosul Cenușii");
+    expect(BOSSES.map((b) => b.name)).toContain(monsterName(10));
     expect(monsterDesc(3)).toBe(MONSTERS[monsterIndex(3)]!.desc);
+  });
+
+  it("has 10 named bosses and monsterName honors a boss rarity at any level", () => {
+    expect(BOSSES).toHaveLength(10);
+    for (const b of BOSSES) {
+      expect(b.name.length).toBeGreaterThan(0);
+      expect(b.desc.length).toBeGreaterThan(0);
+    }
+    // boss ambush at a non-multiple-of-10 level
+    expect(BOSSES.map((b) => b.name)).toContain(monsterName(7, "boss"));
+    // non-boss rarity at a normal level stays a normal monster
+    expect(MONSTERS.map((m) => m.name)).toContain(monsterName(7, "rar"));
+  });
+
+  it("bossIndex cycles through all 10 bosses and bossRank clamps to 1..10", () => {
+    const seen = new Set<number>();
+    for (let lvl = 1; lvl <= 10; lvl++) seen.add(bossIndex(lvl));
+    expect(seen.size).toBe(10);
+    expect(bossRank(1)).toBe(1);
+    expect(bossRank(10)).toBe(1);
+    expect(bossRank(35)).toBe(4);
+    expect(bossRank(999)).toBe(10);
   });
 });

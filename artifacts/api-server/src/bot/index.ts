@@ -1571,7 +1571,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
     await updateParticipant(p.id, {
       currentHp: finalPlayerHp,
       monsterLevel: result.newMonsterLevel,
-      monsterCurrentHp: monsterMaxHp(result.newMonsterLevel),
+      monsterCurrentHp: monsterMaxHp(result.newMonsterLevel, result.newMonsterRarity),
       monsterRarity: result.newMonsterRarity,
       totalDamage: p.totalDamage + result.playerDmg,
       oboli: p.oboli + result.oboliGained,
