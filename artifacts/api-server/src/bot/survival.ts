@@ -375,8 +375,11 @@ export function talismanUpgradeCost(key: TalismanKey, fromLevel: number): { comm
 
 function rand(min: number, max: number) { return Math.floor(Math.random() * (max - min + 1)) + min; }
 function hpBar(cur: number, max: number) {
-  const f = Math.max(0, Math.min(10, Math.round((cur / max) * 10)));
-  return "█".repeat(f) + "░".repeat(10 - f);
+  const pct = max > 0 ? Math.max(0, Math.min(1, cur / max)) : 0;
+  let f = Math.round(pct * 10);
+  if (cur > 0 && f === 0) f = 1;
+  const color = pct > 0.6 ? "🟩" : pct > 0.3 ? "🟨" : "🟥";
+  return color.repeat(f) + "⬛".repeat(10 - f);
 }
 
 export type CombatResult = {
@@ -1813,10 +1816,12 @@ export function bossMaxHp(level: number, rarity: BossRarity): number {
   return Math.round(level * 2000 * BOSS_RARITY_DATA[rarity].hpMult);
 }
 
-export function buildHpBar(current: number, max: number, size = 18): string {
-  const pct = Math.max(0, Math.min(1, current / max));
-  const filled = Math.round(pct * size);
-  return "█".repeat(filled) + "░".repeat(size - filled);
+export function buildHpBar(current: number, max: number, size = 12): string {
+  const pct = max > 0 ? Math.max(0, Math.min(1, current / max)) : 0;
+  let filled = Math.round(pct * size);
+  if (current > 0 && filled === 0) filled = 1;
+  const color = pct > 0.6 ? "🟩" : pct > 0.3 ? "🟨" : "🟥";
+  return color.repeat(filled) + "⬛".repeat(size - filled);
 }
 
 export interface BossPlayerStats {
