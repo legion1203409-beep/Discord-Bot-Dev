@@ -268,7 +268,7 @@ export const DAILY_QUESTS = {
 
 export type DailyQuestKey = keyof typeof DAILY_QUESTS;
 
-function buildProgressBar(current: number, target: number, width: number): string {
+export function buildProgressBar(current: number, target: number, width: number): string {
   const pct = target > 0 ? Math.max(0, Math.min(1, current / target)) : 0;
   let filled = Math.round(pct * width);
   if (current > 0 && filled === 0) filled = 1;
