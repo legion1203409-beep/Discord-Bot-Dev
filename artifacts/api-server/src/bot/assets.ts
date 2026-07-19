@@ -25,16 +25,13 @@ export const IMG = {
 };
 
 /**
- * Per-monster, per-rarity art — index i matches MONSTERS[i] in survival.ts.
- * "comun" gets the static wide PNG; higher rarities get an animated GIF with a
- * rarity-colored pulsing aura (blue/purple/gold/red). Bosses never use these —
- * they have their own art via bossImg().
+ * Per-monster art — index i matches MONSTERS[i] in survival.ts.
+ * All rarities use the static wide PNG (the animated rarity GIFs were retired —
+ * they rendered poorly in Discord). Bosses never use these — they have their
+ * own art via bossImg().
  */
-export function monsterImg(index: number, rarity: string): string | null {
+export function monsterImg(index: number, _rarity: string): string | null {
   const n = String(index + 1).padStart(2, "0");
-  if (rarity === "rar" || rarity === "epic" || rarity === "legendar" || rarity === "mitic") {
-    return assetUrl(`monster_${n}_${rarity}.gif`);
-  }
   return assetUrl(`monster_${n}_wide.png`);
 }
 
