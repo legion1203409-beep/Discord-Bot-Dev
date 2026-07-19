@@ -8,7 +8,7 @@ import { SUPER_ADMIN_ID } from "./constants";
 import type { EventParticipant } from "@workspace/db";
 import type { Player } from "@workspace/db";
 import type { PlayerItem } from "@workspace/db";
-import { IMG, COMPANION_IMG, CHEST_IMG, KEY_IMG } from "./assets";
+import { IMG, COMPANION_IMG, CHEST_IMG, KEY_IMG, MONSTER_IMG } from "./assets";
 import { getActiveBattleEvent, consumeStormDrain } from "./combat-events";
 import { getCombatModifiers, formatActiveEffects, formatCombatEffects } from "./status-effects";
 
@@ -56,13 +56,38 @@ export function rollRarity(level: number): Rarity {
   return "comun";
 }
 
-const MONSTER_PREFIXES = ["Umbra", "Cenușa", "Neantul", "Vidul", "Bezna", "Întunericul", "Obscuritatea", "Golul"];
-const MONSTER_NOUNS = ["Devorantul", "Torturatorul", "Corumpatorul", "Distrugătorul", "Vânătorul", "Consumatorul", "Sufocatorul", "Devastatorul", "Corupătorul", "Nimicitorul"];
 const BOSS_NAMES = ["Colosul Cenușii", "Avatarul Ruinei", "Tiranul Abisului", "Stăpânul Fumegând", "Coloasul Umbrelor"];
+
+/** The 14 named monsters — index matches MONSTER_IMG in assets.ts. */
+export const MONSTERS: { name: string; desc: string }[] = [
+  { name: "Golemul de Măduvă", desc: "Colos de os și piatră, cu inimă pulsând ca un blestem." },
+  { name: "Păstorul Umbrelor", desc: "Siluetă în zdrențe negre, cu toiag din vertebre și roi de umbre vii." },
+  { name: "Groparul Etern", desc: "Humanoid cenușiu, cu lopată neagră ce deschide morminte singure." },
+  { name: "Țesătoarea de Viscere", desc: "Creatură feminină contorsionată, țesând pânze din carne și sânge." },
+  { name: "Arhitectul Fumului Negru", desc: "Entitate fără chip, alcătuită din fum și cenușă, creator de structuri imposibile." },
+  { name: "Orfanul Sângeros", desc: "Copil palid cu ochi negri și o păpușă plină de ace, aducător de sângerări și umbre." },
+  { name: "Călăul Fără Maxilar", desc: "Gigant cu fața ruptă, purtând un topor masiv, cu maxilarul smuls." },
+  { name: "Femeia cu 100 de Colțuri", desc: "O entitate feminină cu membre fracturate în unghiuri imposibile." },
+  { name: "Strigătul din Fântână", desc: "O creatură acvatică, cu pielea albastră și ochii luminoși, care urlă din adâncuri." },
+  { name: "Călătorul cu Trei Fețe", desc: "Un nomad spectral cu trei expresii suprapuse: furie, tristețe, goliciune." },
+  { name: "Câinele cu Oasele pe Exterior", desc: "Un animal de vânătoare, cu scheletul expus și ochi roșii." },
+  { name: "Regina Cuibului de Viermi", desc: "O matroană monstruoasă, cu viermi ieșind din corpul ei ca niște copii." },
+  { name: "Cântărețul cu Gâtul Deschis", desc: "Un bard blestemat, cu gâtul tăiat, cântând printr-un gol în carne." },
+  { name: "Umbra care Poartă Oglinda", desc: "O entitate care reflectă nu imaginea ta, ci moartea ta viitoare." },
+];
+
+/** Deterministic monster index for a level — 11 is coprime with 14, so all 14 rotate before repeating. */
+export function monsterIndex(level: number): number {
+  return ((level * 11 + 5) % MONSTERS.length + MONSTERS.length) % MONSTERS.length;
+}
 
 export function monsterName(level: number): string {
   if (isMiniBoss(level)) return BOSS_NAMES[(level / 10 - 1) % BOSS_NAMES.length]!;
-  return `${MONSTER_PREFIXES[level % MONSTER_PREFIXES.length]} ${MONSTER_NOUNS[Math.floor(level / MONSTER_PREFIXES.length) % MONSTER_NOUNS.length]}`;
+  return MONSTERS[monsterIndex(level)]!.name;
+}
+
+export function monsterDesc(level: number): string {
+  return MONSTERS[monsterIndex(level)]!.desc;
 }
 export function monsterMaxHp(level: number) {
   const base = 40 + level * 15;
@@ -531,7 +556,9 @@ export function buildCombatEmbed(p: EventParticipant, extra = "", avatarUrl?: st
     .setTitle(title)
     .setDescription(
       `🗺️ *${zone.name}* — ${zone.intro}\n\n` +
-      (boss ? "💀 O prezență colosală blochează drumul. Recompensă dublă pentru cel care o doboară!\n\n" : "") +
+      (boss
+        ? "💀 O prezență colosală blochează drumul. Recompensă dublă pentru cel care o doboară!\n\n"
+        : `👁️ *${monsterDesc(p.monsterLevel)}*\n\n`) +
       (battle ? `${battle.emoji} *${battle.title} e activ acum!*\n\n` : "") +
       (extra ? `${extra}\n\n` : "") +
       `❤️ HP Monstru: **${p.monsterCurrentHp}/${mMaxHp}** ${hpBar(p.monsterCurrentHp, mMaxHp)}\n` +
@@ -544,7 +571,7 @@ export function buildCombatEmbed(p: EventParticipant, extra = "", avatarUrl?: st
       bonusSection +
       effectsSection,
     )
-    .setImage(IMG.monster)
+    .setImage(MONSTER_IMG[monsterIndex(p.monsterLevel)] ?? IMG.monster)
     .setFooter({ text: `⚔️ +${p.attackBonus} | 🛡️ +${p.defenseBonus} | 🌀 ${p.dodgeBonus}% | 💥 ${p.critBonus}% | ❤️ +${p.maxHp - 100}` });
   if (avatarUrl) embed.setThumbnail(avatarUrl);
   return embed;

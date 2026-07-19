@@ -16,12 +16,17 @@ function assetUrl(file: string): string | null {
 }
 
 export const IMG = {
-  monster: assetUrl("monster.gif"),
+  monster: assetUrl("monster_14.png"),
   chest: assetUrl("chest.gif"),
   death: assetUrl("death.gif"),
   trader: assetUrl("trader2.gif"),
   shop: assetUrl("shop2.gif"),
 };
+
+/** One image per named monster — index i matches MONSTERS[i] in survival.ts. */
+export const MONSTER_IMG: (string | null)[] = Array.from({ length: 14 }, (_, i) =>
+  assetUrl(`monster_${String(i + 1).padStart(2, "0")}.png`),
+);
 
 export const CHEST_IMG: Record<string, string | null> = {
   bronz:  assetUrl("chest_bronz.gif"),
