@@ -133,6 +133,28 @@ const MEMORY_WINDOW_MS = envInt("ORACLE_MEMORY_WINDOW_MS", 30 * 60 * 1000, 24 * 
 const MODEL_TIMEOUT_MS = envInt("ORACLE_MODEL_TIMEOUT_MS", 25_000, 120_000);
 const MODEL_MAX_COMPLETION_TOKENS = envInt("ORACLE_MODEL_MAX_COMPLETION_TOKENS", 8192, 32_768);
 
+// Reasoning effort: gpt-5-family models are "reasoning" models — left at their
+// default they think internally for many seconds before a short chat reply,
+// which players experience as the Oracle stalling; worse, long thinking can
+// consume the whole completion-token budget and return an EMPTY reply (the
+// Oracle then falls back to the silence line). Replies here are 2–5 sentences
+// of role-play, so minimal internal reasoning is plenty and near-instant.
+// Tunable via ORACLE_REASONING_EFFORT; an invalid value falls back to default.
+const REASONING_EFFORTS = ["minimal", "low", "medium", "high"] as const;
+type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
+function envReasoningEffort(name: string, fallback: ReasoningEffort): ReasoningEffort {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const value = raw.trim().toLowerCase();
+  if ((REASONING_EFFORTS as readonly string[]).includes(value)) return value as ReasoningEffort;
+  logger.warn({ name, value: raw, fallback }, "Invalid Oracle reasoning effort — using default");
+  return fallback;
+}
+const REASONING_EFFORT = envReasoningEffort("ORACLE_REASONING_EFFORT", "minimal");
+// Only the gpt-5 family accepts the "minimal" effort tier; other models (o-series
+// or a legacy gpt-4o override) reject or ignore the knob, so gate it on the model.
+const MODEL_SUPPORTS_REASONING_EFFORT = /^gpt-5/.test(MODEL);
+
 type ChatMessage = OpenAI.Chat.Completions.ChatCompletionMessageParam;
 
 // One in-character line for the rare case the model call fails entirely.
@@ -451,6 +473,9 @@ async function generateOracleReply(
     {
       model: MODEL,
       max_completion_tokens: MODEL_MAX_COMPLETION_TOKENS,
+      // Keep internal "thinking" to a minimum so replies land in a couple of
+      // seconds instead of stalling behind a long hidden reasoning phase.
+      ...(MODEL_SUPPORTS_REASONING_EFFORT ? { reasoning_effort: REASONING_EFFORT } : {}),
       messages,
     },
     // Don't make a player stare at a typing indicator forever — fall back fast.
@@ -662,6 +687,7 @@ export function logOracleChatStatus(): void {
     logger.info(
       {
         model: MODEL,
+        reasoningEffort: MODEL_SUPPORTS_REASONING_EFFORT ? REASONING_EFFORT : "n/a",
         userCooldownMs: USER_COOLDOWN_MS,
         globalHourlyCap: GLOBAL_HOURLY_CAP,
         maxInputChars: MAX_INPUT_CHARS,

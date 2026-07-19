@@ -41,3 +41,10 @@ the OpenAI account has no billing/credit (not a code problem).
 synchronously (check-then-push with no await between) right before generating, or
 concurrent mentions overshoot the cap. Never log message content (length/mood only).
 `allowedMentions: { repliedUser: true, parse: [] }` so AI text can't trigger @everyone/role.
+
+**Reasoning effort (latency):** gpt-5-mini is a reasoning model — without
+`reasoning_effort` it "thinks" for many seconds before a 2–5 sentence chat reply
+(players see the Oracle stalling) and long thinking can eat the whole
+`max_completion_tokens` budget → empty content → fallback silence line. Fix: pass
+`reasoning_effort: "minimal"` (env-tunable `ORACLE_REASONING_EFFORT`), gated on
+/^gpt-5/ since other models reject the `minimal` tier.
