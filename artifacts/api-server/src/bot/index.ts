@@ -1192,6 +1192,7 @@ async function handleClasamentSelect(interaction: StringSelectMenuInteraction) {
 }
 
 const CLAIM_TTL_MS = 10 * 60 * 1000;
+const BOSS_RESULT_TTL_MS = 10 * 60 * 1000;
 
 const CHEST_CLAIM_MSG: Record<string, (user: string, gold: number) => string> = {
   bronz:  (u, g) => `🪙 **${u}** a deschis **Cufărul de Bronz** și a câștigat **${g} Oboli**!`,
@@ -2287,12 +2288,14 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
       const topCh = bossTopId ? await interaction.client.channels.fetch(bossTopId).catch(() => null) : null;
       if (topCh instanceof TextChannel) {
         const leaderboard = buildBossLeaderboard(activeBoss, activeBoss.damageBy, activeBoss.participants, activeBoss.playerNames, activeBoss.playerHp, activeBoss.hitsBy);
-        await topCh.send({ embeds: [leaderboard] }).catch(() => null);
+        const lbMsg = await topCh.send({ embeds: [leaderboard] }).catch(() => null);
+        if (lbMsg) setTimeout(() => void lbMsg.delete().catch(() => {}), BOSS_RESULT_TTL_MS);
         if (eventKeyDrops.size > 0) {
           const lines = [...eventKeyDrops.entries()].map(
             ([id, kt]) => `${KEY_EMOJI[kt] ?? "🗝️"} <@${id}> a găsit o **${KEY_LABEL[kt] ?? "Cheie"}**!`,
           );
-          await topCh.send({ content: `🗝️ **Prada ascunsă a Dragonului:**\n${lines.join("\n")}` }).catch(() => null);
+          const keyMsg = await topCh.send({ content: `🗝️ **Prada ascunsă a Dragonului:**\n${lines.join("\n")}` }).catch(() => null);
+          if (keyMsg) setTimeout(() => void keyMsg.delete().catch(() => {}), BOSS_RESULT_TTL_MS);
         }
       }
     } catch { /* ignore */ }
@@ -2311,7 +2314,7 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
     const bossItemInfo = ITEMS[bossItemKey];
     const itemLine = `${bossItemInfo.emoji} Toți participanții au primit **${bossItemInfo.label}** în inventar!`;
 
-    await interaction.followUp({
+    const victoryMsg = await interaction.followUp({
       content:
         abilityLine +
         `⚔️ **${interaction.user.username}** a dat lovitura finală! **${playerDmg.toLocaleString()} daune**!${critTag}\n` +
@@ -2319,6 +2322,7 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
         rewLine + "\n" +
         itemLine,
     });
+    setTimeout(() => void victoryMsg.delete().catch(() => {}), BOSS_RESULT_TTL_MS);
     return;
   }
 

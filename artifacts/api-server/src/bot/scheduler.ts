@@ -10,6 +10,7 @@ import { getChannel, initChannelConfig, hasAnyChannelConfigured, type EventType 
 const APPLICATION_ID = "1472675543777280071";
 export const EVENT_DURATION_MS = 60 * 60 * 1000;
 const FINAL_BOSS_ACTIVE_MS = 30 * 60 * 1000;
+const BOSS_RESULT_TTL_MS = 10 * 60 * 1000;
 const MIN_COOLDOWN_MS = 10 * 60 * 1000;
 const MAX_COOLDOWN_MS = 2 * 60 * 60 * 1000;
 
@@ -838,7 +839,8 @@ async function runFleeResolution(boss: BossState, client: Client): Promise<void>
     const topCh = await fetchChannel(client, "bossTop", boss.guildId);
     if (topCh instanceof TextChannel) {
       const leaderboard = buildBossLeaderboard(boss, boss.damageBy, boss.participants, boss.playerNames, boss.playerHp, boss.hitsBy);
-      await topCh.send({ embeds: [leaderboard] }).catch(() => null);
+      const lbMsg = await topCh.send({ embeds: [leaderboard] }).catch(() => null);
+      if (lbMsg) setTimeout(() => void lbMsg.delete().catch(() => {}), BOSS_RESULT_TTL_MS);
     }
   } catch { /* ignore */ }
 }
