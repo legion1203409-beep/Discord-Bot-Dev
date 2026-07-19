@@ -132,6 +132,12 @@ uri = "file://artifacts/api-server/assets/shop.png"
 type = "image"
 title = "ash royal forge shop"
 
+[[generated]]
+id = "2NckFNm-ZCuoy13DUl5Wx"
+uri = "file://artifacts/api-server/assets/dragon.png"
+type = "image"
+title = "ash dragon boss"
+
 [[outputs]]
 id = "Xv7osCIljB2ivkCRjsX9M"
 uri = "file://artifacts/api-server/assets/chest_bronz.png"

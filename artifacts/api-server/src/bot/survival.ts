@@ -1999,7 +1999,7 @@ export function buildFinalBossEmbed(
     .setColor(rd.color)
     .setTitle(`🐉  DRAGONUL STINS – NIVEL ${level}  🐉`)
     .setDescription(desc)
-    .setImage(IMG.monster);
+    .setImage(IMG.dragon);
 
   return embed;
 }

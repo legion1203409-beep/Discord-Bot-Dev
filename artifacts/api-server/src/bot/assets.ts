@@ -17,6 +17,7 @@ function assetUrl(file: string): string | null {
 
 export const IMG = {
   monster: assetUrl("monster_14.png"),
+  dragon: assetUrl("dragon.gif"),
   chest: assetUrl("chest.gif"),
   death: assetUrl("death.gif"),
   trader: assetUrl("trader2.gif"),
@@ -26,13 +27,13 @@ export const IMG = {
 /**
  * Per-monster, per-rarity art — index i matches MONSTERS[i] in survival.ts.
  * "comun" gets the static wide PNG; higher rarities get an animated GIF with a
- * rarity-colored pulsing aura (blue/purple/gold/red). Mini-bosses use the mitic one.
+ * rarity-colored pulsing aura (blue/purple/gold/red). Bosses never use these —
+ * they have their own art via bossImg().
  */
 export function monsterImg(index: number, rarity: string): string | null {
   const n = String(index + 1).padStart(2, "0");
-  const tier = rarity === "boss" ? "mitic" : rarity;
-  if (tier === "rar" || tier === "epic" || tier === "legendar" || tier === "mitic") {
-    return assetUrl(`monster_${n}_${tier}.gif`);
+  if (rarity === "rar" || rarity === "epic" || rarity === "legendar" || rarity === "mitic") {
+    return assetUrl(`monster_${n}_${rarity}.gif`);
   }
   return assetUrl(`monster_${n}_wide.png`);
 }
