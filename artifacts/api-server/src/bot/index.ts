@@ -52,6 +52,8 @@ import {
   getPlayerById,
   updateMaxLevel,
   setPlayerClass,
+  resetPlayerClass,
+  resetPlayerCompanion,
   buyCompanion,
   upgradeCompanion,
   buyAbility,
@@ -123,6 +125,7 @@ import {
   formatCooldown,
   levelTitle,
   CLASSES,
+  COMPANIONS,
   isClassKey,
   classStats,
   classUpgradeCost,
@@ -368,7 +371,7 @@ const slashCommands = [
       sub.setName("servere").setDescription("🏆 Clasamentul regatelor — cele mai puternice servere."),
     ),
   new SlashCommandBuilder().setName("magazin").setDescription("🏺 Forja Cenușii — îmbunătățiri permanente, mereu disponibilă."),
-  new SlashCommandBuilder().setName("clasa").setDescription("🧬 Alege-ți clasa RPG (alegere permanentă)."),
+  new SlashCommandBuilder().setName("clasa").setDescription("🧬 Alege-ți clasa RPG (o poți reseta din /magazin)."),
   new SlashCommandBuilder().setName("companion").setDescription("🐾 Vezi companionul tău (cumpără și fă îmbunătățiri din /magazin)."),
   new SlashCommandBuilder().setName("ajutor").setDescription("❓ Ghidul comenzilor din Regatul Cenușii."),
   new SlashCommandBuilder().setName("misiuni").setDescription("📜 Misiunea ta zilnică — progres și recompensă."),
@@ -1866,7 +1869,7 @@ async function handleShopClassPick(interaction: ButtonInteraction, key: string) 
   const player = updated ?? (await getPlayerById(interaction.user.id, guildId));
   if (!player) return;
   if (!updated) {
-    await interaction.followUp({ content: "❌ Ți-ai ales deja o clasă — alegerea este permanentă.", flags: MessageFlags.Ephemeral });
+    await interaction.followUp({ content: "❌ Ai deja o clasă aleasă. Dacă vrei alta, renunță mai întâi la calea ta din **/magazin → Clasă**.", flags: MessageFlags.Ephemeral });
   }
   await interaction.editReply({ embeds: [buildShopEmbed(player, "class")], components: shopClassRows(player) });
 }
@@ -1944,6 +1947,85 @@ async function handleClassUpgrade(interaction: ButtonInteraction) {
     return;
   }
   await interaction.editReply({ embeds: [buildClassEmbed(updated)], components: shopClassRows(updated) });
+}
+
+async function handleCompReset(interaction: ButtonInteraction) {
+  await interaction.deferUpdate();
+  const guildId = interaction.guildId!;
+  const p = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
+  if (!p.companion || !isCompanionKey(p.companion)) {
+    await interaction.followUp({ content: "❌ Nu ai niciun companion de eliberat.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  const c = COMPANIONS[p.companion];
+  await interaction.followUp({
+    content:
+      `⚠️ Ești sigur că vrei să eliberezi companionul ${c.emoji} **${c.label}** (Nv.${p.companionLevel})?\n` +
+      `Nivelul lui se **pierde definitiv** și nu primești Oboli înapoi. Vei putea cumpăra alt companion (${COMPANION_BUY_COST} Oboli).`,
+    flags: MessageFlags.Ephemeral,
+    components: [
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId("shop_compreset_yes").setLabel("Da, eliberează").setEmoji("🔄").setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId("shop_reset_no").setLabel("Anulează").setStyle(ButtonStyle.Secondary),
+      ),
+    ],
+  });
+}
+
+async function handleClassReset(interaction: ButtonInteraction) {
+  await interaction.deferUpdate();
+  const guildId = interaction.guildId!;
+  const p = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
+  if (!p.class || !isClassKey(p.class)) {
+    await interaction.followUp({ content: "❌ Nu ai nicio clasă aleasă.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  const cls = CLASSES[p.class];
+  await interaction.followUp({
+    content:
+      `⚠️ Ești sigur că vrei să renunți la calea ${cls.emoji} **${cls.label}** (Nv.${p.classLevel ?? 1})?\n` +
+      `Nivelul clasei se **pierde definitiv** și nu primești resursele înapoi. Vei putea alege o clasă nouă (de la Nv.1).`,
+    flags: MessageFlags.Ephemeral,
+    components: [
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId("shop_classreset_yes").setLabel("Da, renunț").setEmoji("🔄").setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId("shop_reset_no").setLabel("Anulează").setStyle(ButtonStyle.Secondary),
+      ),
+    ],
+  });
+}
+
+async function handleCompResetConfirm(interaction: ButtonInteraction) {
+  await interaction.deferUpdate();
+  const guildId = interaction.guildId!;
+  const updated = await resetPlayerCompanion(interaction.user.id, guildId);
+  if (!updated) {
+    await interaction.editReply({ content: "❌ Nu mai ai niciun companion de eliberat.", components: [] });
+    return;
+  }
+  await interaction.editReply({
+    content: "🔄 Companionul a fost eliberat. Poți cumpăra unul nou din **/magazin → Companion**.",
+    components: [],
+  });
+}
+
+async function handleClassResetConfirm(interaction: ButtonInteraction) {
+  await interaction.deferUpdate();
+  const guildId = interaction.guildId!;
+  const updated = await resetPlayerClass(interaction.user.id, guildId);
+  if (!updated) {
+    await interaction.editReply({ content: "❌ Nu mai ai nicio clasă de resetat.", components: [] });
+    return;
+  }
+  await interaction.editReply({
+    content: "🔄 Ai renunțat la calea ta. Poți alege o clasă nouă din **/magazin → Clasă** sau cu `/clasa`.",
+    components: [],
+  });
+}
+
+async function handleResetCancel(interaction: ButtonInteraction) {
+  await interaction.deferUpdate();
+  await interaction.editReply({ content: "✅ Anulat — totul rămâne neschimbat.", components: [] });
 }
 
 async function handleAbilBuy(interaction: ButtonInteraction, kind: string) {
@@ -2419,6 +2501,11 @@ async function handleButton(interaction: ButtonInteraction) {
   if (id.startsWith("shop_compbuy_")) return handleCompBuy(interaction, id.replace("shop_compbuy_", ""));
   if (id === "shop_compup") return handleCompUpgrade(interaction);
   if (id === "shop_classup") return handleClassUpgrade(interaction);
+  if (id === "shop_compreset") return handleCompReset(interaction);
+  if (id === "shop_classreset") return handleClassReset(interaction);
+  if (id === "shop_compreset_yes") return handleCompResetConfirm(interaction);
+  if (id === "shop_classreset_yes") return handleClassResetConfirm(interaction);
+  if (id === "shop_reset_no") return handleResetCancel(interaction);
   if (id.startsWith("shop_abilbuy_")) return handleAbilBuy(interaction, id.replace("shop_abilbuy_", ""));
   if (id.startsWith("shop_abilup_")) return handleAbilUpgrade(interaction, id.replace("shop_abilup_", ""));
 

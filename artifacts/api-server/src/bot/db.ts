@@ -338,6 +338,24 @@ export async function setPlayerClass(discordId: string, guildId: string, classKe
   return u ?? null;
 }
 
+// Resets the player's class (class → NULL, level back to 1). No refund.
+export async function resetPlayerClass(discordId: string, guildId: string): Promise<Player | null> {
+  const [u] = await db.update(playersTable)
+    .set({ class: null, classLevel: 1 })
+    .where(and(playerWhere(discordId, guildId), sql`${playersTable.class} IS NOT NULL`))
+    .returning();
+  return u ?? null;
+}
+
+// Resets the player's companion (companion → NULL, level back to 1). No refund.
+export async function resetPlayerCompanion(discordId: string, guildId: string): Promise<Player | null> {
+  const [u] = await db.update(playersTable)
+    .set({ companion: null, companionLevel: 1 })
+    .where(and(playerWhere(discordId, guildId), sql`${playersTable.companion} IS NOT NULL`))
+    .returning();
+  return u ?? null;
+}
+
 // Buys a companion with Oboli. Permanent: only if the player has none yet.
 export async function buyCompanion(discordId: string, guildId: string, companionKey: string, cost: number): Promise<Player | null> {
   if (!isCompanionKey(companionKey)) return null;

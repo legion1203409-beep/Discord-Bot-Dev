@@ -1299,7 +1299,10 @@ export function buildShopEmbed(p: Player, category: ShopCategory = "overview"): 
         SHOP_BALANCE(p) + "\n\n" +
         sectionTitle("Companionul tău") + "\n" +
         shopCompText(p) +
-        "\n*Companionul nou se aplică din următoarea Ora Umbrelor.*",
+        "\n*Companionul nou se aplică din următoarea Ora Umbrelor.*" +
+        (p.companion && isCompanionKey(p.companion)
+          ? "\n🔄 *Poți elibera companionul cu butonul de mai jos — nivelul lui se pierde.*"
+          : ""),
       );
   }
 
@@ -1315,18 +1318,42 @@ export function buildShopEmbed(p: Player, category: ShopCategory = "overview"): 
   }
 
   if (category === "class") {
-    const cls = p.class && isClassKey(p.class) ? CLASSES[p.class] : null;
-    if (cls) {
+    const clsKey = p.class && isClassKey(p.class) ? p.class : null;
+    if (clsKey) {
+      const cls = CLASSES[clsKey];
+      const level = Math.min(p.classLevel ?? 1, 10);
+      const stats = classStats(clsKey, level);
+      const next = level < 10 ? classStats(clsKey, level + 1) : null;
+      const statLine = (s: { attack: number; hp: number; dodge: number; crit: number }) =>
+        [
+          s.attack > 0 ? `⚔️ +${s.attack} daune` : "",
+          s.hp > 0 ? `❤️ +${s.hp} HP` : "",
+          s.dodge > 0 ? `🌀 +${s.dodge}% evitare` : "",
+          s.crit > 0 ? `💥 +${s.crit}% critic` : "",
+          cls.xpMult !== 1 ? `📚 XP ×${cls.xpMult}` : "",
+          cls.oboliMult !== 1 ? `💰 Oboli ×${cls.oboliMult}` : "",
+        ].filter(Boolean).join(", ");
+      const cost = level < 10 ? classUpgradeCost(level) : null;
+      const costLines = cost
+        ? `   ↳ cost: **${cost.gold} Oboli + ${cost.xp} XP**` +
+          (cost.items.length
+            ? "\n" + cost.items.map((req) => `   ↳ ${req.qty}× ${ITEMS[req.item].emoji} ${ITEMS[req.item].label}`).join("\n")
+            : "")
+        : "";
       return embed
         .setTitle("🧬 Forja Cenușii — Clasă")
         .setDescription(
           SHOP_BALANCE(p) + "\n\n" +
           sectionTitle("Calea ta") + "\n" +
-          `${cls.emoji} **${cls.label}** (Nv.${p.classLevel ?? 1}/10)\n` +
-          `${buildProgressBar(Math.min(p.classLevel ?? 1, 10), 10, 10)}\n` +
+          `${cls.emoji} **${cls.label}** (Nv.${level}/10)\n` +
+          `${buildProgressBar(level, 10, 10)}\n` +
           `> *${cls.desc}*\n\n` +
-          "✅ Ți-ai ales deja calea, iar ea este **permanentă**.\n" +
-          "Bonusurile clasei se aplică automat la fiecare intrare în Ora Umbrelor.",
+          `🎁 Bonus activ: **${statLine(stats)}**\n` +
+          (next
+            ? `🔼 **La Nv.${level + 1} primești:** ${statLine(next)}\n${costLines}\n`
+            : "⭐ **Nivel maxim atins!** Calea ta este desăvârșită.\n") +
+          "\nBonusurile clasei se aplică automat la fiecare intrare în Ora Umbrelor.\n" +
+          "🔄 *Poți renunța la calea ta cu butonul de mai jos — nivelul clasei se pierde.*",
         );
     }
     return embed
@@ -1334,7 +1361,7 @@ export function buildShopEmbed(p: Player, category: ShopCategory = "overview"): 
       .setDescription(
         SHOP_BALANCE(p) + "\n\n" +
         sectionTitle("Alege-ți calea") + "\n" +
-        "⚠️ *Alegerea este **permanentă** — cântărește-o cu grijă.*\n\n" +
+        "⚠️ *Cântărește alegerea cu grijă — dacă renunți la clasă mai târziu, nivelul ei se pierde.*\n\n" +
         Object.values(CLASSES)
           .map((c) => `${c.emoji} **${c.label}**\n   ↳ ${c.desc}`)
           .join("\n") +
@@ -1660,6 +1687,11 @@ export function shopCompRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
           .setEmoji(COMPANIONS[p.companion].emoji)
           .setStyle(ButtonStyle.Success)
           .setDisabled(p.gold < cost || p.xp < UPGRADE_XP_COST),
+        new ButtonBuilder()
+          .setCustomId("shop_compreset")
+          .setLabel("Eliberează companionul")
+          .setEmoji("🔄")
+          .setStyle(ButtonStyle.Danger),
       ),
       shopBackRow(),
     ];
@@ -1728,8 +1760,14 @@ export function shopPrestigeRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
 export function shopClassRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
   if (p.class && isClassKey(p.class)) {
     const level = p.classLevel ?? 1;
-    if (level >= 10) return [shopBackRow()];
-    const cost = classUpgradeCost(level);
+    const resetBtn = new ButtonBuilder()
+      .setCustomId("shop_classreset")
+      .setLabel("Renunță la clasă")
+      .setEmoji("🔄")
+      .setStyle(ButtonStyle.Danger);
+    if (level >= 10) {
+      return [new ActionRowBuilder<ButtonBuilder>().addComponents(resetBtn), shopBackRow()];
+    }
     const rows: ActionRowBuilder<ButtonBuilder>[] = [
       new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
@@ -1738,6 +1776,7 @@ export function shopClassRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
           .setEmoji("💎")
           .setStyle(ButtonStyle.Success)
           .setDisabled(false),
+        resetBtn,
       ),
       shopBackRow(),
     ];
@@ -1912,7 +1951,7 @@ export function buildClassEmbed(player: Player): EmbedBuilder {
         bonusLine("💥 Critic", stats.crit, next?.crit) + "\n" +
         (cls.xpMult !== 1 ? `   · 📚 XP ×${cls.xpMult}` : "") +
         (cls.oboliMult !== 1 ? `   · 💰 Oboli ×${cls.oboliMult}` : "") +
-        `\n\n✅ Calea este **permanentă** și bonusurile se aplică automat.` +
+        `\n\n✅ Bonusurile căii tale se aplică automat. *(O poți reseta din **/magazin → Clasă**.)*` +
         upgradeBlock;
 
       return new EmbedBuilder()
@@ -1926,7 +1965,7 @@ export function buildClassEmbed(player: Player): EmbedBuilder {
     .setTitle("🧬  ALEGE-ȚI CLASA")
     .setDescription(
       "Înainte de a intra în Umbre, alege-ți calea.\n" +
-      "⚠️ **Alegerea este permanentă!**\n\n" +
+      "⚠️ **Dacă renunți mai târziu la clasă, nivelul ei se pierde!**\n\n" +
       Object.values(CLASSES).map((c) => `${c.emoji} **${c.label}** — ${c.desc}`).join("\n"),
     )
     .setFooter({ text: BRAND_FOOTER });
