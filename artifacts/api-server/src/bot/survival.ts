@@ -270,7 +270,7 @@ export type DailyQuestKey = keyof typeof DAILY_QUESTS;
 
 function buildProgressBar(current: number, target: number, width: number): string {
   const filled = Math.min(width, Math.round((current / target) * width));
-  return `[${"█".repeat(filled)}${"░".repeat(width - filled)}]`;
+  return "🟦".repeat(filled) + "⬛".repeat(width - filled);
 }
 
 export function buildMissionEmbed(
@@ -1857,7 +1857,7 @@ export function buildFinalBossEmbed(
     const pct = Math.round((Math.max(0, currentHp) / maxHp) * 100);
     desc += `${rd.emoji} Raritate: **${rd.label}**\n`;
     desc += `❤️ **${Math.max(0, currentHp).toLocaleString()} / ${maxHp.toLocaleString()} HP**\n`;
-    desc += `\`[${bar}]\` ${pct}%\n`;
+    desc += `${bar} ${pct}%\n`;
   } else {
     desc += `${rd.emoji} Raritate: **${rd.label}**\n`;
   }
