@@ -1042,6 +1042,13 @@ export function statRankInfo(count: number): { rank: number; inRank: number } {
   return { rank, inRank };
 }
 
+/** Rank-style bar line for uncapped upgrade levels (companion, abilities, prestige). */
+function rankBarLine(level: number): string {
+  const { rank, inRank } = statRankInfo(level);
+  const bar = buildProgressBar(inRank, STAT_BAR_MAX, 10);
+  return rank > 0 ? `${bar} 🏅 **Rank ${rank}**` : bar;
+}
+
 function shopStatsText(p: Player): string {
   const line = (key: ShopKey, emoji: string, label: string, now: string, next: string) => {
     const count = p[SHOP_COUNT_KEY[key]] as number;
@@ -1067,6 +1074,7 @@ function shopCompText(p: Player): string {
     const cost = upgradeCost(p.companionLevel);
     return (
       `${c.emoji} **${evolved ? c.evoLabel : c.label}** Nv.${p.companionLevel}${evolved ? " ✨" : ""}\n` +
+      `${rankBarLine(p.companionLevel)}\n` +
       `🎁 Bonus activ: **${companionEffectiveDesc(p.companion, p.companionLevel)}**\n\n` +
       `🔼 **Îmbunătățire Nv.${p.companionLevel} → ${p.companionLevel + 1}**\n` +
       `   ↳ bonus nou: **${companionEffectiveDesc(p.companion, p.companionLevel + 1)}**\n` +
@@ -1089,6 +1097,7 @@ function shopAbilText(p: Player): string {
       const cost = upgradeCost(lvl);
       return (
         `${a.emoji} **${a.label}** Nv.${lvl}\n` +
+        `${rankBarLine(lvl)}\n` +
         `   🎁 Bonus activ: **${abilityEffectiveDesc(kind, lvl)}**\n` +
         `   🔼 Îmbunătățire → Nv.${lvl + 1}: **${abilityEffectiveDesc(kind, lvl + 1)}**\n` +
         `   ↳ cost: **${cost} Oboli + ${UPGRADE_XP_COST} XP**\n`
@@ -1154,7 +1163,8 @@ export function buildShopEmbed(p: Player, category: ShopCategory = "overview"): 
         .setDescription(
           SHOP_BALANCE(p) + "\n\n" +
           sectionTitle("Calea ta") + "\n" +
-          `${cls.emoji} **${cls.label}**\n` +
+          `${cls.emoji} **${cls.label}** (Nv.${p.classLevel ?? 1}/10)\n` +
+          `${buildProgressBar(Math.min(p.classLevel ?? 1, 10), 10, 10)}\n` +
           `> *${cls.desc}*\n\n` +
           "✅ Ți-ai ales deja calea, iar ea este **permanentă**.\n" +
           "Bonusurile clasei se aplică automat la fiecare intrare în Ora Umbrelor.",
@@ -1185,7 +1195,7 @@ export function buildShopEmbed(p: Player, category: ShopCategory = "overview"): 
         "Fiecare nivel de prestigiu consumă **XP** și oferă bonusuri permanente\n" +
         "care se aplică în **TOATE** luptele normale și în lupta cu Dragonul Stins.\n\n" +
         (p.prestigeLevel > 0
-          ? `**🎯 Nivel Prestigiu: ${p.prestigeLevel}**\n${total}\n\n`
+          ? `**🎯 Nivel Prestigiu: ${p.prestigeLevel}**\n${rankBarLine(p.prestigeLevel)}\n${total}\n\n`
           : "") +
         `**🔰 Următorul nivel (${p.prestigeLevel + 1}):**\n` +
         `   → ${next}\n` +
@@ -1613,7 +1623,10 @@ export function buildTalismanPage(p: Player, items: PlayerItem[], savedLevels: R
           })()
         : `\n   ↳ ⭐ *Nivel maxim atins!*`
       : "";
-    return `${t.emoji} **${t.label}**${levelTag} — ${priceTag}\n   ↳ ${t.passiveLabel}: ${talismanDesc(key, level)}${upgradeInfo}`;
+    const barLine = owned
+      ? `\n${buildProgressBar(Math.min(level, TALISMAN_MAX_LEVEL), TALISMAN_MAX_LEVEL, 10)} (Nv.${level}/${TALISMAN_MAX_LEVEL})`
+      : "";
+    return `${t.emoji} **${t.label}**${levelTag} — ${priceTag}${barLine}\n   ↳ ${t.passiveLabel}: ${talismanDesc(key, level)}${upgradeInfo}`;
   });
 
   const inventoryLine =
