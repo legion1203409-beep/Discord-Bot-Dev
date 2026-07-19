@@ -13,6 +13,7 @@ export const playersTable = pgTable("players", {
   maxLevel: integer("max_level").notNull().default(0),
   class: text("class"),
   classLevel: integer("class_level").notNull().default(1),
+  classLevels: jsonb("class_levels").$type<Record<string, number>>().notNull().default({}),
   companion: text("companion"),
   companionLevel: integer("companion_level").notNull().default(1),
   abilityEmpowerLevel: integer("ability_empower_level").notNull().default(0),

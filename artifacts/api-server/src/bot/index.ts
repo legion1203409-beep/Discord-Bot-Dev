@@ -132,6 +132,7 @@ import {
   isAbilityKey,
   upgradeCost,
   COMPANION_BUY_COST,
+  CLASS_SWITCH_COST,
   ABILITY_BUY_COST,
   UPGRADE_XP_COST,
   SHOP_COUNT_KEY,
@@ -1697,10 +1698,16 @@ async function handleClasa(interaction: ChatInputCommandInteraction) {
 async function handleClassPick(interaction: ButtonInteraction, key: string) {
   await interaction.deferUpdate();
   const guildId = interaction.guildId!;
-  await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
-  const updated = await setPlayerClass(interaction.user.id, guildId, key);
+  const p = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
+  const updated = await setPlayerClass(interaction.user.id, guildId, key, CLASS_SWITCH_COST);
   if (!updated) {
     const cur = await getPlayerById(interaction.user.id, guildId);
+    if (!p.class && Object.keys(p.classLevels ?? {}).length > 0) {
+      await interaction.followUp({
+        content: `❌ Instruirea unei noi căi costă **${CLASS_SWITCH_COST} Oboli** — nu ai destui.`,
+        flags: MessageFlags.Ephemeral,
+      });
+    }
     await interaction.editReply({
       embeds: [cur ? buildClassEmbed(cur) : buildClassEmbed({ class: null } as never)],
       components: [],
@@ -1865,11 +1872,14 @@ async function handleShopClassPick(interaction: ButtonInteraction, key: string) 
   await interaction.deferUpdate();
   const guildId = interaction.guildId!;
   await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
-  const updated = await setPlayerClass(interaction.user.id, guildId, key);
+  const updated = await setPlayerClass(interaction.user.id, guildId, key, CLASS_SWITCH_COST);
   const player = updated ?? (await getPlayerById(interaction.user.id, guildId));
   if (!player) return;
   if (!updated) {
-    await interaction.followUp({ content: "❌ Ai deja o clasă aleasă. Dacă vrei alta, renunță mai întâi la calea ta din **/magazin → Clasă**.", flags: MessageFlags.Ephemeral });
+    const msg = player.class
+      ? "❌ Ai deja o clasă aleasă. Dacă vrei alta, renunță mai întâi la calea ta din **/magazin → Clasă**."
+      : `❌ Instruirea unei noi căi costă **${CLASS_SWITCH_COST} Oboli** — nu ai destui.`;
+    await interaction.followUp({ content: msg, flags: MessageFlags.Ephemeral });
   }
   await interaction.editReply({ embeds: [buildShopEmbed(player, "class")], components: shopClassRows(player) });
 }
@@ -1984,7 +1994,7 @@ async function handleClassReset(interaction: ButtonInteraction) {
   await interaction.followUp({
     content:
       `⚠️ Ești sigur că vrei să renunți la calea ${cls.emoji} **${cls.label}** (Nv.${p.classLevel ?? 1})?\n` +
-      `Nivelul clasei se **pierde definitiv** și nu primești resursele înapoi. Vei putea alege o clasă nouă (de la Nv.1).`,
+      `Nivelul ei se **păstrează** și îl recuperezi dacă revii la această cale. Instruirea unei căi noi costă **${CLASS_SWITCH_COST} Oboli**.`,
     flags: MessageFlags.Ephemeral,
     components: [
       new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -2018,7 +2028,7 @@ async function handleClassResetConfirm(interaction: ButtonInteraction) {
     return;
   }
   await interaction.editReply({
-    content: "🔄 Ai renunțat la calea ta. Poți alege o clasă nouă din **/magazin → Clasă** sau cu `/clasa`.",
+    content: `🔄 Ai renunțat la calea ta — nivelul ei rămâne salvat. Poți alege o cale nouă din **/magazin → Clasă** sau cu \`/clasa\` (taxă de instruire: **${CLASS_SWITCH_COST} Oboli**).`,
     components: [],
   });
 }

@@ -160,6 +160,10 @@ export async function runMultiGuildMigrations(): Promise<void> {
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS boss_kills jsonb NOT NULL DEFAULT '{}'::jsonb`);
   logger.info("multi-guild migrations: players.boss_kills ensured");
 
+  // ─── Per-class saved levels (class switching keeps progress) ──────────────
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS class_levels jsonb NOT NULL DEFAULT '{}'::jsonb`);
+  logger.info("multi-guild migrations: players.class_levels ensured");
+
   // Post-migration verification: confirm every required column is present
   const { rows: missingCols } = await pool.query<{ table_name: string; column_name: string }>(`
     SELECT v.table_name, v.column_name
@@ -176,7 +180,8 @@ export async function runMultiGuildMigrations(): Promise<void> {
       ('players',           'prestige_hp_bonus'),
       ('players',           'talisman_level'),
       ('event_participants','items_farmed'),
-      ('players',           'boss_kills')
+      ('players',           'boss_kills'),
+      ('players',           'class_levels')
     ) AS v(table_name, column_name)
     WHERE NOT EXISTS (
       SELECT 1 FROM information_schema.columns c
@@ -328,20 +333,36 @@ export async function updateMaxLevel(discordId: string, guildId: string, level: 
     .where(playerWhere(discordId, guildId));
 }
 
-// Permanent: only sets the class if the player has none yet.
-export async function setPlayerClass(discordId: string, guildId: string, classKey: string): Promise<Player | null> {
+// Picks a class. The first-ever training is free; retraining (after a reset,
+// i.e. class_levels is non-empty) costs `switchFee` Oboli. The saved level for
+// that class (if any) is restored, otherwise it starts at 1.
+export async function setPlayerClass(discordId: string, guildId: string, classKey: string, switchFee: number): Promise<Player | null> {
   if (!isClassKey(classKey)) return null;
+  const fee = sql`CASE WHEN ${playersTable.classLevels} = '{}'::jsonb THEN 0 ELSE ${switchFee} END`;
   const [u] = await db.update(playersTable)
-    .set({ class: classKey })
-    .where(and(playerWhere(discordId, guildId), sql`${playersTable.class} IS NULL`))
+    .set({
+      class: classKey,
+      classLevel: sql`COALESCE((${playersTable.classLevels}->>${classKey})::int, 1)`,
+      gold: sql`${playersTable.gold} - (${fee})`,
+    })
+    .where(and(
+      playerWhere(discordId, guildId),
+      sql`${playersTable.class} IS NULL`,
+      sql`${playersTable.gold} >= (${fee})`,
+    ))
     .returning();
   return u ?? null;
 }
 
-// Resets the player's class (class → NULL, level back to 1). No refund.
+// Resets the player's class (class → NULL) but SAVES its level in class_levels,
+// so retraining the same path later resumes from where it left off. No refund.
 export async function resetPlayerClass(discordId: string, guildId: string): Promise<Player | null> {
   const [u] = await db.update(playersTable)
-    .set({ class: null, classLevel: 1 })
+    .set({
+      classLevels: sql`jsonb_set(${playersTable.classLevels}, ARRAY[${playersTable.class}], to_jsonb(${playersTable.classLevel}))`,
+      class: null,
+      classLevel: 1,
+    })
     .where(and(playerWhere(discordId, guildId), sql`${playersTable.class} IS NOT NULL`))
     .returning();
   return u ?? null;

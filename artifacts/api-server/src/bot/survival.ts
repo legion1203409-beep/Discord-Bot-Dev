@@ -254,6 +254,7 @@ export function classUpgradeCost(level: number): { gold: number; xp: number; ite
 // Each upgrade consumes XP and Oboli; cost grows 15%/level, the offered bonus
 // grows 5%/level (compound). Companions evolve (legendary art) at EVOLVE_LEVEL.
 export const COMPANION_BUY_COST = 300; // one-time, Oboli
+export const CLASS_SWITCH_COST = 500; // Oboli — training fee when picking a new class after a reset (first class is free)
 export const ABILITY_BUY_COST = 250; // per ability unlock, Oboli
 export const UPGRADE_BASE_COST = 200; // Oboli for the first upgrade
 export const UPGRADE_COST_GROWTH = 1.15;
@@ -1371,17 +1372,25 @@ export function buildShopEmbed(p: Player, category: ShopCategory = "overview"): 
             ? `🔼 **La Nv.${level + 1} primești:** ${statLine(next)}\n${costLines}\n`
             : "⭐ **Nivel maxim atins!** Calea ta este desăvârșită.\n") +
           "\nBonusurile clasei se aplică automat la fiecare intrare în Ora Umbrelor.\n" +
-          "🔄 *Poți renunța la calea ta cu butonul de mai jos — nivelul clasei se pierde.*",
+          `🔄 *Poți schimba calea cu butonul de mai jos — nivelul ei se păstrează, dar instruirea unei noi căi costă **${CLASS_SWITCH_COST} Oboli**.*`,
         );
     }
+    const saved = (p.classLevels ?? {}) as Record<string, number>;
+    const hasTrained = Object.keys(saved).length > 0;
     return embed
       .setTitle("🧬 Forja Cenușii — Clasă")
       .setDescription(
         SHOP_BALANCE(p) + "\n\n" +
         sectionTitle("Alege-ți calea") + "\n" +
-        "⚠️ *Cântărește alegerea cu grijă — dacă renunți la clasă mai târziu, nivelul ei se pierde.*\n\n" +
-        Object.values(CLASSES)
-          .map((c) => `${c.emoji} **${c.label}**\n   ↳ ${c.desc}`)
+        (hasTrained
+          ? `🎓 *Instruirea unei noi căi costă **${CLASS_SWITCH_COST} Oboli**. Nivelul fiecărei clase se păstrează.*\n\n`
+          : "🎓 *Prima instruire este gratuită. Nivelul fiecărei clase se păstrează dacă schimbi calea mai târziu.*\n\n") +
+        (Object.keys(CLASSES) as ClassKey[])
+          .map((k) => {
+            const c = CLASSES[k];
+            const lvl = saved[k];
+            return `${c.emoji} **${c.label}**${lvl ? ` — 💾 Nv.${lvl} salvat` : ""}\n   ↳ ${c.desc}`;
+          })
           .join("\n") +
         "\n\n👇 Apasă butonul clasei dorite pentru a o alege.",
       );
@@ -1801,12 +1810,14 @@ export function shopClassRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
     return rows;
   }
   const keys = Object.keys(CLASSES) as ClassKey[];
+  const feeApplies = Object.keys((p.classLevels ?? {}) as Record<string, number>).length > 0;
   const btn = (k: ClassKey) =>
     new ButtonBuilder()
       .setCustomId(`shop_class_${k}`)
-      .setLabel(CLASSES[k].label)
+      .setLabel(feeApplies ? `${CLASSES[k].label} (${CLASS_SWITCH_COST})` : CLASSES[k].label)
       .setEmoji(CLASSES[k].emoji)
-      .setStyle(ButtonStyle.Primary);
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(feeApplies && p.gold < CLASS_SWITCH_COST);
   return [
     new ActionRowBuilder<ButtonBuilder>().addComponents(keys.slice(0, 3).map(btn)),
     new ActionRowBuilder<ButtonBuilder>().addComponents(keys.slice(3).map(btn)),
@@ -1983,7 +1994,7 @@ export function buildClassEmbed(player: Player): EmbedBuilder {
     .setTitle("🧬  ALEGE-ȚI CLASA")
     .setDescription(
       "Înainte de a intra în Umbre, alege-ți calea.\n" +
-      "⚠️ **Dacă renunți mai târziu la clasă, nivelul ei se pierde!**\n\n" +
+      "🎓 *Nivelul fiecărei clase se păstrează. Prima instruire e gratuită; o nouă cale costă " + CLASS_SWITCH_COST + " Oboli.*\n\n" +
       Object.values(CLASSES).map((c) => `${c.emoji} **${c.label}** — ${c.desc}`).join("\n"),
     )
     .setFooter({ text: BRAND_FOOTER });
