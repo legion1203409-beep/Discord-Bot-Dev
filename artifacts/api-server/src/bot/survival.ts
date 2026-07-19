@@ -2101,6 +2101,7 @@ export function buildFinalBossEmbed(
   playerStats?: Map<string, BossPlayerStats>,
   expiresAt?: number,
   charge = 0,
+  bossVeteranRank = 0,
 ): EmbedBuilder {
   const rd = BOSS_RARITY_DATA[rarity];
   const defeated = currentHp !== undefined && currentHp <= 0;
@@ -2118,14 +2119,19 @@ export function buildFinalBossEmbed(
   }
 
   // ── HP bar ───────────────────────────────────────────────────────────────────
+  const vetLine = bossVeteranRank > 0
+    ? `🏅 Rang veteran: **${VETERAN_TIERS[bossVeteranRank] ?? `Rang ${bossVeteranRank}`}** — *s-a întors mai puternic! +${bossVeteranRank * 20}% viață și daune*\n`
+    : "";
   if (currentHp !== undefined && maxHp !== undefined) {
     const bar = buildHpBar(currentHp, maxHp);
     const pct = Math.round((Math.max(0, currentHp) / maxHp) * 100);
     desc += `${rd.emoji} Raritate: **${rd.label}**\n`;
+    desc += vetLine;
     desc += `❤️ **${Math.max(0, currentHp).toLocaleString()} / ${maxHp.toLocaleString()} HP**\n`;
     desc += `${bar} ${pct}%\n`;
   } else {
     desc += `${rd.emoji} Raritate: **${rd.label}**\n`;
+    desc += vetLine;
   }
 
   // ── Body ─────────────────────────────────────────────────────────────────────

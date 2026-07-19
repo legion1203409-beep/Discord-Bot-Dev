@@ -1,10 +1,10 @@
 import { Client, TextChannel, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import { logger } from "../lib/logger";
-import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, buildExpiredChestEmbed, rollChest, oracleMessage, buildFinalBossEmbed, buildBossLeaderboard, buildEventLeaderboard, buildLockedChestEmbed, buildKeyChestEmbed, spawnLockedChest, rollKeyChestType, computeBossRewards, prestigeGoldMult, finalBossRow, bossMaxHp, CHEST_RARITIES, type BossRarity, type BossPlayerStats } from "./survival";
+import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, buildExpiredChestEmbed, rollChest, oracleMessage, buildFinalBossEmbed, buildBossLeaderboard, buildEventLeaderboard, buildLockedChestEmbed, buildKeyChestEmbed, spawnLockedChest, rollKeyChestType, computeBossRewards, prestigeGoldMult, finalBossRow, bossMaxHp, veteranRank, veteranMult, CHEST_RARITIES, type BossRarity, type BossPlayerStats } from "./survival";
 import { triggerRandomBattleEvent } from "./combat-events";
 import { getRewardMultipliers } from "./status-effects";
 import { startOracle, setOracleExtatic } from "./oracle";
-import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle, addPlayerReputation, addPlayerGold, addPlayerXp, getPrestigeLevels, persistActiveBoss, loadActiveBossRowsByGuild, deleteActiveBoss, createActiveBossesTableIfNotExists, persistActiveChest, loadActiveChest, clearActiveChest, KEYCHEST_DBKEY, LOCKCHEST_DBKEY, runMultiGuildMigrations } from "./db";
+import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle, addPlayerReputation, addPlayerGold, addPlayerXp, getPrestigeLevels, persistActiveBoss, loadActiveBossRowsByGuild, deleteActiveBoss, createActiveBossesTableIfNotExists, persistActiveChest, loadActiveChest, clearActiveChest, getFinalBossKills, KEYCHEST_DBKEY, LOCKCHEST_DBKEY, runMultiGuildMigrations } from "./db";
 import { getChannel, initChannelConfig, hasAnyChannelConfigured, type EventType } from "./channel-config";
 
 const APPLICATION_ID = "1472675543777280071";
@@ -217,6 +217,8 @@ export interface BossState {
   defeated: boolean;
   /** Shared ability charge bar — fills with every player hit. */
   charge: number;
+  /** Veteran rank 0–5 from the guild's past final-boss defeats — +20% HP/dmg per rank. */
+  veteranRank: number;
 }
 
 // ─── Boss state serialization / deserialization ────────────────────────────────
@@ -244,6 +246,7 @@ interface SerializedBossState {
   shieldNext: string[];
   defeated: boolean;
   charge?: number;
+  veteranRank?: number;
 }
 
 function serializeBoss(boss: BossState): string {
@@ -270,6 +273,7 @@ function serializeBoss(boss: BossState): string {
     shieldNext: [...boss.shieldNext],
     defeated: boss.defeated,
     charge: boss.charge,
+    veteranRank: boss.veteranRank,
   };
   return JSON.stringify(s);
 }
@@ -299,6 +303,7 @@ function deserializeBoss(json: string, fallbackGuildId?: string): BossState {
     shieldNext: new Set(s.shieldNext),
     defeated: s.defeated,
     charge: s.charge ?? 0,
+    veteranRank: s.veteranRank ?? 0,
   };
 }
 
@@ -735,11 +740,13 @@ export async function fireFinalBoss(client: Client, guildId: string, eventId: nu
       : 1;
     const bossLevel = Math.max(5, Math.ceil(avgLevel / 2));
     const rarity = rollBossRarity();
-    const maxHp = bossMaxHp(bossLevel, rarity);
+    const kills = await getFinalBossKills(guildId).catch(() => 0);
+    const vRank = veteranRank(kills);
+    const maxHp = Math.round(bossMaxHp(bossLevel, rarity) * veteranMult(vRank));
     const bossExpiresAt = Date.now() + FINAL_BOSS_ACTIVE_MS;
 
     const msg = await channel.send({
-      embeds: [buildFinalBossEmbed(bossLevel, rarity, maxHp, maxHp, undefined, undefined, undefined, undefined, bossExpiresAt)],
+      embeds: [buildFinalBossEmbed(bossLevel, rarity, maxHp, maxHp, undefined, undefined, undefined, undefined, bossExpiresAt, 0, vRank)],
       components: [finalBossRow(eventId)],
     });
 
@@ -772,13 +779,14 @@ export async function fireFinalBoss(client: Client, guildId: string, eventId: nu
       shieldNext: new Set(),
       defeated: false,
       charge: 0,
+      veteranRank: vRank,
     };
     gs.activeBossMap.set(eventId, boss);
     await persistBossState(boss);
     setOracleExtatic();
     scheduleEscapeTimer(boss, client);
 
-    logger.info({ eventId, bossLevel, rarity, maxHp, guildId }, "Final boss summoned");
+    logger.info({ eventId, bossLevel, rarity, maxHp, veteranRank: vRank, guildId }, "Final boss summoned");
   } catch (err) {
     logger.error({ err, eventId, guildId }, "Failed to summon final boss");
   }
@@ -1047,11 +1055,13 @@ export async function fireStandaloneBoss(client: Client, guildId: string) {
     const bossId = Date.now();
     const level = Math.floor(Math.random() * 21) + 10;
     const rarity = rollBossRarity();
-    const maxHp = bossMaxHp(level, rarity);
+    const kills = await getFinalBossKills(guildId).catch(() => 0);
+    const vRank = veteranRank(kills);
+    const maxHp = Math.round(bossMaxHp(level, rarity) * veteranMult(vRank));
     const bossExpiresAt = Date.now() + STANDALONE_BOSS_ACTIVE_MS;
 
     const msg = await channel.send({
-      embeds: [buildFinalBossEmbed(level, rarity, maxHp, maxHp, undefined, undefined, undefined, undefined, bossExpiresAt)],
+      embeds: [buildFinalBossEmbed(level, rarity, maxHp, maxHp, undefined, undefined, undefined, undefined, bossExpiresAt, 0, vRank)],
       components: [finalBossRow(bossId)],
     });
 
@@ -1078,6 +1088,7 @@ export async function fireStandaloneBoss(client: Client, guildId: string) {
       shieldNext: new Set(),
       defeated: false,
       charge: 0,
+      veteranRank: vRank,
     };
     gs.activeBossMap.set(bossId, boss);
     gs.standaloneBossId = bossId;
@@ -1085,7 +1096,7 @@ export async function fireStandaloneBoss(client: Client, guildId: string) {
     setOracleExtatic();
     scheduleEscapeTimer(boss, client);
 
-    logger.info({ bossId, level, rarity, maxHp, guildId }, "Standalone boss summoned");
+    logger.info({ bossId, level, rarity, maxHp, veteranRank: vRank, guildId }, "Standalone boss summoned");
   } catch (err) {
     logger.error({ err, guildId }, "Failed to summon standalone boss");
     const gs2 = guildStates.get(guildId);

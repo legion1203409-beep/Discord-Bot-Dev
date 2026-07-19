@@ -91,6 +91,7 @@ import {
   getDailyQuestProgress,
   incrementDailyQuestKill,
   incrementBossKill,
+  incrementFinalBossKills,
   todayDateUTC,
   type AbilityKind,
   type KeyType,
@@ -140,6 +141,7 @@ import {
   ABILITY_COOLDOWN_MS,
   empowerMult,
   shieldReduction,
+  veteranMult,
   buildFinalBossEmbed,
   buildBossLeaderboard,
   BOSSES,
@@ -2183,7 +2185,7 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
   if (mods.damageMult !== 1) playerDmg = Math.round(playerDmg * mods.damageMult);
   const critTag = isCrit ? " 💥 **CRITIC!**" : "";
 
-  let bossHit = Math.floor(Math.random() * 121) + 80;
+  let bossHit = Math.round((Math.floor(Math.random() * 121) + 80) * veteranMult(activeBoss.veteranRank ?? 0));
   const usedShield = activeBoss.shieldNext.delete(uid) && player.abilityShieldLevel >= 1;
   if (usedShield) bossHit = Math.max(1, Math.round(bossHit * (1 - shieldReduction(player.abilityShieldLevel))));
   bossHit = Math.max(1, bossHit - totalDef);
@@ -2268,6 +2270,11 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
       ]),
       ...[...eventKeyDrops.entries()].map(([discordId, kt]) => addPlayerKey(discordId, guildId, kt as KeyType)),
       ...[...activeBoss.damageBy.keys()].map((discordId) => addPlayerItem(discordId, guildId, bossItemKey)),
+      // Veteran ranks: the guild's dragon remembers every defeat — next spawn
+      // comes back stronger (+20% HP/dmg per rank, same rules as mini-bossii).
+      incrementFinalBossKills(activeBoss.guildId).catch(err =>
+        logger.error({ err, guildId: activeBoss.guildId }, "Failed to increment final-boss veteran kills")
+      ),
     ]);
 
     try {
@@ -2323,7 +2330,7 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
       const bossMsg = await ch.messages.fetch(activeBoss.messageId).catch(() => null);
       if (bossMsg) {
         await bossMsg.edit({
-          embeds: [buildFinalBossEmbed(activeBoss.level, activeBoss.rarity, activeBoss.currentHp, activeBoss.maxHp, activeBoss.damageBy, activeBoss.playerNames, activeBoss.playerHp, activeBoss.playerStats, activeBoss.expiresAt, activeBoss.charge)],
+          embeds: [buildFinalBossEmbed(activeBoss.level, activeBoss.rarity, activeBoss.currentHp, activeBoss.maxHp, activeBoss.damageBy, activeBoss.playerNames, activeBoss.playerHp, activeBoss.playerStats, activeBoss.expiresAt, activeBoss.charge, activeBoss.veteranRank ?? 0)],
           components: [finalBossRow(eventId)],
         }).catch(() => null);
       }

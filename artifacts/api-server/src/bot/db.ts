@@ -1137,6 +1137,30 @@ export interface ActiveChestRecord {
   keyType?: string;
 }
 
+// ─── Final-boss veteran kills (per-guild) ─────────────────────────────────────
+// Counts how many times the guild has defeated the shared final boss (event or
+// standalone). Drives the boss's veteran rank: +20% HP and damage per rank.
+const FINAL_BOSS_KILLS_KEY = "final_boss_kills";
+
+export async function getFinalBossKills(guildId: string): Promise<number> {
+  await ensureBotStateTable();
+  const [row] = await db.select().from(botStateTable).where(eq(botStateTable.key, guildKey(guildId, FINAL_BOSS_KILLS_KEY)));
+  const n = row ? parseInt(row.value, 10) : 0;
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+export async function incrementFinalBossKills(guildId: string): Promise<void> {
+  await ensureBotStateTable();
+  const key = guildKey(guildId, FINAL_BOSS_KILLS_KEY);
+  await pool.query(
+    `INSERT INTO bot_state (key, value, updated_at) VALUES ($1, '1', now())
+     ON CONFLICT (key) DO UPDATE
+     SET value = (COALESCE(NULLIF(regexp_replace(bot_state.value, '\\D', '', 'g'), ''), '0')::int + 1)::text,
+         updated_at = now()`,
+    [key],
+  );
+}
+
 // ─── Trader message ID persistence ────────────────────────────────────────────
 const TRADER_MESSAGE_KEY = "trader_message_id";
 

@@ -123,6 +123,8 @@ vi.mock("../db", () => ({
   persistActiveChest:             vi.fn().mockResolvedValue(undefined),
   loadActiveChest:                vi.fn().mockResolvedValue(null),
   clearActiveChest:               vi.fn().mockResolvedValue(undefined),
+  getFinalBossKills:              vi.fn().mockResolvedValue(0),
+  incrementFinalBossKills:        vi.fn().mockResolvedValue(undefined),
 }));
 
 // ── Mock oracle ───────────────────────────────────────────────────────────────

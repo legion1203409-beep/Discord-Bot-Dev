@@ -109,6 +109,8 @@ vi.mock("../survival", () => ({
   spawnChest:             vi.fn(() => ({ rarity: MOCK_CHEST_RARITY, gold: 25 })),
   bossMaxHp:              (level: unknown, rarity: unknown) => mockBossMaxHp(level as number, rarity as string),
   computeBossRewards:     (...a: unknown[]) => (mockComputeBossRewards as (...x: unknown[]) => unknown)(...a),
+  veteranRank:            vi.fn(() => 0),
+  veteranMult:            vi.fn(() => 1),
 }));
 
 // ── 4. Mock DB ────────────────────────────────────────────────────────────────
@@ -141,6 +143,8 @@ vi.mock("../db", () => ({
   persistActiveChest:             vi.fn().mockResolvedValue(undefined),
   loadActiveChest:                vi.fn().mockResolvedValue(null),
   clearActiveChest:               vi.fn().mockResolvedValue(undefined),
+  getFinalBossKills:              vi.fn().mockResolvedValue(0),
+  incrementFinalBossKills:        vi.fn().mockResolvedValue(undefined),
 }));
 
 // ── 5. Mock oracle & combat-events ────────────────────────────────────────────
