@@ -387,13 +387,11 @@ function GatePage({ onEnter }: { onEnter: () => void }) {
         <img src="/gate.png" alt="Poarta Regatului Cenușii" className="gate-img" />
         <div className="gate-img-vignette" />
       </div>
-
       {/* Smoke layers */}
       <div className="smoke smoke-1" />
       <div className="smoke smoke-2" />
       <div className="smoke smoke-3" />
       <div className="smoke smoke-4" />
-
       {/* Floating embers */}
       <div className="embers">
         {EMBERS.map((e) => (
@@ -411,13 +409,11 @@ function GatePage({ onEnter }: { onEnter: () => void }) {
           />
         ))}
       </div>
-
       {/* Light flash on open */}
       <div className={`gate-flash ${opening ? "gate-flash--active" : ""}`} />
-
       {/* Overlay content */}
       <div className="gate-overlay">
-        <h1 className="gate-title">🏰 REGATUL CENUȘII</h1>
+        <h1 className="gate-title">🏰 REdâGATUL CENUȘII</h1>
         <p className="gate-sub">Aici începe legenda ta.</p>
         <button
           className={`gate-btn ${opening ? "gate-btn--opening" : ""}`}
