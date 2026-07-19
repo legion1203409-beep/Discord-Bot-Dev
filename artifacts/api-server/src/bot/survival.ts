@@ -654,7 +654,25 @@ export function buildCombatEmbed(p: EventParticipant, extra = "", avatarUrl?: st
   const bonusLines: string[] = [];
   if (player?.class && isClassKey(player.class)) {
     const cls = CLASSES[player.class];
-    bonusLines.push(`${cls.emoji} **${cls.label}** — ${cls.desc}`);
+    const clsLvl = player.classLevel ?? 1;
+    const cs = classStats(player.class, clsLvl);
+    const clsParts = [
+      cs.attack > 0 ? `+${cs.attack} daune` : "",
+      cs.hp > 0 ? `+${cs.hp} HP` : "",
+      cs.dodge > 0 ? `+${cs.dodge}% evitare` : "",
+      cs.crit > 0 ? `+${cs.crit}% critic` : "",
+      cls.xpMult !== 1 ? `XP ×${cls.xpMult}` : "",
+      cls.oboliMult !== 1 ? `Oboli ×${cls.oboliMult}` : "",
+    ].filter(Boolean).join(", ");
+    bonusLines.push(`${cls.emoji} **${cls.label}** Nv.${clsLvl} — ${clsParts || cls.desc}`);
+  }
+  if (player?.companion && isCompanionKey(player.companion)) {
+    const comp = COMPANIONS[player.companion];
+    const compLvl = player.companionLevel ?? 1;
+    const evolved = isCompanionEvolved(compLvl);
+    bonusLines.push(
+      `${comp.emoji} **${evolved ? comp.evoLabel : comp.label}** Nv.${compLvl}${evolved ? " ✨" : ""} — ${companionEffectiveDesc(player.companion, compLvl)}`,
+    );
   }
   const talKey = player?.talisman && isTalismanKey(player.talisman) ? player.talisman : null;
   if (talKey) {
