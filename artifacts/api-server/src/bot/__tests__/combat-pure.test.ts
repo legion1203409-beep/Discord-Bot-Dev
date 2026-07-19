@@ -61,6 +61,10 @@ import {
   shieldReduction,
   bonusMult,
   monsterMaxHp,
+  monsterSpawnHp,
+  veteranRank,
+  veteranMult,
+  veteranRankFor,
   monsterDmgRange,
   monsterHitPct,
   monsterReward,
@@ -218,6 +222,62 @@ describe("monsterMaxHp", () => {
   it("multiplies by 2.5 for mini-boss levels", () => {
     const base = 40 + 10 * 15;
     expect(monsterMaxHp(10)).toBe(Math.round(base * 2.5));
+  });
+});
+
+// ─── Boss veteran ranks ────────────────────────────────────────────────────
+
+describe("veteran ranks", () => {
+  it("rank 0 with no kills, rank 1 after the first kill", () => {
+    expect(veteranRank(0)).toBe(0);
+    expect(veteranRank(1)).toBe(1);
+    expect(veteranRank(4)).toBe(1);
+  });
+
+  it("ranks up every 5 kills, capped at 5", () => {
+    expect(veteranRank(5)).toBe(2);
+    expect(veteranRank(10)).toBe(3);
+    expect(veteranRank(15)).toBe(4);
+    expect(veteranRank(20)).toBe(5);
+    expect(veteranRank(999)).toBe(5);
+  });
+
+  it("multiplier is +20% per rank", () => {
+    expect(veteranMult(0)).toBeCloseTo(1);
+    expect(veteranMult(1)).toBeCloseTo(1.2);
+    expect(veteranMult(5)).toBeCloseTo(2);
+  });
+
+  it("veteranRankFor only applies to boss fights and uses the boss's own kill count", () => {
+    const idx = String(bossIndex(10));
+    const kills = { [idx]: 6 };
+    expect(veteranRankFor(10, "boss", kills)).toBe(2);
+    expect(veteranRankFor(11, "comun", kills)).toBe(0);
+    expect(veteranRankFor(10, "boss", {})).toBe(0);
+    expect(veteranRankFor(10, "boss", null)).toBe(0);
+  });
+
+  it("monsterSpawnHp scales boss HP by the veteran multiplier", () => {
+    const idx = String(bossIndex(10));
+    expect(monsterSpawnHp(10, "boss", { [idx]: 1 })).toBe(Math.round(monsterMaxHp(10, "boss") * 1.2));
+    expect(monsterSpawnHp(10, "boss", null)).toBe(monsterMaxHp(10, "boss"));
+    expect(monsterSpawnHp(7, "comun", { [String(bossIndex(7))]: 20 })).toBe(monsterMaxHp(7, "comun"));
+  });
+
+  it("doCombat: veteran boss deals ~20% more damage per rank", () => {
+    // Force monster hit, no dodge, no crit: random sequence controlled
+    const p = makeParticipant({ monsterLevel: 10, monsterRarity: "boss", monsterCurrentHp: 10_000, currentHp: 1_000, maxHp: 1_000, defenseBonus: 0 });
+    const idx = String(bossIndex(10));
+    const spy = vi.spyOn(Math, "random").mockReturnValue(0.5);
+    try {
+      const base = doCombat(p);
+      const vet = doCombat(p, null, 1, { [idx]: 1 });
+      expect(base.monsterHit).toBe(true);
+      expect(vet.monsterHit).toBe(true);
+      expect(vet.monsterDmg).toBe(Math.round(base.monsterDmg * 1.2));
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 

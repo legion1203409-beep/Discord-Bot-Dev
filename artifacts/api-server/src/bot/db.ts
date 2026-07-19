@@ -6,7 +6,7 @@ import type { SQL } from "drizzle-orm";
 import type { Player, EventParticipant } from "@workspace/db";
 
 export type { PlayerItem };
-import { CLASSES, isClassKey, classStats, rollRarity, isCompanionKey, companionStats, prestigeStartLevel, monsterMaxHp } from "./survival";
+import { CLASSES, isClassKey, classStats, rollRarity, isCompanionKey, companionStats, prestigeStartLevel, monsterSpawnHp } from "./survival";
 import { logger } from "../lib/logger";
 
 export type UpgradeKey = "atac" | "def" | "dodge" | "crit" | "hp";
@@ -156,6 +156,10 @@ export async function runMultiGuildMigrations(): Promise<void> {
   await pool.query(`ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS boss_charge integer NOT NULL DEFAULT 0`);
   logger.info("multi-guild migrations: event_participants.boss_charge ensured");
 
+  // ─── Boss veteran ranks: per-player per-boss kill counts ──────────────────
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS boss_kills jsonb NOT NULL DEFAULT '{}'::jsonb`);
+  logger.info("multi-guild migrations: players.boss_kills ensured");
+
   // Post-migration verification: confirm every required column is present
   const { rows: missingCols } = await pool.query<{ table_name: string; column_name: string }>(`
     SELECT v.table_name, v.column_name
@@ -171,7 +175,8 @@ export async function runMultiGuildMigrations(): Promise<void> {
       ('players',           'prestige_crit_bonus'),
       ('players',           'prestige_hp_bonus'),
       ('players',           'talisman_level'),
-      ('event_participants','items_farmed')
+      ('event_participants','items_farmed'),
+      ('players',           'boss_kills')
     ) AS v(table_name, column_name)
     WHERE NOT EXISTS (
       SELECT 1 FROM information_schema.columns c
@@ -261,6 +266,16 @@ export async function upsertPlayer(discordId: string, guildId: string, username:
   }
   const [c] = await db.insert(playersTable).values({ discordId, guildId, username }).returning();
   return c!;
+}
+
+/** Atomically increments how many times this player has slain the given boss (veteran ranks). */
+export async function incrementBossKill(discordId: string, guildId: string, bossIdx: number): Promise<void> {
+  const key = String(bossIdx);
+  await db.update(playersTable)
+    .set({
+      bossKills: sql`jsonb_set(coalesce(${playersTable.bossKills}, '{}'::jsonb), ${sql.raw(`'{${Number(bossIdx)}}'`)}, (coalesce(${playersTable.bossKills}->>${key}, '0')::int + 1)::text::jsonb)`,
+    })
+    .where(playerWhere(discordId, guildId));
 }
 
 export async function recordPlayerDeath(discordId: string, guildId: string, deathLevel: number): Promise<void> {
@@ -594,7 +609,7 @@ export async function joinEvent(guildId: string, eventId: number, discordId: str
   const prestigeLevel = player?.prestigeLevel ?? 0;
   const startLevel = prestigeStartLevel(prestigeLevel);
   const startRarity = rollRarity(startLevel);
-  const startMonsterHp = monsterMaxHp(startLevel, startRarity);
+  const startMonsterHp = monsterSpawnHp(startLevel, startRarity, player?.bossKills);
   const maxHp = 100 + (player?.maxHpBonus ?? 0) + (player?.prestigeHpBonus ?? 0) + (cls?.hp ?? 0) + (comp?.hp ?? 0);
   try {
     const [p] = await db.insert(eventParticipantsTable).values({

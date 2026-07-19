@@ -88,6 +88,7 @@ import {
   consumePlayerItems,
   getDailyQuestProgress,
   incrementDailyQuestKill,
+  incrementBossKill,
   todayDateUTC,
   type AbilityKind,
   type KeyType,
@@ -117,6 +118,8 @@ import {
   levelupRows,
   shopPrice,
   monsterMaxHp,
+  monsterSpawnHp,
+  isBossFight,
   formatCooldown,
   levelTitle,
   CLASSES,
@@ -1496,7 +1499,14 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
 
   const talismanKey = pl?.talisman ?? null;
   const talismanLevel = pl?.talismanLevel ?? 1;
-  const result = doCombat(p, talismanKey, talismanLevel);
+  const result = doCombat(p, talismanKey, talismanLevel, pl?.bossKills);
+  // Veteran ranks: remember every mini-boss this player slays — next time the
+  // same boss appears for them, it comes back stronger (+20% HP/dmg per rank).
+  const slainBoss = result.monsterDefeated && isBossFight(p.monsterLevel, p.monsterRarity);
+  if (slainBoss) {
+    void incrementBossKill(p.discordId, guildId, bossIndex(p.monsterLevel))
+      .catch((err) => logger.error({ err, discordId: p.discordId, guildId }, "incrementBossKill failed"));
+  }
   const killBaseXp = result.xpGained;
   const killBaseOboli = result.oboliGained;
 
@@ -1574,7 +1584,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
     await updateParticipant(p.id, {
       currentHp: finalPlayerHp,
       monsterLevel: result.newMonsterLevel,
-      monsterCurrentHp: monsterMaxHp(result.newMonsterLevel, result.newMonsterRarity),
+      monsterCurrentHp: monsterSpawnHp(result.newMonsterLevel, result.newMonsterRarity, pl?.bossKills),
       monsterRarity: result.newMonsterRarity,
       totalDamage: p.totalDamage + result.playerDmg,
       oboli: p.oboli + result.oboliGained,

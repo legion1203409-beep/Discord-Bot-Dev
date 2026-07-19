@@ -1,4 +1,4 @@
-import { pgTable, text, integer, timestamp, primaryKey } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, timestamp, primaryKey, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -41,6 +41,7 @@ export const playersTable = pgTable("players", {
   prestigeDodgeBonus: integer("prestige_dodge_bonus").notNull().default(0),
   prestigeCritBonus: integer("prestige_crit_bonus").notNull().default(0),
   prestigeHpBonus: integer("prestige_hp_bonus").notNull().default(0),
+  bossKills: jsonb("boss_kills").$type<Record<string, number>>().notNull().default({}),
   talisman: text("talisman"),
   talismanLevel: integer("talisman_level").notNull().default(1),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

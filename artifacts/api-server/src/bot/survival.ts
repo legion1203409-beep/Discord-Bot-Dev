@@ -105,6 +105,36 @@ export function bossRank(level: number): number {
   return Math.min(10, Math.max(1, Math.ceil(level / 10)));
 }
 
+// ─── Boss veteran ranks ─────────────────────────────────────────────────────
+// Every boss a player defeats grows stronger for that player: the first kill
+// gives it Rank I, then every 5 kills of the SAME boss rank it up again.
+// Each rank adds +20% HP and +20% damage and bumps its displayed rarity tier.
+export const VETERAN_KILLS_PER_RANK = 5;
+export const VETERAN_MAX_RANK = 5;
+export const VETERAN_TIERS = ["", "Rar 🔵", "Epic 🟣", "Legendar 🟠", "Mitic 🔴", "Etern ⚫"] as const;
+
+/** Veteran rank 0–5 from how many times the player killed this boss. */
+export function veteranRank(kills: number): number {
+  if (kills <= 0) return 0;
+  return Math.min(VETERAN_MAX_RANK, 1 + Math.floor(kills / VETERAN_KILLS_PER_RANK));
+}
+
+/** HP/damage multiplier for a veteran rank: +20% per rank. */
+export function veteranMult(rank: number): number {
+  return 1 + 0.2 * Math.max(0, Math.min(VETERAN_MAX_RANK, rank));
+}
+
+/** Veteran rank of the boss at `level` for a player with these per-boss kill counts. */
+export function veteranRankFor(level: number, rarity: string | null | undefined, bossKills: Record<string, number> | null | undefined): number {
+  if (!isBossFight(level, rarity ?? undefined)) return 0;
+  return veteranRank(bossKills?.[String(bossIndex(level))] ?? 0);
+}
+
+/** Max HP of the monster at spawn, scaled by the player's veteran rank when it's a boss. */
+export function monsterSpawnHp(level: number, rarity: string | undefined, bossKills: Record<string, number> | null | undefined): number {
+  return Math.round(monsterMaxHp(level, rarity) * veteranMult(veteranRankFor(level, rarity, bossKills)));
+}
+
 /** The 14 named monsters — index matches MONSTER_IMG in assets.ts. */
 export const MONSTERS: { name: string; desc: string }[] = [
   { name: "Golemul de Măduvă", desc: "Colos de os și piatră, cu inimă pulsând ca un blestem." },
@@ -485,7 +515,9 @@ export type CombatResult = {
   abilityHeal: number;
 };
 
-export function doCombat(p: EventParticipant, talismanKey?: string | null, talismanLevel = 1): CombatResult {
+export function doCombat(p: EventParticipant, talismanKey?: string | null, talismanLevel = 1, bossKills?: Record<string, number> | null): CombatResult {
+  const vetRank = veteranRankFor(p.monsterLevel, p.monsterRarity, bossKills);
+  const vetMult = veteranMult(vetRank);
   const battle = getActiveBattleEvent();
   const mods = getCombatModifiers(p.discordId);
   const usedEmpower = p.empowerNext;
@@ -528,7 +560,7 @@ export function doCombat(p: EventParticipant, talismanKey?: string | null, talis
       playerDodged = Math.random() * 100 < p.dodgeBonus;
       if (!playerDodged) {
         const [mn, mx] = monsterDmgRange(p.monsterLevel, p.monsterRarity);
-        monsterDmg = Math.max(1, rand(mn, mx) - p.defenseBonus);
+        monsterDmg = Math.max(1, Math.round(rand(mn, mx) * vetMult) - p.defenseBonus);
         // giulgiul_stins: flat damage reduction from monsters (can reduce to 0)
         if (talismanKey === "giulgiul_stins") {
           const reduction = talismanValue("giulgiul_stins", talismanLevel);
@@ -547,7 +579,7 @@ export function doCombat(p: EventParticipant, talismanKey?: string | null, talis
   // some bosses also heal for that amount), then the bar resets.
   let newBossCharge = p.bossCharge ?? 0;
   let abilityFired = false, abilityDmg = 0, abilityHeal = 0;
-  let finalMonsterHp = monsterDefeated ? monsterMaxHp(newMonsterLevel, newMonsterRarity) : newMHp;
+  let finalMonsterHp = monsterDefeated ? monsterSpawnHp(newMonsterLevel, newMonsterRarity, bossKills) : newMHp;
   if (isBossFight(p.monsterLevel, p.monsterRarity as Rarity) && !monsterDefeated) {
     newBossCharge += 1;
     if (newBossCharge >= BOSS_CHARGE_MAX && !playerDied) {
@@ -558,7 +590,7 @@ export function doCombat(p: EventParticipant, talismanKey?: string | null, talis
       playerDied = newPlayerHp <= 0;
       if (ab.steal) {
         abilityHeal = abilityDmg;
-        finalMonsterHp = Math.min(monsterMaxHp(p.monsterLevel, p.monsterRarity as Rarity), finalMonsterHp + abilityHeal);
+        finalMonsterHp = Math.min(Math.round(monsterMaxHp(p.monsterLevel, p.monsterRarity as Rarity) * vetMult), finalMonsterHp + abilityHeal);
       }
       newBossCharge = 0;
     }
@@ -605,7 +637,8 @@ export function buildStartEmbed(expiresAt?: Date): EmbedBuilder {
 export function buildCombatEmbed(p: EventParticipant, extra = "", avatarUrl?: string | null, player?: Player | null): EmbedBuilder {
   const rarity = (p.monsterRarity as Rarity) ?? "comun";
   const [mn, mx] = monsterDmgRange(p.monsterLevel, rarity);
-  const mMaxHp = monsterMaxHp(p.monsterLevel, rarity);
+  const vetRank = veteranRankFor(p.monsterLevel, rarity, player?.bossKills);
+  const mMaxHp = Math.round(monsterMaxHp(p.monsterLevel, rarity) * veteranMult(vetRank));
   const meta = RARITY[rarity] ?? RARITY.comun;
   const reward = monsterReward(p.monsterLevel, rarity);
   const zone = zoneFor(p.monsterLevel);
@@ -644,6 +677,9 @@ export function buildCombatEmbed(p: EventParticipant, extra = "", avatarUrl?: st
       (boss
         ? `👁️ *${BOSSES[bossIndex(p.monsterLevel)]!.desc}*\n` +
           `☠️ Rang boss: **${bossRank(p.monsterLevel)}/10** ${"🔥".repeat(bossRank(p.monsterLevel))}${"▱".repeat(10 - bossRank(p.monsterLevel))}\n` +
+          (vetRank > 0
+            ? `🏅 Rang veteran: **${VETERAN_TIERS[vetRank]}** — *te-a studiat! +${vetRank * 20}% viață și daune*\n`
+            : "") +
           `${BOSSES[bossIndex(p.monsterLevel)]!.ability.emoji} Abilitate: **${BOSSES[bossIndex(p.monsterLevel)]!.ability.name}** ${chargeBar(p.bossCharge ?? 0, BOSS_CHARGE_MAX)}\n` +
           `⚡ *Când bara se umple, bossul își dezlănțuie abilitatea!*\n` +
           `💀 O prezență colosală blochează drumul. Recompensă dublă pentru cel care o doboară!\n\n`
