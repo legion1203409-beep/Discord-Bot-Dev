@@ -26,13 +26,13 @@ export const IMG = {
 
 /**
  * Per-monster art — index i matches MONSTERS[i] in survival.ts.
- * All rarities use the static wide PNG (the animated rarity GIFs were retired —
- * they rendered poorly in Discord). Bosses never use these — they have their
- * own art via bossImg().
+ * All rarities use the static v2 PNG portraits (user-provided art; the animated
+ * rarity GIFs were retired — they rendered poorly in Discord). Bosses never use
+ * these — they have their own art via bossImg().
  */
 export function monsterImg(index: number, _rarity: string): string | null {
   const n = String(index + 1).padStart(2, "0");
-  return assetUrl(`monster_${n}_wide.png`);
+  return assetUrl(`monster_${n}_v2.png`);
 }
 
 /** Animated art per named mini-boss — index i matches BOSSES[i] in survival.ts. */
@@ -42,7 +42,7 @@ export function bossImg(index: number): string | null {
 
 /** One image per named monster — index i matches MONSTERS[i] in survival.ts. */
 export const MONSTER_IMG: (string | null)[] = Array.from({ length: 14 }, (_, i) =>
-  assetUrl(`monster_${String(i + 1).padStart(2, "0")}_wide.png`),
+  assetUrl(`monster_${String(i + 1).padStart(2, "0")}_v2.png`),
 );
 
 export const CHEST_IMG: Record<string, string | null> = {
