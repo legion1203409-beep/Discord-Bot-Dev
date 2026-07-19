@@ -1030,10 +1030,14 @@ const SHOP_BALANCE = (p: Player) => {
 
 // Five permanent stat upgrades — shows current bonus → value after purchase,
 // with the price in bold so the cost is unmistakable.
+const STAT_BAR_MAX = 20;
+
 function shopStatsText(p: Player): string {
   const line = (key: ShopKey, emoji: string, label: string, now: string, next: string) => {
-    const price = shopPrice(key, p[SHOP_COUNT_KEY[key]] as number);
-    return `${emoji} **${label}** — **${price} Oboli**\n   ↳ acum ${now} → ${next}\n`;
+    const count = p[SHOP_COUNT_KEY[key]] as number;
+    const price = shopPrice(key, count);
+    const bar = buildProgressBar(Math.min(count, STAT_BAR_MAX), STAT_BAR_MAX, 10);
+    return `${emoji} **${label}** (Nv.${count}) — **${price} Oboli**\n${bar}\n   ↳ acum ${now} → ${next}\n`;
   };
   return (
     line("atac", "⚔️", "Atac", `+${p.attackBonus} daune`, `+${p.attackBonus + 2} daune`) +
