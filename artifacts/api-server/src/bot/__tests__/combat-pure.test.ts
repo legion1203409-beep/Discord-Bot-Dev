@@ -72,6 +72,8 @@ import {
   levelTitle,
   shopPrice,
   doCombat,
+  BOSSES,
+  bossIndex,
   buildResultText,
   buildCombatEmbed,
   RARITY_WEIGHTS,
@@ -112,6 +114,7 @@ function makeParticipant(overrides: Partial<EventParticipant> = {}): EventPartic
     monsterLevel: 1,
     monsterCurrentHp: 60,
     monsterRarity: "comun",
+    bossCharge: 0,
     empowerNext: false,
     empowerLevel: 0,
     shieldNext: false,
@@ -512,6 +515,43 @@ describe("doCombat", () => {
     expect(rWith.playerDmg).toBeGreaterThanOrEqual(rNo.playerDmg);
   });
 
+  it("boss charge fills each round in a boss fight and fires the ability at max", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.99); // no crit, monster misses
+    // Charge below max: just increments, no ability
+    const p1 = makeParticipant({ monsterRarity: "boss", monsterLevel: 10, monsterCurrentHp: 99999, bossCharge: 2, maxHp: 200, currentHp: 200 });
+    const r1 = doCombat(p1);
+    expect(r1.newBossCharge).toBe(3);
+    expect(r1.abilityFired).toBe(false);
+    expect(r1.abilityDmg).toBe(0);
+
+    // Charge reaches max: ability fires, damages % of maxHp, resets to 0
+    const p2 = makeParticipant({ monsterRarity: "boss", monsterLevel: 10, monsterCurrentHp: 99999, bossCharge: 4, maxHp: 200, currentHp: 200 });
+    const r2 = doCombat(p2);
+    expect(r2.abilityFired).toBe(true);
+    expect(r2.newBossCharge).toBe(0);
+    const ab = BOSSES[bossIndex(10)]!.ability;
+    const expectedDmg = Math.max(1, Math.round((200 * ab.pct) / 100));
+    expect(r2.abilityDmg).toBe(expectedDmg);
+    expect(r2.newPlayerHp).toBe(200 - expectedDmg);
+    if (ab.steal) expect(r2.abilityHeal).toBe(expectedDmg);
+    else expect(r2.abilityHeal).toBe(0);
+  });
+
+  it("boss charge resets to 0 when the monster is defeated and never fires on non-boss fights", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const pKill = makeParticipant({ monsterRarity: "boss", monsterLevel: 10, monsterCurrentHp: 1, attackBonus: 10000, bossCharge: 4 });
+    const rKill = doCombat(pKill);
+    expect(rKill.monsterDefeated).toBe(true);
+    expect(rKill.newBossCharge).toBe(0);
+    expect(rKill.abilityFired).toBe(false);
+
+    vi.spyOn(Math, "random").mockReturnValue(0.99);
+    const pNormal = makeParticipant({ monsterRarity: "comun", monsterLevel: 3, monsterCurrentHp: 9999, bossCharge: 4 });
+    const rNormal = doCombat(pNormal);
+    expect(rNormal.abilityFired).toBe(false);
+    expect(rNormal.newBossCharge).toBe(4);
+  });
+
   it("levelUp flag fires at every LEVELUP_INTERVAL monster level", () => {
     // Defeat monster at monsterLevel = 4 (next level = 5, 5 % 5 === 0)
     vi.spyOn(Math, "random").mockReturnValue(0);
@@ -531,6 +571,7 @@ describe("buildResultText breakdown lines", () => {
     playerDied: false, newMonsterHp: 50, newPlayerHp: 100,
     xpGained: 0, oboliGained: 0, levelUp: false, newMonsterLevel: 1, newMonsterRarity: "comun",
     usedEmpower: false, usedShield: false, stormDrain: 0, battleEventEmoji: "", hpRegen: 0,
+    newBossCharge: 0, abilityFired: false, abilityDmg: 0, abilityHeal: 0,
   };
 
   it("shows no breakdown when damage is unmodified", () => {

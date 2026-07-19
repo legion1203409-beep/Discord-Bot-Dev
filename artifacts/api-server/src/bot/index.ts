@@ -135,6 +135,9 @@ import {
   shieldReduction,
   buildFinalBossEmbed,
   buildBossLeaderboard,
+  BOSSES,
+  bossIndex,
+  FINAL_BOSS_CHARGE_MAX,
   buildLockedChestEmbed,
   buildKeyDropMessage,
   LOCKED_CHEST_GOLD,
@@ -1582,6 +1585,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
       pendingLevelup: true,
       empowerNext: false,
       shieldNext: false,
+      bossCharge: result.newBossCharge,
     });
     const lvlDropLine = itemDrop ? `${ITEMS[itemDrop].emoji} **${ITEMS[itemDrop].label}** a căzut din monstru!` : undefined;
     await interaction.editReply({ embeds: [buildLevelupEmbed(Math.floor(result.newMonsterLevel / LEVELUP_INTERVAL), lvlDropLine)], components: levelupRows(eventId) });
@@ -1601,6 +1605,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
     itemsFarmed,
     empowerNext: false,
     shieldNext: false,
+    bossCharge: result.newBossCharge,
   });
 
   await interaction.editReply({ embeds: [buildCombatEmbed(updated, extra, interaction.user.displayAvatarURL({ size: 256 }), pl)], components: [combatRow(eventId, updated)] });
@@ -2104,6 +2109,36 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
 
   const bossDefeated = activeBoss.currentHp <= 0 && !activeBoss.defeated;
 
+  // Shared ability charge bar: every hit fills it; when full the boss
+  // unleashes its special ability on ALL living fighters, then it resets.
+  let bossAbilityAnnouncement = "";
+  if (!bossDefeated) {
+    activeBoss.charge = (activeBoss.charge ?? 0) + 1;
+    if (activeBoss.charge >= FINAL_BOSS_CHARGE_MAX) {
+      activeBoss.charge = 0;
+      const bossIdentity = BOSSES[bossIndex(activeBoss.level)]!;
+      const ab = bossIdentity.ability;
+      const hitLines: string[] = [];
+      let totalDrained = 0;
+      for (const [pid, hp] of activeBoss.playerHp) {
+        if (hp <= 0) continue;
+        const pMaxHp = activeBoss.playerStats.get(pid)?.maxHp ?? 100;
+        const dmg = Math.max(1, Math.round((pMaxHp * ab.pct) / 100));
+        const nhp = Math.max(0, hp - dmg);
+        activeBoss.playerHp.set(pid, nhp);
+        totalDrained += dmg;
+        hitLines.push(`💥 <@${pid}> −**${dmg} HP**${nhp <= 0 ? " ⚰️ **doborât!**" : ""}`);
+      }
+      if (ab.steal && totalDrained > 0) {
+        activeBoss.currentHp = Math.min(activeBoss.maxHp, activeBoss.currentHp + totalDrained);
+      }
+      bossAbilityAnnouncement =
+        `${ab.emoji} **${bossIdentity.name} își dezlănțuie abilitatea: ${ab.name}!**\n` +
+        hitLines.join("\n") +
+        (ab.steal && totalDrained > 0 ? `\n🩸 Bossul absoarbe viața luptătorilor și se vindecă cu **+${totalDrained.toLocaleString()} HP**!` : "");
+    }
+  }
+
   if (bossDefeated) {
     activeBoss.defeated = true;
     activeBossMap.delete(eventId);
@@ -2186,16 +2221,22 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
       const bossMsg = await ch.messages.fetch(activeBoss.messageId).catch(() => null);
       if (bossMsg) {
         await bossMsg.edit({
-          embeds: [buildFinalBossEmbed(activeBoss.level, activeBoss.rarity, activeBoss.currentHp, activeBoss.maxHp, activeBoss.damageBy, activeBoss.playerNames, activeBoss.playerHp, activeBoss.playerStats, activeBoss.expiresAt)],
+          embeds: [buildFinalBossEmbed(activeBoss.level, activeBoss.rarity, activeBoss.currentHp, activeBoss.maxHp, activeBoss.damageBy, activeBoss.playerNames, activeBoss.playerHp, activeBoss.playerStats, activeBoss.expiresAt, activeBoss.charge)],
           components: [finalBossRow(eventId)],
         }).catch(() => null);
       }
     }
   } catch { /* ignore */ }
 
-  const playerStatus = newPlayerHp <= 0
+  // Public announcement when the boss ability fired (visible to everyone).
+  if (bossAbilityAnnouncement) {
+    await interaction.followUp({ content: bossAbilityAnnouncement }).catch(() => null);
+  }
+
+  const myFinalHp = activeBoss.playerHp.get(uid) ?? newPlayerHp;
+  const playerStatus = myFinalHp <= 0
     ? `💀 **Ai fost doborât de Dragon!** Nu mai poți lovi.`
-    : `❤️ Viața ta: **${newPlayerHp} / ${myMaxHp} HP**`;
+    : `❤️ Viața ta: **${myFinalHp} / ${myMaxHp} HP**`;
 
   const effectsLine = formatCombatEffects(uid);
   await interaction.followUp({

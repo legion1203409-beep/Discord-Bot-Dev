@@ -60,19 +60,40 @@ export function rollRarity(level: number): Rarity {
   return "comun";
 }
 
+/** Special boss ability — fires when the charge bar fills up. */
+export interface BossAbility {
+  name: string;
+  emoji: string;
+  /** Damage as % of the victim's max HP when the ability fires. */
+  pct: number;
+  /** If true, the boss heals for the damage dealt (lifesteal). */
+  steal?: boolean;
+}
+
 /** The 10 named mini-bosses — index matches boss_NN assets in assets.ts. */
-export const BOSSES: { name: string; desc: string }[] = [
-  { name: "Păstrătorul Rânced", desc: "Respirația Ciumei — un nor toxic care roade viața și armura celor prinși în el." },
-  { name: "Strigoiul Fără Maxilar", desc: "Țipătul Golului — un urlet care amuțește abilitățile și zguduie carnea." },
-  { name: "Călăul cu Masca de Fier", desc: "Execuția Finală — marchează pe cei slăbiți și lovește cu putere dublă." },
-  { name: "Păpușarul de Sânge", desc: "Corzi de Carne — leagă victimele între ele și le fură sângele prin fire vii." },
-  { name: "Cântărețul de Sub Pământ", desc: "Simfonia Fracturii — unde sonore care crapă solul și dezorientează." },
-  { name: "Femeia cu Trei Fețe", desc: "Schimbarea Destinului — trece prin foc, gheață și umbre, șocând arena la fiecare schimbare." },
-  { name: "Regele Cenușii", desc: "Furtuna Cenușii — lame de cenușă care taie vindecarea și grăbesc lovitura regelui." },
-  { name: "Mama Abisului", desc: "Privirea Abisului — o rază din ochiul central care arde tot ce stă nemișcat." },
-  { name: "Copilul cu Inima Externă", desc: "Pulsul Corupt — inima expusă absoarbe viața tuturor și o bea pentru sine." },
-  { name: "Călătorul dintre Lumi", desc: "Fractura Dimensională — se rupe în trei forme și explodează la reîntregire." },
+export const BOSSES: { name: string; desc: string; ability: BossAbility }[] = [
+  { name: "Păstrătorul Rânced", desc: "Respirația Ciumei — un nor toxic care roade viața și armura celor prinși în el.", ability: { name: "Respirația Ciumei", emoji: "🦴", pct: 15 } },
+  { name: "Strigoiul Fără Maxilar", desc: "Țipătul Golului — un urlet care amuțește abilitățile și zguduie carnea.", ability: { name: "Țipătul Golului", emoji: "💀", pct: 10 } },
+  { name: "Călăul cu Masca de Fier", desc: "Execuția Finală — marchează pe cei slăbiți și lovește cu putere dublă.", ability: { name: "Execuția Finală", emoji: "⚔️", pct: 20 } },
+  { name: "Păpușarul de Sânge", desc: "Corzi de Carne — leagă victimele între ele și le fură sângele prin fire vii.", ability: { name: "Corzi de Carne", emoji: "🩸", pct: 12, steal: true } },
+  { name: "Cântărețul de Sub Pământ", desc: "Simfonia Fracturii — unde sonore care crapă solul și dezorientează.", ability: { name: "Simfonia Fracturii", emoji: "🎶", pct: 15 } },
+  { name: "Femeia cu Trei Fețe", desc: "Schimbarea Destinului — trece prin foc, gheață și umbre, șocând arena la fiecare schimbare.", ability: { name: "Schimbarea Destinului", emoji: "🔮", pct: 12 } },
+  { name: "Regele Cenușii", desc: "Furtuna Cenușii — lame de cenușă care taie vindecarea și grăbesc lovitura regelui.", ability: { name: "Furtuna Cenușii", emoji: "👑", pct: 12 } },
+  { name: "Mama Abisului", desc: "Privirea Abisului — o rază din ochiul central care arde tot ce stă nemișcat.", ability: { name: "Privirea Abisului", emoji: "🌑", pct: 25 } },
+  { name: "Copilul cu Inima Externă", desc: "Pulsul Corupt — inima expusă absoarbe viața tuturor și o bea pentru sine.", ability: { name: "Pulsul Corupt", emoji: "❤️", pct: 10, steal: true } },
+  { name: "Călătorul dintre Lumi", desc: "Fractura Dimensională — se rupe în trei forme și explodează la reîntregire.", ability: { name: "Fractura Dimensională", emoji: "🌌", pct: 15 } },
 ];
+
+/** Attacks needed to fill the ability charge bar in a mini-boss fight. */
+export const BOSS_CHARGE_MAX = 5;
+/** Total hits needed to fill the shared ability charge bar on the final boss. */
+export const FINAL_BOSS_CHARGE_MAX = 8;
+
+/** "⚡ ▰▰▱▱▱"-style charge bar. */
+export function chargeBar(charge: number, max: number): string {
+  const c = Math.max(0, Math.min(max, charge));
+  return "🟧".repeat(c) + "⬛".repeat(max - c);
+}
 
 /** Deterministic boss index for a level — 7 is coprime with 10, so all 10 rotate before repeating. */
 export function bossIndex(level: number): number {
@@ -454,6 +475,14 @@ export type CombatResult = {
   stormDrain: number; battleEventEmoji: string;
   /** HP restored by talisman passives (runa_sangelui life steal on crit). */
   hpRegen: number;
+  /** Boss ability charge after this round (persisted on the participant). */
+  newBossCharge: number;
+  /** True when the boss's special ability fired this round. */
+  abilityFired: boolean;
+  /** Damage the ability dealt to the player (0 if not fired). */
+  abilityDmg: number;
+  /** HP the boss healed via lifesteal ability (0 if none). */
+  abilityHeal: number;
 };
 
 export function doCombat(p: EventParticipant, talismanKey?: string | null, talismanLevel = 1): CombatResult {
@@ -513,6 +542,30 @@ export function doCombat(p: EventParticipant, talismanKey?: string | null, talis
     }
   }
 
+  // Boss ability charge bar: fills +1 each round in a mini-boss fight; when
+  // full, the boss unleashes its special ability (% of the player's max HP,
+  // some bosses also heal for that amount), then the bar resets.
+  let newBossCharge = p.bossCharge ?? 0;
+  let abilityFired = false, abilityDmg = 0, abilityHeal = 0;
+  let finalMonsterHp = monsterDefeated ? monsterMaxHp(newMonsterLevel, newMonsterRarity) : newMHp;
+  if (isBossFight(p.monsterLevel, p.monsterRarity as Rarity) && !monsterDefeated) {
+    newBossCharge += 1;
+    if (newBossCharge >= BOSS_CHARGE_MAX && !playerDied) {
+      const ab = BOSSES[bossIndex(p.monsterLevel)]!.ability;
+      abilityFired = true;
+      abilityDmg = Math.max(1, Math.round((p.maxHp * ab.pct) / 100));
+      newPlayerHp = Math.max(0, newPlayerHp - abilityDmg);
+      playerDied = newPlayerHp <= 0;
+      if (ab.steal) {
+        abilityHeal = abilityDmg;
+        finalMonsterHp = Math.min(monsterMaxHp(p.monsterLevel, p.monsterRarity as Rarity), finalMonsterHp + abilityHeal);
+      }
+      newBossCharge = 0;
+    }
+  } else if (monsterDefeated) {
+    newBossCharge = 0;
+  }
+
   // runa_sangelui: life steal on crit — only if player survived
   const hpRegen =
     talismanKey === "runa_sangelui" && isCrit && !playerDied
@@ -521,9 +574,10 @@ export function doCombat(p: EventParticipant, talismanKey?: string | null, talis
 
   return {
     playerDmg, isCrit, baseDmg, monsterDefeated, monsterHit, monsterDmg, playerDodged,
-    playerDied, newMonsterHp: monsterDefeated ? monsterMaxHp(newMonsterLevel, newMonsterRarity) : newMHp,
+    playerDied, newMonsterHp: finalMonsterHp,
     newPlayerHp, xpGained, oboliGained, levelUp, newMonsterLevel, newMonsterRarity,
     usedEmpower, usedShield, stormDrain, battleEventEmoji: battle?.emoji ?? "", hpRegen,
+    newBossCharge, abilityFired, abilityDmg, abilityHeal,
   };
 }
 
@@ -590,6 +644,8 @@ export function buildCombatEmbed(p: EventParticipant, extra = "", avatarUrl?: st
       (boss
         ? `👁️ *${BOSSES[bossIndex(p.monsterLevel)]!.desc}*\n` +
           `☠️ Rang boss: **${bossRank(p.monsterLevel)}/10** ${"🔥".repeat(bossRank(p.monsterLevel))}${"▱".repeat(10 - bossRank(p.monsterLevel))}\n` +
+          `${BOSSES[bossIndex(p.monsterLevel)]!.ability.emoji} Abilitate: **${BOSSES[bossIndex(p.monsterLevel)]!.ability.name}** ${chargeBar(p.bossCharge ?? 0, BOSS_CHARGE_MAX)}\n` +
+          `⚡ *Când bara se umple, bossul își dezlănțuie abilitatea!*\n` +
           `💀 O prezență colosală blochează drumul. Recompensă dublă pentru cel care o doboară!\n\n`
         : `👁️ *${monsterDesc(p.monsterLevel)}*\n\n`) +
       (battle ? `${battle.emoji} *${battle.title} e activ acum!*\n\n` : "") +
@@ -644,6 +700,10 @@ export function buildResultText(r: CombatResult, itemDrop?: ItemKey | null, brea
     txt += `🗡️ Daune normale: **${r.baseDmg}** → cu ${parts.length ? parts.join(" + ") : "bonusuri"}: **${r.playerDmg}**\n`;
   }
   txt += "\n";
+  if (r.abilityFired && r.abilityDmg > 0) {
+    txt += `⚡ **BOSSUL ÎȘI DEZLĂNȚUIE ABILITATEA!** Suferi **${r.abilityDmg} daune**!` +
+      (r.abilityHeal > 0 ? ` Bossul îți absoarbe viața și se vindecă cu **+${r.abilityHeal} HP**!` : "") + "\n";
+  }
   if (r.stormDrain > 0) txt += `🌪️ Furtuna de Fum îți arde **${r.stormDrain} HP**!\n`;
   if (r.hpRegen > 0) txt += `🩸 **Runa Sângelui pulsează!** Absorbi **+${r.hpRegen} HP** din rana creaturii.\n`;
   if (breakdown?.cristaHeal) txt += `🔮 **Crista Vieții strălucește!** Recuperezi **+${breakdown.cristaHeal} HP** după victorie.\n`;
@@ -1936,14 +1996,22 @@ export function buildFinalBossEmbed(
   playerHp?: Map<string, number>,
   playerStats?: Map<string, BossPlayerStats>,
   expiresAt?: number,
+  charge = 0,
 ): EmbedBuilder {
   const rd = BOSS_RARITY_DATA[rarity];
   const defeated = currentHp !== undefined && currentHp <= 0;
+  const bossIdentity = BOSSES[bossIndex(level)]!;
 
   // ── Header ──────────────────────────────────────────────────────────────────
   let desc = defeated
     ? "*Cenușa se ridică, iar tăcerea cuprinde câmpul de luptă.*\n\n"
     : "*Cerul Regatului se întunecă, iar cenușa se ridică în vârtejuri.*\n**Ultima încercare a Regatului a sosit.**\n\n";
+
+  if (!defeated) {
+    desc += `👁️ **${bossIdentity.name}** — *${bossIdentity.desc}*\n`;
+    desc += `${bossIdentity.ability.emoji} Abilitate: **${bossIdentity.ability.name}** ${chargeBar(charge, FINAL_BOSS_CHARGE_MAX)}\n`;
+    desc += `⚡ *Fiecare lovitură umple bara — când e plină, bossul își dezlănțuie abilitatea asupra tuturor!*\n\n`;
+  }
 
   // ── HP bar ───────────────────────────────────────────────────────────────────
   if (currentHp !== undefined && maxHp !== undefined) {
@@ -1999,7 +2067,7 @@ export function buildFinalBossEmbed(
     .setColor(rd.color)
     .setTitle(`🐉  DRAGONUL STINS – NIVEL ${level}  🐉`)
     .setDescription(desc)
-    .setImage(IMG.dragon);
+    .setImage(bossImg(bossIndex(level)) ?? IMG.dragon);
 
   return embed;
 }

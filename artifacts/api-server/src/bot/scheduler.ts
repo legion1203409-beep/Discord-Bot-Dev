@@ -215,6 +215,8 @@ export interface BossState {
   empowerNext: Set<string>;
   shieldNext: Set<string>;
   defeated: boolean;
+  /** Shared ability charge bar — fills with every player hit. */
+  charge: number;
 }
 
 // ─── Boss state serialization / deserialization ────────────────────────────────
@@ -241,6 +243,7 @@ interface SerializedBossState {
   empowerNext: string[];
   shieldNext: string[];
   defeated: boolean;
+  charge?: number;
 }
 
 function serializeBoss(boss: BossState): string {
@@ -266,6 +269,7 @@ function serializeBoss(boss: BossState): string {
     empowerNext: [...boss.empowerNext],
     shieldNext: [...boss.shieldNext],
     defeated: boss.defeated,
+    charge: boss.charge,
   };
   return JSON.stringify(s);
 }
@@ -294,6 +298,7 @@ function deserializeBoss(json: string, fallbackGuildId?: string): BossState {
     empowerNext: new Set(s.empowerNext),
     shieldNext: new Set(s.shieldNext),
     defeated: s.defeated,
+    charge: s.charge ?? 0,
   };
 }
 
@@ -766,6 +771,7 @@ export async function fireFinalBoss(client: Client, guildId: string, eventId: nu
       empowerNext: new Set(),
       shieldNext: new Set(),
       defeated: false,
+      charge: 0,
     };
     gs.activeBossMap.set(eventId, boss);
     await persistBossState(boss);
@@ -1071,6 +1077,7 @@ export async function fireStandaloneBoss(client: Client, guildId: string) {
       empowerNext: new Set(),
       shieldNext: new Set(),
       defeated: false,
+      charge: 0,
     };
     gs.activeBossMap.set(bossId, boss);
     gs.standaloneBossId = bossId;

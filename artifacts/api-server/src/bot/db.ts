@@ -152,6 +152,10 @@ export async function runMultiGuildMigrations(): Promise<void> {
   await pool.query(`ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS items_farmed jsonb NOT NULL DEFAULT '{}'::jsonb`);
   logger.info("multi-guild migrations: event_participants.items_farmed ensured");
 
+  // ─── Boss ability charge bar (mini-boss fights) ────────────────────────────
+  await pool.query(`ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS boss_charge integer NOT NULL DEFAULT 0`);
+  logger.info("multi-guild migrations: event_participants.boss_charge ensured");
+
   // Post-migration verification: confirm every required column is present
   const { rows: missingCols } = await pool.query<{ table_name: string; column_name: string }>(`
     SELECT v.table_name, v.column_name
