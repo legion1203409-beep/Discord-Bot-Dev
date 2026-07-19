@@ -39,6 +39,7 @@ vi.mock("../assets", () => ({
   CHEST_IMG: {},
   KEY_IMG: {},
   MONSTER_IMG: Array(14).fill(""),
+  monsterImg: () => "",
 }));
 
 vi.mock("../combat-events", () => ({

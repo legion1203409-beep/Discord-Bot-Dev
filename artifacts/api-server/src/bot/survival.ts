@@ -8,7 +8,7 @@ import { SUPER_ADMIN_ID } from "./constants";
 import type { EventParticipant } from "@workspace/db";
 import type { Player } from "@workspace/db";
 import type { PlayerItem } from "@workspace/db";
-import { IMG, COMPANION_IMG, CHEST_IMG, KEY_IMG, MONSTER_IMG } from "./assets";
+import { IMG, COMPANION_IMG, CHEST_IMG, KEY_IMG, monsterImg } from "./assets";
 import { getActiveBattleEvent, consumeStormDrain } from "./combat-events";
 import { getCombatModifiers, formatActiveEffects, formatCombatEffects } from "./status-effects";
 
@@ -571,7 +571,7 @@ export function buildCombatEmbed(p: EventParticipant, extra = "", avatarUrl?: st
       bonusSection +
       effectsSection,
     )
-    .setImage(MONSTER_IMG[monsterIndex(p.monsterLevel)] ?? IMG.monster)
+    .setImage(monsterImg(monsterIndex(p.monsterLevel), p.monsterRarity) ?? IMG.monster)
     .setFooter({ text: `⚔️ +${p.attackBonus} | 🛡️ +${p.defenseBonus} | 🌀 ${p.dodgeBonus}% | 💥 ${p.critBonus}% | ❤️ +${p.maxHp - 100}` });
   if (avatarUrl) embed.setThumbnail(avatarUrl);
   return embed;

@@ -23,9 +23,23 @@ export const IMG = {
   shop: assetUrl("shop2.gif"),
 };
 
+/**
+ * Per-monster, per-rarity art — index i matches MONSTERS[i] in survival.ts.
+ * "comun" gets the static wide PNG; higher rarities get an animated GIF with a
+ * rarity-colored pulsing aura (blue/purple/gold/red). Mini-bosses use the mitic one.
+ */
+export function monsterImg(index: number, rarity: string): string | null {
+  const n = String(index + 1).padStart(2, "0");
+  const tier = rarity === "boss" ? "mitic" : rarity;
+  if (tier === "rar" || tier === "epic" || tier === "legendar" || tier === "mitic") {
+    return assetUrl(`monster_${n}_${tier}.gif`);
+  }
+  return assetUrl(`monster_${n}_wide.png`);
+}
+
 /** One image per named monster — index i matches MONSTERS[i] in survival.ts. */
 export const MONSTER_IMG: (string | null)[] = Array.from({ length: 14 }, (_, i) =>
-  assetUrl(`monster_${String(i + 1).padStart(2, "0")}.png`),
+  assetUrl(`monster_${String(i + 1).padStart(2, "0")}_wide.png`),
 );
 
 export const CHEST_IMG: Record<string, string | null> = {
