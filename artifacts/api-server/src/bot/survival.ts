@@ -25,6 +25,8 @@ export const MANA_REGEN_PCT = 10;           // % of max mana restored per normal
 export const MANA_COST_BASE = 30;           // ability mana cost at level 1
 export const MANA_COST_PER_LEVEL = 10;      // extra mana cost per ability level above 1
 export const MANA_UPGRADE_BASE_COST = 150;  // Oboli for the first mana upgrade
+export const MANA_REGEN_PER_LEVEL = 2;      // extra regen % per regen upgrade level
+export const MANA_REGEN_UPGRADE_BASE_COST = 200; // Oboli for the first regen upgrade
 
 /** Max mana at a given upgrade level (infinite levels). */
 export function maxMana(manaLevel: number): number {
@@ -34,13 +36,21 @@ export function maxMana(manaLevel: number): number {
 export function abilityManaCost(abilityLevel: number): number {
   return MANA_COST_BASE + MANA_COST_PER_LEVEL * Math.max(0, abilityLevel - 1);
 }
-/** Mana restored by one normal attack (10% of max, at least 1). */
-export function manaRegenPerAttack(manaLevel: number): number {
-  return Math.max(1, Math.round((maxMana(manaLevel) * MANA_REGEN_PCT) / 100));
+/** Regen % of max mana restored by one normal attack (base 10%, +2%/regen level). */
+export function manaRegenPct(regenLevel = 0): number {
+  return MANA_REGEN_PCT + MANA_REGEN_PER_LEVEL * Math.max(0, regenLevel);
+}
+/** Mana restored by one normal attack (regen % of max, at least 1). */
+export function manaRegenPerAttack(manaLevel: number, regenLevel = 0): number {
+  return Math.max(1, Math.round((maxMana(manaLevel) * manaRegenPct(regenLevel)) / 100));
 }
 /** Oboli cost to go from manaLevel to manaLevel+1 (15% growth, infinite). */
 export function manaUpgradeCost(manaLevel: number): number {
   return Math.ceil(MANA_UPGRADE_BASE_COST * Math.pow(UPGRADE_COST_GROWTH, Math.max(0, manaLevel)));
+}
+/** Oboli cost to go from manaRegenLevel to +1 (15% growth, infinite). */
+export function manaRegenUpgradeCost(regenLevel: number): number {
+  return Math.ceil(MANA_REGEN_UPGRADE_BASE_COST * Math.pow(UPGRADE_COST_GROWTH, Math.max(0, regenLevel)));
 }
 /** Blue mana bar, same 10-segment style as the HP bar. */
 export function manaBar(cur: number, max: number): string {
@@ -345,11 +355,18 @@ export function shieldReduction(level: number): number {
   if (level < 1) return 0;
   return Math.min(0.9, 0.5 * bonusMult(level));
 }
-// Boss-fight mana barrier: flat activation cost; while active, absorbed damage
-// drains mana 1:1 and the shield breaks when mana can't cover the absorption.
+// Shield activation: flat mana cost; while active the shield has its OWN HP
+// pool (grows with the ability level) that absorbs damage until it shatters.
 export const SHIELD_ACTIVATION_COST = 200;
-// The shield's "life" bar — it is fueled by the player's mana, drawn in purple
-// to distinguish it from the HP (green/yellow/red) and mana (blue) bars.
+export const SHIELD_HP_BASE = 200;      // shield HP at ability level 1
+export const SHIELD_HP_PER_LEVEL = 100; // extra shield HP per ability level
+/** The shield's own life pool at a given ability level. */
+export function shieldMaxHp(level: number): number {
+  if (level < 1) return 0;
+  return SHIELD_HP_BASE + SHIELD_HP_PER_LEVEL * (level - 1);
+}
+// The shield's "life" bar — drawn in purple to distinguish it from the HP
+// (green/yellow/red) and mana (blue) bars.
 export function shieldBar(cur: number, max: number): string {
   const pct = max > 0 ? Math.max(0, Math.min(1, cur / max)) : 0;
   let f = Math.round(pct * 10);
@@ -397,7 +414,7 @@ export function companionEffectiveDesc(key: CompanionKey, level: number): string
 
 export const ABILITIES = {
   empower: { label: "Lovitura Umbrei", emoji: "🌑", desc: "Următoarea lovitură ×2 (crește 5%/nivel)" },
-  shield: { label: "Scut de Cenușă", emoji: "🛡️", desc: `Barieră de mană: absoarbe 50% din daune (crește 5%/nivel), activare ${SHIELD_ACTIVATION_COST} mană` },
+  shield: { label: "Scut de Cenușă", emoji: "🛡️", desc: `Scut cu viață proprie (${SHIELD_HP_BASE} HP, +${SHIELD_HP_PER_LEVEL}/nivel): absoarbe 50% din daune (crește 5%/nivel), activare ${SHIELD_ACTIVATION_COST} mană` },
 } as const;
 export type AbilityKey = keyof typeof ABILITIES;
 export function isAbilityKey(k: string): k is AbilityKey { return k in ABILITIES; }
@@ -409,7 +426,7 @@ export function abilityEffectiveDesc(kind: AbilityKey, level: number): string {
     return `+${pct}% daune la următoarea lovitură`;
   }
   const pct = Math.round(shieldReduction(level) * 100);
-  return `absoarbe ${pct}% din daune (consumă mană)`;
+  return `absoarbe ${pct}% din daune, viață proprie ${shieldMaxHp(Math.max(1, level))} HP`;
 }
 
 // ─── Item drop system ─────────────────────────────────────────────────────────
@@ -659,10 +676,12 @@ export type CombatResult = {
   xpGained: number; oboliGained: number;
   levelUp: boolean; newMonsterLevel: number; newMonsterRarity: Rarity;
   usedEmpower: boolean; usedShield: boolean;
-  /** Total damage absorbed by the Ash Shield this round (drained from mana 1:1). */
+  /** Total damage absorbed by the Ash Shield this round (drained from the shield's own HP). */
   shieldAbsorbed: number;
-  /** True when the shield shattered this round (mana couldn't cover the absorption). */
+  /** True when the shield shattered this round (its HP couldn't cover the absorption). */
   shieldBroke: boolean;
+  /** Shield HP remaining after this round (persist on the participant). */
+  shieldHpLeft: number;
   stormDrain: number; battleEventEmoji: string;
   /** HP restored by talisman passives (runa_sangelui life steal on crit). */
   hpRegen: number;
@@ -680,17 +699,17 @@ export type CombatResult = {
   veteranRankMaxedNow: boolean;
 };
 
-export function doCombat(p: EventParticipant, talismanKey?: string | null, talismanLevel = 1, bossKills?: Record<string, number> | null, playerMana?: number | null): CombatResult {
+export function doCombat(p: EventParticipant, talismanKey?: string | null, talismanLevel = 1, bossKills?: Record<string, number> | null, shieldHp?: number | null): CombatResult {
   const vetRank = veteranRankFor(p.monsterLevel, p.monsterRarity, bossKills);
   const vetMult = veteranMult(vetRank);
   const battle = getActiveBattleEvent();
   const mods = getCombatModifiers(p.discordId);
   const usedEmpower = p.empowerNext;
-  // Ash Shield = mana barrier: while active, each hit is reduced by
-  // shieldReduction% and the absorbed damage drains mana 1:1; the shield
-  // shatters the moment mana can't cover the absorption.
+  // Ash Shield: while active, each hit is reduced by shieldReduction% and the
+  // absorbed damage drains the shield's OWN HP pool; the shield shatters the
+  // moment its HP can't cover the absorption.
   const shieldActive = p.shieldNext && p.shieldLevel >= 1;
-  let shieldManaLeft = playerMana ?? Number.POSITIVE_INFINITY;
+  let shieldHpLeft = shieldHp ?? 0;
   let usedShield = false;
   let shieldAbsorbed = 0;
   let shieldBroke = false;
@@ -699,13 +718,14 @@ export function doCombat(p: EventParticipant, talismanKey?: string | null, talis
     const reduced = Math.max(1, Math.round(dmg * (1 - shieldReduction(p.shieldLevel))));
     const absorbed = Math.max(0, dmg - reduced);
     if (absorbed <= 0) return dmg;
-    if (shieldManaLeft >= absorbed) {
-      shieldManaLeft -= absorbed;
+    if (shieldHpLeft >= absorbed) {
+      shieldHpLeft -= absorbed;
       shieldAbsorbed += absorbed;
       usedShield = true;
       return reduced;
     }
     shieldBroke = true;
+    shieldHpLeft = 0;
     return dmg;
   };
 
@@ -803,7 +823,7 @@ export function doCombat(p: EventParticipant, talismanKey?: string | null, talis
     playerDmg, isCrit, baseDmg, monsterDefeated, monsterHit, monsterDmg, playerDodged,
     playerDied, newMonsterHp: finalMonsterHp,
     newPlayerHp, xpGained, oboliGained, levelUp, newMonsterLevel, newMonsterRarity,
-    usedEmpower, usedShield, shieldAbsorbed, shieldBroke, stormDrain, battleEventEmoji: battle?.emoji ?? "", hpRegen,
+    usedEmpower, usedShield, shieldAbsorbed, shieldBroke, shieldHpLeft, stormDrain, battleEventEmoji: battle?.emoji ?? "", hpRegen,
     newBossCharge, abilityFired, abilityDmg, abilityHeal, veteranMaxBonus, veteranRankMaxedNow,
   };
 }
@@ -911,10 +931,10 @@ export function buildCombatEmbed(p: EventParticipant, extra = "", avatarUrl?: st
       `━━━━━━━━━━━━━━━━━━\n` +
       `❤️ HP-ul tău: **${p.currentHp}/${p.maxHp}** ${hpBar(p.currentHp, p.maxHp)}\n` +
       (player
-        ? `🔷 Mana ta: **${player.mana ?? MANA_BASE}/${maxMana(player.manaLevel ?? 0)}** ${manaBar(player.mana ?? MANA_BASE, maxMana(player.manaLevel ?? 0))} *(+${MANA_REGEN_PCT}% la fiecare atac)*\n`
+        ? `🔷 Mana ta: **${player.mana ?? MANA_BASE}/${maxMana(player.manaLevel ?? 0)}** ${manaBar(player.mana ?? MANA_BASE, maxMana(player.manaLevel ?? 0))} *(+${manaRegenPct(player.manaRegenLevel ?? 0)}% la fiecare atac)*\n`
         : "") +
-      (p.shieldNext && player
-        ? `🛡️ Viața scutului: **${player.mana ?? MANA_BASE}/${maxMana(player.manaLevel ?? 0)}** ${shieldBar(player.mana ?? MANA_BASE, maxMana(player.manaLevel ?? 0))} *(susținut de mana ta)*\n`
+      (p.shieldNext
+        ? `🛡️ Viața scutului: **${p.shieldHp ?? 0}/${shieldMaxHp(Math.max(1, p.shieldLevel))}** ${shieldBar(p.shieldHp ?? 0, shieldMaxHp(Math.max(1, p.shieldLevel)))}\n`
         : "") +
       `🪙 Oboli strânși în eveniment: **${p.oboli}** *(20% se pierd la moarte)*` +
       bonusSection +
@@ -946,8 +966,8 @@ export type RewardBreakdown = {
 export function buildResultText(r: CombatResult, itemDrop?: ItemKey | null, breakdown?: RewardBreakdown): string {
   let txt = "";
   if (r.usedEmpower) txt += "🌑 **LOVITURA UMBREI!** Puterea Umbrelor îți dublează lovitura!\n";
-  if (r.usedShield) txt += `🛡️ **SCUT DE CENUȘĂ activ!** A absorbit **${r.shieldAbsorbed}** daune *(−${r.shieldAbsorbed} mană)*.\n`;
-  if (r.shieldBroke) txt += "💥 *Scutul de Cenușă s-a spart — mana nu a mai acoperit daunele absorbite! Lovitura te-a atins din plin.*\n";
+  if (r.usedShield) txt += `🛡️ **SCUT DE CENUȘĂ activ!** A absorbit **${r.shieldAbsorbed}** daune *(viața scutului: ${r.shieldHpLeft} rămasă)*.\n`;
+  if (r.shieldBroke) txt += "💥 *Scutul de Cenușă s-a spart — viața lui nu a mai acoperit daunele! Lovitura te-a atins din plin.*\n";
   if (r.isCrit) {
     txt += CRIT_LINES[Math.floor(Math.random() * CRIT_LINES.length)]!.replace("{dmg}", String(r.playerDmg)) + "\n";
   } else {
@@ -1530,12 +1550,18 @@ function shopAbilText(p: Player): string {
   const mLvl = p.manaLevel ?? 0;
   const mMax = maxMana(mLvl);
   const mCost = manaUpgradeCost(mLvl);
+  const rLvl = p.manaRegenLevel ?? 0;
+  const rCost = manaRegenUpgradeCost(rLvl);
   const manaSection =
     `\n🔷 **Rezerva de Mană** Nv.${mLvl} *(nivel infinit)*\n` +
     `   ${manaBar(p.mana ?? MANA_BASE, mMax)} **${p.mana ?? MANA_BASE}/${mMax}**\n` +
-    `   ↳ Abilitățile consumă mană; fiecare atac normal reface **${MANA_REGEN_PCT}%** din maxim.\n` +
+    `   ↳ Abilitățile consumă mană; fiecare atac normal reface **${manaRegenPct(rLvl)}%** din maxim.\n` +
     `   🔼 Îmbunătățire → Nv.${mLvl + 1}: **${maxMana(mLvl + 1)} mană maximă**\n` +
-    `   ↳ cost: **${mCost} Oboli + ${UPGRADE_XP_COST} XP**\n`;
+    `   ↳ cost: **${mCost} Oboli + ${UPGRADE_XP_COST} XP**\n` +
+    `\n💠 **Regenerare de Mană** Nv.${rLvl} *(nivel infinit)*\n` +
+    `   ↳ Fiecare atac normal reface **${manaRegenPct(rLvl)}%** din mana maximă.\n` +
+    `   🔼 Îmbunătățire → Nv.${rLvl + 1}: **${manaRegenPct(rLvl + 1)}% pe atac**\n` +
+    `   ↳ cost: **${rCost} Oboli + ${UPGRADE_XP_COST} XP**\n`;
   return line("empower") + "\n" + line("shield") + manaSection;
 }
 
@@ -2007,9 +2033,17 @@ export function shopAbilRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
     .setEmoji("🔷")
     .setStyle(ButtonStyle.Primary)
     .setDisabled(p.gold < mCost || p.xp < UPGRADE_XP_COST);
+  const rLvl = p.manaRegenLevel ?? 0;
+  const rCost = manaRegenUpgradeCost(rLvl);
+  const regenBtn = new ButtonBuilder()
+    .setCustomId("shop_manaregenup")
+    .setLabel(`Regenerare de Mană Nv.${rLvl} → ${rLvl + 1} (${rCost} + ${UPGRADE_XP_COST}XP)`)
+    .setEmoji("💠")
+    .setStyle(ButtonStyle.Primary)
+    .setDisabled(p.gold < rCost || p.xp < UPGRADE_XP_COST);
   return [
     new ActionRowBuilder<ButtonBuilder>().addComponents(abilBtn("empower"), abilBtn("shield")),
-    new ActionRowBuilder<ButtonBuilder>().addComponents(manaBtn),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(manaBtn, regenBtn),
     shopBackRow(),
   ];
 }

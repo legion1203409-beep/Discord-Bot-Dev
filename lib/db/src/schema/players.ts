@@ -47,6 +47,7 @@ export const playersTable = pgTable("players", {
   talismanLevel: integer("talisman_level").notNull().default(1),
   mana: integer("mana").notNull().default(100),
   manaLevel: integer("mana_level").notNull().default(0),
+  manaRegenLevel: integer("mana_regen_level").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [primaryKey({ columns: [t.discordId, t.guildId] })]);
 

@@ -1,6 +1,7 @@
 - [Discord embed images](discord-embed-images.md) — bot serves embed images as static files at /api/assets, referenced by env-derived public URL (not attachments) to avoid per-edit re-upload.
 - [Discord animations](discord-animations.md) — animate via GIFs (ffmpeg eq+sin loop from PNGs; hue lacks eval) or message-edit frames; fireChest needs an internal lock (scheduler + /cufar both call it).
 - [Event participant bonus snapshot](event-participant-bonus-snapshot.md) — combat uses participant stats snapshotted at join; mid-event player-stat changes must be mirrored onto the active participant or they don't apply.
+- [Ash Shield own HP pool](shield-own-hp-pool.md) — shield state lives in TWO places (participant column + boss state map); mechanic changes must hit both.
 - [Boss combat path is separate](boss-combat-path-separate.md) — bosses use handleFinalBoss (not doCombat); crit/effects/reward-mults must be wired in there + both scheduler flee-reward paths or they silently don't apply to bosses.
 - [drizzle push blocked](drizzle-push-blocked.md) — db push is interactive; unrelated destructive drift blocks it. Apply additive columns via ALTER TABLE ... ADD COLUMN IF NOT EXISTS + edit schema file.
 - [Publish DB diff drops prod columns](publish-db-diff-drops-prod-columns.md) — publish diffs the dev DATABASE vs prod; prod-only columns get dropped (prestige wipe). Always push-force dev DB after schema changes.

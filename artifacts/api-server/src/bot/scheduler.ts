@@ -214,7 +214,8 @@ export interface BossState {
   standalone: boolean;
   abilityReadyAt: Map<string, number>;
   empowerNext: Set<string>;
-  shieldNext: Set<string>;
+  /** Active Ash Shields: per player, the shield's remaining HP and ability level. */
+  shieldNext: Map<string, { hp: number; level: number }>;
   defeated: boolean;
   /** Shared ability charge bar — fills with every player hit. */
   charge: number;
@@ -244,7 +245,8 @@ interface SerializedBossState {
   standalone: boolean;
   abilityReadyAt: [string, number][];
   empowerNext: string[];
-  shieldNext: string[];
+  /** Old saves stored a plain string[]; new saves store [id, {hp, level}] entries. */
+  shieldNext: string[] | [string, { hp: number; level: number }][];
   defeated: boolean;
   charge?: number;
   veteranRank?: number;
@@ -271,7 +273,7 @@ function serializeBoss(boss: BossState): string {
     standalone: boss.standalone,
     abilityReadyAt: [...boss.abilityReadyAt.entries()],
     empowerNext: [...boss.empowerNext],
-    shieldNext: [...boss.shieldNext],
+    shieldNext: [...boss.shieldNext.entries()],
     defeated: boss.defeated,
     charge: boss.charge,
     veteranRank: boss.veteranRank,
@@ -301,7 +303,11 @@ function deserializeBoss(json: string, fallbackGuildId?: string): BossState {
     standalone: s.standalone,
     abilityReadyAt: new Map(s.abilityReadyAt),
     empowerNext: new Set(s.empowerNext),
-    shieldNext: new Set(s.shieldNext),
+    // Old saves stored just the player ids (mana-backed shields) — those
+    // shields can't be restored to the new own-HP model, so they are dropped.
+    shieldNext: new Map(
+      (s.shieldNext ?? []).filter((e): e is [string, { hp: number; level: number }] => Array.isArray(e)),
+    ),
     defeated: s.defeated,
     charge: s.charge ?? 0,
     veteranRank: s.veteranRank ?? 0,
@@ -762,7 +768,7 @@ export async function fireFinalBoss(client: Client, guildId: string, eventId: nu
       })),
       abilityReadyAt: new Map(),
       empowerNext: new Set(),
-      shieldNext: new Set(),
+      shieldNext: new Map(),
       defeated: false,
       charge: 0,
       veteranRank: 0,
@@ -1072,7 +1078,7 @@ export async function fireStandaloneBoss(client: Client, guildId: string) {
       participants: [],
       abilityReadyAt: new Map(),
       empowerNext: new Set(),
-      shieldNext: new Set(),
+      shieldNext: new Map(),
       defeated: false,
       charge: 0,
       veteranRank: vRank,

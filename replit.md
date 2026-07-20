@@ -38,7 +38,8 @@ _Populate as you build — non-obvious choices a reader couldn't infer from the 
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- Scutul de Cenușă are viață proprie (200 HP + 100/nivel), setată la activare (activare: 200 mană); nu mai consumă mană per lovitură. Valabil și la Dragonul final.
+- Magazin → Abilități: „Regenerare de Mană" 💠 (nivel infinit) — regen per atac = 10% + 2%/nivel din mana maximă.
 
 ## User preferences
 

@@ -163,7 +163,12 @@ export async function runMultiGuildMigrations(): Promise<void> {
   // ─── Mana system columns ───────────────────────────────────────────────────
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS mana integer NOT NULL DEFAULT 100`);
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS mana_level integer NOT NULL DEFAULT 0`);
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS mana_regen_level integer NOT NULL DEFAULT 0`);
   logger.info("multi-guild migrations: players mana columns ensured");
+
+  // ─── Ash Shield own HP pool (per event participant) ────────────────────────
+  await pool.query(`ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS shield_hp integer NOT NULL DEFAULT 0`);
+  logger.info("multi-guild migrations: event_participants.shield_hp ensured");
 
   // ─── Per-class saved levels (class switching keeps progress) ──────────────
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS class_levels jsonb NOT NULL DEFAULT '{}'::jsonb`);
@@ -186,7 +191,9 @@ export async function runMultiGuildMigrations(): Promise<void> {
       ('players',           'talisman_level'),
       ('event_participants','items_farmed'),
       ('players',           'boss_kills'),
-      ('players',           'class_levels')
+      ('players',           'class_levels'),
+      ('players',           'mana_regen_level'),
+      ('event_participants','shield_hp')
     ) AS v(table_name, column_name)
     WHERE NOT EXISTS (
       SELECT 1 FROM information_schema.columns c
@@ -466,6 +473,19 @@ export async function upgradeMana(discordId: string, guildId: string, expectedLe
       xp: sql`${playersTable.xp} - ${xpCost}`,
     })
     .where(and(playerWhere(discordId, guildId), eq(playersTable.manaLevel, expectedLevel), gte(playersTable.gold, cost), gte(playersTable.xp, xpCost)))
+    .returning();
+  return u ?? null;
+}
+
+// Upgrades the mana regen rate (infinite levels); `expectedLevel` guards concurrent clicks.
+export async function upgradeManaRegen(discordId: string, guildId: string, expectedLevel: number, cost: number, xpCost: number): Promise<Player | null> {
+  const [u] = await db.update(playersTable)
+    .set({
+      manaRegenLevel: sql`${playersTable.manaRegenLevel} + 1`,
+      gold: sql`${playersTable.gold} - ${cost}`,
+      xp: sql`${playersTable.xp} - ${xpCost}`,
+    })
+    .where(and(playerWhere(discordId, guildId), eq(playersTable.manaRegenLevel, expectedLevel), gte(playersTable.gold, cost), gte(playersTable.xp, xpCost)))
     .returning();
   return u ?? null;
 }

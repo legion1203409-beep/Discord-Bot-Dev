@@ -86,7 +86,7 @@ function makeBoss(overrides: Partial<BossState> = {}): BossState {
     participants: [{ username: "Alice", discordId: "alice", monsterLevel: 5, totalDamage: 0, isAlive: true }],
     abilityReadyAt: new Map(),
     empowerNext: new Set(),
-    shieldNext: new Set(),
+    shieldNext: new Map(),
     defeated: false,
     ...overrides,
   };

@@ -127,6 +127,7 @@ function makeParticipant(overrides: Partial<EventParticipant> = {}): EventPartic
     empowerNext: false,
     empowerLevel: 0,
     shieldNext: false,
+    shieldHp: 0,
     shieldLevel: 0,
     isAlive: true,
     oboli: 0,
@@ -578,22 +579,23 @@ describe("doCombat", () => {
     vi.spyOn(Math, "random").mockImplementation(() => sequence[idx++ % sequence.length]!);
 
     const noShield = makeParticipant({ critBonus: 0, monsterCurrentHp: 9999, dodgeBonus: 0, shieldNext: false, shieldLevel: 0 });
-    const withShield = makeParticipant({ critBonus: 0, monsterCurrentHp: 9999, dodgeBonus: 0, shieldNext: true, shieldLevel: 1 });
+    const withShield = makeParticipant({ critBonus: 0, monsterCurrentHp: 9999, dodgeBonus: 0, shieldNext: true, shieldLevel: 1, shieldHp: 200 });
 
     idx = 0;
     const rNo = doCombat(noShield);
     idx = 0;
-    const rWith = doCombat(withShield);
+    const rWith = doCombat(withShield, null, 1, null, 200);
 
     if (rNo.monsterHit && !rNo.playerDodged && rWith.monsterHit && !rWith.playerDodged) {
       expect(rWith.monsterDmg).toBeLessThan(rNo.monsterDmg);
       expect(rWith.usedShield).toBe(true);
       expect(rWith.shieldAbsorbed).toBe(rNo.monsterDmg - rWith.monsterDmg);
       expect(rWith.shieldBroke).toBe(false);
+      expect(rWith.shieldHpLeft).toBe(200 - rWith.shieldAbsorbed);
     }
   });
 
-  it("shield shatters when mana can't cover the absorbed damage", () => {
+  it("shield shatters when its HP can't cover the absorbed damage", () => {
     const sequence = [0.99, 0, 0, 0.99, 0];
     let idx = 0;
     vi.spyOn(Math, "random").mockImplementation(() => sequence[idx++ % sequence.length]!);
@@ -605,6 +607,7 @@ describe("doCombat", () => {
       expect(r.usedShield).toBe(false);
       expect(r.shieldAbsorbed).toBe(0);
       expect(r.shieldBroke).toBe(true);
+      expect(r.shieldHpLeft).toBe(0);
     }
   });
 
@@ -723,7 +726,7 @@ describe("buildResultText breakdown lines", () => {
     monsterDefeated: false, monsterHit: false, monsterDmg: 0, playerDodged: false,
     playerDied: false, newMonsterHp: 50, newPlayerHp: 100,
     xpGained: 0, oboliGained: 0, levelUp: false, newMonsterLevel: 1, newMonsterRarity: "comun",
-    usedEmpower: false, usedShield: false, shieldAbsorbed: 0, shieldBroke: false, stormDrain: 0, battleEventEmoji: "", hpRegen: 0,
+    usedEmpower: false, usedShield: false, shieldAbsorbed: 0, shieldBroke: false, shieldHpLeft: 0, stormDrain: 0, battleEventEmoji: "", hpRegen: 0,
     newBossCharge: 0, abilityFired: false, abilityDmg: 0, abilityHeal: 0, veteranMaxBonus: false,
     veteranRankMaxedNow: false,
   };
