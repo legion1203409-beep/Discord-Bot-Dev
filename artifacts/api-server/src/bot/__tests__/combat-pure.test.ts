@@ -234,18 +234,20 @@ describe("veteran ranks", () => {
     expect(veteranRank(4)).toBe(1);
   });
 
-  it("ranks up every 5 kills, capped at 5", () => {
+  it("ranks up every 5 kills, without a cap (infinite scaling)", () => {
     expect(veteranRank(5)).toBe(2);
     expect(veteranRank(10)).toBe(3);
     expect(veteranRank(15)).toBe(4);
     expect(veteranRank(20)).toBe(5);
-    expect(veteranRank(999)).toBe(5);
+    expect(veteranRank(25)).toBe(6);
+    expect(veteranRank(999)).toBe(200);
   });
 
-  it("multiplier is +20% per rank", () => {
+  it("multiplier is +20% per rank, uncapped", () => {
     expect(veteranMult(0)).toBeCloseTo(1);
     expect(veteranMult(1)).toBeCloseTo(1.2);
     expect(veteranMult(5)).toBeCloseTo(2);
+    expect(veteranMult(10)).toBeCloseTo(3);
   });
 
   it("veteranRankFor only applies to boss fights and uses the boss's own kill count", () => {

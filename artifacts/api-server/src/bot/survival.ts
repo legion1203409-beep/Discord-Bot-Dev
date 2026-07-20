@@ -108,20 +108,25 @@ export function bossRank(level: number): number {
 // ─── Boss veteran ranks ─────────────────────────────────────────────────────
 // Every boss a player defeats grows stronger for that player: the first kill
 // gives it Rank I, then every 5 kills of the SAME boss rank it up again.
-// Each rank adds +20% HP and +20% damage and bumps its displayed rarity tier.
+// Each rank adds +20% HP and +20% damage — WITHOUT limit (infinite scaling).
+// Tier labels stop at "Etern ⚫"; beyond that the numeric rank keeps climbing.
 export const VETERAN_KILLS_PER_RANK = 5;
-export const VETERAN_MAX_RANK = 5;
 export const VETERAN_TIERS = ["", "Rar 🔵", "Epic 🟣", "Legendar 🟠", "Mitic 🔴", "Etern ⚫"] as const;
 
-/** Veteran rank 0–5 from how many times the player killed this boss. */
+/** Veteran rank (0, 1, 2, …) from how many times the player killed this boss. Uncapped. */
 export function veteranRank(kills: number): number {
   if (kills <= 0) return 0;
-  return Math.min(VETERAN_MAX_RANK, 1 + Math.floor(kills / VETERAN_KILLS_PER_RANK));
+  return 1 + Math.floor(kills / VETERAN_KILLS_PER_RANK);
 }
 
-/** HP/damage multiplier for a veteran rank: +20% per rank. */
+/** HP/damage multiplier for a veteran rank: +20% per rank, uncapped. */
 export function veteranMult(rank: number): number {
-  return 1 + 0.2 * Math.max(0, Math.min(VETERAN_MAX_RANK, rank));
+  return 1 + 0.2 * Math.max(0, rank);
+}
+
+/** Display label for a veteran rank — tiers cap at "Etern ⚫" for rank 5+. */
+export function veteranTierLabel(rank: number): string {
+  return VETERAN_TIERS[Math.min(rank, VETERAN_TIERS.length - 1)] ?? "";
 }
 
 /** Veteran rank of the boss at `level` for a player with these per-boss kill counts. */
@@ -697,7 +702,7 @@ export function buildCombatEmbed(p: EventParticipant, extra = "", avatarUrl?: st
         ? `👁️ *${BOSSES[bossIndex(p.monsterLevel)]!.desc}*\n` +
           `☠️ Rang boss: **${bossRank(p.monsterLevel)}/10** ${"🔥".repeat(bossRank(p.monsterLevel))}${"▱".repeat(10 - bossRank(p.monsterLevel))}\n` +
           (vetRank > 0
-            ? `🏅 Rang veteran: **Rang ${vetRank}/${VETERAN_MAX_RANK} · ${VETERAN_TIERS[vetRank]}** — *te-a studiat! +${vetRank * 20}% viață și daune*\n`
+            ? `🏅 Rang veteran: **Rang ${vetRank} · ${veteranTierLabel(vetRank)}** — *te-a studiat! +${vetRank * 20}% viață și daune*\n`
             : "") +
           `${BOSSES[bossIndex(p.monsterLevel)]!.ability.emoji} Abilitate: **${BOSSES[bossIndex(p.monsterLevel)]!.ability.name}** ${chargeBar(p.bossCharge ?? 0, BOSS_CHARGE_MAX)}\n` +
           `⚡ *Când bara se umple, bossul își dezlănțuie abilitatea!*\n` +
@@ -2120,7 +2125,7 @@ export function buildFinalBossEmbed(
 
   // ── HP bar ───────────────────────────────────────────────────────────────────
   const vetLine = bossVeteranRank > 0
-    ? `🏅 Rang veteran: **Rang ${bossVeteranRank}/${VETERAN_MAX_RANK} · ${VETERAN_TIERS[bossVeteranRank] ?? ""}** — *s-a întors mai puternic! +${bossVeteranRank * 20}% viață și daune*\n`
+    ? `🏅 Rang veteran: **Rang ${bossVeteranRank} · ${veteranTierLabel(bossVeteranRank)}** — *s-a întors mai puternic! +${bossVeteranRank * 20}% viață și daune*\n`
     : "";
   if (currentHp !== undefined && maxHp !== undefined) {
     const bar = buildHpBar(currentHp, maxHp);
