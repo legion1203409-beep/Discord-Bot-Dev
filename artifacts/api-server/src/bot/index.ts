@@ -148,6 +148,7 @@ import {
   MANA_REGEN_PCT,
   empowerMult,
   shieldReduction,
+  buildHpBar,
   veteranMult,
   buildFinalBossEmbed,
   buildBossLeaderboard,
@@ -2258,7 +2259,31 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
   const critTag = isCrit ? " 💥 **CRITIC!**" : "";
 
   let bossHit = Math.round((Math.floor(Math.random() * 121) + 80) * veteranMult(activeBoss.veteranRank ?? 0));
-  const usedShield = activeBoss.shieldNext.delete(uid) && player.abilityShieldLevel >= 1;
+  // Ash Shield: armed beforehand, but the mana is consumed at the moment it
+  // actually absorbs a hit. If the player no longer has enough mana, the
+  // shield fizzles without effect.
+  let usedShield = false;
+  let shieldCost = 0;
+  let shieldFizzled = false;
+  let shieldDbError = false;
+  if (activeBoss.shieldNext.has(uid) && player.abilityShieldLevel >= 1) {
+    activeBoss.shieldNext.delete(uid);
+    shieldCost = abilityManaCost(player.abilityShieldLevel);
+    const afterShieldMana = await spendPlayerMana(uid, guildId, shieldCost).catch((err) => {
+      logger.error({ err, discordId: uid, guildId }, "spendPlayerMana (boss shield) failed");
+      shieldDbError = true;
+      return null;
+    });
+    if (afterShieldMana) {
+      usedShield = true;
+    } else if (shieldDbError) {
+      // Transient DB failure — keep the shield armed so the player doesn't
+      // lose it to an infrastructure hiccup.
+      activeBoss.shieldNext.add(uid);
+    } else {
+      shieldFizzled = true;
+    }
+  }
   if (usedShield) bossHit = Math.max(1, Math.round(bossHit * (1 - shieldReduction(player.abilityShieldLevel))));
   bossHit = Math.max(1, bossHit - totalDef);
   if (mods.damageTakenMult !== 1) bossHit = Math.max(1, Math.round(bossHit * mods.damageTakenMult));
@@ -2281,7 +2306,9 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
 
   const abilityLine =
     (usedEmpower ? "🌑 **LOVITURA UMBREI!** Puterea Umbrelor ți-a dublat lovitura!\n" : "") +
-    (usedShield ? "🛡️ **SCUT DE CENUȘĂ activ!** Daunele primite au fost reduse.\n" : "") +
+    (usedShield ? `🛡️ **SCUT DE CENUȘĂ activ!** Daunele primite au fost reduse cu **${Math.round(shieldReduction(player.abilityShieldLevel) * 100)}%** *(−${shieldCost} mană)*.\n` : "") +
+    (shieldFizzled ? "💨 *Scutul de Cenușă s-a risipit — mană insuficientă în momentul loviturii!*\n" : "") +
+    (shieldDbError ? "⚠️ *Scutul de Cenușă nu a putut fi folosit acum (eroare temporară) — rămâne pregătit pentru următoarea lovitură.*\n" : "") +
     dmgBreakdownLine;
 
   activeBoss.lastHitAt.set(uid, Date.now());
@@ -2306,11 +2333,36 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
       for (const [pid, hp] of activeBoss.playerHp) {
         if (hp <= 0) continue;
         const pMaxHp = activeBoss.playerStats.get(pid)?.maxHp ?? 100;
-        const dmg = Math.max(1, Math.round((pMaxHp * ab.pct) / 100));
+        let dmg = Math.max(1, Math.round((pMaxHp * ab.pct) / 100));
+        // An armed Ash Shield also absorbs the boss's special ability —
+        // mana is consumed at this moment, same as for the counter-hit.
+        let shieldTag = "";
+        if (activeBoss.shieldNext.has(pid)) {
+          activeBoss.shieldNext.delete(pid);
+          const prow = await getPlayerById(pid, guildId).catch(() => null);
+          const lvl = prow?.abilityShieldLevel ?? 0;
+          if (lvl >= 1) {
+            const cost = abilityManaCost(lvl);
+            let dbErr = false;
+            const spent = await spendPlayerMana(pid, guildId, cost).catch((err) => {
+              logger.error({ err, discordId: pid, guildId }, "spendPlayerMana (boss ability shield) failed");
+              dbErr = true;
+              return null;
+            });
+            if (spent) {
+              dmg = Math.max(1, Math.round(dmg * (1 - shieldReduction(lvl))));
+              shieldTag = ` 🛡️ *(scut −${cost} mană)*`;
+            } else if (dbErr) {
+              activeBoss.shieldNext.add(pid);
+            } else {
+              shieldTag = " 💨 *(scutul s-a risipit — mană insuficientă)*";
+            }
+          }
+        }
         const nhp = Math.max(0, hp - dmg);
         activeBoss.playerHp.set(pid, nhp);
         totalDrained += dmg;
-        hitLines.push(`💥 <@${pid}> −**${dmg} HP**${nhp <= 0 ? " ⚰️ **doborât!**" : ""}`);
+        hitLines.push(`💥 <@${pid}> −**${dmg} HP**${shieldTag}${nhp <= 0 ? " ⚰️ **doborât!**" : ""}`);
       }
       if (ab.steal && totalDrained > 0) {
         activeBoss.currentHp = Math.min(activeBoss.maxHp, activeBoss.currentHp + totalDrained);
@@ -2428,6 +2480,7 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
   const playerStatus = myFinalHp <= 0
     ? `💀 **Ai fost doborât de Dragon!** Nu mai poți lovi.`
     : `❤️ Viața ta: **${myFinalHp} / ${myMaxHp} HP**`;
+  const hpBarLine = `${buildHpBar(myFinalHp, myMaxHp)}\n`;
 
   const effectsLine = formatCombatEffects(uid);
   await interaction.followUp({
@@ -2435,6 +2488,7 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
       abilityLine +
       `⚔️ Ai lovit Dragonul pentru **${playerDmg.toLocaleString()} daune**!${critTag}\n` +
       `🐉 Dragonul te lovește pentru **${bossHit} daune**! ${playerStatus}\n` +
+      hpBarLine +
       `🔷 Mana ta: **${playerAfterMana.mana}/${bossManaMax}** ${manaBar(playerAfterMana.mana, bossManaMax)}\n` +
       `🩸 Dragon: **${activeBoss.currentHp.toLocaleString()} / ${activeBoss.maxHp.toLocaleString()} HP**` +
       (effectsLine ? `\n🔮 **Efectele tale active:**\n${effectsLine}` : ""),
@@ -2470,6 +2524,29 @@ async function handleBossAbility(interaction: ButtonInteraction, eventId: number
 
   const abilityLevel = kind === "shield" ? player.abilityShieldLevel : player.abilityEmpowerLevel;
   const manaCost = abilityManaCost(abilityLevel);
+
+  if (kind === "shield") {
+    // The shield only reserves the ability now — mana is consumed at the
+    // moment it actually absorbs a hit. Still refuse arming it if the player
+    // can't afford it right now, so the button gives honest feedback.
+    if ((player.mana ?? 0) < manaCost) {
+      const maxM = maxMana(player.manaLevel ?? 0);
+      await interaction.followUp({
+        content: `🔷 **Mană insuficientă!** Scutul de Cenușă va consuma **${manaCost}** mană când absoarbe o lovitură, iar tu ai doar **${player.mana ?? 0}/${maxM}** ${manaBar(player.mana ?? 0, maxM)}\n⚔️ Lovește Dragonul cu atacuri normale ca să îți refaci mana (+${MANA_REGEN_PCT}% pe atac).`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    activeBoss.shieldNext.add(uid);
+    const pct = Math.round(shieldReduction(abilityLevel) * 100);
+    await interaction.followUp({
+      content: `🛡️ **Scut de Cenușă pregătit!** Următorul atac primit de la Dragon va fi redus cu **${pct}%**.\n🔷 Va consuma **${manaCost}** mană în momentul în care absoarbe lovitura *(acum ai ${player.mana ?? 0}/${maxMana(player.manaLevel ?? 0)})*.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    void persistBossState(activeBoss);
+    return;
+  }
+
   const plMana = await spendPlayerMana(uid, guildId, manaCost);
   if (!plMana) {
     const maxM = maxMana(player.manaLevel ?? 0);
@@ -2481,13 +2558,8 @@ async function handleBossAbility(interaction: ButtonInteraction, eventId: number
   }
 
   const manaLine = `\n🔷 −**${manaCost}** mană → **${plMana.mana}/${maxMana(plMana.manaLevel)}**`;
-  if (kind === "shield") {
-    activeBoss.shieldNext.add(uid);
-    await interaction.followUp({ content: "🛡️ **Scut de Cenușă activat!** Următorul atac primit de la Dragon va fi redus." + manaLine, flags: MessageFlags.Ephemeral });
-  } else {
-    activeBoss.empowerNext.add(uid);
-    await interaction.followUp({ content: "🌑 **Lovitura Umbrei pregătită!** Următoarea ta lovitură în Dragon va fi dublă." + manaLine, flags: MessageFlags.Ephemeral });
-  }
+  activeBoss.empowerNext.add(uid);
+  await interaction.followUp({ content: "🌑 **Lovitura Umbrei pregătită!** Următoarea ta lovitură în Dragon va fi dublă." + manaLine, flags: MessageFlags.Ephemeral });
   void persistBossState(activeBoss);
 }
 
