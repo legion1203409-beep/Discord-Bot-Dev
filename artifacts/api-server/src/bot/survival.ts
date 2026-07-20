@@ -174,6 +174,11 @@ export function veteranRewardMult(rank: number): number {
   return rank >= VETERAN_RANK_CAP ? VETERAN_MAX_REWARD_MULT : 1;
 }
 
+/** True when a kill takes this boss's veteran rank from below the cap to the cap (sub cap → cap). */
+export function reachesVeteranCapOnKill(killsBefore: number): boolean {
+  return veteranRank(killsBefore) < VETERAN_RANK_CAP && veteranRank(killsBefore + 1) >= VETERAN_RANK_CAP;
+}
+
 /** Veteran rank of the boss at `level` for a player with these per-boss kill counts. */
 export function veteranRankFor(level: number, rarity: string | null | undefined, bossKills: Record<string, number> | null | undefined): number {
   if (!isBossFight(level, rarity ?? undefined)) return 0;
@@ -646,6 +651,8 @@ export type CombatResult = {
   abilityHeal: number;
   /** True when the defeated boss was at the max veteran rank and dropped the ×1.5 bonus reward. */
   veteranMaxBonus: boolean;
+  /** True when THIS kill pushed the boss to the max veteran rank (celebrate the milestone once). */
+  veteranRankMaxedNow: boolean;
 };
 
 export function doCombat(p: EventParticipant, talismanKey?: string | null, talismanLevel = 1, bossKills?: Record<string, number> | null): CombatResult {
@@ -674,6 +681,13 @@ export function doCombat(p: EventParticipant, talismanKey?: string | null, talis
   let xpGained = 0, oboliGained = 0, newMonsterLevel = p.monsterLevel, levelUp = false;
   let newMonsterRarity: Rarity = p.monsterRarity as Rarity;
   const veteranMaxBonus = monsterDefeated && vetRank >= VETERAN_RANK_CAP;
+  const bossKillsBefore = isBossFight(p.monsterLevel, p.monsterRarity ?? undefined)
+    ? bossKills?.[String(bossIndex(p.monsterLevel))] ?? 0
+    : 0;
+  const veteranRankMaxedNow =
+    monsterDefeated &&
+    isBossFight(p.monsterLevel, p.monsterRarity ?? undefined) &&
+    reachesVeteranCapOnKill(bossKillsBefore);
   if (monsterDefeated) {
     const r = monsterReward(p.monsterLevel, p.monsterRarity as Rarity);
     const rewardMult = veteranRewardMult(vetRank);
@@ -744,7 +758,7 @@ export function doCombat(p: EventParticipant, talismanKey?: string | null, talis
     playerDied, newMonsterHp: finalMonsterHp,
     newPlayerHp, xpGained, oboliGained, levelUp, newMonsterLevel, newMonsterRarity,
     usedEmpower, usedShield, stormDrain, battleEventEmoji: battle?.emoji ?? "", hpRegen,
-    newBossCharge, abilityFired, abilityDmg, abilityHeal, veteranMaxBonus,
+    newBossCharge, abilityFired, abilityDmg, abilityHeal, veteranMaxBonus, veteranRankMaxedNow,
   };
 }
 
@@ -916,6 +930,9 @@ export function buildResultText(r: CombatResult, itemDrop?: ItemKey | null, brea
     txt += `💀 **MONSTRUL A CĂZUT!** ${xpStr}, ${oboliStr}\n`;
     if (r.veteranMaxBonus) {
       txt += `👑 **TROFEU DE VETERAN SUPREM!** Bossul la rang veteran maxim ți-a lăsat pradă mărită *(recompensă ×${VETERAN_MAX_REWARD_MULT})*!\n`;
+    }
+    if (r.veteranRankMaxedNow) {
+      txt += `🏆 **RANG VETERAN MAXIM ATINS!** Acest boss a ajuns la rangul veteran suprem — de acum, fiecare victorie împotriva lui îți aduce recompense ×${VETERAN_MAX_REWARD_MULT}!\n`;
     }
     if (itemDrop) {
       txt += `${ITEMS[itemDrop].emoji} **${ITEMS[itemDrop].label}** a căzut din monstru!\n`;

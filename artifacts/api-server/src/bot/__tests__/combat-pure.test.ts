@@ -68,6 +68,7 @@ import {
   VETERAN_RANK_CAP,
   VETERAN_MAX_REWARD_MULT,
   veteranRewardMult,
+  reachesVeteranCapOnKill,
   monsterDmgRange,
   monsterHitPct,
   monsterReward,
@@ -278,6 +279,31 @@ describe("veteran ranks", () => {
     expect(veteranRewardMult(VETERAN_RANK_CAP - 1)).toBe(1);
     expect(veteranRewardMult(VETERAN_RANK_CAP)).toBe(VETERAN_MAX_REWARD_MULT);
     expect(veteranRewardMult(VETERAN_RANK_CAP + 5)).toBe(VETERAN_MAX_REWARD_MULT);
+  });
+
+  it("reachesVeteranCapOnKill is true only for the kill crossing sub-cap → cap", () => {
+    // Rank 10 is reached at 45 kills, so the transition kill is the one made at 44 prior kills.
+    expect(reachesVeteranCapOnKill(43)).toBe(false);
+    expect(reachesVeteranCapOnKill(44)).toBe(true);
+    expect(reachesVeteranCapOnKill(45)).toBe(false);
+    expect(reachesVeteranCapOnKill(0)).toBe(false);
+    expect(reachesVeteranCapOnKill(999)).toBe(false);
+  });
+
+  it("doCombat: flags veteranRankMaxedNow only on the kill that reaches the cap", () => {
+    const idx = String(bossIndex(10));
+    const spy = vi.spyOn(Math, "random").mockReturnValue(0);
+    try {
+      const p = makeParticipant({ monsterLevel: 10, monsterRarity: "boss", monsterCurrentHp: 1, attackBonus: 10000, critBonus: 100 });
+      expect(doCombat(p, null, 1, { [idx]: 44 }).veteranRankMaxedNow).toBe(true);
+      expect(doCombat(p, null, 1, { [idx]: 43 }).veteranRankMaxedNow).toBe(false);
+      expect(doCombat(p, null, 1, { [idx]: 45 }).veteranRankMaxedNow).toBe(false);
+      // Non-boss kills never flag it, even with a huge kill count on record
+      const normal = makeParticipant({ monsterLevel: 11, monsterRarity: "comun", monsterCurrentHp: 1, attackBonus: 10000, critBonus: 100 });
+      expect(doCombat(normal, null, 1, { [idx]: 44 }).veteranRankMaxedNow).toBe(false);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("doCombat: killing a max-veteran-rank boss grants the ×1.5 bonus reward", () => {
@@ -670,6 +696,7 @@ describe("buildResultText breakdown lines", () => {
     xpGained: 0, oboliGained: 0, levelUp: false, newMonsterLevel: 1, newMonsterRarity: "comun",
     usedEmpower: false, usedShield: false, stormDrain: 0, battleEventEmoji: "", hpRegen: 0,
     newBossCharge: 0, abilityFired: false, abilityDmg: 0, abilityHeal: 0, veteranMaxBonus: false,
+    veteranRankMaxedNow: false,
   };
 
   it("shows no breakdown when damage is unmodified", () => {
@@ -721,6 +748,14 @@ describe("buildResultText breakdown lines", () => {
     const kill = { ...baseResult, monsterDefeated: true, xpGained: 150, oboliGained: 45 };
     expect(buildResultText({ ...kill, veteranMaxBonus: true })).toContain("TROFEU DE VETERAN SUPREM");
     expect(buildResultText(kill)).not.toContain("TROFEU DE VETERAN SUPREM");
+  });
+
+  it("shows the rank-maxed celebration line only when veteranRankMaxedNow is set", () => {
+    const kill = { ...baseResult, monsterDefeated: true, xpGained: 150, oboliGained: 45 };
+    const txt = buildResultText({ ...kill, veteranRankMaxedNow: true });
+    expect(txt).toContain("RANG VETERAN MAXIM ATINS");
+    expect(txt).toContain(`×${VETERAN_MAX_REWARD_MULT}`);
+    expect(buildResultText(kill)).not.toContain("RANG VETERAN MAXIM ATINS");
   });
 });
 
