@@ -978,22 +978,21 @@ export async function getDailyQuestProgress(
 }
 
 /**
- * Atomically increment the kill count for the "kill_10" daily quest.
+ * Atomically increment progress for any daily quest.
  * Resets automatically if the stored date differs from today (UTC).
  * Returns { newProgress, justCompleted }:
  *   justCompleted = true only on the single call that flips reward_given from false to true.
  */
-export async function incrementDailyQuestKill(
-  discordId: string, guildId: string,
+export async function incrementDailyQuest(
+  discordId: string, guildId: string, questKey: string, target: number,
 ): Promise<{ newProgress: number; justCompleted: boolean }> {
   const today = todayDateUTC();
-  const TARGET = 10;
 
   // Step 1: Atomically upsert progress (handles reset on new day, completed guard)
   const { rows } = await pool.query<{ progress: number; completed: boolean }>(`
     INSERT INTO player_daily_quests
       (discord_id, guild_id, quest_key, quest_date, progress, completed, reward_given)
-    VALUES ($1, $2, 'kill_10', $3, 1, ($4 <= 1), false)
+    VALUES ($1, $2, $5, $3, 1, ($4 <= 1), false)
     ON CONFLICT (discord_id, guild_id, quest_key) DO UPDATE SET
       quest_date   = EXCLUDED.quest_date,
       progress     = CASE
@@ -1011,7 +1010,7 @@ export async function incrementDailyQuestKill(
         ELSE player_daily_quests.reward_given
       END
     RETURNING progress, completed
-  `, [discordId, guildId, today, TARGET]);
+  `, [discordId, guildId, today, target, questKey]);
 
   const row = rows[0]!;
   if (!row.completed) return { newProgress: row.progress, justCompleted: false };
@@ -1022,13 +1021,31 @@ export async function incrementDailyQuestKill(
     SET reward_given = true
     WHERE discord_id = $1
       AND guild_id   = $2
-      AND quest_key  = 'kill_10'
+      AND quest_key  = $4
       AND quest_date = $3
       AND completed  = true
       AND reward_given = false
-  `, [discordId, guildId, today]);
+  `, [discordId, guildId, today, questKey]);
 
   return { newProgress: row.progress, justCompleted: (rowCount ?? 0) > 0 };
+}
+
+/** Back-compat wrapper for the original kill quest. */
+export async function incrementDailyQuestKill(
+  discordId: string, guildId: string,
+): Promise<{ newProgress: number; justCompleted: boolean }> {
+  return incrementDailyQuest(discordId, guildId, "kill_10", 10);
+}
+
+/** All daily quest rows for a player (any quest key). */
+export async function getDailyQuestRows(
+  discordId: string, guildId: string,
+): Promise<PlayerDailyQuest[]> {
+  return db.select().from(playerDailyQuestsTable)
+    .where(and(
+      eq(playerDailyQuestsTable.discordId, discordId),
+      eq(playerDailyQuestsTable.guildId, guildId),
+    ));
 }
 
 // ─── Active boss persistence ───────────────────────────────────────────────────

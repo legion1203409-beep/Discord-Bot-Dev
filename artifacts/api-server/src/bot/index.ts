@@ -91,8 +91,8 @@ import {
   upgradeClass,
   addPlayerItem,
   consumePlayerItems,
-  getDailyQuestProgress,
-  incrementDailyQuestKill,
+  getDailyQuestRows,
+  incrementDailyQuest,
   incrementBossKill,
   incrementFinalBossKills,
   todayDateUTC,
@@ -185,6 +185,8 @@ import {
   rollItemDrop,
   rollMaterialDrop,
   buildMissionEmbed,
+  type DailyQuestKey,
+  type DailyQuestRowLike,
   type ShopKey,
   type BossRarity,
 } from "./survival";
@@ -691,16 +693,19 @@ async function handleMisiune(interaction: ChatInputCommandInteraction) {
   const guildId = interaction.guildId!;
   const discordId = interaction.user.id;
   const today = todayDateUTC();
-  const row = await getDailyQuestProgress(discordId, guildId, "kill_10");
-  const embed = buildMissionEmbed(
-    "kill_10",
-    row?.progress ?? 0,
-    row?.completed ?? false,
-    row?.rewardGiven ?? false,
-    row?.questDate ?? null,
-    today,
-  );
-  await interaction.editReply({ embeds: [embed] });
+  const rows = await getDailyQuestRows(discordId, guildId);
+  const byKey: Partial<Record<DailyQuestKey, DailyQuestRowLike>> = {};
+  for (const r of rows) {
+    if (r.questKey in DAILY_QUESTS) {
+      byKey[r.questKey as DailyQuestKey] = {
+        progress: r.progress,
+        completed: r.completed,
+        rewardGiven: r.rewardGiven,
+        questDate: r.questDate,
+      };
+    }
+  }
+  await interaction.editReply({ embeds: [buildMissionEmbed(byKey, today)] });
 }
 
 async function handleMagazin(interaction: ChatInputCommandInteraction) {
@@ -1585,23 +1590,33 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
   }
 
   if (result.oboliGained > 0) {
-    const questResult = await incrementDailyQuestKill(p.discordId, guildId);
+    // Daily quests: every kill counts; rare+ kills and mini-boss kills track extra quests
+    const questKeys: DailyQuestKey[] = ["kill_10"];
+    if (p.monsterRarity && p.monsterRarity !== "comun") questKeys.push("rare_3");
+    if (p.monsterRarity === "boss") questKeys.push("boss_1");
+    const questResults = await Promise.all(
+      questKeys.map((k) => incrementDailyQuest(p.discordId, guildId, k, DAILY_QUESTS[k].target)),
+    );
+    const completedQuests = questKeys.filter((_, i) => questResults[i]!.justCompleted);
     void Promise.all([
       addPlayerGold(p.discordId, guildId, result.oboliGained),
       addPlayerXp(p.discordId, guildId, result.xpGained),
       updateMaxLevel(p.discordId, guildId, result.newMonsterLevel),
       ...(itemDrop ? [addPlayerItem(p.discordId, guildId, itemDrop)] : []),
       ...(materialDrop ? [addPlayerItem(p.discordId, guildId, materialDrop)] : []),
-      ...(questResult.justCompleted ? [addPlayerItem(p.discordId, guildId, DAILY_QUESTS.kill_10.reward.itemKey)] : []),
+      ...completedQuests.map((k) => addPlayerItem(p.discordId, guildId, DAILY_QUESTS[k].reward.itemKey, DAILY_QUESTS[k].reward.qty)),
     ]).catch((err) => logger.error({ err, discordId: p.discordId, guildId }, "Async combat writes failed"));
-    if (questResult.justCompleted) {
-      itemsFarmed[DAILY_QUESTS.kill_10.reward.itemKey] =
-        (itemsFarmed[DAILY_QUESTS.kill_10.reward.itemKey] ?? 0) + DAILY_QUESTS.kill_10.reward.qty;
+    if (completedQuests.length > 0) {
+      const rewardLines = completedQuests.map((k) => {
+        const q = DAILY_QUESTS[k];
+        itemsFarmed[q.reward.itemKey] = (itemsFarmed[q.reward.itemKey] ?? 0) + q.reward.qty;
+        return `${q.emoji} **${q.label}** — ai primit ${ITEMS[q.reward.itemKey].emoji} **${q.reward.qty}× ${ITEMS[q.reward.itemKey].label}**!`;
+      });
       void interaction.followUp({
         content:
-          `📜 **Misiunea zilnică completată!**\n` +
-          `${ITEMS[DAILY_QUESTS.kill_10.reward.itemKey].emoji} Ai primit **${DAILY_QUESTS.kill_10.reward.qty}× ${ITEMS[DAILY_QUESTS.kill_10.reward.itemKey].label}** ca recompensă!\n` +
-          `Folosește \`/misiuni\` pentru detalii.`,
+          `📜 **Misiune zilnică completată!**\n` +
+          rewardLines.join("\n") +
+          `\nFolosește \`/misiuni\` pentru detalii.`,
         flags: MessageFlags.Ephemeral,
       });
     }

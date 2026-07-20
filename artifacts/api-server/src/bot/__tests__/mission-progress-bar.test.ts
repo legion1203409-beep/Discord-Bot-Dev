@@ -117,14 +117,16 @@ describe("buildMissionEmbed progress bar", () => {
   const TODAY = "2026-07-19";
 
   function embedDescription(progress: number, completed = false): string {
-    const embed = buildMissionEmbed("kill_10", progress, completed, false, TODAY, TODAY);
+    const embed = buildMissionEmbed(
+      { kill_10: { progress, completed, rewardGiven: false, questDate: TODAY } },
+      TODAY,
+    );
     return (embed as unknown as { data: { description: string } }).data.description;
   }
 
   it("shows a fully empty bar at 0 progress", () => {
     const desc = embedDescription(0);
     expect(desc).toContain(EMPTY.repeat(10));
-    expect(desc).not.toContain(FULL);
     expect(desc).toContain("**0/10**");
   });
 
@@ -135,14 +137,26 @@ describe("buildMissionEmbed progress bar", () => {
   });
 
   it("resets the bar to empty when the quest date is stale", () => {
-    const embed = buildMissionEmbed("kill_10", 7, false, false, "2026-07-18", TODAY);
+    const embed = buildMissionEmbed(
+      { kill_10: { progress: 7, completed: false, rewardGiven: false, questDate: "2026-07-18" } },
+      TODAY,
+    );
     const desc = (embed as unknown as { data: { description: string } }).data.description;
-    expect(desc).toContain(EMPTY.repeat(10));
     expect(desc).toContain("**0/10**");
+    expect(desc).not.toContain("**7/10**");
   });
 
   it("shows the completed status instead of a bar when done", () => {
     const desc = embedDescription(DAILY_QUESTS.kill_10.target, true);
-    expect(desc).toContain("Misiune completată");
+    expect(desc).toContain("Completată");
+  });
+
+  it("lists every daily quest even with no progress rows", () => {
+    const embed = buildMissionEmbed({}, TODAY);
+    const desc = (embed as unknown as { data: { description: string } }).data.description;
+    for (const key of Object.keys(DAILY_QUESTS) as (keyof typeof DAILY_QUESTS)[]) {
+      expect(desc).toContain(DAILY_QUESTS[key].label);
+      expect(desc).toContain(`**0/${DAILY_QUESTS[key].target}**`);
+    }
   });
 });

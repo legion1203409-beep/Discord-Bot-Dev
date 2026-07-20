@@ -187,8 +187,8 @@ vi.mock("../db", () => ({
   tryDeductPlayerGold: vi.fn(), getPlayerTalismans: vi.fn().mockResolvedValue([]),
   saveTalismanLevel: vi.fn(), getPlayerItems: vi.fn().mockResolvedValue([]),
   upgradeClass: vi.fn(), addPlayerItem: vi.fn(), consumePlayerItems: vi.fn(),
-  getDailyQuestProgress: vi.fn().mockResolvedValue(null),
-  incrementDailyQuestKill: vi.fn(),
+  getDailyQuestRows: vi.fn().mockResolvedValue([]),
+  incrementDailyQuest: vi.fn(),
   todayDateUTC: vi.fn().mockReturnValue("2026-07-18"),
 }));
 
@@ -233,7 +233,7 @@ vi.mock("../survival", () => ({
   shopNavRow2: vi.fn().mockReturnValue({}),
   TALISMANS: {}, TALISMAN_MAX_LEVEL: 3,
   talismanValue: vi.fn().mockReturnValue(0), talismanUpgradeCost: vi.fn().mockReturnValue(0),
-  ITEMS: {}, DAILY_QUESTS: [], isTalismanKey: vi.fn().mockReturnValue(false),
+  ITEMS: {}, DAILY_QUESTS: {}, isTalismanKey: vi.fn().mockReturnValue(false),
   isItemKey: vi.fn().mockReturnValue(false), rollItemDrop: vi.fn().mockReturnValue(null),
   buildMissionEmbed: vi.fn().mockReturnValue({}),
 }));

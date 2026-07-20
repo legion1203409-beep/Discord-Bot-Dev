@@ -437,6 +437,20 @@ export const DAILY_QUESTS = {
     reward: { itemKey: "coama_dragonului" as ItemKey, qty: 1 },
     emoji: "⚔️",
   },
+  rare_3: {
+    label: "Vânează 3 monștri rari",
+    description: "Ucide 3 monștri de raritate rară sau mai bună (inclusiv mini-bossi).",
+    target: 3,
+    reward: { itemKey: "solz_spectral" as ItemKey, qty: 2 },
+    emoji: "💠",
+  },
+  boss_1: {
+    label: "Răpune un mini-boss",
+    description: "Învinge un mini-boss în Ora Umbrelor.",
+    target: 1,
+    reward: { itemKey: "cristal_abis" as ItemKey, qty: 1 },
+    emoji: "🐲",
+  },
 } as const;
 
 export type DailyQuestKey = keyof typeof DAILY_QUESTS;
@@ -448,41 +462,51 @@ export function buildProgressBar(current: number, target: number, width: number)
   return "🟦".repeat(filled) + "⬛".repeat(width - filled);
 }
 
+export type DailyQuestRowLike = {
+  progress: number;
+  completed: boolean;
+  rewardGiven: boolean;
+  questDate: string | null;
+};
+
+/** Renders one section per daily quest (all quests shown, each with its own bar). */
 export function buildMissionEmbed(
-  questKey: DailyQuestKey,
-  progress: number,
-  completed: boolean,
-  rewardGiven: boolean,
-  questDate: string | null,
+  rows: Partial<Record<DailyQuestKey, DailyQuestRowLike>>,
   today: string,
 ): EmbedBuilder {
-  const quest = DAILY_QUESTS[questKey];
-  const isToday = questDate === today;
-  const cur = isToday ? progress : 0;
-  const done = isToday && completed;
-  const bar = buildProgressBar(cur, quest.target, 10);
-  const rewardItem = ITEMS[quest.reward.itemKey];
+  const sections = (Object.keys(DAILY_QUESTS) as DailyQuestKey[]).map((key) => {
+    const quest = DAILY_QUESTS[key];
+    const row = rows[key];
+    const isToday = row?.questDate === today;
+    const cur = isToday ? row!.progress : 0;
+    const done = isToday && !!row?.completed;
+    const bar = buildProgressBar(cur, quest.target, 10);
+    const rewardItem = ITEMS[quest.reward.itemKey];
 
-  let statusLine: string;
-  if (done && isToday && rewardGiven) {
-    statusLine = "✅ **Misiune completată!** Recompensa a fost acordată.";
-  } else if (done && isToday && !rewardGiven) {
-    statusLine = "✅ **Misiune completată!** Recompensa va fi acordată la uciderea unui monstru.";
-  } else {
-    statusLine = `${quest.emoji} ${bar} **${cur}/${quest.target}**`;
-  }
+    let statusLine: string;
+    if (done && row?.rewardGiven) {
+      statusLine = "✅ **Completată!** Recompensa a fost acordată.";
+    } else if (done) {
+      statusLine = "✅ **Completată!** Recompensa va fi acordată la uciderea unui monstru.";
+    } else {
+      statusLine = `${quest.emoji} ${bar} **${cur}/${quest.target}**`;
+    }
+
+    return (
+      `**${quest.label}**\n` +
+      `${quest.description}\n` +
+      `${statusLine}\n` +
+      `🎁 Recompensă: ${rewardItem.emoji} **${quest.reward.qty}× ${rewardItem.label}**`
+    );
+  });
 
   return new EmbedBuilder()
-    .setTitle("📜 Misiunea Zilnică")
+    .setTitle("📜 Misiunile Zilnice")
     .setColor(THEME_COLOR)
     .setDescription(
-      `${sectionTitle("Misiunea de Azi")}\n` +
-      `**${quest.label}**\n` +
-      `${quest.description}\n\n` +
-      `${statusLine}\n\n` +
-      `${sectionTitle("Recompensă")}\n` +
-      `${rewardItem.emoji} **${quest.reward.qty}× ${rewardItem.label}**\n\n` +
-      `*Misiunile se resetează automat la miezul nopții (UTC).*`,
+      `${sectionTitle("Misiunile de Azi")}\n\n` +
+      sections.join("\n\n") +
+      `\n\n*Misiunile se resetează automat la miezul nopții (UTC).*`,
     )
     .setFooter({ text: BRAND_FOOTER });
 }
