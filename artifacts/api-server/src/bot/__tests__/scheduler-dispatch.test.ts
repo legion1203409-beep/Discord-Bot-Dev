@@ -436,6 +436,19 @@ describe("fireFinalBoss", () => {
     expect(getGuildActiveBossMap(TEST_GUILD_ID).get(17)!.defeated).toBe(false);
   });
 
+  it("always spawns the final boss with veteranRank 0 (no veteran scaling)", async () => {
+    mockGetActiveEvent.mockResolvedValueOnce(makeActiveEvent(19));
+    mockGetEventParticipants.mockResolvedValueOnce([]);
+    const { client } = makeMockClient();
+
+    await fireFinalBoss(client, TEST_GUILD_ID, 19);
+
+    const boss = getGuildActiveBossMap(TEST_GUILD_ID).get(19)!;
+    expect(boss.veteranRank).toBe(0);
+    // maxHp is exactly bossMaxHp(level, rarity) — no veteran multiplier applied
+    expect(boss.maxHp).toBe(5 * 2000);
+  });
+
   it("passes the computed boss level to bossMaxHp", async () => {
     // No alive participants → bossLevel = 5 (fallback)
     mockGetActiveEvent.mockResolvedValueOnce(makeActiveEvent(18));

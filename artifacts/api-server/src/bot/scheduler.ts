@@ -728,13 +728,11 @@ export async function fireFinalBoss(client: Client, guildId: string, eventId: nu
       : 1;
     const bossLevel = Math.max(5, Math.ceil(avgLevel / 2));
     const rarity = rollBossRarity();
-    const kills = await getFinalBossKills(guildId).catch(() => 0);
-    const vRank = veteranRank(kills);
-    const maxHp = Math.round(bossMaxHp(bossLevel, rarity) * veteranMult(vRank));
+    const maxHp = bossMaxHp(bossLevel, rarity);
     const bossExpiresAt = Date.now() + FINAL_BOSS_ACTIVE_MS;
 
     const msg = await channel.send({
-      embeds: [buildFinalBossEmbed(bossLevel, rarity, maxHp, maxHp, undefined, undefined, undefined, undefined, bossExpiresAt, 0, vRank)],
+      embeds: [buildFinalBossEmbed(bossLevel, rarity, maxHp, maxHp, undefined, undefined, undefined, undefined, bossExpiresAt, 0, 0)],
       components: [finalBossRow(eventId)],
     });
 
@@ -767,14 +765,14 @@ export async function fireFinalBoss(client: Client, guildId: string, eventId: nu
       shieldNext: new Set(),
       defeated: false,
       charge: 0,
-      veteranRank: vRank,
+      veteranRank: 0,
     };
     gs.activeBossMap.set(eventId, boss);
     await persistBossState(boss);
     setOracleExtatic();
     scheduleEscapeTimer(boss, client);
 
-    logger.info({ eventId, bossLevel, rarity, maxHp, veteranRank: vRank, guildId }, "Final boss summoned");
+    logger.info({ eventId, bossLevel, rarity, maxHp, guildId }, "Final boss summoned");
   } catch (err) {
     logger.error({ err, eventId, guildId }, "Failed to summon final boss");
   }
