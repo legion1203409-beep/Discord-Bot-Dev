@@ -2329,7 +2329,7 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
       logger.error({ err, eventId }, "Failed to delete defeated boss row — stale row may persist until next restart")
     );
 
-    const bossRewards = computeBossRewards(activeBoss.damageBy, activeBoss.rarity, activeBoss.hitsBy);
+    const bossRewards = computeBossRewards(activeBoss.damageBy, activeBoss.rarity, activeBoss.hitsBy, activeBoss.veteranRank ?? 0);
     const baseRewards = new Map([...bossRewards.entries()].map(([id, r]) => [id, { gold: r.gold, xp: r.xp }]));
     const prestigeLevels = await getPrestigeLevels(activeBoss.guildId, [...bossRewards.keys()]).catch(() => new Map<string, number>());
     for (const [discordId, r] of bossRewards) {

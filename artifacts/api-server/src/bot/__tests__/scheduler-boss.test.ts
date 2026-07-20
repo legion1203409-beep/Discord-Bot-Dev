@@ -53,6 +53,8 @@ import {
   LOCKED_CHEST_GOLD,
   computeBossRewards,
   bossMaxHp,
+  VETERAN_RANK_CAP,
+  VETERAN_MAX_REWARD_MULT,
   rollChest,
   rollChestMultiplier,
   rollEventKeyDrops,
@@ -259,6 +261,27 @@ describe("computeBossRewards — damage tracking and distribution", () => {
     const rewards = computeBossRewards(damage, "comun");
     expect(rewards.get("p4")).toEqual({ rep: 50, gold: 150, xp: 250 });
     expect(rewards.get("p5")).toEqual({ rep: 50, gold: 150, xp: 250 });
+  });
+
+  it("applies the veteran max-rank bonus ×1.5 at VETERAN_RANK_CAP", () => {
+    const damage = new Map([["alice", 500], ["bob", 200]]);
+    const hits = new Map([["alice", 4]]);
+    const base = computeBossRewards(damage, "rar", hits, 0);
+    const maxed = computeBossRewards(damage, "rar", hits, VETERAN_RANK_CAP);
+    for (const id of ["alice", "bob"]) {
+      const b = base.get(id)!;
+      const m = maxed.get(id)!;
+      expect(m.rep).toBe(Math.round(b.rep * VETERAN_MAX_REWARD_MULT));
+      expect(m.gold).toBe(Math.round(b.gold * VETERAN_MAX_REWARD_MULT));
+      expect(m.xp).toBe(Math.round(b.xp * VETERAN_MAX_REWARD_MULT));
+    }
+  });
+
+  it("does not apply the veteran bonus below the cap", () => {
+    const damage = new Map([["alice", 500]]);
+    const base = computeBossRewards(damage, "comun", undefined, 0);
+    const belowCap = computeBossRewards(damage, "comun", undefined, VETERAN_RANK_CAP - 1);
+    expect(belowCap.get("alice")).toEqual(base.get("alice"));
   });
 
   it("applies rarity multiplier for rar (×1.5)", () => {

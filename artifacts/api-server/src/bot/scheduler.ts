@@ -808,7 +808,7 @@ async function runFleeResolution(boss: BossState, client: Client): Promise<void>
       const bossMsg = await fightCh.messages.fetch(boss.messageId).catch(() => null);
       await bossMsg?.delete().catch(() => null);
     }
-    const bossRewards = computeBossRewards(boss.damageBy, boss.rarity, boss.hitsBy);
+    const bossRewards = computeBossRewards(boss.damageBy, boss.rarity, boss.hitsBy, boss.veteranRank ?? 0);
     const prestigeLevels = await getPrestigeLevels(boss.guildId, [...bossRewards.keys()]).catch(() => new Map<string, number>());
     for (const [discordId, r] of bossRewards) {
       // Pass guildId so the guild-wide admin boost applies here too, matching the boss-defeat path

@@ -2306,7 +2306,7 @@ export function buildFinalBossEmbed(
     ? `🏅 Rang veteran: **Rang ${bossVeteranRank} · ${veteranTierLabel(bossVeteranRank)}** — *s-a întors mai puternic! +${bossVeteranRank * 20}% viață și daune*\n`
     : "") +
     (bossVeteranRank >= VETERAN_RANK_CAP
-      ? `👑 **RANG VETERAN MAXIM!** *Cea mai puternică formă a acestui boss.*\n`
+      ? `👑 **RANG VETERAN MAXIM!** *Cea mai puternică formă a acestui boss — pradă de veteran suprem: recompensă ×${VETERAN_MAX_REWARD_MULT}!*\n`
       : "");
   if (currentHp !== undefined && maxHp !== undefined) {
     const bar = buildHpBar(currentHp, maxHp);
@@ -2377,8 +2377,10 @@ export function computeBossRewards(
   damageBy: Map<string, number>,
   rarity: BossRarity,
   hitsBy?: Map<string, number>,
+  bossVeteranRank = 0,
 ): Map<string, { rep: number; gold: number; xp: number }> {
   const rm = RARITY_MULT[rarity];
+  const vm = veteranRewardMult(bossVeteranRank);
   const sorted = [...damageBy.entries()]
     .filter(([, dmg]) => dmg > 0)
     .sort((a, b) => b[1] - a[1]);
@@ -2390,16 +2392,16 @@ export function computeBossRewards(
     const hitBonusGold = hits * HIT_BONUS_GOLD * rm;
     const hitBonusRep = hits * HIT_BONUS_REP * rm;
     result.set(id, {
-      rep:  Math.round(BASE_REP  * rankMult * rm + hitBonusRep),
-      gold: Math.round(BASE_GOLD * rankMult * rm + hitBonusGold),
-      xp:   Math.round(BASE_XP   * rankMult * rm + hitBonusXp),
+      rep:  Math.round((BASE_REP  * rankMult * rm + hitBonusRep) * vm),
+      gold: Math.round((BASE_GOLD * rankMult * rm + hitBonusGold) * vm),
+      xp:   Math.round((BASE_XP   * rankMult * rm + hitBonusXp) * vm),
     });
   });
   return result;
 }
 
 export function buildBossLeaderboard(
-  bossInfo: { level: number; rarity: BossRarity; maxHp: number; defeated: boolean },
+  bossInfo: { level: number; rarity: BossRarity; maxHp: number; defeated: boolean; veteranRank?: number },
   damageMap: Map<string, number>,
   participants: Array<{ username: string; discordId: string; monsterLevel: number; totalDamage: number; isAlive: boolean }>,
   playerNames?: Map<string, string>,
@@ -2407,7 +2409,7 @@ export function buildBossLeaderboard(
   hitsBy?: Map<string, number>,
 ): EmbedBuilder {
   const rd = BOSS_RARITY_DATA[bossInfo.rarity];
-  const rewards = computeBossRewards(damageMap, bossInfo.rarity, hitsBy);
+  const rewards = computeBossRewards(damageMap, bossInfo.rarity, hitsBy, bossInfo.veteranRank ?? 0);
 
   // Build a unified map of everyone who did damage
   const allIds = new Set([...damageMap.keys(), ...participants.map((p) => p.discordId)]);
@@ -2460,6 +2462,9 @@ export function buildBossLeaderboard(
   });
 
   const rarityBonus = RARITY_MULT[bossInfo.rarity] > 1 ? ` ✨ Bonus raritate ×${RARITY_MULT[bossInfo.rarity]}` : "";
+  const veteranBonus = (bossInfo.veteranRank ?? 0) >= VETERAN_RANK_CAP
+    ? ` 👑 Bonus veteran suprem ×${VETERAN_MAX_REWARD_MULT}`
+    : "";
   const title = bossInfo.defeated
     ? "🏆 CLASAMENT FINAL — Dragonul a Căzut!"
     : "📜 CLASAMENT FINAL — Dragonul a Scăpat…";
@@ -2468,7 +2473,7 @@ export function buildBossLeaderboard(
     .setColor(bossInfo.defeated ? 0xffd700 : 0x555555)
     .setTitle(title)
     .setDescription(
-      `${rd.emoji} **Dragon Nivel ${bossInfo.level}** — ${rd.label} | HP: ${bossInfo.maxHp.toLocaleString()}${rarityBonus}\n\n` +
+      `${rd.emoji} **Dragon Nivel ${bossInfo.level}** — ${rd.label} | HP: ${bossInfo.maxHp.toLocaleString()}${rarityBonus}${veteranBonus}\n\n` +
       (lines.length > 0 ? lines.join("\n") : "_Niciun participant._"),
     )
     .setFooter({ text: "Recompensele au fost distribuite automat." })
