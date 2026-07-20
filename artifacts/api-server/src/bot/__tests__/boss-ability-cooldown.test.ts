@@ -28,7 +28,7 @@ describe("checkBossAbilityCooldown — second click within the window is rejecte
     const now = 1_000_000;
     const readyAt = now + ABILITY_COOLDOWN_MS;
     const abilityReadyAt = new Map([["alice", readyAt]]);
-    // clicking at now, which is 1ms before the 5-minute window expires
+    // clicking at now, which is 1ms before the 60-second window expires
     const result = checkBossAbilityCooldown(abilityReadyAt, "alice", readyAt - 1);
     expect(result.onCooldown).toBe(true);
   });
@@ -41,13 +41,13 @@ describe("checkBossAbilityCooldown — second click within the window is rejecte
     expect(result.onCooldown).toBe(true);
   });
 
-  it("reports remainingSeconds = 300 immediately after activation", () => {
+  it("reports remainingSeconds = 60 immediately after activation", () => {
     const activatedAt = 1_000_000;
-    const readyAt = activatedAt + ABILITY_COOLDOWN_MS; // +300s
+    const readyAt = activatedAt + ABILITY_COOLDOWN_MS; // +60s
     const abilityReadyAt = new Map([["alice", readyAt]]);
     const result = checkBossAbilityCooldown(abilityReadyAt, "alice", activatedAt);
     expect(result.onCooldown).toBe(true);
-    if (result.onCooldown) expect(result.remainingSeconds).toBe(300);
+    if (result.onCooldown) expect(result.remainingSeconds).toBe(60);
   });
 
   it("reports remainingSeconds = 1 when 1ms before expiry (ceiling)", () => {
@@ -60,14 +60,14 @@ describe("checkBossAbilityCooldown — second click within the window is rejecte
     if (result.onCooldown) expect(result.remainingSeconds).toBe(1);
   });
 
-  it("reports remainingSeconds = 150 at the halfway point (150s remaining)", () => {
+  it("reports remainingSeconds = 30 at the halfway point (30s remaining)", () => {
     const activatedAt = 1_000_000;
     const readyAt = activatedAt + ABILITY_COOLDOWN_MS;
     const abilityReadyAt = new Map([["alice", readyAt]]);
-    // halfway: now = activatedAt + 150_000ms → remaining = 150s
-    const result = checkBossAbilityCooldown(abilityReadyAt, "alice", activatedAt + 150_000);
+    // halfway: now = activatedAt + 30_000ms → remaining = 30s
+    const result = checkBossAbilityCooldown(abilityReadyAt, "alice", activatedAt + 30_000);
     expect(result.onCooldown).toBe(true);
-    if (result.onCooldown) expect(result.remainingSeconds).toBe(150);
+    if (result.onCooldown) expect(result.remainingSeconds).toBe(30);
   });
 });
 
@@ -143,8 +143,8 @@ describe("checkBossAbilityCooldown — cooldowns are per-player, not shared", ()
   });
 });
 
-describe("checkBossAbilityCooldown — ABILITY_COOLDOWN_MS constant is 5 minutes", () => {
-  it("ABILITY_COOLDOWN_MS equals 300_000ms", () => {
-    expect(ABILITY_COOLDOWN_MS).toBe(300_000);
+describe("checkBossAbilityCooldown — ABILITY_COOLDOWN_MS constant is 60 seconds", () => {
+  it("ABILITY_COOLDOWN_MS equals 60_000ms", () => {
+    expect(ABILITY_COOLDOWN_MS).toBe(60_000);
   });
 });

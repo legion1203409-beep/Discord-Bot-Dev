@@ -15,7 +15,7 @@ import { getCombatModifiers, formatActiveEffects, formatCombatEffects } from "./
 const BASE_PRICES = { atac: 50, def: 60, dodge: 70, crit: 80, hp: 40 } as const;
 export type ShopKey = keyof typeof BASE_PRICES;
 export const LEVELUP_INTERVAL = 5;
-export const ABILITY_COOLDOWN_MS = 5 * 60 * 1000;
+export const ABILITY_COOLDOWN_MS = 60 * 1000;
 
 // ─── Shared visual identity ──────────────────────────────────────────────────
 // "Hub" / info embeds (profil, magazin, clasament, ajutor, clasă, companion)
