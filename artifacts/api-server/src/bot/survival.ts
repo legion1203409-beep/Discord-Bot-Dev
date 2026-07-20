@@ -141,20 +141,23 @@ export function bossRank(level: number): number {
 // ─── Boss veteran ranks ─────────────────────────────────────────────────────
 // Every boss a player defeats grows stronger for that player: the first kill
 // gives it Rank I, then every 5 kills of the SAME boss rank it up again.
-// Each rank adds +20% HP and +20% damage — WITHOUT limit (infinite scaling).
-// Tier labels stop at "Etern ⚫"; beyond that the numeric rank keeps climbing.
+// Each rank adds +20% HP and +20% damage, capped at VETERAN_RANK_CAP (rank 10 → 3x).
+// Tier labels stop at "Etern ⚫"; beyond that the numeric rank keeps climbing (up to the cap).
 export const VETERAN_KILLS_PER_RANK = 5;
+// Hard cap so long-running servers don't scale bosses into unbeatable HP sponges
+// (rank 10 → veteranMult 3x max).
+export const VETERAN_RANK_CAP = 10;
 export const VETERAN_TIERS = ["", "Rar 🔵", "Epic 🟣", "Legendar 🟠", "Mitic 🔴", "Etern ⚫"] as const;
 
-/** Veteran rank (0, 1, 2, …) from how many times the player killed this boss. Uncapped. */
+/** Veteran rank (0, 1, 2, …) from how many times the player killed this boss. Capped at VETERAN_RANK_CAP. */
 export function veteranRank(kills: number): number {
   if (kills <= 0) return 0;
-  return 1 + Math.floor(kills / VETERAN_KILLS_PER_RANK);
+  return Math.min(VETERAN_RANK_CAP, 1 + Math.floor(kills / VETERAN_KILLS_PER_RANK));
 }
 
-/** HP/damage multiplier for a veteran rank: +20% per rank, uncapped. */
+/** HP/damage multiplier for a veteran rank: +20% per rank, capped via VETERAN_RANK_CAP at spawn. */
 export function veteranMult(rank: number): number {
-  return 1 + 0.2 * Math.max(0, rank);
+  return 1 + 0.2 * Math.min(VETERAN_RANK_CAP, Math.max(0, rank));
 }
 
 /** Display label for a veteran rank — tiers cap at "Etern ⚫" for rank 5+. */
