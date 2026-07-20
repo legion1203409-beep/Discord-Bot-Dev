@@ -1523,7 +1523,26 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
 
   const talismanKey = pl?.talisman ?? null;
   const talismanLevel = pl?.talismanLevel ?? 1;
-  const result = doCombat(p, talismanKey, talismanLevel, pl?.bossKills);
+  const result = doCombat(p, talismanKey, talismanLevel, pl?.bossKills, pl?.mana ?? 0);
+
+  // Ash Shield mana barrier: drain the absorbed damage from mana 1:1. The
+  // mitigation only counts if the mana was ACTUALLY deducted — if the drain
+  // fails (race with other spends, transient DB error), the hit lands
+  // unreduced and the shield stays armed for the next round.
+  let shieldStillUp = p.shieldNext && !result.shieldBroke;
+  if (result.shieldAbsorbed > 0) {
+    const drained = await spendPlayerMana(p.discordId, guildId, result.shieldAbsorbed).catch((err) => {
+      logger.error({ err, discordId: p.discordId, guildId }, "spendPlayerMana (event shield drain) failed");
+      return null;
+    });
+    if (!drained) {
+      result.newPlayerHp = Math.max(0, result.newPlayerHp - result.shieldAbsorbed);
+      result.playerDied = result.newPlayerHp <= 0;
+      result.usedShield = false;
+      result.shieldAbsorbed = 0;
+      shieldStillUp = p.shieldNext;
+    }
+  }
 
   // Mana regen: every normal attack restores 10% of max mana.
   const manaMaxNow = maxMana(pl?.manaLevel ?? 0);
@@ -1641,7 +1660,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
       itemsFarmed,
       pendingLevelup: true,
       empowerNext: false,
-      shieldNext: false,
+      shieldNext: shieldStillUp,
       bossCharge: result.newBossCharge,
     });
     const lvlDropParts = [
@@ -1665,7 +1684,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
     baseXp: p.baseXp + killBaseXp,
     itemsFarmed,
     empowerNext: false,
-    shieldNext: false,
+    shieldNext: shieldStillUp,
     bossCharge: result.newBossCharge,
   });
 
@@ -2167,7 +2186,16 @@ async function handleAbility(interaction: ButtonInteraction, eventId: number, ki
     await interaction.followUp({ content: "🔒 Nu deții această abilitate. O poți debloca din Forja Cenușii (`/magazin`).", flags: MessageFlags.Ephemeral });
     return;
   }
-  const cost = abilityManaCost(abilityLevel);
+  if (kind === "shield" && p.shieldNext) {
+    const curMana = pl?.mana ?? 0;
+    const maxM = maxMana(pl?.manaLevel ?? 0);
+    await interaction.followUp({
+      content: `🛡️ **Scutul de Cenușă e deja activ!** Rămâne ridicat cât timp mana îți acoperă daunele absorbite.\n🛡️ Viața scutului: **${curMana}/${maxM}** ${shieldBar(curMana, maxM)} *(susținut de mana ta)*`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  const cost = kind === "shield" ? SHIELD_ACTIVATION_COST : abilityManaCost(abilityLevel);
   const plMana = await spendPlayerMana(interaction.user.id, guildId, cost);
   if (!plMana) {
     const curMana = pl?.mana ?? 0;
@@ -2181,7 +2209,7 @@ async function handleAbility(interaction: ButtonInteraction, eventId: number, ki
 
   const abilityFlags = kind === "shield" ? { shieldNext: true } : { empowerNext: true };
   const note = (kind === "shield"
-    ? "🛡️ **Scut de Cenușă activat!** Următorul atac primit va fi înjumătățit."
+    ? `🛡️ **Scut de Cenușă ridicat!** Absoarbe **${Math.round(shieldReduction(abilityLevel) * 100)}%** din fiecare lovitură — daunele absorbite se scad din mana ta. Rămâne activ până când mana nu mai acoperă daunele.\n🛡️ Viața scutului: **${plMana.mana}/${maxMana(plMana.manaLevel ?? 0)}** ${shieldBar(plMana.mana, maxMana(plMana.manaLevel ?? 0))} *(susținut de mana ta)*`
     : "🌑 **Lovitura Umbrei pregătită!** Următoarea ta lovitură va fi dublă.") +
     `\n🔷 −**${cost}** mană`;
   const updated = await updateParticipant(p.id, abilityFlags);

@@ -397,7 +397,7 @@ export function companionEffectiveDesc(key: CompanionKey, level: number): string
 
 export const ABILITIES = {
   empower: { label: "Lovitura Umbrei", emoji: "🌑", desc: "Următoarea lovitură ×2 (crește 5%/nivel)" },
-  shield: { label: "Scut de Cenușă", emoji: "🛡️", desc: "Următorul atac primit -50% (crește 5%/nivel)" },
+  shield: { label: "Scut de Cenușă", emoji: "🛡️", desc: `Barieră de mană: absoarbe 50% din daune (crește 5%/nivel), activare ${SHIELD_ACTIVATION_COST} mană` },
 } as const;
 export type AbilityKey = keyof typeof ABILITIES;
 export function isAbilityKey(k: string): k is AbilityKey { return k in ABILITIES; }
@@ -409,7 +409,7 @@ export function abilityEffectiveDesc(kind: AbilityKey, level: number): string {
     return `+${pct}% daune la următoarea lovitură`;
   }
   const pct = Math.round(shieldReduction(level) * 100);
-  return `-${pct}% daune la următorul atac primit`;
+  return `absoarbe ${pct}% din daune (consumă mană)`;
 }
 
 // ─── Item drop system ─────────────────────────────────────────────────────────
@@ -659,6 +659,10 @@ export type CombatResult = {
   xpGained: number; oboliGained: number;
   levelUp: boolean; newMonsterLevel: number; newMonsterRarity: Rarity;
   usedEmpower: boolean; usedShield: boolean;
+  /** Total damage absorbed by the Ash Shield this round (drained from mana 1:1). */
+  shieldAbsorbed: number;
+  /** True when the shield shattered this round (mana couldn't cover the absorption). */
+  shieldBroke: boolean;
   stormDrain: number; battleEventEmoji: string;
   /** HP restored by talisman passives (runa_sangelui life steal on crit). */
   hpRegen: number;
@@ -676,13 +680,34 @@ export type CombatResult = {
   veteranRankMaxedNow: boolean;
 };
 
-export function doCombat(p: EventParticipant, talismanKey?: string | null, talismanLevel = 1, bossKills?: Record<string, number> | null): CombatResult {
+export function doCombat(p: EventParticipant, talismanKey?: string | null, talismanLevel = 1, bossKills?: Record<string, number> | null, playerMana?: number | null): CombatResult {
   const vetRank = veteranRankFor(p.monsterLevel, p.monsterRarity, bossKills);
   const vetMult = veteranMult(vetRank);
   const battle = getActiveBattleEvent();
   const mods = getCombatModifiers(p.discordId);
   const usedEmpower = p.empowerNext;
-  const usedShield = p.shieldNext;
+  // Ash Shield = mana barrier: while active, each hit is reduced by
+  // shieldReduction% and the absorbed damage drains mana 1:1; the shield
+  // shatters the moment mana can't cover the absorption.
+  const shieldActive = p.shieldNext && p.shieldLevel >= 1;
+  let shieldManaLeft = playerMana ?? Number.POSITIVE_INFINITY;
+  let usedShield = false;
+  let shieldAbsorbed = 0;
+  let shieldBroke = false;
+  const applyShield = (dmg: number): number => {
+    if (!shieldActive || shieldBroke) return dmg;
+    const reduced = Math.max(1, Math.round(dmg * (1 - shieldReduction(p.shieldLevel))));
+    const absorbed = Math.max(0, dmg - reduced);
+    if (absorbed <= 0) return dmg;
+    if (shieldManaLeft >= absorbed) {
+      shieldManaLeft -= absorbed;
+      shieldAbsorbed += absorbed;
+      usedShield = true;
+      return reduced;
+    }
+    shieldBroke = true;
+    return dmg;
+  };
 
   // sfera_abisului: bonus crit permanent per round
   const talismanCritAdd =
@@ -736,7 +761,7 @@ export function doCombat(p: EventParticipant, talismanKey?: string | null, talis
           const reduction = talismanValue("giulgiul_stins", talismanLevel);
           monsterDmg = Math.max(0, monsterDmg - reduction);
         }
-        if (usedShield) monsterDmg = Math.max(1, Math.round(monsterDmg * (1 - shieldReduction(p.shieldLevel))));
+        monsterDmg = applyShield(monsterDmg);
         if (mods.damageTakenMult !== 1) monsterDmg = Math.max(1, Math.round(monsterDmg * mods.damageTakenMult));
         newPlayerHp = Math.max(0, newPlayerHp - monsterDmg);
         playerDied = newPlayerHp <= 0;
@@ -755,7 +780,7 @@ export function doCombat(p: EventParticipant, talismanKey?: string | null, talis
     if (newBossCharge >= BOSS_CHARGE_MAX && !playerDied) {
       const ab = BOSSES[bossIndex(p.monsterLevel)]!.ability;
       abilityFired = true;
-      abilityDmg = Math.max(1, Math.round((p.maxHp * ab.pct) / 100));
+      abilityDmg = applyShield(Math.max(1, Math.round((p.maxHp * ab.pct) / 100)));
       newPlayerHp = Math.max(0, newPlayerHp - abilityDmg);
       playerDied = newPlayerHp <= 0;
       if (ab.steal) {
@@ -778,7 +803,7 @@ export function doCombat(p: EventParticipant, talismanKey?: string | null, talis
     playerDmg, isCrit, baseDmg, monsterDefeated, monsterHit, monsterDmg, playerDodged,
     playerDied, newMonsterHp: finalMonsterHp,
     newPlayerHp, xpGained, oboliGained, levelUp, newMonsterLevel, newMonsterRarity,
-    usedEmpower, usedShield, stormDrain, battleEventEmoji: battle?.emoji ?? "", hpRegen,
+    usedEmpower, usedShield, shieldAbsorbed, shieldBroke, stormDrain, battleEventEmoji: battle?.emoji ?? "", hpRegen,
     newBossCharge, abilityFired, abilityDmg, abilityHeal, veteranMaxBonus, veteranRankMaxedNow,
   };
 }
@@ -888,6 +913,9 @@ export function buildCombatEmbed(p: EventParticipant, extra = "", avatarUrl?: st
       (player
         ? `🔷 Mana ta: **${player.mana ?? MANA_BASE}/${maxMana(player.manaLevel ?? 0)}** ${manaBar(player.mana ?? MANA_BASE, maxMana(player.manaLevel ?? 0))} *(+${MANA_REGEN_PCT}% la fiecare atac)*\n`
         : "") +
+      (p.shieldNext && player
+        ? `🛡️ Viața scutului: **${player.mana ?? MANA_BASE}/${maxMana(player.manaLevel ?? 0)}** ${shieldBar(player.mana ?? MANA_BASE, maxMana(player.manaLevel ?? 0))} *(susținut de mana ta)*\n`
+        : "") +
       `🪙 Oboli strânși în eveniment: **${p.oboli}** *(20% se pierd la moarte)*` +
       bonusSection +
       effectsSection,
@@ -918,7 +946,8 @@ export type RewardBreakdown = {
 export function buildResultText(r: CombatResult, itemDrop?: ItemKey | null, breakdown?: RewardBreakdown): string {
   let txt = "";
   if (r.usedEmpower) txt += "🌑 **LOVITURA UMBREI!** Puterea Umbrelor îți dublează lovitura!\n";
-  if (r.usedShield) txt += "🛡️ **SCUT DE CENUȘĂ activ!** Daunele primite sunt înjumătățite.\n";
+  if (r.usedShield) txt += `🛡️ **SCUT DE CENUȘĂ activ!** A absorbit **${r.shieldAbsorbed}** daune *(−${r.shieldAbsorbed} mană)*.\n`;
+  if (r.shieldBroke) txt += "💥 *Scutul de Cenușă s-a spart — mana nu a mai acoperit daunele absorbite! Lovitura te-a atins din plin.*\n";
   if (r.isCrit) {
     txt += CRIT_LINES[Math.floor(Math.random() * CRIT_LINES.length)]!.replace("{dmg}", String(r.playerDmg)) + "\n";
   } else {
