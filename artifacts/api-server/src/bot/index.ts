@@ -1537,10 +1537,13 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
 
   // Mana regen: every normal attack restores a % of max mana (base 10%, +2%/regen level).
   const manaMaxNow = maxMana(pl?.manaLevel ?? 0);
+  const manaBefore = pl?.mana ?? 0;
   let plAfterMana = await regenPlayerMana(p.discordId, guildId, manaRegenPerAttack(pl?.manaLevel ?? 0, pl?.manaRegenLevel ?? 0), manaMaxNow).catch((err) => {
     logger.error({ err, discordId: p.discordId, guildId }, "regenPlayerMana failed");
     return null;
   }) ?? pl;
+  // Actual mana regained this attack (clamped by the max pool).
+  const manaGained = Math.max(0, (plAfterMana?.mana ?? manaBefore) - manaBefore);
   // Ash Shield strain: absorbing damage also saps mana (% of the absorbed
   // amount, floors at 0). An empty mana pool never breaks the shield.
   const shieldDrain = result.shieldManaDrained;
@@ -1588,8 +1591,16 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
     result.oboliGained > 0 && !result.playerDied && talismanKey === "crista_vietii"
       ? talismanValue("crista_vietii", talismanLevel)
       : 0;
+  const manaFlowLine = (() => {
+    const parts: string[] = [];
+    if (manaGained > 0) parts.push(`+**${manaGained}** (regenerare)`);
+    if (shieldDrain > 0) parts.push(`−**${shieldDrain}** (efortul scutului)`);
+    if (parts.length === 0) return "";
+    return `\n🔷 Mană: ${parts.join(", ")} → **${plAfterMana?.mana ?? 0}/${manaMaxNow}**`;
+  })();
   const extra =
     buildResultText(result, itemDrop, { baseXp: killBaseXp, baseOboli: killBaseOboli, cristaHeal }) +
+    manaFlowLine +
     (materialDrop ? `\n${ITEMS[materialDrop].emoji} **${ITEMS[materialDrop].label}** a căzut din monstru — material de evoluție!` : "");
 
   if (result.playerDied) {
@@ -2246,8 +2257,13 @@ async function handleAbility(interaction: ButtonInteraction, eventId: number, ki
 // so we keep the webhook + message id in memory and fall back to a fresh
 // message when the token has expired or the edit fails.
 const HIT_REPLY_TTL_MS = 14 * 60 * 1000;
+// How long we keep EDITING the same ephemeral reply before rolling to a fresh
+// one. Short on purpose: if the player dismissed the ephemeral, edits land in
+// the void — after this window a fresh (visible) message is posted and the
+// stale one is deleted, so replies can't "disappear forever" nor pile up.
+const HIT_REPLY_EDIT_WINDOW_MS = 60 * 1000;
 const HIT_REPLY_MAP_CAP = 1000;
-const bossHitReplies = new Map<string, { webhook: ButtonInteraction["webhook"]; messageId: string; expiresAt: number }>();
+const bossHitReplies = new Map<string, { webhook: ButtonInteraction["webhook"]; messageId: string; expiresAt: number; freshUntil: number }>();
 // Per-key promise chain so burst clicks from the same player serialize instead
 // of racing (which would occasionally post duplicate ephemerals).
 const hitReplyLocks = new Map<string, Promise<void>>();
@@ -2256,9 +2272,14 @@ async function sendOrEditEphemeral(interaction: ButtonInteraction, key: string, 
   const run = async () => {
     const prev = bossHitReplies.get(key);
     if (prev) {
-      if (prev.expiresAt > Date.now()) {
+      if (prev.expiresAt > Date.now() && prev.freshUntil > Date.now()) {
         const edited = await prev.webhook.editMessage(prev.messageId, { content }).catch(() => null);
         if (edited) return;
+      }
+      // Rolling to a fresh message: clean up the old ephemeral so dismissed or
+      // stale replies don't linger in the player's chat.
+      if (prev.expiresAt > Date.now()) {
+        void prev.webhook.deleteMessage(prev.messageId).catch(() => null);
       }
       bossHitReplies.delete(key);
     }
@@ -2274,7 +2295,7 @@ async function sendOrEditEphemeral(interaction: ButtonInteraction, key: string, 
           bossHitReplies.delete(oldest);
         }
       }
-      bossHitReplies.set(key, { webhook: interaction.webhook, messageId: msg.id, expiresAt: Date.now() + HIT_REPLY_TTL_MS });
+      bossHitReplies.set(key, { webhook: interaction.webhook, messageId: msg.id, expiresAt: Date.now() + HIT_REPLY_TTL_MS, freshUntil: Date.now() + HIT_REPLY_EDIT_WINDOW_MS });
     }
   };
   const chained = (hitReplyLocks.get(key) ?? Promise.resolve()).then(run, run);
@@ -2392,13 +2413,19 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
 
   // Mana regen: every Dragon hit counts as a normal attack (+10% max mana).
   const bossManaMax = maxMana(player.manaLevel ?? 0);
+  const bossManaBefore = player.mana ?? 0;
   let playerAfterMana = await regenPlayerMana(uid, guildId, manaRegenPerAttack(player.manaLevel ?? 0, player.manaRegenLevel ?? 0), bossManaMax).catch((err) => {
     logger.error({ err, discordId: uid, guildId }, "regenPlayerMana (boss) failed");
     return null;
   }) ?? player;
+  // Actual mana regained this hit (clamped by the max pool).
+  const bossManaGained = Math.max(0, (playerAfterMana?.mana ?? bossManaBefore) - bossManaBefore);
   // Ash Shield strain (boss path): absorbing damage also saps mana (% of the
   // absorbed amount, floors at 0). An empty mana pool never breaks the shield.
   const bossShieldDrain = myShield && shieldAbsorbed > 0 ? shieldManaDrain(shieldAbsorbed, myShield.level) : 0;
+  // Extra mana the boss's AoE special ability drains from THIS player's shield
+  // (filled in the AoE loop below, shown in the mana-flow breakdown).
+  let bossAoeDrainForMe = 0;
   if (bossShieldDrain > 0) {
     playerAfterMana = await drainPlayerMana(uid, guildId, bossShieldDrain).catch((err) => {
       logger.error({ err, discordId: uid, guildId }, "drainPlayerMana (boss) failed");
@@ -2461,7 +2488,10 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
                 logger.error({ err, discordId: pid, guildId }, "drainPlayerMana (boss AoE) failed");
                 return null;
               });
-              if (pid === uid && drained) playerAfterMana = drained;
+              if (pid === uid) {
+                bossAoeDrainForMe += aoeDrain;
+                if (drained) playerAfterMana = drained;
+              }
             }
             shieldTag = ` 🛡️ *(scut −${absorbed}, viață scut: ${pShield.hp}, −${aoeDrain} mană)*`;
           } else if (absorbed > 0) {
@@ -2589,8 +2619,15 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
   } catch { /* ignore */ }
 
   // Public announcement when the boss ability fired (visible to everyone).
+  // Auto-deleted after a couple of minutes so the channel doesn't fill up
+  // with old ability announcements.
   if (bossAbilityAnnouncement) {
-    await interaction.followUp({ content: bossAbilityAnnouncement }).catch(() => null);
+    const annMsg = await interaction.followUp({ content: bossAbilityAnnouncement }).catch(() => null);
+    if (annMsg) {
+      setTimeout(() => {
+        void interaction.webhook.deleteMessage(annMsg.id).catch(() => null);
+      }, 2 * 60 * 1000);
+    }
   }
 
   const myFinalHp = activeBoss.playerHp.get(uid) ?? newPlayerHp;
@@ -2607,7 +2644,12 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
       `⚔️ Ai lovit Dragonul pentru **${playerDmg.toLocaleString()} daune**!${critTag}\n` +
       `🐉 Dragonul te lovește pentru **${bossHit} daune**! ${playerStatus}\n` +
       hpBarLine +
-      `🔷 Mana ta: **${playerAfterMana.mana}/${bossManaMax}** ${manaBar(playerAfterMana.mana, bossManaMax)}\n` +
+      `🔷 Mana ta: **${playerAfterMana.mana}/${bossManaMax}** ${manaBar(playerAfterMana.mana, bossManaMax)}${(() => {
+        const parts: string[] = [];
+        if (bossManaGained > 0) parts.push(`+${bossManaGained} regenerare`);
+        if (bossShieldDrain + bossAoeDrainForMe > 0) parts.push(`−${bossShieldDrain + bossAoeDrainForMe} efortul scutului`);
+        return parts.length ? ` *(${parts.join(", ")})*` : "";
+      })()}\n` +
       ((): string => {
         const s = activeBoss.shieldNext.get(uid);
         if (!s) return "";
