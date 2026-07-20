@@ -2219,6 +2219,57 @@ async function handleAbility(interaction: ButtonInteraction, eventId: number, ki
   });
 }
 
+// ─── Per-player ephemeral "hit reply" anti-spam ───────────────────────────────
+// Instead of posting a new ephemeral message on every Dragon click, we edit the
+// player's previous one. Ephemeral messages can only be edited through the
+// webhook of the interaction that created them, and that token lives ~15 min,
+// so we keep the webhook + message id in memory and fall back to a fresh
+// message when the token has expired or the edit fails.
+const HIT_REPLY_TTL_MS = 14 * 60 * 1000;
+const HIT_REPLY_MAP_CAP = 1000;
+const bossHitReplies = new Map<string, { webhook: ButtonInteraction["webhook"]; messageId: string; expiresAt: number }>();
+// Per-key promise chain so burst clicks from the same player serialize instead
+// of racing (which would occasionally post duplicate ephemerals).
+const hitReplyLocks = new Map<string, Promise<void>>();
+
+async function sendOrEditEphemeral(interaction: ButtonInteraction, key: string, content: string): Promise<void> {
+  const run = async () => {
+    const prev = bossHitReplies.get(key);
+    if (prev) {
+      if (prev.expiresAt > Date.now()) {
+        const edited = await prev.webhook.editMessage(prev.messageId, { content }).catch(() => null);
+        if (edited) return;
+      }
+      bossHitReplies.delete(key);
+    }
+    const msg = await interaction.followUp({ content, flags: MessageFlags.Ephemeral }).catch(() => null);
+    if (msg) {
+      // Bounded map: drop expired entries first, then oldest-inserted if still over cap.
+      if (bossHitReplies.size >= HIT_REPLY_MAP_CAP) {
+        const now = Date.now();
+        for (const [k, v] of bossHitReplies) if (v.expiresAt <= now) bossHitReplies.delete(k);
+        while (bossHitReplies.size >= HIT_REPLY_MAP_CAP) {
+          const oldest = bossHitReplies.keys().next().value;
+          if (oldest === undefined) break;
+          bossHitReplies.delete(oldest);
+        }
+      }
+      bossHitReplies.set(key, { webhook: interaction.webhook, messageId: msg.id, expiresAt: Date.now() + HIT_REPLY_TTL_MS });
+    }
+  };
+  const chained = (hitReplyLocks.get(key) ?? Promise.resolve()).then(run, run);
+  hitReplyLocks.set(key, chained);
+  try {
+    await chained;
+  } finally {
+    if (hitReplyLocks.get(key) === chained) hitReplyLocks.delete(key);
+  }
+}
+
+function bossReplyKey(guildId: string, eventId: number, uid: string): string {
+  return `${guildId}:${eventId}:${uid}`;
+}
+
 async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) {
   await interaction.deferUpdate();
   const uid = interaction.user.id;
@@ -2540,9 +2591,10 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
   const hpBarLine = `${buildHpBar(myFinalHp, myMaxHp)}\n`;
 
   const effectsLine = formatCombatEffects(uid);
-  await interaction.followUp({
-    content:
-      abilityLine +
+  await sendOrEditEphemeral(
+    interaction,
+    bossReplyKey(guildId, eventId, uid),
+    abilityLine +
       `⚔️ Ai lovit Dragonul pentru **${playerDmg.toLocaleString()} daune**!${critTag}\n` +
       `🐉 Dragonul te lovește pentru **${bossHit} daune**! ${playerStatus}\n` +
       hpBarLine +
@@ -2552,8 +2604,7 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
         : "") +
       `🩸 Dragon: **${activeBoss.currentHp.toLocaleString()} / ${activeBoss.maxHp.toLocaleString()} HP**` +
       (effectsLine ? `\n🔮 **Efectele tale active:**\n${effectsLine}` : ""),
-    ephemeral: true,
-  });
+  );
 }
 
 async function handleBossAbility(interaction: ButtonInteraction, eventId: number, kind: string) {
@@ -2590,31 +2641,33 @@ async function handleBossAbility(interaction: ButtonInteraction, eventId: number
     // absorbed hit drains mana; it shatters when mana can't cover the damage.
     if (activeBoss.shieldNext.has(uid)) {
       const maxM = maxMana(player.manaLevel ?? 0);
-      await interaction.followUp({
-        content: `🛡️ **Scutul de Cenușă e deja activ!** Rămâne ridicat cât timp mana îți acoperă daunele absorbite.\n🛡️ Viața scutului: **${player.mana ?? 0}/${maxM}** ${shieldBar(player.mana ?? 0, maxM)} *(susținut de mana ta)*`,
-        flags: MessageFlags.Ephemeral,
-      });
+      await sendOrEditEphemeral(
+        interaction,
+        bossReplyKey(guildId, eventId, uid),
+        `🛡️ **Scutul de Cenușă e deja activ!** Rămâne ridicat cât timp mana îți acoperă daunele absorbite.\n🛡️ Viața scutului: **${player.mana ?? 0}/${maxM}** ${shieldBar(player.mana ?? 0, maxM)} *(susținut de mana ta)*`,
+      );
       return;
     }
     const activationCost = SHIELD_ACTIVATION_COST;
     const afterActivation = await spendPlayerMana(uid, guildId, activationCost);
     if (!afterActivation) {
       const maxM = maxMana(player.manaLevel ?? 0);
-      await interaction.followUp({
-        content: `🔷 **Mană insuficientă!** Activarea Scutului de Cenușă costă fix **${activationCost}** mană, tu ai **${player.mana ?? 0}/${maxM}** ${manaBar(player.mana ?? 0, maxM)}\n⚔️ Lovește Dragonul cu atacuri normale ca să îți refaci mana (+${MANA_REGEN_PCT}% pe atac).`,
-        flags: MessageFlags.Ephemeral,
-      });
+      await sendOrEditEphemeral(
+        interaction,
+        bossReplyKey(guildId, eventId, uid),
+        `🔷 **Mană insuficientă!** Activarea Scutului de Cenușă costă fix **${activationCost}** mană, tu ai **${player.mana ?? 0}/${maxM}** ${manaBar(player.mana ?? 0, maxM)}\n⚔️ Lovește Dragonul cu atacuri normale ca să îți refaci mana (+${MANA_REGEN_PCT}% pe atac).`,
+      );
       return;
     }
     activeBoss.shieldNext.add(uid);
     const pct = Math.round(shieldReduction(abilityLevel) * 100);
-    await interaction.followUp({
-      content:
-        `🛡️ **Scut de Cenușă activat!** *(−${activationCost} mană)*\n` +
+    await sendOrEditEphemeral(
+      interaction,
+      bossReplyKey(guildId, eventId, uid),
+      `🛡️ **Scut de Cenușă activat!** *(−${activationCost} mană)*\n` +
         `Cât timp e ridicat, absoarbe **${pct}%** din fiecare lovitură a Dragonului, iar daunele absorbite se scad din mana ta. Când mana nu mai acoperă daunele, scutul se sparge!\n` +
         `🛡️ Viața scutului: **${afterActivation.mana}/${maxMana(afterActivation.manaLevel)}** ${shieldBar(afterActivation.mana, maxMana(afterActivation.manaLevel))} *(susținut de mana ta)*`,
-      flags: MessageFlags.Ephemeral,
-    });
+    );
     void persistBossState(activeBoss);
     return;
   }
@@ -2622,16 +2675,21 @@ async function handleBossAbility(interaction: ButtonInteraction, eventId: number
   const plMana = await spendPlayerMana(uid, guildId, manaCost);
   if (!plMana) {
     const maxM = maxMana(player.manaLevel ?? 0);
-    await interaction.followUp({
-      content: `🔷 **Mană insuficientă!** Abilitatea costă **${manaCost}** mană, tu ai **${player.mana ?? 0}/${maxM}** ${manaBar(player.mana ?? 0, maxM)}\n⚔️ Lovește Dragonul cu atacuri normale ca să îți refaci mana (+${MANA_REGEN_PCT}% pe atac).`,
-      flags: MessageFlags.Ephemeral,
-    });
+    await sendOrEditEphemeral(
+      interaction,
+      bossReplyKey(guildId, eventId, uid),
+      `🔷 **Mană insuficientă!** Abilitatea costă **${manaCost}** mană, tu ai **${player.mana ?? 0}/${maxM}** ${manaBar(player.mana ?? 0, maxM)}\n⚔️ Lovește Dragonul cu atacuri normale ca să îți refaci mana (+${MANA_REGEN_PCT}% pe atac).`,
+    );
     return;
   }
 
   const manaLine = `\n🔷 −**${manaCost}** mană → **${plMana.mana}/${maxMana(plMana.manaLevel)}**`;
   activeBoss.empowerNext.add(uid);
-  await interaction.followUp({ content: "🌑 **Lovitura Umbrei pregătită!** Următoarea ta lovitură în Dragon va fi dublă." + manaLine, flags: MessageFlags.Ephemeral });
+  await sendOrEditEphemeral(
+    interaction,
+    bossReplyKey(guildId, eventId, uid),
+    "🌑 **Lovitura Umbrei pregătită!** Următoarea ta lovitură în Dragon va fi dublă." + manaLine,
+  );
   void persistBossState(activeBoss);
 }
 
