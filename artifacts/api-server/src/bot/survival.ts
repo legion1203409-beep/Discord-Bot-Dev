@@ -2322,7 +2322,7 @@ export function buildFinalBossEmbed(
 
   // ── Body ─────────────────────────────────────────────────────────────────────
   if (defeated) {
-    desc += "\n💀 **DRAGONUL STINS A CĂZUT! REGATUL ESTE SALVAT!**\n\nToți participanții au primit recompensa!";
+    desc += `\n💀 **${bossIdentity.name.toUpperCase()} A CĂZUT! REGATUL ESTE SALVAT!**\n\nToți participanții au primit recompensa!`;
   } else {
     desc +=
       "\n🐉 Lovește-l împreună cu echipa! Oricine poate participa.\n" +
@@ -2361,7 +2361,7 @@ export function buildFinalBossEmbed(
 
   const embed = new EmbedBuilder()
     .setColor(rd.color)
-    .setTitle(`🐉  DRAGONUL STINS – NIVEL ${level}  🐉`)
+    .setTitle(`🐉  ${bossIdentity.name.toUpperCase()} – NIVEL ${level}  🐉`)
     .setDescription(desc)
     .setImage(bossImg(bossIndex(level)) ?? IMG.dragon);
 
@@ -2465,15 +2465,16 @@ export function buildBossLeaderboard(
   const veteranBonus = (bossInfo.veteranRank ?? 0) >= VETERAN_RANK_CAP
     ? ` 👑 Bonus veteran suprem ×${VETERAN_MAX_REWARD_MULT}`
     : "";
+  const bossName = BOSSES[bossIndex(bossInfo.level)]!.name;
   const title = bossInfo.defeated
-    ? "🏆 CLASAMENT FINAL — Dragonul a Căzut!"
-    : "📜 CLASAMENT FINAL — Dragonul a Scăpat…";
+    ? `🏆 CLASAMENT FINAL — ${bossName} a Căzut!`
+    : `📜 CLASAMENT FINAL — ${bossName} a Scăpat…`;
 
   return new EmbedBuilder()
     .setColor(bossInfo.defeated ? 0xffd700 : 0x555555)
     .setTitle(title)
     .setDescription(
-      `${rd.emoji} **Dragon Nivel ${bossInfo.level}** — ${rd.label} | HP: ${bossInfo.maxHp.toLocaleString()}${rarityBonus}${veteranBonus}\n\n` +
+      `${rd.emoji} **${bossName} — Nivel ${bossInfo.level}** — ${rd.label} | HP: ${bossInfo.maxHp.toLocaleString()}${rarityBonus}${veteranBonus}\n\n` +
       (lines.length > 0 ? lines.join("\n") : "_Niciun participant._"),
     )
     .setFooter({ text: "Recompensele au fost distribuite automat." })
