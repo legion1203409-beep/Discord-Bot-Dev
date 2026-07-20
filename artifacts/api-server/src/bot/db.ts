@@ -453,6 +453,17 @@ export async function spendPlayerMana(discordId: string, guildId: string, cost: 
   return u ?? null;
 }
 
+// Drains mana without failing when the pool is short (atomic GREATEST clamp to 0).
+// Used for the Ash Shield strain: absorbing damage also saps mana, but an empty
+// pool never blocks the shield — only its own HP does.
+export async function drainPlayerMana(discordId: string, guildId: string, amount: number): Promise<Player | null> {
+  const [u] = await db.update(playersTable)
+    .set({ mana: sql`GREATEST(0, ${playersTable.mana} - ${amount})` })
+    .where(playerWhere(discordId, guildId))
+    .returning();
+  return u ?? null;
+}
+
 // Restores mana up to `max` (atomic LEAST clamp); returns the updated player.
 export async function regenPlayerMana(discordId: string, guildId: string, amount: number, max: number): Promise<Player | null> {
   const [u] = await db.update(playersTable)

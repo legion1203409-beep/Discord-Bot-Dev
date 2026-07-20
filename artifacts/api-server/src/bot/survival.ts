@@ -360,6 +360,13 @@ export function shieldReduction(level: number): number {
 export const SHIELD_ACTIVATION_COST = 200;
 export const SHIELD_HP_BASE = 200;      // shield HP at ability level 1
 export const SHIELD_HP_PER_LEVEL = 100; // extra shield HP per ability level
+// While the shield absorbs a hit, the strain also drains the bearer's mana:
+// a % of the absorbed damage is subtracted from current mana (floors at 0;
+// an empty mana pool does NOT break the shield — only its own HP does).
+export const SHIELD_MANA_DRAIN_PCT = 50;
+export function shieldManaDrain(absorbed: number): number {
+  return Math.max(0, Math.round((absorbed * SHIELD_MANA_DRAIN_PCT) / 100));
+}
 /** The shield's own life pool at a given ability level. */
 export function shieldMaxHp(level: number): number {
   if (level < 1) return 0;
@@ -414,7 +421,7 @@ export function companionEffectiveDesc(key: CompanionKey, level: number): string
 
 export const ABILITIES = {
   empower: { label: "Lovitura Umbrei", emoji: "🌑", desc: "Următoarea lovitură ×2 (crește 5%/nivel)" },
-  shield: { label: "Scut de Cenușă", emoji: "🛡️", desc: `Scut cu viață proprie (${SHIELD_HP_BASE} HP, +${SHIELD_HP_PER_LEVEL}/nivel): absoarbe 50% din daune (crește 5%/nivel), activare ${SHIELD_ACTIVATION_COST} mană` },
+  shield: { label: "Scut de Cenușă", emoji: "🛡️", desc: `Scut cu viață proprie (${SHIELD_HP_BASE} HP, +${SHIELD_HP_PER_LEVEL}/nivel): absoarbe 50% din daune (crește 5%/nivel), activare ${SHIELD_ACTIVATION_COST} mană; efortul scutului consumă și mană (${SHIELD_MANA_DRAIN_PCT}% din daunele absorbite)` },
 } as const;
 export type AbilityKey = keyof typeof ABILITIES;
 export function isAbilityKey(k: string): k is AbilityKey { return k in ABILITIES; }
@@ -966,7 +973,7 @@ export type RewardBreakdown = {
 export function buildResultText(r: CombatResult, itemDrop?: ItemKey | null, breakdown?: RewardBreakdown): string {
   let txt = "";
   if (r.usedEmpower) txt += "🌑 **LOVITURA UMBREI!** Puterea Umbrelor îți dublează lovitura!\n";
-  if (r.usedShield) txt += `🛡️ **SCUT DE CENUȘĂ activ!** A absorbit **${r.shieldAbsorbed}** daune *(viața scutului: ${r.shieldHpLeft} rămasă)*.\n`;
+  if (r.usedShield) txt += `🛡️ **SCUT DE CENUȘĂ activ!** A absorbit **${r.shieldAbsorbed}** daune *(viața scutului: ${r.shieldHpLeft} rămasă, −${shieldManaDrain(r.shieldAbsorbed)} mană)*.\n`;
   if (r.shieldBroke) txt += "💥 *Scutul de Cenușă s-a spart — viața lui nu a mai acoperit daunele! Lovitura te-a atins din plin.*\n";
   if (r.isCrit) {
     txt += CRIT_LINES[Math.floor(Math.random() * CRIT_LINES.length)]!.replace("{dmg}", String(r.playerDmg)) + "\n";

@@ -59,6 +59,7 @@ import {
   buyAbility,
   upgradeAbility,
   spendPlayerMana,
+  drainPlayerMana,
   regenPlayerMana,
   upgradeMana,
   upgradeManaRegen,
@@ -149,6 +150,7 @@ import {
   manaRegenUpgradeCost,
   manaUpgradeCost,
   manaBar,
+  shieldManaDrain,
   shieldMaxHp,
   empowerMult,
   shieldReduction,
@@ -1534,10 +1536,19 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
 
   // Mana regen: every normal attack restores a % of max mana (base 10%, +2%/regen level).
   const manaMaxNow = maxMana(pl?.manaLevel ?? 0);
-  const plAfterMana = await regenPlayerMana(p.discordId, guildId, manaRegenPerAttack(pl?.manaLevel ?? 0, pl?.manaRegenLevel ?? 0), manaMaxNow).catch((err) => {
+  let plAfterMana = await regenPlayerMana(p.discordId, guildId, manaRegenPerAttack(pl?.manaLevel ?? 0, pl?.manaRegenLevel ?? 0), manaMaxNow).catch((err) => {
     logger.error({ err, discordId: p.discordId, guildId }, "regenPlayerMana failed");
     return null;
   }) ?? pl;
+  // Ash Shield strain: absorbing damage also saps mana (% of the absorbed
+  // amount, floors at 0). An empty mana pool never breaks the shield.
+  const shieldDrain = result.shieldAbsorbed > 0 ? shieldManaDrain(result.shieldAbsorbed) : 0;
+  if (shieldDrain > 0) {
+    plAfterMana = await drainPlayerMana(p.discordId, guildId, shieldDrain).catch((err) => {
+      logger.error({ err, discordId: p.discordId, guildId }, "drainPlayerMana failed");
+      return null;
+    }) ?? plAfterMana;
+  }
   // Veteran ranks: remember every mini-boss this player slays — next time the
   // same boss appears for them, it comes back stronger (+20% HP/dmg per rank).
   const slainBoss = result.monsterDefeated && isBossFight(p.monsterLevel, p.monsterRarity);
@@ -2380,10 +2391,19 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
 
   // Mana regen: every Dragon hit counts as a normal attack (+10% max mana).
   const bossManaMax = maxMana(player.manaLevel ?? 0);
-  const playerAfterMana = await regenPlayerMana(uid, guildId, manaRegenPerAttack(player.manaLevel ?? 0, player.manaRegenLevel ?? 0), bossManaMax).catch((err) => {
+  let playerAfterMana = await regenPlayerMana(uid, guildId, manaRegenPerAttack(player.manaLevel ?? 0, player.manaRegenLevel ?? 0), bossManaMax).catch((err) => {
     logger.error({ err, discordId: uid, guildId }, "regenPlayerMana (boss) failed");
     return null;
   }) ?? player;
+  // Ash Shield strain (boss path): absorbing damage also saps mana (% of the
+  // absorbed amount, floors at 0). An empty mana pool never breaks the shield.
+  const bossShieldDrain = shieldAbsorbed > 0 ? shieldManaDrain(shieldAbsorbed) : 0;
+  if (bossShieldDrain > 0) {
+    playerAfterMana = await drainPlayerMana(uid, guildId, bossShieldDrain).catch((err) => {
+      logger.error({ err, discordId: uid, guildId }, "drainPlayerMana (boss) failed");
+      return null;
+    }) ?? playerAfterMana;
+  }
 
   const dmgBreakdownLine = (() => {
     if (playerDmg === baseBossDmg) return "";
@@ -2395,7 +2415,7 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
 
   const abilityLine =
     (usedEmpower ? "🌑 **LOVITURA UMBREI!** Puterea Umbrelor ți-a dublat lovitura!\n" : "") +
-    (usedShield ? `🛡️ **SCUT DE CENUȘĂ activ!** A absorbit **${shieldAbsorbed}** daune *(viața scutului: ${shieldHpLeftLine} rămasă)*.\n` : "") +
+    (usedShield ? `🛡️ **SCUT DE CENUȘĂ activ!** A absorbit **${shieldAbsorbed}** daune *(viața scutului: ${shieldHpLeftLine} rămasă, −${shieldManaDrain(shieldAbsorbed)} mană)*.\n` : "") +
     (shieldBroke ? "💥 *Scutul de Cenușă s-a spart — viața lui nu a mai acoperit daunele! Lovitura te-a atins din plin.*\n" : "") +
     dmgBreakdownLine;
 
@@ -2433,7 +2453,16 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
           if (absorbed > 0 && pShield.hp >= absorbed) {
             pShield.hp -= absorbed;
             dmg = reduced;
-            shieldTag = ` 🛡️ *(scut −${absorbed}, viață scut: ${pShield.hp})*`;
+            // Shield strain: the absorption also saps the bearer's mana.
+            const aoeDrain = shieldManaDrain(absorbed);
+            if (aoeDrain > 0) {
+              const drained = await drainPlayerMana(pid, guildId, aoeDrain).catch((err) => {
+                logger.error({ err, discordId: pid, guildId }, "drainPlayerMana (boss AoE) failed");
+                return null;
+              });
+              if (pid === uid && drained) playerAfterMana = drained;
+            }
+            shieldTag = ` 🛡️ *(scut −${absorbed}, viață scut: ${pShield.hp}, −${aoeDrain} mană)*`;
           } else if (absorbed > 0) {
             activeBoss.shieldNext.delete(pid);
             shieldTag = " 💥 *(scutul s-a spart — viață insuficientă)*";
