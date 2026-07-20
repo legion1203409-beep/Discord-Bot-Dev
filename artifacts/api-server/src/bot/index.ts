@@ -151,6 +151,7 @@ import {
   manaUpgradeCost,
   manaBar,
   shieldManaDrain,
+  shieldManaDrainPct,
   shieldMaxHp,
   empowerMult,
   shieldReduction,
@@ -1542,7 +1543,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
   }) ?? pl;
   // Ash Shield strain: absorbing damage also saps mana (% of the absorbed
   // amount, floors at 0). An empty mana pool never breaks the shield.
-  const shieldDrain = result.shieldAbsorbed > 0 ? shieldManaDrain(result.shieldAbsorbed) : 0;
+  const shieldDrain = result.shieldManaDrained;
   if (shieldDrain > 0) {
     plAfterMana = await drainPlayerMana(p.discordId, guildId, shieldDrain).catch((err) => {
       logger.error({ err, discordId: p.discordId, guildId }, "drainPlayerMana failed");
@@ -2228,7 +2229,7 @@ async function handleAbility(interaction: ButtonInteraction, eventId: number, ki
   const shieldPool = shieldMaxHp(Math.max(1, abilityLevel));
   const abilityFlags = kind === "shield" ? { shieldNext: true, shieldHp: shieldPool } : { empowerNext: true };
   const note = (kind === "shield"
-    ? `🛡️ **Scut de Cenușă ridicat!** Absoarbe **${Math.round(shieldReduction(abilityLevel) * 100)}%** din fiecare lovitură — daunele absorbite se scad din viața scutului. Rămâne activ până când viața lui se termină.\n🛡️ Viața scutului: **${shieldPool}/${shieldPool}** ${shieldBar(shieldPool, shieldPool)}`
+    ? `🛡️ **Scut de Cenușă ridicat!** Absoarbe **${Math.round(shieldReduction(abilityLevel) * 100)}%** din fiecare lovitură — daunele absorbite se scad din viața scutului **și consumă mană** (**${shieldManaDrainPct(abilityLevel)}%** din daunele absorbite; mana goală NU sparge scutul). Rămâne activ până când viața lui se termină.\n🛡️ Viața scutului: **${shieldPool}/${shieldPool}** ${shieldBar(shieldPool, shieldPool)}`
     : "🌑 **Lovitura Umbrei pregătită!** Următoarea ta lovitură va fi dublă.") +
     `\n🔷 −**${cost}** mană`;
   const updated = await updateParticipant(p.id, abilityFlags);
@@ -2397,7 +2398,7 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
   }) ?? player;
   // Ash Shield strain (boss path): absorbing damage also saps mana (% of the
   // absorbed amount, floors at 0). An empty mana pool never breaks the shield.
-  const bossShieldDrain = shieldAbsorbed > 0 ? shieldManaDrain(shieldAbsorbed) : 0;
+  const bossShieldDrain = myShield && shieldAbsorbed > 0 ? shieldManaDrain(shieldAbsorbed, myShield.level) : 0;
   if (bossShieldDrain > 0) {
     playerAfterMana = await drainPlayerMana(uid, guildId, bossShieldDrain).catch((err) => {
       logger.error({ err, discordId: uid, guildId }, "drainPlayerMana (boss) failed");
@@ -2415,7 +2416,7 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
 
   const abilityLine =
     (usedEmpower ? "🌑 **LOVITURA UMBREI!** Puterea Umbrelor ți-a dublat lovitura!\n" : "") +
-    (usedShield ? `🛡️ **SCUT DE CENUȘĂ activ!** A absorbit **${shieldAbsorbed}** daune *(viața scutului: ${shieldHpLeftLine} rămasă, −${shieldManaDrain(shieldAbsorbed)} mană)*.\n` : "") +
+    (usedShield ? `🛡️ **SCUT DE CENUȘĂ activ!** A absorbit **${shieldAbsorbed}** daune *(viața scutului: ${shieldHpLeftLine} rămasă, −${bossShieldDrain} mană)*.\n` : "") +
     (shieldBroke ? "💥 *Scutul de Cenușă s-a spart — viața lui nu a mai acoperit daunele! Lovitura te-a atins din plin.*\n" : "") +
     dmgBreakdownLine;
 
@@ -2454,7 +2455,7 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
             pShield.hp -= absorbed;
             dmg = reduced;
             // Shield strain: the absorption also saps the bearer's mana.
-            const aoeDrain = shieldManaDrain(absorbed);
+            const aoeDrain = shieldManaDrain(absorbed, pShield.level);
             if (aoeDrain > 0) {
               const drained = await drainPlayerMana(pid, guildId, aoeDrain).catch((err) => {
                 logger.error({ err, discordId: pid, guildId }, "drainPlayerMana (boss AoE) failed");
@@ -2678,7 +2679,7 @@ async function handleBossAbility(interaction: ButtonInteraction, eventId: number
       interaction,
       bossReplyKey(guildId, eventId, uid),
       `🛡️ **Scut de Cenușă activat!** *(−${activationCost} mană)*\n` +
-        `Cât timp e ridicat, absoarbe **${pct}%** din fiecare lovitură a Dragonului, iar daunele absorbite se scad din viața scutului. Când viața scutului se termină, scutul se sparge!\n` +
+        `Cât timp e ridicat, absoarbe **${pct}%** din fiecare lovitură a Dragonului, iar daunele absorbite se scad din viața scutului **și consumă mană** (**${shieldManaDrainPct(abilityLevel)}%** din daunele absorbite; mana goală NU sparge scutul). Când viața scutului se termină, scutul se sparge!\n` +
         `🛡️ Viața scutului: **${pool}/${pool}** ${shieldBar(pool, pool)}`,
     );
     void persistBossState(activeBoss);

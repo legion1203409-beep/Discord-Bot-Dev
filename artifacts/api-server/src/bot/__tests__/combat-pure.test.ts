@@ -726,7 +726,7 @@ describe("buildResultText breakdown lines", () => {
     monsterDefeated: false, monsterHit: false, monsterDmg: 0, playerDodged: false,
     playerDied: false, newMonsterHp: 50, newPlayerHp: 100,
     xpGained: 0, oboliGained: 0, levelUp: false, newMonsterLevel: 1, newMonsterRarity: "comun",
-    usedEmpower: false, usedShield: false, shieldAbsorbed: 0, shieldBroke: false, shieldHpLeft: 0, stormDrain: 0, battleEventEmoji: "", hpRegen: 0,
+    usedEmpower: false, usedShield: false, shieldAbsorbed: 0, shieldBroke: false, shieldHpLeft: 0, shieldManaDrained: 0, stormDrain: 0, battleEventEmoji: "", hpRegen: 0,
     newBossCharge: 0, abilityFired: false, abilityDmg: 0, abilityHeal: 0, veteranMaxBonus: false,
     veteranRankMaxedNow: false,
   };
