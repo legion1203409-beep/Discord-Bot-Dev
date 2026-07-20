@@ -1559,6 +1559,7 @@ function shopAbilText(p: Player): string {
     `   🔼 Îmbunătățire → Nv.${mLvl + 1}: **${maxMana(mLvl + 1)} mană maximă**\n` +
     `   ↳ cost: **${mCost} Oboli + ${UPGRADE_XP_COST} XP**\n` +
     `\n💠 **Regenerare de Mană** Nv.${rLvl} *(nivel infinit)*\n` +
+    `${rankBarLine(rLvl)}\n` +
     `   ↳ Fiecare atac normal reface **${manaRegenPct(rLvl)}%** din mana maximă.\n` +
     `   🔼 Îmbunătățire → Nv.${rLvl + 1}: **${manaRegenPct(rLvl + 1)}% pe atac**\n` +
     `   ↳ cost: **${rCost} Oboli + ${UPGRADE_XP_COST} XP**\n`;
