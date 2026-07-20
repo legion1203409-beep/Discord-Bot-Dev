@@ -1554,6 +1554,7 @@ function shopAbilText(p: Player): string {
   const rCost = manaRegenUpgradeCost(rLvl);
   const manaSection =
     `\n🔷 **Rezerva de Mană** Nv.${mLvl} *(nivel infinit)*\n` +
+    `${rankBarLine(mLvl)}\n` +
     `   ${manaBar(p.mana ?? MANA_BASE, mMax)} **${p.mana ?? MANA_BASE}/${mMax}**\n` +
     `   ↳ Abilitățile consumă mană; fiecare atac normal reface **${manaRegenPct(rLvl)}%** din maxim.\n` +
     `   🔼 Îmbunătățire → Nv.${mLvl + 1}: **${maxMana(mLvl + 1)} mană maximă**\n` +
