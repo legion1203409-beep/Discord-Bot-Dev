@@ -160,6 +160,11 @@ export async function runMultiGuildMigrations(): Promise<void> {
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS boss_kills jsonb NOT NULL DEFAULT '{}'::jsonb`);
   logger.info("multi-guild migrations: players.boss_kills ensured");
 
+  // ─── Mana system columns ───────────────────────────────────────────────────
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS mana integer NOT NULL DEFAULT 100`);
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS mana_level integer NOT NULL DEFAULT 0`);
+  logger.info("multi-guild migrations: players mana columns ensured");
+
   // ─── Per-class saved levels (class switching keeps progress) ──────────────
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS class_levels jsonb NOT NULL DEFAULT '{}'::jsonb`);
   logger.info("multi-guild migrations: players.class_levels ensured");
@@ -428,6 +433,39 @@ export async function upgradeAbility(discordId: string, guildId: string, kind: A
   const [u] = await db.update(playersTable)
     .set({ ...setObj, gold: sql`${playersTable.gold} - ${cost}`, xp: sql`${playersTable.xp} - ${xpCost}` })
     .where(and(playerWhere(discordId, guildId), eq(col, expectedLevel), gte(col, 1), gte(playersTable.gold, cost), gte(playersTable.xp, xpCost)))
+    .returning();
+  return u ?? null;
+}
+
+// Atomically spends mana for an ability; returns null when the player lacks enough mana.
+export async function spendPlayerMana(discordId: string, guildId: string, cost: number): Promise<Player | null> {
+  const [u] = await db.update(playersTable)
+    .set({ mana: sql`${playersTable.mana} - ${cost}` })
+    .where(and(playerWhere(discordId, guildId), gte(playersTable.mana, cost)))
+    .returning();
+  return u ?? null;
+}
+
+// Restores mana up to `max` (atomic LEAST clamp); returns the updated player.
+export async function regenPlayerMana(discordId: string, guildId: string, amount: number, max: number): Promise<Player | null> {
+  const [u] = await db.update(playersTable)
+    .set({ mana: sql`LEAST(${max}, ${playersTable.mana} + ${amount})` })
+    .where(playerWhere(discordId, guildId))
+    .returning();
+  return u ?? null;
+}
+
+// Upgrades the mana reserve (infinite levels); `expectedLevel` guards concurrent clicks.
+// The new max is applied and the current mana is topped up to the new maximum.
+export async function upgradeMana(discordId: string, guildId: string, expectedLevel: number, cost: number, xpCost: number, newMax: number): Promise<Player | null> {
+  const [u] = await db.update(playersTable)
+    .set({
+      manaLevel: sql`${playersTable.manaLevel} + 1`,
+      mana: newMax,
+      gold: sql`${playersTable.gold} - ${cost}`,
+      xp: sql`${playersTable.xp} - ${xpCost}`,
+    })
+    .where(and(playerWhere(discordId, guildId), eq(playersTable.manaLevel, expectedLevel), gte(playersTable.gold, cost), gte(playersTable.xp, xpCost)))
     .returning();
   return u ?? null;
 }

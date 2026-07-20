@@ -45,6 +45,8 @@ export const playersTable = pgTable("players", {
   bossKills: jsonb("boss_kills").$type<Record<string, number>>().notNull().default({}),
   talisman: text("talisman"),
   talismanLevel: integer("talisman_level").notNull().default(1),
+  mana: integer("mana").notNull().default(100),
+  manaLevel: integer("mana_level").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [primaryKey({ columns: [t.discordId, t.guildId] })]);
 

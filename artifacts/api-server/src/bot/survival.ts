@@ -15,7 +15,40 @@ import { getCombatModifiers, formatActiveEffects, formatCombatEffects } from "./
 const BASE_PRICES = { atac: 50, def: 60, dodge: 70, crit: 80, hp: 40 } as const;
 export type ShopKey = keyof typeof BASE_PRICES;
 export const LEVELUP_INTERVAL = 5;
-export const ABILITY_COOLDOWN_MS = 60 * 1000;
+
+// ─── Mana system ─────────────────────────────────────────────────────────────
+// Abilities consume mana instead of a timed cooldown. Every normal attack
+// restores 10% of max mana; max mana grows infinitely via shop upgrades.
+export const MANA_BASE = 100;               // max mana at upgrade level 0
+export const MANA_PER_LEVEL = 25;           // extra max mana per upgrade level (infinite)
+export const MANA_REGEN_PCT = 10;           // % of max mana restored per normal attack
+export const MANA_COST_BASE = 30;           // ability mana cost at level 1
+export const MANA_COST_PER_LEVEL = 10;      // extra mana cost per ability level above 1
+export const MANA_UPGRADE_BASE_COST = 150;  // Oboli for the first mana upgrade
+
+/** Max mana at a given upgrade level (infinite levels). */
+export function maxMana(manaLevel: number): number {
+  return MANA_BASE + MANA_PER_LEVEL * Math.max(0, manaLevel);
+}
+/** Mana cost of using an ability at a given ability level — stronger abilities drain more. */
+export function abilityManaCost(abilityLevel: number): number {
+  return MANA_COST_BASE + MANA_COST_PER_LEVEL * Math.max(0, abilityLevel - 1);
+}
+/** Mana restored by one normal attack (10% of max, at least 1). */
+export function manaRegenPerAttack(manaLevel: number): number {
+  return Math.max(1, Math.round((maxMana(manaLevel) * MANA_REGEN_PCT) / 100));
+}
+/** Oboli cost to go from manaLevel to manaLevel+1 (15% growth, infinite). */
+export function manaUpgradeCost(manaLevel: number): number {
+  return Math.ceil(MANA_UPGRADE_BASE_COST * Math.pow(UPGRADE_COST_GROWTH, Math.max(0, manaLevel)));
+}
+/** Blue mana bar, same 10-segment style as the HP bar. */
+export function manaBar(cur: number, max: number): string {
+  const pct = max > 0 ? Math.max(0, Math.min(1, cur / max)) : 0;
+  let f = Math.round(pct * 10);
+  if (cur > 0 && f === 0) f = 1;
+  return "🟦".repeat(f) + "⬛".repeat(10 - f);
+}
 
 // ─── Shared visual identity ──────────────────────────────────────────────────
 // "Hub" / info embeds (profil, magazin, clasament, ajutor, clasă, companion)
@@ -716,6 +749,9 @@ export function buildCombatEmbed(p: EventParticipant, extra = "", avatarUrl?: st
       `💰 Recompensă: **${rewardXpStr}, ${reward.oboli} Oboli**\n\n` +
       `━━━━━━━━━━━━━━━━━━\n` +
       `❤️ HP-ul tău: **${p.currentHp}/${p.maxHp}** ${hpBar(p.currentHp, p.maxHp)}\n` +
+      (player
+        ? `🔷 Mana ta: **${player.mana ?? MANA_BASE}/${maxMana(player.manaLevel ?? 0)}** ${manaBar(player.mana ?? MANA_BASE, maxMana(player.manaLevel ?? 0))} *(+${MANA_REGEN_PCT}% la fiecare atac)*\n`
+        : "") +
       `🪙 Oboli strânși în eveniment: **${p.oboli}** *(20% se pierd la moarte)*` +
       bonusSection +
       effectsSection,
@@ -904,7 +940,7 @@ export function buildProfileEmbed(player: Player, title?: string, avatarUrl?: st
       { name: "🎯 Abilități", value: abilValue, inline: false },
       { name: "━━━ Prestigiu ━━━", value: prestigeValue, inline: false },
       { name: "━━━ Puteri din Magazin ━━━", value: shopStatsValue, inline: false },
-      { name: "━━━ Resurse ━━━", value: `⭐ **${player.xp}** XP   ·   🪙 **${player.gold}** Oboli   ·   🏅 **${player.reputation}** Reputație`, inline: false },
+      { name: "━━━ Resurse ━━━", value: `⭐ **${player.xp}** XP   ·   🪙 **${player.gold}** Oboli   ·   🏅 **${player.reputation}** Reputație\n🔷 Mana: **${player.mana ?? MANA_BASE}/${maxMana(player.manaLevel ?? 0)}** Nv.${player.manaLevel ?? 0} ${manaBar(player.mana ?? MANA_BASE, maxMana(player.manaLevel ?? 0))}`, inline: false },
       { name: "━━━ Chei ━━━", value: keysValue, inline: false },
       { name: "━━━ Inventar ━━━", value: inventoryValue, inline: false },
       { name: "━━━ Istoric de luptă ━━━", value: `💀 Morți: **${deathInfo}**\n🏳️ Retrageri: **${retreatInfo}**`, inline: false },
@@ -1293,7 +1329,16 @@ function shopAbilText(p: Player): string {
       `   🛒 Deblochează: **${ABILITY_BUY_COST} Oboli**\n`
     );
   };
-  return line("empower") + "\n" + line("shield");
+  const mLvl = p.manaLevel ?? 0;
+  const mMax = maxMana(mLvl);
+  const mCost = manaUpgradeCost(mLvl);
+  const manaSection =
+    `\n🔷 **Rezerva de Mană** Nv.${mLvl} *(nivel infinit)*\n` +
+    `   ${manaBar(p.mana ?? MANA_BASE, mMax)} **${p.mana ?? MANA_BASE}/${mMax}**\n` +
+    `   ↳ Abilitățile consumă mană; fiecare atac normal reface **${MANA_REGEN_PCT}%** din maxim.\n` +
+    `   🔼 Îmbunătățire → Nv.${mLvl + 1}: **${maxMana(mLvl + 1)} mană maximă**\n` +
+    `   ↳ cost: **${mCost} Oboli + ${UPGRADE_XP_COST} XP**\n`;
+  return line("empower") + "\n" + line("shield") + manaSection;
 }
 
 // Category-aware shop: each sub-page renders ONLY its own category so the embed
@@ -1557,23 +1602,14 @@ export function buildEventLeaderboard(
 }
 
 export function combatRow(eventId: number, p?: EventParticipant): ActionRowBuilder<ButtonBuilder> {
-  const onCooldown = p?.abilityReadyAt ? p.abilityReadyAt.getTime() > Date.now() : false;
   const hasEmpower = (p?.empowerLevel ?? 0) >= 1;
   const hasShield = (p?.shieldLevel ?? 0) >= 1;
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(`ora_attack_${eventId}`).setLabel("Atacă").setEmoji("⚔️").setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId(`ora_ability_${eventId}_empower`).setLabel(hasEmpower ? "Lovitura Umbrei" : "🔒 Lovitura Umbrei").setEmoji("🌑").setStyle(ButtonStyle.Primary).setDisabled(onCooldown || !hasEmpower),
-    new ButtonBuilder().setCustomId(`ora_ability_${eventId}_shield`).setLabel(hasShield ? "Scut de Cenușă" : "🔒 Scut de Cenușă").setEmoji("🛡️").setStyle(ButtonStyle.Primary).setDisabled(onCooldown || !hasShield),
+    new ButtonBuilder().setCustomId(`ora_ability_${eventId}_empower`).setLabel(hasEmpower ? "Lovitura Umbrei" : "🔒 Lovitura Umbrei").setEmoji("🌑").setStyle(ButtonStyle.Primary).setDisabled(!hasEmpower),
+    new ButtonBuilder().setCustomId(`ora_ability_${eventId}_shield`).setLabel(hasShield ? "Scut de Cenușă" : "🔒 Scut de Cenușă").setEmoji("🛡️").setStyle(ButtonStyle.Primary).setDisabled(!hasShield),
     new ButtonBuilder().setCustomId(`ora_retreat_${eventId}`).setLabel("Retragere").setEmoji("🏳️").setStyle(ButtonStyle.Secondary),
   );
-}
-
-export function formatCooldown(readyAt: Date | null): string {
-  if (!readyAt) return "gata";
-  const ms = readyAt.getTime() - Date.now();
-  if (ms <= 0) return "gata";
-  const s = Math.ceil(ms / 1000);
-  return `${Math.floor(s / 60)}m ${s % 60}s`;
 }
 
 export function buildRetreatEmbed(level: number, opts?: {
@@ -1765,8 +1801,17 @@ export function shopAbilRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
       .setStyle(ButtonStyle.Primary)
       .setDisabled(p.gold < ABILITY_BUY_COST);
   };
+  const mLvl = p.manaLevel ?? 0;
+  const mCost = manaUpgradeCost(mLvl);
+  const manaBtn = new ButtonBuilder()
+    .setCustomId("shop_manaup")
+    .setLabel(`Rezerva de Mană Nv.${mLvl} → ${mLvl + 1} (${mCost} + ${UPGRADE_XP_COST}XP)`)
+    .setEmoji("🔷")
+    .setStyle(ButtonStyle.Primary)
+    .setDisabled(p.gold < mCost || p.xp < UPGRADE_XP_COST);
   return [
     new ActionRowBuilder<ButtonBuilder>().addComponents(abilBtn("empower"), abilBtn("shield")),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(manaBtn),
     shopBackRow(),
   ];
 }

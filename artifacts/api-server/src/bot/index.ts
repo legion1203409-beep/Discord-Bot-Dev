@@ -22,7 +22,7 @@ import {
 import { randomUUID } from "node:crypto";
 import { logger } from "../lib/logger";
 import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./alert";
-import { startGuildScheduler, stopGuildScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, recordGuildActivity, getGuildClaimedChests, getGuildActiveBossMap, checkBossEligibility, checkBossHitCooldown, BOSS_HIT_COOLDOWN_MS, checkBossAbilityCooldown, persistBossState, guildStates, isGuildActive, ACTIVITY_WINDOW_MINUTES, CHEST_MSG_MILESTONE, type BossState, type BossPlayerStats } from "./scheduler";
+import { startGuildScheduler, stopGuildScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, recordGuildActivity, getGuildClaimedChests, getGuildActiveBossMap, checkBossEligibility, checkBossHitCooldown, BOSS_HIT_COOLDOWN_MS, persistBossState, guildStates, isGuildActive, ACTIVITY_WINDOW_MINUTES, CHEST_MSG_MILESTONE, type BossState, type BossPlayerStats } from "./scheduler";
 import { getChannel, getAllChannels, setChannel, resetChannel, resetAllChannels, initChannelConfig, hasAnyChannelConfigured, EVENT_LABELS, type EventType } from "./channel-config";
 import { recordMessage } from "./oracle";
 import { maybeReplyAsOracle, logOracleChatStatus } from "./oracle-chat";
@@ -58,6 +58,9 @@ import {
   upgradeCompanion,
   buyAbility,
   upgradeAbility,
+  spendPlayerMana,
+  regenPlayerMana,
+  upgradeMana,
   applyAbilityLevelToActiveParticipant,
   addPlayerKey,
   consumePlayerKey,
@@ -123,7 +126,6 @@ import {
   monsterMaxHp,
   monsterSpawnHp,
   isBossFight,
-  formatCooldown,
   levelTitle,
   CLASSES,
   COMPANIONS,
@@ -138,7 +140,12 @@ import {
   UPGRADE_XP_COST,
   SHOP_COUNT_KEY,
   LEVELUP_INTERVAL,
-  ABILITY_COOLDOWN_MS,
+  maxMana,
+  abilityManaCost,
+  manaRegenPerAttack,
+  manaUpgradeCost,
+  manaBar,
+  MANA_REGEN_PCT,
   empowerMult,
   shieldReduction,
   veteranMult,
@@ -1507,6 +1514,13 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
   const talismanKey = pl?.talisman ?? null;
   const talismanLevel = pl?.talismanLevel ?? 1;
   const result = doCombat(p, talismanKey, talismanLevel, pl?.bossKills);
+
+  // Mana regen: every normal attack restores 10% of max mana.
+  const manaMaxNow = maxMana(pl?.manaLevel ?? 0);
+  const plAfterMana = await regenPlayerMana(p.discordId, guildId, manaRegenPerAttack(pl?.manaLevel ?? 0), manaMaxNow).catch((err) => {
+    logger.error({ err, discordId: p.discordId, guildId }, "regenPlayerMana failed");
+    return null;
+  }) ?? pl;
   // Veteran ranks: remember every mini-boss this player slays — next time the
   // same boss appears for them, it comes back stronger (+20% HP/dmg per rank).
   const slainBoss = result.monsterDefeated && isBossFight(p.monsterLevel, p.monsterRarity);
@@ -1625,7 +1639,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
     bossCharge: result.newBossCharge,
   });
 
-  await interaction.editReply({ embeds: [buildCombatEmbed(updated, extra, interaction.user.displayAvatarURL({ size: 256 }), pl)], components: [combatRow(eventId, updated)] });
+  await interaction.editReply({ embeds: [buildCombatEmbed(updated, extra, interaction.user.displayAvatarURL({ size: 256 }), plAfterMana)], components: [combatRow(eventId, updated)] });
 }
 
 async function handleRetreat(interaction: ButtonInteraction, eventId: number) {
@@ -2077,6 +2091,24 @@ async function handleAbilUpgrade(interaction: ButtonInteraction, kind: string) {
   await interaction.editReply({ embeds: [buildShopEmbed(updated, "abil")], components: shopAbilRows(updated) });
 }
 
+async function handleManaUpgrade(interaction: ButtonInteraction) {
+  await interaction.deferUpdate();
+  const guildId = interaction.guildId!;
+  const p = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
+  const curLvl = p.manaLevel ?? 0;
+  const cost = manaUpgradeCost(curLvl);
+  const updated = await upgradeMana(interaction.user.id, guildId, curLvl, cost, UPGRADE_XP_COST, maxMana(curLvl + 1));
+  if (!updated) {
+    await interaction.followUp({ content: `❌ Îmbunătățire eșuată — ai nevoie de **${cost} Oboli** și **${UPGRADE_XP_COST} XP**.`, flags: MessageFlags.Ephemeral });
+    return;
+  }
+  await interaction.editReply({ embeds: [buildShopEmbed(updated, "abil")], components: shopAbilRows(updated) });
+  await interaction.followUp({
+    content: `🔷 **Rezerva de Mană** a crescut la **Nv.${updated.manaLevel}** — mana maximă e acum **${maxMana(updated.manaLevel)}** (și a fost reumplută complet)!`,
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
 async function handleAbility(interaction: ButtonInteraction, eventId: number, kind: string) {
   await interaction.deferUpdate();
   const guildId = interaction.guildId!;
@@ -2098,19 +2130,31 @@ async function handleAbility(interaction: ButtonInteraction, eventId: number, ki
     await interaction.editReply({ content: "⌛ Ora Umbrelor s-a încheiat!", embeds: [], components: [] });
     return;
   }
-  if (p.abilityReadyAt && p.abilityReadyAt.getTime() > Date.now()) {
-    await interaction.followUp({ content: `⏳ Abilitatea e pe cooldown — mai așteaptă **${formatCooldown(p.abilityReadyAt)}**.`, flags: MessageFlags.Ephemeral });
+  const abilityLevel = kind === "shield" ? (pl?.abilityShieldLevel ?? p.shieldLevel) : (pl?.abilityEmpowerLevel ?? p.empowerLevel);
+  if (abilityLevel < 1) {
+    await interaction.followUp({ content: "🔒 Nu deții această abilitate. O poți debloca din Forja Cenușii (`/magazin`).", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  const cost = abilityManaCost(abilityLevel);
+  const plMana = await spendPlayerMana(interaction.user.id, guildId, cost);
+  if (!plMana) {
+    const curMana = pl?.mana ?? 0;
+    const maxM = maxMana(pl?.manaLevel ?? 0);
+    await interaction.followUp({
+      content: `🔷 **Mană insuficientă!** Abilitatea costă **${cost}** mană, tu ai **${curMana}/${maxM}** ${manaBar(curMana, maxM)}\n⚔️ Atacă normal ca să îți refaci mana (+${MANA_REGEN_PCT}% pe atac).`,
+      flags: MessageFlags.Ephemeral,
+    });
     return;
   }
 
-  const readyAt = new Date(Date.now() + ABILITY_COOLDOWN_MS);
   const abilityFlags = kind === "shield" ? { shieldNext: true } : { empowerNext: true };
-  const note = kind === "shield"
+  const note = (kind === "shield"
     ? "🛡️ **Scut de Cenușă activat!** Următorul atac primit va fi înjumătățit."
-    : "🌑 **Lovitura Umbrei pregătită!** Următoarea ta lovitură va fi dublă.";
-  const updated = await updateParticipant(p.id, { ...abilityFlags, abilityReadyAt: readyAt });
+    : "🌑 **Lovitura Umbrei pregătită!** Următoarea ta lovitură va fi dublă.") +
+    `\n🔷 −**${cost}** mană`;
+  const updated = await updateParticipant(p.id, abilityFlags);
   await interaction.editReply({
-    embeds: [buildCombatEmbed(updated, note, interaction.user.displayAvatarURL({ size: 256 }), pl)],
+    embeds: [buildCombatEmbed(updated, note, interaction.user.displayAvatarURL({ size: 256 }), plMana)],
     components: [combatRow(eventId, updated)],
   });
 }
@@ -2192,6 +2236,13 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
   bossHit = Math.max(1, bossHit - totalDef);
   if (mods.damageTakenMult !== 1) bossHit = Math.max(1, Math.round(bossHit * mods.damageTakenMult));
   const newPlayerHp = Math.max(0, myHp - bossHit);
+
+  // Mana regen: every Dragon hit counts as a normal attack (+10% max mana).
+  const bossManaMax = maxMana(player.manaLevel ?? 0);
+  const playerAfterMana = await regenPlayerMana(uid, guildId, manaRegenPerAttack(player.manaLevel ?? 0), bossManaMax).catch((err) => {
+    logger.error({ err, discordId: uid, guildId }, "regenPlayerMana (boss) failed");
+    return null;
+  }) ?? player;
 
   const dmgBreakdownLine = (() => {
     if (playerDmg === baseBossDmg) return "";
@@ -2357,6 +2408,7 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
       abilityLine +
       `⚔️ Ai lovit Dragonul pentru **${playerDmg.toLocaleString()} daune**!${critTag}\n` +
       `🐉 Dragonul te lovește pentru **${bossHit} daune**! ${playerStatus}\n` +
+      `🔷 Mana ta: **${playerAfterMana.mana}/${bossManaMax}** ${manaBar(playerAfterMana.mana, bossManaMax)}\n` +
       `🩸 Dragon: **${activeBoss.currentHp.toLocaleString()} / ${activeBoss.maxHp.toLocaleString()} HP**` +
       (effectsLine ? `\n🔮 **Efectele tale active:**\n${effectsLine}` : ""),
     ephemeral: true,
@@ -2389,19 +2441,25 @@ async function handleBossAbility(interaction: ButtonInteraction, eventId: number
     return;
   }
 
-  const abilityCooldown = checkBossAbilityCooldown(activeBoss.abilityReadyAt, uid);
-  if (abilityCooldown.onCooldown) {
-    await interaction.followUp({ content: `⏳ Abilitatea e pe cooldown — mai așteaptă **${abilityCooldown.remainingSeconds}s**.`, flags: MessageFlags.Ephemeral });
+  const abilityLevel = kind === "shield" ? player.abilityShieldLevel : player.abilityEmpowerLevel;
+  const manaCost = abilityManaCost(abilityLevel);
+  const plMana = await spendPlayerMana(uid, guildId, manaCost);
+  if (!plMana) {
+    const maxM = maxMana(player.manaLevel ?? 0);
+    await interaction.followUp({
+      content: `🔷 **Mană insuficientă!** Abilitatea costă **${manaCost}** mană, tu ai **${player.mana ?? 0}/${maxM}** ${manaBar(player.mana ?? 0, maxM)}\n⚔️ Lovește Dragonul cu atacuri normale ca să îți refaci mana (+${MANA_REGEN_PCT}% pe atac).`,
+      flags: MessageFlags.Ephemeral,
+    });
     return;
   }
 
-  activeBoss.abilityReadyAt.set(uid, Date.now() + ABILITY_COOLDOWN_MS);
+  const manaLine = `\n🔷 −**${manaCost}** mană → **${plMana.mana}/${maxMana(plMana.manaLevel)}**`;
   if (kind === "shield") {
     activeBoss.shieldNext.add(uid);
-    await interaction.followUp({ content: "🛡️ **Scut de Cenușă activat!** Următorul atac primit de la Dragon va fi redus.", flags: MessageFlags.Ephemeral });
+    await interaction.followUp({ content: "🛡️ **Scut de Cenușă activat!** Următorul atac primit de la Dragon va fi redus." + manaLine, flags: MessageFlags.Ephemeral });
   } else {
     activeBoss.empowerNext.add(uid);
-    await interaction.followUp({ content: "🌑 **Lovitura Umbrei pregătită!** Următoarea ta lovitură în Dragon va fi dublă.", flags: MessageFlags.Ephemeral });
+    await interaction.followUp({ content: "🌑 **Lovitura Umbrei pregătită!** Următoarea ta lovitură în Dragon va fi dublă." + manaLine, flags: MessageFlags.Ephemeral });
   }
   void persistBossState(activeBoss);
 }
@@ -2529,6 +2587,7 @@ async function handleButton(interaction: ButtonInteraction) {
   if (id === "shop_reset_no") return handleResetCancel(interaction);
   if (id.startsWith("shop_abilbuy_")) return handleAbilBuy(interaction, id.replace("shop_abilbuy_", ""));
   if (id.startsWith("shop_abilup_")) return handleAbilUpgrade(interaction, id.replace("shop_abilup_", ""));
+  if (id === "shop_manaup") return handleManaUpgrade(interaction);
 
   if (id.startsWith("ora_lvlup_")) {
     const parts = id.split("_");

@@ -353,19 +353,6 @@ export function checkBossHitCooldown(
   return { onCooldown: false };
 }
 
-// ─── Boss ability cooldown guard ──────────────────────────────────────────────
-export function checkBossAbilityCooldown(
-  abilityReadyAt: Map<string, number>,
-  uid: string,
-  now = Date.now(),
-): BossCooldownResult {
-  const readyAt = abilityReadyAt.get(uid) ?? 0;
-  if (readyAt > now) {
-    return { onCooldown: true, remainingSeconds: Math.ceil((readyAt - now) / 1000) };
-  }
-  return { onCooldown: false };
-}
-
 export const BOSS_RARITY_WEIGHTS: [BossRarity, number][] = [
   ["comun", 60], ["rar", 25], ["epic", 12], ["legendar", 3],
 ];
