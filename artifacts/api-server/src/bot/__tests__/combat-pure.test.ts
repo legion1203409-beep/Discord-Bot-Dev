@@ -751,10 +751,22 @@ describe("talisman levels", () => {
     expect(talismanValue("piatra_eco", 2)).toBe(60);
   });
 
-  it("clamps out-of-range levels into 1..TALISMAN_MAX_LEVEL", () => {
+  it("clamps low levels to 1 and extrapolates past the table by the last delta", () => {
     expect(talismanValue("piatra_eco", 0)).toBe(talismanValue("piatra_eco", 1));
     expect(talismanValue("piatra_eco", -3)).toBe(talismanValue("piatra_eco", 1));
-    expect(talismanValue("piatra_eco", 99)).toBe(talismanValue("piatra_eco", TALISMAN_MAX_LEVEL));
+    const vals = TALISMANS.piatra_eco.values;
+    const last = vals[vals.length - 1]!;
+    const delta = last - vals[vals.length - 2]!;
+    expect(talismanValue("piatra_eco", TALISMAN_MAX_LEVEL + 1)).toBe(last + delta);
+    expect(talismanValue("piatra_eco", TALISMAN_MAX_LEVEL + 3)).toBe(last + 3 * delta);
+  });
+
+  it("keeps values strictly increasing past Nv.5 (infinite levels)", () => {
+    for (const key of keys) {
+      for (let lvl = 5; lvl < 15; lvl++) {
+        expect(talismanValue(key, lvl + 1)).toBeGreaterThan(talismanValue(key, lvl));
+      }
+    }
   });
 
   it("talismanDesc embeds the level's value", () => {
@@ -771,6 +783,29 @@ describe("talisman levels", () => {
     expect(c4.rareQty).toBe(4);
     expect(c4.common).toBe(TALISMANS.crista_vietii.upgradeItems.common);
     expect(c4.rare).toBe(TALISMANS.crista_vietii.upgradeItems.rare);
+  });
+
+  it("requires no tier material below Nv.5, then tier material per rank", () => {
+    for (let lvl = 1; lvl < 5; lvl++) {
+      expect(talismanUpgradeCost("crista_vietii", lvl).tier).toBeNull();
+    }
+    const c5 = talismanUpgradeCost("crista_vietii", 5);
+    expect(c5.tier).toBe("solz_spectral");
+    expect(c5.tierQty).toBe(1);
+    const c9 = talismanUpgradeCost("crista_vietii", 9);
+    expect(c9.tier).toBe("solz_spectral");
+    expect(c9.tierQty).toBe(5);
+    const c10 = talismanUpgradeCost("crista_vietii", 10);
+    expect(c10.tier).toBe("cristal_abis");
+    expect(c10.tierQty).toBe(1);
+    const c15 = talismanUpgradeCost("crista_vietii", 15);
+    expect(c15.tier).toBe("sange_titan");
+    const c20 = talismanUpgradeCost("crista_vietii", 20);
+    expect(c20.tier).toBe("fragment_mitic");
+    // Tier caps at fragment_mitic for very high levels
+    const c99 = talismanUpgradeCost("crista_vietii", 99);
+    expect(c99.tier).toBe("fragment_mitic");
+    expect(c99.tierQty).toBe((99 % 5) + 1);
   });
 
   it("doCombat applies giulgiul_stins reduction scaled by level", () => {

@@ -176,7 +176,6 @@ import {
   shopTalismanRows,
   shopNavRow2,
   TALISMANS,
-  TALISMAN_MAX_LEVEL,
   talismanValue,
   talismanUpgradeCost,
   ITEMS,
@@ -184,6 +183,7 @@ import {
   isTalismanKey,
   isItemKey,
   rollItemDrop,
+  rollMaterialDrop,
   buildMissionEmbed,
   type ShopKey,
   type BossRarity,
@@ -1549,14 +1549,19 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
 
   // Roll item drop before buildResultText so the drop line can appear in the combat embed
   const itemDrop = result.oboliGained > 0 ? rollItemDrop(p.monsterLevel) : null;
+  // Rarity material: rar/epic/legendar/mitic monsters and mini-bossi drop their tier material
+  const materialDrop = result.monsterDefeated ? rollMaterialDrop(p.monsterRarity) : null;
   // Track everything farmed this event so the final summary can show it
   const itemsFarmed: Record<string, number> = { ...(p.itemsFarmed ?? {}) };
   if (itemDrop) itemsFarmed[itemDrop] = (itemsFarmed[itemDrop] ?? 0) + 1;
+  if (materialDrop) itemsFarmed[materialDrop] = (itemsFarmed[materialDrop] ?? 0) + 1;
   const cristaHeal =
     result.oboliGained > 0 && !result.playerDied && talismanKey === "crista_vietii"
       ? talismanValue("crista_vietii", talismanLevel)
       : 0;
-  const extra = buildResultText(result, itemDrop, { baseXp: killBaseXp, baseOboli: killBaseOboli, cristaHeal });
+  const extra =
+    buildResultText(result, itemDrop, { baseXp: killBaseXp, baseOboli: killBaseOboli, cristaHeal }) +
+    (materialDrop ? `\n${ITEMS[materialDrop].emoji} **${ITEMS[materialDrop].label}** a căzut din monstru — material de evoluție!` : "");
 
   if (result.playerDied) {
     const lost = Math.floor(p.oboli * 0.2);
@@ -1586,6 +1591,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
       addPlayerXp(p.discordId, guildId, result.xpGained),
       updateMaxLevel(p.discordId, guildId, result.newMonsterLevel),
       ...(itemDrop ? [addPlayerItem(p.discordId, guildId, itemDrop)] : []),
+      ...(materialDrop ? [addPlayerItem(p.discordId, guildId, materialDrop)] : []),
       ...(questResult.justCompleted ? [addPlayerItem(p.discordId, guildId, DAILY_QUESTS.kill_10.reward.itemKey)] : []),
     ]).catch((err) => logger.error({ err, discordId: p.discordId, guildId }, "Async combat writes failed"));
     if (questResult.justCompleted) {
@@ -1618,7 +1624,11 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
       shieldNext: false,
       bossCharge: result.newBossCharge,
     });
-    const lvlDropLine = itemDrop ? `${ITEMS[itemDrop].emoji} **${ITEMS[itemDrop].label}** a căzut din monstru!` : undefined;
+    const lvlDropParts = [
+      ...(itemDrop ? [`${ITEMS[itemDrop].emoji} **${ITEMS[itemDrop].label}** a căzut din monstru!`] : []),
+      ...(materialDrop ? [`${ITEMS[materialDrop].emoji} **${ITEMS[materialDrop].label}** a căzut din monstru — material de evoluție!`] : []),
+    ];
+    const lvlDropLine = lvlDropParts.length > 0 ? lvlDropParts.join("\n") : undefined;
     await interaction.editReply({ embeds: [buildLevelupEmbed(Math.floor(result.newMonsterLevel / LEVELUP_INTERVAL), lvlDropLine)], components: levelupRows(eventId) });
     return;
   }
@@ -1847,7 +1857,7 @@ async function handleShopTalismanUpgrade(interaction: ButtonInteraction) {
   ]);
   const equippedKey = p.talisman && isTalismanKey(p.talisman) ? p.talisman : null;
   const fromLevel = p.talismanLevel ?? 1;
-  if (!equippedKey || fromLevel >= TALISMAN_MAX_LEVEL) {
+  if (!equippedKey) {
     await interaction.followUp({ content: "❌ Nu poți evolua acest talisman.", flags: MessageFlags.Ephemeral });
     return;
   }
@@ -1856,6 +1866,7 @@ async function handleShopTalismanUpgrade(interaction: ButtonInteraction) {
   const ok = await consumePlayerItems(interaction.user.id, guildId, {
     [cost.common]: cost.commonQty,
     [cost.rare]: cost.rareQty,
+    ...(cost.tier ? { [cost.tier]: cost.tierQty } : {}),
   });
   if (!ok) {
     await interaction.followUp({ content: "❌ Nu ai materialele necesare pentru evoluție.", flags: MessageFlags.Ephemeral });
@@ -1869,6 +1880,7 @@ async function handleShopTalismanUpgrade(interaction: ButtonInteraction) {
     await Promise.all([
       addPlayerItem(interaction.user.id, guildId, cost.common, cost.commonQty),
       addPlayerItem(interaction.user.id, guildId, cost.rare, cost.rareQty),
+      ...(cost.tier ? [addPlayerItem(interaction.user.id, guildId, cost.tier, cost.tierQty)] : []),
     ]);
     await interaction.followUp({ content: "❌ Talismanul a fost deja evoluat.", flags: MessageFlags.Ephemeral });
     return;
