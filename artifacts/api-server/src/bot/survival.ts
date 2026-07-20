@@ -697,7 +697,7 @@ export function buildCombatEmbed(p: EventParticipant, extra = "", avatarUrl?: st
         ? `👁️ *${BOSSES[bossIndex(p.monsterLevel)]!.desc}*\n` +
           `☠️ Rang boss: **${bossRank(p.monsterLevel)}/10** ${"🔥".repeat(bossRank(p.monsterLevel))}${"▱".repeat(10 - bossRank(p.monsterLevel))}\n` +
           (vetRank > 0
-            ? `🏅 Rang veteran: **${VETERAN_TIERS[vetRank]}** — *te-a studiat! +${vetRank * 20}% viață și daune*\n`
+            ? `🏅 Rang veteran: **Rang ${vetRank}/${VETERAN_MAX_RANK} · ${VETERAN_TIERS[vetRank]}** — *te-a studiat! +${vetRank * 20}% viață și daune*\n`
             : "") +
           `${BOSSES[bossIndex(p.monsterLevel)]!.ability.emoji} Abilitate: **${BOSSES[bossIndex(p.monsterLevel)]!.ability.name}** ${chargeBar(p.bossCharge ?? 0, BOSS_CHARGE_MAX)}\n` +
           `⚡ *Când bara se umple, bossul își dezlănțuie abilitatea!*\n` +
@@ -2120,7 +2120,7 @@ export function buildFinalBossEmbed(
 
   // ── HP bar ───────────────────────────────────────────────────────────────────
   const vetLine = bossVeteranRank > 0
-    ? `🏅 Rang veteran: **${VETERAN_TIERS[bossVeteranRank] ?? `Rang ${bossVeteranRank}`}** — *s-a întors mai puternic! +${bossVeteranRank * 20}% viață și daune*\n`
+    ? `🏅 Rang veteran: **Rang ${bossVeteranRank}/${VETERAN_MAX_RANK} · ${VETERAN_TIERS[bossVeteranRank] ?? ""}** — *s-a întors mai puternic! +${bossVeteranRank * 20}% viață și daune*\n`
     : "";
   if (currentHp !== undefined && maxHp !== undefined) {
     const bar = buildHpBar(currentHp, maxHp);
