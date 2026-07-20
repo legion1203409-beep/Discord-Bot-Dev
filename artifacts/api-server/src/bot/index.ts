@@ -150,6 +150,7 @@ import {
   empowerMult,
   shieldReduction,
   SHIELD_ACTIVATION_COST,
+  shieldBar,
   buildHpBar,
   veteranMult,
   buildFinalBossEmbed,
@@ -2518,6 +2519,9 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
       `🐉 Dragonul te lovește pentru **${bossHit} daune**! ${playerStatus}\n` +
       hpBarLine +
       `🔷 Mana ta: **${playerAfterMana.mana}/${bossManaMax}** ${manaBar(playerAfterMana.mana, bossManaMax)}\n` +
+      (activeBoss.shieldNext.has(uid)
+        ? `🛡️ Viața scutului: **${playerAfterMana.mana}/${bossManaMax}** ${shieldBar(playerAfterMana.mana, bossManaMax)} *(susținut de mana ta)*\n`
+        : "") +
       `🩸 Dragon: **${activeBoss.currentHp.toLocaleString()} / ${activeBoss.maxHp.toLocaleString()} HP**` +
       (effectsLine ? `\n🔮 **Efectele tale active:**\n${effectsLine}` : ""),
     ephemeral: true,
@@ -2559,7 +2563,7 @@ async function handleBossAbility(interaction: ButtonInteraction, eventId: number
     if (activeBoss.shieldNext.has(uid)) {
       const maxM = maxMana(player.manaLevel ?? 0);
       await interaction.followUp({
-        content: `🛡️ **Scutul de Cenușă e deja activ!** Rămâne ridicat cât timp mana îți acoperă daunele absorbite.\n🔷 Mana ta: **${player.mana ?? 0}/${maxM}** ${manaBar(player.mana ?? 0, maxM)}`,
+        content: `🛡️ **Scutul de Cenușă e deja activ!** Rămâne ridicat cât timp mana îți acoperă daunele absorbite.\n🛡️ Viața scutului: **${player.mana ?? 0}/${maxM}** ${shieldBar(player.mana ?? 0, maxM)} *(susținut de mana ta)*`,
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -2580,7 +2584,7 @@ async function handleBossAbility(interaction: ButtonInteraction, eventId: number
       content:
         `🛡️ **Scut de Cenușă activat!** *(−${activationCost} mană)*\n` +
         `Cât timp e ridicat, absoarbe **${pct}%** din fiecare lovitură a Dragonului, iar daunele absorbite se scad din mana ta. Când mana nu mai acoperă daunele, scutul se sparge!\n` +
-        `🔷 Mana ta: **${afterActivation.mana}/${maxMana(afterActivation.manaLevel)}** ${manaBar(afterActivation.mana, maxMana(afterActivation.manaLevel))}`,
+        `🛡️ Viața scutului: **${afterActivation.mana}/${maxMana(afterActivation.manaLevel)}** ${shieldBar(afterActivation.mana, maxMana(afterActivation.manaLevel))} *(susținut de mana ta)*`,
       flags: MessageFlags.Ephemeral,
     });
     void persistBossState(activeBoss);

@@ -348,6 +348,14 @@ export function shieldReduction(level: number): number {
 // Boss-fight mana barrier: flat activation cost; while active, absorbed damage
 // drains mana 1:1 and the shield breaks when mana can't cover the absorption.
 export const SHIELD_ACTIVATION_COST = 200;
+// The shield's "life" bar — it is fueled by the player's mana, drawn in purple
+// to distinguish it from the HP (green/yellow/red) and mana (blue) bars.
+export function shieldBar(cur: number, max: number): string {
+  const pct = max > 0 ? Math.max(0, Math.min(1, cur / max)) : 0;
+  let f = Math.round(pct * 10);
+  if (cur > 0 && f === 0) f = 1;
+  return "🟪".repeat(f) + "⬛".repeat(10 - f);
+}
 
 export type CompanionKey = "lup" | "corb" | "spirit" | "golem";
 export const COMPANIONS: Record<CompanionKey, {
