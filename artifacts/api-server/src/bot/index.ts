@@ -1230,7 +1230,7 @@ async function handleChestClaim(interaction: ButtonInteraction, chestId: string,
   const claimedChests = getGuildClaimedChests(guildId);
 
   if (claimedChests.has(chestId)) {
-    await interaction.followUp({ content: "😔 Cineva a fost mai rapid! Cufărul a fost deja revendicat.", flags: MessageFlags.Ephemeral });
+    await ephemeralNote(interaction, "chest", "😔 Cineva a fost mai rapid! Cufărul a fost deja revendicat.");
     return;
   }
   claimedChests.add(chestId);
@@ -1376,7 +1376,7 @@ async function handleKeyChestClaim(interaction: ButtonInteraction, chestId: stri
   const claimedChests = getGuildClaimedChests(guildId);
 
   if (claimedChests.has(chestId)) {
-    await interaction.followUp({ content: "😔 Cineva a fost mai rapid! Cheia a fost deja luată.", flags: MessageFlags.Ephemeral });
+    await ephemeralNote(interaction, "chest", "😔 Cineva a fost mai rapid! Cheia a fost deja luată.");
     return;
   }
   claimedChests.add(chestId);
@@ -1402,23 +1402,25 @@ async function handleKeyChestClaim(interaction: ButtonInteraction, chestId: stri
 }
 
 async function handleTraderClaim(interaction: ButtonInteraction, rarityKey: string) {
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferUpdate();
   const guildId = interaction.guildId!;
 
   const offer = TRADER_OFFERS.find((o) => o.rarityKey === rarityKey);
   if (!offer) {
-    await interaction.editReply({ content: "❌ Ofertă necunoscută la negustor." });
+    await ephemeralNote(interaction, "trader", "❌ Ofertă necunoscută la negustor.");
     return;
   }
 
   const keyConsumed = await consumePlayerKey(interaction.user.id, guildId, offer.keyType);
   if (!keyConsumed) {
     const keyLabel = KEY_LABEL[offer.keyType] ?? "Cheie";
-    await interaction.editReply({
-      content: `🔒 **Nu ai ${keyLabel}!**
+    await ephemeralNote(
+      interaction,
+      "trader",
+      `🔒 **Nu ai ${keyLabel}!**
 Negustorul închide gratiile către tine...
 Obți cheia revendicând cufere de chei sau învingând evenimente!`,
-    });
+    );
     return;
   }
 
@@ -1432,7 +1434,7 @@ Obți cheia revendicând cufere de chei sau învingând evenimente!`,
 ✨ *Negustorul scutură capul în tăcere...*`,
       `💀 Cheia s-a sfărâmat și comoara rămâne închisă.`,
     ];
-    await interaction.editReply({ content: lines.join("\n") });
+    await ephemeralNote(interaction, "trader", lines.join("\n"));
     logger.info({ discordId: interaction.user.id, rarityKey, keyType: offer.keyType, result: "broken" }, "Trader key broke");
     return;
   }
@@ -1446,9 +1448,7 @@ Obți cheia revendicând cufere de chei sau învingând evenimente!`,
     await addPlayerGold(interaction.user.id, guildId, gold);
     const multEmoji = mult === 3 ? "🔥×3" : mult === 2 ? "✨×2" : "🍀×1";
     const bonusLine = mult > 1 ? `\n🎰 **Multiplicator: ${multEmoji}** \u2014 Norocul Cenușii ține cu tine!` : "";
-    await interaction.editReply({
-      content: `🎉 **Cheia a funcționat!** Ai găsit **${gold} Oboli** în cufărul întâmplător!${bonusLine}`,
-    });
+    await ephemeralNote(interaction, "trader", `🎉 **Cheia a funcționat!** Ai găsit **${gold} Oboli** în cufărul întâmplător!${bonusLine}`);
     logger.info({ discordId: interaction.user.id, rarityKey, gold, mult, result: "success-fallback" }, "Trader success (fallback)");
     return;
   }
@@ -1470,7 +1470,7 @@ Obți cheia revendicând cufere de chei sau învingând evenimente!`,
     bonusLine,
     `\n✨ *Negustorul închide cufărul cu un zâmbet subțire...*`,
   ];
-  await interaction.editReply({ content: lines.join("\n") });
+  await ephemeralNote(interaction, "trader", lines.join("\n"));
   logger.info({ discordId: interaction.user.id, rarityKey, gold: totalGold, baseGold: result.gold, mult, result: "success" }, "Trader chest opened");
 }
 
@@ -1508,7 +1508,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
     getPlayerById(interaction.user.id, guildId),
   ]);
   if (!p) {
-    await interaction.followUp({ content: "❌ Intră mai întâi în luptă!", flags: MessageFlags.Ephemeral });
+    await ephemeralNote(interaction, "combat", "❌ Intră mai întâi în luptă!");
     return;
   }
   if (!p.isAlive) {
@@ -1709,7 +1709,7 @@ async function handleRetreat(interaction: ButtonInteraction, eventId: number) {
   const guildId = interaction.guildId!;
   const p = await getParticipant(eventId, guildId, interaction.user.id);
   if (!p) {
-    await interaction.followUp({ content: "❌ Nu ești în nicio luptă!", flags: MessageFlags.Ephemeral });
+    await ephemeralNote(interaction, "combat", "❌ Nu ești în nicio luptă!");
     return;
   }
   if (!p.isAlive) {
@@ -1747,7 +1747,7 @@ async function handleLevelup(interaction: ButtonInteraction, eventId: number, bo
     getPlayerById(interaction.user.id, guildId),
   ]);
   if (!p || !p.isAlive || !p.pendingLevelup) {
-    await interaction.followUp({ content: "❌ Nu ai un level-up disponibil!", flags: MessageFlags.Ephemeral });
+    await ephemeralNote(interaction, "combat", "❌ Nu ai un level-up disponibil!");
     return;
   }
 
@@ -1910,7 +1910,7 @@ async function handleShopTalismanUpgrade(interaction: ButtonInteraction) {
   const equippedKey = p.talisman && isTalismanKey(p.talisman) ? p.talisman : null;
   const fromLevel = p.talismanLevel ?? 1;
   if (!equippedKey) {
-    await interaction.followUp({ content: "❌ Nu poți evolua acest talisman.", flags: MessageFlags.Ephemeral });
+    await ephemeralNote(interaction, "shop", "❌ Nu poți evolua acest talisman.");
     return;
   }
   const t = TALISMANS[equippedKey];
@@ -1921,7 +1921,7 @@ async function handleShopTalismanUpgrade(interaction: ButtonInteraction) {
     ...(cost.tier ? { [cost.tier]: cost.tierQty } : {}),
   });
   if (!ok) {
-    await interaction.followUp({ content: "❌ Nu ai materialele necesare pentru evoluție.", flags: MessageFlags.Ephemeral });
+    await ephemeralNote(interaction, "shop", "❌ Nu ai materialele necesare pentru evoluție.");
     return;
   }
   // Atomic level guard: only write fromLevel+1 if THIS talisman is still equipped at fromLevel
@@ -1934,7 +1934,7 @@ async function handleShopTalismanUpgrade(interaction: ButtonInteraction) {
       addPlayerItem(interaction.user.id, guildId, cost.rare, cost.rareQty),
       ...(cost.tier ? [addPlayerItem(interaction.user.id, guildId, cost.tier, cost.tierQty)] : []),
     ]);
-    await interaction.followUp({ content: "❌ Talismanul a fost deja evoluat.", flags: MessageFlags.Ephemeral });
+    await ephemeralNote(interaction, "shop", "❌ Talismanul a fost deja evoluat.");
     return;
   }
   // Persist the new level per-talisman so it survives switching
@@ -1945,7 +1945,7 @@ async function handleShopTalismanUpgrade(interaction: ButtonInteraction) {
     getPlayerTalismans(interaction.user.id, guildId),
   ]);
   const savedLevelsAfter = talismanLevelsMap(savedAfter);
-  await interaction.followUp({ content: `✨ **${t.label}** a evoluat la **Nv.${fromLevel + 1}**! Pasivul tău este acum mai puternic.`, flags: MessageFlags.Ephemeral });
+  await ephemeralNote(interaction, "shop", `✨ **${t.label}** a evoluat la **Nv.${fromLevel + 1}**! Pasivul tău este acum mai puternic.`);
   await interaction.editReply({ embeds: [buildTalismanPage(updated, updatedItems, savedLevelsAfter)], components: shopTalismanRows(updated, updatedItems, savedLevelsAfter) });
 }
 
@@ -1960,7 +1960,7 @@ async function handleShopClassPick(interaction: ButtonInteraction, key: string) 
     const msg = player.class
       ? "❌ Ai deja o clasă aleasă. Dacă vrei alta, renunță mai întâi la calea ta din **/magazin → Clasă**."
       : `❌ Instruirea unei noi căi costă **${CLASS_SWITCH_COST} Oboli** — nu ai destui.`;
-    await interaction.followUp({ content: msg, flags: MessageFlags.Ephemeral });
+    await ephemeralNote(interaction, "shop", msg);
   }
   await interaction.editReply({ embeds: [buildShopEmbed(player, "class")], components: shopClassRows(player) });
 }
@@ -1989,7 +1989,7 @@ async function handleCompBuy(interaction: ButtonInteraction, key: string) {
   if (!isCompanionKey(key)) return;
   const updated = await buyCompanion(interaction.user.id, guildId, key, COMPANION_BUY_COST);
   if (!updated) {
-    await interaction.followUp({ content: `❌ Nu poți cumpăra acest companion — ai nevoie de **${COMPANION_BUY_COST} Oboli** și să nu ai deja unul.`, flags: MessageFlags.Ephemeral });
+    await ephemeralNote(interaction, "shop", `❌ Nu poți cumpăra acest companion — ai nevoie de **${COMPANION_BUY_COST} Oboli** și să nu ai deja unul.`);
     return;
   }
   await interaction.editReply({ embeds: [buildShopEmbed(updated, "comp")], components: shopCompRows(updated) });
@@ -2002,7 +2002,7 @@ async function handleCompUpgrade(interaction: ButtonInteraction) {
   const cost = upgradeCost(p.companionLevel);
   const updated = await upgradeCompanion(interaction.user.id, guildId, p.companionLevel, cost, UPGRADE_XP_COST);
   if (!updated) {
-    await interaction.followUp({ content: `❌ Îmbunătățire eșuată — ai nevoie de un companion, **${cost} Oboli** și **${UPGRADE_XP_COST} XP**.`, flags: MessageFlags.Ephemeral });
+    await ephemeralNote(interaction, "shop", `❌ Îmbunătățire eșuată — ai nevoie de un companion, **${cost} Oboli** și **${UPGRADE_XP_COST} XP**.`);
     return;
   }
   await interaction.editReply({ embeds: [buildShopEmbed(updated, "comp")], components: shopCompRows(updated) });
@@ -2013,7 +2013,7 @@ async function handleClassUpgrade(interaction: ButtonInteraction) {
   const guildId = interaction.guildId!;
   const p = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
   if (!p.class || !isClassKey(p.class)) {
-    await interaction.followUp({ content: "❌ Nu ai o clasă aleasă. Folosește `/clasa` pentru a alege una.", flags: MessageFlags.Ephemeral });
+    await ephemeralNote(interaction, "shop", "❌ Nu ai o clasă aleasă. Folosește `/clasa` pentru a alege una.");
     return;
   }
   const level = p.classLevel ?? 1;
@@ -2026,15 +2026,12 @@ async function handleClassUpgrade(interaction: ButtonInteraction) {
     cost.items.every((req) => (inv[req.item] ?? 0) >= req.qty);
   if (!canAfford) {
     const itemLines = cost.items.map((req) => `   · ${req.qty}× ${ITEMS[req.item].emoji} ${ITEMS[req.item].label}`).join("\n");
-    await interaction.followUp({
-      content: `❌ Resurse insuficiente pentru upgrade la Nv.${level + 1}.\n\n**Cost:**\n   · ${cost.gold} Oboli\n   · ${cost.xp} XP${itemLines ? "\n" + itemLines : ""}`,
-      flags: MessageFlags.Ephemeral,
-    });
+    await ephemeralNote(interaction, "shop", `❌ Resurse insuficiente pentru upgrade la Nv.${level + 1}.\n\n**Cost:**\n   · ${cost.gold} Oboli\n   · ${cost.xp} XP${itemLines ? "\n" + itemLines : ""}`);
     return;
   }
   const updated = await upgradeClass(interaction.user.id, guildId, p.class, level, cost.gold, cost.xp, cost.items);
   if (!updated) {
-    await interaction.followUp({ content: "❌ Upgrade eșuat — resursele s-au schimbat între timp.", flags: MessageFlags.Ephemeral });
+    await ephemeralNote(interaction, "shop", "❌ Upgrade eșuat — resursele s-au schimbat între timp.");
     return;
   }
   await interaction.editReply({ embeds: [buildClassEmbed(updated)], components: shopClassRows(updated) });
@@ -2130,7 +2127,7 @@ async function handleAbilBuy(interaction: ButtonInteraction, kind: string) {
     await applyAbilityLevelToActiveParticipant(interaction.user.id, guildId, kind as AbilityKind, lvl);
   }
   if (!updated) {
-    await interaction.followUp({ content: `❌ Nu poți debloca abilitatea — ai nevoie de **${ABILITY_BUY_COST} Oboli** și să nu o deții deja.`, flags: MessageFlags.Ephemeral });
+    await ephemeralNote(interaction, "shop", `❌ Nu poți debloca abilitatea — ai nevoie de **${ABILITY_BUY_COST} Oboli** și să nu o deții deja.`);
     return;
   }
   await interaction.editReply({ embeds: [buildShopEmbed(updated, "abil")], components: shopAbilRows(updated) });
@@ -2149,7 +2146,7 @@ async function handleAbilUpgrade(interaction: ButtonInteraction, kind: string) {
     await applyAbilityLevelToActiveParticipant(interaction.user.id, guildId, kind as AbilityKind, lvl);
   }
   if (!updated) {
-    await interaction.followUp({ content: `❌ Îmbunătățire eșuată — ai nevoie de abilitate, **${cost} Oboli** și **${UPGRADE_XP_COST} XP**.`, flags: MessageFlags.Ephemeral });
+    await ephemeralNote(interaction, "shop", `❌ Îmbunătățire eșuată — ai nevoie de abilitate, **${cost} Oboli** și **${UPGRADE_XP_COST} XP**.`);
     return;
   }
   await interaction.editReply({ embeds: [buildShopEmbed(updated, "abil")], components: shopAbilRows(updated) });
@@ -2163,14 +2160,11 @@ async function handleManaUpgrade(interaction: ButtonInteraction) {
   const cost = manaUpgradeCost(curLvl);
   const updated = await upgradeMana(interaction.user.id, guildId, curLvl, cost, UPGRADE_XP_COST, maxMana(curLvl + 1));
   if (!updated) {
-    await interaction.followUp({ content: `❌ Îmbunătățire eșuată — ai nevoie de **${cost} Oboli** și **${UPGRADE_XP_COST} XP**.`, flags: MessageFlags.Ephemeral });
+    await ephemeralNote(interaction, "shop", `❌ Îmbunătățire eșuată — ai nevoie de **${cost} Oboli** și **${UPGRADE_XP_COST} XP**.`);
     return;
   }
   await interaction.editReply({ embeds: [buildShopEmbed(updated, "abil")], components: shopAbilRows(updated) });
-  await interaction.followUp({
-    content: `🔷 **Rezerva de Mană** a crescut la **Nv.${updated.manaLevel}** — mana maximă e acum **${maxMana(updated.manaLevel)}** (și a fost reumplută complet)!`,
-    flags: MessageFlags.Ephemeral,
-  });
+  await ephemeralNote(interaction, "shop", `🔷 **Rezerva de Mană** a crescut la **Nv.${updated.manaLevel}** — mana maximă e acum **${maxMana(updated.manaLevel)}** (și a fost reumplută complet)!`);
 }
 
 async function handleManaRegenUpgrade(interaction: ButtonInteraction) {
@@ -2181,14 +2175,11 @@ async function handleManaRegenUpgrade(interaction: ButtonInteraction) {
   const cost = manaRegenUpgradeCost(curLvl);
   const updated = await upgradeManaRegen(interaction.user.id, guildId, curLvl, cost, UPGRADE_XP_COST);
   if (!updated) {
-    await interaction.followUp({ content: `❌ Îmbunătățire eșuată — ai nevoie de **${cost} Oboli** și **${UPGRADE_XP_COST} XP**.`, flags: MessageFlags.Ephemeral });
+    await ephemeralNote(interaction, "shop", `❌ Îmbunătățire eșuată — ai nevoie de **${cost} Oboli** și **${UPGRADE_XP_COST} XP**.`);
     return;
   }
   await interaction.editReply({ embeds: [buildShopEmbed(updated, "abil")], components: shopAbilRows(updated) });
-  await interaction.followUp({
-    content: `💠 **Regenerarea de Mană** a crescut la **Nv.${updated.manaRegenLevel}** — fiecare atac normal reface acum **${manaRegenPct(updated.manaRegenLevel)}%** din mana maximă!`,
-    flags: MessageFlags.Ephemeral,
-  });
+  await ephemeralNote(interaction, "shop", `💠 **Regenerarea de Mană** a crescut la **Nv.${updated.manaRegenLevel}** — fiecare atac normal reface acum **${manaRegenPct(updated.manaRegenLevel)}%** din mana maximă!`);
 }
 
 async function handleAbility(interaction: ButtonInteraction, eventId: number, kind: string) {
@@ -2199,7 +2190,7 @@ async function handleAbility(interaction: ButtonInteraction, eventId: number, ki
     getPlayerById(interaction.user.id, guildId),
   ]);
   if (!p || !p.isAlive) {
-    await interaction.followUp({ content: "❌ Trebuie să fii în luptă ca să folosești abilități!", flags: MessageFlags.Ephemeral });
+    await ephemeralNote(interaction, "ability", "❌ Trebuie să fii în luptă ca să folosești abilități!");
     return;
   }
   if (p.pendingLevelup) {
@@ -2214,15 +2205,12 @@ async function handleAbility(interaction: ButtonInteraction, eventId: number, ki
   }
   const abilityLevel = kind === "shield" ? (pl?.abilityShieldLevel ?? p.shieldLevel) : (pl?.abilityEmpowerLevel ?? p.empowerLevel);
   if (abilityLevel < 1) {
-    await interaction.followUp({ content: "🔒 Nu deții această abilitate. O poți debloca din Forja Cenușii (`/magazin`).", flags: MessageFlags.Ephemeral });
+    await ephemeralNote(interaction, "ability", "🔒 Nu deții această abilitate. O poți debloca din Forja Cenușii (`/magazin`).");
     return;
   }
   if (kind === "shield" && p.shieldNext) {
     const sMax = shieldMaxHp(Math.max(1, abilityLevel));
-    await interaction.followUp({
-      content: `🛡️ **Scutul de Cenușă e deja activ!** Rămâne ridicat cât timp viața lui acoperă daunele absorbite.\n🛡️ Viața scutului: **${p.shieldHp ?? 0}/${sMax}** ${shieldBar(p.shieldHp ?? 0, sMax)}`,
-      flags: MessageFlags.Ephemeral,
-    });
+    await ephemeralNote(interaction, "ability", `🛡️ **Scutul de Cenușă e deja activ!** Rămâne ridicat cât timp viața lui acoperă daunele absorbite.\n🛡️ Viața scutului: **${p.shieldHp ?? 0}/${sMax}** ${shieldBar(p.shieldHp ?? 0, sMax)}`);
     return;
   }
   const cost = kind === "shield" ? SHIELD_ACTIVATION_COST : abilityManaCost(abilityLevel);
@@ -2230,10 +2218,7 @@ async function handleAbility(interaction: ButtonInteraction, eventId: number, ki
   if (!plMana) {
     const curMana = pl?.mana ?? 0;
     const maxM = maxMana(pl?.manaLevel ?? 0);
-    await interaction.followUp({
-      content: `🔷 **Mană insuficientă!** Abilitatea costă **${cost}** mană, tu ai **${curMana}/${maxM}** ${manaBar(curMana, maxM)}\n⚔️ Atacă normal ca să îți refaci mana (+${manaRegenPct(pl?.manaRegenLevel ?? 0)}% pe atac).`,
-      flags: MessageFlags.Ephemeral,
-    });
+    await ephemeralNote(interaction, "ability", `🔷 **Mană insuficientă!** Abilitatea costă **${cost}** mană, tu ai **${curMana}/${maxM}** ${manaBar(curMana, maxM)}\n⚔️ Atacă normal ca să îți refaci mana (+${manaRegenPct(pl?.manaRegenLevel ?? 0)}% pe atac).`);
     return;
   }
 
@@ -2310,6 +2295,20 @@ async function sendOrEditEphemeral(interaction: ButtonInteraction, key: string, 
 function bossReplyKey(guildId: string, eventId: number, uid: string): string {
   return `${guildId}:${eventId}:${uid}`;
 }
+
+// Generic per-user ephemeral note that edits the previous note of the same
+// scope instead of stacking a new message on every click (trader, shop,
+// ability, chest feedback etc.).
+function ephemeralNote(interaction: ButtonInteraction, scope: string, content: string): Promise<void> {
+  return sendOrEditEphemeral(interaction, `${scope}:${interaction.guildId}:${interaction.user.id}`, content);
+}
+
+// Last public boss-ability announcement per (guild, event): each new one
+// replaces the previous so the channel doesn't fill up with old announcements.
+const bossAbilityAnnouncements = new Map<string, { webhook: ButtonInteraction["webhook"]; messageId: string; expiresAt: number }>();
+// Per-(guild,event) promise chain so concurrent boss hits can't post duplicate
+// announcements before the map settles.
+const bossAnnouncementLocks = new Map<string, Promise<void>>();
 
 async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) {
   await interaction.deferUpdate();
@@ -2619,14 +2618,32 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
   } catch { /* ignore */ }
 
   // Public announcement when the boss ability fired (visible to everyone).
-  // Auto-deleted after a couple of minutes so the channel doesn't fill up
-  // with old ability announcements.
+  // Each new announcement deletes the previous one, and it is also
+  // auto-deleted after a couple of minutes so the channel stays clean.
   if (bossAbilityAnnouncement) {
-    const annMsg = await interaction.followUp({ content: bossAbilityAnnouncement }).catch(() => null);
-    if (annMsg) {
-      setTimeout(() => {
-        void interaction.webhook.deleteMessage(annMsg.id).catch(() => null);
-      }, 2 * 60 * 1000);
+    const annKey = `${guildId}:${eventId}`;
+    const announcementText = bossAbilityAnnouncement;
+    const runAnn = async () => {
+      const prevAnn = bossAbilityAnnouncements.get(annKey);
+      if (prevAnn && prevAnn.expiresAt > Date.now()) {
+        void prevAnn.webhook.deleteMessage(prevAnn.messageId).catch(() => null);
+      }
+      bossAbilityAnnouncements.delete(annKey);
+      const annMsg = await interaction.followUp({ content: announcementText }).catch(() => null);
+      if (annMsg) {
+        bossAbilityAnnouncements.set(annKey, { webhook: interaction.webhook, messageId: annMsg.id, expiresAt: Date.now() + 2 * 60 * 1000 });
+        setTimeout(() => {
+          void interaction.webhook.deleteMessage(annMsg.id).catch(() => null);
+          if (bossAbilityAnnouncements.get(annKey)?.messageId === annMsg.id) bossAbilityAnnouncements.delete(annKey);
+        }, 2 * 60 * 1000);
+      }
+    };
+    const annChained = (bossAnnouncementLocks.get(annKey) ?? Promise.resolve()).then(runAnn, runAnn);
+    bossAnnouncementLocks.set(annKey, annChained);
+    try {
+      await annChained;
+    } finally {
+      if (bossAnnouncementLocks.get(annKey) === annChained) bossAnnouncementLocks.delete(annKey);
     }
   }
 
