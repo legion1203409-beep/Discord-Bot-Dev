@@ -335,6 +335,9 @@ export function shieldReduction(level: number): number {
   if (level < 1) return 0;
   return Math.min(0.9, 0.5 * bonusMult(level));
 }
+// Boss-fight mana barrier: flat activation cost; while active, absorbed damage
+// drains mana 1:1 and the shield breaks when mana can't cover the absorption.
+export const SHIELD_ACTIVATION_COST = 200;
 
 export type CompanionKey = "lup" | "corb" | "spirit" | "golem";
 export const COMPANIONS: Record<CompanionKey, {

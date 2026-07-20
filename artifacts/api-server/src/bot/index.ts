@@ -148,6 +148,7 @@ import {
   MANA_REGEN_PCT,
   empowerMult,
   shieldReduction,
+  SHIELD_ACTIVATION_COST,
   buildHpBar,
   veteranMult,
   buildFinalBossEmbed,
@@ -2259,32 +2260,37 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
   const critTag = isCrit ? " 💥 **CRITIC!**" : "";
 
   let bossHit = Math.round((Math.floor(Math.random() * 121) + 80) * veteranMult(activeBoss.veteranRank ?? 0));
-  // Ash Shield: armed beforehand, but the mana is consumed at the moment it
-  // actually absorbs a hit. If the player no longer has enough mana, the
-  // shield fizzles without effect.
+  // Ash Shield = mana barrier: stays active as long as it's armed; each hit is
+  // reduced by shieldReduction% and the ABSORBED damage is drained from the
+  // player's mana. If mana can't cover the absorption, the shield shatters
+  // and the hit lands in full.
   let usedShield = false;
-  let shieldCost = 0;
-  let shieldFizzled = false;
+  let shieldAbsorbed = 0;
+  let shieldBroke = false;
   let shieldDbError = false;
   if (activeBoss.shieldNext.has(uid) && player.abilityShieldLevel >= 1) {
-    activeBoss.shieldNext.delete(uid);
-    shieldCost = abilityManaCost(player.abilityShieldLevel);
-    const afterShieldMana = await spendPlayerMana(uid, guildId, shieldCost).catch((err) => {
-      logger.error({ err, discordId: uid, guildId }, "spendPlayerMana (boss shield) failed");
-      shieldDbError = true;
-      return null;
-    });
+    const reduced = Math.max(1, Math.round(bossHit * (1 - shieldReduction(player.abilityShieldLevel))));
+    const absorbed = Math.max(0, bossHit - reduced);
+    const afterShieldMana = absorbed > 0
+      ? await spendPlayerMana(uid, guildId, absorbed).catch((err) => {
+          logger.error({ err, discordId: uid, guildId }, "spendPlayerMana (boss shield drain) failed");
+          shieldDbError = true;
+          return null;
+        })
+      : null;
     if (afterShieldMana) {
       usedShield = true;
+      shieldAbsorbed = absorbed;
+      bossHit = reduced;
     } else if (shieldDbError) {
-      // Transient DB failure — keep the shield armed so the player doesn't
-      // lose it to an infrastructure hiccup.
-      activeBoss.shieldNext.add(uid);
-    } else {
-      shieldFizzled = true;
+      // Transient DB failure — keep the shield up; the player shouldn't lose
+      // it to an infrastructure hiccup. The hit lands unreduced this time.
+    } else if (absorbed > 0) {
+      // Not enough mana to cover the absorption: the shield shatters.
+      activeBoss.shieldNext.delete(uid);
+      shieldBroke = true;
     }
   }
-  if (usedShield) bossHit = Math.max(1, Math.round(bossHit * (1 - shieldReduction(player.abilityShieldLevel))));
   bossHit = Math.max(1, bossHit - totalDef);
   if (mods.damageTakenMult !== 1) bossHit = Math.max(1, Math.round(bossHit * mods.damageTakenMult));
   const newPlayerHp = Math.max(0, myHp - bossHit);
@@ -2306,9 +2312,9 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
 
   const abilityLine =
     (usedEmpower ? "🌑 **LOVITURA UMBREI!** Puterea Umbrelor ți-a dublat lovitura!\n" : "") +
-    (usedShield ? `🛡️ **SCUT DE CENUȘĂ activ!** Daunele primite au fost reduse cu **${Math.round(shieldReduction(player.abilityShieldLevel) * 100)}%** *(−${shieldCost} mană)*.\n` : "") +
-    (shieldFizzled ? "💨 *Scutul de Cenușă s-a risipit — mană insuficientă în momentul loviturii!*\n" : "") +
-    (shieldDbError ? "⚠️ *Scutul de Cenușă nu a putut fi folosit acum (eroare temporară) — rămâne pregătit pentru următoarea lovitură.*\n" : "") +
+    (usedShield ? `🛡️ **SCUT DE CENUȘĂ activ!** A absorbit **${Math.round(shieldReduction(player.abilityShieldLevel) * 100)}%** din lovitură *(−${shieldAbsorbed} mană)*.\n` : "") +
+    (shieldBroke ? "💥 *Scutul de Cenușă s-a spart — mana nu a mai acoperit daunele absorbite! Lovitura te-a atins din plin.*\n" : "") +
+    (shieldDbError ? "⚠️ *Scutul de Cenușă nu a putut absorbi lovitura acum (eroare temporară) — rămâne activ.*\n" : "") +
     dmgBreakdownLine;
 
   activeBoss.lastHitAt.set(uid, Date.now());
@@ -2334,29 +2340,42 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
         if (hp <= 0) continue;
         const pMaxHp = activeBoss.playerStats.get(pid)?.maxHp ?? 100;
         let dmg = Math.max(1, Math.round((pMaxHp * ab.pct) / 100));
-        // An armed Ash Shield also absorbs the boss's special ability —
-        // mana is consumed at this moment, same as for the counter-hit.
+        // An active Ash Shield (mana barrier) also absorbs the boss's special
+        // ability — the absorbed damage drains mana; if mana can't cover it,
+        // the shield shatters and the hit lands in full.
         let shieldTag = "";
         if (activeBoss.shieldNext.has(pid)) {
-          activeBoss.shieldNext.delete(pid);
-          const prow = await getPlayerById(pid, guildId).catch(() => null);
+          let readErr = false;
+          const prow = await getPlayerById(pid, guildId).catch((err) => {
+            logger.error({ err, discordId: pid, guildId }, "getPlayerById (boss ability shield) failed");
+            readErr = true;
+            return null;
+          });
           const lvl = prow?.abilityShieldLevel ?? 0;
-          if (lvl >= 1) {
-            const cost = abilityManaCost(lvl);
+          if (readErr) {
+            // Transient DB read failure — keep the shield up; hit lands unreduced this time.
+          } else if (lvl >= 1) {
+            const reduced = Math.max(1, Math.round(dmg * (1 - shieldReduction(lvl))));
+            const absorbed = Math.max(0, dmg - reduced);
             let dbErr = false;
-            const spent = await spendPlayerMana(pid, guildId, cost).catch((err) => {
-              logger.error({ err, discordId: pid, guildId }, "spendPlayerMana (boss ability shield) failed");
-              dbErr = true;
-              return null;
-            });
+            const spent = absorbed > 0
+              ? await spendPlayerMana(pid, guildId, absorbed).catch((err) => {
+                  logger.error({ err, discordId: pid, guildId }, "spendPlayerMana (boss ability shield drain) failed");
+                  dbErr = true;
+                  return null;
+                })
+              : null;
             if (spent) {
-              dmg = Math.max(1, Math.round(dmg * (1 - shieldReduction(lvl))));
-              shieldTag = ` 🛡️ *(scut −${cost} mană)*`;
+              dmg = reduced;
+              shieldTag = ` 🛡️ *(scut −${absorbed} mană)*`;
             } else if (dbErr) {
-              activeBoss.shieldNext.add(pid);
-            } else {
-              shieldTag = " 💨 *(scutul s-a risipit — mană insuficientă)*";
+              // transient DB failure — shield stays up, hit lands unreduced this time
+            } else if (absorbed > 0) {
+              activeBoss.shieldNext.delete(pid);
+              shieldTag = " 💥 *(scutul s-a spart — mană insuficientă)*";
             }
+          } else {
+            activeBoss.shieldNext.delete(pid);
           }
         }
         const nhp = Math.max(0, hp - dmg);
@@ -2526,13 +2545,22 @@ async function handleBossAbility(interaction: ButtonInteraction, eventId: number
   const manaCost = abilityManaCost(abilityLevel);
 
   if (kind === "shield") {
-    // The shield only reserves the ability now — mana is consumed at the
-    // moment it actually absorbs a hit. Still refuse arming it if the player
-    // can't afford it right now, so the button gives honest feedback.
-    if ((player.mana ?? 0) < manaCost) {
+    // Mana barrier: flat activation cost, then the shield stays up and each
+    // absorbed hit drains mana; it shatters when mana can't cover the damage.
+    if (activeBoss.shieldNext.has(uid)) {
       const maxM = maxMana(player.manaLevel ?? 0);
       await interaction.followUp({
-        content: `🔷 **Mană insuficientă!** Scutul de Cenușă va consuma **${manaCost}** mană când absoarbe o lovitură, iar tu ai doar **${player.mana ?? 0}/${maxM}** ${manaBar(player.mana ?? 0, maxM)}\n⚔️ Lovește Dragonul cu atacuri normale ca să îți refaci mana (+${MANA_REGEN_PCT}% pe atac).`,
+        content: `🛡️ **Scutul de Cenușă e deja activ!** Rămâne ridicat cât timp mana îți acoperă daunele absorbite.\n🔷 Mana ta: **${player.mana ?? 0}/${maxM}** ${manaBar(player.mana ?? 0, maxM)}`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    const activationCost = SHIELD_ACTIVATION_COST;
+    const afterActivation = await spendPlayerMana(uid, guildId, activationCost);
+    if (!afterActivation) {
+      const maxM = maxMana(player.manaLevel ?? 0);
+      await interaction.followUp({
+        content: `🔷 **Mană insuficientă!** Activarea Scutului de Cenușă costă fix **${activationCost}** mană, tu ai **${player.mana ?? 0}/${maxM}** ${manaBar(player.mana ?? 0, maxM)}\n⚔️ Lovește Dragonul cu atacuri normale ca să îți refaci mana (+${MANA_REGEN_PCT}% pe atac).`,
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -2540,7 +2568,10 @@ async function handleBossAbility(interaction: ButtonInteraction, eventId: number
     activeBoss.shieldNext.add(uid);
     const pct = Math.round(shieldReduction(abilityLevel) * 100);
     await interaction.followUp({
-      content: `🛡️ **Scut de Cenușă pregătit!** Următorul atac primit de la Dragon va fi redus cu **${pct}%**.\n🔷 Va consuma **${manaCost}** mană în momentul în care absoarbe lovitura *(acum ai ${player.mana ?? 0}/${maxMana(player.manaLevel ?? 0)})*.`,
+      content:
+        `🛡️ **Scut de Cenușă activat!** *(−${activationCost} mană)*\n` +
+        `Cât timp e ridicat, absoarbe **${pct}%** din fiecare lovitură a Dragonului, iar daunele absorbite se scad din mana ta. Când mana nu mai acoperă daunele, scutul se sparge!\n` +
+        `🔷 Mana ta: **${afterActivation.mana}/${maxMana(afterActivation.manaLevel)}** ${manaBar(afterActivation.mana, maxMana(afterActivation.manaLevel))}`,
       flags: MessageFlags.Ephemeral,
     });
     void persistBossState(activeBoss);
