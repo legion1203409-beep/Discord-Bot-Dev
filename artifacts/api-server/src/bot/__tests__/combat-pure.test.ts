@@ -66,6 +66,8 @@ import {
   veteranMult,
   veteranRankFor,
   VETERAN_RANK_CAP,
+  VETERAN_MAX_REWARD_MULT,
+  veteranRewardMult,
   monsterDmgRange,
   monsterHitPct,
   monsterReward,
@@ -269,6 +271,35 @@ describe("veteran ranks", () => {
     expect(monsterSpawnHp(10, "boss", { [idx]: 1 })).toBe(Math.round(monsterMaxHp(10, "boss") * 1.2));
     expect(monsterSpawnHp(10, "boss", null)).toBe(monsterMaxHp(10, "boss"));
     expect(monsterSpawnHp(7, "comun", { [String(bossIndex(7))]: 20 })).toBe(monsterMaxHp(7, "comun"));
+  });
+
+  it("veteranRewardMult is 1 below the cap and 1.5 at/above it", () => {
+    expect(veteranRewardMult(0)).toBe(1);
+    expect(veteranRewardMult(VETERAN_RANK_CAP - 1)).toBe(1);
+    expect(veteranRewardMult(VETERAN_RANK_CAP)).toBe(VETERAN_MAX_REWARD_MULT);
+    expect(veteranRewardMult(VETERAN_RANK_CAP + 5)).toBe(VETERAN_MAX_REWARD_MULT);
+  });
+
+  it("doCombat: killing a max-veteran-rank boss grants the ×1.5 bonus reward", () => {
+    const idx = String(bossIndex(10));
+    const spy = vi.spyOn(Math, "random").mockReturnValue(0); // guaranteed crit + kill
+    try {
+      const p = makeParticipant({ monsterLevel: 10, monsterRarity: "boss", monsterCurrentHp: 1, attackBonus: 10000, critBonus: 100 });
+      const base = monsterReward(10, "boss");
+      const maxed = doCombat(p, null, 1, { [idx]: 999 });
+      expect(maxed.monsterDefeated).toBe(true);
+      expect(maxed.veteranMaxBonus).toBe(true);
+      expect(maxed.xpGained).toBe(Math.round(base.xp * VETERAN_MAX_REWARD_MULT));
+      expect(maxed.oboliGained).toBe(Math.round(base.oboli * VETERAN_MAX_REWARD_MULT));
+
+      const belowCap = doCombat(p, null, 1, { [idx]: 6 }); // rank 2 — no bonus
+      expect(belowCap.monsterDefeated).toBe(true);
+      expect(belowCap.veteranMaxBonus).toBe(false);
+      expect(belowCap.xpGained).toBe(base.xp);
+      expect(belowCap.oboliGained).toBe(base.oboli);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("doCombat: veteran boss deals ~20% more damage per rank", () => {
@@ -638,7 +669,7 @@ describe("buildResultText breakdown lines", () => {
     playerDied: false, newMonsterHp: 50, newPlayerHp: 100,
     xpGained: 0, oboliGained: 0, levelUp: false, newMonsterLevel: 1, newMonsterRarity: "comun",
     usedEmpower: false, usedShield: false, stormDrain: 0, battleEventEmoji: "", hpRegen: 0,
-    newBossCharge: 0, abilityFired: false, abilityDmg: 0, abilityHeal: 0,
+    newBossCharge: 0, abilityFired: false, abilityDmg: 0, abilityHeal: 0, veteranMaxBonus: false,
   };
 
   it("shows no breakdown when damage is unmodified", () => {
@@ -684,6 +715,12 @@ describe("buildResultText breakdown lines", () => {
     const txt = buildResultText({ ...baseResult, isCrit: true, playerDmg: 30, hpRegen: 8 });
     expect(txt).toContain("Runa Sângelui");
     expect(txt).toContain("+8 HP");
+  });
+
+  it("shows the max-veteran trophy line only when veteranMaxBonus is set", () => {
+    const kill = { ...baseResult, monsterDefeated: true, xpGained: 150, oboliGained: 45 };
+    expect(buildResultText({ ...kill, veteranMaxBonus: true })).toContain("TROFEU DE VETERAN SUPREM");
+    expect(buildResultText(kill)).not.toContain("TROFEU DE VETERAN SUPREM");
   });
 });
 
