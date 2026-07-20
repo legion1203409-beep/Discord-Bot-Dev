@@ -95,6 +95,7 @@ import {
   incrementDailyQuest,
   incrementBossKill,
   incrementFinalBossKills,
+  getFinalBossKills,
   todayDateUTC,
   type AbilityKind,
   type KeyType,
@@ -163,6 +164,7 @@ import {
   rollChest,
   rollChestMultiplier,
   computeBossRewards,
+  finalBossVeteranCapLine,
   finalBossRow,
   CHEST_RARITIES,
   KEY_DROP,
@@ -2400,6 +2402,12 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
       logger.error({ err, eventId }, "Failed to delete defeated boss row — stale row may persist until next restart")
     );
 
+    // Read the guild's kill count BEFORE incrementing so we can detect the
+    // kill that crosses the veteran rank cap (same celebration as doCombat).
+    const finalBossKillsBefore = await getFinalBossKills(activeBoss.guildId).catch((err) => {
+      logger.error({ err, guildId: activeBoss.guildId }, "Failed to read final-boss kills before increment — cap celebration may be skipped");
+      return null;
+    });
     const bossRewards = computeBossRewards(activeBoss.damageBy, activeBoss.rarity, activeBoss.hitsBy, activeBoss.veteranRank ?? 0);
     const baseRewards = new Map([...bossRewards.entries()].map(([id, r]) => [id, { gold: r.gold, xp: r.xp }]));
     const prestigeLevels = await getPrestigeLevels(activeBoss.guildId, [...bossRewards.keys()]).catch(() => new Map<string, number>());
@@ -2468,6 +2476,7 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
         abilityLine +
         `⚔️ **${interaction.user.username}** a dat lovitura finală! **${playerDmg.toLocaleString()} daune**!${critTag}\n` +
         `💀 **Dragonul Stins a căzut!** Regatul este salvat!\n` +
+        finalBossVeteranCapLine(finalBossKillsBefore) +
         rewLine + "\n" +
         itemLine,
     });

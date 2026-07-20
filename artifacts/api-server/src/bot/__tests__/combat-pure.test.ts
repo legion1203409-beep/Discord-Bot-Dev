@@ -69,6 +69,7 @@ import {
   VETERAN_MAX_REWARD_MULT,
   veteranRewardMult,
   reachesVeteranCapOnKill,
+  finalBossVeteranCapLine,
   monsterDmgRange,
   monsterHitPct,
   monsterReward,
@@ -288,6 +289,17 @@ describe("veteran ranks", () => {
     expect(reachesVeteranCapOnKill(45)).toBe(false);
     expect(reachesVeteranCapOnKill(0)).toBe(false);
     expect(reachesVeteranCapOnKill(999)).toBe(false);
+  });
+
+  it("finalBossVeteranCapLine celebrates only the kill crossing sub-cap → cap (standalone/final boss path)", () => {
+    // Rank 10 is reached at 45 kills → the 45th kill (44 prior) is the transition.
+    expect(finalBossVeteranCapLine(44)).toContain("RANG VETERAN MAXIM ATINS");
+    expect(finalBossVeteranCapLine(44)).toContain(`×${VETERAN_MAX_REWARD_MULT}`);
+    expect(finalBossVeteranCapLine(43)).toBe("");
+    expect(finalBossVeteranCapLine(45)).toBe("");
+    expect(finalBossVeteranCapLine(0)).toBe("");
+    // DB read failure (null) must not throw or celebrate.
+    expect(finalBossVeteranCapLine(null)).toBe("");
   });
 
   it("doCombat: flags veteranRankMaxedNow only on the kill that reaches the cap", () => {

@@ -179,6 +179,16 @@ export function reachesVeteranCapOnKill(killsBefore: number): boolean {
   return veteranRank(killsBefore) < VETERAN_RANK_CAP && veteranRank(killsBefore + 1) >= VETERAN_RANK_CAP;
 }
 
+/**
+ * Celebration line for the kill that takes the guild's standalone/final boss to
+ * the veteran rank cap. Returns "" when the kill doesn't cross the cap or when
+ * the kill count couldn't be read (null).
+ */
+export function finalBossVeteranCapLine(killsBefore: number | null): string {
+  if (killsBefore === null || !reachesVeteranCapOnKill(killsBefore)) return "";
+  return `🏆 **RANG VETERAN MAXIM ATINS!** Dragonul a ajuns la rangul veteran suprem — de acum, fiecare victorie împotriva lui aduce recompense ×${VETERAN_MAX_REWARD_MULT}!\n`;
+}
+
 /** Veteran rank of the boss at `level` for a player with these per-boss kill counts. */
 export function veteranRankFor(level: number, rarity: string | null | undefined, bossKills: Record<string, number> | null | undefined): number {
   if (!isBossFight(level, rarity ?? undefined)) return 0;
