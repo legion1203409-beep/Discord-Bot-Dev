@@ -27,7 +27,7 @@ import { getChannel, getAllChannels, setChannel, resetChannel, resetAllChannels,
 import { recordMessage } from "./oracle";
 import { maybeReplyAsOracle, logOracleChatStatus } from "./oracle-chat";
 import { handleToxicity } from "./oracle-guard";
-import { getRewardMultipliers, getCombatModifiers, formatActiveEffects, formatCombatEffects, grantGuildBoost, grantAdminPlayerBoost, rollChestEffectKind, grantRandomBlessing, grantRandomCurse, buildChestEffectMessage } from "./status-effects";
+import { getRewardMultipliers, getCombatModifiers, formatActiveEffects, formatCombatEffects, rollChestEffectKind, grantRandomBlessing, grantRandomCurse, buildChestEffectMessage } from "./status-effects";
 import { handleBlestem, handleAdminGhid } from "./oracle-blestem";
 import { SUPER_ADMIN_ID } from "./constants";
 import {
@@ -219,8 +219,6 @@ let disconnectAlertTimer: ReturnType<typeof setTimeout> | null = null;
 let disconnectStartedAt: Date | null = null;
 let botReadyAt: Date | null = null;
 let shardStatus: string = "disconnected";
-
-const pendingAdminResets = new Map<string, { targetId: string; targetUsername: string; guildId: string }>();
 
 // ── Per-guild trader state ───────────────────────────────────────────────────
 const TRADER_SUCCESS_CHANCE  = 0.30;
@@ -776,162 +774,6 @@ export async function handleAdmin(interaction: ChatInputCommandInteraction) {
 
   // Comenzile de beneficiu (daoboli, daxp, boost, reset) au fost eliminate
   // pentru a preveni abuzul. Rămân doar comenzi de management.
-
-  if (sub === "status") {
-    const target = interaction.options.getUser("jucator", true);
-    const confirmId = `admin_reset_confirm_${target.id}_${guildId}`;
-    pendingAdminResets.set(confirmId, { targetId: target.id, targetUsername: target.username, guildId });
-    setTimeout(() => pendingAdminResets.delete(confirmId), 2 * 60 * 1000);
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId(confirmId).setLabel("✅ Da, resetează").setStyle(ButtonStyle.Danger),
-      new ButtonBuilder().setCustomId("admin_reset_cancel").setLabel("❌ Anulează").setStyle(ButtonStyle.Secondary),
-    );
-    await interaction.editReply({
-      content:
-        `⚠️ **Confirmare necesară**\n\nEști sigur că vrei să resetezi **COMPLET** progresul lui **${target.username}**?\n\n` +
-        `> XP, Oboli, nivel, clasă, companion, abilități, upgrade-uri, chei — **totul** se șterge.\n> Această acțiune **nu poate fi anulată**.`,
-      components: [row],
-    });
-    return;
-  }
-
-  if (sub === "resetall") {
-    const confirmId = `admin_resetall_confirm_${guildId}`;
-    pendingAdminResets.set(confirmId, { targetId: "ALL", targetUsername: "TOȚI JUCĂTORII", guildId });
-    setTimeout(() => pendingAdminResets.delete(confirmId), 2 * 60 * 1000);
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId(confirmId).setLabel("💀 Da, resetează tot serverul").setStyle(ButtonStyle.Danger),
-      new ButtonBuilder().setCustomId("admin_reset_cancel").setLabel("❌ Anulează").setStyle(ButtonStyle.Secondary),
-    );
-    await interaction.editReply({
-      content:
-        `💀 **ATENȚIE MAXIMĂ**\n\nEști pe cale să resetezi progresul **TUTUROR** jucătorilor de pe server!\n\n` +
-        `> Aceasta va șterge tot XP, Oboli, nivel, clase, companioane, upgrades și chei pentru fiecare jucător.\n> Această acțiune **NU POATE FI ANULATĂ**.`,
-      components: [row],
-    });
-    return;
-  }
-
-  if (sub === "boost") {
-    const tip = interaction.options.getString("tip", true) as "xp" | "oboli" | "ambele";
-    const multiplicator = interaction.options.getNumber("multiplicator", true);
-    const durata = interaction.options.getInteger("durata", true);
-    const target = interaction.options.getUser("jucator", false);
-    const durationMs = durata * 60 * 1000;
-    const xpMult = tip === "oboli" ? 1 : multiplicator;
-    const goldMult = tip === "xp" ? 1 : multiplicator;
-    const tipLabel = tip === "xp" ? "XP" : tip === "oboli" ? "Oboli" : "XP + Oboli";
-    const durataLabel = durata >= 60 ? `${Math.floor(durata / 60)}h${durata % 60 > 0 ? ` ${durata % 60}m` : ""}` : `${durata}m`;
-    if (target) {
-      const player = await getPlayerById(target.id, guildId);
-      if (!player) {
-        await interaction.editReply({ content: `❌ **${target.username}** nu are profil pe acest server.` });
-        return;
-      }
-      grantAdminPlayerBoost(target.id, xpMult, goldMult, durationMs);
-      await interaction.editReply({
-        embeds: [{
-          color: THEME_COLOR,
-          description:
-            `⚡ **Boost activat pentru ${target.username}!**\n\n` +
-            `🎯 Tip: **${tipLabel}** × **${multiplicator}**\n⏳ Durată: **${durataLabel}**\n\n` +
-            `*Se aplică la toate recompensele din luptă și cufere.*`,
-        }],
-      });
-      logger.info({ targetId: target.id, guildId, tip, multiplicator, durata }, "Admin: player boost granted");
-    } else {
-      grantGuildBoost(guildId, xpMult, goldMult, durationMs);
-      await interaction.editReply({
-        embeds: [{
-          color: THEME_COLOR,
-          description:
-            `⚡ **Boost SERVER activat!**\n\n` +
-            `🎯 Tip: **${tipLabel}** × **${multiplicator}**\n⏳ Durată: **${durataLabel}**\n\n` +
-            `*Toți jucătorii de pe server primesc acest bonus la recompensele din luptă și cufere.*`,
-        }],
-      });
-      logger.info({ guildId, tip, multiplicator, durata }, "Admin: guild boost granted");
-    }
-    return;
-  }
-
-  if (sub === "daoboli") {
-    const target = interaction.options.getUser("jucator", true);
-    const amount = interaction.options.getInteger("cantitate", true);
-    const player = await getPlayerById(target.id, guildId);
-    if (!player) {
-      await interaction.editReply({ content: `❌ **${target.username}** nu are încă un profil pe acest server.` });
-      return;
-    }
-    await addPlayerGold(target.id, guildId, amount);
-    await interaction.editReply({
-      embeds: [{
-        color: THEME_COLOR,
-        description: `💰 **+${amount.toLocaleString("ro-RO")} Oboli** adăugați lui **${target.username}**.\nNou total: **${(player.gold + amount).toLocaleString("ro-RO")} Oboli**.`,
-      }],
-    });
-    logger.info({ targetId: target.id, guildId, amount }, "Admin: gold granted");
-    return;
-  }
-
-  if (sub === "daxp") {
-    const target = interaction.options.getUser("jucator", true);
-    const amount = interaction.options.getInteger("cantitate", true);
-    const player = await getPlayerById(target.id, guildId);
-    if (!player) {
-      await interaction.editReply({ content: `❌ **${target.username}** nu are încă un profil pe acest server.` });
-      return;
-    }
-    await addPlayerXp(target.id, guildId, amount);
-    await interaction.editReply({
-      embeds: [{
-        color: THEME_COLOR,
-        description: `✨ **+${amount.toLocaleString("ro-RO")} XP** adăugat lui **${target.username}**.\nNou total: **${(player.xp + amount).toLocaleString("ro-RO")} XP**.`,
-      }],
-    });
-    logger.info({ targetId: target.id, guildId, amount }, "Admin: XP granted");
-    return;
-  }
-
-  if (sub === "removeoboli") {
-    const target = interaction.options.getUser("jucator", true);
-    const amount = interaction.options.getInteger("cantitate", true);
-    const player = await getPlayerById(target.id, guildId);
-    if (!player) {
-      await interaction.editReply({ content: `❌ **${target.username}** nu are încă un profil pe acest server.` });
-      return;
-    }
-    await deductPlayerGold(target.id, guildId, amount);
-    const newGold = Math.max(0, player.gold - amount);
-    await interaction.editReply({
-      embeds: [{
-        color: THEME_COLOR,
-        description: `💸 **-${amount.toLocaleString("ro-RO")} Oboli** scăzuți de la **${target.username}**.\nNou total: **${newGold.toLocaleString("ro-RO")} Oboli**.`,
-      }],
-    });
-    logger.info({ targetId: target.id, guildId, amount }, "Admin: gold removed");
-    return;
-  }
-
-  if (sub === "removexp") {
-    const target = interaction.options.getUser("jucator", true);
-    const amount = interaction.options.getInteger("cantitate", true);
-    const player = await getPlayerById(target.id, guildId);
-    if (!player) {
-      await interaction.editReply({ content: `❌ **${target.username}** nu are încă un profil pe acest server.` });
-      return;
-    }
-    await deductPlayerXp(target.id, guildId, amount);
-    const newXp = Math.max(0, player.xp - amount);
-    await interaction.editReply({
-      embeds: [{
-        color: THEME_COLOR,
-        description: `💔 **-${amount.toLocaleString("ro-RO")} XP** scăzut de la **${target.username}**.\nNou total: **${newXp.toLocaleString("ro-RO")} XP**.`,
-      }],
-    });
-    logger.info({ targetId: target.id, guildId, amount }, "Admin: XP removed");
-    return;
-  }
 
   if (sub === "status") {
     const now = Date.now();
@@ -2690,52 +2532,8 @@ async function handleBossAbility(interaction: ButtonInteraction, eventId: number
   void persistBossState(activeBoss);
 }
 
-async function handleAdminResetConfirm(interaction: ButtonInteraction, buttonId: string) {
-  const isGuildAdmin = interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) ?? false;
-  if (!isGuildAdmin && interaction.user.id !== SUPER_ADMIN_ID) {
-    await interaction.reply({ content: "🔒 **Ai nevoie de permisiunea de Administrator pe acest server ca să confirmi această acțiune.**", flags: MessageFlags.Ephemeral });
-    return;
-  }
-  await interaction.deferUpdate();
-  const pending = pendingAdminResets.get(buttonId);
-  if (!pending) {
-    await interaction.editReply({ content: "⌛ Sesiunea de confirmare a expirat (2 minute). Rulează comanda din nou.", components: [] });
-    return;
-  }
-  pendingAdminResets.delete(buttonId);
-  if (pending.targetId === "ALL") {
-    const count = await resetAllPlayersInGuild(pending.guildId);
-    await interaction.editReply({
-      content: `💀 **Resetare completă!** Progresul a **${count}** jucători de pe server a fost șters complet.`,
-      components: [],
-    });
-    logger.info({ guildId: pending.guildId, count }, "Admin: all players reset");
-  } else {
-    const ok = await resetPlayer(pending.targetId, pending.guildId);
-    if (!ok) {
-      await interaction.editReply({ content: `❌ **${pending.targetUsername}** nu a fost găsit în baza de date.`, components: [] });
-      return;
-    }
-    await interaction.editReply({
-      content:
-        `✅ **Progresul lui ${pending.targetUsername} a fost resetat complet.**\n` +
-        `> XP, Oboli, nivel, clasă, companion, abilități, upgrade-uri și chei — toate șterse.`,
-      components: [],
-    });
-    logger.info({ targetId: pending.targetId, guildId: pending.guildId }, "Admin: player progress reset");
-  }
-}
-
 async function handleButton(interaction: ButtonInteraction) {
   const id = interaction.customId;
-
-  if (id.startsWith("admin_reset_confirm_") || id.startsWith("admin_resetall_confirm_")) {
-    return handleAdminResetConfirm(interaction, id);
-  }
-  if (id === "admin_reset_cancel") {
-    await interaction.update({ content: "❌ **Resetare anulată.**", components: [] });
-    return;
-  }
 
   if (id.startsWith("profile_view_")) {
     return handleViewProfile(interaction, id.replace("profile_view_", ""));
