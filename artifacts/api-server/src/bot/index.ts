@@ -28,7 +28,6 @@ import { recordMessage } from "./oracle";
 import { maybeReplyAsOracle, logOracleChatStatus } from "./oracle-chat";
 import { handleToxicity } from "./oracle-guard";
 import { getRewardMultipliers, getCombatModifiers, formatActiveEffects, formatCombatEffects, rollChestEffectKind, grantRandomBlessing, grantRandomCurse, buildChestEffectMessage } from "./status-effects";
-import { handleBlestem, handleAdminGhid } from "./oracle-blestem";
 import { SUPER_ADMIN_ID } from "./constants";
 import {
   upsertPlayer,
@@ -396,92 +395,7 @@ const slashCommands = [
   new SlashCommandBuilder().setName("companion").setDescription("🐾 Vezi companionul tău (cumpără și fă îmbunătățiri din /magazin)."),
   new SlashCommandBuilder().setName("ajutor").setDescription("❓ Ghidul comenzilor din Regatul Cenușii."),
   new SlashCommandBuilder().setName("misiuni").setDescription("📜 Misiunea ta zilnică — progres și recompensă."),
-  new SlashCommandBuilder()
-    .setName("startevent")
-    .setDescription("🔥 [Admin] Pornește manual Ora Umbrelor.")
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-  new SlashCommandBuilder()
-    .setName("cufar")
-    .setDescription("📦 [Admin] Generează manual un cufăr cu Oboli.")
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    .addStringOption((opt) =>
-      opt
-        .setName("raritate")
-        .setDescription("Raritatea cufărului (random dacă nu alegi)")
-        .setRequired(false)
-        .addChoices(
-          { name: "📦 Random (automat)", value: "random" },
-          { name: "🥇 Cufăr de Aur", value: "aur" },
-          { name: "💎 Cufăr Mitic", value: "mitic" },
-          { name: "🥈 Cufăr de Argint", value: "argint" },
-          { name: "🥉 Cufăr de Bronz", value: "bronz" },
-          { name: "👑 Cufărul Regal (blocat automat)", value: "regal" },
-        ),
-    )
-    .addStringOption((opt) =>
-      opt
-        .setName("tip")
-        .setDescription("Tip cufăr: normal (click liber) sau blocat (necesită cheie)")
-        .setRequired(false)
-        .addChoices(
-          { name: "📦 Normal — oricine poate revendica", value: "normal" },
-          { name: "🔒 Blocat — necesită cheie", value: "blocat" },
-          { name: "🗝️ Cufăr de chei — dă o cheie", value: "cheie" },
-        ),
-    )
-    .addStringOption((opt) =>
-      opt
-        .setName("cheie")
-        .setDescription("Ce cheie dă cufărul de chei (doar pentru tip: cheie)")
-        .setRequired(false)
-        .addChoices(
-          { name: "🗝️ Random (automat)", value: "random" },
-          { name: "🗝️ Cheie de Rar", value: "rar" },
-          { name: "🔑 Cheie de Epic", value: "epic" },
-          { name: "⚜️ Cheie Regală", value: "regal" },
-        ),
-    )
-    .addStringOption((opt) =>
-      opt
-        .setName("multiplicator")
-        .setDescription("Bonus garantat (implicit: lasă șansa surpriză ×1/×2/×3 la deschidere)")
-        .setRequired(false)
-        .addChoices(
-          { name: "1× — Surpriză random (implicit)", value: "1" },
-          { name: "2× — Dublu garantat", value: "2" },
-          { name: "3× — Triplu garantat", value: "3" },
-        ),
-    ),
-  new SlashCommandBuilder()
-    .setName("spawnboss")
-    .setDescription("🐉 [Admin] Invocă manual Dragonul Stins pentru test.")
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-  new SlashCommandBuilder()
-    .setName("blestem")
-    .setDescription("☠️ [Admin] Oracolul aruncă un blestem asupra unui jucător.")
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    .addUserOption((opt) =>
-      opt.setName("jucator").setDescription("Jucătorul blestemat.").setRequired(true),
-    ),
-  new SlashCommandBuilder()
-    .setName("admin")
-    .setDescription("⚙️ [Admin] Controlează botul.")
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    .addSubcommand((sub) =>
-      sub.setName("offline").setDescription("🔴 Trece botul în modul offline (invizibil)."),
-    )
-    .addSubcommand((sub) =>
-      sub.setName("online").setDescription("🟢 Readuce botul online."),
-    )
-    .addSubcommand((sub) =>
-      sub.setName("restart").setDescription("🔄 Repornește botul complet."),
-    )
-    .addSubcommand((sub) =>
-      sub.setName("status").setDescription("📊 Verifică starea botului (uptime, events, boss)."),
-    )
-    .addSubcommand((sub) =>
-      sub.setName("ghid").setDescription("📖 Lista completă a comenzilor de admin și combinațiilor cu Oracolul."),
-    ),
+  // Comenzile de admin abuzive și de management au fost eliminate.
   new SlashCommandBuilder()
     .setName("setcanale")
     .setDescription("📺 [Admin] Configurează canalele pentru evenimentele botului.")
@@ -652,175 +566,6 @@ async function isOwner(interaction: ChatInputCommandInteraction): Promise<boolea
     flags: MessageFlags.Ephemeral,
   });
   return false;
-}
-
-async function handleStartEvent(interaction: ChatInputCommandInteraction) {
-  if (!(await isOwner(interaction))) return;
-  const guildId = interaction.guildId!;
-  await interaction.reply({ content: "🔥 *Umbrele se mișcă…* Evenimentul pornește!", ephemeral: true });
-  if (botClient) await fireEvent(botClient, guildId);
-}
-
-async function handleSpawnChest(interaction: ChatInputCommandInteraction) {
-  if (!(await isOwner(interaction))) return;
-  const guildId = interaction.guildId!;
-  const rarityOpt = interaction.options.getString("raritate") ?? "random";
-  const tipOpt = interaction.options.getString("tip") ?? "normal";
-  const multStr = interaction.options.getString("multiplicator") ?? "1";
-  const mult = (multStr === "2" || multStr === "3") ? (parseInt(multStr) as 2 | 3) : undefined;
-
-  if (tipOpt === "cheie") {
-    const keyOpt = interaction.options.getString("cheie") ?? "random";
-    await interaction.reply({ content: "🗝️ *Cenușa zornăie…* Un cufăr de chei apare în Regat!", ephemeral: true });
-    if (botClient) await fireKeyChest(botClient, guildId, keyOpt, true);
-    return;
-  }
-
-  const isLocked = tipOpt === "blocat" || rarityOpt === "regal";
-
-  if (isLocked) {
-    const lockedRarity = rarityOpt === "random" ? "argint" : rarityOpt;
-    await interaction.reply({ content: "🔒 *Cenușa se ridică…* Un cufăr blocat apare în Regat!", ephemeral: true });
-    if (botClient) await fireLockedChest(botClient, guildId, lockedRarity);
-  } else {
-    await interaction.reply({ content: "📦 *Cenușa se ridică…* Un cufăr apare în Regat!", ephemeral: true });
-    if (botClient) {
-      if (rarityOpt === "random") {
-        if (mult != null) {
-          const { rarity } = rollChest();
-          await fireChestForced(botClient, guildId, rarity.key, mult);
-        } else {
-          await fireChest(botClient, guildId, true);
-        }
-      } else {
-        await fireChestForced(botClient, guildId, rarityOpt, mult);
-      }
-    }
-  }
-}
-
-async function handleSpawnBoss(interaction: ChatInputCommandInteraction) {
-  if (!(await isOwner(interaction))) return;
-  const guildId = interaction.guildId!;
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-  const ev = await import("./db").then(m => m.getLatestActiveEvent(guildId));
-  if (!ev) {
-    await interaction.editReply({ content: "❌ Nu există niciun event activ. Pornește mai întâi `/startevent`." });
-    return;
-  }
-  await interaction.editReply({ content: "🐉 *Cenușa se întunecă…* Dragonul Stins coboară din Abis!" });
-  if (botClient) await fireFinalBoss(botClient, guildId, ev.id);
-}
-
-// ─── /admin status — pure formatting helpers (exported for unit tests) ────────
-
-/** Human-readable time since `lastActivityAt`. Exported for unit tests. */
-export function formatLastMsgStr(lastActivityAt: number, _now: number): string {
-  if (lastActivityAt === 0) return "niciodată (de la pornire)";
-  return `<t:${Math.floor(lastActivityAt / 1000)}:R>`;
-}
-
-/** Activity gate label shown in /admin status. Exported for unit tests. */
-export function formatActivityStatus(lastActivityAt: number, now: number): string {
-  const active = isGuildActive(lastActivityAt, ACTIVITY_WINDOW_MINUTES * 60_000, now);
-  return active
-    ? `✅ Activ (fereastră: ${ACTIVITY_WINDOW_MINUTES}min)`
-    : `😴 Tăcut (niciun mesaj în ultimele ${ACTIVITY_WINDOW_MINUTES}min)`;
-}
-
-/** Chest-milestone progress string. Exported for unit tests. */
-export function formatMilestoneStr(activityMsgCount: number): string {
-  return `${activityMsgCount}/${CHEST_MSG_MILESTONE}`;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-
-export async function handleAdmin(interaction: ChatInputCommandInteraction) {
-  const sub = interaction.options.getSubcommand();
-  if (sub === "ghid") { await handleAdminGhid(interaction); return; }
-  if (!(await isOwner(interaction))) return;
-  const guildId = interaction.guildId!;
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
-  if (sub === "offline") {
-    botClient?.user?.setPresence({ status: "invisible" });
-    await interaction.editReply({
-      content: "🔴 **Botul a intrat în modul offline.** Apare invizibil pentru utilizatori, dar continuă să ruleze în fundal.",
-    });
-    logger.info("Admin: bot set to invisible");
-    return;
-  }
-
-  if (sub === "online") {
-    botClient?.user?.setPresence({
-      status: "online",
-      activities: [{ name: "Regatul Cenușii", type: ActivityType.Watching }],
-    });
-    await interaction.editReply({
-      content: "🟢 **Botul este din nou online!** Stare restaurată.",
-    });
-    logger.info("Admin: bot set to online");
-    return;
-  }
-
-  if (sub === "restart") {
-    await interaction.editReply({
-      content: "🔄 **Repornire în curs…** Botul se va reconecta în câteva secunde.",
-    });
-    logger.info("Admin: restart requested — exiting process");
-    setTimeout(() => process.exit(0), 1500);
-    return;
-  }
-
-  // Comenzile de beneficiu (daoboli, daxp, boost, reset) au fost eliminate
-  // pentru a preveni abuzul. Rămân doar comenzi de management.
-
-  if (sub === "status") {
-    const now = Date.now();
-
-    const uptime = botReadyAt
-      ? Math.floor((now - botReadyAt.getTime()) / 1000)
-      : null;
-    const uptimeStr = uptime === null
-      ? "necunoscut"
-      : uptime < 60
-        ? `${uptime}s`
-        : uptime < 3600
-          ? `${Math.floor(uptime / 60)}m ${uptime % 60}s`
-          : `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`;
-
-    const activeBossMap = getGuildActiveBossMap(guildId);
-    const bossInfo = activeBossMap.size > 0
-      ? [...activeBossMap.values()].map((b) =>
-          `🐉 Boss Event #${b.eventId} — HP: ${b.currentHp.toLocaleString()}/${b.maxHp.toLocaleString()} | Luptători: ${b.damageBy.size}`,
-        ).join("\n")
-      : "⚠️ Niciun boss activ";
-
-    const gs = guildStates.get(guildId);
-    const lastActivityAt = gs?.lastActivityAt ?? 0;
-    const activityMsgCount = gs?.activityMsgCount ?? 0;
-
-    const lastMsgStr = formatLastMsgStr(lastActivityAt, now);
-    const activityStatus = formatActivityStatus(lastActivityAt, now);
-    const milestoneStr = formatMilestoneStr(activityMsgCount);
-
-    await interaction.editReply({
-      embeds: [{
-        color: 0x2ecc71,
-        title: "⚙️ Status Bot — Oracolul Cenușii",
-        fields: [
-          { name: "🟢 Stare", value: botClient?.isReady() ? "Online" : "Offline", inline: true },
-          { name: "⏱️ Uptime", value: uptimeStr, inline: true },
-          { name: "💬 Ultimul mesaj", value: lastMsgStr, inline: true },
-          { name: "📊 Activitate server", value: activityStatus, inline: true },
-          { name: "🎁 Progres milestone", value: milestoneStr, inline: true },
-          { name: "🐉 Boss", value: bossInfo },
-        ],
-        timestamp: new Date().toISOString(),
-      }],
-    });
-    return;
-  }
 }
 
 async function handleSetCanale(interaction: ChatInputCommandInteraction) {
@@ -3064,11 +2809,6 @@ export async function startBot(onReady?: () => void): Promise<void> {
       if (interaction.commandName === "companion") dispatch(handleCompanion(interaction));
       if (interaction.commandName === "ajutor") dispatch(handleAjutor(interaction));
       if (interaction.commandName === "misiuni") dispatch(handleMisiune(interaction));
-      if (interaction.commandName === "startevent") dispatch(handleStartEvent(interaction));
-      if (interaction.commandName === "cufar") dispatch(handleSpawnChest(interaction));
-      if (interaction.commandName === "spawnboss") dispatch(handleSpawnBoss(interaction));
-      if (interaction.commandName === "blestem") dispatch(handleBlestem(interaction));
-      if (interaction.commandName === "admin") dispatch(handleAdmin(interaction));
       if (interaction.commandName === "setcanale") dispatch(handleSetCanale(interaction));
     } else if (interaction.isButton()) {
       dispatch(handleButton(interaction as ButtonInteraction));
