@@ -727,10 +727,13 @@ async function handleMagazin(interaction: ChatInputCommandInteraction) {
 }
 
 async function isOwner(interaction: ChatInputCommandInteraction): Promise<boolean> {
-  if (interaction.user.id === SUPER_ADMIN_ID) return true;
+  // Ownerul serverului sau oricine cu permisiunea de Administrator pe server
+  // poate folosi comenzile admin; creatorul botului are acces implicit.
+  const isGuildAdmin = interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) ?? false;
+  if (isGuildAdmin || interaction.user.id === SUPER_ADMIN_ID) return true;
   await interaction.reply({
-    content: "🔒 Nu ai permisiunea să folosești această comandă.",
-    ephemeral: true,
+    content: "🔒 **Ai nevoie de permisiunea de Administrator pe acest server ca să folosești această comandă.**",
+    flags: MessageFlags.Ephemeral,
   });
   return false;
 }
@@ -2767,8 +2770,9 @@ async function handleBossAbility(interaction: ButtonInteraction, eventId: number
 }
 
 async function handleAdminResetConfirm(interaction: ButtonInteraction, buttonId: string) {
-  if (interaction.user.id !== SUPER_ADMIN_ID) {
-    await interaction.reply({ content: "🔒 Nu ai permisiunea să confirmi această acțiune.", flags: MessageFlags.Ephemeral });
+  const isGuildAdmin = interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) ?? false;
+  if (!isGuildAdmin && interaction.user.id !== SUPER_ADMIN_ID) {
+    await interaction.reply({ content: "🔒 **Ai nevoie de permisiunea de Administrator pe acest server ca să confirmi această acțiune.**", flags: MessageFlags.Ephemeral });
     return;
   }
   await interaction.deferUpdate();

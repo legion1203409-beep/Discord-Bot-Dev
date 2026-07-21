@@ -288,7 +288,7 @@ describe("/admin offline — isOwner regression guard", () => {
     // isOwner sends the blocking reply when the user is not SUPER_ADMIN_ID
     expect(interaction._reply).toHaveBeenCalledWith(
       expect.objectContaining({
-        content: expect.stringContaining("Nu ai permisiunea"),
+        content: expect.stringContaining("permisiunea de Administrator"),
       }),
     );
   });
@@ -309,7 +309,7 @@ describe("/admin offline — isOwner regression guard", () => {
     );
     expect(interaction._reply).not.toHaveBeenCalledWith(
       expect.objectContaining({
-        content: expect.stringContaining("Nu ai permisiunea"),
+        content: expect.stringContaining("permisiunea de Administrator"),
       }),
     );
   });
