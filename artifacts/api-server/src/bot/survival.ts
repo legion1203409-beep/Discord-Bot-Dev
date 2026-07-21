@@ -357,16 +357,16 @@ export function shieldReduction(level: number): number {
 }
 // Shield activation: flat mana cost; while active the shield has its OWN HP
 // pool (grows with the ability level) that absorbs damage until it shatters.
-export const SHIELD_ACTIVATION_COST = 200;
+export const SHIELD_ACTIVATION_COST = 350;
 export const SHIELD_HP_BASE = 200;      // shield HP at ability level 1
 export const SHIELD_HP_PER_LEVEL = 100; // extra shield HP per ability level
 // While the shield absorbs a hit, the strain also drains the bearer's mana:
-// the drain % is tied to the shield's own defense — always 20 percentage
-// points BELOW the shield's damage reduction (e.g. 98% apărare → 78% drain).
+// the drain % is tied to the shield's own defense — always 10 percentage
+// points BELOW the shield's damage reduction (e.g. 98% apărare → 88% drain).
 // The drained amount is a % of the absorbed damage, subtracted from current
 // mana (floors at 0; an empty mana pool does NOT break the shield — only its
 // own HP does).
-export const SHIELD_MANA_DRAIN_OFFSET_PCT = 20;
+export const SHIELD_MANA_DRAIN_OFFSET_PCT = 10;
 export function shieldManaDrainPct(level: number): number {
   return Math.max(0, Math.round(shieldReduction(level) * 100) - SHIELD_MANA_DRAIN_OFFSET_PCT);
 }

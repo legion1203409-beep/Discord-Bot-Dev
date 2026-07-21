@@ -38,7 +38,7 @@ _Populate as you build — non-obvious choices a reader couldn't infer from the 
 
 ## Product
 
-- Scutul de Cenușă are viață proprie (200 HP + 100/nivel), setată la activare (activare: 200 mană). Efortul scutului consumă și mană: procentul de consum = apărarea scutului −20 puncte procentuale (ex. 98% apărare → 78% din daunele absorbite se scad din mană; mana coboară până la 0, dar mana goală NU sparge scutul — doar viața lui proprie). Valabil și la Dragonul final.
+- Scutul de Cenușă are viață proprie (200 HP + 100/nivel), setată la activare (activare: 350 mană). Efortul scutului consumă și mană: procentul de consum = apărarea scutului −10 puncte procentuale (ex. 98% apărare → 88% din daunele absorbite se scad din mană; mana coboară până la 0, dar mana goală NU sparge scutul — doar viața lui proprie). Valabil și la Dragonul final.
 - Magazin → Abilități: „Regenerare de Mană" 💠 (nivel infinit) — regen per atac = 10% + 2%/nivel din mana maximă.
 
 ## User preferences
