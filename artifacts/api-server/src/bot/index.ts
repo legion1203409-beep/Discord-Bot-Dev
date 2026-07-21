@@ -483,88 +483,6 @@ const slashCommands = [
     )
     .addSubcommand((sub) =>
       sub.setName("ghid").setDescription("📖 Lista completă a comenzilor de admin și combinațiilor cu Oracolul."),
-    )
-    .addSubcommand((sub) =>
-      sub.setName("daoboli")
-        .setDescription("💰 [Admin] Adaugă Oboli unui jucător.")
-        .addUserOption((opt) =>
-          opt.setName("jucator").setDescription("Jucătorul care primește Obolii.").setRequired(true),
-        )
-        .addIntegerOption((opt) =>
-          opt.setName("cantitate").setDescription("Numărul de Oboli (1–9999999).").setRequired(true).setMinValue(1).setMaxValue(9_999_999),
-        ),
-    )
-    .addSubcommand((sub) =>
-      sub.setName("daxp")
-        .setDescription("✨ [Admin] Adaugă XP unui jucător.")
-        .addUserOption((opt) =>
-          opt.setName("jucator").setDescription("Jucătorul care primește XP-ul.").setRequired(true),
-        )
-        .addIntegerOption((opt) =>
-          opt.setName("cantitate").setDescription("Numărul de XP (1–9999999).").setRequired(true).setMinValue(1).setMaxValue(9_999_999),
-        ),
-    )
-    .addSubcommand((sub) =>
-      sub.setName("removeoboli")
-        .setDescription("💸 [Admin] Scade Oboli unui jucător.")
-        .addUserOption((opt) =>
-          opt.setName("jucator").setDescription("Jucătorul de la care se scad Obolii.").setRequired(true),
-        )
-        .addIntegerOption((opt) =>
-          opt.setName("cantitate").setDescription("Numărul de Oboli de scăzut (1–9999999).").setRequired(true).setMinValue(1).setMaxValue(9_999_999),
-        ),
-    )
-    .addSubcommand((sub) =>
-      sub.setName("removexp")
-        .setDescription("💔 [Admin] Scade XP unui jucător.")
-        .addUserOption((opt) =>
-          opt.setName("jucator").setDescription("Jucătorul de la care se scade XP-ul.").setRequired(true),
-        )
-        .addIntegerOption((opt) =>
-          opt.setName("cantitate").setDescription("Numărul de XP de scăzut (1–9999999).").setRequired(true).setMinValue(1).setMaxValue(9_999_999),
-        ),
-    )
-    .addSubcommand((sub) =>
-      sub.setName("resetprogres")
-        .setDescription("⚠️ [Admin] Resetează complet progresul unui jucător (XP, Oboli, nivel, upgrades, chei).")
-        .addUserOption((opt) =>
-          opt.setName("jucator").setDescription("Jucătorul al cărui progres va fi resetat.").setRequired(true),
-        ),
-    )
-    .addSubcommand((sub) =>
-      sub.setName("resetall")
-        .setDescription("💀 [Admin] Resetează progresul TUTUROR jucătorilor de pe server."),
-    )
-    .addSubcommand((sub) =>
-      sub.setName("boost")
-        .setDescription("⚡ [Admin] Activează un boost de recompense temporar pentru un jucător sau tot serverul.")
-        .addStringOption((opt) =>
-          opt.setName("tip")
-            .setDescription("Ce tip de recompensă să fie amplificată.")
-            .setRequired(true)
-            .addChoices(
-              { name: "XP", value: "xp" },
-              { name: "Oboli (gold)", value: "oboli" },
-              { name: "Ambele (XP + Oboli)", value: "ambele" },
-            ),
-        )
-        .addNumberOption((opt) =>
-          opt.setName("multiplicator")
-            .setDescription("Factorul de amplificare (ex: 2 = dublu, 1.5 = +50%).")
-            .setRequired(true)
-            .setMinValue(1.1)
-            .setMaxValue(10),
-        )
-        .addIntegerOption((opt) =>
-          opt.setName("durata")
-            .setDescription("Durata boost-ului în minute (1–1440).")
-            .setRequired(true)
-            .setMinValue(1)
-            .setMaxValue(1440),
-        )
-        .addUserOption((opt) =>
-          opt.setName("jucator").setDescription("Aplică boost-ul doar acestui jucător (gol = tot serverul).").setRequired(false),
-        ),
     ),
   new SlashCommandBuilder()
     .setName("setcanale")
@@ -856,7 +774,10 @@ export async function handleAdmin(interaction: ChatInputCommandInteraction) {
     return;
   }
 
-  if (sub === "resetprogres") {
+  // Comenzile de beneficiu (daoboli, daxp, boost, reset) au fost eliminate
+  // pentru a preveni abuzul. Rămân doar comenzi de management.
+
+  if (sub === "status") {
     const target = interaction.options.getUser("jucator", true);
     const confirmId = `admin_reset_confirm_${target.id}_${guildId}`;
     pendingAdminResets.set(confirmId, { targetId: target.id, targetUsername: target.username, guildId });
