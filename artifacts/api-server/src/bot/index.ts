@@ -401,11 +401,11 @@ const slashCommands = [
   new SlashCommandBuilder()
     .setName("startevent")
     .setDescription("🔥 [Admin] Pornește manual Ora Umbrelor.")
-    .setDefaultMemberPermissions(0),
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
   new SlashCommandBuilder()
     .setName("cufar")
     .setDescription("📦 [Admin] Generează manual un cufăr cu Oboli.")
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addStringOption((opt) =>
       opt
         .setName("raritate")
@@ -457,18 +457,18 @@ const slashCommands = [
   new SlashCommandBuilder()
     .setName("spawnboss")
     .setDescription("🐉 [Admin] Invocă manual Dragonul Stins pentru test.")
-    .setDefaultMemberPermissions(0),
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
   new SlashCommandBuilder()
     .setName("blestem")
     .setDescription("☠️ [Admin] Oracolul aruncă un blestem asupra unui jucător.")
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addUserOption((opt) =>
       opt.setName("jucator").setDescription("Jucătorul blestemat.").setRequired(true),
     ),
   new SlashCommandBuilder()
     .setName("admin")
     .setDescription("⚙️ [Admin] Controlează botul.")
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addSubcommand((sub) =>
       sub.setName("offline").setDescription("🔴 Trece botul în modul offline (invizibil)."),
     )
@@ -569,7 +569,7 @@ const slashCommands = [
   new SlashCommandBuilder()
     .setName("setcanale")
     .setDescription("📺 [Admin] Configurează canalele pentru evenimentele botului.")
-    .setDefaultMemberPermissions(0)
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addSubcommand((sub) =>
       sub.setName("vezi").setDescription("👁️ Vezi configurația curentă a canalelor."),
     )
