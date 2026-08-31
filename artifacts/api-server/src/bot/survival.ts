@@ -8,9 +8,20 @@ import { SUPER_ADMIN_ID } from "./constants";
 import type { EventParticipant } from "@workspace/db";
 import type { Player } from "@workspace/db";
 import type { PlayerItem } from "@workspace/db";
-import { IMG, COMPANION_IMG, CHEST_IMG, KEY_IMG, monsterImg, bossImg } from "./assets";
+import {
+  IMG,
+  COMPANION_IMG,
+  CHEST_IMG,
+  KEY_IMG,
+  monsterImg,
+  bossImg,
+} from "./assets";
 import { getActiveBattleEvent, consumeStormDrain } from "./combat-events";
-import { getCombatModifiers, formatActiveEffects, formatCombatEffects } from "./status-effects";
+import {
+  getCombatModifiers,
+  formatActiveEffects,
+  formatCombatEffects,
+} from "./status-effects";
 
 const BASE_PRICES = { atac: 50, def: 60, dodge: 70, crit: 80, hp: 40 } as const;
 export type ShopKey = keyof typeof BASE_PRICES;
@@ -19,13 +30,13 @@ export const LEVELUP_INTERVAL = 5;
 // ─── Mana system ─────────────────────────────────────────────────────────────
 // Abilities consume mana instead of a timed cooldown. Every normal attack
 // restores 10% of max mana; max mana grows infinitely via shop upgrades.
-export const MANA_BASE = 100;               // max mana at upgrade level 0
-export const MANA_PER_LEVEL = 25;           // extra max mana per upgrade level (infinite)
-export const MANA_REGEN_PCT = 10;           // % of max mana restored per normal attack
-export const MANA_COST_BASE = 30;           // ability mana cost at level 1
-export const MANA_COST_PER_LEVEL = 10;      // extra mana cost per ability level above 1
-export const MANA_UPGRADE_BASE_COST = 150;  // Oboli for the first mana upgrade
-export const MANA_REGEN_PER_LEVEL = 2;      // extra regen % per regen upgrade level
+export const MANA_BASE = 100; // max mana at upgrade level 0
+export const MANA_PER_LEVEL = 25; // extra max mana per upgrade level (infinite)
+export const MANA_REGEN_PCT = 10; // % of max mana restored per normal attack
+export const MANA_COST_BASE = 30; // ability mana cost at level 1
+export const MANA_COST_PER_LEVEL = 10; // extra mana cost per ability level above 1
+export const MANA_UPGRADE_BASE_COST = 150; // Oboli for the first mana upgrade
+export const MANA_REGEN_PER_LEVEL = 2; // extra regen % per regen upgrade level
 export const MANA_REGEN_UPGRADE_BASE_COST = 200; // Oboli for the first regen upgrade
 
 /** Max mana at a given upgrade level (infinite levels). */
@@ -42,15 +53,24 @@ export function manaRegenPct(regenLevel = 0): number {
 }
 /** Mana restored by one normal attack (regen % of max, at least 1). */
 export function manaRegenPerAttack(manaLevel: number, regenLevel = 0): number {
-  return Math.max(1, Math.round((maxMana(manaLevel) * manaRegenPct(regenLevel)) / 100));
+  return Math.max(
+    1,
+    Math.round((maxMana(manaLevel) * manaRegenPct(regenLevel)) / 100),
+  );
 }
 /** Oboli cost to go from manaLevel to manaLevel+1 (15% growth, infinite). */
 export function manaUpgradeCost(manaLevel: number): number {
-  return Math.ceil(MANA_UPGRADE_BASE_COST * Math.pow(UPGRADE_COST_GROWTH, Math.max(0, manaLevel)));
+  return Math.ceil(
+    MANA_UPGRADE_BASE_COST *
+      Math.pow(UPGRADE_COST_GROWTH, Math.max(0, manaLevel)),
+  );
 }
 /** Oboli cost to go from manaRegenLevel to +1 (15% growth, infinite). */
 export function manaRegenUpgradeCost(regenLevel: number): number {
-  return Math.ceil(MANA_REGEN_UPGRADE_BASE_COST * Math.pow(UPGRADE_COST_GROWTH, Math.max(0, regenLevel)));
+  return Math.ceil(
+    MANA_REGEN_UPGRADE_BASE_COST *
+      Math.pow(UPGRADE_COST_GROWTH, Math.max(0, regenLevel)),
+  );
 }
 /** Blue mana bar, same 10-segment style as the HP bar. */
 export function manaBar(cur: number, max: number): string {
@@ -73,7 +93,10 @@ export function sectionTitle(label: string): string {
 
 // ─── Monster rarities ──────────────────────────────────────────────────────
 export type Rarity = "comun" | "rar" | "epic" | "legendar" | "mitic" | "boss";
-export const RARITY: Record<Rarity, { label: string; emoji: string; color: number; rewardMult: number }> = {
+export const RARITY: Record<
+  Rarity,
+  { label: string; emoji: string; color: number; rewardMult: number }
+> = {
   comun: { label: "Comun", emoji: "⚪", color: 0x9aa0a6, rewardMult: 1 },
   rar: { label: "Rar", emoji: "🔵", color: 0x3b82f6, rewardMult: 1.5 },
   epic: { label: "Epic", emoji: "🟣", color: 0x8b5cf6, rewardMult: 2.5 },
@@ -82,7 +105,11 @@ export const RARITY: Record<Rarity, { label: string; emoji: string; color: numbe
   boss: { label: "MINI-BOSS", emoji: "🔥", color: 0xb91c1c, rewardMult: 2 },
 };
 export const RARITY_WEIGHTS: [Exclude<Rarity, "boss">, number][] = [
-  ["comun", 690], ["rar", 220], ["epic", 80], ["legendar", 9], ["mitic", 1],
+  ["comun", 690],
+  ["rar", 220],
+  ["epic", 80],
+  ["legendar", 9],
+  ["mitic", 1],
 ];
 
 export function isMiniBoss(level: number): boolean {
@@ -115,16 +142,56 @@ export interface BossAbility {
 
 /** The 10 named mini-bosses — index matches boss_NN assets in assets.ts. */
 export const BOSSES: { name: string; desc: string; ability: BossAbility }[] = [
-  { name: "Păstrătorul Rânced", desc: "Respirația Ciumei — un nor toxic care roade viața și armura celor prinși în el.", ability: { name: "Respirația Ciumei", emoji: "🦴", pct: 15 } },
-  { name: "Strigoiul Fără Maxilar", desc: "Țipătul Golului — un urlet care amuțește abilitățile și zguduie carnea.", ability: { name: "Țipătul Golului", emoji: "💀", pct: 10 } },
-  { name: "Călăul cu Masca de Fier", desc: "Execuția Finală — marchează pe cei slăbiți și lovește cu putere dublă.", ability: { name: "Execuția Finală", emoji: "⚔️", pct: 20 } },
-  { name: "Păpușarul de Sânge", desc: "Corzi de Carne — leagă victimele între ele și le fură sângele prin fire vii.", ability: { name: "Corzi de Carne", emoji: "🩸", pct: 12, steal: true } },
-  { name: "Cântărețul de Sub Pământ", desc: "Simfonia Fracturii — unde sonore care crapă solul și dezorientează.", ability: { name: "Simfonia Fracturii", emoji: "🎶", pct: 15 } },
-  { name: "Femeia cu Trei Fețe", desc: "Schimbarea Destinului — trece prin foc, gheață și umbre, șocând arena la fiecare schimbare.", ability: { name: "Schimbarea Destinului", emoji: "🔮", pct: 12 } },
-  { name: "Regele Cenușii", desc: "Furtuna Cenușii — lame de cenușă care taie vindecarea și grăbesc lovitura regelui.", ability: { name: "Furtuna Cenușii", emoji: "👑", pct: 12 } },
-  { name: "Mama Abisului", desc: "Privirea Abisului — o rază din ochiul central care arde tot ce stă nemișcat.", ability: { name: "Privirea Abisului", emoji: "🌑", pct: 25 } },
-  { name: "Copilul cu Inima Externă", desc: "Pulsul Corupt — inima expusă absoarbe viața tuturor și o bea pentru sine.", ability: { name: "Pulsul Corupt", emoji: "❤️", pct: 10, steal: true } },
-  { name: "Călătorul dintre Lumi", desc: "Fractura Dimensională — se rupe în trei forme și explodează la reîntregire.", ability: { name: "Fractura Dimensională", emoji: "🌌", pct: 15 } },
+  {
+    name: "Păstrătorul Rânced",
+    desc: "Respirația Ciumei — un nor toxic care roade viața și armura celor prinși în el.",
+    ability: { name: "Respirația Ciumei", emoji: "🦴", pct: 15 },
+  },
+  {
+    name: "Strigoiul Fără Maxilar",
+    desc: "Țipătul Golului — un urlet care amuțește abilitățile și zguduie carnea.",
+    ability: { name: "Țipătul Golului", emoji: "💀", pct: 10 },
+  },
+  {
+    name: "Călăul cu Masca de Fier",
+    desc: "Execuția Finală — marchează pe cei slăbiți și lovește cu putere dublă.",
+    ability: { name: "Execuția Finală", emoji: "⚔️", pct: 20 },
+  },
+  {
+    name: "Păpușarul de Sânge",
+    desc: "Corzi de Carne — leagă victimele între ele și le fură sângele prin fire vii.",
+    ability: { name: "Corzi de Carne", emoji: "🩸", pct: 12, steal: true },
+  },
+  {
+    name: "Cântărețul de Sub Pământ",
+    desc: "Simfonia Fracturii — unde sonore care crapă solul și dezorientează.",
+    ability: { name: "Simfonia Fracturii", emoji: "🎶", pct: 15 },
+  },
+  {
+    name: "Femeia cu Trei Fețe",
+    desc: "Schimbarea Destinului — trece prin foc, gheață și umbre, șocând arena la fiecare schimbare.",
+    ability: { name: "Schimbarea Destinului", emoji: "🔮", pct: 12 },
+  },
+  {
+    name: "Regele Cenușii",
+    desc: "Furtuna Cenușii — lame de cenușă care taie vindecarea și grăbesc lovitura regelui.",
+    ability: { name: "Furtuna Cenușii", emoji: "👑", pct: 12 },
+  },
+  {
+    name: "Mama Abisului",
+    desc: "Privirea Abisului — o rază din ochiul central care arde tot ce stă nemișcat.",
+    ability: { name: "Privirea Abisului", emoji: "🌑", pct: 25 },
+  },
+  {
+    name: "Copilul cu Inima Externă",
+    desc: "Pulsul Corupt — inima expusă absoarbe viața tuturor și o bea pentru sine.",
+    ability: { name: "Pulsul Corupt", emoji: "❤️", pct: 10, steal: true },
+  },
+  {
+    name: "Călătorul dintre Lumi",
+    desc: "Fractura Dimensională — se rupe în trei forme și explodează la reîntregire.",
+    ability: { name: "Fractura Dimensională", emoji: "🌌", pct: 15 },
+  },
 ];
 
 /** Attacks needed to fill the ability charge bar in a mini-boss fight. */
@@ -140,7 +207,7 @@ export function chargeBar(charge: number, max: number): string {
 
 /** Deterministic boss index for a level — 7 is coprime with 10, so all 10 rotate before repeating. */
 export function bossIndex(level: number): number {
-  return ((level * 7 + 3) % BOSSES.length + BOSSES.length) % BOSSES.length;
+  return (((level * 7 + 3) % BOSSES.length) + BOSSES.length) % BOSSES.length;
 }
 
 /** Boss rank 1–10, grows with the level the boss appears at. */
@@ -157,12 +224,22 @@ export const VETERAN_KILLS_PER_RANK = 5;
 // Hard cap so long-running servers don't scale bosses into unbeatable HP sponges
 // (rank 10 → veteranMult 3x max).
 export const VETERAN_RANK_CAP = 10;
-export const VETERAN_TIERS = ["", "Rar 🔵", "Epic 🟣", "Legendar 🟠", "Mitic 🔴", "Etern ⚫"] as const;
+export const VETERAN_TIERS = [
+  "",
+  "Rar 🔵",
+  "Epic 🟣",
+  "Legendar 🟠",
+  "Mitic 🔴",
+  "Etern ⚫",
+] as const;
 
 /** Veteran rank (0, 1, 2, …) from how many times the player killed this boss. Capped at VETERAN_RANK_CAP. */
 export function veteranRank(kills: number): number {
   if (kills <= 0) return 0;
-  return Math.min(VETERAN_RANK_CAP, 1 + Math.floor(kills / VETERAN_KILLS_PER_RANK));
+  return Math.min(
+    VETERAN_RANK_CAP,
+    1 + Math.floor(kills / VETERAN_KILLS_PER_RANK),
+  );
 }
 
 /** HP/damage multiplier for a veteran rank: +20% per rank, capped via VETERAN_RANK_CAP at spawn. */
@@ -186,7 +263,10 @@ export function veteranRewardMult(rank: number): number {
 
 /** True when a kill takes this boss's veteran rank from below the cap to the cap (sub cap → cap). */
 export function reachesVeteranCapOnKill(killsBefore: number): boolean {
-  return veteranRank(killsBefore) < VETERAN_RANK_CAP && veteranRank(killsBefore + 1) >= VETERAN_RANK_CAP;
+  return (
+    veteranRank(killsBefore) < VETERAN_RANK_CAP &&
+    veteranRank(killsBefore + 1) >= VETERAN_RANK_CAP
+  );
 }
 
 /**
@@ -200,37 +280,92 @@ export function finalBossVeteranCapLine(killsBefore: number | null): string {
 }
 
 /** Veteran rank of the boss at `level` for a player with these per-boss kill counts. */
-export function veteranRankFor(level: number, rarity: string | null | undefined, bossKills: Record<string, number> | null | undefined): number {
+export function veteranRankFor(
+  level: number,
+  rarity: string | null | undefined,
+  bossKills: Record<string, number> | null | undefined,
+): number {
   if (!isBossFight(level, rarity ?? undefined)) return 0;
   return veteranRank(bossKills?.[String(bossIndex(level))] ?? 0);
 }
 
 /** Max HP of the monster at spawn, scaled by the player's veteran rank when it's a boss. */
-export function monsterSpawnHp(level: number, rarity: string | undefined, bossKills: Record<string, number> | null | undefined): number {
-  return Math.round(monsterMaxHp(level, rarity) * veteranMult(veteranRankFor(level, rarity, bossKills)));
+export function monsterSpawnHp(
+  level: number,
+  rarity: string | undefined,
+  bossKills: Record<string, number> | null | undefined,
+): number {
+  return Math.round(
+    monsterMaxHp(level, rarity) *
+      veteranMult(veteranRankFor(level, rarity, bossKills)),
+  );
 }
 
 /** The 14 named monsters — index matches MONSTER_IMG in assets.ts. */
 export const MONSTERS: { name: string; desc: string }[] = [
-  { name: "Golemul de Măduvă", desc: "Colos de os și piatră, cu inimă pulsând ca un blestem." },
-  { name: "Păstorul Umbrelor", desc: "Siluetă în zdrențe negre, cu toiag din vertebre și roi de umbre vii." },
-  { name: "Groparul Etern", desc: "Humanoid cenușiu, cu lopată neagră ce deschide morminte singure." },
-  { name: "Țesătoarea de Viscere", desc: "Creatură feminină contorsionată, țesând pânze din carne și sânge." },
-  { name: "Arhitectul Fumului Negru", desc: "Entitate fără chip, alcătuită din fum și cenușă, creator de structuri imposibile." },
-  { name: "Orfanul Sângeros", desc: "Copil palid cu ochi negri și o păpușă plină de ace, aducător de sângerări și umbre." },
-  { name: "Călăul Fără Maxilar", desc: "Gigant cu fața ruptă, purtând un topor masiv, cu maxilarul smuls." },
-  { name: "Femeia cu 100 de Colțuri", desc: "O entitate feminină cu membre fracturate în unghiuri imposibile." },
-  { name: "Strigătul din Fântână", desc: "O creatură acvatică, cu pielea albastră și ochii luminoși, care urlă din adâncuri." },
-  { name: "Călătorul cu Trei Fețe", desc: "Un nomad spectral cu trei expresii suprapuse: furie, tristețe, goliciune." },
-  { name: "Câinele cu Oasele pe Exterior", desc: "Un animal de vânătoare, cu scheletul expus și ochi roșii." },
-  { name: "Regina Cuibului de Viermi", desc: "O matroană monstruoasă, cu viermi ieșind din corpul ei ca niște copii." },
-  { name: "Cântărețul cu Gâtul Deschis", desc: "Un bard blestemat, cu gâtul tăiat, cântând printr-un gol în carne." },
-  { name: "Umbra care Poartă Oglinda", desc: "O entitate care reflectă nu imaginea ta, ci moartea ta viitoare." },
+  {
+    name: "Golemul de Măduvă",
+    desc: "Colos de os și piatră, cu inimă pulsând ca un blestem.",
+  },
+  {
+    name: "Păstorul Umbrelor",
+    desc: "Siluetă în zdrențe negre, cu toiag din vertebre și roi de umbre vii.",
+  },
+  {
+    name: "Groparul Etern",
+    desc: "Humanoid cenușiu, cu lopată neagră ce deschide morminte singure.",
+  },
+  {
+    name: "Țesătoarea de Viscere",
+    desc: "Creatură feminină contorsionată, țesând pânze din carne și sânge.",
+  },
+  {
+    name: "Arhitectul Fumului Negru",
+    desc: "Entitate fără chip, alcătuită din fum și cenușă, creator de structuri imposibile.",
+  },
+  {
+    name: "Orfanul Sângeros",
+    desc: "Copil palid cu ochi negri și o păpușă plină de ace, aducător de sângerări și umbre.",
+  },
+  {
+    name: "Călăul Fără Maxilar",
+    desc: "Gigant cu fața ruptă, purtând un topor masiv, cu maxilarul smuls.",
+  },
+  {
+    name: "Femeia cu 100 de Colțuri",
+    desc: "O entitate feminină cu membre fracturate în unghiuri imposibile.",
+  },
+  {
+    name: "Strigătul din Fântână",
+    desc: "O creatură acvatică, cu pielea albastră și ochii luminoși, care urlă din adâncuri.",
+  },
+  {
+    name: "Călătorul cu Trei Fețe",
+    desc: "Un nomad spectral cu trei expresii suprapuse: furie, tristețe, goliciune.",
+  },
+  {
+    name: "Câinele cu Oasele pe Exterior",
+    desc: "Un animal de vânătoare, cu scheletul expus și ochi roșii.",
+  },
+  {
+    name: "Regina Cuibului de Viermi",
+    desc: "O matroană monstruoasă, cu viermi ieșind din corpul ei ca niște copii.",
+  },
+  {
+    name: "Cântărețul cu Gâtul Deschis",
+    desc: "Un bard blestemat, cu gâtul tăiat, cântând printr-un gol în carne.",
+  },
+  {
+    name: "Umbra care Poartă Oglinda",
+    desc: "O entitate care reflectă nu imaginea ta, ci moartea ta viitoare.",
+  },
 ];
 
 /** Deterministic monster index for a level — 11 is coprime with 14, so all 14 rotate before repeating. */
 export function monsterIndex(level: number): number {
-  return ((level * 11 + 5) % MONSTERS.length + MONSTERS.length) % MONSTERS.length;
+  return (
+    (((level * 11 + 5) % MONSTERS.length) + MONSTERS.length) % MONSTERS.length
+  );
 }
 
 /** True when this fight is a boss fight — either a guaranteed mini-boss level or an ambush roll. */
@@ -250,26 +385,58 @@ export function monsterMaxHp(level: number, rarity?: string) {
   const base = 40 + level * 15;
   return isBossFight(level, rarity) ? Math.round(base * 2.5) : base;
 }
-export function monsterDmgRange(level: number, rarity?: string): [number, number] {
+export function monsterDmgRange(
+  level: number,
+  rarity?: string,
+): [number, number] {
   const b = (5 + level * 1.5) * (isBossFight(level, rarity) ? 1.4 : 1);
   return [Math.max(1, Math.floor(b - 3)), Math.ceil(b + 3)];
 }
-export function monsterHitPct(level: number, rarity?: string) { return Math.min(90, 35 + level * 1.2 + (isBossFight(level, rarity) ? 5 : 0)); }
+export function monsterHitPct(level: number, rarity?: string) {
+  return Math.min(90, 35 + level * 1.2 + (isBossFight(level, rarity) ? 5 : 0));
+}
 export function monsterReward(level: number, rarity: Rarity = "comun") {
   const mult = RARITY[rarity]?.rewardMult ?? 1;
-  return { xp: Math.round(level * 10 * mult), oboli: Math.round(level * 3 * mult) };
+  return {
+    xp: Math.round(level * 10 * mult),
+    oboli: Math.round(level * 3 * mult),
+  };
 }
-export function shopPrice(key: ShopKey, count: number) { return Math.ceil(BASE_PRICES[key] * Math.pow(1.35, count)); }
+export function shopPrice(key: ShopKey, count: number) {
+  return Math.ceil(BASE_PRICES[key] * Math.pow(1.35, count));
+}
 
 // ─── Zones ─────────────────────────────────────────────────────────────────
 const ZONES: { max: number; name: string; intro: string }[] = [
-  { max: 10, name: "Pădurea Umbrelor", intro: "🌲 Copacii negri foșnesc, iar umbrele se târăsc printre rădăcini." },
-  { max: 25, name: "Catacombele Regale", intro: "🕯️ Umbrele sunt mai reci aici… și mai flămânde." },
-  { max: 50, name: "Ținuturile Arse", intro: "🔥 Pământul fumegă sub pași, iar cenușa nu se mai așază niciodată." },
-  { max: 100, name: "Turnul Vânturilor Negre", intro: "🗼 Vânturi întunecate urlă printre ziduri sfărâmate." },
-  { max: Infinity, name: "Abisul Fumegând", intro: "🌑 Ai pătruns în Abis. Doar cei eterni mai pot respira aici." },
+  {
+    max: 10,
+    name: "Pădurea Umbrelor",
+    intro: "🌲 Copacii negri foșnesc, iar umbrele se târăsc printre rădăcini.",
+  },
+  {
+    max: 25,
+    name: "Catacombele Regale",
+    intro: "🕯️ Umbrele sunt mai reci aici… și mai flămânde.",
+  },
+  {
+    max: 50,
+    name: "Ținuturile Arse",
+    intro: "🔥 Pământul fumegă sub pași, iar cenușa nu se mai așază niciodată.",
+  },
+  {
+    max: 100,
+    name: "Turnul Vânturilor Negre",
+    intro: "🗼 Vânturi întunecate urlă printre ziduri sfărâmate.",
+  },
+  {
+    max: Infinity,
+    name: "Abisul Fumegând",
+    intro: "🌑 Ai pătruns în Abis. Doar cei eterni mai pot respira aici.",
+  },
 ];
-export function zoneFor(level: number) { return ZONES.find((z) => level <= z.max) ?? ZONES[ZONES.length - 1]!; }
+export function zoneFor(level: number) {
+  return ZONES.find((z) => level <= z.max) ?? ZONES[ZONES.length - 1]!;
+}
 
 // ─── Level titles (evolutive) ───────────────────────────────────────────────
 const LEVEL_TITLES: { max: number; title: string }[] = [
@@ -286,21 +453,91 @@ export function levelTitle(level: number): string {
 }
 
 // ─── RPG classes ─────────────────────────────────────────────────────────────
-export type ClassKey = "cavaler" | "umbrolog" | "strajer" | "alchimist" | "ratacitor";
-export const CLASSES: Record<ClassKey, {
-  label: string; emoji: string; desc: string;
-  attack: number; hp: number; dodge: number; crit: number; xpMult: number; oboliMult: number;
-}> = {
-  cavaler: { label: "Cavaler al Cenușii", emoji: "🛡️", desc: "+2 daune, +5 HP", attack: 2, hp: 5, dodge: 0, crit: 0, xpMult: 1, oboliMult: 1 },
-  umbrolog: { label: "Umbrolog", emoji: "🌀", desc: "+3% evitare, +1% critic", attack: 0, hp: 0, dodge: 3, crit: 1, xpMult: 1, oboliMult: 1 },
-  strajer: { label: "Străjerul Arșiței", emoji: "🔥", desc: "+10% XP câștigat", attack: 0, hp: 0, dodge: 0, crit: 0, xpMult: 1.1, oboliMult: 1 },
-  alchimist: { label: "Alchimist Stins", emoji: "⚗️", desc: "+20% Oboli câștigați", attack: 0, hp: 0, dodge: 0, crit: 0, xpMult: 1, oboliMult: 1.2 },
-  ratacitor: { label: "Rătăcitorul Fumului", emoji: "💨", desc: "+5% șansă de evitare", attack: 0, hp: 0, dodge: 5, crit: 0, xpMult: 1, oboliMult: 1 },
+export type ClassKey =
+  | "cavaler"
+  | "umbrolog"
+  | "strajer"
+  | "alchimist"
+  | "ratacitor";
+export const CLASSES: Record<
+  ClassKey,
+  {
+    label: string;
+    emoji: string;
+    desc: string;
+    attack: number;
+    hp: number;
+    dodge: number;
+    crit: number;
+    xpMult: number;
+    oboliMult: number;
+  }
+> = {
+  cavaler: {
+    label: "Cavaler al Cenușii",
+    emoji: "🛡️",
+    desc: "+2 daune, +5 HP",
+    attack: 2,
+    hp: 5,
+    dodge: 0,
+    crit: 0,
+    xpMult: 1,
+    oboliMult: 1,
+  },
+  umbrolog: {
+    label: "Umbrolog",
+    emoji: "🌀",
+    desc: "+3% evitare, +1% critic",
+    attack: 0,
+    hp: 0,
+    dodge: 3,
+    crit: 1,
+    xpMult: 1,
+    oboliMult: 1,
+  },
+  strajer: {
+    label: "Străjerul Arșiței",
+    emoji: "🔥",
+    desc: "+10% XP câștigat",
+    attack: 0,
+    hp: 0,
+    dodge: 0,
+    crit: 0,
+    xpMult: 1.1,
+    oboliMult: 1,
+  },
+  alchimist: {
+    label: "Alchimist Stins",
+    emoji: "⚗️",
+    desc: "+20% Oboli câștigați",
+    attack: 0,
+    hp: 0,
+    dodge: 0,
+    crit: 0,
+    xpMult: 1,
+    oboliMult: 1.2,
+  },
+  ratacitor: {
+    label: "Rătăcitorul Fumului",
+    emoji: "💨",
+    desc: "+5% șansă de evitare",
+    attack: 0,
+    hp: 0,
+    dodge: 5,
+    crit: 0,
+    xpMult: 1,
+    oboliMult: 1,
+  },
 };
-export function isClassKey(k: string): k is ClassKey { return k in CLASSES; }
+export function isClassKey(k: string): k is ClassKey {
+  return k in CLASSES;
+}
 
 // Effective class bonuses at a given level (base × 1.05^(level-1), like companions).
-export function classStats(key: ClassKey, level: number): { attack: number; hp: number; dodge: number; crit: number } {
+export function classStats(
+  key: ClassKey,
+  level: number,
+): { attack: number; hp: number; dodge: number; crit: number } {
   const c = CLASSES[key];
   const m = bonusMult(level);
   return {
@@ -312,15 +549,23 @@ export function classStats(key: ClassKey, level: number): { attack: number; hp: 
 }
 
 // Cost for class upgrade: Oboli + XP + materials (scales with level).
-export function classUpgradeCost(level: number): { gold: number; xp: number; items: { item: ItemKey; qty: number }[] } {
-  const gold = Math.ceil(UPGRADE_BASE_COST * Math.pow(UPGRADE_COST_GROWTH, Math.max(0, level - 1)));
+export function classUpgradeCost(level: number): {
+  gold: number;
+  xp: number;
+  items: { item: ItemKey; qty: number }[];
+} {
+  const gold = Math.ceil(
+    UPGRADE_BASE_COST * Math.pow(UPGRADE_COST_GROWTH, Math.max(0, level - 1)),
+  );
   const xp = UPGRADE_XP_COST;
   const items: { item: ItemKey; qty: number }[] = [
     { item: "fragment_cenusa", qty: level * 2 },
-    { item: "sange_monstru",   qty: Math.ceil(level / 2) },
+    { item: "sange_monstru", qty: Math.ceil(level / 2) },
   ];
-  if (level >= 3) items.push({ item: "esenta_umbrei", qty: Math.ceil(level / 3) });
-  if (level >= 5) items.push({ item: "picatura_otr",    qty: Math.ceil(level / 5) });
+  if (level >= 3)
+    items.push({ item: "esenta_umbrei", qty: Math.ceil(level / 3) });
+  if (level >= 5)
+    items.push({ item: "picatura_otr", qty: Math.ceil(level / 5) });
   return { gold, xp, items };
 }
 
@@ -339,7 +584,9 @@ export const COMPANION_EVOLVE_LEVEL = 5; // companion level at which art evolves
 
 // Oboli cost to go from `level` to `level+1`.
 export function upgradeCost(level: number): number {
-  return Math.ceil(UPGRADE_BASE_COST * Math.pow(UPGRADE_COST_GROWTH, Math.max(0, level - 1)));
+  return Math.ceil(
+    UPGRADE_BASE_COST * Math.pow(UPGRADE_COST_GROWTH, Math.max(0, level - 1)),
+  );
 }
 // Multiplier applied to a base bonus at a given level (level 1 = ×1).
 export function bonusMult(level: number): number {
@@ -358,7 +605,7 @@ export function shieldReduction(level: number): number {
 // Shield activation: flat mana cost; while active the shield has its OWN HP
 // pool (grows with the ability level) that absorbs damage until it shatters.
 export const SHIELD_ACTIVATION_COST = 350;
-export const SHIELD_HP_BASE = 200;      // shield HP at ability level 1
+export const SHIELD_HP_BASE = 200; // shield HP at ability level 1
 export const SHIELD_HP_PER_LEVEL = 100; // extra shield HP per ability level
 // While the shield absorbs a hit, the strain also drains the bearer's mana:
 // the drain % is tied to the shield's own defense — always 10 percentage
@@ -368,7 +615,10 @@ export const SHIELD_HP_PER_LEVEL = 100; // extra shield HP per ability level
 // own HP does).
 export const SHIELD_MANA_DRAIN_OFFSET_PCT = 10;
 export function shieldManaDrainPct(level: number): number {
-  return Math.max(0, Math.round(shieldReduction(level) * 100) - SHIELD_MANA_DRAIN_OFFSET_PCT);
+  return Math.max(
+    0,
+    Math.round(shieldReduction(level) * 100) - SHIELD_MANA_DRAIN_OFFSET_PCT,
+  );
 }
 export function shieldManaDrain(absorbed: number, level: number): number {
   return Math.max(0, Math.round((absorbed * shieldManaDrainPct(level)) / 100));
@@ -388,23 +638,78 @@ export function shieldBar(cur: number, max: number): string {
 }
 
 export type CompanionKey = "lup" | "corb" | "spirit" | "golem";
-export const COMPANIONS: Record<CompanionKey, {
-  label: string; emoji: string; desc: string; evoLabel: string; lore: string;
-  attack: number; hp: number; crit: number; defense: number;
-}> = {
-  lup: { label: "Lupul de Cenușă", emoji: "🐺", desc: "+2 daune", evoLabel: "Alfa de Cenușă", lore: "Un lup spectral, credincios până în Abis.", attack: 2, hp: 0, crit: 0, defense: 0 },
-  corb: { label: "Corbul Umbrelor", emoji: "🐦‍⬛", desc: "+3% critic", evoLabel: "Corbul de Jar", lore: "Ochii lui văd slăbiciunea oricărui monstru.", attack: 0, hp: 0, crit: 3, defense: 0 },
-  spirit: { label: "Spiritul Stins", emoji: "👻", desc: "+5 HP", evoLabel: "Străjerul Eteric", lore: "O umbră blândă ce te ține în viață.", attack: 0, hp: 5, crit: 0, defense: 0 },
-  golem: { label: "Golem de Fum", emoji: "🗿", desc: "-1 daune primite", evoLabel: "Colosul de Magmă", lore: "Un zid de cenușă între tine și moarte.", attack: 0, hp: 0, crit: 0, defense: 1 },
+export const COMPANIONS: Record<
+  CompanionKey,
+  {
+    label: string;
+    emoji: string;
+    desc: string;
+    evoLabel: string;
+    lore: string;
+    attack: number;
+    hp: number;
+    crit: number;
+    defense: number;
+  }
+> = {
+  lup: {
+    label: "Lupul de Cenușă",
+    emoji: "🐺",
+    desc: "+2 daune",
+    evoLabel: "Alfa de Cenușă",
+    lore: "Un lup spectral, credincios până în Abis.",
+    attack: 2,
+    hp: 0,
+    crit: 0,
+    defense: 0,
+  },
+  corb: {
+    label: "Corbul Umbrelor",
+    emoji: "🐦‍⬛",
+    desc: "+3% critic",
+    evoLabel: "Corbul de Jar",
+    lore: "Ochii lui văd slăbiciunea oricărui monstru.",
+    attack: 0,
+    hp: 0,
+    crit: 3,
+    defense: 0,
+  },
+  spirit: {
+    label: "Spiritul Stins",
+    emoji: "👻",
+    desc: "+5 HP",
+    evoLabel: "Străjerul Eteric",
+    lore: "O umbră blândă ce te ține în viață.",
+    attack: 0,
+    hp: 5,
+    crit: 0,
+    defense: 0,
+  },
+  golem: {
+    label: "Golem de Fum",
+    emoji: "🗿",
+    desc: "-1 daune primite",
+    evoLabel: "Colosul de Magmă",
+    lore: "Un zid de cenușă între tine și moarte.",
+    attack: 0,
+    hp: 0,
+    crit: 0,
+    defense: 1,
+  },
 };
-export function isCompanionKey(k: string): k is CompanionKey { return k in COMPANIONS; }
+export function isCompanionKey(k: string): k is CompanionKey {
+  return k in COMPANIONS;
+}
 
 export function isCompanionEvolved(companionLevel: number): boolean {
   return companionLevel >= COMPANION_EVOLVE_LEVEL;
 }
 
 // Effective bonuses for a companion at a given level (base × 1.05^(level-1)).
-export function companionStats(key: CompanionKey, level: number): { attack: number; hp: number; crit: number; defense: number } {
+export function companionStats(
+  key: CompanionKey,
+  level: number,
+): { attack: number; hp: number; crit: number; defense: number } {
   const c = COMPANIONS[key];
   const m = bonusMult(level);
   return {
@@ -415,7 +720,10 @@ export function companionStats(key: CompanionKey, level: number): { attack: numb
   };
 }
 // Precise (unrounded) effective bonus for display, e.g. "+2.6 daune".
-export function companionEffectiveDesc(key: CompanionKey, level: number): string {
+export function companionEffectiveDesc(
+  key: CompanionKey,
+  level: number,
+): string {
   const c = COMPANIONS[key];
   const m = bonusMult(level);
   if (c.attack) return `+${(c.attack * m).toFixed(1)} daune`;
@@ -426,11 +734,21 @@ export function companionEffectiveDesc(key: CompanionKey, level: number): string
 }
 
 export const ABILITIES = {
-  empower: { label: "Lovitura Umbrei", emoji: "🌑", desc: "Următoarea lovitură ×2 (crește 5%/nivel)" },
-  shield: { label: "Scut de Cenușă", emoji: "🛡️", desc: `Scut cu viață proprie (${SHIELD_HP_BASE} HP, +${SHIELD_HP_PER_LEVEL}/nivel): absoarbe 50% din daune (crește 5%/nivel), activare ${SHIELD_ACTIVATION_COST} mană; efortul scutului consumă și mană (apărarea scutului −${SHIELD_MANA_DRAIN_OFFSET_PCT}% din daunele absorbite)` },
+  empower: {
+    label: "Lovitura Umbrei",
+    emoji: "🌑",
+    desc: "Următoarea lovitură ×2 (crește 5%/nivel)",
+  },
+  shield: {
+    label: "Scut de Cenușă",
+    emoji: "🛡️",
+    desc: `Scut cu viață proprie (${SHIELD_HP_BASE} HP, +${SHIELD_HP_PER_LEVEL}/nivel): absoarbe 50% din daune (crește 5%/nivel), activare ${SHIELD_ACTIVATION_COST} mană; efortul scutului consumă și mană (apărarea scutului −${SHIELD_MANA_DRAIN_OFFSET_PCT}% din daunele absorbite)`,
+  },
 } as const;
 export type AbilityKey = keyof typeof ABILITIES;
-export function isAbilityKey(k: string): k is AbilityKey { return k in ABILITIES; }
+export function isAbilityKey(k: string): k is AbilityKey {
+  return k in ABILITIES;
+}
 
 // Effective ability bonus at a given level, for display ("+105% daune", "-52% daune primite").
 export function abilityEffectiveDesc(kind: AbilityKey, level: number): string {
@@ -444,34 +762,45 @@ export function abilityEffectiveDesc(kind: AbilityKey, level: number): string {
 
 // ─── Item drop system ─────────────────────────────────────────────────────────
 export const ITEMS = {
-  fragment_cenusa: { label: "Fragment de Cenușă",  emoji: "🪨", rarity: "common" },
-  esenta_umbrei:   { label: "Esența Umbrei",        emoji: "🌫️", rarity: "common" },
-  sange_monstru:   { label: "Sânge de Monstru",    emoji: "🩸", rarity: "common" },
-  picatura_otr:    { label: "Picătură de Otravă",  emoji: "💧", rarity: "common" },
-  coama_dragonului:{ label: "Coamă de Dragon",     emoji: "🐉", rarity: "rare"   },
-  inima_abisului:  { label: "Inimă a Abisului",    emoji: "🌑", rarity: "rare"   },
-  solz_spectral:   { label: "Solz Spectral",       emoji: "💠", rarity: "rare"   },
-  cristal_abis:    { label: "Cristal de Abis",     emoji: "💎", rarity: "epic"   },
-  sange_titan:     { label: "Sânge de Titan",      emoji: "🧪", rarity: "legendary" },
-  fragment_mitic:  { label: "Fragment Mitic",      emoji: "🌟", rarity: "mythic" },
-  sigiliu_boss:    { label: "Sigiliul Bossului",   emoji: "🔥", rarity: "boss"   },
+  fragment_cenusa: {
+    label: "Fragment de Cenușă",
+    emoji: "🪨",
+    rarity: "common",
+  },
+  esenta_umbrei: { label: "Esența Umbrei", emoji: "🌫️", rarity: "common" },
+  sange_monstru: { label: "Sânge de Monstru", emoji: "🩸", rarity: "common" },
+  picatura_otr: { label: "Picătură de Otravă", emoji: "💧", rarity: "common" },
+  coama_dragonului: { label: "Coamă de Dragon", emoji: "🐉", rarity: "rare" },
+  inima_abisului: { label: "Inimă a Abisului", emoji: "🌑", rarity: "rare" },
+  solz_spectral: { label: "Solz Spectral", emoji: "💠", rarity: "rare" },
+  cristal_abis: { label: "Cristal de Abis", emoji: "💎", rarity: "epic" },
+  sange_titan: { label: "Sânge de Titan", emoji: "🧪", rarity: "legendary" },
+  fragment_mitic: { label: "Fragment Mitic", emoji: "🌟", rarity: "mythic" },
+  sigiliu_boss: { label: "Sigiliul Bossului", emoji: "🔥", rarity: "boss" },
 } as const;
 export type ItemKey = keyof typeof ITEMS;
-export function isItemKey(k: string): k is ItemKey { return k in ITEMS; }
+export function isItemKey(k: string): k is ItemKey {
+  return k in ITEMS;
+}
 
 // ─── Rarity-based material drops ──────────────────────────────────────────────
 // Each monster rarity has its own material that can drop on kill; the rarer the
 // monster, the higher the drop chance. These materials feed talisman upgrades.
-export const RARITY_MATERIAL: Record<Exclude<Rarity, "comun">, { item: ItemKey; chance: number }> = {
-  rar:      { item: "solz_spectral",  chance: 0.45 },
-  epic:     { item: "cristal_abis",   chance: 0.60 },
-  legendar: { item: "sange_titan",    chance: 0.80 },
-  mitic:    { item: "fragment_mitic", chance: 1.00 },
-  boss:     { item: "sigiliu_boss",   chance: 1.00 },
+export const RARITY_MATERIAL: Record<
+  Exclude<Rarity, "comun">,
+  { item: ItemKey; chance: number }
+> = {
+  rar: { item: "solz_spectral", chance: 0.45 },
+  epic: { item: "cristal_abis", chance: 0.6 },
+  legendar: { item: "sange_titan", chance: 0.8 },
+  mitic: { item: "fragment_mitic", chance: 1.0 },
+  boss: { item: "sigiliu_boss", chance: 1.0 },
 };
 
 /** Rolls the rarity material for a defeated monster (null for comun or failed roll). */
-export function rollMaterialDrop(rarity: string | null | undefined): ItemKey | null {
+export function rollMaterialDrop(
+  rarity: string | null | undefined,
+): ItemKey | null {
   if (!rarity || rarity === "comun") return null;
   const entry = RARITY_MATERIAL[rarity as Exclude<Rarity, "comun">];
   if (!entry) return null;
@@ -480,15 +809,20 @@ export function rollMaterialDrop(rarity: string | null | undefined): ItemKey | n
 
 /** Returns an item key that dropped, or null if nothing dropped. */
 export function rollItemDrop(monsterLevel: number): ItemKey | null {
-  if (Math.random() > 0.20) return null;
-  const common: ItemKey[] = ["fragment_cenusa", "esenta_umbrei", "sange_monstru", "picatura_otr"];
+  if (Math.random() > 0.2) return null;
+  const common: ItemKey[] = [
+    "fragment_cenusa",
+    "esenta_umbrei",
+    "sange_monstru",
+    "picatura_otr",
+  ];
   if (monsterLevel < 20) {
     return common[Math.floor(Math.random() * common.length)]!;
   }
   if (monsterLevel < 50) {
     return common[Math.floor(Math.random() * common.length)]!;
   }
-  if (Math.random() < 0.10) return "coama_dragonului";
+  if (Math.random() < 0.1) return "coama_dragonului";
   return common[Math.floor(Math.random() * common.length)]!;
 }
 
@@ -504,7 +838,8 @@ export const DAILY_QUESTS = {
   },
   rare_3: {
     label: "Vânează 3 monștri rari",
-    description: "Ucide 3 monștri de raritate rară sau mai bună (inclusiv mini-bossi).",
+    description:
+      "Ucide 3 monștri de raritate rară sau mai bună (inclusiv mini-bossi).",
     target: 3,
     reward: { itemKey: "solz_spectral" as ItemKey, qty: 2 },
     emoji: "💠",
@@ -520,7 +855,11 @@ export const DAILY_QUESTS = {
 
 export type DailyQuestKey = keyof typeof DAILY_QUESTS;
 
-export function buildProgressBar(current: number, target: number, width: number): string {
+export function buildProgressBar(
+  current: number,
+  target: number,
+  width: number,
+): string {
   const pct = target > 0 ? Math.max(0, Math.min(1, current / target)) : 0;
   let filled = Math.round(pct * width);
   if (current > 0 && filled === 0) filled = 1;
@@ -552,7 +891,8 @@ export function buildMissionEmbed(
     if (done && row?.rewardGiven) {
       statusLine = "✅ **Completată!** Recompensa a fost acordată.";
     } else if (done) {
-      statusLine = "✅ **Completată!** Recompensa va fi acordată la uciderea unui monstru.";
+      statusLine =
+        "✅ **Completată!** Recompensa va fi acordată la uciderea unui monstru.";
     } else {
       statusLine = `${quest.emoji} ${bar} **${cur}/${quest.target}**`;
     }
@@ -570,8 +910,8 @@ export function buildMissionEmbed(
     .setColor(THEME_COLOR)
     .setDescription(
       `${sectionTitle("Misiunile de Azi")}\n\n` +
-      sections.join("\n\n") +
-      `\n\n*Misiunile se resetează automat la miezul nopții (UTC).*`,
+        sections.join("\n\n") +
+        `\n\n*Misiunile se resetează automat la miezul nopții (UTC).*`,
     )
     .setFooter({ text: BRAND_FOOTER });
 }
@@ -585,9 +925,15 @@ export const TALISMAN_RANK_SIZE = 5;
 export const TALISMAN_MAX_LEVEL = 5;
 
 /** Rank info for an infinite-level talisman: rank goes up every TALISMAN_RANK_SIZE levels. */
-export function talismanRankInfo(level: number): { rank: number; inRank: number } {
+export function talismanRankInfo(level: number): {
+  rank: number;
+  inRank: number;
+} {
   const lvl = Math.max(0, level);
-  return { rank: Math.floor(lvl / TALISMAN_RANK_SIZE), inRank: lvl % TALISMAN_RANK_SIZE };
+  return {
+    rank: Math.floor(lvl / TALISMAN_RANK_SIZE),
+    inRank: lvl % TALISMAN_RANK_SIZE,
+  };
 }
 
 /** Bar + rank badge line for a talisman level. */
@@ -598,43 +944,70 @@ export function talismanRankLine(level: number): string {
 }
 export const TALISMANS = {
   crista_vietii: {
-    label: "Crista Vieții", emoji: "🔮", price: 250,
+    label: "Crista Vieții",
+    emoji: "🔮",
+    price: 250,
     passiveLabel: "Regen de viață",
     values: [15, 30, 45, 65, 90],
     fmt: (v: number) => `+${v} HP după uciderea unui monstru`,
-    upgradeItems: { common: "fragment_cenusa" as ItemKey, rare: "coama_dragonului" as ItemKey },
+    upgradeItems: {
+      common: "fragment_cenusa" as ItemKey,
+      rare: "coama_dragonului" as ItemKey,
+    },
   },
   runa_sangelui: {
-    label: "Runa Sângelui", emoji: "🩸", price: 300,
+    label: "Runa Sângelui",
+    emoji: "🩸",
+    price: 300,
     passiveLabel: "Furt de viață",
     values: [8, 18, 28, 40, 55],
     fmt: (v: number) => `+${v} HP la fiecare lovitură critică`,
-    upgradeItems: { common: "sange_monstru" as ItemKey, rare: "inima_abisului" as ItemKey },
+    upgradeItems: {
+      common: "sange_monstru" as ItemKey,
+      rare: "inima_abisului" as ItemKey,
+    },
   },
   giulgiul_stins: {
-    label: "Giulgiul Stins", emoji: "🌫️", price: 280,
+    label: "Giulgiul Stins",
+    emoji: "🌫️",
+    price: 280,
     passiveLabel: "Reducere daune",
     values: [3, 7, 11, 16, 22],
     fmt: (v: number) => `-${v} din daunele primite de la monștri`,
-    upgradeItems: { common: "esenta_umbrei" as ItemKey, rare: "coama_dragonului" as ItemKey },
+    upgradeItems: {
+      common: "esenta_umbrei" as ItemKey,
+      rare: "coama_dragonului" as ItemKey,
+    },
   },
   sfera_abisului: {
-    label: "Sfera Abisului", emoji: "🌑", price: 350,
+    label: "Sfera Abisului",
+    emoji: "🌑",
+    price: 350,
     passiveLabel: "Percepție abisală",
     values: [5, 12, 18, 25, 35],
     fmt: (v: number) => `+${v}% șansă de lovitură critică`,
-    upgradeItems: { common: "picatura_otr" as ItemKey, rare: "inima_abisului" as ItemKey },
+    upgradeItems: {
+      common: "picatura_otr" as ItemKey,
+      rare: "inima_abisului" as ItemKey,
+    },
   },
   piatra_eco: {
-    label: "Piatra Eco", emoji: "🪨", price: 320,
+    label: "Piatra Eco",
+    emoji: "🪨",
+    price: 320,
     passiveLabel: "Rezonanță XP",
     values: [25, 60, 95, 135, 180],
     fmt: (v: number) => `+${v}% XP din fiecare monstru ucis`,
-    upgradeItems: { common: "esenta_umbrei" as ItemKey, rare: "coama_dragonului" as ItemKey },
+    upgradeItems: {
+      common: "esenta_umbrei" as ItemKey,
+      rare: "coama_dragonului" as ItemKey,
+    },
   },
 } as const;
 export type TalismanKey = keyof typeof TALISMANS;
-export function isTalismanKey(k: string): k is TalismanKey { return k in TALISMANS; }
+export function isTalismanKey(k: string): k is TalismanKey {
+  return k in TALISMANS;
+}
 
 /** Passive magnitude for a talisman at a given level. Past the table (Nv.5) the
  *  value keeps growing by the last per-level delta — levels are infinite. */
@@ -655,21 +1028,42 @@ export function talismanDesc(key: TalismanKey, level: number): string {
 /** Material cost to upgrade a talisman from `fromLevel` to `fromLevel + 1`.
  *  From Nv.5 up, each rank tier also demands its rarity material (dropped by
  *  rar/epic/legendar/mitic monsters and mini-bossi). */
-export function talismanUpgradeCost(key: TalismanKey, fromLevel: number): {
-  common: ItemKey; commonQty: number; rare: ItemKey; rareQty: number;
-  tier: ItemKey | null; tierQty: number;
+export function talismanUpgradeCost(
+  key: TalismanKey,
+  fromLevel: number,
+): {
+  common: ItemKey;
+  commonQty: number;
+  rare: ItemKey;
+  rareQty: number;
+  tier: ItemKey | null;
+  tierQty: number;
 } {
   const t = TALISMANS[key].upgradeItems;
-  const base = { common: t.common, commonQty: fromLevel + 2, rare: t.rare, rareQty: fromLevel };
-  if (fromLevel < TALISMAN_RANK_SIZE) return { ...base, tier: null, tierQty: 0 };
+  const base = {
+    common: t.common,
+    commonQty: fromLevel + 2,
+    rare: t.rare,
+    rareQty: fromLevel,
+  };
+  if (fromLevel < TALISMAN_RANK_SIZE)
+    return { ...base, tier: null, tierQty: 0 };
   const tierIdx = Math.min(4, Math.floor(fromLevel / TALISMAN_RANK_SIZE));
-  const TIER_MATERIALS: ItemKey[] = ["solz_spectral", "solz_spectral", "cristal_abis", "sange_titan", "fragment_mitic"];
+  const TIER_MATERIALS: ItemKey[] = [
+    "solz_spectral",
+    "solz_spectral",
+    "cristal_abis",
+    "sange_titan",
+    "fragment_mitic",
+  ];
   const tier = TIER_MATERIALS[tierIdx]!;
   const tierQty = (fromLevel % TALISMAN_RANK_SIZE) + 1;
   return { ...base, tier, tierQty };
 }
 
-function rand(min: number, max: number) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+function rand(min: number, max: number) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
 function hpBar(cur: number, max: number) {
   const pct = max > 0 ? Math.max(0, Math.min(1, cur / max)) : 0;
   let f = Math.round(pct * 10);
@@ -679,16 +1073,24 @@ function hpBar(cur: number, max: number) {
 }
 
 export type CombatResult = {
-  playerDmg: number; isCrit: boolean;
+  playerDmg: number;
+  isCrit: boolean;
   /** Damage before crit/empower/battle-event multipliers — for the breakdown line. */
   baseDmg: number;
   monsterDefeated: boolean;
-  monsterHit: boolean; monsterDmg: number; playerDodged: boolean;
+  monsterHit: boolean;
+  monsterDmg: number;
+  playerDodged: boolean;
   playerDied: boolean;
-  newMonsterHp: number; newPlayerHp: number;
-  xpGained: number; oboliGained: number;
-  levelUp: boolean; newMonsterLevel: number; newMonsterRarity: Rarity;
-  usedEmpower: boolean; usedShield: boolean;
+  newMonsterHp: number;
+  newPlayerHp: number;
+  xpGained: number;
+  oboliGained: number;
+  levelUp: boolean;
+  newMonsterLevel: number;
+  newMonsterRarity: Rarity;
+  usedEmpower: boolean;
+  usedShield: boolean;
   /** Total damage absorbed by the Ash Shield this round (drained from the shield's own HP). */
   shieldAbsorbed: number;
   /** True when the shield shattered this round (its HP couldn't cover the absorption). */
@@ -697,7 +1099,8 @@ export type CombatResult = {
   shieldHpLeft: number;
   /** Mana sapped by the shield strain this round (shieldManaDrainPct% of the absorbed damage). */
   shieldManaDrained: number;
-  stormDrain: number; battleEventEmoji: string;
+  stormDrain: number;
+  battleEventEmoji: string;
   /** HP restored by talisman passives (runa_sangelui life steal on crit). */
   hpRegen: number;
   /** Boss ability charge after this round (persisted on the participant). */
@@ -714,7 +1117,13 @@ export type CombatResult = {
   veteranRankMaxedNow: boolean;
 };
 
-export function doCombat(p: EventParticipant, talismanKey?: string | null, talismanLevel = 1, bossKills?: Record<string, number> | null, shieldHp?: number | null): CombatResult {
+export function doCombat(
+  p: EventParticipant,
+  talismanKey?: string | null,
+  talismanLevel = 1,
+  bossKills?: Record<string, number> | null,
+  shieldHp?: number | null,
+): CombatResult {
   const vetRank = veteranRankFor(p.monsterLevel, p.monsterRarity, bossKills);
   const vetMult = veteranMult(vetRank);
   const battle = getActiveBattleEvent();
@@ -730,7 +1139,10 @@ export function doCombat(p: EventParticipant, talismanKey?: string | null, talis
   let shieldBroke = false;
   const applyShield = (dmg: number): number => {
     if (!shieldActive || shieldBroke) return dmg;
-    const reduced = Math.max(1, Math.round(dmg * (1 - shieldReduction(p.shieldLevel))));
+    const reduced = Math.max(
+      1,
+      Math.round(dmg * (1 - shieldReduction(p.shieldLevel))),
+    );
     const absorbed = Math.max(0, dmg - reduced);
     if (absorbed <= 0) return dmg;
     if (shieldHpLeft >= absorbed) {
@@ -746,9 +1158,13 @@ export function doCombat(p: EventParticipant, talismanKey?: string | null, talis
 
   // sfera_abisului: bonus crit permanent per round
   const talismanCritAdd =
-    talismanKey === "sfera_abisului" ? talismanValue("sfera_abisului", talismanLevel) : 0;
+    talismanKey === "sfera_abisului"
+      ? talismanValue("sfera_abisului", talismanLevel)
+      : 0;
 
-  const isCrit = Math.random() * 100 < Math.min(100, Math.max(0, p.critBonus + mods.critAdd + talismanCritAdd));
+  const isCrit =
+    Math.random() * 100 <
+    Math.min(100, Math.max(0, p.critBonus + mods.critAdd + talismanCritAdd));
   const baseDmg = rand(10, 20) + p.attackBonus;
   let base = baseDmg;
   if (isCrit) base *= 2;
@@ -759,11 +1175,17 @@ export function doCombat(p: EventParticipant, talismanKey?: string | null, talis
   const newMHp = Math.max(0, p.monsterCurrentHp - playerDmg);
   const monsterDefeated = newMHp <= 0;
 
-  let xpGained = 0, oboliGained = 0, newMonsterLevel = p.monsterLevel, levelUp = false;
+  let xpGained = 0,
+    oboliGained = 0,
+    newMonsterLevel = p.monsterLevel,
+    levelUp = false;
   let newMonsterRarity: Rarity = p.monsterRarity as Rarity;
   const veteranMaxBonus = monsterDefeated && vetRank >= VETERAN_RANK_CAP;
-  const bossKillsBefore = isBossFight(p.monsterLevel, p.monsterRarity ?? undefined)
-    ? bossKills?.[String(bossIndex(p.monsterLevel))] ?? 0
+  const bossKillsBefore = isBossFight(
+    p.monsterLevel,
+    p.monsterRarity ?? undefined,
+  )
+    ? (bossKills?.[String(bossIndex(p.monsterLevel))] ?? 0)
     : 0;
   const veteranRankMaxedNow =
     monsterDefeated &&
@@ -772,7 +1194,8 @@ export function doCombat(p: EventParticipant, talismanKey?: string | null, talis
   if (monsterDefeated) {
     const r = monsterReward(p.monsterLevel, p.monsterRarity as Rarity);
     const rewardMult = veteranRewardMult(vetRank);
-    xpGained = Math.round(r.xp * rewardMult) + p.xpPerKill; oboliGained = Math.round(r.oboli * rewardMult);
+    xpGained = Math.round(r.xp * rewardMult) + p.xpPerKill;
+    oboliGained = Math.round(r.oboli * rewardMult);
     newMonsterLevel = p.monsterLevel + 1;
     newMonsterRarity = rollRarity(newMonsterLevel);
     levelUp = newMonsterLevel % LEVELUP_INTERVAL === 0;
@@ -781,23 +1204,35 @@ export function doCombat(p: EventParticipant, talismanKey?: string | null, talis
   // Smoke-storm drain hits the fighter once, regardless of the monster's turn.
   const stormDrain = consumeStormDrain(p.eventId, p.discordId);
   let newPlayerHp = Math.max(0, p.currentHp - stormDrain);
-  let monsterHit = false, monsterDmg = 0, playerDodged = false, playerDied = newPlayerHp <= 0;
+  let monsterHit = false,
+    monsterDmg = 0,
+    playerDodged = false,
+    playerDied = newPlayerHp <= 0;
 
   if (!monsterDefeated && !playerDied) {
     const missBonus = battle?.monsterMissBonus ?? 0;
-    monsterHit = Math.random() * 100 < monsterHitPct(p.monsterLevel, p.monsterRarity) - missBonus;
+    monsterHit =
+      Math.random() * 100 <
+      monsterHitPct(p.monsterLevel, p.monsterRarity) - missBonus;
     if (monsterHit) {
       playerDodged = Math.random() * 100 < p.dodgeBonus;
       if (!playerDodged) {
         const [mn, mx] = monsterDmgRange(p.monsterLevel, p.monsterRarity);
-        monsterDmg = Math.max(1, Math.round(rand(mn, mx) * vetMult) - p.defenseBonus);
+        monsterDmg = Math.max(
+          1,
+          Math.round(rand(mn, mx) * vetMult) - p.defenseBonus,
+        );
         // giulgiul_stins: flat damage reduction from monsters (can reduce to 0)
         if (talismanKey === "giulgiul_stins") {
           const reduction = talismanValue("giulgiul_stins", talismanLevel);
           monsterDmg = Math.max(0, monsterDmg - reduction);
         }
         monsterDmg = applyShield(monsterDmg);
-        if (mods.damageTakenMult !== 1) monsterDmg = Math.max(1, Math.round(monsterDmg * mods.damageTakenMult));
+        if (mods.damageTakenMult !== 1)
+          monsterDmg = Math.max(
+            1,
+            Math.round(monsterDmg * mods.damageTakenMult),
+          );
         newPlayerHp = Math.max(0, newPlayerHp - monsterDmg);
         playerDied = newPlayerHp <= 0;
       }
@@ -808,19 +1243,33 @@ export function doCombat(p: EventParticipant, talismanKey?: string | null, talis
   // full, the boss unleashes its special ability (% of the player's max HP,
   // some bosses also heal for that amount), then the bar resets.
   let newBossCharge = p.bossCharge ?? 0;
-  let abilityFired = false, abilityDmg = 0, abilityHeal = 0;
-  let finalMonsterHp = monsterDefeated ? monsterSpawnHp(newMonsterLevel, newMonsterRarity, bossKills) : newMHp;
-  if (isBossFight(p.monsterLevel, p.monsterRarity as Rarity) && !monsterDefeated) {
+  let abilityFired = false,
+    abilityDmg = 0,
+    abilityHeal = 0;
+  let finalMonsterHp = monsterDefeated
+    ? monsterSpawnHp(newMonsterLevel, newMonsterRarity, bossKills)
+    : newMHp;
+  if (
+    isBossFight(p.monsterLevel, p.monsterRarity as Rarity) &&
+    !monsterDefeated
+  ) {
     newBossCharge += 1;
     if (newBossCharge >= BOSS_CHARGE_MAX && !playerDied) {
       const ab = BOSSES[bossIndex(p.monsterLevel)]!.ability;
       abilityFired = true;
-      abilityDmg = applyShield(Math.max(1, Math.round((p.maxHp * ab.pct) / 100)));
+      abilityDmg = applyShield(
+        Math.max(1, Math.round((p.maxHp * ab.pct) / 100)),
+      );
       newPlayerHp = Math.max(0, newPlayerHp - abilityDmg);
       playerDied = newPlayerHp <= 0;
       if (ab.steal) {
         abilityHeal = abilityDmg;
-        finalMonsterHp = Math.min(Math.round(monsterMaxHp(p.monsterLevel, p.monsterRarity as Rarity) * vetMult), finalMonsterHp + abilityHeal);
+        finalMonsterHp = Math.min(
+          Math.round(
+            monsterMaxHp(p.monsterLevel, p.monsterRarity as Rarity) * vetMult,
+          ),
+          finalMonsterHp + abilityHeal,
+        );
       }
       newBossCharge = 0;
     }
@@ -835,11 +1284,36 @@ export function doCombat(p: EventParticipant, talismanKey?: string | null, talis
       : 0;
 
   return {
-    playerDmg, isCrit, baseDmg, monsterDefeated, monsterHit, monsterDmg, playerDodged,
-    playerDied, newMonsterHp: finalMonsterHp,
-    newPlayerHp, xpGained, oboliGained, levelUp, newMonsterLevel, newMonsterRarity,
-    usedEmpower, usedShield, shieldAbsorbed, shieldBroke, shieldHpLeft, shieldManaDrained: shieldManaDrain(shieldAbsorbed, p.shieldLevel), stormDrain, battleEventEmoji: battle?.emoji ?? "", hpRegen,
-    newBossCharge, abilityFired, abilityDmg, abilityHeal, veteranMaxBonus, veteranRankMaxedNow,
+    playerDmg,
+    isCrit,
+    baseDmg,
+    monsterDefeated,
+    monsterHit,
+    monsterDmg,
+    playerDodged,
+    playerDied,
+    newMonsterHp: finalMonsterHp,
+    newPlayerHp,
+    xpGained,
+    oboliGained,
+    levelUp,
+    newMonsterLevel,
+    newMonsterRarity,
+    usedEmpower,
+    usedShield,
+    shieldAbsorbed,
+    shieldBroke,
+    shieldHpLeft,
+    shieldManaDrained: shieldManaDrain(shieldAbsorbed, p.shieldLevel),
+    stormDrain,
+    battleEventEmoji: battle?.emoji ?? "",
+    hpRegen,
+    newBossCharge,
+    abilityFired,
+    abilityDmg,
+    abilityHeal,
+    veteranMaxBonus,
+    veteranRankMaxedNow,
   };
 }
 
@@ -852,27 +1326,38 @@ export function buildStartEmbed(expiresAt?: Date): EmbedBuilder {
     .setTitle("⚔️🔥  ORA UMBRELOR A ÎNCEPUT  🔥⚔️")
     .setDescription(
       "Umbrele se ridică din adâncuri, iar cenușa dansează în aer.\n" +
-      "Regatul Cenușii cheamă luptătorii să își dovedească puterea.\n\n" +
-      "Un val nesfârșit de creaturi se pregătește să vă înfrunte.\n" +
-      "Apasă pe butonul sacru și intră în luptă.\n" +
-      sectionTitle("Atenție") + "\n" +
-      "💀 Moartea în acest eveniment este **definitivă**.\n" +
-      "Cei căzuți în Umbre nu mai pot continua până la următoarea chemare.\n" +
-      "🗝️ Învingând Dragonul poți găsi și **chei** ascunse în pradă." +
-      timerLine,
+        "Regatul Cenușii cheamă luptătorii să își dovedească puterea.\n\n" +
+        "Un val nesfârșit de creaturi se pregătește să vă înfrunte.\n" +
+        "Apasă pe butonul sacru și intră în luptă.\n" +
+        sectionTitle("Atenție") +
+        "\n" +
+        "💀 Moartea în acest eveniment este **definitivă**.\n" +
+        "Cei căzuți în Umbre nu mai pot continua până la următoarea chemare.\n" +
+        "🗝️ Învingând Dragonul poți găsi și **chei** ascunse în pradă." +
+        timerLine,
     )
     .setTimestamp();
 }
 
-export function buildCombatEmbed(p: EventParticipant, extra = "", avatarUrl?: string | null, player?: Player | null): EmbedBuilder {
+export function buildCombatEmbed(
+  p: EventParticipant,
+  extra = "",
+  avatarUrl?: string | null,
+  player?: Player | null,
+): EmbedBuilder {
   const rarity = (p.monsterRarity as Rarity) ?? "comun";
   const [mn, mx] = monsterDmgRange(p.monsterLevel, rarity);
   const vetRank = veteranRankFor(p.monsterLevel, rarity, player?.bossKills);
-  const mMaxHp = Math.round(monsterMaxHp(p.monsterLevel, rarity) * veteranMult(vetRank));
+  const mMaxHp = Math.round(
+    monsterMaxHp(p.monsterLevel, rarity) * veteranMult(vetRank),
+  );
   const meta = RARITY[rarity] ?? RARITY.comun;
   const baseReward = monsterReward(p.monsterLevel, rarity);
   const rewardMult = veteranRewardMult(vetRank);
-  const reward = { xp: Math.round(baseReward.xp * rewardMult), oboli: Math.round(baseReward.oboli * rewardMult) };
+  const reward = {
+    xp: Math.round(baseReward.xp * rewardMult),
+    oboli: Math.round(baseReward.oboli * rewardMult),
+  };
   const zone = zoneFor(p.monsterLevel);
   const boss = isBossFight(p.monsterLevel, rarity);
   const title = boss
@@ -895,8 +1380,12 @@ export function buildCombatEmbed(p: EventParticipant, extra = "", avatarUrl?: st
       cs.crit > 0 ? `+${cs.crit}% critic` : "",
       cls.xpMult !== 1 ? `XP ×${cls.xpMult}` : "",
       cls.oboliMult !== 1 ? `Oboli ×${cls.oboliMult}` : "",
-    ].filter(Boolean).join(", ");
-    bonusLines.push(`${cls.emoji} **${cls.label}** Nv.${clsLvl} — ${clsParts || cls.desc}`);
+    ]
+      .filter(Boolean)
+      .join(", ");
+    bonusLines.push(
+      `${cls.emoji} **${cls.label}** Nv.${clsLvl} — ${clsParts || cls.desc}`,
+    );
   }
   if (player?.companion && isCompanionKey(player.companion)) {
     const comp = COMPANIONS[player.companion];
@@ -906,60 +1395,71 @@ export function buildCombatEmbed(p: EventParticipant, extra = "", avatarUrl?: st
       `${comp.emoji} **${evolved ? comp.evoLabel : comp.label}** Nv.${compLvl}${evolved ? " ✨" : ""} — ${companionEffectiveDesc(player.companion, compLvl)}`,
     );
   }
-  const talKey = player?.talisman && isTalismanKey(player.talisman) ? player.talisman : null;
+  const talKey =
+    player?.talisman && isTalismanKey(player.talisman) ? player.talisman : null;
   if (talKey) {
     const t = TALISMANS[talKey];
     const tLvl = player?.talismanLevel ?? 1;
-    bonusLines.push(`${t.emoji} **${t.label}** Nv.${tLvl} — ${talismanDesc(talKey, tLvl)}`);
+    bonusLines.push(
+      `${t.emoji} **${t.label}** Nv.${tLvl} — ${talismanDesc(talKey, tLvl)}`,
+    );
   }
-  if (p.xpPerKill > 0) bonusLines.push(`🔹 **+${p.xpPerKill} XP** la fiecare monstru ucis *(bonus level-up)*`);
+  if (p.xpPerKill > 0)
+    bonusLines.push(
+      `🔹 **+${p.xpPerKill} XP** la fiecare monstru ucis *(bonus level-up)*`,
+    );
   const bonusSection = bonusLines.length
     ? `\n\n📌 **Bonusurile tale:**\n${bonusLines.join("\n")}`
     : "";
-  const rewardXpStr = p.xpPerKill > 0
-    ? `${reward.xp} XP *(+${p.xpPerKill} bonus)*`
-    : `${reward.xp} XP`;
+  const rewardXpStr =
+    p.xpPerKill > 0
+      ? `${reward.xp} XP *(+${p.xpPerKill} bonus)*`
+      : `${reward.xp} XP`;
   const embed = new EmbedBuilder()
     .setColor(meta.color)
     .setTitle(title)
     .setDescription(
       `🗺️ *${zone.name}* — ${zone.intro}\n\n` +
-      (boss
-        ? `👁️ *${BOSSES[bossIndex(p.monsterLevel)]!.desc}*\n` +
-          `☠️ Rang boss: **${bossRank(p.monsterLevel)}/10** ${"🔥".repeat(bossRank(p.monsterLevel))}${"▱".repeat(10 - bossRank(p.monsterLevel))}\n` +
-          (vetRank > 0
-            ? `🏅 Rang veteran: **Rang ${vetRank} · ${veteranTierLabel(vetRank)}** — *te-a studiat! +${vetRank * 20}% viață și daune*\n`
-            : "") +
-          (vetRank >= VETERAN_RANK_CAP
-            ? `👑 **RANG VETERAN MAXIM!** *Pradă de veteran suprem: recompensă ×${VETERAN_MAX_REWARD_MULT}!*\n`
-            : "") +
-          `${BOSSES[bossIndex(p.monsterLevel)]!.ability.emoji} Abilitate: **${BOSSES[bossIndex(p.monsterLevel)]!.ability.name}** ${chargeBar(p.bossCharge ?? 0, BOSS_CHARGE_MAX)}\n` +
-          `⚡ *Când bara se umple, bossul își dezlănțuie abilitatea!*\n` +
-          `💀 O prezență colosală blochează drumul. Recompensă dublă pentru cel care o doboară!\n\n`
-        : `👁️ *${monsterDesc(p.monsterLevel)}*\n\n`) +
-      (battle ? `${battle.emoji} *${battle.title} e activ acum!*\n\n` : "") +
-      (extra ? `${extra}\n\n` : "") +
-      `❤️ HP Monstru: **${p.monsterCurrentHp}/${mMaxHp}** ${hpBar(p.monsterCurrentHp, mMaxHp)}\n` +
-      `⚔️ Daune: **${mn} – ${mx}**\n` +
-      `🎯 Șansă lovitură: **${monsterHitPct(p.monsterLevel, rarity).toFixed(0)}%**\n` +
-      `💰 Recompensă: **${rewardXpStr}, ${reward.oboli} Oboli**\n\n` +
-      `━━━━━━━━━━━━━━━━━━\n` +
-      `❤️ HP-ul tău: **${p.currentHp}/${p.maxHp}** ${hpBar(p.currentHp, p.maxHp)}\n` +
-      (player
-        ? `🔷 Mana ta: **${player.mana ?? MANA_BASE}/${maxMana(player.manaLevel ?? 0)}** ${manaBar(player.mana ?? MANA_BASE, maxMana(player.manaLevel ?? 0))} *(+${manaRegenPct(player.manaRegenLevel ?? 0)}% la fiecare atac)*\n`
-        : "") +
-      (p.shieldNext
-        ? `🛡️ Viața scutului: **${p.shieldHp ?? 0}/${shieldMaxHp(Math.max(1, p.shieldLevel))}** ${shieldBar(p.shieldHp ?? 0, shieldMaxHp(Math.max(1, p.shieldLevel)))}\n`
-        : "") +
-      `🪙 Oboli strânși în eveniment: **${p.oboli}** *(20% se pierd la moarte)*` +
-      bonusSection +
-      effectsSection,
+        (boss
+          ? `👁️ *${BOSSES[bossIndex(p.monsterLevel)]!.desc}*\n` +
+            `☠️ Rang boss: **${bossRank(p.monsterLevel)}/10** ${"🔥".repeat(bossRank(p.monsterLevel))}${"▱".repeat(10 - bossRank(p.monsterLevel))}\n` +
+            (vetRank > 0
+              ? `🏅 Rang veteran: **Rang ${vetRank} · ${veteranTierLabel(vetRank)}** — *te-a studiat! +${vetRank * 20}% viață și daune*\n`
+              : "") +
+            (vetRank >= VETERAN_RANK_CAP
+              ? `👑 **RANG VETERAN MAXIM!** *Pradă de veteran suprem: recompensă ×${VETERAN_MAX_REWARD_MULT}!*\n`
+              : "") +
+            `${BOSSES[bossIndex(p.monsterLevel)]!.ability.emoji} Abilitate: **${BOSSES[bossIndex(p.monsterLevel)]!.ability.name}** ${chargeBar(p.bossCharge ?? 0, BOSS_CHARGE_MAX)}\n` +
+            `⚡ *Când bara se umple, bossul își dezlănțuie abilitatea!*\n` +
+            `💀 O prezență colosală blochează drumul. Recompensă dublă pentru cel care o doboară!\n\n`
+          : `👁️ *${monsterDesc(p.monsterLevel)}*\n\n`) +
+        (battle ? `${battle.emoji} *${battle.title} e activ acum!*\n\n` : "") +
+        (extra ? `${extra}\n\n` : "") +
+        `❤️ HP Monstru: **${p.monsterCurrentHp}/${mMaxHp}** ${hpBar(p.monsterCurrentHp, mMaxHp)}\n` +
+        `⚔️ Daune: **${mn} – ${mx}**\n` +
+        `🎯 Șansă lovitură: **${monsterHitPct(p.monsterLevel, rarity).toFixed(0)}%**\n` +
+        `💰 Recompensă: **${rewardXpStr}, ${reward.oboli} Oboli**\n\n` +
+        `━━━━━━━━━━━━━━━━━━\n` +
+        `❤️ HP-ul tău: **${p.currentHp}/${p.maxHp}** ${hpBar(p.currentHp, p.maxHp)}\n` +
+        (player
+          ? `🔷 Mana ta: **${player.mana ?? MANA_BASE}/${maxMana(player.manaLevel ?? 0)}** ${manaBar(player.mana ?? MANA_BASE, maxMana(player.manaLevel ?? 0))} *(+${manaRegenPct(player.manaRegenLevel ?? 0)}% la fiecare atac)*\n`
+          : "") +
+        (p.shieldNext
+          ? `🛡️ Viața scutului: **${p.shieldHp ?? 0}/${shieldMaxHp(Math.max(1, p.shieldLevel))}** ${shieldBar(p.shieldHp ?? 0, shieldMaxHp(Math.max(1, p.shieldLevel)))}\n`
+          : "") +
+        `🪙 Oboli strânși în eveniment: **${p.oboli}** *(20% se pierd la moarte)*` +
+        bonusSection +
+        effectsSection,
     )
     .setImage(
-      (boss ? bossImg(bossIndex(p.monsterLevel)) : monsterImg(monsterIndex(p.monsterLevel), p.monsterRarity)) ??
+      (boss
+        ? bossImg(bossIndex(p.monsterLevel))
+        : monsterImg(monsterIndex(p.monsterLevel), p.monsterRarity)) ??
         IMG.monster,
     )
-    .setFooter({ text: `⚔️ +${p.attackBonus} | 🛡️ +${p.defenseBonus} | 🌀 ${p.dodgeBonus}% | 💥 ${p.critBonus}% | ❤️ +${p.maxHp - 100}` });
+    .setFooter({
+      text: `⚔️ +${p.attackBonus} | 🛡️ +${p.defenseBonus} | 🌀 ${p.dodgeBonus}% | 💥 ${p.critBonus}% | ❤️ +${p.maxHp - 100}`,
+    });
   if (avatarUrl) embed.setThumbnail(avatarUrl);
   return embed;
 }
@@ -978,13 +1478,25 @@ export type RewardBreakdown = {
   cristaHeal?: number;
 };
 
-export function buildResultText(r: CombatResult, itemDrop?: ItemKey | null, breakdown?: RewardBreakdown): string {
+export function buildResultText(
+  r: CombatResult,
+  itemDrop?: ItemKey | null,
+  breakdown?: RewardBreakdown,
+): string {
   let txt = "";
-  if (r.usedEmpower) txt += "🌑 **LOVITURA UMBREI!** Puterea Umbrelor îți dublează lovitura!\n";
-  if (r.usedShield) txt += `🛡️ **SCUT DE CENUȘĂ activ!** A absorbit **${r.shieldAbsorbed}** daune *(viața scutului: ${r.shieldHpLeft} rămasă, −${r.shieldManaDrained} mană)*.\n`;
-  if (r.shieldBroke) txt += "💥 *Scutul de Cenușă s-a spart — viața lui nu a mai acoperit daunele! Lovitura te-a atins din plin.*\n";
+  if (r.usedEmpower)
+    txt += "🌑 **LOVITURA UMBREI!** Puterea Umbrelor îți dublează lovitura!\n";
+  if (r.usedShield)
+    txt += `🛡️ **SCUT DE CENUȘĂ activ!** A absorbit **${r.shieldAbsorbed}** daune *(viața scutului: ${r.shieldHpLeft} rămasă, −${r.shieldManaDrained} mană)*.\n`;
+  if (r.shieldBroke)
+    txt +=
+      "💥 *Scutul de Cenușă s-a spart — viața lui nu a mai acoperit daunele! Lovitura te-a atins din plin.*\n";
   if (r.isCrit) {
-    txt += CRIT_LINES[Math.floor(Math.random() * CRIT_LINES.length)]!.replace("{dmg}", String(r.playerDmg)) + "\n";
+    txt +=
+      CRIT_LINES[Math.floor(Math.random() * CRIT_LINES.length)]!.replace(
+        "{dmg}",
+        String(r.playerDmg),
+      ) + "\n";
   } else {
     txt += `⚔️ **AI LOVIT MONSTRUL!**\nLovitura ta a atins creatura pentru **${r.playerDmg} daune**.\nUmbrele se clatină în jurul ei.\n`;
   }
@@ -997,12 +1509,19 @@ export function buildResultText(r: CombatResult, itemDrop?: ItemKey | null, brea
   }
   txt += "\n";
   if (r.abilityFired && r.abilityDmg > 0) {
-    txt += `⚡ **BOSSUL ÎȘI DEZLĂNȚUIE ABILITATEA!** Suferi **${r.abilityDmg} daune**!` +
-      (r.abilityHeal > 0 ? ` Bossul îți absoarbe viața și se vindecă cu **+${r.abilityHeal} HP**!` : "") + "\n";
+    txt +=
+      `⚡ **BOSSUL ÎȘI DEZLĂNȚUIE ABILITATEA!** Suferi **${r.abilityDmg} daune**!` +
+      (r.abilityHeal > 0
+        ? ` Bossul îți absoarbe viața și se vindecă cu **+${r.abilityHeal} HP**!`
+        : "") +
+      "\n";
   }
-  if (r.stormDrain > 0) txt += `🌪️ Furtuna de Fum îți arde **${r.stormDrain} HP**!\n`;
-  if (r.hpRegen > 0) txt += `🩸 **Runa Sângelui pulsează!** Absorbi **+${r.hpRegen} HP** din rana creaturii.\n`;
-  if (breakdown?.cristaHeal) txt += `🔮 **Crista Vieții strălucește!** Recuperezi **+${breakdown.cristaHeal} HP** după victorie.\n`;
+  if (r.stormDrain > 0)
+    txt += `🌪️ Furtuna de Fum îți arde **${r.stormDrain} HP**!\n`;
+  if (r.hpRegen > 0)
+    txt += `🩸 **Runa Sângelui pulsează!** Absorbi **+${r.hpRegen} HP** din rana creaturii.\n`;
+  if (breakdown?.cristaHeal)
+    txt += `🔮 **Crista Vieții strălucește!** Recuperezi **+${breakdown.cristaHeal} HP** după victorie.\n`;
   if (r.monsterDefeated) {
     const xpStr =
       breakdown && breakdown.baseXp !== r.xpGained
@@ -1024,12 +1543,16 @@ export function buildResultText(r: CombatResult, itemDrop?: ItemKey | null, brea
     }
     if (!r.levelUp) {
       const meta = RARITY[r.newMonsterRarity] ?? RARITY.comun;
-      const label = r.newMonsterRarity === "boss" ? "🔥 UN MINI-BOSS" : `${meta.emoji} Un monstru ${meta.label}`;
+      const label =
+        r.newMonsterRarity === "boss"
+          ? "🔥 UN MINI-BOSS"
+          : `${meta.emoji} Un monstru ${meta.label}`;
       txt += `👁️ ${label} se ridică… **Nivel ${r.newMonsterLevel}**`;
     }
   } else if (r.monsterHit) {
     if (r.playerDodged) txt += "🌀 **AI EVITAT ATACUL!** Umbrele te-au ferit.";
-    else txt += `💀 **MONSTRUL RIPOSTEAZĂ!**\nCreatura îți aplică **${r.monsterDmg} daune**.\nUmbrele îți apasă umerii, iar sângele îți pulsează în tâmple.`;
+    else
+      txt += `💀 **MONSTRUL RIPOSTEAZĂ!**\nCreatura îți aplică **${r.monsterDmg} daune**.\nUmbrele îți apasă umerii, iar sângele îți pulsează în tâmple.`;
   } else {
     txt += "💨 Monstrul a ratat atacul!";
   }
@@ -1037,15 +1560,25 @@ export function buildResultText(r: CombatResult, itemDrop?: ItemKey | null, brea
 }
 
 /** "🎒 Pradă adunată: ..." line for the event summary (empty string when nothing was farmed). */
-export function formatItemsFarmed(items?: Record<string, number> | null): string {
+export function formatItemsFarmed(
+  items?: Record<string, number> | null,
+): string {
   if (!items) return "";
   const parts = Object.entries(items)
     .filter(([k, qty]) => qty > 0 && isItemKey(k))
-    .map(([k, qty]) => `${ITEMS[k as ItemKey].emoji} **${qty}× ${ITEMS[k as ItemKey].label}**`);
+    .map(
+      ([k, qty]) =>
+        `${ITEMS[k as ItemKey].emoji} **${qty}× ${ITEMS[k as ItemKey].label}**`,
+    );
   return parts.length ? `🎒 Pradă adunată: ${parts.join(" · ")}\n` : "";
 }
 
-function formatEventReward(emoji: string, label: string, final: number, base: number): string {
+function formatEventReward(
+  emoji: string,
+  label: string,
+  final: number,
+  base: number,
+): string {
   if (final <= 0) return "";
   if (final !== base && base > 0) {
     return `${emoji} **${final.toLocaleString()} ${label}** *(baza: ${base.toLocaleString()})*\n`;
@@ -1053,33 +1586,46 @@ function formatEventReward(emoji: string, label: string, final: number, base: nu
   return `${emoji} **${final.toLocaleString()} ${label}**\n`;
 }
 
-export function buildDeathEmbed(opts: {
-  lostOboli?: number;
-  totalDamage?: number;
-  oboli?: number;
-  xp?: number;
-  baseOboli?: number;
-  baseXp?: number;
-  itemsFarmed?: Record<string, number> | null;
-} = {}): EmbedBuilder {
-  const { lostOboli = 0, totalDamage = 0, oboli = 0, xp = 0, baseOboli = 0, baseXp = 0, itemsFarmed } = opts;
+export function buildDeathEmbed(
+  opts: {
+    lostOboli?: number;
+    totalDamage?: number;
+    oboli?: number;
+    xp?: number;
+    baseOboli?: number;
+    baseXp?: number;
+    itemsFarmed?: Record<string, number> | null;
+  } = {},
+): EmbedBuilder {
+  const {
+    lostOboli = 0,
+    totalDamage = 0,
+    oboli = 0,
+    xp = 0,
+    baseOboli = 0,
+    baseXp = 0,
+    itemsFarmed,
+  } = opts;
   const oboliLine = formatEventReward("🪙", "Oboli", oboli, baseOboli);
   const xpLine = formatEventReward("⭐", "XP", xp, baseXp);
   const itemsLine = formatItemsFarmed(itemsFarmed);
-  const summary = totalDamage > 0 || oboli > 0 || xp > 0 || itemsLine
-    ? `\n${sectionTitle("Rezumat Eveniment")}\n⚔️ Daune totale: **${totalDamage.toLocaleString()}**\n${oboliLine}${xpLine}${itemsLine}\n`
-    : "";
+  const summary =
+    totalDamage > 0 || oboli > 0 || xp > 0 || itemsLine
+      ? `\n${sectionTitle("Rezumat Eveniment")}\n⚔️ Daune totale: **${totalDamage.toLocaleString()}**\n${oboliLine}${xpLine}${itemsLine}\n`
+      : "";
   return new EmbedBuilder()
     .setColor(0x000000)
     .setTitle("💀  AI CĂZUT ÎN UMBRE 💀")
     .setDescription(
       "Umbrele te-au revendicat, iar cenușa îți acoperă pașii.\n" +
-      "Nu mai poți continua acest eveniment.\n\n" +
-      (lostOboli > 0 ? `🪙 Ai pierdut **${lostOboli} Oboli** (20% din ce ai strâns în eveniment).\n\n` : "") +
-      summary +
-      "Trupul tău pământesc a cedat,\n" +
-      "dar numele tău va rămâne scris în cronica celor căzuți.\n\n" +
-      "Magazinul rămâne deschis — folosește **/magazin** ca să te întărești pentru următoarea chemare.",
+        "Nu mai poți continua acest eveniment.\n\n" +
+        (lostOboli > 0
+          ? `🪙 Ai pierdut **${lostOboli} Oboli** (20% din ce ai strâns în eveniment).\n\n`
+          : "") +
+        summary +
+        "Trupul tău pământesc a cedat,\n" +
+        "dar numele tău va rămâne scris în cronica celor căzuți.\n\n" +
+        "Magazinul rămâne deschis — folosește **/magazin** ca să te întărești pentru următoarea chemare.",
     )
     .setImage(IMG.death);
 }
@@ -1089,17 +1635,38 @@ export function buildDeathEmbed(opts: {
 export function combatStatsValue(player: Player): string {
   const clsKey = player.class && isClassKey(player.class) ? player.class : null;
   const cls = clsKey ? classStats(clsKey, player.classLevel ?? 1) : null;
-  const comp = player.companion && isCompanionKey(player.companion)
-    ? companionStats(player.companion, player.companionLevel ?? 1)
-    : null;
-  const talKey = player.talisman && isTalismanKey(player.talisman) ? player.talisman : null;
-  const talCrit = talKey === "sfera_abisului" ? talismanValue("sfera_abisului", player.talismanLevel ?? 1) : 0;
+  const comp =
+    player.companion && isCompanionKey(player.companion)
+      ? companionStats(player.companion, player.companionLevel ?? 1)
+      : null;
+  const talKey =
+    player.talisman && isTalismanKey(player.talisman) ? player.talisman : null;
+  const talCrit =
+    talKey === "sfera_abisului"
+      ? talismanValue("sfera_abisului", player.talismanLevel ?? 1)
+      : 0;
 
-  const maxHp = 100 + player.maxHpBonus + player.prestigeHpBonus + (cls?.hp ?? 0) + (comp?.hp ?? 0);
-  const atk = player.attackBonus + player.prestigeAttackBonus + (cls?.attack ?? 0) + (comp?.attack ?? 0);
-  const def = player.defenseBonus + player.prestigeDefenseBonus + (comp?.defense ?? 0);
-  const dodge = player.dodgeBonus + player.prestigeDodgeBonus + (cls?.dodge ?? 0);
-  const crit = player.critBonus + player.prestigeCritBonus + (cls?.crit ?? 0) + (comp?.crit ?? 0) + talCrit;
+  const maxHp =
+    100 +
+    player.maxHpBonus +
+    player.prestigeHpBonus +
+    (cls?.hp ?? 0) +
+    (comp?.hp ?? 0);
+  const atk =
+    player.attackBonus +
+    player.prestigeAttackBonus +
+    (cls?.attack ?? 0) +
+    (comp?.attack ?? 0);
+  const def =
+    player.defenseBonus + player.prestigeDefenseBonus + (comp?.defense ?? 0);
+  const dodge =
+    player.dodgeBonus + player.prestigeDodgeBonus + (cls?.dodge ?? 0);
+  const crit =
+    player.critBonus +
+    player.prestigeCritBonus +
+    (cls?.crit ?? 0) +
+    (comp?.crit ?? 0) +
+    talCrit;
 
   return (
     `❤️ Viață maximă: **${maxHp} HP**\n` +
@@ -1109,79 +1676,134 @@ export function combatStatsValue(player: Player): string {
   );
 }
 
-export function buildProfileEmbed(player: Player, title?: string, avatarUrl?: string | null, items: PlayerItem[] = []): EmbedBuilder {
-  const cls = player.class && isClassKey(player.class) ? CLASSES[player.class] : null;
+export function buildProfileEmbed(
+  player: Player,
+  title?: string,
+  avatarUrl?: string | null,
+  items: PlayerItem[] = [],
+): EmbedBuilder {
+  const cls =
+    player.class && isClassKey(player.class) ? CLASSES[player.class] : null;
   const rank = levelTitle(player.maxLevel);
 
-  const classValue = cls ? `${cls.emoji} **${cls.label}**` : "*Fără clasă* — `/clasa`";
-  const compValue = player.companion && isCompanionKey(player.companion)
-    ? `${COMPANIONS[player.companion].emoji} **${isCompanionEvolved(player.companionLevel) ? COMPANIONS[player.companion].evoLabel : COMPANIONS[player.companion].label}** Nv.${player.companionLevel}${isCompanionEvolved(player.companionLevel) ? " ✨" : ""}`
-    : "*Fără companion* — `/magazin`";
-  const abilValue = (player.abilityEmpowerLevel >= 1 || player.abilityShieldLevel >= 1)
-    ? [
-        player.abilityEmpowerLevel >= 1 ? `${ABILITIES.empower.emoji} ${ABILITIES.empower.label} Nv.${player.abilityEmpowerLevel} (${abilityEffectiveDesc("empower", player.abilityEmpowerLevel)})` : null,
-        player.abilityShieldLevel >= 1 ? `${ABILITIES.shield.emoji} ${ABILITIES.shield.label} Nv.${player.abilityShieldLevel} (${abilityEffectiveDesc("shield", player.abilityShieldLevel)})` : null,
-      ].filter(Boolean).join("\n")
-    : "*Fără abilități* — `/magazin`";
+  const classValue = cls
+    ? `${cls.emoji} **${cls.label}**`
+    : "*Fără clasă* — `/clasa`";
+  const compValue =
+    player.companion && isCompanionKey(player.companion)
+      ? `${COMPANIONS[player.companion].emoji} **${isCompanionEvolved(player.companionLevel) ? COMPANIONS[player.companion].evoLabel : COMPANIONS[player.companion].label}** Nv.${player.companionLevel}${isCompanionEvolved(player.companionLevel) ? " ✨" : ""}`
+      : "*Fără companion* — `/magazin`";
+  const abilValue =
+    player.abilityEmpowerLevel >= 1 || player.abilityShieldLevel >= 1
+      ? [
+          player.abilityEmpowerLevel >= 1
+            ? `${ABILITIES.empower.emoji} ${ABILITIES.empower.label} Nv.${player.abilityEmpowerLevel} (${abilityEffectiveDesc("empower", player.abilityEmpowerLevel)})`
+            : null,
+          player.abilityShieldLevel >= 1
+            ? `${ABILITIES.shield.emoji} ${ABILITIES.shield.label} Nv.${player.abilityShieldLevel} (${abilityEffectiveDesc("shield", player.abilityShieldLevel)})`
+            : null,
+        ]
+          .filter(Boolean)
+          .join("\n")
+      : "*Fără abilități* — `/magazin`";
 
-  const equippedTalismanKey = player.talisman && isTalismanKey(player.talisman) ? player.talisman : null;
+  const equippedTalismanKey =
+    player.talisman && isTalismanKey(player.talisman) ? player.talisman : null;
   const talismanRank = talismanRankInfo(player.talismanLevel ?? 1).rank;
   const talismanValue = equippedTalismanKey
     ? `${TALISMANS[equippedTalismanKey].emoji} **${TALISMANS[equippedTalismanKey].label}** Nv.${player.talismanLevel ?? 1}${talismanRank > 0 ? ` 🏅 Rank ${talismanRank}` : ""}\n↳ ${TALISMANS[equippedTalismanKey].passiveLabel}: ${talismanDesc(equippedTalismanKey, player.talismanLevel ?? 1)}`
     : "*Fără talisman* — `/magazin`";
 
-  const deathInfo = player.deaths > 0
-    ? `${player.deaths}× (ultima: Nivel ${player.deathLevel})`
-    : "Neînvins";
-  const retreatInfo = player.retreats > 0
-    ? `${player.retreats}× (ultima: Nivel ${player.retreatLevel})`
-    : "Niciodată";
+  const deathInfo =
+    player.deaths > 0
+      ? `${player.deaths}× (ultima: Nivel ${player.deathLevel})`
+      : "Neînvins";
+  const retreatInfo =
+    player.retreats > 0
+      ? `${player.retreats}× (ultima: Nivel ${player.retreatLevel})`
+      : "Niciodată";
 
   const totalKeys = player.keyRar + player.keyEpic + player.keyRegal;
-  const keysValue = totalKeys > 0
-    ? `${KEY_EMOJI["rar"]} **${player.keyRar}** ${KEY_LABEL["rar"]}   ·   ${KEY_EMOJI["epic"]} **${player.keyEpic}** ${KEY_LABEL["epic"]}   ·   ${KEY_EMOJI["regal"]} **${player.keyRegal}** ${KEY_LABEL["regal"]}`
-    : "*Niciun trofeu sub formă de cheie încă — caută cuferele de chei!*";
+  const keysValue =
+    totalKeys > 0
+      ? `${KEY_EMOJI["rar"]} **${player.keyRar}** ${KEY_LABEL["rar"]}   ·   ${KEY_EMOJI["epic"]} **${player.keyEpic}** ${KEY_LABEL["epic"]}   ·   ${KEY_EMOJI["regal"]} **${player.keyRegal}** ${KEY_LABEL["regal"]}`
+      : "*Niciun trofeu sub formă de cheie încă — caută cuferele de chei!*";
 
-  const prestigeValue = player.prestigeLevel > 0
-    ? `⭐ **Nivel ${player.prestigeLevel}**\n⚔️ +${player.prestigeAttackBonus} · 🛡️ +${player.prestigeDefenseBonus} · 🌀 +${player.prestigeDodgeBonus}% · 💥 +${player.prestigeCritBonus}% · ❤️ +${player.prestigeHpBonus} · 🪙 +${player.prestigeLevel * PRESTIGE_GOLD_BONUS}%`
-    : "*Fără prestigiu* — `/magazin → Prestigiu`";
+  const prestigeValue =
+    player.prestigeLevel > 0
+      ? `⭐ **Nivel ${player.prestigeLevel}**\n⚔️ +${player.prestigeAttackBonus} · 🛡️ +${player.prestigeDefenseBonus} · 🌀 +${player.prestigeDodgeBonus}% · 💥 +${player.prestigeCritBonus}% · ❤️ +${player.prestigeHpBonus} · 🪙 +${player.prestigeLevel * PRESTIGE_GOLD_BONUS}%`
+      : "*Fără prestigiu* b�� `/magazin → Prestigiu`";
 
-  const hasShopUpgrades = player.shopAttackCount > 0 || player.shopDefenseCount > 0 || player.shopDodgeCount > 0 || player.shopCritCount > 0 || player.shopHpCount > 0;
+  const hasShopUpgrades =
+    player.shopAttackCount > 0 ||
+    player.shopDefenseCount > 0 ||
+    player.shopDodgeCount > 0 ||
+    player.shopCritCount > 0 ||
+    player.shopHpCount > 0;
   const shopStatsValue = hasShopUpgrades
     ? `⚔️ +${player.attackBonus} daune (${player.shopAttackCount}×) · 🛡️ -${player.defenseBonus} daune primite (${player.shopDefenseCount}×)\n` +
       `🌀 ${player.dodgeBonus}% evitare (${player.shopDodgeCount}×) · 💥 ${player.critBonus}% critic (${player.shopCritCount}×) · ❤️ +${player.maxHpBonus} HP (${player.shopHpCount}×)`
     : "*Fără upgrade-uri de putere* — `/magazin → Puteri`";
 
   const visibleItems = items.filter((i) => i.quantity > 0);
-  const inventoryValue = visibleItems.length > 0
-    ? visibleItems.map((i) => `${isItemKey(i.itemKey) ? ITEMS[i.itemKey].emoji : "❓"} **×${i.quantity}** ${isItemKey(i.itemKey) ? ITEMS[i.itemKey].label : i.itemKey}`).join("  ·  ")
-    : "*Inventar gol — ucide monștri pentru iteme!*";
+  const inventoryValue =
+    visibleItems.length > 0
+      ? visibleItems
+          .map(
+            (i) =>
+              `${isItemKey(i.itemKey) ? ITEMS[i.itemKey].emoji : "❓"} **×${i.quantity}** ${isItemKey(i.itemKey) ? ITEMS[i.itemKey].label : i.itemKey}`,
+          )
+          .join("  ·  ")
+      : "*Inventar gol — ucide monștri pentru iteme!*";
 
   const embed = new EmbedBuilder()
     .setColor(THEME_COLOR)
     .setTitle(title ?? `📜 Profilul lui ${player.username}`)
     .setDescription(
       `🎖️ **${rank}** *(Nivel max: ${player.maxLevel})*` +
-      (player.honorTitle ? `\n👑 **${player.honorTitle}**` : "") +
-      (player.discordId === SUPER_ADMIN_ID ? "\n🧙‍♂️ **Fondatorul Regatului Cenușii**" : ""),
+        (player.honorTitle ? `\n👑 **${player.honorTitle}**` : "") +
+        (player.discordId === SUPER_ADMIN_ID
+          ? "\n🧙‍♂️ **Fondatorul Regatului Cenușii**"
+          : ""),
     )
     .addFields(
       { name: "🧬 Clasă", value: classValue, inline: true },
       { name: "🐾 Companion", value: compValue, inline: true },
       { name: "🔮 Talisman", value: talismanValue, inline: true },
-      { name: "━━━ Statistici de luptă ━━━", value: combatStatsValue(player), inline: false },
+      {
+        name: "━━━ Statistici de luptă ━━━",
+        value: combatStatsValue(player),
+        inline: false,
+      },
       { name: "🎯 Abilități", value: abilValue, inline: false },
       { name: "━━━ Prestigiu ━━━", value: prestigeValue, inline: false },
-      { name: "━━━ Puteri din Magazin ━━━", value: shopStatsValue, inline: false },
-      { name: "━━━ Resurse ━━━", value: `⭐ **${player.xp}** XP   ·   🪙 **${player.gold}** Oboli   ·   🏅 **${player.reputation}** Reputație\n🔷 Mana: **${player.mana ?? MANA_BASE}/${maxMana(player.manaLevel ?? 0)}** Nv.${player.manaLevel ?? 0} ${manaBar(player.mana ?? MANA_BASE, maxMana(player.manaLevel ?? 0))}`, inline: false },
+      {
+        name: "━━━ Puteri din Magazin ━━━",
+        value: shopStatsValue,
+        inline: false,
+      },
+      {
+        name: "━━━ Resurse ━━━",
+        value: `⭐ **${player.xp}** XP   ·   🪙 **${player.gold}** Oboli   ·   🏅 **${player.reputation}** Reputație\n🔷 Mana: **${player.mana ?? MANA_BASE}/${maxMana(player.manaLevel ?? 0)}** Nv.${player.manaLevel ?? 0} ${manaBar(player.mana ?? MANA_BASE, maxMana(player.manaLevel ?? 0))}`,
+        inline: false,
+      },
       { name: "━━━ Chei ━━━", value: keysValue, inline: false },
       { name: "━━━ Inventar ━━━", value: inventoryValue, inline: false },
-      { name: "━━━ Istoric de luptă ━━━", value: `💀 Morți: **${deathInfo}**\n🏳️ Retrageri: **${retreatInfo}**`, inline: false },
+      {
+        name: "━━━ Istoric de luptă ━━━",
+        value: `💀 Morți: **${deathInfo}**\n🏳️ Retrageri: **${retreatInfo}**`,
+        inline: false,
+      },
     )
     .setFooter({ text: BRAND_FOOTER })
     .setTimestamp();
   const effects = formatActiveEffects(player.discordId);
-  if (effects) embed.addFields({ name: "━━━ Binecuvântări & Blesteme ━━━", value: effects, inline: false });
+  if (effects)
+    embed.addFields({
+      name: "━━━ Binecuvântări & Blesteme ━━━",
+      value: effects,
+      inline: false,
+    });
   if (avatarUrl) embed.setThumbnail(avatarUrl);
   return embed;
 }
@@ -1197,61 +1819,104 @@ export interface ChestRarity {
 }
 
 export const CHEST_RARITIES: ChestRarity[] = [
-  { key: "bronz",  label: "Cufăr de Bronz",  emoji: "🪙",  color: 0xcd7f32, min: 10,  max: 40,  weight: 58 },
-  { key: "argint", label: "Cufăr de Argint", emoji: "🥈",  color: 0xc0c0c0, min: 40,  max: 90,  weight: 28 },
-  { key: "aur",    label: "Cufăr de Aur",    emoji: "🥇",  color: 0xffd700, min: 90,  max: 180, weight: 11 },
-  { key: "mitic",  label: "Cufăr Mitic",     emoji: "💎",  color: 0xb026ff, min: 180, max: 350, weight: 3  },
-  { key: "regal",  label: "Cufărul Regal",   emoji: "👑",  color: 0x1a3a8c, min: 600, max: 1500, weight: 0 },
+  {
+    key: "bronz",
+    label: "Cufăr de Bronz",
+    emoji: "🪙",
+    color: 0xcd7f32,
+    min: 10,
+    max: 40,
+    weight: 58,
+  },
+  {
+    key: "argint",
+    label: "Cufăr de Argint",
+    emoji: "🥈",
+    color: 0xc0c0c0,
+    min: 40,
+    max: 90,
+    weight: 28,
+  },
+  {
+    key: "aur",
+    label: "Cufăr de Aur",
+    emoji: "🥇",
+    color: 0xffd700,
+    min: 90,
+    max: 180,
+    weight: 11,
+  },
+  {
+    key: "mitic",
+    label: "Cufăr Mitic",
+    emoji: "💎",
+    color: 0xb026ff,
+    min: 180,
+    max: 350,
+    weight: 3,
+  },
+  {
+    key: "regal",
+    label: "Cufărul Regal",
+    emoji: "👑",
+    color: 0x1a3a8c,
+    min: 600,
+    max: 1500,
+    weight: 0,
+  },
 ];
 
 // ─── Key chain system ─────────────────────────────────────────────────────────
 // Which key type does each chest rarity drop (and at what chance)?
-export const KEY_DROP: Record<string, { keyType: string; chance: number } | null> = {
-  bronz:  { keyType: "rar",   chance: 0.40 },
-  argint: { keyType: "epic",  chance: 0.30 },
-  aur:    { keyType: "regal", chance: 0.20 },
-  mitic:  { keyType: "regal", chance: 0.12 },
-  regal:  null,
+export const KEY_DROP: Record<
+  string,
+  { keyType: string; chance: number } | null
+> = {
+  bronz: { keyType: "rar", chance: 0.4 },
+  argint: { keyType: "epic", chance: 0.3 },
+  aur: { keyType: "regal", chance: 0.2 },
+  mitic: { keyType: "regal", chance: 0.12 },
+  regal: null,
 };
 
 // Which key type is required to open a locked chest of each rarity?
 export const CHEST_KEY_REQUIRED: Record<string, string> = {
   argint: "rar",
-  aur:    "epic",
-  regal:  "regal",
+  aur: "epic",
+  regal: "regal",
 };
 
 export const KEY_LABEL: Record<string, string> = {
-  rar:   "Cheie de Rar",
-  epic:  "Cheie de Epic",
+  rar: "Cheie de Rar",
+  epic: "Cheie de Epic",
   regal: "Cheie Regală",
 };
 
 // Human-readable name for the source chest that drops each key
 export const KEY_SOURCE_LABEL: Record<string, string> = {
-  rar:   "cufere de Bronz",
-  epic:  "cufere de Argint",
+  rar: "cufere de Bronz",
+  epic: "cufere de Argint",
   regal: "cufere de Aur sau Mitic",
 };
 
 // Target locked chest name for each key type
 export const KEY_TARGET_LABEL: Record<string, string> = {
-  rar:   "Cufăr Blocat de Argint",
-  epic:  "Cufăr Blocat de Aur",
+  rar: "Cufăr Blocat de Argint",
+  epic: "Cufăr Blocat de Aur",
   regal: "Cufărul Regal",
 };
 
 // Accent emoji per key type (used in messages + profile)
 export const KEY_EMOJI: Record<string, string> = {
-  rar:   "🗝️",
-  epic:  "🔑",
+  rar: "🗝️",
+  epic: "🔑",
   regal: "⚜️",
 };
 
 // Color per key type (silver / gold / royal blue)
 export const KEY_COLOR: Record<string, number> = {
-  rar:   0xc0c0c0,
-  epic:  0xffd700,
+  rar: 0xc0c0c0,
+  epic: 0xffd700,
   regal: 0x1a3a8c,
 };
 
@@ -1259,8 +1924,8 @@ export const KEY_COLOR: Record<string, number> = {
 // Standalone chests whose reward IS a key (separate from the gold chests).
 // Lower tiers are common, the Regal key is a rare prize.
 export const KEY_CHEST_WEIGHTS: Array<{ keyType: string; weight: number }> = [
-  { keyType: "rar",   weight: 60 },
-  { keyType: "epic",  weight: 30 },
+  { keyType: "rar", weight: 60 },
+  { keyType: "epic", weight: 30 },
   { keyType: "regal", weight: 10 },
 ];
 
@@ -1279,17 +1944,23 @@ export function rollKeyChestType(): string {
 // Locked chests cost a key to open, so they pay much MORE Oboli than the
 // matching free chest — the Regal one is a true jackpot.
 export const LOCKED_CHEST_GOLD: Record<string, { min: number; max: number }> = {
-  argint: { min: 150,  max: 350  },
-  aur:    { min: 400,  max: 800  },
-  regal:  { min: 2000, max: 5000 },
+  argint: { min: 150, max: 350 },
+  aur: { min: 400, max: 800 },
+  regal: { min: 2000, max: 5000 },
 };
 
 /** Roll the Oboli payout for a locked chest of a given rarity (boosted ranges). */
-export function spawnLockedChest(rarityKey: string): { rarity: ChestRarity; gold: number } | null {
+export function spawnLockedChest(
+  rarityKey: string,
+): { rarity: ChestRarity; gold: number } | null {
   const rarity = CHEST_RARITIES.find((r) => r.key === rarityKey);
   if (!rarity) return null;
-  const range = LOCKED_CHEST_GOLD[rarityKey] ?? { min: rarity.min * 2, max: rarity.max * 2 };
-  const gold = Math.floor(Math.random() * (range.max - range.min + 1)) + range.min;
+  const range = LOCKED_CHEST_GOLD[rarityKey] ?? {
+    min: rarity.min * 2,
+    max: rarity.max * 2,
+  };
+  const gold =
+    Math.floor(Math.random() * (range.max - range.min + 1)) + range.min;
   return { rarity, gold };
 }
 
@@ -1314,40 +1985,55 @@ export function rollChest(): { rarity: ChestRarity; gold: number } {
   let roll = Math.random() * total;
   let rarity = CHEST_RARITIES[0]!;
   for (const r of CHEST_RARITIES) {
-    if (roll < r.weight) { rarity = r; break; }
+    if (roll < r.weight) {
+      rarity = r;
+      break;
+    }
     roll -= r.weight;
   }
-  const gold = Math.floor(Math.random() * (rarity.max - rarity.min + 1)) + rarity.min;
+  const gold =
+    Math.floor(Math.random() * (rarity.max - rarity.min + 1)) + rarity.min;
   return { rarity, gold };
 }
 
 /** Spawn a chest of a specific rarity (admin override). */
-export function spawnChest(rarityKey: string): { rarity: ChestRarity; gold: number } | null {
+export function spawnChest(
+  rarityKey: string,
+): { rarity: ChestRarity; gold: number } | null {
   const rarity = CHEST_RARITIES.find((r) => r.key === rarityKey);
   if (!rarity) return null;
-  const gold = Math.floor(Math.random() * (rarity.max - rarity.min + 1)) + rarity.min;
+  const gold =
+    Math.floor(Math.random() * (rarity.max - rarity.min + 1)) + rarity.min;
   return { rarity, gold };
 }
 
-export function buildChestEmbed(gold: number, rarity?: ChestRarity, forcedMult?: 2 | 3): EmbedBuilder {
+export function buildChestEmbed(
+  gold: number,
+  rarity?: ChestRarity,
+  forcedMult?: 2 | 3,
+): EmbedBuilder {
   const r = rarity ?? CHEST_RARITIES[0]!;
   const image = CHEST_IMG[r.key] ?? IMG.chest;
-  const bonusLine = forcedMult != null
-    ? `\n🔮 **Cufăr binecuvântat — ×${forcedMult} Oboli garantat!** Câștigă **${gold * forcedMult}** Oboli!`
-    : `\n🎲 **Norocul Cenușii:** la deschidere Obolii pot fi înmulțiți **×1, ×2 sau ×3** — nimeni nu știe până nu apeși!`;
+  const bonusLine =
+    forcedMult != null
+      ? `\n🔮 **Cufăr binecuvântat — ×${forcedMult} Oboli garantat!** Câștigă **${gold * forcedMult}** Oboli!`
+      : `\n🎲 **Norocul Cenușii:** la deschidere Obolii pot fi înmulțiți **×1, ×2 sau ×3** — nimeni nu știe până nu apeși!`;
   const keyDrop = KEY_DROP[r.key];
   const keyHintLine = keyDrop
     ? `\n🗝️ *Poate ascunde o ${KEY_LABEL[keyDrop.keyType]}...*`
     : "";
-  const effectHintLine = "\n🔮 *Se zvonește că unele cufere ascund o **binecuvântare**… sau un **blestem**!*";
+  const effectHintLine =
+    "\n🔮 *Se zvonește că unele cufere ascund o **binecuvântare**… sau un **blestem**!*";
   return new EmbedBuilder()
     .setColor(r.color)
-    .setTitle(`${r.emoji}✨  ${r.label.toUpperCase()} A APĂRUT ÎN REGAT!  ✨${r.emoji}`)
+    .setTitle(
+      `${r.emoji}✨  ${r.label.toUpperCase()} A APĂRUT ÎN REGAT!  ✨${r.emoji}`,
+    )
     .setDescription(
       "Cenușa s-a ridicat și a dezvăluit un cufăr misterios!\n" +
-      "Obolii zac în el, așteptând mâna celui mai rapid.\n\n" +
-      `💰 **${gold} Oboli** pentru primul care revendică!${bonusLine}${keyHintLine}${effectHintLine}\n\n` +
-      "⚡ Fii primul — cufărul dispare în fumul umbrelor!",
+        "Obolii zac în el, așteptând mâna celui mai rapid.\n\n" +
+        `💰 **${gold} Oboli** pentru primul care revendică!${bonusLine}${keyHintLine}${effectHintLine}\n\n` +
+        "⚡ Fii primul — cufărul dispare în fumul umbrelor!",
     )
     .setImage(image)
     .setFooter({ text: "Primul click câștigă!" });
@@ -1361,11 +2047,15 @@ export function buildChestEmbed(gold: number, rarity?: ChestRarity, forcedMult?:
 export function rollChestMultiplier(): 1 | 2 | 3 {
   const roll = Math.random();
   if (roll < 0.08) return 3; // 8%
-  if (roll < 0.30) return 2; // 22%
+  if (roll < 0.3) return 2; // 22%
   return 1; // 70%
 }
 
-export function buildExpiredChestEmbed(gold: number, rarity?: ChestRarity, forcedMult?: 2 | 3): EmbedBuilder {
+export function buildExpiredChestEmbed(
+  gold: number,
+  rarity?: ChestRarity,
+  forcedMult?: 2 | 3,
+): EmbedBuilder {
   const r = rarity ?? CHEST_RARITIES[0]!;
   const image = CHEST_IMG[r.key] ?? IMG.chest;
   if (forcedMult != null) {
@@ -1374,9 +2064,9 @@ export function buildExpiredChestEmbed(gold: number, rarity?: ChestRarity, force
       .setTitle(`💨  ${r.label.toUpperCase()} — NERECLAMAT  💨`)
       .setDescription(
         `Cufărul binecuvântat a dispărut nereclamat în fumul umbrelor.\n\n` +
-        `💰 ~~${gold} Oboli~~\n` +
-        `🔮 ~~Cufăr binecuvântat — ×${forcedMult} Oboli~~ *(bonus pierdut)*\n\n` +
-        `*Nimeni nu a fost destul de rapid de data aceasta…*`,
+          `💰 ~~${gold} Oboli~~\n` +
+          `🔮 ~~Cufăr binecuvântat — ×${forcedMult} Oboli~~ *(bonus pierdut)*\n\n` +
+          `*Nimeni nu a fost destul de rapid de data aceasta…*`,
       )
       .setImage(image)
       .setFooter({ text: "Cufărul a dispărut." });
@@ -1386,15 +2076,19 @@ export function buildExpiredChestEmbed(gold: number, rarity?: ChestRarity, force
     .setTitle(`💨  ${r.label.toUpperCase()} — DISPĂRUT  💨`)
     .setDescription(
       `Cufărul a dispărut în fumul umbrelor, nereclamat.\n\n` +
-      `💰 ~~${gold} Oboli~~\n\n` +
-      `*Nimeni nu a fost destul de rapid de data aceasta…*`,
+        `💰 ~~${gold} Oboli~~\n\n` +
+        `*Nimeni nu a fost destul de rapid de data aceasta…*`,
     )
     .setImage(image)
     .setFooter({ text: "Cufărul a dispărut." });
 }
 
-export function buildLockedChestEmbed(rarityKey: string, gold: number): EmbedBuilder {
-  const rarity = CHEST_RARITIES.find((r) => r.key === rarityKey) ?? CHEST_RARITIES[0]!;
+export function buildLockedChestEmbed(
+  rarityKey: string,
+  gold: number,
+): EmbedBuilder {
+  const rarity =
+    CHEST_RARITIES.find((r) => r.key === rarityKey) ?? CHEST_RARITIES[0]!;
   const keyType = CHEST_KEY_REQUIRED[rarityKey] ?? "rar";
   const keyLabel = KEY_LABEL[keyType] ?? "Cheie";
   const sourceLabel = KEY_SOURCE_LABEL[keyType] ?? "cufere comune";
@@ -1412,17 +2106,20 @@ export function buildLockedChestEmbed(rarityKey: string, gold: number): EmbedBui
 
   return new EmbedBuilder()
     .setColor(rarity.color)
-    .setTitle(`🔒 ${rarity.emoji}  ${rarity.label.toUpperCase()} — BLOCAT  ${rarity.emoji} 🔒`)
+    .setTitle(
+      `🔒 ${rarity.emoji}  ${rarity.label.toUpperCase()} — BLOCAT  ${rarity.emoji} 🔒`,
+    )
     .setDescription(
       `*O forță veche ține cufărul ferecat. Doar ${keyEmoji} **${keyLabel}** îl poate deschide.*\n` +
-      `${sectionTitle("Pradă")}\n` +
-      `💰 **${gold.toLocaleString()} Oboli** ascunși înăuntru — mult peste un cufăr obișnuit!\n` +
-      blessingLine + "\n" +
-      `${sectionTitle("Cheia")}\n` +
-      `${keyEmoji} Necesită: **${keyLabel}**\n` +
-      `📜 O găsești în **cufere de chei** sau revendicând **${sourceLabel}**` +
-      jackpotLine +
-      `\n\n⚡ Un singur jucător poate folosi cheia — fii primul!`,
+        `${sectionTitle("Pradă")}\n` +
+        `💰 **${gold.toLocaleString()} Oboli** ascunși înăuntru — mult peste un cufăr obișnuit!\n` +
+        blessingLine +
+        "\n" +
+        `${sectionTitle("Cheia")}\n` +
+        `${keyEmoji} Necesită: **${keyLabel}**\n` +
+        `📜 O găsești în **cufere de chei** sau revendicând **${sourceLabel}**` +
+        jackpotLine +
+        `\n\n⚡ Un singur jucător poate folosi cheia — fii primul!`,
     )
     .setThumbnail(keyImage)
     .setImage(chestImage)
@@ -1442,17 +2139,20 @@ export function buildKeyChestEmbed(keyType: string): EmbedBuilder {
     .setTitle(`${keyEmoji}✨  CUFĂR DE CHEI A APĂRUT!  ✨${keyEmoji}`)
     .setDescription(
       "Cenușa s-a despicat și a scos la iveală un cufăr ce nu ascunde Oboli, ci o **cheie prețioasă**!\n" +
-      `${sectionTitle("Răsplata")}\n` +
-      `${keyEmoji} O **${keyLabel}** pentru primul care revendică!\n` +
-      `🔓 Deschide cu ea un **${targetLabel}** și ia comoara dinăuntru.\n\n` +
-      "⚡ Fii primul — cheia se topește în fumul umbrelor!",
+        `${sectionTitle("Răsplata")}\n` +
+        `${keyEmoji} O **${keyLabel}** pentru primul care revendică!\n` +
+        `🔓 Deschide cu ea un **${targetLabel}** și ia comoara dinăuntru.\n\n` +
+        "⚡ Fii primul — cheia se topește în fumul umbrelor!",
     )
     .setImage(keyImage)
     .setFooter({ text: "Primul click ia cheia!" });
 }
 
 /** Message shown when a player claims a key chest. */
-export function buildKeyChestClaimMessage(username: string, keyType: string): string {
+export function buildKeyChestClaimMessage(
+  username: string,
+  keyType: string,
+): string {
   const keyLabel = KEY_LABEL[keyType] ?? "Cheie";
   const keyEmoji = KEY_EMOJI[keyType] ?? "🗝️";
   const targetLabel = KEY_TARGET_LABEL[keyType] ?? "cufăr blocat";
@@ -1462,7 +2162,10 @@ export function buildKeyChestClaimMessage(username: string, keyType: string): st
   );
 }
 
-export function buildKeyDropMessage(fromRarityKey: string, keyType: string): string {
+export function buildKeyDropMessage(
+  fromRarityKey: string,
+  keyType: string,
+): string {
   const rarity = CHEST_RARITIES.find((r) => r.key === fromRarityKey);
   const keyLabel = KEY_LABEL[keyType] ?? "Cheie Misterioasă";
   const targetLabel = KEY_TARGET_LABEL[keyType] ?? "cufăr blocat";
@@ -1473,10 +2176,18 @@ export function buildKeyDropMessage(fromRarityKey: string, keyType: string): str
   );
 }
 
-export type ShopCategory = "overview" | "stats" | "comp" | "abil" | "prestige" | "class" | "talisman";
+export type ShopCategory =
+  | "overview"
+  | "stats"
+  | "comp"
+  | "abil"
+  | "prestige"
+  | "class"
+  | "talisman";
 
 const SHOP_BALANCE = (p: Player) => {
-  const prestigeLine = p.prestigeLevel > 0 ? `   ·   ⭐ Prestigiu **${p.prestigeLevel}**` : "";
+  const prestigeLine =
+    p.prestigeLevel > 0 ? `   ·   ⭐ Prestigiu **${p.prestigeLevel}**` : "";
   return `🪙 **Oboli: ${p.gold}**   ·   ⭐ **XP: ${p.xp}**${prestigeLine}`;
 };
 
@@ -1502,7 +2213,13 @@ function rankBarLine(level: number): string {
 }
 
 function shopStatsText(p: Player): string {
-  const line = (key: ShopKey, emoji: string, label: string, now: string, next: string) => {
+  const line = (
+    key: ShopKey,
+    emoji: string,
+    label: string,
+    now: string,
+    next: string,
+  ) => {
     const count = p[SHOP_COUNT_KEY[key]] as number;
     const price = shopPrice(key, count);
     const { rank, inRank } = statRankInfo(count);
@@ -1511,11 +2228,29 @@ function shopStatsText(p: Player): string {
     return `${emoji} **${label}** (Nv.${inRank}/${STAT_BAR_MAX})${rankStr} — **${price} Oboli**\n${bar}\n   ↳ acum ${now} → ${next}\n`;
   };
   return (
-    line("atac", "⚔️", "Atac", `+${p.attackBonus} daune`, `+${p.attackBonus + 2} daune`) +
-    line("def", "🛡️", "Apărare", `-${p.defenseBonus} daune primite`, `-${p.defenseBonus + 2} daune primite`) +
+    line(
+      "atac",
+      "⚔️",
+      "Atac",
+      `+${p.attackBonus} daune`,
+      `+${p.attackBonus + 2} daune`,
+    ) +
+    line(
+      "def",
+      "🛡️",
+      "Apărare",
+      `-${p.defenseBonus} daune primite`,
+      `-${p.defenseBonus + 2} daune primite`,
+    ) +
     line("dodge", "🌀", "Evitare", `${p.dodgeBonus}%`, `${p.dodgeBonus + 3}%`) +
     line("crit", "💥", "Critic", `${p.critBonus}%`, `${p.critBonus + 2}%`) +
-    line("hp", "❤️", "HP maxim", `+${p.maxHpBonus} HP`, `+${p.maxHpBonus + 10} HP`)
+    line(
+      "hp",
+      "❤️",
+      "HP maxim",
+      `+${p.maxHpBonus} HP`,
+      `+${p.maxHpBonus + 10} HP`,
+    )
   );
 }
 
@@ -1531,19 +2266,24 @@ function shopCompText(p: Player): string {
       `🔼 **Îmbunătățire Nv.${p.companionLevel} → ${p.companionLevel + 1}**\n` +
       `   ↳ bonus nou: **${companionEffectiveDesc(p.companion, p.companionLevel + 1)}**\n` +
       `   ↳ cost: **${cost} Oboli + ${UPGRADE_XP_COST} XP**\n` +
-      (evolved ? "" : `   ↳ evoluează la Nv.${COMPANION_EVOLVE_LEVEL} în forma legendară\n`)
+      (evolved
+        ? ""
+        : `   ↳ evoluează la Nv.${COMPANION_EVOLVE_LEVEL} în forma legendară\n`)
     );
   }
   return (
     `🛒 Cumpără un companion (**${COMPANION_BUY_COST} Oboli**):\n\n` +
-    Object.values(COMPANIONS).map((c) => `${c.emoji} **${c.label}** — ${c.desc}`).join("\n") +
+    Object.values(COMPANIONS)
+      .map((c) => `${c.emoji} **${c.label}** — ${c.desc}`)
+      .join("\n") +
     `\n\n✨ La Nv.${COMPANION_EVOLVE_LEVEL} companionul evoluează în forma legendară.`
   );
 }
 
 function shopAbilText(p: Player): string {
   const line = (kind: AbilityKey) => {
-    const lvl = kind === "empower" ? p.abilityEmpowerLevel : p.abilityShieldLevel;
+    const lvl =
+      kind === "empower" ? p.abilityEmpowerLevel : p.abilityShieldLevel;
     const a = ABILITIES[kind];
     if (lvl >= 1) {
       const cost = upgradeCost(lvl);
@@ -1584,7 +2324,10 @@ function shopAbilText(p: Player): string {
 
 // Category-aware shop: each sub-page renders ONLY its own category so the embed
 // matches the buttons shown below it. Prices are always bold for clarity.
-export function buildShopEmbed(p: Player, category: ShopCategory = "overview"): EmbedBuilder {
+export function buildShopEmbed(
+  p: Player,
+  category: ShopCategory = "overview",
+): EmbedBuilder {
   const embed = new EmbedBuilder()
     .setColor(THEME_COLOR)
     .setFooter({ text: BRAND_FOOTER })
@@ -1594,11 +2337,13 @@ export function buildShopEmbed(p: Player, category: ShopCategory = "overview"): 
     return embed
       .setTitle("⚔️ Forja Cenușii — Puteri")
       .setDescription(
-        SHOP_BALANCE(p) + "\n\n" +
-        sectionTitle("Statistici permanente") + "\n" +
-        "*Efect imediat, chiar și în lupta curentă.*\n\n" +
-        shopStatsText(p) +
-        "\n*Prețul fiecărei puteri crește cu 35% după fiecare cumpărare.*",
+        SHOP_BALANCE(p) +
+          "\n\n" +
+          sectionTitle("Statistici permanente") +
+          "\n" +
+          "*Efect imediat, chiar și în lupta curentă.*\n\n" +
+          shopStatsText(p) +
+          "\n*Prețul fiecărei puteri crește cu 35% după fiecare cumpărare.*",
       );
   }
 
@@ -1606,13 +2351,15 @@ export function buildShopEmbed(p: Player, category: ShopCategory = "overview"): 
     return embed
       .setTitle("🐾 Forja Cenușii — Companion")
       .setDescription(
-        SHOP_BALANCE(p) + "\n\n" +
-        sectionTitle("Companionul tău") + "\n" +
-        shopCompText(p) +
-        "\n*Companionul nou se aplică din următoarea Ora Umbrelor.*" +
-        (p.companion && isCompanionKey(p.companion)
-          ? "\n🔄 *Poți elibera companionul cu butonul de mai jos — nivelul lui se pierde.*"
-          : ""),
+        SHOP_BALANCE(p) +
+          "\n\n" +
+          sectionTitle("Companionul tău") +
+          "\n" +
+          shopCompText(p) +
+          "\n*Companionul nou se aplică din următoarea Ora Umbrelor.*" +
+          (p.companion && isCompanionKey(p.companion)
+            ? "\n🔄 *Poți elibera companionul cu butonul de mai jos — nivelul lui se pierde.*"
+            : ""),
       );
   }
 
@@ -1620,10 +2367,12 @@ export function buildShopEmbed(p: Player, category: ShopCategory = "overview"): 
     return embed
       .setTitle("🎯 Forja Cenușii — Abilități")
       .setDescription(
-        SHOP_BALANCE(p) + "\n\n" +
-        sectionTitle("Abilități de luptă") + "\n" +
-        shopAbilText(p) +
-        "\n*Abilitățile se aplică imediat, chiar în lupta curentă.*",
+        SHOP_BALANCE(p) +
+          "\n\n" +
+          sectionTitle("Abilități de luptă") +
+          "\n" +
+          shopAbilText(p) +
+          "\n*Abilitățile se aplică imediat, chiar în lupta curentă.*",
       );
   }
 
@@ -1634,7 +2383,12 @@ export function buildShopEmbed(p: Player, category: ShopCategory = "overview"): 
       const level = Math.min(p.classLevel ?? 1, 10);
       const stats = classStats(clsKey, level);
       const next = level < 10 ? classStats(clsKey, level + 1) : null;
-      const statLine = (s: { attack: number; hp: number; dodge: number; crit: number }) =>
+      const statLine = (s: {
+        attack: number;
+        hp: number;
+        dodge: number;
+        crit: number;
+      }) =>
         [
           s.attack > 0 ? `⚔️ +${s.attack} daune` : "",
           s.hp > 0 ? `❤️ +${s.hp} HP` : "",
@@ -1642,37 +2396,47 @@ export function buildShopEmbed(p: Player, category: ShopCategory = "overview"): 
           s.crit > 0 ? `💥 +${s.crit}% critic` : "",
           cls.xpMult !== 1 ? `📚 XP ×${cls.xpMult}` : "",
           cls.oboliMult !== 1 ? `💰 Oboli ×${cls.oboliMult}` : "",
-        ].filter(Boolean).join(", ");
+        ]
+          .filter(Boolean)
+          .join(", ");
       const cost = level < 10 ? classUpgradeCost(level) : null;
       const costLines = cost
         ? `   ↳ cost: **${cost.gold} Oboli + ${cost.xp} XP**` +
           (cost.items.length
-            ? "\n" + cost.items.map((req) => `   ↳ ${req.qty}× ${ITEMS[req.item].emoji} ${ITEMS[req.item].label}`).join("\n")
+            ? "\n" +
+              cost.items
+                .map(
+                  (req) =>
+                    `   ↳ ${req.qty}× ${ITEMS[req.item].emoji} ${ITEMS[req.item].label}`,
+                )
+                .join("\n")
             : "")
         : "";
       return embed
         .setTitle("🧬 Forja Cenușii — Clasă")
         .setDescription(
-          SHOP_BALANCE(p) + "\n\n" +
-          sectionTitle("Calea ta") + "\n" +
-          `${cls.emoji} **${cls.label}** (Nv.${level}/10)\n` +
-          `${buildProgressBar(level, 10, 10)}\n` +
-          `> *${cls.desc}*\n\n` +
-          `🎁 Bonus activ: **${statLine(stats)}**\n` +
-          (next
-            ? `🔼 **La Nv.${level + 1} primești:** ${statLine(next)}\n${costLines}\n`
-            : "⭐ **Nivel maxim atins!** Calea ta este desăvârșită.\n") +
-          "\nBonusurile clasei se aplică automat la fiecare intrare în Ora Umbrelor.\n" +
-          `🔄 *Poți schimba calea cu butonul de mai jos — nivelul ei se păstrează, dar instruirea unei noi căi costă **${CLASS_SWITCH_COST} Oboli**.*`,
+          SHOP_BALANCE(p) +
+            "\n\n" +
+            sectionTitle("Calea ta") +
+            "\n" +
+            `${cls.emoji} **${cls.label}** (Nv.${level}/10)\n` +
+            `${buildProgressBar(level, 10, 10)}\n` +
+            `> *${cls.desc}*\n\n` +
+            `🎁 Bonus activ: **${statLine(stats)}**\n` +
+            (next
+              ? `🔼 **La Nv.${level + 1} primești:** ${statLine(next)}\n${costLines}\n`
+              : "⭐ **Nivel maxim atins!** Calea ta este desăvârșită.\n") +
+            "\nBonusurile clasei se aplică automat la fiecare intrare în Ora Umbrelor.\n" +
+            `🔄 *Poți schimba calea cu butonul de mai jos — nivelul ei se păstrează, dar instruirea unei noi căi costă **${CLASS_SWITCH_COST} Oboli**.*`,
         );
     }
     const saved = (p.classLevels ?? {}) as Record<string, number>;
     const hasTrained = Object.keys(saved).length > 0;
-    return embed
-      .setTitle("🧬 Forja Cenușii — Clasă")
-      .setDescription(
-        SHOP_BALANCE(p) + "\n\n" +
-        sectionTitle("Alege-ți calea") + "\n" +
+    return embed.setTitle("🧬 Forja Cenușii — Clasă").setDescription(
+      SHOP_BALANCE(p) +
+        "\n\n" +
+        sectionTitle("Alege-ți calea") +
+        "\n" +
         (hasTrained
           ? `🎓 *Instruirea unei noi căi costă **${CLASS_SWITCH_COST} Oboli**. Nivelul fiecărei clase se păstrează.*\n\n`
           : "🎓 *Prima instruire este gratuită. Nivelul fiecărei clase se păstrează dacă schimbi calea mai târziu.*\n\n") +
@@ -1684,7 +2448,7 @@ export function buildShopEmbed(p: Player, category: ShopCategory = "overview"): 
           })
           .join("\n") +
         "\n\n👇 Apasă butonul clasei dorite pentru a o alege.",
-      );
+    );
   }
 
   if (category === "prestige") {
@@ -1694,17 +2458,19 @@ export function buildShopEmbed(p: Player, category: ShopCategory = "overview"): 
     return embed
       .setTitle("💎 Forja Cenușii — Prestigiu")
       .setDescription(
-        SHOP_BALANCE(p) + "\n\n" +
-        sectionTitle("Prestigiu Permanent") + "\n" +
-        "Fiecare nivel de prestigiu consumă **XP** și oferă bonusuri permanente\n" +
-        "care se aplică în **TOATE** luptele normale și în lupta cu Dragonul Stins.\n\n" +
-        (p.prestigeLevel > 0
-          ? `**🎯 Nivel Prestigiu: ${p.prestigeLevel}**\n${rankBarLine(p.prestigeLevel)}\n${total}\n\n`
-          : "") +
-        `**🔰 Următorul nivel (${p.prestigeLevel + 1}):**\n` +
-        `   → ${next}\n` +
-        `   → cost: **${cost.toLocaleString("ro-RO")} XP**\n\n` +
-        "*Costul crește cu 50% la fiecare nivel de prestigiu.*",
+        SHOP_BALANCE(p) +
+          "\n\n" +
+          sectionTitle("Prestigiu Permanent") +
+          "\n" +
+          "Fiecare nivel de prestigiu consumă **XP** și oferă bonusuri permanente\n" +
+          "care se aplică în **TOATE** luptele normale și în lupta cu Dragonul Stins.\n\n" +
+          (p.prestigeLevel > 0
+            ? `**🎯 Nivel Prestigiu: ${p.prestigeLevel}**\n${rankBarLine(p.prestigeLevel)}\n${total}\n\n`
+            : "") +
+          `**🔰 Următorul nivel (${p.prestigeLevel + 1}):**\n` +
+          `   → ${next}\n` +
+          `   → cost: **${cost.toLocaleString("ro-RO")} XP**\n\n` +
+          "*Costul crește cu 50% la fiecare nivel de prestigiu.*",
       );
   }
 
@@ -1714,35 +2480,40 @@ export function buildShopEmbed(p: Player, category: ShopCategory = "overview"): 
     .setTitle("🔥🏺 Forja Cenușii — Magazinul Regal")
     .setDescription(
       "În adâncul cetății, focul nu se stinge niciodată.\n" +
-      "Aici puterea se cumpără cu Oboli de Cenușă.\n\n" +
-      SHOP_BALANCE(p) + "\n\n" +
-      sectionTitle("Alege o categorie") + "\n" +
-      "⚔️ **Puteri** — statistici permanente (atac, apărare, evitare, critic, HP)\n" +
-      "🐾 **Companion** — un aliat de luptă care crește odată cu tine\n" +
-      "🎯 **Abilități** — puteri active folosite în luptă\n" +
-      "🧬 **Clasă** — alege-ți calea și bonusul permanent\n" +
-      "⭐ **Prestigiu** — sacrifică XP pentru putere nemuritoare\n" +
-      "🔮 **Talismane** — echipamente cu pasive unice, evoluabile cu iteme rare\n\n" +
-      "🗝️ *Caută cuferele de chei — cu ele deschizi cuferele blocate pline de Oboli.*\n\n" +
-      "👇 Apasă un buton de mai jos pentru a deschide o categorie.",
+        "Aici puterea se cumpără cu Oboli de Cenușă.\n\n" +
+        SHOP_BALANCE(p) +
+        "\n\n" +
+        sectionTitle("Alege o categorie") +
+        "\n" +
+        "⚔️ **Puteri** — statistici permanente (atac, apărare, evitare, critic, HP)\n" +
+        "🐾 **Companion** — un aliat de luptă care crește odată cu tine\n" +
+        "🎯 **Abilități** — puteri active folosite în luptă\n" +
+        "🧬 **Clasă** — alege-ți calea și bonusul permanent\n" +
+        "⭐ **Prestigiu** — sacrifică XP pentru putere nemuritoare\n" +
+        "🔮 **Talismane** — echipamente cu pasive unice, evoluabile cu iteme rare\n\n" +
+        "🗝️ *Caută cuferele de chei — cu ele deschizi cuferele blocate pline de Oboli.*\n\n" +
+        "👇 Apasă un buton de mai jos pentru a deschide o categorie.",
     );
 }
 
-export function buildLevelupEmbed(newLevel: number, dropLine?: string): EmbedBuilder {
+export function buildLevelupEmbed(
+  newLevel: number,
+  dropLine?: string,
+): EmbedBuilder {
   return new EmbedBuilder()
     .setColor(0xffd700)
     .setTitle(`✨  AI AVANSAT LA NIVELUL ${newLevel}  ✨`)
     .setDescription(
       "Cenușa se ridică în jurul tău, iar Umbrele îți recunosc puterea.\n" +
-      "Regatul Cenușii îți oferă un dar pentru progresul tău.\n\n" +
-      (dropLine ? `${dropLine}\n\n` : "") +
-      "**Alege un bonus special:**\n\n" +
-      "🔹 **+5 XP bonus** la fiecare monstru ucis\n" +
-      "🔹 **+3% șansă de evitare**\n" +
-      "🔹 **+2 daune** permanent\n" +
-      "🔹 **+5 HP** permanent (și vindecare)\n" +
-      "🔹 **+1% șansă critică**\n\n" +
-      "Fiecare alegere îți schimbă destinul.\nUmbrele privesc… și judecă.",
+        "Regatul Cenușii îți oferă un dar pentru progresul tău.\n\n" +
+        (dropLine ? `${dropLine}\n\n` : "") +
+        "**Alege un bonus special:**\n\n" +
+        "🔹 **+5 XP bonus** la fiecare monstru ucis\n" +
+        "🔹 **+3% șansă de evitare**\n" +
+        "🔹 **+2 daune** permanent\n" +
+        "🔹 **+5 HP** permanent (și vindecare)\n" +
+        "🔹 **+1% șansă critică**\n\n" +
+        "Fiecare alegere îți schimbă destinul.\nUmbrele privesc… și judecă.",
     );
 }
 
@@ -1752,22 +2523,30 @@ export function buildExpiredCronica(
   fled: { username: string; monsterLevel: number }[] = [],
 ): EmbedBuilder {
   const medals = ["🥇", "🥈", "🥉"];
-  const top = survivors
-    .sort((a, b) => b.monsterLevel - a.monsterLevel)
-    .slice(0, 5)
-    .map((p, i) => `${medals[i] ?? `**${i + 1}.**`} **${p.username}** — Nivel ${p.monsterLevel}`)
-    .join("\n") || "*Nimeni nu a supraviețuit.*";
+  const top =
+    survivors
+      .sort((a, b) => b.monsterLevel - a.monsterLevel)
+      .slice(0, 5)
+      .map(
+        (p, i) =>
+          `${medals[i] ?? `**${i + 1}.**`} **${p.username}** — Nivel ${p.monsterLevel}`,
+      )
+      .join("\n") || "*Nimeni nu a supraviețuit.*";
 
-  const topFallen = fallen
-    .sort((a, b) => b.monsterLevel - a.monsterLevel)
-    .slice(0, 3)
-    .map((p) => `💀 **${p.username}** — Căzut la Nivel ${p.monsterLevel}`)
-    .join("\n") || "*Nimeni nu a căzut.*";
+  const topFallen =
+    fallen
+      .sort((a, b) => b.monsterLevel - a.monsterLevel)
+      .slice(0, 3)
+      .map((p) => `💀 **${p.username}** — Căzut la Nivel ${p.monsterLevel}`)
+      .join("\n") || "*Nimeni nu a căzut.*";
 
   const topFled = fled
     .sort((a, b) => b.monsterLevel - a.monsterLevel)
     .slice(0, 3)
-    .map((p) => `🏳️ **${p.username}** — A abandonat și a fugit la Nivel ${p.monsterLevel}`)
+    .map(
+      (p) =>
+        `🏳️ **${p.username}** — A abandonat și a fugit la Nivel ${p.monsterLevel}`,
+    )
     .join("\n");
 
   return new EmbedBuilder()
@@ -1775,10 +2554,12 @@ export function buildExpiredCronica(
     .setTitle("🏆📜  CRONICA SUPRAVIEȚUITORILOR  📜🏆")
     .setDescription(
       "Evenimentul s-a încheiat.\nUmbrele se retrag, iar cenușa cade încet peste Regat.\n\n" +
-      `**Eroii care au rezistat cel mai mult:**\n${top}\n\n` +
-      `**Cei Căzuți în Umbre:**\n${topFallen}\n\n` +
-      (topFled ? `**Cei care au abandonat și au fugit:**\n${topFled}\n\n` : "") +
-      "Regatul Cenușii își amintește de fiecare pas,\nde fiecare lovitură și de fiecare cădere.\nUmbrele îți mulțumesc pentru luptă.",
+        `**Eroii care au rezistat cel mai mult:**\n${top}\n\n` +
+        `**Cei Căzuți în Umbre:**\n${topFallen}\n\n` +
+        (topFled
+          ? `**Cei care au abandonat și au fugit:**\n${topFled}\n\n`
+          : "") +
+        "Regatul Cenușii își amintește de fiecare pas,\nde fiecare lovitură și de fiecare cădere.\nUmbrele îți mulțumesc pentru luptă.",
     );
 }
 
@@ -1800,7 +2581,8 @@ export function buildEventLeaderboard(
 
   const ranked = [...participants].sort((a, b) => {
     if (a.isAlive !== b.isAlive) return a.isAlive ? -1 : 1;
-    if (b.monsterLevel !== a.monsterLevel) return b.monsterLevel - a.monsterLevel;
+    if (b.monsterLevel !== a.monsterLevel)
+      return b.monsterLevel - a.monsterLevel;
     if (b.totalDamage !== a.totalDamage) return b.totalDamage - a.totalDamage;
     return b.oboli - a.oboli;
   });
@@ -1833,52 +2615,84 @@ export function buildEventLeaderboard(
     .setTitle("🏆 CLASAMENT EVENIMENT — Ora Umbrelor")
     .setDescription(
       `👤 **${participants.length}** participanți | ` +
-      `❤️ **${survivorCount}** supraviețuitori | ` +
-      `💀 **${fallenCount}** căzuți | ` +
-      `🏳️ **${fledCount}** au fugit\n\n` +
-      (lines.length > 0 ? lines.join("\n") : "_Niciun participant._"),
+        `❤️ **${survivorCount}** supraviețuitori | ` +
+        `💀 **${fallenCount}** căzuți | ` +
+        `🏳️ **${fledCount}** au fugit\n\n` +
+        (lines.length > 0 ? lines.join("\n") : "_Niciun participant._"),
     )
     .setFooter({ text: "Clasament generat la finalul evenimentului." })
     .setTimestamp();
 }
 
-export function combatRow(eventId: number, p?: EventParticipant): ActionRowBuilder<ButtonBuilder> {
+export function combatRow(
+  eventId: number,
+  p?: EventParticipant,
+): ActionRowBuilder<ButtonBuilder> {
   const hasEmpower = (p?.empowerLevel ?? 0) >= 1;
   const hasShield = (p?.shieldLevel ?? 0) >= 1;
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`ora_attack_${eventId}`).setLabel("Atacă").setEmoji("⚔️").setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId(`ora_ability_${eventId}_empower`).setLabel(hasEmpower ? "Lovitura Umbrei" : "🔒 Lovitura Umbrei").setEmoji("🌑").setStyle(ButtonStyle.Primary).setDisabled(!hasEmpower),
-    new ButtonBuilder().setCustomId(`ora_ability_${eventId}_shield`).setLabel(hasShield ? "Scut de Cenușă" : "🔒 Scut de Cenușă").setEmoji("🛡️").setStyle(ButtonStyle.Primary).setDisabled(!hasShield),
-    new ButtonBuilder().setCustomId(`ora_retreat_${eventId}`).setLabel("Retragere").setEmoji("🏳️").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`ora_attack_${eventId}`)
+      .setLabel("Atacă")
+      .setEmoji("⚔️")
+      .setStyle(ButtonStyle.Danger),
+    new ButtonBuilder()
+      .setCustomId(`ora_ability_${eventId}_empower`)
+      .setLabel(hasEmpower ? "Lovitura Umbrei" : "🔒 Lovitura Umbrei")
+      .setEmoji("🌑")
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(!hasEmpower),
+    new ButtonBuilder()
+      .setCustomId(`ora_ability_${eventId}_shield`)
+      .setLabel(hasShield ? "Scut de Cenușă" : "🔒 Scut de Cenușă")
+      .setEmoji("🛡️")
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(!hasShield),
+    new ButtonBuilder()
+      .setCustomId(`ora_retreat_${eventId}`)
+      .setLabel("Retragere")
+      .setEmoji("🏳️")
+      .setStyle(ButtonStyle.Secondary),
   );
 }
 
-export function buildRetreatEmbed(level: number, opts?: {
-  totalDamage?: number;
-  oboli?: number;
-  xp?: number;
-  baseOboli?: number;
-  baseXp?: number;
-  itemsFarmed?: Record<string, number> | null;
-}): EmbedBuilder {
-  const { totalDamage = 0, oboli = 0, xp = 0, baseOboli = 0, baseXp = 0, itemsFarmed } = opts ?? {};
+export function buildRetreatEmbed(
+  level: number,
+  opts?: {
+    totalDamage?: number;
+    oboli?: number;
+    xp?: number;
+    baseOboli?: number;
+    baseXp?: number;
+    itemsFarmed?: Record<string, number> | null;
+  },
+): EmbedBuilder {
+  const {
+    totalDamage = 0,
+    oboli = 0,
+    xp = 0,
+    baseOboli = 0,
+    baseXp = 0,
+    itemsFarmed,
+  } = opts ?? {};
   const oboliLine = formatEventReward("🪙", "Oboli", oboli, baseOboli);
   const xpLine = formatEventReward("⭐", "XP", xp, baseXp);
   const itemsLine = formatItemsFarmed(itemsFarmed);
-  const summary = totalDamage > 0 || oboli > 0 || xp > 0 || itemsLine
-    ? `\n${sectionTitle("Rezumat Eveniment")}\n⚔️ Daune totale: **${totalDamage.toLocaleString()}**\n${oboliLine}${xpLine}${itemsLine}\n`
-    : "";
+  const summary =
+    totalDamage > 0 || oboli > 0 || xp > 0 || itemsLine
+      ? `\n${sectionTitle("Rezumat Eveniment")}\n⚔️ Daune totale: **${totalDamage.toLocaleString()}**\n${oboliLine}${xpLine}${itemsLine}\n`
+      : "";
   return new EmbedBuilder()
     .setColor(0x555555)
     .setTitle("🏳️  TE-AI RETRAS DIN LUPTĂ 🏳️")
     .setDescription(
       "Ai întors spatele Umbrelor și ai fugit din fața monstrului.\n" +
-      `Ai abandonat lupta la **Nivelul ${level}**.\n\n` +
-      "🪙 Obolii strânși rămân ai tăi — fuga ți-a salvat câștigul.\n" +
-      "Dar Regatul își amintește de cei care au fugit…\n\n" +
-      summary +
-      "Numele tău va purta pecetea celui care **a abandonat și a fugit**.\n" +
-      "Folosește **/magazin** ca să te întărești pentru următoarea chemare.",
+        `Ai abandonat lupta la **Nivelul ${level}**.\n\n` +
+        "🪙 Obolii strânși rămân ai tăi — fuga ți-a salvat câștigul.\n" +
+        "Dar Regatul își amintește de cei care au fugit…\n\n" +
+        summary +
+        "Numele tău va purta pecetea celui care **a abandonat și a fugit**.\n" +
+        "Folosește **/magazin** ca să te întărești pentru următoarea chemare.",
     );
 }
 
@@ -1895,25 +2709,52 @@ export const SHOP_COUNT_KEY: Record<ShopKey, keyof Player> = {
 /** Main nav row — category buttons shown on the landing page. */
 export function shopNavRow(): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId("shop_nav_stats").setLabel("Puteri").setEmoji("⚔️").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("shop_nav_comp").setLabel("Companion").setEmoji("🐾").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("shop_nav_abil").setLabel("Abilități").setEmoji("🎯").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("shop_nav_class").setLabel("Clasă").setEmoji("🧬").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("shop_nav_prestige").setLabel("Prestigiu").setEmoji("⭐").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId("shop_nav_stats")
+      .setLabel("Puteri")
+      .setEmoji("⚔️")
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId("shop_nav_comp")
+      .setLabel("Companion")
+      .setEmoji("🐾")
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId("shop_nav_abil")
+      .setLabel("Abilități")
+      .setEmoji("🎯")
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId("shop_nav_class")
+      .setLabel("Clasă")
+      .setEmoji("🧬")
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId("shop_nav_prestige")
+      .setLabel("Prestigiu")
+      .setEmoji("⭐")
+      .setStyle(ButtonStyle.Secondary),
   );
 }
 
 /** Back button row — shown at the bottom of every sub-page. */
 export function shopBackRow(): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId("shop_back").setLabel("← Înapoi").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId("shop_back")
+      .setLabel("← Înapoi")
+      .setStyle(ButtonStyle.Secondary),
   );
 }
 
 /** Second nav row — Talismane (kept separate because shopNavRow hits Discord's 5-button limit). */
 export function shopNavRow2(): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId("shop_nav_talisman").setLabel("Talismane").setEmoji("🔮").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId("shop_nav_talisman")
+      .setLabel("Talismane")
+      .setEmoji("🔮")
+      .setStyle(ButtonStyle.Secondary),
   );
 }
 
@@ -1941,11 +2782,11 @@ export function prestigeStartLevel(_prestigeLevel: number): number {
 function prestigeNextBonuses(level: number): string {
   const next = level + 1;
   const mult = Math.pow(1.5, level - 1);
-  const atk  = Math.round(5 * mult);
-  const def  = Math.round(5 * mult);
+  const atk = Math.round(5 * mult);
+  const def = Math.round(5 * mult);
   const dodge = Math.round(3 * mult);
-  const crit  = Math.round(3 * mult);
-  const hp    = Math.round(20 * mult);
+  const crit = Math.round(3 * mult);
+  const hp = Math.round(20 * mult);
   return `⚔️ +${atk} daune · 🛡️ +${def} apărare · 🌀 +${dodge}% evitare · 💥 +${crit}% critic · ❤️ +${hp} HP · 🪙 +${PRESTIGE_GOLD_BONUS}% Oboli`;
 }
 
@@ -1992,7 +2833,9 @@ export function shopCompRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
       new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
           .setCustomId("shop_compup")
-          .setLabel(`Îmbunătățire Nv.${p.companionLevel} → ${p.companionLevel + 1} (${cost} Oboli + ${UPGRADE_XP_COST} XP)`)
+          .setLabel(
+            `Îmbunătățire Nv.${p.companionLevel} → ${p.companionLevel + 1} (${cost} Oboli + ${UPGRADE_XP_COST} XP)`,
+          )
           .setEmoji(COMPANIONS[p.companion].emoji)
           .setStyle(ButtonStyle.Success)
           .setDisabled(p.gold < cost || p.xp < UPGRADE_XP_COST),
@@ -2024,13 +2867,16 @@ export function shopCompRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
 /** Abilități sub-page rows (buy or upgrade each ability). */
 export function shopAbilRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
   const abilBtn = (kind: AbilityKey) => {
-    const lvl = kind === "empower" ? p.abilityEmpowerLevel : p.abilityShieldLevel;
+    const lvl =
+      kind === "empower" ? p.abilityEmpowerLevel : p.abilityShieldLevel;
     const a = ABILITIES[kind];
     if (lvl >= 1) {
       const cost = upgradeCost(lvl);
       return new ButtonBuilder()
         .setCustomId(`shop_abilup_${kind}`)
-        .setLabel(`${a.label} Nv.${lvl} → ${lvl + 1} (${cost} + ${UPGRADE_XP_COST}XP)`)
+        .setLabel(
+          `${a.label} Nv.${lvl} → ${lvl + 1} (${cost} + ${UPGRADE_XP_COST}XP)`,
+        )
         .setEmoji(a.emoji)
         .setStyle(ButtonStyle.Primary)
         .setDisabled(p.gold < cost || p.xp < UPGRADE_XP_COST);
@@ -2046,7 +2892,9 @@ export function shopAbilRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
   const mCost = manaUpgradeCost(mLvl);
   const manaBtn = new ButtonBuilder()
     .setCustomId("shop_manaup")
-    .setLabel(`Rezerva de Mană Nv.${mLvl} → ${mLvl + 1} (${mCost} + ${UPGRADE_XP_COST}XP)`)
+    .setLabel(
+      `Rezerva de Mană Nv.${mLvl} → ${mLvl + 1} (${mCost} + ${UPGRADE_XP_COST}XP)`,
+    )
     .setEmoji("🔷")
     .setStyle(ButtonStyle.Primary)
     .setDisabled(p.gold < mCost || p.xp < UPGRADE_XP_COST);
@@ -2054,12 +2902,17 @@ export function shopAbilRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
   const rCost = manaRegenUpgradeCost(rLvl);
   const regenBtn = new ButtonBuilder()
     .setCustomId("shop_manaregenup")
-    .setLabel(`Regenerare de Mană Nv.${rLvl} → ${rLvl + 1} (${rCost} + ${UPGRADE_XP_COST}XP)`)
+    .setLabel(
+      `Regenerare de Mană Nv.${rLvl} → ${rLvl + 1} (${rCost} + ${UPGRADE_XP_COST}XP)`,
+    )
     .setEmoji("💠")
     .setStyle(ButtonStyle.Primary)
     .setDisabled(p.gold < rCost || p.xp < UPGRADE_XP_COST);
   return [
-    new ActionRowBuilder<ButtonBuilder>().addComponents(abilBtn("empower"), abilBtn("shield")),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      abilBtn("empower"),
+      abilBtn("shield"),
+    ),
     new ActionRowBuilder<ButtonBuilder>().addComponents(manaBtn, regenBtn),
     shopBackRow(),
   ];
@@ -2072,7 +2925,9 @@ export function shopPrestigeRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
         .setCustomId("shop_prestigebuy")
-        .setLabel(`⭐ Prestigiu Nv.${p.prestigeLevel} → ${p.prestigeLevel + 1} (${cost.toLocaleString("ro-RO")} XP)`)
+        .setLabel(
+          `⭐ Prestigiu Nv.${p.prestigeLevel} → ${p.prestigeLevel + 1} (${cost.toLocaleString("ro-RO")} XP)`,
+        )
         .setEmoji("💎")
         .setStyle(ButtonStyle.Success)
         .setDisabled(p.xp < cost),
@@ -2092,13 +2947,18 @@ export function shopClassRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
       .setEmoji("🔄")
       .setStyle(ButtonStyle.Danger);
     if (level >= 10) {
-      return [new ActionRowBuilder<ButtonBuilder>().addComponents(resetBtn), shopBackRow()];
+      return [
+        new ActionRowBuilder<ButtonBuilder>().addComponents(resetBtn),
+        shopBackRow(),
+      ];
     }
     const rows: ActionRowBuilder<ButtonBuilder>[] = [
       new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
           .setCustomId("shop_classup")
-          .setLabel(`\u2b06\ufe0f Upgrade Clas\u0103 Nv.${level} \u2192 ${level + 1}`)
+          .setLabel(
+            `\u2b06\ufe0f Upgrade Clas\u0103 Nv.${level} \u2192 ${level + 1}`,
+          )
           .setEmoji("💎")
           .setStyle(ButtonStyle.Success)
           .setDisabled(false),
@@ -2109,24 +2969,36 @@ export function shopClassRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
     return rows;
   }
   const keys = Object.keys(CLASSES) as ClassKey[];
-  const feeApplies = Object.keys((p.classLevels ?? {}) as Record<string, number>).length > 0;
+  const feeApplies =
+    Object.keys((p.classLevels ?? {}) as Record<string, number>).length > 0;
   const btn = (k: ClassKey) =>
     new ButtonBuilder()
       .setCustomId(`shop_class_${k}`)
-      .setLabel(feeApplies ? `${CLASSES[k].label} (${CLASS_SWITCH_COST})` : CLASSES[k].label)
+      .setLabel(
+        feeApplies
+          ? `${CLASSES[k].label} (${CLASS_SWITCH_COST})`
+          : CLASSES[k].label,
+      )
       .setEmoji(CLASSES[k].emoji)
       .setStyle(ButtonStyle.Primary)
       .setDisabled(feeApplies && p.gold < CLASS_SWITCH_COST);
   return [
-    new ActionRowBuilder<ButtonBuilder>().addComponents(keys.slice(0, 3).map(btn)),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      keys.slice(0, 3).map(btn),
+    ),
     new ActionRowBuilder<ButtonBuilder>().addComponents(keys.slice(3).map(btn)),
     shopBackRow(),
   ];
 }
 
 /** Talisman sub-page embed. `savedLevels` maps talismanKey → saved level for owned talismans. */
-export function buildTalismanPage(p: Player, items: PlayerItem[], savedLevels: Record<string, number> = {}): EmbedBuilder {
-  const equippedKey = p.talisman && isTalismanKey(p.talisman) ? p.talisman : null;
+export function buildTalismanPage(
+  p: Player,
+  items: PlayerItem[],
+  savedLevels: Record<string, number> = {},
+): EmbedBuilder {
+  const equippedKey =
+    p.talisman && isTalismanKey(p.talisman) ? p.talisman : null;
   const equippedLevel = p.talismanLevel ?? 1;
 
   const talismanLines = (Object.keys(TALISMANS) as TalismanKey[]).map((key) => {
@@ -2144,13 +3016,13 @@ export function buildTalismanPage(p: Player, items: PlayerItem[], savedLevels: R
     const upgradeInfo = isEquipped
       ? (() => {
           const cost = talismanUpgradeCost(key, equippedLevel);
-          const tierPart = cost.tier ? ` + ${cost.tierQty}× ${ITEMS[cost.tier].emoji} ${ITEMS[cost.tier].label}` : "";
+          const tierPart = cost.tier
+            ? ` + ${cost.tierQty}× ${ITEMS[cost.tier].emoji} ${ITEMS[cost.tier].label}`
+            : "";
           return `\n   ↳ *Upgrade Nv.${equippedLevel + 1}* → **${talismanDesc(key, equippedLevel + 1)}**\n   ↳ cost: ${cost.commonQty}× ${ITEMS[cost.common].emoji} ${ITEMS[cost.common].label} + ${cost.rareQty}× ${ITEMS[cost.rare].emoji} ${ITEMS[cost.rare].label}${tierPart}`;
         })()
       : "";
-    const barLine = owned
-      ? `\n${talismanRankLine(level)} (Nv.${level})`
-      : "";
+    const barLine = owned ? `\n${talismanRankLine(level)} (Nv.${level})` : "";
     return `${t.emoji} **${t.label}**${levelTag} — ${priceTag}${barLine}\n   ↳ ${t.passiveLabel}: ${talismanDesc(key, level)}${upgradeInfo}`;
   });
 
@@ -2158,7 +3030,10 @@ export function buildTalismanPage(p: Player, items: PlayerItem[], savedLevels: R
     items.filter((i) => i.quantity > 0).length > 0
       ? items
           .filter((i) => i.quantity > 0)
-          .map((i) => `${isItemKey(i.itemKey) ? ITEMS[i.itemKey].emoji : "❓"} **×${i.quantity}** ${isItemKey(i.itemKey) ? ITEMS[i.itemKey].label : i.itemKey}`)
+          .map(
+            (i) =>
+              `${isItemKey(i.itemKey) ? ITEMS[i.itemKey].emoji : "❓"} **×${i.quantity}** ${isItemKey(i.itemKey) ? ITEMS[i.itemKey].label : i.itemKey}`,
+          )
           .join("  ·  ")
       : "*Niciun item — ucide monștri și boși!*";
 
@@ -2169,23 +3044,28 @@ export function buildTalismanPage(p: Player, items: PlayerItem[], savedLevels: R
     .setTitle("🔮 Forja Cenușii — Talismane")
     .setDescription(
       SHOP_BALANCE(p) +
-      "\n\n" +
-      sectionTitle("Talismane disponibile") +
-      "\n" +
-      "*Fiecare talisman oferă un pasiv unic, cu nivele **infinite** — la fiecare 5 nivele urci un 🏅 Rank. Nivelul rămâne salvat când schimbi talismanul, iar cele deținute se echipează gratuit.*\n\n" +
-      "*Materiale de rank: 💠 Solz Spectral (monștri rari) · 💎 Cristal de Abis (epici) · 🧪 Sânge de Titan (legendari) · 🌟 Fragment Mitic (mitici) · 🔥 Sigiliul Bossului (mini-bossi).*\n\n" +
-      talismanLines.join("\n") +
-      "\n\n" +
-      sectionTitle("Inventarul tău de materiale") +
-      "\n" +
-      inventoryLine,
+        "\n\n" +
+        sectionTitle("Talismane disponibile") +
+        "\n" +
+        "*Fiecare talisman oferă un pasiv unic, cu nivele **infinite** — la fiecare 5 nivele urci un 🏅 Rank. Nivelul rămâne salvat când schimbi talismanul, iar cele deținute se echipează gratuit.*\n\n" +
+        "*Materiale de rank: 💠 Solz Spectral (monștri rari) · 💎 Cristal de Abis (epici) · 🧪 Sânge de Titan (legendari) · 🌟 Fragment Mitic (mitici) · 🔥 Sigiliul Bossului (mini-bossi).*\n\n" +
+        talismanLines.join("\n") +
+        "\n\n" +
+        sectionTitle("Inventarul tău de materiale") +
+        "\n" +
+        inventoryLine,
     );
 }
 
 /** Talisman sub-page action rows. `savedLevels` maps talismanKey → saved level for owned talismans. */
-export function shopTalismanRows(p: Player, items: PlayerItem[], savedLevels: Record<string, number> = {}): ActionRowBuilder<ButtonBuilder>[] {
+export function shopTalismanRows(
+  p: Player,
+  items: PlayerItem[],
+  savedLevels: Record<string, number> = {},
+): ActionRowBuilder<ButtonBuilder>[] {
   const inv = Object.fromEntries(items.map((i) => [i.itemKey, i.quantity]));
-  const equippedKey = p.talisman && isTalismanKey(p.talisman) ? p.talisman : null;
+  const equippedKey =
+    p.talisman && isTalismanKey(p.talisman) ? p.talisman : null;
   const equippedLevel = p.talismanLevel ?? 1;
   const keys = Object.keys(TALISMANS) as TalismanKey[];
 
@@ -2217,12 +3097,19 @@ export function shopTalismanRows(p: Player, items: PlayerItem[], savedLevels: Re
       (inv[cost.common] ?? 0) >= cost.commonQty &&
       (inv[cost.rare] ?? 0) >= cost.rareQty &&
       (!cost.tier || (inv[cost.tier] ?? 0) >= cost.tierQty);
-    const tierPart = cost.tier ? ` + ${cost.tierQty}× ${ITEMS[cost.tier].label}` : "";
+    const tierPart = cost.tier
+      ? ` + ${cost.tierQty}× ${ITEMS[cost.tier].label}`
+      : "";
     rows.push(
       new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
           .setCustomId("shop_talisman_upgrade")
-          .setLabel(`✨ Evoluează la Nv.${equippedLevel + 1} (${cost.commonQty}× ${ITEMS[cost.common].label} + ${cost.rareQty}× ${ITEMS[cost.rare].label}${tierPart})`.slice(0, 80))
+          .setLabel(
+            `✨ Evoluează la Nv.${equippedLevel + 1} (${cost.commonQty}× ${ITEMS[cost.common].label} + ${cost.rareQty}× ${ITEMS[cost.rare].label}${tierPart})`.slice(
+              0,
+              80,
+            ),
+          )
           .setStyle(ButtonStyle.Success)
           .setDisabled(!hasItems),
       ),
@@ -2233,16 +3120,38 @@ export function shopTalismanRows(p: Player, items: PlayerItem[], savedLevels: Re
   return rows;
 }
 
-export function levelupRows(eventId: number): ActionRowBuilder<ButtonBuilder>[] {
+export function levelupRows(
+  eventId: number,
+): ActionRowBuilder<ButtonBuilder>[] {
   return [
     new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId(`ora_lvlup_${eventId}_xp`).setLabel("+5 XP/monstru").setEmoji("🔹").setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId(`ora_lvlup_${eventId}_dodge`).setLabel("+3% Evitare").setEmoji("🔹").setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId(`ora_lvlup_${eventId}_atac`).setLabel("+2 Daune").setEmoji("🔹").setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId(`ora_lvlup_${eventId}_xp`)
+        .setLabel("+5 XP/monstru")
+        .setEmoji("🔹")
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId(`ora_lvlup_${eventId}_dodge`)
+        .setLabel("+3% Evitare")
+        .setEmoji("🔹")
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId(`ora_lvlup_${eventId}_atac`)
+        .setLabel("+2 Daune")
+        .setEmoji("🔹")
+        .setStyle(ButtonStyle.Success),
     ),
     new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId(`ora_lvlup_${eventId}_hp`).setLabel("+5 HP").setEmoji("🔹").setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId(`ora_lvlup_${eventId}_crit`).setLabel("+1% Critic").setEmoji("🔹").setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId(`ora_lvlup_${eventId}_hp`)
+        .setLabel("+5 HP")
+        .setEmoji("🔹")
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId(`ora_lvlup_${eventId}_crit`)
+        .setLabel("+1% Critic")
+        .setEmoji("🔹")
+        .setStyle(ButtonStyle.Success),
     ),
   ];
 }
@@ -2255,48 +3164,63 @@ export function buildClassEmbed(player: Player): EmbedBuilder {
     const level = player.classLevel ?? 1;
     const stats = classStats(classKey, level);
     const next = level < 10 ? classStats(classKey, level + 1) : null;
-      const cost = classUpgradeCost(level);
+    const cost = classUpgradeCost(level);
 
-      const bonusLine = (label: string, val: number, nxt?: number | null) =>
-        val > 0 || (nxt ?? 0) > 0
-          ? `   · ${label}: **+${val}**${nxt && nxt > val ? ` → +${nxt}` : ""}`
-          : "";
-
-      const costLines = cost.items.length > 0
-        ? cost.items.map((req) => `   · ${req.qty}× ${ITEMS[req.item].emoji} ${ITEMS[req.item].label}`).join("\n")
+    const bonusLine = (label: string, val: number, nxt?: number | null) =>
+      val > 0 || (nxt ?? 0) > 0
+        ? `   · ${label}: **+${val}**${nxt && nxt > val ? ` → +${nxt}` : ""}`
         : "";
 
-      const upgradeBlock = level >= 10
+    const costLines =
+      cost.items.length > 0
+        ? cost.items
+            .map(
+              (req) =>
+                `   · ${req.qty}× ${ITEMS[req.item].emoji} ${ITEMS[req.item].label}`,
+            )
+            .join("\n")
+        : "";
+
+    const upgradeBlock =
+      level >= 10
         ? "⭐ **Nivel maxim atins!** Calea ta este desăvârșită."
         : `\n\n⬆️ **Upgrade la Nv.${level + 1}**\n` +
           `   · ${cost.gold} Oboli\n` +
           `   · ${cost.xp} XP${costLines ? "\n" + costLines : ""}`;
 
-      const desc =
-        `${cls.emoji} **${cls.label}** (Nv.${level})\n` +
-        `> *${cls.desc}*\n\n` +
-        bonusLine("⚔️ Daune", stats.attack, next?.attack) + "\n" +
-        bonusLine("❤️ HP", stats.hp, next?.hp) + "\n" +
-        bonusLine("🌀 Evitare", stats.dodge, next?.dodge) + "\n" +
-        bonusLine("💥 Critic", stats.crit, next?.crit) + "\n" +
-        (cls.xpMult !== 1 ? `   · 📚 XP ×${cls.xpMult}` : "") +
-        (cls.oboliMult !== 1 ? `   · 💰 Oboli ×${cls.oboliMult}` : "") +
-        `\n\n✅ Bonusurile căii tale se aplică automat. *(O poți reseta din **/magazin → Clasă**.)*` +
-        upgradeBlock;
+    const desc =
+      `${cls.emoji} **${cls.label}** (Nv.${level})\n` +
+      `> *${cls.desc}*\n\n` +
+      bonusLine("⚔️ Daune", stats.attack, next?.attack) +
+      "\n" +
+      bonusLine("❤️ HP", stats.hp, next?.hp) +
+      "\n" +
+      bonusLine("🌀 Evitare", stats.dodge, next?.dodge) +
+      "\n" +
+      bonusLine("💥 Critic", stats.crit, next?.crit) +
+      "\n" +
+      (cls.xpMult !== 1 ? `   · 📚 XP ×${cls.xpMult}` : "") +
+      (cls.oboliMult !== 1 ? `   · 💰 Oboli ×${cls.oboliMult}` : "") +
+      `\n\n✅ Bonusurile căii tale se aplică automat. *(O poți reseta din **/magazin → Clasă**.)*` +
+      upgradeBlock;
 
-      return new EmbedBuilder()
-        .setColor(0x6d28d9)
-        .setTitle("🧀  CLASA TA ÎN REGATUL CENUȘII")
-        .setDescription(desc)
-        .setFooter({ text: BRAND_FOOTER });
+    return new EmbedBuilder()
+      .setColor(0x6d28d9)
+      .setTitle("🧀  CLASA TA ÎN REGATUL CENUȘII")
+      .setDescription(desc)
+      .setFooter({ text: BRAND_FOOTER });
   }
   return new EmbedBuilder()
     .setColor(0x6d28d9)
     .setTitle("🧬  ALEGE-ȚI CLASA")
     .setDescription(
       "Înainte de a intra în Umbre, alege-ți calea.\n" +
-      "🎓 *Nivelul fiecărei clase se păstrează. Prima instruire e gratuită; o nouă cale costă " + CLASS_SWITCH_COST + " Oboli.*\n\n" +
-      Object.values(CLASSES).map((c) => `${c.emoji} **${c.label}** — ${c.desc}`).join("\n"),
+        "🎓 *Nivelul fiecărei clase se păstrează. Prima instruire e gratuită; o nouă cale costă " +
+        CLASS_SWITCH_COST +
+        " Oboli.*\n\n" +
+        Object.values(CLASSES)
+          .map((c) => `${c.emoji} **${c.label}** — ${c.desc}`)
+          .join("\n"),
     )
     .setFooter({ text: BRAND_FOOTER });
 }
@@ -2304,9 +3228,15 @@ export function buildClassEmbed(player: Player): EmbedBuilder {
 export function classRows(): ActionRowBuilder<ButtonBuilder>[] {
   const keys = Object.keys(CLASSES) as ClassKey[];
   const btn = (k: ClassKey) =>
-    new ButtonBuilder().setCustomId(`class_pick_${k}`).setLabel(CLASSES[k].label).setEmoji(CLASSES[k].emoji).setStyle(ButtonStyle.Primary);
+    new ButtonBuilder()
+      .setCustomId(`class_pick_${k}`)
+      .setLabel(CLASSES[k].label)
+      .setEmoji(CLASSES[k].emoji)
+      .setStyle(ButtonStyle.Primary);
   return [
-    new ActionRowBuilder<ButtonBuilder>().addComponents(keys.slice(0, 3).map(btn)),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      keys.slice(0, 3).map(btn),
+    ),
     new ActionRowBuilder<ButtonBuilder>().addComponents(keys.slice(3).map(btn)),
   ];
 }
@@ -2323,13 +3253,13 @@ export function buildCompanionEmbed(player: Player): EmbedBuilder {
       .setTitle("🐾  COMPANIONUL TĂU")
       .setDescription(
         `${c.emoji} **${evolved ? c.evoLabel : c.label}**${evolved ? "  ✨*(Evoluat)*" : ""}\n` +
-        `*${c.lore}*\n\n` +
-        `🏅 **Nivel ${player.companionLevel}**\n` +
-        `🎁 **Bonus activ:** ${companionEffectiveDesc(player.companion, player.companionLevel)}\n` +
-        `🔼 **La Nv.${player.companionLevel + 1}:** ${companionEffectiveDesc(player.companion, player.companionLevel + 1)} — îmbunătățire din **/magazin**\n\n` +
-        (evolved
-          ? "Companionul tău a evoluat la forma sa legendară!"
-          : `🔓 Evoluează la **Nivel ${COMPANION_EVOLVE_LEVEL}** companion — fă îmbunătățire din **/magazin**.`),
+          `*${c.lore}*\n\n` +
+          `🏅 **Nivel ${player.companionLevel}**\n` +
+          `🎁 **Bonus activ:** ${companionEffectiveDesc(player.companion, player.companionLevel)}\n` +
+          `🔼 **La Nv.${player.companionLevel + 1}:** ${companionEffectiveDesc(player.companion, player.companionLevel + 1)} — îmbunătățire din **/magazin**\n\n` +
+          (evolved
+            ? "Companionul tău a evoluat la forma sa legendară!"
+            : `🔓 Evoluează la **Nivel ${COMPANION_EVOLVE_LEVEL}** companion — fă îmbunătățire din **/magazin**.`),
       )
       .setFooter({ text: BRAND_FOOTER });
     const url = evolved ? img?.evo : img?.base;
@@ -2341,9 +3271,11 @@ export function buildCompanionEmbed(player: Player): EmbedBuilder {
     .setTitle("🐾  COMPANIONI")
     .setDescription(
       "O creatură a Cenușii ți se poate alătura în luptă.\n" +
-      `🛒 Cumpără un companion din **/magazin** (**${COMPANION_BUY_COST} Oboli**):\n\n` +
-      Object.values(COMPANIONS).map((c) => `${c.emoji} **${c.label}** — ${c.desc}`).join("\n") +
-      `\n\n✨ La **Nivel ${COMPANION_EVOLVE_LEVEL}** companionul evoluează în forma legendară.`,
+        `🛒 Cumpără un companion din **/magazin** (**${COMPANION_BUY_COST} Oboli**):\n\n` +
+        Object.values(COMPANIONS)
+          .map((c) => `${c.emoji} **${c.label}** — ${c.desc}`)
+          .join("\n") +
+        `\n\n✨ La **Nivel ${COMPANION_EVOLVE_LEVEL}** companionul evoluează în forma legendară.`,
     )
     .setFooter({ text: BRAND_FOOTER });
 }
@@ -2364,11 +3296,14 @@ export function oracleMessage(): string {
 // ─── Final boss ──────────────────────────────────────────────────────────────
 export type BossRarity = "comun" | "rar" | "epic" | "legendar";
 
-export const BOSS_RARITY_DATA: Record<BossRarity, { label: string; emoji: string; color: number; hpMult: number }> = {
-  comun:    { label: "Comun",    emoji: "⚪", color: 0x7f1d1d, hpMult: 1   },
-  rar:      { label: "Rar",      emoji: "🔵", color: 0x1e3a8a, hpMult: 1.5 },
-  epic:     { label: "Epic",     emoji: "🟣", color: 0x5b21b6, hpMult: 2.5 },
-  legendar: { label: "Legendar", emoji: "🟠", color: 0xb45309, hpMult: 4   },
+export const BOSS_RARITY_DATA: Record<
+  BossRarity,
+  { label: string; emoji: string; color: number; hpMult: number }
+> = {
+  comun: { label: "Comun", emoji: "⚪", color: 0x7f1d1d, hpMult: 1 },
+  rar: { label: "Rar", emoji: "🔵", color: 0x1e3a8a, hpMult: 1.5 },
+  epic: { label: "Epic", emoji: "🟣", color: 0x5b21b6, hpMult: 2.5 },
+  legendar: { label: "Legendar", emoji: "🟠", color: 0xb45309, hpMult: 4 },
 };
 
 export function bossMaxHp(level: number, rarity: BossRarity): number {
@@ -2420,9 +3355,10 @@ export function buildFinalBossEmbed(
   }
 
   // ── HP bar ───────────────────────────────────────────────────────────────────
-  const vetLine = (bossVeteranRank > 0
-    ? `🏅 Rang veteran: **Rang ${bossVeteranRank} · ${veteranTierLabel(bossVeteranRank)}** — *s-a întors mai puternic! +${bossVeteranRank * 20}% viață și daune*\n`
-    : "") +
+  const vetLine =
+    (bossVeteranRank > 0
+      ? `🏅 Rang veteran: **Rang ${bossVeteranRank} · ${veteranTierLabel(bossVeteranRank)}** — *s-a întors mai puternic! +${bossVeteranRank * 20}% viață și daune*\n`
+      : "") +
     (bossVeteranRank >= VETERAN_RANK_CAP
       ? `👑 **RANG VETERAN MAXIM!** *Cea mai puternică formă a acestui boss — pradă de veteran suprem: recompensă ×${VETERAN_MAX_REWARD_MULT}!*\n`
       : "");
@@ -2462,11 +3398,12 @@ export function buildFinalBossEmbed(
       const stats = playerStats?.get(id);
       const maxHpVal = stats?.maxHp ?? 100;
 
-      const hpStr = hp === undefined
-        ? ""
-        : hp <= 0
-          ? "  ·  ⚰️ Doborât"
-          : `  ·  ❤️ ${hp}/${maxHpVal} HP`;
+      const hpStr =
+        hp === undefined
+          ? ""
+          : hp <= 0
+            ? "  ·  ⚰️ Doborât"
+            : `  ·  ❤️ ${hp}/${maxHpVal} HP`;
 
       const statsStr = stats
         ? `\n↳ ⚔️+${stats.atk} · 🛡️+${stats.def} · 🌀${stats.dodge}% · 💥${stats.crit}%`
@@ -2486,10 +3423,19 @@ export function buildFinalBossEmbed(
   return embed;
 }
 
-const RARITY_MULT: Record<BossRarity, number> = { comun: 1, rar: 1.5, epic: 2, legendar: 3 };
-const BASE_REP = 50, BASE_GOLD = 150, BASE_XP = 250;
+const RARITY_MULT: Record<BossRarity, number> = {
+  comun: 1,
+  rar: 1.5,
+  epic: 2,
+  legendar: 3,
+};
+const BASE_REP = 50,
+  BASE_GOLD = 150,
+  BASE_XP = 250;
 
-const HIT_BONUS_XP = 5, HIT_BONUS_GOLD = 3, HIT_BONUS_REP = 2;
+const HIT_BONUS_XP = 5,
+  HIT_BONUS_GOLD = 3,
+  HIT_BONUS_REP = 2;
 
 export function computeBossRewards(
   damageBy: Map<string, number>,
@@ -2510,27 +3456,47 @@ export function computeBossRewards(
     const hitBonusGold = hits * HIT_BONUS_GOLD * rm;
     const hitBonusRep = hits * HIT_BONUS_REP * rm;
     result.set(id, {
-      rep:  Math.round((BASE_REP  * rankMult * rm + hitBonusRep) * vm),
+      rep: Math.round((BASE_REP * rankMult * rm + hitBonusRep) * vm),
       gold: Math.round((BASE_GOLD * rankMult * rm + hitBonusGold) * vm),
-      xp:   Math.round((BASE_XP   * rankMult * rm + hitBonusXp) * vm),
+      xp: Math.round((BASE_XP * rankMult * rm + hitBonusXp) * vm),
     });
   });
   return result;
 }
 
 export function buildBossLeaderboard(
-  bossInfo: { level: number; rarity: BossRarity; maxHp: number; defeated: boolean; veteranRank?: number },
+  bossInfo: {
+    level: number;
+    rarity: BossRarity;
+    maxHp: number;
+    defeated: boolean;
+    veteranRank?: number;
+  },
   damageMap: Map<string, number>,
-  participants: Array<{ username: string; discordId: string; monsterLevel: number; totalDamage: number; isAlive: boolean }>,
+  participants: Array<{
+    username: string;
+    discordId: string;
+    monsterLevel: number;
+    totalDamage: number;
+    isAlive: boolean;
+  }>,
   playerNames?: Map<string, string>,
   playerHp?: Map<string, number>,
   hitsBy?: Map<string, number>,
 ): EmbedBuilder {
   const rd = BOSS_RARITY_DATA[bossInfo.rarity];
-  const rewards = computeBossRewards(damageMap, bossInfo.rarity, hitsBy, bossInfo.veteranRank ?? 0);
+  const rewards = computeBossRewards(
+    damageMap,
+    bossInfo.rarity,
+    hitsBy,
+    bossInfo.veteranRank ?? 0,
+  );
 
   // Build a unified map of everyone who did damage
-  const allIds = new Set([...damageMap.keys(), ...participants.map((p) => p.discordId)]);
+  const allIds = new Set([
+    ...damageMap.keys(),
+    ...participants.map((p) => p.discordId),
+  ]);
   const participantMap = new Map(participants.map((p) => [p.discordId, p]));
 
   const ranked = [...allIds]
@@ -2546,7 +3512,9 @@ export function buildBossLeaderboard(
         inEvent: !!p,
       };
     })
-    .sort((a, b) => b.bossDamage - a.bossDamage || b.monsterLevel - a.monsterLevel);
+    .sort(
+      (a, b) => b.bossDamage - a.bossDamage || b.monsterLevel - a.monsterLevel,
+    );
 
   const medals = ["🥇", "🥈", "🥉"];
   const lines = ranked.slice(0, 10).map((p, i) => {
@@ -2554,11 +3522,12 @@ export function buildBossLeaderboard(
 
     // HP status
     const hp = playerHp?.get(p.discordId);
-    const hpStr = hp === undefined
-      ? ""
-      : hp <= 0
-        ? " | ⚰️ Doborât"
-        : ` | ❤️ ${hp} HP rămase`;
+    const hpStr =
+      hp === undefined
+        ? ""
+        : hp <= 0
+          ? " | ⚰️ Doborât"
+          : ` | ❤️ ${hp} HP rămase`;
 
     // Reward line
     const rew = rewards.get(p.discordId);
@@ -2569,9 +3538,10 @@ export function buildBossLeaderboard(
     const hits = hitsBy?.get(p.discordId) ?? 0;
     const hitsStr = hits > 0 ? ` | ⚔️ ${hits} lovituri` : "";
 
-    const bossStr = p.bossDamage > 0
-      ? `🐉 ${p.bossDamage.toLocaleString()} daune`
-      : `🐉 Nu a lovit`;
+    const bossStr =
+      p.bossDamage > 0
+        ? `🐉 ${p.bossDamage.toLocaleString()} daune`
+        : `🐉 Nu a lovit`;
 
     if (p.inEvent) {
       return `${medal} **${p.username}** — ${bossStr}${hitsStr}${hpStr} | 🎚️ Niv.**${p.monsterLevel}** | 💥 ${p.totalDamage.toLocaleString()} Eveniment${rewStr}`;
@@ -2579,10 +3549,14 @@ export function buildBossLeaderboard(
     return `${medal} **${p.username}** — ${bossStr}${hitsStr}${hpStr}${rewStr}`;
   });
 
-  const rarityBonus = RARITY_MULT[bossInfo.rarity] > 1 ? ` ✨ Bonus raritate ×${RARITY_MULT[bossInfo.rarity]}` : "";
-  const veteranBonus = (bossInfo.veteranRank ?? 0) >= VETERAN_RANK_CAP
-    ? ` 👑 Bonus veteran suprem ×${VETERAN_MAX_REWARD_MULT}`
-    : "";
+  const rarityBonus =
+    RARITY_MULT[bossInfo.rarity] > 1
+      ? ` ✨ Bonus raritate ×${RARITY_MULT[bossInfo.rarity]}`
+      : "";
+  const veteranBonus =
+    (bossInfo.veteranRank ?? 0) >= VETERAN_RANK_CAP
+      ? ` 👑 Bonus veteran suprem ×${VETERAN_MAX_REWARD_MULT}`
+      : "";
   const bossName = BOSSES[bossIndex(bossInfo.level)]!.name;
   const title = bossInfo.defeated
     ? `🏆 CLASAMENT FINAL — ${bossName} a Căzut!`
@@ -2593,7 +3567,7 @@ export function buildBossLeaderboard(
     .setTitle(title)
     .setDescription(
       `${rd.emoji} **${bossName} — Nivel ${bossInfo.level}** — ${rd.label} | HP: ${bossInfo.maxHp.toLocaleString()}${rarityBonus}${veteranBonus}\n\n` +
-      (lines.length > 0 ? lines.join("\n") : "_Niciun participant._"),
+        (lines.length > 0 ? lines.join("\n") : "_Niciun participant._"),
     )
     .setFooter({ text: "Recompensele au fost distribuite automat." })
     .setTimestamp();
@@ -2601,8 +3575,20 @@ export function buildBossLeaderboard(
 
 export function finalBossRow(eventId: number): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`finalboss_${eventId}`).setLabel("Lovește Dragonul").setEmoji("🐉").setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId(`bossability_${eventId}_empower`).setLabel("Lovitura Umbrei").setEmoji("🌑").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId(`bossability_${eventId}_shield`).setLabel("Scut de Cenușă").setEmoji("🛡️").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId(`finalboss_${eventId}`)
+      .setLabel("Lovește Dragonul")
+      .setEmoji("🐉")
+      .setStyle(ButtonStyle.Danger),
+    new ButtonBuilder()
+      .setCustomId(`bossability_${eventId}_empower`)
+      .setLabel("Lovitura Umbrei")
+      .setEmoji("🌑")
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId(`bossability_${eventId}_shield`)
+      .setLabel("Scut de Cenușă")
+      .setEmoji("🛡️")
+      .setStyle(ButtonStyle.Primary),
   );
 }
