@@ -1650,6 +1650,7 @@ async function handleKeyChestClaim(interaction: ButtonInteraction, chestId: stri
 }
 
 async function handleTraderClaim(interaction: ButtonInteraction, rarityKey: string) {
+  stopTraderInventoryRefresh(traderViewKey(interaction.guildId!, interaction.user.id));
   await interaction.deferUpdate();
   const guildId = interaction.guildId!;
 
@@ -1779,18 +1780,134 @@ function traderMainRows(): ActionRowBuilder<ButtonBuilder>[] {
       .setCustomId("trader_auction")
       .setLabel("⚒️ Târgul Negru")
       .setStyle(ButtonStyle.Danger),
+    new ButtonBuilder()
+      .setCustomId("trader_inventory")
+      .setLabel("🔑 Cheile mele")
+      .setStyle(ButtonStyle.Secondary),
   );
   return rows;
 }
 
 function traderMainEmbeds(): EmbedBuilder[] {
-  const traderOfferEmbeds = TRADER_OFFERS.map((offer) => {
-    const range = LOCKED_CHEST_GOLD[offer.rarityKey] ?? { min: 0, max: 0 };
-    const previewGold = Math.round((range.min + range.max) / 2);
-    return buildLockedChestEmbed(offer.rarityKey, previewGold)
-      .setFooter({ text: `Oferta Negustorului • ${offer.label} • ${BRAND_FOOTER}` });
-  });
-  return [traderMainEmbed(), ...traderOfferEmbeds];
+  return [traderMainEmbed()];
+}
+
+const TRADER_KEY_TYPES: KeyType[] = ["rar", "epic", "regal", "oase", "fum", "cavaler", "pangarita"];
+const TRADER_INVENTORY_REFRESH_MS = 10_000;
+const TRADER_INVENTORY_REFRESH_TTL_MS = 14 * 60 * 1000;
+
+function traderViewKey(guildId: string, userId: string): string {
+  return `${guildId}:${userId}`;
+}
+
+function traderKeyInventory(keys: Record<KeyType, number> | null): string {
+  return TRADER_KEY_TYPES
+    .map((keyType) => `${KEY_EMOJI[keyType] ?? "🗝️"} **${KEY_LABEL[keyType] ?? "Cheie"}**: **${keys?.[keyType] ?? 0}**`)
+    .join("\n");
+}
+
+function traderInventoryEmbed(keys: Record<KeyType, number> | null): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(0xc9a227)
+    .setTitle("🔑 Inventarul tău de chei")
+    .setDescription(
+      "Acesta este inventarul tău personal. Îl poți lăsa deschis — se verifică automat la fiecare **10 secunde**.",
+    )
+    .addFields({
+      name: "🗝️ Chei disponibile",
+      value: traderKeyInventory(keys),
+      inline: false,
+    })
+    .setImage(IMG.trader)
+    .setFooter({ text: `Date private • Actualizare automată la 10 secunde • ${BRAND_FOOTER}` });
+}
+
+function traderSelectionEmbed(rarityKey: string, keys: Record<KeyType, number> | null): EmbedBuilder {
+  const offer = TRADER_OFFERS.find((item) => item.rarityKey === rarityKey);
+  const range = LOCKED_CHEST_GOLD[rarityKey] ?? { min: 0, max: 0 };
+  const previewGold = Math.round((range.min + range.max) / 2);
+  const chestEmbed = buildLockedChestEmbed(rarityKey, previewGold);
+  const keyType = offer?.keyType ?? "rar";
+  const selectedKeyCount = keys?.[keyType] ?? 0;
+  const selectedKeyLabel = KEY_LABEL[keyType] ?? "Cheie";
+
+  return chestEmbed
+    .setDescription(
+      `${chestEmbed.data.description ?? ""}\n\n` +
+        "🎲 **Decizia este a ta:**\n" +
+        "🟢 **Deschide** consumă cheia și îți dă **30% șansă** să eliberezi comoara.\n" +
+        "🔴 La eșec, cheia se frânge și nu primești recompensa.\n" +
+        "↩️ **Înapoi** te duce la meniul Negustorului fără să consume nimic.",
+    )
+    .addFields(
+      {
+        name: "🗝️ Inventarul tău de chei",
+        value: traderKeyInventory(keys),
+        inline: false,
+      },
+      {
+        name: "🔐 Cheia pentru acest cufăr",
+        value: `${KEY_EMOJI[keyType] ?? "🗝️"} **${selectedKeyLabel}**: **${selectedKeyCount}**`,
+        inline: false,
+      },
+    )
+    .setFooter({ text: `Ai ales ${offer?.label ?? "cufărul"} • Inventarul se actualizează la 10 secunde • ${BRAND_FOOTER}` });
+}
+
+type TraderInventoryRefresh = {
+  interaction: ButtonInteraction;
+  rarityKey: string | null;
+  expiresAt: number;
+  timer: ReturnType<typeof setTimeout>;
+};
+
+const traderInventoryRefreshes = new Map<string, TraderInventoryRefresh>();
+
+function stopTraderInventoryRefresh(key: string): void {
+  const active = traderInventoryRefreshes.get(key);
+  if (!active) return;
+  clearTimeout(active.timer);
+  traderInventoryRefreshes.delete(key);
+}
+
+function scheduleTraderInventoryRefresh(interaction: ButtonInteraction, rarityKey: string | null): void {
+  const key = traderViewKey(interaction.guildId!, interaction.user.id);
+  stopTraderInventoryRefresh(key);
+
+  const state: TraderInventoryRefresh = {
+    interaction,
+    rarityKey,
+    expiresAt: Date.now() + TRADER_INVENTORY_REFRESH_TTL_MS,
+    timer: setTimeout(() => {}, TRADER_INVENTORY_REFRESH_TTL_MS),
+  };
+
+  const refresh = async (): Promise<void> => {
+    if (traderInventoryRefreshes.get(key) !== state) return;
+    if (Date.now() >= state.expiresAt) {
+      stopTraderInventoryRefresh(key);
+      return;
+    }
+
+    const keys = await getPlayerKeys(interaction.user.id, interaction.guildId!).catch((err) => {
+      logger.debug({ err, guildId: interaction.guildId }, "Trader key inventory refresh failed");
+      return null;
+    });
+
+    if (traderInventoryRefreshes.get(key) !== state) return;
+    await interaction.editReply({
+      embeds: [rarityKey ? traderSelectionEmbed(rarityKey, keys) : traderInventoryEmbed(keys)],
+      components: rarityKey ? [traderSelectionRow(rarityKey)] : traderMainRows(),
+    }).catch(() => {
+      stopTraderInventoryRefresh(key);
+    });
+
+    if (traderInventoryRefreshes.get(key) === state) {
+      state.timer = setTimeout(() => void refresh(), TRADER_INVENTORY_REFRESH_MS);
+    }
+  };
+
+  traderInventoryRefreshes.set(key, state);
+  state.timer = setTimeout(() => void refresh(), TRADER_INVENTORY_REFRESH_MS);
 }
 
 function traderSelectionRow(rarityKey: string): ActionRowBuilder<ButtonBuilder> {
@@ -1809,6 +1926,7 @@ function traderSelectionRow(rarityKey: string): ActionRowBuilder<ButtonBuilder> 
 }
 
 async function handleTraderSelect(interaction: ButtonInteraction, rarityKey: string) {
+  stopTraderInventoryRefresh(traderViewKey(interaction.guildId!, interaction.user.id));
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const offer = TRADER_OFFERS.find((item) => item.rarityKey === rarityKey);
   if (!offer) {
@@ -1816,27 +1934,37 @@ async function handleTraderSelect(interaction: ButtonInteraction, rarityKey: str
     return;
   }
 
-  const range = LOCKED_CHEST_GOLD[rarityKey] ?? { min: 0, max: 0 };
-  const previewGold = Math.round((range.min + range.max) / 2);
-  const chestEmbed = buildLockedChestEmbed(rarityKey, previewGold);
-  chestEmbed
-    .setDescription(
-      `${chestEmbed.data.description ?? ""}\n\n` +
-        "🎲 **Decizia este a ta:**\n" +
-        "🟢 Dacă apeși **Deschide**, consumi cheia și ai **30% șansă** să deschizi cufărul.\n" +
-        "🔴 În celelalte cazuri, cheia se frânge și nu primești comoara.\n" +
-        "↩️ Dacă nu vrei să riști, apasă **Înapoi la Negustor**.",
-    )
-    .setFooter({ text: `Ai ales ${offer.label} • ${BRAND_FOOTER}` });
+  const keys = await getPlayerKeys(interaction.user.id, interaction.guildId!).catch((err) => {
+    logger.warn({ err, guildId: interaction.guildId }, "Could not load trader key inventory");
+    return null;
+  });
 
   await interaction.editReply({
     content: `🏪 **Negustorul îți arată în privat ${offer.label}.**`,
-    embeds: [chestEmbed],
+    embeds: [traderSelectionEmbed(rarityKey, keys)],
     components: [traderSelectionRow(rarityKey)],
   });
+  scheduleTraderInventoryRefresh(interaction, rarityKey);
+}
+
+async function handleTraderInventory(interaction: ButtonInteraction) {
+  stopTraderInventoryRefresh(traderViewKey(interaction.guildId!, interaction.user.id));
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const keys = await getPlayerKeys(interaction.user.id, interaction.guildId!).catch((err) => {
+    logger.warn({ err, guildId: interaction.guildId }, "Could not load trader key inventory");
+    return null;
+  });
+
+  await interaction.editReply({
+    content: "🏪 **Negustorul îți arată inventarul personal de chei.**",
+    embeds: [traderInventoryEmbed(keys)],
+    components: traderMainRows(),
+  });
+  scheduleTraderInventoryRefresh(interaction, null);
 }
 
 async function handleTraderBack(interaction: ButtonInteraction) {
+  stopTraderInventoryRefresh(traderViewKey(interaction.guildId!, interaction.user.id));
   await interaction.deferUpdate();
   await interaction.editReply({
     content: "🏪 Ai revenit la meniul principal al Negustorului.",
@@ -3282,6 +3410,7 @@ async function handleButton(interaction: ButtonInteraction) {
   }
 
   if (id === "trader_back") return handleTraderBack(interaction);
+  if (id === "trader_inventory") return handleTraderInventory(interaction);
   if (id.startsWith("trader_open_")) {
     return handleTraderClaim(interaction, id.replace("trader_open_", ""));
   }
