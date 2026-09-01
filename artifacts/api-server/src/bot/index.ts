@@ -35,6 +35,7 @@ import {
   logOracleChatStatus,
   generatePersonalProphecy,
   generateChestInscription,
+  answerHelpQuestion,
   prophecyCooldownRemaining,
   reserveProphecy,
 } from "./oracle-chat";
@@ -936,21 +937,33 @@ async function handleHelpButton(interaction: ButtonInteraction) {
 }
 
 async function handleHelpQuestion(interaction: ModalSubmitInteraction) {
-  const category = interaction.customId.replace("help_question_", "") as HelpCategory;
-  const safeCategory = category in HELP_CATEGORY_LABELS ? category : "oracol";
-  const question = interaction.fields.getTextInputValue("help_question_text").trim();
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-  await interaction.editReply({
-    embeds: [
-      {
-        color: THEME_COLOR,
-        title: "🔮 Oracolul îți răspunde",
-        description: helpQuestionAnswer(question, safeCategory),
-        footer: { text: `Întrebare: ${question.slice(0, 120)} · ${BRAND_FOOTER}` },
-      },
-    ],
-    components: helpComponents(safeCategory),
-  });
+  try {
+    const category = interaction.customId.replace("help_question_", "") as HelpCategory;
+    const safeCategory = category in HELP_CATEGORY_LABELS ? category : "oracol";
+    const question = interaction.fields.getTextInputValue("help_question_text").trim();
+    const oracleAnswer = await answerHelpQuestion(question, interaction.user.id, interaction.guildId!);
+    const answer = oracleAnswer ?? helpQuestionAnswer(question, safeCategory);
+
+    await interaction.editReply({
+      embeds: [
+        {
+          color: THEME_COLOR,
+          title: oracleAnswer ? "🔮 Oracolul îți răspunde" : "🔮 Răspunsul ghidului Cenușii",
+          description: answer,
+          footer: { text: `Întrebare: ${question.slice(0, 120)} · ${BRAND_FOOTER}` },
+        },
+      ],
+      components: helpComponents(safeCategory),
+    });
+  } catch (err) {
+    logger.error({ err, guildId: interaction.guildId }, "Help Oracle modal failed");
+    await interaction.editReply({
+      content: "🔮 Oracolul a întâmpinat o ceață neașteptată. Încearcă din nou sau alege o categorie din ghid.",
+      embeds: [],
+      components: [],
+    }).catch(() => null);
+  }
 }
 
 const gameHelpNudgeAt = new Map<string, number>();

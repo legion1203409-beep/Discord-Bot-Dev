@@ -11,7 +11,7 @@ import { logger } from "../lib/logger";
 import { getCurrentMood } from "./oracle";
 import { MOOD_META, type MoodState } from "./oracle-content";
 import { handleJustice, handlePardon } from "./oracle-guard";
-import { loadOracleCouncil, recordOracleInteraction, type OracleCouncilRecord } from "./db";
+import { getPlayerById, loadOracleCouncil, recordOracleInteraction, type OracleCouncilRecord } from "./db";
 import type { Player } from "@workspace/db";
 
 // The feature is keyed on the user's own OpenAI key. When it is absent the Oracle
@@ -558,6 +558,45 @@ async function generateOracleReply(
   );
   const text = completion.choices[0]?.message?.content?.trim();
   return text && text.length > 0 ? text : null;
+}
+
+/**
+ * Answer a question submitted from the private /ajutor modal. This uses the
+ * same Oracle persona as a normal mention, but without Discord message-history
+ * fetching because the modal already supplies the complete user question.
+ * Failures deliberately return null so the caller can show the local guide
+ * answer instead of leaving the modal without a response.
+ */
+export async function answerHelpQuestion(
+  question: string,
+  discordId: string,
+  guildId: string,
+): Promise<string | null> {
+  try {
+    const [relationship, council] = await Promise.all([
+      getPlayerById(discordId, guildId).catch((err) => {
+        logger.debug({ err, guildId }, "Oracle help relationship lookup failed");
+        return null;
+      }),
+      loadOracleCouncil(guildId).catch((err) => {
+        logger.debug({ err, guildId }, "Oracle help council lookup failed");
+        return null;
+      }),
+    ]);
+    return await generateOracleReply(
+      question,
+      [],
+      undefined,
+      getCurrentMood(guildId),
+      "Călător",
+      false,
+      relationship,
+      council,
+    );
+  } catch (err) {
+    logger.warn({ err, guildId }, "Oracle help answer generation failed — using guide fallback");
+    return null;
+  }
 }
 
 /** Generate a cosmetic, player-specific prophecy from trusted game metadata. */
