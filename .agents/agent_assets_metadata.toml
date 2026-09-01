@@ -382,3 +382,17 @@ mtime_ms = 1788283419897
 storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:c6624cc8-e264-47e4-8a83-82fc52f0aaa6/5dd2dcea-f28d-4de4-88a3-09706c974088/0049d907-9909-4e3e-8ce1-759a83584f54"
 storage_version_token = "1788285513817416"
 content_type = "image/png"
+
+[[outputs]]
+id = "YFGLGcp85_GQKREDSLqnI"
+uri = "file://attached_assets/generated_images/tributul_regatului.png"
+type = "image"
+title = "Imaginea Tributul Regatului"
+description = "Ilustrație gotică fantasy cu altar regal, monede de aur, coroană roșie și cenușă; este folosită în embed-ul Discord al Tributului Regatului."
+logical_id = "716a77fd-ae4c-472b-ac72-6dc6ef451d6d"
+content_hash = "sha256:8020fe9123ce2317d94ac3b4e59bace1c71fee38ee86a5b29f7bd12a273453c6"
+size = 1528184
+mtime_ms = 1788293592505
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:c6624cc8-e264-47e4-8a83-82fc52f0aaa6/716a77fd-ae4c-472b-ac72-6dc6ef451d6d/f5717982-a98f-4c7b-8757-4e325267da7f"
+storage_version_token = "1788294082032219"
+content_type = "image/png"
