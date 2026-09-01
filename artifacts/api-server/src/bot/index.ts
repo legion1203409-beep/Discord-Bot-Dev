@@ -62,6 +62,7 @@ import {
   recordPlayerDeath,
   recordPlayerRetreat,
   getPlayerById,
+  getPlayerKeys,
   updateMaxLevel,
   setPlayerClass,
   resetPlayerClass,
@@ -241,9 +242,11 @@ let shardStatus: string = "disconnected";
 const TRADER_SUCCESS_CHANCE  = 0.30;
 
 const TRADER_OFFERS: Array<{ rarityKey: string; keyType: KeyType; label: string; emoji: string }> = [
-  { rarityKey: "argint", keyType: "rar",   label: "Cufăr Blocat de Argint", emoji: "🥈" },
-  { rarityKey: "aur",    keyType: "epic",  label: "Cufăr Blocat de Aur",    emoji: "👑" },
-  { rarityKey: "regal",  keyType: "regal", label: "Cufărul Regal",          emoji: "⚜️" },
+  { rarityKey: "argint", keyType: "rar",   label: "Cufărul Cenușii",       emoji: "⚙️" },
+  { rarityKey: "aur",    keyType: "epic",  label: "Cufărul Nocturn",       emoji: "🌑" },
+  { rarityKey: "mitic",  keyType: "regal", label: "Cufărul Oaselor",       emoji: "💀" },
+  { rarityKey: "regal",  keyType: "oase",  label: "Cufărul Fumului",       emoji: "🌀" },
+  { rarityKey: "cavaler", keyType: "fum",  label: "Cufărul Cavalerului",   emoji: "🛡️" },
 ];
 
 const traderMessageIds = new Map<string, string | null>();
@@ -421,11 +424,14 @@ const slashCommands = [
     .setDescription("🗝️ Vezi cheile și forjează 3 chei într-una de nivel superior.")
     .addStringOption((opt) =>
       opt.setName("combina")
-        .setDescription("Forjează chei: 3 Rar → 1 Epic sau 3 Epic → 1 Regal")
+        .setDescription("Forjează 3 chei de un nivel într-una de nivel superior")
         .setRequired(false)
         .addChoices(
-          { name: "3 Chei de Rar → 1 Cheie de Epic", value: "rar" },
-          { name: "3 Chei de Epic → 1 Cheie Regală", value: "epic" },
+          { name: "3 Umbre Frânte → 1 Cenușii Regale", value: "rar" },
+          { name: "3 Cenușii Regale → 1 Nocturnă", value: "epic" },
+          { name: "3 Nocturne → 1 Oaselor Tăcute", value: "regal" },
+          { name: "3 Oaselor Tăcute → 1 Fum Înghețat", value: "oase" },
+          { name: "3 Fumuri Înghețate → 1 Cavaler Cenușiu", value: "fum" },
         ),
     ),
   // Comenzile de admin abuzive și de management au fost eliminate.
@@ -631,27 +637,32 @@ async function handleChei(interaction: ChatInputCommandInteraction) {
   const requested = interaction.options.getString("combina");
   const player = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
 
-  if (requested === "rar" || requested === "epic") {
-    const forged = await combinePlayerKeys(interaction.user.id, guildId, requested);
+  const forgeable = new Set(["rar", "epic", "regal", "oase", "fum"]);
+  if (requested && forgeable.has(requested)) {
+    const forged = await combinePlayerKeys(interaction.user.id, guildId, requested as Exclude<KeyType, "cavaler">);
     if (!forged) {
-      const needed = requested === "rar" ? "3 Chei de Rar" : "3 Chei de Epic";
+      const needed = `3 ${KEY_LABEL[requested]}`;
       await interaction.editReply({ content: `🔒 Nicovala refuză metalul: ai nevoie de **${needed}** pentru forjare.` });
       return;
     }
   }
 
-  const keys = await getPlayerById(interaction.user.id, guildId);
-  const rar = keys?.keyRar ?? player.keyRar;
-  const epic = keys?.keyEpic ?? player.keyEpic;
-  const regal = keys?.keyRegal ?? player.keyRegal;
+  const keys = await getPlayerKeys(interaction.user.id, guildId);
+  const rar = keys?.rar ?? player.keyRar;
+  const epic = keys?.epic ?? player.keyEpic;
+  const regal = keys?.regal ?? player.keyRegal;
+  const oase = keys?.oase ?? player.keyOase;
+  const fum = keys?.fum ?? player.keyFum;
+  const cavaler = keys?.cavaler ?? player.keyCavaler;
   const forgedLine = requested
-    ? `\n${requested === "rar" ? "⚒️ 3 Chei de Rar au devenit 1 Cheie de Epic." : "⚒️ 3 Chei de Epic au devenit 1 Cheie Regală."}`
+    ? `\n⚒️ 3 ${KEY_LABEL[requested]} au devenit 1 ${KEY_LABEL[requested === "rar" ? "epic" : requested === "epic" ? "regal" : requested === "regal" ? "oase" : requested === "oase" ? "fum" : "cavaler"]}.`
     : "";
   await interaction.editReply({
     content:
       `🗝️ **Forja Cheilor**\n` +
-      `🗝️ **${rar}** Chei de Rar · 🔑 **${epic}** Chei de Epic · ⚜️ **${regal}** Chei Regale\n` +
-      `*Cheile superioare deschid cufere mai rare și jackpotul regal.*${forgedLine}`,
+      `${KEY_EMOJI.rar} **${rar}** ${KEY_LABEL.rar} · ${KEY_EMOJI.epic} **${epic}** ${KEY_LABEL.epic} · ${KEY_EMOJI.regal} **${regal}** ${KEY_LABEL.regal}\n` +
+      `${KEY_EMOJI.oase} **${oase}** ${KEY_LABEL.oase} · ${KEY_EMOJI.fum} **${fum}** ${KEY_LABEL.fum} · ${KEY_EMOJI.cavaler} **${cavaler}** ${KEY_LABEL.cavaler}\n` +
+      `*Cheile superioare deschid cufere mai rare, până la comoara Cavalerului Cenușiu.*${forgedLine}`,
   });
 }
 
@@ -2676,9 +2687,11 @@ async function setupTrader(client: Client, guildId: string): Promise<void> {
         {
           name: "🗝️ Ofertele de azi",
           value:
-            "🥈 **Cufăr Blocat de Argint** — necesită 🗝️ Cheie de Rar\n" +
-            "👑 **Cufăr Blocat de Aur** — necesită 🔑 Cheie de Epic\n" +
-            "⚜️ **Cufărul Regal** — necesită ⚜️ Cheie Regală",
+            "⚙️ **Cufărul Cenușii** — necesită 🗝️ Cheia Umbrei Frânte\n" +
+            "🌑 **Cufărul Nocturn** — necesită 🜲 Cheia Cenușii Regale\n" +
+            "💀 **Cufărul Oaselor** — necesită 🌙 Cheia Nocturnă\n" +
+            "🌀 **Cufărul Fumului** — necesită 🦴 Cheia Oaselor Tăcute\n" +
+            "🛡️ **Cufărul Cavalerului** — necesită ❄️ Cheia Fumului Înghețat",
         },
       )
       .setImage(IMG.trader)

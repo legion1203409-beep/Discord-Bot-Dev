@@ -13,6 +13,7 @@ import {
   COMPANION_IMG,
   CHEST_IMG,
   KEY_IMG,
+  CLASS_IMG,
   monsterImg,
   bossImg,
 } from "./assets";
@@ -474,7 +475,7 @@ export const CLASSES: Record<
   }
 > = {
   cavaler: {
-    label: "Cavaler al Cenușii",
+    label: "Cavaler",
     emoji: "🛡️",
     desc: "+2 daune, +5 HP",
     attack: 2,
@@ -485,7 +486,7 @@ export const CLASSES: Record<
     oboliMult: 1,
   },
   umbrolog: {
-    label: "Umbrolog",
+    label: "Umbrologul",
     emoji: "🌀",
     desc: "+3% evitare, +1% critic",
     attack: 0,
@@ -496,7 +497,7 @@ export const CLASSES: Record<
     oboliMult: 1,
   },
   strajer: {
-    label: "Străjerul Arșiței",
+    label: "Strajerul",
     emoji: "🔥",
     desc: "+10% XP câștigat",
     attack: 0,
@@ -507,7 +508,7 @@ export const CLASSES: Record<
     oboliMult: 1,
   },
   alchimist: {
-    label: "Alchimist Stins",
+    label: "Alchimistul",
     emoji: "⚗️",
     desc: "+20% Oboli câștigați",
     attack: 0,
@@ -518,7 +519,7 @@ export const CLASSES: Record<
     oboliMult: 1.2,
   },
   ratacitor: {
-    label: "Rătăcitorul Fumului",
+    label: "Ratacitor",
     emoji: "💨",
     desc: "+5% șansă de evitare",
     attack: 0,
@@ -1692,6 +1693,8 @@ export function buildProfileEmbed(
 ): EmbedBuilder {
   const cls =
     player.class && isClassKey(player.class) ? CLASSES[player.class] : null;
+  const classImage =
+    player.class && isClassKey(player.class) ? CLASS_IMG[player.class] : null;
   const rank = levelTitle(player.maxLevel);
 
   const classValue = cls
@@ -1731,10 +1734,17 @@ export function buildProfileEmbed(
       ? `${player.retreats}× (ultima: Nivel ${player.retreatLevel})`
       : "Niciodată";
 
-  const totalKeys = player.keyRar + player.keyEpic + player.keyRegal;
+  const totalKeys = player.keyRar + player.keyEpic + player.keyRegal + player.keyOase + player.keyFum + player.keyCavaler;
   const keysValue =
     totalKeys > 0
-      ? `${KEY_EMOJI["rar"]} **${player.keyRar}** ${KEY_LABEL["rar"]}   ·   ${KEY_EMOJI["epic"]} **${player.keyEpic}** ${KEY_LABEL["epic"]}   ·   ${KEY_EMOJI["regal"]} **${player.keyRegal}** ${KEY_LABEL["regal"]}`
+      ? [
+          ["rar", player.keyRar],
+          ["epic", player.keyEpic],
+          ["regal", player.keyRegal],
+          ["oase", player.keyOase],
+          ["fum", player.keyFum],
+          ["cavaler", player.keyCavaler],
+        ].map(([key, count]) => `${KEY_EMOJI[String(key)]} **${count}** ${KEY_LABEL[String(key)]}`).join("   ·   ")
       : "*Niciun trofeu sub formă de cheie încă — caută cuferele de chei!*";
 
   const prestigeValue =
@@ -1827,12 +1837,14 @@ export function buildProfileEmbed(
       inline: false,
     });
   if (avatarUrl) embed.setThumbnail(avatarUrl);
+  if (classImage) embed.setImage(classImage);
   return embed;
 }
 
 export interface ChestRarity {
   key: string;
   label: string;
+  tierLabel?: string;
   emoji: string;
   color: number;
   min: number;
@@ -1847,12 +1859,12 @@ export const CHEST_VARIANTS: Record<ChestVariant, {
   emoji: string;
   description: string;
 }> = {
-  aur: { label: "Cufărul de Aur", emoji: "🥇", description: "Obolii se înmulțesc sub atingerea ta." },
-  razboi: { label: "Cufărul Războiului", emoji: "⚔️", description: "Pradă pentru cei care își ascut lama și răbdarea." },
-  blestemat: { label: "Cufărul Blestemat", emoji: "☠️", description: "Comoară mare, dar cenușa dinăuntru mușcă." },
-  oracolului: { label: "Cufărul Oracolului", emoji: "🔮", description: "Înăuntru doarme un răspuns pe care nu l-ai întrebat încă." },
-  umbrelor: { label: "Cufărul Umbrelor", emoji: "🌑", description: "Fragmentele relicvelor se adună în întuneric." },
-  fratie: { label: "Cufărul Frăției", emoji: "🤝", description: "Ridicat prin glasurile și pașii întregului server." },
+  aur: { label: "Sigiliul Aurit", emoji: "🥇", description: "Obolii se înmulțesc sub atingerea ta." },
+  razboi: { label: "Sigiliul Războiului", emoji: "⚔️", description: "Pradă pentru cei care își ascut lama și răbdarea." },
+  blestemat: { label: "Sigiliul Blestemat", emoji: "☠️", description: "Comoară mare, dar cenușa dinăuntru mușcă." },
+  oracolului: { label: "Sigiliul Oracolului", emoji: "🔮", description: "Înăuntru doarme un răspuns pe care nu l-ai întrebat încă." },
+  umbrelor: { label: "Sigiliul Umbrelor", emoji: "🌑", description: "Fragmentele relicvelor se adună în întuneric." },
+  fratie: { label: "Sigiliul Frăției", emoji: "🤝", description: "Ridicat prin glasurile și pașii întregului server." },
 };
 
 /** Flavor roll for the six Cufere 2.0. Rarity still controls economy. */
@@ -1870,48 +1882,63 @@ export function rollChestVariant(serverChest = false): ChestVariant {
 export const CHEST_RARITIES: ChestRarity[] = [
   {
     key: "bronz",
-    label: "Cufăr de Bronz",
-    emoji: "🪙",
-    color: 0xcd7f32,
+    label: "Cufărul Stins",
+    tierLabel: "Comun",
+    emoji: "🪵",
+    color: 0x51413b,
     min: 10,
     max: 40,
     weight: 58,
   },
   {
     key: "argint",
-    label: "Cufăr de Argint",
-    emoji: "🥈",
-    color: 0xc0c0c0,
+    label: "Cufărul Cenușii",
+    tierLabel: "Neobișnuit",
+    emoji: "⚙️",
+    color: 0x8b8b86,
     min: 40,
     max: 90,
     weight: 28,
   },
   {
     key: "aur",
-    label: "Cufăr de Aur",
-    emoji: "🥇",
-    color: 0xffd700,
+    label: "Cufărul Nocturn",
+    tierLabel: "Epic",
+    emoji: "🌑",
+    color: 0x6f42c1,
     min: 90,
     max: 180,
-    weight: 11,
+    weight: 10,
   },
   {
     key: "mitic",
-    label: "Cufăr Mitic",
-    emoji: "💎",
-    color: 0xb026ff,
+    label: "Cufărul Oaselor",
+    tierLabel: "Mistic",
+    emoji: "💀",
+    color: 0xd8d0b8,
     min: 180,
     max: 350,
     weight: 3,
   },
   {
     key: "regal",
-    label: "Cufărul Regal",
-    emoji: "👑",
-    color: 0x1a3a8c,
+    label: "Cufărul Fumului",
+    tierLabel: "Legendar",
+    emoji: "🌀",
+    color: 0x6f8fa6,
     min: 600,
     max: 1500,
     weight: 0,
+  },
+  {
+    key: "cavaler",
+    label: "Cufărul Cavalerului",
+    tierLabel: "Mitic / Ultra-Rare",
+    emoji: "🛡️",
+    color: 0xe7e7e0,
+    min: 1800,
+    max: 4000,
+    weight: 1,
   },
 ];
 
@@ -1924,58 +1951,79 @@ export const KEY_DROP: Record<
   bronz: { keyType: "rar", chance: 0.4 },
   argint: { keyType: "epic", chance: 0.3 },
   aur: { keyType: "regal", chance: 0.2 },
-  mitic: { keyType: "regal", chance: 0.12 },
-  regal: null,
+  mitic: { keyType: "oase", chance: 0.12 },
+  regal: { keyType: "fum", chance: 0.08 },
+  cavaler: { keyType: "cavaler", chance: 0.04 },
 };
 
 // Which key type is required to open a locked chest of each rarity?
 export const CHEST_KEY_REQUIRED: Record<string, string> = {
   argint: "rar",
   aur: "epic",
-  regal: "regal",
+  mitic: "regal",
+  regal: "oase",
+  cavaler: "fum",
 };
 
 export const KEY_LABEL: Record<string, string> = {
-  rar: "Cheie de Rar",
-  epic: "Cheie de Epic",
-  regal: "Cheie Regală",
+  rar: "Cheia Umbrei Frânte",
+  epic: "Cheia Cenușii Regale",
+  regal: "Cheia Nocturnă",
+  oase: "Cheia Oaselor Tăcute",
+  fum: "Cheia Fumului Înghețat",
+  cavaler: "Cheia Cavalerului Cenușiu",
 };
 
 // Human-readable name for the source chest that drops each key
 export const KEY_SOURCE_LABEL: Record<string, string> = {
-  rar: "cufere de Bronz",
-  epic: "cufere de Argint",
-  regal: "cufere de Aur sau Mitic",
+  rar: "Cuferele Stinse",
+  epic: "Cuferele Cenușii",
+  regal: "Cuferele Nocturne",
+  oase: "Cuferele Oaselor",
+  fum: "Cuferele Fumului",
+  cavaler: "Cuferele Cavalerului",
 };
 
 // Target locked chest name for each key type
 export const KEY_TARGET_LABEL: Record<string, string> = {
-  rar: "Cufăr Blocat de Argint",
-  epic: "Cufăr Blocat de Aur",
-  regal: "Cufărul Regal",
+  rar: "Cufărul Cenușii",
+  epic: "Cufărul Nocturn",
+  regal: "Cufărul Oaselor",
+  oase: "Cufărul Fumului",
+  fum: "Cufărul Cavalerului",
+  cavaler: "Cufărul Cavalerului",
 };
 
 // Accent emoji per key type (used in messages + profile)
 export const KEY_EMOJI: Record<string, string> = {
   rar: "🗝️",
-  epic: "🔑",
-  regal: "⚜️",
+  epic: "🜲",
+  regal: "🌙",
+  oase: "🦴",
+  fum: "❄️",
+  cavaler: "⚔️",
 };
 
 // Color per key type (silver / gold / royal blue)
 export const KEY_COLOR: Record<string, number> = {
-  rar: 0xc0c0c0,
-  epic: 0xffd700,
-  regal: 0x1a3a8c,
+  rar: 0x292929,
+  epic: 0x858585,
+  regal: 0x7b3fb5,
+  oase: 0xd8d0b8,
+  fum: 0x7295ad,
+  cavaler: 0xe7e7e0,
 };
 
 // ─── Dedicated key chests ───────────────────────────────────────────────────
 // Standalone chests whose reward IS a key (separate from the gold chests).
 // Lower tiers are common, the Regal key is a rare prize.
 export const KEY_CHEST_WEIGHTS: Array<{ keyType: string; weight: number }> = [
-  { keyType: "rar", weight: 60 },
-  { keyType: "epic", weight: 30 },
-  { keyType: "regal", weight: 10 },
+  { keyType: "rar", weight: 40 },
+  { keyType: "epic", weight: 25 },
+  { keyType: "regal", weight: 15 },
+  { keyType: "oase", weight: 10 },
+  { keyType: "fum", weight: 7 },
+  { keyType: "cavaler", weight: 3 },
 ];
 
 /** Pick a key type for a random key-chest spawn (weighted toward lower tiers). */
@@ -1995,7 +2043,9 @@ export function rollKeyChestType(): string {
 export const LOCKED_CHEST_GOLD: Record<string, { min: number; max: number }> = {
   argint: { min: 150, max: 350 },
   aur: { min: 400, max: 800 },
+  mitic: { min: 900, max: 1800 },
   regal: { min: 2000, max: 5000 },
+  cavaler: { min: 7000, max: 15000 },
 };
 
 /** Roll the Oboli payout for a locked chest of a given rarity (boosted ranges). */
@@ -2119,7 +2169,7 @@ export function buildChestEmbed(
       `${flavor.emoji}${r.emoji}✨  ${flavor.label.toUpperCase()} — ${r.label.toUpperCase()}  ✨${r.emoji}${flavor.emoji}`,
     )
     .setDescription(
-       `Cenușa s-a ridicat și a dezvăluit un cufăr misterios!\n*${flavor.description}*\n` +
+       `Cenușa s-a ridicat și a dezvăluit un cufăr misterios!\n🏷️ **Raritate: ${r.tierLabel ?? "Necunoscută"}**\n*${flavor.description}*\n` +
         "Obolii zac în el, așteptând mâna celui mai rapid.\n\n" +
          `💰 **${gold} Oboli** pentru primul care revendică!${bonusLine}${keyHintLine}${effectHintLine}\n` +
          `🎭 **Alege-ți calea:** aur, experiență${r.key === "bronz" ? "" : ", binecuvântare"}${r.key === "bronz" || r.key === "argint" ? "" : " sau fragment de relicvă"}.\n\n` +
@@ -2197,7 +2247,7 @@ export function buildLockedChestEmbed(
   return new EmbedBuilder()
     .setColor(rarity.color)
     .setTitle(
-      `🔒 ${rarity.emoji}  ${rarity.label.toUpperCase()} — BLOCAT  ${rarity.emoji} 🔒`,
+      `🔒 ${rarity.emoji}  ${rarity.label.toUpperCase()} — ${rarity.tierLabel ?? "RARITATE NECUNOSCUTĂ"} — BLOCAT  ${rarity.emoji} 🔒`,
     )
     .setDescription(
       `*O forță veche ține cufărul ferecat. Doar ${keyEmoji} **${keyLabel}** îl poate deschide.*\n` +
@@ -3298,6 +3348,7 @@ export function buildClassEmbed(player: Player): EmbedBuilder {
       .setColor(0x6d28d9)
       .setTitle("🧀  CLASA TA ÎN REGATUL CENUȘII")
       .setDescription(desc)
+      .setImage(CLASS_IMG[classKey] ?? null)
       .setFooter({ text: BRAND_FOOTER });
   }
   return new EmbedBuilder()

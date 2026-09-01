@@ -46,17 +46,29 @@ export const MONSTER_IMG: (string | null)[] = Array.from({ length: 14 }, (_, i) 
 );
 
 export const CHEST_IMG: Record<string, string | null> = {
-  bronz:  assetUrl("chest_bronz.gif"),
-  argint: assetUrl("chest_argint.gif"),
-  aur:    assetUrl("chest_aur.gif"),
-  mitic:  assetUrl("chest_mitic.gif"),
-  regal:  assetUrl("chest_regal_anim.gif"),
+  bronz:  assetUrl("chest_stins.png"),
+  argint: assetUrl("chest_cenusii.png"),
+  aur:    assetUrl("chest_nocturn.png"),
+  mitic:  assetUrl("chest_oaselor.png"),
+  regal:  assetUrl("chest_fumului.png"),
+  cavaler: assetUrl("chest_cavalerului.png"),
 };
 
 export const KEY_IMG: Record<string, string | null> = {
-  rar:   assetUrl("key_rar_anim.gif"),
-  epic:  assetUrl("key_epic_anim.gif"),
-  regal: assetUrl("key_regal_anim.gif"),
+  rar: assetUrl("key_umbrei_frante.png"),
+  epic: assetUrl("key_cenusii_regale.png"),
+  regal: assetUrl("key_nocturna.png"),
+  oase: assetUrl("key_oaselor_tacute.png"),
+  fum: assetUrl("key_fumului_inghetat.png"),
+  cavaler: assetUrl("key_cavalerului_cenusi.png"),
+};
+
+export const CLASS_IMG: Record<string, string | null> = {
+  alchimist: assetUrl("class_alchimistul.png"),
+  cavaler: assetUrl("class_cavaler.png"),
+  ratacitor: assetUrl("class_ratacitor.png"),
+  strajer: assetUrl("class_strajerul.png"),
+  umbrolog: assetUrl("class_umbrologul.png"),
 };
 
 export const COMPANION_IMG: Record<string, { base: string | null; evo: string | null }> = {

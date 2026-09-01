@@ -816,7 +816,7 @@ describe("buildCombatEmbed permanent bonuses", () => {
     const player = { class: "strajer", talisman: "piatra_eco", talismanLevel: 2 } as unknown as Player;
     const desc = buildCombatEmbed(p, "", null, player).data.description!;
     expect(desc).toContain("Bonusurile tale");
-    expect(desc).toContain("Străjerul Arșiței");
+    expect(desc).toContain("Strajerul");
     expect(desc).toContain("Piatra Eco");
     expect(desc).toContain("Nv.2");
     expect(desc).toContain("+10 XP");

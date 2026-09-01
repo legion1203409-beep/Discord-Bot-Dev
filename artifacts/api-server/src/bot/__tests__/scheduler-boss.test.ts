@@ -66,8 +66,8 @@ import {
 // ─── CHEST_RARITIES weight pool ────────────────────────────────────────────────
 
 describe("CHEST_RARITIES weight pool integrity", () => {
-  it("has exactly 5 rarity tiers", () => {
-    expect(CHEST_RARITIES).toHaveLength(5);
+  it("has exactly 6 rarity tiers", () => {
+    expect(CHEST_RARITIES).toHaveLength(6);
   });
 
   it("rarity keys are unique", () => {
@@ -75,7 +75,7 @@ describe("CHEST_RARITIES weight pool integrity", () => {
     expect(new Set(keys).size).toBe(keys.length);
   });
 
-  it("non-zero weights sum to 100 (bronz + argint + aur + mitic)", () => {
+  it("non-zero weights sum to 100", () => {
     const weightedRarities = CHEST_RARITIES.filter((r) => r.weight > 0);
     const total = weightedRarities.reduce((s, r) => s + r.weight, 0);
     expect(total).toBe(100);
@@ -607,7 +607,7 @@ describe("spawnLockedChest fallback gold payout range (10 000 rolls per rarity)"
 
 // ─── rollKeyChestType ──────────────────────────────────────────────────────────
 
-const VALID_KEY_TYPES = ["rar", "epic", "regal"] as const;
+const VALID_KEY_TYPES = ["rar", "epic", "regal", "oase", "fum", "cavaler"] as const;
 
 describe("rollKeyChestType weight pool integrity", () => {
   it("KEY_CHEST_WEIGHTS entries sum to 100 (roll range matches weight pool)", () => {
@@ -649,14 +649,14 @@ describe("rollKeyChestType: every result is a valid key type (10 000 rolls)", ()
   });
 
   it('returns "epic" when roll lands in the epic bucket (Math.random = 0.65)', () => {
-    // 0.65 * 100 = 65; past rar(60) → roll=5; 5 < 30 (epic) → "epic"
-    vi.spyOn(Math, "random").mockReturnValue(0.65);
+    // 0.65 * 100 = 65; past rar(40) → roll=25; 25 < 25 (epic) is the boundary, so use 0.64.
+    vi.spyOn(Math, "random").mockReturnValue(0.64);
     expect(rollKeyChestType()).toBe("epic");
   });
 
   it('returns "regal" when roll lands in the regal bucket (Math.random = 0.95)', () => {
-    // 0.95 * 100 = 95; past rar(60) → 35; past epic(30) → 5; 5 < 10 (regal) → "regal"
-    vi.spyOn(Math, "random").mockReturnValue(0.95);
+    // 0.95 * 100 = 95; past rar(40) + epic(25) → 30; past regal(15) → 15; use 0.75 for the regal bucket.
+    vi.spyOn(Math, "random").mockReturnValue(0.75);
     expect(rollKeyChestType()).toBe("regal");
   });
 });

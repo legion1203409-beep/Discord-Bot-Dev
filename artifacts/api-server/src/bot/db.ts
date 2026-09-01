@@ -170,6 +170,12 @@ export async function runMultiGuildMigrations(): Promise<void> {
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS chest_pity integer NOT NULL DEFAULT 0`);
   logger.info("multi-guild migrations: players.chest_pity ensured");
 
+  // ─── Six-tier key chain ───────────────────────────────────────────────────
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS key_oase integer NOT NULL DEFAULT 0`);
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS key_fum integer NOT NULL DEFAULT 0`);
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS key_cavaler integer NOT NULL DEFAULT 0`);
+  logger.info("multi-guild migrations: six-tier key columns ensured");
+
   // ─── Ash Shield own HP pool (per event participant) ────────────────────────
   await pool.query(`ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS shield_hp integer NOT NULL DEFAULT 0`);
   logger.info("multi-guild migrations: event_participants.shield_hp ensured");
@@ -431,7 +437,7 @@ const PLAYER_RESET = {
   honorTitle: null as string | null, deaths: 0, deathLevel: 0, retreats: 0, retreatLevel: 0,
   attackBonus: 0, defenseBonus: 0, dodgeBonus: 0, critBonus: 0, maxHpBonus: 0,
   shopAttackCount: 0, shopDefenseCount: 0, shopDodgeCount: 0, shopCritCount: 0, shopHpCount: 0,
-  keyRar: 0, keyEpic: 0, keyRegal: 0,
+  keyRar: 0, keyEpic: 0, keyRegal: 0, keyOase: 0, keyFum: 0, keyCavaler: 0,
   chestPity: 0,
   prestigeLevel: 0, prestigeAttackBonus: 0, prestigeDefenseBonus: 0,
   prestigeDodgeBonus: 0, prestigeCritBonus: 0, prestigeHpBonus: 0,
@@ -957,36 +963,55 @@ export async function getServerRanking(): Promise<ServerRankRow[]> {
 }
 
 // ─── Key inventory ─────────────────────────────────────────────────────────────
-export type KeyType = "rar" | "epic" | "regal";
+export type KeyType = "rar" | "epic" | "regal" | "oase" | "fum" | "cavaler";
 
-export async function getPlayerKeys(discordId: string, guildId: string): Promise<{ rar: number; epic: number; regal: number } | null> {
+export async function getPlayerKeys(discordId: string, guildId: string): Promise<Record<KeyType, number> | null> {
   const [p] = await db.select({
     keyRar: playersTable.keyRar,
     keyEpic: playersTable.keyEpic,
     keyRegal: playersTable.keyRegal,
+    keyOase: playersTable.keyOase,
+    keyFum: playersTable.keyFum,
+    keyCavaler: playersTable.keyCavaler,
   }).from(playersTable).where(playerWhere(discordId, guildId));
   if (!p) return null;
-  return { rar: p.keyRar, epic: p.keyEpic, regal: p.keyRegal };
+  return {
+    rar: p.keyRar,
+    epic: p.keyEpic,
+    regal: p.keyRegal,
+    oase: p.keyOase,
+    fum: p.keyFum,
+    cavaler: p.keyCavaler,
+  };
 }
 
 export async function addPlayerKey(discordId: string, guildId: string, keyType: KeyType): Promise<void> {
   const setObj =
-    keyType === "rar"   ? { keyRar:   sql`${playersTable.keyRar}   + 1` } :
-    keyType === "epic"  ? { keyEpic:  sql`${playersTable.keyEpic}  + 1` } :
-                          { keyRegal: sql`${playersTable.keyRegal} + 1` };
+    keyType === "rar" ? { keyRar: sql`${playersTable.keyRar} + 1` } :
+    keyType === "epic" ? { keyEpic: sql`${playersTable.keyEpic} + 1` } :
+    keyType === "regal" ? { keyRegal: sql`${playersTable.keyRegal} + 1` } :
+    keyType === "oase" ? { keyOase: sql`${playersTable.keyOase} + 1` } :
+    keyType === "fum" ? { keyFum: sql`${playersTable.keyFum} + 1` } :
+    { keyCavaler: sql`${playersTable.keyCavaler} + 1` };
   await db.update(playersTable).set(setObj).where(playerWhere(discordId, guildId));
 }
 
 // Returns true if a key was consumed, false if the player had none.
 export async function consumePlayerKey(discordId: string, guildId: string, keyType: KeyType): Promise<boolean> {
   const col =
-    keyType === "rar"   ? playersTable.keyRar   :
-    keyType === "epic"  ? playersTable.keyEpic  :
-                          playersTable.keyRegal;
+    keyType === "rar" ? playersTable.keyRar :
+    keyType === "epic" ? playersTable.keyEpic :
+    keyType === "regal" ? playersTable.keyRegal :
+    keyType === "oase" ? playersTable.keyOase :
+    keyType === "fum" ? playersTable.keyFum :
+    playersTable.keyCavaler;
   const setObj =
-    keyType === "rar"   ? { keyRar:   sql`${playersTable.keyRar}   - 1` } :
-    keyType === "epic"  ? { keyEpic:  sql`${playersTable.keyEpic}  - 1` } :
-                          { keyRegal: sql`${playersTable.keyRegal} - 1` };
+    keyType === "rar" ? { keyRar: sql`${playersTable.keyRar} - 1` } :
+    keyType === "epic" ? { keyEpic: sql`${playersTable.keyEpic} - 1` } :
+    keyType === "regal" ? { keyRegal: sql`${playersTable.keyRegal} - 1` } :
+    keyType === "oase" ? { keyOase: sql`${playersTable.keyOase} - 1` } :
+    keyType === "fum" ? { keyFum: sql`${playersTable.keyFum} - 1` } :
+    { keyCavaler: sql`${playersTable.keyCavaler} - 1` };
   const [u] = await db.update(playersTable)
     .set(setObj)
     .where(and(playerWhere(discordId, guildId), gte(col, 1)))
@@ -998,10 +1023,16 @@ export async function consumePlayerKey(discordId: string, guildId: string, keyTy
 export async function combinePlayerKeys(
   discordId: string,
   guildId: string,
-  from: "rar" | "epic",
+  from: Exclude<KeyType, "cavaler">,
 ): Promise<boolean> {
-  const fromColumn = from === "rar" ? "key_rar" : "key_epic";
-  const toColumn = from === "rar" ? "key_epic" : "key_regal";
+  const chain: Record<Exclude<KeyType, "cavaler">, { from: string; to: string }> = {
+    rar: { from: "key_rar", to: "key_epic" },
+    epic: { from: "key_epic", to: "key_regal" },
+    regal: { from: "key_regal", to: "key_oase" },
+    oase: { from: "key_oase", to: "key_fum" },
+    fum: { from: "key_fum", to: "key_cavaler" },
+  };
+  const { from: fromColumn, to: toColumn } = chain[from];
   const { rowCount } = await pool.query(
     `UPDATE players
         SET ${fromColumn} = ${fromColumn} - 3,

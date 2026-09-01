@@ -33,3 +33,4 @@
 - [DB pool & interaction latency](db-pool-interaction-latency.md) — default pg Pool (max 10) congests the event loop under concurrent clicks, delaying even deferUpdate past 3s → 10062; size pool + timeouts.
 - [Oracle social mood per guild](oracle-social-mood.md) — proactive check-ins and reply sentiment must stay isolated per guild; bot presence reflects the latest derived mood.
 - [Strict Vitest module mocks](strict-vitest-mocks.md) — new optional scheduler exports can break old partial mocks; use local compatibility code or lazy optional lookup.
+- [Discord class images](discord-class-images.md) — map stable internal class keys to sanitized API asset filenames; never use uploaded timestamped filenames directly.

@@ -47,6 +47,9 @@ export const playersTable = pgTable("players", {
   keyRar:   integer("key_rar").notNull().default(0),
   keyEpic:  integer("key_epic").notNull().default(0),
   keyRegal: integer("key_regal").notNull().default(0),
+  keyOase: integer("key_oase").notNull().default(0),
+  keyFum: integer("key_fum").notNull().default(0),
+  keyCavaler: integer("key_cavaler").notNull().default(0),
   /** Consecutive ordinary chest claims; resets when pity pays out. */
   chestPity: integer("chest_pity").notNull().default(0),
   prestigeLevel: integer("prestige_level").notNull().default(0),
