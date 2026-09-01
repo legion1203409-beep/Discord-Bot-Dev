@@ -968,12 +968,12 @@ function maybeNudgeGameHelp(message: Message): void {
   const previous = gameHelpNudgeAt.get(message.guildId) ?? 0;
   if (now - previous < 30_000) return;
   gameHelpNudgeAt.set(message.guildId, now);
-  void message.reply({
+  void message.author.send({
     content:
-      "🔮 Întrebarea ta ține de mecanicile Regatului. Deschide **/ajutor** pentru ghidul interactiv, " +
-      "alege categoria potrivită și poți întreba Oracolul direct de acolo.",
-    allowedMentions: { repliedUser: false, parse: [] },
-  }).catch((err) => logger.debug({ err, guildId: message.guildId }, "Could not send game help nudge"));
+      "🔮 Oracolul te îndrumă: întrebarea ta ține de mecanicile Regatului. " +
+      "Deschide **/ajutor** în server pentru ghidul interactiv, alege categoria potrivită " +
+      "și poți întreba Oracolul direct de acolo.",
+  }).catch((err) => logger.debug({ err, guildId: message.guildId }, "Could not DM game help nudge"));
 }
 
 async function handleMisiune(interaction: ChatInputCommandInteraction) {
@@ -3270,7 +3270,11 @@ async function setupTrader(client: Client, guildId: string): Promise<void> {
   traderSetupInProgress.set(guildId, true);
   try {
     const traderChannelId = getChannel("trader", guildId);
-    const channel = traderChannelId ? await client.channels.fetch(traderChannelId).catch(() => null) : null;
+    if (!traderChannelId) {
+      logger.debug({ guildId }, "Trader channel is not configured — skipping trader setup");
+      return;
+    }
+    const channel = await client.channels.fetch(traderChannelId).catch(() => null);
     if (!(channel instanceof TextChannel)) {
       logger.warn({ channelId: traderChannelId, guildId }, "Trader channel not found");
       return;
