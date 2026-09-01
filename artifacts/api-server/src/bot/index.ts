@@ -526,6 +526,15 @@ const slashCommands = [
     .addSubcommand((sub) =>
       sub.setName("resetall").setDescription("🔄 Resetează toate canalele la valorile implicite."),
     ),
+  new SlashCommandBuilder()
+    .setName("setnegustor")
+    .setDescription("🏪 [Admin] Alege canalul în care apare Negustorul.")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .addChannelOption((opt) =>
+      opt.setName("canal")
+        .setDescription("Canalul în care va fi publicat Negustorul")
+        .setRequired(true),
+    ),
 ];
 
 async function avatarById(discordId: string): Promise<string | null> {
@@ -1214,6 +1223,30 @@ async function isOwner(interaction: ChatInputCommandInteraction): Promise<boolea
   return false;
 }
 
+async function reconfigureTraderChannel(guildId: string, channel: TextChannel): Promise<void> {
+  const client = botClient;
+  const previousChannelId = getChannel("trader", guildId);
+  const previousMessageId = getTraderMessageId(guildId) ?? await loadTraderMessageId(guildId);
+
+  await setChannel(guildId, "trader", channel.id);
+
+  if (previousChannelId !== channel.id) {
+    setTraderMessageId(guildId, null);
+    await clearTraderMessageId(guildId).catch(() => null);
+
+    if (client && previousChannelId && previousMessageId) {
+      const previousChannel = await client.channels.fetch(previousChannelId).catch(() => null);
+      if (previousChannel instanceof TextChannel) {
+        const previousMessage = await previousChannel.messages.fetch(previousMessageId).catch(() => null);
+        await previousMessage?.delete().catch(() => null);
+      }
+    }
+  }
+
+  if (!client) throw new Error("Discord bot client is not available");
+  await setupTrader(client, guildId);
+}
+
 async function handleSetCanale(interaction: ChatInputCommandInteraction) {
   if (!(await isOwner(interaction))) return;
   const guildId = interaction.guildId!;
@@ -1246,7 +1279,15 @@ async function handleSetCanale(interaction: ChatInputCommandInteraction) {
       await interaction.editReply({ content: "❌ Alege un canal valid." });
       return;
     }
-    await setChannel(guildId, eventKey, channel.id);
+    if (eventKey === "trader") {
+      if (!(channel instanceof TextChannel)) {
+        await interaction.editReply({ content: "❌ Pentru Negustor alege un canal text obișnuit, nu un canal vocal sau un thread." });
+        return;
+      }
+      await reconfigureTraderChannel(guildId, channel);
+    } else {
+      await setChannel(guildId, eventKey, channel.id);
+    }
     await interaction.editReply({
       content: `✅ **${EVENT_LABELS[eventKey]}** va fi acum postat în <#${channel.id}>`,
     });
@@ -1269,6 +1310,35 @@ async function handleSetCanale(interaction: ChatInputCommandInteraction) {
       content: "🔄 Toate canalele au fost resetate la valorile implicite.",
     });
     return;
+  }
+}
+
+async function handleSetNegustor(interaction: ChatInputCommandInteraction) {
+  if (!(await isOwner(interaction))) return;
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const channel = interaction.options.getChannel("canal", true);
+  if (!(channel instanceof TextChannel)) {
+    await interaction.editReply({
+      content: "❌ Alege un canal text obișnuit, nu un canal vocal sau un thread.",
+    });
+    return;
+  }
+
+  try {
+    await reconfigureTraderChannel(interaction.guildId!, channel);
+    await interaction.editReply({
+      content: `✅ Negustorul va apărea acum în <#${channel.id}>. Postarea veche a fost mutată.`,
+    });
+    logger.info(
+      { channelId: channel.id, userId: interaction.user.id, guildId: interaction.guildId },
+      "Trader channel configured via /setnegustor",
+    );
+  } catch (err) {
+    logger.error({ err, guildId: interaction.guildId }, "Failed to configure trader channel");
+    await interaction.editReply({
+      content: "❌ Nu am putut publica Negustorul în canalul ales. Verifică permisiunile botului și încearcă din nou.",
+    });
   }
 }
 
@@ -4065,6 +4135,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
       if (interaction.commandName === "purificacheie") dispatch(handlePurificaCheie(interaction));
       if (interaction.commandName === "chei") dispatch(handleChei(interaction));
       if (interaction.commandName === "setcanale") dispatch(handleSetCanale(interaction));
+      if (interaction.commandName === "setnegustor") dispatch(handleSetNegustor(interaction));
     } else if (interaction.isButton()) {
       dispatch(handleButton(interaction as ButtonInteraction));
     } else if (interaction.isStringSelectMenu()) {
