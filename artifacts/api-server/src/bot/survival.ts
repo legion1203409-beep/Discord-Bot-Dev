@@ -1734,7 +1734,7 @@ export function buildProfileEmbed(
       ? `${player.retreats}× (ultima: Nivel ${player.retreatLevel})`
       : "Niciodată";
 
-  const totalKeys = player.keyRar + player.keyEpic + player.keyRegal + player.keyOase + player.keyFum + player.keyCavaler;
+  const totalKeys = player.keyRar + player.keyEpic + player.keyRegal + player.keyOase + player.keyFum + player.keyCavaler + player.keyPangarita;
   const keysValue =
     totalKeys > 0
       ? [
@@ -1744,6 +1744,7 @@ export function buildProfileEmbed(
           ["oase", player.keyOase],
           ["fum", player.keyFum],
           ["cavaler", player.keyCavaler],
+          ["pangarita", player.keyPangarita],
         ].map(([key, count]) => `${KEY_EMOJI[String(key)]} **${count}** ${KEY_LABEL[String(key)]}`).join("   ·   ")
       : "*Niciun trofeu sub formă de cheie încă — caută cuferele de chei!*";
 
@@ -1972,6 +1973,7 @@ export const KEY_LABEL: Record<string, string> = {
   oase: "Cheia Oaselor Tăcute",
   fum: "Cheia Fumului Înghețat",
   cavaler: "Cheia Cavalerului Cenușiu",
+  pangarita: "Cheia Pângărită",
 };
 
 // Human-readable name for the source chest that drops each key
@@ -2002,6 +2004,7 @@ export const KEY_EMOJI: Record<string, string> = {
   oase: "🦴",
   fum: "❄️",
   cavaler: "⚔️",
+  pangarita: "☠️",
 };
 
 // Color per key type (silver / gold / royal blue)

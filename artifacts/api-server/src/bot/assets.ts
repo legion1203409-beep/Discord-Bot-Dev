@@ -71,6 +71,18 @@ export const CLASS_IMG: Record<string, string | null> = {
   umbrolog: assetUrl("class_umbrologul.png"),
 };
 
+export const CHEST_WORLD_IMG = {
+  personal: assetUrl("chest_veghea_zilnica.png"),
+  fratie: assetUrl("chivot_fratia.png"),
+  corruptedKey: assetUrl("key_pangarita.png"),
+  eclipse: assetUrl("chest_eclipsa_neagra.png"),
+  queen: assetUrl("chest_regina_moarta.png"),
+  solstice: assetUrl("chest_solstitiul_sangeros.png"),
+  carnival: assetUrl("chest_carnavalul_funebru.png"),
+  auction: assetUrl("trader_targul_negru.png"),
+  oracle: assetUrl("chest_soaptele_oracolului.png"),
+} as const;
+
 export const COMPANION_IMG: Record<string, { base: string | null; evo: string | null }> = {
   lup: { base: assetUrl("companion_lup_anim.gif"), evo: assetUrl("companion_lup_evo_anim.gif") },
   corb: { base: assetUrl("companion_corb_anim.gif"), evo: assetUrl("companion_corb_evo_anim.gif") },

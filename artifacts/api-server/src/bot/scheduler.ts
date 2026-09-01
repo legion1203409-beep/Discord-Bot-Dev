@@ -7,6 +7,13 @@ import { startOracle, setOracleExtatic } from "./oracle";
 import { startOracleCouncilScheduler, stopOracleCouncilScheduler } from "./oracle-council";
 import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle, addPlayerReputation, addPlayerGold, addPlayerXp, getPrestigeLevels, persistActiveBoss, loadActiveBossRowsByGuild, deleteActiveBoss, createActiveBossesTableIfNotExists, persistActiveChest, loadActiveChest, clearActiveChest, getFinalBossKills, KEYCHEST_DBKEY, LOCKCHEST_DBKEY, runMultiGuildMigrations } from "./db";
 import { getChannel, initChannelConfig, hasAnyChannelConfigured, type EventType } from "./channel-config";
+import {
+  openFratiaVote,
+  rehydrateFratiaVote,
+  spawnSeasonalChest,
+  rehydrateSeasonalChest,
+  settleExpiredAuction,
+} from "./chest-expansions";
 
 const APPLICATION_ID = "1472675543777280071";
 export const EVENT_DURATION_MS = 60 * 60 * 1000;
@@ -207,7 +214,9 @@ export function recordGuildActivity(client: Client, guildId: string): void {
     if (typeof updateMeter !== "function") return;
     return updateMeter(guildId, SERVER_CHEST_MSG_MILESTONE).then((meter) => {
       if (meter.triggered && !gs.stopped) {
-        void fireChestForced(client, guildId, rollActivityRarityKey(), undefined, "fratie");
+        void openFratiaVote(client, guildId).catch((err) =>
+          logger.warn({ err, guildId }, "Failed to open Chivotul Frăției"),
+        );
       }
     });
   }).catch((err) => logger.debug({ err, guildId }, "Server chest meter update skipped"));
@@ -1331,10 +1340,23 @@ export function startGuildScheduler(client: Client, guildId: string) {
   void rehydrateActiveChest(client, guildId);
   void rehydrateSimpleChest(client, guildId, KEYCHEST_DBKEY);
   void rehydrateSimpleChest(client, guildId, LOCKCHEST_DBKEY);
+  void rehydrateSeasonalChest(client, guildId).catch((err) =>
+    logger.warn({ err, guildId }, "Failed to rehydrate seasonal chest"),
+  );
+  void rehydrateFratiaVote(client, guildId).catch((err) =>
+    logger.warn({ err, guildId }, "Failed to rehydrate Frăția vote"),
+  );
 
   const isStopped = () => guildStates.get(guildId)?.stopped === true;
 
   setInterval(() => { if (!isStopped()) void expireOldEvents(client, guildId); }, 60 * 1000);
+  setInterval(() => {
+    if (!isStopped()) {
+      void settleExpiredAuction(guildId).catch((err) =>
+        logger.warn({ err, guildId }, "Failed to settle expired auction"),
+      );
+    }
+  }, 60 * 1000);
 
   const scheduleNext = () => {
     if (isStopped()) return;
@@ -1352,6 +1374,22 @@ export function startGuildScheduler(client: Client, guildId: string) {
   setTimeout(() => { if (!isStopped()) void fireKeyChest(client, guildId); }, 12 * 60 * 1000);
   setInterval(() => { if (!isStopped()) void fireKeyChest(client, guildId); }, KEY_CHEST_INTERVAL_MS);
   logger.info({ everyMinutes: KEY_CHEST_INTERVAL_MS / 60000, guildId }, "Key-chest scheduler started");
+
+  const seasonalInterval = 6 * 60 * 60 * 1000;
+  const scheduleSeasonal = () => {
+    if (isStopped()) return;
+    const seasonalDelay = seasonalInterval - (Date.now() % seasonalInterval);
+    const timer = setTimeout(async () => {
+      if (!isStopped()) {
+        await spawnSeasonalChest(client, guildId).catch((err) =>
+          logger.warn({ err, guildId }, "Failed to spawn seasonal chest"),
+        );
+        scheduleSeasonal();
+      }
+    }, seasonalDelay);
+    timer.unref?.();
+  };
+  scheduleSeasonal();
 
   // Oracle messages disabled — user requested only chest in chat
   // setInterval(() => { void fireOracle(client, guildId); }, ORACLE_INTERVAL_MS);

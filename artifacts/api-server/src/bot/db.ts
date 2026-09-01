@@ -174,6 +174,7 @@ export async function runMultiGuildMigrations(): Promise<void> {
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS key_oase integer NOT NULL DEFAULT 0`);
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS key_fum integer NOT NULL DEFAULT 0`);
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS key_cavaler integer NOT NULL DEFAULT 0`);
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS key_pangarita integer NOT NULL DEFAULT 0`);
   logger.info("multi-guild migrations: six-tier key columns ensured");
 
   // ─── Ash Shield own HP pool (per event participant) ────────────────────────
@@ -430,6 +431,10 @@ export async function getPlayerById(discordId: string, guildId: string): Promise
   return p ?? null;
 }
 
+export async function getGuildPlayers(guildId: string): Promise<Player[]> {
+  return db.select().from(playersTable).where(eq(playersTable.guildId, guildId));
+}
+
 const PLAYER_RESET = {
   xp: 0, gold: 0, reputation: 0, hp: 100, maxLevel: 0,
   class: null as string | null, companion: null as string | null, companionLevel: 1,
@@ -437,7 +442,7 @@ const PLAYER_RESET = {
   honorTitle: null as string | null, deaths: 0, deathLevel: 0, retreats: 0, retreatLevel: 0,
   attackBonus: 0, defenseBonus: 0, dodgeBonus: 0, critBonus: 0, maxHpBonus: 0,
   shopAttackCount: 0, shopDefenseCount: 0, shopDodgeCount: 0, shopCritCount: 0, shopHpCount: 0,
-  keyRar: 0, keyEpic: 0, keyRegal: 0, keyOase: 0, keyFum: 0, keyCavaler: 0,
+  keyRar: 0, keyEpic: 0, keyRegal: 0, keyOase: 0, keyFum: 0, keyCavaler: 0, keyPangarita: 0,
   chestPity: 0,
   prestigeLevel: 0, prestigeAttackBonus: 0, prestigeDefenseBonus: 0,
   prestigeDodgeBonus: 0, prestigeCritBonus: 0, prestigeHpBonus: 0,
@@ -963,7 +968,7 @@ export async function getServerRanking(): Promise<ServerRankRow[]> {
 }
 
 // ─── Key inventory ─────────────────────────────────────────────────────────────
-export type KeyType = "rar" | "epic" | "regal" | "oase" | "fum" | "cavaler";
+export type KeyType = "rar" | "epic" | "regal" | "oase" | "fum" | "cavaler" | "pangarita";
 
 export async function getPlayerKeys(discordId: string, guildId: string): Promise<Record<KeyType, number> | null> {
   const [p] = await db.select({
@@ -973,6 +978,7 @@ export async function getPlayerKeys(discordId: string, guildId: string): Promise
     keyOase: playersTable.keyOase,
     keyFum: playersTable.keyFum,
     keyCavaler: playersTable.keyCavaler,
+    keyPangarita: playersTable.keyPangarita,
   }).from(playersTable).where(playerWhere(discordId, guildId));
   if (!p) return null;
   return {
@@ -982,6 +988,7 @@ export async function getPlayerKeys(discordId: string, guildId: string): Promise
     oase: p.keyOase,
     fum: p.keyFum,
     cavaler: p.keyCavaler,
+    pangarita: p.keyPangarita,
   };
 }
 
@@ -992,7 +999,8 @@ export async function addPlayerKey(discordId: string, guildId: string, keyType: 
     keyType === "regal" ? { keyRegal: sql`${playersTable.keyRegal} + 1` } :
     keyType === "oase" ? { keyOase: sql`${playersTable.keyOase} + 1` } :
     keyType === "fum" ? { keyFum: sql`${playersTable.keyFum} + 1` } :
-    { keyCavaler: sql`${playersTable.keyCavaler} + 1` };
+    keyType === "cavaler" ? { keyCavaler: sql`${playersTable.keyCavaler} + 1` } :
+    { keyPangarita: sql`${playersTable.keyPangarita} + 1` };
   await db.update(playersTable).set(setObj).where(playerWhere(discordId, guildId));
 }
 
@@ -1004,14 +1012,16 @@ export async function consumePlayerKey(discordId: string, guildId: string, keyTy
     keyType === "regal" ? playersTable.keyRegal :
     keyType === "oase" ? playersTable.keyOase :
     keyType === "fum" ? playersTable.keyFum :
-    playersTable.keyCavaler;
+    keyType === "cavaler" ? playersTable.keyCavaler :
+    playersTable.keyPangarita;
   const setObj =
     keyType === "rar" ? { keyRar: sql`${playersTable.keyRar} - 1` } :
     keyType === "epic" ? { keyEpic: sql`${playersTable.keyEpic} - 1` } :
     keyType === "regal" ? { keyRegal: sql`${playersTable.keyRegal} - 1` } :
     keyType === "oase" ? { keyOase: sql`${playersTable.keyOase} - 1` } :
     keyType === "fum" ? { keyFum: sql`${playersTable.keyFum} - 1` } :
-    { keyCavaler: sql`${playersTable.keyCavaler} - 1` };
+    keyType === "cavaler" ? { keyCavaler: sql`${playersTable.keyCavaler} - 1` } :
+    { keyPangarita: sql`${playersTable.keyPangarita} - 1` };
   const [u] = await db.update(playersTable)
     .set(setObj)
     .where(and(playerWhere(discordId, guildId), gte(col, 1)))
@@ -1023,9 +1033,9 @@ export async function consumePlayerKey(discordId: string, guildId: string, keyTy
 export async function combinePlayerKeys(
   discordId: string,
   guildId: string,
-  from: Exclude<KeyType, "cavaler">,
+  from: Exclude<KeyType, "cavaler" | "pangarita">,
 ): Promise<boolean> {
-  const chain: Record<Exclude<KeyType, "cavaler">, { from: string; to: string }> = {
+  const chain: Record<Exclude<KeyType, "cavaler" | "pangarita">, { from: string; to: string }> = {
     rar: { from: "key_rar", to: "key_epic" },
     epic: { from: "key_epic", to: "key_regal" },
     regal: { from: "key_regal", to: "key_oase" },

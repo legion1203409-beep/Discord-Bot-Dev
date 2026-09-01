@@ -220,6 +220,34 @@ import {
   type BossRarity,
 } from "./survival";
 import { IMG } from "./assets";
+import {
+  buildPersonalChestEmbed,
+  claimPersonalChest,
+  getPersonalActivity,
+  personalChestReward,
+  personalChestRow,
+  buildFratiaVoteEmbed,
+  castFratiaVote,
+  fratiaVoteRows,
+  loadFratiaVote,
+  buildSeasonalChestEmbed,
+  seasonalChestRow,
+  claimSeasonalChest,
+  SEASONAL_CHESTS,
+  buildHiddenChestEmbed,
+  claimHiddenChest,
+  hiddenChestRow,
+  getAuction,
+  buildAuctionEmbed,
+  auctionRow,
+  placeAuctionBid,
+  exchangeDuplicateRelic,
+  corruptedKeyEmbed,
+  purifyCorruptedKey,
+  randomCorruptedKeyDrop,
+  recordPersonalActivity,
+  maybeHandleOracleClue,
+} from "./chest-expansions";
 
 const DEFAULT_GUILD_ID = "1382035307607883816";
 
@@ -419,6 +447,16 @@ const slashCommands = [
   new SlashCommandBuilder().setName("companion").setDescription("🐾 Vezi companionul tău (cumpără și fă îmbunătățiri din /magazin)."),
   new SlashCommandBuilder().setName("ajutor").setDescription("❓ Ghidul comenzilor din Regatul Cenușii."),
   new SlashCommandBuilder().setName("misiuni").setDescription("📜 Misiunea ta zilnică — progres și recompensă."),
+  new SlashCommandBuilder().setName("cufarpersonal").setDescription("🕯️ Vezi și revendică Cufărul Vegherii Zilnice."),
+  new SlashCommandBuilder().setName("fratie").setDescription("🤝 Vezi votul curent al Chivotului Frăției."),
+  new SlashCommandBuilder()
+    .setName("licitatie")
+    .setDescription("⚒️ Vezi Târgul Negru și licitează pentru oferta curentă.")
+    .addIntegerOption((opt) =>
+      opt.setName("suma").setDescription("Oferta ta în Oboli (opțional)").setMinValue(1).setRequired(false),
+    ),
+  new SlashCommandBuilder().setName("schimbrelicve").setDescription("💎 Schimbă două fragmente duplicate într-un fragment rar."),
+  new SlashCommandBuilder().setName("purificacheie").setDescription("🧪 Purifică Cheia Pângărită cu 3 Fragmente de Cenușă."),
   new SlashCommandBuilder()
     .setName("chei")
     .setDescription("🗝️ Vezi cheile și forjează 3 chei într-una de nivel superior.")
@@ -587,7 +625,10 @@ async function handleAjutor(interaction: ChatInputCommandInteraction) {
             value:
               "**/magazin** — Forja Cenușii: puteri permanente, companioni și abilități de luptă\n" +
               "**/misiuni** — misiunile tale zilnice *(progres și recompense)*\n" +
-              "**/chei** — vezi cheile și forjează 3 chei într-una de nivel superior",
+              "**/chei** — vezi cheile și forjează 3 chei într-una de nivel superior\n" +
+              "**/cufarpersonal** — revendică răsplata pentru activitatea de azi\n" +
+              "**/licitatie** — licitează în Târgul Negru al Negustorului\n" +
+              "**/schimbrelicve** și **/purificacheie** — schimburi și purificări rare",
           },
           {
             name: "⚔️ Evenimente automate",
@@ -631,6 +672,68 @@ async function handleMisiune(interaction: ChatInputCommandInteraction) {
   await interaction.editReply({ embeds: [buildMissionEmbed(byKey, today)] });
 }
 
+async function handlePersonalChest(interaction: ChatInputCommandInteraction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const activity = await getPersonalActivity(interaction.user.id, interaction.guildId!);
+  await interaction.editReply({
+    embeds: [buildPersonalChestEmbed(activity)],
+    components: [personalChestRow(activity)],
+  });
+}
+
+async function handleFratia(interaction: ChatInputCommandInteraction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const vote = await loadFratiaVote(interaction.guildId!);
+  if (!vote || (vote.status === "open" && vote.closesAt <= Date.now())) {
+    await interaction.editReply({
+      content: "🤝 Chivotul este liniștit pentru moment. Votul se deschide după următorul prag de activitate al Regatului.",
+    });
+    return;
+  }
+  await interaction.editReply({
+    embeds: [buildFratiaVoteEmbed(vote)],
+    components: vote.status === "open" ? fratiaVoteRows() : [],
+  });
+}
+
+async function handleLicitatie(interaction: ChatInputCommandInteraction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const guildId = interaction.guildId!;
+  const amount = interaction.options.getInteger("suma");
+  if (amount != null) {
+    const result = await placeAuctionBid(guildId, interaction.user.id, amount);
+    await interaction.editReply({
+      content: result.message,
+      embeds: [buildAuctionEmbed(result.auction)],
+      components: [auctionRow()],
+    });
+    return;
+  }
+  const auction = await getAuction(guildId);
+  await interaction.editReply({ embeds: [buildAuctionEmbed(auction)], components: [auctionRow()] });
+}
+
+async function handleSchimbRelicve(interaction: ChatInputCommandInteraction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const duplicate = await exchangeDuplicateRelic(interaction.user.id, interaction.guildId!);
+  await interaction.editReply({
+    content: duplicate
+      ? `💎 Ai schimbat două fragmente **${ITEMS[duplicate as keyof typeof ITEMS]?.label ?? duplicate}** într-un **Fragment de Ochi al Cenușii**.`
+      : "🕯️ Nu ai două fragmente identice disponibile pentru schimb.",
+  });
+}
+
+async function handlePurificaCheie(interaction: ChatInputCommandInteraction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const purified = await purifyCorruptedKey(interaction.user.id, interaction.guildId!);
+  await interaction.editReply({
+    content: purified
+      ? "🧪 **Cheia Pângărită a fost purificată!** Ai primit o Cheie a Umbrei Frânte."
+      : "❌ Purificarea a eșuat. Ai nevoie de **3× Fragment de Cenușă**.",
+    embeds: purified ? [] : [corruptedKeyEmbed()],
+  });
+}
+
 async function handleChei(interaction: ChatInputCommandInteraction) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const guildId = interaction.guildId!;
@@ -639,7 +742,11 @@ async function handleChei(interaction: ChatInputCommandInteraction) {
 
   const forgeable = new Set(["rar", "epic", "regal", "oase", "fum"]);
   if (requested && forgeable.has(requested)) {
-    const forged = await combinePlayerKeys(interaction.user.id, guildId, requested as Exclude<KeyType, "cavaler">);
+    const forged = await combinePlayerKeys(
+      interaction.user.id,
+      guildId,
+      requested as Exclude<KeyType, "cavaler" | "pangarita">,
+    );
     if (!forged) {
       const needed = `3 ${KEY_LABEL[requested]}`;
       await interaction.editReply({ content: `🔒 Nicovala refuză metalul: ai nevoie de **${needed}** pentru forjare.` });
@@ -654,6 +761,7 @@ async function handleChei(interaction: ChatInputCommandInteraction) {
   const oase = keys?.oase ?? player.keyOase;
   const fum = keys?.fum ?? player.keyFum;
   const cavaler = keys?.cavaler ?? player.keyCavaler;
+  const pangarita = keys?.pangarita ?? player.keyPangarita;
   const forgedLine = requested
     ? `\n⚒️ 3 ${KEY_LABEL[requested]} au devenit 1 ${KEY_LABEL[requested === "rar" ? "epic" : requested === "epic" ? "regal" : requested === "regal" ? "oase" : requested === "oase" ? "fum" : "cavaler"]}.`
     : "";
@@ -662,7 +770,8 @@ async function handleChei(interaction: ChatInputCommandInteraction) {
       `🗝️ **Forja Cheilor**\n` +
       `${KEY_EMOJI.rar} **${rar}** ${KEY_LABEL.rar} · ${KEY_EMOJI.epic} **${epic}** ${KEY_LABEL.epic} · ${KEY_EMOJI.regal} **${regal}** ${KEY_LABEL.regal}\n` +
       `${KEY_EMOJI.oase} **${oase}** ${KEY_LABEL.oase} · ${KEY_EMOJI.fum} **${fum}** ${KEY_LABEL.fum} · ${KEY_EMOJI.cavaler} **${cavaler}** ${KEY_LABEL.cavaler}\n` +
-      `*Cheile superioare deschid cufere mai rare, până la comoara Cavalerului Cenușiu.*${forgedLine}`,
+      `☠️ **${pangarita}** ${KEY_LABEL.pangarita}\n` +
+      `*Cheile superioare deschid cufere mai rare, până la comoara Cavalerului Cenușiu. Cheia Pângărită nu intră în forjarea obișnuită.*${forgedLine}`,
   });
 }
 
@@ -1026,6 +1135,9 @@ async function handleChestClaim(
   if (keyDrop && Math.random() < keyDrop.chance) {
     const keyType = keyDrop.keyType as KeyType;
     await addPlayerKey(interaction.user.id, guildId, keyType);
+    void recordPersonalActivity(interaction.user.id, guildId, "keys").catch((err) =>
+      logger.warn({ err, discordId: interaction.user.id, guildId }, "Personal key activity update failed"),
+    );
     const keyDropReply = await interaction.followUp({ content: buildKeyDropMessage(rarityKey, keyType) });
     setTimeout(() => { void keyDropReply.delete().catch(() => {}); }, CLAIM_TTL_MS);
     logger.info({ discordId: interaction.user.id, chestId, rarityKey, keyType }, "Key dropped");
@@ -1080,7 +1192,12 @@ async function handleLockedChestClaim(interaction: ButtonInteraction, chestId: s
   const keyLabel = KEY_LABEL[keyType] ?? "Cheie";
   const sourceLabel = KEY_SOURCE_LABEL[keyType] ?? "cufere comune";
 
-  const keyConsumed = await consumePlayerKey(interaction.user.id, guildId, keyType);
+  let usedKeyType: KeyType = keyType;
+  let keyConsumed = await consumePlayerKey(interaction.user.id, guildId, keyType);
+  if (!keyConsumed) {
+    keyConsumed = await consumePlayerKey(interaction.user.id, guildId, "pangarita");
+    if (keyConsumed) usedKeyType = "pangarita";
+  }
   if (!keyConsumed) {
     await interaction.followUp({
       content:
@@ -1092,15 +1209,33 @@ async function handleLockedChestClaim(interaction: ButtonInteraction, chestId: s
   }
 
   if (claimedChests.has(chestId)) {
-    await addPlayerKey(interaction.user.id, guildId, keyType);
+    await addPlayerKey(interaction.user.id, guildId, usedKeyType);
     await interaction.followUp({
-      content: `😔 Cineva a fost mai rapid! **${keyLabel}** ta a fost returnată. Folosește-o la alt cufăr blocat!`,
+      content: `😔 Cineva a fost mai rapid! **${KEY_LABEL[usedKeyType]}** ți-a fost returnată. Folosește-o la alt cufăr blocat!`,
       flags: MessageFlags.Ephemeral,
     });
     return;
   }
   claimedChests.add(chestId);
   void clearActiveChest(guildId, LOCKCHEST_DBKEY).catch(() => null);
+
+  const corruptedConsumed = usedKeyType === "pangarita";
+  if (corruptedConsumed && Math.random() < 0.25) {
+    const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${chestId}_claimed`)
+        .setLabel("Cufărul a fost mistuit")
+        .setEmoji("☠️")
+        .setStyle(ButtonStyle.Danger)
+        .setDisabled(true),
+    );
+    await interaction.message.edit({ components: [disabledRow] }).catch(() => null);
+    await interaction.followUp({
+      content: "☠️ **Cheia Pângărită s-a consumat**, dar a mistuit și recompensa cufărului. Fumul nu mai poate fi întors.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
 
   const lockedPlayer = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
   const lockedEffects = getRewardMultipliers(interaction.user.id, guildId);
@@ -1157,6 +1292,9 @@ async function handleKeyChestClaim(interaction: ButtonInteraction, chestId: stri
 
   await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
   await addPlayerKey(interaction.user.id, guildId, keyType as KeyType);
+  void recordPersonalActivity(interaction.user.id, guildId, "keys").catch((err) =>
+    logger.warn({ err, discordId: interaction.user.id, guildId }, "Personal key activity update failed"),
+  );
 
   const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
@@ -1303,6 +1441,17 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
   const talismanKey = pl?.talisman ?? null;
   const talismanLevel = pl?.talismanLevel ?? 1;
   const result = doCombat(p, talismanKey, talismanLevel, pl?.bossKills, p.shieldHp);
+  if (result.monsterDefeated) {
+    const activityWrites: Promise<void>[] = [
+      recordPersonalActivity(p.discordId, guildId, "kills"),
+    ];
+    if (isBossFight(p.monsterLevel, p.monsterRarity)) {
+      activityWrites.push(recordPersonalActivity(p.discordId, guildId, "bosses"));
+    }
+    void Promise.all(activityWrites).catch((err) =>
+      logger.warn({ err, discordId: p.discordId, guildId }, "Personal combat activity update failed"),
+    );
+  }
 
   // Ash Shield: the absorbed damage drained the shield's own HP pool inside
   // doCombat; the shield stays up until its HP can't cover an absorption.
@@ -1356,6 +1505,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
   const itemDrop = result.oboliGained > 0 ? rollItemDrop(p.monsterLevel) : null;
   // Rarity material: rar/epic/legendar/mitic monsters and mini-bossi drop their tier material
   const materialDrop = result.monsterDefeated ? rollMaterialDrop(p.monsterRarity) : null;
+  const corruptedKeyDrop = result.monsterDefeated && randomCorruptedKeyDrop();
   // Track everything farmed this event so the final summary can show it
   const itemsFarmed: Record<string, number> = { ...(p.itemsFarmed ?? {}) };
   if (itemDrop) itemsFarmed[itemDrop] = (itemsFarmed[itemDrop] ?? 0) + 1;
@@ -1374,7 +1524,8 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
   const extra =
     buildResultText(result, itemDrop, { baseXp: killBaseXp, baseOboli: killBaseOboli, cristaHeal }) +
     manaFlowLine +
-    (materialDrop ? `\n${ITEMS[materialDrop].emoji} **${ITEMS[materialDrop].label}** a căzut din monstru — material de evoluție!` : "");
+    (materialDrop ? `\n${ITEMS[materialDrop].emoji} **${ITEMS[materialDrop].label}** a căzut din monstru — material de evoluție!` : "") +
+    (corruptedKeyDrop ? "\n☠️ **Cheia Pângărită** a ieșit din cenușă!" : "");
 
   if (result.playerDied) {
     const lost = Math.floor(p.oboli * 0.2);
@@ -1412,9 +1563,13 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
       updateMaxLevel(p.discordId, guildId, result.newMonsterLevel),
       ...(itemDrop ? [addPlayerItem(p.discordId, guildId, itemDrop)] : []),
       ...(materialDrop ? [addPlayerItem(p.discordId, guildId, materialDrop)] : []),
+      ...(corruptedKeyDrop ? [addPlayerKey(p.discordId, guildId, "pangarita")] : []),
       ...completedQuests.map((k) => addPlayerItem(p.discordId, guildId, DAILY_QUESTS[k].reward.itemKey, DAILY_QUESTS[k].reward.qty)),
     ]).catch((err) => logger.error({ err, discordId: p.discordId, guildId }, "Async combat writes failed"));
     if (completedQuests.length > 0) {
+      void recordPersonalActivity(p.discordId, guildId, "quests", completedQuests.length).catch((err) =>
+        logger.warn({ err, discordId: p.discordId, guildId }, "Personal quest activity update failed"),
+      );
       const rewardLines = completedQuests.map((k) => {
         const q = DAILY_QUESTS[k];
         itemsFarmed[q.reward.itemKey] = (itemsFarmed[q.reward.itemKey] ?? 0) + q.reward.qty;
@@ -2139,6 +2294,12 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
   }
 
   const mods = getCombatModifiers(uid);
+  const firstBossHit = !activeBoss.hitsBy.has(uid);
+  if (firstBossHit) {
+    void recordPersonalActivity(uid, guildId, "bosses").catch((err) =>
+      logger.warn({ err, discordId: uid, guildId }, "Personal boss activity update failed"),
+    );
+  }
 
   const totalAtk = player.attackBonus + player.prestigeAttackBonus + (cls?.attack ?? 0) + (comp?.attack ?? 0);
   const totalCrit = player.critBonus + player.prestigeCritBonus + (cls?.crit ?? 0) + (comp?.crit ?? 0);
@@ -2325,6 +2486,11 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
         logger.error({ err, guildId: activeBoss.guildId }, "Failed to increment final-boss veteran kills")
       ),
     ]);
+    void Promise.all(
+      [...eventKeyDrops.keys()].map((discordId) =>
+        recordPersonalActivity(discordId, guildId, "keys"),
+      ),
+    ).catch((err) => logger.warn({ err, guildId }, "Personal boss key activity update failed"));
 
     try {
       const fightCh = await interaction.client.channels.fetch(activeBoss.channelId).catch(() => null);
@@ -2539,6 +2705,103 @@ async function handleBossAbility(interaction: ButtonInteraction, eventId: number
   void persistBossState(activeBoss);
 }
 
+async function handlePersonalChestClaim(interaction: ButtonInteraction) {
+  await interaction.deferUpdate();
+  const guildId = interaction.guildId!;
+  const claimed = await claimPersonalChest(interaction.user.id, guildId);
+  if (!claimed) {
+    await ephemeralNote(interaction, "personal-chest", "🕯️ Cufărul a fost deja deschis sau nu ai încă activitate pentru astăzi.");
+    return;
+  }
+  const reward = personalChestReward(claimed);
+  await Promise.all([
+    addPlayerGold(interaction.user.id, guildId, reward.gold),
+    addPlayerXp(interaction.user.id, guildId, reward.xp),
+    ...(reward.itemKey ? [addPlayerItem(interaction.user.id, guildId, reward.itemKey)] : []),
+  ]);
+  await interaction.editReply({
+    embeds: [buildPersonalChestEmbed(claimed)],
+    components: [personalChestRow(claimed)],
+  });
+  await interaction.followUp({
+    content:
+      `🕯️ **Cufărul Vegherii Zilnice s-a deschis!** Ai primit **${reward.gold} Oboli** și **${reward.xp} XP**.` +
+      (reward.itemKey ? ` Bonus: **${ITEMS[reward.itemKey as keyof typeof ITEMS]?.label ?? reward.itemKey}**.` : ""),
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
+async function handleFratiaVoteButton(interaction: ButtonInteraction, option: "gold" | "xp" | "relic") {
+  await interaction.deferUpdate();
+  const vote = await castFratiaVote(interaction.guildId!, interaction.user.id, option);
+  if (vote === "already") {
+    await interaction.followUp({ content: "🤝 Glasul tău a fost deja înregistrat.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  if (vote === "closed" || !vote) {
+    await interaction.followUp({ content: "⌛ Votul Frăției s-a închis sau nu mai este disponibil.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  await interaction.message.edit({
+    embeds: [buildFratiaVoteEmbed(vote)],
+    components: vote.status === "open" ? fratiaVoteRows() : [],
+  }).catch(() => null);
+  await interaction.followUp({ content: "✅ Alegerea ta a fost înscrisă în Chivot.", flags: MessageFlags.Ephemeral });
+}
+
+async function handleSeasonalChestClaim(interaction: ButtonInteraction, chestId: string) {
+  await interaction.deferUpdate();
+  const guildId = interaction.guildId!;
+  const chest = await claimSeasonalChest(guildId, chestId);
+  if (!chest) {
+    await ephemeralNote(interaction, "seasonal-chest", "🌒 Cufărul sezonier a fost deja revendicat sau a expirat.");
+    return;
+  }
+  const meta = SEASONAL_CHESTS.find((item) => item.season === chest.season) ?? SEASONAL_CHESTS[0]!;
+  await Promise.all([
+    addPlayerGold(interaction.user.id, guildId, meta.gold),
+    addPlayerXp(interaction.user.id, guildId, meta.xp),
+    addPlayerItem(interaction.user.id, guildId, "fragment_coroana"),
+  ]);
+  await interaction.message.edit({
+    embeds: [buildSeasonalChestEmbed(chest, true)],
+    components: [seasonalChestRow(chest.id, true)],
+  }).catch(() => null);
+  await interaction.followUp({
+    content: `🎁 Ai revendicat **${meta.label}**: **${meta.gold} Oboli**, **${meta.xp} XP** și un **Fragment de Coroană**!`,
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
+async function handleHiddenChestClaim(interaction: ButtonInteraction, chestId: string) {
+  await interaction.deferUpdate();
+  const guildId = interaction.guildId!;
+  const chest = await claimHiddenChest(guildId, chestId);
+  if (!chest) {
+    await ephemeralNote(interaction, "oracle-chest", "👁️ Sigiliul a fost deja atins sau comoara a dispărut.");
+    return;
+  }
+  await Promise.all([
+    addPlayerGold(interaction.user.id, guildId, chest.rewardGold),
+    addPlayerXp(interaction.user.id, guildId, chest.rewardXp),
+    addPlayerItem(interaction.user.id, guildId, "fragment_ochiul_cenușii"),
+  ]);
+  await interaction.message.edit({
+    embeds: [buildHiddenChestEmbed(chest, true)],
+    components: [hiddenChestRow(chest.id, true)],
+  }).catch(() => null);
+  await interaction.followUp({
+    content: `👁️ Ai deschis Cufărul Șoaptelor Oracolului: **${chest.rewardGold} Oboli**, **${chest.rewardXp} XP** și un fragment de relicvă!`,
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
+async function handleAuctionButton(interaction: ButtonInteraction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const auction = await getAuction(interaction.guildId!);
+  await interaction.editReply({ embeds: [buildAuctionEmbed(auction)], components: [auctionRow()] });
+}
+
 async function handleButton(interaction: ButtonInteraction) {
   const id = interaction.customId;
 
@@ -2550,9 +2813,27 @@ async function handleButton(interaction: ButtonInteraction) {
     return handleViewProfile(interaction, id.replace("profile_view_", ""));
   }
 
+  if (id === "trader_auction") {
+    return handleAuctionButton(interaction);
+  }
+
   if (id.startsWith("trader_")) {
     const m = id.match(/^trader_(\w+)$/);
     if (m) return handleTraderClaim(interaction, m[1]!);
+  }
+
+  if (id === "personal_chest_claim") return handlePersonalChestClaim(interaction);
+  if (id.startsWith("fratia_vote_")) {
+    const option = id.replace("fratia_vote_", "");
+    if (option === "gold" || option === "xp" || option === "relic") {
+      return handleFratiaVoteButton(interaction, option);
+    }
+  }
+  if (id.startsWith("seasonal_chest_")) {
+    return handleSeasonalChestClaim(interaction, id.replace("seasonal_chest_", ""));
+  }
+  if (id.startsWith("hidden_chest_")) {
+    return handleHiddenChestClaim(interaction, id.replace("hidden_chest_", ""));
   }
 
   if (id.startsWith("lockchest_") && !id.endsWith("_claimed") && !id.endsWith("_expired")) {
@@ -2722,6 +3003,12 @@ async function setupTrader(client: Client, guildId: string): Promise<void> {
       const row = new ActionRowBuilder<ButtonBuilder>().addComponents(btn);
       rows.push(row);
     }
+    rows[0]?.addComponents(
+      new ButtonBuilder()
+        .setCustomId("trader_auction")
+        .setLabel("⚒️ Târgul Negru")
+        .setStyle(ButtonStyle.Danger),
+    );
 
     let msgId = getTraderMessageId(guildId);
     if (!msgId) {
@@ -2976,6 +3263,12 @@ export async function startBot(onReady?: () => void): Promise<void> {
     if (mainChannelId && message.channelId === mainChannelId) {
       recordGuildActivity(client, message.guildId);
     }
+    void recordPersonalActivity(message.author.id, message.guildId, "messages").catch((err) =>
+      logger.warn({ err, discordId: message.author.id, guildId: message.guildId }, "Personal message activity update failed"),
+    );
+    void maybeHandleOracleClue(client, message).catch((err) =>
+      logger.warn({ err, guildId: message.guildId }, "Oracle clue handler failed"),
+    );
     void handleToxicity(client, message).then((handled) => {
       if (!handled) void maybeReplyAsOracle(client, message);
     });
@@ -3127,6 +3420,11 @@ export async function startBot(onReady?: () => void): Promise<void> {
       if (interaction.commandName === "companion") dispatch(handleCompanion(interaction));
       if (interaction.commandName === "ajutor") dispatch(handleAjutor(interaction));
       if (interaction.commandName === "misiuni") dispatch(handleMisiune(interaction));
+      if (interaction.commandName === "cufarpersonal") dispatch(handlePersonalChest(interaction));
+      if (interaction.commandName === "fratie") dispatch(handleFratia(interaction));
+      if (interaction.commandName === "licitatie") dispatch(handleLicitatie(interaction));
+      if (interaction.commandName === "schimbrelicve") dispatch(handleSchimbRelicve(interaction));
+      if (interaction.commandName === "purificacheie") dispatch(handlePurificaCheie(interaction));
       if (interaction.commandName === "chei") dispatch(handleChei(interaction));
       if (interaction.commandName === "setcanale") dispatch(handleSetCanale(interaction));
     } else if (interaction.isButton()) {
