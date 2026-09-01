@@ -166,6 +166,10 @@ export async function runMultiGuildMigrations(): Promise<void> {
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS mana_regen_level integer NOT NULL DEFAULT 0`);
   logger.info("multi-guild migrations: players mana columns ensured");
 
+  // ─── Chest 2.0 pity meter ───────────────────────────────────────────────────
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS chest_pity integer NOT NULL DEFAULT 0`);
+  logger.info("multi-guild migrations: players.chest_pity ensured");
+
   // ─── Ash Shield own HP pool (per event participant) ────────────────────────
   await pool.query(`ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS shield_hp integer NOT NULL DEFAULT 0`);
   logger.info("multi-guild migrations: event_participants.shield_hp ensured");
@@ -428,6 +432,7 @@ const PLAYER_RESET = {
   attackBonus: 0, defenseBonus: 0, dodgeBonus: 0, critBonus: 0, maxHpBonus: 0,
   shopAttackCount: 0, shopDefenseCount: 0, shopDodgeCount: 0, shopCritCount: 0, shopHpCount: 0,
   keyRar: 0, keyEpic: 0, keyRegal: 0,
+  chestPity: 0,
   prestigeLevel: 0, prestigeAttackBonus: 0, prestigeDefenseBonus: 0,
   prestigeDodgeBonus: 0, prestigeCritBonus: 0, prestigeHpBonus: 0,
   talisman: null as string | null, talismanLevel: 1,
@@ -989,6 +994,48 @@ export async function consumePlayerKey(discordId: string, guildId: string, keyTy
   return u != null;
 }
 
+/** Atomically forges three keys of one tier into one key of the next tier. */
+export async function combinePlayerKeys(
+  discordId: string,
+  guildId: string,
+  from: "rar" | "epic",
+): Promise<boolean> {
+  const fromColumn = from === "rar" ? "key_rar" : "key_epic";
+  const toColumn = from === "rar" ? "key_epic" : "key_regal";
+  const { rowCount } = await pool.query(
+    `UPDATE players
+        SET ${fromColumn} = ${fromColumn} - 3,
+            ${toColumn} = ${toColumn} + 1
+      WHERE discord_id = $1
+        AND guild_id = $2
+        AND ${fromColumn} >= 3`,
+    [discordId, guildId],
+  );
+  return (rowCount ?? 0) > 0;
+}
+
+/**
+ * Advances the persistent chest pity meter. Every fifth ordinary chest claim
+ * forces a relic fragment and a blessing, then resets the meter. Premium
+ * chests reset the meter without consuming a pity charge.
+ */
+export async function advanceChestPity(
+  discordId: string,
+  guildId: string,
+  premium: boolean,
+): Promise<{ pity: number; triggered: boolean }> {
+  const [row] = await db.update(playersTable)
+    .set({
+      chestPity: premium
+        ? 0
+        : sql`CASE WHEN ${playersTable.chestPity} >= 4 THEN 0 ELSE ${playersTable.chestPity} + 1 END`,
+    })
+    .where(playerWhere(discordId, guildId))
+    .returning({ chestPity: playersTable.chestPity });
+  const pity = row?.chestPity ?? 0;
+  return { pity, triggered: !premium && pity === 0 };
+}
+
 // ─── Talisman & item helpers ───────────────────────────────────────────────────
 
 export async function equipTalisman(discordId: string, guildId: string, talismanKey: string, level = 1): Promise<void> {
@@ -1500,8 +1547,47 @@ export interface ActiveChestRecord {
   expiresAt: number;
   /** Chest variant — drives expiry label and embed choice during rehydration. */
   kind?: "chest" | "keychest" | "lockchest";
+  /** Flavor/mechanic variant for Cufere 2.0. */
+  variant?: "aur" | "razboi" | "blestemat" | "oracolului" | "umbrelor" | "fratie";
   /** Key type for key-chest records (e.g. "rar", "epic", "regal"). */
   keyType?: string;
+}
+
+const SERVER_CHEST_PROGRESS_KEY = "server_chest_progress";
+
+/** Increments the guild's daily Frăția meter atomically. */
+export async function incrementServerChestProgress(
+  guildId: string,
+  target = 75,
+): Promise<{ progress: number; triggered: boolean }> {
+  await ensureBotStateTable();
+  const key = guildKey(guildId, SERVER_CHEST_PROGRESS_KEY);
+  const day = new Date().toISOString().slice(0, 10);
+  const safeTarget = Math.max(2, Math.min(1000, Math.floor(target)));
+  const { rows } = await pool.query<{ value: string }>(
+    `INSERT INTO bot_state (key, value, updated_at)
+       VALUES ($1, jsonb_build_object('date', $2::text, 'progress', 1)::text, now())
+     ON CONFLICT (key) DO UPDATE
+       SET value = CASE
+         WHEN COALESCE(bot_state.value::jsonb->>'date', '') <> $2
+           THEN jsonb_build_object('date', $2::text, 'progress', 1)::text
+         ELSE jsonb_build_object(
+           'date', $2::text,
+           'progress', ((COALESCE((bot_state.value::jsonb->>'progress')::int, 0) + 1) % $3)
+         )::text
+       END,
+       updated_at = now()
+     RETURNING value`,
+    [key, day, safeTarget],
+  );
+  let progress = 0;
+  try {
+    progress = Math.max(0, Number(JSON.parse(rows[0]?.value ?? "{}").progress) || 0);
+  } catch {
+    progress = 0;
+  }
+  // A zero after a non-empty daily meter means the threshold was crossed.
+  return { progress, triggered: progress === 0 };
 }
 
 // ─── Final-boss veteran kills (per-guild) ─────────────────────────────────────

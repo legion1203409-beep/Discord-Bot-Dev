@@ -777,6 +777,14 @@ export const ITEMS = {
   sange_titan: { label: "Sânge de Titan", emoji: "🧪", rarity: "legendary" },
   fragment_mitic: { label: "Fragment Mitic", emoji: "🌟", rarity: "mythic" },
   sigiliu_boss: { label: "Sigiliul Bossului", emoji: "🔥", rarity: "boss" },
+  fragment_coroana: { label: "Fragment de Coroană", emoji: "👑", rarity: "mythic" },
+  fragment_ochiul_cenușii: { label: "Fragment de Ochi al Cenușii", emoji: "👁️", rarity: "epic" },
+  fragment_inima_abisului: { label: "Fragment de Inimă a Abisului", emoji: "🖤", rarity: "epic" },
+  fragment_luna_stinsa: { label: "Fragment de Lună Stinsă", emoji: "🌘", rarity: "rare" },
+  relic_coroana: { label: "Relicva Coroanei Cenușii", emoji: "👑", rarity: "mythic" },
+  relic_ochiul: { label: "Relicva Ochiului Stins", emoji: "🔮", rarity: "legendary" },
+  relic_inima: { label: "Relicva Inimii de Abis", emoji: "🖤", rarity: "legendary" },
+  relic_luna: { label: "Relicva Lunii Negre", emoji: "🌑", rarity: "rare" },
 } as const;
 export type ItemKey = keyof typeof ITEMS;
 export function isItemKey(k: string): k is ItemKey {
@@ -1797,6 +1805,11 @@ export function buildProfileEmbed(
         inline: false,
       },
       { name: "━━━ Chei ━━━", value: keysValue, inline: false },
+      {
+        name: "🎲 Norocul Cufere­lor",
+        value: `Pity: **${player.chestPity ?? 0}/5** ${buildProgressBar(player.chestPity ?? 0, 5, 5)}\nLa al cincilea cufăr obișnuit: fragment de relicvă + binecuvântare garantate.`,
+        inline: false,
+      },
       { name: "━━━ Inventar ━━━", value: inventoryValue, inline: false },
       {
         name: "━━━ Istoric de luptă ━━━",
@@ -1825,6 +1838,33 @@ export interface ChestRarity {
   min: number;
   max: number;
   weight: number;
+}
+
+export type ChestVariant = "aur" | "razboi" | "blestemat" | "oracolului" | "umbrelor" | "fratie";
+
+export const CHEST_VARIANTS: Record<ChestVariant, {
+  label: string;
+  emoji: string;
+  description: string;
+}> = {
+  aur: { label: "Cufărul de Aur", emoji: "🥇", description: "Obolii se înmulțesc sub atingerea ta." },
+  razboi: { label: "Cufărul Războiului", emoji: "⚔️", description: "Pradă pentru cei care își ascut lama și răbdarea." },
+  blestemat: { label: "Cufărul Blestemat", emoji: "☠️", description: "Comoară mare, dar cenușa dinăuntru mușcă." },
+  oracolului: { label: "Cufărul Oracolului", emoji: "🔮", description: "Înăuntru doarme un răspuns pe care nu l-ai întrebat încă." },
+  umbrelor: { label: "Cufărul Umbrelor", emoji: "🌑", description: "Fragmentele relicvelor se adună în întuneric." },
+  fratie: { label: "Cufărul Frăției", emoji: "🤝", description: "Ridicat prin glasurile și pașii întregului server." },
+};
+
+/** Flavor roll for the six Cufere 2.0. Rarity still controls economy. */
+export function rollChestVariant(serverChest = false): ChestVariant {
+  if (serverChest) return "fratie";
+  const roll = Math.random();
+  if (roll < 0.18) return "razboi";
+  if (roll < 0.34) return "blestemat";
+  if (roll < 0.50) return "oracolului";
+  if (roll < 0.70) return "umbrelor";
+  if (roll < 0.84) return "fratie";
+  return "aur";
 }
 
 export const CHEST_RARITIES: ChestRarity[] = [
@@ -2016,12 +2056,52 @@ export function spawnChest(
   return { rarity, gold };
 }
 
+export type ChestChoice = "gold" | "xp" | "blessing" | "relic";
+
+/** The reward paths shown before a chest is claimed. Keeping these in the
+ * embed makes the choice meaningful without storing a fragile in-memory state. */
+export function chestChoices(rarityKey: string): ChestChoice[] {
+  if (rarityKey === "bronz") return ["gold", "xp"];
+  if (rarityKey === "argint") return ["gold", "xp", "blessing"];
+  return ["gold", "blessing", "relic"];
+}
+
+export function buildChestClaimRow(
+  chestId: string,
+  rarity: ChestRarity,
+  gold: number,
+  forcedMult?: 2 | 3,
+): ActionRowBuilder<ButtonBuilder> {
+  const labels: Record<ChestChoice, { label: string; emoji: string; style: ButtonStyle }> = {
+    gold: {
+      label: `Aur${forcedMult ? ` ×${forcedMult}` : ` (${gold})`}`,
+      emoji: "💰",
+      style: ButtonStyle.Success,
+    },
+    xp: { label: "Experiență", emoji: "✨", style: ButtonStyle.Primary },
+    blessing: { label: "Binecuvântare", emoji: "🕯️", style: ButtonStyle.Secondary },
+    relic: { label: "Fragment relicvă", emoji: "💎", style: ButtonStyle.Primary },
+  };
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    ...chestChoices(rarity.key).map((choice) => {
+      const config = labels[choice];
+      return new ButtonBuilder()
+        .setCustomId(`${chestId}_${choice}`)
+        .setLabel(config.label)
+        .setEmoji(config.emoji)
+        .setStyle(config.style);
+    }),
+  );
+}
+
 export function buildChestEmbed(
   gold: number,
   rarity?: ChestRarity,
   forcedMult?: 2 | 3,
+  variant: ChestVariant = "aur",
 ): EmbedBuilder {
   const r = rarity ?? CHEST_RARITIES[0]!;
+  const flavor = CHEST_VARIANTS[variant] ?? CHEST_VARIANTS.aur;
   const image = CHEST_IMG[r.key] ?? IMG.chest;
   const bonusLine =
     forcedMult != null
@@ -2036,12 +2116,13 @@ export function buildChestEmbed(
   return new EmbedBuilder()
     .setColor(r.color)
     .setTitle(
-      `${r.emoji}✨  ${r.label.toUpperCase()} A APĂRUT ÎN REGAT!  ✨${r.emoji}`,
+      `${flavor.emoji}${r.emoji}✨  ${flavor.label.toUpperCase()} — ${r.label.toUpperCase()}  ✨${r.emoji}${flavor.emoji}`,
     )
     .setDescription(
-      "Cenușa s-a ridicat și a dezvăluit un cufăr misterios!\n" +
+       `Cenușa s-a ridicat și a dezvăluit un cufăr misterios!\n*${flavor.description}*\n` +
         "Obolii zac în el, așteptând mâna celui mai rapid.\n\n" +
-        `💰 **${gold} Oboli** pentru primul care revendică!${bonusLine}${keyHintLine}${effectHintLine}\n\n` +
+         `💰 **${gold} Oboli** pentru primul care revendică!${bonusLine}${keyHintLine}${effectHintLine}\n` +
+         `🎭 **Alege-ți calea:** aur, experiență${r.key === "bronz" ? "" : ", binecuvântare"}${r.key === "bronz" || r.key === "argint" ? "" : " sau fragment de relicvă"}.\n\n` +
         "⚡ Fii primul — cufărul dispare în fumul umbrelor!",
     )
     .setImage(image)

@@ -1,6 +1,6 @@
 import { Client, TextChannel, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import { logger } from "../lib/logger";
-import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, buildExpiredChestEmbed, rollChest, oracleMessage, buildFinalBossEmbed, buildBossLeaderboard, buildEventLeaderboard, buildLockedChestEmbed, buildKeyChestEmbed, spawnLockedChest, rollKeyChestType, computeBossRewards, prestigeGoldMult, finalBossRow, bossMaxHp, veteranRank, veteranMult, CHEST_RARITIES, type BossRarity, type BossPlayerStats } from "./survival";
+import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, buildExpiredChestEmbed, rollChest, oracleMessage, buildFinalBossEmbed, buildBossLeaderboard, buildEventLeaderboard, buildLockedChestEmbed, buildKeyChestEmbed, spawnLockedChest, rollKeyChestType, computeBossRewards, prestigeGoldMult, finalBossRow, bossMaxHp, veteranRank, veteranMult, CHEST_RARITIES, type ChestVariant, type BossRarity, type BossPlayerStats } from "./survival";
 import { triggerRandomBattleEvent } from "./combat-events";
 import { getRewardMultipliers } from "./status-effects";
 import { startOracle, setOracleExtatic } from "./oracle";
@@ -52,6 +52,7 @@ export const CHEST_MSG_MILESTONE = readEnvInt("CHEST_MSG_MILESTONE", 25, 200);
  *  (15% chance each). Independent counter from the chest milestone.
  *  Env: KEY_CHEST_MSG_MILESTONE (default 50, max 400). Requires bot restart. */
 export const KEY_CHEST_MSG_MILESTONE = readEnvInt("KEY_CHEST_MSG_MILESTONE", 50, 400);
+const SERVER_CHEST_MSG_MILESTONE = readEnvInt("SERVER_CHEST_MSG_MILESTONE", 75, 1000);
 
 // ─── Per-guild scheduler state ─────────────────────────────────────────────────
 
@@ -97,6 +98,36 @@ function getOrCreateGuildState(guildId: string): GuildSchedulerState {
     guildStates.set(guildId, state);
   }
   return state;
+}
+
+function buildChestRow(
+  chestId: string,
+  rarity: { key: string; emoji: string },
+  gold: number,
+  mult?: 2 | 3,
+): ActionRowBuilder<ButtonBuilder> {
+  const choices = rarity.key === "bronz"
+    ? [{ key: "gold", label: `Aur (${gold})`, emoji: "💰", style: ButtonStyle.Success }, { key: "xp", label: "Experiență", emoji: "✨", style: ButtonStyle.Primary }]
+    : rarity.key === "argint"
+      ? [{ key: "gold", label: `Aur (${gold})`, emoji: "💰", style: ButtonStyle.Success }, { key: "xp", label: "Experiență", emoji: "✨", style: ButtonStyle.Primary }, { key: "blessing", label: "Binecuvântare", emoji: "🕯️", style: ButtonStyle.Secondary }]
+      : [{ key: "gold", label: `Aur${mult ? ` ×${mult}` : ""}`, emoji: "💰", style: ButtonStyle.Success }, { key: "blessing", label: "Binecuvântare", emoji: "🕯️", style: ButtonStyle.Secondary }, { key: "relic", label: "Fragment relicvă", emoji: "💎", style: ButtonStyle.Primary }];
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    ...choices.map((choice) => new ButtonBuilder()
+      .setCustomId(`${chestId}_${choice.key}`)
+      .setLabel(choice.label)
+      .setEmoji(choice.emoji)
+      .setStyle(choice.style)),
+  );
+}
+
+function rollChestVariant(): ChestVariant {
+  const roll = Math.random();
+  if (roll < 0.18) return "razboi";
+  if (roll < 0.34) return "blestemat";
+  if (roll < 0.50) return "oracolului";
+  if (roll < 0.70) return "umbrelor";
+  if (roll < 0.84) return "fratie";
+  return "aur";
 }
 
 // ─── Activity tracking (per-guild) ────────────────────────────────────────────
@@ -163,6 +194,23 @@ export function recordGuildActivity(client: Client, guildId: string): void {
       void fireKeyChest(client, guildId, rollActivityKeyType(), true);
     }
   }
+
+  // The Frăția meter is durable and shared by the whole guild. It deliberately
+  // advances on every human message, while the existing rolling counters retain
+  // their lightweight in-memory behavior for the ordinary bonus rolls.
+  // Resolve this helper lazily so older test doubles and partially deployed
+  // bot modules continue to work while the migration rolls out.
+  void import("./db").then((dbModule) => {
+    const updateMeter = (dbModule as typeof import("./db") & {
+      incrementServerChestProgress?: (guildId: string, target: number) => Promise<{ progress: number; triggered: boolean }>;
+    }).incrementServerChestProgress;
+    if (typeof updateMeter !== "function") return;
+    return updateMeter(guildId, SERVER_CHEST_MSG_MILESTONE).then((meter) => {
+      if (meter.triggered && !gs.stopped) {
+        void fireChestForced(client, guildId, rollActivityRarityKey(), undefined, "fratie");
+      }
+    });
+  }).catch((err) => logger.debug({ err, guildId }, "Server chest meter update skipped"));
 }
 
 /** Stop the scheduler for a guild (e.g. bot left the server). Future timer
@@ -435,7 +483,13 @@ async function expireOldEvents(client: Client, guildId: string) {
 
 // ─── Chest — forced (admin) ────────────────────────────────────────────────────
 
-export async function fireChestForced(client: Client, guildId: string, rarityKey: string, mult?: 2 | 3) {
+export async function fireChestForced(
+  client: Client,
+  guildId: string,
+  rarityKey: string,
+  mult?: 2 | 3,
+  forcedVariant?: ChestVariant,
+) {
   const gs = getOrCreateGuildState(guildId);
   if (gs.firingChest) {
     logger.warn({ guildId }, "fireChestForced already in progress, skipping duplicate trigger");
@@ -460,18 +514,13 @@ export async function fireChestForced(client: Client, guildId: string, rarityKey
     const result = sc(rarityKey);
     if (!result) return null;
     const { rarity, gold } = result;
+    const variant = forcedVariant ?? rollChestVariant();
     const chestId = mult != null
-      ? `chest_${Date.now()}_${rarity.key}_${gold}_x${mult}`
-      : `chest_${Date.now()}_${rarity.key}_${gold}`;
+      ? `chest_${Date.now()}_${rarity.key}_${gold}_${variant}_x${mult}`
+      : `chest_${Date.now()}_${rarity.key}_${gold}_${variant}`;
     const expireAt = Date.now() + CHEST_EXPIRE_MS;
 
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId(chestId)
-        .setLabel("Revendică Cufărul")
-        .setEmoji(rarity.emoji)
-        .setStyle(ButtonStyle.Success),
-    );
+    const row = buildChestRow(chestId, rarity, gold, mult);
 
     const lockedRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
@@ -488,15 +537,15 @@ export async function fireChestForced(client: Client, guildId: string, rarityKey
 
     const msg = await channel.send({
       content,
-      embeds: [bce(gold, rarity, mult)],
+       embeds: [bce(gold, rarity, mult, variant)],
       components: [lockedRow],
     });
     gs.lastChestMessageId = msg.id;
-    void persistActiveChest(guildId, { messageId: msg.id, channelId: channel.id, chestId, gold, rarityKey: rarity.key, mult, expiresAt: expireAt }).catch(() => null);
+     void persistActiveChest(guildId, { messageId: msg.id, channelId: channel.id, chestId, gold, rarityKey: rarity.key, mult, variant, expiresAt: expireAt }).catch(() => null);
 
     await sleep(5000);
     if (!gs.claimedChests.has(chestId)) {
-      await msg.edit({ embeds: [bce(gold, rarity, mult)], components: [row] }).catch(() => null);
+      await msg.edit({ embeds: [bce(gold, rarity, mult, variant)], components: [row] }).catch(() => null);
     }
 
     logger.info({ chestId, gold, rarity: rarity.key, mult, guildId }, "Chest spawned (forced)");
@@ -558,17 +607,12 @@ export async function fireChest(client: Client, guildId: string, bypassGate = fa
     }
 
     const { rarity, gold } = rollChest();
+    const variant = rollChestVariant();
 
-    const chestId = `chest_${Date.now()}_${rarity.key}_${gold}`;
+    const chestId = `chest_${Date.now()}_${rarity.key}_${gold}_${variant}`;
     const expireAt = Date.now() + CHEST_EXPIRE_MS;
 
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId(chestId)
-        .setLabel("Revendică Cufărul")
-        .setEmoji(rarity.emoji)
-        .setStyle(ButtonStyle.Success),
-    );
+    const row = buildChestRow(chestId, rarity, gold);
 
     const lockedRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
@@ -605,20 +649,20 @@ export async function fireChest(client: Client, guildId: string, bypassGate = fa
 
     const msg = await channel.send({ content: frames[0]!.content });
     gs.lastChestMessageId = msg.id;
-    void persistActiveChest(guildId, { messageId: msg.id, channelId: channel.id, chestId, gold, rarityKey: rarity.key, expiresAt: expireAt }).catch(() => null);
+    void persistActiveChest(guildId, { messageId: msg.id, channelId: channel.id, chestId, gold, rarityKey: rarity.key, variant, expiresAt: expireAt }).catch(() => null);
 
     for (let i = 1; i < frames.length; i++) {
       await sleep(frames[i - 1]!.delay);
       await msg.edit({ content: frames[i]!.content }).catch(() => null);
     }
     await sleep(frames[frames.length - 1]!.delay);
-    await msg.edit({ content: `${rarity.emoji}✨`, embeds: [buildChestEmbed(gold, rarity)], components: [lockedRow] }).catch(() => null);
+    await msg.edit({ content: `${rarity.emoji}✨`, embeds: [buildChestEmbed(gold, rarity, undefined, variant)], components: [lockedRow] }).catch(() => null);
     await sleep(500);
-    await msg.edit({ content: "", embeds: [buildChestEmbed(gold, rarity)], components: [lockedRow] }).catch(() => null);
+    await msg.edit({ content: "", embeds: [buildChestEmbed(gold, rarity, undefined, variant)], components: [lockedRow] }).catch(() => null);
 
     await sleep(5000);
     if (!gs.claimedChests.has(chestId)) {
-      await msg.edit({ embeds: [buildChestEmbed(gold, rarity)], components: [row] }).catch(() => null);
+      await msg.edit({ embeds: [buildChestEmbed(gold, rarity, undefined, variant)], components: [row] }).catch(() => null);
     }
 
     logger.info({ chestId, gold, rarity: rarity.key, guildId }, "Chest spawned");
@@ -944,6 +988,12 @@ export async function rehydrateActiveChest(client: Client, guildId: string): Pro
 
     gs.lastChestMessageId = record.messageId;
     const remaining = record.expiresAt - now;
+    // Re-enable the full Cufere 2.0 choice row after a restart. The active
+    // record contains the variant in new saves; old records fall back safely.
+    await msg.edit({
+      embeds: [buildChestEmbed(record.gold, rarity, record.mult, record.variant)],
+      components: [buildChestRow(record.chestId, rarity, record.gold, record.mult)],
+    }).catch(() => null);
 
     const timeout = setTimeout(async () => {
       if (!gs.claimedChests.has(record.chestId)) {

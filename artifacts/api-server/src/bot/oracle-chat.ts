@@ -603,6 +603,46 @@ export async function generatePersonalProphecy(player: Player, mood: MoodState):
   return text && text.length > 0 ? text.slice(0, DISCORD_MAX_CHARS) : null;
 }
 
+/** A short cosmetic inscription for a rare chest reveal. */
+export async function generateChestInscription(
+  rarityLabel: string,
+  rewardLabel: string,
+): Promise<string | null> {
+  const client = getClient();
+  if (!client) return null;
+  try {
+    const completion = await client.chat.completions.create(
+      {
+        model: MODEL,
+        max_completion_tokens: 180,
+        ...(MODEL_SUPPORTS_REASONING_EFFORT ? { reasoning_effort: REASONING_EFFORT } : {}),
+        messages: [
+          {
+            role: "system",
+            content: [
+              "Ești inscripționarul magic al Oracolului Cenușii.",
+              "Scrie o singură inscripție memorabilă în română pentru un cufăr medieval dark-fantasy.",
+              "Răspunsul trebuie să aibă 1–2 propoziții, să fie poetic și misterios.",
+              "Nu promite recompense suplimentare, avantaje, mute sau efecte care nu sunt menționate.",
+              "Nu spune că ești AI, bot sau model și nu folosi ghilimele, liste ori titluri.",
+            ].join("\n"),
+          },
+          {
+            role: "user",
+            content: `Cufăr: ${rarityLabel}. Recompensa deja acordată: ${rewardLabel}. Scrie inscripția.`,
+          },
+        ],
+      },
+      { timeout: MODEL_TIMEOUT_MS, maxRetries: 1 },
+    );
+    const text = completion.choices[0]?.message?.content?.trim();
+    return text && text.length > 0 ? text.slice(0, DISCORD_MAX_CHARS) : null;
+  } catch (err) {
+    logger.debug({ err }, "Chest inscription generation failed");
+    return null;
+  }
+}
+
 async function sendFallback(message: Message): Promise<void> {
   try {
     await message.reply({

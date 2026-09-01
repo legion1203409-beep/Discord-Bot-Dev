@@ -29,6 +29,7 @@ import {
   maybeReplyAsOracle,
   logOracleChatStatus,
   generatePersonalProphecy,
+  generateChestInscription,
   prophecyCooldownRemaining,
   reserveProphecy,
 } from "./oracle-chat";
@@ -77,6 +78,7 @@ import {
   applyAbilityLevelToActiveParticipant,
   addPlayerKey,
   consumePlayerKey,
+  combinePlayerKeys,
   deleteActiveBoss,
   clearActiveChest,
   KEYCHEST_DBKEY,
@@ -107,6 +109,7 @@ import {
   upgradeClass,
   addPlayerItem,
   consumePlayerItems,
+  advanceChestPity,
   getDailyQuestRows,
   incrementDailyQuest,
   incrementBossKill,
@@ -413,6 +416,18 @@ const slashCommands = [
   new SlashCommandBuilder().setName("companion").setDescription("🐾 Vezi companionul tău (cumpără și fă îmbunătățiri din /magazin)."),
   new SlashCommandBuilder().setName("ajutor").setDescription("❓ Ghidul comenzilor din Regatul Cenușii."),
   new SlashCommandBuilder().setName("misiuni").setDescription("📜 Misiunea ta zilnică — progres și recompensă."),
+  new SlashCommandBuilder()
+    .setName("chei")
+    .setDescription("🗝️ Vezi cheile și forjează 3 chei într-una de nivel superior.")
+    .addStringOption((opt) =>
+      opt.setName("combina")
+        .setDescription("Forjează chei: 3 Rar → 1 Epic sau 3 Epic → 1 Regal")
+        .setRequired(false)
+        .addChoices(
+          { name: "3 Chei de Rar → 1 Cheie de Epic", value: "rar" },
+          { name: "3 Chei de Epic → 1 Cheie Regală", value: "epic" },
+        ),
+    ),
   // Comenzile de admin abuzive și de management au fost eliminate.
   new SlashCommandBuilder()
     .setName("setcanale")
@@ -565,13 +580,14 @@ async function handleAjutor(interaction: ChatInputCommandInteraction) {
             name: "🏺 Economie",
             value:
               "**/magazin** — Forja Cenușii: puteri permanente, companioni și abilități de luptă\n" +
-              "**/misiuni** — misiunea ta zilnică *(ucide 10 monștri → Coamă de Dragon)*",
+              "**/misiuni** — misiunile tale zilnice *(progres și recompense)*\n" +
+              "**/chei** — vezi cheile și forjează 3 chei într-una de nivel superior",
           },
           {
             name: "⚔️ Evenimente automate",
             value:
               "🔥 **Ora Umbrelor** — apare periodic; luptă cu monștri pentru XP și Oboli\n" +
-              "📦 **Cufere** — apar prin surprindere; primul care apasă câștigă Obolii *(cu șansă de bonus ×2 sau ×3 la deschidere!)*\n" +
+               "📦 **Cufere 2.0** — alegi recompensa: aur, XP, binecuvântare sau relicvă; există Mimici, pity și șase variante de cufăr\n" +
               "🐉 **Dragonul Stins** — bossul final pe care întregul Regat îl înfruntă împreună",
           },
           {
@@ -607,6 +623,36 @@ async function handleMisiune(interaction: ChatInputCommandInteraction) {
     }
   }
   await interaction.editReply({ embeds: [buildMissionEmbed(byKey, today)] });
+}
+
+async function handleChei(interaction: ChatInputCommandInteraction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const guildId = interaction.guildId!;
+  const requested = interaction.options.getString("combina");
+  const player = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
+
+  if (requested === "rar" || requested === "epic") {
+    const forged = await combinePlayerKeys(interaction.user.id, guildId, requested);
+    if (!forged) {
+      const needed = requested === "rar" ? "3 Chei de Rar" : "3 Chei de Epic";
+      await interaction.editReply({ content: `🔒 Nicovala refuză metalul: ai nevoie de **${needed}** pentru forjare.` });
+      return;
+    }
+  }
+
+  const keys = await getPlayerById(interaction.user.id, guildId);
+  const rar = keys?.keyRar ?? player.keyRar;
+  const epic = keys?.keyEpic ?? player.keyEpic;
+  const regal = keys?.keyRegal ?? player.keyRegal;
+  const forgedLine = requested
+    ? `\n${requested === "rar" ? "⚒️ 3 Chei de Rar au devenit 1 Cheie de Epic." : "⚒️ 3 Chei de Epic au devenit 1 Cheie Regală."}`
+    : "";
+  await interaction.editReply({
+    content:
+      `🗝️ **Forja Cheilor**\n` +
+      `🗝️ **${rar}** Chei de Rar · 🔑 **${epic}** Chei de Epic · ⚜️ **${regal}** Chei Regale\n` +
+      `*Cheile superioare deschid cufere mai rare și jackpotul regal.*${forgedLine}`,
+  });
 }
 
 async function handleMagazin(interaction: ChatInputCommandInteraction) {
@@ -795,7 +841,93 @@ const CHEST_CLAIM_MSG: Record<string, (user: string, gold: number) => string> = 
   mitic:  (u, g) => `💎⚡ **${u}** a deschis un **CUFĂR MITIC**!! **${g} Oboli** răsar din adâncurile timpului! ⚡💎`,
 };
 
-async function handleChestClaim(interaction: ButtonInteraction, chestId: string, rarityKey: string, gold: number, multOverride: number = 1) {
+const CHEST_RELIC_FRAGMENT: Record<string, string> = {
+  bronz: "fragment_luna_stinsa",
+  argint: "fragment_ochiul_cenușii",
+  aur: "fragment_inima_abisului",
+  mitic: "fragment_coroana",
+  regal: "fragment_coroana",
+};
+const CHEST_RELIC: Record<string, string> = {
+  fragment_luna_stinsa: "relic_luna",
+  fragment_ochiul_cenușii: "relic_ochiul",
+  fragment_inima_abisului: "relic_inima",
+  fragment_coroana: "relic_coroana",
+};
+const MIMIC_RARITIES = new Set(["aur", "mitic", "regal"]);
+const resolvedMimics = new Set<string>();
+
+async function awardChestRelic(discordId: string, guildId: string, rarityKey: string, guaranteed = false): Promise<string> {
+  const fragmentKey = CHEST_RELIC_FRAGMENT[rarityKey] ?? CHEST_RELIC_FRAGMENT.bronz!;
+  const quantity = guaranteed || Math.random() < (rarityKey === "mitic" || rarityKey === "regal" ? 1 : 0.55) ? 2 : 1;
+  await addPlayerItem(discordId, guildId, fragmentKey, quantity);
+
+  let forged = "";
+  const current = Object.fromEntries((await getPlayerItems(discordId, guildId)).map((item) => [item.itemKey, item.quantity]));
+  while ((current[fragmentKey] ?? 0) >= 3) {
+    const consumed = await consumePlayerItems(discordId, guildId, { [fragmentKey]: 3 });
+    if (!consumed) break;
+    await addPlayerItem(discordId, guildId, CHEST_RELIC[fragmentKey]!, 1);
+    current[fragmentKey] = (current[fragmentKey] ?? 0) - 3;
+    forged = CHEST_RELIC[fragmentKey]!;
+  }
+  return forged ? `${quantity}× ${ITEMS[fragmentKey as keyof typeof ITEMS].label} și **${ITEMS[forged as keyof typeof ITEMS].label}**` : `${quantity}× ${ITEMS[fragmentKey as keyof typeof ITEMS].label}`;
+}
+
+async function handleMimicClaim(
+  interaction: ButtonInteraction,
+  chestId: string,
+  ownerId: string,
+  rarityKey: string,
+  gold: number,
+) {
+  await interaction.deferUpdate();
+  if (interaction.user.id !== ownerId) {
+    await interaction.followUp({ content: "👁️ Mimicul te recunoaște doar pe cel care a atins sigiliul.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  if (resolvedMimics.has(chestId)) {
+    await ephemeralNote(interaction, "chest", "💀 Mimicul a fost deja înfruntat.");
+    return;
+  }
+  resolvedMimics.add(chestId);
+  const victory = Math.random() < (rarityKey === "regal" ? 0.58 : 0.7);
+  const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${chestId}_mimic_done`)
+      .setLabel(victory ? "Mimic învins" : "Mimic eliberat")
+      .setEmoji(victory ? "⚔️" : "💀")
+      .setStyle(victory ? ButtonStyle.Success : ButtonStyle.Danger)
+      .setDisabled(true),
+  );
+  await interaction.message.edit({ components: [disabledRow] }).catch(() => null);
+  if (victory) {
+    const rmods = getRewardMultipliers(interaction.user.id, interaction.guildId!);
+    const payout = Math.round(gold * 2.5 * rmods.goldMult);
+    await addPlayerGold(interaction.user.id, interaction.guildId!, payout);
+    const relicLine = await awardChestRelic(interaction.user.id, interaction.guildId!, rarityKey, true);
+    const reply = await interaction.followUp({
+      content: `⚔️ **Mimicul a fost învins!** Cufărul își varsă adevărata comoară: **${payout} Oboli** și ${relicLine}.`,
+    });
+    setTimeout(() => { void reply.delete().catch(() => {}); }, CLAIM_TTL_MS);
+  } else {
+    const curse = grantRandomCurse(interaction.user.id);
+    const reply = await interaction.followUp({
+      content: `💀 **Mimicul s-a trezit!** Te-a mușcat și a fugit în cenușă. Primești blestemul: ${curse.label}.`,
+    });
+    setTimeout(() => { void reply.delete().catch(() => {}); }, CLAIM_TTL_MS);
+  }
+}
+
+async function handleChestClaim(
+  interaction: ButtonInteraction,
+  chestId: string,
+  rarityKey: string,
+  gold: number,
+  multOverride: number = 1,
+  choice = "gold",
+  variant = "aur",
+) {
   await interaction.deferUpdate();
   const guildId = interaction.guildId!;
   const claimedChests = getGuildClaimedChests(guildId);
@@ -807,12 +939,25 @@ async function handleChestClaim(interaction: ButtonInteraction, chestId: string,
   claimedChests.add(chestId);
   void clearActiveChest(guildId).catch(() => null);
 
-  const effectiveMult = multOverride > 1 ? multOverride : rollChestMultiplier();
-  const rmods = getRewardMultipliers(interaction.user.id, guildId);
+  const validChoices = new Set(["gold", "xp", "blessing", "relic"]);
+  if (!validChoices.has(choice)) choice = "gold";
+  const isPremium = rarityKey !== "bronz";
+  const player = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
+  const pity = await advanceChestPity(interaction.user.id, guildId, isPremium);
+  const isMimic = choice === "gold" && (variant === "blestemat" || MIMIC_RARITIES.has(rarityKey)) && Math.random() < (rarityKey === "regal" ? 0.18 : 0.12);
+  const effectiveMult = choice === "gold" ? (multOverride > 1 ? multOverride : rollChestMultiplier()) : 1;
+  const effects = getRewardMultipliers(interaction.user.id, guildId);
+  const classGoldMult = player.class === "alchimist" ? 1.2 : 1;
+  const classXpMult = player.class === "strajer" ? 1.1 : 1;
+  const rmods = { goldMult: effects.goldMult * classGoldMult, xpMult: effects.xpMult * classXpMult };
   const totalGold = Math.round(gold * effectiveMult * rmods.goldMult);
 
-  await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
-  await addPlayerGold(interaction.user.id, guildId, totalGold);
+  let xpReward = 0;
+  if (!isMimic && choice === "gold") await addPlayerGold(interaction.user.id, guildId, totalGold);
+  if (!isMimic && choice === "xp") {
+    xpReward = Math.max(10, Math.round(gold * 0.85 * rmods.xpMult));
+    await addPlayerXp(interaction.user.id, guildId, xpReward);
+  }
 
   const openingRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
@@ -834,17 +979,36 @@ async function handleChestClaim(interaction: ButtonInteraction, chestId: string,
 
   await interaction.editReply({ components: [openingRow] });
   await new Promise<void>((r) => setTimeout(r, 900));
-  await interaction.message.edit({ components: [disabledRow] }).catch(() => null);
-  setTimeout(() => { void interaction.message.delete().catch(() => {}); }, CLAIM_TTL_MS);
+  if (isMimic) {
+    const mimicRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`mimic_${chestId}_${interaction.user.id}_${rarityKey}_${gold}`)
+        .setLabel("Înfruntă Mimicul")
+        .setEmoji("⚔️")
+        .setStyle(ButtonStyle.Danger),
+    );
+    await interaction.message.edit({ components: [mimicRow] }).catch(() => null);
+  } else {
+    await interaction.message.edit({ components: [disabledRow] }).catch(() => null);
+    setTimeout(() => { void interaction.message.delete().catch(() => {}); }, CLAIM_TTL_MS);
+  }
 
-  const claimMsg = CHEST_CLAIM_MSG[rarityKey] ?? CHEST_CLAIM_MSG["bronz"]!;
-  const claimReply = await interaction.followUp({ content: claimMsg(interaction.user.username, totalGold) });
+  const claimContent = isMimic
+    ? `👁️ **${interaction.user.username}** a deschis sigiliul… dar **cufărul era un MIMIC**! Alege dacă îl înfrunți — comoara adevărată încă pulsează în el.`
+    : choice === "xp"
+      ? `✨ **${interaction.user.username}** a ales calea experienței și a primit **${xpReward} XP**!`
+      : choice === "blessing"
+        ? `🕯️ **${interaction.user.username}** a ales binecuvântarea ascunsă în cufăr.`
+        : choice === "relic"
+          ? `💎 **${interaction.user.username}** a ales calea relicvelor. Fragmentele vechi se trezesc…`
+          : (CHEST_CLAIM_MSG[rarityKey] ?? CHEST_CLAIM_MSG["bronz"]!)(interaction.user.username, totalGold);
+  const claimReply = await interaction.followUp({ content: claimContent });
   setTimeout(() => { void claimReply.delete().catch(() => {}); }, CLAIM_TTL_MS);
 
   const revealContent = effectiveMult > 1
     ? `🎲 **Norocul Cenușii!** A picat **×${effectiveMult}**! Obolii s-au înmulțit (${gold} × ${effectiveMult} = **${totalGold} Oboli**)! ${effectiveMult === 3 ? "🔥🔥🔥" : "✨"}`
     : `🎲 **Norocul Cenușii:** a picat **×1** de data asta — fără bonus. Ai primit **${gold} Oboli**.`;
-  const bonusReply = await interaction.followUp({ content: revealContent });
+  const bonusReply = await interaction.followUp({ content: isMimic ? "🩸 *Dinăuntru se aude un mârâit…*" : revealContent });
   setTimeout(() => { void bonusReply.delete().catch(() => {}); }, CLAIM_TTL_MS);
 
   const keyDrop = KEY_DROP[rarityKey];
@@ -856,7 +1020,19 @@ async function handleChestClaim(interaction: ButtonInteraction, chestId: string,
     logger.info({ discordId: interaction.user.id, chestId, rarityKey, keyType }, "Key dropped");
   }
 
-  const effectKind = rollChestEffectKind(rarityKey);
+  if (!isMimic && (choice === "blessing" || pity.triggered)) {
+    const effectDef = grantRandomBlessing(interaction.user.id);
+    const effectReply = await interaction.followUp({ content: buildChestEffectMessage(interaction.user.username, effectDef) });
+    setTimeout(() => { void effectReply.delete().catch(() => {}); }, CLAIM_TTL_MS);
+  }
+
+  if (!isMimic && (choice === "relic" || pity.triggered || (rarityKey !== "bronz" && Math.random() < 0.22))) {
+    const relicLine = await awardChestRelic(interaction.user.id, guildId, rarityKey, pity.triggered || choice === "relic");
+    const relicReply = await interaction.followUp({ content: `💎 **Colecția relicvelor:** ai găsit ${relicLine}. ${pity.triggered ? "Norocul tău a plătit tributul!" : "Mai găsește trei fragmente pentru a forja relicva."}` });
+    setTimeout(() => { void relicReply.delete().catch(() => {}); }, CLAIM_TTL_MS);
+  }
+
+  const effectKind = !isMimic && choice === "gold" ? rollChestEffectKind(rarityKey) : null;
   if (effectKind) {
     const effectDef = effectKind === "blessing"
       ? grantRandomBlessing(interaction.user.id)
@@ -866,7 +1042,18 @@ async function handleChestClaim(interaction: ButtonInteraction, chestId: string,
     logger.info({ discordId: interaction.user.id, chestId, rarityKey, effectKind, effectId: effectDef.id }, "Chest effect granted");
   }
 
-  logger.info({ discordId: interaction.user.id, chestId, rarityKey, gold, effectiveMult, totalGold }, "Chest claimed");
+  if (!isMimic && (rarityKey === "aur" || rarityKey === "mitic" || rarityKey === "regal")) {
+    const inscription = await generateChestInscription(
+      CHEST_RARITIES.find((rarity) => rarity.key === rarityKey)?.label ?? rarityKey,
+      choice === "gold" ? `${totalGold} Oboli` : choice === "xp" ? `${xpReward} XP` : choice,
+    );
+    if (inscription) {
+      const inscriptionReply = await interaction.followUp({ content: `📜 *${inscription}*` });
+      setTimeout(() => { void inscriptionReply.delete().catch(() => {}); }, CLAIM_TTL_MS);
+    }
+  }
+
+  logger.info({ discordId: interaction.user.id, chestId, rarityKey, gold, effectiveMult, totalGold, choice, pity: pity.pity, mimic: isMimic }, "Chest claimed");
 }
 
 async function handleLockedChestClaim(interaction: ButtonInteraction, chestId: string, rarityKey: string, gold: number) {
@@ -904,8 +1091,12 @@ async function handleLockedChestClaim(interaction: ButtonInteraction, chestId: s
   claimedChests.add(chestId);
   void clearActiveChest(guildId, LOCKCHEST_DBKEY).catch(() => null);
 
-  await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
-  const lockedRmods = getRewardMultipliers(interaction.user.id, guildId);
+  const lockedPlayer = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
+  const lockedEffects = getRewardMultipliers(interaction.user.id, guildId);
+  const lockedRmods = {
+    goldMult: lockedEffects.goldMult * (lockedPlayer.class === "alchimist" ? 1.2 : 1),
+    xpMult: lockedEffects.xpMult * (lockedPlayer.class === "strajer" ? 1.1 : 1),
+  };
   const boostedGold = Math.round(gold * lockedRmods.goldMult);
   await addPlayerGold(interaction.user.id, guildId, boostedGold);
 
@@ -2363,11 +2554,30 @@ async function handleButton(interaction: ButtonInteraction) {
     if (m) return handleKeyChestClaim(interaction, id, m[1]!);
   }
 
+  if (id.startsWith("mimic_") && !id.endsWith("_done")) {
+    const m = id.match(/^mimic_(chest_\d+_\w+_\d+(?:_\w+)?(?:_x[23])?)_(\d+)_(\w+)_(\d+)$/);
+    if (m) return handleMimicClaim(interaction, m[1]!, m[2]!, m[3]!, parseInt(m[4]!));
+  }
+
   if (id.startsWith("chest_") && !id.endsWith("_claimed") && !id.endsWith("_expired") && !id.endsWith("_opening")) {
+    const variantChoiceMatch = id.match(/^(chest_\d+)_(\w+)_(\d+)_(\w+)(?:_x([23]))?_(gold|xp|blessing|relic)$/);
+    if (variantChoiceMatch) {
+      const mult = variantChoiceMatch[5] ? (parseInt(variantChoiceMatch[5]!) as 2 | 3) : 1;
+      return handleChestClaim(interaction, variantChoiceMatch[1]!, variantChoiceMatch[2]!, parseInt(variantChoiceMatch[3]!), mult, variantChoiceMatch[6]!, variantChoiceMatch[4]!);
+    }
+    const choiceMatch = id.match(/^(chest_\d+)_(\w+)_(\d+)(?:_x([23]))?_(gold|xp|blessing|relic)$/);
+    if (choiceMatch) {
+      const mult = choiceMatch[4] ? (parseInt(choiceMatch[4]!) as 2 | 3) : 1;
+      return handleChestClaim(interaction, choiceMatch[1]!, choiceMatch[2]!, parseInt(choiceMatch[3]!), mult, choiceMatch[5]!);
+    }
     const newMatch = id.match(/^(chest_\d+)_(\w+)_(\d+)(?:_x([23]))?$/);
     if (newMatch) {
       const mult = newMatch[4] ? (parseInt(newMatch[4]!) as 2 | 3) : 1;
       return handleChestClaim(interaction, newMatch[1]!, newMatch[2]!, parseInt(newMatch[3]!), mult);
+    }
+    const variantMatch = id.match(/^(chest_\d+)_(\w+)_(\d+)_(\w+)$/);
+    if (variantMatch) {
+      return handleChestClaim(interaction, variantMatch[1]!, variantMatch[2]!, parseInt(variantMatch[3]!), 1, "gold", variantMatch[4]!);
     }
     const legacyMatch = id.match(/^(chest_\d+)_(\d+)$/);
     if (legacyMatch) {
@@ -2894,6 +3104,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
       if (interaction.commandName === "companion") dispatch(handleCompanion(interaction));
       if (interaction.commandName === "ajutor") dispatch(handleAjutor(interaction));
       if (interaction.commandName === "misiuni") dispatch(handleMisiune(interaction));
+      if (interaction.commandName === "chei") dispatch(handleChei(interaction));
       if (interaction.commandName === "setcanale") dispatch(handleSetCanale(interaction));
     } else if (interaction.isButton()) {
       dispatch(handleButton(interaction as ButtonInteraction));
