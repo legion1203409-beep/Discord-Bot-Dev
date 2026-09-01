@@ -298,3 +298,87 @@ mtime_ms = 1788284580456
 storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:c6624cc8-e264-47e4-8a83-82fc52f0aaa6/4b4a374f-9e64-4fab-99ea-07201dbefce8/4d1ce71d-4f4f-4456-8209-cca326482af5"
 storage_version_token = "1788285469874153"
 content_type = "image/png"
+
+[[outputs]]
+id = "XViP7KrlF2DzdJXLtZ3n3"
+uri = "file://attached_assets/generated_images/key_umbrei_frante.png"
+type = "image"
+title = "Cheia Umbrei Frânte"
+description = "Imaginea folosită pentru Cheia Umbrei Frânte în embed-urile și recompensele Discord."
+logical_id = "2d75c57f-540f-479d-b100-efd5160d2893"
+content_hash = "sha256:ee6d4e8b6ebcc4ee4f1c0a55b468d6822a883fa7339b9d1c757d82a3dd83f4c5"
+size = 1088159
+mtime_ms = 1788283420613
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:c6624cc8-e264-47e4-8a83-82fc52f0aaa6/2d75c57f-540f-479d-b100-efd5160d2893/5a039a00-c7c9-4fa7-aa5e-30946bd6b1f6"
+storage_version_token = "1788285509711992"
+content_type = "image/png"
+
+[[outputs]]
+id = "bOHWZAZ3GFMxa3Iot6Q6A"
+uri = "file://attached_assets/generated_images/key_cenusii_regale.png"
+type = "image"
+title = "Cheia Cenușii Regale"
+description = "Imaginea folosită pentru Cheia Cenușii Regale în embed-urile și recompensele Discord."
+logical_id = "26a54bc6-91d3-4170-a330-f5d8dee40863"
+content_hash = "sha256:e5ffc1faf0b74bae531a8a4ede45dc782aa10de2b4549969ce44729d300a0cf0"
+size = 1170589
+mtime_ms = 1788283422153
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:c6624cc8-e264-47e4-8a83-82fc52f0aaa6/26a54bc6-91d3-4170-a330-f5d8dee40863/96bbab03-cfcd-4516-bb37-7b2aee38edbd"
+storage_version_token = "1788285510562719"
+content_type = "image/png"
+
+[[outputs]]
+id = "4gIBuOukQTOaq67cLVHIr"
+uri = "file://attached_assets/generated_images/key_nocturna.png"
+type = "image"
+title = "Cheia Nocturnă"
+description = "Imaginea folosită pentru Cheia Nocturnă în embed-urile și recompensele Discord."
+logical_id = "10bf4285-cb81-4867-9052-5c9d2f9ede9b"
+content_hash = "sha256:7d795b2bf322754f25fa65827b513df659261ea56353d9a2c0e510b0faa0b220"
+size = 875126
+mtime_ms = 1788283421425
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:c6624cc8-e264-47e4-8a83-82fc52f0aaa6/10bf4285-cb81-4867-9052-5c9d2f9ede9b/09da242b-6238-46e0-b10c-2971a5ebc203"
+storage_version_token = "1788285511403679"
+content_type = "image/png"
+
+[[outputs]]
+id = "BTAijmH0O7mz6by7UTuvI"
+uri = "file://attached_assets/generated_images/key_oaselor_tacute.png"
+type = "image"
+title = "Cheia Oaselor Tăcute"
+description = "Imaginea folosită pentru Cheia Oaselor Tăcute în embed-urile și recompensele Discord."
+logical_id = "0f140d5e-76f6-435e-901d-75f3841ef30f"
+content_hash = "sha256:16458b8f48d498d0fd95708fbe53e41b611395b461a59933655622ff2833616d"
+size = 1090431
+mtime_ms = 1788283418593
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:c6624cc8-e264-47e4-8a83-82fc52f0aaa6/0f140d5e-76f6-435e-901d-75f3841ef30f/e541642e-41a2-47f1-b27c-488d8a96b3ec"
+storage_version_token = "1788285512229358"
+content_type = "image/png"
+
+[[outputs]]
+id = "uF4YL5TVke3QuKZqAzLLk"
+uri = "file://attached_assets/generated_images/key_fumului_inghetat.png"
+type = "image"
+title = "Cheia Fumului Înghețat"
+description = "Imaginea folosită pentru Cheia Fumului Înghețat în embed-urile și recompensele Discord."
+logical_id = "60bd18e3-f1da-4ad1-affc-0d2934487291"
+content_hash = "sha256:6ec921af463fddea9abdbcd595575193676e9429f64da19e09b230f83fdeb6af"
+size = 1422417
+mtime_ms = 1788283420385
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:c6624cc8-e264-47e4-8a83-82fc52f0aaa6/60bd18e3-f1da-4ad1-affc-0d2934487291/7dd29a1c-dd06-4274-9cd8-a12a6840f4d7"
+storage_version_token = "1788285512982115"
+content_type = "image/png"
+
+[[outputs]]
+id = "mFkHaoKlqRnfQH5PLY-Mq"
+uri = "file://attached_assets/generated_images/key_cavalerului_cenusi.png"
+type = "image"
+title = "Cheia Cavalerului Cenușii"
+description = "Imaginea folosită pentru Cheia Cavalerului Cenușii în embed-urile și recompensele Discord."
+logical_id = "5dd2dcea-f28d-4de4-88a3-09706c974088"
+content_hash = "sha256:b765db93865c440cc51e492900432f16768cf5f688d3970a700747bc09f2d7bf"
+size = 1170118
+mtime_ms = 1788283419897
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:c6624cc8-e264-47e4-8a83-82fc52f0aaa6/5dd2dcea-f28d-4de4-88a3-09706c974088/0049d907-9909-4e3e-8ce1-759a83584f54"
+storage_version_token = "1788285513817416"
+content_type = "image/png"
