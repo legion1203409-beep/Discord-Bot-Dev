@@ -1,7 +1,6 @@
 // The Oracle mood engine. Tracks server activity (and, when enabled, toxicity)
-// from a messageCreate feed, derives a "mood", and on a balanced cadence
-// (~30–60 min, only when the server is active) posts a flavor reaction in the
-// main channel — sometimes tagging an active player. It also rewards consistent
+// from a messageCreate feed, derives a "mood", and after a full hour of silence
+// posts one flavor reaction in the main channel. It also rewards consistent
 // chatters with temporary blessings and penalizes toxic/spam users with curses
 // (see status-effects.ts), which feed straight into combat.
 //
@@ -54,8 +53,8 @@ const MAX_GRANTS_PER_TICK = 2;
 const EXTATIC_MS = 15 * MIN;
 const PROPHECY_CHANCE = 0.3;
 const CHECKIN_RESPONSE_WINDOW_MS = envInt("ORACLE_CHECKIN_RESPONSE_WINDOW_MS", 15 * MIN, 60 * MIN);
-const CHECKIN_MIN_ACTIVITY = envInt("ORACLE_CHECKIN_MIN_ACTIVITY", 3, 50);
 const CHECKIN_ENABLED = process.env.ORACLE_CHECKIN_ENABLED !== "false";
+const CHECKIN_SILENCE_MS = 60 * MIN;
 
 const MESSAGE_CONTENT_ENABLED = process.env.ORACLE_MESSAGE_CONTENT_ENABLED === "true";
 
@@ -78,6 +77,7 @@ interface GuildOracleState {
   lastBlessAt: Map<string, number>;
   lastCurseAt: Map<string, number>;
   lastMessageAt: number;
+  lastCheckInAt: number;
   activeCheckIn: ActiveCheckIn | null;
 }
 
@@ -96,6 +96,7 @@ function getGuildState(guildId = DEFAULT_GUILD_ID): GuildOracleState {
       lastBlessAt: new Map(),
       lastCurseAt: new Map(),
       lastMessageAt: 0,
+      lastCheckInAt: 0,
       activeCheckIn: null,
     };
     guildOracleStates.set(guildId, state);
@@ -258,6 +259,16 @@ export function deriveMoodFromCheckIn(positive: number, negative: number): MoodS
   return null;
 }
 
+/** A check-in is due only once after a full silent hour following a message. */
+export function isOracleCheckInDue(
+  lastMessageAt: number,
+  lastCheckInAt: number,
+  now = Date.now(),
+  silenceMs = CHECKIN_SILENCE_MS,
+): boolean {
+  return lastMessageAt > 0 && now - lastMessageAt >= silenceMs && lastCheckInAt < lastMessageAt;
+}
+
 /** Called by the scheduler on big game events (e.g. a boss spawn) to lift the mood. */
 export function setOracleExtatic(): void {
   extaticUntil = Date.now() + EXTATIC_MS;
@@ -391,6 +402,7 @@ async function postMood(
     negative: 0,
     neutral: 0,
   };
+  getGuildState(guildId).lastCheckInAt = now;
   updatePresence(client, mood);
 }
 
@@ -420,9 +432,8 @@ async function oracleTick(client: Client, channelId: string, guildId: string): P
     const now = Date.now();
     pruneUserMaps(now);
     const state = getGuildState(guildId);
-    const activity = countInWindow(state.globalMsgTimes, MOOD_WINDOW_MS);
-    if (activity < CHECKIN_MIN_ACTIVITY) return; // server too quiet — stay silent
     if (!CHECKIN_ENABLED) return;
+    if (!isOracleCheckInDue(state.lastMessageAt, state.lastCheckInAt, now)) return;
 
     const channel = await getMainChannel(client, channelId);
     if (!channel) return;
@@ -430,7 +441,10 @@ async function oracleTick(client: Client, channelId: string, guildId: string): P
     const mood = getCurrentMood(guildId);
     await postMood(client, channel, mood, now, guildId);
     await runBehaviorGrants(channel, state, now);
-    logger.info({ mood, activity }, "Oracle tick posted");
+    logger.info(
+      { mood, silentForMinutes: Math.round((now - state.lastMessageAt) / MIN) },
+      "Oracle tick posted after silence",
+    );
   } catch (err) {
     logger.error({ err }, "Oracle tick failed");
   } finally {
@@ -439,7 +453,12 @@ async function oracleTick(client: Client, channelId: string, guildId: string): P
 }
 
 function scheduleNextTick(client: Client, channelId: string, guildId: string): void {
-  const delay = MIN_TICK_MS + Math.floor(Math.random() * (MAX_TICK_MS - MIN_TICK_MS + 1));
+  const state = getGuildState(guildId);
+  const regularDelay = MIN_TICK_MS + Math.floor(Math.random() * (MAX_TICK_MS - MIN_TICK_MS + 1));
+  const silenceDueAt = state.lastMessageAt + CHECKIN_SILENCE_MS;
+  const waitingForSilence =
+    state.lastMessageAt > 0 && state.lastCheckInAt < state.lastMessageAt && silenceDueAt > Date.now();
+  const delay = waitingForSilence ? Math.max(1_000, silenceDueAt - Date.now()) : regularDelay;
   const t = setTimeout(() => { void oracleTick(client, channelId, guildId); }, delay);
   t.unref?.();
 }

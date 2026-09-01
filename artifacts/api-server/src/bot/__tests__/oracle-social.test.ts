@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyCheckInReply, deriveMoodFromCheckIn } from "../oracle";
+import { classifyCheckInReply, deriveMoodFromCheckIn, isOracleCheckInDue } from "../oracle";
 
 describe("Oracle check-in reply interpretation", () => {
   it("recognizes a positive Romanian response", () => {
@@ -28,5 +28,20 @@ describe("Oracle mood changes from server replies", () => {
 
   it("does not force a mood when the answers are balanced", () => {
     expect(deriveMoodFromCheckIn(2, 2)).toBeNull();
+  });
+});
+
+describe("Oracle silent-hour check-ins", () => {
+  it("waits for a full hour after the last message", () => {
+    expect(isOracleCheckInDue(1_000, 0, 60 * 60 * 1000 + 999, 60 * 60 * 1000)).toBe(false);
+    expect(isOracleCheckInDue(1_000, 0, 60 * 60 * 1000 + 1_000, 60 * 60 * 1000)).toBe(true);
+  });
+
+  it("does not repeat during the same silent period", () => {
+    expect(isOracleCheckInDue(1_000, 60 * 60 * 1000 + 1_000, 10 * 60 * 60 * 1000, 60 * 60 * 1000)).toBe(false);
+  });
+
+  it("starts a new silent-hour cycle after a new message", () => {
+    expect(isOracleCheckInDue(2_000, 1_500, 62 * 60 * 60 * 1000, 60 * 60 * 1000)).toBe(true);
   });
 });
