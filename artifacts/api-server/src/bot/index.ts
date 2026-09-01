@@ -545,7 +545,7 @@ const slashCommands = [
     ),
   new SlashCommandBuilder()
     .setName("settribut")
-    .setDescription("🩸 [Admin] Configurează canalul pentru Tributul Regatului (apare la 24 de ore).")
+    .setDescription("🩸 [Admin] Configurează canalul pentru Tributul Regatului (24h activ + 24h pauză).")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addChannelOption((opt) =>
       opt.setName("canal")
@@ -1380,7 +1380,7 @@ async function handleSetTribut(interaction: ChatInputCommandInteraction) {
     await interaction.editReply({
       content:
         `✅ **Tributul Regatului** a fost publicat acum în <#${channel.id}>.\n` +
-        `Următorul tribut va apărea peste **24 de ore** și fiecare tribut rămâne deschis **10 minute**.`,
+        `Rămâne deschis **24 de ore**, apoi urmează **24 de ore pauză** înainte de următorul tribut.`,
     });
     logger.info(
       { channelId: channel.id, intervalMinutes: config.intervalMinutes, userId: interaction.user.id, guildId: interaction.guildId },

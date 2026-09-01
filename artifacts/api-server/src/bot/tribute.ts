@@ -22,7 +22,7 @@ const EVENT_PREFIX = "tribute:event:";
 const DEFAULT_INTERVAL_MINUTES = 24 * 60;
 const MIN_INTERVAL_MINUTES = DEFAULT_INTERVAL_MINUTES;
 const MAX_INTERVAL_MINUTES = DEFAULT_INTERVAL_MINUTES;
-export const TRIBUTE_WINDOW_MINUTES = 10;
+export const TRIBUTE_WINDOW_MINUTES = 24 * 60;
 const TRIBUTE_WINDOW_MS = TRIBUTE_WINDOW_MINUTES * 60_000;
 const WINNER_BUFF_MS = 30 * 60_000;
 const FAILURE_DEBUFF_MS = 20 * 60_000;
@@ -424,7 +424,10 @@ function scheduleTribute(client: Client, guildId: string, delayMs: number): void
       logger.warn({ err, guildId }, "Failed to fire Tributul Regatului"),
     );
     const config = await getTributeConfig(guildId).catch(() => null);
-    if (config?.enabled) scheduleTribute(client, guildId, config.intervalMinutes * 60_000);
+    if (config?.enabled) {
+      // The configured interval is a cooldown after the 24-hour open window.
+      scheduleTribute(client, guildId, TRIBUTE_WINDOW_MS + config.intervalMinutes * 60_000);
+    }
   }, Math.max(1_000, delayMs));
   timer.unref?.();
   tributeTimers.set(guildId, timer);
@@ -440,7 +443,10 @@ export async function startTributeScheduler(client: Client, guildId: string): Pr
   if (active?.status === "open" && active.closesAt > Date.now()) {
     setTimeout(() => { void settleTribute(client, guildId, active.id); }, Math.max(1_000, active.closesAt - Date.now() + 500));
   }
-  scheduleTribute(client, guildId, config.intervalMinutes * 60_000);
+  const nextAt = active
+    ? active.openedAt + TRIBUTE_WINDOW_MS + config.intervalMinutes * 60_000
+    : Date.now() + TRIBUTE_WINDOW_MS + config.intervalMinutes * 60_000;
+  scheduleTribute(client, guildId, Math.max(1_000, nextAt - Date.now()));
 }
 
 export async function restartTributeScheduler(client: Client, guildId: string): Promise<void> {
