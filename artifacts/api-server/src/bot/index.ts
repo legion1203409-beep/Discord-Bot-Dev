@@ -9,13 +9,18 @@ import {
   MessageFlags,
   ActivityType,
   ButtonInteraction,
+  type Message,
   StringSelectMenuBuilder,
   StringSelectMenuInteraction,
   ChatInputCommandInteraction,
+  ModalSubmitInteraction,
   SlashCommandBuilder,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
   PermissionFlagsBits,
   EmbedBuilder,
 } from "discord.js";
@@ -603,53 +608,372 @@ async function handleProfetie(interaction: ChatInputCommandInteraction) {
   });
 }
 
+type HelpCategory = "profil" | "lupta" | "economie" | "cufere" | "evenimente" | "oracol" | "comenzi";
+
+const HELP_CATEGORY_LABELS: Record<HelpCategory, string> = {
+  profil: "📜 Profil",
+  lupta: "⚔️ Luptă",
+  economie: "🏺 Economie",
+  cufere: "🗝️ Cufere",
+  evenimente: "🔥 Evenimente",
+  oracol: "🔮 Oracol",
+  comenzi: "🛠️ Comenzi",
+};
+
+function buildHelpEmbed(category: HelpCategory) {
+  const pages: Record<HelpCategory, { title: string; description: string; fields: Array<{ name: string; value: string }> }> = {
+    profil: {
+      title: "📜 Profilul și progresul tău",
+      description: "Aici vezi cine ești în Regatul Cenușii și cum crești.",
+      fields: [
+        {
+          name: "Comenzile de bază",
+          value:
+            "**/profil** — nivel, XP, Oboli, chei, clasă, companion și efecte.\n" +
+            "**/clasament** — top server, top global și topul serverelor.\n" +
+            "**/clasa** — alegi o clasă RPG; resetarea se face din **/magazin**.\n" +
+            "**/companion** — vezi companionul și evoluția lui.",
+        },
+        {
+          name: "Clase și companioni",
+          value:
+            "Clasele schimbă stilul de luptă: Cavaler, Umbrolog, Străjer, Alchimist și Rătăcitor.\n" +
+            "Companionii Lup, Corb, Spirit și Golem oferă bonusuri și pot evolua la nivelul 5.",
+        },
+        {
+          name: "Cum progresezi",
+          value:
+            "Luptă pentru XP și Oboli, cumpără îmbunătățiri din **/magazin**, completează **/misiuni** și participă la boss-ul final.",
+        },
+      ],
+    },
+    lupta: {
+      title: "⚔️ Cum funcționează lupta",
+      description: "Luptele apar ca evenimente automate în canalul configurat al serverului.",
+      fields: [
+        {
+          name: "Ora Umbrelor",
+          value:
+            "Când apare evenimentul, apasă butonul de atac pentru a lovi monstrul. Fiecare lovitură poate aduce XP, Oboli, materiale și uneori o cheie.",
+        },
+        {
+          name: "Abilități",
+          value:
+            "Abilitățile active folosesc mană și au efecte diferite. **Scutul de Cenușă** reduce daunele, iar **Lovitura Umbrei** atacă mai puternic. Se cumpără și se îmbunătățesc din **/magazin**.",
+        },
+        {
+          name: "Viață și efecte",
+          value:
+            "Dacă ajungi la 0 HP, lupta ta se încheie. Binecuvântările și blestemele pot modifica temporar atacul, apărarea, critica, XP-ul sau Obolii.",
+        },
+        {
+          name: "Dragonul Stins",
+          value:
+            "Este boss-ul final al serverului. Intră în luptă, lovește-l cât timp e activ și primește recompensele pentru participare și contribuție.",
+        },
+      ],
+    },
+    economie: {
+      title: "🏺 Economia Regatului",
+      description: "Toate resursele și comenzile prin care îți construiești personajul.",
+      fields: [
+        {
+          name: "Oboli și XP",
+          value:
+            "Obolii cumpără upgrade-uri, companioni, abilități și talismane. XP-ul îți crește nivelul și puterea.",
+        },
+        {
+          name: "Comenzi",
+          value:
+            "**/magazin** — upgrade-uri, companioni, abilități, talismane și prestigiu.\n" +
+            "**/misiuni** — două misiuni zilnice cu progres și recompense.\n" +
+            "**/cufarpersonal** — recompensa pentru activitatea ta zilnică.\n" +
+            "**/licitatie** — licitezi în Târgul Negru.",
+        },
+        {
+          name: "Relicve",
+          value:
+            "Cuferele pot da fragmente. Trei fragmente de același tip pot forja o relicvă, iar duplicatele se pot schimba cu **/schimbrelicve**.",
+        },
+      ],
+    },
+    cufere: {
+      title: "🗝️ Cufere, chei și recompense",
+      description: "Dacă te întrebi cum obții o cheie, acesta este locul potrivit.",
+      fields: [
+        {
+          name: "Cufere normale",
+          value:
+            "Alege prin butoane recompensa: Oboli, XP, binecuvântare sau relicvă. Cuferele rare pot ascunde un Mimic. Pity-ul este persistent și îți crește șansa la recompense bune.",
+        },
+        {
+          name: "Cum obții chei",
+          value:
+            "Cuferele de chei apar automat, iar primul click primește cheia. Chei pot cădea și din cufere normale, din lupte și din recompensa Dragonului. Vezi inventarul cu **/chei**.",
+        },
+        {
+          name: "Forjarea cheilor",
+          value:
+            "În **/chei**, trei chei de același nivel se combină într-una superioară. Cheia Pângărită este exclusă din forjarea normală.",
+        },
+        {
+          name: "Cufere blocate",
+          value:
+            "Necesită cheia potrivită și plătesc mult mai mulți Oboli. Cheia Pângărită poate deschide orice cufăr blocat, dar există riscul să mistuie și recompensa. Se purifică din **/purificacheie** cu 3 Fragmente de Cenușă.",
+        },
+      ],
+    },
+    evenimente: {
+      title: "🔥 Evenimentele automate",
+      description: "Evenimentele apar în canalele configurate de administrator.",
+      fields: [
+        {
+          name: "Cufărul Vegherii Zilnice",
+          value:
+            "Activitatea ta din mesaje, kill-uri, boss-uri, misiuni și chei se adună zilnic. La pragul potrivit, revendică recompensa din **/cufarpersonal**.",
+        },
+        {
+          name: "Chivotul Frăției",
+          value:
+            "Activitatea întregului server deschide un vot. Jucătorii aleg între aur, XP și relicve, iar recompensa se împarte participanților eligibili.",
+        },
+        {
+          name: "Cufere sezoniere",
+          value:
+            "La fiecare rotație apar variante sezoniere, fiecare cu imagine, recompensă și nume propriu. Apasă butonul din mesaj înainte să expire.",
+        },
+        {
+          name: "Oracolul și cufărul secret",
+          value:
+            "Unele mesaje pot dezvălui clue-uri ale Oracolului. Urmează indicația din mesaj pentru a deschide Cufărul Șoaptelor.",
+        },
+      ],
+    },
+    oracol: {
+      title: "🔮 Oracolul Cenușii",
+      description: "Oracolul este ghidul viu al Regatului, nu doar o comandă decorativă.",
+      fields: [
+        {
+          name: "Cum îl întrebi",
+          value:
+            "Menționează Oracolul într-un mesaj sau răspunde la mesajul lui. Pentru un ghid complet și butoane pe categorii, folosește **/ajutor**.",
+        },
+        {
+          name: "Întrebări despre joc",
+          value:
+            "Întreabă direct: „Cum obțin o cheie?”, „Ce face clasa mea?” sau „Cum funcționează cuferele?”. Oracolul îți explică și te trimite la pagina potrivită din **/ajutor**.",
+        },
+        {
+          name: "Profeții și relația",
+          value:
+            "**/profetie** oferă o profeție cosmetică, fără recompense de gameplay. Conversațiile cu Oracolul îi schimbă relația și titlul pe care ți-l acordă.",
+        },
+      ],
+    },
+    comenzi: {
+      title: "🛠️ Lista comenzilor",
+      description: "Comenzile jucătorilor și singura comandă de configurare.",
+      fields: [
+        {
+          name: "Jucător",
+          value:
+            "**/ajutor** · **/profil** · **/clasament** · **/profetie** · **/clasa** · **/companion**\n" +
+            "**/magazin** · **/misiuni** · **/cufarpersonal** · **/chei**",
+        },
+        {
+          name: "Cufere și economie",
+          value:
+            "**/fratie** — vezi votul Frăției\n" +
+            "**/licitatie** — licitează în Târgul Negru\n" +
+            "**/schimbrelicve** — schimbă duplicate\n" +
+            "**/purificacheie** — purifică Cheia Pângărită",
+        },
+        {
+          name: "Administrator",
+          value:
+            "**/setcanale** configurează unde apar evenimentele. Subcomenzile administrative nu oferă recompense și nu sunt necesare pentru jucători.",
+        },
+      ],
+    },
+  };
+  const page = pages[category];
+  return {
+    color: THEME_COLOR,
+    title: page.title,
+    description: page.description,
+    fields: page.fields,
+    footer: { text: `Folosește butoanele pentru a schimba categoria · ${BRAND_FOOTER}` },
+  };
+}
+
+function helpComponents(category: HelpCategory): ActionRowBuilder<ButtonBuilder>[] {
+  const categories: HelpCategory[] = ["profil", "lupta", "economie", "cufere", "evenimente"];
+  const firstRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    ...categories.map((key) =>
+      new ButtonBuilder()
+        .setCustomId(`help_page_${key}`)
+        .setLabel(HELP_CATEGORY_LABELS[key])
+        .setStyle(key === category ? ButtonStyle.Primary : ButtonStyle.Secondary),
+    ),
+  );
+  const secondRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    ...(["oracol", "comenzi"] as HelpCategory[]).map((key) =>
+      new ButtonBuilder()
+        .setCustomId(`help_page_${key}`)
+        .setLabel(HELP_CATEGORY_LABELS[key])
+        .setStyle(key === category ? ButtonStyle.Primary : ButtonStyle.Secondary),
+    ),
+    new ButtonBuilder()
+      .setCustomId(`help_ask_${category}`)
+      .setLabel("🔮 Întreabă Oracolul")
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId("help_home")
+      .setLabel("⌂ Acasă")
+      .setStyle(ButtonStyle.Secondary),
+  );
+  return [firstRow, secondRow];
+}
+
+function helpHomeEmbed() {
+  return {
+    color: THEME_COLOR,
+    title: "❓ Ghidul interactiv al Regatului Cenușii",
+    description:
+      "Alege o categorie ca să vezi explicațiile. Dacă nu găsești răspunsul, apasă **Întreabă Oracolul** și scrie întrebarea ta.",
+    fields: [
+      {
+        name: "De unde începi?",
+        value: "**/profil** pentru starea ta · **/magazin** pentru upgrade-uri · **/misiuni** pentru obiectivele zilei.",
+      },
+      {
+        name: "Întrebarea cea mai căutată",
+        value: "Pentru chei: intră la **Cufere**, apoi apasă **Întreabă Oracolul** și scrie „Cum obțin o cheie?”.",
+      },
+      {
+        name: "Oracolul te ghidează",
+        value: "Îl poți menționa în chat sau poți folosi întrebarea din această fereastră. Pentru orice mecanică, revino la **/ajutor**.",
+      },
+    ],
+    footer: { text: BRAND_FOOTER },
+  };
+}
+
 async function handleAjutor(interaction: ChatInputCommandInteraction) {
   await interaction.reply({
+    embeds: [helpHomeEmbed()],
+    components: helpComponents("profil"),
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
+function helpQuestionAnswer(question: string, category: HelpCategory): string {
+  const normalized = question.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (/\b(cheie|chei|cufar|cufere|pangarita|fragment|relicv)/.test(normalized)) {
+    return (
+      "Cheile se obțin din cuferele de chei, din unele cufere normale, din lupte și din recompensa Dragonului. " +
+      "Trei chei de același nivel se forjează în **/chei**; Cheia Pângărită se purifică din **/purificacheie**. " +
+      "Pentru harta completă a cuferelelor, apasă categoria **Cufere** sau deschide **/ajutor**."
+    );
+  }
+  if (/\b(clasa|clase|companion|lup|corb|spirit|golem|magazin|upgrade|abilitat|talisman)/.test(normalized)) {
+    return (
+      "Clasele, companionii, abilitățile și talismanele se aleg sau se îmbunătățesc din **/magazin**. " +
+      "Clasa curentă o vezi în **/profil**, iar regulile pe scurt sunt în **/ajutor → Profil** și **/ajutor → Economie**."
+    );
+  }
+  if (/\b(lupt|atac|boss|dragon|hp|mana|viata|xp|obol)/.test(normalized)) {
+    return (
+      "Luptă când apare Ora Umbrelor, folosește butoanele de atac și abilitățile cu mană, apoi participă la Dragonul Stins pentru recompense de server. " +
+      "Detaliile sunt în **/ajutor → Luptă**; ghidul complet rămâne disponibil prin **/ajutor**."
+    );
+  }
+  if (/\b(misiun|fratie|licitat|oracol|profet|mesaj|activitat)/.test(normalized)) {
+    return (
+      "Pentru această mecanică, deschide categoria potrivită din **/ajutor**. " +
+      "Misiunile și activitatea se verifică din **/misiuni** și **/cufarpersonal**, iar Oracolul poate explica fiecare pas dacă îl menționezi."
+    );
+  }
+  return (
+    `Cenușa îmi arată că întrebarea ta ține de categoria **${HELP_CATEGORY_LABELS[category]}**. ` +
+    "Deschide **/ajutor**, alege categoria și vei găsi pașii; dacă încă nu este limpede, întreabă-mă din nou cu mai multe detalii."
+  );
+}
+
+async function handleHelpButton(interaction: ButtonInteraction) {
+  const id = interaction.customId;
+  if (id === "help_home") {
+    await interaction.deferUpdate();
+    await interaction.editReply({ embeds: [helpHomeEmbed()], components: helpComponents("profil") });
+    return;
+  }
+  if (id.startsWith("help_ask_")) {
+    const category = id.replace("help_ask_", "") as HelpCategory;
+    const modal = new ModalBuilder()
+      .setCustomId(`help_question_${category}`)
+      .setTitle("Întreabă Oracolul");
+    const input = new TextInputBuilder()
+      .setCustomId("help_question_text")
+      .setLabel("Ce vrei să afli despre joc?")
+      .setPlaceholder("Ex.: Cum obțin o cheie?")
+      .setStyle(TextInputStyle.Paragraph)
+      .setRequired(true)
+      .setMinLength(3)
+      .setMaxLength(500);
+    modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
+    await interaction.showModal(modal);
+    return;
+  }
+  if (id.startsWith("help_page_")) {
+    const category = id.replace("help_page_", "") as HelpCategory;
+    if (!(category in HELP_CATEGORY_LABELS)) return;
+    await interaction.deferUpdate();
+    await interaction.editReply({
+      embeds: [buildHelpEmbed(category)],
+      components: helpComponents(category),
+    });
+  }
+}
+
+async function handleHelpQuestion(interaction: ModalSubmitInteraction) {
+  const category = interaction.customId.replace("help_question_", "") as HelpCategory;
+  const safeCategory = category in HELP_CATEGORY_LABELS ? category : "oracol";
+  const question = interaction.fields.getTextInputValue("help_question_text").trim();
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  await interaction.editReply({
     embeds: [
       {
         color: THEME_COLOR,
-        title: "❓ Ghidul Regatului Cenușii",
-        description: "Toate comenzile și evenimentele, grupate pe categorii.",
-        fields: [
-          {
-            name: "📜 Profil & Progres",
-            value:
-              "**/profil** — profilul tău *(sau `/profil @jucător` pentru altcineva)*\n" +
-              "**/profetie** — primește o profeție AI personalizată\n" +
-              "**/clasament** — top 10 luptători *(vezi profilul oricăruia din meniu)*\n" +
-              "**/clasa** — alege-ți clasa RPG *(permanent)*\n" +
-              "**/companion** — vezi companionul tău",
-          },
-          {
-            name: "🏺 Economie",
-            value:
-              "**/magazin** — Forja Cenușii: puteri permanente, companioni și abilități de luptă\n" +
-              "**/misiuni** — misiunile tale zilnice *(progres și recompense)*\n" +
-              "**/chei** — vezi cheile și forjează 3 chei într-una de nivel superior\n" +
-              "**/cufarpersonal** — revendică răsplata pentru activitatea de azi\n" +
-              "**/licitatie** — licitează în Târgul Negru al Negustorului\n" +
-              "**/schimbrelicve** și **/purificacheie** — schimburi și purificări rare",
-          },
-          {
-            name: "⚔️ Evenimente automate",
-            value:
-              "🔥 **Ora Umbrelor** — apare periodic; luptă cu monștri pentru XP și Oboli\n" +
-               "📦 **Cufere 2.0** — alegi recompensa: aur, XP, binecuvântare sau relicvă; există Mimici, pity și șase variante de cufăr\n" +
-              "🐉 **Dragonul Stins** — bossul final pe care întregul Regat îl înfruntă împreună",
-          },
-          {
-            name: "🗝️ Chei & Cufere blocate",
-            value:
-              "🗝️ **Cufere de chei** — apar din când în când; primul care apasă ia cheia\n" +
-              "🔒 **Cufere blocate** — necesită o cheie, dar plătesc mult mai mulți Oboli *(cel Regal e jackpot)*\n" +
-              "✨ Cheile pică rar și din cuferele obișnuite și din prada Dragonului — vezi-le pe **/profil**",
-          },
-        ],
-        footer: { text: BRAND_FOOTER },
+        title: "🔮 Oracolul îți răspunde",
+        description: helpQuestionAnswer(question, safeCategory),
+        footer: { text: `Întrebare: ${question.slice(0, 120)} · ${BRAND_FOOTER}` },
       },
     ],
-    ephemeral: true,
+    components: helpComponents(safeCategory),
   });
+}
+
+const gameHelpNudgeAt = new Map<string, number>();
+
+function isGameHelpQuestionText(text: string): boolean {
+  if (!text.includes("?")) return false;
+  const normalized = text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return /\b(cheie|chei|cufar|cufere|lupt|boss|dragon|misiun|magazin|clasa|companion|relicv|fragment|obol|xp|mana|oracol|profet|licitat|fratie|cavaler|umbrolog|strajer|alchimist|ratacitor)\b/.test(normalized);
+}
+
+function maybeNudgeGameHelp(message: Message): void {
+  if (!message.guildId || !isGameHelpQuestionText(message.content ?? "")) return;
+  if (message.reference?.messageId || message.mentions.users.has(botClient?.user?.id ?? "")) return;
+  const now = Date.now();
+  const previous = gameHelpNudgeAt.get(message.guildId) ?? 0;
+  if (now - previous < 30_000) return;
+  gameHelpNudgeAt.set(message.guildId, now);
+  void message.reply({
+    content:
+      "🔮 Întrebarea ta ține de mecanicile Regatului. Deschide **/ajutor** pentru ghidul interactiv, " +
+      "alege categoria potrivită și poți întreba Oracolul direct de acolo.",
+    allowedMentions: { repliedUser: false, parse: [] },
+  }).catch((err) => logger.debug({ err, guildId: message.guildId }, "Could not send game help nudge"));
 }
 
 async function handleMisiune(interaction: ChatInputCommandInteraction) {
@@ -2805,6 +3129,10 @@ async function handleAuctionButton(interaction: ButtonInteraction) {
 async function handleButton(interaction: ButtonInteraction) {
   const id = interaction.customId;
 
+  if (id.startsWith("help_")) {
+    return handleHelpButton(interaction);
+  }
+
   if (isOracleCouncilButton(id)) {
     return handleOracleCouncilVote(interaction);
   }
@@ -3269,6 +3597,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
     void maybeHandleOracleClue(client, message).catch((err) =>
       logger.warn({ err, guildId: message.guildId }, "Oracle clue handler failed"),
     );
+    maybeNudgeGameHelp(message);
     void handleToxicity(client, message).then((handled) => {
       if (!handled) void maybeReplyAsOracle(client, message);
     });
@@ -3432,6 +3761,10 @@ export async function startBot(onReady?: () => void): Promise<void> {
     } else if (interaction.isStringSelectMenu()) {
       if (interaction.customId === "leaderboard_profile_select") {
         dispatch(handleClasamentSelect(interaction));
+      }
+    } else if (interaction.isModalSubmit()) {
+      if (interaction.customId.startsWith("help_question_")) {
+        dispatch(handleHelpQuestion(interaction));
       }
     }
 

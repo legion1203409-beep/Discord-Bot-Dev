@@ -213,17 +213,18 @@ function buildPlayerSystemPrompt(mood: MoodState): string {
     "Ești și un înțelept al Regatului: cunoști toate comenzile, regulile și mecanicile.",
     "",
     "Cunoștințele tale despre Regat (folosește-le DOAR când călătorul cere ajutor):",
-    "- Comenzi jucător: /profil, /clasament, /magazin (Forja Cenușii), /clasa (alege clasă RPG: Cavaler, Umbrologul, Strajerul, Alchimistul, Ratacitor), /companion, /ajutor. (Comenzi admin există, dar nu le menționa călătorilor obișnuiți.)",
-    "- Evenimente automate: Ora Umbrelor (luptă cu monștri pentru XP și Oboli), cufere apar prin surprindere (prin apăsare câștigi Oboli, cu șansă de bonus x2/x3), Dragonul Stins (boss final), cufere de chei și cufere blocate (cheile pică rar).",
-    "- Progresie: clasă (resetabilă din /magazin), companioni (Lup, Corb, Spirit, Golem) care evoluează la nivel 5, abilități de luptă (Lovitura Umbrei, Scut de Cenușă), binecuvântări/blesteme.",
-    "- Magazin: puteri permanente, companioni noi, abilități active.",
+    "- Comenzi jucător: /profil, /clasament, /magazin (Forja Cenușii), /clasa (alege clasă RPG: Cavaler, Umbrologul, Strajerul, Alchimistul, Ratacitor), /companion, /misiuni, /cufarpersonal, /chei, /fratie, /licitatie, /schimbrelicve, /purificacheie, /profetie și /ajutor. (Comenzi admin există, dar nu le menționa călătorilor obișnuiți.)",
+    "- Evenimente automate: Ora Umbrelor (luptă cu monștri pentru XP și Oboli), cufere apar prin surprindere (alegi Oboli, XP, binecuvântare sau relicvă, cu șansă de Mimic și bonus de pity), Dragonul Stins (boss final), cufere de chei, cufere blocate, cufere sezoniere și Chivotul Frăției.",
+    "- Progresie: clasă (resetabilă din /magazin), companioni (Lup, Corb, Spirit, Golem) care evoluează la nivel 5, abilități de luptă (Lovitura Umbrei, Scut de Cenușă), talismane, prestigiu, binecuvântări/blesteme, fragmente și relicve.",
+    "- Economie: /misiuni pentru obiective zilnice, /cufarpersonal pentru activitatea personală, /chei pentru inventar și forjare, /licitatie pentru Târgul Negru, /schimbrelicve pentru duplicate și /purificacheie pentru Cheia Pângărită.",
     "",
     "Reguli:",
     "1. Călătorul îți poate vorbi în două feluri. Alege modul corect:",
     "   a) Dacă călătorul îți cere AJUTOR, întreabă cum funcționează ceva, se plânge",
     "      că nu înțelege, sau vorbește despre comenzi/mecanici/joc → fii un",
     "      GHID înțelept: explică clar și succint ce trebuie să facă, dă sfaturi",
-    "      practice, menționează comanda corectă (de ex. '/profil', '/magazin').",
+    "      practice, menționează comanda corectă (de ex. '/profil', '/magazin') și",
+    "      încheie cu îndemnul de a deschide ghidul interactiv '/ajutor'.",
     "      Rămâi medieval, dar INFORMATIV. Nu inventa comenzi false.",
     "   b) Dacă călătorul doar se plânge de viață, e supărat, trist, vorbește",
     "      aiurea, sau nu are legătură cu jocul → fii ORACOLUL mistic: răspunde",
@@ -718,6 +719,12 @@ function isWorthReplying(text: string): boolean {
   return false;
 }
 
+function isGameHelpQuestion(text: string): boolean {
+  if (!text.includes("?")) return false;
+  const normalized = text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return /\b(cheie|chei|cufar|cufere|lupt|boss|dragon|misiun|magazin|clasa|companion|relicv|fragment|obol|xp|mana|oracol|profet|licitat|fratie|cavaler|umbrolog|strajer|alchimist|ratacitor)\b/.test(normalized);
+}
+
 /**
  * Answer when the Oracle is addressed. Detects both a direct @mention and a reply
  * to one of the bot's own messages (a reply with the ping on lists the bot in
@@ -856,8 +863,11 @@ export async function maybeReplyAsOracle(discordClient: Client, message: Message
       return;
     }
 
+    const helpPointer = isGameHelpQuestion(cleaned) && !reply.includes("/ajutor")
+      ? "\n\n📖 Pentru explicația completă și pașii pe categorii, deschide **/ajutor**."
+      : "";
     await message.reply({
-      content: reply.slice(0, DISCORD_MAX_CHARS),
+      content: `${reply}${helpPointer}`.slice(0, DISCORD_MAX_CHARS),
       allowedMentions: { repliedUser: true, parse: [] },
     });
     logger.info(
