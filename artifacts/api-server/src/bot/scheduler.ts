@@ -25,6 +25,9 @@ const MAX_COOLDOWN_MS = 2 * 60 * 60 * 1000;
 const CHEST_INTERVAL_MS = 30 * 60 * 1000;
 const KEY_CHEST_INTERVAL_MS = 45 * 60 * 1000;
 const CHEST_EXPIRE_MS = 10 * 60 * 1000;
+/** The legacy ordinary/key chest spawns stay available in code for compatibility,
+ * but the new chest system is now the only one scheduled for players. */
+export const LEGACY_CHEST_SPAWNS_ENABLED = false;
 
 const ORACLE_INTERVAL_MS = 25 * 60 * 1000;
 const BATTLE_EVENT_INTERVAL_MS = 7 * 60 * 1000;
@@ -189,7 +192,7 @@ export function recordGuildActivity(client: Client, guildId: string): void {
   gs.activityMsgCount += 1;
   if (gs.activityMsgCount >= CHEST_MSG_MILESTONE) {
     gs.activityMsgCount = 0;
-    if (Math.random() < 0.30) {
+    if (LEGACY_CHEST_SPAWNS_ENABLED && Math.random() < 0.30) {
       void fireChestForced(client, guildId, rollActivityRarityKey());
     }
   }
@@ -197,7 +200,7 @@ export function recordGuildActivity(client: Client, guildId: string): void {
   gs.keyMsgCount += 1;
   if (gs.keyMsgCount >= KEY_CHEST_MSG_MILESTONE) {
     gs.keyMsgCount = 0;
-    if (Math.random() < 0.15) {
+    if (LEGACY_CHEST_SPAWNS_ENABLED && Math.random() < 0.15) {
       void fireKeyChest(client, guildId, rollActivityKeyType(), true);
     }
   }
@@ -1337,9 +1340,11 @@ export function startGuildScheduler(client: Client, guildId: string) {
   gs.started = true;
 
   void rehydrateActiveBosses(client, guildId);
-  void rehydrateActiveChest(client, guildId);
-  void rehydrateSimpleChest(client, guildId, KEYCHEST_DBKEY);
-  void rehydrateSimpleChest(client, guildId, LOCKCHEST_DBKEY);
+  if (LEGACY_CHEST_SPAWNS_ENABLED) {
+    void rehydrateActiveChest(client, guildId);
+    void rehydrateSimpleChest(client, guildId, KEYCHEST_DBKEY);
+    void rehydrateSimpleChest(client, guildId, LOCKCHEST_DBKEY);
+  }
   void rehydrateSeasonalChest(client, guildId).catch((err) =>
     logger.warn({ err, guildId }, "Failed to rehydrate seasonal chest"),
   );
@@ -1368,12 +1373,16 @@ export function startGuildScheduler(client: Client, guildId: string) {
   setTimeout(async () => { if (!isStopped()) { await fireEvent(client, guildId); scheduleNext(); } }, 5 * 60 * 1000);
   logger.info({ guildId }, "First Ora Umbrelor in 5 minutes");
 
-  setInterval(() => { if (!isStopped()) void fireChest(client, guildId); }, CHEST_INTERVAL_MS);
-  logger.info({ everyMinutes: CHEST_INTERVAL_MS / 60000, guildId }, "Chest scheduler started — fixed interval");
+  if (LEGACY_CHEST_SPAWNS_ENABLED) {
+    setInterval(() => { if (!isStopped()) void fireChest(client, guildId); }, CHEST_INTERVAL_MS);
+    logger.info({ everyMinutes: CHEST_INTERVAL_MS / 60000, guildId }, "Chest scheduler started — fixed interval");
 
-  setTimeout(() => { if (!isStopped()) void fireKeyChest(client, guildId); }, 12 * 60 * 1000);
-  setInterval(() => { if (!isStopped()) void fireKeyChest(client, guildId); }, KEY_CHEST_INTERVAL_MS);
-  logger.info({ everyMinutes: KEY_CHEST_INTERVAL_MS / 60000, guildId }, "Key-chest scheduler started");
+    setTimeout(() => { if (!isStopped()) void fireKeyChest(client, guildId); }, 12 * 60 * 1000);
+    setInterval(() => { if (!isStopped()) void fireKeyChest(client, guildId); }, KEY_CHEST_INTERVAL_MS);
+    logger.info({ everyMinutes: KEY_CHEST_INTERVAL_MS / 60000, guildId }, "Key-chest scheduler started");
+  } else {
+    logger.info({ guildId }, "Legacy chest and key-chest schedulers disabled — new chest system remains active");
+  }
 
   const seasonalInterval = 6 * 60 * 60 * 1000;
   const scheduleSeasonal = () => {
