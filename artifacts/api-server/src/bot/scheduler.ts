@@ -1327,7 +1327,7 @@ export function startGuildScheduler(client: Client, guildId: string) {
   }
 
   const oracleChannelId = getChannel("main", guildId);
-  if (oracleChannelId) startOracle(client, oracleChannelId);
+  if (oracleChannelId) startOracle(client, oracleChannelId, guildId);
 }
 
 export { APPLICATION_ID };

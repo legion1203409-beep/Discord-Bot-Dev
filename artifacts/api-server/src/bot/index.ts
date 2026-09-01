@@ -24,7 +24,7 @@ import { logger } from "../lib/logger";
 import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./alert";
 import { startGuildScheduler, stopGuildScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, recordGuildActivity, getGuildClaimedChests, getGuildActiveBossMap, checkBossEligibility, checkBossHitCooldown, BOSS_HIT_COOLDOWN_MS, persistBossState, guildStates, isGuildActive, ACTIVITY_WINDOW_MINUTES, CHEST_MSG_MILESTONE, type BossState, type BossPlayerStats } from "./scheduler";
 import { getChannel, getAllChannels, setChannel, resetChannel, resetAllChannels, initChannelConfig, hasAnyChannelConfigured, EVENT_LABELS, type EventType } from "./channel-config";
-import { recordMessage } from "./oracle";
+import { recordMessage, refreshOraclePresence } from "./oracle";
 import { maybeReplyAsOracle, logOracleChatStatus } from "./oracle-chat";
 import { handleToxicity } from "./oracle-guard";
 import { getRewardMultipliers, getCombatModifiers, formatActiveEffects, formatCombatEffects, rollChestEffectKind, grantRandomBlessing, grantRandomCurse, buildChestEffectMessage } from "./status-effects";
@@ -2652,7 +2652,12 @@ export async function startBot(onReady?: () => void): Promise<void> {
         message.author.id,
         message.member?.displayName ?? message.author.username,
         message.content ?? "",
+        message.guildId,
+        message.channelId,
+        message.id,
+        message.reference?.messageId,
       );
+      refreshOraclePresence(client, message.guildId);
     } catch (err) {
       logger.error({ err }, "Oracle messageCreate handler failed");
     }

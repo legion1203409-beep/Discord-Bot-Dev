@@ -12,20 +12,24 @@
 // Privacy: message CONTENT is only inspected for keyword toxicity and is NEVER
 // logged or echoed. Curses are announced in lore language, never by quoting.
 
-import { Client, TextChannel } from "discord.js";
+import { ActivityType, Client, PermissionFlagsBits, TextChannel } from "discord.js";
 import { logger } from "../lib/logger";
 import {
   MOOD_META,
-  MOOD_MESSAGES,
   ACTIVITY_REACTIONS,
   TOXICITY_REACTIONS,
-  ACTIVE_PLAYER_REACTIONS,
   PROPHECY_FLAVOR,
   type MoodState,
 } from "./oracle-content";
 import { grantRandomBlessing, grantRandomCurse, pruneAllEffects } from "./status-effects";
 
 const MIN = 60 * 1000;
+
+function envInt(name: string, fallback: number, max: number): number {
+  const raw = Number.parseInt(process.env[name] ?? "", 10);
+  if (!Number.isFinite(raw) || raw < 0) return fallback;
+  return Math.min(raw, max);
+}
 
 // Rolling windows.
 const ACTIVITY_WINDOW_MS = 60 * MIN;     // per-user activity considered for blessings
@@ -38,8 +42,6 @@ const SILENCE_FOR_TACUT_MS = 2 * 60 * MIN;
 const MIN_TICK_MS = 30 * MIN;
 const MAX_TICK_MS = 60 * MIN;
 const FIRST_TICK_MS = 12 * MIN;
-const MIN_ACTIVITY_TO_POST = 8;          // valid msgs in MOOD_WINDOW before the Oracle bothers
-
 // Behavior-grant thresholds.
 const BLESS_COOLDOWN_MS = 4 * 60 * MIN;
 const CURSE_COOLDOWN_MS = 2 * 60 * MIN;
@@ -50,19 +52,56 @@ const SPAM_BURST = 10;                    // messages in SPAM_WINDOW counts as s
 const MAX_GRANTS_PER_TICK = 2;
 
 const EXTATIC_MS = 15 * MIN;
-const TAG_CHANCE = 0.4;
 const PROPHECY_CHANCE = 0.3;
+const CHECKIN_RESPONSE_WINDOW_MS = envInt("ORACLE_CHECKIN_RESPONSE_WINDOW_MS", 15 * MIN, 60 * MIN);
+const CHECKIN_MIN_ACTIVITY = envInt("ORACLE_CHECKIN_MIN_ACTIVITY", 3, 50);
+const CHECKIN_ENABLED = process.env.ORACLE_CHECKIN_ENABLED !== "false";
 
 const MESSAGE_CONTENT_ENABLED = process.env.ORACLE_MESSAGE_CONTENT_ENABLED === "true";
 
 // ─── In-memory state ──────────────────────────────────────────────────────────
-const globalMsgTimes: number[] = [];
-const userMsgTimes = new Map<string, number[]>();
-const userToxicTimes = new Map<string, number[]>();
-const lastBlessAt = new Map<string, number>();
-const lastCurseAt = new Map<string, number>();
-let lastMessageAt = 0;
+interface ActiveCheckIn {
+  messageId: string;
+  channelId: string;
+  openedAt: number;
+  expiresAt: number;
+  responders: Set<string>;
+  positive: number;
+  negative: number;
+  neutral: number;
+}
+
+interface GuildOracleState {
+  globalMsgTimes: number[];
+  userMsgTimes: Map<string, number[]>;
+  userToxicTimes: Map<string, number[]>;
+  lastBlessAt: Map<string, number>;
+  lastCurseAt: Map<string, number>;
+  lastMessageAt: number;
+  activeCheckIn: ActiveCheckIn | null;
+}
+
+const DEFAULT_GUILD_ID = "__default__";
+const guildOracleStates = new Map<string, GuildOracleState>();
 let extaticUntil = 0;
+let lastPresenceMood: MoodState | null = null;
+
+function getGuildState(guildId = DEFAULT_GUILD_ID): GuildOracleState {
+  let state = guildOracleStates.get(guildId);
+  if (!state) {
+    state = {
+      globalMsgTimes: [],
+      userMsgTimes: new Map(),
+      userToxicTimes: new Map(),
+      lastBlessAt: new Map(),
+      lastCurseAt: new Map(),
+      lastMessageAt: 0,
+      activeCheckIn: null,
+    };
+    guildOracleStates.set(guildId, state);
+  }
+  return state;
+}
 
 // Romanian toxicity keyword stems (substring match on a diacritics-stripped,
 // lowercased copy). Kept deliberately small; penalties are tiny and temporary,
@@ -106,54 +145,117 @@ function recentCount(times: number[] | undefined, windowMs: number, now: number)
   return n;
 }
 
-/** Records a guild message for activity/toxicity tracking. Never logs content. */
-export function recordMessage(userId: string, _displayName: string, content: string): void {
+export function classifyCheckInReply(content: string): "positive" | "negative" | "neutral" {
+  const text = normalize(content);
+  const positive = [
+    "bine", "super", "excelent", "fericit", "fericita", "vesel", "vesela",
+    "multumesc", "mersi", "iubesc", "rad", "razi", "distractie", "distram",
+    "gata", "perfect", "minunat", "minunata", "victorie", "victoriosi",
+    "binecuvantat", "binecuvantata", "haha", "hahaha", "😂", "❤️", "❤",
+  ];
+  const negative = [
+    "rau", "prost", "trist", "trista", "suparat", "suparata", "furios",
+    "furioasa", "plictisit", "plictisita", "obosit", "obosita", "urat",
+    "ura", "enervat", "enervata", "cearta", "m-am saturat", "nu mai pot",
+    "nasol", "groaznic", "dezamagit", "dezamagita", "😡", "😠", "😭",
+  ];
+  const hasPositive = positive.some((word) => text.includes(word));
+  const hasNegative = negative.some((word) => text.includes(word));
+  if (hasPositive && !hasNegative) return "positive";
+  if (hasNegative && !hasPositive) return "negative";
+  return "neutral";
+}
+
+/** Records a guild message for activity/toxicity and check-in tracking. Never logs content. */
+export function recordMessage(
+  userId: string,
+  _displayName: string,
+  content: string,
+  guildId = DEFAULT_GUILD_ID,
+  channelId?: string,
+  messageId?: string,
+  referenceMessageId?: string,
+): void {
+  const state = getGuildState(guildId);
   const now = Date.now();
-  lastMessageAt = now;
+  state.lastMessageAt = now;
 
-  globalMsgTimes.push(now);
-  if (globalMsgTimes.length > 500) globalMsgTimes.splice(0, globalMsgTimes.length - 500);
+  state.globalMsgTimes.push(now);
+  if (state.globalMsgTimes.length > 500) state.globalMsgTimes.splice(0, state.globalMsgTimes.length - 500);
 
-  const arr = userMsgTimes.get(userId) ?? [];
+  const arr = state.userMsgTimes.get(userId) ?? [];
   arr.push(now);
   if (arr.length > 300) arr.splice(0, arr.length - 300);
-  userMsgTimes.set(userId, arr);
+  state.userMsgTimes.set(userId, arr);
 
   if (MESSAGE_CONTENT_ENABLED && isToxic(content)) {
-    const t = userToxicTimes.get(userId) ?? [];
+    const t = state.userToxicTimes.get(userId) ?? [];
     t.push(now);
     if (t.length > 100) t.splice(0, t.length - 100);
-    userToxicTimes.set(userId, t);
+    state.userToxicTimes.set(userId, t);
+  }
+
+  const checkIn = state.activeCheckIn;
+  if (
+    checkIn &&
+    channelId === checkIn.channelId &&
+    now <= checkIn.expiresAt &&
+    now >= checkIn.openedAt &&
+    messageId !== checkIn.messageId &&
+    (referenceMessageId === checkIn.messageId || now > checkIn.openedAt)
+  ) {
+    state.activeCheckIn = checkIn;
+    if (!checkIn.responders.has(userId)) {
+      checkIn.responders.add(userId);
+      const sentiment = classifyCheckInReply(content);
+      if (sentiment === "positive") checkIn.positive++;
+      else if (sentiment === "negative") checkIn.negative++;
+      else checkIn.neutral++;
+    }
   }
 }
 
-function totalToxicInWindow(now: number): number {
+function totalToxicInWindow(state: GuildOracleState, now: number): number {
   let n = 0;
-  for (const times of userToxicTimes.values()) n += recentCount(times, TOXICITY_WINDOW_MS, now);
+  for (const times of state.userToxicTimes.values()) n += recentCount(times, TOXICITY_WINDOW_MS, now);
   return n;
 }
 
-function anySpamBurst(now: number): boolean {
-  for (const times of userMsgTimes.values()) {
+function anySpamBurst(state: GuildOracleState, now: number): boolean {
+  for (const times of state.userMsgTimes.values()) {
     if (recentCount(times, SPAM_WINDOW_MS, now) >= SPAM_BURST) return true;
   }
   return false;
 }
 
-export function getCurrentMood(): MoodState {
+export function getCurrentMood(guildId = DEFAULT_GUILD_ID): MoodState {
+  const state = getGuildState(guildId);
   const now = Date.now();
-  if (lastMessageAt === 0 || now - lastMessageAt > SILENCE_FOR_TACUT_MS) return "tacut";
+  if (state.lastMessageAt === 0 || now - state.lastMessageAt > SILENCE_FOR_TACUT_MS) return "tacut";
 
-  const activity = countInWindow(globalMsgTimes, MOOD_WINDOW_MS);
-  const toxic = totalToxicInWindow(now);
+  const activity = countInWindow(state.globalMsgTimes, MOOD_WINDOW_MS);
+  const toxic = totalToxicInWindow(state, now);
+  const checkIn = state.activeCheckIn;
+  if (checkIn && now <= checkIn.expiresAt) {
+    const socialMood = deriveMoodFromCheckIn(checkIn.positive, checkIn.negative);
+    if (socialMood) return socialMood;
+  }
 
   if (toxic >= 5) return "furios";
   if (toxic >= 2) return "iritat";
   if (now < extaticUntil) return "extatic";
-  if (anySpamBurst(now) && toxic === 0) return "confuz";
+  if (anySpamBurst(state, now) && toxic === 0) return "confuz";
   if (activity >= 40) return "agitat";
   if (activity <= 3) return "somnoros";
   return "calm";
+}
+
+export function deriveMoodFromCheckIn(positive: number, negative: number): MoodState | null {
+  if (negative >= 3 && negative > positive + 1) return "furios";
+  if (negative >= 2 && negative > positive) return "iritat";
+  if (positive >= 3 && positive > negative + 1) return "extatic";
+  if (positive >= 2 && positive > negative) return "agitat";
+  return null;
 }
 
 /** Called by the scheduler on big game events (e.g. a boss spawn) to lift the mood. */
@@ -162,39 +264,32 @@ export function setOracleExtatic(): void {
 }
 
 function pruneUserMaps(now: number): void {
-  for (const [id, times] of userMsgTimes) {
-    const kept = times.filter((t) => t > now - ACTIVITY_WINDOW_MS);
-    if (kept.length === 0) userMsgTimes.delete(id);
-    else userMsgTimes.set(id, kept);
+  for (const state of guildOracleStates.values()) {
+    for (const [id, times] of state.userMsgTimes) {
+      const kept = times.filter((t) => t > now - ACTIVITY_WINDOW_MS);
+      if (kept.length === 0) state.userMsgTimes.delete(id);
+      else state.userMsgTimes.set(id, kept);
+    }
+    for (const [id, times] of state.userToxicTimes) {
+      const kept = times.filter((t) => t > now - TOXICITY_WINDOW_MS);
+      if (kept.length === 0) state.userToxicTimes.delete(id);
+      else state.userToxicTimes.set(id, kept);
+    }
+    for (const [id, ts] of state.lastBlessAt) if (now - ts > BLESS_COOLDOWN_MS) state.lastBlessAt.delete(id);
+    for (const [id, ts] of state.lastCurseAt) if (now - ts > CURSE_COOLDOWN_MS) state.lastCurseAt.delete(id);
+    if (state.activeCheckIn && now > state.activeCheckIn.expiresAt) state.activeCheckIn = null;
   }
-  for (const [id, times] of userToxicTimes) {
-    const kept = times.filter((t) => t > now - TOXICITY_WINDOW_MS);
-    if (kept.length === 0) userToxicTimes.delete(id);
-    else userToxicTimes.set(id, kept);
-  }
-  for (const [id, ts] of lastBlessAt) if (now - ts > BLESS_COOLDOWN_MS) lastBlessAt.delete(id);
-  for (const [id, ts] of lastCurseAt) if (now - ts > CURSE_COOLDOWN_MS) lastCurseAt.delete(id);
   pruneAllEffects();
 }
 
-function pickActivePlayerToTag(now: number): string | null {
-  const candidates: string[] = [];
-  for (const [id, times] of userMsgTimes) {
-    const msgs = recentCount(times, MOOD_WINDOW_MS, now);
-    const tox = recentCount(userToxicTimes.get(id), TOXICITY_WINDOW_MS, now);
-    if (msgs >= 2 && tox === 0) candidates.push(id);
-  }
-  return candidates.length ? pick(candidates) : null;
-}
-
-function pickUsersToBless(now: number): string[] {
+function pickUsersToBless(state: GuildOracleState, now: number): string[] {
   const eligible: { id: string; count: number }[] = [];
-  for (const [id, times] of userMsgTimes) {
+  for (const [id, times] of state.userMsgTimes) {
     const win = times.filter((t) => t > now - ACTIVITY_WINDOW_MS);
     if (win.length < BLESS_MIN_MSGS) continue;
     if ((win[win.length - 1]! - win[0]!) < BLESS_MIN_SPAN_MS) continue;
-    if (now - (lastBlessAt.get(id) ?? 0) < BLESS_COOLDOWN_MS) continue;
-    if (recentCount(userToxicTimes.get(id), TOXICITY_WINDOW_MS, now) > 0) continue;
+    if (now - (state.lastBlessAt.get(id) ?? 0) < BLESS_COOLDOWN_MS) continue;
+    if (recentCount(state.userToxicTimes.get(id), TOXICITY_WINDOW_MS, now) > 0) continue;
     if (recentCount(times, SPAM_WINDOW_MS, now) >= SPAM_BURST) continue; // no buffs for spam farming
     eligible.push({ id, count: win.length });
   }
@@ -202,11 +297,11 @@ function pickUsersToBless(now: number): string[] {
   return eligible.slice(0, MAX_GRANTS_PER_TICK).map((e) => e.id);
 }
 
-function pickUsersToCurse(now: number): string[] {
+function pickUsersToCurse(state: GuildOracleState, now: number): string[] {
   const eligible: { id: string; score: number }[] = [];
-  for (const [id, times] of userMsgTimes) {
-    if (now - (lastCurseAt.get(id) ?? 0) < CURSE_COOLDOWN_MS) continue;
-    const tox = recentCount(userToxicTimes.get(id), TOXICITY_WINDOW_MS, now);
+  for (const [id, times] of state.userMsgTimes) {
+    if (now - (state.lastCurseAt.get(id) ?? 0) < CURSE_COOLDOWN_MS) continue;
+    const tox = recentCount(state.userToxicTimes.get(id), TOXICITY_WINDOW_MS, now);
     const burst = recentCount(times, SPAM_WINDOW_MS, now);
     if (tox >= CURSE_TOXIC_HITS || burst >= SPAM_BURST) {
       eligible.push({ id, score: tox * 100 + burst });
@@ -221,41 +316,97 @@ async function getMainChannel(client: Client, channelId: string): Promise<TextCh
   return channel instanceof TextChannel ? channel : null;
 }
 
-async function postMood(channel: TextChannel, mood: MoodState, now: number): Promise<void> {
+function checkInQuestion(mood: MoodState): string {
+  if (mood === "somnoros" || mood === "tacut") {
+    return pick([
+      "Ce faceți, călători? Mai respiră cineva în Regat sau doarme Cenușa?",
+      "Unde vă poartă pașii astăzi? Spuneți Oracolului ce lucrați.",
+      "Ce gând vă ține treji în această noapte?",
+    ]);
+  }
+  if (mood === "iritat" || mood === "furios" || mood === "confuz") {
+    return pick([
+      "Ce vă tulbură astăzi? Vorbiți, iar Oracolul va asculta fără să judece.",
+      "Ce s-a rupt în Regat? Spuneți-mi ce vă apasă.",
+      "Vă aud glasurile printre umbre. Ce se întâmplă cu voi?",
+    ]);
+  }
+  return pick([
+    "Ce faceți, călători? Povestiți-mi ce planuri aprindeți astăzi.",
+    "Ce mai puneți la cale în Regat? Oracolul vă ascultă.",
+    "Cum vă merge, suflete ale Cenușii? Răspundeți aici și voi afla.",
+    "Ce v-a făcut să zâmbiți sau să vă enervați astăzi?",
+  ]);
+}
+
+function updatePresence(client: Client, mood: MoodState): void {
+  if (lastPresenceMood === mood) return;
+  lastPresenceMood = mood;
   const meta = MOOD_META[mood];
-  let content = `${meta.emoji} *Oracolul Cenușii* — **${meta.label}**\n${pick(MOOD_MESSAGES[mood])}`;
+  try {
+    client.user?.setPresence({
+      status: "online",
+      activities: [{ name: `Stare: ${meta.label}`, type: ActivityType.Watching }],
+    });
+  } catch (err) {
+    logger.warn({ err, mood }, "Oracle could not update presence");
+  }
+}
+
+export function refreshOraclePresence(client: Client, guildId: string): void {
+  updatePresence(client, getCurrentMood(guildId));
+}
+
+async function postMood(
+  client: Client,
+  channel: TextChannel,
+  mood: MoodState,
+  now: number,
+  guildId: string,
+): Promise<void> {
+  const meta = MOOD_META[mood];
+  let content = `@everyone\n${meta.emoji} *Oracolul Cenușii* — **${meta.label}**\n${checkInQuestion(mood)}`;
 
   if (mood === "iritat" || mood === "furios") content += `\n> ${pick(TOXICITY_REACTIONS)}`;
   else if (mood === "agitat" || mood === "extatic") content += `\n> ${pick(ACTIVITY_REACTIONS)}`;
   else if (Math.random() < PROPHECY_CHANCE) content += `\n> *${pick(PROPHECY_FLAVOR)}*`;
+  content += `\n\n📝 **Notița Oracolului:** starea mea este **${meta.label}**. Răspundeți la acest mesaj — glasurile voastre îmi pot schimba starea.`;
 
-  const users: string[] = [];
-  if (mood !== "furios" && mood !== "iritat" && Math.random() < TAG_CHANCE) {
-    const tagId = pickActivePlayerToTag(now);
-    if (tagId) {
-      content += `\n\n<@${tagId}>, ${pick(ACTIVE_PLAYER_REACTIONS)}`;
-      users.push(tagId);
-    }
-  }
-
-  await channel.send({ content, allowedMentions: { users } }).catch((err) => {
-    logger.error({ err }, "Oracle failed to post mood message");
+  const canMentionEveryone =
+    channel.guild.members.me?.permissionsIn(channel).has(PermissionFlagsBits.MentionEveryone) ?? false;
+  const sent = await channel.send({
+    content,
+    allowedMentions: { parse: canMentionEveryone ? ["everyone"] : [] },
   });
+  if (!canMentionEveryone) {
+    logger.warn({ guildId, channelId: channel.id }, "Oracle lacks MentionEveryone permission; check-in sent without ping");
+  }
+  getGuildState(guildId).activeCheckIn = {
+    messageId: sent.id,
+    channelId: channel.id,
+    openedAt: now,
+    expiresAt: now + CHECKIN_RESPONSE_WINDOW_MS,
+    responders: new Set(),
+    positive: 0,
+    negative: 0,
+    neutral: 0,
+  };
+  updatePresence(client, mood);
 }
 
-async function runBehaviorGrants(channel: TextChannel, now: number): Promise<void> {
-  for (const id of pickUsersToBless(now)) {
+async function runBehaviorGrants(channel: TextChannel, state: GuildOracleState, now: number): Promise<void> {
+  for (const id of pickUsersToBless(state, now)) {
     const def = grantRandomBlessing(id);
-    lastBlessAt.set(id, now);
+    state.lastBlessAt.set(id, now);
     await channel.send({
       content: `${def.emoji} <@${id}>, Oracolul te **binecuvântează** pentru zelul tău: **${def.label}** — ${def.flavor}.`,
       allowedMentions: { users: [id] },
     }).catch(() => null);
     logger.info({ effect: def.id }, "Oracle granted blessing");
   }
-  for (const id of pickUsersToCurse(now)) {
+  for (const id of pickUsersToCurse(state, now)) {
     const def = grantRandomCurse(id);
-    lastCurseAt.set(id, now);
+    state.lastCurseAt.set(id, now);
     await channel.send({
       content: `${def.emoji} <@${id}>, Oracolul aruncă un **blestem**: **${def.label}** — ${def.flavor}. *(Umbrele nu uită.)*`,
       allowedMentions: { users: [id] },
@@ -264,40 +415,42 @@ async function runBehaviorGrants(channel: TextChannel, now: number): Promise<voi
   }
 }
 
-async function oracleTick(client: Client, channelId: string): Promise<void> {
+async function oracleTick(client: Client, channelId: string, guildId: string): Promise<void> {
   try {
     const now = Date.now();
     pruneUserMaps(now);
-    const activity = countInWindow(globalMsgTimes, MOOD_WINDOW_MS);
-    if (activity < MIN_ACTIVITY_TO_POST) return; // server too quiet — stay silent
+    const state = getGuildState(guildId);
+    const activity = countInWindow(state.globalMsgTimes, MOOD_WINDOW_MS);
+    if (activity < CHECKIN_MIN_ACTIVITY) return; // server too quiet — stay silent
+    if (!CHECKIN_ENABLED) return;
 
     const channel = await getMainChannel(client, channelId);
     if (!channel) return;
 
-    const mood = getCurrentMood();
-    await postMood(channel, mood, now);
-    await runBehaviorGrants(channel, now);
+    const mood = getCurrentMood(guildId);
+    await postMood(client, channel, mood, now, guildId);
+    await runBehaviorGrants(channel, state, now);
     logger.info({ mood, activity }, "Oracle tick posted");
   } catch (err) {
     logger.error({ err }, "Oracle tick failed");
   } finally {
-    scheduleNextTick(client, channelId);
+    scheduleNextTick(client, channelId, guildId);
   }
 }
 
-function scheduleNextTick(client: Client, channelId: string): void {
+function scheduleNextTick(client: Client, channelId: string, guildId: string): void {
   const delay = MIN_TICK_MS + Math.floor(Math.random() * (MAX_TICK_MS - MIN_TICK_MS + 1));
-  const t = setTimeout(() => { void oracleTick(client, channelId); }, delay);
+  const t = setTimeout(() => { void oracleTick(client, channelId, guildId); }, delay);
   t.unref?.();
 }
 
-export function startOracle(client: Client, channelId: string): void {
+export function startOracle(client: Client, channelId: string, guildId = DEFAULT_GUILD_ID): void {
   if (!MESSAGE_CONTENT_ENABLED) {
     logger.warn(
       "Oracle toxicity detection is OFF. To enable curses from toxic chat, turn on the 'Message Content Intent' in the Discord Developer Portal and set ORACLE_MESSAGE_CONTENT_ENABLED=true.",
     );
   }
-  const t = setTimeout(() => { void oracleTick(client, channelId); }, FIRST_TICK_MS);
+  const t = setTimeout(() => { void oracleTick(client, channelId, guildId); }, FIRST_TICK_MS);
   t.unref?.();
   logger.info({ contentIntent: MESSAGE_CONTENT_ENABLED }, "Oracle mood system started");
 }

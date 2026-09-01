@@ -660,7 +660,7 @@ export async function maybeReplyAsOracle(discordClient: Client, message: Message
       if (pardonHandled) return;
     }
 
-    const mood = getCurrentMood();
+    const mood = getCurrentMood(message.guildId ?? undefined);
     const reply = await generateOracleReply(cleaned, memory, repliedBotText, mood, speakerAlias, isAdmin);
     if (!reply) {
       await sendFallback(message);
