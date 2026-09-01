@@ -49,6 +49,14 @@ import {
 import { getRewardMultipliers, getCombatModifiers, formatActiveEffects, formatCombatEffects, rollChestEffectKind, grantRandomBlessing, grantRandomCurse, buildChestEffectMessage } from "./status-effects";
 import { SUPER_ADMIN_ID } from "./constants";
 import {
+  ensureTributePlayer,
+  handleTributeButton,
+  handleTributeContribution,
+  restartTributeScheduler,
+  saveTributeConfig,
+  tributeIntervalBounds,
+} from "./tribute";
+import {
   upsertPlayer,
   joinEvent,
   getParticipant,
@@ -535,6 +543,23 @@ const slashCommands = [
         .setDescription("Canalul în care va fi publicat Negustorul")
         .setRequired(true),
     ),
+  new SlashCommandBuilder()
+    .setName("settribut")
+    .setDescription("🩸 [Admin] Configurează canalul și intervalul pentru Tributul Regatului.")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .addChannelOption((opt) =>
+      opt.setName("canal")
+        .setDescription("Canalul în care apare tributul")
+        .setRequired(true),
+    )
+    .addIntegerOption((opt) => {
+      const bounds = tributeIntervalBounds();
+      return opt.setName("interval")
+        .setDescription(`Minute între triburile noi (${bounds.min}-${bounds.max})`)
+        .setMinValue(bounds.min)
+        .setMaxValue(bounds.max)
+        .setRequired(false);
+    }),
 ];
 
 async function avatarById(discordId: string): Promise<string | null> {
@@ -1338,6 +1363,40 @@ async function handleSetNegustor(interaction: ChatInputCommandInteraction) {
     logger.error({ err, guildId: interaction.guildId }, "Failed to configure trader channel");
     await interaction.editReply({
       content: "❌ Nu am putut publica Negustorul în canalul ales. Verifică permisiunile botului și încearcă din nou.",
+    });
+  }
+}
+
+async function handleSetTribut(interaction: ChatInputCommandInteraction) {
+  if (!(await isOwner(interaction))) return;
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const channel = interaction.options.getChannel("canal", true);
+  if (!(channel instanceof TextChannel)) {
+    await interaction.editReply({
+      content: "❌ Alege un canal text obișnuit, nu un canal vocal sau un thread.",
+    });
+    return;
+  }
+
+  const bounds = tributeIntervalBounds();
+  const intervalMinutes = interaction.options.getInteger("interval") ?? bounds.default;
+  try {
+    const config = await saveTributeConfig(interaction.guildId!, channel.id, intervalMinutes);
+    if (botClient) await restartTributeScheduler(botClient, interaction.guildId!);
+    await interaction.editReply({
+      content:
+        `✅ **Tributul Regatului** va apărea în <#${channel.id}> la fiecare **${config.intervalMinutes} minute**.\n` +
+        `Fiecare tribut rămâne deschis ${10} minute pentru contribuții comune.`,
+    });
+    logger.info(
+      { channelId: channel.id, intervalMinutes: config.intervalMinutes, userId: interaction.user.id, guildId: interaction.guildId },
+      "Tribute scheduler configured",
+    );
+  } catch (err) {
+    logger.error({ err, guildId: interaction.guildId }, "Failed to configure tribute scheduler");
+    await interaction.editReply({
+      content: "❌ Nu am putut salva configurația tributului. Verifică permisiunile bazei de date și încearcă din nou.",
     });
   }
 }
@@ -3552,6 +3611,74 @@ async function handleAuctionButton(interaction: ButtonInteraction) {
   await interaction.editReply({ embeds: [buildAuctionEmbed(auction)], components: [auctionRow()] });
 }
 
+async function handleTributeContributeButton(interaction: ButtonInteraction, eventId: string) {
+  const result = await handleTributeButton(
+    interaction.client,
+    interaction.guildId!,
+    eventId,
+    interaction.user.id,
+    interaction.user.username,
+  );
+  if (result.status !== "open" || !result.modal) {
+    await interaction.reply({
+      content: "🩸 Acest tribut s-a încheiat sau a fost deja soluționat.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  await interaction.showModal(result.modal);
+}
+
+async function handleTributeModal(interaction: ModalSubmitInteraction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const eventId = interaction.customId.replace("tribute_submit_", "");
+  const rawAmount = interaction.fields.getTextInputValue("amount").replace(/[,_\s]/g, "");
+  const amount = Number(rawAmount);
+  if (!Number.isSafeInteger(amount) || amount < 1) {
+    await interaction.editReply({ content: "❌ Introdu o sumă întreagă de Oboli, mai mare decât 0." });
+    return;
+  }
+
+  try {
+    await ensureTributePlayer(interaction.guildId!, interaction.user.id, interaction.user.username);
+    const result = await handleTributeContribution(
+      interaction.client,
+      interaction.guildId!,
+      eventId,
+      interaction.user.id,
+      interaction.user.username,
+      amount,
+    );
+    if (result.status !== "accepted") {
+      const content = result.status === "insufficient"
+        ? "❌ Nu ai suficienți Oboli pentru această contribuție."
+        : result.status === "invalid"
+          ? "❌ Suma trebuie să fie mai mică sau egală cu suma rămasă pentru tribut."
+          : "🩸 Tributul s-a încheiat înainte ca oferta ta să fie procesată.";
+      await interaction.editReply({ content });
+      return;
+    }
+
+    if (result.completed) {
+      await interaction.editReply({
+        content:
+          `👑 Ai completat **Tributul Regatului** cu **${amount.toLocaleString("ro-RO")} Oboli**!\n` +
+          "Ai primit **Favorul Regelui**: +50% XP și +50% Oboli timp de 30 de minute.",
+      });
+    } else {
+      const remaining = result.event.target - result.event.raised;
+      await interaction.editReply({
+        content:
+          `🩸 Ai oferit **${amount.toLocaleString("ro-RO")} Oboli**.\n` +
+          `Mai lipsesc **${remaining.toLocaleString("ro-RO")} Oboli** pentru Regat.`,
+      });
+    }
+  } catch (err) {
+    logger.error({ err, guildId: interaction.guildId, eventId }, "Tribute contribution failed");
+    await interaction.editReply({ content: "❌ Ofranda nu a putut fi procesată. Încearcă din nou." });
+  }
+}
+
 async function handleButton(interaction: ButtonInteraction) {
   const id = interaction.customId;
 
@@ -3569,6 +3696,10 @@ async function handleButton(interaction: ButtonInteraction) {
 
   if (id === "trader_auction") {
     return handleAuctionButton(interaction);
+  }
+
+  if (id.startsWith("tribute_contribute_")) {
+    return handleTributeContributeButton(interaction, id.replace("tribute_contribute_", ""));
   }
 
   if (id === "trader_back") return handleTraderBack(interaction);
@@ -4136,6 +4267,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
       if (interaction.commandName === "chei") dispatch(handleChei(interaction));
       if (interaction.commandName === "setcanale") dispatch(handleSetCanale(interaction));
       if (interaction.commandName === "setnegustor") dispatch(handleSetNegustor(interaction));
+      if (interaction.commandName === "settribut") dispatch(handleSetTribut(interaction));
     } else if (interaction.isButton()) {
       dispatch(handleButton(interaction as ButtonInteraction));
     } else if (interaction.isStringSelectMenu()) {
@@ -4145,6 +4277,9 @@ export async function startBot(onReady?: () => void): Promise<void> {
     } else if (interaction.isModalSubmit()) {
       if (interaction.customId.startsWith("help_question_")) {
         dispatch(handleHelpQuestion(interaction));
+      }
+      if (interaction.customId.startsWith("tribute_submit_")) {
+        dispatch(handleTributeModal(interaction));
       }
     }
 

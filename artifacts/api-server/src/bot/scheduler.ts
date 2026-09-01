@@ -14,6 +14,7 @@ import {
   rehydrateSeasonalChest,
   settleExpiredAuction,
 } from "./chest-expansions";
+import { startTributeScheduler, stopTributeScheduler } from "./tribute";
 
 const APPLICATION_ID = "1472675543777280071";
 export const EVENT_DURATION_MS = 60 * 60 * 1000;
@@ -230,6 +231,7 @@ export function recordGuildActivity(client: Client, guildId: string): void {
  *  cancelled without tracking refs, but they become inert after this call. */
 export function stopGuildScheduler(guildId: string) {
   stopOracleCouncilScheduler(guildId);
+  stopTributeScheduler(guildId);
   const gs = guildStates.get(guildId);
   if (gs) {
     gs.stopped = true;
@@ -1424,6 +1426,10 @@ export function startGuildScheduler(client: Client, guildId: string) {
       "Guild has no channel config — scheduled events will be skipped on each tick until /setcanale is run by a server admin",
     );
   }
+
+  void startTributeScheduler(client, guildId).catch((err) =>
+    logger.warn({ err, guildId }, "Failed to start Tributul Regatului scheduler"),
+  );
 
   const oracleChannelId = getChannel("main", guildId);
   if (oracleChannelId) {
