@@ -7,7 +7,7 @@
 // the target's. When the bot lacks either, the Oracle still posts the warning
 // (public deterrent) but cannot enforce the silence.
 
-import { PermissionFlagsBits } from "discord.js";
+import { AuditLogEvent, PermissionFlagsBits } from "discord.js";
 import type { Client, Message } from "discord.js";
 import { logger } from "../lib/logger";
 import { clearCurses, grantRandomCurse } from "./status-effects";
@@ -111,6 +111,144 @@ const MUTE_STEPS_MS  = MUTE_STEPS_MIN.map((m) => m * 60_000);
 
 type OffenseRecord = { count: number; lastAt: number };
 const offenses = new Map<string, OffenseRecord>();
+const generalWarningLastAt = new Map<string, number>();
+const GENERAL_WARNING_COOLDOWN_MS = 5 * 60 * 1000;
+
+export type OracleTimeoutRecord = {
+  guildId: string;
+  userId: string;
+  expiresAt: number;
+};
+const oracleTimeouts = new Map<string, OracleTimeoutRecord>();
+type OracleTimeoutPersistence = {
+  save: (record: OracleTimeoutRecord) => Promise<void>;
+  remove: (guildId: string, userId: string) => Promise<void>;
+};
+let oracleTimeoutPersistence: OracleTimeoutPersistence | null = null;
+
+export function setOracleTimeoutPersistence(persistence: OracleTimeoutPersistence): void {
+  oracleTimeoutPersistence = persistence;
+}
+
+export function restoreOracleTimeouts(records: OracleTimeoutRecord[], now = Date.now()): void {
+  for (const record of records) {
+    if (record.expiresAt > now) {
+      oracleTimeouts.set(timeoutKey(record.guildId, record.userId), record);
+    }
+  }
+}
+
+function timeoutKey(guildId: string, userId: string): string {
+  return `${guildId}:${userId}`;
+}
+
+/** Remember a timeout created by the Oracle so an unauthorized early removal can be reversed. */
+export function rememberOracleTimeout(guildId: string, userId: string, durationMs: number, now = Date.now()): void {
+  const record = {
+    guildId,
+    userId,
+    expiresAt: now + durationMs,
+  };
+  oracleTimeouts.set(timeoutKey(guildId, userId), record);
+  void oracleTimeoutPersistence?.save(record).catch((err) => {
+    logger.error({ err, guildId, userId }, "Oracle timeout lock: persistence save failed");
+  });
+}
+
+/** Forget an Oracle timeout after its natural expiry or an owner pardon. */
+export function forgetOracleTimeout(guildId: string, userId: string): void {
+  oracleTimeouts.delete(timeoutKey(guildId, userId));
+  void oracleTimeoutPersistence?.remove(guildId, userId).catch((err) => {
+    logger.error({ err, guildId, userId }, "Oracle timeout lock: persistence delete failed");
+  });
+}
+
+async function findTimeoutAuditExecutor(
+  guild: NonNullable<Message["guild"]>,
+  userId: string,
+): Promise<string | null> {
+  try {
+    const auditLogs = await guild.fetchAuditLogs({
+      type: AuditLogEvent.MemberUpdate,
+      limit: 10,
+    });
+    const now = Date.now();
+    const entry = auditLogs.entries.find(
+      (candidate) =>
+        candidate.target?.id === userId &&
+        now - candidate.createdTimestamp < 15_000 &&
+        candidate.changes.some((change) => change.key === "communication_disabled_until"),
+    );
+    return entry?.executor?.id ?? null;
+  } catch (err) {
+    logger.warn({ err, guildId: guild.id, userId }, "Oracle timeout lock: could not inspect audit log");
+    return null;
+  }
+}
+
+/**
+ * Keep an Oracle timeout locked until it expires or the server owner removes it.
+ * Discord does not expose the actor on GuildMemberUpdate, so the recent audit log
+ * entry is used to distinguish the owner from another moderator.
+ */
+export async function enforceOracleTimeout(
+  oldMember: { guild: NonNullable<Message["guild"]>; id: string; communicationDisabledUntilTimestamp: number | null },
+  newMember: { guild: NonNullable<Message["guild"]>; id: string; communicationDisabledUntilTimestamp: number | null },
+): Promise<boolean> {
+  const key = timeoutKey(newMember.guild.id, newMember.id);
+  const record = oracleTimeouts.get(key);
+  if (!record) return false;
+
+  const now = Date.now();
+  if (now >= record.expiresAt) {
+    forgetOracleTimeout(record.guildId, record.userId);
+    return false;
+  }
+
+  const wasTimedOut = oldMember.communicationDisabledUntilTimestamp !== null;
+  const isTimedOut = newMember.communicationDisabledUntilTimestamp !== null;
+  if (!wasTimedOut || isTimedOut) return false;
+
+  const executorId = await findTimeoutAuditExecutor(newMember.guild, newMember.id);
+  if (executorId === newMember.guild.ownerId) {
+    forgetOracleTimeout(record.guildId, record.userId);
+    logger.info(
+      { guildId: newMember.guild.id, userId: newMember.id, executorId },
+      "Oracle timeout lock: server owner lifted the timeout",
+    );
+    return true;
+  }
+
+  const member = newMember.guild.members.cache.get(newMember.id) ?? newMember.guild.members.resolve(newMember.id);
+  const botMember = newMember.guild.members.me;
+  const canTimeout =
+    !!member &&
+    !!botMember &&
+    botMember.permissions.has(PermissionFlagsBits.ModerateMembers) &&
+    member.manageable;
+  if (!canTimeout) {
+    logger.error(
+      { guildId: newMember.guild.id, userId: newMember.id, executorId },
+      "Oracle timeout lock: unauthorized removal detected but timeout cannot be reapplied",
+    );
+    return false;
+  }
+
+  try {
+    await member.timeout(
+      Math.max(1_000, record.expiresAt - now),
+      "Oracolul — doar creatorul serverului poate ridica acest blestem",
+    );
+    logger.warn(
+      { guildId: newMember.guild.id, userId: newMember.id, executorId },
+      "Oracle timeout lock: unauthorized removal reversed",
+    );
+    return true;
+  } catch (err) {
+    logger.error({ err, guildId: newMember.guild.id, userId: newMember.id, executorId }, "Oracle timeout lock: reapply failed");
+    return false;
+  }
+}
 
 /** Records an offense and returns the new count. */
 function recordOffense(userId: string): number {
@@ -254,6 +392,14 @@ function mockeryCurseMessage(offenseCount: number, muteMin: number, muted: boole
   );
 }
 
+function generalToxicityWarning(): string {
+  return (
+    "*Cenușa a auzit veninul din aceste cuvinte.* ⚠️\n" +
+    "**Avertisment:** păstrează-ți limba sub control. Următoarele otrăvuri vor fi cercetate de Oracol, " +
+    "iar insultele adresate lui pot aduce **Blestemul Tăcerii**."
+  );
+}
+
 // ── Justice trigger detection ────────────────────────────────────────────────
 
 /**
@@ -319,7 +465,7 @@ const JUSTICE_WINDOW_MS = JUSTICE_WINDOW_MINUTES * 60_000;
 export const JUSTICE_SCAN_LIMIT = envInt("ORACLE_JUSTICE_SCAN_LIMIT", 100, 500);
 
 /**
- * When the owner @mentions the Oracle with a justice trigger phrase, scan the
+ * When the server owner @mentions the Oracle with a justice trigger phrase, scan the
  * last 100 messages (up to 30 min back), find every user who used prohibited
  * words, apply an escalating timeout + a random game curse to each, and reply
  * with an in-character verdict list.
@@ -411,6 +557,7 @@ export async function handleJustice(client: Client, message: Message): Promise<b
           try {
             await member.timeout(muteMs, "Oracolul — dreptate la porunca stăpânului");
             muted = true;
+            if (message.guild?.id) rememberOracleTimeout(message.guild.id, userId, muteMs);
           } catch (err) {
             logger.warn({ err, userId }, "Oracle justice: timeout failed for offender");
           }
@@ -489,10 +636,7 @@ export function isPardonRequest(text: string): boolean {
  */
 export async function handlePardon(_client: Client, message: Message): Promise<boolean> {
   try {
-    const ownerId = process.env.ORACLE_OWNER_ID?.trim();
-    const isOwner = ownerId
-      ? message.author.id === ownerId || message.guild?.ownerId === message.author.id
-      : message.guild?.ownerId === message.author.id;
+    const isOwner = message.guild?.ownerId === message.author.id;
     if (!isOwner) return false;
 
     const text = (message.content ?? "").replace(/<@!?\d+>/g, "").trim();
@@ -529,6 +673,7 @@ export async function handlePardon(_client: Client, message: Message): Promise<b
         if (canModify) {
           try {
             await member.timeout(null, "Oracolul — iertare la porunca stăpânului");
+            if (message.guild?.id) forgetOracleTimeout(message.guild.id, userId);
           } catch (err) {
             logger.warn({ err, userId }, "Oracle pardon: failed to lift Discord timeout");
           }
@@ -574,15 +719,16 @@ export async function handlePardon(_client: Client, message: Message): Promise<b
  * the message (profanity detected + curse applied), so the caller knows to skip
  * the normal Oracle reply path.
  *
- * Only fires when the bot is @mentioned — passes silently for all other messages.
+ * Toxic messages anywhere in the guild receive a rate-limited warning. Messages
+ * directed at the bot can additionally trigger the escalating timeout path.
  */
 export async function handleToxicity(client: Client, message: Message): Promise<boolean> {
   try {
     const botId = client.user?.id;
     if (!botId) return false;
 
-    // Only act when the user is talking directly to the Oracle: an @mention,
-    // or a reply to one of the Oracle's own messages.
+    // Direct messages receive the full escalating mute/blessing path. General
+    // toxic messages receive only a rate-limited public warning.
     let directedAtBot = message.mentions.users.has(botId);
     if (!directedAtBot && message.reference?.messageId) {
       const referenced = await message
@@ -590,12 +736,24 @@ export async function handleToxicity(client: Client, message: Message): Promise<
         .catch(() => null);
       directedAtBot = referenced?.author?.id === botId;
     }
-    if (!directedAtBot) return false;
-
     const text = (message.content ?? "").replace(/<@!?\d+>/g, "").trim();
     const isSwear = containsSwear(text);
     const isMock = !isSwear && isMockery(text);
     if (!isSwear && !isMock) return false;
+
+    if (!directedAtBot) {
+      const now = Date.now();
+      const lastWarning = generalWarningLastAt.get(message.author.id) ?? 0;
+      if (now - lastWarning >= GENERAL_WARNING_COOLDOWN_MS) {
+        generalWarningLastAt.set(message.author.id, now);
+        await message.reply({
+          content: generalToxicityWarning(),
+          allowedMentions: { repliedUser: true, parse: [] },
+        });
+        logger.info({ userId: message.author.id, kind: "general-warning" }, "Oracle guard: toxicity warning sent");
+      }
+      return true;
+    }
 
     const offenseCount = recordOffense(message.author.id);
     const muteMs  = muteDurationMs(offenseCount);
@@ -623,6 +781,7 @@ export async function handleToxicity(client: Client, message: Message): Promise<
               : `Oracolul — limbaj interzis (ofensa #${offenseCount})`,
           );
           muted = true;
+          if (message.guild?.id) rememberOracleTimeout(message.guild.id, message.author.id, muteMs);
         } catch (err) {
           logger.warn({ err, userId: message.author.id }, "Oracle guard: timeout call failed");
         }

@@ -24,10 +24,21 @@ import { logger } from "../lib/logger";
 import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./alert";
 import { startGuildScheduler, stopGuildScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, recordGuildActivity, getGuildClaimedChests, getGuildActiveBossMap, checkBossEligibility, checkBossHitCooldown, BOSS_HIT_COOLDOWN_MS, persistBossState, guildStates, isGuildActive, ACTIVITY_WINDOW_MINUTES, CHEST_MSG_MILESTONE, type BossState, type BossPlayerStats } from "./scheduler";
 import { getChannel, getAllChannels, setChannel, resetChannel, resetAllChannels, initChannelConfig, hasAnyChannelConfigured, EVENT_LABELS, type EventType } from "./channel-config";
-import { recordMessage, refreshOraclePresence } from "./oracle";
-import { maybeReplyAsOracle, logOracleChatStatus } from "./oracle-chat";
+import { recordMessage, refreshOraclePresence, getCurrentMood } from "./oracle";
+import {
+  maybeReplyAsOracle,
+  logOracleChatStatus,
+  generatePersonalProphecy,
+  prophecyCooldownRemaining,
+  reserveProphecy,
+} from "./oracle-chat";
 import { handleOracleCouncilVote, isOracleCouncilButton } from "./oracle-council";
-import { handleToxicity } from "./oracle-guard";
+import {
+  enforceOracleTimeout,
+  handleToxicity,
+  restoreOracleTimeouts,
+  setOracleTimeoutPersistence,
+} from "./oracle-guard";
 import { getRewardMultipliers, getCombatModifiers, formatActiveEffects, formatCombatEffects, rollChestEffectKind, grantRandomBlessing, grantRandomCurse, buildChestEffectMessage } from "./status-effects";
 import { SUPER_ADMIN_ID } from "./constants";
 import {
@@ -76,6 +87,9 @@ import {
   saveTraderEmbedSig,
   loadTraderEmbedSig,
   ensureBotStateTable,
+  saveOracleTimeoutLock,
+  deleteOracleTimeoutLock,
+  loadOracleTimeoutLocks,
   claimBotInstance,
   getBotInstanceHolder,
   runMultiGuildMigrations,
@@ -380,6 +394,9 @@ const slashCommands = [
       opt.setName("jucator").setDescription("Vezi profilul altui luptător (opțional).").setRequired(false),
     ),
   new SlashCommandBuilder()
+    .setName("profetie")
+    .setDescription("🔮 Primește o profeție personalizată de la Oracolul Cenușii."),
+  new SlashCommandBuilder()
     .setName("clasament")
     .setDescription("👑 Clasamentele Regatelor Cenușii.")
     .addSubcommand((sub) =>
@@ -486,6 +503,47 @@ async function handleProfil(interaction: ChatInputCommandInteraction) {
   });
 }
 
+async function handleProfetie(interaction: ChatInputCommandInteraction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const userId = interaction.user.id;
+  const remaining = prophecyCooldownRemaining(userId);
+  if (remaining > 0) {
+    const minutes = Math.ceil(remaining / 60_000);
+    await interaction.editReply(
+      `🔮 Cenușa încă îți descifrează soarta. Încearcă din nou peste aproximativ ${minutes} minut${minutes === 1 ? "" : "e"}.`,
+    );
+    return;
+  }
+  if (!reserveProphecy(userId)) {
+    await interaction.editReply("🔮 O altă profeție se țese deja pentru tine. Mai așteaptă puțin.");
+    return;
+  }
+
+  const player = await upsertPlayer(interaction.user.id, interaction.guildId!, interaction.user.username);
+  const prophecy = await generatePersonalProphecy(player, getCurrentMood(interaction.guildId!)).catch((err) => {
+    logger.warn({ err, userId }, "Personal prophecy generation failed");
+    return null;
+  });
+  if (!prophecy) {
+    await interaction.editReply(
+      "🕯️ *Cerneala destinului s-a stins. Oracolul nu poate rosti acum o profeție.*",
+    );
+    return;
+  }
+
+  const relationTitle = player.oracleTitle ?? "Suflet necunoscut";
+  await interaction.editReply({
+    embeds: [
+      new EmbedBuilder()
+        .setColor(THEME_COLOR)
+        .setTitle("🔮 Profeția ta din Cenușă")
+        .setDescription(`*${prophecy}*`)
+        .setFooter({ text: `Legătura cu Oracolul: ${relationTitle} · Profeție cosmetică` })
+        .setTimestamp(),
+    ],
+  });
+}
+
 async function handleAjutor(interaction: ChatInputCommandInteraction) {
   await interaction.reply({
     embeds: [
@@ -498,6 +556,7 @@ async function handleAjutor(interaction: ChatInputCommandInteraction) {
             name: "📜 Profil & Progres",
             value:
               "**/profil** — profilul tău *(sau `/profil @jucător` pentru altcineva)*\n" +
+              "**/profetie** — primește o profeție AI personalizată\n" +
               "**/clasament** — top 10 luptători *(vezi profilul oricăruia din meniu)*\n" +
               "**/clasa** — alege-ți clasa RPG *(permanent)*\n" +
               "**/companion** — vezi companionul tău",
@@ -2547,6 +2606,13 @@ export async function startBot(onReady?: () => void): Promise<void> {
       await ensureBotStateTable();
       // Required schema must exist before any player profile or Oracle handler runs.
       await runMultiGuildMigrations();
+      setOracleTimeoutPersistence({
+        save: saveOracleTimeoutLock,
+        remove: deleteOracleTimeoutLock,
+      });
+      const oracleTimeoutLocks = await loadOracleTimeoutLocks();
+      restoreOracleTimeouts(oracleTimeoutLocks);
+      logger.info({ count: oracleTimeoutLocks.length }, "Restored Oracle timeout locks");
     } catch (err) {
       logger.error({ err }, "Required database migrations failed — stopping Discord bot");
       shardStatus = "migration_failed";
@@ -2680,6 +2746,10 @@ export async function startBot(onReady?: () => void): Promise<void> {
     void handleToxicity(client, message).then((handled) => {
       if (!handled) void maybeReplyAsOracle(client, message);
     });
+  });
+
+  client.on(Events.GuildMemberUpdate, (oldMember, newMember) => {
+    void enforceOracleTimeout(oldMember, newMember);
   });
 
   function scheduleDisconnectAlert(closeCode: number) {
@@ -2817,6 +2887,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
 
     if (interaction.isChatInputCommand()) {
       if (interaction.commandName === "profil") dispatch(handleProfil(interaction));
+      if (interaction.commandName === "profetie") dispatch(handleProfetie(interaction));
       if (interaction.commandName === "clasament") dispatch(handleClasament(interaction));
       if (interaction.commandName === "magazin") dispatch(handleMagazin(interaction));
       if (interaction.commandName === "clasa") dispatch(handleClasa(interaction));

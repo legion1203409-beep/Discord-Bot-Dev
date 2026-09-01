@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // ── Mock discord.js — only PermissionFlagsBits is used at runtime ─────────────
 vi.mock("discord.js", () => ({
+  AuditLogEvent: { MemberUpdate: 24 },
   PermissionFlagsBits: { ModerateMembers: 268435456n },
 }));
 
@@ -23,6 +24,8 @@ import {
   handleToxicity,
   handlePardon,
   handleJustice,
+  enforceOracleTimeout,
+  rememberOracleTimeout,
   isPardonRequest,
   isJusticeRequest,
   isMockery,
@@ -409,7 +412,7 @@ describe("handleToxicity", () => {
     expect(msg._reply).not.toHaveBeenCalled();
   });
 
-  it("returns false when bot is not mentioned", async () => {
+  it("returns a public warning without muting when toxic text is not directed at the bot", async () => {
     const msg = makeMessage({
       botId: BOT_ID,
       content: "pula",
@@ -417,8 +420,10 @@ describe("handleToxicity", () => {
       isMentioned: false,
     });
     const result = await handleToxicity(makeClient(BOT_ID), msg as unknown as Message);
-    expect(result).toBe(false);
-    expect(msg._reply).not.toHaveBeenCalled();
+    expect(result).toBe(true);
+    expect(msg._reply).toHaveBeenCalledOnce();
+    expect(msg._reply.mock.calls[0]?.[0]?.content).toContain("Avertisment");
+    expect(msg._timeout).not.toHaveBeenCalled();
   });
 
   it("returns false for clean text even when the bot is mentioned", async () => {
@@ -550,6 +555,67 @@ describe("handleToxicity", () => {
     });
     const result = await handleToxicity(makeClient(BOT_ID), msg as unknown as Message);
     expect(result).toBe(true);
+  });
+});
+
+describe("enforceOracleTimeout", () => {
+  function makeMemberUpdateFixture(executorId: string, userId: string, timeoutFn: ReturnType<typeof vi.fn>) {
+    const member = { manageable: true, timeout: timeoutFn };
+    const guild = {
+      id: `timeout-guild-${userId}`,
+      ownerId: "server-owner",
+      fetchAuditLogs: vi.fn().mockResolvedValue({
+        entries: {
+          find: (predicate: (entry: unknown) => boolean) =>
+            predicate({
+              target: { id: userId },
+              createdTimestamp: Date.now(),
+              changes: [{ key: "communication_disabled_until" }],
+              executor: { id: executorId },
+            })
+              ? { executor: { id: executorId } }
+              : undefined,
+        },
+      }),
+      members: {
+        cache: new Map([[userId, member]]),
+        resolve: vi.fn().mockReturnValue(member),
+        me: { permissions: { has: vi.fn().mockReturnValue(true) } },
+      },
+    };
+    return { guild, oldMember: { guild, id: userId, communicationDisabledUntilTimestamp: Date.now() + 30_000 }, newMember: { guild, id: userId, communicationDisabledUntilTimestamp: null } };
+  }
+
+  it("allows only the server owner to remove an active Oracle timeout", async () => {
+    const timeoutFn = vi.fn().mockResolvedValue(undefined);
+    const { guild, oldMember, newMember } = makeMemberUpdateFixture("server-owner", "owner-lift-test", timeoutFn);
+    rememberOracleTimeout(guild.id, newMember.id, 60_000);
+
+    await expect(
+      enforceOracleTimeout(
+        oldMember as unknown as Parameters<typeof enforceOracleTimeout>[0],
+        newMember as unknown as Parameters<typeof enforceOracleTimeout>[1],
+      ),
+    ).resolves.toBe(true);
+    expect(timeoutFn).not.toHaveBeenCalled();
+    expect(guild.fetchAuditLogs).toHaveBeenCalledOnce();
+  });
+
+  it("reapplies the remaining timeout when another moderator removes it", async () => {
+    const timeoutFn = vi.fn().mockResolvedValue(undefined);
+    const { guild, oldMember, newMember } = makeMemberUpdateFixture("other-moderator", "moderator-lift-test", timeoutFn);
+    rememberOracleTimeout(guild.id, newMember.id, 60_000);
+
+    await expect(
+      enforceOracleTimeout(
+        oldMember as unknown as Parameters<typeof enforceOracleTimeout>[0],
+        newMember as unknown as Parameters<typeof enforceOracleTimeout>[1],
+      ),
+    ).resolves.toBe(true);
+    expect(timeoutFn).toHaveBeenCalledWith(
+      expect.any(Number),
+      "Oracolul — doar creatorul serverului poate ridica acest blestem",
+    );
   });
 });
 
@@ -751,7 +817,7 @@ function makePardonMessage(opts: {
 }
 
 describe("handlePardon", () => {
-  const OWNER_ID = "pardon-owner-id";
+  const OWNER_ID = "guild-owner-id";
 
   beforeEach(() => {
     vi.clearAllMocks();

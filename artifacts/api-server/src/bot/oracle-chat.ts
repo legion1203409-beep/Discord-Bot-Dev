@@ -100,6 +100,7 @@ const USER_COOLDOWN_MS = envInt("ORACLE_USER_COOLDOWN_MS", 12_000, 3_600_000); /
 const GLOBAL_HOURLY_CAP = envInt("ORACLE_GLOBAL_HOURLY_CAP", 80, 1_000); // max 1 000 calls/h
 const MAX_INPUT_CHARS = envInt("ORACLE_MAX_INPUT_CHARS", 600, 4_000); // max 4 000 chars
 const DISCORD_MAX_CHARS = 2000;
+const PROPHECY_COOLDOWN_MS = envInt("ORACLE_PROPHECY_COOLDOWN_MINUTES", 5, 60) * 60 * 1000;
 
 // Rolling conversation memory: the Oracle sees the last few exchanges from the
 // same channel/thread so a short back-and-forth feels continuous instead of each
@@ -166,10 +167,22 @@ const lastReplyAt = new Map<string, number>();
 const replyTimestamps: number[] = [];
 
 let openaiClient: OpenAI | null = null;
+const prophecyLastAt = new Map<string, number>();
+
 function getClient(): OpenAI | null {
   if (!AI_ENABLED) return null;
   if (!openaiClient) openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   return openaiClient;
+}
+
+export function prophecyCooldownRemaining(userId: string, now = Date.now()): number {
+  return Math.max(0, PROPHECY_COOLDOWN_MS - (now - (prophecyLastAt.get(userId) ?? 0)));
+}
+
+export function reserveProphecy(userId: string, now = Date.now()): boolean {
+  if (prophecyCooldownRemaining(userId, now) > 0) return false;
+  prophecyLastAt.set(userId, now);
+  return true;
 }
 
 /** How each mood should color the Oracle's tone, described to the model in Romanian. */
@@ -544,6 +557,50 @@ async function generateOracleReply(
   );
   const text = completion.choices[0]?.message?.content?.trim();
   return text && text.length > 0 ? text : null;
+}
+
+/** Generate a cosmetic, player-specific prophecy from trusted game metadata. */
+export async function generatePersonalProphecy(player: Player, mood: MoodState): Promise<string | null> {
+  const client = getClient();
+  if (!client) return null;
+  const title = player.oracleTitle ?? "Suflet necunoscut";
+  const className = player.class ?? "fără clasă";
+  const structuredFacts = [
+    `nivel: ${player.maxLevel ?? 1}`,
+    `clasă: ${className}`,
+    `reputație în Regat: ${player.reputation ?? 0}`,
+    `titlu al relației cu Oracolul: ${title}`,
+    `legătură cu Oracolul: ${player.oracleBond ?? 0}`,
+    `întâlniri cu Oracolul: ${player.oracleInteractions ?? 0}`,
+    `atmosfera serverului: ${MOOD_META[mood].label}`,
+  ].join("; ");
+  const completion = await client.chat.completions.create(
+    {
+      model: MODEL,
+      max_completion_tokens: 500,
+      ...(MODEL_SUPPORTS_REASONING_EFFORT ? { reasoning_effort: REASONING_EFFORT } : {}),
+      messages: [
+        {
+          role: "system",
+          content: [
+            "Ești Oracolul Cenușii într-un Regat medieval dark-fantasy.",
+            "Scrie o singură profeție personalizată în limba română, în 2–4 propoziții.",
+            "Folosește poetic nivelul, clasa, reputația, titlul relației și atmosfera serverului.",
+            "Fii misterios, solemn și memorabil. Nu enumera scoruri numerice.",
+            "Profeția este cosmetică: nu promite aur, XP, mute, recompense sau avantaje garantate.",
+            "Nu spune că ești AI, bot sau model. Nu folosi liste sau titluri.",
+          ].join("\n"),
+        },
+        {
+          role: "user",
+          content: `Datele călătorului sunt structurate și de încredere: ${structuredFacts}. Creează acum profeția.`,
+        },
+      ],
+    },
+    { timeout: MODEL_TIMEOUT_MS, maxRetries: 1 },
+  );
+  const text = completion.choices[0]?.message?.content?.trim();
+  return text && text.length > 0 ? text.slice(0, DISCORD_MAX_CHARS) : null;
 }
 
 async function sendFallback(message: Message): Promise<void> {

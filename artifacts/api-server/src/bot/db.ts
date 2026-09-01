@@ -1219,6 +1219,66 @@ export function ensureBotStateTable(): Promise<void> {
   return botStateTableReady;
 }
 
+// ─── Oracle timeout locks ─────────────────────────────────────────────────────
+
+export interface OracleTimeoutLock {
+  guildId: string;
+  userId: string;
+  expiresAt: number;
+}
+
+const ORACLE_TIMEOUT_LOCK_PREFIX = "oracle_timeout_lock:";
+
+function oracleTimeoutLockKey(guildId: string, userId: string): string {
+  return `${guildId}:${ORACLE_TIMEOUT_LOCK_PREFIX}${userId}`;
+}
+
+export async function saveOracleTimeoutLock(record: OracleTimeoutLock): Promise<void> {
+  await ensureBotStateTable();
+  await db
+    .insert(botStateTable)
+    .values({
+      key: oracleTimeoutLockKey(record.guildId, record.userId),
+      value: JSON.stringify(record),
+    })
+    .onConflictDoUpdate({
+      target: botStateTable.key,
+      set: { value: JSON.stringify(record), updatedAt: new Date() },
+    });
+}
+
+export async function deleteOracleTimeoutLock(guildId: string, userId: string): Promise<void> {
+  await ensureBotStateTable();
+  await db
+    .delete(botStateTable)
+    .where(eq(botStateTable.key, oracleTimeoutLockKey(guildId, userId)));
+}
+
+export async function loadOracleTimeoutLocks(now = Date.now()): Promise<OracleTimeoutLock[]> {
+  await ensureBotStateTable();
+  const result = await pool.query<{ value: string }>(
+    `SELECT value FROM bot_state WHERE key LIKE $1`,
+    [`%:${ORACLE_TIMEOUT_LOCK_PREFIX}%`],
+  );
+  const locks: OracleTimeoutLock[] = [];
+  for (const row of result.rows) {
+    try {
+      const record = JSON.parse(row.value) as OracleTimeoutLock;
+      if (
+        typeof record.guildId === "string" &&
+        typeof record.userId === "string" &&
+        Number.isFinite(record.expiresAt) &&
+        record.expiresAt > now
+      ) {
+        locks.push(record);
+      }
+    } catch {
+      // Ignore malformed stale state; it cannot authorize or remove a timeout.
+    }
+  }
+  return locks;
+}
+
 // Upsert the serialized boss state.
 export async function persistActiveBoss(eventId: number, guildId: string, stateJson: string, expiresAt: Date): Promise<void> {
   const now = new Date();
