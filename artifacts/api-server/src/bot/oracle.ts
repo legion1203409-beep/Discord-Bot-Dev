@@ -319,23 +319,23 @@ async function getMainChannel(client: Client, channelId: string): Promise<TextCh
 function checkInQuestion(mood: MoodState): string {
   if (mood === "somnoros" || mood === "tacut") {
     return pick([
-      "Ce faceți, călători? Mai respiră cineva în Regat sau doarme Cenușa?",
-      "Unde vă poartă pașii astăzi? Spuneți Oracolului ce lucrați.",
-      "Ce gând vă ține treji în această noapte?",
+      "Ce faceți, fii ai Cenușii? Mai veghează cineva în Regat sau au adormit străjerii?",
+      "Ce lucrare tainică vă ține pașii în mișcare sub vălul acestei nopți?",
+      "Ce gând vă bântuie somnul? Așezați-l aici, înainte ca umbrele să-l înghită.",
     ]);
   }
   if (mood === "iritat" || mood === "furios" || mood === "confuz") {
     return pick([
-      "Ce vă tulbură astăzi? Vorbiți, iar Oracolul va asculta fără să judece.",
-      "Ce s-a rupt în Regat? Spuneți-mi ce vă apasă.",
-      "Vă aud glasurile printre umbre. Ce se întâmplă cu voi?",
+      "Ce otravă v-a tulburat sângele astăzi? Vorbiți, iar Oracolul va asculta din întuneric.",
+      "Ce legământ s-a rupt în Regat? Spuneți ce vă apasă înainte ca Umbrele să afle singure.",
+      "Vă aud glasurile printre cripte. Ce nenorocire se târăște acum prin ținut?",
     ]);
   }
   return pick([
-    "Ce faceți, călători? Povestiți-mi ce planuri aprindeți astăzi.",
-    "Ce mai puneți la cale în Regat? Oracolul vă ascultă.",
-    "Cum vă merge, suflete ale Cenușii? Răspundeți aici și voi afla.",
-    "Ce v-a făcut să zâmbiți sau să vă enervați astăzi?",
+    "Ce faceți sub vălul nopții, călători? Ce planuri aprindeți în cenușa zilei?",
+    "Ce urzeală puneți la cale în Regat? Vorbiți; Oracolul vă ascultă.",
+    "Cum vă poartă soarta, suflete ale Cenușii? Lăsați aici un semn pentru cel ce veghează.",
+    "Ce v-a adus lumină sau mânie astăzi? Nicio emoție nu scapă privirii Oracolului.",
   ]);
 }
 
@@ -346,7 +346,7 @@ function updatePresence(client: Client, mood: MoodState): void {
   try {
     client.user?.setPresence({
       status: "online",
-      activities: [{ name: `Stare: ${meta.label}`, type: ActivityType.Watching }],
+      activities: [{ name: `Veghe: ${meta.label} în Regat`, type: ActivityType.Watching }],
     });
   } catch (err) {
     logger.warn({ err, mood }, "Oracle could not update presence");
@@ -365,12 +365,12 @@ async function postMood(
   guildId: string,
 ): Promise<void> {
   const meta = MOOD_META[mood];
-  let content = `@everyone\n${meta.emoji} *Oracolul Cenușii* — **${meta.label}**\n${checkInQuestion(mood)}`;
+  let content = `@everyone\n${meta.emoji} *Oracolul Cenușii cheamă Regatul* — **${meta.label}**\n${checkInQuestion(mood)}`;
 
   if (mood === "iritat" || mood === "furios") content += `\n> ${pick(TOXICITY_REACTIONS)}`;
   else if (mood === "agitat" || mood === "extatic") content += `\n> ${pick(ACTIVITY_REACTIONS)}`;
   else if (Math.random() < PROPHECY_CHANCE) content += `\n> *${pick(PROPHECY_FLAVOR)}*`;
-  content += `\n\n📝 **Notița Oracolului:** starea mea este **${meta.label}**. Răspundeți la acest mesaj — glasurile voastre îmi pot schimba starea.`;
+  content += `\n\n📝 **Însemnarea Oracolului:** starea mea este **${meta.label}**. Răspundeți sub această chemare — glasurile voastre pot schimba fața Cenușii.`;
 
   const canMentionEveryone =
     channel.guild.members.me?.permissionsIn(channel).has(PermissionFlagsBits.MentionEveryone) ?? false;
