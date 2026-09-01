@@ -1756,6 +1756,14 @@ export function buildProfileEmbed(
           .join("  ·  ")
       : "*Inventar gol — ucide monștri pentru iteme!*";
 
+  const oracleTitle = player.oracleTitle ?? "Suflet necunoscut";
+  const oracleBond = player.oracleBond ?? 0;
+  const rememberedMoments = Array.isArray(player.oracleMemory) ? player.oracleMemory.length : 0;
+  const oracleRelationValue =
+    `🔮 **${oracleTitle}**\n` +
+    `Legătură cu Oracolul: **${oracleBond >= 0 ? "+" : ""}${oracleBond}** · ` +
+    `Întâlniri: **${player.oracleInteractions ?? 0}** · Amintiri: **${rememberedMoments}**`;
+
   const embed = new EmbedBuilder()
     .setColor(THEME_COLOR)
     .setTitle(title ?? `📜 Profilul lui ${player.username}`)
@@ -1770,6 +1778,7 @@ export function buildProfileEmbed(
       { name: "🧬 Clasă", value: classValue, inline: true },
       { name: "🐾 Companion", value: compValue, inline: true },
       { name: "🔮 Talisman", value: talismanValue, inline: true },
+      { name: "━━━ Legătura cu Oracolul ━━━", value: oracleRelationValue, inline: false },
       {
         name: "━━━ Statistici de luptă ━━━",
         value: combatStatsValue(player),

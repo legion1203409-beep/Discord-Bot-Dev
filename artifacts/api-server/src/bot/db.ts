@@ -174,6 +174,14 @@ export async function runMultiGuildMigrations(): Promise<void> {
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS class_levels jsonb NOT NULL DEFAULT '{}'::jsonb`);
   logger.info("multi-guild migrations: players.class_levels ensured");
 
+  // ─── Oracle relationship and memory ───────────────────────────────────────
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS oracle_bond integer NOT NULL DEFAULT 0`);
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS oracle_interactions integer NOT NULL DEFAULT 0`);
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS oracle_chaos integer NOT NULL DEFAULT 0`);
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS oracle_title text NOT NULL DEFAULT 'Suflet necunoscut'`);
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS oracle_memory jsonb NOT NULL DEFAULT '[]'::jsonb`);
+  logger.info("multi-guild migrations: Oracle relationship columns ensured");
+
   // Post-migration verification: confirm every required column is present
   const { rows: missingCols } = await pool.query<{ table_name: string; column_name: string }>(`
     SELECT v.table_name, v.column_name
@@ -193,7 +201,12 @@ export async function runMultiGuildMigrations(): Promise<void> {
       ('players',           'boss_kills'),
       ('players',           'class_levels'),
       ('players',           'mana_regen_level'),
-      ('event_participants','shield_hp')
+      ('event_participants','shield_hp'),
+      ('players',           'oracle_bond'),
+      ('players',           'oracle_interactions'),
+      ('players',           'oracle_chaos'),
+      ('players',           'oracle_title'),
+      ('players',           'oracle_memory')
     ) AS v(table_name, column_name)
     WHERE NOT EXISTS (
       SELECT 1 FROM information_schema.columns c
@@ -283,6 +296,97 @@ export async function upsertPlayer(discordId: string, guildId: string, username:
   }
   const [c] = await db.insert(playersTable).values({ discordId, guildId, username }).returning();
   return c!;
+}
+
+export type OracleRelationshipTitle =
+  | "Favoritul Cenușii"
+  | "Vânător de umbre"
+  | "Străjer loial"
+  | "Suflet necunoscut"
+  | "Suflet suspect"
+  | "Trădător"
+  | "Nebunul Regatului";
+
+export function oracleRelationshipTitle(
+  bond: number,
+  interactions: number,
+  chaos: number,
+): OracleRelationshipTitle {
+  if (chaos >= 5) return "Nebunul Regatului";
+  if (bond >= 15) return "Favoritul Cenușii";
+  if (interactions >= 8 && bond >= 8) return "Vânător de umbre";
+  if (bond >= 4) return "Străjer loial";
+  if (bond <= -10) return "Trădător";
+  if (bond <= -4) return "Suflet suspect";
+  return "Suflet necunoscut";
+}
+
+export type OracleInteractionKind = "dialog" | "council";
+
+/**
+ * Persists a bounded, per-guild memory of a player's direct relationship with
+ * the Oracle. Memory is deliberately short and only records messages that were
+ * addressed to the Oracle or explicit council participation.
+ */
+export async function recordOracleInteraction(
+  discordId: string,
+  guildId: string,
+  username: string,
+  content: string,
+  kind: OracleInteractionKind = "dialog",
+  relationDelta = 1,
+  chaosDelta = 0,
+): Promise<Player | null> {
+  const safeText = content
+    .replace(/<@!?\d+>/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 240);
+  await pool.query(
+    `INSERT INTO players (discord_id, guild_id, username)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (discord_id, guild_id)
+     DO UPDATE SET username = EXCLUDED.username`,
+    [discordId, guildId, username],
+  );
+  await pool.query(
+    `UPDATE players
+     SET oracle_bond = GREATEST(-20, LEAST(25, oracle_bond + $3)),
+         oracle_interactions = oracle_interactions + 1,
+         oracle_chaos = GREATEST(0, oracle_chaos + $4),
+         oracle_title = CASE
+           WHEN GREATEST(0, oracle_chaos + $4) >= 5 THEN 'Nebunul Regatului'
+           WHEN GREATEST(-20, LEAST(25, oracle_bond + $3)) >= 15 THEN 'Favoritul Cenușii'
+           WHEN oracle_interactions + 1 >= 8
+             AND GREATEST(-20, LEAST(25, oracle_bond + $3)) >= 8 THEN 'Vânător de umbre'
+           WHEN GREATEST(-20, LEAST(25, oracle_bond + $3)) >= 4 THEN 'Străjer loial'
+           WHEN GREATEST(-20, LEAST(25, oracle_bond + $3)) <= -10 THEN 'Trădător'
+           WHEN GREATEST(-20, LEAST(25, oracle_bond + $3)) <= -4 THEN 'Suflet suspect'
+           ELSE 'Suflet necunoscut'
+         END,
+         oracle_memory = CASE
+           WHEN $5 = '' THEN oracle_memory
+           ELSE (
+             SELECT COALESCE(jsonb_agg(recent.entry ORDER BY recent.ordinality), '[]'::jsonb)
+             FROM (
+               SELECT all_entries.entry, all_entries.ordinality
+               FROM jsonb_array_elements(
+                 COALESCE(oracle_memory, '[]'::jsonb) ||
+                 jsonb_build_array(jsonb_build_object(
+                   'text', $5,
+                   'createdAt', $6,
+                   'kind', $7
+                 ))
+               ) WITH ORDINALITY AS all_entries(entry, ordinality)
+               ORDER BY all_entries.ordinality DESC
+               LIMIT 8
+             ) AS recent
+           )
+         END
+     WHERE discord_id = $1 AND guild_id = $2`,
+    [discordId, guildId, relationDelta, chaosDelta, safeText, new Date().toISOString(), kind],
+  );
+  return getPlayerById(discordId, guildId);
 }
 
 /** Atomically increments how many times this player has slain the given boss (veteran ranks). */
@@ -1146,6 +1250,123 @@ export async function deleteActiveBoss(eventId: number, guildId: string): Promis
 /** Prefix a bot_state key with guildId for isolation. */
 function guildKey(guildId: string, key: string): string {
   return `${guildId}:${key}`;
+}
+
+const ORACLE_COUNCIL_KEY = "oracle_council";
+
+export interface OracleCouncilOption {
+  id: string;
+  label: string;
+  emoji: string;
+  decree: string;
+}
+
+export interface OracleCouncilRecord {
+  id: string;
+  question: string;
+  options: OracleCouncilOption[];
+  votes: Record<string, string>;
+  guildId: string;
+  channelId: string;
+  messageId: string;
+  openedAt: number;
+  closesAt: number;
+  status: "open" | "closed";
+  winnerId?: string;
+}
+
+export async function saveOracleCouncil(record: OracleCouncilRecord): Promise<void> {
+  await ensureBotStateTable();
+  const now = new Date();
+  await db
+    .insert(botStateTable)
+    .values({ key: guildKey(record.guildId, ORACLE_COUNCIL_KEY), value: JSON.stringify(record) })
+    .onConflictDoUpdate({
+      target: botStateTable.key,
+      set: { value: JSON.stringify(record), updatedAt: now },
+    });
+}
+
+export async function loadOracleCouncil(guildId: string): Promise<OracleCouncilRecord | null> {
+  await ensureBotStateTable();
+  const [row] = await db
+    .select()
+    .from(botStateTable)
+    .where(eq(botStateTable.key, guildKey(guildId, ORACLE_COUNCIL_KEY)));
+  if (!row) return null;
+  try {
+    const parsed = JSON.parse(row.value) as OracleCouncilRecord;
+    if (!parsed || parsed.guildId !== guildId || !Array.isArray(parsed.options)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export type OracleCouncilVoteResult =
+  | { status: "accepted"; council: OracleCouncilRecord }
+  | { status: "already_voted" | "closed" | "invalid" };
+
+/** Atomically accepts only the first vote from a user for an open council. */
+export async function castOracleCouncilVote(
+  guildId: string,
+  councilId: string,
+  userId: string,
+  optionId: string,
+): Promise<OracleCouncilVoteResult> {
+  await ensureBotStateTable();
+  const key = guildKey(guildId, ORACLE_COUNCIL_KEY);
+  const result = await pool.query<{ value: string }>(
+    `UPDATE bot_state
+     SET value = jsonb_set(
+       value::jsonb,
+       '{votes}',
+       COALESCE(value::jsonb->'votes', '{}'::jsonb) || jsonb_build_object($2, $3),
+       true
+     )::text, updated_at = now()
+     WHERE key = $1
+       AND value::jsonb->>'id' = $4
+       AND value::jsonb->>'status' = 'open'
+       AND (value::jsonb->>'closesAt')::bigint > $5
+       AND (value::jsonb->'votes' IS NULL OR NOT (value::jsonb->'votes' ? $2))
+       AND EXISTS (
+         SELECT 1
+         FROM jsonb_array_elements(value::jsonb->'options') option
+         WHERE option->>'id' = $6
+       )
+     RETURNING value`,
+    [key, userId, optionId, councilId, Date.now(), optionId],
+  );
+  if (result.rows[0]) {
+    return { status: "accepted", council: JSON.parse(result.rows[0].value) as OracleCouncilRecord };
+  }
+
+  const existing = await loadOracleCouncil(guildId);
+  if (!existing || existing.id !== councilId || existing.status !== "open" || existing.closesAt <= Date.now()) {
+    return { status: "closed" };
+  }
+  if (existing.votes[userId]) return { status: "already_voted" };
+  if (!existing.options.some((option) => option.id === optionId)) return { status: "invalid" };
+  return { status: "closed" };
+}
+
+export async function closeOracleCouncil(
+  guildId: string,
+  councilId: string,
+): Promise<OracleCouncilRecord | null> {
+  await ensureBotStateTable();
+  const key = guildKey(guildId, ORACLE_COUNCIL_KEY);
+  const result = await pool.query<{ value: string }>(
+    `UPDATE bot_state
+     SET value = jsonb_set(value::jsonb, '{status}', '"closed"'::jsonb, true)::text,
+         updated_at = now()
+     WHERE key = $1
+       AND value::jsonb->>'id' = $2
+       AND value::jsonb->>'status' = 'open'
+     RETURNING value`,
+    [key, councilId],
+  );
+  return result.rows[0] ? (JSON.parse(result.rows[0].value) as OracleCouncilRecord) : null;
 }
 
 // ─── Bot instance leadership marker (global — not per-guild) ──────────────────

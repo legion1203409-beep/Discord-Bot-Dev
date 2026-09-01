@@ -26,6 +26,7 @@ import { startGuildScheduler, stopGuildScheduler, APPLICATION_ID, fireEvent, fir
 import { getChannel, getAllChannels, setChannel, resetChannel, resetAllChannels, initChannelConfig, hasAnyChannelConfigured, EVENT_LABELS, type EventType } from "./channel-config";
 import { recordMessage, refreshOraclePresence } from "./oracle";
 import { maybeReplyAsOracle, logOracleChatStatus } from "./oracle-chat";
+import { handleOracleCouncilVote, isOracleCouncilButton } from "./oracle-council";
 import { handleToxicity } from "./oracle-guard";
 import { getRewardMultipliers, getCombatModifiers, formatActiveEffects, formatCombatEffects, rollChestEffectKind, grantRandomBlessing, grantRandomCurse, buildChestEffectMessage } from "./status-effects";
 import { SUPER_ADMIN_ID } from "./constants";
@@ -2280,6 +2281,10 @@ async function handleBossAbility(interaction: ButtonInteraction, eventId: number
 async function handleButton(interaction: ButtonInteraction) {
   const id = interaction.customId;
 
+  if (isOracleCouncilButton(id)) {
+    return handleOracleCouncilVote(interaction);
+  }
+
   if (id.startsWith("profile_view_")) {
     return handleViewProfile(interaction, id.replace("profile_view_", ""));
   }
@@ -2538,14 +2543,18 @@ export async function startBot(onReady?: () => void): Promise<void> {
     botReadyAt = new Date();
     shardStatus = "ready";
 
-    await ensureBotStateTable().catch((err) =>
-      logger.error({ err }, "Failed to ensure bot_state table exists"),
-    );
-
-    // Run multi-guild migrations once at startup
-    await runMultiGuildMigrations().catch((err) =>
-      logger.error({ err }, "Failed to run multi-guild migrations"),
-    );
+    try {
+      await ensureBotStateTable();
+      // Required schema must exist before any player profile or Oracle handler runs.
+      await runMultiGuildMigrations();
+    } catch (err) {
+      logger.error({ err }, "Required database migrations failed — stopping Discord bot");
+      shardStatus = "migration_failed";
+      botClient = null;
+      await client.destroy();
+      rejectTerminated(err instanceof Error ? err : new Error(String(err)));
+      return;
+    }
 
     // Initialize each guild the bot is in
     const guilds = c.guilds.cache;

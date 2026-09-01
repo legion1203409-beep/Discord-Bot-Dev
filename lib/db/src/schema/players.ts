@@ -2,6 +2,12 @@ import { pgTable, text, integer, timestamp, primaryKey, jsonb } from "drizzle-or
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
+export interface OracleMemoryEntry {
+  text: string;
+  createdAt: string;
+  kind: "dialog" | "council";
+}
+
 export const playersTable = pgTable("players", {
   discordId: text("discord_id").notNull(),
   guildId: text("guild_id").notNull(),
@@ -16,6 +22,11 @@ export const playersTable = pgTable("players", {
   classLevels: jsonb("class_levels").$type<Record<string, number>>().notNull().default({}),
   companion: text("companion"),
   companionLevel: integer("companion_level").notNull().default(1),
+  oracleBond: integer("oracle_bond").notNull().default(0),
+  oracleInteractions: integer("oracle_interactions").notNull().default(0),
+  oracleChaos: integer("oracle_chaos").notNull().default(0),
+  oracleTitle: text("oracle_title").notNull().default("Suflet necunoscut"),
+  oracleMemory: jsonb("oracle_memory").$type<OracleMemoryEntry[]>().notNull().default([]),
   abilityEmpowerLevel: integer("ability_empower_level").notNull().default(0),
   abilityShieldLevel: integer("ability_shield_level").notNull().default(0),
   honorTitle: text("honor_title"),

@@ -4,6 +4,7 @@ import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, buildExpiredChes
 import { triggerRandomBattleEvent } from "./combat-events";
 import { getRewardMultipliers } from "./status-effects";
 import { startOracle, setOracleExtatic } from "./oracle";
+import { startOracleCouncilScheduler, stopOracleCouncilScheduler } from "./oracle-council";
 import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle, addPlayerReputation, addPlayerGold, addPlayerXp, getPrestigeLevels, persistActiveBoss, loadActiveBossRowsByGuild, deleteActiveBoss, createActiveBossesTableIfNotExists, persistActiveChest, loadActiveChest, clearActiveChest, getFinalBossKills, KEYCHEST_DBKEY, LOCKCHEST_DBKEY, runMultiGuildMigrations } from "./db";
 import { getChannel, initChannelConfig, hasAnyChannelConfigured, type EventType } from "./channel-config";
 
@@ -168,6 +169,7 @@ export function recordGuildActivity(client: Client, guildId: string): void {
  *  callbacks will no-op via the stopped flag; existing timers cannot be
  *  cancelled without tracking refs, but they become inert after this call. */
 export function stopGuildScheduler(guildId: string) {
+  stopOracleCouncilScheduler(guildId);
   const gs = guildStates.get(guildId);
   if (gs) {
     gs.stopped = true;
@@ -1327,7 +1329,10 @@ export function startGuildScheduler(client: Client, guildId: string) {
   }
 
   const oracleChannelId = getChannel("main", guildId);
-  if (oracleChannelId) startOracle(client, oracleChannelId, guildId);
+  if (oracleChannelId) {
+    startOracle(client, oracleChannelId, guildId);
+    startOracleCouncilScheduler(client, guildId, oracleChannelId, isStopped);
+  }
 }
 
 export { APPLICATION_ID };
