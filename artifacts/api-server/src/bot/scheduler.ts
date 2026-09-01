@@ -1245,13 +1245,13 @@ export async function fireKeyChest(client: Client, guildId: string, keyType?: st
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
         .setCustomId(chestId)
-        .setLabel("🗝️ Revendică Cheia")
+        .setLabel("🗝️ Ia cheia")
         .setStyle(ButtonStyle.Primary),
     );
 
     const frames: Array<{ content: string; delay: number }> = [
       { content: "🌫️ *Ceva metalic zornăie în cenușă…*", delay: 800 },
-      { content: "🗝️✨ *Un cufăr de chei se ridică din umbre!*", delay: 900 },
+      { content: "🗝️✨ *O cheie a fost găsită în umbre!*", delay: 900 },
     ];
 
     const msg = await channel.send({ content: frames[0]!.content });

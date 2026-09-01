@@ -2277,7 +2277,7 @@ export function buildLockedChestEmbed(
     .setFooter({ text: expiresAt ? "Cufăr blocat • timer live în Discord" : "Cufăr blocat — expiră în 10 minute" });
 }
 
-/** Embed for a dedicated key chest — the prize is a key, not Oboli. */
+/** Embed for a key discovery — the prize is a key, not Oboli. */
 export function buildKeyChestEmbed(keyType: string): EmbedBuilder {
   const keyLabel = KEY_LABEL[keyType] ?? "Cheie";
   const keyEmoji = KEY_EMOJI[keyType] ?? "🗝️";
@@ -2287,9 +2287,9 @@ export function buildKeyChestEmbed(keyType: string): EmbedBuilder {
 
   return new EmbedBuilder()
     .setColor(color)
-    .setTitle(`${keyEmoji}✨  CUFĂR DE CHEI A APĂRUT!  ✨${keyEmoji}`)
+    .setTitle(`${keyEmoji}✨  CHEIE GĂSITĂ!  ✨${keyEmoji}`)
     .setDescription(
-      "Cenușa s-a despicat și a scos la iveală un cufăr ce nu ascunde Oboli, ci o **cheie prețioasă**!\n" +
+      "Cenușa s-a despicat și a scos la iveală o **cheie prețioasă**!\n" +
         `${sectionTitle("Răsplata")}\n` +
         `${keyEmoji} O **${keyLabel}** pentru primul care revendică!\n` +
         `🔓 Deschide cu ea un **${targetLabel}** și ia comoara dinăuntru.\n\n` +
