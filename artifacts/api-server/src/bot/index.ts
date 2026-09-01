@@ -2697,10 +2697,20 @@ async function setupTrader(client: Client, guildId: string): Promise<void> {
       .setImage(IMG.trader)
       .setFooter({ text: `Deschide doar cu cheile pe care le ai • ${BRAND_FOOTER}` });
 
+    const traderOfferEmbeds = TRADER_OFFERS.map((offer) => {
+      const range = LOCKED_CHEST_GOLD[offer.rarityKey] ?? { min: 0, max: 0 };
+      const previewGold = Math.round((range.min + range.max) / 2);
+      return buildLockedChestEmbed(offer.rarityKey, previewGold)
+        .setFooter({ text: `Oferta Negustorului • ${offer.label} • ${BRAND_FOOTER}` });
+    });
+    const traderEmbeds = [embed, ...traderOfferEmbeds];
+
     const STYLE_BY_RARITY: Record<string, ButtonStyle> = {
       argint: ButtonStyle.Secondary,
       aur:    ButtonStyle.Primary,
+      mitic:  ButtonStyle.Primary,
       regal:  ButtonStyle.Danger,
+      cavaler: ButtonStyle.Danger,
     };
 
     const rows: ActionRowBuilder<ButtonBuilder>[] = [];
@@ -2727,7 +2737,7 @@ async function setupTrader(client: Client, guildId: string): Promise<void> {
       try {
         const oldMsg = await channel.messages.fetch(msgId);
         if (!imageChanged) {
-          await oldMsg.edit({ embeds: [embed], components: rows });
+          await oldMsg.edit({ embeds: traderEmbeds, components: rows });
           logger.info({ traderMessageId: msgId, guildId }, "Trader message edited on reconnect");
           return;
         }
@@ -2757,7 +2767,7 @@ async function setupTrader(client: Client, guildId: string): Promise<void> {
       }
     }
 
-    const msg = await channel.send({ embeds: [embed], components: rows });
+    const msg = await channel.send({ embeds: traderEmbeds, components: rows });
     setTraderMessageId(guildId, msg.id);
     await saveTraderMessageId(guildId, msg.id);
     await saveTraderEmbedSig(guildId, currentSig);
