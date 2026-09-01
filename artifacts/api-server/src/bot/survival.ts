@@ -2152,6 +2152,7 @@ export function buildChestEmbed(
   rarity?: ChestRarity,
   forcedMult?: 2 | 3,
   variant: ChestVariant = "aur",
+  expiresAt?: number,
 ): EmbedBuilder {
   const r = rarity ?? CHEST_RARITIES[0]!;
   const flavor = CHEST_VARIANTS[variant] ?? CHEST_VARIANTS.aur;
@@ -2166,6 +2167,9 @@ export function buildChestEmbed(
     : "";
   const effectHintLine =
     "\n🔮 *Se zvonește că unele cufere ascund o **binecuvântare**… sau un **blestem**!*";
+  const timerLine = expiresAt
+    ? `\n⏳ Cufărul dispare <t:${Math.floor(expiresAt / 1000)}:R>.`
+    : "";
   return new EmbedBuilder()
     .setColor(r.color)
     .setTitle(
@@ -2176,10 +2180,10 @@ export function buildChestEmbed(
         "Obolii zac în el, așteptând mâna celui mai rapid.\n\n" +
          `💰 **${gold} Oboli** pentru primul care revendică!${bonusLine}${keyHintLine}${effectHintLine}\n` +
          `🎭 **Alege-ți calea:** aur, experiență${r.key === "bronz" ? "" : ", binecuvântare"}${r.key === "bronz" || r.key === "argint" ? "" : " sau fragment de relicvă"}.\n\n` +
-        "⚡ Fii primul — cufărul dispare în fumul umbrelor!",
+         `⚡ Fii primul — cufărul dispare în fumul umbrelor!${timerLine}`,
     )
     .setImage(image)
-    .setFooter({ text: "Primul click câștigă!" });
+    .setFooter({ text: expiresAt ? "Primul click câștigă • timer live în Discord" : "Primul click câștigă!" });
 }
 
 /**
@@ -2229,6 +2233,7 @@ export function buildExpiredChestEmbed(
 export function buildLockedChestEmbed(
   rarityKey: string,
   gold: number,
+  expiresAt?: number,
 ): EmbedBuilder {
   const rarity =
     CHEST_RARITIES.find((r) => r.key === rarityKey) ?? CHEST_RARITIES[0]!;
@@ -2246,6 +2251,9 @@ export function buildLockedChestEmbed(
   const blessingLine = isRegal
     ? "\n✨ **Binecuvântare garantată** la deschidere — fără blesteme!"
     : "\n✨ *Poate ascunde o **binecuvântare** — cuferele blocate nu blestemă niciodată!*";
+  const timerLine = expiresAt
+    ? `\n⏳ Cufărul dispare <t:${Math.floor(expiresAt / 1000)}:R>.`
+    : "";
 
   return new EmbedBuilder()
     .setColor(rarity.color)
@@ -2262,11 +2270,11 @@ export function buildLockedChestEmbed(
         `${keyEmoji} Necesită: **${keyLabel}**\n` +
         `📜 O găsești în **cufere de chei** sau revendicând **${sourceLabel}**` +
         jackpotLine +
-        `\n\n⚡ Un singur jucător poate folosi cheia — fii primul!`,
+      `\n\n⚡ Un singur jucător poate folosi cheia — fii primul!${timerLine}`,
     )
     .setThumbnail(keyImage)
     .setImage(chestImage)
-    .setFooter({ text: "Cufăr blocat — expiră în 10 minute" });
+    .setFooter({ text: expiresAt ? "Cufăr blocat • timer live în Discord" : "Cufăr blocat — expiră în 10 minute" });
 }
 
 /** Embed for a dedicated key chest — the prize is a key, not Oboli. */

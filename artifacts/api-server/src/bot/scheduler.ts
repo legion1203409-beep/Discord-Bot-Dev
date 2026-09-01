@@ -546,7 +546,7 @@ export async function fireChestForced(
 
     const msg = await channel.send({
       content,
-       embeds: [bce(gold, rarity, mult, variant)],
+       embeds: [bce(gold, rarity, mult, variant, expireAt)],
       components: [lockedRow],
     });
     gs.lastChestMessageId = msg.id;
@@ -554,7 +554,7 @@ export async function fireChestForced(
 
     await sleep(5000);
     if (!gs.claimedChests.has(chestId)) {
-      await msg.edit({ embeds: [bce(gold, rarity, mult, variant)], components: [row] }).catch(() => null);
+       await msg.edit({ embeds: [bce(gold, rarity, mult, variant, expireAt)], components: [row] }).catch(() => null);
     }
 
     logger.info({ chestId, gold, rarity: rarity.key, mult, guildId }, "Chest spawned (forced)");
@@ -665,13 +665,13 @@ export async function fireChest(client: Client, guildId: string, bypassGate = fa
       await msg.edit({ content: frames[i]!.content }).catch(() => null);
     }
     await sleep(frames[frames.length - 1]!.delay);
-    await msg.edit({ content: `${rarity.emoji}✨`, embeds: [buildChestEmbed(gold, rarity, undefined, variant)], components: [lockedRow] }).catch(() => null);
+    await msg.edit({ content: `${rarity.emoji}✨`, embeds: [buildChestEmbed(gold, rarity, undefined, variant, expireAt)], components: [lockedRow] }).catch(() => null);
     await sleep(500);
-    await msg.edit({ content: "", embeds: [buildChestEmbed(gold, rarity, undefined, variant)], components: [lockedRow] }).catch(() => null);
+    await msg.edit({ content: "", embeds: [buildChestEmbed(gold, rarity, undefined, variant, expireAt)], components: [lockedRow] }).catch(() => null);
 
     await sleep(5000);
     if (!gs.claimedChests.has(chestId)) {
-      await msg.edit({ embeds: [buildChestEmbed(gold, rarity, undefined, variant)], components: [row] }).catch(() => null);
+      await msg.edit({ embeds: [buildChestEmbed(gold, rarity, undefined, variant, expireAt)], components: [row] }).catch(() => null);
     }
 
     logger.info({ chestId, gold, rarity: rarity.key, guildId }, "Chest spawned");
@@ -1000,7 +1000,7 @@ export async function rehydrateActiveChest(client: Client, guildId: string): Pro
     // Re-enable the full Cufere 2.0 choice row after a restart. The active
     // record contains the variant in new saves; old records fall back safely.
     await msg.edit({
-      embeds: [buildChestEmbed(record.gold, rarity, record.mult, record.variant)],
+      embeds: [buildChestEmbed(record.gold, rarity, record.mult, record.variant, record.expiresAt)],
       components: [buildChestRow(record.chestId, rarity, record.gold, record.mult)],
     }).catch(() => null);
 
@@ -1184,7 +1184,7 @@ export async function fireLockedChest(client: Client, guildId: string, rarityKey
 
     const msg = await channel.send({
       content: `🔒 **Cufăr Blocat** apare în Regat! Cel cu cheia potrivită îl poate deschide!`,
-      embeds: [buildLockedChestEmbed(rarity.key, gold)],
+       embeds: [buildLockedChestEmbed(rarity.key, gold, expiresAt)],
       components: [row],
     });
 

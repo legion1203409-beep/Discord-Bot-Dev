@@ -1009,13 +1009,96 @@ async function handleMisiune(interaction: ChatInputCommandInteraction) {
   await interaction.editReply({ embeds: [buildMissionEmbed(byKey, today)] });
 }
 
+const PERSONAL_CHEST_REFRESH_MS = 10_000;
+
+type PersonalChestRefresh = {
+  message: Message;
+  userId: string;
+  guildId: string;
+  username: string;
+  expiresAt: number;
+  timer: ReturnType<typeof setTimeout>;
+};
+
+const personalChestRefreshes = new Map<string, PersonalChestRefresh>();
+
+function personalChestRefreshKey(guildId: string, userId: string): string {
+  return `${guildId}:${userId}`;
+}
+
+function stopPersonalChestRefresh(key: string): void {
+  const active = personalChestRefreshes.get(key);
+  if (!active) return;
+  clearTimeout(active.timer);
+  personalChestRefreshes.delete(key);
+}
+
+function nextUtcMidnight(): number {
+  const next = new Date();
+  next.setUTCHours(24, 0, 0, 0);
+  return next.getTime();
+}
+
+function schedulePersonalChestRefresh(
+  message: Message,
+  userId: string,
+  guildId: string,
+  username: string,
+): void {
+  const key = personalChestRefreshKey(guildId, userId);
+  stopPersonalChestRefresh(key);
+
+  let state!: PersonalChestRefresh;
+  const refresh = async (): Promise<void> => {
+    if (personalChestRefreshes.get(key) !== state) return;
+    if (Date.now() >= state.expiresAt) {
+      stopPersonalChestRefresh(key);
+      return;
+    }
+
+    const activity = await getPersonalActivity(userId, guildId).catch((err) => {
+      logger.debug({ err, guildId, userId }, "Personal chest refresh failed");
+      return null;
+    });
+    if (!activity || personalChestRefreshes.get(key) !== state) return;
+
+    await message.edit({
+      content: `🕯️ **Cufărul personal al lui ${username}** — progresul se actualizează automat.`,
+      embeds: [buildPersonalChestEmbed(activity, username)],
+      components: [personalChestRow(activity, userId)],
+    }).catch(() => {
+      stopPersonalChestRefresh(key);
+    });
+
+    if (personalChestRefreshes.get(key) === state && !activity.claimed) {
+      state.timer = setTimeout(() => void refresh(), PERSONAL_CHEST_REFRESH_MS);
+    } else {
+      stopPersonalChestRefresh(key);
+    }
+  };
+
+  state = {
+    message,
+    userId,
+    guildId,
+    username,
+    expiresAt: nextUtcMidnight(),
+    timer: setTimeout(() => void refresh(), PERSONAL_CHEST_REFRESH_MS),
+  };
+  personalChestRefreshes.set(key, state);
+}
+
 async function handlePersonalChest(interaction: ChatInputCommandInteraction) {
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-  const activity = await getPersonalActivity(interaction.user.id, interaction.guildId!);
-  await interaction.editReply({
-    embeds: [buildPersonalChestEmbed(activity)],
-    components: [personalChestRow(activity)],
+  const guildId = interaction.guildId!;
+  const activity = await getPersonalActivity(interaction.user.id, guildId);
+  await interaction.reply({
+    content: `🕯️ **Cufărul personal al lui ${interaction.user.username}** — doar această persoană îl poate deschide.`,
+    embeds: [buildPersonalChestEmbed(activity, interaction.user.username)],
+    components: [personalChestRow(activity, interaction.user.id)],
+    allowedMentions: { parse: [] },
   });
+  const message = await interaction.fetchReply();
+  schedulePersonalChestRefresh(message, interaction.user.id, guildId, interaction.user.username);
 }
 
 async function handleFratia(interaction: ChatInputCommandInteraction) {
@@ -3293,7 +3376,16 @@ async function handleBossAbility(interaction: ButtonInteraction, eventId: number
   void persistBossState(activeBoss);
 }
 
-async function handlePersonalChestClaim(interaction: ButtonInteraction) {
+async function handlePersonalChestClaim(interaction: ButtonInteraction, recipientId?: string) {
+  if (!recipientId || recipientId !== interaction.user.id) {
+    await interaction.reply({
+      content: "🔒 Acesta este Cufărul Vegherii Zilnice al altui călător. Doar persoana indicată îl poate deschide.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  stopPersonalChestRefresh(personalChestRefreshKey(interaction.guildId!, interaction.user.id));
   await interaction.deferUpdate();
   const guildId = interaction.guildId!;
   const claimed = await claimPersonalChest(interaction.user.id, guildId);
@@ -3308,8 +3400,8 @@ async function handlePersonalChestClaim(interaction: ButtonInteraction) {
     ...(reward.itemKey ? [addPlayerItem(interaction.user.id, guildId, reward.itemKey)] : []),
   ]);
   await interaction.editReply({
-    embeds: [buildPersonalChestEmbed(claimed)],
-    components: [personalChestRow(claimed)],
+    embeds: [buildPersonalChestEmbed(claimed, interaction.user.username)],
+    components: [personalChestRow(claimed, interaction.user.id)],
   });
   await interaction.followUp({
     content:
@@ -3420,6 +3512,9 @@ async function handleButton(interaction: ButtonInteraction) {
   }
 
   if (id === "personal_chest_claim") return handlePersonalChestClaim(interaction);
+  if (id.startsWith("personal_chest_claim_")) {
+    return handlePersonalChestClaim(interaction, id.replace("personal_chest_claim_", ""));
+  }
   if (id.startsWith("fratia_vote_")) {
     const option = id.replace("fratia_vote_", "");
     if (option === "gold" || option === "xp" || option === "relic") {

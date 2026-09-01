@@ -202,14 +202,18 @@ export async function claimPersonalChest(
   return JSON.parse(result.rows[0].value) as PersonalActivity;
 }
 
-export function buildPersonalChestEmbed(activity: PersonalActivity): EmbedBuilder {
+export function buildPersonalChestEmbed(activity: PersonalActivity, recipientName?: string): EmbedBuilder {
   const reward = personalChestReward(activity);
   const score = personalChestScore(activity);
+  const nextReset = new Date();
+  nextReset.setUTCHours(24, 0, 0, 0);
   return new EmbedBuilder()
     .setColor(0x3d2c2c)
     .setTitle("🕯️ Cufărul Vegherii Zilnice")
     .setDescription(
-      "Un cufăr personal se ridică din cenușă pentru faptele tale de astăzi.\n\n" +
+      (recipientName
+        ? `Acesta este cufărul personal al lui **${recipientName}**. Doar el îl poate deschide.\n\n`
+        : "Un cufăr personal se ridică din cenușă pentru faptele tale de astăzi.\n\n") +
         `**Puterea vegherii:** ${score}/18 · rang **${reward.tier}/5**\n` +
         `💬 Mesaje: **${activity.messages}**\n` +
         `⚔️ Monștri răpuși: **${activity.kills}**\n` +
@@ -218,7 +222,7 @@ export function buildPersonalChestEmbed(activity: PersonalActivity): EmbedBuilde
         `🗝️ Chei obținute: **${activity.keys}**\n\n` +
         `🎁 Pradă estimată: **${reward.gold} Oboli** și **${reward.xp} XP**` +
         (reward.itemKey ? `\n💎 Bonus de rang: **${ITEMS[reward.itemKey as keyof typeof ITEMS]?.label ?? "fragment de relicvă"}**` : "") +
-        "\n\n*O singură deschidere pe zi. Activitatea se resetează la miezul nopții UTC.*",
+        `\n\n*O singură deschidere pe zi. Activitatea se resetează <t:${Math.floor(nextReset.getTime() / 1000)}:R>.*`,
     )
     .setImage(CHEST_WORLD_IMG.personal)
     .setFooter({ text: BRAND_FOOTER });
@@ -226,11 +230,12 @@ export function buildPersonalChestEmbed(activity: PersonalActivity): EmbedBuilde
 
 export function personalChestRow(
   activity: PersonalActivity,
+  recipientId?: string,
 ): ActionRowBuilder<ButtonBuilder> {
   const available = !activity.claimed && personalChestScore(activity) > 0;
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
-      .setCustomId("personal_chest_claim")
+      .setCustomId(recipientId ? `personal_chest_claim_${recipientId}` : "personal_chest_claim")
       .setLabel(activity.claimed ? "Cufăr deschis astăzi" : "Deschide cufărul personal")
       .setEmoji(activity.claimed ? "✅" : "🕯️")
       .setStyle(available ? ButtonStyle.Success : ButtonStyle.Secondary)
@@ -335,7 +340,7 @@ export function buildFratiaVoteEmbed(vote: FratiaVote): EmbedBuilder {
     .setDescription(
       "Pașii serverului au umplut chivotul. Acum Frăția hotărăște ce binecuvântare se împarte.\n\n" +
         FRATIA_OPTIONS.map((option) => `${option.emoji} **${option.label}** — ${counts[option.id] ?? 0} voturi`).join("\n") +
-        `\n\n${status}`,
+         `\n\n⏱️ Apărut <t:${Math.floor(vote.openedAt / 1000)}:R> · ${status}`,
     )
     .setImage(CHEST_WORLD_IMG.fratie)
     .setFooter({ text: "Un singur glas de călător • " + BRAND_FOOTER });
@@ -465,10 +470,12 @@ export function buildSeasonalChestEmbed(
     .setDescription(
       "O rămășiță de sărbătoare blestemată a trecut prin Regat și a lăsat o comoară în urmă.\n\n" +
         `💰 **${meta.gold} Oboli** · ✨ **${meta.xp} XP** · 💎 un fragment de relicvă\n` +
-        (claimed ? "\n✅ Comoara a fost revendicată." : "\n⚡ Cufărul dispare când expiră perioada sa."),
+         (claimed
+           ? "\n✅ Comoara a fost revendicată."
+           : `\n⚡ Cufărul rămâne disponibil până la <t:${Math.floor(chest.expiresAt / 1000)}:R>.`),
     )
     .setImage(meta.image)
-    .setFooter({ text: claimed ? "Sezon încheiat • " + BRAND_FOOTER : "Eveniment sezonier • expiră în 15 minute" });
+    .setFooter({ text: claimed ? "Sezon încheiat • " + BRAND_FOOTER : "Eveniment sezonier • timer live în Discord" });
 }
 
 export function seasonalChestRow(chestId: string, claimed = false): ActionRowBuilder<ButtonBuilder> {
@@ -584,7 +591,7 @@ export interface HiddenChest {
   claimed: boolean;
 }
 
-export function buildOracleClueEmbed(answer: string): EmbedBuilder {
+export function buildOracleClueEmbed(answer: string, expiresAt?: number): EmbedBuilder {
   const clues: Record<string, string> = {
     cenusa: "Acolo unde totul se sfârșește, cenușa păstrează primul cuvânt al porții.",
     ecou: "Al treilea ecou nu strigă; el repetă numele lucrului care nu moare.",
@@ -596,7 +603,8 @@ export function buildOracleClueEmbed(answer: string): EmbedBuilder {
     .setTitle("🔮 Șoapta Oracolului — un cufăr ascuns")
     .setDescription(
       `*${clues[answer] ?? clues.cenusa}*\n\n` +
-        "Răspunde prin reply la acest mesaj cu un singur cuvânt. Primul răspuns corect va deschide drumul.",
+        "Răspunde prin reply la acest mesaj cu un singur cuvânt. Primul răspuns corect va deschide drumul." +
+        (expiresAt ? `\n\n⏳ Indiciul dispare <t:${Math.floor(expiresAt / 1000)}:R>.` : ""),
     )
     .setImage(CHEST_WORLD_IMG.oracle)
     .setFooter({ text: "Cufărul Șoaptelor Oracolului • " + BRAND_FOOTER });
@@ -609,10 +617,10 @@ export function buildHiddenChestEmbed(chest: HiddenChest, claimed = false): Embe
     .setDescription(
       claimed
         ? "Poarta secretă s-a închis. Comoara a fost luată."
-        : `Ai dezlegat șoapta. Înăuntru se află **${chest.rewardGold} Oboli**, **${chest.rewardXp} XP** și un fragment de relicvă.\n\n*Doar primul care atinge sigiliul îl poate revendica.*`,
+        : `Ai dezlegat șoapta. Înăuntru se află **${chest.rewardGold} Oboli**, **${chest.rewardXp} XP** și un fragment de relicvă.\n\n*Doar primul care atinge sigiliul îl poate revendica.*\n\n⏳ Sigiliul se închide <t:${Math.floor(chest.expiresAt / 1000)}:R>.`,
     )
     .setImage(CHEST_WORLD_IMG.oracle)
-    .setFooter({ text: "Cufăr secret • expiră în 20 de minute" });
+    .setFooter({ text: "Cufăr secret • timer live în Discord" });
 }
 
 export function hiddenChestRow(chestId: string, claimed = false): ActionRowBuilder<ButtonBuilder> {
@@ -688,7 +696,8 @@ export async function maybeHandleOracleClue(
   if (!(message.channel instanceof TextChannel)) return;
   const answers = ["cenusa", "ecou", "luna", "umbra"];
   const answer = answers[Math.floor(Math.random() * answers.length)]!;
-  const clueMessage = await message.channel.send({ embeds: [buildOracleClueEmbed(answer)] });
+  const clueExpiresAt = Date.now() + 10 * 60 * 1000;
+  const clueMessage = await message.channel.send({ embeds: [buildOracleClueEmbed(answer, clueExpiresAt)] });
   await saveState(stateKey(guildId, "oracle_clue"), {
     status: "active",
     guildId,
@@ -696,7 +705,7 @@ export async function maybeHandleOracleClue(
     channelId: message.channel.id,
     answer,
     createdAt: Date.now(),
-    expiresAt: Date.now() + 10 * 60 * 1000,
+    expiresAt: clueExpiresAt,
   });
 }
 
