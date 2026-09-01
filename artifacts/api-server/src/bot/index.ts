@@ -1709,6 +1709,129 @@ Obți cheia revendicând cufere de chei sau învingând evenimente!`,
   logger.info({ discordId: interaction.user.id, rarityKey, gold: totalGold, baseGold: result.gold, mult, result: "success" }, "Trader chest opened");
 }
 
+const TRADER_STYLE_BY_RARITY: Record<string, ButtonStyle> = {
+  argint: ButtonStyle.Secondary,
+  aur: ButtonStyle.Primary,
+  mitic: ButtonStyle.Primary,
+  regal: ButtonStyle.Danger,
+  cavaler: ButtonStyle.Danger,
+};
+
+function traderMainEmbed(): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(0xc9a227)
+    .setAuthor({ name: "Taraba din Umbră • Regatul Cenușii" })
+    .setTitle("🏪 Negustorul Misterios al Cenușii")
+    .setDescription(
+      "*Un bătrân cu pălăria lăsată pe ochi te cântărește din umbră, fără să-și ridice privirea...*\n\n" +
+        "> 🗣️ *«Am cufere smulse din lăcomia țarilor morți... dar norocul ți-l vinzi singur.*\n" +
+        "> *O cheie pentru un cufăr. Poate se deschide, poate cheia se frânge. Așa-i jocul Cenușii.»*\n\n" +
+        "Alege un cufăr de mai jos — **mai întâi îl vei vedea în privat**, apoi decizi dacă îți încerci norocul.",
+    )
+    .addFields(
+      {
+        name: "🎲 Norocul Negustorului",
+        value:
+          "🟢 **30%** — cheia se rotește, cufărul se deschide, Obolii sunt ai tăi.\n" +
+          "🔴 **70%** — cheia se frânge în broască și comoara rămâne ferecată.",
+      },
+      {
+        name: "🗝️ Ofertele de azi",
+        value:
+          "⚙️ **Cufărul Cenușii** — necesită 🗝️ Cheia Umbrei Frânte\n" +
+          "🌑 **Cufărul Nocturn** — necesită 🜲 Cheia Cenușii Regale\n" +
+          "💀 **Cufărul Oaselor** — necesită 🌙 Cheia Nocturnă\n" +
+          "🌀 **Cufărul Fumului** — necesită 🦴 Cheia Oaselor Tăcute\n" +
+          "🛡️ **Cufărul Cavalerului** — necesită ❄️ Cheia Fumului Înghețat",
+      },
+    )
+    .setImage(IMG.trader)
+    .setFooter({ text: `Selectează un cufăr pentru detalii private • ${BRAND_FOOTER}` });
+}
+
+function traderMainRows(): ActionRowBuilder<ButtonBuilder>[] {
+  const rows: ActionRowBuilder<ButtonBuilder>[] = [];
+  for (const offer of TRADER_OFFERS) {
+    rows.push(
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`trader_${offer.rarityKey}`)
+          .setLabel(`${offer.emoji} ${offer.label}`)
+          .setStyle(TRADER_STYLE_BY_RARITY[offer.rarityKey] ?? ButtonStyle.Primary),
+      ),
+    );
+  }
+  rows[0]?.addComponents(
+    new ButtonBuilder()
+      .setCustomId("trader_auction")
+      .setLabel("⚒️ Târgul Negru")
+      .setStyle(ButtonStyle.Danger),
+  );
+  return rows;
+}
+
+function traderMainEmbeds(): EmbedBuilder[] {
+  const traderOfferEmbeds = TRADER_OFFERS.map((offer) => {
+    const range = LOCKED_CHEST_GOLD[offer.rarityKey] ?? { min: 0, max: 0 };
+    const previewGold = Math.round((range.min + range.max) / 2);
+    return buildLockedChestEmbed(offer.rarityKey, previewGold)
+      .setFooter({ text: `Oferta Negustorului • ${offer.label} • ${BRAND_FOOTER}` });
+  });
+  return [traderMainEmbed(), ...traderOfferEmbeds];
+}
+
+function traderSelectionRow(rarityKey: string): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`trader_open_${rarityKey}`)
+      .setLabel("Deschide cufărul")
+      .setEmoji("🔓")
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId("trader_back")
+      .setLabel("Înapoi la Negustor")
+      .setEmoji("↩️")
+      .setStyle(ButtonStyle.Secondary),
+  );
+}
+
+async function handleTraderSelect(interaction: ButtonInteraction, rarityKey: string) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const offer = TRADER_OFFERS.find((item) => item.rarityKey === rarityKey);
+  if (!offer) {
+    await interaction.editReply({ content: "❌ Cufărul ales nu mai este disponibil." });
+    return;
+  }
+
+  const range = LOCKED_CHEST_GOLD[rarityKey] ?? { min: 0, max: 0 };
+  const previewGold = Math.round((range.min + range.max) / 2);
+  const chestEmbed = buildLockedChestEmbed(rarityKey, previewGold);
+  chestEmbed
+    .setDescription(
+      `${chestEmbed.data.description ?? ""}\n\n` +
+        "🎲 **Decizia este a ta:**\n" +
+        "🟢 Dacă apeși **Deschide**, consumi cheia și ai **30% șansă** să deschizi cufărul.\n" +
+        "🔴 În celelalte cazuri, cheia se frânge și nu primești comoara.\n" +
+        "↩️ Dacă nu vrei să riști, apasă **Înapoi la Negustor**.",
+    )
+    .setFooter({ text: `Ai ales ${offer.label} • ${BRAND_FOOTER}` });
+
+  await interaction.editReply({
+    content: `🏪 **Negustorul îți arată în privat ${offer.label}.**`,
+    embeds: [chestEmbed],
+    components: [traderSelectionRow(rarityKey)],
+  });
+}
+
+async function handleTraderBack(interaction: ButtonInteraction) {
+  await interaction.deferUpdate();
+  await interaction.editReply({
+    content: "🏪 Ai revenit la meniul principal al Negustorului.",
+    embeds: traderMainEmbeds(),
+    components: traderMainRows(),
+  });
+}
+
 async function handleJoin(interaction: ButtonInteraction, eventId: number) {
   await interaction.deferReply({ ephemeral: true });
   const guildId = interaction.guildId!;
@@ -3145,9 +3268,13 @@ async function handleButton(interaction: ButtonInteraction) {
     return handleAuctionButton(interaction);
   }
 
+  if (id === "trader_back") return handleTraderBack(interaction);
+  if (id.startsWith("trader_open_")) {
+    return handleTraderClaim(interaction, id.replace("trader_open_", ""));
+  }
   if (id.startsWith("trader_")) {
     const m = id.match(/^trader_(\w+)$/);
-    if (m) return handleTraderClaim(interaction, m[1]!);
+    if (m) return handleTraderSelect(interaction, m[1]!);
   }
 
   if (id === "personal_chest_claim") return handlePersonalChestClaim(interaction);
@@ -3280,67 +3407,8 @@ async function setupTrader(client: Client, guildId: string): Promise<void> {
       return;
     }
 
-    const embed = new EmbedBuilder()
-      .setColor(0xc9a227)
-      .setAuthor({ name: "Taraba din Umbră • Regatul Cenușii" })
-      .setTitle("🏪 Negustorul Misterios al Cenușii")
-      .setDescription(
-        "*Un bătrân cu pălăria lăsată pe ochi te cântărește din umbră, fără să-și ridice privirea...*\n\n" +
-        "> 🗣️ *«Am cufere smulse din lăcomia țarilor morți... dar norocul ți-l vinzi singur.*\n" +
-        "> *O cheie pentru un cufăr. Poate se deschide, poate cheia se frânge. Așa-i jocul Cenușii.»*\n\n" +
-        "Alege un cufăr de mai jos — **dacă ai cheia potrivită**, negustorul îți încearcă norocul.",
-      )
-      .addFields(
-        {
-          name: "🎲 Norocul Negustorului",
-          value:
-            "🟢 **30%** — cheia se rotește, cufărul se deschide, Obolii sunt ai tăi.\n" +
-            "🔴 **70%** — cheia se frânge în broască și comoara rămâne ferecată.",
-        },
-        {
-          name: "🗝️ Ofertele de azi",
-          value:
-            "⚙️ **Cufărul Cenușii** — necesită 🗝️ Cheia Umbrei Frânte\n" +
-            "🌑 **Cufărul Nocturn** — necesită 🜲 Cheia Cenușii Regale\n" +
-            "💀 **Cufărul Oaselor** — necesită 🌙 Cheia Nocturnă\n" +
-            "🌀 **Cufărul Fumului** — necesită 🦴 Cheia Oaselor Tăcute\n" +
-            "🛡️ **Cufărul Cavalerului** — necesită ❄️ Cheia Fumului Înghețat",
-        },
-      )
-      .setImage(IMG.trader)
-      .setFooter({ text: `Deschide doar cu cheile pe care le ai • ${BRAND_FOOTER}` });
-
-    const traderOfferEmbeds = TRADER_OFFERS.map((offer) => {
-      const range = LOCKED_CHEST_GOLD[offer.rarityKey] ?? { min: 0, max: 0 };
-      const previewGold = Math.round((range.min + range.max) / 2);
-      return buildLockedChestEmbed(offer.rarityKey, previewGold)
-        .setFooter({ text: `Oferta Negustorului • ${offer.label} • ${BRAND_FOOTER}` });
-    });
-    const traderEmbeds = [embed, ...traderOfferEmbeds];
-
-    const STYLE_BY_RARITY: Record<string, ButtonStyle> = {
-      argint: ButtonStyle.Secondary,
-      aur:    ButtonStyle.Primary,
-      mitic:  ButtonStyle.Primary,
-      regal:  ButtonStyle.Danger,
-      cavaler: ButtonStyle.Danger,
-    };
-
-    const rows: ActionRowBuilder<ButtonBuilder>[] = [];
-    for (const offer of TRADER_OFFERS) {
-      const btn = new ButtonBuilder()
-        .setCustomId(`trader_${offer.rarityKey}`)
-        .setLabel(`${offer.emoji} ${offer.label}`)
-        .setStyle(STYLE_BY_RARITY[offer.rarityKey] ?? ButtonStyle.Primary);
-      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(btn);
-      rows.push(row);
-    }
-    rows[0]?.addComponents(
-      new ButtonBuilder()
-        .setCustomId("trader_auction")
-        .setLabel("⚒️ Târgul Negru")
-        .setStyle(ButtonStyle.Danger),
-    );
+    const traderEmbeds = traderMainEmbeds();
+    const rows = traderMainRows();
 
     let msgId = getTraderMessageId(guildId);
     if (!msgId) {
