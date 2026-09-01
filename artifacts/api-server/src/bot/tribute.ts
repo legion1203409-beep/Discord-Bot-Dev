@@ -11,7 +11,6 @@ import {
 } from "discord.js";
 import { pool } from "@workspace/db";
 import {
-  addPlayerReputation,
   ensureBotStateTable,
   upsertPlayer,
 } from "./db";
@@ -20,9 +19,9 @@ import { logger } from "../lib/logger";
 
 const CONFIG_PREFIX = "tribute:config:";
 const EVENT_PREFIX = "tribute:event:";
-const DEFAULT_INTERVAL_MINUTES = 180;
-const MIN_INTERVAL_MINUTES = 30;
-const MAX_INTERVAL_MINUTES = 24 * 60;
+const DEFAULT_INTERVAL_MINUTES = 24 * 60;
+const MIN_INTERVAL_MINUTES = DEFAULT_INTERVAL_MINUTES;
+const MAX_INTERVAL_MINUTES = DEFAULT_INTERVAL_MINUTES;
 export const TRIBUTE_WINDOW_MINUTES = 10;
 const TRIBUTE_WINDOW_MS = TRIBUTE_WINDOW_MINUTES * 60_000;
 const WINNER_BUFF_MS = 30 * 60_000;
@@ -133,7 +132,7 @@ export async function saveTributeConfig(
   const config: TributeConfig = {
     guildId,
     channelId,
-    intervalMinutes: Math.max(MIN_INTERVAL_MINUTES, Math.min(MAX_INTERVAL_MINUTES, Math.floor(intervalMinutes))),
+    intervalMinutes: DEFAULT_INTERVAL_MINUTES,
     enabled: true,
   };
   await writeState(stateKey(CONFIG_PREFIX, guildId), config);

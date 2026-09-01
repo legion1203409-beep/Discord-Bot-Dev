@@ -50,11 +50,11 @@ import { getRewardMultipliers, getCombatModifiers, formatActiveEffects, formatCo
 import { SUPER_ADMIN_ID } from "./constants";
 import {
   ensureTributePlayer,
+  fireTribute,
   handleTributeButton,
   handleTributeContribution,
   restartTributeScheduler,
   saveTributeConfig,
-  tributeIntervalBounds,
 } from "./tribute";
 import {
   upsertPlayer,
@@ -545,21 +545,13 @@ const slashCommands = [
     ),
   new SlashCommandBuilder()
     .setName("settribut")
-    .setDescription("🩸 [Admin] Configurează canalul și intervalul pentru Tributul Regatului.")
+    .setDescription("🩸 [Admin] Configurează canalul pentru Tributul Regatului (apare la 24 de ore).")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addChannelOption((opt) =>
       opt.setName("canal")
         .setDescription("Canalul în care apare tributul")
         .setRequired(true),
-    )
-    .addIntegerOption((opt) => {
-      const bounds = tributeIntervalBounds();
-      return opt.setName("interval")
-        .setDescription(`Minute între triburile noi (${bounds.min}-${bounds.max})`)
-        .setMinValue(bounds.min)
-        .setMaxValue(bounds.max)
-        .setRequired(false);
-    }),
+    ),
 ];
 
 async function avatarById(discordId: string): Promise<string | null> {
@@ -1379,15 +1371,16 @@ async function handleSetTribut(interaction: ChatInputCommandInteraction) {
     return;
   }
 
-  const bounds = tributeIntervalBounds();
-  const intervalMinutes = interaction.options.getInteger("interval") ?? bounds.default;
   try {
-    const config = await saveTributeConfig(interaction.guildId!, channel.id, intervalMinutes);
-    if (botClient) await restartTributeScheduler(botClient, interaction.guildId!);
+    const config = await saveTributeConfig(interaction.guildId!, channel.id);
+    if (botClient) {
+      await restartTributeScheduler(botClient, interaction.guildId!);
+      await fireTribute(botClient, interaction.guildId!);
+    }
     await interaction.editReply({
       content:
-        `✅ **Tributul Regatului** va apărea în <#${channel.id}> la fiecare **${config.intervalMinutes} minute**.\n` +
-        `Fiecare tribut rămâne deschis ${10} minute pentru contribuții comune.`,
+        `✅ **Tributul Regatului** a fost publicat acum în <#${channel.id}>.\n` +
+        `Următorul tribut va apărea peste **24 de ore** și fiecare tribut rămâne deschis **10 minute**.`,
     });
     logger.info(
       { channelId: channel.id, intervalMinutes: config.intervalMinutes, userId: interaction.user.id, guildId: interaction.guildId },
