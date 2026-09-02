@@ -444,6 +444,7 @@ export interface SeasonalChest {
   openedAt: number;
   expiresAt: number;
   claimed: boolean;
+  cleanupAt?: number;
 }
 
 export const SEASONAL_CHESTS = [
@@ -455,6 +456,7 @@ export const SEASONAL_CHESTS = [
 
 export type SeasonalSeason = typeof SEASONAL_CHESTS[number]["season"];
 export const SEASONAL_CHEST_INTERVAL_MS = 60 * 60 * 1000;
+export const SEASONAL_CHEST_MESSAGE_RETENTION_MS = 20 * 60 * 1000;
 
 export function seasonalForBucket(bucket = Math.floor(Date.now() / SEASONAL_CHEST_INTERVAL_MS)) {
   return SEASONAL_CHESTS[bucket % SEASONAL_CHESTS.length]!;
@@ -502,18 +504,39 @@ async function loadSeasonalChest(guildId: string, bucket = Math.floor(Date.now()
   return loadState<SeasonalChest>(stateKey(guildId, `seasonal:${seasonalId(bucket)}`));
 }
 
+async function deleteSeasonalChestMessage(client: Client, chest: SeasonalChest): Promise<void> {
+  const channel = await client.channels.fetch(chest.channelId).catch(() => null);
+  if (!(channel instanceof TextChannel)) return;
+  const message = await channel.messages.fetch(chest.messageId).catch(() => null);
+  await message?.delete().catch(() => null);
+}
+
+export function scheduleSeasonalChestMessageDeletion(client: Client, chest: SeasonalChest): void {
+  const cleanupAt = chest.cleanupAt ?? Date.now() + SEASONAL_CHEST_MESSAGE_RETENTION_MS;
+  const timer = setTimeout(() => {
+    void deleteSeasonalChestMessage(client, chest).catch(() => null);
+  }, Math.max(0, cleanupAt - Date.now()));
+  timer.unref?.();
+}
+
 async function expireSeasonalChest(client: Client, chest: SeasonalChest): Promise<void> {
   if (chest.claimed) return;
   const current = await loadSeasonalChest(chest.guildId);
   if (!current || current.id !== chest.id || current.claimed || current.expiresAt > Date.now()) return;
+  const expired = {
+    ...current,
+    cleanupAt: Date.now() + SEASONAL_CHEST_MESSAGE_RETENTION_MS,
+  };
+  await saveState(stateKey(expired.guildId, `seasonal:${expired.id}`), expired);
   const channel = await client.channels.fetch(chest.channelId).catch(() => null);
   if (channel instanceof TextChannel) {
     const message = await channel.messages.fetch(chest.messageId).catch(() => null);
     await message?.edit({
-      embeds: [buildSeasonalChestEmbed(chest)],
-      components: [seasonalChestRow(chest.id, true)],
+      embeds: [buildSeasonalChestEmbed(expired)],
+      components: [seasonalChestRow(expired.id, true)],
     }).catch(() => null);
   }
+  scheduleSeasonalChestMessageDeletion(client, expired);
 }
 
 export async function spawnSeasonalChest(client: Client, guildId: string): Promise<SeasonalChest | null> {
@@ -552,7 +575,11 @@ export async function spawnSeasonalChest(client: Client, guildId: string): Promi
 
 export async function rehydrateSeasonalChest(client: Client, guildId: string): Promise<void> {
   const chest = await loadSeasonalChest(guildId);
-  if (!chest || chest.claimed) return;
+  if (!chest) return;
+  if (chest.claimed) {
+    if (chest.cleanupAt) scheduleSeasonalChestMessageDeletion(client, chest);
+    return;
+  }
   if (chest.expiresAt <= Date.now()) {
     await expireSeasonalChest(client, chest);
     return;
@@ -571,12 +598,15 @@ export async function claimSeasonalChest(
   await ensureBotStateTable();
   const result = await pool.query<{ value: string }>(
     `UPDATE bot_state
-     SET value = jsonb_set(value::jsonb, '{claimed}', 'true'::jsonb, true)::text,
+      SET value = jsonb_set(
+        jsonb_set(value::jsonb, '{claimed}', 'true'::jsonb, true),
+        '{cleanupAt}', to_jsonb($3::bigint), true
+      )::text,
          updated_at = now()
      WHERE key = $1 AND COALESCE((value::jsonb->>'claimed')::boolean, false) = false
        AND (value::jsonb->>'expiresAt')::bigint > $2
      RETURNING value`,
-    [key, Date.now()],
+    [key, Date.now(), Date.now() + SEASONAL_CHEST_MESSAGE_RETENTION_MS],
   );
   return result.rows[0] ? JSON.parse(result.rows[0].value) as SeasonalChest : null;
 }

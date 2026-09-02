@@ -62,6 +62,7 @@ import {
   personalChestReward,
   personalChestScore,
   personalChestTier,
+  SEASONAL_CHEST_MESSAGE_RETENTION_MS,
   seasonalForBucket,
 } from "../chest-expansions";
 
@@ -100,6 +101,10 @@ describe("chest expansion pure mechanics", () => {
     const seasons = [0, 1, 2, 3].map((bucket) => seasonalForBucket(bucket).season);
     expect(new Set(seasons).size).toBe(4);
     expect(seasonalForBucket(4).season).toBe(seasons[0]);
+  });
+
+  it("keeps the completed seasonal message for twenty minutes", () => {
+    expect(SEASONAL_CHEST_MESSAGE_RETENTION_MS).toBe(20 * 60 * 1000);
   });
 });
 

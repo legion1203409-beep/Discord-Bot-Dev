@@ -249,6 +249,7 @@ import {
   buildSeasonalChestEmbed,
   seasonalChestRow,
   claimSeasonalChest,
+  scheduleSeasonalChestMessageDeletion,
   SEASONAL_CHESTS,
   buildHiddenChestEmbed,
   claimHiddenChest,
@@ -3571,6 +3572,7 @@ async function handleSeasonalChestClaim(interaction: ButtonInteraction, chestId:
     embeds: [buildSeasonalChestEmbed(chest, true)],
     components: [seasonalChestRow(chest.id, true)],
   }).catch(() => null);
+  scheduleSeasonalChestMessageDeletion(interaction.client, chest);
   await interaction.followUp({
     content: `🎁 Ai revendicat **${meta.label}**: **${meta.gold} Oboli**, **${meta.xp} XP** și un **Fragment de Coroană**!`,
     flags: MessageFlags.Ephemeral,
