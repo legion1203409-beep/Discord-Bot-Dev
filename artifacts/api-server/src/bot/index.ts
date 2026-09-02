@@ -128,6 +128,7 @@ import {
   buyEquipment,
   upgradeEquipment,
   equipEquipment,
+  grantEquipment,
   addPlayerItem,
   consumePlayerItems,
   advanceChestPity,
@@ -229,6 +230,9 @@ import {
   shopEquipmentRows,
   shopEquipmentDetailRows,
   buildEquipmentDetailEmbed,
+  buildInventoryEmbeds,
+  inventoryRows,
+  buildEquipmentLootEmbed,
   TALISMANS,
   talismanValue,
   talismanUpgradeCost,
@@ -239,6 +243,7 @@ import {
   rollItemDrop,
   rollMaterialDrop,
   rollEquipmentMaterialDrop,
+  rollEquipmentDrop,
   EQUIPMENT,
   equipmentCost,
   equipmentLevel,
@@ -476,6 +481,7 @@ const slashCommands = [
       sub.setName("servere").setDescription("🏆 Clasamentul regatelor — cele mai puternice servere."),
     ),
   new SlashCommandBuilder().setName("magazin").setDescription("🏺 Forja Cenușii — îmbunătățiri permanente, mereu disponibilă."),
+  new SlashCommandBuilder().setName("inventar").setDescription("🎒 Vezi armele, armurile și materialele tale."),
   new SlashCommandBuilder().setName("clasa").setDescription("🧬 Alege-ți clasa RPG (o poți reseta din /magazin)."),
   new SlashCommandBuilder().setName("companion").setDescription("🐾 Vezi companionul tău (cumpără și fă îmbunătățiri din /magazin)."),
   new SlashCommandBuilder().setName("ajutor").setDescription("❓ Ghidul comenzilor din Regatul Cenușii."),
@@ -610,6 +616,19 @@ async function handleProfil(interaction: ChatInputCommandInteraction) {
   ]);
   await interaction.editReply({
     embeds: [buildProfileEmbed(p, undefined, interaction.user.displayAvatarURL({ size: 256 }), items)],
+  });
+}
+
+async function handleInventar(interaction: ChatInputCommandInteraction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const guildId = interaction.guildId!;
+  const [player, items] = await Promise.all([
+    upsertPlayer(interaction.user.id, guildId, interaction.user.username),
+    getPlayerItems(interaction.user.id, guildId),
+  ]);
+  await interaction.editReply({
+    embeds: buildInventoryEmbeds(player, items),
+    components: inventoryRows(player),
   });
 }
 
@@ -2320,12 +2339,16 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
   const equipmentMaterialDrop = result.monsterDefeated
     ? rollEquipmentMaterialDrop(p.monsterRarity)
     : null;
+  const equipmentDrop = result.monsterDefeated
+    ? rollEquipmentDrop(p.monsterLevel, p.monsterRarity)
+    : null;
   const corruptedKeyDrop = result.monsterDefeated && randomCorruptedKeyDrop();
   // Track everything farmed this event so the final summary can show it
   const itemsFarmed: Record<string, number> = { ...(p.itemsFarmed ?? {}) };
   if (itemDrop) itemsFarmed[itemDrop] = (itemsFarmed[itemDrop] ?? 0) + 1;
   if (materialDrop) itemsFarmed[materialDrop] = (itemsFarmed[materialDrop] ?? 0) + 1;
   if (equipmentMaterialDrop) itemsFarmed[equipmentMaterialDrop] = (itemsFarmed[equipmentMaterialDrop] ?? 0) + 1;
+  if (equipmentDrop) itemsFarmed[equipmentDrop] = (itemsFarmed[equipmentDrop] ?? 0) + 1;
   const cristaHeal =
     result.oboliGained > 0 && !result.playerDied && talismanKey === "crista_vietii"
       ? talismanValue("crista_vietii", talismanLevel)
@@ -2342,6 +2365,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
     manaFlowLine +
     (materialDrop ? `\n${ITEMS[materialDrop].emoji} **${ITEMS[materialDrop].label}** a căzut din monstru — material de evoluție!` : "") +
     (equipmentMaterialDrop ? `\n${ITEMS[equipmentMaterialDrop].emoji} **${ITEMS[equipmentMaterialDrop].label}** a căzut din monstru — material de echipament!` : "") +
+    (equipmentDrop ? `\n✨ ${ITEMS[equipmentDrop].emoji} **${ITEMS[equipmentDrop].label}** a căzut din monstru!` : "") +
     (corruptedKeyDrop ? "\n☠️ **Cheia Pângărită** a ieșit din cenușă!" : "");
 
   if (result.playerDied) {
@@ -2381,6 +2405,12 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
       ...(itemDrop ? [addPlayerItem(p.discordId, guildId, itemDrop)] : []),
       ...(materialDrop ? [addPlayerItem(p.discordId, guildId, materialDrop)] : []),
       ...(equipmentMaterialDrop ? [addPlayerItem(p.discordId, guildId, equipmentMaterialDrop)] : []),
+      ...(equipmentDrop
+        ? [
+            addPlayerItem(p.discordId, guildId, equipmentDrop),
+            grantEquipment(p.discordId, guildId, equipmentDrop),
+          ]
+        : []),
       ...(corruptedKeyDrop ? [addPlayerKey(p.discordId, guildId, "pangarita")] : []),
       ...completedQuests.map((k) => addPlayerItem(p.discordId, guildId, DAILY_QUESTS[k].reward.itemKey, DAILY_QUESTS[k].reward.qty)),
     ]).catch((err) => logger.error({ err, discordId: p.discordId, guildId }, "Async combat writes failed"));
@@ -2424,9 +2454,16 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
     const lvlDropParts = [
       ...(itemDrop ? [`${ITEMS[itemDrop].emoji} **${ITEMS[itemDrop].label}** a căzut din monstru!`] : []),
       ...(materialDrop ? [`${ITEMS[materialDrop].emoji} **${ITEMS[materialDrop].label}** a căzut din monstru — material de evoluție!`] : []),
+      ...(equipmentDrop ? [`✨ ${ITEMS[equipmentDrop].emoji} **${ITEMS[equipmentDrop].label}** a căzut din monstru!`] : []),
     ];
     const lvlDropLine = lvlDropParts.length > 0 ? lvlDropParts.join("\n") : undefined;
-    await interaction.editReply({ embeds: [buildLevelupEmbed(Math.floor(result.newMonsterLevel / LEVELUP_INTERVAL), lvlDropLine)], components: levelupRows(eventId) });
+    await interaction.editReply({
+      embeds: [
+        buildLevelupEmbed(Math.floor(result.newMonsterLevel / LEVELUP_INTERVAL), lvlDropLine),
+        ...(equipmentDrop ? [buildEquipmentLootEmbed(equipmentDrop)] : []),
+      ],
+      components: levelupRows(eventId),
+    });
     return;
   }
 
@@ -2447,7 +2484,13 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
     bossCharge: result.newBossCharge,
   });
 
-  await interaction.editReply({ embeds: [buildCombatEmbed(updated, extra, interaction.user.displayAvatarURL({ size: 256 }), plAfterMana)], components: [combatRow(eventId, updated)] });
+  await interaction.editReply({
+    embeds: [
+      buildCombatEmbed(updated, extra, interaction.user.displayAvatarURL({ size: 256 }), plAfterMana),
+      ...(equipmentDrop ? [buildEquipmentLootEmbed(equipmentDrop)] : []),
+    ],
+    components: [combatRow(eventId, updated)],
+  });
 }
 
 async function handleRetreat(interaction: ButtonInteraction, eventId: number) {
@@ -3386,6 +3429,11 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
     const bossItemKey = (activeBoss.rarity === "epic" || activeBoss.rarity === "legendar")
       ? "inima_abisului"
       : "coama_dragonului";
+    const bossEquipmentDrops = new Map<string, EquipmentKey>();
+    for (const discordId of activeBoss.damageBy.keys()) {
+      const drop = rollEquipmentDrop(activeBoss.level, "boss");
+      if (drop) bossEquipmentDrops.set(discordId, drop);
+    }
     await Promise.all([
       ...[...bossRewards.entries()].flatMap(([discordId, r]) => [
         addPlayerReputation(discordId, guildId, r.rep),
@@ -3397,6 +3445,10 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
       ...[...activeBoss.damageBy.keys()].flatMap((discordId) => [
         addPlayerItem(discordId, guildId, "fragment_arma"),
         addPlayerItem(discordId, guildId, "fragment_armura"),
+      ]),
+      ...[...bossEquipmentDrops.entries()].flatMap(([discordId, key]) => [
+        addPlayerItem(discordId, guildId, key),
+        grantEquipment(discordId, guildId, key),
       ]),
       // Veteran ranks: the guild's dragon remembers every defeat — next spawn
       // comes back stronger (+20% HP/dmg per rank, same rules as mini-bossii).
@@ -3429,6 +3481,13 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
           const keyMsg = await topCh.send({ content: `🗝️ **Prada ascunsă a Dragonului:**\n${lines.join("\n")}` }).catch(() => null);
           if (keyMsg) setTimeout(() => void keyMsg.delete().catch(() => {}), BOSS_RESULT_TTL_MS);
         }
+        if (bossEquipmentDrops.size > 0) {
+          const lines = [...bossEquipmentDrops.entries()].map(
+            ([id, key]) => `✨ <@${id}> a primit **${EQUIPMENT[key].label}**!`,
+          );
+          const equipmentMsg = await topCh.send({ content: `⚒️ **Prada de echipament a Dragonului:**\n${lines.join("\n")}` }).catch(() => null);
+          if (equipmentMsg) setTimeout(() => void equipmentMsg.delete().catch(() => {}), BOSS_RESULT_TTL_MS);
+        }
       }
     } catch { /* ignore */ }
 
@@ -3446,6 +3505,7 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
     const bossItemInfo = ITEMS[bossItemKey];
     const itemLine = `${bossItemInfo.emoji} Toți participanții au primit **${bossItemInfo.label}** în inventar!`;
     const equipmentLine = "⚒️ Toți participanții au primit câte un **Fragment de Armă** și un **Fragment de Armură**!";
+    const myEquipmentDrop = bossEquipmentDrops.get(interaction.user.id);
 
     const victoryMsg = await interaction.followUp({
       content:
@@ -3454,7 +3514,9 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
         `💀 **Dragonul Stins a căzut!** Regatul este salvat!\n` +
         finalBossVeteranCapLine(finalBossKillsBefore) +
         rewLine + "\n" +
-        itemLine + "\n" + equipmentLine,
+        itemLine + "\n" + equipmentLine +
+        (myEquipmentDrop ? `\n✨ Ai primit **${EQUIPMENT[myEquipmentDrop].label}** — vezi imaginea și bonusurile mai jos.` : ""),
+      embeds: myEquipmentDrop ? [buildEquipmentLootEmbed(myEquipmentDrop)] : [],
     });
     setTimeout(() => void victoryMsg.delete().catch(() => {}), BOSS_RESULT_TTL_MS);
     return;
@@ -3919,6 +3981,9 @@ async function handleButton(interaction: ButtonInteraction) {
   if (id === "shop_nav_class") return handleShopNavClass(interaction);
   if (id === "shop_nav_equipment") return handleShopNavEquipment(interaction);
   if (id === "shop_nav_talisman") return handleShopNavTalisman(interaction);
+  if (id.startsWith("inventory_equip_")) return handleEquipmentEquip(interaction, id.replace("inventory_equip_", ""));
+  if (id.startsWith("inventory_upgrade_")) return handleEquipmentUpgrade(interaction, id.replace("inventory_upgrade_", ""));
+  if (id.startsWith("inventory_equipment_")) return handleEquipmentPick(interaction, id.replace("inventory_equipment_", ""));
   if (id.startsWith("shop_equipment_upgrade_")) return handleEquipmentUpgrade(interaction, id.replace("shop_equipment_upgrade_", ""));
   if (id.startsWith("shop_equipment_equip_")) return handleEquipmentEquip(interaction, id.replace("shop_equipment_equip_", ""));
   if (id.startsWith("shop_equipment_")) return handleEquipmentPick(interaction, id.replace("shop_equipment_", ""));
@@ -4400,6 +4465,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
 
     if (interaction.isChatInputCommand()) {
       if (interaction.commandName === "profil") dispatch(handleProfil(interaction));
+      if (interaction.commandName === "inventar") dispatch(handleInventar(interaction));
       if (interaction.commandName === "profetie") dispatch(handleProfetie(interaction));
       if (interaction.commandName === "clasament") dispatch(handleClasament(interaction));
       if (interaction.commandName === "magazin") dispatch(handleMagazin(interaction));

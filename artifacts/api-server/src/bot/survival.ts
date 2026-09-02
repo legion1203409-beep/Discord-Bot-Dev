@@ -904,6 +904,16 @@ export const ITEMS = {
   relic_luna: { label: "Relicva Lunii Negre", emoji: "🌑", rarity: "rare" },
   fragment_arma: { label: "Fragment de Armă", emoji: "⚔️", rarity: "rare" },
   fragment_armura: { label: "Fragment de Armură", emoji: "🛡️", rarity: "rare" },
+  pumnalul_umbrei: { label: "Pumnalul Umbrei", emoji: "🗡️", rarity: "rare" },
+  arcul_vanatorului: { label: "Arcul Vânătorului", emoji: "🏹", rarity: "rare" },
+  ciocanul_de_jar: { label: "Ciocanul de Jar", emoji: "🔨", rarity: "epic" },
+  catalizatorul_coroziv: { label: "Catalizatorul Coroziv", emoji: "⚗️", rarity: "epic" },
+  sabia_regelui: { label: "Sabia Regelui", emoji: "⚔️", rarity: "legendary" },
+  mantia_fantomei: { label: "Mantia Fantomei", emoji: "🥷", rarity: "rare" },
+  pelerina_de_fum: { label: "Pelerina de Fum", emoji: "💨", rarity: "rare" },
+  cuirasa_veghei: { label: "Cuirasa Veghei", emoji: "🛡️", rarity: "epic" },
+  halatul_reagentului: { label: "Halatul Reagentului", emoji: "🧪", rarity: "epic" },
+  platosa_cenusie: { label: "Platoșa Cenușie", emoji: "🛡️", rarity: "legendary" },
 } as const;
 export type ItemKey = keyof typeof ITEMS;
 export function isItemKey(k: string): k is ItemKey {
@@ -1061,6 +1071,10 @@ export function equipmentStats(key: EquipmentKey, level: number): {
   };
 }
 
+export function equipmentDesc(key: EquipmentKey, level: number): string {
+  return equipmentStatsText(key, level);
+}
+
 export type EquipmentCost = {
   gold: number;
   xp: number;
@@ -1094,6 +1108,28 @@ export function rollEquipmentMaterialDrop(
     rarity === "rar" ? 0.3 : 0.12;
   if (Math.random() >= chance) return null;
   return Math.random() < 0.5 ? "fragment_arma" : "fragment_armura";
+}
+
+/** Rolls a complete equipment item from a defeated monster. */
+export function rollEquipmentDrop(
+  monsterLevel: number,
+  monsterRarity?: string | null,
+): EquipmentKey | null {
+  const chance = monsterRarity === "boss"
+    ? 1
+    : monsterRarity === "mitic"
+      ? 0.5
+      : monsterRarity === "legendar"
+        ? 0.3
+        : monsterLevel >= 50
+          ? 0.12
+          : monsterLevel >= 20
+            ? 0.08
+            : 0.05;
+  if (Math.random() >= chance) return null;
+  const keys = Object.keys(EQUIPMENT) as EquipmentKey[];
+  const maxIndex = monsterLevel >= 50 ? keys.length : monsterLevel >= 20 ? 8 : 5;
+  return keys[Math.floor(Math.random() * maxIndex)]!;
 }
 
 // ─── Rarity-based material drops ──────────────────────────────────────────────
@@ -3062,6 +3098,82 @@ export function buildEquipmentDetailEmbed(
     .setColor(THEME_COLOR)
     .setTitle(`${item.emoji} ${item.label}`)
     .setDescription(description)
+    .setFooter({ text: BRAND_FOOTER });
+  if (item.image) embed.setImage(item.image);
+  return embed;
+}
+
+export function buildInventoryEmbeds(player: Player, items: PlayerItem[] = []): EmbedBuilder[] {
+  const owned = (Object.keys(EQUIPMENT) as EquipmentKey[])
+    .filter((key) => equipmentLevel(player, key) > 0);
+  const materials = items
+    .filter((item) => item.quantity > 0 && isItemKey(item.itemKey) && !isEquipmentKey(item.itemKey))
+    .map((item) => {
+      if (!isItemKey(item.itemKey)) return "";
+      const material = ITEMS[item.itemKey];
+      return `${material.emoji} **×${item.quantity}** ${material.label}`;
+    })
+    .filter(Boolean)
+    .join("  ·  ") || "*Niciun material*";
+
+  if (owned.length === 0) {
+    return [new EmbedBuilder()
+      .setColor(THEME_COLOR)
+      .setTitle(`🎒 Inventarul lui ${player.username}`)
+      .setDescription(
+        `**Materiale**\n${materials}\n\n` +
+        "**Echipament**\n*Nu ai încă arme sau armuri. Învinge monștri pentru loot!*",
+      )
+      .setFooter({ text: BRAND_FOOTER })];
+  }
+
+  return owned.slice(0, 10).map((key, index) => {
+    const embed = buildEquipmentDetailEmbed(player, key, items);
+    if (index === 0) {
+      embed.setDescription(`**Materiale**\n${materials}\n\n${embed.data.description ?? ""}`);
+    }
+    return embed;
+  });
+}
+
+export function inventoryRows(player: Player): ActionRowBuilder<ButtonBuilder>[] {
+  const owned = (Object.keys(EQUIPMENT) as EquipmentKey[])
+    .filter((key) => equipmentLevel(player, key) > 0);
+  const buttons = owned.map((key) => {
+    const item = EQUIPMENT[key];
+    const equipped = item.slot === "weapon"
+      ? player.equippedWeapon === key
+      : player.equippedArmor === key;
+    return new ButtonBuilder()
+      .setCustomId(`inventory_equip_${key}`)
+      .setLabel(`${equipped ? "✅" : "⚔️"} ${item.label}`.slice(0, 80))
+      .setStyle(equipped ? ButtonStyle.Success : ButtonStyle.Primary)
+      .setDisabled(equipped);
+  });
+  const rows: ActionRowBuilder<ButtonBuilder>[] = [];
+  for (let i = 0; i < buttons.length; i += 5) {
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(buttons.slice(i, i + 5)));
+  }
+  const upgrades = owned.map((key) => new ButtonBuilder()
+    .setCustomId(`inventory_upgrade_${key}`)
+    .setLabel(`⬆️ ${EQUIPMENT[key].label} → Nv.${equipmentLevel(player, key) + 1}`.slice(0, 80))
+    .setStyle(ButtonStyle.Success));
+  for (let i = 0; i < upgrades.length; i += 5) {
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(upgrades.slice(i, i + 5)));
+  }
+  return rows;
+}
+
+export function buildEquipmentLootEmbed(key: EquipmentKey, level = 1): EmbedBuilder {
+  const item = EQUIPMENT[key];
+  const embed = new EmbedBuilder()
+    .setColor(0xd4af37)
+    .setTitle(`✨ ${item.slot === "weapon" ? "ARMĂ" : "ARMURĂ"} NOUĂ: ${item.label}`)
+    .setDescription(
+      `Ai găsit un obiect de echipament de nivel **${level}**!\n\n` +
+      `Bonusuri: **${equipmentDesc(key, level)}**\n\n` +
+      "Folosește **/inventar** sau **/magazin → Echipament** pentru a-l echipa. Obiectele înlocuite rămân deținute.",
+    )
     .setFooter({ text: BRAND_FOOTER });
   if (item.image) embed.setImage(item.image);
   return embed;

@@ -140,6 +140,7 @@ export async function runMultiGuildMigrations(): Promise<void> {
       PRIMARY KEY (discord_id, guild_id, item_key)
     )
   `);
+  await pool.query(`ALTER TABLE player_items ADD COLUMN IF NOT EXISTS level integer NOT NULL DEFAULT 1`);
   logger.info("multi-guild migrations: player_items table ensured");
 
   // ─── Player talismans table (per-talisman saved levels) ───────────────────
@@ -1454,6 +1455,27 @@ export async function equipEquipment(
       playerWhere(discordId, guildId),
       sql`coalesce((${playersTable.equipmentLevels}->>${key})::int, 0) >= 1`,
     ))
+    .returning();
+  return row ?? null;
+}
+
+/** Grant a discovered equipment piece without consuming currency or materials. */
+export async function grantEquipment(
+  discordId: string,
+  guildId: string,
+  key: string,
+): Promise<Player | null> {
+  if (!isEquipmentKey(key)) return null;
+  const [row] = await db.update(playersTable)
+    .set({
+      equipmentLevels: sql`jsonb_set(
+        coalesce(${playersTable.equipmentLevels}, '{}'::jsonb),
+        ${equipmentJsonPath(key)},
+        to_jsonb(greatest(coalesce((${playersTable.equipmentLevels}->>${key})::int, 0), 1)),
+        true
+      )`,
+    })
+    .where(playerWhere(discordId, guildId))
     .returning();
   return row ?? null;
 }
