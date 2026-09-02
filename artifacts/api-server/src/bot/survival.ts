@@ -14,6 +14,7 @@ import {
   CHEST_IMG,
   KEY_IMG,
   CLASS_IMG,
+  EQUIPMENT_IMG,
   monsterImg,
   bossImg,
 } from "./assets";
@@ -901,10 +902,198 @@ export const ITEMS = {
   relic_ochiul: { label: "Relicva Ochiului Stins", emoji: "🔮", rarity: "legendary" },
   relic_inima: { label: "Relicva Inimii de Abis", emoji: "🖤", rarity: "legendary" },
   relic_luna: { label: "Relicva Lunii Negre", emoji: "🌑", rarity: "rare" },
+  fragment_arma: { label: "Fragment de Armă", emoji: "⚔️", rarity: "rare" },
+  fragment_armura: { label: "Fragment de Armură", emoji: "🛡️", rarity: "rare" },
 } as const;
 export type ItemKey = keyof typeof ITEMS;
 export function isItemKey(k: string): k is ItemKey {
   return k in ITEMS;
+}
+
+export type EquipmentSlot = "weapon" | "armor";
+export type EquipmentDefinition = {
+  slot: EquipmentSlot;
+  label: string;
+  emoji: string;
+  description: string;
+  image: string | null;
+  oldMaterial: ItemKey;
+  attack?: number;
+  defense?: number;
+  dodge?: number;
+  crit?: number;
+  hp?: number;
+};
+
+export const EQUIPMENT = {
+  sabia_regelui: {
+    slot: "weapon",
+    label: "Sabia Regelui",
+    emoji: "⚔️",
+    description: "O sabie regală de oțel înnegrit, făcută pentru lovituri sigure și grele.",
+    image: EQUIPMENT_IMG.sabia_regelui,
+    oldMaterial: "sange_monstru",
+    attack: 5,
+  },
+  pumnalul_umbrei: {
+    slot: "weapon",
+    label: "Pumnalul Umbrei",
+    emoji: "🗡️",
+    description: "Un pumnal subțire care găsește fisurile din apărarea monstrului.",
+    image: EQUIPMENT_IMG.pumnalul_umbrei,
+    oldMaterial: "esenta_umbrei",
+    attack: 2,
+    crit: 3,
+  },
+  ciocanul_de_jar: {
+    slot: "weapon",
+    label: "Ciocanul de Jar",
+    emoji: "🔨",
+    description: "Un ciocan greu, încă fierbinte în crăpăturile sale de bazalt.",
+    image: EQUIPMENT_IMG.ciocanul_de_jar,
+    oldMaterial: "sange_monstru",
+    attack: 7,
+  },
+  arcul_vanatorului: {
+    slot: "weapon",
+    label: "Arcul Vânătorului",
+    emoji: "🏹",
+    description: "Un arc de lemn întunecat pentru lovituri rapide și precise.",
+    image: EQUIPMENT_IMG.arcul_vanatorului,
+    oldMaterial: "solz_spectral",
+    attack: 3,
+    dodge: 2,
+  },
+  catalizatorul_coroziv: {
+    slot: "weapon",
+    label: "Catalizatorul Coroziv",
+    emoji: "⚗️",
+    description: "Un catalizator alchimic care transformă fiecare lovitură într-o reacție periculoasă.",
+    image: EQUIPMENT_IMG.catalizatorul_coroziv,
+    oldMaterial: "picatura_otr",
+    attack: 2,
+    crit: 2,
+  },
+  platosa_cenusie: {
+    slot: "armor",
+    label: "Platoșa Cenușie",
+    emoji: "🛡️",
+    description: "O platoșă grea de oțel înnegrit, zgâriată de lupte vechi.",
+    image: EQUIPMENT_IMG.platosa_cenusie,
+    oldMaterial: "sange_monstru",
+    defense: 4,
+    hp: 10,
+  },
+  mantia_fantomei: {
+    slot: "armor",
+    label: "Mantia Fantomei",
+    emoji: "🥷",
+    description: "O mantie cenușie care se pierde în umbre înainte ca lovitura să ajungă.",
+    image: EQUIPMENT_IMG.mantia_fantomei,
+    oldMaterial: "esenta_umbrei",
+    defense: 1,
+    dodge: 3,
+  },
+  cuirasa_veghei: {
+    slot: "armor",
+    label: "Cuirasa Veghei",
+    emoji: "🛡️",
+    description: "O cuirasa a străjerilor, construită să țină linia în fața oricărui monstru.",
+    image: EQUIPMENT_IMG.cuirasa_veghei,
+    oldMaterial: "coama_dragonului",
+    defense: 5,
+    hp: 12,
+  },
+  halatul_reagentului: {
+    slot: "armor",
+    label: "Halatul Reagentului",
+    emoji: "🧪",
+    description: "Un halat alchimic întărit cu piele și catarame de cupru.",
+    image: EQUIPMENT_IMG.halatul_reagentului,
+    oldMaterial: "picatura_otr",
+    defense: 2,
+    crit: 1,
+  },
+  pelerina_de_fum: {
+    slot: "armor",
+    label: "Pelerina de Fum",
+    emoji: "💨",
+    description: "O pelerină ușoară care lasă în urmă doar fum și pași nesiguri.",
+    image: EQUIPMENT_IMG.pelerina_de_fum,
+    oldMaterial: "solz_spectral",
+    defense: 1,
+    dodge: 2,
+    crit: 1,
+  },
+} as const satisfies Record<string, EquipmentDefinition>;
+export type EquipmentKey = keyof typeof EQUIPMENT;
+
+export function isEquipmentKey(k: string): k is EquipmentKey {
+  return k in EQUIPMENT;
+}
+
+export function equipmentSlot(key: EquipmentKey): EquipmentSlot {
+  return EQUIPMENT[key].slot;
+}
+
+export function equipmentLevel(
+  player: Pick<Player, "equipmentLevels">,
+  key: EquipmentKey,
+): number {
+  return Math.max(0, Number(player.equipmentLevels?.[key] ?? 0));
+}
+
+export function equipmentStats(key: EquipmentKey, level: number): {
+  attack: number;
+  defense: number;
+  dodge: number;
+  crit: number;
+  hp: number;
+} {
+  const item: EquipmentDefinition = EQUIPMENT[key];
+  const multiplier = Math.max(1, level);
+  return {
+    attack: (item.attack ?? 0) * multiplier,
+    defense: (item.defense ?? 0) * multiplier,
+    dodge: (item.dodge ?? 0) * multiplier,
+    crit: (item.crit ?? 0) * multiplier,
+    hp: (item.hp ?? 0) * multiplier,
+  };
+}
+
+export type EquipmentCost = {
+  gold: number;
+  xp: number;
+  items: { item: ItemKey; qty: number }[];
+};
+
+export function equipmentCost(key: EquipmentKey, targetLevel: number): EquipmentCost {
+  const item = EQUIPMENT[key];
+  const step = Math.max(0, targetLevel - 1);
+  const fragment = item.slot === "weapon" ? "fragment_arma" : "fragment_armura";
+  return {
+    gold: Math.ceil(500 * Math.pow(UPGRADE_COST_GROWTH, step)),
+    xp: targetLevel === 1 ? 0 : UPGRADE_XP_COST + (targetLevel - 2) * 50,
+    items: [
+      { item: "fragment_cenusa", qty: 2 + targetLevel },
+      { item: item.oldMaterial, qty: 1 + targetLevel },
+      { item: fragment, qty: 2 + targetLevel },
+    ],
+  };
+}
+
+export function rollEquipmentMaterialDrop(
+  rarity: string | null | undefined,
+): ItemKey | null {
+  if (!rarity) return null;
+  const chance =
+    rarity === "boss" ? 1 :
+    rarity === "mitic" ? 0.8 :
+    rarity === "legendar" ? 0.6 :
+    rarity === "epic" ? 0.45 :
+    rarity === "rar" ? 0.3 : 0.12;
+  if (Math.random() >= chance) return null;
+  return Math.random() < 0.5 ? "fragment_arma" : "fragment_armura";
 }
 
 // ─── Rarity-based material drops ──────────────────────────────────────────────
@@ -1769,34 +1958,56 @@ export function combatStatsValue(player: Player): string {
     talKey === "sfera_abisului"
       ? talismanValue("sfera_abisului", player.talismanLevel ?? 1)
       : 0;
+  const weapon =
+    player.equippedWeapon && isEquipmentKey(player.equippedWeapon)
+      ? equipmentStats(player.equippedWeapon, equipmentLevel(player, player.equippedWeapon))
+      : null;
+  const armor =
+    player.equippedArmor && isEquipmentKey(player.equippedArmor)
+      ? equipmentStats(player.equippedArmor, equipmentLevel(player, player.equippedArmor))
+      : null;
 
   const maxHp =
     100 +
     player.maxHpBonus +
     player.prestigeHpBonus +
     (cls?.hp ?? 0) +
-    (comp?.hp ?? 0);
+    (comp?.hp ?? 0) +
+    (weapon?.hp ?? 0) +
+    (armor?.hp ?? 0);
   const atk =
     player.attackBonus +
     player.prestigeAttackBonus +
     (cls?.attack ?? 0) +
-    (comp?.attack ?? 0);
+    (comp?.attack ?? 0) +
+    (weapon?.attack ?? 0) +
+    (armor?.attack ?? 0);
   const def =
-    player.defenseBonus + player.prestigeDefenseBonus + (comp?.defense ?? 0);
+    player.defenseBonus +
+    player.prestigeDefenseBonus +
+    (comp?.defense ?? 0) +
+    (weapon?.defense ?? 0) +
+    (armor?.defense ?? 0);
   const dodge =
-    player.dodgeBonus + player.prestigeDodgeBonus + (cls?.dodge ?? 0);
+    player.dodgeBonus +
+    player.prestigeDodgeBonus +
+    (cls?.dodge ?? 0) +
+    (weapon?.dodge ?? 0) +
+    (armor?.dodge ?? 0);
   const crit =
     player.critBonus +
     player.prestigeCritBonus +
     (cls?.crit ?? 0) +
     (comp?.crit ?? 0) +
+    (weapon?.crit ?? 0) +
+    (armor?.crit ?? 0) +
     talCrit;
 
   return (
     `❤️ Viață maximă: **${maxHp} HP**\n` +
     `⚔️ Daune pe lovitură: **${10 + atk}–${20 + atk}** *(critic: ×2)*\n` +
     `🛡️ Apărare: **-${def}** daune primite   ·   🌀 Evitare: **${dodge}%**   ·   💥 Critic: **${Math.min(100, crit)}%**\n` +
-    `*(totaluri cu magazin + prestigiu + clasă + companion${talCrit > 0 ? " + talisman" : ""})*`
+    `*(totaluri cu magazin + prestigiu + clasă + companion + echipament${talCrit > 0 ? " + talisman" : ""})*`
   );
 }
 
@@ -1840,6 +2051,14 @@ export function buildProfileEmbed(
   const talismanValue = equippedTalismanKey
     ? `${TALISMANS[equippedTalismanKey].emoji} **${TALISMANS[equippedTalismanKey].label}** Nv.${player.talismanLevel ?? 1}${talismanRank > 0 ? ` 🏅 Rank ${talismanRank}` : ""}\n↳ ${TALISMANS[equippedTalismanKey].passiveLabel}: ${talismanDesc(equippedTalismanKey, player.talismanLevel ?? 1)}`
     : "*Fără talisman* — `/magazin`";
+  const equipmentValue = [
+    player.equippedWeapon && isEquipmentKey(player.equippedWeapon)
+      ? `${EQUIPMENT[player.equippedWeapon].emoji} **${EQUIPMENT[player.equippedWeapon].label}** Nv.${equipmentLevel(player, player.equippedWeapon)}`
+      : "*Fără armă echipată*",
+    player.equippedArmor && isEquipmentKey(player.equippedArmor)
+      ? `${EQUIPMENT[player.equippedArmor].emoji} **${EQUIPMENT[player.equippedArmor].label}** Nv.${equipmentLevel(player, player.equippedArmor)}`
+      : "*Fără armură echipată*",
+  ].join("\n");
 
   const deathInfo =
     player.deaths > 0
@@ -1913,6 +2132,7 @@ export function buildProfileEmbed(
       { name: "🧬 Clasă", value: classValue, inline: true },
       { name: "🐾 Companion", value: compValue, inline: true },
       { name: "🔮 Talisman", value: talismanValue, inline: true },
+      { name: "⚒️ Echipament", value: equipmentValue, inline: true },
       { name: "━━━ Legătura cu Oracolul ━━━", value: oracleRelationValue, inline: false },
       {
         name: "━━━ Statistici de luptă ━━━",
@@ -2450,7 +2670,8 @@ export type ShopCategory =
   | "abil"
   | "prestige"
   | "class"
-  | "talisman";
+  | "talisman"
+  | "equipment";
 
 const SHOP_BALANCE = (p: Player) => {
   const prestigeLine =
@@ -2651,6 +2872,35 @@ export function buildShopEmbed(
       );
   }
 
+  if (category === "equipment") {
+    const equipmentLines = (Object.keys(EQUIPMENT) as EquipmentKey[]).map((key) => {
+      const item = EQUIPMENT[key];
+      const level = equipmentLevel(p, key);
+      const equipped = item.slot === "weapon"
+        ? p.equippedWeapon === key
+        : p.equippedArmor === key;
+      const stats = equipmentStats(key, Math.max(1, level));
+      const statLine = [
+        stats.attack ? `⚔️ +${stats.attack}` : "",
+        stats.defense ? `🛡️ +${stats.defense}` : "",
+        stats.dodge ? `🌀 +${stats.dodge}%` : "",
+        stats.crit ? `💥 +${stats.crit}%` : "",
+        stats.hp ? `❤️ +${stats.hp} HP` : "",
+      ].filter(Boolean).join(" · ");
+      return `${item.emoji} **${item.label}** ${equipped ? "✅ ECHIPAT" : level ? `Nv.${level}` : "🔒"}\n   ↳ ${statLine}`;
+    });
+    return embed
+      .setTitle("⚒️ Forja Cenușii — Echipament")
+      .setDescription(
+        SHOP_BALANCE(p) +
+          "\n\n" +
+          sectionTitle("Arme și armuri") +
+          "\nAlege un obiect pentru a vedea imaginea, bonusurile și costul următorului upgrade.\n\n" +
+          equipmentLines.join("\n") +
+          "\n\n*Fiecare upgrade cere Oboli, XP, resurse vechi și fragmente noi de echipament.*",
+      );
+  }
+
   if (category === "class") {
     const clsKey = p.class && isClassKey(p.class) ? p.class : null;
     if (clsKey) {
@@ -2764,11 +3014,57 @@ export function buildShopEmbed(
         "🐾 **Companion** — un aliat de luptă care crește odată cu tine\n" +
         "🎯 **Puteri de clasă** — două puteri active, diferite pentru fiecare clasă\n" +
         "🧬 **Clasă** — alege-ți calea și bonusul permanent\n" +
+        "⚒️ **Echipament** — arme și armuri cu niveluri și bonusuri proprii\n" +
         "⭐ **Prestigiu** — sacrifică XP pentru putere nemuritoare\n" +
         "🔮 **Talismane** — echipamente cu pasive unice, evoluabile cu iteme rare\n\n" +
         "🗝️ *Caută cuferele de chei — cu ele deschizi cuferele blocate pline de Oboli.*\n\n" +
         "👇 Apasă un buton de mai jos pentru a deschide o categorie.",
     );
+}
+
+function equipmentStatsText(key: EquipmentKey, level: number): string {
+  const stats = equipmentStats(key, Math.max(1, level));
+  return [
+    stats.attack ? `⚔️ +${stats.attack} daune` : "",
+    stats.defense ? `🛡️ +${stats.defense} apărare` : "",
+    stats.dodge ? `🌀 +${stats.dodge}% evitare` : "",
+    stats.crit ? `💥 +${stats.crit}% critic` : "",
+    stats.hp ? `❤️ +${stats.hp} HP` : "",
+  ].filter(Boolean).join(" · ");
+}
+
+export function buildEquipmentDetailEmbed(
+  p: Player,
+  key: EquipmentKey,
+  items: PlayerItem[] = [],
+): EmbedBuilder {
+  const item = EQUIPMENT[key];
+  const level = equipmentLevel(p, key);
+  const nextCost = equipmentCost(key, level + 1);
+  const inv = Object.fromEntries(items.map((entry) => [entry.itemKey, entry.quantity]));
+  const requirements = nextCost.items.map((req) => {
+    const have = inv[req.item] ?? 0;
+    return `${have >= req.qty ? "✅" : "❌"} ${req.qty}× ${ITEMS[req.item].emoji} ${ITEMS[req.item].label} (${have}/${req.qty})`;
+  }).join("\n");
+  const equipped = item.slot === "weapon" ? p.equippedWeapon === key : p.equippedArmor === key;
+  const status = level > 0
+    ? `${equipped ? "✅ ECHIPAT" : "📦 DEȚINUT"} · Nivel ${level}`
+    : "🔒 NEDEBLOCAT";
+  const description =
+    `${item.description}\n\n` +
+    `**${status}**\n` +
+    `📈 Bonus actual: **${level > 0 ? equipmentStatsText(key, level) : "—"}**\n` +
+    `🔼 La nivelul ${level + 1}: **${equipmentStatsText(key, level + 1)}**\n\n` +
+    `**Cost ${level === 0 ? "de deblocare" : "de upgrade"}:**\n` +
+    `🪙 ${nextCost.gold.toLocaleString("ro-RO")} Oboli${nextCost.xp ? `\n✨ ${nextCost.xp} XP` : ""}\n` +
+    requirements;
+  const embed = new EmbedBuilder()
+    .setColor(THEME_COLOR)
+    .setTitle(`${item.emoji} ${item.label}`)
+    .setDescription(description)
+    .setFooter({ text: BRAND_FOOTER });
+  if (item.image) embed.setImage(item.image);
+  return embed;
 }
 
 export function buildLevelupEmbed(
@@ -3028,6 +3324,11 @@ export function shopBackRow(): ActionRowBuilder<ButtonBuilder> {
 export function shopNavRow2(): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
+      .setCustomId("shop_nav_equipment")
+      .setLabel("Echipament")
+      .setEmoji("⚒️")
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
       .setCustomId("shop_nav_talisman")
       .setLabel("Talismane")
       .setEmoji("🔮")
@@ -3038,6 +3339,64 @@ export function shopNavRow2(): ActionRowBuilder<ButtonBuilder> {
 /** Main page rows (both nav rows). */
 export function shopRows(_p: Player): ActionRowBuilder<ButtonBuilder>[] {
   return [shopNavRow(), shopNavRow2()];
+}
+
+export function shopEquipmentRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
+  const keys = Object.keys(EQUIPMENT) as EquipmentKey[];
+  const makeRow = (slot: EquipmentSlot) =>
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      keys
+        .filter((key) => EQUIPMENT[key].slot === slot)
+        .map((key) => {
+          const item = EQUIPMENT[key];
+          const level = equipmentLevel(p, key);
+          const equipped = slot === "weapon"
+            ? p.equippedWeapon === key
+            : p.equippedArmor === key;
+          return new ButtonBuilder()
+            .setCustomId(`shop_equipment_${key}`)
+            .setLabel(`${equipped ? "✅ " : ""}${item.label}${level ? ` Nv.${level}` : ""}`.slice(0, 80))
+            .setEmoji(item.emoji)
+            .setStyle(equipped ? ButtonStyle.Success : ButtonStyle.Primary);
+        }),
+    );
+  return [makeRow("weapon"), makeRow("armor"), shopBackRow()];
+}
+
+export function shopEquipmentDetailRows(
+  p: Player,
+  key: EquipmentKey,
+  items: PlayerItem[] = [],
+): ActionRowBuilder<ButtonBuilder>[] {
+  const item = EQUIPMENT[key];
+  const level = equipmentLevel(p, key);
+  const inv = Object.fromEntries(items.map((entry) => [entry.itemKey, entry.quantity]));
+  const cost = equipmentCost(key, level + 1);
+  const hasItems = cost.items.every((req) => (inv[req.item] ?? 0) >= req.qty);
+  const canAfford = p.gold >= cost.gold && p.xp >= cost.xp && hasItems;
+  const equipped = item.slot === "weapon" ? p.equippedWeapon === key : p.equippedArmor === key;
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`shop_equipment_equip_${key}`)
+        .setLabel(equipped ? "✅ Echipat" : level > 0 ? "Echipează" : "Deblochează și echipează")
+        .setEmoji("⚔️")
+        .setStyle(equipped ? ButtonStyle.Success : ButtonStyle.Secondary)
+        .setDisabled(level === 0 || equipped),
+      new ButtonBuilder()
+        .setCustomId(`shop_equipment_upgrade_${key}`)
+        .setLabel(level === 0 ? `Deblochează (${cost.gold} Oboli)` : `Upgrade la Nv.${level + 1}`)
+        .setEmoji("🔼")
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(!canAfford),
+    ),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId("shop_nav_equipment")
+        .setLabel("← Înapoi la echipament")
+        .setStyle(ButtonStyle.Secondary),
+    ),
+  ];
 }
 
 function prestigeCost(level: number): number {

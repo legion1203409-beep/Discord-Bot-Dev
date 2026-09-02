@@ -71,6 +71,19 @@ export const CLASS_IMG: Record<string, string | null> = {
   umbrolog: assetUrl("class_umbrologul.png"),
 };
 
+export const EQUIPMENT_IMG: Record<string, string | null> = {
+  sabia_regelui: assetUrl("arma-sabia-regelui.png"),
+  pumnalul_umbrei: assetUrl("arma-pumnalul-umbrei.png"),
+  ciocanul_de_jar: assetUrl("arma-ciocanul-de-jar.png"),
+  arcul_vanatorului: assetUrl("arma-arcul-vanatorului.png"),
+  catalizatorul_coroziv: assetUrl("arma-catalizatorul-coroziv.png"),
+  platosa_cenusie: assetUrl("armura-platosa-cenusie.png"),
+  mantia_fantomei: assetUrl("armura-mantia-fantomei.png"),
+  cuirasa_veghei: assetUrl("armura-cuirasa-veghei.png"),
+  halatul_reagentului: assetUrl("armura-halatul-reagentului.png"),
+  pelerina_de_fum: assetUrl("armura-pelerina-de-fum.png"),
+};
+
 export const CHEST_WORLD_IMG = {
   personal: assetUrl("chest_veghea_zilnica.png"),
   fratie: assetUrl("chivot_fratia.png"),

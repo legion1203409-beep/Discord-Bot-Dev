@@ -125,6 +125,9 @@ import {
   saveTalismanLevel,
   getPlayerItems,
   upgradeClass,
+  buyEquipment,
+  upgradeEquipment,
+  equipEquipment,
   addPlayerItem,
   consumePlayerItems,
   advanceChestPity,
@@ -223,6 +226,9 @@ import {
   buildTalismanPage,
   shopTalismanRows,
   shopNavRow2,
+  shopEquipmentRows,
+  shopEquipmentDetailRows,
+  buildEquipmentDetailEmbed,
   TALISMANS,
   talismanValue,
   talismanUpgradeCost,
@@ -232,6 +238,13 @@ import {
   isItemKey,
   rollItemDrop,
   rollMaterialDrop,
+  rollEquipmentMaterialDrop,
+  EQUIPMENT,
+  equipmentCost,
+  equipmentLevel,
+  equipmentStats,
+  isEquipmentKey,
+  type EquipmentKey,
   buildMissionEmbed,
   type DailyQuestKey,
   type DailyQuestRowLike,
@@ -2304,11 +2317,15 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
   const itemDrop = result.oboliGained > 0 ? rollItemDrop(p.monsterLevel) : null;
   // Rarity material: rar/epic/legendar/mitic monsters and mini-bossi drop their tier material
   const materialDrop = result.monsterDefeated ? rollMaterialDrop(p.monsterRarity) : null;
+  const equipmentMaterialDrop = result.monsterDefeated
+    ? rollEquipmentMaterialDrop(p.monsterRarity)
+    : null;
   const corruptedKeyDrop = result.monsterDefeated && randomCorruptedKeyDrop();
   // Track everything farmed this event so the final summary can show it
   const itemsFarmed: Record<string, number> = { ...(p.itemsFarmed ?? {}) };
   if (itemDrop) itemsFarmed[itemDrop] = (itemsFarmed[itemDrop] ?? 0) + 1;
   if (materialDrop) itemsFarmed[materialDrop] = (itemsFarmed[materialDrop] ?? 0) + 1;
+  if (equipmentMaterialDrop) itemsFarmed[equipmentMaterialDrop] = (itemsFarmed[equipmentMaterialDrop] ?? 0) + 1;
   const cristaHeal =
     result.oboliGained > 0 && !result.playerDied && talismanKey === "crista_vietii"
       ? talismanValue("crista_vietii", talismanLevel)
@@ -2324,6 +2341,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
     buildResultText(result, itemDrop, { baseXp: killBaseXp, baseOboli: killBaseOboli, cristaHeal }) +
     manaFlowLine +
     (materialDrop ? `\n${ITEMS[materialDrop].emoji} **${ITEMS[materialDrop].label}** a căzut din monstru — material de evoluție!` : "") +
+    (equipmentMaterialDrop ? `\n${ITEMS[equipmentMaterialDrop].emoji} **${ITEMS[equipmentMaterialDrop].label}** a căzut din monstru — material de echipament!` : "") +
     (corruptedKeyDrop ? "\n☠️ **Cheia Pângărită** a ieșit din cenușă!" : "");
 
   if (result.playerDied) {
@@ -2362,6 +2380,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
       updateMaxLevel(p.discordId, guildId, result.newMonsterLevel),
       ...(itemDrop ? [addPlayerItem(p.discordId, guildId, itemDrop)] : []),
       ...(materialDrop ? [addPlayerItem(p.discordId, guildId, materialDrop)] : []),
+      ...(equipmentMaterialDrop ? [addPlayerItem(p.discordId, guildId, equipmentMaterialDrop)] : []),
       ...(corruptedKeyDrop ? [addPlayerKey(p.discordId, guildId, "pangarita")] : []),
       ...completedQuests.map((k) => addPlayerItem(p.discordId, guildId, DAILY_QUESTS[k].reward.itemKey, DAILY_QUESTS[k].reward.qty)),
     ]).catch((err) => logger.error({ err, discordId: p.discordId, guildId }, "Async combat writes failed"));
@@ -2566,6 +2585,85 @@ async function handleShopNavClass(interaction: ButtonInteraction) {
   const guildId = interaction.guildId!;
   const p = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
   await interaction.editReply({ embeds: [buildShopEmbed(p, "class")], components: shopClassRows(p) });
+}
+
+async function handleShopNavEquipment(interaction: ButtonInteraction) {
+  await interaction.deferUpdate();
+  const guildId = interaction.guildId!;
+  const [p, items] = await Promise.all([
+    upsertPlayer(interaction.user.id, guildId, interaction.user.username),
+    getPlayerItems(interaction.user.id, guildId),
+  ]);
+  await interaction.editReply({
+    embeds: [buildShopEmbed(p, "equipment")],
+    components: shopEquipmentRows(p),
+  });
+}
+
+async function handleEquipmentPick(interaction: ButtonInteraction, key: string) {
+  await interaction.deferUpdate();
+  if (!isEquipmentKey(key)) return;
+  const guildId = interaction.guildId!;
+  const [p, items] = await Promise.all([
+    upsertPlayer(interaction.user.id, guildId, interaction.user.username),
+    getPlayerItems(interaction.user.id, guildId),
+  ]);
+  await interaction.editReply({
+    embeds: [buildEquipmentDetailEmbed(p, key, items)],
+    components: shopEquipmentDetailRows(p, key, items),
+  });
+}
+
+async function handleEquipmentEquip(interaction: ButtonInteraction, key: string) {
+  await interaction.deferUpdate();
+  if (!isEquipmentKey(key)) return;
+  const guildId = interaction.guildId!;
+  const p = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
+  if (equipmentLevel(p, key) < 1) {
+    await ephemeralNote(interaction, "equipment", "❌ Deblochează mai întâi acest obiect.");
+    return;
+  }
+  const updated = await equipEquipment(interaction.user.id, guildId, key);
+  if (!updated) {
+    await ephemeralNote(interaction, "equipment", "❌ Obiectul nu mai este disponibil pentru echipare.");
+    return;
+  }
+  const items = await getPlayerItems(interaction.user.id, guildId);
+  await interaction.editReply({
+    embeds: [buildEquipmentDetailEmbed(updated, key, items)],
+    components: shopEquipmentDetailRows(updated, key, items),
+  });
+  await ephemeralNote(interaction, "equipment", `✅ **${EQUIPMENT[key].label}** este echipat pentru următoarea luptă.`);
+}
+
+async function handleEquipmentUpgrade(interaction: ButtonInteraction, key: string) {
+  await interaction.deferUpdate();
+  if (!isEquipmentKey(key)) return;
+  const guildId = interaction.guildId!;
+  const [p, items] = await Promise.all([
+    upsertPlayer(interaction.user.id, guildId, interaction.user.username),
+    getPlayerItems(interaction.user.id, guildId),
+  ]);
+  const fromLevel = equipmentLevel(p, key);
+  const cost = equipmentCost(key, fromLevel + 1);
+  const itemCosts = cost.items.map((req) => ({ item: req.item, qty: req.qty }));
+  const updated = fromLevel === 0
+    ? await buyEquipment(interaction.user.id, guildId, key, cost.gold, itemCosts)
+    : await upgradeEquipment(interaction.user.id, guildId, key, fromLevel, cost.gold, cost.xp, itemCosts);
+  if (!updated) {
+    await ephemeralNote(
+      interaction,
+      "equipment",
+      `❌ Nu ai suficiente resurse pentru ${fromLevel === 0 ? "deblocare" : "upgrade"} sau obiectul a fost actualizat deja.`,
+    );
+    return;
+  }
+  const updatedItems = await getPlayerItems(interaction.user.id, guildId);
+  await interaction.editReply({
+    embeds: [buildEquipmentDetailEmbed(updated, key, updatedItems)],
+    components: shopEquipmentDetailRows(updated, key, updatedItems),
+  });
+  await ephemeralNote(interaction, "equipment", `✅ **${EQUIPMENT[key].label}** a ajuns la nivelul **${equipmentLevel(updated, key)}**.`);
 }
 
 /** Build savedLevels map (talismanKey → level) from player_talismans rows. */
@@ -3075,17 +3173,23 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
   const comp = player.companion && isCompanionKey(player.companion)
     ? companionStats(player.companion, player.companionLevel ?? 1)
     : null;
+  const weapon = player.equippedWeapon && isEquipmentKey(player.equippedWeapon)
+    ? equipmentStats(player.equippedWeapon, equipmentLevel(player, player.equippedWeapon))
+    : null;
+  const armor = player.equippedArmor && isEquipmentKey(player.equippedArmor)
+    ? equipmentStats(player.equippedArmor, equipmentLevel(player, player.equippedArmor))
+    : null;
 
-  const prestigeMaxHp = 100 + player.maxHpBonus + player.prestigeHpBonus + (cls?.hp ?? 0) + (comp?.hp ?? 0);
+  const prestigeMaxHp = 100 + player.maxHpBonus + player.prestigeHpBonus + (cls?.hp ?? 0) + (comp?.hp ?? 0) + (weapon?.hp ?? 0) + (armor?.hp ?? 0);
   if (!activeBoss.playerHp.has(uid)) {
     activeBoss.playerHp.set(uid, Math.max(10, prestigeMaxHp));
   }
   if (!activeBoss.playerStats.has(uid)) {
     const stats: BossPlayerStats = {
-      atk: player.attackBonus + player.prestigeAttackBonus + (cls?.attack ?? 0) + (comp?.attack ?? 0),
-      def: player.defenseBonus + player.prestigeDefenseBonus + (comp?.defense ?? 0),
-      dodge: player.dodgeBonus + player.prestigeDodgeBonus + (cls?.dodge ?? 0),
-      crit: player.critBonus + player.prestigeCritBonus + (cls?.crit ?? 0) + (comp?.crit ?? 0),
+      atk: player.attackBonus + player.prestigeAttackBonus + (cls?.attack ?? 0) + (comp?.attack ?? 0) + (weapon?.attack ?? 0) + (armor?.attack ?? 0),
+      def: player.defenseBonus + player.prestigeDefenseBonus + (comp?.defense ?? 0) + (weapon?.defense ?? 0) + (armor?.defense ?? 0),
+      dodge: player.dodgeBonus + player.prestigeDodgeBonus + (cls?.dodge ?? 0) + (weapon?.dodge ?? 0) + (armor?.dodge ?? 0),
+      crit: player.critBonus + player.prestigeCritBonus + (cls?.crit ?? 0) + (comp?.crit ?? 0) + (weapon?.crit ?? 0) + (armor?.crit ?? 0),
       maxHp: prestigeMaxHp,
     };
     activeBoss.playerStats.set(uid, stats);
@@ -3110,9 +3214,9 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
     );
   }
 
-  const totalAtk = player.attackBonus + player.prestigeAttackBonus + (cls?.attack ?? 0) + (comp?.attack ?? 0);
-  const totalCrit = player.critBonus + player.prestigeCritBonus + (cls?.crit ?? 0) + (comp?.crit ?? 0);
-  const totalDef = player.defenseBonus + player.prestigeDefenseBonus + (comp?.defense ?? 0);
+  const totalAtk = player.attackBonus + player.prestigeAttackBonus + (cls?.attack ?? 0) + (comp?.attack ?? 0) + (weapon?.attack ?? 0) + (armor?.attack ?? 0);
+  const totalCrit = player.critBonus + player.prestigeCritBonus + (cls?.crit ?? 0) + (comp?.crit ?? 0) + (weapon?.crit ?? 0) + (armor?.crit ?? 0);
+  const totalDef = player.defenseBonus + player.prestigeDefenseBonus + (comp?.defense ?? 0) + (weapon?.defense ?? 0) + (armor?.defense ?? 0);
   const minDmg = Math.max(30, totalAtk * 5 + 20);
   const maxDmg = Math.max(80, totalAtk * 15 + 60);
   const baseBossDmg = Math.floor(Math.random() * (maxDmg - minDmg + 1)) + minDmg;
@@ -3290,6 +3394,10 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
       ]),
       ...[...eventKeyDrops.entries()].map(([discordId, kt]) => addPlayerKey(discordId, guildId, kt as KeyType)),
       ...[...activeBoss.damageBy.keys()].map((discordId) => addPlayerItem(discordId, guildId, bossItemKey)),
+      ...[...activeBoss.damageBy.keys()].flatMap((discordId) => [
+        addPlayerItem(discordId, guildId, "fragment_arma"),
+        addPlayerItem(discordId, guildId, "fragment_armura"),
+      ]),
       // Veteran ranks: the guild's dragon remembers every defeat — next spawn
       // comes back stronger (+20% HP/dmg per rank, same rules as mini-bossii).
       incrementFinalBossKills(activeBoss.guildId).catch(err =>
@@ -3337,6 +3445,7 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
       : `🏅 Recompensele au fost distribuite!`;
     const bossItemInfo = ITEMS[bossItemKey];
     const itemLine = `${bossItemInfo.emoji} Toți participanții au primit **${bossItemInfo.label}** în inventar!`;
+    const equipmentLine = "⚒️ Toți participanții au primit câte un **Fragment de Armă** și un **Fragment de Armură**!";
 
     const victoryMsg = await interaction.followUp({
       content:
@@ -3345,7 +3454,7 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
         `💀 **Dragonul Stins a căzut!** Regatul este salvat!\n` +
         finalBossVeteranCapLine(finalBossKillsBefore) +
         rewLine + "\n" +
-        itemLine,
+        itemLine + "\n" + equipmentLine,
     });
     setTimeout(() => void victoryMsg.delete().catch(() => {}), BOSS_RESULT_TTL_MS);
     return;
@@ -3808,7 +3917,11 @@ async function handleButton(interaction: ButtonInteraction) {
   if (id === "shop_nav_abil") return handleShopNavAbil(interaction);
   if (id === "shop_nav_prestige") return handleShopNavPrestige(interaction);
   if (id === "shop_nav_class") return handleShopNavClass(interaction);
+  if (id === "shop_nav_equipment") return handleShopNavEquipment(interaction);
   if (id === "shop_nav_talisman") return handleShopNavTalisman(interaction);
+  if (id.startsWith("shop_equipment_upgrade_")) return handleEquipmentUpgrade(interaction, id.replace("shop_equipment_upgrade_", ""));
+  if (id.startsWith("shop_equipment_equip_")) return handleEquipmentEquip(interaction, id.replace("shop_equipment_equip_", ""));
+  if (id.startsWith("shop_equipment_")) return handleEquipmentPick(interaction, id.replace("shop_equipment_", ""));
   if (id.startsWith("shop_talisman_") && id !== "shop_talisman_upgrade") return handleShopTalismanPick(interaction, id.replace("shop_talisman_", ""));
   if (id === "shop_talisman_upgrade") return handleShopTalismanUpgrade(interaction);
   if (id.startsWith("shop_class_")) return handleShopClassPick(interaction, id.replace("shop_class_", ""));

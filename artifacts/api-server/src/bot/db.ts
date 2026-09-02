@@ -12,6 +12,11 @@ import {
   classStats,
   classPowerLevel,
   isClassPowerSlot,
+  isEquipmentKey,
+  equipmentSlot,
+  equipmentStats,
+  equipmentLevel,
+  type EquipmentKey,
   rollRarity,
   isCompanionKey,
   companionStats,
@@ -233,6 +238,12 @@ export async function runMultiGuildMigrations(): Promise<void> {
     WHERE legacy_ability_refunded = false
   `);
   logger.info("multi-guild migrations: class powers ensured and legacy abilities refunded");
+
+  // ─── Equipment ─────────────────────────────────────────────────────────────
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS equipment_levels jsonb NOT NULL DEFAULT '{}'::jsonb`);
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS equipped_weapon text`);
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS equipped_armor text`);
+  logger.info("multi-guild migrations: equipment columns ensured");
 
   // ─── Oracle relationship and memory ───────────────────────────────────────
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS oracle_bond integer NOT NULL DEFAULT 0`);
@@ -493,6 +504,9 @@ const PLAYER_RESET = {
   abilityEmpowerLevel: 0, abilityShieldLevel: 0,
   classPowerLevels: {},
   legacyAbilityRefunded: true,
+  equipmentLevels: {},
+  equippedWeapon: null,
+  equippedArmor: null,
   honorTitle: null as string | null, deaths: 0, deathLevel: 0, retreats: 0, retreatLevel: 0,
   attackBonus: 0, defenseBonus: 0, dodgeBonus: 0, critBonus: 0, maxHpBonus: 0,
   shopAttackCount: 0, shopDefenseCount: 0, shopDodgeCount: 0, shopCritCount: 0, shopHpCount: 0,
@@ -965,11 +979,17 @@ export async function joinEvent(guildId: string, eventId: number, discordId: str
   const comp = player?.companion && isCompanionKey(player.companion)
     ? companionStats(player.companion, player.companionLevel ?? 1)
     : null;
+  const weapon = player?.equippedWeapon && isEquipmentKey(player.equippedWeapon)
+    ? equipmentStats(player.equippedWeapon, equipmentLevel(player, player.equippedWeapon))
+    : null;
+  const armor = player?.equippedArmor && isEquipmentKey(player.equippedArmor)
+    ? equipmentStats(player.equippedArmor, equipmentLevel(player, player.equippedArmor))
+    : null;
   const prestigeLevel = player?.prestigeLevel ?? 0;
   const startLevel = prestigeStartLevel(prestigeLevel);
   const startRarity = rollRarity(startLevel);
   const startMonsterHp = monsterSpawnHp(startLevel, startRarity, player?.bossKills);
-  const maxHp = 100 + (player?.maxHpBonus ?? 0) + (player?.prestigeHpBonus ?? 0) + (cls?.hp ?? 0) + (comp?.hp ?? 0);
+  const maxHp = 100 + (player?.maxHpBonus ?? 0) + (player?.prestigeHpBonus ?? 0) + (cls?.hp ?? 0) + (comp?.hp ?? 0) + (weapon?.hp ?? 0) + (armor?.hp ?? 0);
   try {
     const [p] = await db.insert(eventParticipantsTable).values({
       eventId,
@@ -982,10 +1002,10 @@ export async function joinEvent(guildId: string, eventId: number, discordId: str
       monsterLevel: startLevel,
       monsterCurrentHp: startMonsterHp,
       monsterRarity: startRarity,
-      attackBonus: (player?.attackBonus ?? 0) + (player?.prestigeAttackBonus ?? 0) + (cls?.attack ?? 0) + (comp?.attack ?? 0),
-      defenseBonus: (player?.defenseBonus ?? 0) + (player?.prestigeDefenseBonus ?? 0) + (comp?.defense ?? 0),
-      dodgeBonus: (player?.dodgeBonus ?? 0) + (player?.prestigeDodgeBonus ?? 0) + (cls?.dodge ?? 0),
-      critBonus: (player?.critBonus ?? 0) + (player?.prestigeCritBonus ?? 0) + (cls?.crit ?? 0) + (comp?.crit ?? 0),
+      attackBonus: (player?.attackBonus ?? 0) + (player?.prestigeAttackBonus ?? 0) + (cls?.attack ?? 0) + (comp?.attack ?? 0) + (weapon?.attack ?? 0) + (armor?.attack ?? 0),
+      defenseBonus: (player?.defenseBonus ?? 0) + (player?.prestigeDefenseBonus ?? 0) + (comp?.defense ?? 0) + (weapon?.defense ?? 0) + (armor?.defense ?? 0),
+      dodgeBonus: (player?.dodgeBonus ?? 0) + (player?.prestigeDodgeBonus ?? 0) + (cls?.dodge ?? 0) + (weapon?.dodge ?? 0) + (armor?.dodge ?? 0),
+      critBonus: (player?.critBonus ?? 0) + (player?.prestigeCritBonus ?? 0) + (cls?.crit ?? 0) + (comp?.crit ?? 0) + (weapon?.crit ?? 0) + (armor?.crit ?? 0),
       empowerLevel: clsKey && player ? classPowerLevel(player, clsKey, "power1") : 0,
       shieldLevel: clsKey && player ? classPowerLevel(player, clsKey, "power2") : 0,
     }).returning();
@@ -1309,6 +1329,120 @@ export async function consumePlayerItems(discordId: string, guildId: string, cos
   } catch {
     return false;
   }
+}
+
+async function deductItemsInTransaction(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  discordId: string,
+  guildId: string,
+  costs: Record<string, number>,
+): Promise<void> {
+  const results = await Promise.all(
+    Object.entries(costs).map(([key, need]) =>
+      tx.update(playerItemsTable)
+        .set({ quantity: sql`${playerItemsTable.quantity} - ${need}` })
+        .where(and(
+          eq(playerItemsTable.discordId, discordId),
+          eq(playerItemsTable.guildId, guildId),
+          eq(playerItemsTable.itemKey, key),
+          gte(playerItemsTable.quantity, need),
+        ))
+        .returning({ id: playerItemsTable.discordId }),
+    ),
+  );
+  if (results.some((r) => r.length === 0)) throw new Error("equipment_items_insufficient");
+}
+
+function equipmentJsonPath(key: EquipmentKey) {
+  return sql.raw(`'{${key}}'`);
+}
+
+export async function buyEquipment(
+  discordId: string,
+  guildId: string,
+  key: string,
+  goldCost: number,
+  itemCosts: { item: string; qty: number }[],
+): Promise<Player | null> {
+  if (!isEquipmentKey(key)) return null;
+  const costs = Object.fromEntries(itemCosts.map((cost) => [cost.item, cost.qty]));
+  try {
+    return await db.transaction(async (tx) => {
+      await deductItemsInTransaction(tx, discordId, guildId, costs);
+      const slot = equipmentSlot(key);
+      const equippedSet = slot === "weapon"
+        ? { equippedWeapon: key }
+        : { equippedArmor: key };
+      const [row] = await tx.update(playersTable)
+        .set({
+          equipmentLevels: sql`jsonb_set(coalesce(${playersTable.equipmentLevels}, '{}'::jsonb), ${equipmentJsonPath(key)}, to_jsonb(1), true)`,
+          ...equippedSet,
+          gold: sql`${playersTable.gold} - ${goldCost}`,
+        })
+        .where(and(
+          playerWhere(discordId, guildId),
+          sql`coalesce((${playersTable.equipmentLevels}->>${key})::int, 0) = 0`,
+          gte(playersTable.gold, goldCost),
+        ))
+        .returning();
+      if (!row) throw new Error("equipment_buy_failed");
+      return row;
+    });
+  } catch {
+    return null;
+  }
+}
+
+export async function upgradeEquipment(
+  discordId: string,
+  guildId: string,
+  key: string,
+  expectedLevel: number,
+  goldCost: number,
+  xpCost: number,
+  itemCosts: { item: string; qty: number }[],
+): Promise<Player | null> {
+  if (!isEquipmentKey(key) || expectedLevel < 1) return null;
+  const costs = Object.fromEntries(itemCosts.map((cost) => [cost.item, cost.qty]));
+  try {
+    return await db.transaction(async (tx) => {
+      await deductItemsInTransaction(tx, discordId, guildId, costs);
+      const [row] = await tx.update(playersTable)
+        .set({
+          equipmentLevels: sql`jsonb_set(coalesce(${playersTable.equipmentLevels}, '{}'::jsonb), ${equipmentJsonPath(key)}, to_jsonb(${expectedLevel + 1}), true)`,
+          gold: sql`${playersTable.gold} - ${goldCost}`,
+          xp: sql`${playersTable.xp} - ${xpCost}`,
+        })
+        .where(and(
+          playerWhere(discordId, guildId),
+          sql`coalesce((${playersTable.equipmentLevels}->>${key})::int, 0) = ${expectedLevel}`,
+          gte(playersTable.gold, goldCost),
+          gte(playersTable.xp, xpCost),
+        ))
+        .returning();
+      if (!row) throw new Error("equipment_upgrade_failed");
+      return row;
+    });
+  } catch {
+    return null;
+  }
+}
+
+export async function equipEquipment(
+  discordId: string,
+  guildId: string,
+  key: string,
+): Promise<Player | null> {
+  if (!isEquipmentKey(key)) return null;
+  const slot = equipmentSlot(key);
+  const [row] = await db.update(playersTable)
+    .set(slot === "weapon" ? { equippedWeapon: key } : { equippedArmor: key })
+    .where(and(
+      playerWhere(discordId, guildId),
+      sql`coalesce((${playersTable.equipmentLevels}->>${key})::int, 0) >= 1`,
+    ))
+    .returning();
+  return row ?? null;
 }
 
 // ─── Daily quest helpers ───────────────────────────────────────────────────────

@@ -30,6 +30,7 @@ vi.mock("../assets", () => ({
   COMPANION_IMG: {},
   CHEST_IMG: {},
   KEY_IMG: {},
+  EQUIPMENT_IMG: {},
   MONSTER_IMG: Array(14).fill(""),
   monsterImg: () => "",
   bossImg: () => "",
