@@ -1523,18 +1523,19 @@ export async function castOracleCouncilVote(
      SET value = jsonb_set(
        value::jsonb,
        '{votes}',
-       COALESCE(value::jsonb->'votes', '{}'::jsonb) || jsonb_build_object($2, $3),
+       COALESCE(value::jsonb->'votes', '{}'::jsonb) ||
+         jsonb_build_object($2::text, $3::text),
        true
      )::text, updated_at = now()
      WHERE key = $1
-       AND value::jsonb->>'id' = $4
+       AND value::jsonb->>'id' = $4::text
        AND value::jsonb->>'status' = 'open'
-       AND (value::jsonb->>'closesAt')::bigint > $5
-       AND (value::jsonb->'votes' IS NULL OR NOT (value::jsonb->'votes' ? $2))
+       AND (value::jsonb->>'closesAt')::bigint > $5::bigint
+       AND (value::jsonb->'votes' IS NULL OR NOT (value::jsonb->'votes' ? $2::text))
        AND EXISTS (
          SELECT 1
          FROM jsonb_array_elements(value::jsonb->'options') option
-         WHERE option->>'id' = $6
+         WHERE option->>'id' = $6::text
        )
      RETURNING value`,
     [key, userId, optionId, councilId, Date.now(), optionId],
