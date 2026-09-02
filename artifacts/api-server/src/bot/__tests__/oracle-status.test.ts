@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildOracleRelationshipAnnouncement, buildOracleStatusLine } from "../oracle-chat";
+import {
+  buildOracleRelationshipAnnouncement,
+  buildOracleStatusLine,
+  oracleRelationshipTone,
+  ORACLE_HOSTILE_RELATION_DELTA,
+} from "../oracle-chat";
 
 describe("Oracle relationship status", () => {
   it("shows a positive bond change and the current title", () => {
@@ -16,13 +21,19 @@ describe("Oracle relationship status", () => {
 
   it("shows a negative bond change and an irritated Oracle", () => {
     const status = buildOracleStatusLine(
-      -3,
+      ORACLE_HOSTILE_RELATION_DELTA,
       { oracleBond: -4, oracleTitle: "Suflet suspect" },
     );
 
     expect(status).toContain("s-a supărat pe cuvintele tale");
-    expect(status).toContain("Legătura a scăzut cu **3**");
+    expect(status).toContain("Legătura a scăzut cu **2**");
     expect(status).toContain("Suflet suspect");
+  });
+
+  it("escalates the Oracle tone as the bond becomes negative", () => {
+    expect(oracleRelationshipTone(-2)).toContain("distant și rece");
+    expect(oracleRelationshipTone(-8)).toContain("vizibil mai agresiv");
+    expect(oracleRelationshipTone(-12)).toContain("profund ostil");
   });
 
   it("builds a public announcement for a bond increase", () => {
@@ -40,12 +51,12 @@ describe("Oracle relationship status", () => {
   it("builds a public announcement for a bond loss", () => {
     const announcement = buildOracleRelationshipAnnouncement(
       "user-2",
-      -3,
+      ORACLE_HOSTILE_RELATION_DELTA,
       { oracleBond: -7, oracleTitle: "Suflet suspect" },
     );
 
     expect(announcement).toContain("<@user-2>");
-    expect(announcement).toContain("a pierdut **3** puncte");
+    expect(announcement).toContain("a pierdut **2** puncte");
     expect(announcement).toContain("Total: **-7**");
   });
 });

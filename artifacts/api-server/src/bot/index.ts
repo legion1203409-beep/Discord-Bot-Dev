@@ -37,6 +37,7 @@ import {
   generateChestInscription,
   answerHelpQuestion,
   announceOracleRelationshipChange,
+  ORACLE_HOSTILE_RELATION_DELTA,
   recordOracleRelationshipChange,
   prophecyCooldownRemaining,
   reserveProphecy,
@@ -3911,8 +3912,8 @@ async function maybeRecordOracleToxicityRelationship(client: Client, message: Me
     }
     if (!directedAtBot) return;
 
-    const relationship = await recordOracleRelationshipChange(message, -3);
-    await announceOracleRelationshipChange(message, -3, relationship);
+    const relationship = await recordOracleRelationshipChange(message, ORACLE_HOSTILE_RELATION_DELTA);
+    await announceOracleRelationshipChange(message, ORACLE_HOSTILE_RELATION_DELTA, relationship);
   } catch (err) {
     logger.debug({ err, guildId: message.guildId }, "Oracle toxicity relationship update skipped");
   }
