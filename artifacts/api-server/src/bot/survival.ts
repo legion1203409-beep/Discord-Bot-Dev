@@ -2712,8 +2712,56 @@ export type ShopCategory =
 const SHOP_BALANCE = (p: Player) => {
   const prestigeLine =
     p.prestigeLevel > 0 ? `   ·   ⭐ Prestigiu **${p.prestigeLevel}**` : "";
-  return `🪙 **Oboli: ${p.gold}**   ·   ⭐ **XP: ${p.xp}**${prestigeLine}`;
+  return `🪙 **Oboli: ${p.gold.toLocaleString("ro-RO")}**   ·   ⭐ **XP: ${p.xp.toLocaleString("ro-RO")}**${prestigeLine}`;
 };
+
+function resourceLine(
+  emoji: string,
+  label: string,
+  have: number,
+  required: number,
+): string {
+  const enough = have >= required;
+  return `${enough ? "✅" : "❌"} ${emoji} ${label}: **${have.toLocaleString("ro-RO")} / ${required.toLocaleString("ro-RO")}**`;
+}
+
+function itemInventory(items: PlayerItem[]): Record<string, number> {
+  return Object.fromEntries(items.map((item) => [item.itemKey, item.quantity]));
+}
+
+function itemRequirementLines(
+  items: PlayerItem[],
+  requirements: { item: ItemKey; qty: number }[],
+): string {
+  const inv = itemInventory(items);
+  return requirements
+    .map((req) => {
+      const item = ITEMS[req.item];
+      return resourceLine(
+        item.emoji,
+        item.label,
+        inv[req.item] ?? 0,
+        req.qty,
+      );
+    })
+    .join("\n");
+}
+
+function upgradeResourceLines(
+  p: Player,
+  items: PlayerItem[],
+  cost: {
+    gold?: number;
+    xp?: number;
+    items?: { item: ItemKey; qty: number }[];
+  },
+): string {
+  const lines: string[] = [];
+  if (cost.gold) lines.push(resourceLine("🪙", "Oboli", p.gold, cost.gold));
+  if (cost.xp) lines.push(resourceLine("⭐", "XP", p.xp, cost.xp));
+  if (cost.items?.length) lines.push(itemRequirementLines(items, cost.items));
+  return lines.join("\n");
+}
 
 // Five permanent stat upgrades — shows current bonus → value after purchase,
 // with the price in bold so the cost is unmistakable.
@@ -2736,7 +2784,7 @@ function rankBarLine(level: number): string {
   return rank > 0 ? `${bar} 🏅 **Rank ${rank}**` : bar;
 }
 
-function shopStatsText(p: Player): string {
+function shopStatsText(p: Player, items: PlayerItem[] = []): string {
   const line = (
     key: ShopKey,
     emoji: string,
@@ -2749,7 +2797,7 @@ function shopStatsText(p: Player): string {
     const { rank, inRank } = statRankInfo(count);
     const bar = buildProgressBar(inRank, STAT_BAR_MAX, 10);
     const rankStr = rank > 0 ? ` · 🏅 **Rank ${rank}**` : "";
-    return `${emoji} **${label}** (Nv.${inRank}/${STAT_BAR_MAX})${rankStr} — **${price} Oboli**\n${bar}\n   ↳ acum ${now} → ${next}\n`;
+    return `${emoji} **${label}** (Nv.${inRank}/${STAT_BAR_MAX})${rankStr}\n${bar}\n   ↳ acum ${now} → ${next}\n   ↳ **Resurse pentru upgrade:**\n${upgradeResourceLines(p, items, { gold: price })}\n`;
   };
   return (
     line(
@@ -2778,7 +2826,7 @@ function shopStatsText(p: Player): string {
   );
 }
 
-function shopCompText(p: Player): string {
+function shopCompText(p: Player, items: PlayerItem[] = []): string {
   if (p.companion && isCompanionKey(p.companion)) {
     const c = COMPANIONS[p.companion];
     const evolved = isCompanionEvolved(p.companionLevel);
@@ -2789,14 +2837,14 @@ function shopCompText(p: Player): string {
       `🎁 Bonus activ: **${companionEffectiveDesc(p.companion, p.companionLevel)}**\n\n` +
       `🔼 **Îmbunătățire Nv.${p.companionLevel} → ${p.companionLevel + 1}**\n` +
       `   ↳ bonus nou: **${companionEffectiveDesc(p.companion, p.companionLevel + 1)}**\n` +
-      `   ↳ cost: **${cost} Oboli + ${UPGRADE_XP_COST} XP**\n` +
+       `   ↳ **Resurse pentru upgrade:**\n${upgradeResourceLines(p, items, { gold: cost, xp: UPGRADE_XP_COST })}\n` +
       (evolved
         ? ""
         : `   ↳ evoluează la Nv.${COMPANION_EVOLVE_LEVEL} în forma legendară\n`)
     );
   }
   return (
-    `🛒 Cumpără un companion (**${COMPANION_BUY_COST} Oboli**):\n\n` +
+       `🛒 **Resurse pentru cumpărare:**\n${upgradeResourceLines(p, items, { gold: COMPANION_BUY_COST })}\n\n` +
     Object.values(COMPANIONS)
       .map((c) => `${c.emoji} **${c.label}** — ${c.desc}`)
       .join("\n") +
@@ -2804,7 +2852,7 @@ function shopCompText(p: Player): string {
   );
 }
 
-function shopAbilText(p: Player): string {
+function shopAbilText(p: Player, items: PlayerItem[] = []): string {
   const classKey = p.class && isClassKey(p.class) ? p.class : null;
   if (!classKey) {
     return "🧬 Alege mai întâi o clasă din **Clasă** pentru a vedea și cumpăra puterile ei.";
@@ -2821,14 +2869,14 @@ function shopAbilText(p: Player): string {
         `   📖 ${power.description}\n` +
         `   🎁 Efect activ: **${classPowerEffectiveDesc(power, lvl)}**\n` +
         `   🔼 Îmbunătățire → Nv.${lvl + 1}: **${classPowerEffectiveDesc(power, lvl + 1)}**\n` +
-        `   ↳ cost: **${cost} Oboli + ${UPGRADE_XP_COST} XP**\n`
+         `   ↳ **Resurse pentru upgrade:**\n${upgradeResourceLines(p, items, { gold: cost, xp: UPGRADE_XP_COST })}\n`
       );
     }
     return (
       `${power.emoji} 🔒 **${power.label}**\n` +
       `   📖 ${power.description}\n` +
       `   ↳ la Nv.1: **${classPowerEffectiveDesc(power, 1)}**\n` +
-      `   🛒 Deblochează: **${ABILITY_BUY_COST} Oboli**\n`
+       `   🛒 **Resurse pentru deblocare:**\n${upgradeResourceLines(p, items, { gold: ABILITY_BUY_COST })}\n`
     );
   };
   const mLvl = p.manaLevel ?? 0;
@@ -2842,12 +2890,12 @@ function shopAbilText(p: Player): string {
     `   ${manaBar(p.mana ?? MANA_BASE, mMax)} **${p.mana ?? MANA_BASE}/${mMax}**\n` +
     `   ↳ Puterile clasei consumă mană; fiecare atac normal reface **${manaRegenPct(rLvl)}%** din maxim.\n` +
     `   🔼 Îmbunătățire → Nv.${mLvl + 1}: **${maxMana(mLvl + 1)} mană maximă**\n` +
-    `   ↳ cost: **${mCost} Oboli + ${UPGRADE_XP_COST} XP**\n` +
+    `   ↳ **Resurse pentru upgrade:**\n${upgradeResourceLines(p, items, { gold: mCost, xp: UPGRADE_XP_COST })}\n` +
     `\n💠 **Regenerare de Mană** Nv.${rLvl} *(nivel infinit)*\n` +
     `${rankBarLine(rLvl)}\n` +
     `   ↳ Fiecare atac normal reface **${manaRegenPct(rLvl)}%** din mana maximă.\n` +
     `   🔼 Îmbunătățire → Nv.${rLvl + 1}: **${manaRegenPct(rLvl + 1)}% pe atac**\n` +
-    `   ↳ cost: **${rCost} Oboli + ${UPGRADE_XP_COST} XP**\n`;
+    `   ↳ **Resurse pentru upgrade:**\n${upgradeResourceLines(p, items, { gold: rCost, xp: UPGRADE_XP_COST })}\n`;
   return (
     `🧬 **${CLASSES[classKey].label}** — aceste puteri aparțin doar clasei tale.\n\n` +
     line("power1") + "\n" + line("power2") + manaSection
@@ -2859,6 +2907,7 @@ function shopAbilText(p: Player): string {
 export function buildShopEmbed(
   p: Player,
   category: ShopCategory = "overview",
+  items: PlayerItem[] = [],
 ): EmbedBuilder {
   const embed = new EmbedBuilder()
     .setColor(THEME_COLOR)
@@ -2874,7 +2923,7 @@ export function buildShopEmbed(
           sectionTitle("Statistici permanente") +
           "\n" +
           "*Efect imediat, chiar și în lupta curentă.*\n\n" +
-          shopStatsText(p) +
+           shopStatsText(p, items) +
           "\n*Prețul fiecărei puteri crește cu 35% după fiecare cumpărare.*",
       );
   }
@@ -2887,7 +2936,7 @@ export function buildShopEmbed(
           "\n\n" +
           sectionTitle("Companionul tău") +
           "\n" +
-          shopCompText(p) +
+           shopCompText(p, items) +
           "\n*Companionul nou se aplică din următoarea Ora Umbrelor.*" +
           (p.companion && isCompanionKey(p.companion)
             ? "\n🔄 *Poți elibera companionul cu butonul de mai jos — nivelul lui se pierde.*"
@@ -2903,7 +2952,7 @@ export function buildShopEmbed(
           "\n\n" +
            sectionTitle("Puteri de clasă") +
           "\n" +
-          shopAbilText(p) +
+           shopAbilText(p, items) +
            "\n*Puterile se aplică imediat, chiar în lupta curentă.*",
       );
   }
@@ -2962,16 +3011,7 @@ export function buildShopEmbed(
           .join(", ");
       const cost = level < 10 ? classUpgradeCost(level) : null;
       const costLines = cost
-        ? `   ↳ cost: **${cost.gold} Oboli + ${cost.xp} XP**` +
-          (cost.items.length
-            ? "\n" +
-              cost.items
-                .map(
-                  (req) =>
-                    `   ↳ ${req.qty}× ${ITEMS[req.item].emoji} ${ITEMS[req.item].label}`,
-                )
-                .join("\n")
-            : "")
+        ? `   ↳ **Resurse pentru upgrade:**\n${upgradeResourceLines(p, items, cost)}`
         : "";
       return embed
         .setTitle("🧬 Forja Cenușii — Clasă")
@@ -2999,7 +3039,8 @@ export function buildShopEmbed(
         sectionTitle("Alege-ți calea") +
         "\n" +
         (hasTrained
-          ? `🎓 *Instruirea unei noi căi costă **${CLASS_SWITCH_COST} Oboli**. Nivelul fiecărei clase se păstrează.*\n\n`
+          ? `🎓 *Instruirea unei noi căi costă **${CLASS_SWITCH_COST} Oboli**. Nivelul fiecărei clase se păstrează.*\n` +
+            `${resourceLine("🪙", "Oboli pentru instruire", p.gold, CLASS_SWITCH_COST)}\n\n`
           : "🎓 *Prima instruire este gratuită. Nivelul fiecărei clase se păstrează dacă schimbi calea mai târziu.*\n\n") +
         (Object.keys(CLASSES) as ClassKey[])
           .map((k) => {
@@ -3030,7 +3071,8 @@ export function buildShopEmbed(
             : "") +
           `**🔰 Următorul nivel (${p.prestigeLevel + 1}):**\n` +
           `   → ${next}\n` +
-          `   → cost: **${cost.toLocaleString("ro-RO")} XP**\n\n` +
+           `   → **Resurse pentru următorul nivel:**\n` +
+           `   ${resourceLine("⭐", "XP", p.xp, cost)}\n\n` +
           "*Costul crește cu 50% la fiecare nivel de prestigiu.*",
       );
   }
@@ -3694,9 +3736,18 @@ export function shopPrestigeRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
 }
 
 /** Class sub-page rows — pickers if unchosen, upgrade button once a class is set. */
-export function shopClassRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
+export function shopClassRows(
+  p: Player,
+  items: PlayerItem[] = [],
+): ActionRowBuilder<ButtonBuilder>[] {
   if (p.class && isClassKey(p.class)) {
     const level = p.classLevel ?? 1;
+    const cost = level < 10 ? classUpgradeCost(level) : null;
+    const canAfford = cost
+      ? p.gold >= cost.gold &&
+        p.xp >= cost.xp &&
+        cost.items.every((req) => (itemInventory(items)[req.item] ?? 0) >= req.qty)
+      : false;
     const resetBtn = new ButtonBuilder()
       .setCustomId("shop_classreset")
       .setLabel("Renunță la clasă")
@@ -3717,7 +3768,7 @@ export function shopClassRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
           )
           .setEmoji("💎")
           .setStyle(ButtonStyle.Success)
-          .setDisabled(false),
+         .setDisabled(!canAfford),
         resetBtn,
       ),
       shopBackRow(),
@@ -3913,7 +3964,10 @@ export function levelupRows(
 }
 
 // ─── Classes ─────────────────────────────────────────────────────────────────
-export function buildClassEmbed(player: Player): EmbedBuilder {
+export function buildClassEmbed(
+  player: Player,
+  items: PlayerItem[] = [],
+): EmbedBuilder {
   const classKey = player.class;
   if (classKey && isClassKey(classKey)) {
     const cls = CLASSES[classKey];
@@ -3927,22 +3981,12 @@ export function buildClassEmbed(player: Player): EmbedBuilder {
         ? `   · ${label}: **+${val}**${nxt && nxt > val ? ` → +${nxt}` : ""}`
         : "";
 
-    const costLines =
-      cost.items.length > 0
-        ? cost.items
-            .map(
-              (req) =>
-                `   · ${req.qty}× ${ITEMS[req.item].emoji} ${ITEMS[req.item].label}`,
-            )
-            .join("\n")
-        : "";
-
     const upgradeBlock =
       level >= 10
         ? "⭐ **Nivel maxim atins!** Calea ta este desăvârșită."
         : `\n\n⬆️ **Upgrade la Nv.${level + 1}**\n` +
-          `   · ${cost.gold} Oboli\n` +
-          `   · ${cost.xp} XP${costLines ? "\n" + costLines : ""}`;
+          `**Resurse necesare / resursele tale:**\n` +
+          upgradeResourceLines(player, items, cost);
 
     const desc =
       `${cls.emoji} **${cls.label}** (Nv.${level})\n` +

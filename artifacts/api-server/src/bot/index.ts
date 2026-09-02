@@ -2605,7 +2605,8 @@ async function handleBuy(interaction: ButtonInteraction, key: ShopKey) {
     await applyUpgradeToActiveParticipant(interaction.user.id, guildId, key);
   }
   const player = updated ?? p;
-  await interaction.editReply({ embeds: [buildShopEmbed(player, "stats")], components: shopStatsRows(player) });
+  const items = await getPlayerItems(interaction.user.id, guildId);
+  await interaction.editReply({ embeds: [buildShopEmbed(player, "stats", items)], components: shopStatsRows(player) });
 }
 
 async function handleLevelup(interaction: ButtonInteraction, eventId: number, bonus: string) {
@@ -2637,9 +2638,10 @@ async function handleClasa(interaction: ChatInputCommandInteraction) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const guildId = interaction.guildId!;
   const p = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
+  const items = await getPlayerItems(interaction.user.id, guildId);
   await interaction.editReply({
-    embeds: [buildClassEmbed(p)],
-    components: p.class && isClassKey(p.class) ? shopClassRows(p) : classRows(),
+    embeds: [buildClassEmbed(p, items)],
+    components: p.class && isClassKey(p.class) ? shopClassRows(p, items) : classRows(),
   });
 }
 
@@ -2662,7 +2664,8 @@ async function handleClassPick(interaction: ButtonInteraction, key: string) {
     });
     return;
   }
-  await interaction.editReply({ embeds: [buildClassEmbed(updated)], components: [] });
+  const items = await getPlayerItems(interaction.user.id, guildId);
+  await interaction.editReply({ embeds: [buildClassEmbed(updated, items)], components: shopClassRows(updated, items) });
 }
 
 async function handleCompanion(interaction: ChatInputCommandInteraction) {
@@ -2678,22 +2681,31 @@ async function handleCompanion(interaction: ChatInputCommandInteraction) {
 async function handleShopNavStats(interaction: ButtonInteraction) {
   await interaction.deferUpdate();
   const guildId = interaction.guildId!;
-  const p = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
-  await interaction.editReply({ embeds: [buildShopEmbed(p, "stats")], components: shopStatsRows(p) });
+  const [p, items] = await Promise.all([
+    upsertPlayer(interaction.user.id, guildId, interaction.user.username),
+    getPlayerItems(interaction.user.id, guildId),
+  ]);
+  await interaction.editReply({ embeds: [buildShopEmbed(p, "stats", items)], components: shopStatsRows(p) });
 }
 
 async function handleShopNavComp(interaction: ButtonInteraction) {
   await interaction.deferUpdate();
   const guildId = interaction.guildId!;
-  const p = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
-  await interaction.editReply({ embeds: [buildShopEmbed(p, "comp")], components: shopCompRows(p) });
+  const [p, items] = await Promise.all([
+    upsertPlayer(interaction.user.id, guildId, interaction.user.username),
+    getPlayerItems(interaction.user.id, guildId),
+  ]);
+  await interaction.editReply({ embeds: [buildShopEmbed(p, "comp", items)], components: shopCompRows(p) });
 }
 
 async function handleShopNavAbil(interaction: ButtonInteraction) {
   await interaction.deferUpdate();
   const guildId = interaction.guildId!;
-  const p = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
-  await interaction.editReply({ embeds: [buildShopEmbed(p, "abil")], components: shopAbilRows(p) });
+  const [p, items] = await Promise.all([
+    upsertPlayer(interaction.user.id, guildId, interaction.user.username),
+    getPlayerItems(interaction.user.id, guildId),
+  ]);
+  await interaction.editReply({ embeds: [buildShopEmbed(p, "abil", items)], components: shopAbilRows(p) });
 }
 
 async function handleShopNavPrestige(interaction: ButtonInteraction) {
@@ -2706,8 +2718,11 @@ async function handleShopNavPrestige(interaction: ButtonInteraction) {
 async function handleShopNavClass(interaction: ButtonInteraction) {
   await interaction.deferUpdate();
   const guildId = interaction.guildId!;
-  const p = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
-  await interaction.editReply({ embeds: [buildShopEmbed(p, "class")], components: shopClassRows(p) });
+  const [p, items] = await Promise.all([
+    upsertPlayer(interaction.user.id, guildId, interaction.user.username),
+    getPlayerItems(interaction.user.id, guildId),
+  ]);
+  await interaction.editReply({ embeds: [buildShopEmbed(p, "class", items)], components: shopClassRows(p, items) });
 }
 
 async function handleShopNavEquipment(interaction: ButtonInteraction) {
@@ -2718,7 +2733,7 @@ async function handleShopNavEquipment(interaction: ButtonInteraction) {
     getPlayerItems(interaction.user.id, guildId),
   ]);
   await interaction.editReply({
-    embeds: [buildShopEmbed(p, "equipment")],
+    embeds: [buildShopEmbed(p, "equipment", items)],
     components: shopEquipmentRows(p),
   });
 }
@@ -2910,7 +2925,11 @@ async function handleShopClassPick(interaction: ButtonInteraction, key: string) 
       : `❌ Instruirea unei noi căi costă **${CLASS_SWITCH_COST} Oboli** — nu ai destui.`;
     await ephemeralNote(interaction, "shop", msg);
   }
-  await interaction.editReply({ embeds: [buildShopEmbed(player, "class")], components: shopClassRows(player) });
+  const items = await getPlayerItems(interaction.user.id, guildId);
+  await interaction.editReply({
+    embeds: [buildShopEmbed(player, "class", items)],
+    components: shopClassRows(player, items),
+  });
 }
 
 async function handlePrestigeBuy(interaction: ButtonInteraction) {
@@ -2940,7 +2959,8 @@ async function handleCompBuy(interaction: ButtonInteraction, key: string) {
     await ephemeralNote(interaction, "shop", `❌ Nu poți cumpăra acest companion — ai nevoie de **${COMPANION_BUY_COST} Oboli** și să nu ai deja unul.`);
     return;
   }
-  await interaction.editReply({ embeds: [buildShopEmbed(updated, "comp")], components: shopCompRows(updated) });
+  const items = await getPlayerItems(interaction.user.id, guildId);
+  await interaction.editReply({ embeds: [buildShopEmbed(updated, "comp", items)], components: shopCompRows(updated) });
 }
 
 async function handleCompUpgrade(interaction: ButtonInteraction) {
@@ -2953,7 +2973,8 @@ async function handleCompUpgrade(interaction: ButtonInteraction) {
     await ephemeralNote(interaction, "shop", `❌ Îmbunătățire eșuată — ai nevoie de un companion, **${cost} Oboli** și **${UPGRADE_XP_COST} XP**.`);
     return;
   }
-  await interaction.editReply({ embeds: [buildShopEmbed(updated, "comp")], components: shopCompRows(updated) });
+  const items = await getPlayerItems(interaction.user.id, guildId);
+  await interaction.editReply({ embeds: [buildShopEmbed(updated, "comp", items)], components: shopCompRows(updated) });
 }
 
 async function handleClassUpgrade(interaction: ButtonInteraction) {
@@ -2982,7 +3003,11 @@ async function handleClassUpgrade(interaction: ButtonInteraction) {
     await ephemeralNote(interaction, "shop", "❌ Upgrade eșuat — resursele s-au schimbat între timp.");
     return;
   }
-  await interaction.editReply({ embeds: [buildClassEmbed(updated)], components: shopClassRows(updated) });
+  const updatedItems = await getPlayerItems(interaction.user.id, guildId);
+  await interaction.editReply({
+    embeds: [buildClassEmbed(updated, updatedItems)],
+    components: shopClassRows(updated, updatedItems),
+  });
 }
 
 async function handleCompReset(interaction: ButtonInteraction) {
@@ -3081,7 +3106,8 @@ async function handleAbilBuy(interaction: ButtonInteraction, kind: string) {
     await ephemeralNote(interaction, "shop", `❌ Nu poți debloca puterea — ai nevoie de **${ABILITY_BUY_COST} Oboli** și să nu o deții deja.`);
     return;
   }
-  await interaction.editReply({ embeds: [buildShopEmbed(updated, "abil")], components: shopAbilRows(updated) });
+  const items = await getPlayerItems(interaction.user.id, guildId);
+  await interaction.editReply({ embeds: [buildShopEmbed(updated, "abil", items)], components: shopAbilRows(updated) });
 }
 
 async function handleAbilUpgrade(interaction: ButtonInteraction, kind: string) {
@@ -3103,7 +3129,8 @@ async function handleAbilUpgrade(interaction: ButtonInteraction, kind: string) {
     await ephemeralNote(interaction, "shop", `❌ Îmbunătățire eșuată — ai nevoie de putere, **${cost} Oboli** și **${UPGRADE_XP_COST} XP**.`);
     return;
   }
-  await interaction.editReply({ embeds: [buildShopEmbed(updated, "abil")], components: shopAbilRows(updated) });
+  const items = await getPlayerItems(interaction.user.id, guildId);
+  await interaction.editReply({ embeds: [buildShopEmbed(updated, "abil", items)], components: shopAbilRows(updated) });
 }
 
 async function handleManaUpgrade(interaction: ButtonInteraction) {
@@ -3117,7 +3144,8 @@ async function handleManaUpgrade(interaction: ButtonInteraction) {
     await ephemeralNote(interaction, "shop", `❌ Îmbunătățire eșuată — ai nevoie de **${cost} Oboli** și **${UPGRADE_XP_COST} XP**.`);
     return;
   }
-  await interaction.editReply({ embeds: [buildShopEmbed(updated, "abil")], components: shopAbilRows(updated) });
+  const items = await getPlayerItems(interaction.user.id, guildId);
+  await interaction.editReply({ embeds: [buildShopEmbed(updated, "abil", items)], components: shopAbilRows(updated) });
   await ephemeralNote(interaction, "shop", `🔷 **Rezerva de Mană** a crescut la **Nv.${updated.manaLevel}** — mana maximă e acum **${maxMana(updated.manaLevel)}** (și a fost reumplută complet)!`);
 }
 
@@ -3132,7 +3160,8 @@ async function handleManaRegenUpgrade(interaction: ButtonInteraction) {
     await ephemeralNote(interaction, "shop", `❌ Îmbunătățire eșuată — ai nevoie de **${cost} Oboli** și **${UPGRADE_XP_COST} XP**.`);
     return;
   }
-  await interaction.editReply({ embeds: [buildShopEmbed(updated, "abil")], components: shopAbilRows(updated) });
+  const items = await getPlayerItems(interaction.user.id, guildId);
+  await interaction.editReply({ embeds: [buildShopEmbed(updated, "abil", items)], components: shopAbilRows(updated) });
   await ephemeralNote(interaction, "shop", `💠 **Regenerarea de Mană** a crescut la **Nv.${updated.manaRegenLevel}** — fiecare atac normal reface acum **${manaRegenPct(updated.manaRegenLevel)}%** din mana maximă!`);
 }
 
