@@ -156,11 +156,33 @@ export type RewardMultipliers = { xpMult: number; goldMult: number };
 
 // ─── Guild-level admin boosts ─────────────────────────────────────────────────
 
-type GuildBoost = { xpMult: number; goldMult: number; expiresAt: number };
+export type GuildBoost = { xpMult: number; goldMult: number; expiresAt: number };
 const guildBoostStore = new Map<string, GuildBoost>();
 
 export function grantGuildBoost(guildId: string, xpMult: number, goldMult: number, durationMs: number): GuildBoost {
   const boost: GuildBoost = { xpMult, goldMult, expiresAt: Date.now() + durationMs };
+  guildBoostStore.set(guildId, boost);
+  return boost;
+}
+
+/** Restores a guild boost whose absolute expiry was persisted elsewhere. */
+export function restoreGuildBoost(
+  guildId: string,
+  xpMult: number,
+  goldMult: number,
+  expiresAt: number,
+): GuildBoost | null {
+  if (
+    !Number.isFinite(xpMult) ||
+    xpMult <= 0 ||
+    !Number.isFinite(goldMult) ||
+    goldMult <= 0 ||
+    !Number.isFinite(expiresAt) ||
+    expiresAt <= Date.now()
+  ) {
+    return null;
+  }
+  const boost: GuildBoost = { xpMult, goldMult, expiresAt };
   guildBoostStore.set(guildId, boost);
   return boost;
 }

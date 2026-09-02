@@ -1401,6 +1401,7 @@ function guildKey(guildId: string, key: string): string {
 }
 
 const ORACLE_COUNCIL_KEY = "oracle_council";
+const ORACLE_COUNCIL_DECREE_KEY = "oracle_council_decree";
 
 export interface OracleCouncilOption {
   id: string;
@@ -1421,6 +1422,59 @@ export interface OracleCouncilRecord {
   closesAt: number;
   status: "open" | "closed";
   winnerId?: string;
+}
+
+export interface OracleCouncilDecreeEffect {
+  guildId: string;
+  xpMult: number;
+  goldMult: number;
+  expiresAt: number;
+}
+
+function oracleCouncilDecreeKey(guildId: string): string {
+  return guildKey(guildId, ORACLE_COUNCIL_DECREE_KEY);
+}
+
+export async function saveOracleCouncilDecreeEffect(effect: OracleCouncilDecreeEffect): Promise<void> {
+  await ensureBotStateTable();
+  const now = new Date();
+  await db
+    .insert(botStateTable)
+    .values({ key: oracleCouncilDecreeKey(effect.guildId), value: JSON.stringify(effect) })
+    .onConflictDoUpdate({
+      target: botStateTable.key,
+      set: { value: JSON.stringify(effect), updatedAt: now },
+    });
+}
+
+export async function loadOracleCouncilDecreeEffect(
+  guildId: string,
+  now = Date.now(),
+): Promise<OracleCouncilDecreeEffect | null> {
+  await ensureBotStateTable();
+  const [row] = await db
+    .select()
+    .from(botStateTable)
+    .where(eq(botStateTable.key, oracleCouncilDecreeKey(guildId)));
+  if (!row) return null;
+  try {
+    const parsed = JSON.parse(row.value) as OracleCouncilDecreeEffect;
+    if (
+      !parsed ||
+      parsed.guildId !== guildId ||
+      !Number.isFinite(parsed.xpMult) ||
+      parsed.xpMult <= 0 ||
+      !Number.isFinite(parsed.goldMult) ||
+      parsed.goldMult <= 0 ||
+      !Number.isFinite(parsed.expiresAt) ||
+      parsed.expiresAt <= now
+    ) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
 }
 
 export async function saveOracleCouncil(record: OracleCouncilRecord): Promise<void> {

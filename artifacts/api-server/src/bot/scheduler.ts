@@ -4,7 +4,7 @@ import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, buildExpiredChes
 import { triggerRandomBattleEvent } from "./combat-events";
 import { getRewardMultipliers } from "./status-effects";
 import { startOracle, setOracleExtatic } from "./oracle";
-import { startOracleCouncilScheduler, stopOracleCouncilScheduler } from "./oracle-council";
+import { rehydrateCouncilDecree, startOracleCouncilScheduler, stopOracleCouncilScheduler } from "./oracle-council";
 import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle, addPlayerReputation, addPlayerGold, addPlayerXp, getPrestigeLevels, persistActiveBoss, loadActiveBossRowsByGuild, deleteActiveBoss, createActiveBossesTableIfNotExists, persistActiveChest, loadActiveChest, clearActiveChest, getFinalBossKills, KEYCHEST_DBKEY, LOCKCHEST_DBKEY, runMultiGuildMigrations } from "./db";
 import { getChannel, initChannelConfig, hasAnyChannelConfigured, type EventType } from "./channel-config";
 import {
@@ -1342,6 +1342,9 @@ export function startGuildScheduler(client: Client, guildId: string) {
   gs.stopped = false; // reset in case the bot had previously left and rejoined this guild
   gs.started = true;
 
+  void rehydrateCouncilDecree(guildId).catch((err) =>
+    logger.warn({ err, guildId }, "Council decree could not be rehydrated"),
+  );
   void rehydrateActiveBosses(client, guildId);
   if (LEGACY_CHEST_SPAWNS_ENABLED) {
     void rehydrateActiveChest(client, guildId);

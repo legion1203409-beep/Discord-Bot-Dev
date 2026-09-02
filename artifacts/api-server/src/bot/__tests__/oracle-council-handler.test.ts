@@ -6,13 +6,24 @@ const {
   mockCloseOracleCouncil,
   mockRecordOracleInteraction,
   mockSaveOracleCouncil,
+  mockLoadOracleCouncilDecreeEffect,
+  mockSaveOracleCouncilDecreeEffect,
   mockGrantGuildBoost,
+  mockRestoreGuildBoost,
 } = vi.hoisted(() => ({
   mockCastOracleCouncilVote: vi.fn(),
   mockCloseOracleCouncil: vi.fn(),
   mockRecordOracleInteraction: vi.fn(),
   mockSaveOracleCouncil: vi.fn(),
-  mockGrantGuildBoost: vi.fn(),
+  mockLoadOracleCouncilDecreeEffect: vi.fn(),
+  mockSaveOracleCouncilDecreeEffect: vi.fn(),
+  mockGrantGuildBoost: vi.fn((guildId: string, xpMult: number, goldMult: number, durationMs: number) => ({
+    guildId,
+    xpMult,
+    goldMult,
+    expiresAt: Date.now() + durationMs,
+  })),
+  mockRestoreGuildBoost: vi.fn(),
 }));
 
 vi.mock("discord.js", () => {
@@ -67,12 +78,15 @@ vi.mock("../db", () => ({
   castOracleCouncilVote: mockCastOracleCouncilVote,
   closeOracleCouncil: mockCloseOracleCouncil,
   loadOracleCouncil: vi.fn(),
+  loadOracleCouncilDecreeEffect: mockLoadOracleCouncilDecreeEffect,
   recordOracleInteraction: mockRecordOracleInteraction,
+  saveOracleCouncilDecreeEffect: mockSaveOracleCouncilDecreeEffect,
   saveOracleCouncil: mockSaveOracleCouncil,
 }));
 
 vi.mock("../status-effects", () => ({
   grantGuildBoost: mockGrantGuildBoost,
+  restoreGuildBoost: mockRestoreGuildBoost,
 }));
 
 vi.mock("../../lib/logger", () => ({
@@ -83,6 +97,7 @@ import {
   councilDecreeEffect,
   finalizeCouncil,
   handleOracleCouncilVote,
+  rehydrateCouncilDecree,
 } from "../oracle-council";
 
 function makeCouncil(votes: Record<string, string> = {}, status: "open" | "closed" = "open") {
@@ -182,6 +197,7 @@ describe("Oracle Council closing", () => {
     const closed = makeCouncil({ "voter-1": "aur", "voter-2": "aur" }, "closed");
     mockCloseOracleCouncil.mockResolvedValueOnce(closed);
     mockSaveOracleCouncil.mockResolvedValueOnce(undefined);
+    mockSaveOracleCouncilDecreeEffect.mockResolvedValueOnce(undefined);
 
     const message = { edit: vi.fn().mockResolvedValue(undefined) };
     const channel = Object.create(TextChannel.prototype) as TextChannel;
@@ -197,10 +213,45 @@ describe("Oracle Council closing", () => {
       1.25,
       6 * 60 * 60 * 1000,
     );
+    expect(mockSaveOracleCouncilDecreeEffect).toHaveBeenCalledWith({
+      guildId: "guild-1",
+      xpMult: 1,
+      goldMult: 1.25,
+      expiresAt: expect.any(Number),
+    });
     expect(message.edit).toHaveBeenCalledOnce();
     expect(channel.send).toHaveBeenCalledWith(
       expect.objectContaining({ content: expect.stringContaining("Efectul legii") }),
     );
     expect(councilDecreeEffect("aur").goldMult).toBe(1.25);
+  });
+
+  it("rehydrates a still-active decree after a restart", async () => {
+    mockLoadOracleCouncilDecreeEffect.mockResolvedValueOnce({
+      guildId: "guild-1",
+      xpMult: 1.25,
+      goldMult: 1,
+      expiresAt: Date.now() + 60_000,
+    });
+    mockRestoreGuildBoost.mockReturnValueOnce({
+      xpMult: 1.25,
+      goldMult: 1,
+      expiresAt: Date.now() + 60_000,
+    });
+
+    await expect(rehydrateCouncilDecree("guild-1")).resolves.toBe(true);
+    expect(mockRestoreGuildBoost).toHaveBeenCalledWith(
+      "guild-1",
+      1.25,
+      1,
+      expect.any(Number),
+    );
+  });
+
+  it("does not restore an expired decree", async () => {
+    mockLoadOracleCouncilDecreeEffect.mockResolvedValueOnce(null);
+
+    await expect(rehydrateCouncilDecree("guild-1")).resolves.toBe(false);
+    expect(mockRestoreGuildBoost).not.toHaveBeenCalled();
   });
 });

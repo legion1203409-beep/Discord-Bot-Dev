@@ -15,13 +15,15 @@ import {
   castOracleCouncilVote,
   closeOracleCouncil,
   loadOracleCouncil,
+  loadOracleCouncilDecreeEffect,
   recordOracleInteraction,
+  saveOracleCouncilDecreeEffect,
   saveOracleCouncil,
   addPlayerReputation,
   type OracleCouncilOption,
   type OracleCouncilRecord,
 } from "./db";
-import { grantGuildBoost } from "./status-effects";
+import { grantGuildBoost, restoreGuildBoost } from "./status-effects";
 
 const MINUTE = 60 * 1000;
 const COUNCIL_ENABLED = process.env.ORACLE_COUNCIL_ENABLED !== "false";
@@ -129,9 +131,15 @@ export function councilDecreeEffect(optionId: string): CouncilDecreeEffect {
 
 export async function applyCouncilDecree(council: OracleCouncilRecord, winner: OracleCouncilOption): Promise<string> {
   const effect = councilDecreeEffect(winner.id);
-  if (effect.xpMult !== 1 || effect.goldMult !== 1) {
-    grantGuildBoost(council.guildId, effect.xpMult, effect.goldMult, effect.durationMs);
-  }
+  // Always replace the previous council boost, including for a neutral law
+  // such as Reputația. Otherwise the old law would remain active.
+  const boost = grantGuildBoost(council.guildId, effect.xpMult, effect.goldMult, effect.durationMs);
+  await saveOracleCouncilDecreeEffect({
+    guildId: council.guildId,
+    xpMult: boost.xpMult,
+    goldMult: boost.goldMult,
+    expiresAt: boost.expiresAt,
+  });
   if (effect.voterReputation > 0) {
     await Promise.all(
       Object.keys(council.votes).map((discordId) =>
@@ -142,6 +150,13 @@ export async function applyCouncilDecree(council: OracleCouncilRecord, winner: O
     );
   }
   return effect.summary;
+}
+
+/** Reinstalls the still-active council law after a process restart. */
+export async function rehydrateCouncilDecree(guildId: string): Promise<boolean> {
+  const persisted = await loadOracleCouncilDecreeEffect(guildId);
+  if (!persisted) return false;
+  return restoreGuildBoost(guildId, persisted.xpMult, persisted.goldMult, persisted.expiresAt) !== null;
 }
 
 function councilEmbed(council: OracleCouncilRecord): EmbedBuilder {
@@ -334,7 +349,8 @@ export function startOracleCouncilScheduler(
   channelId: string,
   isStopped: () => boolean = () => false,
 ): void {
-  if (!COUNCIL_ENABLED || councilRuntimes.has(guildId)) return;
+  if (councilRuntimes.has(guildId)) return;
+  if (!COUNCIL_ENABLED) return;
   const token = Symbol(guildId);
   const runtime: CouncilRuntime = { token, isStopped };
   councilRuntimes.set(guildId, runtime);

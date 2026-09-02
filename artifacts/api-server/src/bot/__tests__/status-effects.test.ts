@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { grantEffect, getCombatModifiers, getRewardMultipliers, rollChestEffectKind, buildChestEffectMessage, describeEffectMods, formatCombatEffects, CHEST_EFFECT_ODDS, LOCKED_CHEST_EFFECT_ODDS } from "../status-effects";
+import { grantEffect, getCombatModifiers, getRewardMultipliers, rollChestEffectKind, buildChestEffectMessage, describeEffectMods, formatCombatEffects, CHEST_EFFECT_ODDS, LOCKED_CHEST_EFFECT_ODDS, grantGuildBoost, restoreGuildBoost, getGuildBoost, clearGuildBoost } from "../status-effects";
 import type { EffectDef } from "../status-effects";
 
 // Each test uses a unique ID to avoid cross-test state contamination in the
@@ -193,6 +193,41 @@ describe("getRewardMultipliers", () => {
     const mult = getRewardMultipliers(id);
     expect(mult.xpMult).toBeCloseTo(1.1);
     expect(mult.goldMult).toBe(1);
+  });
+});
+
+describe("guild boost restoration", () => {
+  afterEach(() => {
+    clearGuildBoost("test-guild");
+    vi.useRealTimers();
+  });
+
+  it("restores an active boost using its persisted absolute expiry", () => {
+    vi.useFakeTimers();
+    const expiresAt = Date.now() + 60_000;
+    clearGuildBoost("test-guild");
+
+    expect(restoreGuildBoost("test-guild", 1.25, 1, expiresAt)).toEqual({
+      xpMult: 1.25,
+      goldMult: 1,
+      expiresAt,
+    });
+    expect(getGuildBoost("test-guild")).toEqual({
+      xpMult: 1.25,
+      goldMult: 1,
+      expiresAt,
+    });
+
+    vi.advanceTimersByTime(60_001);
+    expect(getGuildBoost("test-guild")).toBeNull();
+  });
+
+  it("replaces the previous guild boost when a new decree is granted", () => {
+    const oldBoost = grantGuildBoost("test-guild", 1.25, 1, 60_000);
+    const newBoost = grantGuildBoost("test-guild", 1, 1.25, 60_000);
+
+    expect(getGuildBoost("test-guild")).toEqual(newBoost);
+    expect(getGuildBoost("test-guild")).not.toEqual(oldBoost);
   });
 });
 
