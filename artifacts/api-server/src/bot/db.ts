@@ -335,7 +335,7 @@ export function oracleRelationshipTitle(
 export type OracleInteractionKind = "dialog" | "council";
 
 /**
- * Persists a bounded, per-guild memory of a player's direct relationship with
+ * Persists a short, per-guild memory of a player's direct relationship with
  * the Oracle. Memory is deliberately short and only records messages that were
  * addressed to the Oracle or explicit council participation.
  */
@@ -362,17 +362,17 @@ export async function recordOracleInteraction(
   );
   await pool.query(
     `UPDATE players
-     SET oracle_bond = GREATEST(-20, LEAST(25, oracle_bond + $3)),
+     SET oracle_bond = LEAST(25, oracle_bond + $3),
          oracle_interactions = oracle_interactions + 1,
          oracle_chaos = GREATEST(0, oracle_chaos + $4),
          oracle_title = CASE
            WHEN GREATEST(0, oracle_chaos + $4) >= 5 THEN 'Nebunul Regatului'
-           WHEN GREATEST(-20, LEAST(25, oracle_bond + $3)) >= 15 THEN 'Favoritul Cenușii'
+           WHEN LEAST(25, oracle_bond + $3) >= 15 THEN 'Favoritul Cenușii'
            WHEN oracle_interactions + 1 >= 8
-             AND GREATEST(-20, LEAST(25, oracle_bond + $3)) >= 8 THEN 'Vânător de umbre'
-           WHEN GREATEST(-20, LEAST(25, oracle_bond + $3)) >= 4 THEN 'Străjer loial'
-           WHEN GREATEST(-20, LEAST(25, oracle_bond + $3)) <= -10 THEN 'Trădător'
-           WHEN GREATEST(-20, LEAST(25, oracle_bond + $3)) <= -4 THEN 'Suflet suspect'
+             AND LEAST(25, oracle_bond + $3) >= 8 THEN 'Vânător de umbre'
+           WHEN LEAST(25, oracle_bond + $3) >= 4 THEN 'Străjer loial'
+           WHEN LEAST(25, oracle_bond + $3) <= -10 THEN 'Trădător'
+           WHEN LEAST(25, oracle_bond + $3) <= -4 THEN 'Suflet suspect'
            ELSE 'Suflet necunoscut'
          END,
          oracle_memory = CASE
