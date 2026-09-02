@@ -1493,7 +1493,7 @@ export async function castOracleCouncilVote(
   if (!existing || existing.id !== councilId || existing.status !== "open" || existing.closesAt <= Date.now()) {
     return { status: "closed" };
   }
-  if (existing.votes[userId]) return { status: "already_voted" };
+  if (Object.prototype.hasOwnProperty.call(existing.votes, userId)) return { status: "already_voted" };
   if (!existing.options.some((option) => option.id === optionId)) return { status: "invalid" };
   return { status: "closed" };
 }

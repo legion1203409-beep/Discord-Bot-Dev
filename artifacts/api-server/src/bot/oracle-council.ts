@@ -127,7 +127,7 @@ export function councilDecreeEffect(optionId: string): CouncilDecreeEffect {
   }
 }
 
-async function applyCouncilDecree(council: OracleCouncilRecord, winner: OracleCouncilOption): Promise<string> {
+export async function applyCouncilDecree(council: OracleCouncilRecord, winner: OracleCouncilOption): Promise<string> {
   const effect = councilDecreeEffect(winner.id);
   if (effect.xpMult !== 1 || effect.goldMult !== 1) {
     grantGuildBoost(council.guildId, effect.xpMult, effect.goldMult, effect.durationMs);
@@ -188,7 +188,7 @@ async function getChannel(client: Client, channelId: string): Promise<TextChanne
   return channel instanceof TextChannel ? channel : null;
 }
 
-async function finalizeCouncil(
+export async function finalizeCouncil(
   client: Client,
   guildId: string,
   councilId: string,
@@ -287,13 +287,25 @@ export async function handleOracleCouncilVote(interaction: ButtonInteraction): P
     return;
   }
   const [, councilId, optionId] = match;
-  const result = await castOracleCouncilVote(guildId, councilId!, interaction.user.id, optionId!);
+  let result: Awaited<ReturnType<typeof castOracleCouncilVote>>;
+  try {
+    result = await castOracleCouncilVote(guildId, councilId!, interaction.user.id, optionId!);
+  } catch (err) {
+    logger.error({ err, guildId, userId: interaction.user.id }, "Could not cast council vote");
+    await interaction.editReply("❌ Glasul nu a putut fi înscris. Încearcă din nou.").catch(() => null);
+    return;
+  }
   if (result.status === "accepted") {
-    await interaction.message.edit({
-      embeds: [councilEmbed(result.council)],
-      components: [councilButtons(result.council)],
-    }).catch(() => null);
-    await recordOracleInteraction(
+    try {
+      await interaction.message.edit({
+        embeds: [councilEmbed(result.council)],
+        components: [councilButtons(result.council)],
+      });
+    } catch (err) {
+      logger.warn({ err, guildId, userId: interaction.user.id }, "Could not update council vote message");
+    }
+    await interaction.editReply("🕯️ Glasul tău a fost înscris în cronica Cenușii.");
+    void recordOracleInteraction(
       interaction.user.id,
       guildId,
       interaction.user.username,
@@ -303,7 +315,6 @@ export async function handleOracleCouncilVote(interaction: ButtonInteraction): P
     ).catch((err) => {
       logger.warn({ err, guildId, userId: interaction.user.id }, "Could not save council relationship memory");
     });
-    await interaction.editReply("🕯️ Glasul tău a fost înscris în cronica Cenușii.");
     return;
   }
   if (result.status === "already_voted") {
