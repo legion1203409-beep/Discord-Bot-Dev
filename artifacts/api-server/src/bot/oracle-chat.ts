@@ -5,7 +5,7 @@
 // mood. Never logs or echoes message content beyond length metadata.
 
 import OpenAI from "openai";
-import type { Client, GuildMember, Message } from "discord.js";
+import type { Client, Message } from "discord.js";
 import { PermissionFlagsBits } from "discord.js";
 import { logger } from "../lib/logger";
 import { getCurrentMood } from "./oracle";
@@ -101,9 +101,6 @@ const GLOBAL_HOURLY_CAP = envInt("ORACLE_GLOBAL_HOURLY_CAP", 80, 1_000); // max 
 const MAX_INPUT_CHARS = envInt("ORACLE_MAX_INPUT_CHARS", 600, 4_000); // max 4 000 chars
 const DISCORD_MAX_CHARS = 2000;
 const PROPHECY_COOLDOWN_MS = envInt("ORACLE_PROPHECY_COOLDOWN_MINUTES", 5, 60) * 60 * 1000;
-const SOCIAL_CHAT_ENABLED = process.env.ORACLE_SOCIAL_CHAT_ENABLED !== "false";
-const SOCIAL_REPLY_COOLDOWN_MS = envInt("ORACLE_SOCIAL_REPLY_COOLDOWN_MINUTES", 8, 60) * 60 * 1000;
-const WELCOME_COOLDOWN_MS = envInt("ORACLE_WELCOME_COOLDOWN_MINUTES", 5, 60) * 60 * 1000;
 
 // Rolling conversation memory: the Oracle sees the last few exchanges from the
 // same channel/thread so a short back-and-forth feels continuous instead of each
@@ -167,8 +164,6 @@ type ChatMessage = OpenAI.Chat.Completions.ChatCompletionMessageParam;
 const FALLBACK_LINE = "🕯️ *Cețurile dintre lumi sunt prea dese acum… Oracolul tace.*";
 
 const lastReplyAt = new Map<string, number>();
-const lastSocialReplyAt = new Map<string, number>();
-const lastWelcomeAt = new Map<string, number>();
 const replyTimestamps: number[] = [];
 
 let openaiClient: OpenAI | null = null;
@@ -808,17 +803,6 @@ function isGameHelpQuestion(text: string): boolean {
   return /\b(cheie|chei|cufar|cufere|lupt|boss|dragon|misiun|magazin|clasa|companion|relicv|fragment|obol|xp|mana|oracol|profet|licitat|fratie|cavaler|umbrolog|strajer|alchimist|ratacitor)\b/.test(normalized);
 }
 
-function isWorthJoiningConversation(text: string): boolean {
-  const normalized = text
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim();
-  if (!normalized || normalized.startsWith("/") || normalized.includes("http")) return false;
-  const words = normalized.split(/\s+/).filter(Boolean);
-  return words.length >= 4 || normalized.length >= 28;
-}
-
 /**
  * Answer when the Oracle is addressed. Detects both a direct @mention and a reply
  * to one of the bot's own messages (a reply with the ping on lists the bot in
@@ -975,112 +959,6 @@ export async function maybeReplyAsOracle(discordClient: Client, message: Message
   }
 }
 
-/**
- * Let the Oracle join a normal conversation in the configured main channel.
- * This is intentionally slower than direct replies: one social message per guild
- * cooldown, only for substantial human messages, and never for command-like text.
- */
-export async function maybeJoinOracleConversation(
-  discordClient: Client,
-  message: Message,
-  mainChannelId: string,
-): Promise<void> {
-  try {
-    if (!AI_ENABLED || !SOCIAL_CHAT_ENABLED || !message.guildId || message.channelId !== mainChannelId) return;
-    if (message.mentions.users.size > 0 || message.reference?.messageId) return;
-
-    const cleaned = (message.content ?? "").trim();
-    if (!isWorthJoiningConversation(cleaned)) return;
-
-    const now = Date.now();
-    if (now - (lastSocialReplyAt.get(message.guildId) ?? 0) < SOCIAL_REPLY_COOLDOWN_MS) return;
-    if (!underGlobalCap(now)) return;
-
-    // Reserve before any await so several simultaneous messages cannot all trigger
-    // a social reply for the same guild.
-    lastSocialReplyAt.set(message.guildId, now);
-    replyTimestamps.push(now);
-
-    const [relationship, council] = await Promise.all([
-      getPlayerById(message.author.id, message.guildId).catch(() => null),
-      loadOracleCouncil(message.guildId).catch(() => null),
-    ]);
-    const mood = getCurrentMood(message.guildId);
-    const reply = await generateOracleReply(
-      cleaned,
-      [],
-      undefined,
-      mood,
-      "Călător",
-      false,
-      relationship,
-      council,
-      true,
-    );
-    if (!reply) return;
-
-    if (message.channel.isTextBased() && "sendTyping" in message.channel) {
-      await message.channel.sendTyping().catch(() => {});
-    }
-    await message.reply({
-      content: reply.slice(0, DISCORD_MAX_CHARS),
-      allowedMentions: { repliedUser: false, parse: [] },
-    });
-    logger.info(
-      { guildId: message.guildId, mood, len: reply.length },
-      "Oracle joined a social conversation",
-    );
-  } catch (err) {
-    logger.debug({ err, guildId: message.guildId }, "Oracle social conversation skipped after failure");
-  }
-}
-
-/** Welcome a new human member and briefly explain what the server is about. */
-export async function welcomeNewMemberAsOracle(
-  discordClient: Client,
-  member: GuildMember,
-  mainChannelId: string,
-): Promise<void> {
-  try {
-    if (!AI_ENABLED || !SOCIAL_CHAT_ENABLED || member.user.bot) return;
-    const guildId = member.guild.id;
-    const now = Date.now();
-    if (now - (lastWelcomeAt.get(guildId) ?? 0) < WELCOME_COOLDOWN_MS) return;
-    if (!underGlobalCap(now)) return;
-
-    const channel = await discordClient.channels.fetch(mainChannelId).catch(() => null);
-    if (!channel || !channel.isTextBased() || !("send" in channel)) return;
-
-    lastWelcomeAt.set(guildId, now);
-    replyTimestamps.push(now);
-    const displayName = member.displayName.replace(/[<>]/g, "").slice(0, 80);
-    const [relationship, council] = await Promise.all([
-      getPlayerById(member.id, guildId).catch(() => null),
-      loadOracleCouncil(guildId).catch(() => null),
-    ]);
-    const reply = await generateOracleReply(
-      `A intrat un nou călător în Regat: ${displayName}. Întâmpină-l și explică-i pe scurt ce este acest server și cum poate începe.`,
-      [],
-      undefined,
-      getCurrentMood(guildId),
-      "Călător nou",
-      false,
-      relationship,
-      council,
-      true,
-    );
-    if (!reply) return;
-
-    await channel.send({
-      content: `👋 <@${member.id}> ${reply}`.slice(0, DISCORD_MAX_CHARS),
-      allowedMentions: { users: [member.id], parse: [] },
-    });
-    logger.info({ guildId, userId: member.id }, "Oracle welcomed a new member");
-  } catch (err) {
-    logger.debug({ err, guildId: member.guild.id }, "Oracle member welcome skipped after failure");
-  }
-}
-
 /** Logged once at startup so operators can see whether AI replies are active. */
 export function logOracleChatStatus(): void {
   if (AI_ENABLED) {
@@ -1096,9 +974,6 @@ export function logOracleChatStatus(): void {
         memoryFetchMax: MEMORY_FETCH_MAX,
         maxMemoryTurns: MAX_MEMORY_TURNS,
         memoryWindowMs: MEMORY_WINDOW_MS,
-        socialChatEnabled: SOCIAL_CHAT_ENABLED,
-        socialReplyCooldownMs: SOCIAL_REPLY_COOLDOWN_MS,
-        welcomeCooldownMs: WELCOME_COOLDOWN_MS,
       },
       "Oracle AI replies enabled",
     );

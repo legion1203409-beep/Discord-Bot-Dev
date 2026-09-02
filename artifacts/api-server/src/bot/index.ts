@@ -36,10 +36,8 @@ import {
   generatePersonalProphecy,
   generateChestInscription,
   answerHelpQuestion,
-  maybeJoinOracleConversation,
   prophecyCooldownRemaining,
   reserveProphecy,
-  welcomeNewMemberAsOracle,
 } from "./oracle-chat";
 import { handleOracleCouncilVote, isOracleCouncilButton } from "./oracle-council";
 import {
@@ -4075,15 +4073,6 @@ export async function startBot(onReady?: () => void): Promise<void> {
     logger.error({ err }, "Discord client error");
   });
 
-  client.on(Events.GuildMemberAdd, (member) => {
-    if (member.user.bot) return;
-    const mainChannelId = getChannel("main", member.guild.id);
-    if (!mainChannelId) return;
-    void welcomeNewMemberAsOracle(client, member, mainChannelId).catch((err) =>
-      logger.debug({ err, guildId: member.guild.id }, "Oracle member welcome failed"),
-    );
-  });
-
   client.on(Events.MessageCreate, (message) => {
     if (message.author.bot || !message.guildId) return;
     try {
@@ -4117,9 +4106,6 @@ export async function startBot(onReady?: () => void): Promise<void> {
     void handleToxicity(client, message).then((handled) => {
       if (handled) return;
       void maybeReplyAsOracle(client, message);
-      if (mainChannelId) {
-        void maybeJoinOracleConversation(client, message, mainChannelId);
-      }
     });
   });
 

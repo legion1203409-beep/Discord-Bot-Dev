@@ -111,8 +111,6 @@ const MUTE_STEPS_MS  = MUTE_STEPS_MIN.map((m) => m * 60_000);
 
 type OffenseRecord = { count: number; lastAt: number };
 const offenses = new Map<string, OffenseRecord>();
-const generalWarningLastAt = new Map<string, number>();
-const GENERAL_WARNING_COOLDOWN_MS = 5 * 60 * 1000;
 
 export type OracleTimeoutRecord = {
   guildId: string;
@@ -389,14 +387,6 @@ function mockeryCurseMessage(offenseCount: number, muteMin: number, muted: boole
     `*Cel care râde de Oracol sfârșește prin a fi el însuși de râsul Regatului.* 🌑\n` +
     `**Blestemul Suprem** te amuțește ${dur}. Nimeni nu-și mai amintește glumele tale.` +
     noMuteNote
-  );
-}
-
-function generalToxicityWarning(): string {
-  return (
-    "*Cenușa a auzit veninul din aceste cuvinte.* ⚠️\n" +
-    "**Avertisment:** păstrează-ți limba sub control. Următoarele otrăvuri vor fi cercetate de Oracol, " +
-    "iar insultele adresate lui pot aduce **Blestemul Tăcerii**."
   );
 }
 
@@ -719,16 +709,14 @@ export async function handlePardon(_client: Client, message: Message): Promise<b
  * the message (profanity detected + curse applied), so the caller knows to skip
  * the normal Oracle reply path.
  *
- * Toxic messages anywhere in the guild receive a rate-limited warning. Messages
- * directed at the bot can additionally trigger the escalating timeout path.
+ * Messages directed at the bot can trigger the escalating timeout path.
  */
 export async function handleToxicity(client: Client, message: Message): Promise<boolean> {
   try {
     const botId = client.user?.id;
     if (!botId) return false;
 
-    // Direct messages receive the full escalating mute/blessing path. General
-    // toxic messages receive only a rate-limited public warning.
+    // Only messages directed at the Oracle receive the escalating mute path.
     let directedAtBot = message.mentions.users.has(botId);
     if (!directedAtBot && message.reference?.messageId) {
       const referenced = await message
@@ -741,19 +729,7 @@ export async function handleToxicity(client: Client, message: Message): Promise<
     const isMock = !isSwear && isMockery(text);
     if (!isSwear && !isMock) return false;
 
-    if (!directedAtBot) {
-      const now = Date.now();
-      const lastWarning = generalWarningLastAt.get(message.author.id) ?? 0;
-      if (now - lastWarning >= GENERAL_WARNING_COOLDOWN_MS) {
-        generalWarningLastAt.set(message.author.id, now);
-        await message.reply({
-          content: generalToxicityWarning(),
-          allowedMentions: { repliedUser: true, parse: [] },
-        });
-        logger.info({ userId: message.author.id, kind: "general-warning" }, "Oracle guard: toxicity warning sent");
-      }
-      return true;
-    }
+    if (!directedAtBot) return false;
 
     const offenseCount = recordOffense(message.author.id);
     const muteMs  = muteDurationMs(offenseCount);

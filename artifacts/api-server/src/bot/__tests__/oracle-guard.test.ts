@@ -412,7 +412,7 @@ describe("handleToxicity", () => {
     expect(msg._reply).not.toHaveBeenCalled();
   });
 
-  it("returns a public warning without muting when toxic text is not directed at the bot", async () => {
+  it("stays silent when toxic text is not directed at the bot", async () => {
     const msg = makeMessage({
       botId: BOT_ID,
       content: "pula",
@@ -420,9 +420,8 @@ describe("handleToxicity", () => {
       isMentioned: false,
     });
     const result = await handleToxicity(makeClient(BOT_ID), msg as unknown as Message);
-    expect(result).toBe(true);
-    expect(msg._reply).toHaveBeenCalledOnce();
-    expect(msg._reply.mock.calls[0]?.[0]?.content).toContain("Avertisment");
+    expect(result).toBe(false);
+    expect(msg._reply).not.toHaveBeenCalled();
     expect(msg._timeout).not.toHaveBeenCalled();
   });
 
