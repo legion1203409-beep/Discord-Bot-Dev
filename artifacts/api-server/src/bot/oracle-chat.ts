@@ -359,6 +359,39 @@ function relationshipSignal(content: string): { bond: number; chaos: number } {
   return { bond: respectful ? 2 : 1, chaos: chaotic ? 1 : 0 };
 }
 
+const MOOD_STATUS_TEXT: Record<MoodState, string> = {
+  calm: "Oracolul este liniștit și privește cu bunăvoință.",
+  agitat: "Oracolul este plin de energie și urmărește mișcarea Regatului.",
+  somnoros: "Oracolul este obosit, iar umbrele se apropie.",
+  iritat: "Oracolul este deranjat de tulburarea din Regat.",
+  furios: "Oracolul este mânios; Cenușa a fost provocată.",
+  extatic: "Oracolul este fericit și își revarsă lumina peste Regat.",
+  confuz: "Oracolul este derutat de haosul din jur.",
+  tacut: "Oracolul s-a retras în tăcere și ascultă.",
+};
+
+export function buildOracleStatusLine(
+  mood: MoodState,
+  relationDelta: number | null = null,
+  relationship: Pick<Player, "oracleBond" | "oracleTitle"> | null = null,
+): string {
+  const meta = MOOD_META[mood];
+  const bond = relationship?.oracleBond ?? 0;
+  const title = relationship?.oracleTitle ?? "Suflet necunoscut";
+  const direction =
+    relationDelta === null
+      ? ""
+      : relationDelta > 0
+        ? `🔗 Legătura cu Oracolul a crescut cu **+${relationDelta}**.`
+        : relationDelta < 0
+          ? `🔗 Legătura cu Oracolul a scăzut cu **${Math.abs(relationDelta)}**.`
+          : "🔗 Legătura cu Oracolul a rămas neschimbată.";
+  const relationshipState = relationship
+    ? `\n🏷️ Starea legăturii: **${title}** · total **${bond >= 0 ? "+" : ""}${bond}**`
+    : "";
+  return `\n\n${meta.emoji} **Starea Oracolului: ${meta.label}** — ${MOOD_STATUS_TEXT[mood]}${direction ? `\n${direction}` : ""}${relationshipState}`;
+}
+
 /** Strip raw Discord mention tokens so the model never sees "<@id>" noise. */
 function cleanMentionTokens(text: string): string {
   return text.replace(/<@!?\d+>/g, "").trim();
@@ -940,8 +973,9 @@ export async function maybeReplyAsOracle(discordClient: Client, message: Message
     const helpPointer = isGameHelpQuestion(cleaned) && !reply.includes("/ajutor")
       ? "\n\n📖 Pentru explicația completă și pașii pe categorii, deschide **/ajutor**."
       : "";
+    const statusLine = buildOracleStatusLine(mood, signal.bond, relationship);
     await message.reply({
-      content: `${reply}${helpPointer}`.slice(0, DISCORD_MAX_CHARS),
+      content: `${reply}${helpPointer}${statusLine}`.slice(0, DISCORD_MAX_CHARS),
       allowedMentions: { repliedUser: true, parse: [] },
     });
     logger.info(
@@ -984,11 +1018,12 @@ export async function maybeJoinOracleConversation(
       getPlayerById(message.author.id, message.guildId).catch(() => null),
       loadOracleCouncil(message.guildId).catch(() => null),
     ]);
+    const mood = getCurrentMood(message.guildId);
     const reply = await generateOracleReply(
       cleaned,
       [],
       undefined,
-      getCurrentMood(message.guildId),
+      mood,
       "Călător",
       false,
       relationship,
@@ -1001,11 +1036,11 @@ export async function maybeJoinOracleConversation(
       await message.channel.sendTyping().catch(() => {});
     }
     await message.reply({
-      content: reply.slice(0, DISCORD_MAX_CHARS),
+      content: `${reply}${buildOracleStatusLine(mood, null, relationship)}`.slice(0, DISCORD_MAX_CHARS),
       allowedMentions: { repliedUser: false, parse: [] },
     });
     logger.info(
-      { guildId: message.guildId, mood: getCurrentMood(message.guildId), len: reply.length },
+      { guildId: message.guildId, mood, len: reply.length },
       "Oracle joined a social conversation",
     );
   } catch (err) {
