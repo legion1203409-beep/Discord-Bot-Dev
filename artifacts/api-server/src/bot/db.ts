@@ -612,6 +612,19 @@ function powerPath(classKey: string, slot: ClassPowerSlot) {
   return sql.raw(`'{${classKey},${slot}}'`);
 }
 
+function classPowerUpdate(classKey: string, slot: ClassPowerSlot, level: number) {
+  const classPath = sql.raw(`'{${classKey}}'`);
+  const classKeyLiteral = sql.raw(`'${classKey}'`);
+  const slotLiteral = sql.raw(`'${slot}'`);
+  return sql`jsonb_set(
+    coalesce(${playersTable.classPowerLevels}, '{}'::jsonb),
+    ${classPath},
+    coalesce(${playersTable.classPowerLevels}->${classKeyLiteral}, '{}'::jsonb)
+      || jsonb_build_object(${slotLiteral}, to_jsonb(${level}::int)),
+    true
+  )`;
+}
+
 // Unlocks one of the current class's powers (level 0 → 1).
 export async function buyClassPower(
   discordId: string,
@@ -624,7 +637,7 @@ export async function buyClassPower(
   const path = powerPath(classKey, slot);
   const [u] = await db.update(playersTable)
     .set({
-      classPowerLevels: sql`jsonb_set(coalesce(${playersTable.classPowerLevels}, '{}'::jsonb), ${path}, '1'::jsonb, true)`,
+      classPowerLevels: classPowerUpdate(classKey, slot, 1),
       gold: sql`${playersTable.gold} - ${cost}`,
     })
     .where(and(
@@ -650,7 +663,7 @@ export async function upgradeClassPower(
   const path = powerPath(classKey, slot);
   const [u] = await db.update(playersTable)
     .set({
-      classPowerLevels: sql`jsonb_set(coalesce(${playersTable.classPowerLevels}, '{}'::jsonb), ${path}, to_jsonb(COALESCE((${playersTable.classPowerLevels}#>>${path})::int, 0) + 1), true)`,
+      classPowerLevels: classPowerUpdate(classKey, slot, expectedLevel + 1),
       gold: sql`${playersTable.gold} - ${cost}`,
       xp: sql`${playersTable.xp} - ${xpCost}`,
     })
