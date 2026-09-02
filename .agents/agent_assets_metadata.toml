@@ -396,3 +396,143 @@ mtime_ms = 1788293592505
 storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:c6624cc8-e264-47e4-8a83-82fc52f0aaa6/716a77fd-ae4c-472b-ac72-6dc6ef451d6d/f5717982-a98f-4c7b-8757-4e325267da7f"
 storage_version_token = "1788294082032219"
 content_type = "image/png"
+
+[[outputs]]
+id = "HItpRNNfSDDLE1D3jJ6W0"
+uri = "file://attached_assets/generated_images/arma-sabia-regelui.png"
+type = "image"
+title = "Sabia Regelui"
+description = "Weapon - dark fantasy PNG with transparent background."
+logical_id = "66dd3a4e-a903-40f2-afff-d505137d9ce0"
+content_hash = "sha256:6c190cf9c2c0cbed11fa7d95bae5cefb280800f8f00a31ec33bf99fbac36899a"
+size = 1305571
+mtime_ms = 1788365017473
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:c6624cc8-e264-47e4-8a83-82fc52f0aaa6/66dd3a4e-a903-40f2-afff-d505137d9ce0/695d0faf-8776-4813-8b82-51355cdc2f3d"
+storage_version_token = "1788365063410800"
+content_type = "image/png"
+
+[[outputs]]
+id = "cEQZ8MyhLABSLWOaMekfx"
+uri = "file://attached_assets/generated_images/arma-pumnalul-umbrei.png"
+type = "image"
+title = "Pumnalul Umbrei"
+description = "Weapon - dark fantasy PNG with transparent background."
+logical_id = "eccec09a-c547-4d82-89b7-e07b9a24b55a"
+content_hash = "sha256:d3618646037a4d75be5bb85fb8b4d21c878e2a4df8b0a63c0495c57aba287bdf"
+size = 1144529
+mtime_ms = 1788365027449
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:c6624cc8-e264-47e4-8a83-82fc52f0aaa6/eccec09a-c547-4d82-89b7-e07b9a24b55a/912cc793-3674-438b-9826-0c27ffb2da63"
+storage_version_token = "1788365064222522"
+content_type = "image/png"
+
+[[outputs]]
+id = "fsAw7fG3ftm5Bw1aurTeq"
+uri = "file://attached_assets/generated_images/arma-ciocanul-de-jar.png"
+type = "image"
+title = "Ciocanul de Jar"
+description = "Weapon - dark fantasy PNG with transparent background."
+logical_id = "1811147f-3998-4444-8e3e-fdec925b0779"
+content_hash = "sha256:c7d29e040d21ba45631c105957812126d7664421c293322420e9649de2e72ad3"
+size = 1374602
+mtime_ms = 1788365017933
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:c6624cc8-e264-47e4-8a83-82fc52f0aaa6/1811147f-3998-4444-8e3e-fdec925b0779/b54eee4a-5825-4042-864b-01d483905516"
+storage_version_token = "1788365064991563"
+content_type = "image/png"
+
+[[outputs]]
+id = "cc4nzhSylz1VP29ltwk1o"
+uri = "file://attached_assets/generated_images/arma-arcul-vanatorului.png"
+type = "image"
+title = "Arcul Vanatorului"
+description = "Weapon - dark fantasy PNG with transparent background."
+logical_id = "7f7655ee-55c0-4a4a-bbb2-8fb2366c8e69"
+content_hash = "sha256:3237558a951e604e59e7725687c24f30930513b9740088e9faedf78e169ae8be"
+size = 1299522
+mtime_ms = 1788365015989
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:c6624cc8-e264-47e4-8a83-82fc52f0aaa6/7f7655ee-55c0-4a4a-bbb2-8fb2366c8e69/630ca8b6-c86a-4eff-b5ac-a4f399800bce"
+storage_version_token = "1788365065798432"
+content_type = "image/png"
+
+[[outputs]]
+id = "k9UQJOEyOH4yYxDIjPlHT"
+uri = "file://attached_assets/generated_images/arma-catalizatorul-coroziv.png"
+type = "image"
+title = "Catalizatorul Coroziv"
+description = "Weapon - dark fantasy PNG with transparent background."
+logical_id = "9eb1192c-52ac-4da7-82d2-ef76c08c54c2"
+content_hash = "sha256:9462a4ba18fd885341ca69e6745792ec841d8517a84c8b8ad883f6c4fe0cbc0e"
+size = 1321596
+mtime_ms = 1788365020457
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:c6624cc8-e264-47e4-8a83-82fc52f0aaa6/9eb1192c-52ac-4da7-82d2-ef76c08c54c2/11e5e3c0-056d-493c-a6c6-b1499c152048"
+storage_version_token = "1788365066666366"
+content_type = "image/png"
+
+[[outputs]]
+id = "8yFLJrFDlM05CeyKy4-Xg"
+uri = "file://attached_assets/generated_images/armura-mantia-fantomei.png"
+type = "image"
+title = "Mantia Fantomei"
+description = "Armor - dark fantasy PNG with transparent background."
+logical_id = "f8b8b4ae-650e-4766-a2c2-f985b6286d4f"
+content_hash = "sha256:1e2256b5590b6de33746aeb918ffc629f786846c34f23425e579df40a0dc2490"
+size = 1480907
+mtime_ms = 1788365019849
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:c6624cc8-e264-47e4-8a83-82fc52f0aaa6/f8b8b4ae-650e-4766-a2c2-f985b6286d4f/3fbf0f68-2deb-4f5e-b0b1-b419a132b491"
+storage_version_token = "1788365067913189"
+content_type = "image/png"
+
+[[outputs]]
+id = "-bq_mqtJCEfKeVoGNzPyJ"
+uri = "file://attached_assets/generated_images/armura-cuirasa-veghei.png"
+type = "image"
+title = "Cuirasa Veghei"
+description = "Armor - dark fantasy PNG with transparent background."
+logical_id = "bdd173f5-6220-41ad-a6f8-1245cd60cc85"
+content_hash = "sha256:51019714dde0aa7411c9890388c4d73b87237d9ba67c83007bc7617b10e5c228"
+size = 1658508
+mtime_ms = 1788365017053
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:c6624cc8-e264-47e4-8a83-82fc52f0aaa6/bdd173f5-6220-41ad-a6f8-1245cd60cc85/4992137c-ab02-4939-8c13-65e1300b2b42"
+storage_version_token = "1788365068707342"
+content_type = "image/png"
+
+[[outputs]]
+id = "Y7oh8Bneyh9IfPvsIWMFY"
+uri = "file://attached_assets/generated_images/armura-halatul-reagentului.png"
+type = "image"
+title = "Halatul Reagentului"
+description = "Armor - dark fantasy PNG with transparent background."
+logical_id = "d4d20e4f-f276-4562-abcb-0ad3d90265a7"
+content_hash = "sha256:45f3622c7ead3cf4c61b5f561dd232ff8c32ae7d99e7d9c42e3510fa8d1af645"
+size = 1569252
+mtime_ms = 1788365032133
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:c6624cc8-e264-47e4-8a83-82fc52f0aaa6/d4d20e4f-f276-4562-abcb-0ad3d90265a7/2d58f261-0e95-435b-ac07-5d1cceb864bf"
+storage_version_token = "1788365069541385"
+content_type = "image/png"
+
+[[outputs]]
+id = "MRQkyojRMWbca77Xc9F3w"
+uri = "file://attached_assets/generated_images/armura-pelerina-de-fum.png"
+type = "image"
+title = "Pelerina de Fum"
+description = "Armor - dark fantasy PNG with transparent background."
+logical_id = "3adcde69-5fde-4d4a-b1e0-eb0661928e5b"
+content_hash = "sha256:6f1387af94bdeaca199faf73d3943143c6f3a0743a889159c8deab64c12f0614"
+size = 1512026
+mtime_ms = 1788365020249
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:c6624cc8-e264-47e4-8a83-82fc52f0aaa6/3adcde69-5fde-4d4a-b1e0-eb0661928e5b/48dd1ddb-2070-49fc-90a0-49afce745e0e"
+storage_version_token = "1788365070351797"
+content_type = "image/png"
+
+[[outputs]]
+id = "1F98tZOFJ0JRu7gekKo7L"
+uri = "file://attached_assets/generated_images/armura-platosa-cenusie.png"
+type = "image"
+title = "Platoșa Cenușie"
+description = "Armor - dark fantasy PNG with transparent background."
+logical_id = "cb7651b0-577c-4143-81d1-127750eed61a"
+content_hash = "sha256:643f14cb489a8d5631972121ceaf7493d471f56b6c53460fe0d0889f9cc6bc01"
+size = 1856807
+mtime_ms = 1788365020573
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:c6624cc8-e264-47e4-8a83-82fc52f0aaa6/cb7651b0-577c-4143-81d1-127750eed61a/2a1f6c18-49c7-4cb0-9751-40e2f6a1f9f7"
+storage_version_token = "1788365083074069"
+content_type = "image/png"
