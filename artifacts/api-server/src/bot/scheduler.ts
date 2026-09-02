@@ -13,6 +13,7 @@ import {
   spawnSeasonalChest,
   rehydrateSeasonalChest,
   settleExpiredAuction,
+  SEASONAL_CHEST_INTERVAL_MS,
 } from "./chest-expansions";
 import { startTributeScheduler, stopTributeScheduler } from "./tribute";
 
@@ -1386,7 +1387,7 @@ export function startGuildScheduler(client: Client, guildId: string) {
     logger.info({ guildId }, "Legacy chest and key-chest schedulers disabled — new chest system remains active");
   }
 
-  const seasonalInterval = 6 * 60 * 60 * 1000;
+  const seasonalInterval = SEASONAL_CHEST_INTERVAL_MS;
   const scheduleSeasonal = () => {
     if (isStopped()) return;
     const seasonalDelay = seasonalInterval - (Date.now() % seasonalInterval);

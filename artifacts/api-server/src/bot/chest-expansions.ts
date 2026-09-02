@@ -454,8 +454,9 @@ export const SEASONAL_CHESTS = [
 ] as const;
 
 export type SeasonalSeason = typeof SEASONAL_CHESTS[number]["season"];
+export const SEASONAL_CHEST_INTERVAL_MS = 60 * 60 * 1000;
 
-export function seasonalForBucket(bucket = Math.floor(Date.now() / (6 * 60 * 60 * 1000))) {
+export function seasonalForBucket(bucket = Math.floor(Date.now() / SEASONAL_CHEST_INTERVAL_MS)) {
   return SEASONAL_CHESTS[bucket % SEASONAL_CHESTS.length]!;
 }
 
@@ -497,7 +498,7 @@ function seasonalId(bucket: number): string {
   return `seasonal_${bucket}`;
 }
 
-async function loadSeasonalChest(guildId: string, bucket = Math.floor(Date.now() / (6 * 60 * 60 * 1000))): Promise<SeasonalChest | null> {
+async function loadSeasonalChest(guildId: string, bucket = Math.floor(Date.now() / SEASONAL_CHEST_INTERVAL_MS)): Promise<SeasonalChest | null> {
   return loadState<SeasonalChest>(stateKey(guildId, `seasonal:${seasonalId(bucket)}`));
 }
 
@@ -516,7 +517,7 @@ async function expireSeasonalChest(client: Client, chest: SeasonalChest): Promis
 }
 
 export async function spawnSeasonalChest(client: Client, guildId: string): Promise<SeasonalChest | null> {
-  const bucket = Math.floor(Date.now() / (6 * 60 * 60 * 1000));
+  const bucket = Math.floor(Date.now() / SEASONAL_CHEST_INTERVAL_MS);
   const current = await loadSeasonalChest(guildId, bucket);
   if (current && current.expiresAt > Date.now() && !current.claimed) return current;
 
