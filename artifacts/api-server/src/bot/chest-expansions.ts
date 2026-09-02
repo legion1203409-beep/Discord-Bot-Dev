@@ -444,6 +444,10 @@ export interface SeasonalChest {
   openedAt: number;
   expiresAt: number;
   claimed: boolean;
+  claimedBy?: {
+    userId: string;
+    username: string;
+  };
   cleanupAt?: number;
 }
 
@@ -474,7 +478,7 @@ export function buildSeasonalChestEmbed(
       "O rămășiță de sărbătoare blestemată a trecut prin Regat și a lăsat o comoară în urmă.\n\n" +
         `💰 **${meta.gold} Oboli** · ✨ **${meta.xp} XP** · 💎 un fragment de relicvă\n` +
          (claimed
-           ? "\n✅ Comoara a fost revendicată."
+           ? `\n✅ Comoara a fost revendicată${chest.claimedBy?.username ? ` de **${chest.claimedBy.username.replace(/[<>]/g, "").slice(0, 80)}**` : ""}.`
            : `\n⚡ Cufărul rămâne disponibil până la <t:${Math.floor(chest.expiresAt / 1000)}:R>.`),
     )
     .setImage(meta.image)
@@ -593,20 +597,25 @@ export async function rehydrateSeasonalChest(client: Client, guildId: string): P
 export async function claimSeasonalChest(
   guildId: string,
   chestId: string,
+  userId: string,
+  username: string,
 ): Promise<SeasonalChest | null> {
   const key = stateKey(guildId, `seasonal:${chestId}`);
   await ensureBotStateTable();
   const result = await pool.query<{ value: string }>(
     `UPDATE bot_state
       SET value = jsonb_set(
-        jsonb_set(value::jsonb, '{claimed}', 'true'::jsonb, true),
-        '{cleanupAt}', to_jsonb($3::bigint), true
+        jsonb_set(
+          jsonb_set(value::jsonb, '{claimed}', 'true'::jsonb, true),
+          '{cleanupAt}', to_jsonb($3::bigint), true
+        ),
+        '{claimedBy}', jsonb_build_object('userId', $4::text, 'username', $5::text), true
       )::text,
          updated_at = now()
      WHERE key = $1 AND COALESCE((value::jsonb->>'claimed')::boolean, false) = false
        AND (value::jsonb->>'expiresAt')::bigint > $2
      RETURNING value`,
-    [key, Date.now(), Date.now() + SEASONAL_CHEST_MESSAGE_RETENTION_MS],
+    [key, Date.now(), Date.now() + SEASONAL_CHEST_MESSAGE_RETENTION_MS, userId, username],
   );
   return result.rows[0] ? JSON.parse(result.rows[0].value) as SeasonalChest : null;
 }
@@ -620,6 +629,10 @@ export interface HiddenChest {
   rewardXp: number;
   expiresAt: number;
   claimed: boolean;
+  claimedBy?: {
+    userId: string;
+    username: string;
+  };
 }
 
 export function buildOracleClueEmbed(answer: string, expiresAt?: number): EmbedBuilder {
@@ -647,7 +660,7 @@ export function buildHiddenChestEmbed(chest: HiddenChest, claimed = false): Embe
     .setTitle("👁️ Cufărul Șoaptelor Oracolului")
     .setDescription(
       claimed
-        ? "Poarta secretă s-a închis. Comoara a fost luată."
+        ? `Poarta secretă s-a închis. Comoara a fost luată${chest.claimedBy?.username ? ` de **${chest.claimedBy.username.replace(/[<>]/g, "").slice(0, 80)}**` : ""}.`
         : `Ai dezlegat șoapta. Înăuntru se află **${chest.rewardGold} Oboli**, **${chest.rewardXp} XP** și un fragment de relicvă.\n\n*Doar primul care atinge sigiliul îl poate revendica.*\n\n⏳ Sigiliul se închide <t:${Math.floor(chest.expiresAt / 1000)}:R>.`,
     )
     .setImage(CHEST_WORLD_IMG.oracle)
@@ -747,17 +760,22 @@ function normalizeAnswer(value: string): string {
 export async function claimHiddenChest(
   guildId: string,
   chestId: string,
+  userId: string,
+  username: string,
 ): Promise<HiddenChest | null> {
   const key = stateKey(guildId, `hidden:${chestId}`);
   await ensureBotStateTable();
   const result = await pool.query<{ value: string }>(
     `UPDATE bot_state
-     SET value = jsonb_set(value::jsonb, '{claimed}', 'true'::jsonb, true)::text,
+     SET value = jsonb_set(
+       jsonb_set(value::jsonb, '{claimed}', 'true'::jsonb, true),
+       '{claimedBy}', jsonb_build_object('userId', $3::text, 'username', $4::text), true
+     )::text,
          updated_at = now()
      WHERE key = $1 AND COALESCE((value::jsonb->>'claimed')::boolean, false) = false
        AND (value::jsonb->>'expiresAt')::bigint > $2
      RETURNING value`,
-    [key, Date.now()],
+    [key, Date.now(), userId, username],
   );
   return result.rows[0] ? JSON.parse(result.rows[0].value) as HiddenChest : null;
 }

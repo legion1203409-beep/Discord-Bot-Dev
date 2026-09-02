@@ -36,6 +36,8 @@ import {
   generatePersonalProphecy,
   generateChestInscription,
   answerHelpQuestion,
+  announceOracleRelationshipChange,
+  recordOracleRelationshipChange,
   prophecyCooldownRemaining,
   reserveProphecy,
 } from "./oracle-chat";
@@ -3555,7 +3557,7 @@ async function handleFratiaVoteButton(interaction: ButtonInteraction, option: "g
 async function handleSeasonalChestClaim(interaction: ButtonInteraction, chestId: string) {
   await interaction.deferUpdate();
   const guildId = interaction.guildId!;
-  const chest = await claimSeasonalChest(guildId, chestId);
+  const chest = await claimSeasonalChest(guildId, chestId, interaction.user.id, interaction.user.username);
   if (!chest) {
     await ephemeralNote(interaction, "seasonal-chest", "🌒 Cufărul sezonier a fost deja revendicat sau a expirat.");
     return;
@@ -3572,15 +3574,14 @@ async function handleSeasonalChestClaim(interaction: ButtonInteraction, chestId:
   }).catch(() => null);
   scheduleSeasonalChestMessageDeletion(interaction.client, chest);
   await interaction.followUp({
-    content: `🎁 Ai revendicat **${meta.label}**: **${meta.gold} Oboli**, **${meta.xp} XP** și un **Fragment de Coroană**!`,
-    flags: MessageFlags.Ephemeral,
+    content: `🎁 **${interaction.user.username}** a revendicat **${meta.label}**: **${meta.gold} Oboli**, **${meta.xp} XP** și un **Fragment de Coroană**!`,
   });
 }
 
 async function handleHiddenChestClaim(interaction: ButtonInteraction, chestId: string) {
   await interaction.deferUpdate();
   const guildId = interaction.guildId!;
-  const chest = await claimHiddenChest(guildId, chestId);
+  const chest = await claimHiddenChest(guildId, chestId, interaction.user.id, interaction.user.username);
   if (!chest) {
     await ephemeralNote(interaction, "oracle-chest", "👁️ Sigiliul a fost deja atins sau comoara a dispărut.");
     return;
@@ -3595,8 +3596,7 @@ async function handleHiddenChestClaim(interaction: ButtonInteraction, chestId: s
     components: [hiddenChestRow(chest.id, true)],
   }).catch(() => null);
   await interaction.followUp({
-    content: `👁️ Ai deschis Cufărul Șoaptelor Oracolului: **${chest.rewardGold} Oboli**, **${chest.rewardXp} XP** și un fragment de relicvă!`,
-    flags: MessageFlags.Ephemeral,
+    content: `👁️ **${interaction.user.username}** a deschis Cufărul Șoaptelor Oracolului: **${chest.rewardGold} Oboli**, **${chest.rewardXp} XP** și un fragment de relicvă!`,
   });
 }
 
@@ -3899,6 +3899,25 @@ async function setupTrader(client: Client, guildId: string): Promise<void> {
   }
 }
 
+async function maybeRecordOracleToxicityRelationship(client: Client, message: Message): Promise<void> {
+  try {
+    const botId = client.user?.id;
+    if (!botId) return;
+
+    let directedAtBot = message.mentions.users.has(botId);
+    if (!directedAtBot && message.reference?.messageId) {
+      const referenced = await message.fetchReference().catch(() => null);
+      directedAtBot = referenced?.author?.id === botId;
+    }
+    if (!directedAtBot) return;
+
+    const relationship = await recordOracleRelationshipChange(message, -3);
+    await announceOracleRelationshipChange(message, -3, relationship);
+  } catch (err) {
+    logger.debug({ err, guildId: message.guildId }, "Oracle toxicity relationship update skipped");
+  }
+}
+
 export async function startBot(onReady?: () => void): Promise<void> {
   const token = process.env["DISCORD_TOKEN"];
   if (!token) {
@@ -4104,7 +4123,10 @@ export async function startBot(onReady?: () => void): Promise<void> {
     );
     maybeNudgeGameHelp(message);
     void handleToxicity(client, message).then((handled) => {
-      if (handled) return;
+      if (handled) {
+        void maybeRecordOracleToxicityRelationship(client, message);
+        return;
+      }
       void maybeReplyAsOracle(client, message);
     });
   });

@@ -6,6 +6,8 @@ description: How the Oracle anti-swear mute system works and what permissions it
 ## Rule
 `oracle-guard.ts` intercepts @mentions containing profanity before the normal Oracle reply path.
 It applies an escalating Discord timeout and replies with an in-character Romanian curse.
+Direct toxic messages must still record the negative Oracle relationship change and public announcement;
+the guard must not silently bypass relationship accounting.
 
 ## How to apply
 Called in `index.ts` messageCreate handler:
@@ -36,3 +38,9 @@ Set env var `ORACLE_SWEAR_WORDS=cuvant1,cuvant2` (comma-separated, diacritics op
 Loaded at startup; requires restart to pick up changes.
 
 **Why:** Timeout requires both ModerateMembers AND role hierarchy — missing either silently prevents the mute without crashing the bot.
+
+**Why:** The toxicity handler runs before the normal Oracle chat handler, so direct insults otherwise
+would be punished without reducing the player's relationship with the Oracle.
+
+**How to apply:** When changing the messageCreate routing or toxicity guard, preserve exactly-once
+relationship recording for toxic mentions and replies, while leaving non-directed toxic messages silent.

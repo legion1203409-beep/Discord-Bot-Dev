@@ -374,6 +374,59 @@ export function buildOracleStatusLine(
   return `\n\n${reaction}${chaosNote}${relationshipState}`;
 }
 
+export function buildOracleRelationshipAnnouncement(
+  userId: string,
+  relationDelta: number,
+  relationship: Pick<Player, "oracleBond" | "oracleTitle"> | null,
+): string | null {
+  if (!relationship || relationDelta === 0) return null;
+  const bond = relationship.oracleBond ?? 0;
+  const title = relationship.oracleTitle ?? "Suflet necunoscut";
+  const change =
+    relationDelta < 0
+      ? `a pierdut **${Math.abs(relationDelta)}** puncte`
+      : `a câștigat **+${relationDelta}** puncte`;
+  return (
+    `📣 **Relație cu Oracolul:** <@${userId}> ${change} de legătură cu Oracolul.\n` +
+    `Total: **${bond >= 0 ? "+" : ""}${bond}** · Rang: **${title}**`
+  );
+}
+
+export async function recordOracleRelationshipChange(
+  message: Message,
+  relationDelta: number,
+  chaosDelta = 0,
+): Promise<Player | null> {
+  if (!message.guildId) return null;
+  return recordOracleInteraction(
+    message.author.id,
+    message.guildId,
+    message.author.username,
+    message.content ?? "",
+    "dialog",
+    relationDelta,
+    chaosDelta,
+  ).catch((err) => {
+    logger.warn({ err, guildId: message.guildId }, "Oracle relationship memory could not be saved");
+    return null;
+  });
+}
+
+export async function announceOracleRelationshipChange(
+  message: Message,
+  relationDelta: number,
+  relationship: Pick<Player, "oracleBond" | "oracleTitle"> | null,
+): Promise<void> {
+  const content = buildOracleRelationshipAnnouncement(message.author.id, relationDelta, relationship);
+  if (!content || !message.channel.isTextBased() || !("send" in message.channel)) return;
+  await message.channel.send({
+    content,
+    allowedMentions: { users: [message.author.id], parse: [] },
+  }).catch((err) => {
+    logger.debug({ err, guildId: message.guildId }, "Oracle relationship announcement skipped");
+  });
+}
+
 /** Strip raw Discord mention tokens so the model never sees "<@id>" noise. */
 function cleanMentionTokens(text: string): string {
   return text.replace(/<@!?\d+>/g, "").trim();
@@ -867,20 +920,8 @@ export async function maybeReplyAsOracle(discordClient: Client, message: Message
     lastReplyAt.set(message.author.id, now);
 
     const signal = relationshipSignal(cleaned);
-    const relationship = message.guildId
-      ? await recordOracleInteraction(
-          message.author.id,
-          message.guildId,
-          message.author.username,
-          cleaned,
-          "dialog",
-          signal.bond,
-          signal.chaos,
-        ).catch((err) => {
-          logger.warn({ err, guildId: message.guildId }, "Oracle relationship memory could not be saved");
-          return null;
-        })
-      : null;
+    const relationship = await recordOracleRelationshipChange(message, signal.bond, signal.chaos);
+    await announceOracleRelationshipChange(message, signal.bond, relationship);
     const council = message.guildId
       ? await loadOracleCouncil(message.guildId).catch((err) => {
           logger.warn({ err, guildId: message.guildId }, "Oracle council memory could not be loaded");

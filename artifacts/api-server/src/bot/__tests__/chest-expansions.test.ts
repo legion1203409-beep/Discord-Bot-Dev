@@ -59,6 +59,10 @@ vi.mock("../channel-config", () => ({
 
 import {
   claimPersonalChest,
+  claimSeasonalChest,
+  claimHiddenChest,
+  buildSeasonalChestEmbed,
+  buildHiddenChestEmbed,
   personalChestReward,
   personalChestScore,
   personalChestTier,
@@ -105,6 +109,32 @@ describe("chest expansion pure mechanics", () => {
 
   it("keeps the completed seasonal message for twenty minutes", () => {
     expect(SEASONAL_CHEST_MESSAGE_RETENTION_MS).toBe(20 * 60 * 1000);
+  });
+
+  it("stores the public claimant for seasonal and hidden chests", async () => {
+    const seasonal = {
+      id: "seasonal_1",
+      claimed: true,
+      claimedBy: { userId: "user-1", username: "Mara" },
+    };
+    const hidden = {
+      id: "oracle_1",
+      claimed: true,
+      claimedBy: { userId: "user-2", username: "Doru" },
+    };
+    query
+      .mockResolvedValueOnce({ rows: [{ value: JSON.stringify(seasonal) }] })
+      .mockResolvedValueOnce({ rows: [{ value: JSON.stringify(hidden) }] });
+
+    const claimedSeasonal = await claimSeasonalChest("guild-1", "seasonal_1", "user-1", "Mara");
+    const claimedHidden = await claimHiddenChest("guild-1", "oracle_1", "user-2", "Doru");
+
+    expect(claimedSeasonal?.claimedBy?.username).toBe("Mara");
+    expect(claimedHidden?.claimedBy?.username).toBe("Doru");
+    expect(query.mock.calls[0]?.[0]).toContain("claimedBy");
+    expect(query.mock.calls[1]?.[0]).toContain("claimedBy");
+    expect(query.mock.calls[0]?.[1]).toContain("Mara");
+    expect(query.mock.calls[1]?.[1]).toContain("Doru");
   });
 });
 
