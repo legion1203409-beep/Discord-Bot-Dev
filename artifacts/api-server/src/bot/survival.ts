@@ -534,6 +534,121 @@ export function isClassKey(k: string): k is ClassKey {
   return k in CLASSES;
 }
 
+export type ClassPowerSlot = "power1" | "power2";
+export type ClassPowerKind = "empower" | "shield";
+export type ClassPower = {
+  label: string;
+  emoji: string;
+  description: string;
+  kind: ClassPowerKind;
+};
+
+/**
+ * Every class owns its own two powers.  The combat engine intentionally keeps
+ * the proven offensive/defensive mechanics, while the class determines the
+ * identity, wording and progression of each power.
+ */
+export const CLASS_POWERS: Record<ClassKey, Record<ClassPowerSlot, ClassPower>> = {
+  cavaler: {
+    power1: {
+      label: "Lovitura de Asediu",
+      emoji: "⚔️",
+      description: "Îți adună toată forța într-o lovitură grea care provoacă daune sporite.",
+      kind: "empower",
+    },
+    power2: {
+      label: "Scutul Regelui",
+      emoji: "🛡️",
+      description: "Ridică un scut cu viață proprie și reduce daunele primite.",
+      kind: "shield",
+    },
+  },
+  umbrolog: {
+    power1: {
+      label: "Tăișul din Umbră",
+      emoji: "🌑",
+      description: "Dispari pentru o clipă și reapari în lovitura următoare, cu daune sporite.",
+      kind: "empower",
+    },
+    power2: {
+      label: "Pasul Fantomă",
+      emoji: "🌀",
+      description: "Umbrele te înconjoară cu o protecție care absoarbe o parte din lovituri.",
+      kind: "shield",
+    },
+  },
+  strajer: {
+    power1: {
+      label: "Jurământul de Jar",
+      emoji: "🔥",
+      description: "Îți aprinde arma și întărește următorul atac împotriva monstrului.",
+      kind: "empower",
+    },
+    power2: {
+      label: "Zidul Veghei",
+      emoji: "🏰",
+      description: "Rămâi neclintit: scutul absoarbe daunele cât timp mai are viață.",
+      kind: "shield",
+    },
+  },
+  alchimist: {
+    power1: {
+      label: "Acid Coroziv",
+      emoji: "⚗️",
+      description: "Un amestec instabil roade armura și amplifică următoarea lovitură.",
+      kind: "empower",
+    },
+    power2: {
+      label: "Elixirul Cenușii",
+      emoji: "🧪",
+      description: "Un elixir protector cristalizează în jurul tău și absoarbe daunele.",
+      kind: "shield",
+    },
+  },
+  ratacitor: {
+    power1: {
+      label: "Ambuscadă",
+      emoji: "🏹",
+      description: "Lovești dintr-un unghi mort, pregătind o lovitură următoare mai puternică.",
+      kind: "empower",
+    },
+    power2: {
+      label: "Fumul de Retragere",
+      emoji: "💨",
+      description: "Dispari în fum și lași în urmă un văl care absoarbe loviturile.",
+      kind: "shield",
+    },
+  },
+};
+
+export function isClassPowerSlot(k: string): k is ClassPowerSlot {
+  return k === "power1" || k === "power2";
+}
+
+export function classPowerFor(
+  classKey: string | null | undefined,
+  slot: ClassPowerSlot,
+): ClassPower | null {
+  return classKey && isClassKey(classKey) ? CLASS_POWERS[classKey][slot] : null;
+}
+
+export function classPowerLevel(
+  player: Pick<Player, "classPowerLevels">,
+  classKey: ClassKey | null | undefined,
+  slot: ClassPowerSlot,
+): number {
+  if (!classKey) return 0;
+  const saved = player.classPowerLevels?.[classKey];
+  return Math.max(0, Number(saved?.[slot] ?? 0));
+}
+
+export function classPowerEffectiveDesc(power: ClassPower, level: number): string {
+  if (power.kind === "empower") {
+    return `+${Math.round((empowerMult(level) - 1) * 100)}% daune la următoarea lovitură`;
+  }
+  return `absoarbe ${Math.round(shieldReduction(level) * 100)}% din daune, viață proprie ${shieldMaxHp(Math.max(1, level))} HP`;
+}
+
 // Effective class bonuses at a given level (base × 1.05^(level-1), like companions).
 export function classStats(
   key: ClassKey,
@@ -1512,7 +1627,7 @@ export function buildResultText(
   if (r.playerDmg !== r.baseDmg) {
     const parts: string[] = [];
     if (r.isCrit) parts.push("💥 critică ×2");
-    if (r.usedEmpower) parts.push("🌑 abilitate");
+     if (r.usedEmpower) parts.push("🌑 putere de clasă");
     if (r.battleEventEmoji) parts.push(`${r.battleEventEmoji} eveniment`);
     txt += `🗡️ Daune normale: **${r.baseDmg}** → cu ${parts.length ? parts.join(" + ") : "bonusuri"}: **${r.playerDmg}**\n`;
   }
@@ -1704,19 +1819,20 @@ export function buildProfileEmbed(
     player.companion && isCompanionKey(player.companion)
       ? `${COMPANIONS[player.companion].emoji} **${isCompanionEvolved(player.companionLevel) ? COMPANIONS[player.companion].evoLabel : COMPANIONS[player.companion].label}** Nv.${player.companionLevel}${isCompanionEvolved(player.companionLevel) ? " ✨" : ""}`
       : "*Fără companion* — `/magazin`";
-  const abilValue =
-    player.abilityEmpowerLevel >= 1 || player.abilityShieldLevel >= 1
-      ? [
-          player.abilityEmpowerLevel >= 1
-            ? `${ABILITIES.empower.emoji} ${ABILITIES.empower.label} Nv.${player.abilityEmpowerLevel} (${abilityEffectiveDesc("empower", player.abilityEmpowerLevel)})`
-            : null,
-          player.abilityShieldLevel >= 1
-            ? `${ABILITIES.shield.emoji} ${ABILITIES.shield.label} Nv.${player.abilityShieldLevel} (${abilityEffectiveDesc("shield", player.abilityShieldLevel)})`
-            : null,
-        ]
-          .filter(Boolean)
-          .join("\n")
-      : "*Fără abilități* — `/magazin`";
+  const profileClassKey = player.class && isClassKey(player.class) ? player.class : null;
+  const profilePowers = profileClassKey ? CLASS_POWERS[profileClassKey] : null;
+  const abilValue = profileClassKey && profilePowers
+    ? (["power1", "power2"] as ClassPowerSlot[])
+        .map((slot) => {
+          const power = profilePowers[slot];
+          const level = classPowerLevel(player, profileClassKey, slot);
+          return level >= 1
+            ? `${power.emoji} ${power.label} Nv.${level} (${classPowerEffectiveDesc(power, level)})`
+            : null;
+        })
+        .filter(Boolean)
+        .join("\n") || "*Nicio putere de clasă deblocată* — `/magazin → Puteri`"
+    : "*Fără clasă* — alege una cu `/clasa`";
 
   const equippedTalismanKey =
     player.talisman && isTalismanKey(player.talisman) ? player.talisman : null;
@@ -1803,7 +1919,7 @@ export function buildProfileEmbed(
         value: combatStatsValue(player),
         inline: false,
       },
-      { name: "🎯 Abilități", value: abilValue, inline: false },
+      { name: "⚡ Puteri de clasă", value: abilValue, inline: false },
       { name: "━━━ Prestigiu ━━━", value: prestigeValue, inline: false },
       {
         name: "━━━ Puteri din Magazin ━━━",
@@ -2432,24 +2548,29 @@ function shopCompText(p: Player): string {
 }
 
 function shopAbilText(p: Player): string {
-  const line = (kind: AbilityKey) => {
-    const lvl =
-      kind === "empower" ? p.abilityEmpowerLevel : p.abilityShieldLevel;
-    const a = ABILITIES[kind];
+  const classKey = p.class && isClassKey(p.class) ? p.class : null;
+  if (!classKey) {
+    return "🧬 Alege mai întâi o clasă din **Clasă** pentru a vedea și cumpăra puterile ei.";
+  }
+  const powers = CLASS_POWERS[classKey];
+  const line = (slot: ClassPowerSlot) => {
+    const power = powers[slot];
+    const lvl = classPowerLevel(p, classKey, slot);
     if (lvl >= 1) {
       const cost = upgradeCost(lvl);
       return (
-        `${a.emoji} **${a.label}** Nv.${lvl}\n` +
+        `${power.emoji} **${power.label}** Nv.${lvl}\n` +
         `${rankBarLine(lvl)}\n` +
-        `   🎁 Bonus activ: **${abilityEffectiveDesc(kind, lvl)}**\n` +
-        `   🔼 Îmbunătățire → Nv.${lvl + 1}: **${abilityEffectiveDesc(kind, lvl + 1)}**\n` +
+        `   📖 ${power.description}\n` +
+        `   🎁 Efect activ: **${classPowerEffectiveDesc(power, lvl)}**\n` +
+        `   🔼 Îmbunătățire → Nv.${lvl + 1}: **${classPowerEffectiveDesc(power, lvl + 1)}**\n` +
         `   ↳ cost: **${cost} Oboli + ${UPGRADE_XP_COST} XP**\n`
       );
     }
     return (
-      `${a.emoji} 🔒 **${a.label}**\n` +
-      `   ↳ ${a.desc}\n` +
-      `   ↳ la Nv.1: **${abilityEffectiveDesc(kind, 1)}**\n` +
+      `${power.emoji} 🔒 **${power.label}**\n` +
+      `   📖 ${power.description}\n` +
+      `   ↳ la Nv.1: **${classPowerEffectiveDesc(power, 1)}**\n` +
       `   🛒 Deblochează: **${ABILITY_BUY_COST} Oboli**\n`
     );
   };
@@ -2462,7 +2583,7 @@ function shopAbilText(p: Player): string {
     `\n🔷 **Rezerva de Mană** Nv.${mLvl} *(nivel infinit)*\n` +
     `${rankBarLine(mLvl)}\n` +
     `   ${manaBar(p.mana ?? MANA_BASE, mMax)} **${p.mana ?? MANA_BASE}/${mMax}**\n` +
-    `   ↳ Abilitățile consumă mană; fiecare atac normal reface **${manaRegenPct(rLvl)}%** din maxim.\n` +
+    `   ↳ Puterile clasei consumă mană; fiecare atac normal reface **${manaRegenPct(rLvl)}%** din maxim.\n` +
     `   🔼 Îmbunătățire → Nv.${mLvl + 1}: **${maxMana(mLvl + 1)} mană maximă**\n` +
     `   ↳ cost: **${mCost} Oboli + ${UPGRADE_XP_COST} XP**\n` +
     `\n💠 **Regenerare de Mană** Nv.${rLvl} *(nivel infinit)*\n` +
@@ -2470,7 +2591,10 @@ function shopAbilText(p: Player): string {
     `   ↳ Fiecare atac normal reface **${manaRegenPct(rLvl)}%** din mana maximă.\n` +
     `   🔼 Îmbunătățire → Nv.${rLvl + 1}: **${manaRegenPct(rLvl + 1)}% pe atac**\n` +
     `   ↳ cost: **${rCost} Oboli + ${UPGRADE_XP_COST} XP**\n`;
-  return line("empower") + "\n" + line("shield") + manaSection;
+  return (
+    `🧬 **${CLASSES[classKey].label}** — aceste puteri aparțin doar clasei tale.\n\n` +
+    line("power1") + "\n" + line("power2") + manaSection
+  );
 }
 
 // Category-aware shop: each sub-page renders ONLY its own category so the embed
@@ -2516,14 +2640,14 @@ export function buildShopEmbed(
 
   if (category === "abil") {
     return embed
-      .setTitle("🎯 Forja Cenușii — Abilități")
+      .setTitle("🎯 Forja Cenușii — Puteri")
       .setDescription(
         SHOP_BALANCE(p) +
           "\n\n" +
-          sectionTitle("Abilități de luptă") +
+           sectionTitle("Puteri de clasă") +
           "\n" +
           shopAbilText(p) +
-          "\n*Abilitățile se aplică imediat, chiar în lupta curentă.*",
+           "\n*Puterile se aplică imediat, chiar în lupta curentă.*",
       );
   }
 
@@ -2638,7 +2762,7 @@ export function buildShopEmbed(
         "\n" +
         "⚔️ **Puteri** — statistici permanente (atac, apărare, evitare, critic, HP)\n" +
         "🐾 **Companion** — un aliat de luptă care crește odată cu tine\n" +
-        "🎯 **Abilități** — puteri active folosite în luptă\n" +
+        "🎯 **Puteri de clasă** — două puteri active, diferite pentru fiecare clasă\n" +
         "🧬 **Clasă** — alege-ți calea și bonusul permanent\n" +
         "⭐ **Prestigiu** — sacrifică XP pentru putere nemuritoare\n" +
         "🔮 **Talismane** — echipamente cu pasive unice, evoluabile cu iteme rare\n\n" +
@@ -2781,6 +2905,8 @@ export function combatRow(
 ): ActionRowBuilder<ButtonBuilder> {
   const hasEmpower = (p?.empowerLevel ?? 0) >= 1;
   const hasShield = (p?.shieldLevel ?? 0) >= 1;
+  const power1 = classPowerFor(p?.classKey, "power1");
+  const power2 = classPowerFor(p?.classKey, "power2");
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId(`ora_attack_${eventId}`)
@@ -2789,14 +2915,14 @@ export function combatRow(
       .setStyle(ButtonStyle.Danger),
     new ButtonBuilder()
       .setCustomId(`ora_ability_${eventId}_empower`)
-      .setLabel(hasEmpower ? "Lovitura Umbrei" : "🔒 Lovitura Umbrei")
-      .setEmoji("🌑")
+      .setLabel(hasEmpower ? (power1?.label ?? "Puterea ofensivă") : `🔒 ${power1?.label ?? "Puterea ofensivă"}`)
+      .setEmoji(power1?.emoji ?? "⚔️")
       .setStyle(ButtonStyle.Primary)
       .setDisabled(!hasEmpower),
     new ButtonBuilder()
       .setCustomId(`ora_ability_${eventId}_shield`)
-      .setLabel(hasShield ? "Scut de Cenușă" : "🔒 Scut de Cenușă")
-      .setEmoji("🛡️")
+      .setLabel(hasShield ? (power2?.label ?? "Puterea defensivă") : `🔒 ${power2?.label ?? "Puterea defensivă"}`)
+      .setEmoji(power2?.emoji ?? "🛡️")
       .setStyle(ButtonStyle.Primary)
       .setDisabled(!hasShield),
     new ButtonBuilder()
@@ -2862,7 +2988,7 @@ export function shopNavRow(): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId("shop_nav_stats")
-      .setLabel("Puteri")
+      .setLabel("Statistici")
       .setEmoji("⚔️")
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
@@ -2872,7 +2998,7 @@ export function shopNavRow(): ActionRowBuilder<ButtonBuilder> {
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId("shop_nav_abil")
-      .setLabel("Abilități")
+      .setLabel("Puteri")
       .setEmoji("🎯")
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
@@ -3015,27 +3141,35 @@ export function shopCompRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
   ];
 }
 
-/** Abilități sub-page rows (buy or upgrade each ability). */
+/** Puteri de clasă sub-page rows (buy or upgrade each power). */
 export function shopAbilRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
-  const abilBtn = (kind: AbilityKey) => {
-    const lvl =
-      kind === "empower" ? p.abilityEmpowerLevel : p.abilityShieldLevel;
-    const a = ABILITIES[kind];
+  const classKey = p.class && isClassKey(p.class) ? p.class : null;
+  const abilBtn = (slot: ClassPowerSlot) => {
+    const power = classPowerFor(classKey, slot);
+    if (!power) {
+      return new ButtonBuilder()
+        .setCustomId(`shop_powerbuy_${slot}`)
+        .setLabel("Alege o clasă mai întâi")
+        .setEmoji("🧬")
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(true);
+    }
+    const lvl = classPowerLevel(p, classKey, slot);
     if (lvl >= 1) {
       const cost = upgradeCost(lvl);
       return new ButtonBuilder()
-        .setCustomId(`shop_abilup_${kind}`)
+        .setCustomId(`shop_powerup_${slot}`)
         .setLabel(
-          `${a.label} Nv.${lvl} → ${lvl + 1} (${cost} + ${UPGRADE_XP_COST}XP)`,
+          `${power.label} Nv.${lvl} → ${lvl + 1} (${cost} + ${UPGRADE_XP_COST}XP)`,
         )
-        .setEmoji(a.emoji)
+        .setEmoji(power.emoji)
         .setStyle(ButtonStyle.Primary)
         .setDisabled(p.gold < cost || p.xp < UPGRADE_XP_COST);
     }
     return new ButtonBuilder()
-      .setCustomId(`shop_abilbuy_${kind}`)
-      .setLabel(`🔒 ${a.label} — Deblochează (${ABILITY_BUY_COST} Oboli)`)
-      .setEmoji(a.emoji)
+      .setCustomId(`shop_powerbuy_${slot}`)
+      .setLabel(`🔒 ${power.label} — Deblochează (${ABILITY_BUY_COST} Oboli)`)
+      .setEmoji(power.emoji)
       .setStyle(ButtonStyle.Primary)
       .setDisabled(p.gold < ABILITY_BUY_COST);
   };
@@ -3061,8 +3195,8 @@ export function shopAbilRows(p: Player): ActionRowBuilder<ButtonBuilder>[] {
     .setDisabled(p.gold < rCost || p.xp < UPGRADE_XP_COST);
   return [
     new ActionRowBuilder<ButtonBuilder>().addComponents(
-      abilBtn("empower"),
-      abilBtn("shield"),
+      abilBtn("power1"),
+      abilBtn("power2"),
     ),
     new ActionRowBuilder<ButtonBuilder>().addComponents(manaBtn, regenBtn),
     shopBackRow(),
@@ -3352,6 +3486,10 @@ export function buildClassEmbed(player: Player): EmbedBuilder {
       "\n" +
       (cls.xpMult !== 1 ? `   · 📚 XP ×${cls.xpMult}` : "") +
       (cls.oboliMult !== 1 ? `   · 💰 Oboli ×${cls.oboliMult}` : "") +
+       `\n\n⚡ **Puterile clasei**\n` +
+       `   ${CLASS_POWERS[classKey].power1.emoji} **${CLASS_POWERS[classKey].power1.label}** — ${CLASS_POWERS[classKey].power1.description}\n` +
+       `   ${CLASS_POWERS[classKey].power2.emoji} **${CLASS_POWERS[classKey].power2.label}** — ${CLASS_POWERS[classKey].power2.description}\n` +
+       `   *Le poți debloca și îmbunătăți din **/magazin → Puteri**. Consumul de mană și efectul cresc odată cu nivelul.*` +
       `\n\n✅ Bonusurile căii tale se aplică automat. *(O poți reseta din **/magazin → Clasă**.)*` +
       upgradeBlock;
 
@@ -3370,8 +3508,11 @@ export function buildClassEmbed(player: Player): EmbedBuilder {
         "🎓 *Nivelul fiecărei clase se păstrează. Prima instruire e gratuită; o nouă cale costă " +
         CLASS_SWITCH_COST +
         " Oboli.*\n\n" +
-        Object.values(CLASSES)
-          .map((c) => `${c.emoji} **${c.label}** — ${c.desc}`)
+         Object.entries(CLASSES)
+           .map(([key, c]) => {
+             const classKey = key as ClassKey;
+             return `${c.emoji} **${c.label}** — ${c.desc}\n   ⚡ ${CLASS_POWERS[classKey].power1.label} · ${CLASS_POWERS[classKey].power2.label}`;
+           })
           .join("\n"),
     )
     .setFooter({ text: BRAND_FOOTER });
@@ -3734,12 +3875,12 @@ export function finalBossRow(eventId: number): ActionRowBuilder<ButtonBuilder> {
       .setStyle(ButtonStyle.Danger),
     new ButtonBuilder()
       .setCustomId(`bossability_${eventId}_empower`)
-      .setLabel("Lovitura Umbrei")
-      .setEmoji("🌑")
+      .setLabel("Putere ofensivă")
+      .setEmoji("⚡")
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId(`bossability_${eventId}_shield`)
-      .setLabel("Scut de Cenușă")
+      .setLabel("Putere defensivă")
       .setEmoji("🛡️")
       .setStyle(ButtonStyle.Primary),
   );

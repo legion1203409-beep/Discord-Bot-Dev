@@ -8,6 +8,7 @@ export const eventParticipantsTable = pgTable(
     guildId: text("guild_id").notNull().default("1382035307607883816"),
     discordId: text("discord_id").notNull(),
     username: text("username").notNull(),
+    classKey: text("class_key"),
     currentHp: integer("current_hp").notNull().default(100),
     maxHp: integer("max_hp").notNull().default(100),
     monsterLevel: integer("monster_level").notNull().default(1),

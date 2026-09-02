@@ -6,7 +6,23 @@ import type { SQL } from "drizzle-orm";
 import type { Player, EventParticipant } from "@workspace/db";
 
 export type { PlayerItem };
-import { CLASSES, isClassKey, classStats, rollRarity, isCompanionKey, companionStats, prestigeStartLevel, monsterSpawnHp } from "./survival";
+import {
+  CLASSES,
+  isClassKey,
+  classStats,
+  classPowerLevel,
+  isClassPowerSlot,
+  rollRarity,
+  isCompanionKey,
+  companionStats,
+  prestigeStartLevel,
+  monsterSpawnHp,
+  ABILITY_BUY_COST,
+  UPGRADE_BASE_COST,
+  UPGRADE_COST_GROWTH,
+  UPGRADE_XP_COST,
+  type ClassPowerSlot,
+} from "./survival";
 import { logger } from "../lib/logger";
 
 export type UpgradeKey = "atac" | "def" | "dodge" | "crit" | "hp";
@@ -185,6 +201,39 @@ export async function runMultiGuildMigrations(): Promise<void> {
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS class_levels jsonb NOT NULL DEFAULT '{}'::jsonb`);
   logger.info("multi-guild migrations: players.class_levels ensured");
 
+  // ─── Per-class powers ─────────────────────────────────────────────────────
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS class_power_levels jsonb NOT NULL DEFAULT '{}'::jsonb`);
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS legacy_ability_refunded boolean NOT NULL DEFAULT false`);
+  await pool.query(`ALTER TABLE event_participants ADD COLUMN IF NOT EXISTS class_key text`);
+  // Existing global abilities are retired. Refund their purchase and upgrade
+  // costs exactly once, then clear their levels so no old power leaks into the
+  // new per-class progression.
+  await pool.query(`
+    UPDATE players
+    SET
+      gold = gold
+        + CASE WHEN ability_empower_level > 0 THEN
+            ${ABILITY_BUY_COST} + COALESCE((
+              SELECT SUM(CEIL(${UPGRADE_BASE_COST} * POWER(${UPGRADE_COST_GROWTH}, n - 1)))::int
+              FROM generate_series(1, ability_empower_level - 1) AS n
+            ), 0)
+          ELSE 0 END
+        + CASE WHEN ability_shield_level > 0 THEN
+            ${ABILITY_BUY_COST} + COALESCE((
+              SELECT SUM(CEIL(${UPGRADE_BASE_COST} * POWER(${UPGRADE_COST_GROWTH}, n - 1)))::int
+              FROM generate_series(1, ability_shield_level - 1) AS n
+            ), 0)
+          ELSE 0 END,
+      xp = xp
+        + CASE WHEN ability_empower_level > 0 THEN (ability_empower_level - 1) * ${UPGRADE_XP_COST} ELSE 0 END
+        + CASE WHEN ability_shield_level > 0 THEN (ability_shield_level - 1) * ${UPGRADE_XP_COST} ELSE 0 END,
+      ability_empower_level = 0,
+      ability_shield_level = 0,
+      legacy_ability_refunded = true
+    WHERE legacy_ability_refunded = false
+  `);
+  logger.info("multi-guild migrations: class powers ensured and legacy abilities refunded");
+
   // ─── Oracle relationship and memory ───────────────────────────────────────
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS oracle_bond integer NOT NULL DEFAULT 0`);
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS oracle_interactions integer NOT NULL DEFAULT 0`);
@@ -211,8 +260,11 @@ export async function runMultiGuildMigrations(): Promise<void> {
       ('event_participants','items_farmed'),
       ('players',           'boss_kills'),
       ('players',           'class_levels'),
+      ('players',           'class_power_levels'),
+      ('players',           'legacy_ability_refunded'),
       ('players',           'mana_regen_level'),
       ('event_participants','shield_hp'),
+      ('event_participants','class_key'),
       ('players',           'oracle_bond'),
       ('players',           'oracle_interactions'),
       ('players',           'oracle_chaos'),
@@ -439,6 +491,8 @@ const PLAYER_RESET = {
   xp: 0, gold: 0, reputation: 0, hp: 100, maxLevel: 0,
   class: null as string | null, companion: null as string | null, companionLevel: 1,
   abilityEmpowerLevel: 0, abilityShieldLevel: 0,
+  classPowerLevels: {},
+  legacyAbilityRefunded: true,
   honorTitle: null as string | null, deaths: 0, deathLevel: 0, retreats: 0, retreatLevel: 0,
   attackBonus: 0, defenseBonus: 0, dodgeBonus: 0, critBonus: 0, maxHpBonus: 0,
   shopAttackCount: 0, shopDefenseCount: 0, shopDodgeCount: 0, shopCritCount: 0, shopHpCount: 0,
@@ -539,6 +593,62 @@ export async function upgradeCompanion(discordId: string, guildId: string, expec
 }
 
 export type AbilityKind = "empower" | "shield";
+
+function powerPath(classKey: string, slot: ClassPowerSlot) {
+  return sql.raw(`'{${classKey},${slot}}'`);
+}
+
+// Unlocks one of the current class's powers (level 0 → 1).
+export async function buyClassPower(
+  discordId: string,
+  guildId: string,
+  classKey: string,
+  slot: string,
+  cost: number,
+): Promise<Player | null> {
+  if (!isClassKey(classKey) || !isClassPowerSlot(slot)) return null;
+  const path = powerPath(classKey, slot);
+  const [u] = await db.update(playersTable)
+    .set({
+      classPowerLevels: sql`jsonb_set(coalesce(${playersTable.classPowerLevels}, '{}'::jsonb), ${path}, '1'::jsonb, true)`,
+      gold: sql`${playersTable.gold} - ${cost}`,
+    })
+    .where(and(
+      playerWhere(discordId, guildId),
+      sql`COALESCE((${playersTable.classPowerLevels}#>>${path})::int, 0) = 0`,
+      gte(playersTable.gold, cost),
+    ))
+    .returning();
+  return u ?? null;
+}
+
+// Upgrades one of the current class's powers; expectedLevel guards concurrent clicks.
+export async function upgradeClassPower(
+  discordId: string,
+  guildId: string,
+  classKey: string,
+  slot: string,
+  expectedLevel: number,
+  cost: number,
+  xpCost: number,
+): Promise<Player | null> {
+  if (!isClassKey(classKey) || !isClassPowerSlot(slot)) return null;
+  const path = powerPath(classKey, slot);
+  const [u] = await db.update(playersTable)
+    .set({
+      classPowerLevels: sql`jsonb_set(coalesce(${playersTable.classPowerLevels}, '{}'::jsonb), ${path}, to_jsonb(COALESCE((${playersTable.classPowerLevels}#>>${path})::int, 0) + 1), true)`,
+      gold: sql`${playersTable.gold} - ${cost}`,
+      xp: sql`${playersTable.xp} - ${xpCost}`,
+    })
+    .where(and(
+      playerWhere(discordId, guildId),
+      sql`COALESCE((${playersTable.classPowerLevels}#>>${path})::int, 0) = ${expectedLevel}`,
+      gte(playersTable.gold, cost),
+      gte(playersTable.xp, xpCost),
+    ))
+    .returning();
+  return u ?? null;
+}
 
 // Unlocks an ability (level 0 → 1) with Oboli.
 export async function buyAbility(discordId: string, guildId: string, kind: AbilityKind, cost: number): Promise<Player | null> {
@@ -684,6 +794,27 @@ export async function applyAbilityLevelToActiveParticipant(discordId: string, gu
     .from(activeEventsTable)
     .where(and(eq(activeEventsTable.isActive, true), gt(activeEventsTable.expiresAt, new Date()), eq(activeEventsTable.guildId, guildId)));
   const setObj = kind === "empower" ? { empowerLevel: level } : { shieldLevel: level };
+  await db.update(eventParticipantsTable)
+    .set(setObj)
+    .where(and(
+      eq(eventParticipantsTable.discordId, discordId),
+      eq(eventParticipantsTable.isAlive, true),
+      inArray(eventParticipantsTable.eventId, activeIds),
+    ));
+}
+
+// Mirrors a class power level onto the matching active combat slot.
+export async function applyClassPowerLevelToActiveParticipant(
+  discordId: string,
+  guildId: string,
+  slot: ClassPowerSlot,
+  level: number,
+): Promise<void> {
+  const activeIds = db
+    .select({ id: activeEventsTable.id })
+    .from(activeEventsTable)
+    .where(and(eq(activeEventsTable.isActive, true), gt(activeEventsTable.expiresAt, new Date()), eq(activeEventsTable.guildId, guildId)));
+  const setObj = slot === "power1" ? { empowerLevel: level } : { shieldLevel: level };
   await db.update(eventParticipantsTable)
     .set(setObj)
     .where(and(
@@ -845,6 +976,7 @@ export async function joinEvent(guildId: string, eventId: number, discordId: str
       guildId,
       discordId,
       username,
+      classKey: clsKey,
       maxHp,
       currentHp: maxHp,
       monsterLevel: startLevel,
@@ -854,8 +986,8 @@ export async function joinEvent(guildId: string, eventId: number, discordId: str
       defenseBonus: (player?.defenseBonus ?? 0) + (player?.prestigeDefenseBonus ?? 0) + (comp?.defense ?? 0),
       dodgeBonus: (player?.dodgeBonus ?? 0) + (player?.prestigeDodgeBonus ?? 0) + (cls?.dodge ?? 0),
       critBonus: (player?.critBonus ?? 0) + (player?.prestigeCritBonus ?? 0) + (cls?.crit ?? 0) + (comp?.crit ?? 0),
-      empowerLevel: player?.abilityEmpowerLevel ?? 0,
-      shieldLevel: player?.abilityShieldLevel ?? 0,
+      empowerLevel: clsKey && player ? classPowerLevel(player, clsKey, "power1") : 0,
+      shieldLevel: clsKey && player ? classPowerLevel(player, clsKey, "power2") : 0,
     }).returning();
     return p!;
   } catch { return null; }

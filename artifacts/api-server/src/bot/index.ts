@@ -86,14 +86,14 @@ import {
   resetPlayerCompanion,
   buyCompanion,
   upgradeCompanion,
-  buyAbility,
-  upgradeAbility,
+  buyClassPower,
+  upgradeClassPower,
   spendPlayerMana,
   drainPlayerMana,
   regenPlayerMana,
   upgradeMana,
   upgradeManaRegen,
-  applyAbilityLevelToActiveParticipant,
+  applyClassPowerLevelToActiveParticipant,
   addPlayerKey,
   consumePlayerKey,
   combinePlayerKeys,
@@ -134,7 +134,6 @@ import {
   incrementFinalBossKills,
   getFinalBossKills,
   todayDateUTC,
-  type AbilityKind,
   type KeyType,
 } from "./db";
 import {
@@ -170,7 +169,10 @@ import {
   isClassKey,
   classStats,
   classUpgradeCost,
-  isAbilityKey,
+  classPowerFor,
+  classPowerLevel,
+  isClassPowerSlot,
+  type ClassPowerSlot,
   upgradeCost,
   COMPANION_BUY_COST,
   CLASS_SWITCH_COST,
@@ -688,9 +690,9 @@ function buildHelpEmbed(category: HelpCategory) {
             "Când apare evenimentul, apasă butonul de atac pentru a lovi monstrul. Fiecare lovitură poate aduce XP, Oboli, materiale și uneori o cheie.",
         },
         {
-          name: "Abilități",
+          name: "Puteri de clasă",
           value:
-            "Abilitățile active folosesc mană și au efecte diferite. **Scutul de Cenușă** reduce daunele, iar **Lovitura Umbrei** atacă mai puternic. Se cumpără și se îmbunătățesc din **/magazin**.",
+            "Fiecare clasă are două puteri active proprii, care folosesc mană. Le vezi, deblochezi și îmbunătățești din **/magazin → Puteri**.",
         },
         {
           name: "Viață și efecte",
@@ -2844,15 +2846,18 @@ async function handleResetCancel(interaction: ButtonInteraction) {
 async function handleAbilBuy(interaction: ButtonInteraction, kind: string) {
   await interaction.deferUpdate();
   const guildId = interaction.guildId!;
-  await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
-  if (!isAbilityKey(kind)) return;
-  const updated = await buyAbility(interaction.user.id, guildId, kind as AbilityKind, ABILITY_BUY_COST);
+  const p = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
+  if (!isClassPowerSlot(kind) || !p.class || !isClassKey(p.class)) {
+    await ephemeralNote(interaction, "shop", "❌ Alege mai întâi o clasă pentru a debloca puterile ei.");
+    return;
+  }
+  const updated = await buyClassPower(interaction.user.id, guildId, p.class, kind, ABILITY_BUY_COST);
   if (updated) {
-    const lvl = kind === "empower" ? updated.abilityEmpowerLevel : updated.abilityShieldLevel;
-    await applyAbilityLevelToActiveParticipant(interaction.user.id, guildId, kind as AbilityKind, lvl);
+    const lvl = classPowerLevel(updated, p.class, kind);
+    await applyClassPowerLevelToActiveParticipant(interaction.user.id, guildId, kind, lvl);
   }
   if (!updated) {
-    await ephemeralNote(interaction, "shop", `❌ Nu poți debloca abilitatea — ai nevoie de **${ABILITY_BUY_COST} Oboli** și să nu o deții deja.`);
+    await ephemeralNote(interaction, "shop", `❌ Nu poți debloca puterea — ai nevoie de **${ABILITY_BUY_COST} Oboli** și să nu o deții deja.`);
     return;
   }
   await interaction.editReply({ embeds: [buildShopEmbed(updated, "abil")], components: shopAbilRows(updated) });
@@ -2862,16 +2867,19 @@ async function handleAbilUpgrade(interaction: ButtonInteraction, kind: string) {
   await interaction.deferUpdate();
   const guildId = interaction.guildId!;
   const p = await upsertPlayer(interaction.user.id, guildId, interaction.user.username);
-  if (!isAbilityKey(kind)) return;
-  const curLvl = kind === "empower" ? p.abilityEmpowerLevel : p.abilityShieldLevel;
+  if (!isClassPowerSlot(kind) || !p.class || !isClassKey(p.class)) {
+    await ephemeralNote(interaction, "shop", "❌ Alege mai întâi o clasă pentru a îmbunătăți puterile ei.");
+    return;
+  }
+  const curLvl = classPowerLevel(p, p.class, kind);
   const cost = upgradeCost(curLvl);
-  const updated = await upgradeAbility(interaction.user.id, guildId, kind as AbilityKind, curLvl, cost, UPGRADE_XP_COST);
+  const updated = await upgradeClassPower(interaction.user.id, guildId, p.class, kind, curLvl, cost, UPGRADE_XP_COST);
   if (updated) {
-    const lvl = kind === "empower" ? updated.abilityEmpowerLevel : updated.abilityShieldLevel;
-    await applyAbilityLevelToActiveParticipant(interaction.user.id, guildId, kind as AbilityKind, lvl);
+    const lvl = classPowerLevel(updated, p.class, kind);
+    await applyClassPowerLevelToActiveParticipant(interaction.user.id, guildId, kind, lvl);
   }
   if (!updated) {
-    await ephemeralNote(interaction, "shop", `❌ Îmbunătățire eșuată — ai nevoie de abilitate, **${cost} Oboli** și **${UPGRADE_XP_COST} XP**.`);
+    await ephemeralNote(interaction, "shop", `❌ Îmbunătățire eșuată — ai nevoie de putere, **${cost} Oboli** și **${UPGRADE_XP_COST} XP**.`);
     return;
   }
   await interaction.editReply({ embeds: [buildShopEmbed(updated, "abil")], components: shopAbilRows(updated) });
@@ -2928,14 +2936,18 @@ async function handleAbility(interaction: ButtonInteraction, eventId: number, ki
     await interaction.editReply({ content: "⌛ Ora Umbrelor s-a încheiat!", embeds: [], components: [] });
     return;
   }
-  const abilityLevel = kind === "shield" ? (pl?.abilityShieldLevel ?? p.shieldLevel) : (pl?.abilityEmpowerLevel ?? p.empowerLevel);
+  const slot: ClassPowerSlot = kind === "shield" ? "power2" : "power1";
+  const power = classPowerFor(p.classKey, slot);
+  const abilityLevel = p.classKey && isClassKey(p.classKey) && pl
+    ? classPowerLevel(pl, p.classKey, slot)
+    : (kind === "shield" ? p.shieldLevel : p.empowerLevel);
   if (abilityLevel < 1) {
-    await ephemeralNote(interaction, "ability", "🔒 Nu deții această abilitate. O poți debloca din Forja Cenușii (`/magazin`).");
+    await ephemeralNote(interaction, "ability", `🔒 Nu deții **${power?.label ?? "această putere"}**. O poți debloca din Forja Cenușii → **Puteri**.`);
     return;
   }
   if (kind === "shield" && p.shieldNext) {
     const sMax = shieldMaxHp(Math.max(1, abilityLevel));
-    await ephemeralNote(interaction, "ability", `🛡️ **Scutul de Cenușă e deja activ!** Rămâne ridicat cât timp viața lui acoperă daunele absorbite.\n🛡️ Viața scutului: **${p.shieldHp ?? 0}/${sMax}** ${shieldBar(p.shieldHp ?? 0, sMax)}`);
+    await ephemeralNote(interaction, "ability", `${power?.emoji ?? "🛡️"} **${power?.label ?? "Puterea defensivă"} e deja activă!** Rămâne ridicată cât timp viața ei acoperă daunele absorbite.\n🛡️ Viața scutului: **${p.shieldHp ?? 0}/${sMax}** ${shieldBar(p.shieldHp ?? 0, sMax)}`);
     return;
   }
   const cost = kind === "shield" ? SHIELD_ACTIVATION_COST : abilityManaCost(abilityLevel);
@@ -2950,8 +2962,8 @@ async function handleAbility(interaction: ButtonInteraction, eventId: number, ki
   const shieldPool = shieldMaxHp(Math.max(1, abilityLevel));
   const abilityFlags = kind === "shield" ? { shieldNext: true, shieldHp: shieldPool } : { empowerNext: true };
   const note = (kind === "shield"
-    ? `🛡️ **Scut de Cenușă ridicat!** Absoarbe **${Math.round(shieldReduction(abilityLevel) * 100)}%** din fiecare lovitură — daunele absorbite se scad din viața scutului **și consumă mană** (**${shieldManaDrainPct(abilityLevel)}%** din daunele absorbite; mana goală NU sparge scutul). Rămâne activ până când viața lui se termină.\n🛡️ Viața scutului: **${shieldPool}/${shieldPool}** ${shieldBar(shieldPool, shieldPool)}`
-    : "🌑 **Lovitura Umbrei pregătită!** Următoarea ta lovitură va fi dublă.") +
+    ? `${power?.emoji ?? "🛡️"} **${power?.label ?? "Puterea defensivă"} ridicată!** Absoarbe **${Math.round(shieldReduction(abilityLevel) * 100)}%** din fiecare lovitură — daunele absorbite se scad din viața scutului **și consumă mană** (**${shieldManaDrainPct(abilityLevel)}%** din daunele absorbite; mana goală NU sparge scutul). Rămâne activă până când viața ei se termină.\n🛡️ Viața scutului: **${shieldPool}/${shieldPool}** ${shieldBar(shieldPool, shieldPool)}`
+    : `${power?.emoji ?? "⚔️"} **${power?.label ?? "Puterea ofensivă"} pregătită!** Următoarea ta lovitură va fi amplificată.`) +
     `\n🔷 −**${cost}** mană`;
   const updated = await updateParticipant(p.id, abilityFlags);
   await interaction.editReply({
@@ -3107,8 +3119,9 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
   let playerDmg = baseBossDmg;
   const isCrit = Math.random() * 100 < Math.min(100, Math.max(0, totalCrit + mods.critAdd));
   if (isCrit) playerDmg *= 2;
-  const usedEmpower = activeBoss.empowerNext.delete(uid) && player.abilityEmpowerLevel >= 1;
-  if (usedEmpower) playerDmg = Math.round(playerDmg * empowerMult(player.abilityEmpowerLevel));
+  const finalBossPowerLevel = clsKey ? classPowerLevel(player, clsKey, "power1") : 0;
+  const usedEmpower = activeBoss.empowerNext.delete(uid) && finalBossPowerLevel >= 1;
+  if (usedEmpower) playerDmg = Math.round(playerDmg * empowerMult(finalBossPowerLevel));
   if (mods.damageMult !== 1) playerDmg = Math.round(playerDmg * mods.damageMult);
   const critTag = isCrit ? " 💥 **CRITIC!**" : "";
 
@@ -3167,7 +3180,7 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
     if (playerDmg === baseBossDmg) return "";
     const parts: string[] = [];
     if (isCrit) parts.push("💥 critică ×2");
-    if (usedEmpower) parts.push("🌑 abilitate");
+    if (usedEmpower) parts.push("🌑 putere de clasă");
     return `🗡️ Daune normale: **${baseBossDmg}** → cu ${parts.length ? parts.join(" + ") : "bonusuri"}: **${playerDmg}**\n`;
   })();
 
@@ -3433,14 +3446,17 @@ async function handleBossAbility(interaction: ButtonInteraction, eventId: number
   }
   const activeBoss = boss!;
   const player = await upsertPlayer(uid, guildId, interaction.user.username);
+  const classKey = player.class && isClassKey(player.class) ? player.class : null;
+  const slot: ClassPowerSlot = kind === "shield" ? "power2" : "power1";
+  const power = classPowerFor(classKey, slot);
 
-  const owns = kind === "shield" ? player.abilityShieldLevel >= 1 : player.abilityEmpowerLevel >= 1;
+  const abilityLevel = classKey ? classPowerLevel(player, classKey, slot) : 0;
+  const owns = abilityLevel >= 1;
   if (!owns) {
-    await interaction.followUp({ content: "🔒 Nu deții această abilitate. O poți debloca din Forja Cenușii (`/magazin`).", flags: MessageFlags.Ephemeral });
+    await interaction.followUp({ content: `🔒 Nu deții **${power?.label ?? "această putere"}**. O poți debloca din Forja Cenușii → **Puteri**.`, flags: MessageFlags.Ephemeral });
     return;
   }
 
-  const abilityLevel = kind === "shield" ? player.abilityShieldLevel : player.abilityEmpowerLevel;
   const manaCost = abilityManaCost(abilityLevel);
 
   if (kind === "shield") {
@@ -3452,7 +3468,7 @@ async function handleBossAbility(interaction: ButtonInteraction, eventId: number
       await sendOrEditEphemeral(
         interaction,
         bossReplyKey(guildId, eventId, uid),
-        `🛡️ **Scutul de Cenușă e deja activ!** Rămâne ridicat cât timp viața lui acoperă daunele absorbite.\n🛡️ Viața scutului: **${existing.hp}/${sMax}** ${shieldBar(existing.hp, sMax)}`,
+         `${power?.emoji ?? "🛡️"} **${power?.label ?? "Puterea defensivă"} e deja activă!** Rămâne ridicată cât timp viața ei acoperă daunele absorbite.\n🛡️ Viața scutului: **${existing.hp}/${sMax}** ${shieldBar(existing.hp, sMax)}`,
       );
       return;
     }
@@ -3463,7 +3479,7 @@ async function handleBossAbility(interaction: ButtonInteraction, eventId: number
       await sendOrEditEphemeral(
         interaction,
         bossReplyKey(guildId, eventId, uid),
-        `🔷 **Mană insuficientă!** Activarea Scutului de Cenușă costă fix **${activationCost}** mană, tu ai **${player.mana ?? 0}/${maxM}** ${manaBar(player.mana ?? 0, maxM)}\n⚔️ Lovește Dragonul cu atacuri normale ca să îți refaci mana (+${manaRegenPct(player.manaRegenLevel ?? 0)}% pe atac).`,
+         `🔷 **Mană insuficientă!** Activarea ${power?.label ?? "puterii defensive"} costă fix **${activationCost}** mană, tu ai **${player.mana ?? 0}/${maxM}** ${manaBar(player.mana ?? 0, maxM)}\n⚔️ Lovește Dragonul cu atacuri normale ca să îți refaci mana (+${manaRegenPct(player.manaRegenLevel ?? 0)}% pe atac).`,
       );
       return;
     }
@@ -3473,7 +3489,7 @@ async function handleBossAbility(interaction: ButtonInteraction, eventId: number
     await sendOrEditEphemeral(
       interaction,
       bossReplyKey(guildId, eventId, uid),
-      `🛡️ **Scut de Cenușă activat!** *(−${activationCost} mană)*\n` +
+       `${power?.emoji ?? "🛡️"} **${power?.label ?? "Puterea defensivă"} activată!** *(−${activationCost} mană)*\n` +
         `Cât timp e ridicat, absoarbe **${pct}%** din fiecare lovitură a Dragonului, iar daunele absorbite se scad din viața scutului **și consumă mană** (**${shieldManaDrainPct(abilityLevel)}%** din daunele absorbite; mana goală NU sparge scutul). Când viața scutului se termină, scutul se sparge!\n` +
         `🛡️ Viața scutului: **${pool}/${pool}** ${shieldBar(pool, pool)}`,
     );
@@ -3487,7 +3503,7 @@ async function handleBossAbility(interaction: ButtonInteraction, eventId: number
     await sendOrEditEphemeral(
       interaction,
       bossReplyKey(guildId, eventId, uid),
-      `🔷 **Mană insuficientă!** Abilitatea costă **${manaCost}** mană, tu ai **${player.mana ?? 0}/${maxM}** ${manaBar(player.mana ?? 0, maxM)}\n⚔️ Lovește Dragonul cu atacuri normale ca să îți refaci mana (+${manaRegenPct(player.manaRegenLevel ?? 0)}% pe atac).`,
+       `🔷 **Mană insuficientă!** ${power?.label ?? "Puterea ofensivă"} costă **${manaCost}** mană, tu ai **${player.mana ?? 0}/${maxM}** ${manaBar(player.mana ?? 0, maxM)}\n⚔️ Lovește Dragonul cu atacuri normale ca să îți refaci mana (+${manaRegenPct(player.manaRegenLevel ?? 0)}% pe atac).`,
     );
     return;
   }
@@ -3497,7 +3513,7 @@ async function handleBossAbility(interaction: ButtonInteraction, eventId: number
   await sendOrEditEphemeral(
     interaction,
     bossReplyKey(guildId, eventId, uid),
-    "🌑 **Lovitura Umbrei pregătită!** Următoarea ta lovitură în Dragon va fi dublă." + manaLine,
+     `${power?.emoji ?? "⚔️"} **${power?.label ?? "Puterea ofensivă"} pregătită!** Următoarea ta lovitură în Dragon va fi amplificată.` + manaLine,
   );
   void persistBossState(activeBoss);
 }
@@ -3810,8 +3826,8 @@ async function handleButton(interaction: ButtonInteraction) {
   if (id === "shop_compreset_yes") return handleCompResetConfirm(interaction);
   if (id === "shop_classreset_yes") return handleClassResetConfirm(interaction);
   if (id === "shop_reset_no") return handleResetCancel(interaction);
-  if (id.startsWith("shop_abilbuy_")) return handleAbilBuy(interaction, id.replace("shop_abilbuy_", ""));
-  if (id.startsWith("shop_abilup_")) return handleAbilUpgrade(interaction, id.replace("shop_abilup_", ""));
+  if (id.startsWith("shop_powerbuy_")) return handleAbilBuy(interaction, id.replace("shop_powerbuy_", ""));
+  if (id.startsWith("shop_powerup_")) return handleAbilUpgrade(interaction, id.replace("shop_powerup_", ""));
   if (id === "shop_manaup") return handleManaUpgrade(interaction);
   if (id === "shop_manaregenup") return handleManaRegenUpgrade(interaction);
 

@@ -1,4 +1,4 @@
-import { pgTable, text, integer, timestamp, primaryKey, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, boolean, timestamp, primaryKey, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -20,6 +20,7 @@ export const playersTable = pgTable("players", {
   class: text("class"),
   classLevel: integer("class_level").notNull().default(1),
   classLevels: jsonb("class_levels").$type<Record<string, number>>().notNull().default({}),
+  classPowerLevels: jsonb("class_power_levels").$type<Record<string, { power1: number; power2: number }>>().notNull().default({}),
   companion: text("companion"),
   companionLevel: integer("companion_level").notNull().default(1),
   oracleBond: integer("oracle_bond").notNull().default(0),
@@ -29,6 +30,7 @@ export const playersTable = pgTable("players", {
   oracleMemory: jsonb("oracle_memory").$type<OracleMemoryEntry[]>().notNull().default([]),
   abilityEmpowerLevel: integer("ability_empower_level").notNull().default(0),
   abilityShieldLevel: integer("ability_shield_level").notNull().default(0),
+  legacyAbilityRefunded: boolean("legacy_ability_refunded").notNull().default(false),
   honorTitle: text("honor_title"),
   deaths: integer("deaths").notNull().default(0),
   deathLevel: integer("death_level").notNull().default(0),

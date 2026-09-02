@@ -97,6 +97,8 @@ import {
   buildDeathEmbed,
   buildRetreatEmbed,
   ITEMS,
+  CLASS_POWERS,
+  classPowerLevel,
   type TalismanKey,
   type CombatResult,
 } from "../survival";
@@ -114,6 +116,7 @@ function makeParticipant(overrides: Partial<EventParticipant> = {}): EventPartic
     guildId: "1382035307607883816",
     discordId: "user1",
     username: "Tester",
+    classKey: null,
     maxHp: 100,
     currentHp: 100,
     attackBonus: 0,
@@ -745,7 +748,7 @@ describe("buildResultText breakdown lines", () => {
 
   it("shows empower breakdown", () => {
     const txt = buildResultText({ ...baseResult, usedEmpower: true, playerDmg: 23 });
-    expect(txt).toContain("abilitate");
+    expect(txt).toContain("putere de clasă");
     expect(txt).toContain("Daune normale: **15**");
   });
 
@@ -1003,5 +1006,28 @@ describe("death/retreat embeds show items farmed", () => {
   it("summary section appears even with zero damage if loot exists", () => {
     const embed = buildRetreatEmbed(1, { itemsFarmed: { coama_dragonului: 1 } });
     expect(embed.data.description ?? "").toContain("Rezumat Eveniment");
+  });
+});
+
+describe("class powers", () => {
+  it("defines two named powers for every class", () => {
+    for (const powers of Object.values(CLASS_POWERS)) {
+      expect(powers.power1.label).not.toBe(powers.power2.label);
+      expect(powers.power1.description.length).toBeGreaterThan(20);
+      expect(powers.power2.description.length).toBeGreaterThan(20);
+    }
+  });
+
+  it("keeps power levels isolated by class", () => {
+    const player = {
+      classPowerLevels: {
+        cavaler: { power1: 3, power2: 1 },
+        umbrolog: { power1: 0, power2: 2 },
+      },
+    } as Pick<Player, "classPowerLevels">;
+    expect(classPowerLevel(player, "cavaler", "power1")).toBe(3);
+    expect(classPowerLevel(player, "cavaler", "power2")).toBe(1);
+    expect(classPowerLevel(player, "umbrolog", "power1")).toBe(0);
+    expect(classPowerLevel(player, "strajer", "power1")).toBe(0);
   });
 });

@@ -220,7 +220,7 @@ function buildPlayerSystemPrompt(mood: MoodState): string {
     "Cunoștințele tale despre Regat (explică-le când ești întrebat, dar nu transforma fiecare conversație într-un manual):",
     "- Comenzi jucător: /profil, /clasament, /magazin (Forja Cenușii), /clasa (alege clasă RPG: Cavaler, Umbrologul, Strajerul, Alchimistul, Ratacitor), /companion, /misiuni, /cufarpersonal, /chei, /fratie, /licitatie, /schimbrelicve, /purificacheie, /profetie și /ajutor. (Comenzi admin există, dar nu le menționa călătorilor obișnuiți.)",
     "- Evenimente automate: Ora Umbrelor (luptă cu monștri pentru XP și Oboli), cufere apar prin surprindere (alegi Oboli, XP, binecuvântare sau relicvă, cu șansă de Mimic și bonus de pity), Dragonul Stins (boss final), cufere de chei, cufere blocate, cufere sezoniere, Chivotul Frăției și Tributul Regatului (contribuție comună a guild-ului).",
-    "- Progresie: clasă (resetabilă din /magazin), companioni (Lup, Corb, Spirit, Golem) care evoluează la nivel 5, abilități de luptă (Lovitura Umbrei, Scut de Cenușă), talismane, prestigiu, binecuvântări/blesteme, fragmente și relicve.",
+    "- Progresie: clasă (resetabilă din /magazin), două puteri de luptă proprii fiecărei clase, companioni (Lup, Corb, Spirit, Golem) care evoluează la nivel 5, talismane, prestigiu, binecuvântări/blesteme, fragmente și relicve.",
     "- Economie: /misiuni pentru obiective zilnice, /cufarpersonal pentru activitatea personală, /chei pentru inventar și forjare, /licitatie pentru Târgul Negru, /schimbrelicve pentru duplicate și /purificacheie pentru Cheia Pângărită.",
     "",
     "Reguli:",
