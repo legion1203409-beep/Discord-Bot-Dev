@@ -34,3 +34,4 @@
 - [Oracle social mood per guild](oracle-social-mood.md) — proactive check-ins and reply sentiment must stay isolated per guild; bot presence reflects the latest derived mood.
 - [Strict Vitest module mocks](strict-vitest-mocks.md) — new optional scheduler exports can break old partial mocks; use local compatibility code or lazy optional lookup.
 - [Discord class images](discord-class-images.md) — map stable internal class keys to sanitized API asset filenames; never use uploaded timestamped filenames directly.
+- [Postgres JSON parameter casts](postgres-json-parameter-casts.md) — placeholders used only inside jsonb_build_object may need explicit ::text casts or pg cannot infer their type.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { oracleRelationshipTitle, type OracleCouncilRecord } from "../db";
-import { councilWinner } from "../oracle-council";
+import { councilDecreeEffect, councilWinner } from "../oracle-council";
 
 describe("Oracle relationship titles", () => {
   it("maps loyalty, suspicion and chaos to the medieval titles", () => {
@@ -44,5 +44,24 @@ describe("Council of Shadows winner", () => {
 
   it("returns no decree when nobody voted", () => {
     expect(councilWinner(council({}))).toBeNull();
+  });
+});
+
+describe("Council of Shadows decrees", () => {
+  it("turns the gold law into a guild Oboli boost", () => {
+    const effect = councilDecreeEffect("aur");
+    expect(effect.goldMult).toBe(1.25);
+    expect(effect.xpMult).toBe(1);
+    expect(effect.durationMs).toBe(6 * 60 * 60 * 1000);
+  });
+
+  it("turns the glory law into a guild XP boost", () => {
+    const effect = councilDecreeEffect("gloria");
+    expect(effect.xpMult).toBe(1.25);
+    expect(effect.goldMult).toBe(1);
+  });
+
+  it("rewards voters when the reputation law wins", () => {
+    expect(councilDecreeEffect("reputatia").voterReputation).toBe(10);
   });
 });

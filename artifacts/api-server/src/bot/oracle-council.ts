@@ -17,15 +17,18 @@ import {
   loadOracleCouncil,
   recordOracleInteraction,
   saveOracleCouncil,
+  addPlayerReputation,
   type OracleCouncilOption,
   type OracleCouncilRecord,
 } from "./db";
+import { grantGuildBoost } from "./status-effects";
 
 const MINUTE = 60 * 1000;
 const COUNCIL_ENABLED = process.env.ORACLE_COUNCIL_ENABLED !== "false";
 const COUNCIL_FIRST_DELAY_MS = envInt("ORACLE_COUNCIL_FIRST_DELAY_MIN", 30, 24 * 60) * MINUTE;
 const COUNCIL_INTERVAL_MS = envInt("ORACLE_COUNCIL_INTERVAL_HOURS", 6, 168) * 60 * MINUTE;
 const COUNCIL_VOTING_WINDOW_MS = envInt("ORACLE_COUNCIL_VOTING_MINUTES", 20, 180) * MINUTE;
+const COUNCIL_DECREE_DURATION_MS = 6 * 60 * MINUTE;
 
 function envInt(name: string, fallback: number, max: number): number {
   const value = Number.parseInt(process.env[name] ?? "", 10);
@@ -88,6 +91,57 @@ export function councilWinner(council: OracleCouncilRecord): OracleCouncilOption
   if (max === 0) return null;
   const winners = counts.filter((entry) => entry.count === max);
   return winners.length === 1 ? winners[0]!.option : null;
+}
+
+export type CouncilDecreeEffect = {
+  xpMult: number;
+  goldMult: number;
+  voterReputation: number;
+  durationMs: number;
+  summary: string;
+};
+
+export function councilDecreeEffect(optionId: string): CouncilDecreeEffect {
+  const durationMs = COUNCIL_DECREE_DURATION_MS;
+  switch (optionId) {
+    case "cufere":
+      return { xpMult: 1.1, goldMult: 1.25, voterReputation: 0, durationMs, summary: "Cuferele și lupta aduc +25% Oboli și +10% XP." };
+    case "lupta":
+      return { xpMult: 1.25, goldMult: 1, voterReputation: 0, durationMs, summary: "Luptele aduc +25% XP timp de 6 ore." };
+    case "reputatia":
+      return { xpMult: 1, goldMult: 1, voterReputation: 10, durationMs, summary: "Fiecare votant primește +10 Reputație." };
+    case "furtuna":
+      return { xpMult: 1.1, goldMult: 1.1, voterReputation: 0, durationMs, summary: "Furtuna aduce +10% XP și +10% Oboli timp de 6 ore." };
+    case "hoarda":
+      return { xpMult: 1.2, goldMult: 1.1, voterReputation: 0, durationMs, summary: "Hoarda aduce +20% XP și +10% Oboli timp de 6 ore." };
+    case "dragonul":
+      return { xpMult: 1.3, goldMult: 1.15, voterReputation: 0, durationMs, summary: "Dragonul aduce +30% XP și +15% Oboli timp de 6 ore." };
+    case "aur":
+      return { xpMult: 1, goldMult: 1.25, voterReputation: 0, durationMs, summary: "Toți jucătorii primesc +25% Oboli timp de 6 ore." };
+    case "gloria":
+      return { xpMult: 1.25, goldMult: 1, voterReputation: 0, durationMs, summary: "Toți jucătorii primesc +25% XP timp de 6 ore." };
+    case "taine":
+      return { xpMult: 1.15, goldMult: 1.15, voterReputation: 0, durationMs, summary: "Tainele aduc +15% XP și +15% Oboli timp de 6 ore." };
+    default:
+      return { xpMult: 1, goldMult: 1, voterReputation: 0, durationMs, summary: "Cenușa nu a lăsat niciun efect cunoscut." };
+  }
+}
+
+async function applyCouncilDecree(council: OracleCouncilRecord, winner: OracleCouncilOption): Promise<string> {
+  const effect = councilDecreeEffect(winner.id);
+  if (effect.xpMult !== 1 || effect.goldMult !== 1) {
+    grantGuildBoost(council.guildId, effect.xpMult, effect.goldMult, effect.durationMs);
+  }
+  if (effect.voterReputation > 0) {
+    await Promise.all(
+      Object.keys(council.votes).map((discordId) =>
+        addPlayerReputation(discordId, council.guildId, effect.voterReputation).catch((err) => {
+          logger.warn({ err, guildId: council.guildId, discordId }, "Could not grant council voter reputation");
+        }),
+      ),
+    );
+  }
+  return effect.summary;
 }
 
 function councilEmbed(council: OracleCouncilRecord): EmbedBuilder {
@@ -153,8 +207,9 @@ async function finalizeCouncil(
   const message = await channel.messages.fetch(closed.messageId).catch(() => null);
   await message?.edit({ embeds: [councilEmbed(closed)], components: [councilButtons(closed)] }).catch(() => null);
   if (winner) {
+    const effect = await applyCouncilDecree(closed, winner);
     await channel.send({
-      content: `📜 **Hotărârea Consiliului Umbrelor:** ${winner.emoji} **${winner.label}**\n${winner.decree}`,
+      content: `📜 **Hotărârea Consiliului Umbrelor:** ${winner.emoji} **${winner.label}**\n${winner.decree}\n\n✨ **Efectul legii:** ${effect}`,
     }).catch(() => null);
   } else {
     await channel.send({
@@ -234,6 +289,10 @@ export async function handleOracleCouncilVote(interaction: ButtonInteraction): P
   const [, councilId, optionId] = match;
   const result = await castOracleCouncilVote(guildId, councilId!, interaction.user.id, optionId!);
   if (result.status === "accepted") {
+    await interaction.message.edit({
+      embeds: [councilEmbed(result.council)],
+      components: [councilButtons(result.council)],
+    }).catch(() => null);
     await recordOracleInteraction(
       interaction.user.id,
       guildId,
@@ -241,11 +300,9 @@ export async function handleOracleCouncilVote(interaction: ButtonInteraction): P
       "Am lăsat un glas în Consiliul Umbrelor.",
       "council",
       2,
-    );
-    await interaction.message.edit({
-      embeds: [councilEmbed(result.council)],
-      components: [councilButtons(result.council)],
-    }).catch(() => null);
+    ).catch((err) => {
+      logger.warn({ err, guildId, userId: interaction.user.id }, "Could not save council relationship memory");
+    });
     await interaction.editReply("🕯️ Glasul tău a fost înscris în cronica Cenușii.");
     return;
   }

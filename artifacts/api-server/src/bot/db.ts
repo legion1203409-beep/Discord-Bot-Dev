@@ -376,7 +376,7 @@ export async function recordOracleInteraction(
            ELSE 'Suflet necunoscut'
          END,
          oracle_memory = CASE
-           WHEN $5 = '' THEN oracle_memory
+            WHEN $5::text = '' THEN oracle_memory
            ELSE (
              SELECT COALESCE(jsonb_agg(recent.entry ORDER BY recent.ordinality), '[]'::jsonb)
              FROM (
@@ -384,9 +384,9 @@ export async function recordOracleInteraction(
                FROM jsonb_array_elements(
                  COALESCE(oracle_memory, '[]'::jsonb) ||
                  jsonb_build_array(jsonb_build_object(
-                   'text', $5,
-                   'createdAt', $6,
-                   'kind', $7
+                    'text', $5::text,
+                    'createdAt', $6::text,
+                    'kind', $7::text
                  ))
                ) WITH ORDINALITY AS all_entries(entry, ordinality)
                ORDER BY all_entries.ordinality DESC
