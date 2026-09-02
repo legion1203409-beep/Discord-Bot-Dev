@@ -790,6 +790,8 @@ export interface AuctionState {
   highestBid: number;
   bidderId: string | null;
   status: "open" | "settled";
+  channelId?: string | null;
+  messageId?: string | null;
 }
 
 export const AUCTION_DURATION_MS = 6 * 60 * 60 * 1000;
@@ -825,9 +827,22 @@ async function createAuction(guildId: string, id: string, bucket: number): Promi
     highestBid: 0,
     bidderId: null,
     status: "open",
+    channelId: null,
+    messageId: null,
   };
   await saveState(stateKey(guildId, "auction"), auction);
   return auction;
+}
+
+export async function attachAuctionMessage(
+  guildId: string,
+  channelId: string,
+  messageId: string,
+): Promise<AuctionState> {
+  const auction = await getAuction(guildId);
+  const updated = { ...auction, channelId, messageId };
+  await saveState(stateKey(guildId, "auction"), updated);
+  return updated;
 }
 
 async function settleAuction(auction: AuctionState): Promise<AuctionState | null> {
@@ -891,7 +906,8 @@ export function buildAuctionEmbed(auction: AuctionState): EmbedBuilder {
         `💰 Oferta curentă: **${auction.highestBid} Oboli**\n` +
         `🏴 Conduce: ${auction.bidderId ? `<@${auction.bidderId}>` : "*nimeni încă*"}\n` +
         `⏳ Se închide <t:${Math.floor(auction.endsAt / 1000)}:R>\n\n` +
-        "Folosește `/licitatie suma` pentru a licita. Dacă ești depășit, Obolii îți sunt restituiți.",
+        "Apasă **Licitează** și introdu o ofertă mai mare. Dacă ești depășit, Obolii îți sunt restituiți.\n" +
+        "Poți folosi și `/licitatie suma` pentru o ofertă rapidă.",
     )
     .setImage(CHEST_WORLD_IMG.auction)
     .setFooter({ text: BRAND_FOOTER });
@@ -900,9 +916,14 @@ export function buildAuctionEmbed(auction: AuctionState): EmbedBuilder {
 export function auctionRow(): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
-      .setCustomId("trader_auction")
-      .setLabel("Vezi licitația")
+      .setCustomId("auction_bid")
+      .setLabel("Licitează")
       .setEmoji("⚒️")
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId("auction_refresh")
+      .setLabel("Actualizează")
+      .setEmoji("🔄")
       .setStyle(ButtonStyle.Secondary),
   );
 }

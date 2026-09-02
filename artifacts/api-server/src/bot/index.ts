@@ -276,6 +276,7 @@ import {
   claimHiddenChest,
   hiddenChestRow,
   getAuction,
+  attachAuctionMessage,
   buildAuctionEmbed,
   auctionRow,
   placeAuctionBid,
@@ -493,6 +494,15 @@ const slashCommands = [
     .setDescription("⚒️ Vezi Târgul Negru și licitează pentru oferta curentă.")
     .addIntegerOption((opt) =>
       opt.setName("suma").setDescription("Oferta ta în Oboli (opțional)").setMinValue(1).setRequired(false),
+    ),
+  new SlashCommandBuilder()
+    .setName("posteazalicitatie")
+    .setDescription("📣 [Admin] Publică licitația curentă într-un canal.")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .addChannelOption((opt) =>
+      opt.setName("canal")
+        .setDescription("Canalul text în care va fi publicată licitația")
+        .setRequired(true),
     ),
   new SlashCommandBuilder().setName("schimbrelicve").setDescription("💎 Schimbă două fragmente duplicate într-un fragment rar."),
   new SlashCommandBuilder().setName("purificacheie").setDescription("🧪 Purifică Cheia Pângărită cu 3 Fragmente de Cenușă."),
@@ -753,7 +763,8 @@ function buildHelpEmbed(category: HelpCategory) {
             "**/magazin** — upgrade-uri, companioni, abilități, talismane și prestigiu.\n" +
             "**/misiuni** — două misiuni zilnice cu progres și recompense.\n" +
             "**/cufarpersonal** — recompensa pentru activitatea ta zilnică.\n" +
-            "**/licitatie** — licitezi în Târgul Negru.",
+             "**/licitatie** — vezi licitația sau licitezi rapid cu o sumă.\n" +
+             "**/posteazalicitatie** — [Admin] publică licitația într-un canal pentru toți jucătorii.",
         },
         {
           name: "Relicve",
@@ -1186,6 +1197,7 @@ async function handleLicitatie(interaction: ChatInputCommandInteraction) {
   const amount = interaction.options.getInteger("suma");
   if (amount != null) {
     const result = await placeAuctionBid(guildId, interaction.user.id, amount);
+    await refreshPublicAuctionMessage(interaction.client, result.auction);
     await interaction.editReply({
       content: result.message,
       embeds: [buildAuctionEmbed(result.auction)],
@@ -1195,6 +1207,74 @@ async function handleLicitatie(interaction: ChatInputCommandInteraction) {
   }
   const auction = await getAuction(guildId);
   await interaction.editReply({ embeds: [buildAuctionEmbed(auction)], components: [auctionRow()] });
+}
+
+async function refreshPublicAuctionMessage(client: Client, auction: Awaited<ReturnType<typeof getAuction>>): Promise<boolean> {
+  if (!auction.channelId || !auction.messageId) return false;
+  const channel = await client.channels.fetch(auction.channelId).catch(() => null);
+  if (!(channel instanceof TextChannel)) return false;
+  const message = await channel.messages.fetch(auction.messageId).catch(() => null);
+  if (!message) return false;
+  return message.edit({
+    embeds: [buildAuctionEmbed(auction)],
+    components: [auctionRow()],
+  }).then(() => true).catch(() => false);
+}
+
+async function handlePosteazaLicitatie(interaction: ChatInputCommandInteraction) {
+  if (!(await isOwner(interaction))) return;
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const channel = interaction.options.getChannel("canal", true);
+  if (!(channel instanceof TextChannel)) {
+    await interaction.editReply({
+      content: "❌ Alege un canal text obișnuit, nu un canal vocal sau un thread.",
+    });
+    return;
+  }
+
+  try {
+    const guildId = interaction.guildId!;
+    const auction = await getAuction(guildId);
+    if (auction.channelId && auction.messageId) {
+      const oldChannel = await interaction.client.channels.fetch(auction.channelId).catch(() => null);
+      if (oldChannel instanceof TextChannel) {
+        const oldMessage = await oldChannel.messages.fetch(auction.messageId).catch(() => null);
+        if (oldMessage) {
+          if (oldChannel.id === channel.id) {
+            await oldMessage.edit({
+              embeds: [buildAuctionEmbed(auction)],
+              components: [auctionRow()],
+            });
+            await interaction.editReply({
+              content: `✅ Licitația a fost reîmprospătată în <#${channel.id}>.`,
+            });
+            return;
+          }
+          await oldMessage.delete().catch(() => null);
+        }
+      }
+    }
+
+    const message = await channel.send({
+      embeds: [buildAuctionEmbed(auction)],
+      components: [auctionRow()],
+      allowedMentions: { parse: [] },
+    });
+    const attached = await attachAuctionMessage(guildId, channel.id, message.id);
+    await message.edit({
+      embeds: [buildAuctionEmbed(attached)],
+      components: [auctionRow()],
+    });
+    await interaction.editReply({
+      content: `✅ Licitația este publicată în <#${channel.id}>. Jucătorii pot apăsa **Licitează** și introduce oferta.`,
+    });
+  } catch (err) {
+    logger.error({ err, guildId: interaction.guildId }, "Failed to publish auction");
+    await interaction.editReply({
+      content: "❌ Nu am putut publica licitația. Verifică permisiunea botului de a vedea și trimite mesaje în canal.",
+    });
+  }
 }
 
 async function handleSchimbRelicve(interaction: ChatInputCommandInteraction) {
@@ -3794,6 +3874,50 @@ async function handleAuctionButton(interaction: ButtonInteraction) {
   await interaction.editReply({ embeds: [buildAuctionEmbed(auction)], components: [auctionRow()] });
 }
 
+async function handleAuctionBidButton(interaction: ButtonInteraction) {
+  const modal = new ModalBuilder()
+    .setCustomId("auction_bid_modal")
+    .setTitle("Licitează în Târgul Negru");
+  const amount = new TextInputBuilder()
+    .setCustomId("auction_amount")
+    .setLabel("Oferta ta în Oboli")
+    .setPlaceholder("Introdu o sumă mai mare decât oferta curentă")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMinLength(1)
+    .setMaxLength(10);
+  modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(amount));
+  await interaction.showModal(modal);
+}
+
+async function handleAuctionBidModal(interaction: ModalSubmitInteraction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const rawAmount = interaction.fields.getTextInputValue("auction_amount").trim();
+  const amount = Number(rawAmount);
+  if (!Number.isSafeInteger(amount) || amount < 1) {
+    await interaction.editReply({ content: "❌ Introdu un număr întreg pozitiv de Oboli." });
+    return;
+  }
+
+  const result = await placeAuctionBid(interaction.guildId!, interaction.user.id, amount);
+  let publicMessageUpdated = true;
+  if (interaction.message) {
+    publicMessageUpdated = await interaction.message.edit({
+      embeds: [buildAuctionEmbed(result.auction)],
+      components: [auctionRow()],
+    }).then(() => true).catch(() => false);
+  }
+  await interaction.editReply({
+    content: result.message + (
+      result.ok && !publicMessageUpdated
+        ? "\n⚠️ Oferta a fost înregistrată, dar mesajul public nu a mai putut fi actualizat."
+        : ""
+    ),
+    embeds: interaction.message ? [buildAuctionEmbed(result.auction)] : [],
+    components: interaction.message ? [auctionRow()] : [],
+  });
+}
+
 async function handleTributeContributeButton(interaction: ButtonInteraction, eventId: string) {
   const result = await handleTributeButton(
     interaction.client,
@@ -3878,6 +4002,12 @@ async function handleButton(interaction: ButtonInteraction) {
   }
 
   if (id === "trader_auction") {
+    return handleAuctionButton(interaction);
+  }
+  if (id === "auction_bid") {
+    return handleAuctionBidButton(interaction);
+  }
+  if (id === "auction_refresh") {
     return handleAuctionButton(interaction);
   }
 
@@ -4476,6 +4606,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
       if (interaction.commandName === "cufarpersonal") dispatch(handlePersonalChest(interaction));
       if (interaction.commandName === "fratie") dispatch(handleFratia(interaction));
       if (interaction.commandName === "licitatie") dispatch(handleLicitatie(interaction));
+      if (interaction.commandName === "posteazalicitatie") dispatch(handlePosteazaLicitatie(interaction));
       if (interaction.commandName === "schimbrelicve") dispatch(handleSchimbRelicve(interaction));
       if (interaction.commandName === "purificacheie") dispatch(handlePurificaCheie(interaction));
       if (interaction.commandName === "chei") dispatch(handleChei(interaction));
@@ -4494,6 +4625,9 @@ export async function startBot(onReady?: () => void): Promise<void> {
       }
       if (interaction.customId.startsWith("tribute_submit_")) {
         dispatch(handleTributeModal(interaction));
+      }
+      if (interaction.customId === "auction_bid_modal") {
+        dispatch(handleAuctionBidModal(interaction));
       }
     }
 
