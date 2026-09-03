@@ -130,6 +130,9 @@ function DragonLogo({ className = "" }: { className?: string }) {
   return (
     <div className={`dragon-logo ${className}`} aria-hidden="true">
       <img className="dragon-logo-base" src={dragonLogo} alt="" />
+      <img className="dragon-logo-wing dragon-logo-wing--left" src={dragonLogo} alt="" />
+      <img className="dragon-logo-wing dragon-logo-wing--right" src={dragonLogo} alt="" />
+      <img className="dragon-logo-head" src={dragonLogo} alt="" />
     </div>
   );
 }

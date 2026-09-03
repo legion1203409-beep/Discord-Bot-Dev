@@ -281,15 +281,64 @@ a:focus-visible {
   object-fit: contain;
 }
 
+.dragon-logo-base,
+.dragon-logo-wing,
+.dragon-logo-head {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
 .dragon-logo-base {
   mix-blend-mode: screen;
   filter: saturate(0.76) contrast(1.12) brightness(0.92) drop-shadow(0 0 26px rgba(224, 107, 77, 0.14));
-  animation: dragon-float 8s ease-in-out infinite;
 }
 
-@keyframes dragon-float {
-  0%, 100% { transform: translate3d(0, 2px, 0) scale(0.99); }
-  50% { transform: translate3d(0, -3px, 0) scale(1.01); }
+.dragon-logo-wing,
+.dragon-logo-head {
+  mix-blend-mode: screen;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.dragon-logo-wing {
+  filter: saturate(0.82) contrast(1.1) brightness(1.02);
+}
+
+.dragon-logo-wing--left {
+  clip-path: polygon(10% 13%, 42% 12%, 45% 55%, 35% 70%, 20% 63%, 11% 42%);
+  transform-origin: 39% 56%;
+  animation: dragon-wing-left 4.2s ease-in-out infinite;
+}
+
+.dragon-logo-wing--right {
+  clip-path: polygon(58% 12%, 90% 13%, 89% 42%, 80% 63%, 65% 70%, 55% 55%);
+  transform-origin: 61% 56%;
+  animation: dragon-wing-right 4.2s ease-in-out infinite;
+}
+
+.dragon-logo-head {
+  clip-path: polygon(32% 19%, 67% 18%, 70% 36%, 63% 46%, 38% 45%, 29% 34%);
+  filter: saturate(0.92) contrast(1.12) brightness(1.04);
+  transform-origin: 51% 38%;
+  animation: dragon-head-move 4.2s ease-in-out infinite;
+}
+
+@keyframes dragon-wing-left {
+  0%, 100% { transform: rotate(0deg) translate3d(0, 0, 0); }
+  50% { transform: rotate(-2.2deg) translate3d(-2px, -2px, 0); }
+}
+
+@keyframes dragon-wing-right {
+  0%, 100% { transform: rotate(0deg) translate3d(0, 0, 0); }
+  50% { transform: rotate(2.2deg) translate3d(2px, -2px, 0); }
+}
+
+@keyframes dragon-head-move {
+  0%, 100% { transform: rotate(-0.35deg) translate3d(0, 0, 0); }
+  50% { transform: rotate(0.55deg) translate3d(2px, -1px, 0); }
 }
 
 .dragon-logo--hero {
