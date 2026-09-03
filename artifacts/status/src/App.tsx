@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import "./index.css";
 import { computeAlertCard } from "./lib/alert-card";
+import dragonLogo from "@assets/277cc950-a62b-11f1-aca9-6f5a63b2ac37_1788465450616.png";
 
 const DISCORD_INVITE = "https://discord.gg/JNYsGeMhzm";
 const API_BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
@@ -125,6 +126,17 @@ function StatusDot({ active = false }: { active?: boolean }) {
   return <span className={`status-dot ${active ? "status-dot--active" : ""}`} aria-hidden="true" />;
 }
 
+function DragonLogo({ className = "" }: { className?: string }) {
+  return (
+    <div className={`dragon-logo ${className}`} aria-hidden="true">
+      <img className="dragon-logo-base" src={dragonLogo} alt="" />
+      <img className="dragon-logo-head" src={dragonLogo} alt="" />
+      <span className="dragon-eye-glow" />
+      <span className="dragon-fire-glow" />
+    </div>
+  );
+}
+
 function LandingStatusCard({
   health,
   stats,
@@ -183,7 +195,7 @@ function LandingPage() {
       <div className="landing-noise" aria-hidden="true" />
       <header className="site-nav">
         <a className="brand" href="#" aria-label="Regatul Cenușii, acasă">
-          <span className="brand-mark">✦</span>
+          <span className="brand-mark brand-mark--logo"><img src={dragonLogo} alt="" /></span>
           <span>
             <strong>REGATUL</strong>
             <small>CENUȘII</small>
@@ -221,7 +233,10 @@ function LandingPage() {
                 <span><strong>O comunitate în creștere</strong><br />Aventuri noi în fiecare zi</span>
               </div>
             </div>
-            <LandingStatusCard health={health} stats={stats} />
+            <div className="hero-aside">
+              <DragonLogo className="dragon-logo--hero" />
+              <LandingStatusCard health={health} stats={stats} />
+            </div>
           </div>
           <div className="hero-scroll-hint" aria-hidden="true"><span /> Scroll pentru a intra în regat</div>
         </section>
@@ -303,14 +318,14 @@ function LandingPage() {
                 Intră pe Discord <span className="button-arrow">↗</span>
               </a>
             </div>
-            <div className="cta-sigil" aria-hidden="true"><span>✦</span><b>RC</b></div>
+            <DragonLogo className="dragon-logo--cta" />
           </div>
         </section>
       </main>
 
       <footer className="site-footer page-width">
         <a className="brand brand--footer" href="#">
-          <span className="brand-mark">✦</span>
+          <span className="brand-mark brand-mark--logo"><img src={dragonLogo} alt="" /></span>
           <span><strong>REGATUL</strong><small>CENUȘII</small></span>
         </a>
         <span>O lume creată pentru cei care aleg să lupte.</span>
