@@ -371,14 +371,14 @@ async function sendOnboardingMessage(guild: Guild): Promise<void> {
   const message =
     "👋 **Bun venit în Regatul Cenușii!**\n\n" +
     "Botul a fost adăugat pe serverul tău, dar **nu are canalele configurate** încă.\n" +
-    "Folosește comanda `/setcanale seteaza` pentru a configura canalele unde botul va posta:\n\n" +
+    "Folosește comanda `/setcanal` pentru a configura canalele unde botul va posta:\n\n" +
     "📺 **Cufere și Oracol** — cufere, chei și mesaje Oracol\n" +
     "🔥 **Ora Umbrelor** — evenimentele principale de luptă\n" +
     "🐉 **Dragonul Stins** — boss final\n" +
     "🏺 **Negustorul** — magazinul permanent\n" +
     "🏆 **Top Ora Umbrelor** — clasamentul evenimentelor\n" +
     "🏆 **Top Dragonul Stins** — clasamentul boss-urilor\n\n" +
-    "Rulează `/setcanale vezi` pentru a vedea configurația curentă și ce lipsește.";
+    "Folosește din nou `/setcanal` pentru a schimba canalul unei categorii.";
 
   try {
     const ownerMember = await guild.fetchOwner().catch(() => null);
@@ -521,70 +521,27 @@ const slashCommands = [
           { name: "3 Fumuri Înghețate → 1 Cavaler Cenușiu", value: "fum" },
         ),
     ),
-  // Comenzile de admin abuzive și de management au fost eliminate.
   new SlashCommandBuilder()
-    .setName("setcanale")
-    .setDescription("📺 [Admin] Configurează canalele pentru evenimentele botului.")
+    .setName("setcanal")
+    .setDescription("📺 [Admin] Alege canalul pentru fiecare tip de activitate.")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    .addSubcommand((sub) =>
-      sub.setName("vezi").setDescription("👁️ Vezi configurația curentă a canalelor."),
-    )
-    .addSubcommand((sub) =>
-      sub.setName("seteaza").setDescription("✏️ Setează canalul pentru un eveniment.")
-        .addStringOption((opt) =>
-          opt.setName("eveniment")
-            .setDescription("Tipul de eveniment")
-            .setRequired(true)
-            .addChoices(
-              { name: "Cufere și Oracol", value: "main" },
-              { name: "Ora Umbrelor", value: "event" },
-              { name: "Dragonul Stins", value: "boss" },
-              { name: "Negustorul (Forja Cenușii)", value: "trader" },
-              { name: "Top Ora Umbrelor", value: "eventTop" },
-              { name: "Top Dragonul Stins", value: "bossTop" },
-            ),
-        )
-        .addChannelOption((opt) =>
-          opt.setName("canal")
-            .setDescription("Canalul țintă")
-            .setRequired(true),
+    .addStringOption((opt) =>
+      opt.setName("tip")
+        .setDescription("Ce activitate va fi publicată în canal")
+        .setRequired(true)
+        .addChoices(
+          { name: "Cufere și Oracol", value: "main" },
+          { name: "Ora Umbrelor", value: "event" },
+          { name: "Dragonul Stins", value: "boss" },
+          { name: "Negustorul (Forja Cenușii)", value: "trader" },
+          { name: "Top Ora Umbrelor", value: "eventTop" },
+          { name: "Top Dragonul Stins", value: "bossTop" },
+          { name: "Tributul Regatului", value: "tribut" },
         ),
     )
-    .addSubcommand((sub) =>
-      sub.setName("reset").setDescription("🔄 Resetează canalul unui eveniment la valoarea implicită.")
-        .addStringOption((opt) =>
-          opt.setName("eveniment")
-            .setDescription("Tipul de eveniment")
-            .setRequired(true)
-            .addChoices(
-              { name: "Cufere și Oracol", value: "main" },
-              { name: "Ora Umbrelor", value: "event" },
-              { name: "Dragonul Stins", value: "boss" },
-              { name: "Negustorul (Forja Cenușii)", value: "trader" },
-              { name: "Top Ora Umbrelor", value: "eventTop" },
-              { name: "Top Dragonul Stins", value: "bossTop" },
-            ),
-        ),
-    )
-    .addSubcommand((sub) =>
-      sub.setName("resetall").setDescription("🔄 Resetează toate canalele la valorile implicite."),
-    ),
-  new SlashCommandBuilder()
-    .setName("setnegustor")
-    .setDescription("🏪 [Admin] Alege canalul în care apare Negustorul.")
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addChannelOption((opt) =>
       opt.setName("canal")
-        .setDescription("Canalul în care va fi publicat Negustorul")
-        .setRequired(true),
-    ),
-  new SlashCommandBuilder()
-    .setName("settribut")
-    .setDescription("🩸 [Admin] Configurează canalul pentru Tributul Regatului (24h activ + 24h pauză).")
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    .addChannelOption((opt) =>
-      opt.setName("canal")
-        .setDescription("Canalul în care apare tributul")
+        .setDescription("Canalul text în care va fi publicată activitatea")
         .setRequired(true),
     ),
 ];
@@ -1382,132 +1339,60 @@ async function reconfigureTraderChannel(guildId: string, channel: TextChannel): 
   await setupTrader(client, guildId);
 }
 
-async function handleSetCanale(interaction: ChatInputCommandInteraction) {
+async function handleSetCanal(interaction: ChatInputCommandInteraction) {
   if (!(await isOwner(interaction))) return;
-  const guildId = interaction.guildId!;
-  const sub = interaction.options.getSubcommand();
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  if (sub === "vezi") {
-    const keys = Object.keys(EVENT_LABELS) as EventType[];
-    const lines = keys.map((k) => {
-      const id = getChannel(k, guildId);
-      if (id) {
-        return `✅ **${EVENT_LABELS[k]}**\n> Canal: <#${id}> (\`${id}\`)`;
-      }
-      return `❌ **${EVENT_LABELS[k]}**\n> *Neconfigurat — folosește \`/setcanale seteaza\` pentru a seta canalul.*`;
-    });
-    const allConfigured = keys.every((k) => getChannel(k, guildId) !== null);
-    const header = allConfigured
-      ? "✅ Toate canalele sunt configurate.\n\n"
-      : "⚠️ **Unele canale lipsesc.** Botul va sări evenimentele pentru canalele neconfigurate.\nFolosește `/setcanale seteaza` pentru a le configura.\n\n";
+  const channel = interaction.options.getChannel("canal", true);
+  if (!(channel instanceof TextChannel)) {
     await interaction.editReply({
-      content: header + lines.join("\n\n"),
+      content: "❌ Alege un canal text obișnuit, nu un canal vocal sau un thread.",
     });
     return;
   }
 
-  if (sub === "seteaza") {
-    const eventKey = interaction.options.getString("eveniment", true) as EventType;
-    const channel = interaction.options.getChannel("canal", true);
-    if (!channel) {
-      await interaction.editReply({ content: "❌ Alege un canal valid." });
+  const type = interaction.options.getString("tip", true);
+
+  try {
+    if (type === "tribut") {
+      const config = await saveTributeConfig(interaction.guildId!, channel.id);
+      if (botClient) {
+        await restartTributeScheduler(botClient, interaction.guildId!);
+        await fireTribute(botClient, interaction.guildId!);
+      }
+      await interaction.editReply({
+        content:
+          `✅ **Tributul Regatului** va fi publicat în <#${channel.id}>.\n` +
+          `Evenimentul rămâne deschis **24 de ore**, apoi urmează **24 de ore pauză**.`,
+      });
+      logger.info(
+        { channelId: channel.id, intervalMinutes: config.intervalMinutes, userId: interaction.user.id, guildId: interaction.guildId },
+        "Tribute channel configured via /setcanal",
+      );
+      return;
+    }
+
+    const eventKey = type as EventType;
+    if (!(eventKey in EVENT_LABELS)) {
+      await interaction.editReply({ content: "❌ Tipul de activitate ales nu este valid." });
       return;
     }
     if (eventKey === "trader") {
-      if (!(channel instanceof TextChannel)) {
-        await interaction.editReply({ content: "❌ Pentru Negustor alege un canal text obișnuit, nu un canal vocal sau un thread." });
-        return;
-      }
-      await reconfigureTraderChannel(guildId, channel);
+      await reconfigureTraderChannel(interaction.guildId!, channel);
     } else {
-      await setChannel(guildId, eventKey, channel.id);
+      await setChannel(interaction.guildId!, eventKey, channel.id);
     }
     await interaction.editReply({
-      content: `✅ **${EVENT_LABELS[eventKey]}** va fi acum postat în <#${channel.id}>`,
-    });
-    logger.info({ eventKey, channelId: channel.id, userId: interaction.user.id, guildId }, "Channel configured via /setcanale");
-    return;
-  }
-
-  if (sub === "reset") {
-    const eventKey = interaction.options.getString("eveniment", true) as EventType;
-    await resetChannel(guildId, eventKey);
-    await interaction.editReply({
-      content: `🔄 Canalul pentru **${EVENT_LABELS[eventKey]}** a fost resetat la valoarea implicită.`,
-    });
-    return;
-  }
-
-  if (sub === "resetall") {
-    await resetAllChannels(guildId);
-    await interaction.editReply({
-      content: "🔄 Toate canalele au fost resetate la valorile implicite.",
-    });
-    return;
-  }
-}
-
-async function handleSetNegustor(interaction: ChatInputCommandInteraction) {
-  if (!(await isOwner(interaction))) return;
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
-  const channel = interaction.options.getChannel("canal", true);
-  if (!(channel instanceof TextChannel)) {
-    await interaction.editReply({
-      content: "❌ Alege un canal text obișnuit, nu un canal vocal sau un thread.",
-    });
-    return;
-  }
-
-  try {
-    await reconfigureTraderChannel(interaction.guildId!, channel);
-    await interaction.editReply({
-      content: `✅ Negustorul va apărea acum în <#${channel.id}>. Postarea veche a fost mutată.`,
+      content: `✅ **${EVENT_LABELS[eventKey]}** va fi publicat în <#${channel.id}>.`,
     });
     logger.info(
-      { channelId: channel.id, userId: interaction.user.id, guildId: interaction.guildId },
-      "Trader channel configured via /setnegustor",
+      { eventKey, channelId: channel.id, userId: interaction.user.id, guildId: interaction.guildId },
+      "Channel configured via /setcanal",
     );
   } catch (err) {
-    logger.error({ err, guildId: interaction.guildId }, "Failed to configure trader channel");
+    logger.error({ err, guildId: interaction.guildId, type }, "Failed to configure channel via /setcanal");
     await interaction.editReply({
-      content: "❌ Nu am putut publica Negustorul în canalul ales. Verifică permisiunile botului și încearcă din nou.",
-    });
-  }
-}
-
-async function handleSetTribut(interaction: ChatInputCommandInteraction) {
-  if (!(await isOwner(interaction))) return;
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
-  const channel = interaction.options.getChannel("canal", true);
-  if (!(channel instanceof TextChannel)) {
-    await interaction.editReply({
-      content: "❌ Alege un canal text obișnuit, nu un canal vocal sau un thread.",
-    });
-    return;
-  }
-
-  try {
-    const config = await saveTributeConfig(interaction.guildId!, channel.id);
-    if (botClient) {
-      await restartTributeScheduler(botClient, interaction.guildId!);
-      await fireTribute(botClient, interaction.guildId!);
-    }
-    await interaction.editReply({
-      content:
-        `✅ **Tributul Regatului** a fost publicat acum în <#${channel.id}>.\n` +
-        `Rămâne deschis **24 de ore**, apoi urmează **24 de ore pauză** înainte de următorul tribut.`,
-    });
-    logger.info(
-      { channelId: channel.id, intervalMinutes: config.intervalMinutes, userId: interaction.user.id, guildId: interaction.guildId },
-      "Tribute scheduler configured",
-    );
-  } catch (err) {
-    logger.error({ err, guildId: interaction.guildId }, "Failed to configure tribute scheduler");
-    await interaction.editReply({
-      content: "❌ Nu am putut salva configurația tributului. Verifică permisiunile bazei de date și încearcă din nou.",
+      content: "❌ Nu am putut salva canalul. Verifică permisiunile botului și încearcă din nou.",
     });
   }
 }
