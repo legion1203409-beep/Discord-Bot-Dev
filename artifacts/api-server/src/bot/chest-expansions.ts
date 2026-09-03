@@ -904,7 +904,7 @@ export function buildAuctionEmbed(auction: AuctionState): EmbedBuilder {
     .setDescription(
       `**${auction.label}**\n${auction.description}\n\n` +
         `💰 Oferta curentă: **${auction.highestBid} Oboli**\n` +
-        `🏴 Conduce: ${auction.bidderId ? `<@${auction.bidderId}>` : "*nimeni încă*"}\n` +
+        `🏴 Conduce: ${auction.bidderId ? "*un ofertant*" : "*nimeni încă*"}\n` +
         `⏳ Se închide <t:${Math.floor(auction.endsAt / 1000)}:R>\n\n` +
         "Apasă **Licitează** și introdu o ofertă mai mare. Dacă ești depășit, Obolii îți sunt restituiți.\n" +
         "Poți folosi și `/licitatie suma` pentru o ofertă rapidă.",
