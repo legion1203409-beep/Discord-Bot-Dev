@@ -28,7 +28,7 @@ import { randomUUID } from "node:crypto";
 import { logger } from "../lib/logger";
 import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./alert";
 import { startGuildScheduler, stopGuildScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, recordGuildActivity, getGuildClaimedChests, getGuildActiveBossMap, checkBossEligibility, checkBossHitCooldown, BOSS_HIT_COOLDOWN_MS, persistBossState, guildStates, isGuildActive, ACTIVITY_WINDOW_MINUTES, CHEST_MSG_MILESTONE, type BossState, type BossPlayerStats } from "./scheduler";
-import { getChannel, getAllChannels, setChannel, resetChannel, resetAllChannels, initChannelConfig, hasAnyChannelConfigured, EVENT_LABELS, type EventType } from "./channel-config";
+import { getChannel, getAllChannels, setChannel, initChannelConfig, hasAnyChannelConfigured, EVENT_LABELS, type EventType } from "./channel-config";
 import { recordMessage, refreshOraclePresence, getCurrentMood } from "./oracle";
 import {
   maybeReplyAsOracle,
@@ -824,7 +824,7 @@ function buildHelpEmbed(category: HelpCategory) {
         {
           name: "Administrator",
           value:
-            "**/setcanale** configurează unde apar evenimentele. Subcomenzile administrative nu oferă recompense și nu sunt necesare pentru jucători.",
+            "**/setcanal** configurează canalul pentru cufere, evenimente, boss, Negustor, topuri și Tribut. Este disponibilă doar administratorilor.",
         },
       ],
     },
@@ -4524,9 +4524,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
       if (interaction.commandName === "schimbrelicve") dispatch(handleSchimbRelicve(interaction));
       if (interaction.commandName === "purificacheie") dispatch(handlePurificaCheie(interaction));
       if (interaction.commandName === "chei") dispatch(handleChei(interaction));
-      if (interaction.commandName === "setcanale") dispatch(handleSetCanale(interaction));
-      if (interaction.commandName === "setnegustor") dispatch(handleSetNegustor(interaction));
-      if (interaction.commandName === "settribut") dispatch(handleSetTribut(interaction));
+      if (interaction.commandName === "setcanal") dispatch(handleSetCanal(interaction));
     } else if (interaction.isButton()) {
       dispatch(handleButton(interaction as ButtonInteraction));
     } else if (interaction.isStringSelectMenu()) {

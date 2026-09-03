@@ -853,13 +853,13 @@ const STANDALONE_BOSS_ACTIVE_MS = 60 * 60_000;
 
 /**
  * Fetch a guild's configured channel. Returns null if the channel is not
- * configured (guild must run /setcanale) or cannot be fetched from Discord.
+ * configured (guild must run /setcanal) or cannot be fetched from Discord.
  * All scheduler actions that post to a channel MUST guard on null return.
  */
 async function fetchChannel(client: Client, type: EventType, guildId: string): Promise<TextChannel | null> {
   const id = getChannel(type, guildId);
   if (!id) {
-    logger.warn({ guildId, type }, "Channel not configured for guild — action skipped (run /setcanale)");
+    logger.warn({ guildId, type }, "Channel not configured for guild — action skipped (run /setcanal)");
     return null;
   }
   const ch = await client.channels.fetch(id).catch(() => null);
@@ -1427,7 +1427,7 @@ export function startGuildScheduler(client: Client, guildId: string) {
   if (!hasAnyChannelConfigured(guildId)) {
     logger.warn(
       { guildId },
-      "Guild has no channel config — scheduled events will be skipped on each tick until /setcanale is run by a server admin",
+      "Guild has no channel config — scheduled events will be skipped on each tick until /setcanal is run by a server admin",
     );
   }
 

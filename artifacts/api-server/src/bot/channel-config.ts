@@ -2,7 +2,7 @@ import { loadChannelConfig, saveChannelConfig, type ChannelConfig } from "./db";
 
 // Default channel IDs — used as fallback when no custom config is stored.
 // These defaults are only meaningful for the original guild; new guilds should
-// always configure their own channels via /setcanale.
+// always configure their own channels via /setcanal.
 const DEFAULT_CHANNELS: Required<ChannelConfig> = {
   main:       "1382042144717410385",
   event:      "1521185682200989726",
@@ -35,7 +35,7 @@ export function getChannel(type: keyof ChannelConfig, guildId: string): string |
   if (override) return override;
   // Apply hardcoded defaults only for the original guild.
   if (guildId === ORIGINAL_GUILD_ID) return DEFAULT_CHANNELS[type];
-  // Other guilds must configure channels via /setcanale before the bot acts.
+  // Other guilds must configure channels via /setcanal before the bot acts.
   return null;
 }
 
