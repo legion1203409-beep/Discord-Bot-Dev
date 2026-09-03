@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useCallback, useEffect, useState } from "react";
 import "./index.css";
 import { computeAlertCard } from "./lib/alert-card";
 
@@ -7,59 +7,32 @@ const API_BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 
 const zones = [
   {
-    id: "taverna",
-    icon: "🍺",
-    name: "Taverna Umbrelor",
-    desc: "Locul unde aventurierii se odihnesc, povestesc și pun la cale planuri.",
-    color: "#8b0000",
-    glow: "rgba(139,0,0,0.45)",
-    mapX: "18%",
-    mapY: "62%",
-    href: "https://discord.gg/JNYsGeMhzm",
+    icon: "⚔",
+    name: "Ora Umbrelor",
+    eyebrow: "Lupte live",
+    description: "Intră în luptă alături de ceilalți aventurieri și înfruntă monștrii care apar în regat.",
+    accent: "ember",
   },
   {
-    id: "arena",
-    icon: "⚔️",
-    name: "Arena Sângelui Rece",
-    desc: "Luptele fără milă din Ora Umbrelor. Câștigă glorie sau cazi în uitare.",
-    color: "#c0392b",
-    glow: "rgba(192,57,43,0.45)",
-    mapX: "75%",
-    mapY: "28%",
-    href: "https://discord.gg/JNYsGeMhzm",
+    icon: "✦",
+    name: "Cuferele Cenușii",
+    eyebrow: "Recompense",
+    description: "Deschide cufere, adună chei și descoperă resurse pentru următoarea ta aventură.",
+    accent: "gold",
   },
   {
-    id: "forja",
-    icon: "🔨",
-    name: "Forja Culorilor",
-    desc: "Îmbunătățește-ți armura, arma și abilitățile. Fiecare oboli investit contează.",
-    color: "#b8860b",
-    glow: "rgba(184,134,11,0.45)",
-    mapX: "55%",
-    mapY: "68%",
-    href: "https://discord.gg/JNYsGeMhzm",
+    icon: "◆",
+    name: "Forja",
+    eyebrow: "Progresie",
+    description: "Îmbunătățește-ți arma, armura, clasa și companionul. Fiecare upgrade contează.",
+    accent: "violet",
   },
   {
-    id: "arhive",
-    icon: "📜",
-    name: "Arhivele Cenușii",
-    desc: "Legile regatului, istoria sa și regulile care guvernează destinele locuitorilor.",
-    color: "#4a6fa5",
-    glow: "rgba(74,111,165,0.45)",
-    mapX: "30%",
-    mapY: "22%",
-    href: "https://discord.gg/JNYsGeMhzm",
-  },
-  {
-    id: "turnul",
-    icon: "🗼",
-    name: "Turnul Gardienilor",
-    desc: "Gardienii veghează ordinea. Raportează, propune, contribuie.",
-    color: "#2e7d32",
-    glow: "rgba(46,125,50,0.45)",
-    mapX: "80%",
-    mapY: "72%",
-    href: "https://discord.gg/JNYsGeMhzm",
+    icon: "☽",
+    name: "Oracolul",
+    eyebrow: "Vocea regatului",
+    description: "Pune întrebări, primește profeții și lasă-ți amprenta în poveștile Cenușii.",
+    accent: "blue",
   },
 ];
 
@@ -96,8 +69,7 @@ function useOracleHealth() {
         botUptime: typeof data.botUptime === "number" ? data.botUptime : 0,
         oracleReplyMode: data.oracleReplyMode === "full" ? "full" : "degraded",
         oracleReplyReason:
-          data.oracleReplyReason === "active" ||
-          data.oracleReplyReason === "portal_toggle_missing"
+          data.oracleReplyReason === "active" || data.oracleReplyReason === "portal_toggle_missing"
             ? data.oracleReplyReason
             : "disabled",
         alertsConfigured: Boolean(data.alertsConfigured),
@@ -117,45 +89,6 @@ function useOracleHealth() {
   return health;
 }
 
-function OracleStatusBadge() {
-  const health = useOracleHealth();
-
-  let tone: "loading" | "full" | "warn" | "danger";
-  let label: string;
-  let detail: string;
-
-  if (health === null) {
-    tone = "loading";
-    label = "Oracolul…";
-    detail = "Se verifică starea Oracolului.";
-  } else if (health.oracleReplyMode === "full") {
-    tone = "full";
-    label = "Oracol: răspunde la tot";
-    detail = "Oracolul răspunde la fiecare reply, mențiune și ping.";
-  } else if (health.oracleReplyReason === "portal_toggle_missing") {
-    tone = "danger";
-    label = "Oracol: mod redus";
-    detail =
-      "Comutatorul „Message Content” lipsește din Discord Developer Portal. " +
-      "Oracolul răspunde doar la @mention și la reply-uri cu ping. " +
-      "Activează comutatorul în portal, apoi repornește botul.";
-  } else {
-    tone = "warn";
-    label = "Oracol: mod redus";
-    detail =
-      "Răspunsul la toate reply-urile este dezactivat. " +
-      "Oracolul răspunde doar la @mention și la reply-uri cu ping.";
-  }
-
-  return (
-    <div className={`oracle-badge oracle-badge--${tone}`} title={detail}>
-      <span className="oracle-badge-dot" />
-      <span className="oracle-badge-label">{label}</span>
-      <span className="oracle-badge-detail">{detail}</span>
-    </div>
-  );
-}
-
 function useSoulStoneStats() {
   const [stats, setStats] = useState<DiscordStats | null>(null);
 
@@ -163,8 +96,7 @@ function useSoulStoneStats() {
     try {
       const res = await fetch(`${API_BASE}/api/discord/stats`);
       if (!res.ok) throw new Error("bad response");
-      const data: DiscordStats = await res.json();
-      setStats(data);
+      setStats(await res.json() as DiscordStats);
     } catch {
       setStats({ live: false, onlineCount: null, totalMembers: null, lastJoined: null });
     }
@@ -179,275 +111,219 @@ function useSoulStoneStats() {
   return stats;
 }
 
-type Zone = (typeof zones)[number];
-
-function MapPage() {
-  const [activeZone, setActiveZone] = useState<string | null>(null);
-  const [zoomTarget, setZoomTarget] = useState<Zone | null>(null);
-  const stats = useSoulStoneStats();
-  const zoomingRef = useRef(false);
-  const timersRef = useRef<number[]>([]);
-
-  useEffect(() => {
-    const timers = timersRef.current;
-    return () => timers.forEach((t) => window.clearTimeout(t));
-  }, []);
-
-  function handleZoneClick(e: React.MouseEvent, zone: Zone) {
-    e.preventDefault();
-    if (zoomingRef.current) return;
-    zoomingRef.current = true;
-    setActiveZone(null);
-    setZoomTarget(zone);
-
-    // Open the tab now (preserves the user gesture, avoids popup blocking),
-    // then navigate it to Discord once the zoom-in has played.
-    const newTab = window.open("about:blank", "_blank");
-    if (newTab) newTab.opener = null;
-
-    const openTimer = window.setTimeout(() => {
-      if (newTab && !newTab.closed) {
-        newTab.location.href = zone.href;
-      } else {
-        // Popup was blocked — fall back to navigating the current tab.
-        window.location.href = zone.href;
-      }
-    }, 1100);
-
-    const resetTimer = window.setTimeout(() => {
-      setZoomTarget(null);
-      zoomingRef.current = false;
-    }, 2200);
-
-    timersRef.current.push(openTimer, resetTimer);
-  }
-
-  const zooming = zoomTarget !== null;
-
-  return (
-    <div className="map-page">
-      <div className="map-bg" />
-
-      <header className="map-header">
-        <div className="map-header-inner">
-          <span className="map-logo">🏰 REGATUL CENUȘII</span>
-          <div className="map-header-right">
-            <OracleStatusBadge />
-            <a href={DISCORD_INVITE} target="_blank" rel="noopener noreferrer" className="map-join-btn">
-              ⚔️ Alătură-te
-            </a>
-          </div>
-        </div>
-      </header>
-
-      <main className="map-main">
-        <div className="map-title-block">
-          <h2 className="map-title">Harta Regatului</h2>
-          <p className="map-subtitle">
-            {zooming ? `Intri în ${zoomTarget?.name}…` : "Cinci domenii, o singură legendă"}
-          </p>
-        </div>
-
-        {/* Fantasy map */}
-        <div className="fantasy-map">
-          <div className={`fantasy-map-frame ${zooming ? "fantasy-map-frame--zooming" : ""}`}>
-
-            {/* Background that zooms toward the clicked zone */}
-            <div
-              className="map-bg-img"
-              style={
-                zooming
-                  ? {
-                      transform: "scale(3.6)",
-                      transformOrigin: `${zoomTarget?.mapX} ${zoomTarget?.mapY}`,
-                    }
-                  : undefined
-              }
-            />
-
-            {/* Decorative corner ornaments */}
-            <span className="map-corner map-corner--tl">✦</span>
-            <span className="map-corner map-corner--tr">✦</span>
-            <span className="map-corner map-corner--bl">✦</span>
-            <span className="map-corner map-corner--br">✦</span>
-
-            {/* SVG paths between zones */}
-            <svg
-              className={`map-paths ${zooming ? "map-faded" : ""}`}
-              viewBox="0 0 100 100"
-              preserveAspectRatio="none"
-            >
-              <path d="M18,62 Q35,45 30,22" className="map-path" />
-              <path d="M30,22 Q52,25 75,28" className="map-path" />
-              <path d="M18,62 Q36,65 55,68" className="map-path" />
-              <path d="M55,68 Q67,68 80,72" className="map-path" />
-              <path d="M75,28 Q78,50 80,72" className="map-path" />
-              <path d="M30,22 Q42,44 55,68" className="map-path map-path--dim" />
-            </svg>
-
-            {/* Zone markers */}
-            {zones.map((zone) => (
-              <a
-                key={zone.id}
-                href={zone.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={`map-marker ${activeZone === zone.id ? "map-marker--active" : ""} ${zooming ? "map-faded" : ""}`}
-                style={{
-                  left: zone.mapX,
-                  top: zone.mapY,
-                  "--zone-color": zone.color,
-                  "--zone-glow": zone.glow,
-                } as React.CSSProperties}
-                onMouseEnter={() => !zooming && setActiveZone(zone.id)}
-                onMouseLeave={() => setActiveZone(null)}
-                onClick={(e) => handleZoneClick(e, zone)}
-              >
-                <div className="map-marker-pin">
-                  <span className="map-marker-icon">{zone.icon}</span>
-                  <div className="map-marker-pulse" />
-                </div>
-                <div className="map-marker-tooltip">
-                  <strong>{zone.name}</strong>
-                  <span>{zone.desc}</span>
-                </div>
-              </a>
-            ))}
-
-            {/* Soul Stone widget — center of map */}
-            <div
-              className={`map-soul-widget ${zooming ? "map-faded" : ""}`}
-              onMouseEnter={() => !zooming && setActiveZone("soul")}
-              onMouseLeave={() => setActiveZone(null)}
-            >
-              <div className="map-soul-orb">🔮</div>
-              <div className="map-soul-label">Piatra de Suflete</div>
-              <div className="map-soul-stats">
-                <span title="Suflete treze" className="map-soul-online">
-                  {stats !== null && stats.onlineCount !== null && (
-                    <span className="map-soul-online-dot" />
-                  )}
-                  ✨ {stats === null ? "…" : stats.onlineCount !== null ? stats.onlineCount : "—"}
-                </span>
-                <span title="Locuitori">
-                  👥 {stats === null ? "…" : stats.totalMembers !== null ? stats.totalMembers : "—"}
-                </span>
-              </div>
-              {stats !== null && (
-                <span className={`map-soul-live ${stats.live ? "" : "map-soul-live--off"}`}>
-                  {stats.live ? "● live" : "● offline"}
-                </span>
-              )}
-            </div>
-
-            {/* Zoom title overlay */}
-            {zooming && (
-              <div className="map-zoom-label">
-                <span className="map-zoom-icon">{zoomTarget?.icon}</span>
-                <span className="map-zoom-name">{zoomTarget?.name}</span>
-              </div>
-            )}
-
-          </div>
-        </div>
-
-        <footer className="map-footer">
-          © 2026 Regatul Cenușii · Oracolul Cenușii#5028 ·{" "}
-          <a href={DISCORD_INVITE} target="_blank" rel="noopener noreferrer">
-            discord.gg/JNYsGeMhzm
-          </a>
-        </footer>
-      </main>
-    </div>
-  );
-}
-
-const EMBERS = Array.from({ length: 26 }, (_, i) => ({
-  id: i,
-  left: Math.random() * 100,
-  delay: Math.random() * 8,
-  duration: 6 + Math.random() * 7,
-  size: 2 + Math.random() * 4,
-  drift: (Math.random() - 0.5) * 120,
-}));
-
-function GatePage({ onEnter }: { onEnter: () => void }) {
-  const [opening, setOpening] = useState(false);
-
-  function handleEnter() {
-    if (opening) return;
-    setOpening(true);
-    setTimeout(onEnter, 1100);
-  }
-
-  return (
-    <div className={`gate-page ${opening ? "gate-page--opening" : ""}`}>
-      {/* Gate image */}
-      <div className="gate-img-wrap">
-        <img src="/gate.png" alt="Poarta Regatului Cenușii" className="gate-img" />
-        <div className="gate-img-vignette" />
-      </div>
-      {/* Smoke layers */}
-      <div className="smoke smoke-1" />
-      <div className="smoke smoke-2" />
-      <div className="smoke smoke-3" />
-      <div className="smoke smoke-4" />
-      {/* Floating embers */}
-      <div className="embers">
-        {EMBERS.map((e) => (
-          <span
-            key={e.id}
-            className="ember"
-            style={{
-              left: `${e.left}%`,
-              width: `${e.size}px`,
-              height: `${e.size}px`,
-              animationDelay: `${e.delay}s`,
-              animationDuration: `${e.duration}s`,
-              "--drift": `${e.drift}px`,
-            } as React.CSSProperties}
-          />
-        ))}
-      </div>
-      {/* Light flash on open */}
-      <div className={`gate-flash ${opening ? "gate-flash--active" : ""}`} />
-      {/* Overlay content */}
-      <div className="gate-overlay">
-        <h1 className="gate-title">🏰 REdâGATUL CENUȘII</h1>
-        <p className="gate-sub">Aici începe legenda ta.</p>
-        <button
-          className={`gate-btn ${opening ? "gate-btn--opening" : ""}`}
-          onClick={handleEnter}
-          disabled={opening}
-        >
-          ⚔️ INTRĂ ÎN REGAT
-        </button>
-        <span className="gate-scroll-hint">▾</span>
-      </div>
-    </div>
-  );
-}
-
 function formatUptime(seconds: number): string {
   if (seconds <= 0) return "—";
-  const d = Math.floor(seconds / 86400);
-  const h = Math.floor((seconds % 86400) / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = Math.floor(seconds % 60);
-  const parts: string[] = [];
-  if (d) parts.push(`${d}z`);
-  if (h) parts.push(`${h}h`);
-  if (m) parts.push(`${m}m`);
-  if (!d && !h) parts.push(`${s}s`);
-  return parts.join(" ");
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (days) return `${days}z ${hours}h`;
+  if (hours) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
+function StatusDot({ active = false }: { active?: boolean }) {
+  return <span className={`status-dot ${active ? "status-dot--active" : ""}`} aria-hidden="true" />;
+}
+
+function LandingStatusCard({
+  health,
+  stats,
+}: {
+  health: OracleHealth | null;
+  stats: DiscordStats | null;
+}) {
+  const botOnline = health?.botOnline ?? false;
+  const statsLive = stats?.live ?? false;
+
+  return (
+    <aside className="hero-status-card" aria-label="Starea live a regatului">
+      <div className="status-card-topline">
+        <span className="eyebrow eyebrow--small">Piatra de Suflete</span>
+        <span className={`live-pill ${statsLive ? "live-pill--on" : ""}`}>
+          <StatusDot active={statsLive} />
+          {stats === null ? "Se verifică" : statsLive ? "Live" : "Offline"}
+        </span>
+      </div>
+      <div className="status-orb-wrap">
+        <div className="status-orb"><span>✦</span></div>
+        <div>
+          <strong>Regatul este {botOnline ? "treaz" : "în așteptare"}</strong>
+          <p>Activitatea serverului se actualizează automat.</p>
+        </div>
+      </div>
+      <div className="status-metrics">
+        <div>
+          <span className="metric-value">{stats?.onlineCount ?? "—"}</span>
+          <span className="metric-label">online acum</span>
+        </div>
+        <div>
+          <span className="metric-value">{stats?.totalMembers ?? "—"}</span>
+          <span className="metric-label">aventurieri</span>
+        </div>
+        <div>
+          <span className={`metric-value metric-value--${botOnline ? "green" : "muted"}`}>
+            {health === null ? "—" : botOnline ? "OK" : "OFF"}
+          </span>
+          <span className="metric-label">bot Discord</span>
+        </div>
+      </div>
+      <a className="status-card-link" href="#status">
+        Vezi starea completă <span>↗</span>
+      </a>
+    </aside>
+  );
+}
+
+function LandingPage() {
+  const health = useOracleHealth();
+  const stats = useSoulStoneStats();
+
+  return (
+    <div className="landing-page">
+      <div className="landing-noise" aria-hidden="true" />
+      <header className="site-nav">
+        <a className="brand" href="#" aria-label="Regatul Cenușii, acasă">
+          <span className="brand-mark">✦</span>
+          <span>
+            <strong>REGATUL</strong>
+            <small>CENUȘII</small>
+          </span>
+        </a>
+        <nav className="nav-links" aria-label="Navigație principală">
+          <a href="#lumea">Lumea</a>
+          <a href="#cum-incepi">Cum începi</a>
+          <a href="#status">Stare live</a>
+        </nav>
+        <a className="nav-cta" href={DISCORD_INVITE} target="_blank" rel="noopener noreferrer">
+          Intră pe Discord <span>↗</span>
+        </a>
+      </header>
+
+      <main>
+        <section className="hero-section">
+          <div className="hero-backdrop" aria-hidden="true" />
+          <div className="hero-content page-width">
+            <div className="hero-copy">
+              <div className="eyebrow"><span className="eyebrow-line" /> Server Discord RPG</div>
+              <h1>Legenda ta începe <em>în Cenușă.</em></h1>
+              <p className="hero-lead">
+                Un regat întunecat, viu și plin de aventuri. Luptă pentru glorie,
+                construiește-ți eroul și scrie următorul capitol alături de comunitate.
+              </p>
+              <div className="hero-actions">
+                <a className="button button--primary" href={DISCORD_INVITE} target="_blank" rel="noopener noreferrer">
+                  <span className="button-icon">◈</span> Alătură-te regatului <span className="button-arrow">↗</span>
+                </a>
+                <a className="text-link" href="#lumea">Descoperă lumea <span>↓</span></a>
+              </div>
+              <div className="hero-proof">
+                <span className="proof-avatars" aria-hidden="true"><i>⚔</i><i>☽</i><i>✦</i></span>
+                <span><strong>O comunitate în creștere</strong><br />Aventuri noi în fiecare zi</span>
+              </div>
+            </div>
+            <LandingStatusCard health={health} stats={stats} />
+          </div>
+          <div className="hero-scroll-hint" aria-hidden="true"><span /> Scroll pentru a intra în regat</div>
+        </section>
+
+        <section className="intro-section page-width" id="lumea">
+          <div className="section-heading">
+            <div>
+              <div className="eyebrow"><span className="eyebrow-line" /> Ce te așteaptă</div>
+              <h2>Nu este doar un server.<br /><em>Este povestea ta.</em></h2>
+            </div>
+            <p>
+              Regatul Cenușii aduce mecanici RPG, evenimente live și o lume care
+              evoluează odată cu jucătorii ei. Intră când vrei. Lasă o legendă.
+            </p>
+          </div>
+          <div className="feature-grid">
+            {zones.map((zone, index) => (
+              <a
+                className={`feature-card feature-card--${zone.accent}`}
+                href={DISCORD_INVITE}
+                target="_blank"
+                rel="noopener noreferrer"
+                key={zone.name}
+              >
+                <span className="feature-number">0{index + 1}</span>
+                <span className="feature-icon">{zone.icon}</span>
+                <span className="feature-eyebrow">{zone.eyebrow}</span>
+                <h3>{zone.name}</h3>
+                <p>{zone.description}</p>
+                <span className="feature-link">Descoperă <b>↗</b></span>
+              </a>
+            ))}
+          </div>
+        </section>
+
+        <section className="quote-section">
+          <div className="page-width quote-inner">
+            <span className="quote-mark">“</span>
+            <blockquote>În Cenușă nu contează de unde ai venit.<br /><em>Contează ce alegi să devii.</em></blockquote>
+            <span className="quote-rule" />
+            <span className="quote-attribution">— Cronica Regatului</span>
+          </div>
+        </section>
+
+        <section className="journey-section page-width" id="cum-incepi">
+          <div className="section-heading section-heading--center">
+            <div>
+              <div className="eyebrow"><span className="eyebrow-line" /> Primii pași</div>
+              <h2>Intră. <em>Alege.</em> Evoluează.</h2>
+            </div>
+            <p>Nu ai nevoie de experiență. Doar de curajul de a deschide poarta.</p>
+          </div>
+          <div className="journey-grid">
+            <div className="journey-step">
+              <span className="step-icon">01</span>
+              <div><h3>Alătură-te</h3><p>Intră pe serverul Discord și primește-ți locul în Regat.</p></div>
+            </div>
+            <div className="journey-connector" aria-hidden="true">→</div>
+            <div className="journey-step">
+              <span className="step-icon">02</span>
+              <div><h3>Alege-ți calea</h3><p>Descoperă clasele, companionii și echipamentul potrivit.</p></div>
+            </div>
+            <div className="journey-connector" aria-hidden="true">→</div>
+            <div className="journey-step">
+              <span className="step-icon">03</span>
+              <div><h3>Scrie legenda</h3><p>Luptă în evenimente, urcă în clasament și devino de neuitat.</p></div>
+            </div>
+          </div>
+        </section>
+
+        <section className="cta-section page-width">
+          <div className="cta-card">
+            <div className="cta-glow" aria-hidden="true" />
+            <div className="cta-copy">
+              <div className="eyebrow"><span className="eyebrow-line" /> Poarta este deschisă</div>
+              <h2>Locul tău în Regat<br /><em>te așteaptă.</em></h2>
+              <p>Alătură-te comunității și începe aventura chiar acum.</p>
+              <a className="button button--primary" href={DISCORD_INVITE} target="_blank" rel="noopener noreferrer">
+                Intră pe Discord <span className="button-arrow">↗</span>
+              </a>
+            </div>
+            <div className="cta-sigil" aria-hidden="true"><span>✦</span><b>RC</b></div>
+          </div>
+        </section>
+      </main>
+
+      <footer className="site-footer page-width">
+        <a className="brand brand--footer" href="#">
+          <span className="brand-mark">✦</span>
+          <span><strong>REGATUL</strong><small>CENUȘII</small></span>
+        </a>
+        <span>O lume creată pentru cei care aleg să lupte.</span>
+        <a href={DISCORD_INVITE} target="_blank" rel="noopener noreferrer">discord.gg/JNYsGeMhzm <span>↗</span></a>
+      </footer>
+    </div>
+  );
 }
 
 function OperatorHealthPage() {
   const health = useOracleHealth();
-
   const botTone = health === null ? "loading" : health.botOnline ? "ok" : "danger";
-  const botLabel =
-    health === null ? "Se verifică…" : health.botOnline ? "Online" : "Offline";
+  const botLabel = health === null ? "Se verifică…" : health.botOnline ? "Online" : "Offline";
 
   let replyTone: "loading" | "ok" | "warn" | "danger";
   let replyLabel: string;
@@ -463,16 +339,12 @@ function OperatorHealthPage() {
   } else if (health.oracleReplyReason === "portal_toggle_missing") {
     replyTone = "danger";
     replyLabel = "Redus (portal_toggle_missing)";
-    replyDetail =
-      "Comutatorul „Message Content” lipsește din Developer Portal. " +
-      "Activează-l, apoi repornește botul.";
+    replyDetail = "Comutatorul „Message Content” lipsește din Developer Portal. Activează-l, apoi repornește botul.";
   } else {
     replyTone = "warn";
     replyLabel = "Redus (disabled)";
     replyDetail = "Răspunsul la toate reply-urile este dezactivat din configurare.";
   }
-
-  const unreachable = health === null;
 
   const { tone: alertTone, label: alertLabel, detail: alertDetail } = computeAlertCard(health);
 
@@ -480,84 +352,28 @@ function OperatorHealthPage() {
     <div className="ops-page">
       <div className="ops-panel">
         <header className="ops-head">
-          <h1 className="ops-title">🔮 Oracol — Stare operator</h1>
-          <p className="ops-sub">
-            {unreachable
-              ? "Nu se poate contacta /api/healthz."
-              : "Date live din /api/healthz · reîmprospătare la 15s"}
-          </p>
+          <a className="ops-back" href="#">← Înapoi la pagina principală</a>
+          <h1 className="ops-title">✦ Starea operatorului</h1>
+          <p className="ops-sub">{health === null ? "Nu se poate contacta /api/healthz." : "Date live · reîmprospătare la 15 secunde"}</p>
         </header>
-
         <div className="ops-grid">
-          <div className={`ops-card ops-card--${botTone}`}>
-            <span className="ops-card-label">Bot</span>
-            <span className="ops-card-value">
-              <span className="ops-dot" />
-              {botLabel}
-            </span>
-          </div>
-
-          <div className="ops-card">
-            <span className="ops-card-label">Shard</span>
-            <span className="ops-card-value">
-              {health === null ? "…" : (health.shardStatus ?? "—")}
-            </span>
-          </div>
-
-          <div className="ops-card">
-            <span className="ops-card-label">Uptime bot</span>
-            <span className="ops-card-value">
-              {health === null ? "…" : formatUptime(health.botUptime)}
-            </span>
-          </div>
-
-          <div className={`ops-card ops-card--${replyTone}`}>
-            <span className="ops-card-label">Mod răspuns</span>
-            <span className="ops-card-value">
-              <span className="ops-dot" />
-              {replyLabel}
-            </span>
-            <span className="ops-card-detail">{replyDetail}</span>
-          </div>
-
-          <div className={`ops-card ops-card--${alertTone}`}>
-            <span className="ops-card-label">Alerte push</span>
-            <span className="ops-card-value">
-              <span className="ops-dot" />
-              {alertLabel}
-            </span>
-            <span className="ops-card-detail">{alertDetail}</span>
-          </div>
+          <div className={`ops-card ops-card--${botTone}`}><span className="ops-card-label">Bot Discord</span><span className="ops-card-value"><span className="ops-dot" />{botLabel}</span></div>
+          <div className="ops-card"><span className="ops-card-label">Shard</span><span className="ops-card-value">{health?.shardStatus ?? "—"}</span></div>
+          <div className="ops-card"><span className="ops-card-label">Uptime bot</span><span className="ops-card-value">{health ? formatUptime(health.botUptime) : "…"}</span></div>
+          <div className={`ops-card ops-card--${replyTone}`}><span className="ops-card-label">Mod răspuns</span><span className="ops-card-value"><span className="ops-dot" />{replyLabel}</span><span className="ops-card-detail">{replyDetail}</span></div>
+          <div className={`ops-card ops-card--${alertTone}`}><span className="ops-card-label">Alerte push</span><span className="ops-card-value"><span className="ops-dot" />{alertLabel}</span><span className="ops-card-detail">{alertDetail}</span></div>
         </div>
-
         <footer className="ops-foot">
-          <a href={`${API_BASE}/api/healthz`} target="_blank" rel="noopener noreferrer">
-            Vezi JSON brut
-          </a>
-          <a href="#">← Înapoi la hartă</a>
+          <a href={`${API_BASE}/api/healthz`} target="_blank" rel="noopener noreferrer">Vezi JSON brut</a>
+          <a href="#">Pagina principală →</a>
         </footer>
       </div>
     </div>
   );
 }
 
-function useHashRoute() {
-  const [hash, setHash] = useState(() => window.location.hash);
-  useEffect(() => {
-    const onHash = () => setHash(window.location.hash);
-    window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
-  }, []);
-  return hash;
-}
-
 export default function App() {
-  const [entered, setEntered] = useState(false);
-  const hash = useHashRoute();
-
+  const hash = window.location.hash;
   if (hash === "#ops" || hash === "#status") return <OperatorHealthPage />;
-
-  return entered
-    ? <MapPage />
-    : <GatePage onEnter={() => setEntered(true)} />;
+  return <LandingPage />;
 }
