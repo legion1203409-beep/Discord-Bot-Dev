@@ -1029,6 +1029,14 @@ blockquote em {
   box-shadow: 0 0 0 14px rgba(217, 181, 109, 0.035), 0 0 0 28px rgba(217, 181, 109, 0.02);
 }
 
+.dragon-logo--cta {
+  position: relative;
+  z-index: 1;
+  width: 205px;
+  flex: 0 0 205px;
+  opacity: 0.9;
+}
+
 .cta-sigil::before,
 .cta-sigil::after {
   position: absolute;
@@ -1407,6 +1415,13 @@ blockquote em {
     height: 105px;
     min-height: 105px;
     margin-top: 2.8rem;
+    margin-left: auto;
+  }
+
+  .dragon-logo--cta {
+    width: 145px;
+    flex-basis: 145px;
+    margin-top: 2rem;
     margin-left: auto;
   }
 
