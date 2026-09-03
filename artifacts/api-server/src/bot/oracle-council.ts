@@ -4,7 +4,6 @@ import {
   ButtonStyle,
   EmbedBuilder,
   MessageFlags,
-  PermissionFlagsBits,
   TextChannel,
   type ButtonInteraction,
   type Client,
@@ -271,19 +270,14 @@ async function openCouncil(client: Client, guildId: string, channelId: string, t
   const channel = await getChannel(client, channelId);
   if (!channel || !isRuntimeActive(guildId, token)) return;
 
-  const canMentionEveryone =
-    channel.guild.members.me?.permissionsIn(channel).has(PermissionFlagsBits.MentionEveryone) ?? false;
   const sent = await channel.send({
-    content: "@everyone",
+    content: "",
     embeds: [councilEmbed(council)],
     components: [councilButtons(council)],
-    allowedMentions: { parse: canMentionEveryone ? ["everyone"] : [] },
+    allowedMentions: { parse: [] },
   });
   council.messageId = sent.id;
   await saveOracleCouncil(council);
-  if (!canMentionEveryone) {
-    logger.warn({ guildId, channelId }, "Council sent without MentionEveryone permission");
-  }
   const delay = council.closesAt - Date.now();
   scheduleCouncilClose(client, council, token);
   logger.info({ guildId, councilId: council.id, closesInMinutes: Math.round(delay / MINUTE) }, "Oracle council opened");

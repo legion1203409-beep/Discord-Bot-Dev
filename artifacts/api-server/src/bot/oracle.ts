@@ -11,7 +11,7 @@
 // Privacy: message CONTENT is only inspected for keyword toxicity and is NEVER
 // logged or echoed. Curses are announced in lore language, never by quoting.
 
-import { ActivityType, Client, PermissionFlagsBits, TextChannel } from "discord.js";
+import { ActivityType, Client, TextChannel } from "discord.js";
 import { logger } from "../lib/logger";
 import {
   MOOD_META,
@@ -376,22 +376,17 @@ async function postMood(
   guildId: string,
 ): Promise<void> {
   const meta = MOOD_META[mood];
-  let content = `@everyone\n${meta.emoji} *Oracolul Cenușii cheamă Regatul* — **${meta.label}**\n${checkInQuestion(mood)}`;
+  let content = `${meta.emoji} *Oracolul Cenușii cheamă Regatul* — **${meta.label}**\n${checkInQuestion(mood)}`;
 
   if (mood === "iritat" || mood === "furios") content += `\n> ${pick(TOXICITY_REACTIONS)}`;
   else if (mood === "agitat" || mood === "extatic") content += `\n> ${pick(ACTIVITY_REACTIONS)}`;
   else if (Math.random() < PROPHECY_CHANCE) content += `\n> *${pick(PROPHECY_FLAVOR)}*`;
   content += `\n\n📝 **Însemnarea Oracolului:** starea mea este **${meta.label}**. Răspundeți sub această chemare — glasurile voastre pot schimba fața Cenușii.`;
 
-  const canMentionEveryone =
-    channel.guild.members.me?.permissionsIn(channel).has(PermissionFlagsBits.MentionEveryone) ?? false;
   const sent = await channel.send({
     content,
-    allowedMentions: { parse: canMentionEveryone ? ["everyone"] : [] },
+    allowedMentions: { parse: [] },
   });
-  if (!canMentionEveryone) {
-    logger.warn({ guildId, channelId: channel.id }, "Oracle lacks MentionEveryone permission; check-in sent without ping");
-  }
   getGuildState(guildId).activeCheckIn = {
     messageId: sent.id,
     channelId: channel.id,

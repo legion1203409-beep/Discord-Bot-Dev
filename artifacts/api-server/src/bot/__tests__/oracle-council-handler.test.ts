@@ -68,7 +68,6 @@ vi.mock("discord.js", () => {
     ButtonStyle: { Secondary: 2 },
     EmbedBuilder,
     MessageFlags: { Ephemeral: 64 },
-    PermissionFlagsBits: { MentionEveryone: 1n },
     TextChannel,
   };
 });
