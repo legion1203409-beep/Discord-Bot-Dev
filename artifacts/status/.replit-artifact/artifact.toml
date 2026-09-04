@@ -32,6 +32,7 @@ args = ["sh", "-c", "pnpm --filter @workspace/status run serve"]
 [services.production.run.env]
 PORT = "25104"
 NODE_ENV = "production"
+BASE_PATH = "/"
 
 [services.production.health.startup]
 path = "/"
