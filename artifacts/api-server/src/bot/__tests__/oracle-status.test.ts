@@ -15,8 +15,9 @@ describe("Oracle relationship status", () => {
 
     expect(status).toContain("s-a bucurat de respectul tău");
     expect(status).toContain("Legătura a crescut cu **+2**");
+    expect(status).toContain("✦ **Legătura cu Oracolul**");
     expect(status).toContain("Favoritul Cenușii");
-    expect(status).toContain("total **+15**");
+    expect(status).toContain("Total: **+15**");
   });
 
   it("shows a negative bond change and an irritated Oracle", () => {

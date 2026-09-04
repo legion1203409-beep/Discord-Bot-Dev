@@ -398,9 +398,17 @@ export function buildOracleStatusLine(
         : `🕯️ Oracolul a primit glasul tău cu calm. Legătura a crescut cu **+${relationDelta}**.`;
   const chaosNote = chaosDelta > 0 ? "\n🌀 A simțit și o urmă de haos în glasul tău." : "";
   const relationshipState = relationship
-    ? `\n🔮 Starea legăturii: **${title}** · total **${bond >= 0 ? "+" : ""}${bond}**`
-    : "";
-  return `\n\n${reaction}${chaosNote}${relationshipState}`;
+    ? `│ 🔮 Rang: **${title}** · Total: **${bond >= 0 ? "+" : ""}${bond}**`
+    : null;
+  return [
+    "\n\n╭─ ✦ **Legătura cu Oracolul**",
+    `│ ${reaction}`,
+    chaosDelta > 0 ? "│ 🌀 A simțit și o urmă de haos în glasul tău." : null,
+    relationshipState,
+    "╰────────────────────────",
+  ]
+    .filter((line): line is string => line !== null)
+    .join("\n");
 }
 
 export function buildOracleRelationshipAnnouncement(
