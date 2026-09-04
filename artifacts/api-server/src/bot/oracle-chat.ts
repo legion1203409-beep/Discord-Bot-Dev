@@ -944,7 +944,6 @@ export async function maybeReplyAsOracle(discordClient: Client, message: Message
 
     const signal = relationshipSignal(cleaned);
     const relationship = await recordOracleRelationshipChange(message, signal.bond, signal.chaos);
-    await announceOracleRelationshipChange(message, signal.bond, relationship);
     const council = message.guildId
       ? await loadOracleCouncil(message.guildId).catch((err) => {
           logger.warn({ err, guildId: message.guildId }, "Oracle council memory could not be loaded");
