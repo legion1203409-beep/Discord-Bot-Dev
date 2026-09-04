@@ -66,7 +66,9 @@ import {
   personalChestReward,
   personalChestScore,
   personalChestTier,
+  SEASONAL_CHEST_COOLDOWN_MS,
   SEASONAL_CHEST_MESSAGE_RETENTION_MS,
+  isSeasonalChestOnCooldown,
   seasonalForBucket,
 } from "../chest-expansions";
 
@@ -109,6 +111,13 @@ describe("chest expansion pure mechanics", () => {
 
   it("keeps the completed seasonal message for twenty minutes", () => {
     expect(SEASONAL_CHEST_MESSAGE_RETENTION_MS).toBe(20 * 60 * 1000);
+  });
+
+  it("keeps seasonal chests on cooldown for two hours after spawning", () => {
+    const openedAt = 1_000_000;
+    expect(SEASONAL_CHEST_COOLDOWN_MS).toBe(2 * 60 * 60 * 1000);
+    expect(isSeasonalChestOnCooldown({ openedAt }, openedAt + SEASONAL_CHEST_COOLDOWN_MS - 1)).toBe(true);
+    expect(isSeasonalChestOnCooldown({ openedAt }, openedAt + SEASONAL_CHEST_COOLDOWN_MS)).toBe(false);
   });
 
   it("stores the public claimant for seasonal and hidden chests", async () => {

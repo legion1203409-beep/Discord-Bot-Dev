@@ -461,10 +461,19 @@ export const SEASONAL_CHESTS = [
 
 export type SeasonalSeason = typeof SEASONAL_CHESTS[number]["season"];
 export const SEASONAL_CHEST_INTERVAL_MS = 60 * 60 * 1000;
+/** Minimum time between seasonal chest spawns, even after the previous chest is claimed. */
+export const SEASONAL_CHEST_COOLDOWN_MS = 2 * 60 * 60 * 1000;
 export const SEASONAL_CHEST_MESSAGE_RETENTION_MS = 20 * 60 * 1000;
 
 export function seasonalForBucket(bucket = Math.floor(Date.now() / SEASONAL_CHEST_INTERVAL_MS)) {
   return SEASONAL_CHESTS[bucket % SEASONAL_CHESTS.length]!;
+}
+
+export function isSeasonalChestOnCooldown(
+  chest: Pick<SeasonalChest, "openedAt">,
+  now = Date.now(),
+): boolean {
+  return Number.isFinite(chest.openedAt) && now - chest.openedAt < SEASONAL_CHEST_COOLDOWN_MS;
 }
 
 export function buildSeasonalChestEmbed(
@@ -573,6 +582,7 @@ export async function spawnSeasonalChest(client: Client, guildId: string): Promi
   const bucket = Math.floor(Date.now() / SEASONAL_CHEST_INTERVAL_MS);
   const current = await loadActiveSeasonalChest(guildId);
   if (current && current.expiresAt > Date.now() && !current.claimed) return current;
+  if (current && isSeasonalChestOnCooldown(current)) return null;
 
   const channelId = getChannel("main", guildId);
   const channel = channelId ? await client.channels.fetch(channelId).catch(() => null) : null;
