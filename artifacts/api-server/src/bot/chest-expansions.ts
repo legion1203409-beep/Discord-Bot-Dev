@@ -24,6 +24,7 @@ import { BRAND_FOOTER, ITEMS } from "./survival";
 import { getChannel } from "./channel-config";
 
 const WORLD_PREFIX = "chest_world:";
+const SEASONAL_ACTIVE_SUFFIX = "seasonal_active";
 
 function worldAsset(file: string): string | null {
   const domain = (process.env.REPLIT_DOMAINS ?? process.env.REPLIT_DEV_DOMAIN ?? "")
@@ -498,6 +499,7 @@ export function seasonalChestRow(chestId: string, claimed = false): ActionRowBui
 
 export async function saveSeasonalChest(chest: SeasonalChest): Promise<void> {
   await saveState(stateKey(chest.guildId, `seasonal:${chest.id}`), chest);
+  await saveState(stateKey(chest.guildId, SEASONAL_ACTIVE_SUFFIX), { id: chest.id });
 }
 
 function seasonalId(bucket: number): string {
@@ -506,6 +508,16 @@ function seasonalId(bucket: number): string {
 
 async function loadSeasonalChest(guildId: string, bucket = Math.floor(Date.now() / SEASONAL_CHEST_INTERVAL_MS)): Promise<SeasonalChest | null> {
   return loadState<SeasonalChest>(stateKey(guildId, `seasonal:${seasonalId(bucket)}`));
+}
+
+async function loadActiveSeasonalChest(guildId: string): Promise<SeasonalChest | null> {
+  const pointer = await loadState<{ id?: string }>(stateKey(guildId, SEASONAL_ACTIVE_SUFFIX));
+  if (pointer?.id) {
+    return loadState<SeasonalChest>(stateKey(guildId, `seasonal:${pointer.id}`));
+  }
+  // Read the old hourly key for backwards compatibility with chests created
+  // before seasonal spawns moved to the message milestone.
+  return loadSeasonalChest(guildId);
 }
 
 async function deleteSeasonalChestMessage(client: Client, chest: SeasonalChest): Promise<void> {
@@ -525,7 +537,9 @@ export function scheduleSeasonalChestMessageDeletion(client: Client, chest: Seas
 
 async function expireSeasonalChest(client: Client, chest: SeasonalChest): Promise<void> {
   if (chest.claimed) return;
-  const current = await loadSeasonalChest(chest.guildId);
+  const current = await loadState<SeasonalChest>(
+    stateKey(chest.guildId, `seasonal:${chest.id}`),
+  );
   if (!current || current.id !== chest.id || current.claimed || current.expiresAt > Date.now()) return;
   const expired = {
     ...current,
@@ -545,7 +559,7 @@ async function expireSeasonalChest(client: Client, chest: SeasonalChest): Promis
 
 export async function spawnSeasonalChest(client: Client, guildId: string): Promise<SeasonalChest | null> {
   const bucket = Math.floor(Date.now() / SEASONAL_CHEST_INTERVAL_MS);
-  const current = await loadSeasonalChest(guildId, bucket);
+  const current = await loadActiveSeasonalChest(guildId);
   if (current && current.expiresAt > Date.now() && !current.claimed) return current;
 
   const channelId = getChannel("main", guildId);
@@ -554,7 +568,7 @@ export async function spawnSeasonalChest(client: Client, guildId: string): Promi
 
   const meta = seasonalForBucket(bucket);
   const chest: SeasonalChest = {
-    id: seasonalId(bucket),
+    id: `seasonal_${Date.now()}`,
     guildId,
     channelId: channel.id,
     messageId: "",
@@ -578,7 +592,7 @@ export async function spawnSeasonalChest(client: Client, guildId: string): Promi
 }
 
 export async function rehydrateSeasonalChest(client: Client, guildId: string): Promise<void> {
-  const chest = await loadSeasonalChest(guildId);
+  const chest = await loadActiveSeasonalChest(guildId);
   if (!chest) return;
   if (chest.claimed) {
     if (chest.cleanupAt) scheduleSeasonalChestMessageDeletion(client, chest);

@@ -13,7 +13,6 @@ import {
   spawnSeasonalChest,
   rehydrateSeasonalChest,
   settleExpiredAuction,
-  SEASONAL_CHEST_INTERVAL_MS,
 } from "./chest-expansions";
 import { startTributeScheduler, stopTributeScheduler } from "./tribute";
 
@@ -24,12 +23,10 @@ const BOSS_RESULT_TTL_MS = 10 * 60 * 1000;
 const MIN_COOLDOWN_MS = 10 * 60 * 1000;
 const MAX_COOLDOWN_MS = 2 * 60 * 60 * 1000;
 
-const CHEST_INTERVAL_MS = 30 * 60 * 1000;
-const KEY_CHEST_INTERVAL_MS = 45 * 60 * 1000;
+const CHEST_INTERVAL_MS = 60 * 60 * 1000;
 const CHEST_EXPIRE_MS = 10 * 60 * 1000;
-/** The legacy ordinary/key chest spawns stay available in code for compatibility,
- * but the new chest system is now the only one scheduled for players. */
-export const LEGACY_CHEST_SPAWNS_ENABLED = false;
+/** The classic ordinary chest is intentionally scheduled once per hour. */
+export const LEGACY_CHEST_SPAWNS_ENABLED = true;
 
 const ORACLE_INTERVAL_MS = 25 * 60 * 1000;
 const BATTLE_EVENT_INTERVAL_MS = 7 * 60 * 1000;
@@ -56,15 +53,14 @@ function readEnvInt(name: string, fallback: number, max: number): number {
 export const ACTIVITY_WINDOW_MINUTES = readEnvInt("ACTIVITY_WINDOW_MINUTES", 20, 120);
 const ACTIVITY_WINDOW_MS = ACTIVITY_WINDOW_MINUTES * 60_000;
 
-/** Non-bot messages per guild between bonus chest rolls.
- *  Env: CHEST_MSG_MILESTONE (default 25, max 200). Requires bot restart. */
+/** Retained for compatibility with the in-memory activity counters. */
 export const CHEST_MSG_MILESTONE = readEnvInt("CHEST_MSG_MILESTONE", 25, 200);
 
-/** Non-bot messages in the main channel per guild between key-chest bonus rolls
- *  (15% chance each). Independent counter from the chest milestone.
- *  Env: KEY_CHEST_MSG_MILESTONE (default 50, max 400). Requires bot restart. */
+/** Retained for compatibility with the in-memory activity counters. */
 export const KEY_CHEST_MSG_MILESTONE = readEnvInt("KEY_CHEST_MSG_MILESTONE", 50, 400);
 const SERVER_CHEST_MSG_MILESTONE = readEnvInt("SERVER_CHEST_MSG_MILESTONE", 75, 1000);
+/** Human messages in the main channel between seasonal chest spawns. */
+export const SEASONAL_CHEST_MSG_MILESTONE = readEnvInt("SEASONAL_CHEST_MSG_MILESTONE", 10, 100);
 
 // ─── Per-guild scheduler state ─────────────────────────────────────────────────
 
@@ -85,6 +81,8 @@ interface GuildSchedulerState {
   activityMsgCount: number;
   /** Rolling count of non-bot messages since the last milestone key-chest roll. */
   keyMsgCount: number;
+  /** Rolling count of non-bot messages since the last seasonal chest. */
+  seasonalMsgCount: number;
 }
 
 export const guildStates = new Map<string, GuildSchedulerState>();
@@ -106,6 +104,7 @@ function getOrCreateGuildState(guildId: string): GuildSchedulerState {
       lastActivityAt: 0,
       activityMsgCount: 0,
       keyMsgCount: 0,
+      seasonalMsgCount: 0,
     };
     guildStates.set(guildId, state);
   }
@@ -194,12 +193,10 @@ export function rollActivityKeyType(): "rar" | "epic" {
  * configured main channel only. Three effects:
  *  1. Updates the guild's last-activity timestamp — used as the gate in
  *     `fireChest` / `fireKeyChest` to suppress spawns on silent servers.
- *  2. Increments `activityMsgCount`; at each `CHEST_MSG_MILESTONE` a 30%
- *     roll fires a bonus chest with a Bronze/Silver-biased rarity via
- *     `fireChestForced` (gate bypassed — server is active by definition).
- *  3. Increments `keyMsgCount` (independent counter); at each
- *     `KEY_CHEST_MSG_MILESTONE` a 15% roll fires a bonus key chest
- *     (Rar 60% / Epic 40%) via `fireKeyChest(..., bypassGate=true)`.
+ *  2. Retains the older in-memory counters for compatibility.
+ *  3. Increments `seasonalMsgCount`; every 10 main-channel messages it
+ *     triggers one seasonal chest. `spawnSeasonalChest` suppresses a duplicate
+ *     while the previous seasonal chest is still active.
  */
 export function recordGuildActivity(client: Client, guildId: string): void {
   const gs = getOrCreateGuildState(guildId);
@@ -209,17 +206,19 @@ export function recordGuildActivity(client: Client, guildId: string): void {
   gs.activityMsgCount += 1;
   if (gs.activityMsgCount >= CHEST_MSG_MILESTONE) {
     gs.activityMsgCount = 0;
-    if (LEGACY_CHEST_SPAWNS_ENABLED && Math.random() < 0.30) {
-      void fireChestForced(client, guildId, rollActivityRarityKey());
-    }
   }
 
   gs.keyMsgCount += 1;
   if (gs.keyMsgCount >= KEY_CHEST_MSG_MILESTONE) {
     gs.keyMsgCount = 0;
-    if (LEGACY_CHEST_SPAWNS_ENABLED && Math.random() < 0.15) {
-      void fireKeyChest(client, guildId, rollActivityKeyType(), true);
-    }
+  }
+
+  gs.seasonalMsgCount += 1;
+  if (gs.seasonalMsgCount >= SEASONAL_CHEST_MSG_MILESTONE) {
+    gs.seasonalMsgCount = 0;
+    void spawnSeasonalChest(client, guildId).catch((err) =>
+      logger.warn({ err, guildId }, "Failed to spawn seasonal chest from message milestone"),
+    );
   }
 
   // The Frăția meter is durable and shared by the whole guild. It deliberately
@@ -1329,31 +1328,10 @@ export function startGuildScheduler(client: Client, guildId: string) {
   logger.info({ guildId }, "First Ora Umbrelor in 5 minutes");
 
   if (LEGACY_CHEST_SPAWNS_ENABLED) {
-    setInterval(() => { if (!isStopped()) void fireChest(client, guildId); }, CHEST_INTERVAL_MS);
-    logger.info({ everyMinutes: CHEST_INTERVAL_MS / 60000, guildId }, "Chest scheduler started — fixed interval");
-
-    setTimeout(() => { if (!isStopped()) void fireKeyChest(client, guildId); }, 12 * 60 * 1000);
-    setInterval(() => { if (!isStopped()) void fireKeyChest(client, guildId); }, KEY_CHEST_INTERVAL_MS);
-    logger.info({ everyMinutes: KEY_CHEST_INTERVAL_MS / 60000, guildId }, "Key-chest scheduler started");
-  } else {
-    logger.info({ guildId }, "Legacy chest and key-chest schedulers disabled — new chest system remains active");
+    setInterval(() => { if (!isStopped()) void fireChest(client, guildId, true); }, CHEST_INTERVAL_MS);
+    logger.info({ everyMinutes: CHEST_INTERVAL_MS / 60000, guildId }, "Classic chest scheduler started — hourly");
   }
-
-  const seasonalInterval = SEASONAL_CHEST_INTERVAL_MS;
-  const scheduleSeasonal = () => {
-    if (isStopped()) return;
-    const seasonalDelay = seasonalInterval - (Date.now() % seasonalInterval);
-    const timer = setTimeout(async () => {
-      if (!isStopped()) {
-        await spawnSeasonalChest(client, guildId).catch((err) =>
-          logger.warn({ err, guildId }, "Failed to spawn seasonal chest"),
-        );
-        scheduleSeasonal();
-      }
-    }, seasonalDelay);
-    timer.unref?.();
-  };
-  scheduleSeasonal();
+  logger.info({ everyMessages: SEASONAL_CHEST_MSG_MILESTONE, guildId }, "Seasonal chest scheduler started — message milestone");
 
   // Oracle messages disabled — user requested only chest in chat
   // setInterval(() => { void fireOracle(client, guildId); }, ORACLE_INTERVAL_MS);

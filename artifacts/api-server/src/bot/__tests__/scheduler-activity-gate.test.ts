@@ -9,6 +9,16 @@ vi.mock("../channel-config", () => ({
   initChannelConfig: vi.fn(),
   hasAnyChannelConfigured: vi.fn().mockReturnValue(false),
 }));
+const { mockSpawnSeasonalChest } = vi.hoisted(() => ({
+  mockSpawnSeasonalChest: vi.fn().mockResolvedValue(null),
+}));
+vi.mock("../chest-expansions", () => ({
+  openFratiaVote: vi.fn(),
+  rehydrateFratiaVote: vi.fn(),
+  spawnSeasonalChest: mockSpawnSeasonalChest,
+  rehydrateSeasonalChest: vi.fn(),
+  settleExpiredAuction: vi.fn(),
+}));
 vi.mock("../oracle", () => ({
   startOracle: vi.fn(),
   setOracleExtatic: vi.fn(),
@@ -67,7 +77,7 @@ vi.mock("../status-effects", () => ({
   getRewardMultipliers: vi.fn().mockReturnValue({ xpMult: 1, goldMult: 1 }),
 }));
 
-import { isGuildActive, recordGuildActivity, rollActivityRarityKey, rollActivityKeyType, guildStates, CHEST_MSG_MILESTONE, KEY_CHEST_MSG_MILESTONE, ACTIVITY_WINDOW_MINUTES } from "../scheduler";
+import { isGuildActive, recordGuildActivity, rollActivityRarityKey, rollActivityKeyType, guildStates, CHEST_MSG_MILESTONE, KEY_CHEST_MSG_MILESTONE, SEASONAL_CHEST_MSG_MILESTONE, ACTIVITY_WINDOW_MINUTES } from "../scheduler";
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -151,6 +161,21 @@ describe("recordGuildActivity — per-guild counter and gate", () => {
     // Not yet at milestone — count should be CHEST_MSG_MILESTONE - 1
     expect(gs.activityMsgCount).toBe(CHEST_MSG_MILESTONE - 1);
     spy.mockRestore();
+  });
+
+  it("triggers one seasonal chest after exactly ten main-channel messages", async () => {
+    const gs = guildStates.get(GUILD) ?? (() => {
+      recordGuildActivity(mockClient, GUILD);
+      return guildStates.get(GUILD)!;
+    })();
+    gs.seasonalMsgCount = SEASONAL_CHEST_MSG_MILESTONE - 1;
+
+    recordGuildActivity(mockClient, GUILD);
+    await Promise.resolve();
+
+    expect(gs.seasonalMsgCount).toBe(0);
+    expect(mockSpawnSeasonalChest).toHaveBeenCalledOnce();
+    expect(mockSpawnSeasonalChest).toHaveBeenCalledWith(mockClient, GUILD);
   });
 
   it("does NOT trigger a chest when guild scheduler is stopped", () => {
