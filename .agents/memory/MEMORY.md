@@ -38,3 +38,4 @@
 - [Discord class images](discord-class-images.md) — map stable internal class keys to sanitized API asset filenames; never use uploaded timestamped filenames directly.
 - [Postgres JSON parameter casts](postgres-json-parameter-casts.md) — placeholders used only inside jsonb_build_object may need explicit ::text casts or pg cannot infer their type.
 - [Artifact production env scope](artifact-production-env-scope.md) — shared artifact env is not enough for Vite production run; required runtime vars must be repeated in services.production.run.env.
+- [Discord guild count fetch](discord-guild-count-fetch.md) — GuildManager.fetch returns the gateway cache unless force=true; cached guilds can have null approximate member/presence counts.

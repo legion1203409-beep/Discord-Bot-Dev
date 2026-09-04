@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { desc } from "drizzle-orm";
 import { db, playersTable } from "@workspace/db";
 import { getBotClient, GUILD_ID, isBotOnline } from "../bot/index";
+import { fetchDiscordGuildStats } from "./discord-stats";
 
 const router: IRouter = Router();
 
@@ -32,12 +33,12 @@ router.get("/discord/stats", async (req, res) => {
   }
 
   try {
-    const guild = await client.guilds.fetch({ guild: GUILD_ID, withCounts: true });
+    const { onlineCount, totalMembers } = await fetchDiscordGuildStats(client, GUILD_ID);
 
     res.status(200).json({
       live: true,
-      onlineCount: guild.approximatePresenceCount ?? null,
-      totalMembers: guild.approximateMemberCount ?? null,
+      onlineCount,
+      totalMembers,
       lastJoined,
     });
   } catch (err) {
