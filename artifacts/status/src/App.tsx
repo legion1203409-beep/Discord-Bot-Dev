@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import "./index.css";
 import { computeAlertCard } from "./lib/alert-card";
 import dragonLogo from "@assets/277cc950-a62b-11f1-aca9-6f5a63b2ac37_1788465450616.png";
@@ -50,7 +50,7 @@ const events = [
 ];
 
 function Icon({ name, size = 22 }: { name: string; size?: number }) {
-  const paths: Record<string, JSX.Element> = {
+  const paths: Record<string, ReactNode> = {
     sword: <><path d="m5 19 5.2-5.2" /><path d="m14.8 10.2 4.7-4.7-1-3-3 1-4.7 4.7" /><path d="m7.5 16.5-2.9-.1.1-2.9" /><path d="m10.1 13.9 2 2" /></>,
     anvil: <><path d="M4 19h16" /><path d="M6 16h12" /><path d="m8 12 2-7h4l2 7" /><path d="M5 12h14" /><path d="M10 5 8 3h8l-2 2" /></>,
     chest: <><path d="M4 8h16v11H4z" /><path d="M4 8 6 4h12l2 4" /><path d="M4 13h16" /><path d="M11 13h2v3h-2z" /></>,
