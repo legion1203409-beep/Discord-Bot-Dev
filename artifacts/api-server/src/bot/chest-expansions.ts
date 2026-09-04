@@ -470,6 +470,7 @@ export function seasonalForBucket(bucket = Math.floor(Date.now() / SEASONAL_CHES
 export function buildSeasonalChestEmbed(
   chest: SeasonalChest,
   claimed = false,
+  expired = false,
 ): EmbedBuilder {
   const meta = SEASONAL_CHESTS.find((item) => item.season === chest.season) ?? SEASONAL_CHESTS[0]!;
   return new EmbedBuilder()
@@ -480,20 +481,27 @@ export function buildSeasonalChestEmbed(
         `💰 **${meta.gold} Oboli** · ✨ **${meta.xp} XP** · 💎 un fragment de relicvă\n` +
          (claimed
            ? `\n✅ Comoara a fost revendicată${chest.claimedBy?.username ? ` de **${chest.claimedBy.username.replace(/[<>]/g, "").slice(0, 80)}**` : ""}.`
+            : expired
+              ? "\n⌛ Cufărul sezonier a expirat și nu mai poate fi revendicat."
            : `\n⚡ Cufărul rămâne disponibil până la <t:${Math.floor(chest.expiresAt / 1000)}:R>.`),
     )
     .setImage(meta.image)
-    .setFooter({ text: claimed ? "Sezon încheiat • " + BRAND_FOOTER : "Eveniment sezonier • timer live în Discord" });
+    .setFooter({
+      text: claimed || expired
+        ? "Sezon încheiat • " + BRAND_FOOTER
+        : "Eveniment sezonier • timer live în Discord",
+    });
 }
 
-export function seasonalChestRow(chestId: string, claimed = false): ActionRowBuilder<ButtonBuilder> {
+export function seasonalChestRow(chestId: string, claimed = false, expired = false): ActionRowBuilder<ButtonBuilder> {
+  const unavailable = claimed || expired;
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId(`seasonal_chest_${chestId}`)
-      .setLabel(claimed ? "Revendicat" : "Revendică comoara sezonieră")
-      .setEmoji(claimed ? "✅" : "🎁")
-      .setStyle(claimed ? ButtonStyle.Secondary : ButtonStyle.Success)
-      .setDisabled(claimed),
+      .setLabel(expired ? "Expirat" : claimed ? "Revendicat" : "Revendică comoara sezonieră")
+      .setEmoji(unavailable ? "✅" : "🎁")
+      .setStyle(unavailable ? ButtonStyle.Secondary : ButtonStyle.Success)
+      .setDisabled(unavailable),
   );
 }
 
@@ -518,6 +526,10 @@ async function loadActiveSeasonalChest(guildId: string): Promise<SeasonalChest |
   // Read the old hourly key for backwards compatibility with chests created
   // before seasonal spawns moved to the message milestone.
   return loadSeasonalChest(guildId);
+}
+
+export async function getSeasonalChest(guildId: string, chestId: string): Promise<SeasonalChest | null> {
+  return loadState<SeasonalChest>(stateKey(guildId, `seasonal:${chestId}`));
 }
 
 async function deleteSeasonalChestMessage(client: Client, chest: SeasonalChest): Promise<void> {
@@ -550,8 +562,8 @@ async function expireSeasonalChest(client: Client, chest: SeasonalChest): Promis
   if (channel instanceof TextChannel) {
     const message = await channel.messages.fetch(chest.messageId).catch(() => null);
     await message?.edit({
-      embeds: [buildSeasonalChestEmbed(expired)],
-      components: [seasonalChestRow(expired.id, true)],
+      embeds: [buildSeasonalChestEmbed(expired, false, true)],
+      components: [seasonalChestRow(expired.id, false, true)],
     }).catch(() => null);
   }
   scheduleSeasonalChestMessageDeletion(client, expired);

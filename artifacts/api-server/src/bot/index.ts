@@ -270,6 +270,7 @@ import {
   buildSeasonalChestEmbed,
   seasonalChestRow,
   claimSeasonalChest,
+  getSeasonalChest,
   scheduleSeasonalChestMessageDeletion,
   SEASONAL_CHESTS,
   buildHiddenChestEmbed,
@@ -3760,6 +3761,18 @@ async function handleSeasonalChestClaim(interaction: ButtonInteraction, chestId:
   const guildId = interaction.guildId!;
   const chest = await claimSeasonalChest(guildId, chestId, interaction.user.id, interaction.user.username);
   if (!chest) {
+    const staleChest = await getSeasonalChest(guildId, chestId);
+    if (staleChest) {
+      const expired = !staleChest.claimed && staleChest.expiresAt <= Date.now();
+      await interaction.message.edit({
+        embeds: [buildSeasonalChestEmbed(staleChest, staleChest.claimed, expired)],
+        components: [seasonalChestRow(staleChest.id, staleChest.claimed, expired)],
+      }).catch(() => null);
+      scheduleSeasonalChestMessageDeletion(interaction.client, {
+        ...staleChest,
+        cleanupAt: staleChest.cleanupAt ?? Date.now() + 20 * 60 * 1000,
+      });
+    }
     await ephemeralNote(interaction, "seasonal-chest", "🌒 Cufărul sezonier a fost deja revendicat sau a expirat.");
     return;
   }
