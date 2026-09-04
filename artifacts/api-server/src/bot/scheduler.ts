@@ -1,6 +1,6 @@
 import { Client, TextChannel, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import { logger } from "../lib/logger";
-import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, buildExpiredChestEmbed, rollChest, oracleMessage, buildFinalBossEmbed, buildBossLeaderboard, buildEventLeaderboard, buildLockedChestEmbed, buildKeyChestEmbed, spawnLockedChest, rollKeyChestType, computeBossRewards, prestigeGoldMult, finalBossRow, bossMaxHp, veteranRank, veteranMult, CHEST_RARITIES, type ChestVariant, type BossRarity, type BossPlayerStats } from "./survival";
+import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, rollChest, oracleMessage, buildFinalBossEmbed, buildBossLeaderboard, buildEventLeaderboard, buildLockedChestEmbed, buildKeyChestEmbed, spawnLockedChest, rollKeyChestType, computeBossRewards, prestigeGoldMult, finalBossRow, bossMaxHp, veteranRank, veteranMult, CHEST_RARITIES, type ChestVariant, type BossRarity, type BossPlayerStats } from "./survival";
 import { triggerRandomBattleEvent } from "./combat-events";
 import { getRewardMultipliers } from "./status-effects";
 import { startOracle, setOracleExtatic } from "./oracle";
@@ -110,6 +110,21 @@ function getOrCreateGuildState(guildId: string): GuildSchedulerState {
     guildStates.set(guildId, state);
   }
   return state;
+}
+
+async function deleteChestMessage(
+  message: { id?: string; delete: () => Promise<unknown> },
+  context: { chestId: string; guildId: string; phase: string },
+): Promise<void> {
+  try {
+    await message.delete();
+  } catch (err) {
+    const code = typeof err === "object" && err !== null && "code" in err
+      ? String((err as { code?: unknown }).code)
+      : "";
+    if (code === "10008") return;
+    logger.warn({ err, messageId: message.id, ...context }, "Failed to delete chest message");
+  }
 }
 
 function buildChestRow(
@@ -521,7 +536,7 @@ export async function fireChestForced(
     }
     if (gs.lastChestMessageId) {
       const old = await channel.messages.fetch(gs.lastChestMessageId).catch(() => null);
-      if (old) await old.delete().catch(() => null);
+      if (old) await deleteChestMessage(old, { chestId: "previous", guildId, phase: "replace-forced" });
       gs.lastChestMessageId = null;
     }
 
@@ -568,15 +583,7 @@ export async function fireChestForced(
     const timeout = setTimeout(async () => {
       if (!gs.claimedChests.has(chestId)) {
         gs.claimedChests.add(chestId);
-        const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-          new ButtonBuilder()
-            .setCustomId(`${chestId}_expired`)
-            .setLabel(mult != null ? "Cufărul binecuvântat a dispărut…" : "Cufărul a dispărut...")
-            .setEmoji("💨")
-            .setStyle(ButtonStyle.Secondary)
-            .setDisabled(true),
-        );
-        await msg.edit({ embeds: [buildExpiredChestEmbed(gold, rarity, mult)], components: [disabledRow] }).catch(() => null);
+        await deleteChestMessage(msg, { chestId, guildId, phase: "expire-forced" });
         logger.info({ chestId, guildId }, "Chest expired unclaimed (forced)");
       }
       void clearActiveChest(guildId).catch(() => null);
@@ -617,7 +624,7 @@ export async function fireChest(client: Client, guildId: string, bypassGate = fa
     }
     if (gs.lastChestMessageId) {
       const old = await channel.messages.fetch(gs.lastChestMessageId).catch(() => null);
-      if (old) await old.delete().catch(() => null);
+      if (old) await deleteChestMessage(old, { chestId: "previous", guildId, phase: "replace-scheduled" });
       gs.lastChestMessageId = null;
     }
 
@@ -685,15 +692,7 @@ export async function fireChest(client: Client, guildId: string, bypassGate = fa
     const timeout = setTimeout(async () => {
       if (!gs.claimedChests.has(chestId)) {
         gs.claimedChests.add(chestId);
-        const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-          new ButtonBuilder()
-            .setCustomId(`${chestId}_expired`)
-            .setLabel("Cufărul a dispărut...")
-            .setEmoji("💨")
-            .setStyle(ButtonStyle.Secondary)
-            .setDisabled(true),
-        );
-        await msg.edit({ embeds: [buildExpiredChestEmbed(gold, rarity)], components: [disabledRow] }).catch(() => null);
+        await deleteChestMessage(msg, { chestId, guildId, phase: "expire-scheduled" });
         logger.info({ chestId, guildId }, "Chest expired unclaimed");
       }
       void clearActiveChest(guildId).catch(() => null);
@@ -984,15 +983,7 @@ export async function rehydrateActiveChest(client: Client, guildId: string): Pro
 
     if (now >= record.expiresAt || !msg) {
       if (msg) {
-        const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-          new ButtonBuilder()
-            .setCustomId(`${record.chestId}_expired`)
-            .setLabel(record.mult != null ? "Cufărul binecuvântat a dispărut…" : "Cufărul a dispărut...")
-            .setEmoji("💨")
-            .setStyle(ButtonStyle.Secondary)
-            .setDisabled(true),
-        );
-        await msg.edit({ embeds: [buildExpiredChestEmbed(record.gold, rarity, record.mult)], components: [disabledRow] }).catch(() => null);
+        await deleteChestMessage(msg, { chestId: record.chestId, guildId, phase: "rehydrate-stale" });
       }
       gs.claimedChests.add(record.chestId);
       gs.lastChestMessageId = null;
@@ -1013,15 +1004,7 @@ export async function rehydrateActiveChest(client: Client, guildId: string): Pro
     const timeout = setTimeout(async () => {
       if (!gs.claimedChests.has(record.chestId)) {
         gs.claimedChests.add(record.chestId);
-        const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-          new ButtonBuilder()
-            .setCustomId(`${record.chestId}_expired`)
-            .setLabel(record.mult != null ? "Cufărul binecuvântat a dispărut…" : "Cufărul a dispărut...")
-            .setEmoji("💨")
-            .setStyle(ButtonStyle.Secondary)
-            .setDisabled(true),
-        );
-        await msg.edit({ embeds: [buildExpiredChestEmbed(record.gold, rarity, record.mult)], components: [disabledRow] }).catch(() => null);
+        await deleteChestMessage(msg, { chestId: record.chestId, guildId, phase: "rehydrate-expire" });
         logger.info({ chestId: record.chestId, guildId }, "Rehydrated chest expired unclaimed");
       }
       gs.lastChestMessageId = null;
@@ -1052,19 +1035,9 @@ export async function rehydrateSimpleChest(client: Client, guildId: string, dbKe
     }
 
     const msg = await ch.messages.fetch(record.messageId).catch(() => null);
-    const expiredLabel = record.kind === "keychest" ? "Cheia s-a topit în fum..." : "Cufărul a dispărut...";
-
     if (now >= record.expiresAt || !msg) {
       if (msg) {
-        const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-          new ButtonBuilder()
-            .setCustomId(`${record.chestId}_expired`)
-            .setLabel(expiredLabel)
-            .setEmoji("💨")
-            .setStyle(ButtonStyle.Secondary)
-            .setDisabled(true),
-        );
-        await msg.edit({ components: [disabledRow] }).catch(() => null);
+        await deleteChestMessage(msg, { chestId: record.chestId, guildId, phase: `rehydrate-stale-${record.kind ?? dbKey}` });
       }
       gs.claimedChests.add(record.chestId);
       await clearActiveChest(guildId, dbKey).catch(() => null);
@@ -1076,15 +1049,7 @@ export async function rehydrateSimpleChest(client: Client, guildId: string, dbKe
     const timeout = setTimeout(async () => {
       if (!gs.claimedChests.has(record.chestId)) {
         gs.claimedChests.add(record.chestId);
-        const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-          new ButtonBuilder()
-            .setCustomId(`${record.chestId}_expired`)
-            .setLabel(expiredLabel)
-            .setEmoji("💨")
-            .setStyle(ButtonStyle.Secondary)
-            .setDisabled(true),
-        );
-        await msg.edit({ components: [disabledRow] }).catch(() => null);
+        await deleteChestMessage(msg, { chestId: record.chestId, guildId, phase: `rehydrate-expire-${record.kind ?? dbKey}` });
         logger.info({ chestId: record.chestId, guildId }, "Rehydrated simple chest expired unclaimed");
       }
       await clearActiveChest(guildId, dbKey).catch(() => null);
@@ -1200,15 +1165,7 @@ export async function fireLockedChest(client: Client, guildId: string, rarityKey
     const timeout = setTimeout(async () => {
       if (!gs.claimedChests.has(chestId)) {
         gs.claimedChests.add(chestId);
-        const expiredRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-          new ButtonBuilder()
-            .setCustomId(`${chestId}_expired`)
-            .setLabel("Cufărul a dispărut...")
-            .setEmoji("💨")
-            .setStyle(ButtonStyle.Secondary)
-            .setDisabled(true),
-        );
-        await msg.edit({ components: [expiredRow] }).catch(() => null);
+        await deleteChestMessage(msg, { chestId, guildId, phase: "expire-locked" });
         logger.info({ chestId, guildId }, "Locked chest expired unclaimed");
       }
       void clearActiveChest(guildId, LOCKCHEST_DBKEY).catch(() => null);
@@ -1279,15 +1236,7 @@ export async function fireKeyChest(client: Client, guildId: string, keyType?: st
     const timeout = setTimeout(async () => {
       if (!gs.claimedChests.has(chestId)) {
         gs.claimedChests.add(chestId);
-        const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-          new ButtonBuilder()
-            .setCustomId(`${chestId}_expired`)
-            .setLabel("Cheia s-a topit în fum...")
-            .setEmoji("💨")
-            .setStyle(ButtonStyle.Secondary)
-            .setDisabled(true),
-        );
-        await msg.edit({ components: [disabledRow] }).catch(() => null);
+        await deleteChestMessage(msg, { chestId, guildId, phase: "expire-key" });
         logger.info({ chestId, guildId }, "Key chest expired unclaimed");
       }
       void clearActiveChest(guildId, KEYCHEST_DBKEY).catch(() => null);
