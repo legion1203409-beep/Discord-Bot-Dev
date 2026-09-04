@@ -38,6 +38,7 @@ import {
   answerHelpQuestion,
   announceOracleRelationshipChange,
   ORACLE_HOSTILE_RELATION_DELTA,
+  ORACLE_HIGH_RELATION_THRESHOLD,
   recordOracleRelationshipChange,
   prophecyCooldownRemaining,
   reserveProphecy,
@@ -48,6 +49,7 @@ import {
   handleToxicity,
   restoreOracleTimeouts,
   setOracleTimeoutPersistence,
+  setOracleToxicityRelationshipHandler,
 } from "./oracle-guard";
 import { getRewardMultipliers, getCombatModifiers, formatActiveEffects, formatCombatEffects, rollChestEffectKind, grantRandomBlessing, grantRandomCurse, buildChestEffectMessage } from "./status-effects";
 import { SUPER_ADMIN_ID } from "./constants";
@@ -4170,22 +4172,36 @@ async function setupTrader(client: Client, guildId: string): Promise<void> {
   }
 }
 
-async function maybeRecordOracleToxicityRelationship(client: Client, message: Message): Promise<void> {
+async function maybeRecordOracleToxicityRelationship(message: Message) {
   try {
-    const botId = client.user?.id;
-    if (!botId) return;
+    const botId = botClient?.user?.id;
+    if (!botId) return null;
+    if (!message.guildId) return null;
 
     let directedAtBot = message.mentions.users.has(botId);
     if (!directedAtBot && message.reference?.messageId) {
       const referenced = await message.fetchReference().catch(() => null);
       directedAtBot = referenced?.author?.id === botId;
     }
-    if (!directedAtBot) return;
+    if (!directedAtBot) return null;
 
-    const relationship = await recordOracleRelationshipChange(message, ORACLE_HOSTILE_RELATION_DELTA);
-    await announceOracleRelationshipChange(message, ORACLE_HOSTILE_RELATION_DELTA, relationship);
+    const previous = await getPlayerById(message.author.id, message.guildId);
+    const bondBefore = previous?.oracleBond ?? 0;
+    const relationDelta =
+      bondBefore >= ORACLE_HIGH_RELATION_THRESHOLD
+        ? -30
+        : ORACLE_HOSTILE_RELATION_DELTA;
+    const relationship = await recordOracleRelationshipChange(message, relationDelta);
+    if (!relationship) return null;
+    await announceOracleRelationshipChange(message, relationDelta, relationship);
+    return {
+      bondBefore,
+      bondAfter: relationship.oracleBond ?? bondBefore + relationDelta,
+      relationDelta,
+    };
   } catch (err) {
     logger.debug({ err, guildId: message.guildId }, "Oracle toxicity relationship update skipped");
+    return null;
   }
 }
 
@@ -4249,6 +4265,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
       await ensureBotStateTable();
       // Required schema must exist before any player profile or Oracle handler runs.
       await runMultiGuildMigrations();
+      setOracleToxicityRelationshipHandler(maybeRecordOracleToxicityRelationship);
       setOracleTimeoutPersistence({
         save: saveOracleTimeoutLock,
         remove: deleteOracleTimeoutLock,
@@ -4395,7 +4412,6 @@ export async function startBot(onReady?: () => void): Promise<void> {
     maybeNudgeGameHelp(message);
     void handleToxicity(client, message).then((handled) => {
       if (handled) {
-        void maybeRecordOracleToxicityRelationship(client, message);
         return;
       }
       void maybeReplyAsOracle(client, message);

@@ -124,8 +124,25 @@ type OracleTimeoutPersistence = {
 };
 let oracleTimeoutPersistence: OracleTimeoutPersistence | null = null;
 
+export type OracleToxicityRelationshipResult = {
+  bondBefore: number;
+  bondAfter: number;
+  relationDelta: number;
+};
+
+type OracleToxicityRelationshipHandler = (
+  message: Message,
+) => Promise<OracleToxicityRelationshipResult | null>;
+let oracleToxicityRelationshipHandler: OracleToxicityRelationshipHandler | null = null;
+
 export function setOracleTimeoutPersistence(persistence: OracleTimeoutPersistence): void {
   oracleTimeoutPersistence = persistence;
+}
+
+export function setOracleToxicityRelationshipHandler(
+  handler: OracleToxicityRelationshipHandler | null,
+): void {
+  oracleToxicityRelationshipHandler = handler;
 }
 
 export function restoreOracleTimeouts(records: OracleTimeoutRecord[], now = Date.now()): void {
@@ -281,8 +298,20 @@ function formatDuration(minutes: number): string {
   return h === 1 ? "o oră" : `${h} ore`;
 }
 
-function curseMessage(offenseCount: number, muteMin: number, muted: boolean): string {
+function relationshipWarning(relationshipNegative: boolean): string {
+  return relationshipNegative
+    ? "\n☠️ **Legătura ta cu Oracolul este deja în umbră.** Cenușa nu mai vede un aliat în glasul tău și nu-ți mai acordă clemență."
+    : "";
+}
+
+function curseMessage(
+  offenseCount: number,
+  muteMin: number,
+  muted: boolean,
+  relationshipNegative = false,
+): string {
   const dur = formatDuration(muteMin);
+  const relationNote = relationshipWarning(relationshipNegative);
   const noMuteNote = muted
     ? ""
     : "\n*(Oracolul nu deține puterea să te amuțească acum — dar Regatul te vede și ține minte.)*";
@@ -292,6 +321,7 @@ function curseMessage(offenseCount: number, muteMin: number, muted: boolean): st
       `*Oracolul simte veninul din cuvintele tale, muritorule...* 🌑\n` +
       `Limba ta necurată ți-a adus **Blestemul Tăcerii** — ${dur} de liniște forțată.` +
       ` Folosește-le bine.` +
+      relationNote +
       noMuteNote
     );
   }
@@ -300,6 +330,7 @@ function curseMessage(offenseCount: number, muteMin: number, muted: boolean): st
       `*Nu ai învățat nimic din prima lecție...* 🌑\n` +
       `**Blestemul se adâncește** — ${dur} în întuneric, până când cenușa te va ierta.` +
       ` Continuă și pedeapsa va crește.` +
+      relationNote +
       noMuteNote
     );
   }
@@ -308,6 +339,7 @@ function curseMessage(offenseCount: number, muteMin: number, muted: boolean): st
       `*Ești hotărât să înfrunți mânia Oracolului, neghiobule?* 🌑\n` +
       `**Blestemul Etern** te înghite — ${dur} de tăcere absolută.` +
       ` Revino când ești pregătit să vorbești cu respect.` +
+      relationNote +
       noMuteNote
     );
   }
@@ -316,6 +348,7 @@ function curseMessage(offenseCount: number, muteMin: number, muted: boolean): st
     `*Cenușa nu uită. Nici nu iartă. Ești dincolo de orice milă, muritorule îndărătnic.* 🌑\n` +
     `**Blestemul Suprem** te sfâșie — ${dur} de tăcere absolută.` +
     ` Regatul s-a săturat de limba ta.` +
+    relationNote +
     noMuteNote
   );
 }
@@ -354,8 +387,14 @@ export function isMockery(text: string): boolean {
   return MOCKERY_PATTERNS.some((re) => re.test(n));
 }
 
-function mockeryCurseMessage(offenseCount: number, muteMin: number, muted: boolean): string {
+function mockeryCurseMessage(
+  offenseCount: number,
+  muteMin: number,
+  muted: boolean,
+  relationshipNegative = false,
+): string {
   const dur = formatDuration(muteMin);
+  const relationNote = relationshipWarning(relationshipNegative);
   const noMuteNote = muted
     ? ""
     : "\n*(Oracolul nu deține puterea să te amuțească acum — dar Regatul te vede și ține minte.)*";
@@ -365,6 +404,7 @@ function mockeryCurseMessage(offenseCount: number, muteMin: number, muted: boole
       `*Îndrăznești să iei în derâdere Oracolul Cenușii, muritorule?* 🌑\n` +
       `Batjocura ta a stârnit cenușa — **Blestemul Tăcerii** te învăluie ${dur}.` +
       ` Râzi în liniște, dacă mai poți.` +
+      relationNote +
       noMuteNote
     );
   }
@@ -372,6 +412,7 @@ function mockeryCurseMessage(offenseCount: number, muteMin: number, muted: boole
     return (
       `*Din nou râzi de puterile străvechi? Nesăbuință...* 🌑\n` +
       `**Blestemul se adâncește** — ${dur} de tăcere, să înveți respectul pe care nu-l cunoști.` +
+      relationNote +
       noMuteNote
     );
   }
@@ -380,12 +421,14 @@ function mockeryCurseMessage(offenseCount: number, muteMin: number, muted: boole
       `*Batjocura ta a devenit obrăznicie, iar obrăznicia are preț.* 🌑\n` +
       `**Blestemul Etern** te cuprinde — ${dur} de muțenie deplină.` +
       ` Cenușa nu e de râs, muritorule.` +
+      relationNote +
       noMuteNote
     );
   }
   return (
     `*Cel care râde de Oracol sfârșește prin a fi el însuși de râsul Regatului.* 🌑\n` +
     `**Blestemul Suprem** te amuțește ${dur}. Nimeni nu-și mai amintește glumele tale.` +
+    relationNote +
     noMuteNote
   );
 }
@@ -731,6 +774,18 @@ export async function handleToxicity(client: Client, message: Message): Promise<
 
     if (!directedAtBot) return false;
 
+    let relationship: OracleToxicityRelationshipResult | null = null;
+    if (oracleToxicityRelationshipHandler) {
+      try {
+        relationship = await oracleToxicityRelationshipHandler(message);
+      } catch (err) {
+        logger.warn(
+          { err, guildId: message.guildId, userId: message.author.id },
+          "Oracle guard: relationship penalty failed",
+        );
+      }
+    }
+    const relationshipNegative = relationship !== null && relationship.bondAfter < 0;
     const offenseCount = recordOffense(message.author.id);
     const muteMs  = muteDurationMs(offenseCount);
     const muteMin = muteDurationMin(offenseCount);
@@ -771,8 +826,8 @@ export async function handleToxicity(client: Client, message: Message): Promise<
 
     await message.reply({
       content: isMock
-        ? mockeryCurseMessage(offenseCount, muteMin, muted)
-        : curseMessage(offenseCount, muteMin, muted),
+        ? mockeryCurseMessage(offenseCount, muteMin, muted, relationshipNegative)
+        : curseMessage(offenseCount, muteMin, muted, relationshipNegative),
       allowedMentions: { repliedUser: true, parse: [] },
     });
 

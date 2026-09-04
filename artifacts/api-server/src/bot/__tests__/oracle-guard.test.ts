@@ -26,6 +26,7 @@ import {
   handleJustice,
   enforceOracleTimeout,
   rememberOracleTimeout,
+  setOracleToxicityRelationshipHandler,
   isPardonRequest,
   isJusticeRequest,
   isMockery,
@@ -554,6 +555,25 @@ describe("handleToxicity", () => {
     });
     const result = await handleToxicity(makeClient(BOT_ID), msg as unknown as Message);
     expect(result).toBe(true);
+  });
+
+  it("adds the harsher warning when the toxicity penalty leaves the relationship negative", async () => {
+    setOracleToxicityRelationshipHandler(async () => ({
+      bondBefore: 4,
+      bondAfter: -26,
+      relationDelta: -30,
+    }));
+
+    const msg = makeMessage({
+      botId: BOT_ID,
+      content: "pula",
+      authorId: "u-negative-oracle-bond",
+    });
+    await handleToxicity(makeClient(BOT_ID), msg as unknown as Message);
+
+    const replyContent: string = (msg._reply.mock.calls[0] as [{ content: string }])[0].content;
+    expect(replyContent).toContain("Legătura ta cu Oracolul este deja în umbră");
+    setOracleToxicityRelationshipHandler(null);
   });
 });
 

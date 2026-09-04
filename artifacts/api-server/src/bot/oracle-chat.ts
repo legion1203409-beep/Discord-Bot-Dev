@@ -352,6 +352,7 @@ function councilContext(council: OracleCouncilRecord | null): string | null {
 }
 
 export const ORACLE_HOSTILE_RELATION_DELTA = -2;
+export const ORACLE_HIGH_RELATION_THRESHOLD = 10;
 
 function relationshipSignal(content: string): { bond: number; chaos: number } {
   const text = content.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
