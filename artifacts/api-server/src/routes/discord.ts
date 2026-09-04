@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { desc } from "drizzle-orm";
 import { db, playersTable } from "@workspace/db";
 import { getBotClient, GUILD_ID, isBotOnline } from "../bot/index";
-import { fetchDiscordGuildStats } from "./discord-stats";
+import { fetchDiscordGuildStats, fetchDiscordGuildStatsViaRest } from "./discord-stats";
 
 const router: IRouter = Router();
 
@@ -23,6 +23,24 @@ router.get("/discord/stats", async (req, res) => {
   }
 
   if (!client || !isBotOnline()) {
+    // Development intentionally does not open a Discord Gateway session, so
+    // use the REST count endpoint for the landing-page preview instead.
+    try {
+      const { onlineCount, totalMembers } = await fetchDiscordGuildStatsViaRest(
+        process.env.DISCORD_TOKEN,
+        GUILD_ID,
+      );
+      res.status(200).json({
+        live: true,
+        onlineCount,
+        totalMembers,
+        lastJoined,
+      });
+      return;
+    } catch (err) {
+      req.log.debug({ err }, "Discord gateway offline and REST stats unavailable");
+    }
+
     res.status(200).json({
       live: false,
       onlineCount: null,

@@ -29,3 +29,35 @@ export async function fetchDiscordGuildStats(
     totalMembers: guild.approximateMemberCount ?? guild.memberCount ?? null,
   };
 }
+
+export async function fetchDiscordGuildStatsViaRest(
+  token: string | undefined,
+  guildId: string,
+): Promise<{ onlineCount: number | null; totalMembers: number | null }> {
+  if (!token) throw new Error("DISCORD_TOKEN is not configured");
+
+  const response = await fetch(
+    `https://discord.com/api/v10/guilds/${encodeURIComponent(guildId)}?with_counts=true`,
+    {
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bot ${token}`,
+      },
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Discord guild stats request failed (${response.status})`);
+  }
+
+  const data = await response.json() as {
+    approximate_presence_count?: unknown;
+    approximate_member_count?: unknown;
+  };
+  const asCount = (value: unknown): number | null =>
+    typeof value === "number" && Number.isFinite(value) ? value : null;
+
+  return {
+    onlineCount: asCount(data.approximate_presence_count),
+    totalMembers: asCount(data.approximate_member_count),
+  };
+}

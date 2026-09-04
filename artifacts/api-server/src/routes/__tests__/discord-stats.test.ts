@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { fetchDiscordGuildStats } from "../discord-stats";
+import {
+  fetchDiscordGuildStats,
+  fetchDiscordGuildStatsViaRest,
+} from "../discord-stats";
 
 describe("fetchDiscordGuildStats", () => {
   it("forces a fresh Discord guild fetch so cached guilds still expose member counts", async () => {
@@ -36,5 +39,32 @@ describe("fetchDiscordGuildStats", () => {
     );
 
     expect(stats).toEqual({ onlineCount: null, totalMembers: 42 });
+  });
+
+  it("reads counts through Discord REST when the development gateway is disabled", async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          approximate_presence_count: 5,
+          approximate_member_count: 37,
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(
+      fetchDiscordGuildStatsViaRest("test-token", "guild/123"),
+    ).resolves.toEqual({ onlineCount: 5, totalMembers: 37 });
+    expect(fetch).toHaveBeenCalledWith(
+      "https://discord.com/api/v10/guilds/guild%2F123?with_counts=true",
+      {
+        headers: {
+          Accept: "application/json",
+          Authorization: "Bot test-token",
+        },
+      },
+    );
+    vi.unstubAllGlobals();
   });
 });
