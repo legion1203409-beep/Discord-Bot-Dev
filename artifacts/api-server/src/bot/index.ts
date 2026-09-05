@@ -50,6 +50,7 @@ import {
   handleTicketQuestionModal,
   handleTicketQuestionSelect,
   postTicketPanelIfMissing,
+  scheduleIncompleteTicketDeletion,
   allianceRecruitmentTextModal,
   DEFAULT_ALLIANCE_RECRUITMENT_TEXT,
 } from "./ticket-ui";
@@ -4318,6 +4319,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
     const botId = client.user?.id;
     if (!kind || !botId) return;
 
+    scheduleIncompleteTicketDeletion(channel);
     void postTicketPanelIfMissing(channel as Message["channel"], kind, botId)
       .then((posted) => {
         if (posted) {

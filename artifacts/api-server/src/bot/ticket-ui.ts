@@ -39,6 +39,7 @@ const TICKET_ICONS: Record<OracleTicketKind, string> = {
 const TICKET_SEAL = IMG.ticketSeal;
 export const STAFF_REVIEW_ROLE_ID = "1472526137308745909";
 export const ALLIANCE_PUBLIC_CHANNEL_ID = "1472997077373157602";
+export const INCOMPLETE_TICKET_TIMEOUT_MS = 30 * 60 * 1000;
 const REGAT_RECRUITMENT_GIF_URL =
   "https://media.discordapp.net/attachments/1477699914732404977/1477704399936688212/standard.gif?ex=6a45e937&is=6a4497b7&hm=f9c71749fd5197b10bcdb4d367da427d7e2e58283087d29907d73fc8d12015b0";
 const REGAT_INVITE_URL = "https://discord.gg/regatulcenusii";
@@ -66,6 +67,7 @@ export function memberHasStaffReviewRole(
 
 const postedTicketPanels = new Set<string>();
 const ticketPanelLocks = new Map<string, Promise<boolean>>();
+const ticketDeletionTimers = new Map<string, ReturnType<typeof setTimeout>>();
 type TicketProgressState = {
   currentStep: number;
   panelMessageId: string;
@@ -396,6 +398,78 @@ export async function postTicketPanelIfMissing(
   } finally {
     ticketPanelLocks.delete(channel.id);
   }
+}
+
+function hasFinishedTicketStatus(message: {
+  components?: readonly { components?: readonly { customId?: string | null }[] }[];
+}): boolean {
+  return (message.components ?? []).some((row) =>
+    (row.components ?? []).some((component) =>
+      typeof component.customId === "string" &&
+      /^ticket_status_(staff|partnership|help_report)_(completed|rejected)$/.test(component.customId),
+    ),
+  );
+}
+
+async function ticketHasFinishedStatus(channel: {
+  messages?: {
+    fetch?: (options: { limit: number }) => Promise<Iterable<{ components?: readonly { components?: readonly { customId?: string | null }[] }[] }>>;
+  };
+}): Promise<boolean> {
+  const messages = await channel.messages?.fetch?.({ limit: 100 }).catch(() => null);
+  if (!messages) return false;
+  for (const message of messages) {
+    if (hasFinishedTicketStatus(message)) return true;
+  }
+  return false;
+}
+
+export function scheduleIncompleteTicketDeletion(channel: unknown): void {
+  if (!channel || typeof channel !== "object") return;
+  const candidate = channel as {
+    id?: string;
+    createdTimestamp?: number;
+    delete?: (reason?: string) => Promise<unknown>;
+    messages?: {
+      fetch?: (options: { limit: number }) => Promise<Iterable<{ components?: readonly { components?: readonly { customId?: string | null }[] }[] }>>;
+    };
+  };
+  if (
+    !candidate.id ||
+    typeof candidate.createdTimestamp !== "number" ||
+    typeof candidate.delete !== "function"
+  ) {
+    return;
+  }
+
+  const existingTimer = ticketDeletionTimers.get(candidate.id);
+  if (existingTimer) clearTimeout(existingTimer);
+
+  const delay = Math.max(
+    0,
+    INCOMPLETE_TICKET_TIMEOUT_MS - (Date.now() - candidate.createdTimestamp),
+  );
+  const timer = setTimeout(async () => {
+    ticketDeletionTimers.delete(candidate.id!);
+    const channelId = candidate.id!;
+    const progressFinished = [...ticketProgress.entries()].some(
+      ([key, state]) => key.startsWith(`${channelId}:`) && Boolean(state.status),
+    );
+    if (progressFinished || await ticketHasFinishedStatus(candidate)) return;
+
+    try {
+      await candidate.delete("Ticket incomplet după 30 de minute");
+      postedTicketPanels.delete(channelId);
+      for (const key of ticketProgress.keys()) {
+        if (key.startsWith(`${channelId}:`)) ticketProgress.delete(key);
+      }
+      logger.info({ channelId }, "Incomplete ticket deleted after 30 minutes");
+    } catch (err) {
+      logger.debug({ err, channelId }, "Incomplete ticket could not be deleted");
+    }
+  }, delay);
+  timer.unref?.();
+  ticketDeletionTimers.set(candidate.id, timer);
 }
 
 function input(
