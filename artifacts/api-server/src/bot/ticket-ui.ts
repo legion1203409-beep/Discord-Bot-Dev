@@ -7,6 +7,8 @@ import {
   MessageFlags,
   ModalBuilder,
   ModalSubmitInteraction,
+  StringSelectMenuBuilder,
+  StringSelectMenuInteraction,
   TextInputBuilder,
   TextInputStyle,
   type Message,
@@ -32,13 +34,175 @@ const TICKET_ICONS: Record<OracleTicketKind, string> = {
   help_report: "🕯️",
 };
 
-function ticketButtonId(action: "start" | "requirements", kind: OracleTicketKind): string {
-  return `ticket_${action}_${kind}`;
+type TicketQuestion = {
+  key: string;
+  label: string;
+  description: string;
+  placeholder: string;
+  multiline?: boolean;
+};
+
+const TICKET_QUESTIONS: Record<OracleTicketKind, TicketQuestion[]> = {
+  staff: [
+    {
+      key: "name_timezone",
+      label: "1. Nume și fus orar",
+      description: "Care este numele tău și fusul orar?",
+      placeholder: "Ex.: Andrei · Europa/Paris",
+    },
+    {
+      key: "age",
+      label: "2. Vârstă",
+      description: "Ce vârstă ai?",
+      placeholder: "Ex.: 21",
+    },
+    {
+      key: "moderation",
+      label: "3. Experiență în moderare",
+      description: "Ai experiență în moderare?",
+      placeholder: "Unde ai mai moderat și ce ai învățat?",
+      multiline: true,
+    },
+    {
+      key: "availability",
+      label: "4. Timp disponibil",
+      description: "Cât timp poți dedica serverului?",
+      placeholder: "Ex.: 1–2 ore pe zi",
+    },
+    {
+      key: "motivation",
+      label: "5. De ce dorești rolul?",
+      description: "De ce dorești rolul de staff?",
+      placeholder: "Ce te motivează să ajuți Regatul?",
+      multiline: true,
+    },
+    {
+      key: "conflict",
+      label: "6. Conflict între membri",
+      description: "Cum ai rezolva un conflict între membri?",
+      placeholder: "Descrie pașii pe care i-ai urma.",
+      multiline: true,
+    },
+    {
+      key: "improvements",
+      label: "7. Îmbunătățiri pentru server",
+      description: "Ce ai îmbunătăți pe server?",
+      placeholder: "Propune una sau mai multe îmbunătățiri.",
+      multiline: true,
+    },
+  ],
+  partnership: [
+    {
+      key: "server_name",
+      label: "1. Numele serverului",
+      description: "Cum se numește serverul vostru?",
+      placeholder: "Ex.: Regatul Umbrelor",
+    },
+    {
+      key: "description",
+      label: "2. Descrierea serverului",
+      description: "Tematică, comunitate și ce oferiți.",
+      placeholder: "Descrieți serverul, tematica și ce oferiți.",
+      multiline: true,
+    },
+    {
+      key: "invite",
+      label: "3. Invitație / link",
+      description: "Care este invitația sau linkul relevant?",
+      placeholder: "https://discord.gg/...",
+    },
+    {
+      key: "members",
+      label: "4. Membri și activitate",
+      description: "Câți membri aveți și câți sunt activi aproximativ?",
+      placeholder: "Ex.: 2.000 total · 300 activi",
+    },
+    {
+      key: "audience",
+      label: "5. Publicul țintă",
+      description: "Cui se adresează comunitatea?",
+      placeholder: "Descrieți publicul țintă.",
+      multiline: true,
+    },
+    {
+      key: "collaboration",
+      label: "6. Tipul colaborării",
+      description: "Ce tip de colaborare propuneți?",
+      placeholder: "Descrieți colaborarea propusă.",
+      multiline: true,
+    },
+    {
+      key: "benefits",
+      label: "7. Beneficii reciproce",
+      description: "Ce beneficii ar avea ambele comunități?",
+      placeholder: "Descrieți beneficiile pentru ambele servere.",
+      multiline: true,
+    },
+  ],
+  help_report: [
+    {
+      key: "type",
+      label: "Tipul solicitării",
+      description: "Este ajutor tehnic sau raportare?",
+      placeholder: "Ex.: ajutor tehnic / raportare",
+    },
+    {
+      key: "target",
+      label: "Membrul raportat",
+      description: "Completează dacă este o raportare.",
+      placeholder: "Numele sau mențiunea membrului",
+    },
+    {
+      key: "description",
+      label: "Ce s-a întâmplat?",
+      description: "Descrie cazul cât mai clar.",
+      placeholder: "Povestește ce s-a întâmplat.",
+      multiline: true,
+    },
+    {
+      key: "when",
+      label: "Când s-a întâmplat?",
+      description: "Data sau momentul aproximativ.",
+      placeholder: "Ex.: astăzi, în jurul orei 18:00",
+    },
+    {
+      key: "evidence",
+      label: "Dovezi",
+      description: "Linkuri, capturi sau mesaje relevante.",
+      placeholder: "Adaugă linkuri sau explică ce dovezi ai.",
+      multiline: true,
+    },
+  ],
+};
+
+function ticketQuestion(kind: OracleTicketKind, key: string): TicketQuestion | null {
+  return TICKET_QUESTIONS[kind].find((question) => question.key === key) ?? null;
+}
+
+function ticketQuestionMenu(kind: OracleTicketKind): StringSelectMenuBuilder {
+  return new StringSelectMenuBuilder()
+    .setCustomId(`ticket_questions_${kind}`)
+    .setPlaceholder(
+      kind === "staff"
+        ? "Alege întrebarea la care răspunzi"
+        : kind === "partnership"
+          ? "Alege informația pentru parteneriat"
+          : "Alege ce vrei să descrii",
+    )
+    .setMinValues(1)
+    .setMaxValues(1)
+    .addOptions(
+      TICKET_QUESTIONS[kind].map((question) => ({
+        label: question.label,
+        description: question.description,
+        value: question.key,
+      })),
+    );
 }
 
 export function ticketPanelPayload(kind: OracleTicketKind): {
   embeds: EmbedBuilder[];
-  components: ActionRowBuilder<ButtonBuilder>[];
+  components: ActionRowBuilder<StringSelectMenuBuilder>[];
 } {
   const color = TICKET_COLORS[kind];
   const icon = TICKET_ICONS[kind];
@@ -47,10 +211,10 @@ export function ticketPanelPayload(kind: OracleTicketKind): {
     .setTitle(`${icon} ${TICKET_LABELS[kind]}`)
     .setDescription(
       kind === "staff"
-        ? "O nouă călătorie începe cu răspunsuri sincere. Completează aplicația clar, iar echipa va reveni asupra ei cât mai curând."
+        ? "Alege o întrebare din meniu și răspunde-i pe rând. Răspunsurile vor fi adăugate în acest ticket."
         : kind === "partnership"
-          ? "Spune-ne cine sunteți, ce construiți și cum putem ridica împreună două comunități."
-          : "Descrie problema cu suficiente detalii pentru ca echipa să poată vedea urma lăsată în cenușă.",
+          ? "Alege fiecare informație din meniu și completează propunerea pas cu pas."
+          : "Alege din meniu ce vrei să explici, apoi trimite răspunsul pentru verificarea staffului.",
     )
     .addFields(
       kind === "staff"
@@ -62,48 +226,27 @@ export function ticketPanelPayload(kind: OracleTicketKind): {
                 "Fără tag → aplicația este respinsă automat.",
             },
             {
-              name: "📋 Ce vei completa",
-              value:
-                "Nume și fus orar · Vârstă · Experiență · Disponibilitate · Motivație\n" +
-                "Conflict între membri · Îmbunătățiri pentru server",
+              name: "📋 Cum funcționează",
+              value: "Selectează o întrebare, completează răspunsul și revino în meniu pentru următoarea.",
             },
           ]
         : kind === "partnership"
           ? [
               {
-                name: "📋 Ce avem nevoie",
-                value:
-                  "Numele serverului · Descrierea comunității · Invitație\n" +
-                  "Membri și activitate · Public · Propunere · Beneficii",
+                name: "📋 Cum funcționează",
+                value: "Completează pe rând toate informațiile din meniul de mai jos.",
               },
             ]
           : [
               {
-                name: "🔎 Alege calea potrivită",
-                value:
-                  "Pentru ajutor, descrie problema și pașii care au dus la ea.\n" +
-                  "Pentru raportare, adaugă utilizatorul, momentul și dovezile.",
+                name: "🔎 Cum funcționează",
+                value: "Alege tipul de informație de care are nevoie stafful pentru analiză.",
               },
             ],
     )
     .setFooter({ text: "Regatul Cenușii · Răspunsurile rămân în acest ticket" });
 
-  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setCustomId(ticketButtonId("start", kind))
-      .setLabel(
-        kind === "staff"
-          ? "📝 Începe aplicația"
-          : kind === "partnership"
-            ? "🤝 Trimite propunerea"
-            : "📝 Descrie cazul",
-      )
-      .setStyle(ButtonStyle.Success),
-    new ButtonBuilder()
-      .setCustomId(ticketButtonId("requirements", kind))
-      .setLabel("📖 Vezi întrebările")
-      .setStyle(ButtonStyle.Secondary),
-  );
+  const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(ticketQuestionMenu(kind));
 
   return { embeds: [embed], components: [row] };
 }
@@ -230,6 +373,25 @@ function fieldValue(interaction: ModalSubmitInteraction, id: string): string {
   return interaction.fields.getTextInputValue(id);
 }
 
+export function ticketQuestionModal(kind: OracleTicketKind, key: string): ModalBuilder | null {
+  const question = ticketQuestion(kind, key);
+  if (!question) return null;
+
+  return new ModalBuilder()
+    .setCustomId(`ticket_answer_${kind}_${question.key}`)
+    .setTitle(`${TICKET_LABELS[kind]} · Răspuns`)
+    .addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        input(
+          "answer",
+          question.label.slice(0, 45),
+          question.placeholder,
+          question.multiline ? TextInputStyle.Paragraph : TextInputStyle.Short,
+        ),
+      ),
+    );
+}
+
 export function isTicketPanelMessage(message: Message, botId: string): boolean {
   if (message.author.id !== botId) return false;
   return message.components.some((row) => {
@@ -241,6 +403,26 @@ export function isTicketPanelMessage(message: Message, botId: string): boolean {
         component.customId.startsWith("ticket_"),
     );
   });
+}
+
+export async function handleTicketQuestionSelect(
+  interaction: StringSelectMenuInteraction,
+): Promise<boolean> {
+  const match = interaction.customId.match(/^ticket_questions_(staff|partnership|help_report)$/);
+  if (!match) return false;
+
+  const kind = match[1] as OracleTicketKind;
+  const modal = ticketQuestionModal(kind, interaction.values[0] ?? "");
+  if (!modal) {
+    await interaction.reply({
+      content: "❌ Întrebarea nu mai este disponibilă. Folosește meniul din nou.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return true;
+  }
+
+  await interaction.showModal(modal);
+  return true;
 }
 
 export async function handleTicketButton(interaction: ButtonInteraction): Promise<boolean> {
@@ -262,6 +444,59 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
   }
 
   await interaction.showModal(ticketModal(kind));
+  return true;
+}
+
+export async function handleTicketQuestionModal(interaction: ModalSubmitInteraction): Promise<boolean> {
+  const match = interaction.customId.match(/^ticket_answer_(staff|partnership|help_report)_(.+)$/);
+  if (!match) return false;
+
+  const kind = match[1] as OracleTicketKind;
+  const question = ticketQuestion(kind, match[2]!);
+  if (!question) return false;
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const answer = safeAnswer(fieldValue(interaction, "answer"));
+  const answerEmbed = new EmbedBuilder()
+    .setColor(TICKET_COLORS[kind])
+    .setTitle(`${TICKET_ICONS[kind]} ${TICKET_LABELS[kind]} · Răspuns primit`)
+    .setAuthor({
+      name: interaction.user.username,
+      iconURL: interaction.user.displayAvatarURL(),
+    })
+    .setDescription("Un răspuns nou a fost adăugat în acest ticket.")
+    .addFields({ name: question.label, value: answer, inline: false })
+    .setFooter({ text: "Alege următoarea întrebare din meniul de mai sus" })
+    .setTimestamp();
+
+  if (
+    !interaction.channel ||
+    !interaction.channel.isTextBased() ||
+    !("send" in interaction.channel)
+  ) {
+    await interaction.editReply({
+      content: "❌ Răspunsul nu a putut fi publicat în acest ticket. Încearcă din nou.",
+    });
+    return true;
+  }
+
+  try {
+    await interaction.channel.send({
+      embeds: [answerEmbed],
+      allowedMentions: { parse: [] },
+    });
+    await interaction.editReply({
+      content: `✅ Răspunsul pentru **${question.label}** a fost adăugat. Alege următoarea întrebare din meniu.`,
+    });
+  } catch (err) {
+    logger.error(
+      { err, guildId: interaction.guildId, channelId: interaction.channelId, ticketKind: kind },
+      "Ticket question answer could not be posted",
+    );
+    await interaction.editReply({
+      content: "❌ Răspunsul nu a putut fi adăugat în ticket. Încearcă din nou.",
+    });
+  }
   return true;
 }
 
