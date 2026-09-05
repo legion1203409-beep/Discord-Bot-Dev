@@ -18,7 +18,7 @@ import { IMG } from "./assets";
 import type { OracleTicketKind } from "./oracle-chat";
 
 const TICKET_COLORS: Record<OracleTicketKind, number> = {
-  staff: 0xb8753d,
+  staff: 0x9b4655,
   partnership: 0x7c8fbd,
   help_report: 0x9d6578,
 };
@@ -207,10 +207,10 @@ function ticketQuestionMenu(kind: OracleTicketKind): StringSelectMenuBuilder {
     .setCustomId(`ticket_questions_${kind}`)
     .setPlaceholder(
       kind === "staff"
-        ? "Alege întrebarea la care răspunzi"
+        ? "Selectează o întrebare..."
         : kind === "partnership"
-          ? "Alege informația pentru parteneriat"
-          : "Alege ce vrei să descrii",
+          ? "Selectează un câmp pentru parteneriat..."
+          : "Selectează ce vrei să descrii...",
     )
     .setMinValues(1)
     .setMaxValues(1)
@@ -234,40 +234,40 @@ export function ticketPanelPayload(kind: OracleTicketKind): {
     .setTitle(`${icon} ${TICKET_LABELS[kind]}`)
     .setDescription(
       kind === "staff"
-        ? "Alege o întrebare din meniu și răspunde-i pe rând. Răspunsurile vor fi adăugate în acest ticket."
+        ? "Completează aplicația pas cu pas.\nSelectează o întrebare și răspunde în fereastra care apare."
         : kind === "partnership"
-          ? "Alege fiecare informație din meniu și completează propunerea pas cu pas."
-          : "Alege din meniu ce vrei să explici, apoi trimite răspunsul pentru verificarea staffului.",
+          ? "Completează propunerea pas cu pas.\nAlege un câmp din meniu pentru a continua."
+          : "Descrie cazul cât mai clar.\nAlege din meniu informația pe care vrei să o adaugi.",
     )
     .addFields(
       kind === "staff"
         ? [
             {
-              name: "⚠️ Înainte să începi",
+              name: "⚠️ Condiție obligatorie",
               value:
                 "Tag-ul serverului este **OBLIGATORIU** pentru validarea aplicației.\n" +
-                "Fără tag → aplicația este respinsă automat.",
+                "Fără tag, aplicația este respinsă automat.",
             },
             {
-              name: "📋 Cum funcționează",
-              value: "Selectează o întrebare, completează răspunsul și revino în meniu pentru următoarea.",
+              name: "📋 Aplicarea",
+              value: "7 întrebări · răspunde sincer și clar",
             },
           ]
         : kind === "partnership"
           ? [
               {
-                name: "📋 Cum funcționează",
-                value: "Completează pe rând toate informațiile din meniul de mai jos.",
+                name: "📋 Propunerea",
+                value: "7 informații · completează fiecare câmp din meniu",
               },
             ]
           : [
               {
-                name: "🔎 Cum funcționează",
-                value: "Alege tipul de informație de care are nevoie stafful pentru analiză.",
+                name: "🔎 Pentru o analiză rapidă",
+                value: "Include persoana implicată, momentul și dovezile disponibile.",
               },
             ],
     )
-    .setFooter({ text: "Regatul Cenușii · Răspunsurile rămân în acest ticket" });
+    .setFooter({ text: "Regatul Cenușii · Selectează o întrebare de mai jos" });
   if (TICKET_SEAL) embed.setThumbnail(TICKET_SEAL);
 
   const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(ticketQuestionMenu(kind));
