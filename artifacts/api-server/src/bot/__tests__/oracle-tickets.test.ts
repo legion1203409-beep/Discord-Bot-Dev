@@ -8,6 +8,7 @@ import {
 } from "../oracle-chat";
 import {
   staffDetailsModal,
+  partnershipDetailsModal,
   isStaffTagRefusal,
   partnershipConfirmRow,
   partnershipPublishRow,
@@ -166,6 +167,11 @@ describe("Oracle ticket categories", () => {
       "🏰 Numele serverului",
       "📝 Descrierea serverului",
       "🔗 Linkul serverului",
+      "👤 Reprezentantul serverului",
+      "👥 Membri și activitate",
+      "🕯️ Motivul alianței",
+      "🎁 Ce oferă serverul",
+      "📜 Așteptări și reguli",
     ]);
     const confirmButton = partnershipConfirmRow("123").toJSON().components[0];
     expect(confirmButton && "custom_id" in confirmButton ? confirmButton.custom_id : undefined).toBe(
@@ -225,6 +231,25 @@ describe("Oracle ticket categories", () => {
     expect(detailsModal.title).toBe("Aplicare Staff · 2/2");
     expect(detailsModal.components).toHaveLength(3);
     expect(detailIds).toEqual(["staff_conflict", "staff_improvements", "staff_tag"]);
+  });
+
+  it("uses a second interactive step for the final partnership questions", () => {
+    const detailsModal = partnershipDetailsModal().toJSON();
+    const detailIds = detailsModal.components.flatMap((row) =>
+      "components" in row
+        ? row.components.flatMap((component) =>
+            "custom_id" in component ? [component.custom_id] : [],
+          )
+        : [],
+    );
+
+    expect(detailsModal.title).toBe("Propunere de Parteneriat · 2/2");
+    expect(detailsModal.components).toHaveLength(3);
+    expect(detailIds).toEqual([
+      "partnership_motivation",
+      "partnership_offer",
+      "partnership_terms",
+    ]);
   });
 
   it("shows the final eight staff questions without asking for a timezone", () => {

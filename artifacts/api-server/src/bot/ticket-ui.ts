@@ -284,7 +284,7 @@ export function ticketPanelPayload(kind: OracleTicketKind): {
           ? [
               {
                 name: "📜 Contractul",
-                value: `${TICKET_QUESTIONS[kind].length} întrebări · înaintezi cu butonul „Următoarea”`,
+                value: `${TICKET_QUESTIONS[kind].length} întrebări · două pagini de formular`,
               },
             ]
           : [
@@ -393,7 +393,13 @@ function input(
 export function ticketModal(kind: OracleTicketKind): ModalBuilder {
   const modal = new ModalBuilder()
     .setCustomId(`ticket_form_${kind}`)
-    .setTitle(kind === "staff" ? "Aplicare Staff · 1/2" : TICKET_LABELS[kind]);
+    .setTitle(
+      kind === "staff"
+        ? "Aplicare Staff · 1/2"
+        : kind === "partnership"
+          ? "Propunere de Parteneriat · 1/2"
+          : TICKET_LABELS[kind],
+    );
 
   const fields =
     kind === "staff"
@@ -407,10 +413,15 @@ export function ticketModal(kind: OracleTicketKind): ModalBuilder {
       : kind === "partnership"
         ? [
             input("partnership_name", "Numele serverului", "Ex.: Regatul Umbrelor"),
-            input("partnership_description", "Descrierea serverului", "Tematică, comunitate și ce oferiți", TextInputStyle.Paragraph),
+            input("partnership_representative", "Reprezentantul serverului", "Nume și username Discord"),
             input("partnership_invite", "Invitație / link", "https://discord.gg/..."),
             input("partnership_members", "Membri și activitate", "Ex.: 2.000 total · 300 activi"),
-            input("partnership_proposal", "Propunerea ta", "Cum ar arăta colaborarea?", TextInputStyle.Paragraph),
+            input(
+              "partnership_description",
+              "Descrierea serverului",
+              "Tematică, comunitate și ce oferiți, fără link aici",
+              TextInputStyle.Paragraph,
+            ),
           ]
         : [
             input("help_type", "Tipul solicitării", "Ajutor tehnic sau raportare membru"),
@@ -452,6 +463,39 @@ export function staffDetailsModal(): ModalBuilder {
         "staff_tag",
         "Accepți să porți tag-ul?",
         "Răspunde clar cu Da sau Nu.",
+      ),
+    ),
+  );
+  return modal;
+}
+
+export function partnershipDetailsModal(): ModalBuilder {
+  const modal = new ModalBuilder()
+    .setCustomId("ticket_form_partnership_details")
+    .setTitle("Propunere de Parteneriat · 2/2");
+  modal.addComponents(
+    new ActionRowBuilder<TextInputBuilder>().addComponents(
+      input(
+        "partnership_motivation",
+        "Motivul alianței",
+        "De ce doriți o alianță cu Regatul Cenușii?",
+        TextInputStyle.Paragraph,
+      ),
+    ),
+    new ActionRowBuilder<TextInputBuilder>().addComponents(
+      input(
+        "partnership_offer",
+        "Ce oferă serverul vostru",
+        "Promovare, evenimente, comunitate sau alte beneficii.",
+        TextInputStyle.Paragraph,
+      ),
+    ),
+    new ActionRowBuilder<TextInputBuilder>().addComponents(
+      input(
+        "partnership_terms",
+        "Așteptări și reguli",
+        "Ce așteptați și acceptați regulile pactului?",
+        TextInputStyle.Paragraph,
       ),
     ),
   );
@@ -563,8 +607,33 @@ export function partnershipSummaryEmbed(
         value: safeAnswer(answers.invite),
         inline: false,
       },
+      {
+        name: "👤 Reprezentantul serverului",
+        value: safeAnswer(answers.representative),
+        inline: false,
+      },
+      {
+        name: "👥 Membri și activitate",
+        value: safeAnswer(answers.members),
+        inline: false,
+      },
+      {
+        name: "🕯️ Motivul alianței",
+        value: safeAnswer(answers.motivation),
+        inline: false,
+      },
+      {
+        name: "🎁 Ce oferă serverul",
+        value: safeAnswer(answers.offer),
+        inline: false,
+      },
+      {
+        name: "📜 Așteptări și reguli",
+        value: safeAnswer(answers.terms),
+        inline: false,
+      },
     )
-    .setFooter({ text: "Regatul Cenușii · Copiază datele pentru evaluare" })
+    .setFooter({ text: "Regatul Cenușii · Verifică pactul înainte de publicare" })
     .setTimestamp();
   if (TICKET_SEAL) embed.setThumbnail(TICKET_SEAL);
   return embed;
@@ -910,9 +979,9 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
       panelMessageId: interaction.message.id,
       applicantUsername: interaction.user.username,
     });
-    if (kind === "staff") {
-      void interaction.message.edit(ticketPanelPayload("staff")).catch(() => null);
-      await interaction.showModal(ticketModal("staff"));
+    if (kind === "staff" || kind === "partnership") {
+      void interaction.message.edit(ticketPanelPayload(kind)).catch(() => null);
+      await interaction.showModal(ticketModal(kind));
       return true;
     }
 
@@ -953,6 +1022,10 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
 
   if (interaction.customId === "ticket_staff_continue") {
     await interaction.showModal(staffDetailsModal());
+    return true;
+  }
+  if (interaction.customId === "ticket_partnership_continue") {
+    await interaction.showModal(partnershipDetailsModal());
     return true;
   }
 
@@ -1166,6 +1239,83 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
     return true;
   }
 
+  if (interaction.customId === "ticket_form_partnership_details") {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const progressKey = `${interaction.channelId}:${interaction.user.id}`;
+    const progressState = ticketProgress.get(progressKey);
+    if (!progressState) {
+      await interaction.editReply({
+        content: "❌ Prima pagină a contractului nu mai este disponibilă. Reia contractul.",
+      });
+      return true;
+    }
+
+    const firstAnswers = progressState.answers ?? {};
+    const finalAnswers = {
+      ...firstAnswers,
+      motivation: safeAnswer(fieldValue(interaction, "partnership_motivation")),
+      offer: safeAnswer(fieldValue(interaction, "partnership_offer")),
+      terms: safeAnswer(fieldValue(interaction, "partnership_terms")),
+    };
+    const finalEmbed = partnershipSummaryEmbed(
+      interaction.user.username,
+      finalAnswers,
+    );
+
+    if (
+      !interaction.channel ||
+      !interaction.channel.isTextBased() ||
+      !("send" in interaction.channel)
+    ) {
+      await interaction.editReply({
+        content: "❌ Ultimele răspunsuri nu au putut fi publicate în ticket.",
+      });
+      return true;
+    }
+
+    try {
+      let mergedIntoFirstResponse = false;
+      if (progressState.responseMessageId && "messages" in interaction.channel) {
+        const firstResponse = await interaction.channel.messages
+          .fetch(progressState.responseMessageId)
+          .catch(() => null);
+        if (firstResponse) {
+          await firstResponse.edit({
+            embeds: [finalEmbed],
+            components: [partnershipConfirmRow(interaction.user.id)],
+            allowedMentions: { parse: [] },
+          });
+          mergedIntoFirstResponse = true;
+        }
+      }
+      if (!mergedIntoFirstResponse) {
+        const responseMessage = await interaction.channel.send({
+          embeds: [finalEmbed],
+          components: [partnershipConfirmRow(interaction.user.id)],
+          allowedMentions: { parse: [] },
+        });
+        progressState.responseMessageId = responseMessage.id;
+      }
+      progressState.answers = finalAnswers;
+      progressState.currentStep = TICKET_QUESTIONS.partnership.length;
+      progressState.status = "completed";
+      await lockTicketPanel(interaction, "partnership", "completed");
+      await interaction.editReply({
+        content:
+          "✅ Contractul alianței este complet. Toate cele 8 răspunsuri au fost unite într-un singur rezumat.",
+      });
+    } catch (err) {
+      logger.error(
+        { err, guildId: interaction.guildId, channelId: interaction.channelId },
+        "Final partnership application step could not be posted",
+      );
+      await interaction.editReply({
+        content: "❌ Ultimele răspunsuri nu au putut fi adăugate în ticket.",
+      });
+    }
+    return true;
+  }
+
   if (interaction.customId === "ticket_form_staff_details") {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const tagAnswer = safeAnswer(fieldValue(interaction, "staff_tag"));
@@ -1330,13 +1480,17 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
   } else if (kind === "partnership") {
     embed.addFields(
       { name: "Server", value: safeAnswer(fieldValue(interaction, "partnership_name")), inline: true },
+      {
+        name: "Reprezentant",
+        value: safeAnswer(fieldValue(interaction, "partnership_representative")),
+        inline: true,
+      },
       { name: "Membri și activitate", value: safeAnswer(fieldValue(interaction, "partnership_members")), inline: true },
       { name: "Descrierea serverului", value: safeAnswer(fieldValue(interaction, "partnership_description")), inline: false },
       { name: "Invitație / link", value: safeAnswer(fieldValue(interaction, "partnership_invite")), inline: false },
-      { name: "Propunere", value: safeAnswer(fieldValue(interaction, "partnership_proposal")), inline: false },
       {
         name: "Următorii pași",
-        value: "Stafful poate cere publicul țintă și beneficiile concrete pentru ambele comunități.",
+        value: "Apasă butonul de mai jos pentru întrebările despre motivul alianței, ofertă și regulile pactului.",
         inline: false,
       },
     );
@@ -1372,26 +1526,48 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
                 .setStyle(ButtonStyle.Primary),
             ),
           ]
+        : kind === "partnership"
+          ? [
+              new ActionRowBuilder<ButtonBuilder>().addComponents(
+                new ButtonBuilder()
+                  .setCustomId("ticket_partnership_continue")
+                  .setLabel("🤝 Continuă propunerea")
+                  .setStyle(ButtonStyle.Primary),
+              ),
+            ]
         : [];
     const responseMessage = await interaction.channel.send({
       embeds: [embed],
       components,
       allowedMentions: { parse: [] },
     });
-    if (kind === "staff") {
+    if (kind === "staff" || kind === "partnership") {
       const progressState = ticketProgress.get(
         `${interaction.channelId}:${interaction.user.id}`,
       );
       if (progressState) {
         progressState.currentStep = 5;
         progressState.responseMessageId = responseMessage.id;
-        progressState.answers = {
-          name: safeAnswer(fieldValue(interaction, "staff_name")),
-          age: safeAnswer(fieldValue(interaction, "staff_age")),
-          moderation: safeAnswer(fieldValue(interaction, "staff_experience")),
-          availability: safeAnswer(fieldValue(interaction, "staff_availability")),
-          motivation: safeAnswer(fieldValue(interaction, "staff_motivation")),
-        };
+        progressState.answers =
+          kind === "staff"
+            ? {
+                name: safeAnswer(fieldValue(interaction, "staff_name")),
+                age: safeAnswer(fieldValue(interaction, "staff_age")),
+                moderation: safeAnswer(fieldValue(interaction, "staff_experience")),
+                availability: safeAnswer(fieldValue(interaction, "staff_availability")),
+                motivation: safeAnswer(fieldValue(interaction, "staff_motivation")),
+              }
+            : {
+                server_name: safeAnswer(fieldValue(interaction, "partnership_name")),
+                representative: safeAnswer(
+                  fieldValue(interaction, "partnership_representative"),
+                ),
+                invite: safeAnswer(fieldValue(interaction, "partnership_invite")),
+                members: safeAnswer(fieldValue(interaction, "partnership_members")),
+                description: safeAnswer(
+                  fieldValue(interaction, "partnership_description"),
+                ),
+              };
       }
     }
   } catch (err) {
@@ -1409,6 +1585,8 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
     content:
       kind === "staff"
         ? "✅ Prima pagină a fost adăugată. Apasă **Continuă aplicația** în ticket pentru ultimele trei întrebări."
+        : kind === "partnership"
+          ? "✅ Prima pagină a fost adăugată. Apasă **Continuă propunerea** în ticket pentru ultimele trei întrebări."
         : "✅ Răspunsurile au fost adăugate în ticket. Un membru al echipei te va prelua cât mai curând.",
   });
   return true;
