@@ -9,10 +9,10 @@ import {
   staffDetailsModal,
   isStaffTagRefusal,
   ticketModal,
-  ticketContractPayload,
   ticketPanelPayload,
   ticketQuestionModal,
   ticketRequirementsEmbed,
+  ticketStatusRow,
 } from "../ticket-ui";
 
 function messageWithParent(parentId: string | null): Pick<Message, "channel"> {
@@ -68,7 +68,7 @@ describe("Oracle ticket categories", () => {
     expect(helpReport).toContain("Păstrează raportarea confidențială");
   });
 
-  it("builds a staff contract panel with an eight-question menu behind its start button", () => {
+  it("starts the eight-question staff contract directly from question one", () => {
     const panel = ticketPanelPayload("staff");
     const embed = panel.embeds[0]!.toJSON();
     const row = panel.components[0]!.toJSON();
@@ -83,21 +83,11 @@ describe("Oracle ticket categories", () => {
       "Deschide contractul",
     );
 
-    const contract = ticketContractPayload("staff");
-    const contractRow = contract.components[0]!.toJSON();
-    const menu = contractRow.components[0];
-    expect(menu?.custom_id).toBe("ticket_questions_staff");
-    expect(menu?.options).toHaveLength(8);
-    expect(menu?.options?.map((option) => option.label)).toEqual([
-      "1. Nume",
-      "2. Vârstă",
-      "3. Experiență în moderare",
-      "4. Timp disponibil",
-      "5. De ce dorești rolul?",
-      "6. Conflict între membri",
-      "7. Îmbunătățiri pentru server",
-      "8. Tag-ul serverului",
-    ]);
+    const firstQuestion = ticketQuestionModal("staff", "name")?.toJSON();
+    expect(firstQuestion?.custom_id).toBe("ticket_answer_staff_name");
+    const finalQuestion = ticketQuestionModal("staff", "server_tag")?.toJSON();
+    expect(finalQuestion?.custom_id).toBe("ticket_answer_staff_server_tag");
+
     const questionModal = ticketQuestionModal("staff", "conflict")?.toJSON();
     expect(questionModal?.custom_id).toBe("ticket_answer_staff_conflict");
     expect(questionModal?.components).toHaveLength(1);
@@ -117,18 +107,41 @@ describe("Oracle ticket categories", () => {
     expect(embed.thumbnail?.url).toContain("/api/assets/ticket_seal.png");
   });
 
-  it("keeps the partnership question menu complete", () => {
-    const panel = ticketContractPayload("partnership");
-    const menu = panel.components[0]!.toJSON().components[0];
-    expect(menu?.custom_id).toBe("ticket_questions_partnership");
-    expect(menu?.options).toHaveLength(7);
+  it("replaces the public start button with a disabled final status", () => {
+    const completed = ticketStatusRow("staff", "completed").toJSON().components[0];
+    const rejected = ticketStatusRow("staff", "rejected").toJSON().components[0];
+    expect(completed && "custom_id" in completed ? completed.custom_id : undefined).toBe(
+      "ticket_status_staff_completed",
+    );
+    expect(completed && "label" in completed ? completed.label : undefined).toBe(
+      "Contract completat",
+    );
+    expect(completed && "disabled" in completed ? completed.disabled : undefined).toBe(true);
+    expect(rejected && "label" in rejected ? rejected.label : undefined).toBe(
+      "Contract respins",
+    );
   });
 
-  it("keeps the help and report question menu focused", () => {
-    const panel = ticketContractPayload("help_report");
-    const menu = panel.components[0]!.toJSON().components[0];
-    expect(menu?.custom_id).toBe("ticket_questions_help_report");
-    expect(menu?.options).toHaveLength(5);
+  it("starts partnership contracts directly from their first question", () => {
+    const panel = ticketPanelPayload("partnership");
+    const button = panel.components[0]!.toJSON().components[0];
+    expect(button && "custom_id" in button ? button.custom_id : undefined).toBe(
+      "ticket_start_partnership",
+    );
+    expect(ticketQuestionModal("partnership", "server_name")?.toJSON().custom_id).toBe(
+      "ticket_answer_partnership_server_name",
+    );
+  });
+
+  it("starts help and report contracts directly from their first question", () => {
+    const panel = ticketPanelPayload("help_report");
+    const button = panel.components[0]!.toJSON().components[0];
+    expect(button && "custom_id" in button ? button.custom_id : undefined).toBe(
+      "ticket_start_help_report",
+    );
+    expect(ticketQuestionModal("help_report", "type")?.toJSON().custom_id).toBe(
+      "ticket_answer_help_report_type",
+    );
   });
 
   it("builds valid five-field modals and keeps the partnership description mandatory", () => {

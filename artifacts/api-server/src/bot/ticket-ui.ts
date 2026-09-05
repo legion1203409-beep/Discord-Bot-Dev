@@ -7,7 +7,6 @@ import {
   MessageFlags,
   ModalBuilder,
   ModalSubmitInteraction,
-  StringSelectMenuBuilder,
   StringSelectMenuInteraction,
   TextInputBuilder,
   TextInputStyle,
@@ -38,7 +37,12 @@ const TICKET_ICONS: Record<OracleTicketKind, string> = {
 const TICKET_SEAL = IMG.ticketSeal;
 const postedTicketPanels = new Set<string>();
 const ticketPanelLocks = new Map<string, Promise<boolean>>();
-const ticketProgress = new Map<string, number>();
+type TicketProgressState = {
+  currentStep: number;
+  panelMessageId: string;
+  status?: "completed" | "rejected";
+};
+const ticketProgress = new Map<string, TicketProgressState>();
 
 type TicketQuestion = {
   key: string;
@@ -214,6 +218,19 @@ function ticketStartButton(kind: OracleTicketKind): ButtonBuilder {
     .setCustomId(`ticket_start_${kind}`)
     .setLabel("Deschide contractul")
     .setStyle(ButtonStyle.Primary);
+}
+
+export function ticketStatusRow(
+  kind: OracleTicketKind,
+  status: "completed" | "rejected",
+): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`ticket_status_${kind}_${status}`)
+      .setLabel(status === "completed" ? "Contract completat" : "Contract respins")
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(true),
+  );
 }
 
 export function ticketPanelPayload(kind: OracleTicketKind): {
@@ -496,6 +513,27 @@ export function isTicketPanelMessage(message: Message, botId: string): boolean {
   });
 }
 
+async function lockTicketPanel(
+  interaction: ModalSubmitInteraction,
+  kind: OracleTicketKind,
+  status: "completed" | "rejected",
+): Promise<void> {
+  const state = ticketProgress.get(`${interaction.channelId}:${interaction.user.id}`);
+  if (!state?.panelMessageId || !interaction.channel?.isTextBased() || !("messages" in interaction.channel)) {
+    return;
+  }
+
+  try {
+    const panelMessage = await interaction.channel.messages.fetch(state.panelMessageId);
+    await panelMessage.edit({ components: [ticketStatusRow(kind, status)] });
+  } catch (err) {
+    logger.warn(
+      { err, channelId: interaction.channelId, panelMessageId: state.panelMessageId, status },
+      "Could not lock completed ticket contract button",
+    );
+  }
+}
+
 export async function handleTicketQuestionSelect(
   interaction: StringSelectMenuInteraction,
 ): Promise<boolean> {
@@ -522,7 +560,22 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
     const kind = startMatch[1] as OracleTicketKind;
     const firstQuestion = TICKET_QUESTIONS[kind][0];
     if (!firstQuestion) return false;
-    ticketProgress.set(`${interaction.channelId}:${interaction.user.id}`, 0);
+    const progressKey = `${interaction.channelId}:${interaction.user.id}`;
+    const existingProgress = ticketProgress.get(progressKey);
+    if (existingProgress?.status) {
+      await interaction.reply({
+        content:
+          existingProgress.status === "completed"
+            ? "✅ Contractul este deja completat."
+            : "❌ Contractul a fost deja respins.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
+    ticketProgress.set(progressKey, {
+      currentStep: 0,
+      panelMessageId: interaction.message.id,
+    });
     await interaction.showModal(ticketQuestionModal(kind, firstQuestion.key)!);
     return true;
   }
@@ -533,7 +586,18 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
     const questionIndex = Number(nextMatch[2]);
     const question = TICKET_QUESTIONS[kind][questionIndex - 1];
     const progressKey = `${interaction.channelId}:${interaction.user.id}`;
-    const expectedIndex = (ticketProgress.get(progressKey) ?? 0) + 1;
+    const progressState = ticketProgress.get(progressKey);
+    if (progressState?.status) {
+      await interaction.reply({
+        content:
+          progressState.status === "completed"
+            ? "✅ Contractul este deja completat."
+            : "❌ Contractul a fost deja respins.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
+    const expectedIndex = (progressState?.currentStep ?? 0) + 1;
     if (!question || questionIndex !== expectedIndex) {
       await interaction.reply({
         content: `⏳ Continuă cu pasul ${expectedIndex}/${TICKET_QUESTIONS[kind].length}.`,
@@ -643,10 +707,19 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
       allowedMentions: { parse: [] },
     });
     const progressKey = `${interaction.channelId}:${interaction.user.id}`;
-    if (!rejectedForTag) {
-      ticketProgress.set(progressKey, questionIndex);
-    } else {
-      ticketProgress.delete(progressKey);
+    const progressState = ticketProgress.get(progressKey);
+    if (rejectedForTag || isLastQuestion) {
+      if (progressState) {
+        progressState.currentStep = questionIndex;
+        progressState.status = rejectedForTag ? "rejected" : "completed";
+      }
+      await lockTicketPanel(
+        interaction,
+        kind,
+        rejectedForTag ? "rejected" : "completed",
+      );
+    } else if (progressState) {
+      progressState.currentStep = questionIndex;
     }
     const nextComponents =
       !rejectedForTag && !isLastQuestion
