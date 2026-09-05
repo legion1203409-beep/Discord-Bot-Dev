@@ -4345,6 +4345,9 @@ export async function startBot(onReady?: () => void): Promise<void> {
       }
       startGuildScheduler(client, guildId);
       void setupTrader(client, guildId);
+      for (const channel of guild.channels.cache.values()) {
+        scheduleTicketPanel(channel);
+      }
     }
 
     logOracleChatStatus();

@@ -239,9 +239,6 @@ export function ticketPanelPayload(kind: OracleTicketKind): {
 } {
   const color = TICKET_COLORS[kind];
   const icon = TICKET_ICONS[kind];
-  const staffQuestionList = TICKET_QUESTIONS.staff
-    .map((question) => `**${question.label}** — ${question.description}`)
-    .join("\n");
   const embed = new EmbedBuilder()
     .setColor(color)
     .setTitle(`${icon} ${TICKET_LABELS[kind]}`)
@@ -265,11 +262,7 @@ export function ticketPanelPayload(kind: OracleTicketKind): {
               name: "📜 Contractul",
                value:
                  `${TICKET_QUESTIONS.staff.length} întrebări · două pagini de formular.\n` +
-                 "Prima pagină conține întrebările 1–5, iar a doua întrebările 6–8.",
-             },
-             {
-               name: "📋 Întrebările contractului",
-               value: staffQuestionList,
+                 "Completează formularul în două etape și trimite fiecare pagină.",
             },
           ]
         : kind === "partnership"
@@ -312,7 +305,24 @@ export async function postTicketPanelIfMissing(
     }
 
     const recent = await channel.messages.fetch({ limit: 25 }).catch(() => null);
-    if (recent?.some((entry) => isTicketPanelMessage(entry, botId))) {
+    const existingPanel = recent?.find((entry) => isTicketPanelMessage(entry, botId));
+    if (existingPanel) {
+      const isActivePanel = existingPanel.components.some((row) => {
+        if (!("components" in row)) return false;
+        return row.components.some(
+          (component) =>
+            "customId" in component &&
+            component.customId === `ticket_start_${kind}`,
+        );
+      });
+      if (isActivePanel) {
+        await existingPanel.edit(ticketPanelPayload(kind)).catch((err) => {
+          logger.warn(
+            { err, channelId: channel.id, ticketKind: kind },
+            "Could not refresh existing interactive ticket panel",
+          );
+        });
+      }
       postedTicketPanels.add(channel.id);
       return false;
     }

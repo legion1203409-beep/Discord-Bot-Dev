@@ -84,17 +84,11 @@ describe("Oracle ticket categories", () => {
 
     expect(embed.title).toBe("🛡️ Aplicare Staff");
     expect(embed.fields?.[0]?.value).toContain("Tag-ul serverului");
-    const questionField = embed.fields?.find(
+    expect(embed.fields?.find(
       (field) => field.name === "📋 Întrebările contractului",
-    );
-    expect(questionField?.value).toContain("1. Nume");
-    expect(questionField?.value).toContain("2. Vârstă");
-    expect(questionField?.value).toContain("3. Experiență în moderare");
-    expect(questionField?.value).toContain("4. Timp disponibil");
-    expect(questionField?.value).toContain("5. De ce dorești rolul?");
-    expect(questionField?.value).toContain("6. Conflict între membri");
-    expect(questionField?.value).toContain("7. Îmbunătățiri pentru server");
-    expect(questionField?.value).toContain("8. Tag-ul serverului");
+    )).toBeUndefined();
+    const contractField = embed.fields?.find((field) => field.name === "📜 Contractul");
+    expect(contractField?.value).toContain("două pagini de formular");
     const startButton = row.components[0];
     const buttonData =
       startButton && "custom_id" in startButton ? startButton : undefined;
