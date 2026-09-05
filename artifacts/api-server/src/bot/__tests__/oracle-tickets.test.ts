@@ -73,6 +73,7 @@ describe("Oracle ticket categories", () => {
     expect(partnership).toContain("propunere de parteneriat");
     expect(partnership).toContain("🤝 Propunere de Parteneriat");
     expect(partnership).toContain("descrierea serverului");
+    expect(partnership).toContain("fără link de invitație în acest răspuns");
     expect(partnership).toContain("tematică, tipul comunității și ce oferă");
     expect(partnership).toContain("numărul aproximativ de membri");
     expect(helpReport).toContain("raportarea unui membru");
@@ -147,6 +148,7 @@ describe("Oracle ticket categories", () => {
     expect(ticketQuestionModal("partnership", "server_name")?.toJSON().custom_id).toBe(
       "ticket_answer_partnership_server_name",
     );
+    expect(ticketQuestionModal("partnership", "description")?.toJSON().components[0]).toBeDefined();
   });
 
   it("starts help and report contracts directly from their first question", () => {

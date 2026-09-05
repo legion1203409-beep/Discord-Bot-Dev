@@ -325,7 +325,7 @@ export function buildTicketSystemInstruction(kind: OracleTicketKind): string {
         ? [
             "Acesta este un ticket pentru o propunere de parteneriat.",
             "La început, prezintă un mini-formular elegant, cu titlul „🤝 Propunere de Parteneriat” și întrebări numerotate, pe rânduri separate.",
-            "Cere obligatoriu: 1) numele serverului, 2) descrierea serverului — tematică, tipul comunității și ce oferă —, 3) invitația sau linkul relevant, 4) numărul total de membri și numărul aproximativ de membri activi, 5) publicul țintă, 6) ce tip de colaborare propune și 7) ce beneficii ar avea ambele comunități.",
+            "Cere obligatoriu, în această ordine: 1) numele serverului, 2) reprezentantul serverului, 3) linkul serverului, 4) numărul total de membri și activitatea, 5) descrierea serverului — tematică, tipul comunității și ce oferă, fără link de invitație în acest răspuns —, 6) motivul alianței, 7) ce poate oferi serverul și 8) așteptările plus acceptarea regulilor pactului.",
             "Dacă lipsesc informații, cere doar câmpurile lipsă și nu aproba propunerea înainte ca descrierea serverului să fie clară.",
             "Nu promite aprobarea parteneriatului și nu prezenta discuția ca fiind acceptată înainte de verificarea staffului.",
           ]

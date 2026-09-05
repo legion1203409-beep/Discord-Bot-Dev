@@ -118,16 +118,15 @@ const TICKET_QUESTIONS: Record<OracleTicketKind, TicketQuestion[]> = {
       placeholder: "Ex.: Regatul Umbrelor",
     },
     {
-      key: "description",
-      label: "2. Descrierea serverului",
-      description: "Tematică, comunitate și ce oferiți.",
-      placeholder: "Descrieți serverul, tematica și ce oferiți.",
-      multiline: true,
+      key: "representative",
+      label: "2. Reprezentantul serverului",
+      description: "Cine reprezintă serverul în această alianță?",
+      placeholder: "Numele și username-ul reprezentantului",
     },
     {
       key: "invite",
-      label: "3. Invitație / link",
-      description: "Care este invitația sau linkul relevant?",
+      label: "3. Linkul serverului",
+      description: "Care este invitația Discord a serverului?",
       placeholder: "https://discord.gg/...",
     },
     {
@@ -137,24 +136,31 @@ const TICKET_QUESTIONS: Record<OracleTicketKind, TicketQuestion[]> = {
       placeholder: "Ex.: 2.000 total · 300 activi",
     },
     {
-      key: "audience",
-      label: "5. Publicul țintă",
-      description: "Cui se adresează comunitatea?",
-      placeholder: "Descrieți publicul țintă.",
+      key: "description",
+      label: "5. Descrierea serverului",
+      description: "Descrieți serverul, tematica și comunitatea. Nu includeți linkul aici.",
+      placeholder: "Prezentați serverul și atmosfera comunității.",
       multiline: true,
     },
     {
-      key: "collaboration",
-      label: "6. Tipul colaborării",
-      description: "Ce tip de colaborare propuneți?",
-      placeholder: "Descrieți colaborarea propusă.",
+      key: "motivation",
+      label: "6. Motivul alianței",
+      description: "De ce doriți o alianță cu Regatul Cenușii?",
+      placeholder: "Ce vă face să căutați acest pact?",
       multiline: true,
     },
     {
-      key: "benefits",
-      label: "7. Beneficii reciproce",
-      description: "Ce beneficii ar avea ambele comunități?",
-      placeholder: "Descrieți beneficiile pentru ambele servere.",
+      key: "offer",
+      label: "7. Ce oferă serverul vostru",
+      description: "Ce puteți oferi în cadrul alianței?",
+      placeholder: "Promovare, evenimente, comunitate sau alte beneficii.",
+      multiline: true,
+    },
+    {
+      key: "terms",
+      label: "8. Așteptări și reguli",
+      description: "Ce așteptați de la Regatul Cenușii și acceptați regulile pactului?",
+      placeholder: "Scrieți condițiile și confirmați că veți respecta alianța.",
       multiline: true,
     },
   ],
@@ -272,7 +278,7 @@ export function ticketPanelPayload(kind: OracleTicketKind): {
           ? [
               {
                 name: "📜 Contractul",
-                value: "7 informații · înaintezi cu butonul „Următoarea”",
+                value: `${TICKET_QUESTIONS[kind].length} întrebări · înaintezi cu butonul „Următoarea”`,
               },
             ]
           : [
@@ -469,11 +475,13 @@ export function ticketRequirementsEmbed(kind: OracleTicketKind): EmbedBuilder {
     embed.setDescription(
       "Pentru parteneriat, pregătește:\n\n" +
         "• numele serverului;\n" +
-        "• descrierea serverului — tematică, comunitate și ce oferă;\n" +
-        "• invitația sau linkul relevant;\n" +
+        "• reprezentantul serverului;\n" +
+        "• invitația sau linkul serverului;\n" +
         "• numărul total și activ de membri;\n" +
-        "• publicul țintă;\n" +
-        "• propunerea și beneficiile pentru ambele comunități.",
+        "• descrierea serverului — fără linkul de invitație în acest răspuns;\n" +
+        "• motivul alianței;\n" +
+        "• ce poate oferi serverul și ce așteaptă de la Regatul Cenușii;\n" +
+        "• acceptarea regulilor pactului.",
     );
   } else {
     embed.setDescription(
