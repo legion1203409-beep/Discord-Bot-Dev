@@ -7,6 +7,7 @@ import { startOracle, setOracleExtatic } from "./oracle";
 import { rehydrateCouncilDecree, startOracleCouncilScheduler, stopOracleCouncilScheduler } from "./oracle-council";
 import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle, addPlayerReputation, addPlayerGold, addPlayerXp, getPrestigeLevels, persistActiveBoss, loadActiveBossRowsByGuild, deleteActiveBoss, createActiveBossesTableIfNotExists, persistActiveChest, loadActiveChest, clearActiveChest, getFinalBossKills, KEYCHEST_DBKEY, LOCKCHEST_DBKEY, runMultiGuildMigrations } from "./db";
 import { getChannel, initChannelConfig, hasAnyChannelConfigured, type EventType } from "./channel-config";
+import { isTicketCategoryParentId } from "./ticket-categories";
 import {
   openFratiaVote,
   rehydrateFratiaVote,
@@ -861,7 +862,15 @@ async function fetchChannel(client: Client, type: EventType, guildId: string): P
     return null;
   }
   const ch = await client.channels.fetch(id).catch(() => null);
-  return ch instanceof TextChannel ? ch : null;
+  if (!(ch instanceof TextChannel)) return null;
+  if (isTicketCategoryParentId(ch.parentId)) {
+    logger.warn(
+      { guildId, type, channelId: ch.id, parentId: ch.parentId },
+      "Configured channel is a ticket channel — automated post skipped",
+    );
+    return null;
+  }
+  return ch;
 }
 
 // ─── Flee resolution ──────────────────────────────────────────────────────────

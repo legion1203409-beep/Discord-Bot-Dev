@@ -13,6 +13,7 @@ description: How getChannel() null return works and the fetchChannel() helper pa
 - `scheduler.ts` — `fetchChannel(client, type, guildId)` wraps null check + Discord fetch + TextChannel instanceof check. Use `channel.id` for channelId fields in boss/chest state objects (don't re-call getChannel after fetch).
 - `index.ts` — inline guard: `const id = getChannel(...); const ch = id ? await client.channels.fetch(id).catch(() => null) : null;`
 - `startOracle(client, id)` — guard: `const id = getChannel("main", guildId); if (id) startOracle(client, id);`
+- Automated destinations must also reject channels whose parent is one of the Oracle ticket categories; tickets are conversation-only and must never receive chests, events, bosses, or trader posts.
 
 ## Test pattern
 Any Vitest test file that imports scheduler functions **must** mock `channel-config`:

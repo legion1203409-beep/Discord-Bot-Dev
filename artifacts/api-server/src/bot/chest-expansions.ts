@@ -22,6 +22,7 @@ import {
 } from "./db";
 import { BRAND_FOOTER, ITEMS } from "./survival";
 import { getChannel } from "./channel-config";
+import { isTicketCategoryParentId } from "./ticket-categories";
 
 const WORLD_PREFIX = "chest_world:";
 const SEASONAL_ACTIVE_SUFFIX = "seasonal_active";
@@ -379,7 +380,7 @@ export async function openFratiaVote(client: Client, guildId: string): Promise<F
 
   const channelId = getChannel("main", guildId);
   const channel = channelId ? await client.channels.fetch(channelId).catch(() => null) : null;
-  if (!(channel instanceof TextChannel)) return null;
+  if (!(channel instanceof TextChannel) || isTicketCategoryParentId(channel.parentId)) return null;
 
   const vote: FratiaVote = {
     id: `fratia_${Date.now()}`,
@@ -417,7 +418,7 @@ export async function closeAndRewardFratiaVote(client: Client, guildId: string):
   if (!closed) return null;
   await rewardFratiaVote(closed);
   const channel = await client.channels.fetch(closed.channelId).catch(() => null);
-  if (channel instanceof TextChannel) {
+  if (channel instanceof TextChannel && !isTicketCategoryParentId(channel.parentId)) {
     const message = await channel.messages.fetch(closed.messageId).catch(() => null);
     await message?.edit({
       embeds: [buildFratiaVoteEmbed(closed)],
@@ -568,7 +569,7 @@ async function expireSeasonalChest(client: Client, chest: SeasonalChest): Promis
   };
   await saveState(stateKey(expired.guildId, `seasonal:${expired.id}`), expired);
   const channel = await client.channels.fetch(chest.channelId).catch(() => null);
-  if (channel instanceof TextChannel) {
+  if (channel instanceof TextChannel && !isTicketCategoryParentId(channel.parentId)) {
     const message = await channel.messages.fetch(chest.messageId).catch(() => null);
     await message?.edit({
       embeds: [buildSeasonalChestEmbed(expired, false, true)],
@@ -586,7 +587,7 @@ export async function spawnSeasonalChest(client: Client, guildId: string): Promi
 
   const channelId = getChannel("main", guildId);
   const channel = channelId ? await client.channels.fetch(channelId).catch(() => null) : null;
-  if (!(channel instanceof TextChannel)) return null;
+  if (!(channel instanceof TextChannel) || isTicketCategoryParentId(channel.parentId)) return null;
 
   const meta = seasonalForBucket(bucket);
   const chest: SeasonalChest = {

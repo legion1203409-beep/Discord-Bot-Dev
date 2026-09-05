@@ -13,6 +13,8 @@ import { MOOD_META, type MoodState } from "./oracle-content";
 import { handleJustice, handlePardon } from "./oracle-guard";
 import { getPlayerById, loadOracleCouncil, recordOracleInteraction, type OracleCouncilRecord } from "./db";
 import { postTicketPanelIfMissing } from "./ticket-ui";
+import { ORACLE_TICKET_CATEGORY_IDS, type TicketCategoryKind } from "./ticket-categories";
+export { ORACLE_TICKET_CATEGORY_IDS } from "./ticket-categories";
 import type { Player } from "@workspace/db";
 
 // The feature is keyed on the user's own OpenAI key. When it is absent the Oracle
@@ -41,13 +43,6 @@ function envInt(name: string, fallback: number, max?: number): number {
     return max;
   }
   return parsed;
-}
-
-/** Read a non-empty string env var, falling back to the default otherwise. */
-function envString(name: string, fallback: string): string {
-  const raw = process.env[name];
-  if (raw === undefined || raw.trim() === "") return fallback;
-  return raw.trim();
 }
 
 /**
@@ -166,19 +161,7 @@ const FALLBACK_LINE = "🕯️ *Cețurile dintre lumi sunt prea dese acum… Ora
 const TICKET_FALLBACK_LINE =
   "🕯️ *Cererea a fost auzită. Un membru al echipei va continua cercetarea în acest ticket.*";
 
-export type OracleTicketKind = "staff" | "partnership" | "help_report";
-
-/**
- * These are category IDs, not channel IDs. A ticket is considered open for
- * Oracle purposes while its channel remains under one of these categories.
- * Environment overrides keep the feature portable if the server reorganises
- * its categories later.
- */
-export const ORACLE_TICKET_CATEGORY_IDS: Record<OracleTicketKind, string> = {
-  staff: envString("ORACLE_STAFF_TICKET_CATEGORY_ID", "1545688369332228167"),
-  partnership: envString("ORACLE_PARTNERSHIP_TICKET_CATEGORY_ID", "1545688531144413194"),
-  help_report: envString("ORACLE_HELP_REPORT_TICKET_CATEGORY_ID", "1545688638438772796"),
-};
+export type OracleTicketKind = TicketCategoryKind;
 
 const lastReplyAt = new Map<string, number>();
 const replyTimestamps: number[] = [];

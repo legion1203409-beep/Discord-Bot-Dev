@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Message } from "discord.js";
+import { isTicketCategoryParentId } from "../ticket-categories";
 import {
   ORACLE_TICKET_CATEGORY_IDS,
   buildTicketSystemInstruction,
@@ -31,6 +32,14 @@ describe("Oracle ticket categories", () => {
   it("ignores channels outside the configured ticket categories", () => {
     expect(getOracleTicketKind(messageWithParent("999999999999999999"))).toBeNull();
     expect(getOracleTicketKind(messageWithParent(null))).toBeNull();
+  });
+
+  it("marks ticket category parents as protected from automated posts", () => {
+    expect(isTicketCategoryParentId(ORACLE_TICKET_CATEGORY_IDS.staff)).toBe(true);
+    expect(isTicketCategoryParentId(ORACLE_TICKET_CATEGORY_IDS.partnership)).toBe(true);
+    expect(isTicketCategoryParentId(ORACLE_TICKET_CATEGORY_IDS.help_report)).toBe(true);
+    expect(isTicketCategoryParentId("999999999999999999")).toBe(false);
+    expect(isTicketCategoryParentId(null)).toBe(false);
   });
 
   it("gives staff applications their own safe instructions", () => {
