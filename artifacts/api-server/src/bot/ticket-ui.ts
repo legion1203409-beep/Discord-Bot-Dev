@@ -40,6 +40,8 @@ const ticketPanelLocks = new Map<string, Promise<boolean>>();
 type TicketProgressState = {
   currentStep: number;
   panelMessageId: string;
+  responseMessageId?: string;
+  answers?: Record<string, string>;
   status?: "completed" | "rejected";
 };
 const ticketProgress = new Map<string, TicketProgressState>();
@@ -783,9 +785,11 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
     const tagAnswer = safeAnswer(fieldValue(interaction, "staff_tag"));
     const rejectedForTag = isStaffTagRefusal(tagAnswer);
     const progressKey = `${interaction.channelId}:${interaction.user.id}`;
+    const progressState = ticketProgress.get(progressKey);
+    const firstAnswers = progressState?.answers ?? {};
     const finalEmbed = new EmbedBuilder()
       .setColor(rejectedForTag ? 0xc0392b : TICKET_COLORS.staff)
-      .setTitle(rejectedForTag ? "❌ Aplicare respinsă" : "🛡️ Aplicare Staff · Situații practice")
+      .setTitle(rejectedForTag ? "❌ Aplicare respinsă" : "🛡️ Aplicare Staff · Formular complet")
       .setAuthor({
         name: interaction.user.username,
         iconURL: interaction.user.displayAvatarURL(),
@@ -793,9 +797,34 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
       .setDescription(
         rejectedForTag
           ? "Oracolul Cenușii a respins aplicația deoarece purtarea tag-ului serverului nu a fost acceptată."
-          : "Ultimele răspunsuri ale aplicației au fost adăugate pentru evaluarea echipei.",
+          : "Toate răspunsurile aplicației au fost adăugate pentru evaluarea echipei.",
       )
       .addFields(
+        {
+          name: "Nume",
+          value: safeAnswer(firstAnswers.name),
+          inline: true,
+        },
+        {
+          name: "Vârstă",
+          value: safeAnswer(firstAnswers.age),
+          inline: true,
+        },
+        {
+          name: "Experiență în moderare",
+          value: safeAnswer(firstAnswers.moderation),
+          inline: false,
+        },
+        {
+          name: "Timp disponibil",
+          value: safeAnswer(firstAnswers.availability),
+          inline: true,
+        },
+        {
+          name: "Motivație",
+          value: safeAnswer(firstAnswers.motivation),
+          inline: false,
+        },
         {
           name: "Gestionarea unui conflict",
           value: safeAnswer(fieldValue(interaction, "staff_conflict")),
@@ -831,11 +860,26 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
     }
 
     try {
-      await interaction.channel.send({
-        embeds: [finalEmbed],
-        allowedMentions: { parse: [] },
-      });
-      const progressState = ticketProgress.get(progressKey);
+      let mergedIntoFirstResponse = false;
+      if (progressState?.responseMessageId && "messages" in interaction.channel) {
+        const firstResponse = await interaction.channel.messages
+          .fetch(progressState.responseMessageId)
+          .catch(() => null);
+        if (firstResponse) {
+          await firstResponse.edit({
+            embeds: [finalEmbed],
+            components: [],
+            allowedMentions: { parse: [] },
+          });
+          mergedIntoFirstResponse = true;
+        }
+      }
+      if (!mergedIntoFirstResponse) {
+        await interaction.channel.send({
+          embeds: [finalEmbed],
+          allowedMentions: { parse: [] },
+        });
+      }
       if (progressState) {
         progressState.currentStep = TICKET_QUESTIONS.staff.length;
         progressState.status = rejectedForTag ? "rejected" : "completed";
@@ -940,7 +984,7 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
             ),
           ]
         : [];
-    await interaction.channel.send({
+    const responseMessage = await interaction.channel.send({
       embeds: [embed],
       components,
       allowedMentions: { parse: [] },
@@ -949,7 +993,17 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
       const progressState = ticketProgress.get(
         `${interaction.channelId}:${interaction.user.id}`,
       );
-      if (progressState) progressState.currentStep = 5;
+      if (progressState) {
+        progressState.currentStep = 5;
+        progressState.responseMessageId = responseMessage.id;
+        progressState.answers = {
+          name: safeAnswer(fieldValue(interaction, "staff_name")),
+          age: safeAnswer(fieldValue(interaction, "staff_age")),
+          moderation: safeAnswer(fieldValue(interaction, "staff_experience")),
+          availability: safeAnswer(fieldValue(interaction, "staff_availability")),
+          motivation: safeAnswer(fieldValue(interaction, "staff_motivation")),
+        };
+      }
     }
   } catch (err) {
     logger.error(
