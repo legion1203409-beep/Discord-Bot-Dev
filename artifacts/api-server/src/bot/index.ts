@@ -42,12 +42,14 @@ import {
   recordOracleRelationshipChange,
   prophecyCooldownRemaining,
   reserveProphecy,
+  getOracleTicketKindFromParentId,
 } from "./oracle-chat";
 import {
   handleTicketButton,
   handleTicketModal,
   handleTicketQuestionModal,
   handleTicketQuestionSelect,
+  postTicketPanelIfMissing,
 } from "./ticket-ui";
 import { handleOracleCouncilVote, isOracleCouncilButton } from "./oracle-council";
 import {
@@ -4239,6 +4241,42 @@ export async function startBot(onReady?: () => void): Promise<void> {
     );
   }
   const client = new Client({ intents });
+
+  function scheduleTicketPanel(channel: unknown): void {
+    if (!channel || typeof channel !== "object") return;
+    const candidate = channel as {
+      guildId?: string | null;
+      parentId?: string | null;
+      isTextBased?: () => boolean;
+    };
+    if (!candidate.guildId || !candidate.parentId || !candidate.isTextBased?.()) return;
+    const kind = getOracleTicketKindFromParentId(candidate.parentId);
+    const botId = client.user?.id;
+    if (!kind || !botId) return;
+
+    void postTicketPanelIfMissing(channel as Message["channel"], kind, botId)
+      .then((posted) => {
+        if (posted) {
+          logger.info(
+            { guildId: candidate.guildId, channelId: (channel as { id?: string }).id, ticketKind: kind },
+            "Interactive ticket panel posted when ticket channel opened",
+          );
+        }
+      })
+      .catch((err) => {
+        logger.warn(
+          { err, guildId: candidate.guildId, channelId: (channel as { id?: string }).id, ticketKind: kind },
+          "Could not post interactive ticket panel when ticket channel opened",
+        );
+      });
+  }
+
+  client.on(Events.ChannelCreate, (channel) => {
+    scheduleTicketPanel(channel);
+  });
+  client.on(Events.ChannelUpdate, (_oldChannel, channel) => {
+    scheduleTicketPanel(channel);
+  });
 
   // Event-loop lag monitor: if the loop is blocked, interactions pile up and
   // expire (10062). A tick scheduled every second should fire ~on time.
