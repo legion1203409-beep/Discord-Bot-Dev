@@ -8,6 +8,7 @@ import {
 import {
   staffDetailsModal,
   ticketModal,
+  ticketContractPayload,
   ticketPanelPayload,
   ticketQuestionModal,
   ticketRequirementsEmbed,
@@ -64,14 +65,24 @@ describe("Oracle ticket categories", () => {
     expect(helpReport).toContain("Păstrează raportarea confidențială");
   });
 
-  it("builds a staff panel with a seven-question dropdown menu", () => {
+  it("builds a staff contract panel with a seven-question menu behind its start button", () => {
     const panel = ticketPanelPayload("staff");
     const embed = panel.embeds[0]!.toJSON();
     const row = panel.components[0]!.toJSON();
 
     expect(embed.title).toBe("🛡️ Aplicare Staff");
     expect(embed.fields?.[0]?.value).toContain("Tag-ul serverului");
-    const menu = row.components[0];
+    const startButton = row.components[0];
+    const buttonData =
+      startButton && "custom_id" in startButton ? startButton : undefined;
+    expect(buttonData?.custom_id).toBe("ticket_start_staff");
+    expect(buttonData && "label" in buttonData ? buttonData.label : undefined).toBe(
+      "Deschide contractul",
+    );
+
+    const contract = ticketContractPayload("staff");
+    const contractRow = contract.components[0]!.toJSON();
+    const menu = contractRow.components[0];
     expect(menu?.custom_id).toBe("ticket_questions_staff");
     expect(menu?.options).toHaveLength(7);
     expect(menu?.options?.map((option) => option.label)).toEqual([
@@ -103,14 +114,14 @@ describe("Oracle ticket categories", () => {
   });
 
   it("keeps the partnership question menu complete", () => {
-    const panel = ticketPanelPayload("partnership");
+    const panel = ticketContractPayload("partnership");
     const menu = panel.components[0]!.toJSON().components[0];
     expect(menu?.custom_id).toBe("ticket_questions_partnership");
     expect(menu?.options).toHaveLength(7);
   });
 
   it("keeps the help and report question menu focused", () => {
-    const panel = ticketPanelPayload("help_report");
+    const panel = ticketContractPayload("help_report");
     const menu = panel.components[0]!.toJSON().components[0];
     expect(menu?.custom_id).toBe("ticket_questions_help_report");
     expect(menu?.options).toHaveLength(5);
