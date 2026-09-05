@@ -9,6 +9,7 @@ import {
 import {
   staffDetailsModal,
   partnershipDetailsModal,
+  partnershipHasUnder200Members,
   isStaffTagRefusal,
   partnershipConfirmRow,
   partnershipPublishRow,
@@ -188,6 +189,13 @@ describe("Oracle ticket categories", () => {
       "ticket_alliance_post_123",
       "ticket_alliance_edit_123",
     ]);
+  });
+
+  it("marks only partnerships below 200 total members as no-ping promotions", () => {
+    expect(partnershipHasUnder200Members("199 total · 80 activi")).toBe(true);
+    expect(partnershipHasUnder200Members("200 total · 80 activi")).toBe(false);
+    expect(partnershipHasUnder200Members("2.000 total · 300 activi")).toBe(false);
+    expect(partnershipHasUnder200Members("nu este precizat")).toBe(false);
   });
 
   it("starts help and report contracts directly from their first question", () => {

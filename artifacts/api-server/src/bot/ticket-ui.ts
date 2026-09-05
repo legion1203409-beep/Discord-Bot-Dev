@@ -648,6 +648,27 @@ export function partnershipConfirmRow(userId: string): ActionRowBuilder<ButtonBu
   );
 }
 
+export function partnershipHasUnder200Members(value: string | undefined): boolean {
+  const normalized = value?.trim().replace(/\s/g, "") ?? "";
+  const match = normalized.match(/\d{1,3}(?:[.,]\d{3})*|\d+/);
+  if (!match) return false;
+  const total = Number(match[0].replace(/[.,](?=\d{3}(?:\D|$))/g, ""));
+  return Number.isFinite(total) && total < 200;
+}
+
+function addSmallServerPromotionRule(
+  embed: EmbedBuilder,
+  members: string | undefined,
+): void {
+  if (partnershipHasUnder200Members(members)) {
+    embed.addFields({
+      name: "📌 Regula promovării",
+      value: "Serverele cu sub 200 de membri se promovează fără niciun ping.",
+      inline: false,
+    });
+  }
+}
+
 export function partnershipDraftEmbed(
   username: string,
   answers: Record<string, string>,
@@ -676,6 +697,7 @@ export function partnershipDraftEmbed(
     )
     .setFooter({ text: "Draft diplomatic · Nu este publicat încă" })
     .setTimestamp();
+  addSmallServerPromotionRule(embed, answers.members);
   if (TICKET_SEAL) embed.setThumbnail(TICKET_SEAL);
   return embed;
 }
@@ -716,6 +738,7 @@ function allianceAnnouncementEmbed(answers: Record<string, string>): EmbedBuilde
     )
     .setFooter({ text: "Pact pecetluit · Regatul Cenușii" })
     .setTimestamp();
+  addSmallServerPromotionRule(embed, answers.members);
   if (TICKET_SEAL) embed.setThumbnail(TICKET_SEAL);
   return embed;
 }
