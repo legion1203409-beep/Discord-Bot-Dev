@@ -444,6 +444,8 @@ export function scheduleIncompleteTicketDeletion(channel: unknown): void {
 
   const existingTimer = ticketDeletionTimers.get(candidate.id);
   if (existingTimer) clearTimeout(existingTimer);
+  const deleteChannel = candidate.delete;
+  if (!deleteChannel) return;
 
   const delay = Math.max(
     0,
@@ -458,7 +460,7 @@ export function scheduleIncompleteTicketDeletion(channel: unknown): void {
     if (progressFinished || await ticketHasFinishedStatus(candidate)) return;
 
     try {
-      await candidate.delete("Ticket incomplet după 30 de minute");
+      await deleteChannel.call(candidate, "Ticket incomplet după 30 de minute");
       postedTicketPanels.delete(channelId);
       for (const key of ticketProgress.keys()) {
         if (key.startsWith(`${channelId}:`)) ticketProgress.delete(key);

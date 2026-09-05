@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Message } from "discord.js";
 import { isTicketCategoryParentId } from "../ticket-categories";
 import {
@@ -22,6 +22,8 @@ import {
   allianceRecruitmentAnnouncementText,
   allianceRecruitmentTextModal,
   allianceStaffNotificationText,
+  INCOMPLETE_TICKET_TIMEOUT_MS,
+  scheduleIncompleteTicketDeletion,
   staffOracleReviewPayload,
   ticketModal,
   ticketPanelPayload,
@@ -264,6 +266,27 @@ describe("Oracle ticket categories", () => {
     expect(allianceRecruitmentAnnouncementText("")).toContain(
       "🌫️ Regatul Cenușii își deschide porțile",
     );
+  });
+
+  it("deletes an unfinished ticket after the 30-minute timeout", async () => {
+    vi.useFakeTimers();
+    try {
+      const deleteChannel = vi.fn().mockResolvedValue(undefined);
+      const fetchMessages = vi.fn().mockResolvedValue(new Map());
+      scheduleIncompleteTicketDeletion({
+        id: "unfinished-ticket",
+        createdTimestamp: Date.now(),
+        delete: deleteChannel,
+        messages: { fetch: fetchMessages },
+      });
+
+      await vi.advanceTimersByTimeAsync(INCOMPLETE_TICKET_TIMEOUT_MS);
+
+      expect(fetchMessages).toHaveBeenCalledWith({ limit: 100 });
+      expect(deleteChannel).toHaveBeenCalledWith("Ticket incomplet după 30 de minute");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("starts help and report contracts directly from their first question", () => {
