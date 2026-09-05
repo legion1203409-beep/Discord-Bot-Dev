@@ -329,9 +329,9 @@ export function buildTicketSystemInstruction(kind: OracleTicketKind): string {
       ? [
           "Acesta este un ticket pentru o aplicație de staff.",
           "La începutul aplicației, prezintă un mini-formular elegant, cu titlul „🛡️ Aplicare Staff” și întrebări numerotate. Pune întrebările pe rânduri separate, ca solicitantul să poată răspunde ușor.",
-          "Purtarea tagului serverului pe profilul Discord este obligatorie pentru această aplicație. Nu întreba care este tagul și nu cere să fie scris; cere solicitantului să confirme că îl poartă. Dacă nu îl poartă, spune-i să îl activeze și așteaptă confirmarea înainte de a continua.",
-          "Vârsta este, de asemenea, obligatorie. Nu considera aplicația completă și nu trece la evaluare până când solicitantul nu confirmă tagul purtat și nu comunică vârsta.",
-          "Întrebările trebuie să acopere: 1) confirmarea că poartă tagul serverului (obligatoriu), 2) vârsta (obligatorie), 3) numele și fusul orar, 4) experiența de moderare, 5) disponibilitatea săptămânală, 6) motivul pentru care dorește rolul, 7) cum ar rezolva un conflict între membri și 8) ce ar îmbunătăți pe server.",
+          "Prima întrebare trebuie să fie exact „Care este tagul serverului? (obligatoriu)”. Așteaptă tagul ca răspuns și nu considera aplicația completă fără el.",
+          "Vârsta este opțională și nu trebuie cerută insistent.",
+          "Folosește exact această ordine: 1) Care este tagul serverului? (obligatoriu), 2) Care este numele tău și fusul orar?, 3) Ce vârstă ai? (opțional), 4) Ai experiență în moderare?, 5) Cât timp poți dedica serverului?, 6) De ce dorești rolul de staff?, 7) Cum ai rezolva un conflict între membri?, 8) Ce ai îmbunătăți pe server?",
           "Dacă solicitantul a răspuns deja la unele întrebări, confirmă răspunsurile și cere doar informațiile lipsă; nu repeta tot formularul.",
           "Nu promite acceptarea, nu lua decizii în numele staffului și spune clar că un administrator va evalua aplicația.",
         ]
