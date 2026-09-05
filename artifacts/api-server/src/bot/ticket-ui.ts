@@ -1525,18 +1525,24 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
           .catch(() => null);
         if (firstResponse) {
           await firstResponse.edit({
+            content: allianceStaffNotificationText(
+              interaction.user.globalName ?? interaction.user.username,
+            ),
             embeds: [finalEmbed],
             components: [partnershipConfirmRow(interaction.user.id)],
-            allowedMentions: { parse: [] },
+            allowedMentions: { parse: [], roles: [STAFF_REVIEW_ROLE_ID] },
           });
           mergedIntoFirstResponse = true;
         }
       }
       if (!mergedIntoFirstResponse) {
         const responseMessage = await interaction.channel.send({
+          content: allianceStaffNotificationText(
+            interaction.user.globalName ?? interaction.user.username,
+          ),
           embeds: [finalEmbed],
           components: [partnershipConfirmRow(interaction.user.id)],
-          allowedMentions: { parse: [] },
+          allowedMentions: { parse: [], roles: [STAFF_REVIEW_ROLE_ID] },
         });
         progressState.responseMessageId = responseMessage.id;
       }
