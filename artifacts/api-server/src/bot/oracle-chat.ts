@@ -12,7 +12,10 @@ import { getCurrentMood } from "./oracle";
 import { MOOD_META, type MoodState } from "./oracle-content";
 import { handleJustice, handlePardon } from "./oracle-guard";
 import { getPlayerById, loadOracleCouncil, recordOracleInteraction, type OracleCouncilRecord } from "./db";
-import { postTicketPanelIfMissing } from "./ticket-ui";
+import {
+  isLegacyOracleTicketPromptText,
+  postTicketPanelIfMissing,
+} from "./ticket-ui";
 import { ORACLE_TICKET_CATEGORY_IDS, type TicketCategoryKind } from "./ticket-categories";
 export { ORACLE_TICKET_CATEGORY_IDS } from "./ticket-categories";
 import type { Player } from "@workspace/db";
@@ -312,34 +315,31 @@ export function buildTicketSystemInstruction(kind: OracleTicketKind): string {
     kind === "staff"
       ? [
           "Acesta este un ticket pentru o aplicație de staff.",
-          "Formularul interactiv este afișat deja de bot. Nu recrea formularul, nu lista toate întrebările și nu trimite un mesaj introductiv cu întrebări numerotate.",
-          "Păstrează doar explicațiile scurte necesare după ce solicitantul răspunde în formular.",
+          "Panoul și ferestrele interactive colectează toate răspunsurile. Nu cere informațiile în chat, nu pune întrebări pentru completarea aplicației și nu enumera câmpurile formularului.",
+          "Răspunde scurt doar dacă solicitantul cere o explicație despre proces.",
           "Tagul rămâne o condiție obligatorie și trebuie verificat prin ultima întrebare a formularului.",
-          "Vârsta este obligatorie și trebuie cerută fără mențiunea „opțional”.",
-          "Folosește exact această ordine: 1) Care este numele tău?, 2) Ce vârstă ai?, 3) Ai experiență în moderare?, 4) Cât timp poți dedica serverului?, 5) De ce dorești rolul de staff?, 6) Cum ai rezolva un conflict între membri?, 7) Ce ai îmbunătăți pe server?, 8) Accepți să porți tag-ul serverului?",
           "Dacă solicitantul răspunde «nu» sau refuză purtarea tag-ului la ultima întrebare, spune imediat și clar că aplicația este respinsă.",
-          "Dacă solicitantul a răspuns deja la unele întrebări, confirmă răspunsurile și cere doar informațiile lipsă; nu repeta tot formularul.",
           "Nu promite acceptarea și nu lua alte decizii în numele staffului; singura excepție este respingerea automată pentru refuzul tag-ului. Spune clar că un administrator va evalua orice aplicație care trece de această condiție.",
         ]
       : kind === "partnership"
         ? [
             "Acesta este un ticket pentru o propunere de parteneriat.",
-            "Formularul interactiv este afișat deja de bot. Nu recrea formularul și nu trimite un mesaj introductiv cu întrebări numerotate.",
-            "Cere obligatoriu, în această ordine: 1) numele serverului, 2) reprezentantul serverului, 3) linkul serverului, 4) numărul total de membri și numărul aproximativ de membri activi, 5) descrierea serverului — tematică, tipul comunității și ce oferă, fără link de invitație în acest răspuns —, 6) motivul alianței, 7) ce poate oferi serverul și 8) așteptările plus acceptarea regulilor pactului.",
-            "Dacă lipsesc informații, cere doar câmpurile lipsă și nu aproba propunerea înainte ca descrierea serverului să fie clară.",
+            "Panoul și ferestrele interactive colectează toate răspunsurile. Nu cere informațiile în chat, nu pune întrebări pentru completarea alianței și nu enumera câmpurile formularului.",
+            "Răspunde scurt doar dacă solicitantul cere o explicație despre proces.",
             "Nu promite aprobarea parteneriatului și nu prezenta discuția ca fiind acceptată înainte de verificarea staffului.",
           ]
         : [
             "Acesta este un ticket pentru ajutor sau raportarea unui membru.",
-            "Dacă este o problemă tehnică, cere pașii, mesajul de eroare și dovezile utile.",
-            "Dacă este o raportare, cere utilizatorul raportat, ce s-a întâmplat, când s-a întâmplat și dovezi, fără să acuzi sau să sancționezi pe nimeni.",
+            "Panoul și ferestrele interactive colectează detaliile. Nu crea un formular în chat, nu enumera întrebări și nu cere câmpurile deja gestionate de interfață.",
+            "Poți răspunde scurt la întrebări despre proces, fără să acuzi sau să sancționezi pe nimeni.",
             "Păstrează raportarea confidențială în acest ticket, nu divulga detalii altor membri și explică faptul că stafful va analiza cazul.",
           ];
 
   return [
     "Răspunzi într-un ticket Discord deschis, nu într-o conversație publică.",
     "Fii mai clar, calm și util decât în conversația obișnuită, păstrând doar o urmă discretă de atmosfera Oracolului.",
-    "Răspunde în limba română. Nu afișa liste de întrebări sau mini-formulare; acestea sunt gestionate de interfața interactivă. După ce solicitantul începe să răspundă, continuă conversația natural și pune doar următoarea întrebare utilă.",
+    "Răspunde în limba română. Nu afișa liste de întrebări, mini-formulare sau cereri de completare; acestea sunt gestionate exclusiv de interfața interactivă.",
+    "Nu pune întrebări pentru completarea ticketului. Răspunde numai la întrebarea concretă a solicitantului, în cel mult două propoziții.",
     "Nu spune că ești AI, bot sau model și nu inventa acțiuni pe care nu le-ai făcut.",
     "Nu cere parole, tokenuri, coduri de autentificare sau alte secrete.",
     "Nu aplica sancțiuni, nu închide ticketul și nu pretinde că ai contactat stafful. Poți spune doar că informația rămâne în ticket pentru verificarea echipei.",
@@ -1052,6 +1052,14 @@ async function maybeReplyInTicket(
       false,
       buildTicketSystemInstruction(kind),
     );
+
+    if (reply && isLegacyOracleTicketPromptText(reply)) {
+      logger.warn(
+        { guildId: message.guildId, channelId: message.channelId, ticketKind: kind },
+        "Oracle ticket form reply suppressed",
+      );
+      return;
+    }
 
     await message.reply({
       content: (reply || TICKET_FALLBACK_LINE).slice(0, DISCORD_MAX_CHARS),

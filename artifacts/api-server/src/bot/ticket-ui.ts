@@ -254,13 +254,20 @@ function ticketPanelFallback(kind: OracleTicketKind): string {
   return "🕯️ **Ajutor / Raportare**\n\nAlege din meniul interactiv ce vrei să descrii pentru staff.";
 }
 
-function isLegacyOracleTicketPrompt(message: Message, botId: string): boolean {
-  if (message.author.id !== botId || message.components.length > 0) return false;
-  const content = message.content ?? "";
+export function isLegacyOracleTicketPromptText(content: string): boolean {
   const hasTicketTitle =
     /(?:Aplicare Staff|Propunere de Parteneriat|Ajutor\s*\/\s*Raportare)/i.test(content);
   const numberedQuestions = content.match(/(?:^|\n)\s*\d+[.)]\s/g)?.length ?? 0;
-  return hasTicketTitle && numberedQuestions >= 5;
+  const hasFormLanguage =
+    /(?:în această ordine|trimite-mi aceste câmpuri|completează.+(?:câmp|întreb)|formular|răspunde.+(?:punct|întreb))/i.test(
+      content,
+    );
+  return numberedQuestions >= 5 && (hasTicketTitle || hasFormLanguage || numberedQuestions >= 8);
+}
+
+function isLegacyOracleTicketPrompt(message: Message, botId: string): boolean {
+  if (message.author.id !== botId || message.components.length > 0) return false;
+  return isLegacyOracleTicketPromptText(message.content ?? "");
 }
 
 function ticketStartButton(kind: OracleTicketKind): ButtonBuilder {
@@ -354,7 +361,7 @@ export async function postTicketPanelIfMissing(
       return false;
     }
 
-    const recent = await channel.messages.fetch({ limit: 25 }).catch(() => null);
+    const recent = await channel.messages.fetch({ limit: 100 }).catch(() => null);
     const legacyPrompts = recent?.filter((entry) => isLegacyOracleTicketPrompt(entry, botId));
     if (legacyPrompts?.size) {
       await Promise.all(
