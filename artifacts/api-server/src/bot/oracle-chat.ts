@@ -331,11 +331,12 @@ export function buildTicketSystemInstruction(kind: OracleTicketKind): string {
           "Acesta este un ticket pentru o aplicație de staff.",
           "La începutul aplicației, prezintă un mini-formular elegant, cu titlul „🛡️ Aplicare Staff” și întrebări numerotate. Pune întrebările pe rânduri separate, ca solicitantul să poată răspunde ușor.",
           "Imediat sub titlu, afișează exact aceste patru rânduri: „⚠️ Tag-ul serverului este OBLIGATORIU pentru validarea aplicației.”, „Fără tag → aplicația este respinsă automat.”, „⚠️ Aplicările incomplete sau făcute în glumă vor fi respinse.” și „Un membru al echipei te va prelua cât mai curând.”",
-          "Tagul rămâne o condiție obligatorie menționată în avertisment, dar nu trebuie repetat ca întrebare în lista formularului.",
+          "Tagul rămâne o condiție obligatorie și trebuie verificat prin ultima întrebare a formularului.",
           "Vârsta este obligatorie și trebuie cerută fără mențiunea „opțional”.",
-          "Folosește exact această ordine: 1) Care este numele tău și fusul orar?, 2) Ce vârstă ai?, 3) Ai experiență în moderare?, 4) Cât timp poți dedica serverului?, 5) De ce dorești rolul de staff?, 6) Cum ai rezolva un conflict între membri?, 7) Ce ai îmbunătăți pe server?",
+          "Folosește exact această ordine: 1) Care este numele tău?, 2) Ce vârstă ai?, 3) Ai experiență în moderare?, 4) Cât timp poți dedica serverului?, 5) De ce dorești rolul de staff?, 6) Cum ai rezolva un conflict între membri?, 7) Ce ai îmbunătăți pe server?, 8) Accepți să porți tag-ul serverului?",
+          "Dacă solicitantul răspunde «nu» sau refuză purtarea tag-ului la ultima întrebare, spune imediat și clar că aplicația este respinsă.",
           "Dacă solicitantul a răspuns deja la unele întrebări, confirmă răspunsurile și cere doar informațiile lipsă; nu repeta tot formularul.",
-          "Nu promite acceptarea, nu lua decizii în numele staffului și spune clar că un administrator va evalua aplicația.",
+          "Nu promite acceptarea și nu lua alte decizii în numele staffului; singura excepție este respingerea automată pentru refuzul tag-ului. Spune clar că un administrator va evalua orice aplicație care trece de această condiție.",
         ]
       : kind === "partnership"
         ? [

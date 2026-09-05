@@ -7,6 +7,7 @@ import {
 } from "../oracle-chat";
 import {
   staffDetailsModal,
+  isStaffTagRefusal,
   ticketModal,
   ticketContractPayload,
   ticketPanelPayload,
@@ -43,8 +44,10 @@ describe("Oracle ticket categories", () => {
     expect(instruction).toContain("Tagul rămâne o condiție obligatorie");
     expect(instruction).toContain("Vârsta este obligatorie");
     expect(instruction).toContain("Ce vârstă ai?");
-    expect(instruction).toContain("Care este numele tău și fusul orar?");
-    expect(instruction).not.toContain("Care este tagul serverului? (obligatoriu)");
+    expect(instruction).toContain("Care este numele tău?");
+    expect(instruction).not.toContain("fusul orar");
+    expect(instruction).toContain("Accepți să porți tag-ul serverului?");
+    expect(instruction).toContain("aplicația este respinsă");
     expect(instruction).not.toContain("Ce vârstă ai? (opțional)");
     expect(instruction).toContain("Cum ai rezolva un conflict între membri?");
     expect(instruction).toContain("Ce ai îmbunătăți pe server?");
@@ -65,7 +68,7 @@ describe("Oracle ticket categories", () => {
     expect(helpReport).toContain("Păstrează raportarea confidențială");
   });
 
-  it("builds a staff contract panel with a seven-question menu behind its start button", () => {
+  it("builds a staff contract panel with an eight-question menu behind its start button", () => {
     const panel = ticketPanelPayload("staff");
     const embed = panel.embeds[0]!.toJSON();
     const row = panel.components[0]!.toJSON();
@@ -84,15 +87,16 @@ describe("Oracle ticket categories", () => {
     const contractRow = contract.components[0]!.toJSON();
     const menu = contractRow.components[0];
     expect(menu?.custom_id).toBe("ticket_questions_staff");
-    expect(menu?.options).toHaveLength(7);
+    expect(menu?.options).toHaveLength(8);
     expect(menu?.options?.map((option) => option.label)).toEqual([
-      "1. Nume și fus orar",
+      "1. Nume",
       "2. Vârstă",
       "3. Experiență în moderare",
       "4. Timp disponibil",
       "5. De ce dorești rolul?",
       "6. Conflict între membri",
       "7. Îmbunătățiri pentru server",
+      "8. Tag-ul serverului",
     ]);
     const questionModal = ticketQuestionModal("staff", "conflict")?.toJSON();
     expect(questionModal?.custom_id).toBe("ticket_answer_staff_conflict");
@@ -153,14 +157,22 @@ describe("Oracle ticket categories", () => {
         : [],
     );
 
-    expect(detailIds).toEqual(["staff_conflict", "staff_improvements"]);
+    expect(detailIds).toEqual(["staff_conflict", "staff_improvements", "staff_tag"]);
   });
 
-  it("shows the final seven staff questions in the interactive requirements view", () => {
+  it("shows the final eight staff questions without asking for a timezone", () => {
     const requirements = ticketRequirementsEmbed("staff").toJSON().description;
-    expect(requirements).toContain("1. Care este numele tău și fusul orar?");
+    expect(requirements).toContain("1. Care este numele tău?");
     expect(requirements).toContain("2. Ce vârstă ai?");
     expect(requirements).toContain("7. Ce ai îmbunătăți pe server?");
-    expect(requirements).not.toContain("Care este tagul serverului?");
+    expect(requirements).toContain("8. Accepți să porți tag-ul serverului?");
+    expect(requirements).not.toContain("fusul orar");
+  });
+
+  it("rejects clear refusals of the mandatory server tag", () => {
+    expect(isStaffTagRefusal("Nu")).toBe(true);
+    expect(isStaffTagRefusal("nu vreau să îl port")).toBe(true);
+    expect(isStaffTagRefusal("Refuz")).toBe(true);
+    expect(isStaffTagRefusal("Da, îl voi purta")).toBe(false);
   });
 });

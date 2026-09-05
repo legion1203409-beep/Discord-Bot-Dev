@@ -50,10 +50,10 @@ type TicketQuestion = {
 const TICKET_QUESTIONS: Record<OracleTicketKind, TicketQuestion[]> = {
   staff: [
     {
-      key: "name_timezone",
-      label: "1. Nume și fus orar",
-      description: "Care este numele tău și fusul orar?",
-      placeholder: "Ex.: Andrei · Europa/Paris",
+      key: "name",
+      label: "1. Nume",
+      description: "Care este numele tău?",
+      placeholder: "Ex.: Andrei",
     },
     {
       key: "age",
@@ -94,6 +94,12 @@ const TICKET_QUESTIONS: Record<OracleTicketKind, TicketQuestion[]> = {
       description: "Ce ai îmbunătăți pe server?",
       placeholder: "Propune una sau mai multe îmbunătățiri.",
       multiline: true,
+    },
+    {
+      key: "server_tag",
+      label: "8. Tag-ul serverului",
+      description: "Accepți să porți tag-ul serverului?",
+      placeholder: "Răspunde clar cu Da sau Nu.",
     },
   ],
   partnership: [
@@ -257,7 +263,7 @@ export function ticketPanelPayload(kind: OracleTicketKind): {
             },
             {
               name: "📜 Contractul",
-              value: "7 întrebări · răspunsurile rămân în acest ticket",
+              value: `${TICKET_QUESTIONS.staff.length} întrebări · răspunsurile rămân în acest ticket`,
             },
           ]
         : kind === "partnership"
@@ -399,7 +405,7 @@ export function ticketModal(kind: OracleTicketKind): ModalBuilder {
   const fields =
     kind === "staff"
       ? [
-          input("staff_name_timezone", "Nume și fus orar", "Ex.: Andrei · Europa/Paris"),
+          input("staff_name", "Nume", "Ex.: Andrei"),
           input("staff_age", "Vârsta", "Ex.: 21"),
           input("staff_experience", "Experiență în moderare", "Unde ai mai moderat și ce ai învățat?", TextInputStyle.Paragraph),
           input("staff_availability", "Timp disponibil", "Ex.: 1–2 ore pe zi"),
@@ -448,6 +454,13 @@ export function staffDetailsModal(): ModalBuilder {
         TextInputStyle.Paragraph,
       ),
     ),
+    new ActionRowBuilder<TextInputBuilder>().addComponents(
+      input(
+        "staff_tag",
+        "Accepți să porți tag-ul?",
+        "Răspunde clar cu Da sau Nu.",
+      ),
+    ),
   );
   return modal;
 }
@@ -462,13 +475,14 @@ export function ticketRequirementsEmbed(kind: OracleTicketKind): EmbedBuilder {
   if (kind === "staff") {
     embed.setDescription(
       "Tag-ul serverului este obligatoriu pentru validarea aplicației.\n\n" +
-        "1. Care este numele tău și fusul orar?\n" +
+        "1. Care este numele tău?\n" +
         "2. Ce vârstă ai?\n" +
         "3. Ai experiență în moderare?\n" +
         "4. Cât timp poți dedica serverului?\n" +
         "5. De ce dorești rolul de staff?\n" +
         "6. Cum ai rezolva un conflict între membri?\n" +
-        "7. Ce ai îmbunătăți pe server?",
+        "7. Ce ai îmbunătăți pe server?\n" +
+        "8. Accepți să porți tag-ul serverului?",
     );
   } else if (kind === "partnership") {
     embed.setDescription(
@@ -496,6 +510,16 @@ function safeAnswer(value: string | undefined, fallback = "—"): string {
 
 function fieldValue(interaction: ModalSubmitInteraction, id: string): string {
   return interaction.fields.getTextInputValue(id);
+}
+
+export function isStaffTagRefusal(value: string): boolean {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  return /^(nu|n|no)\b/.test(normalized) ||
+    /\b(refuz|nu vreau|nu accept|nu pot|niciodata)\b/.test(normalized);
 }
 
 export function ticketQuestionModal(kind: OracleTicketKind, key: string): ModalBuilder | null {
@@ -595,10 +619,16 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
   const questionIndex = TICKET_QUESTIONS[kind].findIndex((entry) => entry.key === question.key) + 1;
   const totalQuestions = TICKET_QUESTIONS[kind].length;
   const isLastQuestion = questionIndex === totalQuestions;
+  const rejectedForTag =
+    kind === "staff" &&
+    question.key === "server_tag" &&
+    isStaffTagRefusal(answer);
   const answerEmbed = new EmbedBuilder()
-    .setColor(TICKET_COLORS[kind])
+    .setColor(rejectedForTag ? 0xc0392b : TICKET_COLORS[kind])
     .setTitle(
-      isLastQuestion
+      rejectedForTag
+        ? "❌ Aplicare respinsă"
+        : isLastQuestion
         ? `${TICKET_ICONS[kind]} Formular complet`
         : `${TICKET_ICONS[kind]} Răspuns înregistrat`,
     )
@@ -607,7 +637,9 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
       iconURL: interaction.user.displayAvatarURL(),
     })
     .setDescription(
-      isLastQuestion
+      rejectedForTag
+        ? "Oracolul Cenușii a respins aplicația. Purtarea tag-ului serverului este o condiție obligatorie pentru staff."
+        : isLastQuestion
         ? "Toate răspunsurile din formular au fost adăugate. Echipa poate începe evaluarea aplicației."
         : "Răspunsul tău a fost adăugat în acest ticket. Poți continua din meniul de întrebări.",
     )
@@ -615,15 +647,19 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
       { name: "Întrebarea selectată", value: question.description, inline: false },
       { name: "Răspunsul tău", value: answer, inline: false },
       {
-        name: "Progres",
-        value: isLastQuestion
+        name: rejectedForTag ? "Verdictul Oracolului" : "Progres",
+        value: rejectedForTag
+          ? "RESPINS · Condiția obligatorie privind tag-ul nu a fost acceptată."
+          : isLastQuestion
           ? `✅ ${totalQuestions}/${totalQuestions} · Formular complet`
           : `◆ Pasul ${questionIndex}/${totalQuestions} · Alege următoarea întrebare din meniu`,
         inline: false,
       },
     )
     .setFooter({
-      text: isLastQuestion
+      text: rejectedForTag
+        ? "Decizie automată · Contractul de staff nu poate continua"
+        : isLastQuestion
         ? "Aplicația este pregătită pentru evaluarea staffului"
         : "Regatul Cenușii · Răspunsurile rămân în acest ticket",
     })
@@ -647,7 +683,9 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
       allowedMentions: { parse: [] },
     });
     await interaction.editReply({
-      content: `✅ Răspunsul pentru **${question.label}** a fost adăugat. Alege următoarea întrebare din meniu.`,
+      content: rejectedForTag
+        ? "❌ Aplicația a fost respinsă deoarece nu ai acceptat purtarea tag-ului serverului."
+        : `✅ Răspunsul pentru **${question.label}** a fost adăugat. Alege următoarea întrebare din meniu.`,
     });
   } catch (err) {
     logger.error(
@@ -664,14 +702,20 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
 export async function handleTicketModal(interaction: ModalSubmitInteraction): Promise<boolean> {
   if (interaction.customId === "ticket_form_staff_details") {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const tagAnswer = safeAnswer(fieldValue(interaction, "staff_tag"));
+    const rejectedForTag = isStaffTagRefusal(tagAnswer);
     const finalEmbed = new EmbedBuilder()
-      .setColor(TICKET_COLORS.staff)
-      .setTitle("🛡️ Aplicare Staff · Situații practice")
+      .setColor(rejectedForTag ? 0xc0392b : TICKET_COLORS.staff)
+      .setTitle(rejectedForTag ? "❌ Aplicare respinsă" : "🛡️ Aplicare Staff · Situații practice")
       .setAuthor({
         name: interaction.user.username,
         iconURL: interaction.user.displayAvatarURL(),
       })
-      .setDescription("Ultimele răspunsuri ale aplicației au fost adăugate pentru evaluarea echipei.")
+      .setDescription(
+        rejectedForTag
+          ? "Oracolul Cenușii a respins aplicația deoarece purtarea tag-ului serverului nu a fost acceptată."
+          : "Ultimele răspunsuri ale aplicației au fost adăugate pentru evaluarea echipei.",
+      )
       .addFields(
         {
           name: "Gestionarea unui conflict",
@@ -683,8 +727,17 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
           value: safeAnswer(fieldValue(interaction, "staff_improvements")),
           inline: false,
         },
+        {
+          name: "Acceptă tag-ul serverului",
+          value: tagAnswer,
+          inline: false,
+        },
       )
-      .setFooter({ text: "Aplicație completă · Așteaptă evaluarea staffului" })
+      .setFooter({
+        text: rejectedForTag
+          ? "Decizie automată · Contractul de staff nu poate continua"
+          : "Aplicație completă · Așteaptă evaluarea staffului",
+      })
       .setTimestamp();
 
     if (
@@ -704,7 +757,9 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
         allowedMentions: { parse: [] },
       });
       await interaction.editReply({
-        content: "✅ Aplicația este completă. Un membru al echipei te va prelua cât mai curând.",
+        content: rejectedForTag
+          ? "❌ Aplicația a fost respinsă deoarece nu ai acceptat purtarea tag-ului serverului."
+          : "✅ Aplicația este completă. Un membru al echipei te va prelua cât mai curând.",
       });
     } catch (err) {
       logger.error(
@@ -739,7 +794,7 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
 
   if (kind === "staff") {
     embed.addFields(
-      { name: "Nume și fus orar", value: safeAnswer(fieldValue(interaction, "staff_name_timezone")), inline: true },
+      { name: "Nume", value: safeAnswer(fieldValue(interaction, "staff_name")), inline: true },
       { name: "Vârstă", value: safeAnswer(fieldValue(interaction, "staff_age")), inline: true },
       { name: "Experiență", value: safeAnswer(fieldValue(interaction, "staff_experience")), inline: false },
       { name: "Disponibilitate", value: safeAnswer(fieldValue(interaction, "staff_availability")), inline: true },
