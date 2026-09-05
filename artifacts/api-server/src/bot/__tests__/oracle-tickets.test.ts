@@ -206,12 +206,14 @@ describe("Oracle ticket categories", () => {
       "🕯️ Motivul alianței",
       "🎁 Ce oferă serverul",
       "📜 Așteptări și reguli",
+      "👤 Persoana care a deschis ticketul",
       "📌 Regula promovării",
     ]);
     expect(draft.fields?.some((field) => field.value?.includes("Regatul Cenușii își deschide porțile"))).toBe(false);
     expect(draft.fields?.[0]?.value).toContain("Regatul Umbrelor");
     expect(draft.fields?.[2]?.value).toContain("https://discord.gg/umbrelor");
     expect(draft.fields?.[5]?.value).toContain("Vrem o comunitate aliată.");
+    expect(draft.fields?.[8]?.value).toContain("Andrei");
     const publishButtons = partnershipPublishRow("123").toJSON().components;
     expect(publishButtons.map((button) => "custom_id" in button ? button.custom_id : undefined)).toEqual([
       "ticket_alliance_post_123",

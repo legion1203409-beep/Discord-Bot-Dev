@@ -779,6 +779,11 @@ export function partnershipDraftEmbed(
     .setDescription(
       "Verifică toate informațiile oferite de solicitant. Confirmă alianța pentru a activa butoanele de editare și publicare.",
     )
+    .addFields({
+      name: "👤 Persoana care a deschis ticketul",
+      value: safeAnswer(username, "Reprezentant"),
+      inline: false,
+    })
     .setFooter({ text: "Draft diplomatic · Nu este publicat încă" })
     .setTimestamp();
   addSmallServerPromotionRule(embed, answers.members);
