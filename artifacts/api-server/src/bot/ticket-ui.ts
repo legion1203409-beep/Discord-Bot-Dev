@@ -777,7 +777,7 @@ export function partnershipDraftEmbed(
     .setColor(0xc29a52)
     .setTitle("🤝 Pactul celor Două Regate · Draft")
     .setDescription(
-      "Verifică toate informațiile oferite de solicitant. Confirmă alianța pentru a activa butoanele de editare și publicare.",
+      "Verifică toate informațiile oferite de solicitant. Folosește butoanele de mai jos pentru a edita sau publica reclama.",
     )
     .addFields({
       name: "👤 Persoana care a deschis ticketul",
@@ -797,7 +797,7 @@ function partnershipPublishedEmbed(
 ): EmbedBuilder {
   return partnershipDraftEmbed(username, answers)
     .setTitle("🤝 Pactul celor Două Regate · Publicat")
-    .setDescription("Alianța a fost confirmată de staff, iar mesajul Regatului a fost publicat.")
+    .setDescription("Alianța a fost confirmată de staff, iar reclama serverului partener a fost publicată.")
     .setFooter({ text: "Pact confirmat · Regatul Cenușii" });
 }
 
@@ -842,6 +842,61 @@ export function allianceAnnouncementText(
   }
   lines.push("", "Pact pecetluit · Regatul Cenușii");
   return lines.join("\n").slice(0, 1950);
+}
+
+export function allianceRecruitmentEmbed(
+  answers: Record<string, string>,
+  applicantUsername: string,
+): EmbedBuilder {
+  const serverName = safeAnswer(answers.server_name, "Comunitatea parteneră");
+  const embed = new EmbedBuilder()
+    .setColor(0x7c8fbd)
+    .setTitle(`🤝 ${serverName} · Partener al Regatului Cenușii`.slice(0, 256))
+    .setDescription(
+      `✨ Descoperă comunitatea **${serverName}** și legătura ei cu Regatul Cenușii.\n\n` +
+        safeAnswer(answers.description, "Comunitatea nu a oferit o descriere."),
+    )
+    .addFields(
+      {
+        name: "👤 Reprezentantul serverului",
+        value: safeAnswer(answers.representative || applicantUsername),
+        inline: true,
+      },
+      {
+        name: "🧑‍💻 Propus de",
+        value: safeAnswer(applicantUsername),
+        inline: true,
+      },
+      {
+        name: "👥 Membri și activitate",
+        value: safeAnswer(answers.members),
+        inline: true,
+      },
+      {
+        name: "🔗 Link de invitație",
+        value: safeAnswer(answers.invite),
+        inline: false,
+      },
+      {
+        name: "🕯️ De ce caută alianța",
+        value: safeAnswer(answers.motivation),
+        inline: false,
+      },
+      {
+        name: "🎁 Ce oferă comunitatea",
+        value: safeAnswer(answers.offer),
+        inline: false,
+      },
+      {
+        name: "📜 Așteptări și reguli",
+        value: safeAnswer(answers.terms),
+        inline: false,
+      },
+    )
+    .setFooter({ text: "Alianță confirmată de staff · Regatul Cenușii" })
+    .setTimestamp();
+  if (TICKET_SEAL) embed.setThumbnail(TICKET_SEAL);
+  return embed;
 }
 
 export function allianceStaffNotificationText(applicantUsername: string): string {
@@ -1055,7 +1110,7 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
       });
       await interaction.followUp({
         content:
-          "✅ Alianța a fost confirmată. Verifică draftul din ticket, apoi folosește «Postează în canalul alianțelor» pentru publicare.",
+          "✅ Alianța a fost confirmată. Acum poți edita draftul sau îl poți publica în canalul alianțelor.",
         flags: MessageFlags.Ephemeral,
       });
     } catch (err) {
@@ -1110,10 +1165,12 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
 
     try {
       await publicChannel.send({
-        content: allianceAnnouncementText(
-          state.answers,
-          state.applicantUsername ?? "Reprezentant",
-        ),
+        embeds: [
+          allianceRecruitmentEmbed(
+            state.answers,
+            state.applicantUsername ?? "Reprezentant",
+          ),
+        ],
         allowedMentions: { parse: [] },
       });
       state.alliancePosted = true;

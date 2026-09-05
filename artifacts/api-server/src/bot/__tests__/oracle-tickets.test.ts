@@ -12,6 +12,7 @@ import {
   partnershipEditModal,
   partnershipHasUnder200Members,
   allianceAnnouncementText,
+  allianceRecruitmentEmbed,
   isStaffTagRefusal,
   partnershipConfirmRow,
   partnershipPublishRow,
@@ -258,6 +259,37 @@ describe("Oracle ticket categories", () => {
     expect(announcement).toContain("📌 Promovare: serverele sub 200 de membri");
     expect(announcement).not.toContain("Textul privat al Regatului Cenușii");
     expect(announcement).not.toContain("@everyone");
+  });
+
+  it("builds a designed automatic recruitment advertisement from the partner answers", () => {
+    const ad = allianceRecruitmentEmbed(
+      {
+        server_name: "Regatul Umbrelor",
+        representative: "Andrei#1234",
+        description: "Comunitate RPG medievală.",
+        invite: "https://discord.gg/umbrelor",
+        members: "150 total · 60 activi",
+        motivation: "Vrem o comunitate aliată.",
+        offer: "Promovare reciprocă.",
+        terms: "Respectăm regulile pactului.",
+      },
+      "Andrei",
+    ).toJSON();
+
+    expect(ad.title).toContain("Regatul Umbrelor");
+    expect(ad.description).toContain("Comunitate RPG medievală.");
+    expect(ad.fields?.map((field) => field.name)).toEqual([
+      "👤 Reprezentantul serverului",
+      "🧑‍💻 Propus de",
+      "👥 Membri și activitate",
+      "🔗 Link de invitație",
+      "🕯️ De ce caută alianța",
+      "🎁 Ce oferă comunitatea",
+      "📜 Așteptări și reguli",
+    ]);
+    expect(ad.fields?.find((field) => field.name === "🔗 Link de invitație")?.value).toContain(
+      "https://discord.gg/umbrelor",
+    );
   });
 
   it("builds the staff notification and approved recruitment announcement", () => {
