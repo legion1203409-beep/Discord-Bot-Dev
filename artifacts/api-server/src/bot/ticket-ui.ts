@@ -14,6 +14,7 @@ import {
   type Message,
 } from "discord.js";
 import { logger } from "../lib/logger";
+import { IMG } from "./assets";
 import type { OracleTicketKind } from "./oracle-chat";
 
 const TICKET_COLORS: Record<OracleTicketKind, number> = {
@@ -33,6 +34,8 @@ const TICKET_ICONS: Record<OracleTicketKind, string> = {
   partnership: "🤝",
   help_report: "🕯️",
 };
+
+const TICKET_SEAL = IMG.ticketSeal;
 
 type TicketQuestion = {
   key: string;
@@ -245,6 +248,7 @@ export function ticketPanelPayload(kind: OracleTicketKind): {
             ],
     )
     .setFooter({ text: "Regatul Cenușii · Răspunsurile rămân în acest ticket" });
+  if (TICKET_SEAL) embed.setThumbnail(TICKET_SEAL);
 
   const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(ticketQuestionMenu(kind));
 
@@ -333,6 +337,7 @@ export function ticketRequirementsEmbed(kind: OracleTicketKind): EmbedBuilder {
     .setColor(TICKET_COLORS[kind])
     .setTitle(`${TICKET_ICONS[kind]} ${TICKET_LABELS[kind]} · Întrebări`)
     .setFooter({ text: "Răspunde sincer și clar · Regatul Cenușii" });
+  if (TICKET_SEAL) embed.setThumbnail(TICKET_SEAL);
 
   if (kind === "staff") {
     embed.setDescription(
@@ -457,17 +462,43 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const answer = safeAnswer(fieldValue(interaction, "answer"));
+  const questionIndex = TICKET_QUESTIONS[kind].findIndex((entry) => entry.key === question.key) + 1;
+  const totalQuestions = TICKET_QUESTIONS[kind].length;
+  const isLastQuestion = questionIndex === totalQuestions;
   const answerEmbed = new EmbedBuilder()
     .setColor(TICKET_COLORS[kind])
-    .setTitle(`${TICKET_ICONS[kind]} ${TICKET_LABELS[kind]} · Răspuns primit`)
+    .setTitle(
+      isLastQuestion
+        ? `${TICKET_ICONS[kind]} Formular complet`
+        : `${TICKET_ICONS[kind]} Răspuns înregistrat`,
+    )
     .setAuthor({
       name: interaction.user.username,
       iconURL: interaction.user.displayAvatarURL(),
     })
-    .setDescription("Un răspuns nou a fost adăugat în acest ticket.")
-    .addFields({ name: question.label, value: answer, inline: false })
-    .setFooter({ text: "Alege următoarea întrebare din meniul de mai sus" })
+    .setDescription(
+      isLastQuestion
+        ? "Toate răspunsurile din formular au fost adăugate. Echipa poate începe evaluarea aplicației."
+        : "Răspunsul tău a fost adăugat în acest ticket. Poți continua din meniul de întrebări.",
+    )
+    .addFields(
+      { name: "Întrebarea selectată", value: question.description, inline: false },
+      { name: "Răspunsul tău", value: answer, inline: false },
+      {
+        name: "Progres",
+        value: isLastQuestion
+          ? `✅ ${totalQuestions}/${totalQuestions} · Formular complet`
+          : `◆ Pasul ${questionIndex}/${totalQuestions} · Alege următoarea întrebare din meniu`,
+        inline: false,
+      },
+    )
+    .setFooter({
+      text: isLastQuestion
+        ? "Aplicația este pregătită pentru evaluarea staffului"
+        : "Regatul Cenușii · Răspunsurile rămân în acest ticket",
+    })
     .setTimestamp();
+  if (TICKET_SEAL) answerEmbed.setThumbnail(TICKET_SEAL);
 
   if (
     !interaction.channel ||

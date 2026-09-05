@@ -22,6 +22,7 @@ export const IMG = {
   death: assetUrl("death.gif"),
   trader: assetUrl("trader2.gif"),
   shop: assetUrl("shop2.gif"),
+  ticketSeal: assetUrl("ticket_seal.png"),
 };
 
 /**
