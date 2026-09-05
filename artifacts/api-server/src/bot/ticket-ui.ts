@@ -16,6 +16,14 @@ import {
 import { logger } from "../lib/logger";
 import { loadAllianceRecruitmentText } from "./db";
 import { IMG } from "./assets";
+import {
+  claimTicketAlliancePublication,
+  finishTicketAlliancePublication,
+  loadTicketProgress,
+  releaseTicketAlliancePublication,
+  saveTicketProgress,
+  type TicketProgressRecord,
+} from "./db";
 import type { OracleTicketKind } from "./oracle-chat";
 
 const TICKET_COLORS: Record<OracleTicketKind, number> = {
@@ -68,16 +76,12 @@ export function memberHasStaffReviewRole(
 const postedTicketPanels = new Set<string>();
 const ticketPanelLocks = new Map<string, Promise<boolean>>();
 const ticketDeletionTimers = new Map<string, ReturnType<typeof setTimeout>>();
-type TicketProgressState = {
-  currentStep: number;
-  panelMessageId: string;
-  applicantUsername?: string;
-  responseMessageId?: string;
-  answers?: Record<string, string>;
-  alliancePosted?: boolean;
-  status?: "completed" | "rejected";
-};
+type TicketProgressState = TicketProgressRecord;
 const ticketProgress = new Map<string, TicketProgressState>();
+
+function ticketProgressKey(channelId: string, applicantId: string): string {
+  return `${channelId}:${applicantId}`;
+}
 
 type TicketQuestion = {
   key: string;
@@ -1067,7 +1071,7 @@ async function lockTicketPanel(
   kind: OracleTicketKind,
   status: "completed" | "rejected",
 ): Promise<void> {
-  const state = ticketProgress.get(`${interaction.channelId}:${interaction.user.id}`);
+  const state = await getTicketProgress(interaction.channelId, interaction.user.id);
   if (!state?.panelMessageId || !interaction.channel?.isTextBased() || !("messages" in interaction.channel)) {
     return;
   }
@@ -1114,7 +1118,7 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
       return true;
     }
     const applicantId = confirmAllianceMatch[1]!;
-    const state = ticketProgress.get(`${interaction.channelId}:${applicantId}`);
+    const state = await getTicketProgress(interaction.channelId, applicantId, true);
     if (!state?.answers || state.status !== "completed") {
       await interaction.reply({
         content: "❌ Contractul alianței nu este încă finalizat.",
@@ -1129,29 +1133,12 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
       });
       return true;
     }
-
-    try {
-      await interaction.update({
-        embeds: [
-          partnershipDraftEmbed(state.applicantUsername ?? "Reprezentant", state.answers),
-        ],
-        components: [partnershipPublishRow(applicantId)],
-      });
-      await interaction.followUp({
-        content:
-          "✅ Alianța a fost confirmată. Acum poți edita draftul sau îl poți publica în canalul alianțelor.",
-        flags: MessageFlags.Ephemeral,
-      });
-    } catch (err) {
-      logger.error(
-        { err, channelId: interaction.channelId },
-        "Alliance draft could not be prepared after confirmation",
-      );
-      await interaction.reply({
-        content: "❌ Draftul alianței nu a putut fi pregătit. Încearcă din nou.",
-        flags: MessageFlags.Ephemeral,
-      });
-    }
+    await interaction.update({
+      embeds: [
+        partnershipDraftEmbed(state.applicantUsername ?? "Reprezentant", state.answers),
+      ],
+      components: [partnershipPublishRow(applicantId)],
+    });
     return true;
   }
 
@@ -1165,7 +1152,7 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
       return true;
     }
     const applicantId = postAllianceMatch[1]!;
-    const state = ticketProgress.get(`${interaction.channelId}:${applicantId}`);
+    const state = await getTicketProgress(interaction.channelId, applicantId, true);
     if (!state?.answers || state.status !== "completed") {
       await interaction.reply({
         content: "❌ Contractul alianței nu este încă finalizat.",
@@ -1173,9 +1160,23 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
       });
       return true;
     }
+    if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) {
+      await interaction.reply({
+        content: "🛡️ Doar stafful cu permisiunea de gestionare a canalelor poate publica pactul.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
     if (state.alliancePosted) {
       await interaction.reply({
         content: "✅ Alianța a fost deja publicată.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
+    if (state.alliancePublishing) {
+      await interaction.reply({
+        content: "⏳ Publicarea alianței este deja în curs. Așteaptă confirmarea rezultatului.",
         flags: MessageFlags.Ephemeral,
       });
       return true;
@@ -1192,26 +1193,54 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
       return true;
     }
 
+    const claimedState = await claimTicketAlliancePublication(
+      interaction.channelId,
+      applicantId,
+    );
+    if (!claimedState) {
+      const currentState = await getTicketProgress(interaction.channelId, applicantId, true);
+      await interaction.reply({
+        content: currentState?.alliancePosted
+          ? "✅ Alianța a fost deja publicată."
+          : "⏳ Publicarea alianței este deja în curs. Așteaptă confirmarea rezultatului.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
+    ticketProgress.set(ticketProgressKey(interaction.channelId, applicantId), claimedState);
+
+    let announcementSent = false;
     try {
-      await publicChannel.send({
+      const publicMessage = await publicChannel.send({
         content: allianceAnnouncementText(
-          state.answers,
-          state.applicantUsername ?? "Reprezentant",
+          claimedState.answers!,
+          claimedState.applicantUsername ?? "Reprezentant",
         ),
         allowedMentions: { parse: [] },
       });
-      state.alliancePosted = true;
+      announcementSent = true;
+      const finishedState = await finishTicketAlliancePublication(
+        interaction.channelId,
+        applicantId,
+        publicMessage.id,
+      );
+      if (!finishedState) {
+        throw new Error("Alliance publication claim was lost before it could be finalized");
+      }
+      ticketProgress.set(ticketProgressKey(interaction.channelId, applicantId), finishedState);
       await interaction.update({
-        content:
-          `✅ Alianța a fost aprobată și publicată în <#${ALLIANCE_PUBLIC_CHANNEL_ID}>.`,
+        content: `✅ Alianța a fost aprobată și publicată în <#${ALLIANCE_PUBLIC_CHANNEL_ID}>.`,
         embeds: [
-          partnershipPublishedEmbed(state.applicantUsername ?? "Reprezentant", state.answers),
+          partnershipPublishedEmbed(
+            finishedState.applicantUsername ?? "Reprezentant",
+            finishedState.answers!,
+          ),
         ],
         components: [],
         allowedMentions: { parse: [] },
       });
       await interaction.followUp({
-        content: `✅ Pactul a fost publicat în <#${ALLIANCE_PUBLIC_CHANNEL_ID}>.`,
+        content: "✅ Pactul a fost publicat în canalul alianțelor.",
         flags: MessageFlags.Ephemeral,
       });
     } catch (err) {
@@ -1219,6 +1248,15 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
         { err, channelId: interaction.channelId, publicChannelId: ALLIANCE_PUBLIC_CHANNEL_ID },
         "Alliance announcement could not be published",
       );
+      if (!announcementSent) {
+        const releasedState = await releaseTicketAlliancePublication(
+          interaction.channelId,
+          applicantId,
+        ).catch(() => null);
+        if (releasedState) {
+          ticketProgress.set(ticketProgressKey(interaction.channelId, applicantId), releasedState);
+        }
+      }
       await interaction.reply({
         content: "❌ Pactul nu a putut fi publicat. Verifică permisiunile botului în canalul alianțelor.",
         flags: MessageFlags.Ephemeral,
@@ -1237,8 +1275,8 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
       return true;
     }
     const applicantId = editAllianceMatch[1]!;
-    const state = ticketProgress.get(`${interaction.channelId}:${applicantId}`);
-    if (!state?.answers || state.alliancePosted) {
+    const state = await getTicketProgress(interaction.channelId, applicantId, true);
+    if (!state?.answers || state.alliancePosted || state.alliancePublishing) {
       await interaction.reply({
         content: "❌ Acest draft nu mai poate fi editat.",
         flags: MessageFlags.Ephemeral,
@@ -1261,8 +1299,7 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
   const startMatch = interaction.customId.match(/^ticket_start_(staff|partnership|help_report)$/);
   if (startMatch) {
     const kind = startMatch[1] as OracleTicketKind;
-    const progressKey = `${interaction.channelId}:${interaction.user.id}`;
-    const existingProgress = ticketProgress.get(progressKey);
+    const existingProgress = await getTicketProgress(interaction.channelId, interaction.user.id);
     if (existingProgress?.status) {
       await interaction.reply({
         content:
@@ -1273,7 +1310,7 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
       });
       return true;
     }
-    ticketProgress.set(progressKey, {
+    await persistTicketProgress(interaction.channelId, interaction.user.id, {
       currentStep: 0,
       panelMessageId: interaction.message.id,
       applicantUsername: interaction.user.globalName ?? interaction.user.username,
@@ -1295,8 +1332,7 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
     const kind = nextMatch[1] as OracleTicketKind;
     const questionIndex = Number(nextMatch[2]);
     const question = TICKET_QUESTIONS[kind][questionIndex - 1];
-    const progressKey = `${interaction.channelId}:${interaction.user.id}`;
-    const progressState = ticketProgress.get(progressKey);
+    const progressState = await getTicketProgress(interaction.channelId, interaction.user.id);
     if (progressState?.status) {
       await interaction.reply({
         content:
@@ -1357,16 +1393,20 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
   const questionIndex = TICKET_QUESTIONS[kind].findIndex((entry) => entry.key === question.key) + 1;
   const totalQuestions = TICKET_QUESTIONS[kind].length;
   const isLastQuestion = questionIndex === totalQuestions;
-  const progressKey = `${interaction.channelId}:${interaction.user.id}`;
-  const progressState = ticketProgress.get(progressKey);
-  if (progressState) {
-    progressState.answers = {
-      ...(progressState.answers ?? {}),
-      [question.key]: answer,
-    };
+  const progressState = await getTicketProgress(interaction.channelId, interaction.user.id);
+  if (!progressState) {
+    await interaction.editReply({
+      content: "❌ Sesiunea acestui contract nu mai este disponibilă. Pornește formularul din nou.",
+    });
+    return true;
   }
+  progressState.answers = {
+    ...(progressState.answers ?? {}),
+    [question.key]: answer,
+  };
+  await persistTicketProgress(interaction.channelId, interaction.user.id, progressState);
   const partnershipAnswers = {
-    ...(progressState?.answers ?? {}),
+    ...(progressState.answers ?? {}),
     [question.key]: answer,
   };
   const rejectedForTag =
@@ -1450,22 +1490,21 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
         ? { parse: [], roles: [STAFF_REVIEW_ROLE_ID] }
         : { parse: [] },
     });
-    if (finalPartnership && progressState) {
+    if (finalPartnership) {
       progressState.responseMessageId = responseMessage.id;
     }
     if (rejectedForTag || isLastQuestion) {
-      if (progressState) {
-        progressState.currentStep = questionIndex;
-        progressState.status = rejectedForTag ? "rejected" : "completed";
-      }
+      progressState.currentStep = questionIndex;
+      progressState.status = rejectedForTag ? "rejected" : "completed";
       await lockTicketPanel(
         interaction,
         kind,
         rejectedForTag ? "rejected" : "completed",
       );
-    } else if (progressState) {
+    } else {
       progressState.currentStep = questionIndex;
     }
+    await persistTicketProgress(interaction.channelId, interaction.user.id, progressState);
     const nextComponents =
       !rejectedForTag && !isLastQuestion
         ? [
@@ -1509,14 +1548,13 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
     }
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const applicantId = editAllianceMatch[1]!;
-    const progressKey = `${interaction.channelId}:${applicantId}`;
-    const state = ticketProgress.get(progressKey);
-    if (!state?.answers || state.alliancePosted) {
+    const state = await getTicketProgress(interaction.channelId, applicantId, true);
+    if (!state?.answers || state.alliancePosted || state.alliancePublishing) {
       await interaction.editReply({ content: "❌ Acest draft nu mai poate fi editat." });
       return true;
     }
 
-    state.answers = {
+    const answers = {
       ...state.answers,
       server_name: safeAnswer(fieldValue(interaction, "alliance_server_name")),
       description: safeAnswer(fieldValue(interaction, "alliance_description")),
@@ -1547,18 +1585,19 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
     }
     await responseMessage.edit({
       embeds: [
-        partnershipDraftEmbed(state.applicantUsername ?? "Reprezentant", state.answers),
+        partnershipDraftEmbed(state.applicantUsername ?? "Reprezentant", answers),
       ],
       components: [partnershipPublishRow(applicantId)],
     });
+    state.answers = answers;
+    await persistTicketProgress(interaction.channelId, applicantId, state);
     await interaction.editReply({ content: "✅ Draftul alianței a fost actualizat." });
     return true;
   }
 
   if (interaction.customId === "ticket_form_partnership_details") {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    const progressKey = `${interaction.channelId}:${interaction.user.id}`;
-    const progressState = ticketProgress.get(progressKey);
+    const progressState = await getTicketProgress(interaction.channelId, interaction.user.id);
     if (!progressState) {
       await interaction.editReply({
         content: "❌ Prima pagină a contractului nu mai este disponibilă. Reia contractul.",
@@ -1621,6 +1660,7 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
       progressState.answers = finalAnswers;
       progressState.currentStep = TICKET_QUESTIONS.partnership.length;
       progressState.status = "completed";
+      await persistTicketProgress(interaction.channelId, interaction.user.id, progressState);
       await lockTicketPanel(interaction, "partnership", "completed");
       await interaction.editReply({
         content:
@@ -1642,8 +1682,7 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const tagAnswer = safeAnswer(fieldValue(interaction, "staff_tag"));
     const rejectedForTag = isStaffTagRefusal(tagAnswer);
-    const progressKey = `${interaction.channelId}:${interaction.user.id}`;
-    const progressState = ticketProgress.get(progressKey);
+    const progressState = await getTicketProgress(interaction.channelId, interaction.user.id);
     const firstAnswers = progressState?.answers ?? {};
     const finalEmbed = new EmbedBuilder()
       .setColor(rejectedForTag ? 0x8f2d3d : 0xc29a52)
@@ -1741,6 +1780,7 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
       if (progressState) {
         progressState.currentStep = TICKET_QUESTIONS.staff.length;
         progressState.status = rejectedForTag ? "rejected" : "completed";
+        await persistTicketProgress(interaction.channelId, interaction.user.id, progressState);
       }
       await lockTicketPanel(
         interaction,
@@ -1864,9 +1904,7 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
       allowedMentions: { parse: [] },
     });
     if (kind === "staff" || kind === "partnership") {
-      const progressState = ticketProgress.get(
-        `${interaction.channelId}:${interaction.user.id}`,
-      );
+      const progressState = await getTicketProgress(interaction.channelId, interaction.user.id);
       if (progressState) {
         progressState.currentStep = 5;
         progressState.responseMessageId = responseMessage.id;
@@ -1890,6 +1928,7 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
                   fieldValue(interaction, "partnership_description"),
                 ),
               };
+        await persistTicketProgress(interaction.channelId, interaction.user.id, progressState);
       }
     }
   } catch (err) {
@@ -1912,4 +1951,29 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
         : "✅ Răspunsurile au fost adăugate în ticket. Un membru al echipei te va prelua cât mai curând.",
   });
   return true;
+}
+
+async function getTicketProgress(
+  channelId: string | null,
+  applicantId: string,
+  refresh = false,
+): Promise<TicketProgressState | null> {
+  if (!channelId) return null;
+  const key = ticketProgressKey(channelId, applicantId);
+  const cached = ticketProgress.get(key);
+  if (cached && !refresh) return cached;
+  const persisted = await loadTicketProgress(channelId, applicantId);
+  if (persisted) ticketProgress.set(key, persisted);
+  else if (refresh) ticketProgress.delete(key);
+  return persisted;
+}
+
+async function persistTicketProgress(
+  channelId: string | null,
+  applicantId: string,
+  state: TicketProgressState,
+): Promise<void> {
+  if (!channelId) throw new Error("Ticket progress cannot be persisted without a channel");
+  ticketProgress.set(ticketProgressKey(channelId, applicantId), state);
+  await saveTicketProgress(channelId, applicantId, state);
 }

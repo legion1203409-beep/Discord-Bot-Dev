@@ -1704,6 +1704,7 @@ function guildKey(guildId: string, key: string): string {
 const ORACLE_COUNCIL_KEY = "oracle_council";
 const ORACLE_COUNCIL_DECREE_KEY = "oracle_council_decree";
 
+const TICKET_PROGRESS_PREFIX = "ticket_progress:";
 export interface OracleCouncilOption {
   id: string;
   label: string;
@@ -2152,4 +2153,150 @@ export async function loadAllianceRecruitmentText(
     .from(botStateTable)
     .where(eq(botStateTable.key, guildKey(guildId, ALLIANCE_RECRUITMENT_TEXT_KEY)));
   return row?.value ?? null;
+}
+
+function parseTicketProgress(value: string): TicketProgressRecord | null {
+  try {
+    const parsed = JSON.parse(value) as TicketProgressRecord;
+    if (
+      !parsed ||
+      !Number.isInteger(parsed.currentStep) ||
+      parsed.currentStep < 0 ||
+      typeof parsed.panelMessageId !== "string"
+    ) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Claims a completed alliance draft before sending its announcement.
+ * The conditional UPDATE makes two concurrent button presses mutually
+ * exclusive, including presses handled by different bot processes.
+ */
+export async function claimTicketAlliancePublication(
+  channelId: string,
+  applicantId: string,
+): Promise<TicketProgressRecord | null> {
+  await ensureBotStateTable();
+  const key = ticketProgressKey(channelId, applicantId);
+  const claimedAt = Date.now();
+  const result = await pool.query<{ value: string }>(
+    `UPDATE bot_state
+     SET value = jsonb_set(
+       jsonb_set(value::jsonb, '{alliancePublishing}', 'true'::jsonb, true),
+       '{alliancePublishClaimedAt}', to_jsonb($2::bigint), true
+     )::text,
+         updated_at = now()
+     WHERE key = $1
+       AND value::jsonb->>'status' = 'completed'
+       AND COALESCE(value::jsonb->>'alliancePosted', 'false') <> 'true'
+       AND COALESCE(value::jsonb->>'alliancePublishing', 'false') <> 'true'
+     RETURNING value`,
+    [key, claimedAt],
+  );
+  return result.rows[0] ? parseTicketProgress(result.rows[0].value) : null;
+}
+
+export interface TicketProgressRecord {
+  currentStep: number;
+  panelMessageId: string;
+  applicantUsername?: string;
+  responseMessageId?: string;
+  answers?: Record<string, string>;
+  alliancePosted?: boolean;
+  alliancePublishing?: boolean;
+  alliancePublishClaimedAt?: number;
+  alliancePublicMessageId?: string;
+  status?: "completed" | "rejected";
+}
+
+function ticketProgressKey(channelId: string, applicantId: string): string {
+  return `${TICKET_PROGRESS_PREFIX}${channelId}:${applicantId}`;
+}
+
+export async function loadTicketProgress(
+  channelId: string,
+  applicantId: string,
+): Promise<TicketProgressRecord | null> {
+  await ensureBotStateTable();
+  const [row] = await db
+    .select()
+    .from(botStateTable)
+    .where(eq(botStateTable.key, ticketProgressKey(channelId, applicantId)));
+  return row ? parseTicketProgress(row.value) : null;
+}
+
+export async function releaseTicketAlliancePublication(
+  channelId: string,
+  applicantId: string,
+): Promise<TicketProgressRecord | null> {
+  await ensureBotStateTable();
+  const key = ticketProgressKey(channelId, applicantId);
+  const result = await pool.query<{ value: string }>(
+    `UPDATE bot_state
+     SET value = jsonb_set(value::jsonb, '{alliancePublishing}', 'false'::jsonb, true)::text,
+         updated_at = now()
+     WHERE key = $1
+       AND value::jsonb->>'alliancePublishing' = 'true'
+     RETURNING value`,
+    [key],
+  );
+  return result.rows[0] ? parseTicketProgress(result.rows[0].value) : null;
+}
+
+export async function saveTicketProgress(
+  channelId: string,
+  applicantId: string,
+  progress: TicketProgressRecord,
+): Promise<void> {
+  await ensureBotStateTable();
+  const key = ticketProgressKey(channelId, applicantId);
+  const value = JSON.stringify(progress);
+  await pool.query(
+    `INSERT INTO bot_state (key, value, updated_at)
+     VALUES ($1, $2, now())
+     ON CONFLICT (key) DO UPDATE
+       SET value = CASE
+         WHEN COALESCE(bot_state.value::jsonb->>'alliancePosted', 'false') = 'true'
+           OR COALESCE(bot_state.value::jsonb->>'alliancePublishing', 'false') = 'true'
+           THEN bot_state.value
+         ELSE EXCLUDED.value
+       END,
+       updated_at = CASE
+         WHEN COALESCE(bot_state.value::jsonb->>'alliancePosted', 'false') = 'true'
+           OR COALESCE(bot_state.value::jsonb->>'alliancePublishing', 'false') = 'true'
+           THEN bot_state.updated_at
+         ELSE now()
+       END`,
+    [key, value],
+  );
+}
+
+export async function finishTicketAlliancePublication(
+  channelId: string,
+  applicantId: string,
+  publicMessageId: string,
+): Promise<TicketProgressRecord | null> {
+  await ensureBotStateTable();
+  const key = ticketProgressKey(channelId, applicantId);
+  const result = await pool.query<{ value: string }>(
+    `UPDATE bot_state
+     SET value = jsonb_set(
+       jsonb_set(
+         jsonb_set(value::jsonb, '{alliancePosted}', 'true'::jsonb, true),
+         '{alliancePublishing}', 'false'::jsonb, true
+       ),
+       '{alliancePublicMessageId}', to_jsonb($2::text), true
+     )::text,
+         updated_at = now()
+     WHERE key = $1
+       AND value::jsonb->>'alliancePublishing' = 'true'
+     RETURNING value`,
+    [key, publicMessageId],
+  );
+  return result.rows[0] ? parseTicketProgress(result.rows[0].value) : null;
 }
