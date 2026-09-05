@@ -36,6 +36,8 @@ const TICKET_ICONS: Record<OracleTicketKind, string> = {
 };
 
 const TICKET_SEAL = IMG.ticketSeal;
+const postedTicketPanels = new Set<string>();
+const ticketPanelLocks = new Map<string, Promise<boolean>>();
 
 type TicketQuestion = {
   key: string;
@@ -182,6 +184,24 @@ function ticketQuestion(kind: OracleTicketKind, key: string): TicketQuestion | n
   return TICKET_QUESTIONS[kind].find((question) => question.key === key) ?? null;
 }
 
+function ticketPanelFallback(kind: OracleTicketKind): string {
+  if (kind === "staff") {
+    return (
+      "🛡️ **Aplicare Staff**\n\n" +
+      "Tag-ul serverului este obligatoriu pentru validarea aplicației.\n" +
+      "Fără tag → aplicația este respinsă automat.\n\n" +
+      "Alege întrebările din meniul interactiv care va apărea aici."
+    );
+  }
+  if (kind === "partnership") {
+    return (
+      "🤝 **Propunere de Parteneriat**\n\n" +
+      "Alege din meniul interactiv informațiile despre server, comunitate și colaborare."
+    );
+  }
+  return "🕯️ **Ajutor / Raportare**\n\nAlege din meniul interactiv ce vrei să descrii pentru staff.";
+}
+
 function ticketQuestionMenu(kind: OracleTicketKind): StringSelectMenuBuilder {
   return new StringSelectMenuBuilder()
     .setCustomId(`ticket_questions_${kind}`)
@@ -253,6 +273,61 @@ export function ticketPanelPayload(kind: OracleTicketKind): {
   const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(ticketQuestionMenu(kind));
 
   return { embeds: [embed], components: [row] };
+}
+
+export async function postTicketPanelIfMissing(
+  channel: Message["channel"],
+  kind: OracleTicketKind,
+  botId: string,
+): Promise<boolean> {
+  if (postedTicketPanels.has(channel.id)) return false;
+  const pending = ticketPanelLocks.get(channel.id);
+  if (pending) {
+    await pending;
+    return false;
+  }
+
+  const operation = (async () => {
+    if (!channel.isTextBased() || !("messages" in channel) || !("send" in channel)) {
+      return false;
+    }
+
+    const recent = await channel.messages.fetch({ limit: 25 }).catch(() => null);
+    if (recent?.some((entry) => isTicketPanelMessage(entry, botId))) {
+      postedTicketPanels.add(channel.id);
+      return false;
+    }
+
+    try {
+      await channel.send(ticketPanelPayload(kind));
+    } catch (err) {
+      logger.error(
+        { err, channelId: channel.id, ticketKind: kind },
+        "Interactive ticket panel failed — sending plain-text fallback",
+      );
+      try {
+        await channel.send({
+          content: ticketPanelFallback(kind),
+          allowedMentions: { parse: [] },
+        });
+      } catch (fallbackErr) {
+        logger.error(
+          { err: fallbackErr, channelId: channel.id, ticketKind: kind },
+          "Ticket panel fallback could not be posted",
+        );
+        return false;
+      }
+    }
+    postedTicketPanels.add(channel.id);
+    return true;
+  })();
+
+  ticketPanelLocks.set(channel.id, operation);
+  try {
+    return await operation;
+  } finally {
+    ticketPanelLocks.delete(channel.id);
+  }
 }
 
 function input(

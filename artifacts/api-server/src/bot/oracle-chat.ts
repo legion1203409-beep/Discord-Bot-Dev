@@ -12,7 +12,7 @@ import { getCurrentMood } from "./oracle";
 import { MOOD_META, type MoodState } from "./oracle-content";
 import { handleJustice, handlePardon } from "./oracle-guard";
 import { getPlayerById, loadOracleCouncil, recordOracleInteraction, type OracleCouncilRecord } from "./db";
-import { isTicketPanelMessage, ticketPanelPayload } from "./ticket-ui";
+import { postTicketPanelIfMissing } from "./ticket-ui";
 import type { Player } from "@workspace/db";
 
 // The feature is keyed on the user's own OpenAI key. When it is absent the Oracle
@@ -182,8 +182,6 @@ export const ORACLE_TICKET_CATEGORY_IDS: Record<OracleTicketKind, string> = {
 
 const lastReplyAt = new Map<string, number>();
 const replyTimestamps: number[] = [];
-const ticketPanelChannels = new Set<string>();
-const ticketPanelInFlight = new Map<string, Promise<boolean>>();
 
 let openaiClient: OpenAI | null = null;
 const prophecyLastAt = new Map<string, number>();
@@ -1026,72 +1024,6 @@ export function getOracleTicketKindFromParentId(parentId: string | null | undefi
   return null;
 }
 
-async function ensureTicketPanel(
-  message: Message,
-  kind: OracleTicketKind,
-  botId: string,
-): Promise<boolean> {
-  if (ticketPanelChannels.has(message.channelId)) return false;
-  const pending = ticketPanelInFlight.get(message.channelId);
-  if (pending) {
-    await pending;
-    return false;
-  }
-
-  const operation = (async () => {
-    if (
-      !message.channel.isTextBased() ||
-      !("messages" in message.channel) ||
-      !("send" in message.channel)
-    ) {
-      return false;
-    }
-
-    const recent = await message.channel.messages.fetch({ limit: 25 }).catch(() => null);
-    if (recent?.some((entry) => isTicketPanelMessage(entry, botId))) {
-      ticketPanelChannels.add(message.channelId);
-      return false;
-    }
-
-    try {
-      await message.channel.send(ticketPanelPayload(kind));
-    } catch (err) {
-      logger.error(
-        { err, guildId: message.guildId, channelId: message.channelId, ticketKind: kind },
-        "Interactive ticket panel failed — sending plain-text fallback",
-      );
-      const fallback =
-        kind === "staff"
-          ? "🛡️ **Aplicare Staff**\n\n" +
-            "Tag-ul serverului este obligatoriu pentru validarea aplicației.\n" +
-            "Fără tag → aplicația este respinsă automat.\n\n" +
-            "Pentru a continua, răspunde în ticket la întrebările despre nume, vârstă, experiență, disponibilitate, motivație, conflicte și îmbunătățiri."
-          : kind === "partnership"
-            ? "🤝 **Propunere de Parteneriat**\n\n" +
-              "Răspunde în ticket cu numele serverului, descrierea comunității, invitația, membrii, publicul țintă, propunerea și beneficiile colaborării."
-            : "🕯️ **Ajutor / Raportare**\n\n" +
-              "Descrie problema sau raportarea cu utilizatorul implicat, momentul, detaliile și dovezile disponibile.";
-      await message.channel.send({
-        content: fallback,
-        allowedMentions: { parse: [] },
-      });
-    }
-    ticketPanelChannels.add(message.channelId);
-    logger.info(
-      { guildId: message.guildId, channelId: message.channelId, ticketKind: kind },
-      "Interactive ticket panel posted",
-    );
-    return true;
-  })();
-
-  ticketPanelInFlight.set(message.channelId, operation);
-  try {
-    return await operation;
-  } finally {
-    ticketPanelInFlight.delete(message.channelId);
-  }
-}
-
 async function maybeReplyInTicket(
   message: Message,
   kind: OracleTicketKind,
@@ -1099,7 +1031,7 @@ async function maybeReplyInTicket(
 ): Promise<void> {
   // The panel is the first response in a new ticket. On later messages the
   // Oracle can continue naturally without reposting the controls.
-  const panelPosted = await ensureTicketPanel(message, kind, botId);
+  const panelPosted = await postTicketPanelIfMissing(message.channel, kind, botId);
   if (panelPosted) return;
 
   const raw = (message.content ?? "").trim();
