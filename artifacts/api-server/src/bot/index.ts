@@ -43,7 +43,12 @@ import {
   prophecyCooldownRemaining,
   reserveProphecy,
 } from "./oracle-chat";
-import { handleTicketButton, handleTicketModal } from "./ticket-ui";
+import {
+  handleTicketButton,
+  handleTicketModal,
+  handleTicketQuestionModal,
+  handleTicketQuestionSelect,
+} from "./ticket-ui";
 import { handleOracleCouncilVote, isOracleCouncilButton } from "./oracle-council";
 import {
   enforceOracleTimeout,
@@ -4584,7 +4589,13 @@ export async function startBot(onReady?: () => void): Promise<void> {
       if (interaction.customId === "leaderboard_profile_select") {
         dispatch(handleClasamentSelect(interaction));
       }
+      if (interaction.customId.startsWith("ticket_questions_")) {
+        dispatch(handleTicketQuestionSelect(interaction as StringSelectMenuInteraction));
+      }
     } else if (interaction.isModalSubmit()) {
+      if (interaction.customId.startsWith("ticket_answer_")) {
+        dispatch(handleTicketQuestionModal(interaction));
+      }
       if (interaction.customId.startsWith("ticket_form_")) {
         dispatch(handleTicketModal(interaction));
       }

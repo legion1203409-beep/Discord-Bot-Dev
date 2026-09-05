@@ -9,6 +9,7 @@ import {
   staffDetailsModal,
   ticketModal,
   ticketPanelPayload,
+  ticketQuestionModal,
   ticketRequirementsEmbed,
 } from "../ticket-ui";
 
@@ -63,24 +64,56 @@ describe("Oracle ticket categories", () => {
     expect(helpReport).toContain("Păstrează raportarea confidențială");
   });
 
-  it("builds an interactive staff panel with start and requirements buttons", () => {
+  it("builds a staff panel with a seven-question dropdown menu", () => {
     const panel = ticketPanelPayload("staff");
     const embed = panel.embeds[0]!.toJSON();
     const row = panel.components[0]!.toJSON();
 
     expect(embed.title).toBe("🛡️ Aplicare Staff");
     expect(embed.fields?.[0]?.value).toContain("Tag-ul serverului");
-    const buttonIds = row.components.flatMap((component) =>
-      "custom_id" in component ? [component.custom_id] : [],
-    );
-    const buttonLabels = row.components.flatMap((component) =>
-      "label" in component && component.label ? [component.label] : [],
-    );
-    expect(buttonIds).toEqual([
-      "ticket_start_staff",
-      "ticket_requirements_staff",
+    const menu = row.components[0];
+    expect(menu?.custom_id).toBe("ticket_questions_staff");
+    expect(menu?.options).toHaveLength(7);
+    expect(menu?.options?.map((option) => option.label)).toEqual([
+      "1. Nume și fus orar",
+      "2. Vârstă",
+      "3. Experiență în moderare",
+      "4. Timp disponibil",
+      "5. De ce dorești rolul?",
+      "6. Conflict între membri",
+      "7. Îmbunătățiri pentru server",
     ]);
-    expect(buttonLabels).toEqual(["📝 Începe aplicația", "📖 Vezi întrebările"]);
+    const questionModal = ticketQuestionModal("staff", "conflict")?.toJSON();
+    expect(questionModal?.custom_id).toBe("ticket_answer_staff_conflict");
+    expect(questionModal?.components).toHaveLength(1);
+    const questionModalRow = questionModal?.components[0];
+    const questionInput =
+      questionModalRow && "components" in questionModalRow
+        ? questionModalRow.components[0]
+        : undefined;
+    expect(
+      questionInput,
+    ).toMatchObject({ custom_id: "answer" });
+  });
+
+  it("keeps the seal thumbnail on the interactive panel", () => {
+    const panel = ticketPanelPayload("staff");
+    const embed = panel.embeds[0]!.toJSON();
+    expect(embed.thumbnail?.url).toContain("/api/assets/ticket_seal.png");
+  });
+
+  it("keeps the partnership question menu complete", () => {
+    const panel = ticketPanelPayload("partnership");
+    const menu = panel.components[0]!.toJSON().components[0];
+    expect(menu?.custom_id).toBe("ticket_questions_partnership");
+    expect(menu?.options).toHaveLength(7);
+  });
+
+  it("keeps the help and report question menu focused", () => {
+    const panel = ticketPanelPayload("help_report");
+    const menu = panel.components[0]!.toJSON().components[0];
+    expect(menu?.custom_id).toBe("ticket_questions_help_report");
+    expect(menu?.options).toHaveLength(5);
   });
 
   it("builds valid five-field modals and keeps the partnership description mandatory", () => {
