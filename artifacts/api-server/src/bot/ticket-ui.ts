@@ -45,6 +45,7 @@ const ticketPanelLocks = new Map<string, Promise<boolean>>();
 type TicketProgressState = {
   currentStep: number;
   panelMessageId: string;
+  applicantUsername?: string;
   responseMessageId?: string;
   answers?: Record<string, string>;
   alliancePosted?: boolean;
@@ -600,7 +601,7 @@ export function partnershipDraftEmbed(
       },
       {
         name: "⚔️ Regatul Cenușii",
-        value: REGATUL_CENUSII_DESCRIPTION,
+        value: safeAnswer(answers.regat_description || REGATUL_CENUSII_DESCRIPTION),
         inline: false,
       },
     )
@@ -640,7 +641,7 @@ function allianceAnnouncementEmbed(answers: Record<string, string>): EmbedBuilde
       },
       {
         name: "⚔️ Regatul Cenușii",
-        value: REGATUL_CENUSII_DESCRIPTION,
+        value: safeAnswer(answers.regat_description || REGATUL_CENUSII_DESCRIPTION),
         inline: false,
       },
     )
@@ -772,9 +773,117 @@ export async function handleTicketQuestionSelect(
 }
 
 export async function handleTicketButton(interaction: ButtonInteraction): Promise<boolean> {
+  const confirmAllianceMatch = interaction.customId.match(/^ticket_alliance_confirm_(\d+)$/);
+  if (confirmAllianceMatch) {
+    const applicantId = confirmAllianceMatch[1]!;
+    const state = ticketProgress.get(`${interaction.channelId}:${applicantId}`);
+    if (!state?.answers || state.status !== "completed") {
+      await interaction.reply({
+        content: "❌ Contractul alianței nu este încă finalizat.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
+    if (state.alliancePosted) {
+      await interaction.reply({
+        content: "✅ Alianța a fost deja publicată.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
+    await interaction.update({
+      embeds: [
+        partnershipDraftEmbed(state.applicantUsername ?? "Reprezentant", state.answers),
+      ],
+      components: [partnershipPublishRow(applicantId)],
+    });
+    return true;
+  }
+
+  const postAllianceMatch = interaction.customId.match(/^ticket_alliance_post_(\d+)$/);
+  if (postAllianceMatch) {
+    const applicantId = postAllianceMatch[1]!;
+    const state = ticketProgress.get(`${interaction.channelId}:${applicantId}`);
+    if (!state?.answers || state.status !== "completed") {
+      await interaction.reply({
+        content: "❌ Contractul alianței nu este încă finalizat.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
+    if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) {
+      await interaction.reply({
+        content: "🛡️ Doar stafful cu permisiunea de gestionare a canalelor poate publica pactul.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
+    if (state.alliancePosted) {
+      await interaction.reply({
+        content: "✅ Alianța a fost deja publicată.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
+
+    const publicChannel = await interaction.client.channels
+      .fetch(ALLIANCE_PUBLIC_CHANNEL_ID)
+      .catch(() => null);
+    if (!publicChannel?.isTextBased() || !("send" in publicChannel)) {
+      await interaction.reply({
+        content: `❌ Nu pot accesa canalul alianțelor (${ALLIANCE_PUBLIC_CHANNEL_ID}). Verifică accesul botului.`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
+
+    try {
+      await publicChannel.send({
+        embeds: [allianceAnnouncementEmbed(state.answers)],
+        allowedMentions: { parse: [] },
+      });
+      state.alliancePosted = true;
+      await interaction.update({
+        embeds: [
+          partnershipDraftEmbed(state.applicantUsername ?? "Reprezentant", state.answers),
+        ],
+        components: [],
+      });
+      await interaction.followUp({
+        content: "✅ Pactul a fost publicat în canalul alianțelor.",
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (err) {
+      logger.error(
+        { err, channelId: interaction.channelId, publicChannelId: ALLIANCE_PUBLIC_CHANNEL_ID },
+        "Alliance announcement could not be published",
+      );
+      await interaction.reply({
+        content: "❌ Pactul nu a putut fi publicat. Verifică permisiunile botului în canalul alianțelor.",
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+    return true;
+  }
+
+  const editAllianceMatch = interaction.customId.match(/^ticket_alliance_edit_(\d+)$/);
+  if (editAllianceMatch) {
+    const applicantId = editAllianceMatch[1]!;
+    const state = ticketProgress.get(`${interaction.channelId}:${applicantId}`);
+    if (!state?.answers || state.alliancePosted) {
+      await interaction.reply({
+        content: "❌ Acest draft nu mai poate fi editat.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
+    await interaction.showModal(partnershipEditModal(applicantId, state.answers));
+    return true;
+  }
+
   if (interaction.customId === "ticket_copy_partnership") {
     await interaction.reply({
-      content: partnershipCopyText(interaction.message),
+      content: "📋 Copierea simplă nu mai este disponibilă. Folosește **Confirmă alianța** pentru a crea draftul de publicare.",
       flags: MessageFlags.Ephemeral,
       allowedMentions: { parse: [] },
     });
@@ -799,6 +908,7 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
     ticketProgress.set(progressKey, {
       currentStep: 0,
       panelMessageId: interaction.message.id,
+      applicantUsername: interaction.user.username,
     });
     if (kind === "staff") {
       void interaction.message.edit(ticketPanelPayload("staff")).catch(() => null);
@@ -947,15 +1057,20 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
 
   try {
     const finalPartnership = kind === "partnership" && isLastQuestion;
-    await interaction.channel.send({
+    const responseMessage = await interaction.channel.send({
       embeds: [
         finalPartnership
           ? partnershipSummaryEmbed(interaction.user.username, partnershipAnswers)
           : answerEmbed,
       ],
-      components: finalPartnership ? [partnershipCopyRow()] : [],
+      components: finalPartnership
+        ? [partnershipConfirmRow(interaction.user.id)]
+        : [],
       allowedMentions: { parse: [] },
     });
+    if (finalPartnership && progressState) {
+      progressState.responseMessageId = responseMessage.id;
+    }
     if (rejectedForTag || isLastQuestion) {
       if (progressState) {
         progressState.currentStep = questionIndex;
@@ -1001,6 +1116,56 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
 }
 
 export async function handleTicketModal(interaction: ModalSubmitInteraction): Promise<boolean> {
+  const editAllianceMatch = interaction.customId.match(/^ticket_alliance_edit_submit_(\d+)$/);
+  if (editAllianceMatch) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const applicantId = editAllianceMatch[1]!;
+    const progressKey = `${interaction.channelId}:${applicantId}`;
+    const state = ticketProgress.get(progressKey);
+    if (!state?.answers || state.alliancePosted) {
+      await interaction.editReply({ content: "❌ Acest draft nu mai poate fi editat." });
+      return true;
+    }
+
+    state.answers = {
+      ...state.answers,
+      server_name: safeAnswer(fieldValue(interaction, "alliance_server_name")),
+      description: safeAnswer(fieldValue(interaction, "alliance_description")),
+      invite: safeAnswer(fieldValue(interaction, "alliance_invite")),
+      regat_description: safeAnswer(fieldValue(interaction, "alliance_regat_description")),
+    };
+
+    if (
+      !interaction.channel ||
+      !interaction.channel.isTextBased() ||
+      !("messages" in interaction.channel) ||
+      !state.responseMessageId
+    ) {
+      await interaction.editReply({
+        content: "❌ Draftul nu mai este disponibil pentru editare în acest ticket.",
+      });
+      return true;
+    }
+
+    const responseMessage = await interaction.channel.messages
+      .fetch(state.responseMessageId)
+      .catch(() => null);
+    if (!responseMessage) {
+      await interaction.editReply({
+        content: "❌ Mesajul draftului nu mai este disponibil.",
+      });
+      return true;
+    }
+    await responseMessage.edit({
+      embeds: [
+        partnershipDraftEmbed(state.applicantUsername ?? "Reprezentant", state.answers),
+      ],
+      components: [partnershipPublishRow(applicantId)],
+    });
+    await interaction.editReply({ content: "✅ Draftul alianței a fost actualizat." });
+    return true;
+  }
+
   if (interaction.customId === "ticket_form_staff_details") {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const tagAnswer = safeAnswer(fieldValue(interaction, "staff_tag"));

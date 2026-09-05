@@ -9,7 +9,9 @@ import {
 import {
   staffDetailsModal,
   isStaffTagRefusal,
-  partnershipCopyRow,
+  partnershipConfirmRow,
+  partnershipPublishRow,
+  partnershipDraftEmbed,
   partnershipSummaryEmbed,
   STAFF_REVIEW_ROLE_ID,
   staffOracleReviewPayload,
@@ -153,7 +155,7 @@ describe("Oracle ticket categories", () => {
     expect(ticketQuestionModal("partnership", "description")?.toJSON().components[0]).toBeDefined();
   });
 
-  it("adds a copy button to the completed partnership summary", () => {
+  it("creates a confirmable partnership draft with publish and edit buttons", () => {
     const summary = partnershipSummaryEmbed("Andrei", {
       server_name: "Regatul Umbrelor",
       description: "Comunitate RPG medievală.",
@@ -165,10 +167,21 @@ describe("Oracle ticket categories", () => {
       "📝 Descrierea serverului",
       "🔗 Linkul serverului",
     ]);
-    const button = partnershipCopyRow().toJSON().components[0];
-    expect(button && "custom_id" in button ? button.custom_id : undefined).toBe(
-      "ticket_copy_partnership",
+    const confirmButton = partnershipConfirmRow("123").toJSON().components[0];
+    expect(confirmButton && "custom_id" in confirmButton ? confirmButton.custom_id : undefined).toBe(
+      "ticket_alliance_confirm_123",
     );
+    const draft = partnershipDraftEmbed("Andrei", {
+      server_name: "Regatul Umbrelor",
+      description: "Comunitate RPG medievală.",
+      invite: "https://discord.gg/umbrelor",
+    }).toJSON();
+    expect(draft.title).toBe("🤝 Pactul celor Două Regate · Draft");
+    const publishButtons = partnershipPublishRow("123").toJSON().components;
+    expect(publishButtons.map((button) => "custom_id" in button ? button.custom_id : undefined)).toEqual([
+      "ticket_alliance_post_123",
+      "ticket_alliance_edit_123",
+    ]);
   });
 
   it("starts help and report contracts directly from their first question", () => {
