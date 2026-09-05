@@ -62,11 +62,8 @@ describe("Oracle ticket categories", () => {
   it("gives staff applications their own safe instructions", () => {
     const instruction = buildTicketSystemInstruction("staff");
     expect(instruction).toContain("aplicație de staff");
-    expect(instruction).toContain("🛡️ Aplicare Staff");
-    expect(instruction).toContain("⚠️ Tag-ul serverului este OBLIGATORIU pentru validarea aplicației.");
-    expect(instruction).toContain("Fără tag → aplicația este respinsă automat.");
-    expect(instruction).toContain("⚠️ Aplicările incomplete sau făcute în glumă vor fi respinse.");
-    expect(instruction).toContain("Un membru al echipei te va prelua cât mai curând.");
+    expect(instruction).toContain("Formularul interactiv este afișat deja de bot");
+    expect(instruction).not.toContain("La începutul aplicației, prezintă un mini-formular");
     expect(instruction).toContain("Tagul rămâne o condiție obligatorie");
     expect(instruction).toContain("Vârsta este obligatorie");
     expect(instruction).toContain("Ce vârstă ai?");
@@ -86,13 +83,14 @@ describe("Oracle ticket categories", () => {
     const helpReport = buildTicketSystemInstruction("help_report");
 
     expect(partnership).toContain("propunere de parteneriat");
-    expect(partnership).toContain("🤝 Propunere de Parteneriat");
     expect(partnership).toContain("descrierea serverului");
     expect(partnership).toContain("fără link de invitație în acest răspuns");
     expect(partnership).toContain("tematică, tipul comunității și ce oferă");
     expect(partnership).toContain("numărul aproximativ de membri");
     expect(helpReport).toContain("raportarea unui membru");
     expect(helpReport).toContain("Păstrează raportarea confidențială");
+    expect(partnership).toContain("Formularul interactiv este afișat deja de bot");
+    expect(partnership).not.toContain("🤝 Propunere de Parteneriat");
   });
 
   it("starts the eight-question staff contract directly from question one", () => {

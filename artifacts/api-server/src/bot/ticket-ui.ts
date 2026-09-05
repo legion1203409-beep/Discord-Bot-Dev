@@ -1187,23 +1187,24 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
 
     try {
       await publicChannel.send({
-        embeds: [
-          allianceRecruitmentEmbed(
-            state.answers,
-            state.applicantUsername ?? "Reprezentant",
-          ),
-        ],
+        content: allianceAnnouncementText(
+          state.answers,
+          state.applicantUsername ?? "Reprezentant",
+        ),
         allowedMentions: { parse: [] },
       });
       state.alliancePosted = true;
       await interaction.update({
+        content:
+          `✅ Alianța a fost aprobată și publicată în <#${ALLIANCE_PUBLIC_CHANNEL_ID}>.`,
         embeds: [
           partnershipPublishedEmbed(state.applicantUsername ?? "Reprezentant", state.answers),
         ],
         components: [],
+        allowedMentions: { parse: [] },
       });
       await interaction.followUp({
-        content: "✅ Pactul a fost publicat în canalul alianțelor.",
+        content: `✅ Pactul a fost publicat în <#${ALLIANCE_PUBLIC_CHANNEL_ID}>.`,
         flags: MessageFlags.Ephemeral,
       });
     } catch (err) {
