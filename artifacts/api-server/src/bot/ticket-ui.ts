@@ -784,9 +784,10 @@ export function partnershipDraftEmbed(
       {
         name: "🏰 Regatul partener",
         value:
-          `**${safeAnswer(answers.server_name)}**\n` +
-          `${safeAnswer(answers.description)}\n` +
-          `🔗 ${safeAnswer(answers.invite)}`,
+          `🏰 Serverul lui: **${safeAnswer(answers.server_name)}**\n` +
+          `👤 Numele lui: ${safeAnswer(answers.representative || username)}\n` +
+          `📝 Descriere: ${safeAnswer(answers.description)}\n` +
+          `🔗 Link de invitație: ${safeAnswer(answers.invite)}`,
         inline: false,
       },
       {
