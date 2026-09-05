@@ -225,6 +225,7 @@ describe("Oracle ticket categories", () => {
         description: "Comunitate RPG medievală.",
         invite: "https://discord.gg/umbrelor",
         members: "150 total · 60 activi",
+        regat_description: "🌫️ Textul privat al Regatului Cenușii",
       },
       "Andrei",
     );
@@ -233,6 +234,7 @@ describe("Oracle ticket categories", () => {
     expect(announcement).toContain("🏰 Comunitatea parteneră: Regatul Umbrelor");
     expect(announcement).toContain("👤 Contract completat de: Andrei");
     expect(announcement).toContain("📌 Promovare: serverele sub 200 de membri");
+    expect(announcement).not.toContain("Textul privat al Regatului Cenușii");
     expect(announcement).not.toContain("@everyone");
   });
 

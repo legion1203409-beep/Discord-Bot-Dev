@@ -833,9 +833,6 @@ export function allianceAnnouncementText(
   const serverName = safeAnswer(answers.server_name).slice(0, 200);
   const description = safeAnswer(answers.description).slice(0, 650);
   const invite = safeAnswer(answers.invite).slice(0, 300);
-  const regatDescription = safeAnswer(
-    answers.regat_description || REGATUL_CENUSII_DESCRIPTION,
-  ).slice(0, 650);
   const members = safeAnswer(answers.members).slice(0, 150);
   const lines = [
     "🤝 PACTUL CELOR DOUĂ REGATE",
@@ -847,9 +844,6 @@ export function allianceAnnouncementText(
     description,
     "",
     `🔗 Link: ${invite}`,
-    "",
-    "⚔️ Regatul Cenușii:",
-    regatDescription,
     "",
     `👤 Contract completat de: ${applicant}`,
     `👥 Membri: ${members}`,
@@ -1063,40 +1057,29 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
       return true;
     }
 
-    const publicChannel = await interaction.client.channels
-      .fetch(ALLIANCE_PUBLIC_CHANNEL_ID)
-      .catch(() => null);
-    if (!publicChannel?.isTextBased() || !("send" in publicChannel)) {
-      await interaction.reply({
-        content: `❌ Nu pot accesa canalul alianțelor (${ALLIANCE_PUBLIC_CHANNEL_ID}). Verifică accesul botului.`,
-        flags: MessageFlags.Ephemeral,
-      });
-      return true;
-    }
-
     try {
-      await publicChannel.send({
-        content: await allianceRecruitmentTextForGuild(interaction.guildId!),
-        allowedMentions: { parse: [] },
-      });
-      state.alliancePosted = true;
+      state.answers = {
+        ...state.answers,
+        regat_description: await allianceRecruitmentTextForGuild(interaction.guildId!),
+      };
       await interaction.update({
         embeds: [
-          partnershipPublishedEmbed(state.applicantUsername ?? "Reprezentant", state.answers),
+          partnershipDraftEmbed(state.applicantUsername ?? "Reprezentant", state.answers),
         ],
-        components: [],
+        components: [partnershipPublishRow(applicantId)],
       });
       await interaction.followUp({
-        content: "✅ Alianța a fost confirmată, iar mesajul Regatului a fost publicat.",
+        content:
+          "✅ Alianța a fost confirmată. Verifică draftul din ticket, apoi folosește «Postează în canalul alianțelor» pentru publicare.",
         flags: MessageFlags.Ephemeral,
       });
     } catch (err) {
       logger.error(
-        { err, channelId: interaction.channelId, publicChannelId: ALLIANCE_PUBLIC_CHANNEL_ID },
-        "Alliance recruitment announcement could not be published after confirmation",
+        { err, channelId: interaction.channelId },
+        "Alliance draft could not be prepared after confirmation",
       );
       await interaction.reply({
-        content: "❌ Mesajul nu a putut fi publicat. Verifică permisiunile botului în canalul alianțelor.",
+        content: "❌ Draftul alianței nu a putut fi pregătit. Încearcă din nou.",
         flags: MessageFlags.Ephemeral,
       });
     }
@@ -1142,7 +1125,10 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
 
     try {
       await publicChannel.send({
-        content: await allianceRecruitmentTextForGuild(interaction.guildId!),
+        content: allianceAnnouncementText(
+          state.answers,
+          state.applicantUsername ?? "Reprezentant",
+        ),
         allowedMentions: { parse: [] },
       });
       state.alliancePosted = true;
