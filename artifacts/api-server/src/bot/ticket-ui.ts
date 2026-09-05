@@ -92,7 +92,7 @@ export function ticketPanelPayload(kind: OracleTicketKind): {
     new ButtonBuilder()
       .setCustomId(ticketButtonId("start", kind))
       .setLabel(kind === "staff" ? "Începe aplicația" : kind === "partnership" ? "Trimite propunerea" : "Descrie cazul")
-      .setEmoji(kind === "help_report" ? "📝" : "✦")
+      .setEmoji("📝")
       .setStyle(ButtonStyle.Success),
     new ButtonBuilder()
       .setCustomId(ticketButtonId("requirements", kind))
