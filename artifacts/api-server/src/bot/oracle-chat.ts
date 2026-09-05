@@ -12,10 +12,7 @@ import { getCurrentMood } from "./oracle";
 import { MOOD_META, type MoodState } from "./oracle-content";
 import { handleJustice, handlePardon } from "./oracle-guard";
 import { getPlayerById, loadOracleCouncil, recordOracleInteraction, type OracleCouncilRecord } from "./db";
-import {
-  isLegacyOracleTicketPromptText,
-  postTicketPanelIfMissing,
-} from "./ticket-ui";
+import { postTicketPanelIfMissing } from "./ticket-ui";
 import { ORACLE_TICKET_CATEGORY_IDS, type TicketCategoryKind } from "./ticket-categories";
 export { ORACLE_TICKET_CATEGORY_IDS } from "./ticket-categories";
 import type { Player } from "@workspace/db";
@@ -1013,69 +1010,9 @@ async function maybeReplyInTicket(
   kind: OracleTicketKind,
   botId: string,
 ): Promise<void> {
-  // The panel is the first response in a new ticket. On later messages the
-  // Oracle can continue naturally without reposting the controls.
-  const panelPosted = await postTicketPanelIfMissing(message.channel, kind, botId);
-  if (panelPosted) return;
-
-  const raw = (message.content ?? "").trim();
-  const cleaned = cleanMentionTokens(raw);
-  if (!cleaned || !isWorthReplying(cleaned)) return;
-
-  // Ticket conversations have their own cooldown so a recent public-channel
-  // reply cannot suppress the first useful response inside a ticket.
-  const cooldownKey = `ticket:${message.channelId}:${message.author.id}`;
-  const pre = Date.now();
-  if (pre - (lastReplyAt.get(cooldownKey) ?? 0) < USER_COOLDOWN_MS) return;
-  if (!underGlobalCap(pre)) return;
-
-  const now = Date.now();
-  if (!underGlobalCap(now)) return;
-  replyTimestamps.push(now);
-  lastReplyAt.set(cooldownKey, now);
-
-  try {
-    if (message.channel.isTextBased() && "sendTyping" in message.channel) {
-      await message.channel.sendTyping().catch(() => {});
-    }
-
-    const memory = await buildTicketMemory(message, botId);
-    const reply = await generateOracleReply(
-      cleaned,
-      memory,
-      undefined,
-      getCurrentMood(message.guildId ?? undefined),
-      "Solicitant",
-      false,
-      null,
-      null,
-      false,
-      buildTicketSystemInstruction(kind),
-    );
-
-    if (reply && isLegacyOracleTicketPromptText(reply)) {
-      logger.warn(
-        { guildId: message.guildId, channelId: message.channelId, ticketKind: kind },
-        "Oracle ticket form reply suppressed",
-      );
-      return;
-    }
-
-    await message.reply({
-      content: (reply || TICKET_FALLBACK_LINE).slice(0, DISCORD_MAX_CHARS),
-      allowedMentions: { repliedUser: true, parse: [] },
-    });
-    logger.info(
-      { guildId: message.guildId, channelId: message.channelId, ticketKind: kind, len: reply?.length ?? 0 },
-      "Oracle ticket reply sent",
-    );
-  } catch (err) {
-    logger.error({ err, guildId: message.guildId, channelId: message.channelId, ticketKind: kind }, "Oracle ticket reply failed");
-    await message.reply({
-      content: TICKET_FALLBACK_LINE,
-      allowedMentions: { repliedUser: true, parse: [] },
-    }).catch(() => {});
-  }
+  // Tickets are handled by the interactive panel and staff workflow.
+  // The Oracle must not converse in response to every ticket message.
+  await postTicketPanelIfMissing(message.channel, kind, botId);
 }
 
 /**
@@ -1096,6 +1033,9 @@ export async function maybeReplyAsOracle(discordClient: Client, message: Message
 
     const ticketKind = getOracleTicketKind(message);
     if (ticketKind) {
+      // Ticket conversations stay quiet unless the user explicitly mentions
+      // the Oracle. The interactive panel handles ordinary ticket messages.
+      if (!message.mentions.users.has(botId)) return;
       await maybeReplyInTicket(message, ticketKind, botId);
       return;
     }
