@@ -9,6 +9,7 @@ import {
 import {
   staffDetailsModal,
   partnershipDetailsModal,
+  partnershipEditModal,
   partnershipHasUnder200Members,
   isStaffTagRefusal,
   partnershipConfirmRow,
@@ -258,6 +259,16 @@ describe("Oracle ticket categories", () => {
       "partnership_offer",
       "partnership_terms",
     ]);
+  });
+
+  it("routes alliance edit submissions through the ticket modal dispatcher", () => {
+    expect(
+      partnershipEditModal("123", {
+        server_name: "Regatul Umbrelor",
+        description: "Comunitate RPG medievală.",
+        invite: "https://discord.gg/umbrelor",
+      }).toJSON().custom_id,
+    ).toBe("ticket_form_alliance_edit_submit_123");
   });
 
   it("shows the final eight staff questions without asking for a timezone", () => {

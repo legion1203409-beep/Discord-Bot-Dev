@@ -715,25 +715,41 @@ export function partnershipPublishRow(userId: string): ActionRowBuilder<ButtonBu
   );
 }
 
-function allianceAnnouncementEmbed(answers: Record<string, string>): EmbedBuilder {
+export function allianceAnnouncementEmbed(
+  answers: Record<string, string>,
+  applicantUsername: string,
+): EmbedBuilder {
+  const applicant = safeAnswer(applicantUsername, "Reprezentant");
   const embed = new EmbedBuilder()
     .setColor(0xc29a52)
-    .setTitle("🤝 O nouă alianță în Regatul Cenușii")
+    .setTitle("🤝 Pactul celor Două Regate")
+    .setAuthor({ name: `${applicant} · Contract de alianță` })
     .setDescription(
-      "Porțile Regatului se deschid pentru un nou pact. Cunoașteți comunitatea care ni s-a alăturat în această alianță.",
+      "Porțile Regatului se deschid pentru un nou pact.\n" +
+        "Cunoașteți comunitatea care ni s-a alăturat și primiți-o sub steagul alianței.",
     )
     .addFields(
       {
-        name: `🏰 ${safeAnswer(answers.server_name)}`,
+        name: `🏰 Comunitatea parteneră · ${safeAnswer(answers.server_name)}`,
         value:
           `${safeAnswer(answers.description)}\n\n` +
           `🔗 ${safeAnswer(answers.invite)}`,
         inline: false,
       },
       {
-        name: "⚔️ Regatul Cenușii",
+        name: "⚔️ Despre Regatul Cenușii",
         value: safeAnswer(answers.regat_description || REGATUL_CENUSII_DESCRIPTION),
         inline: false,
+      },
+      {
+        name: "👤 Contract completat de",
+        value: applicant,
+        inline: true,
+      },
+      {
+        name: "👥 Comunitate",
+        value: safeAnswer(answers.members),
+        inline: true,
       },
     )
     .setFooter({ text: "Pact pecetluit · Regatul Cenușii" })
@@ -743,12 +759,12 @@ function allianceAnnouncementEmbed(answers: Record<string, string>): EmbedBuilde
   return embed;
 }
 
-function partnershipEditModal(
+export function partnershipEditModal(
   userId: string,
   answers: Record<string, string>,
 ): ModalBuilder {
   const modal = new ModalBuilder()
-    .setCustomId(`ticket_alliance_edit_submit_${userId}`)
+    .setCustomId(`ticket_form_alliance_edit_submit_${userId}`)
     .setTitle("Editează draftul alianței");
   const serverName = input("alliance_server_name", "Numele serverului", "Ex.: Regatul Umbrelor");
   const description = input(
@@ -931,7 +947,12 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
 
     try {
       await publicChannel.send({
-        embeds: [allianceAnnouncementEmbed(state.answers)],
+        embeds: [
+          allianceAnnouncementEmbed(
+            state.answers,
+            state.applicantUsername ?? "Reprezentant",
+          ),
+        ],
         allowedMentions: { parse: [] },
       });
       state.alliancePosted = true;
@@ -1212,7 +1233,7 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
 }
 
 export async function handleTicketModal(interaction: ModalSubmitInteraction): Promise<boolean> {
-  const editAllianceMatch = interaction.customId.match(/^ticket_alliance_edit_submit_(\d+)$/);
+  const editAllianceMatch = interaction.customId.match(/^ticket_form_alliance_edit_submit_(\d+)$/);
   if (editAllianceMatch) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const applicantId = editAllianceMatch[1]!;
