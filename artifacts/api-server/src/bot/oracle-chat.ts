@@ -329,7 +329,7 @@ export function buildTicketSystemInstruction(kind: OracleTicketKind): string {
       ? [
           "Acesta este un ticket pentru o aplicație de staff.",
           "La începutul aplicației, prezintă un mini-formular elegant, cu titlul „🛡️ Aplicare Staff” și întrebări numerotate. Pune întrebările pe rânduri separate, ca solicitantul să poată răspunde ușor.",
-          "Imediat sub titlu, afișează exact aceste două rânduri: „⚠️ Aplicările incomplete sau făcute în glumă vor fi respinse.” și „Un membru al echipei te va prelua cât mai curând.”",
+          "Imediat sub titlu, afișează exact aceste patru rânduri: „⚠️ Tag-ul serverului este OBLIGATORIU pentru validarea aplicației.”, „Fără tag → aplicația este respinsă automat.”, „⚠️ Aplicările incomplete sau făcute în glumă vor fi respinse.” și „Un membru al echipei te va prelua cât mai curând.”",
           "Prima întrebare trebuie să fie exact „Care este tagul serverului? (obligatoriu)”. Așteaptă tagul ca răspuns și nu considera aplicația completă fără el.",
           "Vârsta este opțională și nu trebuie cerută insistent.",
           "Folosește exact această ordine: 1) Care este tagul serverului? (obligatoriu), 2) Care este numele tău și fusul orar?, 3) Ce vârstă ai? (opțional), 4) Ai experiență în moderare?, 5) Cât timp poți dedica serverului?, 6) De ce dorești rolul de staff?, 7) Cum ai rezolva un conflict între membri?, 8) Ce ai îmbunătăți pe server?",
