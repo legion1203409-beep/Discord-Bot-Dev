@@ -201,7 +201,7 @@ function ticketPanelFallback(kind: OracleTicketKind): string {
       "🛡️ **Aplicare Staff**\n\n" +
       "Tag-ul serverului este obligatoriu pentru validarea aplicației.\n" +
       "Fără tag → aplicația este respinsă automat.\n\n" +
-      "Alege întrebările din meniul interactiv care va apărea aici."
+      "Apasă butonul pentru a răspunde la întrebări în ordinea afișată."
     );
   }
   if (kind === "partnership") {
@@ -239,6 +239,9 @@ export function ticketPanelPayload(kind: OracleTicketKind): {
 } {
   const color = TICKET_COLORS[kind];
   const icon = TICKET_ICONS[kind];
+  const staffQuestionList = TICKET_QUESTIONS.staff
+    .map((question) => `**${question.label}** — ${question.description}`)
+    .join("\n");
   const embed = new EmbedBuilder()
     .setColor(color)
     .setTitle(`${icon} ${TICKET_LABELS[kind]}`)
@@ -260,7 +263,13 @@ export function ticketPanelPayload(kind: OracleTicketKind): {
             },
             {
               name: "📜 Contractul",
-                value: `${TICKET_QUESTIONS.staff.length} întrebări · înaintezi cu butonul „Următoarea”`,
+               value:
+                 `${TICKET_QUESTIONS.staff.length} întrebări · răspunzi în ordinea afișată.\n` +
+                 "După fiecare răspuns apare butonul pentru următoarea întrebare.",
+             },
+             {
+               name: "📋 Întrebările contractului",
+               value: staffQuestionList,
             },
           ]
         : kind === "partnership"
@@ -576,6 +585,9 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
       currentStep: 0,
       panelMessageId: interaction.message.id,
     });
+    if (kind === "staff") {
+      void interaction.message.edit(ticketPanelPayload("staff")).catch(() => null);
+    }
     await interaction.showModal(ticketQuestionModal(kind, firstQuestion.key)!);
     return true;
   }
