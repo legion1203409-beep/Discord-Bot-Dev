@@ -55,9 +55,9 @@ export function memberHasStaffReviewRole(
   member: RoleMembership | null | undefined,
 ): boolean {
   if (!member) return false;
-  return Array.isArray(member.roles)
-    ? member.roles.includes(STAFF_REVIEW_ROLE_ID)
-    : member.roles.cache.has(STAFF_REVIEW_ROLE_ID);
+  return "cache" in member.roles
+    ? member.roles.cache.has(STAFF_REVIEW_ROLE_ID)
+    : member.roles.includes(STAFF_REVIEW_ROLE_ID);
 }
 
 const postedTicketPanels = new Set<string>();
