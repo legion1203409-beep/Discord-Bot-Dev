@@ -38,6 +38,7 @@ const TICKET_ICONS: Record<OracleTicketKind, string> = {
 const TICKET_SEAL = IMG.ticketSeal;
 const postedTicketPanels = new Set<string>();
 const ticketPanelLocks = new Map<string, Promise<boolean>>();
+const ticketProgress = new Map<string, number>();
 
 type TicketQuestion = {
   key: string;
@@ -208,27 +209,6 @@ function ticketPanelFallback(kind: OracleTicketKind): string {
   return "🕯️ **Ajutor / Raportare**\n\nAlege din meniul interactiv ce vrei să descrii pentru staff.";
 }
 
-function ticketQuestionMenu(kind: OracleTicketKind): StringSelectMenuBuilder {
-  return new StringSelectMenuBuilder()
-    .setCustomId(`ticket_questions_${kind}`)
-    .setPlaceholder(
-      kind === "staff"
-        ? "Selectează o întrebare..."
-        : kind === "partnership"
-          ? "Selectează un câmp pentru parteneriat..."
-          : "Selectează ce vrei să descrii...",
-    )
-    .setMinValues(1)
-    .setMaxValues(1)
-    .addOptions(
-      TICKET_QUESTIONS[kind].map((question) => ({
-        label: question.label,
-        description: question.description,
-        value: question.key,
-      })),
-    );
-}
-
 function ticketStartButton(kind: OracleTicketKind): ButtonBuilder {
   return new ButtonBuilder()
     .setCustomId(`ticket_start_${kind}`)
@@ -247,10 +227,10 @@ export function ticketPanelPayload(kind: OracleTicketKind): {
     .setTitle(`${icon} ${TICKET_LABELS[kind]}`)
     .setDescription(
       kind === "staff"
-        ? "Un contract de candidatură pentru Regatul Cenușii.\nApasă butonul pentru a citi întrebările și a răspunde pas cu pas."
+        ? "Un contract de candidatură pentru Regatul Cenușii.\nApasă butonul pentru a începe cu întrebarea 1 și continuă pas cu pas."
         : kind === "partnership"
-          ? "Un contract de colaborare între două comunități.\nApasă butonul pentru a completa propunerea pas cu pas."
-          : "O declarație pentru staff, cu toate detaliile necesare.\nApasă butonul pentru a începe.",
+          ? "Un contract de colaborare între două comunități.\nApasă butonul pentru a începe cu întrebarea 1."
+          : "O declarație pentru staff, cu toate detaliile necesare.\nApasă butonul pentru a începe cu întrebarea 1.",
     )
     .addFields(
       kind === "staff"
@@ -263,20 +243,20 @@ export function ticketPanelPayload(kind: OracleTicketKind): {
             },
             {
               name: "📜 Contractul",
-              value: `${TICKET_QUESTIONS.staff.length} întrebări · răspunsurile rămân în acest ticket`,
+                value: `${TICKET_QUESTIONS.staff.length} întrebări · înaintezi cu butonul „Următoarea”`,
             },
           ]
         : kind === "partnership"
           ? [
               {
                 name: "📜 Contractul",
-                value: "7 informații · răspunsurile rămân în acest ticket",
+                value: "7 informații · înaintezi cu butonul „Următoarea”",
               },
             ]
           : [
               {
                 name: "📜 Declarația",
-                value: "5 informații · descrie cazul cât mai clar",
+                value: "5 informații · înaintezi cu butonul „Următoarea”",
               },
             ],
     )
@@ -286,44 +266,6 @@ export function ticketPanelPayload(kind: OracleTicketKind): {
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(ticketStartButton(kind));
 
   return { embeds: [embed], components: [row] };
-}
-
-export function ticketContractPayload(kind: OracleTicketKind): {
-  embeds: EmbedBuilder[];
-  components: ActionRowBuilder<StringSelectMenuBuilder>[];
-} {
-  const questions = TICKET_QUESTIONS[kind]
-    .map((question) => `**${question.label}**\n${question.description}`)
-    .join("\n\n");
-  const embed = new EmbedBuilder()
-    .setColor(TICKET_COLORS[kind])
-    .setTitle(`📜 ${TICKET_LABELS[kind]} · Contract`)
-    .setDescription(
-      "Citește întrebările de mai jos și răspunde sincer.\n" +
-        "Selectează câte o întrebare din meniu, apoi revino aici pentru următoarea.",
-    )
-    .addFields(
-      ...(kind === "staff"
-        ? [
-            {
-              name: "⚠️ Clauză obligatorie",
-              value:
-                "Tag-ul serverului este **OBLIGATORIU** pentru validarea aplicației.\n" +
-                "Fără tag, aplicația este respinsă automat.",
-            },
-          ]
-        : []),
-      { name: "Întrebările contractului", value: questions },
-    )
-    .setFooter({ text: "Regatul Cenușii · Un răspuns pentru fiecare întrebare" });
-  if (TICKET_SEAL) embed.setThumbnail(TICKET_SEAL);
-
-  return {
-    embeds: [embed],
-    components: [
-      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(ticketQuestionMenu(kind)),
-    ],
-  };
 }
 
 export async function postTicketPanelIfMissing(
@@ -578,10 +520,28 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
   const startMatch = interaction.customId.match(/^ticket_start_(staff|partnership|help_report)$/);
   if (startMatch) {
     const kind = startMatch[1] as OracleTicketKind;
-    await interaction.reply({
-      ...ticketContractPayload(kind),
-      flags: MessageFlags.Ephemeral,
-    });
+    const firstQuestion = TICKET_QUESTIONS[kind][0];
+    if (!firstQuestion) return false;
+    ticketProgress.set(`${interaction.channelId}:${interaction.user.id}`, 0);
+    await interaction.showModal(ticketQuestionModal(kind, firstQuestion.key)!);
+    return true;
+  }
+
+  const nextMatch = interaction.customId.match(/^ticket_next_(staff|partnership|help_report)_(\d+)$/);
+  if (nextMatch) {
+    const kind = nextMatch[1] as OracleTicketKind;
+    const questionIndex = Number(nextMatch[2]);
+    const question = TICKET_QUESTIONS[kind][questionIndex - 1];
+    const progressKey = `${interaction.channelId}:${interaction.user.id}`;
+    const expectedIndex = (ticketProgress.get(progressKey) ?? 0) + 1;
+    if (!question || questionIndex !== expectedIndex) {
+      await interaction.reply({
+        content: `⏳ Continuă cu pasul ${expectedIndex}/${TICKET_QUESTIONS[kind].length}.`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
+    await interaction.showModal(ticketQuestionModal(kind, question.key)!);
     return true;
   }
 
@@ -682,10 +642,30 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
       embeds: [answerEmbed],
       allowedMentions: { parse: [] },
     });
+    const progressKey = `${interaction.channelId}:${interaction.user.id}`;
+    if (!rejectedForTag) {
+      ticketProgress.set(progressKey, questionIndex);
+    } else {
+      ticketProgress.delete(progressKey);
+    }
+    const nextComponents =
+      !rejectedForTag && !isLastQuestion
+        ? [
+            new ActionRowBuilder<ButtonBuilder>().addComponents(
+              new ButtonBuilder()
+                .setCustomId(`ticket_next_${kind}_${questionIndex + 1}`)
+                .setLabel(`Întrebarea următoare · ${questionIndex + 1}/${totalQuestions}`)
+                .setStyle(ButtonStyle.Primary),
+            ),
+          ]
+        : [];
     await interaction.editReply({
       content: rejectedForTag
         ? "❌ Aplicația a fost respinsă deoarece nu ai acceptat purtarea tag-ului serverului."
-        : `✅ Răspunsul pentru **${question.label}** a fost adăugat. Alege următoarea întrebare din meniu.`,
+        : isLastQuestion
+          ? `✅ Răspunsul pentru **${question.label}** a fost adăugat. Formularul este complet.`
+          : `✅ Răspunsul pentru **${question.label}** a fost adăugat.`,
+      components: nextComponents,
     });
   } catch (err) {
     logger.error(
