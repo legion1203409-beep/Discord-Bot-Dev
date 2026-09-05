@@ -715,48 +715,40 @@ export function partnershipPublishRow(userId: string): ActionRowBuilder<ButtonBu
   );
 }
 
-export function allianceAnnouncementEmbed(
+export function allianceAnnouncementText(
   answers: Record<string, string>,
   applicantUsername: string,
-): EmbedBuilder {
+): string {
   const applicant = safeAnswer(applicantUsername, "Reprezentant");
-  const embed = new EmbedBuilder()
-    .setColor(0xc29a52)
-    .setTitle("🤝 Pactul celor Două Regate")
-    .setAuthor({ name: `${applicant} · Contract de alianță` })
-    .setDescription(
-      "Porțile Regatului se deschid pentru un nou pact.\n" +
-        "Cunoașteți comunitatea care ni s-a alăturat și primiți-o sub steagul alianței.",
-    )
-    .addFields(
-      {
-        name: `🏰 Comunitatea parteneră · ${safeAnswer(answers.server_name)}`,
-        value:
-          `${safeAnswer(answers.description)}\n\n` +
-          `🔗 ${safeAnswer(answers.invite)}`,
-        inline: false,
-      },
-      {
-        name: "⚔️ Despre Regatul Cenușii",
-        value: safeAnswer(answers.regat_description || REGATUL_CENUSII_DESCRIPTION),
-        inline: false,
-      },
-      {
-        name: "👤 Contract completat de",
-        value: applicant,
-        inline: true,
-      },
-      {
-        name: "👥 Comunitate",
-        value: safeAnswer(answers.members),
-        inline: true,
-      },
-    )
-    .setFooter({ text: "Pact pecetluit · Regatul Cenușii" })
-    .setTimestamp();
-  addSmallServerPromotionRule(embed, answers.members);
-  if (TICKET_SEAL) embed.setThumbnail(TICKET_SEAL);
-  return embed;
+  const serverName = safeAnswer(answers.server_name).slice(0, 200);
+  const description = safeAnswer(answers.description).slice(0, 650);
+  const invite = safeAnswer(answers.invite).slice(0, 300);
+  const regatDescription = safeAnswer(
+    answers.regat_description || REGATUL_CENUSII_DESCRIPTION,
+  ).slice(0, 650);
+  const members = safeAnswer(answers.members).slice(0, 150);
+  const lines = [
+    "🤝 PACTUL CELOR DOUĂ REGATE",
+    "══════════════════════════",
+    "",
+    `🏰 Comunitatea parteneră: ${serverName}`,
+    "",
+    "📝 Descrierea serverului:",
+    description,
+    "",
+    `🔗 Link: ${invite}`,
+    "",
+    "⚔️ Regatul Cenușii:",
+    regatDescription,
+    "",
+    `👤 Contract completat de: ${applicant}`,
+    `👥 Membri: ${members}`,
+  ];
+  if (partnershipHasUnder200Members(answers.members)) {
+    lines.push("", "📌 Promovare: serverele sub 200 de membri se promovează fără niciun ping.");
+  }
+  lines.push("", "Pact pecetluit · Regatul Cenușii");
+  return lines.join("\n").slice(0, 1950);
 }
 
 export function partnershipEditModal(
@@ -947,12 +939,10 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
 
     try {
       await publicChannel.send({
-        embeds: [
-          allianceAnnouncementEmbed(
-            state.answers,
-            state.applicantUsername ?? "Reprezentant",
-          ),
-        ],
+        content: allianceAnnouncementText(
+          state.answers,
+          state.applicantUsername ?? "Reprezentant",
+        ),
         allowedMentions: { parse: [] },
       });
       state.alliancePosted = true;
@@ -1021,7 +1011,7 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
     ticketProgress.set(progressKey, {
       currentStep: 0,
       panelMessageId: interaction.message.id,
-      applicantUsername: interaction.user.username,
+      applicantUsername: interaction.user.globalName ?? interaction.user.username,
     });
     if (kind === "staff" || kind === "partnership") {
       void interaction.message.edit(ticketPanelPayload(kind)).catch(() => null);
@@ -1177,7 +1167,10 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
     const responseMessage = await interaction.channel.send({
       embeds: [
         finalPartnership
-          ? partnershipSummaryEmbed(interaction.user.username, partnershipAnswers)
+          ? partnershipSummaryEmbed(
+              interaction.user.globalName ?? interaction.user.username,
+              partnershipAnswers,
+            )
           : answerEmbed,
       ],
       components: finalPartnership
@@ -1302,7 +1295,7 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
       terms: safeAnswer(fieldValue(interaction, "partnership_terms")),
     };
     const finalEmbed = partnershipSummaryEmbed(
-      interaction.user.username,
+      interaction.user.globalName ?? interaction.user.username,
       finalAnswers,
     );
 

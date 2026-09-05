@@ -11,6 +11,7 @@ import {
   partnershipDetailsModal,
   partnershipEditModal,
   partnershipHasUnder200Members,
+  allianceAnnouncementText,
   isStaffTagRefusal,
   partnershipConfirmRow,
   partnershipPublishRow,
@@ -197,6 +198,24 @@ describe("Oracle ticket categories", () => {
     expect(partnershipHasUnder200Members("200 total · 80 activi")).toBe(false);
     expect(partnershipHasUnder200Members("2.000 total · 300 activi")).toBe(false);
     expect(partnershipHasUnder200Members("nu este precizat")).toBe(false);
+  });
+
+  it("shows who completed the alliance contract in the public announcement", () => {
+    const announcement = allianceAnnouncementText(
+      {
+        server_name: "Regatul Umbrelor",
+        description: "Comunitate RPG medievală.",
+        invite: "https://discord.gg/umbrelor",
+        members: "150 total · 60 activi",
+      },
+      "Andrei",
+    );
+
+    expect(announcement).toContain("🤝 PACTUL CELOR DOUĂ REGATE");
+    expect(announcement).toContain("🏰 Comunitatea parteneră: Regatul Umbrelor");
+    expect(announcement).toContain("👤 Contract completat de: Andrei");
+    expect(announcement).toContain("📌 Promovare: serverele sub 200 de membri");
+    expect(announcement).not.toContain("@everyone");
   });
 
   it("starts help and report contracts directly from their first question", () => {
