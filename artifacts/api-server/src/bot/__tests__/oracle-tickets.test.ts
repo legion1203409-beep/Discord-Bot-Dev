@@ -32,10 +32,12 @@ describe("Oracle ticket categories", () => {
     expect(instruction).toContain("Fără tag → aplicația este respinsă automat.");
     expect(instruction).toContain("⚠️ Aplicările incomplete sau făcute în glumă vor fi respinse.");
     expect(instruction).toContain("Un membru al echipei te va prelua cât mai curând.");
-    expect(instruction).toContain("Care este tagul serverului? (obligatoriu)");
-    expect(instruction).toContain("Vârsta este opțională");
-    expect(instruction).toContain("Ce vârstă ai? (opțional)");
+    expect(instruction).toContain("Tagul rămâne o condiție obligatorie");
+    expect(instruction).toContain("Vârsta este obligatorie");
+    expect(instruction).toContain("Ce vârstă ai?");
     expect(instruction).toContain("Care este numele tău și fusul orar?");
+    expect(instruction).not.toContain("Care este tagul serverului? (obligatoriu)");
+    expect(instruction).not.toContain("Ce vârstă ai? (opțional)");
     expect(instruction).toContain("Cum ai rezolva un conflict între membri?");
     expect(instruction).toContain("Ce ai îmbunătăți pe server?");
     expect(instruction).toContain("Nu promite acceptarea");
