@@ -264,8 +264,8 @@ export function ticketPanelPayload(kind: OracleTicketKind): {
             {
               name: "📜 Contractul",
                value:
-                 `${TICKET_QUESTIONS.staff.length} întrebări · răspunzi în ordinea afișată.\n` +
-                 "După fiecare răspuns apare butonul pentru următoarea întrebare.",
+                 `${TICKET_QUESTIONS.staff.length} întrebări · două pagini de formular.\n` +
+                 "Prima pagină conține întrebările 1–5, iar a doua întrebările 6–8.",
              },
              {
                name: "📋 Întrebările contractului",
@@ -368,7 +368,7 @@ function input(
 export function ticketModal(kind: OracleTicketKind): ModalBuilder {
   const modal = new ModalBuilder()
     .setCustomId(`ticket_form_${kind}`)
-    .setTitle(TICKET_LABELS[kind]);
+    .setTitle(kind === "staff" ? "Aplicare Staff · 1/2" : TICKET_LABELS[kind]);
 
   const fields =
     kind === "staff"
@@ -404,7 +404,7 @@ export function ticketModal(kind: OracleTicketKind): ModalBuilder {
 export function staffDetailsModal(): ModalBuilder {
   const modal = new ModalBuilder()
     .setCustomId("ticket_form_staff_details")
-    .setTitle("Aplicare Staff · Situații practice");
+    .setTitle("Aplicare Staff · 2/2");
   modal.addComponents(
     new ActionRowBuilder<TextInputBuilder>().addComponents(
       input(
@@ -567,8 +567,6 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
   const startMatch = interaction.customId.match(/^ticket_start_(staff|partnership|help_report)$/);
   if (startMatch) {
     const kind = startMatch[1] as OracleTicketKind;
-    const firstQuestion = TICKET_QUESTIONS[kind][0];
-    if (!firstQuestion) return false;
     const progressKey = `${interaction.channelId}:${interaction.user.id}`;
     const existingProgress = ticketProgress.get(progressKey);
     if (existingProgress?.status) {
@@ -587,7 +585,12 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
     });
     if (kind === "staff") {
       void interaction.message.edit(ticketPanelPayload("staff")).catch(() => null);
+      await interaction.showModal(ticketModal("staff"));
+      return true;
     }
+
+    const firstQuestion = TICKET_QUESTIONS[kind][0];
+    if (!firstQuestion) return false;
     await interaction.showModal(ticketQuestionModal(kind, firstQuestion.key)!);
     return true;
   }
@@ -769,6 +772,7 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const tagAnswer = safeAnswer(fieldValue(interaction, "staff_tag"));
     const rejectedForTag = isStaffTagRefusal(tagAnswer);
+    const progressKey = `${interaction.channelId}:${interaction.user.id}`;
     const finalEmbed = new EmbedBuilder()
       .setColor(rejectedForTag ? 0xc0392b : TICKET_COLORS.staff)
       .setTitle(rejectedForTag ? "❌ Aplicare respinsă" : "🛡️ Aplicare Staff · Situații practice")
@@ -821,6 +825,16 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
         embeds: [finalEmbed],
         allowedMentions: { parse: [] },
       });
+      const progressState = ticketProgress.get(progressKey);
+      if (progressState) {
+        progressState.currentStep = TICKET_QUESTIONS.staff.length;
+        progressState.status = rejectedForTag ? "rejected" : "completed";
+      }
+      await lockTicketPanel(
+        interaction,
+        "staff",
+        rejectedForTag ? "rejected" : "completed",
+      );
       await interaction.editReply({
         content: rejectedForTag
           ? "❌ Aplicația a fost respinsă deoarece nu ai acceptat purtarea tag-ului serverului."
@@ -921,6 +935,12 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
       components,
       allowedMentions: { parse: [] },
     });
+    if (kind === "staff") {
+      const progressState = ticketProgress.get(
+        `${interaction.channelId}:${interaction.user.id}`,
+      );
+      if (progressState) progressState.currentStep = 5;
+    }
   } catch (err) {
     logger.error(
       { err, guildId: interaction.guildId, channelId: interaction.channelId, ticketKind: kind },
@@ -935,7 +955,7 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
   await interaction.editReply({
     content:
       kind === "staff"
-        ? "✅ Prima parte a fost adăugată. Apasă **Continuă aplicația** în ticket pentru ultimele două întrebări."
+        ? "✅ Prima pagină a fost adăugată. Apasă **Continuă aplicația** în ticket pentru ultimele trei întrebări."
         : "✅ Răspunsurile au fost adăugate în ticket. Un membru al echipei te va prelua cât mai curând.",
   });
   return true;

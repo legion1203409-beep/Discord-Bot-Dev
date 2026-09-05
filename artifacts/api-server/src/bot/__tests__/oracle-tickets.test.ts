@@ -164,10 +164,11 @@ describe("Oracle ticket categories", () => {
     );
   });
 
-  it("builds valid five-field modals and keeps the partnership description mandatory", () => {
+  it("puts the first five staff questions on the first valid modal page", () => {
     const staffModal = ticketModal("staff").toJSON();
     const partnershipModal = ticketModal("partnership").toJSON();
 
+    expect(staffModal.title).toBe("Aplicare Staff · 1/2");
     expect(staffModal.components).toHaveLength(5);
     expect(partnershipModal.components).toHaveLength(5);
     const partnershipIds = partnershipModal.components.flatMap((row) =>
@@ -190,6 +191,8 @@ describe("Oracle ticket categories", () => {
         : [],
     );
 
+    expect(detailsModal.title).toBe("Aplicare Staff · 2/2");
+    expect(detailsModal.components).toHaveLength(3);
     expect(detailIds).toEqual(["staff_conflict", "staff_improvements", "staff_tag"]);
   });
 
