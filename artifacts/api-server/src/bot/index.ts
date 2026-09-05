@@ -43,6 +43,7 @@ import {
   prophecyCooldownRemaining,
   reserveProphecy,
 } from "./oracle-chat";
+import { handleTicketButton, handleTicketModal } from "./ticket-ui";
 import { handleOracleCouncilVote, isOracleCouncilButton } from "./oracle-council";
 import {
   enforceOracleTimeout,
@@ -3937,6 +3938,10 @@ async function handleTributeModal(interaction: ModalSubmitInteraction) {
 async function handleButton(interaction: ButtonInteraction) {
   const id = interaction.customId;
 
+  if (id.startsWith("ticket_")) {
+    return handleTicketButton(interaction);
+  }
+
   if (id.startsWith("help_")) {
     return handleHelpButton(interaction);
   }
@@ -4580,6 +4585,9 @@ export async function startBot(onReady?: () => void): Promise<void> {
         dispatch(handleClasamentSelect(interaction));
       }
     } else if (interaction.isModalSubmit()) {
+      if (interaction.customId.startsWith("ticket_form_")) {
+        dispatch(handleTicketModal(interaction));
+      }
       if (interaction.customId.startsWith("help_question_")) {
         dispatch(handleHelpQuestion(interaction));
       }

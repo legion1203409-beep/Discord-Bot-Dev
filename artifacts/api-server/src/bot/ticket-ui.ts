@@ -10,8 +10,8 @@ import {
   TextInputBuilder,
   TextInputStyle,
   type Message,
-  type TextBasedChannel,
 } from "discord.js";
+import { logger } from "../lib/logger";
 import type { OracleTicketKind } from "./oracle-chat";
 
 const TICKET_COLORS: Record<OracleTicketKind, number> = {
@@ -156,6 +156,31 @@ export function ticketModal(kind: OracleTicketKind): ModalBuilder {
   return modal;
 }
 
+export function staffDetailsModal(): ModalBuilder {
+  const modal = new ModalBuilder()
+    .setCustomId("ticket_form_staff_details")
+    .setTitle("Aplicare Staff · Situații practice");
+  modal.addComponents(
+    new ActionRowBuilder<TextInputBuilder>().addComponents(
+      input(
+        "staff_conflict",
+        "Cum ai rezolva un conflict?",
+        "Descrie cum ai gestiona un conflict între membri",
+        TextInputStyle.Paragraph,
+      ),
+    ),
+    new ActionRowBuilder<TextInputBuilder>().addComponents(
+      input(
+        "staff_improvements",
+        "Ce ai îmbunătăți pe server?",
+        "Propune una sau mai multe îmbunătățiri",
+        TextInputStyle.Paragraph,
+      ),
+    ),
+  );
+  return modal;
+}
+
 export function ticketRequirementsEmbed(kind: OracleTicketKind): EmbedBuilder {
   const embed = new EmbedBuilder()
     .setColor(TICKET_COLORS[kind])
@@ -201,18 +226,25 @@ function fieldValue(interaction: ModalSubmitInteraction, id: string): string {
   return interaction.fields.getTextInputValue(id);
 }
 
-function isSendableChannel(channel: ModalSubmitInteraction["channel"]): channel is TextBasedChannel & { send: Function } {
-  return !!channel && channel.isTextBased() && "send" in channel;
-}
-
 export function isTicketPanelMessage(message: Message, botId: string): boolean {
   if (message.author.id !== botId) return false;
-  return message.components.some((row) =>
-    row.components.some((component) => component.customId?.startsWith("ticket_")),
-  );
+  return message.components.some((row) => {
+    if (!("components" in row)) return false;
+    return row.components.some(
+      (component) =>
+        "customId" in component &&
+        typeof component.customId === "string" &&
+        component.customId.startsWith("ticket_"),
+    );
+  });
 }
 
 export async function handleTicketButton(interaction: ButtonInteraction): Promise<boolean> {
+  if (interaction.customId === "ticket_staff_continue") {
+    await interaction.showModal(staffDetailsModal());
+    return true;
+  }
+
   const match = interaction.customId.match(/^ticket_(start|requirements)_(staff|partnership|help_report)$/);
   if (!match) return false;
   const kind = match[2] as OracleTicketKind;
@@ -230,6 +262,62 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
 }
 
 export async function handleTicketModal(interaction: ModalSubmitInteraction): Promise<boolean> {
+  if (interaction.customId === "ticket_form_staff_details") {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const finalEmbed = new EmbedBuilder()
+      .setColor(TICKET_COLORS.staff)
+      .setTitle("🛡️ Aplicare Staff · Situații practice")
+      .setAuthor({
+        name: interaction.user.username,
+        iconURL: interaction.user.displayAvatarURL(),
+      })
+      .setDescription("Ultimele răspunsuri ale aplicației au fost adăugate pentru evaluarea echipei.")
+      .addFields(
+        {
+          name: "Gestionarea unui conflict",
+          value: safeAnswer(fieldValue(interaction, "staff_conflict")),
+          inline: false,
+        },
+        {
+          name: "Îmbunătățiri propuse",
+          value: safeAnswer(fieldValue(interaction, "staff_improvements")),
+          inline: false,
+        },
+      )
+      .setFooter({ text: "Aplicație completă · Așteaptă evaluarea staffului" })
+      .setTimestamp();
+
+    if (
+      !interaction.channel ||
+      !interaction.channel.isTextBased() ||
+      !("send" in interaction.channel)
+    ) {
+      await interaction.editReply({
+        content: "❌ Ultimele răspunsuri nu au putut fi publicate. Încearcă din nou în ticket.",
+      });
+      return true;
+    }
+
+    try {
+      await interaction.channel.send({
+        embeds: [finalEmbed],
+        allowedMentions: { parse: [] },
+      });
+      await interaction.editReply({
+        content: "✅ Aplicația este completă. Un membru al echipei te va prelua cât mai curând.",
+      });
+    } catch (err) {
+      logger.error(
+        { err, guildId: interaction.guildId, channelId: interaction.channelId },
+        "Final staff application step could not be posted",
+      );
+      await interaction.editReply({
+        content: "❌ Ultimele răspunsuri nu au putut fi adăugate în ticket. Încearcă din nou.",
+      });
+    }
+    return true;
+  }
+
   const match = interaction.customId.match(/^ticket_form_(staff|partnership|help_report)$/);
   if (!match) return false;
   const kind = match[1] as OracleTicketKind;
@@ -239,10 +327,15 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
   const embed = new EmbedBuilder()
     .setColor(color)
     .setTitle(`${TICKET_ICONS[kind]} ${TICKET_LABELS[kind]} · Răspunsuri primite`)
+    .setAuthor({
+      name: interaction.user.username,
+      iconURL: interaction.user.displayAvatarURL(),
+    })
     .setDescription(
       "Formularul a fost trimis în acest ticket. Un membru al echipei poate continua verificarea de aici.",
     )
-    .setFooter({ text: "Nu închide ticketul până când stafful nu revine" });
+    .setFooter({ text: "Nu închide ticketul până când stafful nu revine" })
+    .setTimestamp();
 
   if (kind === "staff") {
     embed.addFields(
@@ -253,7 +346,7 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
       { name: "Motivație", value: safeAnswer(fieldValue(interaction, "staff_motivation")), inline: false },
       {
         name: "Următorii pași",
-        value: "Răspunde în ticket la întrebările despre conflicte și îmbunătățiri pentru server.",
+        value: "Apasă butonul de mai jos pentru întrebările despre conflicte și îmbunătățiri.",
         inline: false,
       },
     );
@@ -280,15 +373,51 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
     );
   }
 
-  if (isSendableChannel(interaction.channel)) {
+  if (
+    !interaction.channel ||
+    !interaction.channel.isTextBased() ||
+    !("send" in interaction.channel)
+  ) {
+    await interaction.editReply({
+      content: "❌ Formularul nu a putut fi publicat în acest canal. Încearcă din nou în ticket.",
+    });
+    return true;
+  }
+
+  try {
+    const components =
+      kind === "staff"
+        ? [
+            new ActionRowBuilder<ButtonBuilder>().addComponents(
+              new ButtonBuilder()
+                .setCustomId("ticket_staff_continue")
+                .setLabel("Continuă aplicația")
+                .setEmoji("⚔️")
+                .setStyle(ButtonStyle.Primary),
+            ),
+          ]
+        : [];
     await interaction.channel.send({
       embeds: [embed],
+      components,
       allowedMentions: { parse: [] },
     });
+  } catch (err) {
+    logger.error(
+      { err, guildId: interaction.guildId, channelId: interaction.channelId, ticketKind: kind },
+      "Interactive ticket form could not be posted",
+    );
+    await interaction.editReply({
+      content: "❌ Răspunsurile nu au putut fi adăugate în ticket. Încearcă din nou.",
+    });
+    return true;
   }
 
   await interaction.editReply({
-    content: "✅ Răspunsurile au fost adăugate în ticket. Un membru al echipei te va prelua cât mai curând.",
+    content:
+      kind === "staff"
+        ? "✅ Prima parte a fost adăugată. Apasă **Continuă aplicația** în ticket pentru ultimele două întrebări."
+        : "✅ Răspunsurile au fost adăugate în ticket. Un membru al echipei te va prelua cât mai curând.",
   });
   return true;
 }

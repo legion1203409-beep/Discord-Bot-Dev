@@ -12,6 +12,7 @@ import { getCurrentMood } from "./oracle";
 import { MOOD_META, type MoodState } from "./oracle-content";
 import { handleJustice, handlePardon } from "./oracle-guard";
 import { getPlayerById, loadOracleCouncil, recordOracleInteraction, type OracleCouncilRecord } from "./db";
+import { isTicketPanelMessage, ticketPanelPayload } from "./ticket-ui";
 import type { Player } from "@workspace/db";
 
 // The feature is keyed on the user's own OpenAI key. When it is absent the Oracle
@@ -181,6 +182,8 @@ export const ORACLE_TICKET_CATEGORY_IDS: Record<OracleTicketKind, string> = {
 
 const lastReplyAt = new Map<string, number>();
 const replyTimestamps: number[] = [];
+const ticketPanelChannels = new Set<string>();
+const ticketPanelInFlight = new Map<string, Promise<boolean>>();
 
 let openaiClient: OpenAI | null = null;
 const prophecyLastAt = new Map<string, number>();
@@ -1012,20 +1015,71 @@ export function getOracleTicketKind(message: Pick<Message, "channel">): OracleTi
     "parentId" in message.channel
       ? (message.channel as { parentId?: string | null }).parentId
       : null;
-  if (!parentId) return null;
+  return getOracleTicketKindFromParentId(parentId);
+}
 
+export function getOracleTicketKindFromParentId(parentId: string | null | undefined): OracleTicketKind | null {
+  if (!parentId) return null;
   for (const kind of Object.keys(ORACLE_TICKET_CATEGORY_IDS) as OracleTicketKind[]) {
     if (ORACLE_TICKET_CATEGORY_IDS[kind] === parentId) return kind;
   }
   return null;
 }
 
+async function ensureTicketPanel(
+  message: Message,
+  kind: OracleTicketKind,
+  botId: string,
+): Promise<boolean> {
+  if (ticketPanelChannels.has(message.channelId)) return false;
+  const pending = ticketPanelInFlight.get(message.channelId);
+  if (pending) {
+    await pending;
+    return false;
+  }
+
+  const operation = (async () => {
+    if (
+      !message.channel.isTextBased() ||
+      !("messages" in message.channel) ||
+      !("send" in message.channel)
+    ) {
+      return false;
+    }
+
+    const recent = await message.channel.messages.fetch({ limit: 25 }).catch(() => null);
+    if (recent?.some((entry) => isTicketPanelMessage(entry, botId))) {
+      ticketPanelChannels.add(message.channelId);
+      return false;
+    }
+
+    await message.channel.send(ticketPanelPayload(kind));
+    ticketPanelChannels.add(message.channelId);
+    logger.info(
+      { guildId: message.guildId, channelId: message.channelId, ticketKind: kind },
+      "Interactive ticket panel posted",
+    );
+    return true;
+  })();
+
+  ticketPanelInFlight.set(message.channelId, operation);
+  try {
+    return await operation;
+  } finally {
+    ticketPanelInFlight.delete(message.channelId);
+  }
+}
+
 async function maybeReplyInTicket(
-  discordClient: Client,
   message: Message,
   kind: OracleTicketKind,
   botId: string,
 ): Promise<void> {
+  // The panel is the first response in a new ticket. On later messages the
+  // Oracle can continue naturally without reposting the controls.
+  const panelPosted = await ensureTicketPanel(message, kind, botId);
+  if (panelPosted) return;
+
   const raw = (message.content ?? "").trim();
   const cleaned = cleanMentionTokens(raw);
   if (!cleaned || !isWorthReplying(cleaned)) return;
@@ -1096,7 +1150,7 @@ export async function maybeReplyAsOracle(discordClient: Client, message: Message
 
     const ticketKind = getOracleTicketKind(message);
     if (ticketKind) {
-      await maybeReplyInTicket(discordClient, message, ticketKind, botId);
+      await maybeReplyInTicket(message, ticketKind, botId);
       return;
     }
 

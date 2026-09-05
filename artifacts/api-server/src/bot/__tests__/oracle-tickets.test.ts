@@ -5,6 +5,12 @@ import {
   buildTicketSystemInstruction,
   getOracleTicketKind,
 } from "../oracle-chat";
+import {
+  staffDetailsModal,
+  ticketModal,
+  ticketPanelPayload,
+  ticketRequirementsEmbed,
+} from "../ticket-ui";
 
 function messageWithParent(parentId: string | null): Pick<Message, "channel"> {
   return {
@@ -55,5 +61,58 @@ describe("Oracle ticket categories", () => {
     expect(partnership).toContain("numărul aproximativ de membri");
     expect(helpReport).toContain("raportarea unui membru");
     expect(helpReport).toContain("Păstrează raportarea confidențială");
+  });
+
+  it("builds an interactive staff panel with start and requirements buttons", () => {
+    const panel = ticketPanelPayload("staff");
+    const embed = panel.embeds[0]!.toJSON();
+    const row = panel.components[0]!.toJSON();
+
+    expect(embed.title).toBe("🛡️ Aplicare Staff");
+    expect(embed.fields?.[0]?.value).toContain("Tag-ul serverului");
+    const buttonIds = row.components.flatMap((component) =>
+      "custom_id" in component ? [component.custom_id] : [],
+    );
+    expect(buttonIds).toEqual([
+      "ticket_start_staff",
+      "ticket_requirements_staff",
+    ]);
+  });
+
+  it("builds valid five-field modals and keeps the partnership description mandatory", () => {
+    const staffModal = ticketModal("staff").toJSON();
+    const partnershipModal = ticketModal("partnership").toJSON();
+
+    expect(staffModal.components).toHaveLength(5);
+    expect(partnershipModal.components).toHaveLength(5);
+    const partnershipIds = partnershipModal.components.flatMap((row) =>
+      "components" in row
+        ? row.components.flatMap((component) =>
+            "custom_id" in component ? [component.custom_id] : [],
+          )
+        : [],
+    );
+    expect(partnershipIds).toContain("partnership_description");
+  });
+
+  it("uses a second interactive step for the final staff questions", () => {
+    const detailsModal = staffDetailsModal().toJSON();
+    const detailIds = detailsModal.components.flatMap((row) =>
+      "components" in row
+        ? row.components.flatMap((component) =>
+            "custom_id" in component ? [component.custom_id] : [],
+          )
+        : [],
+    );
+
+    expect(detailIds).toEqual(["staff_conflict", "staff_improvements"]);
+  });
+
+  it("shows the final seven staff questions in the interactive requirements view", () => {
+    const requirements = ticketRequirementsEmbed("staff").toJSON().description;
+    expect(requirements).toContain("1. Care este numele tău și fusul orar?");
+    expect(requirements).toContain("2. Ce vârstă ai?");
+    expect(requirements).toContain("7. Ce ai îmbunătăți pe server?");
+    expect(requirements).not.toContain("Care este tagul serverului?");
   });
 });
