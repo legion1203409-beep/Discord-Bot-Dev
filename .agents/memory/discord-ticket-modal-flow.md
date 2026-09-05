@@ -10,4 +10,5 @@ Staff applications use a public contract button that opens a five-field first mo
 **How to apply:** “Deschide contractul” opens questions 1–5 together; after submission, “Continuă aplicația” opens questions 6–8 together. The public contract explains the two-page flow without duplicating the question list. Staff asks name without timezone and ends with tag acceptance; a clear refusal posts automatic rejection.
 On bot reconnect, active ticket panels are refreshed without overwriting completed or rejected contracts.
 When the second staff page is submitted, the first response message is edited into one complete embed and its continuation button is removed.
+Completion also posts a deterministic in-character Oracle review and explicitly mentions the configured staff-review role; modal submission does not rely on the normal message-based Oracle trigger.
 After completion or rejection, replace the public start button with a disabled status button so the contract cannot be restarted in the same ticket.

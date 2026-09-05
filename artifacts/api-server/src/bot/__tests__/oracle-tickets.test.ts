@@ -9,6 +9,8 @@ import {
 import {
   staffDetailsModal,
   isStaffTagRefusal,
+  STAFF_REVIEW_ROLE_ID,
+  staffOracleReviewPayload,
   ticketModal,
   ticketPanelPayload,
   ticketQuestionModal,
@@ -204,5 +206,13 @@ describe("Oracle ticket categories", () => {
     expect(isStaffTagRefusal("nu vreau să îl port")).toBe(true);
     expect(isStaffTagRefusal("Refuz")).toBe(true);
     expect(isStaffTagRefusal("Da, îl voi purta")).toBe(false);
+  });
+
+  it("summons the staff role with a medieval Oracle review after completion", () => {
+    const payload = staffOracleReviewPayload("Andrei");
+    expect(payload.content).toBe(`<@&${STAFF_REVIEW_ROLE_ID}>`);
+    expect(payload.allowedMentions.roles).toEqual([STAFF_REVIEW_ROLE_ID]);
+    expect(payload.embeds[0]?.toJSON().title).toBe("🕯️ Cuvântul Oracolului");
+    expect(payload.embeds[0]?.toJSON().description).toContain("Andrei");
   });
 });

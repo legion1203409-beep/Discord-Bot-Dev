@@ -35,6 +35,7 @@ const TICKET_ICONS: Record<OracleTicketKind, string> = {
 };
 
 const TICKET_SEAL = IMG.ticketSeal;
+export const STAFF_REVIEW_ROLE_ID = "1472526137308745909";
 const postedTicketPanels = new Set<string>();
 const ticketPanelLocks = new Map<string, Promise<boolean>>();
 type TicketProgressState = {
@@ -488,6 +489,37 @@ function safeAnswer(value: string | undefined, fallback = "—"): string {
   return (value?.trim() || fallback).replace(/@/g, "@\u200b").slice(0, 900);
 }
 
+export function staffOracleReviewPayload(username: string): {
+  content: string;
+  embeds: EmbedBuilder[];
+  allowedMentions: { parse: never[]; roles: string[] };
+} {
+  const safeUsername = safeAnswer(username, "călătorul");
+  const embed = new EmbedBuilder()
+    .setColor(0xc29a52)
+    .setTitle("🕯️ Cuvântul Oracolului")
+    .setDescription(
+      `„Am citit cele opt răspunsuri ale lui **${safeUsername}** și le-am așezat sub lumina Cenușii. ` +
+        "Candidatura este vrednică de judecata Străjerilor; nu dau încă un verdict, căci pecetea finală aparține staffului.”",
+    )
+    .addFields({
+      name: "📜 Următorul pas",
+      value:
+        "Cei chemați sub acest steag vor cerceta răspunsurile și vor reveni cu hotărârea lor. " +
+        "Rămâi în ticket până când judecata este rostită.",
+      inline: false,
+    })
+    .setFooter({ text: "Oracolul Cenușii · Candidatura a fost pecetluită" })
+    .setTimestamp();
+  if (TICKET_SEAL) embed.setThumbnail(TICKET_SEAL);
+
+  return {
+    content: `<@&${STAFF_REVIEW_ROLE_ID}>`,
+    embeds: [embed],
+    allowedMentions: { parse: [], roles: [STAFF_REVIEW_ROLE_ID] },
+  };
+}
+
 function fieldValue(interaction: ModalSubmitInteraction, id: string): string {
   return interaction.fields.getTextInputValue(id);
 }
@@ -788,57 +820,57 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
     const progressState = ticketProgress.get(progressKey);
     const firstAnswers = progressState?.answers ?? {};
     const finalEmbed = new EmbedBuilder()
-      .setColor(rejectedForTag ? 0xc0392b : TICKET_COLORS.staff)
-      .setTitle(rejectedForTag ? "❌ Aplicare respinsă" : "🛡️ Aplicare Staff · Formular complet")
+      .setColor(rejectedForTag ? 0x8f2d3d : 0xc29a52)
+      .setTitle(rejectedForTag ? "🩸 Candidatură respinsă" : "📜 Candidatură Staff · Pecetluită")
       .setAuthor({
         name: interaction.user.username,
         iconURL: interaction.user.displayAvatarURL(),
       })
       .setDescription(
         rejectedForTag
-          ? "Oracolul Cenușii a respins aplicația deoarece purtarea tag-ului serverului nu a fost acceptată."
-          : "Toate răspunsurile aplicației au fost adăugate pentru evaluarea echipei.",
+          ? "Pecetea nu s-a putut închide, deoarece purtarea tag-ului serverului nu a fost acceptată."
+          : "Cele opt răspunsuri au fost adunate într-un singur zapis și așezate înaintea staffului.",
       )
       .addFields(
         {
-          name: "Nume",
+          name: "✦ Nume",
           value: safeAnswer(firstAnswers.name),
           inline: true,
         },
         {
-          name: "Vârstă",
+          name: "✦ Vârstă",
           value: safeAnswer(firstAnswers.age),
           inline: true,
         },
         {
-          name: "Experiență în moderare",
+          name: "⚔️ Experiență în moderare",
           value: safeAnswer(firstAnswers.moderation),
           inline: false,
         },
         {
-          name: "Timp disponibil",
+          name: "🕰️ Timp disponibil",
           value: safeAnswer(firstAnswers.availability),
           inline: true,
         },
         {
-          name: "Motivație",
+          name: "🔥 Motivație",
           value: safeAnswer(firstAnswers.motivation),
           inline: false,
         },
         {
-          name: "Gestionarea unui conflict",
+          name: "🛡️ Gestionarea unui conflict",
           value: safeAnswer(fieldValue(interaction, "staff_conflict")),
           inline: false,
         },
         {
-          name: "Îmbunătățiri propuse",
+          name: "🏰 Îmbunătățiri propuse",
           value: safeAnswer(fieldValue(interaction, "staff_improvements")),
           inline: false,
         },
         {
-          name: "Acceptă tag-ul serverului",
+          name: "🏷️ Tag-ul serverului",
           value: tagAnswer,
-          inline: false,
+          inline: true,
         },
       )
       .setFooter({
@@ -889,6 +921,9 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
         "staff",
         rejectedForTag ? "rejected" : "completed",
       );
+      if (!rejectedForTag) {
+        await interaction.channel.send(staffOracleReviewPayload(interaction.user.username));
+      }
       await interaction.editReply({
         content: rejectedForTag
           ? "❌ Aplicația a fost respinsă deoarece nu ai acceptat purtarea tag-ului serverului."
