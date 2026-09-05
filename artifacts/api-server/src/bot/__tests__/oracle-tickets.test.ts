@@ -73,14 +73,14 @@ describe("Oracle ticket categories", () => {
     const buttonIds = row.components.flatMap((component) =>
       "custom_id" in component ? [component.custom_id] : [],
     );
-    const buttonEmojis = row.components.flatMap((component) =>
-      "emoji" in component && component.emoji?.name ? [component.emoji.name] : [],
+    const buttonLabels = row.components.flatMap((component) =>
+      "label" in component && component.label ? [component.label] : [],
     );
     expect(buttonIds).toEqual([
       "ticket_start_staff",
       "ticket_requirements_staff",
     ]);
-    expect(buttonEmojis).toEqual(["📝", "📖"]);
+    expect(buttonLabels).toEqual(["📝 Începe aplicația", "📖 Vezi întrebările"]);
   });
 
   it("builds valid five-field modals and keeps the partnership description mandatory", () => {

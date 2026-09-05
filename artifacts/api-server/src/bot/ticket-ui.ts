@@ -91,13 +91,17 @@ export function ticketPanelPayload(kind: OracleTicketKind): {
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId(ticketButtonId("start", kind))
-      .setLabel(kind === "staff" ? "Începe aplicația" : kind === "partnership" ? "Trimite propunerea" : "Descrie cazul")
-      .setEmoji("📝")
+      .setLabel(
+        kind === "staff"
+          ? "📝 Începe aplicația"
+          : kind === "partnership"
+            ? "🤝 Trimite propunerea"
+            : "📝 Descrie cazul",
+      )
       .setStyle(ButtonStyle.Success),
     new ButtonBuilder()
       .setCustomId(ticketButtonId("requirements", kind))
-      .setLabel("Vezi întrebările")
-      .setEmoji("📖")
+      .setLabel("📖 Vezi întrebările")
       .setStyle(ButtonStyle.Secondary),
   );
 
@@ -391,8 +395,7 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
             new ActionRowBuilder<ButtonBuilder>().addComponents(
               new ButtonBuilder()
                 .setCustomId("ticket_staff_continue")
-                .setLabel("Continuă aplicația")
-                .setEmoji("⚔️")
+                .setLabel("⚔️ Continuă aplicația")
                 .setStyle(ButtonStyle.Primary),
             ),
           ]

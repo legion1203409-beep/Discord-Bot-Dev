@@ -1053,7 +1053,29 @@ async function ensureTicketPanel(
       return false;
     }
 
-    await message.channel.send(ticketPanelPayload(kind));
+    try {
+      await message.channel.send(ticketPanelPayload(kind));
+    } catch (err) {
+      logger.error(
+        { err, guildId: message.guildId, channelId: message.channelId, ticketKind: kind },
+        "Interactive ticket panel failed — sending plain-text fallback",
+      );
+      const fallback =
+        kind === "staff"
+          ? "🛡️ **Aplicare Staff**\n\n" +
+            "Tag-ul serverului este obligatoriu pentru validarea aplicației.\n" +
+            "Fără tag → aplicația este respinsă automat.\n\n" +
+            "Pentru a continua, răspunde în ticket la întrebările despre nume, vârstă, experiență, disponibilitate, motivație, conflicte și îmbunătățiri."
+          : kind === "partnership"
+            ? "🤝 **Propunere de Parteneriat**\n\n" +
+              "Răspunde în ticket cu numele serverului, descrierea comunității, invitația, membrii, publicul țintă, propunerea și beneficiile colaborării."
+            : "🕯️ **Ajutor / Raportare**\n\n" +
+              "Descrie problema sau raportarea cu utilizatorul implicat, momentul, detaliile și dovezile disponibile.";
+      await message.channel.send({
+        content: fallback,
+        allowedMentions: { parse: [] },
+      });
+    }
     ticketPanelChannels.add(message.channelId);
     logger.info(
       { guildId: message.guildId, channelId: message.channelId, ticketKind: kind },
