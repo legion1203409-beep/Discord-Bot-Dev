@@ -7,6 +7,7 @@ import {
   MessageFlags,
   ModalBuilder,
   ModalSubmitInteraction,
+  PermissionFlagsBits,
   StringSelectMenuInteraction,
   TextInputBuilder,
   TextInputStyle,
@@ -36,6 +37,9 @@ const TICKET_ICONS: Record<OracleTicketKind, string> = {
 
 const TICKET_SEAL = IMG.ticketSeal;
 export const STAFF_REVIEW_ROLE_ID = "1472526137308745909";
+export const ALLIANCE_PUBLIC_CHANNEL_ID = "1472997077373157602";
+const REGATUL_CENUSII_DESCRIPTION =
+  "Regatul Cenușii este un server Discord RPG cooperativ dark-fantasy, cu clase, lupte, boss-i, XP, Oboli, companioni, relicve și evenimente pentru întreaga comunitate.";
 const postedTicketPanels = new Set<string>();
 const ticketPanelLocks = new Map<string, Promise<boolean>>();
 type TicketProgressState = {
@@ -43,6 +47,7 @@ type TicketProgressState = {
   panelMessageId: string;
   responseMessageId?: string;
   answers?: Record<string, string>;
+  alliancePosted?: boolean;
   status?: "completed" | "rejected";
 };
 const ticketProgress = new Map<string, TicketProgressState>();
@@ -564,24 +569,119 @@ export function partnershipSummaryEmbed(
   return embed;
 }
 
-export function partnershipCopyRow(): ActionRowBuilder<ButtonBuilder> {
+export function partnershipConfirmRow(userId: string): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
-      .setCustomId("ticket_copy_partnership")
-      .setLabel("📋 Copiază nume + descriere + link")
+      .setCustomId(`ticket_alliance_confirm_${userId}`)
+      .setLabel("🤝 Confirmă alianța")
+      .setStyle(ButtonStyle.Success),
+  );
+}
+
+export function partnershipDraftEmbed(
+  username: string,
+  answers: Record<string, string>,
+): EmbedBuilder {
+  const embed = new EmbedBuilder()
+    .setColor(0xc29a52)
+    .setTitle("🤝 Pactul celor Două Regate · Draft")
+    .setAuthor({ name: `${safeAnswer(username, "Reprezentant")} · Alianță` })
+    .setDescription(
+      "Verifică prezentarea de mai jos. Confirmă alianța pentru a activa butoanele de editare și publicare.",
+    )
+    .addFields(
+      {
+        name: "🏰 Regatul partener",
+        value:
+          `**${safeAnswer(answers.server_name)}**\n` +
+          `${safeAnswer(answers.description)}\n` +
+          `🔗 ${safeAnswer(answers.invite)}`,
+        inline: false,
+      },
+      {
+        name: "⚔️ Regatul Cenușii",
+        value: REGATUL_CENUSII_DESCRIPTION,
+        inline: false,
+      },
+    )
+    .setFooter({ text: "Draft diplomatic · Nu este publicat încă" })
+    .setTimestamp();
+  if (TICKET_SEAL) embed.setThumbnail(TICKET_SEAL);
+  return embed;
+}
+
+export function partnershipPublishRow(userId: string): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`ticket_alliance_post_${userId}`)
+      .setLabel("📣 Postează în canalul alianțelor")
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(`ticket_alliance_edit_${userId}`)
+      .setLabel("✏️ Editează")
       .setStyle(ButtonStyle.Secondary),
   );
 }
 
-function partnershipCopyText(message: ButtonInteraction["message"]): string {
-  const fields = message.embeds[0]?.fields ?? [];
-  const valueFor = (name: string): string =>
-    fields.find((field) => field.name === name)?.value ?? "—";
-  return [
-    `Numele serverului: ${valueFor("🏰 Numele serverului")}`,
-    `Descrierea serverului: ${valueFor("📝 Descrierea serverului")}`,
-    `Linkul serverului: ${valueFor("🔗 Linkul serverului")}`,
-  ].join("\n");
+function allianceAnnouncementEmbed(answers: Record<string, string>): EmbedBuilder {
+  const embed = new EmbedBuilder()
+    .setColor(0xc29a52)
+    .setTitle("🤝 O nouă alianță în Regatul Cenușii")
+    .setDescription(
+      "Porțile Regatului se deschid pentru un nou pact. Cunoașteți comunitatea care ni s-a alăturat în această alianță.",
+    )
+    .addFields(
+      {
+        name: `🏰 ${safeAnswer(answers.server_name)}`,
+        value:
+          `${safeAnswer(answers.description)}\n\n` +
+          `🔗 ${safeAnswer(answers.invite)}`,
+        inline: false,
+      },
+      {
+        name: "⚔️ Regatul Cenușii",
+        value: REGATUL_CENUSII_DESCRIPTION,
+        inline: false,
+      },
+    )
+    .setFooter({ text: "Pact pecetluit · Regatul Cenușii" })
+    .setTimestamp();
+  if (TICKET_SEAL) embed.setThumbnail(TICKET_SEAL);
+  return embed;
+}
+
+function partnershipEditModal(
+  userId: string,
+  answers: Record<string, string>,
+): ModalBuilder {
+  const modal = new ModalBuilder()
+    .setCustomId(`ticket_alliance_edit_submit_${userId}`)
+    .setTitle("Editează draftul alianței");
+  const serverName = input("alliance_server_name", "Numele serverului", "Ex.: Regatul Umbrelor");
+  const description = input(
+    "alliance_description",
+    "Descrierea serverului",
+    "Descrieți serverul fără linkul de invitație.",
+    TextInputStyle.Paragraph,
+  );
+  const invite = input("alliance_invite", "Linkul serverului", "https://discord.gg/...");
+  const regatDescription = input(
+    "alliance_regat_description",
+    "Descrierea Regatului Cenușii",
+    "Descrierea care va apărea în anunț.",
+    TextInputStyle.Paragraph,
+  );
+  serverName.setValue(safeAnswer(answers.server_name, ""));
+  description.setValue(safeAnswer(answers.description, ""));
+  invite.setValue(safeAnswer(answers.invite, ""));
+  regatDescription.setValue(REGATUL_CENUSII_DESCRIPTION);
+  modal.addComponents(
+    new ActionRowBuilder<TextInputBuilder>().addComponents(serverName),
+    new ActionRowBuilder<TextInputBuilder>().addComponents(description),
+    new ActionRowBuilder<TextInputBuilder>().addComponents(invite),
+    new ActionRowBuilder<TextInputBuilder>().addComponents(regatDescription),
+  );
+  return modal;
 }
 
 function fieldValue(interaction: ModalSubmitInteraction, id: string): string {
