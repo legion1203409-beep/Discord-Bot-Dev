@@ -254,6 +254,15 @@ function ticketPanelFallback(kind: OracleTicketKind): string {
   return "🕯️ **Ajutor / Raportare**\n\nAlege din meniul interactiv ce vrei să descrii pentru staff.";
 }
 
+function isLegacyOracleTicketPrompt(message: Message, botId: string): boolean {
+  if (message.author.id !== botId || message.components.length > 0) return false;
+  const content = message.content ?? "";
+  const hasTicketTitle =
+    /(?:Aplicare Staff|Propunere de Parteneriat|Ajutor\s*\/\s*Raportare)/i.test(content);
+  const numberedQuestions = content.match(/(?:^|\n)\s*\d+[.)]\s/g)?.length ?? 0;
+  return hasTicketTitle && numberedQuestions >= 5;
+}
+
 function ticketStartButton(kind: OracleTicketKind): ButtonBuilder {
   return new ButtonBuilder()
     .setCustomId(`ticket_start_${kind}`)
@@ -346,6 +355,19 @@ export async function postTicketPanelIfMissing(
     }
 
     const recent = await channel.messages.fetch({ limit: 25 }).catch(() => null);
+    const legacyPrompts = recent?.filter((entry) => isLegacyOracleTicketPrompt(entry, botId));
+    if (legacyPrompts?.size) {
+      await Promise.all(
+        legacyPrompts.map((entry) =>
+          entry.delete().catch((err) => {
+            logger.debug(
+              { err, channelId: channel.id, messageId: entry.id },
+              "Could not remove legacy Oracle ticket prompt",
+            );
+          }),
+        ),
+      );
+    }
     const existingPanel = recent?.find((entry) => isTicketPanelMessage(entry, botId));
     if (existingPanel) {
       const isActivePanel = existingPanel.components.some((row) => {
