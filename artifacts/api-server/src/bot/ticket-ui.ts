@@ -38,6 +38,9 @@ const TICKET_ICONS: Record<OracleTicketKind, string> = {
 const TICKET_SEAL = IMG.ticketSeal;
 export const STAFF_REVIEW_ROLE_ID = "1472526137308745909";
 export const ALLIANCE_PUBLIC_CHANNEL_ID = "1472997077373157602";
+const REGAT_RECRUITMENT_GIF_URL =
+  "https://media.discordapp.net/attachments/1477699914732404977/1477704399936688212/standard.gif?ex=6a45e937&is=6a4497b7&hm=f9c71749fd5197b10bcdb4d367da427d7e2e58283087d29907d73fc8d12015b0";
+const REGAT_INVITE_URL = "https://discord.gg/regatulcenusii";
 const REGATUL_CENUSII_DESCRIPTION =
   "Regatul Cenușii este un server Discord RPG cooperativ dark-fantasy, cu clase, lupte, boss-i, XP, Oboli, companioni, relicve și evenimente pentru întreaga comunitate.";
 
@@ -722,6 +725,16 @@ export function partnershipDraftEmbed(
   return embed;
 }
 
+function partnershipPublishedEmbed(
+  username: string,
+  answers: Record<string, string>,
+): EmbedBuilder {
+  return partnershipDraftEmbed(username, answers)
+    .setTitle("🤝 Pactul celor Două Regate · Publicat")
+    .setDescription("Alianța a fost confirmată de staff, iar mesajul Regatului a fost publicat.")
+    .setFooter({ text: "Pact confirmat · Regatul Cenușii" });
+}
+
 export function partnershipPublishRow(userId: string): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
@@ -769,6 +782,36 @@ export function allianceAnnouncementText(
   }
   lines.push("", "Pact pecetluit · Regatul Cenușii");
   return lines.join("\n").slice(0, 1950);
+}
+
+export function allianceStaffNotificationText(applicantUsername: string): string {
+  const applicant = safeAnswer(applicantUsername, "un membru");
+  return (
+    `<@&${STAFF_REVIEW_ROLE_ID}>\n` +
+    `📨 O nouă cerere de alianță a fost completată de ${applicant} și așteaptă confirmarea staffului.`
+  );
+}
+
+export function allianceRecruitmentAnnouncementText(): string {
+  return [
+    "🌫️ Regatul Cenușii își deschide porțile",
+    "Pentru cei destul de curajoși să pășească în umbră, Regatul Cenușii rămâne un tărâm unde magia veche, cavalerii de oțel și forțele întunecate coexistă într-o armonie plină de mister și eleganță. 👑⚔️",
+    "",
+    "🕯️ Ce te așteaptă în Regat:",
+    "✨ Comunitate activă, primitoare și matură",
+    "⚔️ Evenimente tematice, activități și provocări pentru toți",
+    "🎭 Roluri unice, progresie pe nivel și sisteme bine puse la punct",
+    "📜 Zone de socializare, jocuri, confesiuni și relaxare",
+    "🛡️ Staff prezent, organizat și gata să ajute",
+    "🌌 Atmosferă cinematică, cu identitate și lore propriu",
+    "🎮 Mini-joc interactiv personalizat, creat special pentru membrii regatului — un sistem unic care aduce viață și dinamism poveștii",
+    "",
+    "Fiecare membru devine parte din legenda noastră, iar fiecare pas în regat te apropie de umbra care te alege.",
+    "",
+    "Tag: || @here || || @everyone ||",
+    REGAT_RECRUITMENT_GIF_URL,
+    `🔗${REGAT_INVITE_URL}`,
+  ].join("\n");
 }
 
 export function partnershipEditModal(
@@ -918,12 +961,44 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
       });
       return true;
     }
-    await interaction.update({
-      embeds: [
-        partnershipDraftEmbed(state.applicantUsername ?? "Reprezentant", state.answers),
-      ],
-      components: [partnershipPublishRow(applicantId)],
-    });
+
+    const publicChannel = await interaction.client.channels
+      .fetch(ALLIANCE_PUBLIC_CHANNEL_ID)
+      .catch(() => null);
+    if (!publicChannel?.isTextBased() || !("send" in publicChannel)) {
+      await interaction.reply({
+        content: `❌ Nu pot accesa canalul alianțelor (${ALLIANCE_PUBLIC_CHANNEL_ID}). Verifică accesul botului.`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
+
+    try {
+      await publicChannel.send({
+        content: allianceRecruitmentAnnouncementText(),
+        allowedMentions: { parse: [] },
+      });
+      state.alliancePosted = true;
+      await interaction.update({
+        embeds: [
+          partnershipPublishedEmbed(state.applicantUsername ?? "Reprezentant", state.answers),
+        ],
+        components: [],
+      });
+      await interaction.followUp({
+        content: "✅ Alianța a fost confirmată, iar mesajul Regatului a fost publicat.",
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (err) {
+      logger.error(
+        { err, channelId: interaction.channelId, publicChannelId: ALLIANCE_PUBLIC_CHANNEL_ID },
+        "Alliance recruitment announcement could not be published after confirmation",
+      );
+      await interaction.reply({
+        content: "❌ Mesajul nu a putut fi publicat. Verifică permisiunile botului în canalul alianțelor.",
+        flags: MessageFlags.Ephemeral,
+      });
+    }
     return true;
   }
 
@@ -966,16 +1041,13 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
 
     try {
       await publicChannel.send({
-        content: allianceAnnouncementText(
-          state.answers,
-          state.applicantUsername ?? "Reprezentant",
-        ),
+        content: allianceRecruitmentAnnouncementText(),
         allowedMentions: { parse: [] },
       });
       state.alliancePosted = true;
       await interaction.update({
         embeds: [
-          partnershipDraftEmbed(state.applicantUsername ?? "Reprezentant", state.answers),
+          partnershipPublishedEmbed(state.applicantUsername ?? "Reprezentant", state.answers),
         ],
         components: [],
       });
@@ -1199,6 +1271,11 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
   try {
     const finalPartnership = kind === "partnership" && isLastQuestion;
     const responseMessage = await interaction.channel.send({
+      content: finalPartnership
+        ? allianceStaffNotificationText(
+            interaction.user.globalName ?? interaction.user.username,
+          )
+        : undefined,
       embeds: [
         finalPartnership
           ? partnershipSummaryEmbed(
@@ -1210,7 +1287,9 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
       components: finalPartnership
         ? [partnershipConfirmRow(interaction.user.id)]
         : [],
-      allowedMentions: { parse: [] },
+      allowedMentions: finalPartnership
+        ? { parse: [], roles: [STAFF_REVIEW_ROLE_ID] }
+        : { parse: [] },
     });
     if (finalPartnership && progressState) {
       progressState.responseMessageId = responseMessage.id;

@@ -19,6 +19,8 @@ import {
   partnershipSummaryEmbed,
   STAFF_REVIEW_ROLE_ID,
   memberHasStaffReviewRole,
+  allianceRecruitmentAnnouncementText,
+  allianceStaffNotificationText,
   staffOracleReviewPayload,
   ticketModal,
   ticketPanelPayload,
@@ -229,6 +231,20 @@ describe("Oracle ticket categories", () => {
     expect(announcement).toContain("👤 Contract completat de: Andrei");
     expect(announcement).toContain("📌 Promovare: serverele sub 200 de membri");
     expect(announcement).not.toContain("@everyone");
+  });
+
+  it("builds the staff notification and approved recruitment announcement", () => {
+    const staffNotification = allianceStaffNotificationText("Andrei");
+    const recruitmentAnnouncement = allianceRecruitmentAnnouncementText();
+
+    expect(staffNotification).toContain(`<@&${STAFF_REVIEW_ROLE_ID}>`);
+    expect(staffNotification).toContain("O nouă cerere de alianță");
+    expect(recruitmentAnnouncement).toContain("🌫️ Regatul Cenușii își deschide porțile");
+    expect(recruitmentAnnouncement).toContain("Tag: || @here || || @everyone ||");
+    expect(recruitmentAnnouncement).toContain(
+      "https://discord.gg/regatulcenusii",
+    );
+    expect(recruitmentAnnouncement).toContain("standard.gif");
   });
 
   it("starts help and report contracts directly from their first question", () => {
