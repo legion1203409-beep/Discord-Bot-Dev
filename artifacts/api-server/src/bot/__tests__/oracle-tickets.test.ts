@@ -28,6 +28,11 @@ describe("Oracle ticket categories", () => {
     const instruction = buildTicketSystemInstruction("staff");
     expect(instruction).toContain("aplicație de staff");
     expect(instruction).toContain("🛡️ Aplicare Staff");
+    expect(instruction).toContain("Purtarea tagului serverului pe profilul Discord este obligatorie");
+    expect(instruction).toContain("cere solicitantului să confirme că îl poartă");
+    expect(instruction).toContain("Vârsta este, de asemenea, obligatorie");
+    expect(instruction).toContain("confirmarea că poartă tagul serverului (obligatoriu)");
+    expect(instruction).toContain("vârsta (obligatorie)");
     expect(instruction).toContain("cum ar rezolva un conflict");
     expect(instruction).toContain("ce ar îmbunătăți pe server");
     expect(instruction).toContain("Nu promite acceptarea");
