@@ -773,28 +773,11 @@ export function partnershipDraftEmbed(
   username: string,
   answers: Record<string, string>,
 ): EmbedBuilder {
-  const embed = new EmbedBuilder()
+  const embed = partnershipSummaryEmbed(username, answers)
     .setColor(0xc29a52)
     .setTitle("🤝 Pactul celor Două Regate · Draft")
-    .setAuthor({ name: `${safeAnswer(username, "Reprezentant")} · Alianță` })
     .setDescription(
-      "Verifică prezentarea de mai jos. Confirmă alianța pentru a activa butoanele de editare și publicare.",
-    )
-    .addFields(
-      {
-        name: "🏰 Regatul partener",
-        value:
-          `🏰 Serverul lui: **${safeAnswer(answers.server_name)}**\n` +
-          `👤 Numele lui: ${safeAnswer(answers.representative || username)}\n` +
-          `📝 Descriere: ${safeAnswer(answers.description)}\n` +
-          `🔗 Link de invitație: ${safeAnswer(answers.invite)}`,
-        inline: false,
-      },
-      {
-        name: "⚔️ Regatul Cenușii",
-        value: safeAnswer(answers.regat_description || REGATUL_CENUSII_DESCRIPTION),
-        inline: false,
-      },
+      "Verifică toate informațiile oferite de solicitant. Confirmă alianța pentru a activa butoanele de editare și publicare.",
     )
     .setFooter({ text: "Draft diplomatic · Nu este publicat încă" })
     .setTimestamp();
@@ -1059,10 +1042,6 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
     }
 
     try {
-      state.answers = {
-        ...state.answers,
-        regat_description: await allianceRecruitmentTextForGuild(interaction.guildId!),
-      };
       await interaction.update({
         embeds: [
           partnershipDraftEmbed(state.applicantUsername ?? "Reprezentant", state.answers),

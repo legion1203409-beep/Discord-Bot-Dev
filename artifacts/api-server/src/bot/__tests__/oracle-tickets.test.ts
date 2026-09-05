@@ -191,11 +191,27 @@ describe("Oracle ticket categories", () => {
       representative: "Andrei#1234",
       description: "Comunitate RPG medievală.",
       invite: "https://discord.gg/umbrelor",
+      members: "150 total · 60 activi",
+      motivation: "Vrem o comunitate aliată.",
+      offer: "Promovare reciprocă.",
+      terms: "Respectăm regulile pactului.",
     }).toJSON();
     expect(draft.title).toBe("🤝 Pactul celor Două Regate · Draft");
-    expect(draft.fields?.[0]?.value).toContain("🏰 Serverul lui: **Regatul Umbrelor**");
-    expect(draft.fields?.[0]?.value).toContain("👤 Numele lui: Andrei#1234");
-    expect(draft.fields?.[0]?.value).toContain("🔗 Link de invitație: https://discord.gg/umbrelor");
+    expect(draft.fields?.map((field) => field.name)).toEqual([
+      "🏰 Numele serverului",
+      "📝 Descrierea serverului",
+      "🔗 Linkul serverului",
+      "👤 Reprezentantul serverului",
+      "👥 Membri și activitate",
+      "🕯️ Motivul alianței",
+      "🎁 Ce oferă serverul",
+      "📜 Așteptări și reguli",
+      "📌 Regula promovării",
+    ]);
+    expect(draft.fields?.some((field) => field.value?.includes("Regatul Cenușii își deschide porțile"))).toBe(false);
+    expect(draft.fields?.[0]?.value).toContain("Regatul Umbrelor");
+    expect(draft.fields?.[2]?.value).toContain("https://discord.gg/umbrelor");
+    expect(draft.fields?.[5]?.value).toContain("Vrem o comunitate aliată.");
     const publishButtons = partnershipPublishRow("123").toJSON().components;
     expect(publishButtons.map((button) => "custom_id" in button ? button.custom_id : undefined)).toEqual([
       "ticket_alliance_post_123",
