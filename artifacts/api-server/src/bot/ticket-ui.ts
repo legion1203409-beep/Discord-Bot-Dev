@@ -14,6 +14,7 @@ import {
   type Message,
 } from "discord.js";
 import { logger } from "../lib/logger";
+import { loadAllianceRecruitmentText } from "./db";
 import { IMG } from "./assets";
 import type { OracleTicketKind } from "./oracle-chat";
 
@@ -792,8 +793,7 @@ export function allianceStaffNotificationText(applicantUsername: string): string
   );
 }
 
-export function allianceRecruitmentAnnouncementText(): string {
-  return [
+export const DEFAULT_ALLIANCE_RECRUITMENT_TEXT = [
     "🌫️ Regatul Cenușii își deschide porțile",
     "Pentru cei destul de curajoși să pășească în umbră, Regatul Cenușii rămâne un tărâm unde magia veche, cavalerii de oțel și forțele întunecate coexistă într-o armonie plină de mister și eleganță. 👑⚔️",
     "",
@@ -812,6 +812,31 @@ export function allianceRecruitmentAnnouncementText(): string {
     REGAT_RECRUITMENT_GIF_URL,
     `🔗${REGAT_INVITE_URL}`,
   ].join("\n");
+
+export function allianceRecruitmentAnnouncementText(customText?: string): string {
+  return (customText?.trim() || DEFAULT_ALLIANCE_RECRUITMENT_TEXT).slice(0, 4000);
+}
+
+export function allianceRecruitmentTextModal(currentText: string): ModalBuilder {
+  const text = new TextInputBuilder()
+    .setCustomId("alliance_recruitment_text")
+    .setLabel("Textul mesajului de alianță")
+    .setStyle(TextInputStyle.Paragraph)
+    .setRequired(true)
+    .setMaxLength(4000)
+    .setValue(currentText.slice(0, 4000));
+
+  return new ModalBuilder()
+    .setCustomId("alliance_recruitment_text_modal")
+    .setTitle("Editează textul alianței")
+    .addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(text));
+}
+
+export async function allianceRecruitmentTextForGuild(
+  guildId: string,
+): Promise<string> {
+  const customText = await loadAllianceRecruitmentText(guildId);
+  return allianceRecruitmentAnnouncementText(customText ?? undefined);
 }
 
 export function partnershipEditModal(
@@ -975,7 +1000,7 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
 
     try {
       await publicChannel.send({
-        content: allianceRecruitmentAnnouncementText(),
+        content: await allianceRecruitmentTextForGuild(interaction.guildId!),
         allowedMentions: { parse: [] },
       });
       state.alliancePosted = true;
@@ -1041,7 +1066,7 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
 
     try {
       await publicChannel.send({
-        content: allianceRecruitmentAnnouncementText(),
+        content: await allianceRecruitmentTextForGuild(interaction.guildId!),
         allowedMentions: { parse: [] },
       });
       state.alliancePosted = true;

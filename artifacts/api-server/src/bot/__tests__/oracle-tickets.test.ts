@@ -20,6 +20,7 @@ import {
   STAFF_REVIEW_ROLE_ID,
   memberHasStaffReviewRole,
   allianceRecruitmentAnnouncementText,
+  allianceRecruitmentTextModal,
   allianceStaffNotificationText,
   staffOracleReviewPayload,
   ticketModal,
@@ -245,6 +246,24 @@ describe("Oracle ticket categories", () => {
       "https://discord.gg/regatulcenusii",
     );
     expect(recruitmentAnnouncement).toContain("standard.gif");
+  });
+
+  it("supports an administrator-owned custom alliance announcement", () => {
+    const customText = "🌫️ Mesaj personalizat pentru alianță\n🔗 https://discord.gg/exemplu";
+    const modal = allianceRecruitmentTextModal(customText).toJSON();
+    const firstRow = modal.components?.[0];
+    const input = firstRow && "components" in firstRow ? firstRow.components[0] : undefined;
+
+    expect(modal.custom_id).toBe("alliance_recruitment_text_modal");
+    expect(modal.title).toBe("Editează textul alianței");
+    expect(input).toMatchObject({
+      custom_id: "alliance_recruitment_text",
+      value: customText,
+    });
+    expect(allianceRecruitmentAnnouncementText(customText)).toBe(customText);
+    expect(allianceRecruitmentAnnouncementText("")).toContain(
+      "🌫️ Regatul Cenușii își deschide porțile",
+    );
   });
 
   it("starts help and report contracts directly from their first question", () => {

@@ -2123,3 +2123,33 @@ export async function loadChannelConfig(guildId: string): Promise<ChannelConfig 
     return null;
   }
 }
+
+// ─── Alliance recruitment text persistence ────────────────────────────────────
+const ALLIANCE_RECRUITMENT_TEXT_KEY = "alliance_recruitment_text";
+
+export async function saveAllianceRecruitmentText(
+  guildId: string,
+  text: string,
+): Promise<void> {
+  await ensureBotStateTable();
+  const key = guildKey(guildId, ALLIANCE_RECRUITMENT_TEXT_KEY);
+  const now = new Date();
+  await db
+    .insert(botStateTable)
+    .values({ key, value: text })
+    .onConflictDoUpdate({
+      target: botStateTable.key,
+      set: { value: text, updatedAt: now },
+    });
+}
+
+export async function loadAllianceRecruitmentText(
+  guildId: string,
+): Promise<string | null> {
+  await ensureBotStateTable();
+  const [row] = await db
+    .select()
+    .from(botStateTable)
+    .where(eq(botStateTable.key, guildKey(guildId, ALLIANCE_RECRUITMENT_TEXT_KEY)));
+  return row?.value ?? null;
+}

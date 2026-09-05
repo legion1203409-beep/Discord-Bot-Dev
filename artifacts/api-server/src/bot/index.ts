@@ -50,6 +50,8 @@ import {
   handleTicketQuestionModal,
   handleTicketQuestionSelect,
   postTicketPanelIfMissing,
+  allianceRecruitmentTextModal,
+  DEFAULT_ALLIANCE_RECRUITMENT_TEXT,
 } from "./ticket-ui";
 import { handleOracleCouncilVote, isOracleCouncilButton } from "./oracle-council";
 import {
@@ -116,6 +118,8 @@ import {
   clearTraderMessageId,
   saveTraderEmbedSig,
   loadTraderEmbedSig,
+  saveAllianceRecruitmentText,
+  loadAllianceRecruitmentText,
   ensureBotStateTable,
   saveOracleTimeoutLock,
   deleteOracleTimeoutLock,
@@ -555,6 +559,10 @@ const slashCommands = [
         .setDescription("Canalul text în care va fi publicată activitatea")
         .setRequired(true),
     ),
+  new SlashCommandBuilder()
+    .setName("setaliantatext")
+    .setDescription("🤝 [Admin] Modifică textul publicat când este confirmată o alianță.")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 ];
 
 async function avatarById(discordId: string): Promise<string | null> {
@@ -1404,6 +1412,62 @@ async function handleSetCanal(interaction: ChatInputCommandInteraction) {
     logger.error({ err, guildId: interaction.guildId, type }, "Failed to configure channel via /setcanal");
     await interaction.editReply({
       content: "❌ Nu am putut salva canalul. Verifică permisiunile botului și încearcă din nou.",
+    });
+  }
+}
+
+async function handleSetAliantaText(interaction: ChatInputCommandInteraction) {
+  if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+    await interaction.reply({
+      content: "🔒 Doar membrii cu permisiunea de Administrator pot modifica textul alianței.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  try {
+    const currentText =
+      (await loadAllianceRecruitmentText(interaction.guildId!)) ??
+      DEFAULT_ALLIANCE_RECRUITMENT_TEXT;
+    await interaction.showModal(allianceRecruitmentTextModal(currentText));
+  } catch (err) {
+    logger.error({ err, guildId: interaction.guildId }, "Could not load alliance recruitment text");
+    await interaction.reply({
+      content: "❌ Textul alianței nu a putut fi încărcat. Încearcă din nou.",
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+}
+
+async function handleSetAliantaTextModal(interaction: ModalSubmitInteraction) {
+  if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+    await interaction.reply({
+      content: "🔒 Doar membrii cu permisiunea de Administrator pot modifica textul alianței.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const text = interaction.fields.getTextInputValue("alliance_recruitment_text").trim();
+  if (!text) {
+    await interaction.reply({
+      content: "❌ Textul alianței nu poate fi gol.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  try {
+    await saveAllianceRecruitmentText(interaction.guildId!, text.slice(0, 4000));
+    await interaction.editReply({
+      content:
+        "✅ Textul alianței a fost salvat. Va fi folosit la următoarea confirmare a unei alianțe.",
+    });
+  } catch (err) {
+    logger.error({ err, guildId: interaction.guildId }, "Could not save alliance recruitment text");
+    await interaction.editReply({
+      content: "❌ Textul alianței nu a putut fi salvat. Încearcă din nou.",
     });
   }
 }
@@ -4624,6 +4688,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
       if (interaction.commandName === "purificacheie") dispatch(handlePurificaCheie(interaction));
       if (interaction.commandName === "chei") dispatch(handleChei(interaction));
       if (interaction.commandName === "setcanal") dispatch(handleSetCanal(interaction));
+      if (interaction.commandName === "setaliantatext") dispatch(handleSetAliantaText(interaction));
     } else if (interaction.isButton()) {
       dispatch(handleButton(interaction as ButtonInteraction));
     } else if (interaction.isStringSelectMenu()) {
@@ -4648,6 +4713,9 @@ export async function startBot(onReady?: () => void): Promise<void> {
       }
       if (interaction.customId === "auction_bid_modal") {
         dispatch(handleAuctionBidModal(interaction));
+      }
+      if (interaction.customId === "alliance_recruitment_text_modal") {
+        dispatch(handleSetAliantaTextModal(interaction));
       }
     }
 
