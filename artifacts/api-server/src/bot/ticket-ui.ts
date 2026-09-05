@@ -528,6 +528,62 @@ export function staffOracleReviewPayload(username: string): {
   };
 }
 
+export function partnershipSummaryEmbed(
+  username: string,
+  answers: Record<string, string>,
+): EmbedBuilder {
+  const embed = new EmbedBuilder()
+    .setColor(0x7c8fbd)
+    .setTitle("🤝 Pactul celor Două Regate · Rezumat")
+    .setAuthor({
+      name: `${safeAnswer(username, "Reprezentant")} · Solicitant`,
+    })
+    .setDescription(
+      "Datele de mai jos pot fi preluate rapid de către staff pentru verificarea alianței.",
+    )
+    .addFields(
+      {
+        name: "🏰 Numele serverului",
+        value: safeAnswer(answers.server_name),
+        inline: false,
+      },
+      {
+        name: "📝 Descrierea serverului",
+        value: safeAnswer(answers.description),
+        inline: false,
+      },
+      {
+        name: "🔗 Linkul serverului",
+        value: safeAnswer(answers.invite),
+        inline: false,
+      },
+    )
+    .setFooter({ text: "Regatul Cenușii · Copiază datele pentru evaluare" })
+    .setTimestamp();
+  if (TICKET_SEAL) embed.setThumbnail(TICKET_SEAL);
+  return embed;
+}
+
+export function partnershipCopyRow(): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId("ticket_copy_partnership")
+      .setLabel("📋 Copiază nume + descriere + link")
+      .setStyle(ButtonStyle.Secondary),
+  );
+}
+
+function partnershipCopyText(message: ButtonInteraction["message"]): string {
+  const fields = message.embeds[0]?.fields ?? [];
+  const valueFor = (name: string): string =>
+    fields.find((field) => field.name === name)?.value ?? "—";
+  return [
+    `Numele serverului: ${valueFor("🏰 Numele serverului")}`,
+    `Descrierea serverului: ${valueFor("📝 Descrierea serverului")}`,
+    `Linkul serverului: ${valueFor("🔗 Linkul serverului")}`,
+  ].join("\n");
+}
+
 function fieldValue(interaction: ModalSubmitInteraction, id: string): string {
   return interaction.fields.getTextInputValue(id);
 }
@@ -616,6 +672,15 @@ export async function handleTicketQuestionSelect(
 }
 
 export async function handleTicketButton(interaction: ButtonInteraction): Promise<boolean> {
+  if (interaction.customId === "ticket_copy_partnership") {
+    await interaction.reply({
+      content: partnershipCopyText(interaction.message),
+      flags: MessageFlags.Ephemeral,
+      allowedMentions: { parse: [] },
+    });
+    return true;
+  }
+
   const startMatch = interaction.customId.match(/^ticket_start_(staff|partnership|help_report)$/);
   if (startMatch) {
     const kind = startMatch[1] as OracleTicketKind;
@@ -710,6 +775,18 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
   const questionIndex = TICKET_QUESTIONS[kind].findIndex((entry) => entry.key === question.key) + 1;
   const totalQuestions = TICKET_QUESTIONS[kind].length;
   const isLastQuestion = questionIndex === totalQuestions;
+  const progressKey = `${interaction.channelId}:${interaction.user.id}`;
+  const progressState = ticketProgress.get(progressKey);
+  if (progressState) {
+    progressState.answers = {
+      ...(progressState.answers ?? {}),
+      [question.key]: answer,
+    };
+  }
+  const partnershipAnswers = {
+    ...(progressState?.answers ?? {}),
+    [question.key]: answer,
+  };
   const rejectedForTag =
     kind === "staff" &&
     question.key === "server_tag" &&
@@ -769,12 +846,16 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
   }
 
   try {
+    const finalPartnership = kind === "partnership" && isLastQuestion;
     await interaction.channel.send({
-      embeds: [answerEmbed],
+      embeds: [
+        finalPartnership
+          ? partnershipSummaryEmbed(interaction.user.username, partnershipAnswers)
+          : answerEmbed,
+      ],
+      components: finalPartnership ? [partnershipCopyRow()] : [],
       allowedMentions: { parse: [] },
     });
-    const progressKey = `${interaction.channelId}:${interaction.user.id}`;
-    const progressState = ticketProgress.get(progressKey);
     if (rejectedForTag || isLastQuestion) {
       if (progressState) {
         progressState.currentStep = questionIndex;

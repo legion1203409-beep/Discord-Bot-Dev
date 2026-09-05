@@ -9,6 +9,8 @@ import {
 import {
   staffDetailsModal,
   isStaffTagRefusal,
+  partnershipCopyRow,
+  partnershipSummaryEmbed,
   STAFF_REVIEW_ROLE_ID,
   staffOracleReviewPayload,
   ticketModal,
@@ -149,6 +151,24 @@ describe("Oracle ticket categories", () => {
       "ticket_answer_partnership_server_name",
     );
     expect(ticketQuestionModal("partnership", "description")?.toJSON().components[0]).toBeDefined();
+  });
+
+  it("adds a copy button to the completed partnership summary", () => {
+    const summary = partnershipSummaryEmbed("Andrei", {
+      server_name: "Regatul Umbrelor",
+      description: "Comunitate RPG medievală.",
+      invite: "https://discord.gg/umbrelor",
+    }).toJSON();
+    expect(summary.title).toBe("🤝 Pactul celor Două Regate · Rezumat");
+    expect(summary.fields?.map((field) => field.name)).toEqual([
+      "🏰 Numele serverului",
+      "📝 Descrierea serverului",
+      "🔗 Linkul serverului",
+    ]);
+    const button = partnershipCopyRow().toJSON().components[0];
+    expect(button && "custom_id" in button ? button.custom_id : undefined).toBe(
+      "ticket_copy_partnership",
+    );
   });
 
   it("starts help and report contracts directly from their first question", () => {
