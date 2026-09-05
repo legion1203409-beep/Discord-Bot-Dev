@@ -162,6 +162,22 @@ type ChatMessage = OpenAI.Chat.Completions.ChatCompletionMessageParam;
 
 // One in-character line for the rare case the model call fails entirely.
 const FALLBACK_LINE = "🕯️ *Cețurile dintre lumi sunt prea dese acum… Oracolul tace.*";
+const TICKET_FALLBACK_LINE =
+  "🕯️ *Cererea a fost auzită. Un membru al echipei va continua cercetarea în acest ticket.*";
+
+export type OracleTicketKind = "staff" | "partnership" | "help_report";
+
+/**
+ * These are category IDs, not channel IDs. A ticket is considered open for
+ * Oracle purposes while its channel remains under one of these categories.
+ * Environment overrides keep the feature portable if the server reorganises
+ * its categories later.
+ */
+export const ORACLE_TICKET_CATEGORY_IDS: Record<OracleTicketKind, string> = {
+  staff: envString("ORACLE_STAFF_TICKET_CATEGORY_ID", "1545688369332228167"),
+  partnership: envString("ORACLE_PARTNERSHIP_TICKET_CATEGORY_ID", "1545688531144413194"),
+  help_report: envString("ORACLE_HELP_REPORT_TICKET_CATEGORY_ID", "1545688638438772796"),
+};
 
 const lastReplyAt = new Map<string, number>();
 const replyTimestamps: number[] = [];
@@ -305,6 +321,38 @@ function buildAdminSystemPrompt(mood: MoodState): string {
 
 function buildSystemPrompt(mood: MoodState, isAdmin: boolean): string {
   return isAdmin ? buildAdminSystemPrompt(mood) : buildPlayerSystemPrompt(mood);
+}
+
+export function buildTicketSystemInstruction(kind: OracleTicketKind): string {
+  const specific =
+    kind === "staff"
+      ? [
+          "Acesta este un ticket pentru o aplicație de staff.",
+          "Ajută solicitantul să-și prezinte clar experiența, disponibilitatea, motivația și modul în care ar gestiona situații dificile.",
+          "Nu promite acceptarea, nu lua decizii în numele staffului și spune clar că un administrator va evalua aplicația.",
+        ]
+      : kind === "partnership"
+        ? [
+            "Acesta este un ticket pentru o propunere de parteneriat.",
+            "Cere politicos informațiile utile: numele serverului sau proiectului, invitația/linkul relevant, numărul aproximativ de membri, publicul și propunerea concretă.",
+            "Nu promite aprobarea parteneriatului și nu prezenta discuția ca fiind acceptată înainte de verificarea staffului.",
+          ]
+        : [
+            "Acesta este un ticket pentru ajutor sau raportarea unui membru.",
+            "Dacă este o problemă tehnică, cere pașii, mesajul de eroare și dovezile utile.",
+            "Dacă este o raportare, cere utilizatorul raportat, ce s-a întâmplat, când s-a întâmplat și dovezi, fără să acuzi sau să sancționezi pe nimeni.",
+            "Păstrează raportarea confidențială în acest ticket, nu divulga detalii altor membri și explică faptul că stafful va analiza cazul.",
+          ];
+
+  return [
+    "Răspunzi într-un ticket Discord deschis, nu într-o conversație publică.",
+    "Fii mai clar, calm și util decât în conversația obișnuită, păstrând doar o urmă discretă de atmosfera Oracolului.",
+    "Răspunde în limba română, în două până la cinci propoziții scurte.",
+    "Nu spune că ești AI, bot sau model și nu inventa acțiuni pe care nu le-ai făcut.",
+    "Nu cere parole, tokenuri, coduri de autentificare sau alte secrete.",
+    "Nu aplica sancțiuni, nu închide ticketul și nu pretinde că ai contactat stafful. Poți spune doar că informația rămâne în ticket pentru verificarea echipei.",
+    ...specific,
+  ].join("\n");
 }
 
 const SOCIAL_MODE_INSTRUCTIONS = [
@@ -646,6 +694,54 @@ async function buildRecentMemory(
   return { turns: kept.map((t) => t.msg), ids: new Set(kept.map((t) => t.id)), speakerAlias };
 }
 
+/**
+ * Ticket memory intentionally includes the whole recent ticket transcript,
+ * rather than only messages that mention the Oracle. This lets the Oracle ask
+ * the next useful question even when the applicant never tags it explicitly.
+ */
+async function buildTicketMemory(message: Message, botId: string): Promise<ChatMessage[]> {
+  if (!message.channel.isTextBased() || !("messages" in message.channel)) return [];
+
+  let fetched: import("discord.js").Collection<string, import("discord.js").Message>;
+  try {
+    fetched = await message.channel.messages.fetch({
+      limit: Math.min(MEMORY_FETCH_LIMIT, 100),
+      before: message.id,
+    });
+  } catch {
+    return [];
+  }
+
+  const aliasByAuthor = new Map<string, string>();
+  const aliasOf = (authorId: string): string => {
+    let alias = aliasByAuthor.get(authorId);
+    if (!alias) {
+      alias = `Solicitant ${aliasByAuthor.size + 1}`;
+      aliasByAuthor.set(authorId, alias);
+    }
+    return alias;
+  };
+
+  const cutoff = Date.now() - MEMORY_WINDOW_MS;
+  return [...fetched.values()]
+    .filter((entry) => entry.createdTimestamp >= cutoff)
+    .sort((a, b) => a.createdTimestamp - b.createdTimestamp)
+    .map((entry): ChatMessage | null => {
+      const text = (entry.content || entry.embeds[0]?.description || "").trim();
+      if (!text) return null;
+      if (entry.author.id === botId) {
+        return { role: "assistant", content: text.slice(0, MEMORY_TURN_CHARS) };
+      }
+      if (entry.author.bot) return null;
+      return {
+        role: "user",
+        content: `${aliasOf(entry.author.id)}: ${cleanMentionTokens(text).slice(0, MEMORY_TURN_CHARS)}`,
+      };
+    })
+    .filter((entry): entry is ChatMessage => entry !== null)
+    .slice(-MAX_MEMORY_TURNS);
+}
+
 async function generateOracleReply(
   userText: string,
   history: ChatMessage[],
@@ -656,6 +752,7 @@ async function generateOracleReply(
   relationship: Player | null,
   council: OracleCouncilRecord | null,
   socialMode = false,
+  additionalSystemInstruction?: string,
 ): Promise<string | null> {
   const client = getClient();
   if (!client) return null;
@@ -664,6 +761,9 @@ async function generateOracleReply(
     { role: "system", content: buildSystemPrompt(mood, isAdmin) },
   ];
   if (socialMode) messages.push({ role: "system", content: SOCIAL_MODE_INSTRUCTIONS });
+  if (additionalSystemInstruction) {
+    messages.push({ role: "system", content: additionalSystemInstruction });
+  }
   const relationContext = relationshipContext(relationship);
   if (relationContext) messages.push({ role: "system", content: relationContext });
   const guildCouncilContext = councilContext(council);
@@ -900,6 +1000,77 @@ function isGameHelpQuestion(text: string): boolean {
   return /\b(cheie|chei|cufar|cufere|lupt|boss|dragon|misiun|magazin|clasa|companion|relicv|fragment|obol|xp|mana|oracol|profet|licitat|fratie|cavaler|umbrolog|strajer|alchimist|ratacitor)\b/.test(normalized);
 }
 
+export function getOracleTicketKind(message: Pick<Message, "channel">): OracleTicketKind | null {
+  const parentId =
+    "parentId" in message.channel
+      ? (message.channel as { parentId?: string | null }).parentId
+      : null;
+  if (!parentId) return null;
+
+  for (const kind of Object.keys(ORACLE_TICKET_CATEGORY_IDS) as OracleTicketKind[]) {
+    if (ORACLE_TICKET_CATEGORY_IDS[kind] === parentId) return kind;
+  }
+  return null;
+}
+
+async function maybeReplyInTicket(
+  discordClient: Client,
+  message: Message,
+  kind: OracleTicketKind,
+  botId: string,
+): Promise<void> {
+  const raw = (message.content ?? "").trim();
+  const cleaned = cleanMentionTokens(raw);
+  if (!cleaned || !isWorthReplying(cleaned)) return;
+
+  // Ticket conversations have their own cooldown so a recent public-channel
+  // reply cannot suppress the first useful response inside a ticket.
+  const cooldownKey = `ticket:${message.channelId}:${message.author.id}`;
+  const pre = Date.now();
+  if (pre - (lastReplyAt.get(cooldownKey) ?? 0) < USER_COOLDOWN_MS) return;
+  if (!underGlobalCap(pre)) return;
+
+  const now = Date.now();
+  if (!underGlobalCap(now)) return;
+  replyTimestamps.push(now);
+  lastReplyAt.set(cooldownKey, now);
+
+  try {
+    if (message.channel.isTextBased() && "sendTyping" in message.channel) {
+      await message.channel.sendTyping().catch(() => {});
+    }
+
+    const memory = await buildTicketMemory(message, botId);
+    const reply = await generateOracleReply(
+      cleaned,
+      memory,
+      undefined,
+      getCurrentMood(message.guildId ?? undefined),
+      "Solicitant",
+      false,
+      null,
+      null,
+      false,
+      buildTicketSystemInstruction(kind),
+    );
+
+    await message.reply({
+      content: (reply || TICKET_FALLBACK_LINE).slice(0, DISCORD_MAX_CHARS),
+      allowedMentions: { repliedUser: true, parse: [] },
+    });
+    logger.info(
+      { guildId: message.guildId, channelId: message.channelId, ticketKind: kind, len: reply?.length ?? 0 },
+      "Oracle ticket reply sent",
+    );
+  } catch (err) {
+    logger.error({ err, guildId: message.guildId, channelId: message.channelId, ticketKind: kind }, "Oracle ticket reply failed");
+    await message.reply({
+      content: TICKET_FALLBACK_LINE,
+      allowedMentions: { repliedUser: true, parse: [] },
+    }).catch(() => {});
+  }
+}
+
 /**
  * Answer when the Oracle is addressed. Detects both a direct @mention and a reply
  * to one of the bot's own messages (a reply with the ping on lists the bot in
@@ -915,6 +1086,12 @@ export async function maybeReplyAsOracle(discordClient: Client, message: Message
     if (!AI_ENABLED) return;
     const botId = discordClient.user?.id;
     if (!botId) return;
+
+    const ticketKind = getOracleTicketKind(message);
+    if (ticketKind) {
+      await maybeReplyInTicket(discordClient, message, ticketKind, botId);
+      return;
+    }
 
     const isMention = message.mentions.users.has(botId);
     const hasReference = !!message.reference?.messageId;
