@@ -55,6 +55,7 @@ import {
   DEFAULT_ALLIANCE_RECRUITMENT_TEXT,
 } from "./ticket-ui";
 import { handleOracleCouncilVote, isOracleCouncilButton } from "./oracle-council";
+import { isTicketCategoryParentId } from "./ticket-categories";
 import {
   enforceOracleTimeout,
   handleToxicity,
@@ -3559,7 +3560,7 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
       }
       const bossTopId = getChannel("bossTop", guildId);
       const topCh = bossTopId ? await interaction.client.channels.fetch(bossTopId).catch(() => null) : null;
-      if (topCh instanceof TextChannel) {
+      if (topCh instanceof TextChannel && !isTicketCategoryParentId(topCh.parentId)) {
         const leaderboard = buildBossLeaderboard(activeBoss, activeBoss.damageBy, activeBoss.participants, activeBoss.playerNames, activeBoss.playerHp, activeBoss.hitsBy);
         const lbMsg = await topCh.send({ embeds: [leaderboard] }).catch(() => null);
         if (lbMsg) setTimeout(() => void lbMsg.delete().catch(() => {}), BOSS_RESULT_TTL_MS);
@@ -4187,6 +4188,13 @@ async function setupTrader(client: Client, guildId: string): Promise<void> {
     const channel = await client.channels.fetch(traderChannelId).catch(() => null);
     if (!(channel instanceof TextChannel)) {
       logger.warn({ channelId: traderChannelId, guildId }, "Trader channel not found");
+      return;
+    }
+    if (isTicketCategoryParentId(channel.parentId)) {
+      logger.warn(
+        { channelId: channel.id, parentId: channel.parentId, guildId },
+        "Trader channel is a ticket channel — automated post skipped",
+      );
       return;
     }
 

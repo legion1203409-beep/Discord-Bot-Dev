@@ -23,6 +23,7 @@ import {
   type OracleCouncilRecord,
 } from "./db";
 import { grantGuildBoost, restoreGuildBoost } from "./status-effects";
+import { isTicketCategoryParentId } from "./ticket-categories";
 
 const MINUTE = 60 * 1000;
 const COUNCIL_ENABLED = process.env.ORACLE_COUNCIL_ENABLED !== "false";
@@ -199,7 +200,8 @@ function councilButtons(council: OracleCouncilRecord): ActionRowBuilder<ButtonBu
 
 async function getChannel(client: Client, channelId: string): Promise<TextChannel | null> {
   const channel = await client.channels.fetch(channelId).catch(() => null);
-  return channel instanceof TextChannel ? channel : null;
+  if (!(channel instanceof TextChannel) || isTicketCategoryParentId(channel.parentId)) return null;
+  return channel;
 }
 
 export async function finalizeCouncil(

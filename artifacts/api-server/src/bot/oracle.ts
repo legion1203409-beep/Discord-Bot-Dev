@@ -21,6 +21,7 @@ import {
   type MoodState,
 } from "./oracle-content";
 import { grantRandomBlessing, grantRandomCurse, pruneAllEffects } from "./status-effects";
+import { isTicketCategoryParentId } from "./ticket-categories";
 
 const MIN = 60 * 1000;
 
@@ -324,7 +325,8 @@ function pickUsersToCurse(state: GuildOracleState, now: number): string[] {
 
 async function getMainChannel(client: Client, channelId: string): Promise<TextChannel | null> {
   const channel = await client.channels.fetch(channelId).catch(() => null);
-  return channel instanceof TextChannel ? channel : null;
+  if (!(channel instanceof TextChannel) || isTicketCategoryParentId(channel.parentId)) return null;
+  return channel;
 }
 
 function checkInQuestion(mood: MoodState): string {

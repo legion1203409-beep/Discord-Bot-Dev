@@ -16,6 +16,7 @@ import {
 } from "./db";
 import { grantAdminPlayerBoost, grantGuildBoost } from "./status-effects";
 import { logger } from "../lib/logger";
+import { isTicketCategoryParentId } from "./ticket-categories";
 
 const CONFIG_PREFIX = "tribute:config:";
 const EVENT_PREFIX = "tribute:event:";
@@ -243,6 +244,13 @@ export async function fireTribute(client: Client, guildId: string): Promise<Trib
     const channel = await client.channels.fetch(config.channelId).catch(() => null);
     if (!(channel instanceof TextChannel)) {
       logger.warn({ guildId, channelId: config.channelId }, "Tribute channel is not a text channel");
+      return null;
+    }
+    if (isTicketCategoryParentId(channel.parentId)) {
+      logger.warn(
+        { guildId, channelId: channel.id, parentId: channel.parentId },
+        "Tribute channel is a ticket channel — automated post skipped",
+      );
       return null;
     }
 
