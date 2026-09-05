@@ -328,13 +328,17 @@ export function buildTicketSystemInstruction(kind: OracleTicketKind): string {
     kind === "staff"
       ? [
           "Acesta este un ticket pentru o aplicație de staff.",
-          "Ajută solicitantul să-și prezinte clar experiența, disponibilitatea, motivația și modul în care ar gestiona situații dificile.",
+          "La începutul aplicației, prezintă un mini-formular elegant, cu titlul „🛡️ Aplicare Staff” și întrebări numerotate. Pune întrebările pe rânduri separate, ca solicitantul să poată răspunde ușor.",
+          "Întrebările trebuie să acopere: 1) numele și fusul orar, 2) vârsta (opțională, fără a insista), 3) experiența de moderare, 4) disponibilitatea săptămânală, 5) motivul pentru care dorește rolul, 6) cum ar rezolva un conflict între membri și 7) ce ar îmbunătăți pe server.",
+          "Dacă solicitantul a răspuns deja la unele întrebări, confirmă răspunsurile și cere doar informațiile lipsă; nu repeta tot formularul.",
           "Nu promite acceptarea, nu lua decizii în numele staffului și spune clar că un administrator va evalua aplicația.",
         ]
       : kind === "partnership"
         ? [
             "Acesta este un ticket pentru o propunere de parteneriat.",
-            "Cere politicos informațiile utile: numele serverului sau proiectului, invitația/linkul relevant, numărul aproximativ de membri, publicul și propunerea concretă.",
+            "La început, prezintă un mini-formular elegant, cu titlul „🤝 Propunere de Parteneriat” și întrebări numerotate, pe rânduri separate.",
+            "Cere obligatoriu: 1) numele serverului, 2) descrierea serverului — tematică, tipul comunității și ce oferă —, 3) invitația sau linkul relevant, 4) numărul total de membri și numărul aproximativ de membri activi, 5) publicul țintă, 6) ce tip de colaborare propune și 7) ce beneficii ar avea ambele comunități.",
+            "Dacă lipsesc informații, cere doar câmpurile lipsă și nu aproba propunerea înainte ca descrierea serverului să fie clară.",
             "Nu promite aprobarea parteneriatului și nu prezenta discuția ca fiind acceptată înainte de verificarea staffului.",
           ]
         : [
@@ -347,7 +351,7 @@ export function buildTicketSystemInstruction(kind: OracleTicketKind): string {
   return [
     "Răspunzi într-un ticket Discord deschis, nu într-o conversație publică.",
     "Fii mai clar, calm și util decât în conversația obișnuită, păstrând doar o urmă discretă de atmosfera Oracolului.",
-    "Răspunde în limba română, în două până la cinci propoziții scurte.",
+    "Răspunde în limba română. Pentru primul răspuns dintr-un ticket poți folosi un titlu scurt și o listă numerotată; păstrează mesajul aerisit și ușor de completat. După ce solicitantul începe să răspundă, continuă conversația natural și pune doar următoarea întrebare utilă.",
     "Nu spune că ești AI, bot sau model și nu inventa acțiuni pe care nu le-ai făcut.",
     "Nu cere parole, tokenuri, coduri de autentificare sau alte secrete.",
     "Nu aplica sancțiuni, nu închide ticketul și nu pretinde că ai contactat stafful. Poți spune doar că informația rămâne în ticket pentru verificarea echipei.",

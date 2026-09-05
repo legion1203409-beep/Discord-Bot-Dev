@@ -27,6 +27,9 @@ describe("Oracle ticket categories", () => {
   it("gives staff applications their own safe instructions", () => {
     const instruction = buildTicketSystemInstruction("staff");
     expect(instruction).toContain("aplicație de staff");
+    expect(instruction).toContain("🛡️ Aplicare Staff");
+    expect(instruction).toContain("cum ar rezolva un conflict");
+    expect(instruction).toContain("ce ar îmbunătăți pe server");
     expect(instruction).toContain("Nu promite acceptarea");
     expect(instruction).toContain("Nu cere parole");
   });
@@ -36,6 +39,9 @@ describe("Oracle ticket categories", () => {
     const helpReport = buildTicketSystemInstruction("help_report");
 
     expect(partnership).toContain("propunere de parteneriat");
+    expect(partnership).toContain("🤝 Propunere de Parteneriat");
+    expect(partnership).toContain("descrierea serverului");
+    expect(partnership).toContain("tematică, tipul comunității și ce oferă");
     expect(partnership).toContain("numărul aproximativ de membri");
     expect(helpReport).toContain("raportarea unui membru");
     expect(helpReport).toContain("Păstrează raportarea confidențială");
