@@ -18,6 +18,7 @@ import {
   partnershipDraftEmbed,
   partnershipSummaryEmbed,
   STAFF_REVIEW_ROLE_ID,
+  memberHasStaffReviewRole,
   staffOracleReviewPayload,
   ticketModal,
   ticketPanelPayload,
@@ -191,6 +192,18 @@ describe("Oracle ticket categories", () => {
       "ticket_alliance_post_123",
       "ticket_alliance_edit_123",
     ]);
+  });
+
+  it("limits alliance actions to members with the alliance staff role", () => {
+    expect(memberHasStaffReviewRole({ roles: [STAFF_REVIEW_ROLE_ID] })).toBe(true);
+    expect(memberHasStaffReviewRole({ roles: ["another-role"] })).toBe(false);
+    expect(memberHasStaffReviewRole({ roles: { cache: new Map() } })).toBe(false);
+    expect(
+      memberHasStaffReviewRole({
+        roles: { cache: new Map([[STAFF_REVIEW_ROLE_ID, true]]) },
+      }),
+    ).toBe(true);
+    expect(memberHasStaffReviewRole(null)).toBe(false);
   });
 
   it("marks only partnerships below 200 total members as no-ping promotions", () => {

@@ -40,6 +40,26 @@ export const STAFF_REVIEW_ROLE_ID = "1472526137308745909";
 export const ALLIANCE_PUBLIC_CHANNEL_ID = "1472997077373157602";
 const REGATUL_CENUSII_DESCRIPTION =
   "Regatul Cenușii este un server Discord RPG cooperativ dark-fantasy, cu clase, lupte, boss-i, XP, Oboli, companioni, relicve și evenimente pentru întreaga comunitate.";
+
+type RoleMembership = {
+  roles:
+    | readonly string[]
+    | {
+        cache: {
+          has(roleId: string): boolean;
+        };
+      };
+};
+
+export function memberHasStaffReviewRole(
+  member: RoleMembership | null | undefined,
+): boolean {
+  if (!member) return false;
+  return Array.isArray(member.roles)
+    ? member.roles.includes(STAFF_REVIEW_ROLE_ID)
+    : member.roles.cache.has(STAFF_REVIEW_ROLE_ID);
+}
+
 const postedTicketPanels = new Set<string>();
 const ticketPanelLocks = new Map<string, Promise<boolean>>();
 type TicketProgressState = {
@@ -875,6 +895,13 @@ export async function handleTicketQuestionSelect(
 export async function handleTicketButton(interaction: ButtonInteraction): Promise<boolean> {
   const confirmAllianceMatch = interaction.customId.match(/^ticket_alliance_confirm_(\d+)$/);
   if (confirmAllianceMatch) {
+    if (!memberHasStaffReviewRole(interaction.member)) {
+      await interaction.reply({
+        content: "🛡️ Doar membrii cu rolul de staff al alianțelor pot confirma acest pact.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
     const applicantId = confirmAllianceMatch[1]!;
     const state = ticketProgress.get(`${interaction.channelId}:${applicantId}`);
     if (!state?.answers || state.status !== "completed") {
@@ -902,18 +929,18 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
 
   const postAllianceMatch = interaction.customId.match(/^ticket_alliance_post_(\d+)$/);
   if (postAllianceMatch) {
+    if (!memberHasStaffReviewRole(interaction.member)) {
+      await interaction.reply({
+        content: "🛡️ Doar membrii cu rolul de staff al alianțelor pot publica acest pact.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
     const applicantId = postAllianceMatch[1]!;
     const state = ticketProgress.get(`${interaction.channelId}:${applicantId}`);
     if (!state?.answers || state.status !== "completed") {
       await interaction.reply({
         content: "❌ Contractul alianței nu este încă finalizat.",
-        flags: MessageFlags.Ephemeral,
-      });
-      return true;
-    }
-    if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) {
-      await interaction.reply({
-        content: "🛡️ Doar stafful cu permisiunea de gestionare a canalelor poate publica pactul.",
         flags: MessageFlags.Ephemeral,
       });
       return true;
@@ -971,6 +998,13 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
 
   const editAllianceMatch = interaction.customId.match(/^ticket_alliance_edit_(\d+)$/);
   if (editAllianceMatch) {
+    if (!memberHasStaffReviewRole(interaction.member)) {
+      await interaction.reply({
+        content: "🛡️ Doar membrii cu rolul de staff al alianțelor pot edita acest pact.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
     const applicantId = editAllianceMatch[1]!;
     const state = ticketProgress.get(`${interaction.channelId}:${applicantId}`);
     if (!state?.answers || state.alliancePosted) {
@@ -1228,6 +1262,13 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
 export async function handleTicketModal(interaction: ModalSubmitInteraction): Promise<boolean> {
   const editAllianceMatch = interaction.customId.match(/^ticket_form_alliance_edit_submit_(\d+)$/);
   if (editAllianceMatch) {
+    if (!memberHasStaffReviewRole(interaction.member)) {
+      await interaction.reply({
+        content: "🛡️ Doar membrii cu rolul de staff al alianțelor pot edita acest pact.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const applicantId = editAllianceMatch[1]!;
     const progressKey = `${interaction.channelId}:${applicantId}`;
