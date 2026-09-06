@@ -48,7 +48,7 @@ const TICKET_SEAL = IMG.ticketSeal;
 export const STAFF_REVIEW_ROLE_ID = "1472526137308745909";
 export const ALLIANCE_PUBLIC_CHANNEL_ID = "1472997077373157602";
 export const INCOMPLETE_TICKET_TIMEOUT_MS = 24 * 60 * 60 * 1000;
-export const INCOMPLETE_TICKET_WARNING_BEFORE_MS = 60 * 60 * 1000;
+export const INCOMPLETE_TICKET_WARNING_AFTER_MS = 30 * 60 * 1000;
 const REGAT_RECRUITMENT_GIF_URL =
   "https://media.discordapp.net/attachments/1477699914732404977/1477704399936688212/standard.gif?ex=6a45e937&is=6a4497b7&hm=f9c71749fd5197b10bcdb4d367da427d7e2e58283087d29907d73fc8d12015b0";
 const REGAT_INVITE_URL = "https://discord.gg/regatulcenusii";
@@ -77,6 +77,7 @@ export function memberHasStaffReviewRole(
 const postedTicketPanels = new Set<string>();
 const ticketPanelLocks = new Map<string, Promise<boolean>>();
 const ticketDeletionTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const ticketWarningTimers = new Map<string, ReturnType<typeof setTimeout>>();
 type TicketProgressState = TicketProgressRecord;
 const ticketProgress = new Map<string, TicketProgressState>();
 
@@ -490,8 +491,15 @@ export function scheduleIncompleteTicketDeletion(channel: unknown): void {
     delete?: (reason?: string) => Promise<unknown>;
     send?: (payload: {
       content: string;
-      allowedMentions: { parse: never[] };
+      allowedMentions: { parse: never[]; users?: string[] };
     }) => Promise<unknown>;
+    permissionOverwrites?: {
+      cache?: Iterable<{
+        id?: string;
+        type?: number;
+        allow?: { has?: (permission: bigint) => boolean };
+      }>;
+    };
     messages?: {
       fetch?: (options: { limit: number }) => Promise<Iterable<{ components?: readonly { components?: readonly { customId?: string | null }[] }[] }>>;
     };
@@ -506,29 +514,45 @@ export function scheduleIncompleteTicketDeletion(channel: unknown): void {
 
   const existingTimer = ticketDeletionTimers.get(candidate.id);
   if (existingTimer) clearTimeout(existingTimer);
+  const existingWarningTimer = ticketWarningTimers.get(candidate.id);
+  if (existingWarningTimer) clearTimeout(existingWarningTimer);
   const deleteChannel = candidate.delete;
   if (!deleteChannel) return;
 
   const deadline = candidate.createdTimestamp + INCOMPLETE_TICKET_TIMEOUT_MS;
   const warningTimer = setTimeout(async () => {
     const channelId = candidate.id!;
+    ticketWarningTimers.delete(channelId);
     const progressFinished = [...ticketProgress.entries()].some(
       ([key, state]) => key.startsWith(`${channelId}:`) && Boolean(state.status),
     );
     if (progressFinished || await ticketHasFinishedStatus(candidate)) return;
     if (typeof candidate.send !== "function") return;
 
+    const progressApplicantId = [...ticketProgress.keys()]
+      .find((key) => key.startsWith(`${channelId}:`))
+      ?.slice(channelId.length + 1);
+    const permissionApplicantId = [...(candidate.permissionOverwrites?.cache ?? [])]
+      .find((overwrite) =>
+        overwrite.type === 1 &&
+        typeof overwrite.id === "string" &&
+        overwrite.allow?.has?.(PermissionFlagsBits.ViewChannel) === true,
+      )?.id;
+    const applicantId = progressApplicantId || permissionApplicantId;
+    const mention = applicantId ? `<@${applicantId}> ` : "";
+
     await candidate.send({
       content:
-        "⚠️ **Ticket incomplet**\n" +
+        `⚠️ ${mention}**Ticket incomplet**\n` +
         `Formularul nu a fost finalizat. Dacă nu îl completezi până la <t:${Math.floor(deadline / 1000)}:R>, ` +
         "ticketul va fi șters automat.",
-      allowedMentions: { parse: [] },
+      allowedMentions: applicantId ? { parse: [], users: [applicantId] } : { parse: [] },
     }).catch((err) => {
       logger.debug({ err, channelId }, "Incomplete ticket warning could not be posted");
     });
-  }, Math.max(0, deadline - INCOMPLETE_TICKET_WARNING_BEFORE_MS - Date.now()));
+  }, Math.max(0, candidate.createdTimestamp + INCOMPLETE_TICKET_WARNING_AFTER_MS - Date.now()));
   warningTimer.unref?.();
+  ticketWarningTimers.set(candidate.id, warningTimer);
 
   const delay = Math.max(
     0,

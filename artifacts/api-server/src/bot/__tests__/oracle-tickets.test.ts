@@ -25,7 +25,7 @@ import {
   allianceRecruitmentTextModal,
   allianceStaffNotificationText,
   INCOMPLETE_TICKET_TIMEOUT_MS,
-  INCOMPLETE_TICKET_WARNING_BEFORE_MS,
+  INCOMPLETE_TICKET_WARNING_AFTER_MS,
   scheduleIncompleteTicketDeletion,
   staffOracleReviewPayload,
   ticketModal,
@@ -338,7 +338,7 @@ describe("Oracle ticket categories", () => {
     );
   });
 
-  it("warns about an unfinished ticket one hour before deleting it after 24 hours", async () => {
+  it("warns after 30 minutes and deletes an unfinished ticket after 24 hours", async () => {
     vi.useFakeTimers();
     try {
       const deleteChannel = vi.fn().mockResolvedValue(undefined);
@@ -352,16 +352,16 @@ describe("Oracle ticket categories", () => {
         messages: { fetch: fetchMessages },
       });
 
-      await vi.advanceTimersByTimeAsync(
-        INCOMPLETE_TICKET_TIMEOUT_MS - INCOMPLETE_TICKET_WARNING_BEFORE_MS,
-      );
+      await vi.advanceTimersByTimeAsync(INCOMPLETE_TICKET_WARNING_AFTER_MS);
 
       expect(send).toHaveBeenCalledWith(expect.objectContaining({
         content: expect.stringContaining("Ticket incomplet"),
       }));
       expect(deleteChannel).not.toHaveBeenCalled();
 
-      await vi.advanceTimersByTimeAsync(INCOMPLETE_TICKET_WARNING_BEFORE_MS);
+      await vi.advanceTimersByTimeAsync(
+        INCOMPLETE_TICKET_TIMEOUT_MS - INCOMPLETE_TICKET_WARNING_AFTER_MS,
+      );
 
       expect(fetchMessages).toHaveBeenCalledWith({ limit: 100 });
       expect(deleteChannel).toHaveBeenCalledWith("Ticket incomplet după 24 de ore");
