@@ -47,7 +47,8 @@ const TICKET_ICONS: Record<OracleTicketKind, string> = {
 const TICKET_SEAL = IMG.ticketSeal;
 export const STAFF_REVIEW_ROLE_ID = "1472526137308745909";
 export const ALLIANCE_PUBLIC_CHANNEL_ID = "1472997077373157602";
-export const INCOMPLETE_TICKET_TIMEOUT_MS = 30 * 60 * 1000;
+export const INCOMPLETE_TICKET_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+export const INCOMPLETE_TICKET_WARNING_BEFORE_MS = 60 * 60 * 1000;
 const REGAT_RECRUITMENT_GIF_URL =
   "https://media.discordapp.net/attachments/1477699914732404977/1477704399936688212/standard.gif?ex=6a45e937&is=6a4497b7&hm=f9c71749fd5197b10bcdb4d367da427d7e2e58283087d29907d73fc8d12015b0";
 const REGAT_INVITE_URL = "https://discord.gg/regatulcenusii";
