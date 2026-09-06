@@ -25,6 +25,7 @@ import {
   allianceRecruitmentTextModal,
   allianceStaffNotificationText,
   INCOMPLETE_TICKET_TIMEOUT_MS,
+  INCOMPLETE_TICKET_WARNING_BEFORE_MS,
   scheduleIncompleteTicketDeletion,
   staffOracleReviewPayload,
   ticketModal,
@@ -337,22 +338,33 @@ describe("Oracle ticket categories", () => {
     );
   });
 
-  it("deletes an unfinished ticket after the 30-minute timeout", async () => {
+  it("warns about an unfinished ticket one hour before deleting it after 24 hours", async () => {
     vi.useFakeTimers();
     try {
       const deleteChannel = vi.fn().mockResolvedValue(undefined);
       const fetchMessages = vi.fn().mockResolvedValue(new Map());
+      const send = vi.fn().mockResolvedValue(undefined);
       scheduleIncompleteTicketDeletion({
         id: "unfinished-ticket",
         createdTimestamp: Date.now(),
         delete: deleteChannel,
+        send,
         messages: { fetch: fetchMessages },
       });
 
-      await vi.advanceTimersByTimeAsync(INCOMPLETE_TICKET_TIMEOUT_MS);
+      await vi.advanceTimersByTimeAsync(
+        INCOMPLETE_TICKET_TIMEOUT_MS - INCOMPLETE_TICKET_WARNING_BEFORE_MS,
+      );
+
+      expect(send).toHaveBeenCalledWith(expect.objectContaining({
+        content: expect.stringContaining("Ticket incomplet"),
+      }));
+      expect(deleteChannel).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(INCOMPLETE_TICKET_WARNING_BEFORE_MS);
 
       expect(fetchMessages).toHaveBeenCalledWith({ limit: 100 });
-      expect(deleteChannel).toHaveBeenCalledWith("Ticket incomplet după 30 de minute");
+      expect(deleteChannel).toHaveBeenCalledWith("Ticket incomplet după 24 de ore");
     } finally {
       vi.useRealTimers();
     }
@@ -367,6 +379,16 @@ describe("Oracle ticket categories", () => {
     expect(ticketQuestionModal("help_report", "type")?.toJSON().custom_id).toBe(
       "ticket_answer_help_report_type",
     );
+  });
+
+  it("shows a live Discord countdown for ticket completion", () => {
+    const deadline = 1_800_000_000_000;
+    const panel = ticketPanelPayload("help_report", deadline);
+    const embed = panel.embeds[0]!.toJSON();
+    const timeField = embed.fields?.find((field) => field.name === "⏳ Timp pentru completare");
+
+    expect(timeField?.value).toContain(`<t:${Math.floor(deadline / 1000)}:R>`);
+    expect(timeField?.value).toContain("Dacă rămâne incomplet");
   });
 
   it("puts the first five staff questions on the first valid modal page", () => {

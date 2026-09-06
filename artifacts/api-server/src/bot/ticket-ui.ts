@@ -282,6 +282,17 @@ function ticketStartButton(kind: OracleTicketKind): ButtonBuilder {
     .setStyle(ButtonStyle.Primary);
 }
 
+function ticketDeadlineForChannel(channel: unknown): number {
+  const createdTimestamp =
+    channel &&
+    typeof channel === "object" &&
+    "createdTimestamp" in channel &&
+    typeof channel.createdTimestamp === "number"
+      ? channel.createdTimestamp
+      : Date.now();
+  return createdTimestamp + INCOMPLETE_TICKET_TIMEOUT_MS;
+}
+
 export function ticketStatusRow(
   kind: OracleTicketKind,
   status: "completed" | "rejected",
@@ -295,7 +306,10 @@ export function ticketStatusRow(
   );
 }
 
-export function ticketPanelPayload(kind: OracleTicketKind): {
+export function ticketPanelPayload(
+  kind: OracleTicketKind,
+  deadline = Date.now() + INCOMPLETE_TICKET_TIMEOUT_MS,
+): {
   embeds: EmbedBuilder[];
   components: ActionRowBuilder<ButtonBuilder>[];
 } {
@@ -341,6 +355,14 @@ export function ticketPanelPayload(kind: OracleTicketKind): {
               },
             ],
     )
+    .addFields({
+      name: "⏳ Timp pentru completare",
+      value:
+        `Completează ticketul până la <t:${Math.floor(deadline / 1000)}:F> ` +
+        `(<t:${Math.floor(deadline / 1000)}:R>).\n` +
+        "Dacă rămâne incomplet, va fi șters automat.",
+      inline: false,
+    })
     .setFooter({ text: "Regatul Cenușii · Citește înainte de a începe" });
   if (TICKET_SEAL) embed.setThumbnail(TICKET_SEAL);
 
@@ -391,7 +413,9 @@ export async function postTicketPanelIfMissing(
         );
       });
       if (isActivePanel) {
-        await existingPanel.edit(ticketPanelPayload(kind)).catch((err) => {
+        await existingPanel.edit(
+          ticketPanelPayload(kind, ticketDeadlineForChannel(channel)),
+        ).catch((err) => {
           logger.warn(
             { err, channelId: channel.id, ticketKind: kind },
             "Could not refresh existing interactive ticket panel",
@@ -403,7 +427,7 @@ export async function postTicketPanelIfMissing(
     }
 
     try {
-      await channel.send(ticketPanelPayload(kind));
+      await channel.send(ticketPanelPayload(kind, ticketDeadlineForChannel(channel)));
     } catch (err) {
       logger.error(
         { err, channelId: channel.id, ticketKind: kind },
@@ -464,6 +488,10 @@ export function scheduleIncompleteTicketDeletion(channel: unknown): void {
     id?: string;
     createdTimestamp?: number;
     delete?: (reason?: string) => Promise<unknown>;
+    send?: (payload: {
+      content: string;
+      allowedMentions: { parse: never[] };
+    }) => Promise<unknown>;
     messages?: {
       fetch?: (options: { limit: number }) => Promise<Iterable<{ components?: readonly { components?: readonly { customId?: string | null }[] }[] }>>;
     };
@@ -481,6 +509,27 @@ export function scheduleIncompleteTicketDeletion(channel: unknown): void {
   const deleteChannel = candidate.delete;
   if (!deleteChannel) return;
 
+  const deadline = candidate.createdTimestamp + INCOMPLETE_TICKET_TIMEOUT_MS;
+  const warningTimer = setTimeout(async () => {
+    const channelId = candidate.id!;
+    const progressFinished = [...ticketProgress.entries()].some(
+      ([key, state]) => key.startsWith(`${channelId}:`) && Boolean(state.status),
+    );
+    if (progressFinished || await ticketHasFinishedStatus(candidate)) return;
+    if (typeof candidate.send !== "function") return;
+
+    await candidate.send({
+      content:
+        "⚠️ **Ticket incomplet**\n" +
+        `Formularul nu a fost finalizat. Dacă nu îl completezi până la <t:${Math.floor(deadline / 1000)}:R>, ` +
+        "ticketul va fi șters automat.",
+      allowedMentions: { parse: [] },
+    }).catch((err) => {
+      logger.debug({ err, channelId }, "Incomplete ticket warning could not be posted");
+    });
+  }, Math.max(0, deadline - INCOMPLETE_TICKET_WARNING_BEFORE_MS - Date.now()));
+  warningTimer.unref?.();
+
   const delay = Math.max(
     0,
     INCOMPLETE_TICKET_TIMEOUT_MS - (Date.now() - candidate.createdTimestamp),
@@ -494,12 +543,12 @@ export function scheduleIncompleteTicketDeletion(channel: unknown): void {
     if (progressFinished || await ticketHasFinishedStatus(candidate)) return;
 
     try {
-      await deleteChannel.call(candidate, "Ticket incomplet după 30 de minute");
+      await deleteChannel.call(candidate, "Ticket incomplet după 24 de ore");
       postedTicketPanels.delete(channelId);
       for (const key of ticketProgress.keys()) {
         if (key.startsWith(`${channelId}:`)) ticketProgress.delete(key);
       }
-      logger.info({ channelId }, "Incomplete ticket deleted after 30 minutes");
+      logger.info({ channelId }, "Incomplete ticket deleted after 24 hours");
     } catch (err) {
       logger.debug({ err, channelId }, "Incomplete ticket could not be deleted");
     }
@@ -1317,7 +1366,9 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
       applicantUsername: interaction.user.globalName ?? interaction.user.username,
     });
     if (kind === "staff" || kind === "partnership") {
-      void interaction.message.edit(ticketPanelPayload(kind)).catch(() => null);
+      void interaction.message.edit(
+        ticketPanelPayload(kind, ticketDeadlineForChannel(interaction.channel)),
+      ).catch(() => null);
       await interaction.showModal(ticketModal(kind));
       return true;
     }
