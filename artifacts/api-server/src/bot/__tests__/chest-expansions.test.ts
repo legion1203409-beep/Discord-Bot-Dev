@@ -68,6 +68,7 @@ import {
   personalChestTier,
   SEASONAL_CHEST_COOLDOWN_MS,
   SEASONAL_CHEST_MESSAGE_RETENTION_MS,
+  HIDDEN_CHEST_MESSAGE_RETENTION_MS,
   isSeasonalChestOnCooldown,
   seasonalForBucket,
 } from "../chest-expansions";
@@ -111,6 +112,7 @@ describe("chest expansion pure mechanics", () => {
 
   it("keeps the completed seasonal message for twenty minutes", () => {
     expect(SEASONAL_CHEST_MESSAGE_RETENTION_MS).toBe(20 * 60 * 1000);
+    expect(HIDDEN_CHEST_MESSAGE_RETENTION_MS).toBe(20 * 60 * 1000);
   });
 
   it("keeps seasonal chests on cooldown for two hours after spawning", () => {
@@ -144,6 +146,8 @@ describe("chest expansion pure mechanics", () => {
     expect(query.mock.calls[1]?.[0]).toContain("claimedBy");
     expect(query.mock.calls[0]?.[1]).toContain("Mara");
     expect(query.mock.calls[1]?.[1]).toContain("Doru");
+    expect(query.mock.calls[1]?.[0]).toContain("cleanupAt");
+    expect(query.mock.calls[1]?.[1]).toHaveLength(5);
   });
 });
 

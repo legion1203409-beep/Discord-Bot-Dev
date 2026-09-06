@@ -549,6 +549,24 @@ async function deleteSeasonalChestMessage(client: Client, chest: SeasonalChest):
   await message?.delete().catch(() => null);
 }
 
+async function deleteHiddenChestMessage(client: Client, chest: HiddenChest): Promise<void> {
+  const channel = await client.channels.fetch(chest.channelId).catch(() => null);
+  if (!(channel instanceof TextChannel)) return;
+  const message = await channel.messages.fetch(chest.messageId).catch(() => null);
+  await message?.delete().catch(() => null);
+}
+
+export function scheduleHiddenChestMessageDeletion(
+  client: Client,
+  chest: HiddenChest,
+  cleanupAt = chest.cleanupAt ?? chest.expiresAt,
+): void {
+  const timer = setTimeout(() => {
+    void deleteHiddenChestMessage(client, chest).catch(() => null);
+  }, Math.max(0, cleanupAt - Date.now()));
+  timer.unref?.();
+}
+
 export function scheduleSeasonalChestMessageDeletion(client: Client, chest: SeasonalChest): void {
   const cleanupAt = chest.cleanupAt ?? Date.now() + SEASONAL_CHEST_MESSAGE_RETENTION_MS;
   const timer = setTimeout(() => {
@@ -670,7 +688,10 @@ export interface HiddenChest {
     userId: string;
     username: string;
   };
+  cleanupAt?: number;
 }
+
+export const HIDDEN_CHEST_MESSAGE_RETENTION_MS = 20 * 60 * 1000;
 
 export function buildOracleClueEmbed(answer: string, expiresAt?: number): EmbedBuilder {
   const clues: Record<string, string> = {
@@ -769,6 +790,13 @@ export async function maybeHandleOracleClue(
     });
     chest.messageId = sent.id;
     await saveState(stateKey(guildId, `hidden:${chestId}`), chest);
+    const solvedClue = await loadState<Record<string, unknown>>(stateKey(guildId, "oracle_clue"));
+    await saveState(stateKey(guildId, "oracle_clue"), {
+      ...(solvedClue ?? {}),
+      status: "solved",
+      hiddenChestId: chestId,
+    });
+    scheduleHiddenChestMessageDeletion(client, chest);
     return;
   }
 
@@ -802,19 +830,35 @@ export async function claimHiddenChest(
 ): Promise<HiddenChest | null> {
   const key = stateKey(guildId, `hidden:${chestId}`);
   await ensureBotStateTable();
+  const now = Date.now();
   const result = await pool.query<{ value: string }>(
     `UPDATE bot_state
      SET value = jsonb_set(
-       jsonb_set(value::jsonb, '{claimed}', 'true'::jsonb, true),
-       '{claimedBy}', jsonb_build_object('userId', $3::text, 'username', $4::text), true
+        jsonb_set(
+          jsonb_set(value::jsonb, '{claimed}', 'true'::jsonb, true),
+          '{claimedBy}', jsonb_build_object('userId', $3::text, 'username', $4::text), true
+        ),
+        '{cleanupAt}', to_jsonb($5::bigint), true
      )::text,
          updated_at = now()
      WHERE key = $1 AND COALESCE((value::jsonb->>'claimed')::boolean, false) = false
        AND (value::jsonb->>'expiresAt')::bigint > $2
      RETURNING value`,
-    [key, Date.now(), userId, username],
+    [key, now, userId, username, now + HIDDEN_CHEST_MESSAGE_RETENTION_MS],
   );
   return result.rows[0] ? JSON.parse(result.rows[0].value) as HiddenChest : null;
+}
+
+export async function rehydrateHiddenChest(client: Client, guildId: string): Promise<void> {
+  const clue = await loadState<{ hiddenChestId?: string }>(stateKey(guildId, "oracle_clue"));
+  if (!clue?.hiddenChestId) return;
+  const chest = await loadState<HiddenChest>(stateKey(guildId, `hidden:${clue.hiddenChestId}`));
+  if (!chest) return;
+  scheduleHiddenChestMessageDeletion(
+    client,
+    chest,
+    chest.cleanupAt ?? (chest.claimed ? Date.now() + HIDDEN_CHEST_MESSAGE_RETENTION_MS : chest.expiresAt),
+  );
 }
 
 export interface AuctionState {

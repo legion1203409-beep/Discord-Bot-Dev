@@ -77,7 +77,7 @@ vi.mock("../status-effects", () => ({
   getRewardMultipliers: vi.fn().mockReturnValue({ xpMult: 1, goldMult: 1 }),
 }));
 
-import { isGuildActive, recordGuildActivity, rollActivityRarityKey, rollActivityKeyType, guildStates, CHEST_MSG_MILESTONE, KEY_CHEST_MSG_MILESTONE, SEASONAL_CHEST_MSG_MILESTONE, ACTIVITY_WINDOW_MINUTES } from "../scheduler";
+import { isGuildActive, recordGuildActivity, rollActivityRarityKey, rollActivityKeyType, guildStates, CHEST_MSG_MILESTONE, KEY_CHEST_MSG_MILESTONE, SEASONAL_CHEST_MSG_MILESTONE, ACTIVITY_WINDOW_MINUTES, CHEST_EXPIRE_MS, EVENT_MESSAGE_RETENTION_MS } from "../scheduler";
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -106,6 +106,13 @@ describe("isGuildActive — pure activity gate helper", () => {
   it("returns false when lastActivityAt is far in the past", () => {
     const now = Date.now();
     expect(isGuildActive(now - 2 * 60 * 60_000, WINDOW, now)).toBe(false);
+  });
+});
+
+describe("event and chest message retention", () => {
+  it("keeps unclaimed chests and ended event recaps for twenty minutes", () => {
+    expect(CHEST_EXPIRE_MS).toBe(20 * 60 * 1000);
+    expect(EVENT_MESSAGE_RETENTION_MS).toBe(20 * 60 * 1000);
   });
 });
 

@@ -292,6 +292,7 @@ import {
   buildHiddenChestEmbed,
   claimHiddenChest,
   hiddenChestRow,
+  scheduleHiddenChestMessageDeletion,
   getAuction,
   attachAuctionMessage,
   buildAuctionEmbed,
@@ -1574,7 +1575,7 @@ async function handleClasamentSelect(interaction: StringSelectMenuInteraction) {
 }
 
 const CLAIM_TTL_MS = 10 * 60 * 1000;
-const CHEST_MESSAGE_CLEANUP_MS = 3_000;
+const CHEST_MESSAGE_CLEANUP_MS = 20 * 60 * 1000;
 const BOSS_RESULT_TTL_MS = 10 * 60 * 1000;
 
 function scheduleChestMessageDelete(message: Pick<Message, "id" | "delete">, chestId: string, phase: string): void {
@@ -3885,6 +3886,7 @@ async function handleHiddenChestClaim(interaction: ButtonInteraction, chestId: s
     embeds: [buildHiddenChestEmbed(chest, true)],
     components: [hiddenChestRow(chest.id, true)],
   }).catch(() => null);
+  scheduleHiddenChestMessageDeletion(interaction.client, chest);
   await interaction.followUp({
     content: `👁️ **${interaction.user.username}** a deschis Cufărul Șoaptelor Oracolului: **${chest.rewardGold} Oboli**, **${chest.rewardXp} XP** și un fragment de relicvă!`,
   });

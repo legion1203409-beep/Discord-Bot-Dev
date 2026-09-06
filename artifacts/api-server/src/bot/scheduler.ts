@@ -13,6 +13,7 @@ import {
   rehydrateFratiaVote,
   spawnSeasonalChest,
   rehydrateSeasonalChest,
+  rehydrateHiddenChest,
   settleExpiredAuction,
 } from "./chest-expansions";
 import { startTributeScheduler, stopTributeScheduler } from "./tribute";
@@ -25,7 +26,10 @@ const MIN_COOLDOWN_MS = 10 * 60 * 1000;
 const MAX_COOLDOWN_MS = 2 * 60 * 60 * 1000;
 
 const CHEST_INTERVAL_MS = 60 * 60 * 1000;
-const CHEST_EXPIRE_MS = 10 * 60 * 1000;
+/** How long a classic chest remains claimable before its message is removed. */
+export const CHEST_EXPIRE_MS = 20 * 60 * 1000;
+/** How long an ended Ora Umbrelor message remains visible for its recap. */
+export const EVENT_MESSAGE_RETENTION_MS = 20 * 60 * 1000;
 /** The classic ordinary chest is intentionally scheduled once per hour. */
 export const LEGACY_CHEST_SPAWNS_ENABLED = true;
 
@@ -453,6 +457,32 @@ function rollBossRarity(): BossRarity {
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+const eventMessageDeletionTimers = new Map<number, ReturnType<typeof setTimeout>>();
+
+function scheduleEventMessageDeletion(
+  client: Client,
+  guildId: string,
+  eventId: number,
+  messageId: string,
+  expiresAt: Date,
+): void {
+  if (eventMessageDeletionTimers.has(eventId)) return;
+  const cleanupAt = expiresAt.getTime() + EVENT_MESSAGE_RETENTION_MS;
+  const timer = setTimeout(async () => {
+    eventMessageDeletionTimers.delete(eventId);
+    try {
+      const channel = await fetchChannel(client, "event", guildId);
+      if (!(channel instanceof TextChannel)) return;
+      const message = await channel.messages.fetch(messageId).catch(() => null);
+      await message?.delete().catch(() => null);
+    } catch (err) {
+      logger.warn({ err, eventId, guildId, messageId }, "Failed to delete expired event message");
+    }
+  }, Math.max(0, cleanupAt - Date.now()));
+  timer.unref?.();
+  eventMessageDeletionTimers.set(eventId, timer);
+}
+
 function randomCooldown() {
   return Math.floor(Math.random() * (MAX_COOLDOWN_MS - MIN_COOLDOWN_MS + 1)) + MIN_COOLDOWN_MS;
 }
@@ -463,6 +493,7 @@ async function expireOldEvents(client: Client, guildId: string) {
   const expired = await getExpiredActiveEvents(guildId);
   for (const ev of expired) {
     try {
+      scheduleEventMessageDeletion(client, guildId, ev.id, ev.messageId, ev.expiresAt);
       const channel = await fetchChannel(client, "event", guildId);
       if (channel instanceof TextChannel) {
         const msg = await channel.messages.fetch(ev.messageId).catch(() => null);
@@ -721,6 +752,7 @@ async function cleanupOldEvents(client: Client, guildId: string) {
 
   for (const ev of old) {
     try {
+      if (ev.expiresAt.getTime() + EVENT_MESSAGE_RETENTION_MS > Date.now()) continue;
       if (eventChannel instanceof TextChannel) {
         const msg = await eventChannel.messages.fetch(ev.messageId).catch(() => null);
         if (msg) await msg.delete().catch(() => null);
@@ -1310,6 +1342,9 @@ export function startGuildScheduler(client: Client, guildId: string) {
   }
   void rehydrateSeasonalChest(client, guildId).catch((err) =>
     logger.warn({ err, guildId }, "Failed to rehydrate seasonal chest"),
+  );
+  void (rehydrateHiddenChest?.(client, guildId) ?? Promise.resolve()).catch((err) =>
+    logger.warn({ err, guildId }, "Failed to rehydrate hidden chest"),
   );
   void rehydrateFratiaVote(client, guildId).catch((err) =>
     logger.warn({ err, guildId }, "Failed to rehydrate Frăția vote"),
