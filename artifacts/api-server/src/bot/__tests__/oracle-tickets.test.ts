@@ -349,13 +349,21 @@ describe("Oracle ticket categories", () => {
         createdTimestamp: Date.now(),
         delete: deleteChannel,
         send,
+        permissionOverwrites: {
+          cache: [{
+            id: "applicant-123",
+            type: 1,
+            allow: { has: vi.fn().mockReturnValue(true) },
+          }],
+        },
         messages: { fetch: fetchMessages },
       });
 
       await vi.advanceTimersByTimeAsync(INCOMPLETE_TICKET_WARNING_AFTER_MS);
 
       expect(send).toHaveBeenCalledWith(expect.objectContaining({
-        content: expect.stringContaining("Ticket incomplet"),
+        content: expect.stringContaining("<@applicant-123>"),
+        allowedMentions: { parse: [], users: ["applicant-123"] },
       }));
       expect(deleteChannel).not.toHaveBeenCalled();
 
