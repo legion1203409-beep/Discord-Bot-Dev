@@ -1437,10 +1437,36 @@ async function handleSetCanal(interaction: ChatInputCommandInteraction) {
   }
 }
 
+async function announceGameState(
+  interaction: ChatInputCommandInteraction,
+  content: string,
+): Promise<void> {
+  const configuredChannelId = getChannel("main", interaction.guildId!);
+  const channel = configuredChannelId
+    ? await interaction.client.channels.fetch(configuredChannelId).catch(() => null)
+    : interaction.channel;
+
+  if (!channel || !channel.isTextBased() || channel.isDMBased()) {
+    logger.warn({ guildId: interaction.guildId }, "Could not publish game state announcement: no public main channel");
+    return;
+  }
+
+  await channel.send({
+    content,
+    allowedMentions: { parse: [] },
+  }).catch((err) => {
+    logger.warn({ err, guildId: interaction.guildId }, "Failed to publish game state announcement");
+  });
+}
+
 async function handleStopGame(interaction: ChatInputCommandInteraction): Promise<void> {
   if (!(await isOwner(interaction))) return;
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   stopGuildScheduler(interaction.guildId!);
+  await announceGameState(
+    interaction,
+    "⏸️ **Jocul a fost oprit.** Activitățile automate ale Regatului sunt suspendate până la repornire.",
+  );
   await interaction.editReply({
     content:
       "⏸️ **Jocul a fost oprit pe acest server.**\n" +
@@ -1457,6 +1483,10 @@ async function handleStartGame(interaction: ChatInputCommandInteraction): Promis
     return;
   }
   startGuildScheduler(botClient, interaction.guildId!);
+  await announceGameState(
+    interaction,
+    "▶️ **Jocul a fost repornit.** Activitățile automate ale Regatului sunt din nou active.",
+  );
   await interaction.editReply({
     content: "▶️ **Jocul a fost repornit pe acest server.** Activitățile automate vor continua.",
   });
