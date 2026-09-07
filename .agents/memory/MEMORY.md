@@ -40,3 +40,4 @@
 - [Artifact production env scope](artifact-production-env-scope.md) — shared artifact env is not enough for Vite production run; required runtime vars must be repeated in services.production.run.env.
 - [Discord guild count fetch](discord-guild-count-fetch.md) — GuildManager.fetch returns the gateway cache unless force=true; cached guilds can have null approximate member/presence counts.
 - [Discord ticket menu flow](discord-ticket-modal-flow.md) — ticket intake uses one dropdown question at a time, preserving all fields while avoiding Discord's five-row modal limit.
+- [Game pause gate](game-pause-gate.md) — stopping a guild must guard both scheduler entry points and user interactions; independent timers such as Tribute need their own pause state.

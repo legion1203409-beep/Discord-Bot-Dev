@@ -47,8 +47,11 @@ const TICKET_ICONS: Record<OracleTicketKind, string> = {
 const TICKET_SEAL = IMG.ticketSeal;
 export const STAFF_REVIEW_ROLE_ID = "1472526137308745909";
 export const ALLIANCE_PUBLIC_CHANNEL_ID = "1472997077373157602";
-export const INCOMPLETE_TICKET_TIMEOUT_MS = 24 * 60 * 60 * 1000;
-export const INCOMPLETE_TICKET_WARNING_AFTER_MS = 30 * 60 * 1000;
+export const INCOMPLETE_TICKET_TIMEOUT_MS = 60 * 60 * 1000;
+export const INCOMPLETE_TICKET_FIRST_WARNING_AFTER_MS = 20 * 60 * 1000;
+export const INCOMPLETE_TICKET_SECOND_WARNING_AFTER_MS = 50 * 60 * 1000;
+/** Backwards-compatible alias for the first warning threshold. */
+export const INCOMPLETE_TICKET_WARNING_AFTER_MS = INCOMPLETE_TICKET_FIRST_WARNING_AFTER_MS;
 const REGAT_RECRUITMENT_GIF_URL =
   "https://media.discordapp.net/attachments/1477699914732404977/1477704399936688212/standard.gif?ex=6a45e937&is=6a4497b7&hm=f9c71749fd5197b10bcdb4d367da427d7e2e58283087d29907d73fc8d12015b0";
 const REGAT_INVITE_URL = "https://discord.gg/regatulcenusii";
@@ -77,7 +80,7 @@ export function memberHasStaffReviewRole(
 const postedTicketPanels = new Set<string>();
 const ticketPanelLocks = new Map<string, Promise<boolean>>();
 const ticketDeletionTimers = new Map<string, ReturnType<typeof setTimeout>>();
-const ticketWarningTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const ticketWarningTimers = new Map<string, ReturnType<typeof setTimeout>[]>();
 type TicketProgressState = TicketProgressRecord;
 const ticketProgress = new Map<string, TicketProgressState>();
 
@@ -361,6 +364,7 @@ export function ticketPanelPayload(
       value:
         `Completează ticketul până la <t:${Math.floor(deadline / 1000)}:F> ` +
         `(<t:${Math.floor(deadline / 1000)}:R>).\n` +
+        "Vei primi avertismente după 20 și 50 de minute.\n" +
         "Dacă rămâne incomplet, va fi șters automat.",
       inline: false,
     })
@@ -514,15 +518,16 @@ export function scheduleIncompleteTicketDeletion(channel: unknown): void {
 
   const existingTimer = ticketDeletionTimers.get(candidate.id);
   if (existingTimer) clearTimeout(existingTimer);
-  const existingWarningTimer = ticketWarningTimers.get(candidate.id);
-  if (existingWarningTimer) clearTimeout(existingWarningTimer);
+  for (const existingWarningTimer of ticketWarningTimers.get(candidate.id) ?? []) {
+    clearTimeout(existingWarningTimer);
+  }
+  ticketWarningTimers.delete(candidate.id);
   const deleteChannel = candidate.delete;
   if (!deleteChannel) return;
 
   const deadline = candidate.createdTimestamp + INCOMPLETE_TICKET_TIMEOUT_MS;
-  const warningTimer = setTimeout(async () => {
+  const sendWarning = async (warningNumber: 1 | 2): Promise<void> => {
     const channelId = candidate.id!;
-    ticketWarningTimers.delete(channelId);
     const progressFinished = [...ticketProgress.entries()].some(
       ([key, state]) => key.startsWith(`${channelId}:`) && Boolean(state.status),
     );
@@ -543,16 +548,28 @@ export function scheduleIncompleteTicketDeletion(channel: unknown): void {
 
     await candidate.send({
       content:
-        `⚠️ ${mention}**Ticket incomplet**\n` +
+        `${warningNumber === 1 ? "⚠️" : "🚨"} ${mention}**Avertisment ${warningNumber}/2 — ticket incomplet**\n` +
+        `Au trecut ${warningNumber === 1 ? 20 : 50} de minute. ` +
         `Formularul nu a fost finalizat. Dacă nu îl completezi până la <t:${Math.floor(deadline / 1000)}:R>, ` +
         "ticketul va fi șters automat.",
       allowedMentions: applicantId ? { parse: [], users: [applicantId] } : { parse: [] },
     }).catch((err) => {
       logger.debug({ err, channelId }, "Incomplete ticket warning could not be posted");
     });
-  }, Math.max(0, candidate.createdTimestamp + INCOMPLETE_TICKET_WARNING_AFTER_MS - Date.now()));
-  warningTimer.unref?.();
-  ticketWarningTimers.set(candidate.id, warningTimer);
+  };
+
+  const warningTimers = [
+    setTimeout(() => { void sendWarning(1); }, Math.max(
+      0,
+      candidate.createdTimestamp + INCOMPLETE_TICKET_FIRST_WARNING_AFTER_MS - Date.now(),
+    )),
+    setTimeout(() => { void sendWarning(2); }, Math.max(
+      0,
+      candidate.createdTimestamp + INCOMPLETE_TICKET_SECOND_WARNING_AFTER_MS - Date.now(),
+    )),
+  ];
+  for (const warningTimer of warningTimers) warningTimer.unref?.();
+  ticketWarningTimers.set(candidate.id, warningTimers);
 
   const delay = Math.max(
     0,
@@ -567,12 +584,16 @@ export function scheduleIncompleteTicketDeletion(channel: unknown): void {
     if (progressFinished || await ticketHasFinishedStatus(candidate)) return;
 
     try {
-      await deleteChannel.call(candidate, "Ticket incomplet după 24 de ore");
+      for (const warningTimer of ticketWarningTimers.get(channelId) ?? []) {
+        clearTimeout(warningTimer);
+      }
+      ticketWarningTimers.delete(channelId);
+      await deleteChannel.call(candidate, "Ticket incomplet după 60 de minute");
       postedTicketPanels.delete(channelId);
       for (const key of ticketProgress.keys()) {
         if (key.startsWith(`${channelId}:`)) ticketProgress.delete(key);
       }
-      logger.info({ channelId }, "Incomplete ticket deleted after 24 hours");
+      logger.info({ channelId }, "Incomplete ticket deleted after 60 minutes");
     } catch (err) {
       logger.debug({ err, channelId }, "Incomplete ticket could not be deleted");
     }

@@ -4787,6 +4787,43 @@ export async function startBot(onReady?: () => void): Promise<void> {
       );
     }
 
+    if (interaction.guildId && isGuildGameStopped(interaction.guildId)) {
+      let allowedWhileStopped = false;
+      if (interaction.isChatInputCommand()) {
+        allowedWhileStopped = [
+          "stopjoc",
+          "startjoc",
+          "stopai",
+          "startai",
+          "ajutor",
+          "setcanal",
+          "setaliantatext",
+        ].includes(interaction.commandName);
+      } else if (interaction.isButton()) {
+        allowedWhileStopped =
+          interaction.customId.startsWith("ticket_") ||
+          interaction.customId.startsWith("help_");
+      } else if (interaction.isStringSelectMenu()) {
+        allowedWhileStopped = interaction.customId.startsWith("ticket_questions_");
+      } else if (interaction.isModalSubmit()) {
+        allowedWhileStopped =
+          interaction.customId.startsWith("ticket_") ||
+          interaction.customId.startsWith("help_question_");
+      }
+
+      if (!allowedWhileStopped) {
+        if (interaction.isRepliable()) {
+          dispatch(
+            interaction.reply({
+              content: "⏸️ Jocul este oprit momentan. Un administrator îl poate reporni cu `/startjoc`.",
+              flags: MessageFlags.Ephemeral,
+            }),
+          );
+        }
+        return;
+      }
+    }
+
     if (interaction.isChatInputCommand()) {
       if (interaction.commandName === "profil") dispatch(handleProfil(interaction));
       if (interaction.commandName === "inventar") dispatch(handleInventar(interaction));

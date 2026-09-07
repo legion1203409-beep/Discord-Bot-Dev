@@ -75,6 +75,12 @@ type ContributionResult =
 
 const guildLocks = new Map<string, Promise<unknown>>();
 const tributeTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const pausedGuilds = new Set<string>();
+
+export function setTributeGamePaused(guildId: string, paused: boolean): void {
+  if (paused) pausedGuilds.add(guildId);
+  else pausedGuilds.delete(guildId);
+}
 
 async function withGuildLock<T>(guildId: string, operation: () => Promise<T>): Promise<T> {
   const previous = guildLocks.get(guildId) ?? Promise.resolve();
@@ -238,7 +244,9 @@ async function editTributeMessage(client: Client, event: TributeEvent): Promise<
 }
 
 export async function fireTribute(client: Client, guildId: string): Promise<TributeEvent | null> {
+  if (pausedGuilds.has(guildId)) return null;
   return withGuildLock(guildId, async () => {
+    if (pausedGuilds.has(guildId)) return null;
     const config = await getTributeConfig(guildId);
     if (!config?.enabled) return null;
     const channel = await client.channels.fetch(config.channelId).catch(() => null);
@@ -276,14 +284,18 @@ export async function fireTribute(client: Client, guildId: string): Promise<Trib
     });
     event.messageId = message.id;
     await writeState(stateKey(EVENT_PREFIX, guildId), event);
-    setTimeout(() => { void settleTribute(client, guildId, event.id); }, TRIBUTE_WINDOW_MS + 500);
+    setTimeout(() => {
+      if (!pausedGuilds.has(guildId)) void settleTribute(client, guildId, event.id);
+    }, TRIBUTE_WINDOW_MS + 500);
     logger.info({ guildId, target: event.target, messageId: event.messageId }, "Tributul Regatului fired");
     return event;
   });
 }
 
 async function settleTribute(client: Client, guildId: string, eventId: string): Promise<void> {
+  if (pausedGuilds.has(guildId)) return;
   const failed = await withGuildLock(guildId, async () => {
+    if (pausedGuilds.has(guildId)) return null;
     const event = await readState<TributeEvent>(stateKey(EVENT_PREFIX, guildId));
     if (!event || event.id !== eventId || event.status !== "open" || event.closesAt > Date.now()) return null;
     event.status = "failed";
@@ -428,6 +440,7 @@ function scheduleTribute(client: Client, guildId: string, delayMs: number): void
   stopTributeScheduler(guildId);
   const timer = setTimeout(async () => {
     tributeTimers.delete(guildId);
+    if (pausedGuilds.has(guildId)) return;
     await fireTribute(client, guildId).catch((err) =>
       logger.warn({ err, guildId }, "Failed to fire Tributul Regatului"),
     );
@@ -442,6 +455,7 @@ function scheduleTribute(client: Client, guildId: string, delayMs: number): void
 }
 
 export async function startTributeScheduler(client: Client, guildId: string): Promise<void> {
+  if (pausedGuilds.has(guildId)) return;
   const config = await getTributeConfig(guildId).catch(() => null);
   if (!config?.enabled) {
     stopTributeScheduler(guildId);
@@ -449,7 +463,9 @@ export async function startTributeScheduler(client: Client, guildId: string): Pr
   }
   const active = await readState<TributeEvent>(stateKey(EVENT_PREFIX, guildId));
   if (active?.status === "open" && active.closesAt > Date.now()) {
-    setTimeout(() => { void settleTribute(client, guildId, active.id); }, Math.max(1_000, active.closesAt - Date.now() + 500));
+    setTimeout(() => {
+      if (!pausedGuilds.has(guildId)) void settleTribute(client, guildId, active.id);
+    }, Math.max(1_000, active.closesAt - Date.now() + 500));
   }
   const nextAt = active
     ? active.openedAt + TRIBUTE_WINDOW_MS + config.intervalMinutes * 60_000

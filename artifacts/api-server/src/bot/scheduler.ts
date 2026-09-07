@@ -16,7 +16,7 @@ import {
   rehydrateHiddenChest,
   settleExpiredAuction,
 } from "./chest-expansions";
-import { startTributeScheduler, stopTributeScheduler } from "./tribute";
+import { setTributeGamePaused, startTributeScheduler, stopTributeScheduler } from "./tribute";
 
 const APPLICATION_ID = "1472675543777280071";
 export const EVENT_DURATION_MS = 60 * 60 * 1000;
@@ -254,6 +254,7 @@ export function recordGuildActivity(client: Client, guildId: string): void {
 export function stopGuildScheduler(guildId: string) {
   stopOracleCouncilScheduler(guildId);
   stopTributeScheduler(guildId);
+  setTributeGamePaused(guildId, true);
   stopOracleForGame(guildId);
   const gs = guildStates.get(guildId);
   if (gs) {
@@ -497,6 +498,7 @@ function randomCooldown() {
 // ─── Event expiry ──────────────────────────────────────────────────────────────
 
 async function expireOldEvents(client: Client, guildId: string) {
+  if (isGuildGameStopped(guildId)) return;
   const expired = await getExpiredActiveEvents(guildId);
   for (const ev of expired) {
     try {
@@ -559,6 +561,7 @@ export async function fireChestForced(
   forcedVariant?: ChestVariant,
 ) {
   const gs = getOrCreateGuildState(guildId);
+  if (gs.stopped) return null;
   if (gs.firingChest) {
     logger.warn({ guildId }, "fireChestForced already in progress, skipping duplicate trigger");
     return null;
@@ -608,10 +611,18 @@ export async function fireChestForced(
        embeds: [bce(gold, rarity, mult, variant, expireAt)],
       components: [lockedRow],
     });
+    if (gs.stopped) {
+      await msg.delete().catch(() => null);
+      return null;
+    }
     gs.lastChestMessageId = msg.id;
      void persistActiveChest(guildId, { messageId: msg.id, channelId: channel.id, chestId, gold, rarityKey: rarity.key, mult, variant, expiresAt: expireAt }).catch(() => null);
 
     await sleep(5000);
+    if (gs.stopped) {
+      await msg.delete().catch(() => null);
+      return null;
+    }
     if (!gs.claimedChests.has(chestId)) {
        await msg.edit({ embeds: [bce(gold, rarity, mult, variant, expireAt)], components: [row] }).catch(() => null);
     }
@@ -643,6 +654,7 @@ export async function fireChestForced(
 
 export async function fireChest(client: Client, guildId: string, bypassGate = false) {
   const gs = getOrCreateGuildState(guildId);
+  if (gs.stopped) return null;
   if (gs.firingChest) {
     logger.warn({ guildId }, "fireChest already in progress, skipping duplicate trigger");
     return null;
@@ -708,19 +720,39 @@ export async function fireChest(client: Client, guildId: string, bypassGate = fa
           ];
 
     const msg = await channel.send({ content: frames[0]!.content });
+    if (gs.stopped) {
+      await msg.delete().catch(() => null);
+      return null;
+    }
     gs.lastChestMessageId = msg.id;
     void persistActiveChest(guildId, { messageId: msg.id, channelId: channel.id, chestId, gold, rarityKey: rarity.key, variant, expiresAt: expireAt }).catch(() => null);
 
     for (let i = 1; i < frames.length; i++) {
       await sleep(frames[i - 1]!.delay);
+      if (gs.stopped) {
+        await msg.delete().catch(() => null);
+        return null;
+      }
       await msg.edit({ content: frames[i]!.content }).catch(() => null);
     }
     await sleep(frames[frames.length - 1]!.delay);
+    if (gs.stopped) {
+      await msg.delete().catch(() => null);
+      return null;
+    }
     await msg.edit({ content: `${rarity.emoji}✨`, embeds: [buildChestEmbed(gold, rarity, undefined, variant, expireAt)], components: [lockedRow] }).catch(() => null);
     await sleep(500);
+    if (gs.stopped) {
+      await msg.delete().catch(() => null);
+      return null;
+    }
     await msg.edit({ content: "", embeds: [buildChestEmbed(gold, rarity, undefined, variant, expireAt)], components: [lockedRow] }).catch(() => null);
 
     await sleep(5000);
+    if (gs.stopped) {
+      await msg.delete().catch(() => null);
+      return null;
+    }
     if (!gs.claimedChests.has(chestId)) {
       await msg.edit({ embeds: [buildChestEmbed(gold, rarity, undefined, variant, expireAt)], components: [row] }).catch(() => null);
     }
@@ -780,6 +812,7 @@ async function cleanupOldEvents(client: Client, guildId: string) {
 
 export async function fireEvent(client: Client, guildId: string) {
   const gs = getOrCreateGuildState(guildId);
+  if (gs.stopped) return;
   if (gs.firingEvent) {
     logger.warn({ guildId }, "fireEvent already in progress, skipping duplicate trigger");
     return;
@@ -790,12 +823,17 @@ export async function fireEvent(client: Client, guildId: string) {
     if (!channel) {
       return;
     }
+    if (gs.stopped) return;
 
     void cleanupOldEvents(client, guildId).catch(() => null);
 
     const expiresAt = new Date(Date.now() + EVENT_DURATION_MS);
 
     const placeholder = await channel.send({ embeds: [buildStartEmbed()] });
+    if (gs.stopped) {
+      await placeholder.delete().catch(() => null);
+      return;
+    }
     const ev = await createEvent(guildId, "ora_umbrelor", placeholder.id, expiresAt);
 
     const joinRowFinal = new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -819,6 +857,7 @@ export async function fireEvent(client: Client, guildId: string) {
 
 export async function fireFinalBoss(client: Client, guildId: string, eventId: number) {
   const gs = getOrCreateGuildState(guildId);
+  if (gs.stopped) return;
   try {
     const ev = await getActiveEvent(eventId, guildId);
     if (!ev || !ev.isActive || ev.expiresAt.getTime() < Date.now()) return;
@@ -827,6 +866,7 @@ export async function fireFinalBoss(client: Client, guildId: string, eventId: nu
     if (!channel) return;
 
     const participants = await getEventParticipants(eventId, guildId);
+    if (gs.stopped) return;
     const aliveParticipants = participants.filter((p) => p.isAlive);
     const avgLevel = aliveParticipants.length
       ? Math.ceil(aliveParticipants.reduce((s, p) => s + p.monsterLevel, 0) / aliveParticipants.length)
@@ -840,6 +880,10 @@ export async function fireFinalBoss(client: Client, guildId: string, eventId: nu
       embeds: [buildFinalBossEmbed(bossLevel, rarity, maxHp, maxHp, undefined, undefined, undefined, undefined, bossExpiresAt, 0, 0)],
       components: [finalBossRow(eventId)],
     });
+    if (gs.stopped) {
+      await msg.delete().catch(() => null);
+      return;
+    }
 
     const boss: BossState = {
       eventId,
@@ -946,9 +990,13 @@ async function runFleeResolution(boss: BossState, client: Client): Promise<void>
 // ─── Shared escape timer ──────────────────────────────────────────────────────
 
 function scheduleEscapeTimer(boss: BossState, client: Client): ReturnType<typeof setTimeout> {
-  const remaining = Math.max(0, boss.expiresAt - Date.now());
+  const remaining = Math.max(1_000, boss.expiresAt - Date.now());
   const timer = setTimeout(async () => {
     if (boss.defeated) return;
+    if (isGuildGameStopped(boss.guildId)) {
+      scheduleEscapeTimer(boss, client);
+      return;
+    }
     boss.defeated = true;
     const gs = guildStates.get(boss.guildId);
     if (gs) {
@@ -1113,6 +1161,7 @@ export async function rehydrateSimpleChest(client: Client, guildId: string, dbKe
 
 export async function fireStandaloneBoss(client: Client, guildId: string) {
   const gs = getOrCreateGuildState(guildId);
+  if (gs.stopped) return;
   if (gs.standaloneBossId !== null && gs.activeBossMap.has(gs.standaloneBossId)) {
     logger.info({ standaloneBossId: gs.standaloneBossId, guildId }, "Standalone boss already active, skipping spawn");
     return;
@@ -1128,6 +1177,7 @@ export async function fireStandaloneBoss(client: Client, guildId: string) {
     const level = Math.floor(Math.random() * 21) + 10;
     const rarity = rollBossRarity();
     const kills = await getFinalBossKills(guildId).catch(() => 0);
+    if (gs.stopped) return;
     const vRank = veteranRank(kills);
     const maxHp = Math.round(bossMaxHp(level, rarity) * veteranMult(vRank));
     const bossExpiresAt = Date.now() + STANDALONE_BOSS_ACTIVE_MS;
@@ -1136,6 +1186,10 @@ export async function fireStandaloneBoss(client: Client, guildId: string) {
       embeds: [buildFinalBossEmbed(level, rarity, maxHp, maxHp, undefined, undefined, undefined, undefined, bossExpiresAt, 0, vRank)],
       components: [finalBossRow(bossId)],
     });
+    if (gs.stopped) {
+      await msg.delete().catch(() => null);
+      return;
+    }
 
     const boss: BossState = {
       eventId: bossId,
@@ -1180,6 +1234,7 @@ export async function fireStandaloneBoss(client: Client, guildId: string) {
 
 export async function fireLockedChest(client: Client, guildId: string, rarityKey: string): Promise<void> {
   const gs = getOrCreateGuildState(guildId);
+  if (gs.stopped) return;
   try {
     const channel = await fetchChannel(client, "main", guildId);
     if (!channel) return;
@@ -1205,6 +1260,10 @@ export async function fireLockedChest(client: Client, guildId: string, rarityKey
        embeds: [buildLockedChestEmbed(rarity.key, gold, expiresAt)],
       components: [row],
     });
+    if (gs.stopped) {
+      await msg.delete().catch(() => null);
+      return;
+    }
 
     logger.info({ chestId, rarityKey: rarity.key, gold, guildId }, "Locked chest spawned");
     void persistActiveChest(guildId, { messageId: msg.id, channelId: channel.id, chestId, gold, rarityKey: rarity.key, kind: "lockchest", expiresAt }, LOCKCHEST_DBKEY).catch(() => null);
@@ -1227,6 +1286,7 @@ export async function fireLockedChest(client: Client, guildId: string, rarityKey
 
 export async function fireKeyChest(client: Client, guildId: string, keyType?: string, bypassGate = false): Promise<{ chestId: string } | null> {
   const gs = getOrCreateGuildState(guildId);
+  if (gs.stopped) return null;
   if (gs.firingKeyChest) {
     logger.warn({ guildId }, "fireKeyChest already in progress, skipping duplicate trigger");
     return null;
@@ -1267,12 +1327,24 @@ export async function fireKeyChest(client: Client, guildId: string, keyType?: st
     const msg = await channel.send({ content: frames[0]!.content });
     for (let i = 1; i < frames.length; i++) {
       await sleep(frames[i - 1]!.delay);
+      if (gs.stopped) {
+        await msg.delete().catch(() => null);
+        return null;
+      }
       await msg.edit({ content: frames[i]!.content }).catch(() => null);
     }
     await sleep(frames[frames.length - 1]!.delay);
+    if (gs.stopped) {
+      await msg.delete().catch(() => null);
+      return null;
+    }
     await msg.edit({ content: "", embeds: [buildKeyChestEmbed(kt)], components: [lockedRow] }).catch(() => null);
 
     await sleep(5000);
+    if (gs.stopped) {
+      await msg.delete().catch(() => null);
+      return null;
+    }
     if (!gs.claimedChests.has(chestId)) {
       await msg.edit({ embeds: [buildKeyChestEmbed(kt)], components: [row] }).catch(() => null);
     }
@@ -1302,6 +1374,7 @@ export async function fireKeyChest(client: Client, guildId: string, keyType?: st
 // ─── Oracle / battle event ────────────────────────────────────────────────────
 
 async function fireOracle(client: Client, guildId: string) {
+  if (isGuildGameStopped(guildId)) return;
   try {
     const channel = await fetchChannel(client, "main", guildId);
     if (!channel) return;
@@ -1312,6 +1385,7 @@ async function fireOracle(client: Client, guildId: string) {
 }
 
 async function fireBattleEvent(client: Client, guildId: string) {
+  if (isGuildGameStopped(guildId)) return;
   try {
     const ev = await getLatestActiveEvent(guildId);
     if (!ev) return;
@@ -1339,6 +1413,7 @@ export function startGuildScheduler(client: Client, guildId: string) {
   gs.started = true;
   gs.runGeneration += 1;
   const runGeneration = gs.runGeneration;
+  setTributeGamePaused(guildId, false);
 
   void rehydrateCouncilDecree(guildId).catch((err) =>
     logger.warn({ err, guildId }, "Council decree could not be rehydrated"),

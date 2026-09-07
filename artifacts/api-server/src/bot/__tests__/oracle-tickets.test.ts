@@ -25,6 +25,8 @@ import {
   allianceRecruitmentTextModal,
   allianceStaffNotificationText,
   INCOMPLETE_TICKET_TIMEOUT_MS,
+  INCOMPLETE_TICKET_FIRST_WARNING_AFTER_MS,
+  INCOMPLETE_TICKET_SECOND_WARNING_AFTER_MS,
   INCOMPLETE_TICKET_WARNING_AFTER_MS,
   scheduleIncompleteTicketDeletion,
   staffOracleReviewPayload,
@@ -338,7 +340,7 @@ describe("Oracle ticket categories", () => {
     );
   });
 
-  it("warns after 30 minutes and deletes an unfinished ticket after 24 hours", async () => {
+  it("warns after 20 and 50 minutes and deletes an unfinished ticket after 60 minutes", async () => {
     vi.useFakeTimers();
     try {
       const deleteChannel = vi.fn().mockResolvedValue(undefined);
@@ -365,14 +367,21 @@ describe("Oracle ticket categories", () => {
         content: expect.stringContaining("<@applicant-123>"),
         allowedMentions: { parse: [], users: ["applicant-123"] },
       }));
+      expect(send).toHaveBeenCalledTimes(1);
       expect(deleteChannel).not.toHaveBeenCalled();
 
       await vi.advanceTimersByTimeAsync(
-        INCOMPLETE_TICKET_TIMEOUT_MS - INCOMPLETE_TICKET_WARNING_AFTER_MS,
+        INCOMPLETE_TICKET_SECOND_WARNING_AFTER_MS - INCOMPLETE_TICKET_FIRST_WARNING_AFTER_MS,
       );
 
+      expect(send).toHaveBeenCalledTimes(2);
+      expect(send.mock.calls[1]?.[0]?.content).toContain("Au trecut 50 de minute");
+
+      await vi.advanceTimersByTimeAsync(
+        INCOMPLETE_TICKET_TIMEOUT_MS - INCOMPLETE_TICKET_SECOND_WARNING_AFTER_MS,
+      );
       expect(fetchMessages).toHaveBeenCalledWith({ limit: 100 });
-      expect(deleteChannel).toHaveBeenCalledWith("Ticket incomplet după 24 de ore");
+      expect(deleteChannel).toHaveBeenCalledWith("Ticket incomplet după 60 de minute");
     } finally {
       vi.useRealTimers();
     }
