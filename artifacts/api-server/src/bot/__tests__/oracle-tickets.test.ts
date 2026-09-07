@@ -375,7 +375,12 @@ describe("Oracle ticket categories", () => {
       );
 
       expect(send).toHaveBeenCalledTimes(2);
+      expect(send.mock.calls[1]?.[0]?.content).toContain("<@applicant-123>");
       expect(send.mock.calls[1]?.[0]?.content).toContain("Au trecut 50 de minute");
+      expect(send.mock.calls[1]?.[0]?.allowedMentions).toEqual({
+        parse: [],
+        users: ["applicant-123"],
+      });
 
       await vi.advanceTimersByTimeAsync(
         INCOMPLETE_TICKET_TIMEOUT_MS - INCOMPLETE_TICKET_SECOND_WARNING_AFTER_MS,

@@ -500,7 +500,7 @@ export function scheduleIncompleteTicketDeletion(channel: unknown): void {
     permissionOverwrites?: {
       cache?: Iterable<{
         id?: string;
-        type?: number;
+        type?: number | string;
         allow?: { has?: (permission: bigint) => boolean };
       }>;
     };
@@ -539,7 +539,7 @@ export function scheduleIncompleteTicketDeletion(channel: unknown): void {
       ?.slice(channelId.length + 1);
     const permissionApplicantId = [...(candidate.permissionOverwrites?.cache ?? [])]
       .find((overwrite) =>
-        overwrite.type === 1 &&
+        (overwrite.type === 1 || overwrite.type === "member") &&
         typeof overwrite.id === "string" &&
         overwrite.allow?.has?.(PermissionFlagsBits.ViewChannel) === true,
       )?.id;
