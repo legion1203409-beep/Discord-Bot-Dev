@@ -87,7 +87,6 @@ interface GuildOracleState {
 const DEFAULT_GUILD_ID = "__default__";
 const guildOracleStates = new Map<string, GuildOracleState>();
 const manuallyStoppedGuilds = new Set<string>();
-const gameStoppedGuilds = new Set<string>();
 let extaticUntil = 0;
 let lastPresenceMood: MoodState | null = null;
 
@@ -112,7 +111,7 @@ function getGuildState(guildId = DEFAULT_GUILD_ID): GuildOracleState {
 }
 
 export function isOracleEnabled(guildId: string): boolean {
-  return !manuallyStoppedGuilds.has(guildId) && !gameStoppedGuilds.has(guildId);
+  return !manuallyStoppedGuilds.has(guildId);
 }
 
 function invalidateOracleRun(guildId: string): void {
@@ -129,15 +128,6 @@ export function stopOracle(guildId: string): void {
 
 export function resumeOracle(guildId: string): void {
   manuallyStoppedGuilds.delete(guildId);
-}
-
-export function stopOracleForGame(guildId: string): void {
-  gameStoppedGuilds.add(guildId);
-  invalidateOracleRun(guildId);
-}
-
-export function resumeOracleForGame(guildId: string): void {
-  gameStoppedGuilds.delete(guildId);
 }
 
 // Romanian toxicity keyword stems (substring match on a diacritics-stripped,

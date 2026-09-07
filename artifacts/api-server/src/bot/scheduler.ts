@@ -3,7 +3,7 @@ import { logger } from "../lib/logger";
 import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, rollChest, oracleMessage, buildFinalBossEmbed, buildBossLeaderboard, buildEventLeaderboard, buildLockedChestEmbed, buildKeyChestEmbed, spawnLockedChest, rollKeyChestType, computeBossRewards, prestigeGoldMult, finalBossRow, bossMaxHp, veteranRank, veteranMult, CHEST_RARITIES, type ChestVariant, type BossRarity, type BossPlayerStats } from "./survival";
 import { triggerRandomBattleEvent } from "./combat-events";
 import { getRewardMultipliers } from "./status-effects";
-import { resumeOracleForGame, startOracle, stopOracleForGame, setOracleExtatic } from "./oracle";
+import { startOracle, setOracleExtatic } from "./oracle";
 import { rehydrateCouncilDecree, startOracleCouncilScheduler, stopOracleCouncilScheduler } from "./oracle-council";
 import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle, addPlayerReputation, addPlayerGold, addPlayerXp, getPrestigeLevels, persistActiveBoss, loadActiveBossRowsByGuild, deleteActiveBoss, createActiveBossesTableIfNotExists, persistActiveChest, loadActiveChest, clearActiveChest, getFinalBossKills, KEYCHEST_DBKEY, LOCKCHEST_DBKEY, runMultiGuildMigrations } from "./db";
 import { getChannel, initChannelConfig, hasAnyChannelConfigured, type EventType } from "./channel-config";
@@ -255,7 +255,6 @@ export function stopGuildScheduler(guildId: string) {
   stopOracleCouncilScheduler(guildId);
   stopTributeScheduler(guildId);
   setTributeGamePaused(guildId, true);
-  stopOracleForGame(guildId);
   const gs = guildStates.get(guildId);
   if (gs) {
     gs.stopped = true;
@@ -1495,7 +1494,6 @@ export function startGuildScheduler(client: Client, guildId: string) {
 
   const oracleChannelId = getChannel("main", guildId);
   if (oracleChannelId) {
-    resumeOracleForGame(guildId);
     startOracle(client, oracleChannelId, guildId);
     startOracleCouncilScheduler(client, guildId, oracleChannelId, isStopped);
   }

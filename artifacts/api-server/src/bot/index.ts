@@ -1504,12 +1504,6 @@ async function handleStopAI(interaction: ChatInputCommandInteraction): Promise<v
 async function handleStartAI(interaction: ChatInputCommandInteraction): Promise<void> {
   if (!(await isOwner(interaction))) return;
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-  if (isGuildGameStopped(interaction.guildId!)) {
-    await interaction.editReply({
-      content: "⏸️ Jocul este oprit. Folosește mai întâi `/startjoc`, apoi `/startai`.",
-    });
-    return;
-  }
   const channelId = getChannel("main", interaction.guildId!);
   if (!channelId || !botClient) {
     await interaction.editReply({
