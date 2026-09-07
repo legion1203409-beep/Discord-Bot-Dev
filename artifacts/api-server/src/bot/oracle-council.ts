@@ -24,6 +24,7 @@ import {
 } from "./db";
 import { grantGuildBoost, restoreGuildBoost } from "./status-effects";
 import { isTicketCategoryParentId } from "./ticket-categories";
+import { isOracleEnabled } from "./oracle";
 
 const MINUTE = 60 * 1000;
 const COUNCIL_ENABLED = process.env.ORACLE_COUNCIL_ENABLED !== "false";
@@ -295,6 +296,10 @@ export async function handleOracleCouncilVote(interaction: ButtonInteraction): P
   const guildId = interaction.guildId;
   if (!match || !guildId) {
     await interaction.editReply("🕯️ Acest glas nu aparține niciunui Regat.");
+    return;
+  }
+  if (!isOracleEnabled(guildId)) {
+    await interaction.editReply("🛑 Oracle AI este oprit momentan. Un administrator îl poate reporni cu `/startai`.");
     return;
   }
   const [, councilId, optionId] = match;

@@ -54,7 +54,12 @@ import {
   allianceRecruitmentTextModal,
   DEFAULT_ALLIANCE_RECRUITMENT_TEXT,
 } from "./ticket-ui";
-import { handleOracleCouncilVote, isOracleCouncilButton } from "./oracle-council";
+import {
+  handleOracleCouncilVote,
+  isOracleCouncilButton,
+  startOracleCouncilScheduler,
+  stopOracleCouncilScheduler,
+} from "./oracle-council";
 import { isTicketCategoryParentId } from "./ticket-categories";
 import {
   enforceOracleTimeout,
@@ -1496,6 +1501,7 @@ async function handleStopAI(interaction: ChatInputCommandInteraction): Promise<v
   if (!(await isOwner(interaction))) return;
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   stopOracle(interaction.guildId!);
+  stopOracleCouncilScheduler(interaction.guildId!);
   await interaction.editReply({
     content: "🛑 **Oracle AI a fost oprit pe acest server.** Nu va mai răspunde și nu va mai posta activități automate.",
   });
@@ -1513,6 +1519,7 @@ async function handleStartAI(interaction: ChatInputCommandInteraction): Promise<
   }
   resumeOracle(interaction.guildId!);
   startOracle(botClient, channelId, interaction.guildId!);
+  startOracleCouncilScheduler(botClient, interaction.guildId!, channelId);
   await interaction.editReply({
     content: "✨ **Oracle AI a fost repornit pe acest server.**",
   });
@@ -4559,7 +4566,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
           shardStatus = "yielded";
           botClient = null;
           for (const [guildId] of client.guilds.cache) {
-            stopGuildScheduler(guildId);
+            stopGuildScheduler(guildId, { stopOracle: true });
           }
           void sendAlert(
             "⚠️ **Instanță duplicată detectată.** O instanță mai nouă a botului a preluat controlul — instanța veche s-a oprit singură pentru a evita răspunsuri duble/lente.",
@@ -4597,7 +4604,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
   // When the bot leaves a guild, clean up in-memory state
   client.on(Events.GuildDelete, (guild) => {
     logger.info({ guildId: guild.id, guildName: guild.name }, "Bot left guild — cleaning up scheduler state");
-    stopGuildScheduler(guild.id);
+    stopGuildScheduler(guild.id, { stopOracle: true });
     traderMessageIds.delete(guild.id);
     traderSetupInProgress.delete(guild.id);
   });
@@ -4796,7 +4803,8 @@ export async function startBot(onReady?: () => void): Promise<void> {
       } else if (interaction.isButton()) {
         allowedWhileStopped =
           interaction.customId.startsWith("ticket_") ||
-          interaction.customId.startsWith("help_");
+          interaction.customId.startsWith("help_") ||
+          interaction.customId.startsWith("council_");
       } else if (interaction.isStringSelectMenu()) {
         allowedWhileStopped = interaction.customId.startsWith("ticket_questions_");
       } else if (interaction.isModalSubmit()) {

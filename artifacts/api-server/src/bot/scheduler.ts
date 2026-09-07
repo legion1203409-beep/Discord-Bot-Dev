@@ -251,8 +251,11 @@ export function recordGuildActivity(client: Client, guildId: string): void {
 /** Stop the scheduler for a guild (e.g. bot left the server). Future timer
  *  callbacks will no-op via the stopped flag; existing timers cannot be
  *  cancelled without tracking refs, but they become inert after this call. */
-export function stopGuildScheduler(guildId: string) {
-  stopOracleCouncilScheduler(guildId);
+export function stopGuildScheduler(
+  guildId: string,
+  options: { stopOracle?: boolean } = {},
+) {
+  if (options.stopOracle) stopOracleCouncilScheduler(guildId);
   stopTributeScheduler(guildId);
   setTributeGamePaused(guildId, true);
   const gs = guildStates.get(guildId);
@@ -1495,7 +1498,7 @@ export function startGuildScheduler(client: Client, guildId: string) {
   const oracleChannelId = getChannel("main", guildId);
   if (oracleChannelId) {
     startOracle(client, oracleChannelId, guildId);
-    startOracleCouncilScheduler(client, guildId, oracleChannelId, isStopped);
+    startOracleCouncilScheduler(client, guildId, oracleChannelId);
   }
 }
 
