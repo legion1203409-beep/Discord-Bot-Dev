@@ -29,7 +29,15 @@ import { logger } from "../lib/logger";
 import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./alert";
 import { startGuildScheduler, stopGuildScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, recordGuildActivity, getGuildClaimedChests, getGuildActiveBossMap, isGuildGameStopped, checkBossEligibility, checkBossHitCooldown, BOSS_HIT_COOLDOWN_MS, persistBossState, guildStates, isGuildActive, ACTIVITY_WINDOW_MINUTES, CHEST_MSG_MILESTONE, type BossState, type BossPlayerStats } from "./scheduler";
 import { getChannel, getAllChannels, setChannel, initChannelConfig, hasAnyChannelConfigured, EVENT_LABELS, type EventType } from "./channel-config";
-import { recordMessage, refreshOraclePresence, getCurrentMood, resumeOracle, startOracle, stopOracle } from "./oracle";
+import {
+  recordMessage,
+  refreshOraclePresence,
+  getCurrentMood,
+  resumeOracle,
+  startOracle,
+  stopOracle,
+  isOracleEnabled,
+} from "./oracle";
 import {
   maybeReplyAsOracle,
   logOracleChatStatus,
@@ -644,6 +652,12 @@ async function handleInventar(interaction: ChatInputCommandInteraction) {
 
 async function handleProfetie(interaction: ChatInputCommandInteraction) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!isOracleEnabled(interaction.guildId!)) {
+    await interaction.editReply(
+      "🛑 Oracle AI este oprit momentan. Un administrator îl poate reporni cu `/startai`.",
+    );
+    return;
+  }
   const userId = interaction.user.id;
   const remaining = prophecyCooldownRemaining(userId);
   if (remaining > 0) {
@@ -1019,7 +1033,9 @@ async function handleHelpQuestion(interaction: ModalSubmitInteraction) {
     const category = interaction.customId.replace("help_question_", "") as HelpCategory;
     const safeCategory = category in HELP_CATEGORY_LABELS ? category : "oracol";
     const question = interaction.fields.getTextInputValue("help_question_text").trim();
-    const oracleAnswer = await answerHelpQuestion(question, interaction.user.id, interaction.guildId!);
+    const oracleAnswer = isOracleEnabled(interaction.guildId!)
+      ? await answerHelpQuestion(question, interaction.user.id, interaction.guildId!)
+      : null;
     const answer = oracleAnswer ?? helpQuestionAnswer(question, safeCategory);
 
     await interaction.editReply({
@@ -4797,6 +4813,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
           "stopai",
           "startai",
           "ajutor",
+           "profetie",
           "setcanal",
           "setaliantatext",
         ].includes(interaction.commandName);
