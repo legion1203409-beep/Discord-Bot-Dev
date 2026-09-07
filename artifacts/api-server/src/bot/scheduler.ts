@@ -3,7 +3,7 @@ import { logger } from "../lib/logger";
 import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, rollChest, oracleMessage, buildFinalBossEmbed, buildBossLeaderboard, buildEventLeaderboard, buildLockedChestEmbed, buildKeyChestEmbed, spawnLockedChest, rollKeyChestType, computeBossRewards, prestigeGoldMult, finalBossRow, bossMaxHp, veteranRank, veteranMult, CHEST_RARITIES, type ChestVariant, type BossRarity, type BossPlayerStats } from "./survival";
 import { triggerRandomBattleEvent } from "./combat-events";
 import { getRewardMultipliers } from "./status-effects";
-import { startOracle, setOracleExtatic } from "./oracle";
+import { resumeOracleForGame, startOracle, stopOracleForGame, setOracleExtatic } from "./oracle";
 import { rehydrateCouncilDecree, startOracleCouncilScheduler, stopOracleCouncilScheduler } from "./oracle-council";
 import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle, addPlayerReputation, addPlayerGold, addPlayerXp, getPrestigeLevels, persistActiveBoss, loadActiveBossRowsByGuild, deleteActiveBoss, createActiveBossesTableIfNotExists, persistActiveChest, loadActiveChest, clearActiveChest, getFinalBossKills, KEYCHEST_DBKEY, LOCKCHEST_DBKEY, runMultiGuildMigrations } from "./db";
 import { getChannel, initChannelConfig, hasAnyChannelConfigured, type EventType } from "./channel-config";
@@ -80,6 +80,7 @@ interface GuildSchedulerState {
   standaloneBossId: number | null;
   started: boolean;
   stopped: boolean;
+  runGeneration: number;
   /** Timestamp (ms) of the last non-bot message in this guild. 0 = never seen. */
   lastActivityAt: number;
   /** Rolling count of non-bot messages since the last milestone chest roll. */
@@ -106,6 +107,7 @@ function getOrCreateGuildState(guildId: string): GuildSchedulerState {
       standaloneBossId: null,
       started: false,
       stopped: false,
+      runGeneration: 0,
       lastActivityAt: 0,
       activityMsgCount: 0,
       keyMsgCount: 0,
@@ -252,6 +254,7 @@ export function recordGuildActivity(client: Client, guildId: string): void {
 export function stopGuildScheduler(guildId: string) {
   stopOracleCouncilScheduler(guildId);
   stopTributeScheduler(guildId);
+  stopOracleForGame(guildId);
   const gs = guildStates.get(guildId);
   if (gs) {
     gs.stopped = true;
@@ -267,6 +270,10 @@ export function stopGuildScheduler(guildId: string) {
 /** Get the claimedChests set for a guild (creates state if missing). */
 export function getGuildClaimedChests(guildId: string): Set<string> {
   return getOrCreateGuildState(guildId).claimedChests;
+}
+
+export function isGuildGameStopped(guildId: string): boolean {
+  return getOrCreateGuildState(guildId).stopped;
 }
 
 /** Get the activeBossMap for a guild (creates state if missing). */
@@ -1330,6 +1337,8 @@ export function startGuildScheduler(client: Client, guildId: string) {
   }
   gs.stopped = false; // reset in case the bot had previously left and rejoined this guild
   gs.started = true;
+  gs.runGeneration += 1;
+  const runGeneration = gs.runGeneration;
 
   void rehydrateCouncilDecree(guildId).catch((err) =>
     logger.warn({ err, guildId }, "Council decree could not be rehydrated"),
@@ -1350,7 +1359,10 @@ export function startGuildScheduler(client: Client, guildId: string) {
     logger.warn({ err, guildId }, "Failed to rehydrate Frăția vote"),
   );
 
-  const isStopped = () => guildStates.get(guildId)?.stopped === true;
+  const isStopped = () => {
+    const current = guildStates.get(guildId);
+    return current?.stopped === true || current?.runGeneration !== runGeneration;
+  };
 
   setInterval(() => { if (!isStopped()) void expireOldEvents(client, guildId); }, 60 * 1000);
   setInterval(() => {
@@ -1408,6 +1420,7 @@ export function startGuildScheduler(client: Client, guildId: string) {
 
   const oracleChannelId = getChannel("main", guildId);
   if (oracleChannelId) {
+    resumeOracleForGame(guildId);
     startOracle(client, oracleChannelId, guildId);
     startOracleCouncilScheduler(client, guildId, oracleChannelId, isStopped);
   }

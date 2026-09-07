@@ -8,7 +8,7 @@ import OpenAI from "openai";
 import type { Client, Message } from "discord.js";
 import { PermissionFlagsBits } from "discord.js";
 import { logger } from "../lib/logger";
-import { getCurrentMood } from "./oracle";
+import { getCurrentMood, isOracleEnabled } from "./oracle";
 import { MOOD_META, type MoodState } from "./oracle-content";
 import { handleJustice, handlePardon } from "./oracle-guard";
 import { getPlayerById, loadOracleCouncil, recordOracleInteraction, type OracleCouncilRecord } from "./db";
@@ -1027,6 +1027,7 @@ async function maybeReplyInTicket(
  */
 export async function maybeReplyAsOracle(discordClient: Client, message: Message): Promise<void> {
   try {
+    if (message.guildId && !isOracleEnabled(message.guildId)) return;
     if (!AI_ENABLED) return;
     const botId = discordClient.user?.id;
     if (!botId) return;

@@ -27,9 +27,9 @@ import {
 import { randomUUID } from "node:crypto";
 import { logger } from "../lib/logger";
 import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./alert";
-import { startGuildScheduler, stopGuildScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, recordGuildActivity, getGuildClaimedChests, getGuildActiveBossMap, checkBossEligibility, checkBossHitCooldown, BOSS_HIT_COOLDOWN_MS, persistBossState, guildStates, isGuildActive, ACTIVITY_WINDOW_MINUTES, CHEST_MSG_MILESTONE, type BossState, type BossPlayerStats } from "./scheduler";
+import { startGuildScheduler, stopGuildScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, recordGuildActivity, getGuildClaimedChests, getGuildActiveBossMap, isGuildGameStopped, checkBossEligibility, checkBossHitCooldown, BOSS_HIT_COOLDOWN_MS, persistBossState, guildStates, isGuildActive, ACTIVITY_WINDOW_MINUTES, CHEST_MSG_MILESTONE, type BossState, type BossPlayerStats } from "./scheduler";
 import { getChannel, getAllChannels, setChannel, initChannelConfig, hasAnyChannelConfigured, EVENT_LABELS, type EventType } from "./channel-config";
-import { recordMessage, refreshOraclePresence, getCurrentMood } from "./oracle";
+import { recordMessage, refreshOraclePresence, getCurrentMood, resumeOracle, startOracle, stopOracle } from "./oracle";
 import {
   maybeReplyAsOracle,
   logOracleChatStatus,
@@ -566,6 +566,22 @@ const slashCommands = [
     .setName("setaliantatext")
     .setDescription("🤝 [Admin] Modifică textul publicat când este confirmată o alianță.")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+  new SlashCommandBuilder()
+    .setName("stopjoc")
+    .setDescription("⏸️ [Admin] Oprește toate activitățile automate ale jocului pe acest server.")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+  new SlashCommandBuilder()
+    .setName("startjoc")
+    .setDescription("▶️ [Admin] Repornește toate activitățile automate ale jocului pe acest server.")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+  new SlashCommandBuilder()
+    .setName("stopai")
+    .setDescription("🛑 [Admin] Oprește răspunsurile și activitatea automată a Oracolului.")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+  new SlashCommandBuilder()
+    .setName("startai")
+    .setDescription("✨ [Admin] Repornește răspunsurile și activitatea automată a Oracolului.")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 ];
 
 async function avatarById(discordId: string): Promise<string | null> {
@@ -846,7 +862,9 @@ function buildHelpEmbed(category: HelpCategory) {
         {
           name: "Administrator",
           value:
-            "**/setcanal** configurează canalul pentru cufere, evenimente, boss, Negustor, topuri și Tribut. Este disponibilă doar administratorilor.",
+            "**/setcanal** configurează canalele activităților.\n" +
+            "**/stopjoc** / **startjoc** opresc sau repornesc activitățile automate ale jocului.\n" +
+            "**/stopai** / **startai** opresc sau repornesc Oracle AI. Toate sunt disponibile doar administratorilor.",
         },
       ],
     },
@@ -1417,6 +1435,63 @@ async function handleSetCanal(interaction: ChatInputCommandInteraction) {
       content: "❌ Nu am putut salva canalul. Verifică permisiunile botului și încearcă din nou.",
     });
   }
+}
+
+async function handleStopGame(interaction: ChatInputCommandInteraction): Promise<void> {
+  if (!(await isOwner(interaction))) return;
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  stopGuildScheduler(interaction.guildId!);
+  await interaction.editReply({
+    content:
+      "⏸️ **Jocul a fost oprit pe acest server.**\n" +
+      "Nu se mai pornesc evenimente, cufere, boss-i, tributuri sau alte activități automate. " +
+      "Folosește `/startjoc` pentru repornire.",
+  });
+}
+
+async function handleStartGame(interaction: ChatInputCommandInteraction): Promise<void> {
+  if (!(await isOwner(interaction))) return;
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!botClient) {
+    await interaction.editReply({ content: "❌ Botul Discord nu este disponibil momentan." });
+    return;
+  }
+  startGuildScheduler(botClient, interaction.guildId!);
+  await interaction.editReply({
+    content: "▶️ **Jocul a fost repornit pe acest server.** Activitățile automate vor continua.",
+  });
+}
+
+async function handleStopAI(interaction: ChatInputCommandInteraction): Promise<void> {
+  if (!(await isOwner(interaction))) return;
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  stopOracle(interaction.guildId!);
+  await interaction.editReply({
+    content: "🛑 **Oracle AI a fost oprit pe acest server.** Nu va mai răspunde și nu va mai posta activități automate.",
+  });
+}
+
+async function handleStartAI(interaction: ChatInputCommandInteraction): Promise<void> {
+  if (!(await isOwner(interaction))) return;
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (isGuildGameStopped(interaction.guildId!)) {
+    await interaction.editReply({
+      content: "⏸️ Jocul este oprit. Folosește mai întâi `/startjoc`, apoi `/startai`.",
+    });
+    return;
+  }
+  const channelId = getChannel("main", interaction.guildId!);
+  if (!channelId || !botClient) {
+    await interaction.editReply({
+      content: "❌ Nu există un canal principal configurat sau botul nu este disponibil.",
+    });
+    return;
+  }
+  resumeOracle(interaction.guildId!);
+  startOracle(botClient, channelId, interaction.guildId!);
+  await interaction.editReply({
+    content: "✨ **Oracle AI a fost repornit pe acest server.**",
+  });
 }
 
 async function handleSetAliantaText(interaction: ChatInputCommandInteraction) {
@@ -4701,6 +4776,10 @@ export async function startBot(onReady?: () => void): Promise<void> {
       if (interaction.commandName === "chei") dispatch(handleChei(interaction));
       if (interaction.commandName === "setcanal") dispatch(handleSetCanal(interaction));
       if (interaction.commandName === "setaliantatext") dispatch(handleSetAliantaText(interaction));
+      if (interaction.commandName === "stopjoc") dispatch(handleStopGame(interaction));
+      if (interaction.commandName === "startjoc") dispatch(handleStartGame(interaction));
+      if (interaction.commandName === "stopai") dispatch(handleStopAI(interaction));
+      if (interaction.commandName === "startai") dispatch(handleStartAI(interaction));
     } else if (interaction.isButton()) {
       dispatch(handleButton(interaction as ButtonInteraction));
     } else if (interaction.isStringSelectMenu()) {

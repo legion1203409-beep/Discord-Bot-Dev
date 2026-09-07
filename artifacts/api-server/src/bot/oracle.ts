@@ -80,10 +80,14 @@ interface GuildOracleState {
   lastMessageAt: number;
   lastCheckInAt: number;
   activeCheckIn: ActiveCheckIn | null;
+  runGeneration: number;
+  running: boolean;
 }
 
 const DEFAULT_GUILD_ID = "__default__";
 const guildOracleStates = new Map<string, GuildOracleState>();
+const manuallyStoppedGuilds = new Set<string>();
+const gameStoppedGuilds = new Set<string>();
 let extaticUntil = 0;
 let lastPresenceMood: MoodState | null = null;
 
@@ -99,10 +103,41 @@ function getGuildState(guildId = DEFAULT_GUILD_ID): GuildOracleState {
       lastMessageAt: 0,
       lastCheckInAt: 0,
       activeCheckIn: null,
+      runGeneration: 0,
+      running: false,
     };
     guildOracleStates.set(guildId, state);
   }
   return state;
+}
+
+export function isOracleEnabled(guildId: string): boolean {
+  return !manuallyStoppedGuilds.has(guildId) && !gameStoppedGuilds.has(guildId);
+}
+
+function invalidateOracleRun(guildId: string): void {
+  const state = getGuildState(guildId);
+  state.runGeneration += 1;
+  state.running = false;
+}
+
+export function stopOracle(guildId: string): void {
+  manuallyStoppedGuilds.add(guildId);
+  invalidateOracleRun(guildId);
+  logger.info({ guildId }, "Oracle AI stopped by administrator");
+}
+
+export function resumeOracle(guildId: string): void {
+  manuallyStoppedGuilds.delete(guildId);
+}
+
+export function stopOracleForGame(guildId: string): void {
+  gameStoppedGuilds.add(guildId);
+  invalidateOracleRun(guildId);
+}
+
+export function resumeOracleForGame(guildId: string): void {
+  gameStoppedGuilds.delete(guildId);
 }
 
 // Romanian toxicity keyword stems (substring match on a diacritics-stripped,
@@ -424,11 +459,17 @@ async function runBehaviorGrants(channel: TextChannel, state: GuildOracleState, 
   }
 }
 
-async function oracleTick(client: Client, channelId: string, guildId: string): Promise<void> {
+async function oracleTick(
+  client: Client,
+  channelId: string,
+  guildId: string,
+  runGeneration: number,
+): Promise<void> {
   try {
+    const state = getGuildState(guildId);
+    if (!isOracleEnabled(guildId) || state.runGeneration !== runGeneration) return;
     const now = Date.now();
     pruneUserMaps(now);
-    const state = getGuildState(guildId);
     if (!CHECKIN_ENABLED) return;
     if (!isOracleCheckInDue(state.lastMessageAt, state.lastCheckInAt, now)) return;
 
@@ -445,28 +486,47 @@ async function oracleTick(client: Client, channelId: string, guildId: string): P
   } catch (err) {
     logger.error({ err }, "Oracle tick failed");
   } finally {
-    scheduleNextTick(client, channelId, guildId);
+    const state = getGuildState(guildId);
+    if (isOracleEnabled(guildId) && state.runGeneration === runGeneration) {
+      scheduleNextTick(client, channelId, guildId, runGeneration);
+    }
   }
 }
 
-function scheduleNextTick(client: Client, channelId: string, guildId: string): void {
+function scheduleNextTick(
+  client: Client,
+  channelId: string,
+  guildId: string,
+  runGeneration: number,
+): void {
   const state = getGuildState(guildId);
+  if (!isOracleEnabled(guildId) || state.runGeneration !== runGeneration) return;
   const regularDelay = MIN_TICK_MS + Math.floor(Math.random() * (MAX_TICK_MS - MIN_TICK_MS + 1));
   const silenceDueAt = state.lastMessageAt + CHECKIN_SILENCE_MS;
   const waitingForSilence =
     state.lastMessageAt > 0 && state.lastCheckInAt < state.lastMessageAt && silenceDueAt > Date.now();
   const delay = waitingForSilence ? Math.max(1_000, silenceDueAt - Date.now()) : regularDelay;
-  const t = setTimeout(() => { void oracleTick(client, channelId, guildId); }, delay);
+  const t = setTimeout(() => {
+    void oracleTick(client, channelId, guildId, runGeneration);
+  }, delay);
   t.unref?.();
 }
 
 export function startOracle(client: Client, channelId: string, guildId = DEFAULT_GUILD_ID): void {
+  if (!isOracleEnabled(guildId)) return;
+  const state = getGuildState(guildId);
+  if (state.running) return;
+  state.running = true;
+  state.runGeneration += 1;
+  const runGeneration = state.runGeneration;
   if (!MESSAGE_CONTENT_ENABLED) {
     logger.warn(
       "Oracle toxicity detection is OFF. To enable curses from toxic chat, turn on the 'Message Content Intent' in the Discord Developer Portal and set ORACLE_MESSAGE_CONTENT_ENABLED=true.",
     );
   }
-  const t = setTimeout(() => { void oracleTick(client, channelId, guildId); }, FIRST_TICK_MS);
+  const t = setTimeout(() => {
+    void oracleTick(client, channelId, guildId, runGeneration);
+  }, FIRST_TICK_MS);
   t.unref?.();
   logger.info({ contentIntent: MESSAGE_CONTENT_ENABLED }, "Oracle mood system started");
 }
