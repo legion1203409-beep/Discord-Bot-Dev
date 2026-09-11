@@ -1,4 +1,4 @@
-import { Client, TextChannel, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
+import { Client, TextChannel, ActionRowBuilder, ButtonBuilder, ButtonStyle, type Message } from "discord.js";
 import { logger } from "../lib/logger";
 import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, rollChest, oracleMessage, buildFinalBossEmbed, buildBossLeaderboard, buildEventLeaderboard, buildLockedChestEmbed, buildKeyChestEmbed, spawnLockedChest, rollKeyChestType, computeBossRewards, prestigeGoldMult, finalBossRow, bossMaxHp, veteranRank, veteranMult, CHEST_RARITIES, type ChestVariant, type BossRarity, type BossPlayerStats } from "./survival";
 import { triggerRandomBattleEvent } from "./combat-events";
@@ -468,6 +468,64 @@ function rollBossRarity(): BossRarity {
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 const eventMessageDeletionTimers = new Map<number, ReturnType<typeof setTimeout>>();
+const EVENT_MESSAGE_DELETE_RETRY_MS = 60_000;
+
+async function deleteEventMessages(
+  client: Client,
+  guildId: string,
+  eventId: number,
+  messageId: string,
+  decreeMessageId?: string | null,
+): Promise<boolean> {
+  let retry = false;
+  const eventChannel = await fetchChannel(client, "event", guildId);
+  if (eventChannel instanceof TextChannel) {
+    let message: Message | null = null;
+    try {
+      message = await eventChannel.messages.fetch(messageId);
+    } catch {
+      // A missing message is already clean; a fetch failure is transient.
+      retry = true;
+    }
+    if (message) {
+      await message.delete().catch((err) => {
+        const code = typeof err === "object" && err !== null && "code" in err
+          ? String((err as { code?: unknown }).code)
+          : "";
+        if (code !== "10008") retry = true;
+      });
+    }
+  } else {
+    retry = true;
+  }
+
+  if (decreeMessageId) {
+    const mainChannel = await fetchChannel(client, "main", guildId);
+    if (mainChannel instanceof TextChannel) {
+      let decree: Message | null = null;
+      try {
+        decree = await mainChannel.messages.fetch(decreeMessageId);
+      } catch {
+        retry = true;
+      }
+      if (decree) {
+        await decree.delete().catch((err) => {
+          const code = typeof err === "object" && err !== null && "code" in err
+            ? String((err as { code?: unknown }).code)
+            : "";
+          if (code !== "10008") retry = true;
+        });
+      }
+    } else {
+      retry = true;
+    }
+  }
+
+  if (retry) {
+    logger.warn({ eventId, guildId, messageId }, "Event message cleanup will retry");
+  }
+  return retry;
+}
 
 function scheduleEventMessageDeletion(
   client: Client,
@@ -475,22 +533,58 @@ function scheduleEventMessageDeletion(
   eventId: number,
   messageId: string,
   expiresAt: Date,
+  decreeMessageId?: string | null,
 ): void {
   if (eventMessageDeletionTimers.has(eventId)) return;
   const cleanupAt = expiresAt.getTime() + EVENT_MESSAGE_RETENTION_MS;
   const timer = setTimeout(async () => {
     eventMessageDeletionTimers.delete(eventId);
     try {
-      const channel = await fetchChannel(client, "event", guildId);
-      if (!(channel instanceof TextChannel)) return;
-      const message = await channel.messages.fetch(messageId).catch(() => null);
-      await message?.delete().catch(() => null);
+      if (await deleteEventMessages(client, guildId, eventId, messageId, decreeMessageId)) {
+        scheduleEventMessageDeletion(
+          client,
+          guildId,
+          eventId,
+          messageId,
+          new Date(Date.now() + EVENT_MESSAGE_DELETE_RETRY_MS - EVENT_MESSAGE_RETENTION_MS),
+          decreeMessageId,
+        );
+      }
     } catch (err) {
       logger.warn({ err, eventId, guildId, messageId }, "Failed to delete expired event message");
+      scheduleEventMessageDeletion(
+        client,
+        guildId,
+        eventId,
+        messageId,
+        new Date(Date.now() + EVENT_MESSAGE_DELETE_RETRY_MS - EVENT_MESSAGE_RETENTION_MS),
+        decreeMessageId,
+      );
     }
   }, Math.max(0, cleanupAt - Date.now()));
   timer.unref?.();
   eventMessageDeletionTimers.set(eventId, timer);
+}
+
+async function rehydrateEventMessageDeletions(client: Client, guildId: string): Promise<void> {
+  try {
+    const events = await getAllEvents(guildId);
+    const now = Date.now();
+    for (const ev of events) {
+      if (ev.expiresAt.getTime() <= now) {
+        scheduleEventMessageDeletion(
+          client,
+          guildId,
+          ev.id,
+          ev.messageId,
+          ev.expiresAt,
+          ev.decreeMessageId,
+        );
+      }
+    }
+  } catch (err) {
+    logger.warn({ err, guildId }, "Failed to rehydrate event message cleanup");
+  }
 }
 
 function randomCooldown() {
@@ -500,11 +594,10 @@ function randomCooldown() {
 // ─── Event expiry ──────────────────────────────────────────────────────────────
 
 async function expireOldEvents(client: Client, guildId: string) {
-  if (isGuildGameStopped(guildId)) return;
   const expired = await getExpiredActiveEvents(guildId);
   for (const ev of expired) {
     try {
-      scheduleEventMessageDeletion(client, guildId, ev.id, ev.messageId, ev.expiresAt);
+      scheduleEventMessageDeletion(client, guildId, ev.id, ev.messageId, ev.expiresAt, ev.decreeMessageId);
       const channel = await fetchChannel(client, "event", guildId);
       if (channel instanceof TextChannel) {
         const msg = await channel.messages.fetch(ev.messageId).catch(() => null);
@@ -632,11 +725,10 @@ export async function fireChestForced(
     logger.info({ chestId, gold, rarity: rarity.key, mult, guildId }, "Chest spawned (forced)");
 
     const timeout = setTimeout(async () => {
-      if (!gs.claimedChests.has(chestId)) {
-        gs.claimedChests.add(chestId);
-        await deleteChestMessage(msg, { chestId, guildId, phase: "expire-forced" });
-        logger.info({ chestId, guildId }, "Chest expired unclaimed (forced)");
-      }
+      if (gs.claimedChests.has(chestId)) return;
+      gs.claimedChests.add(chestId);
+      await deleteChestMessage(msg, { chestId, guildId, phase: "expire-forced" });
+      logger.info({ chestId, guildId }, "Chest expired unclaimed (forced)");
       void clearActiveChest(guildId).catch(() => null);
     }, CHEST_EXPIRE_MS);
 
@@ -762,11 +854,10 @@ export async function fireChest(client: Client, guildId: string, bypassGate = fa
     logger.info({ chestId, gold, rarity: rarity.key, guildId }, "Chest spawned");
 
     const timeout = setTimeout(async () => {
-      if (!gs.claimedChests.has(chestId)) {
-        gs.claimedChests.add(chestId);
-        await deleteChestMessage(msg, { chestId, guildId, phase: "expire-scheduled" });
-        logger.info({ chestId, guildId }, "Chest expired unclaimed");
-      }
+      if (gs.claimedChests.has(chestId)) return;
+      gs.claimedChests.add(chestId);
+      await deleteChestMessage(msg, { chestId, guildId, phase: "expire-scheduled" });
+      logger.info({ chestId, guildId }, "Chest expired unclaimed");
       void clearActiveChest(guildId).catch(() => null);
     }, CHEST_EXPIRE_MS);
 
@@ -1271,11 +1362,10 @@ export async function fireLockedChest(client: Client, guildId: string, rarityKey
     void persistActiveChest(guildId, { messageId: msg.id, channelId: channel.id, chestId, gold, rarityKey: rarity.key, kind: "lockchest", expiresAt }, LOCKCHEST_DBKEY).catch(() => null);
 
     const timeout = setTimeout(async () => {
-      if (!gs.claimedChests.has(chestId)) {
-        gs.claimedChests.add(chestId);
-        await deleteChestMessage(msg, { chestId, guildId, phase: "expire-locked" });
-        logger.info({ chestId, guildId }, "Locked chest expired unclaimed");
-      }
+      if (gs.claimedChests.has(chestId)) return;
+      gs.claimedChests.add(chestId);
+      await deleteChestMessage(msg, { chestId, guildId, phase: "expire-locked" });
+      logger.info({ chestId, guildId }, "Locked chest expired unclaimed");
       void clearActiveChest(guildId, LOCKCHEST_DBKEY).catch(() => null);
     }, CHEST_EXPIRE_MS);
     timeout.unref?.();
@@ -1355,11 +1445,10 @@ export async function fireKeyChest(client: Client, guildId: string, keyType?: st
     void persistActiveChest(guildId, { messageId: msg.id, channelId: channel.id, chestId, gold: 0, rarityKey: kt, keyType: kt, kind: "keychest", expiresAt }, KEYCHEST_DBKEY).catch(() => null);
 
     const timeout = setTimeout(async () => {
-      if (!gs.claimedChests.has(chestId)) {
-        gs.claimedChests.add(chestId);
-        await deleteChestMessage(msg, { chestId, guildId, phase: "expire-key" });
-        logger.info({ chestId, guildId }, "Key chest expired unclaimed");
-      }
+      if (gs.claimedChests.has(chestId)) return;
+      gs.claimedChests.add(chestId);
+      await deleteChestMessage(msg, { chestId, guildId, phase: "expire-key" });
+      logger.info({ chestId, guildId }, "Key chest expired unclaimed");
       void clearActiveChest(guildId, KEYCHEST_DBKEY).catch(() => null);
     }, CHEST_EXPIRE_MS);
     timeout.unref?.();
@@ -1419,6 +1508,13 @@ export function startGuildScheduler(client: Client, guildId: string) {
 
   void rehydrateCouncilDecree(guildId).catch((err) =>
     logger.warn({ err, guildId }, "Council decree could not be rehydrated"),
+  );
+  void rehydrateEventMessageDeletions(client, guildId);
+  void expireOldEvents(client, guildId).catch((err) =>
+    logger.warn({ err, guildId }, "Failed to expire events after scheduler start"),
+  );
+  void cleanupOldEvents(client, guildId).catch((err) =>
+    logger.warn({ err, guildId }, "Failed to clean old events after scheduler start"),
   );
   void rehydrateActiveBosses(client, guildId);
   if (LEGACY_CHEST_SPAWNS_ENABLED) {

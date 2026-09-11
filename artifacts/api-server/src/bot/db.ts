@@ -1466,18 +1466,44 @@ export async function grantEquipment(
   key: string,
 ): Promise<Player | null> {
   if (!isEquipmentKey(key)) return null;
-  const [row] = await db.update(playersTable)
-    .set({
-      equipmentLevels: sql`jsonb_set(
-        coalesce(${playersTable.equipmentLevels}, '{}'::jsonb),
-        ${equipmentJsonPath(key)},
-        to_jsonb(greatest(coalesce((${playersTable.equipmentLevels}->>${key})::int, 0), 1)),
-        true
-      )`,
-    })
-    .where(playerWhere(discordId, guildId))
-    .returning();
-  return row ?? null;
+  try {
+    return await db.transaction(async (tx) => {
+      const slot = equipmentSlot(key);
+      const [row] = await tx.update(playersTable)
+        .set({
+          equipmentLevels: sql`jsonb_set(
+            coalesce(${playersTable.equipmentLevels}, '{}'::jsonb),
+            ${equipmentJsonPath(key)},
+            to_jsonb(greatest(coalesce((${playersTable.equipmentLevels}->>${key})::int, 0), 1)),
+            true
+          )`,
+          // A first discovered weapon/armor is immediately usable. Existing
+          // gear is never replaced automatically; players can switch it from
+          // /inventar or the equipment shop.
+          ...(slot === "weapon"
+            ? { equippedWeapon: sql`coalesce(${playersTable.equippedWeapon}, ${key})` }
+            : { equippedArmor: sql`coalesce(${playersTable.equippedArmor}, ${key})` }),
+        })
+        .where(playerWhere(discordId, guildId))
+        .returning();
+      if (!row) throw new Error("equipment_grant_player_missing");
+
+      // Keep the inventory copy and the equipment level in one transaction.
+      // Otherwise a failed second write can leave the player with a reward
+      // shown in one screen but missing from the other.
+      await tx.insert(playerItemsTable)
+        .values({ discordId, guildId, itemKey: key, quantity: 1 })
+        .onConflictDoUpdate({
+          target: [playerItemsTable.discordId, playerItemsTable.guildId, playerItemsTable.itemKey],
+          set: { quantity: sql`${playerItemsTable.quantity} + 1` },
+        });
+
+      return row;
+    });
+  } catch (err) {
+    logger.error({ err, discordId, guildId, key }, "Failed to grant equipment atomically");
+    return null;
+  }
 }
 
 // ─── Daily quest helpers ───────────────────────────────────────────────────────

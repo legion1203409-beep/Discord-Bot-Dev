@@ -1697,23 +1697,23 @@ async function handleClasamentSelect(interaction: StringSelectMenuInteraction) {
 }
 
 const CLAIM_TTL_MS = 10 * 60 * 1000;
-const CHEST_MESSAGE_CLEANUP_MS = 20 * 60 * 1000;
 const BOSS_RESULT_TTL_MS = 10 * 60 * 1000;
 
-function scheduleChestMessageDelete(message: Pick<Message, "id" | "delete">, chestId: string, phase: string): void {
-  const timeout = setTimeout(async () => {
-    try {
-      await message.delete();
-    } catch (err) {
-      const code = typeof err === "object" && err !== null && "code" in err
-        ? String((err as { code?: unknown }).code)
-        : "";
-      if (code !== "10008") {
-        logger.warn({ err, messageId: message.id, chestId, phase }, "Failed to delete claimed chest message");
-      }
+async function deleteClaimedChestMessage(
+  message: Pick<Message, "id" | "delete">,
+  chestId: string,
+  phase: string,
+): Promise<void> {
+  try {
+    await message.delete();
+  } catch (err) {
+    const code = typeof err === "object" && err !== null && "code" in err
+      ? String((err as { code?: unknown }).code)
+      : "";
+    if (code !== "10008") {
+      logger.warn({ err, messageId: message.id, chestId, phase }, "Failed to delete claimed chest message");
     }
-  }, CHEST_MESSAGE_CLEANUP_MS);
-  timeout.unref?.();
+  }
 }
 
 const CHEST_CLAIM_MSG: Record<string, (user: string, gold: number) => string> = {
@@ -1783,7 +1783,6 @@ async function handleMimicClaim(
       .setDisabled(true),
   );
   await interaction.message.edit({ components: [disabledRow] }).catch(() => null);
-  scheduleChestMessageDelete(interaction.message, chestId, "mimic-resolved");
   if (victory) {
     const rmods = getRewardMultipliers(interaction.user.id, interaction.guildId!);
     const payout = Math.round(gold * 2.5 * rmods.goldMult);
@@ -1800,6 +1799,7 @@ async function handleMimicClaim(
     });
     setTimeout(() => { void reply.delete().catch(() => {}); }, CLAIM_TTL_MS);
   }
+  await deleteClaimedChestMessage(interaction.message, chestId, "mimic-resolved");
 }
 
 async function handleChestClaim(
@@ -1873,7 +1873,6 @@ async function handleChestClaim(
     await interaction.message.edit({ components: [mimicRow] }).catch(() => null);
   } else {
     await interaction.message.edit({ components: [disabledRow] }).catch(() => null);
-    scheduleChestMessageDelete(interaction.message, chestId, "claimed");
   }
 
   const claimContent = isMimic
@@ -1939,6 +1938,9 @@ async function handleChestClaim(
     }
   }
 
+  if (!isMimic) {
+    await deleteClaimedChestMessage(interaction.message, chestId, "claimed");
+  }
   logger.info({ discordId: interaction.user.id, chestId, rarityKey, gold, effectiveMult, totalGold, choice, pity: pity.pity, mimic: isMimic }, "Chest claimed");
 }
 
@@ -1993,11 +1995,11 @@ async function handleLockedChestClaim(interaction: ButtonInteraction, chestId: s
         .setDisabled(true),
     );
     await interaction.message.edit({ components: [disabledRow] }).catch(() => null);
-    scheduleChestMessageDelete(interaction.message, chestId, "corrupted-key");
     await interaction.followUp({
       content: "☠️ **Cheia Pângărită s-a consumat**, dar a mistuit și recompensa cufărului. Fumul nu mai poate fi întors.",
       flags: MessageFlags.Ephemeral,
     });
+    await deleteClaimedChestMessage(interaction.message, chestId, "corrupted-key");
     return;
   }
 
@@ -2019,7 +2021,6 @@ async function handleLockedChestClaim(interaction: ButtonInteraction, chestId: s
       .setDisabled(true),
   );
   await interaction.message.edit({ components: [disabledRow] }).catch(() => null);
-  scheduleChestMessageDelete(interaction.message, chestId, "locked-claimed");
 
   const rarity = CHEST_RARITIES.find((r) => r.key === rarityKey);
   const rarityLabel = rarity?.label ?? rarityKey;
@@ -2039,6 +2040,7 @@ async function handleLockedChestClaim(interaction: ButtonInteraction, chestId: s
     logger.info({ discordId: interaction.user.id, chestId, rarityKey, effectId: effectDef.id }, "Locked chest blessing granted");
   }
 
+  await deleteClaimedChestMessage(interaction.message, chestId, "locked-claimed");
   logger.info({ discordId: interaction.user.id, chestId, rarityKey, gold, keyType }, "Locked chest claimed");
 }
 
@@ -2069,10 +2071,10 @@ async function handleKeyChestClaim(interaction: ButtonInteraction, chestId: stri
       .setDisabled(true),
   );
   await interaction.message.edit({ components: [disabledRow] }).catch(() => null);
-  scheduleChestMessageDelete(interaction.message, chestId, "key-claimed");
 
   const keyChestReply = await interaction.followUp({ content: buildKeyChestClaimMessage(interaction.user.username, keyType) });
   setTimeout(() => { void keyChestReply.delete().catch(() => {}); }, CLAIM_TTL_MS);
+  await deleteClaimedChestMessage(interaction.message, chestId, "key-claimed");
   logger.info({ discordId: interaction.user.id, chestId, keyType }, "Key chest claimed");
 }
 
@@ -2590,10 +2592,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
       ...(materialDrop ? [addPlayerItem(p.discordId, guildId, materialDrop)] : []),
       ...(equipmentMaterialDrop ? [addPlayerItem(p.discordId, guildId, equipmentMaterialDrop)] : []),
       ...(equipmentDrop
-        ? [
-            addPlayerItem(p.discordId, guildId, equipmentDrop),
-            grantEquipment(p.discordId, guildId, equipmentDrop),
-          ]
+        ? [grantEquipment(p.discordId, guildId, equipmentDrop)]
         : []),
       ...(corruptedKeyDrop ? [addPlayerKey(p.discordId, guildId, "pangarita")] : []),
       ...completedQuests.map((k) => addPlayerItem(p.discordId, guildId, DAILY_QUESTS[k].reward.itemKey, DAILY_QUESTS[k].reward.qty)),
@@ -3660,7 +3659,6 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
         addPlayerItem(discordId, guildId, "fragment_armura"),
       ]),
       ...[...bossEquipmentDrops.entries()].flatMap(([discordId, key]) => [
-        addPlayerItem(discordId, guildId, key),
         grantEquipment(discordId, guildId, key),
       ]),
       // Veteran ranks: the guild's dragon remembers every defeat — next spawn
@@ -3985,10 +3983,10 @@ async function handleSeasonalChestClaim(interaction: ButtonInteraction, chestId:
     embeds: [buildSeasonalChestEmbed(chest, true)],
     components: [seasonalChestRow(chest.id, true)],
   }).catch(() => null);
-  scheduleSeasonalChestMessageDeletion(interaction.client, chest);
   await interaction.followUp({
     content: `🎁 **${interaction.user.username}** a revendicat **${meta.label}**: **${meta.gold} Oboli**, **${meta.xp} XP** și un **Fragment de Coroană**!`,
   });
+  await deleteClaimedChestMessage(interaction.message, chest.id, "seasonal-claimed");
 }
 
 async function handleHiddenChestClaim(interaction: ButtonInteraction, chestId: string) {
@@ -4008,10 +4006,10 @@ async function handleHiddenChestClaim(interaction: ButtonInteraction, chestId: s
     embeds: [buildHiddenChestEmbed(chest, true)],
     components: [hiddenChestRow(chest.id, true)],
   }).catch(() => null);
-  scheduleHiddenChestMessageDeletion(interaction.client, chest);
   await interaction.followUp({
     content: `👁️ **${interaction.user.username}** a deschis Cufărul Șoaptelor Oracolului: **${chest.rewardGold} Oboli**, **${chest.rewardXp} XP** și un fragment de relicvă!`,
   });
+  await deleteClaimedChestMessage(interaction.message, chest.id, "hidden-claimed");
 }
 
 async function handleAuctionButton(interaction: ButtonInteraction) {
