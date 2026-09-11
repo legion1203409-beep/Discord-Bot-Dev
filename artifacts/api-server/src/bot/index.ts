@@ -1696,7 +1696,10 @@ async function handleClasamentSelect(interaction: StringSelectMenuInteraction) {
   await handleViewProfile(interaction, discordId);
 }
 
-const CLAIM_TTL_MS = 10 * 60 * 1000;
+// Public reward follow-ups are temporary channel notices. Keep them visible
+// long enough to read, but remove them before they create the same clutter as
+// the original chest messages.
+const CLAIM_TTL_MS = 2 * 60 * 1000;
 const BOSS_RESULT_TTL_MS = 10 * 60 * 1000;
 
 async function deleteClaimedChestMessage(
@@ -3983,9 +3986,10 @@ async function handleSeasonalChestClaim(interaction: ButtonInteraction, chestId:
     embeds: [buildSeasonalChestEmbed(chest, true)],
     components: [seasonalChestRow(chest.id, true)],
   }).catch(() => null);
-  await interaction.followUp({
+  const seasonalReply = await interaction.followUp({
     content: `🎁 **${interaction.user.username}** a revendicat **${meta.label}**: **${meta.gold} Oboli**, **${meta.xp} XP** și un **Fragment de Coroană**!`,
   });
+  setTimeout(() => { void seasonalReply.delete().catch(() => {}); }, CLAIM_TTL_MS);
   await deleteClaimedChestMessage(interaction.message, chest.id, "seasonal-claimed");
 }
 
@@ -4006,9 +4010,10 @@ async function handleHiddenChestClaim(interaction: ButtonInteraction, chestId: s
     embeds: [buildHiddenChestEmbed(chest, true)],
     components: [hiddenChestRow(chest.id, true)],
   }).catch(() => null);
-  await interaction.followUp({
+  const hiddenReply = await interaction.followUp({
     content: `👁️ **${interaction.user.username}** a deschis Cufărul Șoaptelor Oracolului: **${chest.rewardGold} Oboli**, **${chest.rewardXp} XP** și un fragment de relicvă!`,
   });
+  setTimeout(() => { void hiddenReply.delete().catch(() => {}); }, CLAIM_TTL_MS);
   await deleteClaimedChestMessage(interaction.message, chest.id, "hidden-claimed");
 }
 
