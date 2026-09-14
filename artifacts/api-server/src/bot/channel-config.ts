@@ -35,6 +35,11 @@ export function getChannel(type: keyof ChannelConfig, guildId: string): string |
   const cached = cachedByGuild.get(guildId);
   const override = cached?.[type];
   if (override) return override;
+  // Optional community-event channels follow the configured main channel
+  // until an administrator explicitly separates them.
+  if ((type === "council" || type === "fratia") && cached?.main) {
+    return cached.main;
+  }
   // Apply hardcoded defaults only for the original guild.
   if (guildId === ORIGINAL_GUILD_ID) return DEFAULT_CHANNELS[type];
   // Other guilds must configure channels via /setcanal before the bot acts.

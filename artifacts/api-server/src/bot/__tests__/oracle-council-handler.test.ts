@@ -8,6 +8,7 @@ const {
   mockSaveOracleCouncil,
   mockLoadOracleCouncilDecreeEffect,
   mockSaveOracleCouncilDecreeEffect,
+  mockGrantCouncilVoterReputationOnce,
   mockGrantGuildBoost,
   mockRestoreGuildBoost,
 } = vi.hoisted(() => ({
@@ -17,6 +18,7 @@ const {
   mockSaveOracleCouncil: vi.fn(),
   mockLoadOracleCouncilDecreeEffect: vi.fn(),
   mockSaveOracleCouncilDecreeEffect: vi.fn(),
+  mockGrantCouncilVoterReputationOnce: vi.fn(),
   mockGrantGuildBoost: vi.fn((guildId: string, xpMult: number, goldMult: number, durationMs: number) => ({
     guildId,
     xpMult,
@@ -73,7 +75,7 @@ vi.mock("discord.js", () => {
 });
 
 vi.mock("../db", () => ({
-  addPlayerReputation: vi.fn(),
+  grantCouncilVoterReputationOnce: mockGrantCouncilVoterReputationOnce,
   castOracleCouncilVote: mockCastOracleCouncilVote,
   closeOracleCouncil: mockCloseOracleCouncil,
   loadOracleCouncil: vi.fn(),
@@ -194,6 +196,7 @@ describe("Oracle Council closing", () => {
 
   it("applies the winning law while publishing the closed council", async () => {
     const closed = makeCouncil({ "voter-1": "aur", "voter-2": "aur" }, "closed");
+    closed.closesAt = Date.now();
     mockCloseOracleCouncil.mockResolvedValueOnce(closed);
     mockSaveOracleCouncil.mockResolvedValueOnce(undefined);
     mockSaveOracleCouncilDecreeEffect.mockResolvedValueOnce(undefined);
@@ -201,7 +204,7 @@ describe("Oracle Council closing", () => {
     const message = { edit: vi.fn().mockResolvedValue(undefined) };
     const channel = Object.create(TextChannel.prototype) as TextChannel;
     channel.messages = { fetch: vi.fn().mockResolvedValue(message) } as never;
-    channel.send = vi.fn().mockResolvedValue(undefined);
+    channel.send = vi.fn().mockResolvedValue({ id: "result-message-1" });
     const client = { channels: { fetch: vi.fn().mockResolvedValue(channel) } };
 
     await finalizeCouncil(client as never, "guild-1", "test-council");
@@ -210,8 +213,11 @@ describe("Oracle Council closing", () => {
       "guild-1",
       1,
       1.25,
-      6 * 60 * 60 * 1000,
+      expect.any(Number),
     );
+    const grantedDuration = mockGrantGuildBoost.mock.calls[0]![3] as number;
+    expect(grantedDuration).toBeGreaterThan(6 * 60 * 60 * 1000 - 1_000);
+    expect(grantedDuration).toBeLessThanOrEqual(6 * 60 * 60 * 1000);
     expect(mockSaveOracleCouncilDecreeEffect).toHaveBeenCalledWith({
       guildId: "guild-1",
       xpMult: 1,

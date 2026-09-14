@@ -1444,9 +1444,10 @@ async function handleSetCanal(interaction: ChatInputCommandInteraction) {
       await reconfigureTraderChannel(interaction.guildId!, channel);
     } else {
       await setChannel(interaction.guildId!, eventKey, channel.id);
-      if (eventKey === "council" && botClient) {
+      if ((eventKey === "council" || eventKey === "main") && botClient) {
         stopOracleCouncilScheduler(interaction.guildId!);
-        startOracleCouncilScheduler(botClient, interaction.guildId!, channel.id);
+        const councilChannelId = getChannel("council", interaction.guildId!) ?? channel.id;
+        startOracleCouncilScheduler(botClient, interaction.guildId!, councilChannelId);
       }
     }
     await interaction.editReply({

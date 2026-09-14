@@ -1750,7 +1750,11 @@ export interface OracleCouncilRecord {
   closesAt: number;
   status: "open" | "closed";
   winnerId?: string;
+  effectAppliedAt?: number;
+  effectSummary?: string;
   resultMessageId?: string;
+  resultChannelId?: string;
+  resolvedAt?: number;
   cleanupAt?: number;
 }
 
@@ -1900,6 +1904,49 @@ export async function closeOracleCouncil(
     [key, councilId],
   );
   return result.rows[0] ? (JSON.parse(result.rows[0].value) as OracleCouncilRecord) : null;
+}
+
+export async function grantCouncilVoterReputationOnce(
+  guildId: string,
+  councilId: string,
+  voterIds: string[],
+  amount: number,
+): Promise<boolean> {
+  if (voterIds.length === 0 || amount <= 0) return false;
+  await ensureBotStateTable();
+  const markerKey = guildKey(guildId, `oracle_council_reward:${councilId}`);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const claimed = await client.query(
+      `INSERT INTO bot_state (key, value, updated_at)
+       VALUES ($1, 'pending', now())
+       ON CONFLICT (key) DO NOTHING
+       RETURNING key`,
+      [markerKey],
+    );
+    if ((claimed.rowCount ?? 0) === 0) {
+      await client.query("COMMIT");
+      return false;
+    }
+    await client.query(
+      `UPDATE players
+       SET reputation = reputation + $1
+       WHERE guild_id = $2 AND discord_id = ANY($3::text[])`,
+      [amount, guildId, voterIds],
+    );
+    await client.query(
+      "UPDATE bot_state SET value = 'applied', updated_at = now() WHERE key = $1",
+      [markerKey],
+    );
+    await client.query("COMMIT");
+    return true;
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => null);
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 // ─── Bot instance leadership marker (global — not per-guild) ──────────────────

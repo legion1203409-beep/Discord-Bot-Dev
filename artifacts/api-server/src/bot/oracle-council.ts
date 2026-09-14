@@ -18,13 +18,14 @@ import {
   recordOracleInteraction,
   saveOracleCouncilDecreeEffect,
   saveOracleCouncil,
-  addPlayerReputation,
+  grantCouncilVoterReputationOnce,
   type OracleCouncilOption,
   type OracleCouncilRecord,
 } from "./db";
 import { grantGuildBoost, restoreGuildBoost } from "./status-effects";
 import { isTicketCategoryParentId } from "./ticket-categories";
 import { isOracleEnabled } from "./oracle";
+import { getChannel as getConfiguredChannel } from "./channel-config";
 
 const MINUTE = 60 * 1000;
 const COUNCIL_ENABLED = process.env.ORACLE_COUNCIL_ENABLED !== "false";
@@ -133,22 +134,30 @@ export function councilDecreeEffect(optionId: string): CouncilDecreeEffect {
 
 export async function applyCouncilDecree(council: OracleCouncilRecord, winner: OracleCouncilOption): Promise<string> {
   const effect = councilDecreeEffect(winner.id);
-  // Always replace the previous council boost, including for a neutral law
-  // such as Reputația. Otherwise the old law would remain active.
-  const boost = grantGuildBoost(council.guildId, effect.xpMult, effect.goldMult, effect.durationMs);
-  await saveOracleCouncilDecreeEffect({
-    guildId: council.guildId,
-    xpMult: boost.xpMult,
-    goldMult: boost.goldMult,
-    expiresAt: boost.expiresAt,
-  });
+  const intendedExpiresAt = council.closesAt + effect.durationMs;
+  const remainingDurationMs = Math.max(0, intendedExpiresAt - Date.now());
+  if (remainingDurationMs > 0) {
+    // Recovery uses the original absolute expiry, so a restart cannot extend
+    // a six-hour decree beyond the window chosen by the vote.
+    const boost = grantGuildBoost(
+      council.guildId,
+      effect.xpMult,
+      effect.goldMult,
+      remainingDurationMs,
+    );
+    await saveOracleCouncilDecreeEffect({
+      guildId: council.guildId,
+      xpMult: boost.xpMult,
+      goldMult: boost.goldMult,
+      expiresAt: intendedExpiresAt,
+    });
+  }
   if (effect.voterReputation > 0) {
-    await Promise.all(
-      Object.keys(council.votes).map((discordId) =>
-        addPlayerReputation(discordId, council.guildId, effect.voterReputation).catch((err) => {
-          logger.warn({ err, guildId: council.guildId, discordId }, "Could not grant council voter reputation");
-        }),
-      ),
+    await grantCouncilVoterReputationOnce(
+      council.guildId,
+      council.id,
+      Object.keys(council.votes),
+      effect.voterReputation,
     );
   }
   return effect.summary;
@@ -207,13 +216,16 @@ async function getChannel(client: Client, channelId: string): Promise<TextChanne
 }
 
 async function deleteCouncilMessages(client: Client, council: OracleCouncilRecord): Promise<void> {
-  const channel = await getChannel(client, council.channelId);
-  if (!channel) return;
-  const messageIds = [council.messageId, council.resultMessageId].filter(
-    (id): id is string => Boolean(id),
-  );
+  const originalChannel = await getChannel(client, council.channelId);
+  const resultChannel = council.resultChannelId && council.resultChannelId !== council.channelId
+    ? await getChannel(client, council.resultChannelId)
+    : originalChannel;
   await Promise.all(
-    messageIds.map(async (messageId) => {
+    [
+      { channel: originalChannel, messageId: council.messageId },
+      { channel: resultChannel, messageId: council.resultMessageId },
+    ].map(async ({ channel, messageId }) => {
+      if (!channel || !messageId) return;
       const message = await channel.messages.fetch(messageId).catch(() => null);
       await message?.delete().catch(() => null);
     }),
@@ -237,33 +249,58 @@ export async function finalizeCouncil(
   token?: symbol,
 ): Promise<void> {
   if (token && !isRuntimeActive(guildId, token)) return;
-  const closed = await closeOracleCouncil(guildId, councilId);
-  if (!closed) return;
+  let closed = await closeOracleCouncil(guildId, councilId);
+  if (!closed) {
+    const existing = await loadOracleCouncil(guildId);
+    if (!existing || existing.id !== councilId || existing.status !== "closed" || existing.resolvedAt) return;
+    closed = existing;
+  }
   if (token && !isRuntimeActive(guildId, token)) return;
-  const winner = councilWinner(closed);
-  closed.winnerId = winner?.id;
-  closed.cleanupAt = Date.now() + COUNCIL_MESSAGE_RETENTION_MS;
-  await saveOracleCouncil(closed);
+  const winner = closed.winnerId
+    ? closed.options.find((option) => option.id === closed.winnerId) ?? null
+    : councilWinner(closed);
+  if (!closed.winnerId) closed.winnerId = winner?.id;
 
   const channel = await getChannel(client, closed.channelId);
-  if (!channel) return;
-  const message = await channel.messages.fetch(closed.messageId).catch(() => null);
-  await message?.edit({ embeds: [councilEmbed(closed)], components: [councilButtons(closed)] }).catch(() => null);
-  let resultMessage: Awaited<ReturnType<TextChannel["send"]>> | null = null;
-  if (winner) {
-    const effect = await applyCouncilDecree(closed, winner);
-    resultMessage = await channel.send({
-      content: `📜 **Hotărârea Consiliului Umbrelor:** ${winner.emoji} **${winner.label}**\n${winner.decree}\n\n✨ **Efectul legii:** ${effect}`,
-    }).catch(() => null);
-  } else {
-    resultMessage = await channel.send({
-      content: "📜 **Consiliul Umbrelor s-a încheiat fără hotărâre.** Glasurile au fost împărțite, iar Cenușa păstrează tăcerea.",
-    }).catch(() => null);
+  if (channel) {
+    const message = await channel.messages.fetch(closed.messageId).catch(() => null);
+    await message?.edit({ embeds: [councilEmbed(closed)], components: [councilButtons(closed)] }).catch(() => null);
   }
-  if (resultMessage?.id) {
-    closed.resultMessageId = resultMessage.id;
+
+  if (!closed.effectAppliedAt) {
+    closed.effectSummary = winner
+      ? await applyCouncilDecree(closed, winner)
+      : "Nu s-a aplicat nicio lege deoarece votul nu a avut un câștigător unic.";
+    closed.effectAppliedAt = Date.now();
     await saveOracleCouncil(closed);
   }
+
+  if (!closed.resultMessageId) {
+    const configuredResultChannelId =
+      getConfiguredChannel("council", guildId) ?? getConfiguredChannel("main", guildId);
+    const configuredChannel = configuredResultChannelId
+      ? await getChannel(client, configuredResultChannelId)
+      : null;
+    const resultChannel = configuredChannel ?? channel;
+    if (!resultChannel) {
+      throw new Error(`No valid channel available to publish council ${councilId}`);
+    }
+    const resultMessage = winner
+      ? await resultChannel.send({
+        content: `📜 **Hotărârea Consiliului Umbrelor:** ${winner.emoji} **${winner.label}**\n${winner.decree}\n\n✨ **Efectul legii:** ${closed.effectSummary}`,
+      })
+      : await resultChannel.send({
+        content: "📜 **Consiliul Umbrelor s-a încheiat fără hotărâre.** Glasurile au fost împărțite, iar Cenușa păstrează tăcerea. Nu s-a aplicat nicio recompensă sau lege.",
+      });
+    if (!resultMessage?.id) {
+      throw new Error(`Council ${councilId} result publication returned no message`);
+    }
+    closed.resultMessageId = resultMessage.id;
+    closed.resultChannelId = resultChannel.id;
+  }
+  closed.resolvedAt = Date.now();
+  closed.cleanupAt = Date.now() + COUNCIL_MESSAGE_RETENTION_MS;
+  await saveOracleCouncil(closed);
   scheduleCouncilMessageDeletion(client, closed);
   logger.info({ guildId, councilId, winnerId: winner?.id ?? null }, "Oracle council closed");
 }
@@ -403,8 +440,18 @@ export function startOracleCouncilScheduler(
     .then((existing) => {
       if (existing?.status === "open" && isRuntimeActive(guildId, token)) {
         scheduleCouncilClose(client, existing, token);
-      } else if (existing?.status === "closed" && existing.cleanupAt && isRuntimeActive(guildId, token)) {
-        scheduleCouncilMessageDeletion(client, existing);
+      } else if (existing?.status === "closed" && isRuntimeActive(guildId, token)) {
+        if (!existing.resolvedAt) {
+          void finalizeCouncil(client, guildId, existing.id, token).catch((err) =>
+            logger.warn({ err, guildId, councilId: existing.id }, "Closed council settlement could not be resumed"),
+          );
+        } else if (existing.cleanupAt) {
+          scheduleCouncilMessageDeletion(client, existing);
+        } else {
+          // Councils created before cleanup metadata existed should not remain
+          // permanently in the channel.
+          void deleteCouncilMessages(client, existing);
+        }
       }
     })
     .catch((err) => logger.warn({ err, guildId }, "Open council could not be rehydrated"));
