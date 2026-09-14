@@ -31,6 +31,9 @@ import {
   scheduleIncompleteTicketDeletion,
   staffOracleReviewPayload,
   ticketModal,
+  ticketDeadlineForChannel,
+  isTicketPanelMessage,
+  postTicketPanelIfMissing,
   ticketPanelPayload,
   ticketQuestionModal,
   ticketRequirementsEmbed,
@@ -116,7 +119,7 @@ describe("Oracle ticket categories", () => {
     const embed = panel.embeds[0]!.toJSON();
     const row = panel.components[0]!.toJSON();
 
-    expect(embed.title).toBe("🛡️ Aplicare Staff");
+    expect(embed.title).toBe("🛡️ Contract de Staff · Deschide aplicația");
     expect(embed.fields?.[0]?.value).toContain("Tag-ul serverului");
     expect(embed.fields?.find(
       (field) => field.name === "📋 Întrebările contractului",
@@ -162,11 +165,11 @@ describe("Oracle ticket categories", () => {
       "ticket_status_staff_completed",
     );
     expect(completed && "label" in completed ? completed.label : undefined).toBe(
-      "Contract completat",
+      "✅ Contract închis · complet",
     );
     expect(completed && "disabled" in completed ? completed.disabled : undefined).toBe(true);
     expect(rejected && "label" in rejected ? rejected.label : undefined).toBe(
-      "Contract respins",
+      "⛔ Contract închis · respins",
     );
   });
 
@@ -188,8 +191,9 @@ describe("Oracle ticket categories", () => {
       description: "Comunitate RPG medievală.",
       invite: "https://discord.gg/umbrelor",
     }).toJSON();
-    expect(summary.title).toBe("🤝 Pactul celor Două Regate · Rezumat");
+    expect(summary.title).toBe("🤝 Contract de Parteneriat · Rezumat pentru staff");
     expect(summary.fields?.map((field) => field.name)).toEqual([
+      "📊 Starea dosarului",
       "🏰 Numele serverului",
       "📝 Descrierea serverului",
       "🔗 Linkul serverului",
@@ -213,8 +217,9 @@ describe("Oracle ticket categories", () => {
       offer: "Promovare reciprocă.",
       terms: "Respectăm regulile pactului.",
     }).toJSON();
-    expect(draft.title).toBe("🤝 Pactul celor Două Regate · Draft");
+    expect(draft.title).toBe("🤝 Contract de Parteneriat · Draft de publicare");
     expect(draft.fields?.map((field) => field.name)).toEqual([
+      "📊 Starea dosarului",
       "🏰 Numele serverului",
       "📝 Descrierea serverului",
       "🔗 Linkul serverului",
@@ -227,10 +232,10 @@ describe("Oracle ticket categories", () => {
       "📌 Regula promovării",
     ]);
     expect(draft.fields?.some((field) => field.value?.includes("Regatul Cenușii își deschide porțile"))).toBe(false);
-    expect(draft.fields?.[0]?.value).toContain("Regatul Umbrelor");
-    expect(draft.fields?.[2]?.value).toContain("https://discord.gg/umbrelor");
-    expect(draft.fields?.[5]?.value).toContain("Vrem o comunitate aliată.");
-    expect(draft.fields?.[8]?.value).toContain("Andrei");
+    expect(draft.fields?.[1]?.value).toContain("Regatul Umbrelor");
+    expect(draft.fields?.[3]?.value).toContain("https://discord.gg/umbrelor");
+    expect(draft.fields?.[6]?.value).toContain("Vrem o comunitate aliată.");
+    expect(draft.fields?.[9]?.value).toContain("Andrei");
     const publishButtons = partnershipPublishRow("123").toJSON().components;
     expect(publishButtons.map((button) => "custom_id" in button ? button.custom_id : undefined)).toEqual([
       "ticket_alliance_post_123",
@@ -346,9 +351,10 @@ describe("Oracle ticket categories", () => {
       const deleteChannel = vi.fn().mockResolvedValue(undefined);
       const fetchMessages = vi.fn().mockResolvedValue(new Map());
       const send = vi.fn().mockResolvedValue(undefined);
+      const createdTimestamp = Date.now() - 15 * 60 * 1000;
       scheduleIncompleteTicketDeletion({
         id: "unfinished-ticket",
-        createdTimestamp: Date.now(),
+        createdTimestamp,
         delete: deleteChannel,
         send,
         permissionOverwrites: {
@@ -367,6 +373,9 @@ describe("Oracle ticket categories", () => {
         content: expect.stringContaining("<@applicant-123>"),
         allowedMentions: { parse: [], users: ["applicant-123"] },
       }));
+      expect(send.mock.calls[0]?.[0]?.content).toContain(
+        `<t:${Math.floor((createdTimestamp + INCOMPLETE_TICKET_TIMEOUT_MS) / 1000)}:R>`,
+      );
       expect(send).toHaveBeenCalledTimes(1);
       expect(deleteChannel).not.toHaveBeenCalled();
 
@@ -407,10 +416,147 @@ describe("Oracle ticket categories", () => {
     const deadline = 1_800_000_000_000;
     const panel = ticketPanelPayload("help_report", deadline);
     const embed = panel.embeds[0]!.toJSON();
-    const timeField = embed.fields?.find((field) => field.name === "⏳ Timp pentru completare");
+    const timeField = embed.fields?.find((field) => field.name === "⏳ Termen și stare");
 
     expect(timeField?.value).toContain(`<t:${Math.floor(deadline / 1000)}:R>`);
-    expect(timeField?.value).toContain("Dacă rămâne incomplet");
+    expect(timeField?.value).toContain("un contract incomplet");
+  });
+
+  it("keeps the absolute deadline anchored to channel creation", () => {
+    const channelCreatedAt = 1_700_000_000_000;
+    expect(ticketDeadlineForChannel(
+      { createdTimestamp: channelCreatedAt },
+      channelCreatedAt + 30 * 60 * 1000,
+    )).toBe(channelCreatedAt + INCOMPLETE_TICKET_TIMEOUT_MS);
+  });
+
+  it("uses the same absolute deadline for delayed posting and restart refresh", async () => {
+    vi.useFakeTimers();
+    const channelCreatedAt = 1_700_000_000_000;
+    const delayedPanelAt = channelCreatedAt + 15 * 60 * 1000;
+    const expectedTimestamp = Math.floor(
+      (channelCreatedAt + INCOMPLETE_TICKET_TIMEOUT_MS) / 1000,
+    );
+    vi.setSystemTime(delayedPanelAt);
+    try {
+      const send = vi.fn().mockResolvedValue({ id: "delayed-panel-message" });
+      const delayedChannel = {
+        id: "delayed-panel-channel",
+        createdTimestamp: channelCreatedAt,
+        isTextBased: () => true,
+        messages: { fetch: vi.fn().mockResolvedValue([]) },
+        send,
+      } as unknown as Message["channel"];
+
+      await postTicketPanelIfMissing(delayedChannel, "help_report", "bot-1");
+      const postedPayload = send.mock.calls[0]?.[0] as {
+        embeds: { toJSON(): { fields?: { name?: string; value?: string }[] } }[];
+      };
+      const postedField = postedPayload.embeds[0]?.toJSON().fields?.find(
+        (field) => field.name === "⏳ Termen și stare",
+      );
+      expect(postedField?.value).toContain(`<t:${expectedTimestamp}:F>`);
+
+      const edit = vi.fn().mockResolvedValue(undefined);
+      const existingPanel = {
+        author: { id: "bot-1" },
+        components: [{ components: [{ customId: "ticket_start_help_report" }] }],
+        edit,
+      };
+      const restartChannel = {
+        id: "restart-panel-channel",
+        createdTimestamp: channelCreatedAt,
+        isTextBased: () => true,
+        messages: { fetch: vi.fn().mockResolvedValue([existingPanel]) },
+        send: vi.fn(),
+      } as unknown as Message["channel"];
+
+      await postTicketPanelIfMissing(restartChannel, "help_report", "bot-1");
+      const refreshedPayload = edit.mock.calls[0]?.[0] as {
+        embeds: { toJSON(): { fields?: { name?: string; value?: string }[] } }[];
+      };
+      const refreshedField = refreshedPayload.embeds[0]?.toJSON().fields?.find(
+        (field) => field.name === "⏳ Termen și stare",
+      );
+      expect(refreshedField?.value).toContain(`<t:${expectedTimestamp}:F>`);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not mistake ordinary ticket actions for a panel", () => {
+    const actionMessage = {
+      author: { id: "bot-1" },
+      components: [{
+        components: [{ customId: "ticket_alliance_post_123" }],
+      }],
+    } as unknown as Message;
+    const staffPanel = {
+      author: { id: "bot-1" },
+      components: [{
+        components: [{ customId: "ticket_start_staff" }],
+      }],
+    } as unknown as Message;
+
+    expect(isTicketPanelMessage(actionMessage, "bot-1")).toBe(false);
+    expect(isTicketPanelMessage(staffPanel, "bot-1", "partnership")).toBe(false);
+    expect(isTicketPanelMessage(staffPanel, "bot-1", "staff")).toBe(true);
+  });
+
+  it("retries the interactive panel after a plain-text fallback", async () => {
+    const send = vi.fn()
+      .mockRejectedValueOnce(new Error("Discord rejected components"))
+      .mockResolvedValueOnce({ id: "fallback-message" })
+      .mockResolvedValueOnce({ id: "interactive-message" });
+    const channel = {
+      id: "panel-retry-channel",
+      createdTimestamp: Date.now(),
+      isTextBased: () => true,
+      messages: { fetch: vi.fn().mockResolvedValue([]) },
+      send,
+    } as unknown as Message["channel"];
+
+    expect(await postTicketPanelIfMissing(channel, "help_report", "bot-1")).toBe(false);
+    expect(await postTicketPanelIfMissing(channel, "help_report", "bot-1")).toBe(true);
+    expect(send).toHaveBeenCalledTimes(3);
+    expect(send.mock.calls[1]?.[0]).toEqual(expect.objectContaining({
+      content: expect.stringContaining("Ajutor / Raportare"),
+    }));
+    expect(send.mock.calls[2]?.[0]).toEqual(expect.objectContaining({
+      embeds: expect.any(Array),
+    }));
+  });
+
+  it("keeps modal input values within Discord limits", () => {
+    const longText = "x".repeat(5_000);
+    const recruitmentModal = allianceRecruitmentTextModal(longText).toJSON();
+    const recruitmentInput =
+      recruitmentModal.components[0] &&
+      "components" in recruitmentModal.components[0]
+        ? recruitmentModal.components[0].components[0]
+        : undefined;
+    expect(recruitmentInput).toMatchObject({ max_length: 2_000 });
+    expect(
+      recruitmentInput && "value" in recruitmentInput
+        ? recruitmentInput.value?.length
+        : 0,
+    ).toBe(2_000);
+
+    const staffModal = ticketModal("staff").toJSON();
+    for (const row of staffModal.components) {
+      if (!("components" in row)) continue;
+      for (const component of row.components) {
+        if ("max_length" in component) {
+          expect(component.max_length).toBeLessThanOrEqual(4_000);
+        }
+        if ("label" in component && component.label) {
+          expect(component.label.length).toBeLessThanOrEqual(45);
+        }
+        if ("placeholder" in component && component.placeholder) {
+          expect(component.placeholder.length).toBeLessThanOrEqual(100);
+        }
+      }
+    }
   });
 
   it("puts the first five staff questions on the first valid modal page", () => {
@@ -494,7 +640,7 @@ describe("Oracle ticket categories", () => {
     const payload = staffOracleReviewPayload("Andrei");
     expect(payload.content).toBe(`<@&${STAFF_REVIEW_ROLE_ID}>`);
     expect(payload.allowedMentions.roles).toEqual([STAFF_REVIEW_ROLE_ID]);
-    expect(payload.embeds[0]?.toJSON().title).toBe("🕯️ Cuvântul Oracolului");
+    expect(payload.embeds[0]?.toJSON().title).toBe("🕯️ Oracolul · Rezumat pentru evaluare");
     expect(payload.embeds[0]?.toJSON().description).toContain("Andrei");
   });
 });

@@ -21,6 +21,10 @@ Rules learned:
 
 - When the embed is re-rendered (e.g. boss HP edits on every hit), pass the stored `expiresAt`
   through again so the countdown stays anchored across edits.
+  **Why:** refreshing a ticket panel must not promise a fresh hour while channel-age-based
+  deletion still runs at the original deadline.
+  **How to apply:** include delayed posting, form start, and restart refresh in timer tests;
+  verify both the displayed timestamp and the actual deletion time.
 
 - Timestamps render in the embed **description/field values**, NOT in the footer — Discord footers
   show `<t:...>` as literal text. Hide the countdown line entirely once the entity is defeated/expired.

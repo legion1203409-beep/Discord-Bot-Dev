@@ -5,6 +5,7 @@ type StoredProgress = {
   currentStep: number;
   panelMessageId: string;
   applicantUsername?: string;
+  responseMessageId?: string;
   answers?: Record<string, string>;
   alliancePosted?: boolean;
   alliancePublishing?: boolean;
@@ -87,10 +88,12 @@ vi.mock("../db", () => {
 });
 
 const STAFF_REVIEW_ROLE_ID = "1472526137308745909";
+const ALLIANCE_PUBLIC_CHANNEL_ID = "1472997077373157602";
 
 const completedDraft = (): StoredProgress => ({
   currentStep: 8,
   panelMessageId: "panel-1",
+  responseMessageId: "response-1",
   applicantUsername: "Andrei",
   answers: {
     server_name: "Regatul Umbrelor",
@@ -109,6 +112,9 @@ function makeInteraction(
   customId: string,
   channelId: string,
   publicSend = vi.fn(async () => ({ id: "public-message-1" })),
+  guildId = "1382035307607883816",
+  messageId = "response-1",
+  publicChannelGuildId = guildId,
 ) {
   const reply = vi.fn(async (_payload: unknown): Promise<void> => undefined);
   const update = vi.fn(async (_payload: unknown): Promise<void> => undefined);
@@ -117,16 +123,25 @@ function makeInteraction(
   const interaction = {
     customId,
     channelId,
+    guildId,
+    message: {
+      id: messageId,
+      components: [{
+        components: [{
+          customId,
+        }],
+      }],
+    },
     member: { roles: [STAFF_REVIEW_ROLE_ID] },
     memberPermissions: { has: vi.fn(() => true) },
-    client: {
-      channels: {
-        fetch: vi.fn(async () => ({
-          isTextBased: () => true,
-          send: publicSend,
-        })),
-      },
-    },
+    client: (() => {
+      const fetch = vi.fn(async () => ({
+        guildId: publicChannelGuildId,
+        isTextBased: () => true,
+        send: publicSend,
+      }));
+      return { channels: { fetch }, fetchPublicChannel: fetch };
+    })(),
     reply,
     update,
     followUp,
@@ -139,6 +154,7 @@ function makeInteraction(
     update,
     followUp,
     showModal,
+    fetchPublicChannel: interaction.client.fetchPublicChannel,
   };
 }
 
@@ -176,6 +192,7 @@ describe("persistent alliance publication flow", () => {
 
     const publish = makeInteraction("ticket_alliance_post_101", "restart-ticket");
     expect(await handleTicketButton(publish.interaction)).toBe(true);
+    expect(publish.fetchPublicChannel).toHaveBeenCalledWith(ALLIANCE_PUBLIC_CHANNEL_ID);
     expect(publish.publicSend).toHaveBeenCalledOnce();
     expect(publish.update).toHaveBeenCalledOnce();
     expect(persistence.records.get("restart-ticket:101")).toMatchObject({
@@ -267,5 +284,111 @@ describe("persistent alliance publication flow", () => {
       alliancePosted: true,
       alliancePublishing: false,
     });
+  });
+
+  it("rejects an alliance action from a stale or unrelated message", async () => {
+    persistence.records.set("context-ticket:606", completedDraft());
+    const { handleTicketButton } = await freshTicketUi();
+    const publicSend = vi.fn(async () => ({ id: "should-not-send" }));
+    const stale = makeInteraction(
+      "ticket_alliance_post_606",
+      "context-ticket",
+      publicSend,
+      "1382035307607883816",
+      "different-message",
+    );
+
+    expect(await handleTicketButton(stale.interaction)).toBe(true);
+    expect(publicSend).not.toHaveBeenCalled();
+    expect(stale.reply).toHaveBeenCalledWith(expect.objectContaining({
+      content: expect.stringContaining("nu mai aparține"),
+    }));
+  });
+
+  it("does not route an alliance announcement from an unsupported guild", async () => {
+    persistence.records.set("unconfigured-ticket:707", completedDraft());
+    const { handleTicketButton } = await freshTicketUi();
+    const publicSend = vi.fn(async () => ({ id: "should-not-send" }));
+    const unconfigured = makeInteraction(
+      "ticket_alliance_post_707",
+      "unconfigured-ticket",
+      publicSend,
+      "guild-without-ticket-config",
+    );
+
+    expect(await handleTicketButton(unconfigured.interaction)).toBe(true);
+    expect(publicSend).not.toHaveBeenCalled();
+    expect(unconfigured.reply).toHaveBeenCalledWith(expect.objectContaining({
+      content: expect.stringContaining("nu este configurat"),
+    }));
+    expect(persistence.records.get("unconfigured-ticket:707")?.alliancePublishing).not.toBe(true);
+    expect(persistence.records.get("unconfigured-ticket:707")?.alliancePosted).not.toBe(true);
+  });
+
+  it("rejects the historical alliance channel when Discord resolves it in another guild", async () => {
+    persistence.records.set("wrong-channel-guild:808", completedDraft());
+    const { handleTicketButton } = await freshTicketUi();
+    const publicSend = vi.fn(async () => ({ id: "should-not-send" }));
+    const wrongGuildChannel = makeInteraction(
+      "ticket_alliance_post_808",
+      "wrong-channel-guild",
+      publicSend,
+      "1382035307607883816",
+      "response-1",
+      "another-guild",
+    );
+
+    expect(await handleTicketButton(wrongGuildChannel.interaction)).toBe(true);
+    expect(wrongGuildChannel.fetchPublicChannel).toHaveBeenCalledWith(
+      ALLIANCE_PUBLIC_CHANNEL_ID,
+    );
+    expect(publicSend).not.toHaveBeenCalled();
+    expect(wrongGuildChannel.reply).toHaveBeenCalledWith(expect.objectContaining({
+      content: expect.stringContaining("nu este disponibil"),
+    }));
+    expect(persistence.records.get("wrong-channel-guild:808")?.alliancePosted).not.toBe(true);
+  });
+
+  it("uses the channel deadline when starting a delayed staff contract", async () => {
+    vi.useFakeTimers();
+    const channelCreatedAt = 1_700_000_000_000;
+    vi.setSystemTime(channelCreatedAt + 15 * 60 * 1000);
+    try {
+      const { handleTicketButton } = await freshTicketUi();
+      const edit = vi.fn(async (_payload: unknown): Promise<void> => undefined);
+      const interaction = {
+        customId: "ticket_start_staff",
+        channelId: "delayed-start-ticket",
+        guildId: "1382035307607883816",
+        user: {
+          id: "applicant-909",
+          username: "Andrei",
+          globalName: "Andrei",
+        },
+        message: {
+          id: "delayed-start-panel",
+          components: [{ components: [{ customId: "ticket_start_staff" }] }],
+          edit,
+        },
+        channel: {
+          createdTimestamp: channelCreatedAt,
+          isTextBased: () => true,
+        },
+        showModal: vi.fn(async (_modal: { toJSON(): unknown }): Promise<void> => undefined),
+      } as unknown as ButtonInteraction;
+
+      expect(await handleTicketButton(interaction)).toBe(true);
+      const payload = edit.mock.calls[0]?.[0] as {
+        embeds: { toJSON(): { fields?: { name?: string; value?: string }[] } }[];
+      };
+      const timeField = payload.embeds[0]?.toJSON().fields?.find(
+        (field) => field.name === "⏳ Termen și stare",
+      );
+      expect(timeField?.value).toContain(
+        `<t:${Math.floor((channelCreatedAt + 60 * 60 * 1000) / 1000)}:F>`,
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
