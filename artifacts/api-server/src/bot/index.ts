@@ -567,6 +567,8 @@ const slashCommands = [
           { name: "Negustorul (Forja Cenușii)", value: "trader" },
           { name: "Top Ora Umbrelor", value: "eventTop" },
           { name: "Top Dragonul Stins", value: "bossTop" },
+          { name: "Consiliul Umbrelor", value: "council" },
+          { name: "Chivotul Frăției", value: "fratia" },
           { name: "Tributul Regatului", value: "tribut" },
         ),
     )
@@ -1442,6 +1444,10 @@ async function handleSetCanal(interaction: ChatInputCommandInteraction) {
       await reconfigureTraderChannel(interaction.guildId!, channel);
     } else {
       await setChannel(interaction.guildId!, eventKey, channel.id);
+      if (eventKey === "council" && botClient) {
+        stopOracleCouncilScheduler(interaction.guildId!);
+        startOracleCouncilScheduler(botClient, interaction.guildId!, channel.id);
+      }
     }
     await interaction.editReply({
       content: `✅ **${EVENT_LABELS[eventKey]}** va fi publicat în <#${channel.id}>.`,
@@ -1526,16 +1532,17 @@ async function handleStopAI(interaction: ChatInputCommandInteraction): Promise<v
 async function handleStartAI(interaction: ChatInputCommandInteraction): Promise<void> {
   if (!(await isOwner(interaction))) return;
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-  const channelId = getChannel("main", interaction.guildId!);
-  if (!channelId || !botClient) {
+  const mainChannelId = getChannel("main", interaction.guildId!);
+  const councilChannelId = getChannel("council", interaction.guildId!) ?? mainChannelId;
+  if (!mainChannelId || !councilChannelId || !botClient) {
     await interaction.editReply({
       content: "❌ Nu există un canal principal configurat sau botul nu este disponibil.",
     });
     return;
   }
   resumeOracle(interaction.guildId!);
-  startOracle(botClient, channelId, interaction.guildId!);
-  startOracleCouncilScheduler(botClient, interaction.guildId!, channelId);
+  startOracle(botClient, mainChannelId, interaction.guildId!);
+  startOracleCouncilScheduler(botClient, interaction.guildId!, councilChannelId);
   await interaction.editReply({
     content: "✨ **Oracle AI a fost repornit pe acest server.**",
   });

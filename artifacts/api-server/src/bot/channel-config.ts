@@ -10,6 +10,8 @@ const DEFAULT_CHANNELS: Required<ChannelConfig> = {
   trader:     "1521418965732036628",
   eventTop:   "1521185741961695434",
   bossTop:    "1521186981525327993",
+  council:    "1382042144717410385",
+  fratia:     "1382042144717410385",
 };
 
 const ORIGINAL_GUILD_ID = "1382035307607883816";
@@ -83,6 +85,8 @@ export const EVENT_LABELS: Record<keyof ChannelConfig, string> = {
   trader:   "Negustorul (Forja Cenușii)",
   eventTop: "Top Ora Umbrelor",
   bossTop:  "Top Dragonul Stins",
+  council:  "Consiliul Umbrelor",
+  fratia:   "Chivotul Frăției",
 };
 
 export type EventType = keyof ChannelConfig;

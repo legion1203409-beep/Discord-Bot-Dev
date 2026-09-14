@@ -32,6 +32,7 @@ const COUNCIL_FIRST_DELAY_MS = envInt("ORACLE_COUNCIL_FIRST_DELAY_MIN", 30, 24 *
 const COUNCIL_INTERVAL_MS = envInt("ORACLE_COUNCIL_INTERVAL_HOURS", 6, 168) * 60 * MINUTE;
 const COUNCIL_VOTING_WINDOW_MS = envInt("ORACLE_COUNCIL_VOTING_MINUTES", 20, 180) * MINUTE;
 const COUNCIL_DECREE_DURATION_MS = 6 * 60 * MINUTE;
+export const COUNCIL_MESSAGE_RETENTION_MS = 20 * MINUTE;
 
 function envInt(name: string, fallback: number, max: number): number {
   const value = Number.parseInt(process.env[name] ?? "", 10);
@@ -205,6 +206,30 @@ async function getChannel(client: Client, channelId: string): Promise<TextChanne
   return channel;
 }
 
+async function deleteCouncilMessages(client: Client, council: OracleCouncilRecord): Promise<void> {
+  const channel = await getChannel(client, council.channelId);
+  if (!channel) return;
+  const messageIds = [council.messageId, council.resultMessageId].filter(
+    (id): id is string => Boolean(id),
+  );
+  await Promise.all(
+    messageIds.map(async (messageId) => {
+      const message = await channel.messages.fetch(messageId).catch(() => null);
+      await message?.delete().catch(() => null);
+    }),
+  );
+}
+
+function scheduleCouncilMessageDeletion(client: Client, council: OracleCouncilRecord): void {
+  const cleanupAt = council.cleanupAt ?? Date.now() + COUNCIL_MESSAGE_RETENTION_MS;
+  const timer = setTimeout(() => {
+    void deleteCouncilMessages(client, council).catch((err) =>
+      logger.warn({ err, guildId: council.guildId, councilId: council.id }, "Could not delete closed council messages"),
+    );
+  }, Math.max(0, cleanupAt - Date.now()));
+  timer.unref?.();
+}
+
 export async function finalizeCouncil(
   client: Client,
   guildId: string,
@@ -217,22 +242,29 @@ export async function finalizeCouncil(
   if (token && !isRuntimeActive(guildId, token)) return;
   const winner = councilWinner(closed);
   closed.winnerId = winner?.id;
+  closed.cleanupAt = Date.now() + COUNCIL_MESSAGE_RETENTION_MS;
   await saveOracleCouncil(closed);
 
   const channel = await getChannel(client, closed.channelId);
   if (!channel) return;
   const message = await channel.messages.fetch(closed.messageId).catch(() => null);
   await message?.edit({ embeds: [councilEmbed(closed)], components: [councilButtons(closed)] }).catch(() => null);
+  let resultMessage: Awaited<ReturnType<TextChannel["send"]>> | null = null;
   if (winner) {
     const effect = await applyCouncilDecree(closed, winner);
-    await channel.send({
+    resultMessage = await channel.send({
       content: `📜 **Hotărârea Consiliului Umbrelor:** ${winner.emoji} **${winner.label}**\n${winner.decree}\n\n✨ **Efectul legii:** ${effect}`,
     }).catch(() => null);
   } else {
-    await channel.send({
+    resultMessage = await channel.send({
       content: "📜 **Consiliul Umbrelor s-a încheiat fără hotărâre.** Glasurile au fost împărțite, iar Cenușa păstrează tăcerea.",
     }).catch(() => null);
   }
+  if (resultMessage?.id) {
+    closed.resultMessageId = resultMessage.id;
+    await saveOracleCouncil(closed);
+  }
+  scheduleCouncilMessageDeletion(client, closed);
   logger.info({ guildId, councilId, winnerId: winner?.id ?? null }, "Oracle council closed");
 }
 
@@ -371,6 +403,8 @@ export function startOracleCouncilScheduler(
     .then((existing) => {
       if (existing?.status === "open" && isRuntimeActive(guildId, token)) {
         scheduleCouncilClose(client, existing, token);
+      } else if (existing?.status === "closed" && existing.cleanupAt && isRuntimeActive(guildId, token)) {
+        scheduleCouncilMessageDeletion(client, existing);
       }
     })
     .catch((err) => logger.warn({ err, guildId }, "Open council could not be rehydrated"));

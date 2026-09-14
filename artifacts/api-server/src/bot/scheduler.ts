@@ -1592,9 +1592,12 @@ export function startGuildScheduler(client: Client, guildId: string) {
   );
 
   const oracleChannelId = getChannel("main", guildId);
+  const councilChannelId = getChannel("council", guildId) ?? oracleChannelId;
   if (oracleChannelId) {
     startOracle(client, oracleChannelId, guildId);
-    startOracleCouncilScheduler(client, guildId, oracleChannelId);
+  }
+  if (councilChannelId) {
+    startOracleCouncilScheduler(client, guildId, councilChannelId);
   }
 }
 

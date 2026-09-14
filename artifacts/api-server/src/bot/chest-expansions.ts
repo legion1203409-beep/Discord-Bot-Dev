@@ -255,7 +255,13 @@ export interface FratiaVote {
   status: "open" | "closed";
   votes: Record<string, "gold" | "xp" | "relic">;
   winner?: "gold" | "xp" | "relic";
+  rewardedAt?: number;
+  rewardSummary?: string;
+  rewardMessageId?: string;
+  cleanupAt?: number;
 }
+
+export const FRATIA_MESSAGE_RETENTION_MS = 20 * 60 * 1000;
 
 export const FRATIA_OPTIONS = [
   { id: "gold", label: "Aur pentru toți", emoji: "🪙" },
@@ -362,15 +368,27 @@ export function fratiaVoteRows(): ActionRowBuilder<ButtonBuilder>[] {
   ];
 }
 
-export async function rewardFratiaVote(vote: FratiaVote): Promise<void> {
+export async function rewardFratiaVote(vote: FratiaVote): Promise<{ recipientCount: number; summary: string }> {
   const players = await getGuildPlayers(vote.guildId);
   if (vote.winner === "xp") {
     await Promise.all(players.map((player) => addPlayerXp(player.discordId, vote.guildId, 150)));
+    return {
+      recipientCount: players.length,
+      summary: `✨ **150 XP** pentru fiecare dintre cei **${players.length}** jucători înregistrați.`,
+    };
   } else if (vote.winner === "relic") {
     const firstVoters = Object.keys(vote.votes).slice(0, 3);
     await Promise.all(firstVoters.map((id) => addPlayerItem(id, vote.guildId, "fragment_ochiul_cenușii", 2)));
+    return {
+      recipientCount: firstVoters.length,
+      summary: `💎 **2 Fragmente ale Ochiului Cenușii** pentru primii **${firstVoters.length}** votanți.`,
+    };
   } else {
     await Promise.all(players.map((player) => addPlayerGold(player.discordId, vote.guildId, 120)));
+    return {
+      recipientCount: players.length,
+      summary: `🪙 **120 Oboli** pentru fiecare dintre cei **${players.length}** jucători înregistrați.`,
+    };
   }
 }
 
@@ -378,7 +396,7 @@ export async function openFratiaVote(client: Client, guildId: string): Promise<F
   const existing = await loadFratiaVote(guildId);
   if (existing?.status === "open" && existing.closesAt > Date.now()) return existing;
 
-  const channelId = getChannel("main", guildId);
+  const channelId = getChannel("fratia", guildId) ?? getChannel("main", guildId);
   const channel = channelId ? await client.channels.fetch(channelId).catch(() => null) : null;
   if (!(channel instanceof TextChannel) || isTicketCategoryParentId(channel.parentId)) return null;
 
@@ -405,7 +423,15 @@ export async function openFratiaVote(client: Client, guildId: string): Promise<F
 
 export async function rehydrateFratiaVote(client: Client, guildId: string): Promise<void> {
   const vote = await loadFratiaVote(guildId);
-  if (!vote || vote.status !== "open") return;
+  if (!vote) return;
+  if (vote.status === "closed") {
+    if (!vote.rewardedAt) {
+      await closeAndRewardFratiaVote(client, guildId);
+    } else if (vote.cleanupAt) {
+      scheduleFratiaMessageDeletion(client, vote);
+    }
+    return;
+  }
   if (vote.closesAt <= Date.now()) {
     await closeAndRewardFratiaVote(client, guildId);
     return;
@@ -414,9 +440,17 @@ export async function rehydrateFratiaVote(client: Client, guildId: string): Prom
 }
 
 export async function closeAndRewardFratiaVote(client: Client, guildId: string): Promise<FratiaVote | null> {
-  const closed = await closeFratiaVote(guildId);
-  if (!closed) return null;
-  await rewardFratiaVote(closed);
+  let closed = await closeFratiaVote(guildId);
+  if (!closed) {
+    const existing = await loadFratiaVote(guildId);
+    if (!existing || existing.status !== "closed" || existing.rewardedAt) return existing;
+    closed = existing;
+  }
+  const reward = await rewardFratiaVote(closed);
+  closed.rewardedAt = Date.now();
+  closed.rewardSummary = reward.summary;
+  closed.cleanupAt = Date.now() + FRATIA_MESSAGE_RETENTION_MS;
+  await saveFratiaVote(closed);
   const channel = await client.channels.fetch(closed.channelId).catch(() => null);
   if (channel instanceof TextChannel && !isTicketCategoryParentId(channel.parentId)) {
     const message = await channel.messages.fetch(closed.messageId).catch(() => null);
@@ -424,8 +458,41 @@ export async function closeAndRewardFratiaVote(client: Client, guildId: string):
       embeds: [buildFratiaVoteEmbed(closed)],
       components: [],
     }).catch(() => null);
+    const rewardMessage = await channel.send({
+      content: reward.recipientCount > 0
+        ? `🤝 **Binecuvântarea Frăției a fost împărțită.**\n${reward.summary}`
+        : "⚠️ **Votul Frăției s-a încheiat, dar nu există beneficiari eligibili înregistrați în acest server.**",
+      allowedMentions: { parse: [] },
+    }).catch(() => null);
+    if (rewardMessage?.id) {
+      closed.rewardMessageId = rewardMessage.id;
+      await saveFratiaVote(closed);
+    }
   }
+  scheduleFratiaMessageDeletion(client, closed);
   return closed;
+}
+
+async function deleteFratiaMessage(client: Client, vote: FratiaVote): Promise<void> {
+  const channel = await client.channels.fetch(vote.channelId).catch(() => null);
+  if (!(channel instanceof TextChannel)) return;
+  const messageIds = [vote.messageId, vote.rewardMessageId].filter(
+    (id): id is string => Boolean(id),
+  );
+  await Promise.all(
+    messageIds.map(async (messageId) => {
+      const message = await channel.messages.fetch(messageId).catch(() => null);
+      await message?.delete().catch(() => null);
+    }),
+  );
+}
+
+function scheduleFratiaMessageDeletion(client: Client, vote: FratiaVote): void {
+  const cleanupAt = vote.cleanupAt ?? Date.now() + FRATIA_MESSAGE_RETENTION_MS;
+  const timer = setTimeout(() => {
+    void deleteFratiaMessage(client, vote).catch(() => null);
+  }, Math.max(0, cleanupAt - Date.now()));
+  timer.unref?.();
 }
 
 function scheduleFratiaVoteClose(client: Client, vote: FratiaVote): void {

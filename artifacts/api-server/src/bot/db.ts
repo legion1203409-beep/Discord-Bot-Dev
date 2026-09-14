@@ -1750,6 +1750,8 @@ export interface OracleCouncilRecord {
   closesAt: number;
   status: "open" | "closed";
   winnerId?: string;
+  resultMessageId?: string;
+  cleanupAt?: number;
 }
 
 export interface OracleCouncilDecreeEffect {
@@ -2125,6 +2127,8 @@ export interface ChannelConfig {
   trader?: string;
   eventTop?: string;
   bossTop?: string;
+  council?: string;
+  fratia?: string;
 }
 
 export async function saveChannelConfig(guildId: string, config: ChannelConfig): Promise<void> {

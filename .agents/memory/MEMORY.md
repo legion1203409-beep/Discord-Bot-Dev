@@ -42,3 +42,4 @@
 - [Discord ticket menu flow](discord-ticket-modal-flow.md) — ticket intake uses one dropdown question at a time, preserving all fields while avoiding Discord's five-row modal limit.
 - [Game pause gate](game-pause-gate.md) — stopping a guild must guard both scheduler entry points and user interactions; independent timers such as Tribute need their own pause state.
 - [Persistent cleanup and equipment rewards](event-cleanup-and-rewards.md) — rehydrate expiry timers after restart and write coupled equipment reward state atomically.
+- [Community vote settlement](community-vote-settlement.md) — closed votes with unfinished rewards must be retried after restart and publish an explicit beneficiary summary.
