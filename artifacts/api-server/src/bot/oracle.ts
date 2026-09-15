@@ -54,7 +54,10 @@ const MAX_GRANTS_PER_TICK = 2;
 const EXTATIC_MS = 15 * MIN;
 const PROPHECY_CHANCE = 0.3;
 const CHECKIN_RESPONSE_WINDOW_MS = envInt("ORACLE_CHECKIN_RESPONSE_WINDOW_MS", 15 * MIN, 60 * MIN);
-const CHECKIN_ENABLED = process.env.ORACLE_CHECKIN_ENABLED !== "false";
+// Proactive mood check-ins are opt-in. The Oracle may still use its mood for
+// replies and presence, but it must not publish unsolicited state messages by
+// default in the server channels.
+const CHECKIN_ENABLED = process.env.ORACLE_CHECKIN_ENABLED === "true";
 const CHECKIN_SILENCE_MS = 60 * MIN;
 
 const MESSAGE_CONTENT_ENABLED = process.env.ORACLE_MESSAGE_CONTENT_ENABLED === "true";
@@ -503,7 +506,12 @@ function scheduleNextTick(
 }
 
 export function startOracle(client: Client, channelId: string, guildId = DEFAULT_GUILD_ID): void {
-  if (!isOracleEnabled(guildId)) return;
+  if (!isOracleEnabled(guildId) || !CHECKIN_ENABLED) {
+    if (!CHECKIN_ENABLED) {
+      logger.info({ guildId }, "Oracle proactive mood check-ins are disabled");
+    }
+    return;
+  }
   const state = getGuildState(guildId);
   if (state.running) return;
   state.running = true;
