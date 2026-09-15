@@ -81,7 +81,6 @@ import { SUPER_ADMIN_ID } from "./constants";
 import {
   ensureTributePlayer,
   fireTribute,
-  handleTributeButton,
   handleTributeContribution,
   restartTributeScheduler,
   saveTributeConfig,
@@ -1184,9 +1183,10 @@ function schedulePersonalChestRefresh(
 }
 
 async function handlePersonalChest(interaction: ChatInputCommandInteraction) {
+  await interaction.deferReply();
   const guildId = interaction.guildId!;
   const activity = await getPersonalActivity(interaction.user.id, guildId);
-  await interaction.reply({
+  await interaction.editReply({
     content: `🕯️ **Cufărul personal al lui ${interaction.user.username}** — doar această persoană îl poate deschide.`,
     embeds: [buildPersonalChestEmbed(activity, interaction.user.username)],
     components: [personalChestRow(activity, interaction.user.id)],
@@ -4086,21 +4086,21 @@ async function handleAuctionBidModal(interaction: ModalSubmitInteraction) {
 }
 
 async function handleTributeContributeButton(interaction: ButtonInteraction, eventId: string) {
-  const result = await handleTributeButton(
-    interaction.client,
-    interaction.guildId!,
-    eventId,
-    interaction.user.id,
-    interaction.user.username,
-  );
-  if (result.status !== "open" || !result.modal) {
-    await interaction.reply({
-      content: "🩸 Acest tribut s-a încheiat sau a fost deja soluționat.",
-      flags: MessageFlags.Ephemeral,
-    });
-    return;
-  }
-  await interaction.showModal(result.modal);
+  // Showing the modal is the initial Discord acknowledgement, so it must happen
+  // before any database work. The submit handler performs the authoritative
+  // open/closed validation before accepting a contribution.
+  const modal = new ModalBuilder()
+    .setCustomId(`tribute_submit_${eventId}`)
+    .setTitle("Ofrandă pentru Tribut");
+  const amount = new TextInputBuilder()
+    .setCustomId("amount")
+    .setLabel("Câți Oboli oferi?")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMinLength(1)
+    .setMaxLength(12);
+  modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(amount));
+  await interaction.showModal(modal);
 }
 
 async function handleTributeModal(interaction: ModalSubmitInteraction) {
@@ -4315,6 +4315,13 @@ async function handleButton(interaction: ButtonInteraction) {
     const bonus = parts[parts.length - 1]!;
     const eventId = parseInt(parts[2]!);
     return handleLevelup(interaction, eventId, bonus);
+  }
+
+  if (!interaction.deferred && !interaction.replied) {
+    await interaction.reply({
+      content: "⌛ Această acțiune nu mai este disponibilă. Deschide din nou meniul sau folosește comanda corespunzătoare.",
+      flags: MessageFlags.Ephemeral,
+    });
   }
 }
 
@@ -4821,6 +4828,14 @@ export async function startBot(onReady?: () => void): Promise<void> {
         },
         (err) => {
           logger.error({ err, label, ageMs, durationMs: Date.now() - startedAt }, "Interaction error");
+          if (interaction.isRepliable() && !interaction.deferred && !interaction.replied) {
+            void interaction.reply({
+              content: "❌ Acțiunea nu a putut fi procesată. Încearcă din nou.",
+              flags: MessageFlags.Ephemeral,
+            }).catch((replyErr) => {
+              logger.warn({ err: replyErr, label, ageMs }, "Interaction fallback reply failed");
+            });
+          }
         },
       );
     }
@@ -4890,30 +4905,52 @@ export async function startBot(onReady?: () => void): Promise<void> {
     } else if (interaction.isButton()) {
       dispatch(handleButton(interaction as ButtonInteraction));
     } else if (interaction.isStringSelectMenu()) {
+      let handled = false;
       if (interaction.customId === "leaderboard_profile_select") {
+        handled = true;
         dispatch(handleClasamentSelect(interaction));
       }
       if (interaction.customId.startsWith("ticket_questions_")) {
+        handled = true;
         dispatch(handleTicketQuestionSelect(interaction as StringSelectMenuInteraction));
       }
+      if (!handled) {
+        dispatch(interaction.reply({
+          content: "⌛ Acest meniu nu mai este disponibil. Deschide-l din nou.",
+          flags: MessageFlags.Ephemeral,
+        }));
+      }
     } else if (interaction.isModalSubmit()) {
+      let handled = false;
       if (interaction.customId.startsWith("ticket_answer_")) {
+        handled = true;
         dispatch(handleTicketQuestionModal(interaction));
       }
       if (interaction.customId.startsWith("ticket_form_")) {
+        handled = true;
         dispatch(handleTicketModal(interaction));
       }
       if (interaction.customId.startsWith("help_question_")) {
+        handled = true;
         dispatch(handleHelpQuestion(interaction));
       }
       if (interaction.customId.startsWith("tribute_submit_")) {
+        handled = true;
         dispatch(handleTributeModal(interaction));
       }
       if (interaction.customId === "auction_bid_modal") {
+        handled = true;
         dispatch(handleAuctionBidModal(interaction));
       }
       if (interaction.customId === "alliance_recruitment_text_modal") {
+        handled = true;
         dispatch(handleSetAliantaTextModal(interaction));
+      }
+      if (!handled) {
+        dispatch(interaction.reply({
+          content: "⌛ Acest formular nu mai este disponibil. Deschide-l din nou.",
+          flags: MessageFlags.Ephemeral,
+        }));
       }
     }
 
