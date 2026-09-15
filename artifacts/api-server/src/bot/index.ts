@@ -2367,7 +2367,12 @@ function traderSelectionRow(rarityKey: string): ActionRowBuilder<ButtonBuilder> 
 
 async function handleTraderSelect(interaction: ButtonInteraction, rarityKey: string) {
   stopTraderInventoryRefresh(traderViewKey(interaction.guildId!, interaction.user.id));
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const isPrivateView = interaction.message.flags.has(MessageFlags.Ephemeral);
+  if (isPrivateView) {
+    await interaction.deferUpdate();
+  } else {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  }
   const offer = TRADER_OFFERS.find((item) => item.rarityKey === rarityKey);
   if (!offer) {
     await interaction.editReply({ content: "❌ Cufărul ales nu mai este disponibil." });
@@ -2389,7 +2394,12 @@ async function handleTraderSelect(interaction: ButtonInteraction, rarityKey: str
 
 async function handleTraderInventory(interaction: ButtonInteraction) {
   stopTraderInventoryRefresh(traderViewKey(interaction.guildId!, interaction.user.id));
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const isPrivateView = interaction.message.flags.has(MessageFlags.Ephemeral);
+  if (isPrivateView) {
+    await interaction.deferUpdate();
+  } else {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  }
   const keys = await getPlayerKeys(interaction.user.id, interaction.guildId!).catch((err) => {
     logger.warn({ err, guildId: interaction.guildId }, "Could not load trader key inventory");
     return null;
