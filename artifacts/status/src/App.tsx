@@ -1,4 +1,4 @@
-import { Switch, Route, useLocation } from "wouter";
+import { Switch, Route, Redirect } from "wouter";
 import "./index.css";
 import { ModerationLayout } from "./pages/moderation/ModerationLayout";
 import { DashboardOverview } from "./pages/moderation/Dashboard";
@@ -13,13 +13,12 @@ import { useActiveGuild } from "./hooks/use-moderation-api";
 
 // Public pages
 import { PublicLayout } from "./components/public/PublicLayout";
-import { LandingPage } from "./pages/public/LandingPage";
 import { GameGuidePage } from "./pages/public/GameGuidePage";
 import { OperatorHealthPage } from "./pages/public/OperatorHealthPage";
 import { useEffect, useState } from "react";
 
 // The legacy operator/status logic uses hashes on root
-function LandingApp() {
+function HomeApp() {
   const [hash, setHash] = useState(window.location.hash);
   
   useEffect(() => {
@@ -32,11 +31,7 @@ function LandingApp() {
     return <OperatorHealthPage />;
   }
 
-  return (
-    <PublicLayout>
-      <LandingPage />
-    </PublicLayout>
-  );
+  return <Redirect to={`/moderare${window.location.search}`} replace />;
 }
 
 function GameApp() {
@@ -83,7 +78,7 @@ function NotFound() {
 export default function App() {
   return (
     <Switch>
-      <Route path="/" component={LandingApp} />
+      <Route path="/" component={HomeApp} />
       <Route path="/joc" component={GameApp} />
       <Route path="/moderare" nest>
         <ModerationApp />

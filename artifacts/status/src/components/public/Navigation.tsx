@@ -37,28 +37,14 @@ export function Navigation() {
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [isOpen]);
 
-  const isHome = location === "/";
-
   return (
     <header className="site-nav">
       <Brand />
 
       <nav id="public-navigation" className={`nav-links ${isOpen ? "is-open" : ""}`} aria-label="Navigație principală">
         <div className="nav-links-inner">
-          <Link href="/" data-testid="link-nav-home" className={isHome ? "active" : ""}>Acasă</Link>
+          <Link href="/" data-testid="link-nav-home">Panou de moderare</Link>
           <Link href="/joc" data-testid="link-nav-game" className={location === "/joc" ? "active" : ""}>Joc</Link>
-          <Link href="/moderare" data-testid="link-nav-moderation">Moderare</Link>
-          {isHome ? (
-            <>
-              <a href="#lumea" onClick={() => setIsOpen(false)} data-testid="link-nav-world">Lumea</a>
-              <a href="#cum-incepi" onClick={() => setIsOpen(false)} data-testid="link-nav-start">Inițiere</a>
-            </>
-          ) : (
-            <>
-              <Link href="/#lumea" data-testid="link-nav-world">Lumea</Link>
-              <Link href="/#cum-incepi" data-testid="link-nav-start">Inițiere</Link>
-            </>
-          )}
           
           <a className="nav-cta nav-cta--mobile" href={DISCORD_INVITE} target="_blank" rel="noopener noreferrer" onClick={() => trackEvent("discord_cta_click", { location: "nav_mobile" })} data-testid="link-nav-discord-mobile">
             Intră pe Discord <Icon name="arrow" size={15} />

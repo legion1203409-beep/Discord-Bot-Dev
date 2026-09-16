@@ -93,7 +93,9 @@ test.describe("authenticated moderation console", () => {
   }
 
   test("renders every moderation destination instead of the work-in-progress fallback", async ({ page }) => {
-    await page.goto("/moderare");
+    await page.goto("/");
+    await expect(page).toHaveURL("/moderare");
+    await expect(page.locator(".hero-section")).toHaveCount(0);
     await chooseFirstGuild(page);
     await expect(page.getByRole("heading", { name: "Cenușa Nordului" })).toBeVisible();
     await page.screenshot({ path: "/tmp/moderation-dashboard-desktop.png", fullPage: true });
@@ -172,7 +174,8 @@ test.describe("Discord moderation authentication", () => {
   });
 
   test("shows the Discord login and maps callback errors in Romanian", async ({ page }) => {
-    await page.goto("/moderare?auth_error=state_mismatch");
+    await page.goto("/?auth_error=state_mismatch");
+    await expect(page).toHaveURL("/moderare?auth_error=state_mismatch");
     await expect(page.getByTestId("discord-login-button")).toBeVisible();
     await expect(page.getByRole("alert")).toContainText("Sesiunea de autentificare a expirat");
   });

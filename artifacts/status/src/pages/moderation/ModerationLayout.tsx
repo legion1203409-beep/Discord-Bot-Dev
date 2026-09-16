@@ -139,8 +139,8 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
           )}
 
           <div className="mt-8 pt-6 border-t border-border/50 text-center">
-            <Link href="~/" className="text-xs font-mono tracking-widest text-muted-foreground hover:text-primary transition-colors inline-flex items-center gap-2">
-              <ChevronLeft className="w-4 h-4" /> PAGINA PRINCIPALĂ
+            <Link href="~/joc" className="text-xs font-mono tracking-widest text-muted-foreground hover:text-primary transition-colors inline-flex items-center gap-2">
+              <BookOpen className="w-4 h-4" /> GHIDUL JOCULUI
             </Link>
           </div>
         </div>
@@ -252,8 +252,8 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
 
         <div className="p-4 border-t border-border/50 bg-background/50">
           <div className="flex items-center gap-2 mb-2">
-            <Link href="~/" className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-xs font-mono tracking-widest font-medium text-muted-foreground hover:text-foreground rounded-md transition-colors hover:bg-secondary/50 border border-transparent hover:border-border/50">
-              <ChevronLeft className="w-4 h-4" /> IEȘIRE
+            <Link href="~/joc" className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-xs font-mono tracking-widest font-medium text-muted-foreground hover:text-foreground rounded-md transition-colors hover:bg-secondary/50 border border-transparent hover:border-border/50">
+              <BookOpen className="w-4 h-4" /> GHID JOC
             </Link>
             <button 
               onClick={() => logout()}
