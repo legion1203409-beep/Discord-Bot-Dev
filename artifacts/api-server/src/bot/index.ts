@@ -77,7 +77,8 @@ import {
   setOracleToxicityRelationshipHandler,
 } from "./oracle-guard";
 import { moderationCommands, handleModerationCommand } from "./moderation/commands";
-import { attachModeration, handleModerationMessage } from "./moderation/engine";
+import { attachModeration, getConfig as getModerationConfig, handleModerationMessage } from "./moderation/engine";
+import { syncNativeAutoMod } from "./native-automod";
 import { setModerationClient } from "../moderation/auth";
 import { getRewardMultipliers, getCombatModifiers, formatActiveEffects, formatCombatEffects, rollChestEffectKind, grantRandomBlessing, grantRandomCurse, buildChestEffectMessage } from "./status-effects";
 import { SUPER_ADMIN_ID } from "./constants";
@@ -4574,6 +4575,9 @@ export async function startBot(onReady?: () => void): Promise<void> {
       await initChannelConfig(guildId).catch((err) =>
         logger.error({ err, guildId }, "Failed to load channel config for guild"),
       );
+      await syncNativeAutoMod(client, guildId, await getModerationConfig(guildId)).catch((err) =>
+        logger.warn({ err, guildId }, "Native Discord AutoMod synchronization failed"),
+      );
       if (!hasAnyChannelConfigured(guildId)) {
         void sendOnboardingMessage(guild).catch((err) =>
           logger.warn({ err, guildId }, "Failed to send onboarding message"),
@@ -4646,6 +4650,9 @@ export async function startBot(onReady?: () => void): Promise<void> {
     ).catch((err) => logger.warn({ err, guildId: guild.id }, "Could not clear guild commands on join"));
     await initChannelConfig(guild.id).catch((err) =>
       logger.error({ err, guildId: guild.id }, "Failed to init channel config for new guild"),
+    );
+    await syncNativeAutoMod(client, guild.id, await getModerationConfig(guild.id)).catch((err) =>
+      logger.warn({ err, guildId: guild.id }, "Native Discord AutoMod synchronization failed"),
     );
     if (!hasAnyChannelConfigured(guild.id)) {
       void sendOnboardingMessage(guild).catch((err) =>

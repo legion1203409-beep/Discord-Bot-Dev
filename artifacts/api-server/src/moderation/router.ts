@@ -26,6 +26,8 @@ import {
   isDiscordOAuthConfigured,
 } from "./oauth";
 import { moderationStore } from "./store";
+import { syncNativeAutoMod } from "../bot/native-automod";
+import { logger } from "../lib/logger";
 
 const router = Router();
 const snowflake = z.string().regex(/^\d{5,25}$/);
@@ -247,6 +249,12 @@ router.put("/guilds/:guildId/config", asyncRoute(async (req, res) => {
   const config = parse(ModerationConfigSchema, req.body);
   await validateConfigTargets(guildId, config);
   const result = await moderationStore.putConfig(guildId, config, session.userId, expectedRevision(req));
+  const client = getModerationClient();
+  if (client) {
+    void syncNativeAutoMod(client, guildId, result.config).catch((error) => {
+      logger.warn({ error, guildId }, "Native Discord AutoMod synchronization failed after config save");
+    });
+  }
   res.set("ETag", `"${result.version}"`).json(result);
 }));
 

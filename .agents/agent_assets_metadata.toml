@@ -167,13 +167,6 @@ title = "💎 Cufăr Mitic"
 logical_id = "6af8160f-e400-400b-9cfb-b954310ae5aa"
 
 [[outputs]]
-id = "70n4GhlR09OsrR1BGS32k"
-uri = "file://artifacts/status/public/map-bg.png"
-type = "image"
-title = "Harta generată — fundal Pagina 2"
-logical_id = "2ed34045-cad7-47ac-89d6-fdeb489f6e3d"
-
-[[outputs]]
 id = "qTFGLqKIcc3xWRYWlt3RT"
 uri = "file://attached_assets/generated_images/personal.png"
 type = "image"
