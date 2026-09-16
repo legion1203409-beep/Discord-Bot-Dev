@@ -27,7 +27,7 @@ import {
 import { randomUUID } from "node:crypto";
 import { logger } from "../lib/logger";
 import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./alert";
-import { startGuildScheduler, stopGuildScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, recordGuildActivity, getGuildClaimedChests, getGuildActiveBossMap, isGuildGameStopped, checkBossEligibility, checkBossHitCooldown, BOSS_HIT_COOLDOWN_MS, persistBossState, guildStates, isGuildActive, ACTIVITY_WINDOW_MINUTES, CHEST_MSG_MILESTONE, type BossState, type BossPlayerStats } from "./scheduler";
+import { startGuildScheduler, stopGuildScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, recordGuildActivity, getGuildClaimedChests, getGuildActiveBossMap, isGuildGameStopped, checkBossEligibility, checkBossHitCooldown, BOSS_HIT_COOLDOWN_MS, persistBossState, publishLeaderboardResult, guildStates, isGuildActive, ACTIVITY_WINDOW_MINUTES, CHEST_MSG_MILESTONE, type BossState, type BossPlayerStats } from "./scheduler";
 import { getChannel, getAllChannels, setChannel, initChannelConfig, hasAnyChannelConfigured, EVENT_LABELS, type EventType } from "./channel-config";
 import {
   recordMessage,
@@ -3704,22 +3704,23 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
       const topCh = bossTopId ? await interaction.client.channels.fetch(bossTopId).catch(() => null) : null;
       if (topCh instanceof TextChannel && !isTicketCategoryParentId(topCh.parentId)) {
         const leaderboard = buildBossLeaderboard(activeBoss, activeBoss.damageBy, activeBoss.participants, activeBoss.playerNames, activeBoss.playerHp, activeBoss.hitsBy);
-        const lbMsg = await topCh.send({ embeds: [leaderboard] }).catch(() => null);
-        if (lbMsg) setTimeout(() => void lbMsg.delete().catch(() => {}), BOSS_RESULT_TTL_MS);
+        const lootSections: string[] = [];
         if (eventKeyDrops.size > 0) {
           const lines = [...eventKeyDrops.entries()].map(
             ([id, kt]) => `${KEY_EMOJI[kt] ?? "🗝️"} <@${id}> a găsit o **${KEY_LABEL[kt] ?? "Cheie"}**!`,
           );
-          const keyMsg = await topCh.send({ content: `🗝️ **Prada ascunsă a Dragonului:**\n${lines.join("\n")}` }).catch(() => null);
-          if (keyMsg) setTimeout(() => void keyMsg.delete().catch(() => {}), BOSS_RESULT_TTL_MS);
+          lootSections.push(`🗝️ **Prada ascunsă a Dragonului:**\n${lines.join("\n")}`);
         }
         if (bossEquipmentDrops.size > 0) {
           const lines = [...bossEquipmentDrops.entries()].map(
             ([id, key]) => `✨ <@${id}> a primit **${EQUIPMENT[key].label}**!`,
           );
-          const equipmentMsg = await topCh.send({ content: `⚒️ **Prada de echipament a Dragonului:**\n${lines.join("\n")}` }).catch(() => null);
-          if (equipmentMsg) setTimeout(() => void equipmentMsg.delete().catch(() => {}), BOSS_RESULT_TTL_MS);
+          lootSections.push(`⚒️ **Prada de echipament a Dragonului:**\n${lines.join("\n")}`);
         }
+        await publishLeaderboardResult(interaction.client, guildId, "bossTop", {
+          embeds: [leaderboard],
+          content: lootSections.join("\n\n"),
+        });
       }
     } catch { /* ignore */ }
 

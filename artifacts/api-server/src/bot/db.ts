@@ -1727,6 +1727,40 @@ function guildKey(guildId: string, key: string): string {
   return `${guildId}:${key}`;
 }
 
+export type LeaderboardFeedType = "eventTop" | "bossTop";
+
+function leaderboardMessageKey(guildId: string, type: LeaderboardFeedType): string {
+  return guildKey(guildId, `leaderboard_message:${type}`);
+}
+
+export async function loadLeaderboardMessageId(
+  guildId: string,
+  type: LeaderboardFeedType,
+): Promise<string | null> {
+  await ensureBotStateTable();
+  const result = await pool.query<{ value: string }>(
+    "SELECT value FROM bot_state WHERE key = $1",
+    [leaderboardMessageKey(guildId, type)],
+  );
+  const value = result.rows[0]?.value?.trim();
+  return value || null;
+}
+
+export async function saveLeaderboardMessageId(
+  guildId: string,
+  type: LeaderboardFeedType,
+  messageId: string,
+): Promise<void> {
+  await ensureBotStateTable();
+  await pool.query(
+    `INSERT INTO bot_state (key, value, updated_at)
+     VALUES ($1, $2, now())
+     ON CONFLICT (key) DO UPDATE
+     SET value = EXCLUDED.value, updated_at = now()`,
+    [leaderboardMessageKey(guildId, type), messageId],
+  );
+}
+
 const ORACLE_COUNCIL_KEY = "oracle_council";
 const ORACLE_COUNCIL_DECREE_KEY = "oracle_council_decree";
 

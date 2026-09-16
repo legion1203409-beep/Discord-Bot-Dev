@@ -1,11 +1,11 @@
-import { Client, TextChannel, ActionRowBuilder, ButtonBuilder, ButtonStyle, type Message } from "discord.js";
+import { Client, TextChannel, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, type Message } from "discord.js";
 import { logger } from "../lib/logger";
 import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, rollChest, oracleMessage, buildFinalBossEmbed, buildBossLeaderboard, buildEventLeaderboard, buildLockedChestEmbed, buildKeyChestEmbed, spawnLockedChest, rollKeyChestType, computeBossRewards, prestigeGoldMult, finalBossRow, bossMaxHp, veteranRank, veteranMult, CHEST_RARITIES, type ChestVariant, type BossRarity, type BossPlayerStats } from "./survival";
 import { triggerRandomBattleEvent } from "./combat-events";
 import { getRewardMultipliers } from "./status-effects";
 import { startOracle, setOracleExtatic } from "./oracle";
 import { rehydrateCouncilDecree, startOracleCouncilScheduler, stopOracleCouncilScheduler } from "./oracle-council";
-import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle, addPlayerReputation, addPlayerGold, addPlayerXp, getPrestigeLevels, persistActiveBoss, loadActiveBossRowsByGuild, deleteActiveBoss, createActiveBossesTableIfNotExists, persistActiveChest, loadActiveChest, clearActiveChest, getFinalBossKills, KEYCHEST_DBKEY, LOCKCHEST_DBKEY, runMultiGuildMigrations } from "./db";
+import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle, addPlayerReputation, addPlayerGold, addPlayerXp, getPrestigeLevels, persistActiveBoss, loadActiveBossRowsByGuild, deleteActiveBoss, createActiveBossesTableIfNotExists, persistActiveChest, loadActiveChest, clearActiveChest, getFinalBossKills, KEYCHEST_DBKEY, LOCKCHEST_DBKEY, runMultiGuildMigrations, loadLeaderboardMessageId, saveLeaderboardMessageId, type LeaderboardFeedType } from "./db";
 import { getChannel, initChannelConfig, hasAnyChannelConfigured, type EventType } from "./channel-config";
 import { isTicketCategoryParentId } from "./ticket-categories";
 import {
@@ -21,7 +21,6 @@ import { setTributeGamePaused, startTributeScheduler, stopTributeScheduler } fro
 const APPLICATION_ID = "1472675543777280071";
 export const EVENT_DURATION_MS = 60 * 60 * 1000;
 const FINAL_BOSS_ACTIVE_MS = 30 * 60 * 1000;
-const BOSS_RESULT_TTL_MS = 10 * 60 * 1000;
 const MIN_COOLDOWN_MS = 10 * 60 * 1000;
 const MAX_COOLDOWN_MS = 2 * 60 * 60 * 1000;
 
@@ -619,9 +618,10 @@ async function expireOldEvents(client: Client, guildId: string) {
 
           const topCh = await fetchChannel(client, "eventTop", guildId);
           if (topCh instanceof TextChannel) {
-            await topCh.send({ embeds: [cronica] }).catch(() => null);
             const leaderboard = buildEventLeaderboard(participants);
-            await topCh.send({ embeds: [leaderboard] }).catch(() => null);
+            await publishLeaderboardResult(client, guildId, "eventTop", {
+              embeds: [cronica, leaderboard],
+            });
           }
 
           const ranked = [...participants].sort((a, b) => {
@@ -1049,6 +1049,97 @@ async function fetchChannel(client: Client, type: EventType, guildId: string): P
   return ch;
 }
 
+const leaderboardPublishLocks = new Map<string, Promise<Message | null>>();
+
+function isManagedLeaderboardMessage(message: Message, type: LeaderboardFeedType): boolean {
+  const titles = message.embeds
+    .map((embed) => embed.title ?? "")
+    .filter(Boolean);
+  if (type === "eventTop") {
+    return titles.some((title) =>
+      title.includes("CLASAMENT EVENIMENT") ||
+      title.includes("CRONICA SUPRAVIEȚUITORILOR"),
+    );
+  }
+  return (
+    titles.some((title) => title.includes("CLASAMENT FINAL")) ||
+    message.content.includes("Prada ascunsă a Dragonului") ||
+    message.content.includes("Prada de echipament a Dragonului")
+  );
+}
+
+/**
+ * Keeps one reusable result message in each leaderboard channel. On first use
+ * after this change, it adopts the newest existing result message when possible;
+ * subsequent event/boss results edit that message instead of adding more posts.
+ */
+export async function publishLeaderboardResult(
+  client: Client,
+  guildId: string,
+  type: LeaderboardFeedType,
+  payload: { embeds: EmbedBuilder[]; content?: string },
+): Promise<Message | null> {
+  const lockKey = `${guildId}:${type}`;
+  const previous = leaderboardPublishLocks.get(lockKey) ?? Promise.resolve(null);
+  const current = previous
+    .catch(() => null)
+    .then(async () => {
+      const channel = await fetchChannel(client, type, guildId);
+      if (!(channel instanceof TextChannel)) return null;
+
+      const savedId = await loadLeaderboardMessageId(guildId, type).catch((err) => {
+        logger.warn({ err, guildId, type }, "Could not load persistent leaderboard message");
+        return null;
+      });
+      let message = savedId
+        ? await channel.messages.fetch(savedId).catch(() => null)
+        : null;
+
+      if (!message) {
+        const recent = await channel.messages.fetch({ limit: 100 }).catch(() => null);
+        message = recent?.find((candidate) =>
+          candidate.author.id === client.user?.id &&
+          isManagedLeaderboardMessage(candidate, type),
+        ) ?? null;
+      }
+
+      const messagePayload = {
+        content: payload.content?.trim() || null,
+        embeds: payload.embeds,
+        components: [],
+        allowedMentions: { parse: [] as never[] },
+      };
+
+      if (message) {
+        const edited = await message.edit(messagePayload).catch((err) => {
+          logger.warn({ err, guildId, type, messageId: message?.id }, "Could not edit leaderboard message");
+          return null;
+        });
+        if (edited) {
+          await saveLeaderboardMessageId(guildId, type, edited.id);
+          return edited;
+        }
+      }
+
+      const created = await channel.send({
+        content: payload.content?.trim() || undefined,
+        embeds: payload.embeds,
+        allowedMentions: { parse: [] },
+      });
+      await saveLeaderboardMessageId(guildId, type, created.id);
+      return created;
+    });
+
+  leaderboardPublishLocks.set(lockKey, current);
+  try {
+    return await current;
+  } finally {
+    if (leaderboardPublishLocks.get(lockKey) === current) {
+      leaderboardPublishLocks.delete(lockKey);
+    }
+  }
+}
+
 // ─── Flee resolution ──────────────────────────────────────────────────────────
 
 async function runFleeResolution(boss: BossState, client: Client): Promise<void> {
@@ -1074,8 +1165,9 @@ async function runFleeResolution(boss: BossState, client: Client): Promise<void>
     const topCh = await fetchChannel(client, "bossTop", boss.guildId);
     if (topCh instanceof TextChannel) {
       const leaderboard = buildBossLeaderboard(boss, boss.damageBy, boss.participants, boss.playerNames, boss.playerHp, boss.hitsBy);
-      const lbMsg = await topCh.send({ embeds: [leaderboard] }).catch(() => null);
-      if (lbMsg) setTimeout(() => void lbMsg.delete().catch(() => {}), BOSS_RESULT_TTL_MS);
+      await publishLeaderboardResult(client, boss.guildId, "bossTop", {
+        embeds: [leaderboard],
+      });
     }
   } catch { /* ignore */ }
 }
