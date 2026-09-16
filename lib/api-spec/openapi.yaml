@@ -30,8 +30,123 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /moderation/session:
+    get:
+      operationId: moderationSession
+      tags: [moderation]
+      responses:
+        "200":
+          description: Current moderation web session
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ModerationSession" }
+  /moderation/login:
+    post:
+      operationId: moderationLogin
+      tags: [moderation]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties: { code: { type: string, pattern: "^[0-9A-Fa-f]{24}$" } }
+      responses:
+        "201":
+          description: Browser session established
+          content: { application/json: { schema: { $ref: "#/components/schemas/ModerationSession" } } }
+  /moderation/logout:
+    post:
+      operationId: moderationLogout
+      tags: [moderation]
+      responses: { "204": { description: Session revoked } }
+  /moderation/guilds/{guildId}/config:
+    parameters: [{ name: guildId, in: path, required: true, schema: { type: string } }]
+    get:
+      operationId: moderationGetConfig
+      tags: [moderation]
+      responses:
+        "200":
+          description: Guild moderation configuration and revision
+          content: { application/json: { schema: { $ref: "#/components/schemas/ModerationConfigResponse" } } }
+    put:
+      operationId: moderationPutConfig
+      tags: [moderation]
+      parameters: [{ name: If-Match, in: header, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/ModerationConfig" } } }
+      responses:
+        "200":
+          description: Saved configuration
+          content: { application/json: { schema: { $ref: "#/components/schemas/ModerationConfigResponse" } } }
+        "409": { description: Stale configuration revision }
+  /moderation/guilds/{guildId}/logs:
+    parameters: [{ name: guildId, in: path, required: true, schema: { type: string } }]
+    get:
+      operationId: moderationLogs
+      tags: [moderation]
+      responses:
+        "200":
+          description: Staff-facing enforcement logs (not owner audit)
+          content: { application/json: { schema: { $ref: "#/components/schemas/ModerationLogPage" } } }
+  /moderation/guilds/{guildId}/logs/audit:
+    parameters: [{ name: guildId, in: path, required: true, schema: { type: string } }]
+    get:
+      operationId: moderationAuditLogs
+      tags: [moderation]
+      responses:
+        "200":
+          description: Owner/settings-admin audit trail
+          content: { application/json: { schema: { $ref: "#/components/schemas/ModerationLogPage" } } }
 components:
   schemas:
+    ModerationSession:
+      type: object
+      required: [authenticated]
+      properties:
+        authenticated: { type: boolean }
+        userId: { type: string }
+        csrfToken: { type: string }
+        expiresAt: { type: string, format: date-time }
+        guilds:
+          type: array
+          items:
+            type: object
+            required: [id, name, access]
+            properties:
+              id: { type: string }
+              name: { type: string }
+              access: { type: string, enum: [staff, manager, administrator, owner] }
+    ModerationConfig:
+      type: object
+      additionalProperties: true
+      description: Validated by the server's ModerationConfigSchema; use GET response config as the write body.
+    ModerationConfigResponse:
+      type: object
+      required: [config, version]
+      properties:
+        config: { $ref: "#/components/schemas/ModerationConfig" }
+        version: { type: integer }
+        updatedAt: { type: string, format: date-time, nullable: true }
+    ModerationLog:
+      type: object
+      required: [id, guildId, eventType, detail, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        guildId: { type: string }
+        actorId: { type: string, nullable: true }
+        eventType: { type: string }
+        targetType: { type: string, nullable: true }
+        targetId: { type: string, nullable: true }
+        detail: { type: object, additionalProperties: true }
+        createdAt: { type: string, format: date-time }
+    ModerationLogPage:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/ModerationLog" } }
     HealthStatus:
       type: object
       properties:

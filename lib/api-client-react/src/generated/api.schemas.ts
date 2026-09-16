@@ -5,6 +5,58 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+export type ModerationSessionGuildsItemAccess = typeof ModerationSessionGuildsItemAccess[keyof typeof ModerationSessionGuildsItemAccess];
+
+
+export const ModerationSessionGuildsItemAccess = {
+  staff: 'staff',
+  manager: 'manager',
+  administrator: 'administrator',
+  owner: 'owner',
+} as const;
+
+export type ModerationSessionGuildsItem = {
+  id: string;
+  name: string;
+  access: ModerationSessionGuildsItemAccess;
+};
+
+export interface ModerationSession {
+  authenticated: boolean;
+  userId?: string;
+  csrfToken?: string;
+  expiresAt?: string;
+  guilds?: ModerationSessionGuildsItem[];
+}
+
+/**
+ * Validated by the server's ModerationConfigSchema; use GET response config as the write body.
+ */
+export interface ModerationConfig { [key: string]: unknown }
+
+export interface ModerationConfigResponse {
+  config: ModerationConfig;
+  version: number;
+  updatedAt?: string | null;
+}
+
+export type ModerationLogDetail = { [key: string]: unknown };
+
+export interface ModerationLog {
+  id: string;
+  guildId: string;
+  actorId?: string | null;
+  eventType: string;
+  targetType?: string | null;
+  targetId?: string | null;
+  detail: ModerationLogDetail;
+  createdAt: string;
+}
+
+export interface ModerationLogPage {
+  items: ModerationLog[];
+}
+
 /**
  * "full" when the Oracle answers every reply (MessageContent intent active); "degraded" when it only answers @mentions and ping-on replies.
  */
@@ -51,4 +103,9 @@ export interface HealthStatus {
   /** Maximum number of channel messages inspected per justice scan. Reflects the active ORACLE_JUSTICE_SCAN_LIMIT value (default 100, max 500). Read once at startup; requires a restart to change. */
   justiceScanLimit: number;
 }
+
+export type ModerationLoginBody = {
+  /** @pattern ^[0-9A-Fa-f]{24}$ */
+  code: string;
+};
 

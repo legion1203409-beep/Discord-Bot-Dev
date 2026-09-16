@@ -3,6 +3,7 @@ import express from "express";
 import path from "node:path";
 import healthRouter from "./health";
 import discordRouter from "./discord";
+import moderationRouter from "../moderation/router";
 
 const router: IRouter = Router();
 
@@ -11,5 +12,6 @@ router.use("/assets", express.static(assetsDir, { maxAge: "7d" }));
 
 router.use(healthRouter);
 router.use(discordRouter);
+router.use("/moderation", moderationRouter);
 
 export default router;

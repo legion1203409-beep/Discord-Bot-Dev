@@ -76,6 +76,9 @@ import {
   setOracleTimeoutPersistence,
   setOracleToxicityRelationshipHandler,
 } from "./oracle-guard";
+import { moderationCommands, handleModerationCommand } from "./moderation/commands";
+import { attachModeration, handleModerationMessage } from "./moderation/engine";
+import { setModerationClient } from "../moderation/auth";
 import { getRewardMultipliers, getCombatModifiers, formatActiveEffects, formatCombatEffects, rollChestEffectKind, grantRandomBlessing, grantRandomCurse, buildChestEffectMessage } from "./status-effects";
 import { SUPER_ADMIN_ID } from "./constants";
 import {
@@ -4450,20 +4453,22 @@ export async function startBot(onReady?: () => void): Promise<void> {
     return;
   }
 
-  const intents = [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildPresences,
-    GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildMessages,
-  ];
-  const wantsMessageContent =
-    process.env.ORACLE_MESSAGE_CONTENT_ENABLED === "true" && !privilegedIntentFellBack;
-  if (wantsMessageContent) {
-    intents.push(GatewayIntentBits.MessageContent);
-  } else if (process.env.ORACLE_MESSAGE_CONTENT_ENABLED === "true" && privilegedIntentFellBack) {
+  const intents = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages];
+  // GuildMembers, GuildPresences and MessageContent are all privileged. Keep the
+  // bot online when the portal toggles are absent rather than requesting any one
+  // of them unconditionally and receiving gateway 4014.
+  const privilegedGatewayEnabled = process.env.DISCORD_PRIVILEGED_INTENTS_ENABLED === "true";
+  const wantsMessageContent = process.env.ORACLE_MESSAGE_CONTENT_ENABLED === "true";
+  const requestsPrivilegedIntents = (privilegedGatewayEnabled || wantsMessageContent) && !privilegedIntentFellBack;
+  if (requestsPrivilegedIntents) {
+    if (privilegedGatewayEnabled) {
+      intents.push(GatewayIntentBits.GuildPresences, GatewayIntentBits.GuildMembers);
+    }
+    if (wantsMessageContent) intents.push(GatewayIntentBits.MessageContent);
+  } else if ((privilegedGatewayEnabled || wantsMessageContent) && privilegedIntentFellBack) {
     logger.warn(
-      "MessageContent intent was rejected (code 4014) on a prior attempt — booting WITHOUT it. " +
-        "Enable the 'Message Content Intent' toggle in the Discord Developer Portal, then restart the bot.",
+      "A privileged Discord intent was rejected (code 4014) on a prior attempt — booting WITHOUT privileged intents. " +
+        "Enable the required toggles in the Discord Developer Portal, then restart the bot.",
     );
   }
   const client = new Client({ intents });
@@ -4533,6 +4538,8 @@ export async function startBot(onReady?: () => void): Promise<void> {
   client.once(Events.ClientReady, async (c) => {
     logger.info({ tag: c.user.tag }, "✅ Discord bot online and ready");
     botClient = client;
+    setModerationClient(client);
+    attachModeration(client);
     botReadyAt = new Date();
     shardStatus = "ready";
 
@@ -4688,11 +4695,20 @@ export async function startBot(onReady?: () => void): Promise<void> {
       logger.warn({ err, guildId: message.guildId }, "Oracle clue handler failed"),
     );
     maybeNudgeGameHelp(message);
-    void handleToxicity(client, message).then((handled) => {
+    void handleModerationMessage(client, message).then((moderationHandled) => {
+      // When AutoMod actually performed an action, do not also invoke the
+      // Oracle's legacy toxicity timeout for this same message.
+      if (moderationHandled) return;
+      return handleToxicity(client, message);
+    }).then((handled) => {
       if (handled) {
         return;
       }
       void maybeReplyAsOracle(client, message);
+    }).catch((err) => {
+      // Moderation storage/config failure must not turn into a second Oracle
+      // sanction. The next message will retry after the operator resolves it.
+      logger.error({ err, guildId: message.guildId, messageId: message.id }, "Moderation message handler failed");
     });
   });
 
@@ -4853,6 +4869,18 @@ export async function startBot(onReady?: () => void): Promise<void> {
            "profetie",
           "setcanal",
           "setaliantatext",
+          "moderare",
+          "warn",
+          "mute",
+          "unmute",
+          "kick",
+          "ban",
+          "purge",
+          "slowmode",
+          "lock",
+          "unlock",
+          "nick",
+          "role",
         ].includes(interaction.commandName);
       } else if (interaction.isButton()) {
         allowedWhileStopped =
@@ -4881,6 +4909,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
     }
 
     if (interaction.isChatInputCommand()) {
+      if (await handleModerationCommand(interaction as ChatInputCommandInteraction)) return;
       if (interaction.commandName === "profil") dispatch(handleProfil(interaction));
       if (interaction.commandName === "inventar") dispatch(handleInventar(interaction));
       if (interaction.commandName === "profetie") dispatch(handleProfetie(interaction));
@@ -4960,11 +4989,11 @@ export async function startBot(onReady?: () => void): Promise<void> {
   try {
     await client.login(token);
   } catch (err) {
-    if (wantsMessageContent && isDisallowedIntentError(err)) {
+    if (requestsPrivilegedIntents && isDisallowedIntentError(err)) {
       logger.error(
         { err },
-        "Login rejected for the MessageContent intent (disallowed) — restarting WITHOUT it. " +
-          "Enable the 'Message Content Intent' toggle in the Discord Developer Portal.",
+        "Login rejected for privileged Discord intents — restarting WITHOUT all privileged intents. " +
+          "Enable the required Discord Developer Portal toggles.",
       );
       privilegedIntentFellBack = true;
       void markOracleFellBack();
@@ -4978,7 +5007,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
 
   // Register commands globally so they appear on every server
   const rest = new REST().setToken(token);
-  const body = slashCommands.map((c) => c.toJSON());
+  const body = [...slashCommands.map((c) => c.toJSON()), ...moderationCommands];
   await rest.put(Routes.applicationCommands(APPLICATION_ID), { body });
   logger.info("Commands registered globally");
 

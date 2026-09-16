@@ -6,21 +6,30 @@
  * OpenAPI spec version: 0.1.0
  */
 import {
+  useMutation,
   useQuery
 } from '@tanstack/react-query';
 import type {
+  MutationFunction,
   QueryFunction,
   QueryKey,
+  UseMutationOptions,
+  UseMutationResult,
   UseQueryOptions,
   UseQueryResult
 } from '@tanstack/react-query';
 
 import type {
-  HealthStatus
+  HealthStatus,
+  ModerationConfig,
+  ModerationConfigResponse,
+  ModerationLogPage,
+  ModerationLoginBody,
+  ModerationSession
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
-import type { ErrorType } from '../custom-fetch';
+import type { ErrorType , BodyType } from '../custom-fetch';
 
 type AwaitedInput<T> = PromiseLike<T> | T;
 
@@ -112,6 +121,483 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getHealthCheckQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getModerationSessionUrl = () => {
+
+
+
+
+  return `/api/moderation/session`
+}
+
+export const moderationSession = async ( options?: RequestInit): Promise<ModerationSession> => {
+
+  return customFetch<ModerationSession>(getModerationSessionUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getModerationSessionQueryKey = () => {
+    return [
+    `/api/moderation/session`
+    ] as const;
+    }
+
+
+export const getModerationSessionQueryOptions = <TData = Awaited<ReturnType<typeof moderationSession>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof moderationSession>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getModerationSessionQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof moderationSession>>> = ({ signal }) => moderationSession({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof moderationSession>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ModerationSessionQueryResult = NonNullable<Awaited<ReturnType<typeof moderationSession>>>
+export type ModerationSessionQueryError = ErrorType<unknown>
+
+
+
+export function useModerationSession<TData = Awaited<ReturnType<typeof moderationSession>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof moderationSession>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getModerationSessionQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getModerationLoginUrl = () => {
+
+
+
+
+  return `/api/moderation/login`
+}
+
+export const moderationLogin = async (moderationLoginBody: ModerationLoginBody, options?: RequestInit): Promise<ModerationSession> => {
+
+  return customFetch<ModerationSession>(getModerationLoginUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(moderationLoginBody)
+  }
+);}
+
+
+
+
+export const getModerationLoginMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof moderationLogin>>, TError,{data: BodyType<ModerationLoginBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof moderationLogin>>, TError,{data: BodyType<ModerationLoginBody>}, TContext> => {
+
+const mutationKey = ['moderationLogin'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof moderationLogin>>, {data: BodyType<ModerationLoginBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  moderationLogin(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ModerationLoginMutationResult = NonNullable<Awaited<ReturnType<typeof moderationLogin>>>
+    export type ModerationLoginMutationBody = BodyType<ModerationLoginBody>
+    export type ModerationLoginMutationError = ErrorType<unknown>
+
+    export const useModerationLogin = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof moderationLogin>>, TError,{data: BodyType<ModerationLoginBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof moderationLogin>>,
+        TError,
+        {data: BodyType<ModerationLoginBody>},
+        TContext
+      > => {
+      return useMutation(getModerationLoginMutationOptions(options));
+    }
+
+export const getModerationLogoutUrl = () => {
+
+
+
+
+  return `/api/moderation/logout`
+}
+
+export const moderationLogout = async ( options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getModerationLogoutUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getModerationLogoutMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof moderationLogout>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof moderationLogout>>, TError,void, TContext> => {
+
+const mutationKey = ['moderationLogout'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof moderationLogout>>, void> = () => {
+
+
+          return  moderationLogout(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ModerationLogoutMutationResult = NonNullable<Awaited<ReturnType<typeof moderationLogout>>>
+
+    export type ModerationLogoutMutationError = ErrorType<unknown>
+
+    export const useModerationLogout = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof moderationLogout>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof moderationLogout>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getModerationLogoutMutationOptions(options));
+    }
+
+export const getModerationGetConfigUrl = (guildId: string,) => {
+
+
+
+
+  return `/api/moderation/guilds/${guildId}/config`
+}
+
+export const moderationGetConfig = async (guildId: string, options?: RequestInit): Promise<ModerationConfigResponse> => {
+
+  return customFetch<ModerationConfigResponse>(getModerationGetConfigUrl(guildId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getModerationGetConfigQueryKey = (guildId: string,) => {
+    return [
+    `/api/moderation/guilds/${guildId}/config`
+    ] as const;
+    }
+
+
+export const getModerationGetConfigQueryOptions = <TData = Awaited<ReturnType<typeof moderationGetConfig>>, TError = ErrorType<unknown>>(guildId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof moderationGetConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getModerationGetConfigQueryKey(guildId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof moderationGetConfig>>> = ({ signal }) => moderationGetConfig(guildId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: guildId !== null && guildId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof moderationGetConfig>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ModerationGetConfigQueryResult = NonNullable<Awaited<ReturnType<typeof moderationGetConfig>>>
+export type ModerationGetConfigQueryError = ErrorType<unknown>
+
+
+
+export function useModerationGetConfig<TData = Awaited<ReturnType<typeof moderationGetConfig>>, TError = ErrorType<unknown>>(
+ guildId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof moderationGetConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getModerationGetConfigQueryOptions(guildId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getModerationPutConfigUrl = (guildId: string,) => {
+
+
+
+
+  return `/api/moderation/guilds/${guildId}/config`
+}
+
+export const moderationPutConfig = async (guildId: string,
+    moderationConfig: ModerationConfig, options?: RequestInit): Promise<ModerationConfigResponse> => {
+
+  return customFetch<ModerationConfigResponse>(getModerationPutConfigUrl(guildId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(moderationConfig)
+  }
+);}
+
+
+
+
+export const getModerationPutConfigMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof moderationPutConfig>>, TError,{guildId: string;data: BodyType<ModerationConfig>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof moderationPutConfig>>, TError,{guildId: string;data: BodyType<ModerationConfig>}, TContext> => {
+
+const mutationKey = ['moderationPutConfig'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof moderationPutConfig>>, {guildId: string;data: BodyType<ModerationConfig>}> = (props) => {
+          const {guildId,data} = props ?? {};
+
+          return  moderationPutConfig(guildId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ModerationPutConfigMutationResult = NonNullable<Awaited<ReturnType<typeof moderationPutConfig>>>
+    export type ModerationPutConfigMutationBody = BodyType<ModerationConfig>
+    export type ModerationPutConfigMutationError = ErrorType<void>
+
+    export const useModerationPutConfig = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof moderationPutConfig>>, TError,{guildId: string;data: BodyType<ModerationConfig>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof moderationPutConfig>>,
+        TError,
+        {guildId: string;data: BodyType<ModerationConfig>},
+        TContext
+      > => {
+      return useMutation(getModerationPutConfigMutationOptions(options));
+    }
+
+export const getModerationLogsUrl = (guildId: string,) => {
+
+
+
+
+  return `/api/moderation/guilds/${guildId}/logs`
+}
+
+export const moderationLogs = async (guildId: string, options?: RequestInit): Promise<ModerationLogPage> => {
+
+  return customFetch<ModerationLogPage>(getModerationLogsUrl(guildId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getModerationLogsQueryKey = (guildId: string,) => {
+    return [
+    `/api/moderation/guilds/${guildId}/logs`
+    ] as const;
+    }
+
+
+export const getModerationLogsQueryOptions = <TData = Awaited<ReturnType<typeof moderationLogs>>, TError = ErrorType<unknown>>(guildId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof moderationLogs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getModerationLogsQueryKey(guildId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof moderationLogs>>> = ({ signal }) => moderationLogs(guildId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: guildId !== null && guildId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof moderationLogs>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ModerationLogsQueryResult = NonNullable<Awaited<ReturnType<typeof moderationLogs>>>
+export type ModerationLogsQueryError = ErrorType<unknown>
+
+
+
+export function useModerationLogs<TData = Awaited<ReturnType<typeof moderationLogs>>, TError = ErrorType<unknown>>(
+ guildId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof moderationLogs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getModerationLogsQueryOptions(guildId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getModerationAuditLogsUrl = (guildId: string,) => {
+
+
+
+
+  return `/api/moderation/guilds/${guildId}/logs/audit`
+}
+
+export const moderationAuditLogs = async (guildId: string, options?: RequestInit): Promise<ModerationLogPage> => {
+
+  return customFetch<ModerationLogPage>(getModerationAuditLogsUrl(guildId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getModerationAuditLogsQueryKey = (guildId: string,) => {
+    return [
+    `/api/moderation/guilds/${guildId}/logs/audit`
+    ] as const;
+    }
+
+
+export const getModerationAuditLogsQueryOptions = <TData = Awaited<ReturnType<typeof moderationAuditLogs>>, TError = ErrorType<unknown>>(guildId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof moderationAuditLogs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getModerationAuditLogsQueryKey(guildId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof moderationAuditLogs>>> = ({ signal }) => moderationAuditLogs(guildId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: guildId !== null && guildId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof moderationAuditLogs>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ModerationAuditLogsQueryResult = NonNullable<Awaited<ReturnType<typeof moderationAuditLogs>>>
+export type ModerationAuditLogsQueryError = ErrorType<unknown>
+
+
+
+export function useModerationAuditLogs<TData = Awaited<ReturnType<typeof moderationAuditLogs>>, TError = ErrorType<unknown>>(
+ guildId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof moderationAuditLogs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getModerationAuditLogsQueryOptions(guildId,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

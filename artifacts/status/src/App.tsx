@@ -1,8 +1,18 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { Switch, Route, useLocation } from "wouter";
 import "./index.css";
 import { computeAlertCard } from "./lib/alert-card";
 import { trackEvent } from "./lib/analytics";
 import dragonLogo from "@assets/277cc950-a62b-11f1-aca9-6f5a63b2ac37_1788465450616.png";
+import { ModerationLayout } from "./pages/moderation/ModerationLayout";
+import { DashboardOverview } from "./pages/moderation/Dashboard";
+import { AutoModPage } from "./pages/moderation/AutoMod";
+import { CasesPage } from "./pages/moderation/Cases";
+import { CommandsPage } from "./pages/moderation/Commands";
+import { AuditPage } from "./pages/moderation/Audit";
+import { SettingsPage } from "./pages/moderation/Settings";
+import { ProtectionPage } from "./pages/moderation/Protection";
+import { PoliciesPage } from "./pages/moderation/Policies";
 
 const DISCORD_INVITE = "https://discord.gg/JNYsGeMhzm";
 const API_BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
@@ -264,8 +274,50 @@ function OperatorHealthPage() {
   return <div className="ops-page"><div className="ops-panel"><header className="ops-head"><a className="ops-back" href="#">← Înapoi la pagina principală</a><h1 className="ops-title"><Icon name="mark" size={22} /> Starea operatorului</h1><p className="ops-sub">{health === null ? "Nu se poate contacta /api/healthz." : "Date live · reîmprospătare la 15 secunde"}</p></header><div className="ops-grid"><div className={`ops-card ops-card--${botTone}`}><span className="ops-card-label">Bot Discord</span><span className="ops-card-value"><span className="ops-dot" />{botLabel}</span></div><div className="ops-card"><span className="ops-card-label">Shard</span><span className="ops-card-value">{health?.shardStatus ?? "—"}</span></div><div className="ops-card"><span className="ops-card-label">Uptime bot</span><span className="ops-card-value">{health ? formatUptime(health.botUptime) : "…"}</span></div><div className={`ops-card ops-card--${replyTone}`}><span className="ops-card-label">Mod răspuns</span><span className="ops-card-value"><span className="ops-dot" />{replyLabel}</span><span className="ops-card-detail">{replyDetail}</span></div><div className={`ops-card ops-card--${alertTone}`}><span className="ops-card-label">Alerte push</span><span className="ops-card-value"><span className="ops-dot" />{alertLabel}</span><span className="ops-card-detail">{alertDetail}</span></div></div><footer className="ops-foot"><a href={`${API_BASE}/api/healthz`} target="_blank" rel="noopener noreferrer">Vezi JSON brut</a><a href="#">Pagina principală →</a></footer></div></div>;
 }
 
-export default function App() {
+function LandingApp() {
   const hash = window.location.hash;
   if (hash === "#ops" || hash === "#status") return <OperatorHealthPage />;
   return <LandingPage />;
+}
+
+function ModerationApp() {
+  return (
+    <ModerationLayout>
+      <Switch>
+        <Route path="/" component={DashboardOverview} />
+        <Route path="/automod" component={AutoModPage} />
+        <Route path="/protectie" component={ProtectionPage} />
+        <Route path="/politici" component={PoliciesPage} />
+        <Route path="/comenzi" component={CommandsPage} />
+        <Route path="/cazuri" component={CasesPage} />
+        <Route path="/audit" component={AuditPage} />
+        <Route path="/config" component={SettingsPage} />
+        <Route component={() => <div className="text-muted-foreground p-8 text-center border border-dashed border-border rounded-xl">Această secțiune este în lucru.</div>} />
+      </Switch>
+    </ModerationLayout>
+  );
+}
+
+function NotFound() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-void text-paper">
+      <div className="text-center">
+        <h1 className="text-4xl font-display text-ember-light mb-4">404</h1>
+        <p>Poarta a fost închisă.</p>
+        <a href="/" className="mt-6 inline-block text-gold underline">Întoarce-te în regat</a>
+      </div>
+    </div>
+  );
+}
+
+export default function App() {
+  return (
+    <Switch>
+      <Route path="/" component={LandingApp} />
+      <Route path="/moderare" nest>
+        <ModerationApp />
+      </Route>
+      <Route component={NotFound} />
+    </Switch>
+  );
 }

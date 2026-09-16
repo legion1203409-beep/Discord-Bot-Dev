@@ -28,3 +28,103 @@ export const HealthCheckResponse = zod.object({
 })
 
 
+export const ModerationSessionResponse = zod.object({
+  "authenticated": zod.boolean(),
+  "userId": zod.string().optional(),
+  "csrfToken": zod.string().optional(),
+  "expiresAt": zod.coerce.date().optional(),
+  "guilds": zod.array(zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "access": zod.enum(['staff', 'manager', 'administrator', 'owner'])
+})).optional()
+})
+
+
+export const moderationLoginBodyCodeRegExp = new RegExp('^[0-9A-Fa-f]{24}$');
+
+
+export const ModerationLoginBody = zod.object({
+  "code": zod.string().regex(moderationLoginBodyCodeRegExp)
+})
+
+export const ModerationLoginResponse = zod.object({
+  "authenticated": zod.boolean(),
+  "userId": zod.string().optional(),
+  "csrfToken": zod.string().optional(),
+  "expiresAt": zod.coerce.date().optional(),
+  "guilds": zod.array(zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "access": zod.enum(['staff', 'manager', 'administrator', 'owner'])
+})).optional()
+})
+
+
+export const ModerationLogoutResponse = zod.void()
+
+
+export const ModerationGetConfigParams = zod.object({
+  "guildId": zod.coerce.string()
+})
+
+export const ModerationGetConfigResponse = zod.object({
+  "config": zod.record(zod.string(), zod.unknown()).describe('Validated by the server\'s ModerationConfigSchema; use GET response config as the write body.'),
+  "version": zod.number(),
+  "updatedAt": zod.coerce.date().nullish()
+})
+
+
+export const ModerationPutConfigParams = zod.object({
+  "guildId": zod.coerce.string()
+})
+
+export const ModerationPutConfigHeader = zod.object({
+  "If-Match": zod.string()
+})
+
+export const ModerationPutConfigBody = zod.record(zod.string(), zod.unknown()).describe('Validated by the server\'s ModerationConfigSchema; use GET response config as the write body.')
+
+export const ModerationPutConfigResponse = zod.object({
+  "config": zod.record(zod.string(), zod.unknown()).describe('Validated by the server\'s ModerationConfigSchema; use GET response config as the write body.'),
+  "version": zod.number(),
+  "updatedAt": zod.coerce.date().nullish()
+})
+
+
+export const ModerationLogsParams = zod.object({
+  "guildId": zod.coerce.string()
+})
+
+export const ModerationLogsResponse = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.string().uuid(),
+  "guildId": zod.string(),
+  "actorId": zod.string().nullish(),
+  "eventType": zod.string(),
+  "targetType": zod.string().nullish(),
+  "targetId": zod.string().nullish(),
+  "detail": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+export const ModerationAuditLogsParams = zod.object({
+  "guildId": zod.coerce.string()
+})
+
+export const ModerationAuditLogsResponse = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.string().uuid(),
+  "guildId": zod.string(),
+  "actorId": zod.string().nullish(),
+  "eventType": zod.string(),
+  "targetType": zod.string().nullish(),
+  "targetId": zod.string().nullish(),
+  "detail": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+

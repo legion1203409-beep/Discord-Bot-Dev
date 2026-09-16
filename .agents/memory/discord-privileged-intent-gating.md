@@ -6,9 +6,9 @@ description: Why MessageContent (and other privileged gateway intents) must be g
 # Privileged gateway intent gating
 
 Always request only the non-privileged intents the bot needs unconditionally
-(e.g. `Guilds`, `GuildPresences`, `GuildMembers`, `GuildMessages`). Gate any
-**privileged** intent — most notably `MessageContent` — behind an explicit env
-flag that defaults to OFF.
+(e.g. `Guilds`, `GuildMessages`). `GuildMembers`, `GuildPresences`, and
+`MessageContent` are all **privileged** intents: gate each behind an explicit
+opt-in and include all three in the disallowed-intent recovery path.
 
 **Why:** If the bot requests a privileged intent that is NOT toggled on in the
 Discord Developer Portal, the gateway closes the connection with a fatal code
