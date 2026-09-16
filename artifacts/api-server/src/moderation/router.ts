@@ -25,6 +25,7 @@ import {
   fetchDiscordOAuthIdentity,
   isDiscordOAuthConfigured,
 } from "./oauth";
+import type { DiscordOAuthFailureStage } from "./oauth";
 import { moderationStore } from "./store";
 import { syncNativeAutoMod } from "../bot/native-automod";
 import { logger } from "../lib/logger";
@@ -78,6 +79,23 @@ function asyncRoute(handler: (req: AuthenticatedRequest, res: Response) => Promi
 
 function parse<T extends z.ZodTypeAny>(schema: T, value: unknown): z.infer<T> {
   return schema.parse(value);
+}
+
+function discordOAuthDetails(error: unknown): { stage: DiscordOAuthFailureStage; status?: number } | null {
+  if (!error || typeof error !== "object") return null;
+  const value = error as { stage?: unknown; status?: unknown };
+  if (
+    value.stage !== "token_exchange" &&
+    value.stage !== "token_response" &&
+    value.stage !== "oauth_api" &&
+    value.stage !== "oauth_response"
+  ) {
+    return null;
+  }
+  return {
+    stage: value.stage,
+    ...(typeof value.status === "number" ? { status: value.status } : {}),
+  };
 }
 
 function expectedRevision(req: AuthenticatedRequest): number {
@@ -200,25 +218,36 @@ router.get("/oauth/discord/callback", asyncRoute(async (req, res) => {
     return;
   }
 
+  let failureStage: "token_exchange" | "identity" | "guild_access" | "session" = "token_exchange";
   try {
     const accessToken = await exchangeDiscordOAuthCode(code);
+    failureStage = "identity";
     const identity = await fetchDiscordOAuthIdentity(accessToken);
     // The OAuth guild list is only a candidate set.  listAccessibleGuilds
     // intersects it with bot membership and then force-fetches current member
     // permissions, so a forged OAuth permission field cannot grant access.
+    failureStage = "guild_access";
     const guilds = await listAccessibleGuilds(identity.id, identity.guilds);
     if (!guilds.length) {
       oauthFailure(res, "no_eligible_guild");
       return;
     }
+    failureStage = "session";
     const { token, session } = await createModerationSession(identity.id);
     await revokeRequestSessionIfPresent(req);
     setSessionCookie(res, token, session.expiresAt);
     res.redirect("/moderare");
-  } catch {
+  } catch (error) {
     // Never reflect Discord's response or the authorization code in a browser
     // redirect.  OAuth tokens are held only in this stack frame and are never
     // logged or sent to the client.
+    const discordError = discordOAuthDetails(error);
+    logger.warn({
+      stage: failureStage,
+      discordStage: discordError?.stage,
+      discordStatus: discordError?.status,
+      errorType: error instanceof Error ? error.name : typeof error,
+    }, "Discord moderation OAuth callback failed");
     oauthFailure(res, "oauth_failed");
   }
 }));

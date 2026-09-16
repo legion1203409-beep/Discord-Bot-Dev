@@ -59,6 +59,23 @@ export interface DiscordRestGuildSnapshot {
   roles: DiscordRestRole[];
 }
 
+export type DiscordOAuthFailureStage =
+  | "token_exchange"
+  | "token_response"
+  | "oauth_api"
+  | "oauth_response";
+
+export class DiscordOAuthError extends Error {
+  constructor(
+    message: string,
+    readonly stage: DiscordOAuthFailureStage,
+    readonly status?: number,
+  ) {
+    super(message);
+    this.name = "DiscordOAuthError";
+  }
+}
+
 function configuredRedirectUri(value: string | undefined): string | null {
   if (!value) return null;
   const trimmed = value.trim();
@@ -212,11 +229,15 @@ export async function exchangeDiscordOAuthCode(code: string): Promise<string> {
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body,
   });
-  if (!response.ok) throw new Error("Discord OAuth token exchange failed");
+  if (!response.ok) throw new DiscordOAuthError("Discord OAuth token exchange failed", "token_exchange", response.status);
   const payload: unknown = await response.json().catch(() => null);
-  if (!payload || typeof payload !== "object") throw new Error("Discord OAuth token response was invalid");
+  if (!payload || typeof payload !== "object") {
+    throw new DiscordOAuthError("Discord OAuth token response was invalid", "token_response", response.status);
+  }
   const accessToken = (payload as { access_token?: unknown }).access_token;
-  if (typeof accessToken !== "string" || !accessToken) throw new Error("Discord OAuth token response was invalid");
+  if (typeof accessToken !== "string" || !accessToken) {
+    throw new DiscordOAuthError("Discord OAuth token response was invalid", "token_response", response.status);
+  }
   return accessToken;
 }
 
@@ -224,8 +245,12 @@ async function fetchDiscordOAuthJson<T>(path: string, accessToken: string): Prom
   const response = await fetch(`${DISCORD_API_BASE}${path}`, {
     headers: { authorization: `Bearer ${accessToken}` },
   });
-  if (!response.ok) throw new Error("Discord OAuth API request failed");
-  return await response.json() as T;
+  if (!response.ok) throw new DiscordOAuthError("Discord OAuth API request failed", "oauth_api", response.status);
+  try {
+    return await response.json() as T;
+  } catch {
+    throw new DiscordOAuthError("Discord OAuth API response was invalid", "oauth_response", response.status);
+  }
 }
 
 function parseIdentity(payload: unknown): string {
