@@ -124,8 +124,8 @@ export function SettingsPage() {
       </div>
 
       {capabilities && (!capabilities.messageContent || !capabilities.guildMembers) && (
-        <div className="flex gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
-          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+          <div className="flex gap-3 rounded-xl border border-primary/40 bg-primary/10 p-4 text-sm">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
           <div>
             <p className="font-medium">Capabilități Discord lipsă</p>
             {!capabilities.messageContent && <p className="text-muted-foreground">Intentul privilegiat <strong>Message Content</strong> este dezactivat: filtrele de conținut, anti-flood și moderarea AI nu pot analiza mesajele.</p>}
@@ -135,7 +135,7 @@ export function SettingsPage() {
         </div>
       )}
       {metadataError && (
-        <div role="alert" className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-700">
+        <div role="alert" className="rounded-xl border border-primary/40 bg-primary/10 p-4 text-sm text-primary">
           Metadatele Discord nu au putut fi încărcate ({metadataError.message}). Câmpurile complete de mai jos păstrează fallback-ul pentru ID-uri introduse manual.
         </div>
       )}
@@ -155,7 +155,7 @@ export function SettingsPage() {
         </div>
       )}
       {saveSuccess && (
-        <div role="status" className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-4 text-sm text-emerald-700">
+        <div role="status" className="rounded-xl border border-primary/40 bg-primary/10 p-4 text-sm text-primary">
           Configurație salvată. Versiunea ETag a fost actualizată.
         </div>
       )}

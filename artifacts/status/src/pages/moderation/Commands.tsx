@@ -150,15 +150,15 @@ export function CommandsPage() {
         <p className="text-muted-foreground">Execută comenzi de moderare direct din consolă, ocolind Discord-ul.</p>
       </div>
 
-      <div className="bg-destructive/10 border border-destructive/20 text-destructive p-4 rounded-xl flex gap-3">
+      <div className="bg-primary/10 border border-primary/30 text-primary p-4 rounded-xl flex gap-3">
         <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
         <div className="text-sm">
-          <strong>Atenție!</strong> Orice acțiune executată aici va fi aplicată instantaneu pe serverul Discord selectat.
+          <strong className="text-foreground">Atenție!</strong> Orice acțiune executată aici va fi aplicată instantaneu pe serverul Discord selectat.
           Toate comenzile sunt înregistrate în sistemul de audit.
         </div>
       </div>
       {metadataError && (
-        <div role="alert" className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-700">
+          <div role="alert" className="rounded-xl border border-primary/40 bg-primary/10 p-4 text-sm text-primary">
           Metadatele Discord nu au putut fi încărcate ({metadataError.message}). Poți continua cu ID-uri introduse manual.
         </div>
       )}
@@ -173,7 +173,7 @@ export function CommandsPage() {
         </div>
       )}
       {lastResult !== null && (
-        <div role="status" data-testid="manual-action-result" className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-4 text-sm">
+        <div role="status" data-testid="manual-action-result" className="rounded-xl border border-primary/40 bg-primary/10 p-4 text-sm">
           <strong>Rezultatul acțiunii</strong>
           <pre className="mt-2 max-w-full overflow-auto whitespace-pre-wrap font-mono text-xs">{JSON.stringify(lastResult, null, 2)}</pre>
         </div>

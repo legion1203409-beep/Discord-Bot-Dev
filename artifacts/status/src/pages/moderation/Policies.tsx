@@ -72,7 +72,7 @@ export function PoliciesPage() {
         {/* Escalation */}
         <div className="bg-card border border-border p-6 rounded-xl space-y-4">
           <div className="flex items-center gap-2 border-b border-border pb-3">
-            <ArrowUpRight className="w-5 h-5 text-amber-500" />
+            <ArrowUpRight className="w-5 h-5 text-primary" />
             <h3 className="font-medium">Escaladare Automată</h3>
           </div>
           
@@ -146,7 +146,7 @@ export function PoliciesPage() {
         {/* Roles Policy */}
         <div className="bg-card border border-border p-6 rounded-xl space-y-4">
           <div className="flex items-center gap-2 border-b border-border pb-3">
-            <Users className="w-5 h-5 text-blue-500" />
+            <Users className="w-5 h-5 text-primary" />
             <h3 className="font-medium">Politici pe Roluri</h3>
           </div>
           

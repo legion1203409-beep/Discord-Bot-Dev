@@ -1,31 +1,31 @@
 .mod-shell, .mod-shell.dark {
-  --background: 230 15% 7%;
-  --foreground: 36 26% 89%;
+  --background: 0 18% 4%;
+  --foreground: 30 22% 91%;
   
-  --card: 230 15% 10%;
-  --card-foreground: 36 26% 89%;
+  --card: 0 20% 8%;
+  --card-foreground: 30 22% 91%;
   
-  --popover: 230 15% 10%;
-  --popover-foreground: 36 26% 89%;
+  --popover: 0 20% 11%;
+  --popover-foreground: 30 22% 91%;
   
-  --primary: 38 40% 60%;
-  --primary-foreground: 230 15% 7%;
+  --primary: 356 58% 57%;
+  --primary-foreground: 30 22% 96%;
   
-  --secondary: 230 15% 14%;
-  --secondary-foreground: 36 26% 89%;
+  --secondary: 0 17% 13%;
+  --secondary-foreground: 30 22% 91%;
   
-  --muted: 230 15% 14%;
-  --muted-foreground: 28 10% 55%;
+  --muted: 0 17% 13%;
+  --muted-foreground: 18 11% 59%;
   
-  --accent: 38 40% 60%;
-  --accent-foreground: 230 15% 7%;
+  --accent: 4 57% 48%;
+  --accent-foreground: 30 22% 96%;
   
-  --destructive: 12 65% 54%;
-  --destructive-foreground: 36 26% 89%;
+  --destructive: 3 68% 55%;
+  --destructive-foreground: 30 22% 96%;
   
-  --border: 38 20% 20%;
-  --input: 38 20% 20%;
-  --ring: 38 40% 60%;
+  --border: 0 17% 21%;
+  --input: 0 18% 24%;
+  --ring: 356 58% 57%;
   
   --display: "Cormorant Garamond", Georgia, serif;
   --mono: "DM Mono", monospace;
@@ -33,10 +33,35 @@
 }
 
 .mod-shell {
+  position: relative;
+  isolation: isolate;
   background-color: hsl(var(--background));
   color: hsl(var(--foreground));
   min-height: 100dvh;
   font-family: var(--body);
+}
+
+.mod-shell::before {
+  position: fixed;
+  z-index: -2;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  background:
+    radial-gradient(circle at 92% 4%, hsl(356 62% 30% / .2), transparent 28rem),
+    radial-gradient(circle at 9% 88%, hsl(4 57% 28% / .12), transparent 26rem),
+    linear-gradient(125deg, transparent 0 48%, hsl(356 58% 57% / .035) 48.1%, transparent 48.3%);
+}
+
+.mod-shell::after {
+  position: fixed;
+  z-index: 40;
+  inset: 0;
+  pointer-events: none;
+  opacity: .035;
+  content: "";
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.78' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.8'/%3E%3C/svg%3E");
+  mix-blend-mode: soft-light;
 }
 
 .font-display { font-family: var(--display); }
@@ -97,5 +122,114 @@
 }
 
 .mod-login-bg {
-  background: radial-gradient(circle at center, hsl(var(--secondary)), hsl(var(--background)));
+  background:
+    radial-gradient(circle at 50% 42%, hsl(356 42% 19% / .58), transparent 24rem),
+    linear-gradient(135deg, hsl(var(--background)) 0 52%, hsl(4 27% 10%) 100%);
+}
+
+/* The operator console is intentionally denser than the public site: ember
+   highlights, near-black panels, and a thin-grid HUD make state legible
+   without turning the interface into a game overlay. */
+.mod-sidebar {
+  background: linear-gradient(180deg, hsl(0 20% 9% / .99), hsl(0 18% 4% / .99));
+  box-shadow: 20px 0 60px hsl(0 40% 2% / .34);
+}
+
+.mod-topbar {
+  background: hsl(0 20% 8% / .78);
+  box-shadow: 0 1px 0 hsl(var(--border) / .55), 0 14px 36px hsl(0 40% 2% / .24);
+}
+
+.mod-page {
+  background-image: linear-gradient(hsl(356 25% 64% / .028) 1px, transparent 1px), linear-gradient(90deg, hsl(356 25% 64% / .028) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
+
+.mod-brand-mark {
+  position: relative;
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px solid hsl(var(--primary) / .65);
+  border-radius: 11px;
+  color: hsl(var(--primary));
+  background: linear-gradient(145deg, hsl(356 54% 27% / .68), hsl(0 20% 12% / .9));
+  box-shadow: inset 0 1px hsl(30 30% 92% / .12), 0 8px 24px hsl(356 58% 20% / .24);
+}
+
+.mod-eyebrow {
+  color: hsl(var(--primary));
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+}
+
+.mod-heading {
+  font-family: var(--display);
+  font-weight: 600;
+  letter-spacing: -.035em;
+}
+
+.mod-card {
+  border-radius: 14px;
+  background: linear-gradient(145deg, hsl(0 20% 10% / .98), hsl(0 18% 6% / .98));
+  box-shadow: inset 0 1px hsl(30 30% 92% / .05), 0 14px 40px hsl(0 40% 2% / .28);
+}
+
+.mod-card:hover {
+  transform: translateY(-2px);
+  box-shadow: inset 0 1px hsl(30 30% 92% / .07), 0 18px 46px hsl(0 50% 2% / .38);
+}
+
+.mod-skeleton {
+  overflow: hidden;
+  border-radius: 8px;
+  background: linear-gradient(100deg, hsl(var(--secondary)), hsl(var(--border) / .75), hsl(var(--secondary)));
+  background-size: 220% 100%;
+  animation: mod-shimmer 1.45s ease-in-out infinite;
+}
+
+.mod-status-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: hsl(356 62% 66%);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.mod-status-line::before {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 4px hsl(356 62% 66% / .14);
+  content: "";
+}
+
+.mod-status-line[data-state="off"] { color: hsl(18 11% 59%); }
+.mod-status-line[data-state="off"]::before { box-shadow: none; opacity: .5; }
+
+.mod-mobile-nav {
+  background: hsl(0 20% 8% / .94);
+  backdrop-filter: blur(18px);
+}
+
+@keyframes mod-shimmer {
+  0% { background-position: 120% 0; }
+  100% { background-position: -120% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mod-card, .mod-sidebar-item, .mod-skeleton { animation: none; transition: none; }
+}
+
+@media (max-width: 767px) {
+  .mod-shell::after { opacity: .022; }
+  .mod-page { background-size: 34px 34px; }
 }

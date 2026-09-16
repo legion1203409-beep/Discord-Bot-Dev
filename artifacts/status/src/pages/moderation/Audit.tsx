@@ -48,7 +48,7 @@ function ReconcileDialog({ actionId, open, onOpenChange, onReconciled }: { actio
         </DialogHeader>
         
         <div className="space-y-4 py-4">
-          <div className="bg-amber-500/10 text-amber-500 border border-amber-500/20 p-3 rounded-md text-sm flex gap-3">
+          <div className="bg-primary/10 text-primary border border-primary/20 p-3 rounded-md text-sm flex gap-3">
             <AlertTriangle className="w-5 h-5 shrink-0" />
             <p><strong>Nu reîncerca acțiunea</strong> înainte să fii sigur că a eșuat. Discord ar putea să o aplice cu întârziere (ex: rate limits).</p>
           </div>
@@ -69,7 +69,7 @@ function ReconcileDialog({ actionId, open, onOpenChange, onReconciled }: { actio
             {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
             Marchează Eșuată
           </Button>
-          <Button onClick={() => handleReconcile("applied")} disabled={loading} className="bg-green-600 hover:bg-green-700 text-white">
+          <Button onClick={() => handleReconcile("applied")} disabled={loading} className="bg-primary hover:bg-primary/90 text-primary-foreground">
             {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
             Confirmă Aplicarea
           </Button>
@@ -152,7 +152,7 @@ export function AuditPage() {
 
       <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden flex flex-col">
         <div className="p-4 border-b border-border flex items-center gap-4 bg-secondary/30">
-          <ShieldCheck className="w-5 h-5 text-amber-500 shrink-0" />
+          <ShieldCheck className="w-5 h-5 text-primary shrink-0" />
           <p className="text-sm text-muted-foreground">Logurile sunt imuabile (nu pot fi șterse sau modificate).</p>
         </div>
         <div className="p-4 border-b border-border bg-background">

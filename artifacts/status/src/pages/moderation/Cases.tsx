@@ -73,8 +73,8 @@ function CaseDetailsDialog({ caseId, open, onOpenChange, onUpdated }: { caseId: 
                 <div className="text-xs text-muted-foreground mb-1">Acțiune aplicată</div>
                 <div className={`inline-flex items-center px-2 py-0.5 rounded text-sm font-bold uppercase mt-1 ${
                   details.actionType === 'ban' ? 'bg-destructive/10 text-destructive' :
-                  details.actionType === 'mute' ? 'bg-amber-500/10 text-amber-500' :
-                  'bg-blue-500/10 text-blue-500'
+                  details.actionType === 'mute' ? 'bg-primary/10 text-primary' :
+                  'bg-primary/10 text-primary'
                 }`}>
                   {details.actionType}
                 </div>
@@ -82,8 +82,8 @@ function CaseDetailsDialog({ caseId, open, onOpenChange, onUpdated }: { caseId: 
               <div className="bg-card border border-border p-4 rounded-xl">
                 <div className="text-xs text-muted-foreground mb-1">Status Curent</div>
                 <div className="flex items-center justify-between mt-1">
-                  <span className={`inline-flex items-center gap-1.5 font-medium ${details.status === 'open' ? 'text-amber-500' : 'text-muted-foreground'}`}>
-                    <span className={`w-2 h-2 rounded-full ${details.status === 'open' ? 'bg-amber-500' : 'bg-muted-foreground'}`} />
+                  <span className={`inline-flex items-center gap-1.5 font-medium ${details.status === 'open' ? 'text-primary' : 'text-muted-foreground'}`}>
+                    <span className={`w-2 h-2 rounded-full ${details.status === 'open' ? 'bg-primary' : 'bg-muted-foreground'}`} />
                     {details.status === 'open' ? 'Deschis' : 'Închis'}
                   </span>
                   <Button variant="outline" size="sm" onClick={handleToggleStatus} disabled={updating}>
@@ -108,7 +108,7 @@ function CaseDetailsDialog({ caseId, open, onOpenChange, onUpdated }: { caseId: 
                   <div key={i} className="bg-secondary/30 p-3 rounded-lg border border-border/50 text-sm">
                     {ev.kind && <span className="font-semibold text-xs text-primary mr-2 uppercase">[{ev.kind}]</span>}
                     {ev.description && <span className="mr-2">{ev.description}</span>}
-                    {ev.url && <a href={ev.url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline break-all block mt-1">{ev.url}</a>}
+                    {ev.url && <a href={ev.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline break-all block mt-1">{ev.url}</a>}
                     {(ev.messageId || ev.channelId) && (
                       <div className="text-xs text-muted-foreground mt-2 font-mono">
                         {ev.messageId && <span>Msg: {ev.messageId} </span>}
@@ -245,8 +245,8 @@ export function CasesPage() {
                     <td className="px-6 py-4">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium uppercase ${
                         c.actionType === 'ban' ? 'bg-destructive/10 text-destructive' :
-                        c.actionType === 'mute' ? 'bg-amber-500/10 text-amber-500' :
-                        'bg-blue-500/10 text-blue-500'
+                        c.actionType === 'mute' ? 'bg-primary/10 text-primary' :
+                        'bg-primary/10 text-primary'
                       }`}>
                         {c.actionType || "Unknown"}
                       </span>
@@ -254,8 +254,8 @@ export function CasesPage() {
                     <td className="px-6 py-4 text-muted-foreground max-w-[200px] truncate" title={c.reason}>{c.reason || "Nespecificat"}</td>
                     <td className="px-6 py-4">{c.actorId}</td>
                     <td className="px-6 py-4">
-                      <span className={`inline-flex items-center gap-1.5 ${c.status === 'open' ? 'text-amber-500' : 'text-muted-foreground'}`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${c.status === 'open' ? 'bg-amber-500' : 'bg-muted-foreground'}`} />
+                      <span className={`inline-flex items-center gap-1.5 ${c.status === 'open' ? 'text-primary' : 'text-muted-foreground'}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${c.status === 'open' ? 'bg-primary' : 'bg-muted-foreground'}`} />
                         {c.status === 'open' ? 'Deschis' : 'Închis'}
                       </span>
                     </td>

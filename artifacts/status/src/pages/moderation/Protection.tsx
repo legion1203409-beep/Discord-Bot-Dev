@@ -161,7 +161,7 @@ export function ProtectionPage() {
             {/* Spam & Flood */}
             <div className="bg-card border border-border p-6 rounded-xl space-y-6">
               <div className="flex items-center gap-3 mb-4 border-b border-border pb-4">
-                <MessageSquare className="w-5 h-5 text-blue-500" />
+                <MessageSquare className="w-5 h-5 text-primary" />
                 <h3 className="text-lg font-medium">Control Trafic</h3>
               </div>
               
@@ -203,7 +203,7 @@ export function ProtectionPage() {
             {/* Suspicious */}
             <div className="bg-card border border-border p-6 rounded-xl space-y-6">
               <div className="flex items-center gap-3 mb-4 border-b border-border pb-4">
-                <AlertOctagon className="w-5 h-5 text-amber-500" />
+                <AlertOctagon className="w-5 h-5 text-primary" />
                 <h3 className="text-lg font-medium">Comportament Suspect</h3>
               </div>
               

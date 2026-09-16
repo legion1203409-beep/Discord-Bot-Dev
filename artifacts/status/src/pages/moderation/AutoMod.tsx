@@ -147,7 +147,7 @@ export function AutoModPage() {
             {/* Word Filter */}
             <div className="bg-card border border-border p-6 rounded-xl space-y-6">
               <div className="flex items-center gap-3 mb-4 border-b border-border pb-4">
-                <MessageSquareWarning className="w-5 h-5 text-amber-500" />
+                 <MessageSquareWarning className="w-5 h-5 text-primary" />
                 <h3 className="text-lg font-medium">Filtru de Cuvinte</h3>
               </div>
               
@@ -279,7 +279,7 @@ export function AutoModPage() {
             {/* Link Blocker */}
             <div className="bg-card border border-border p-6 rounded-xl space-y-6">
               <div className="flex items-center gap-3 mb-4 border-b border-border pb-4">
-                <LinkIcon className="w-5 h-5 text-blue-500" />
+                 <LinkIcon className="w-5 h-5 text-primary" />
                 <h3 className="text-lg font-medium">Blocare Link-uri</h3>
               </div>
               
