@@ -56,7 +56,7 @@ a, button { -webkit-tap-highlight-color: transparent; }
 a:focus-visible { outline: 1px solid var(--gold-light); outline-offset: 5px; }
 .page-width { width: min(calc(100% - 5rem), 1240px); margin-inline: auto; }
 .icon { display: inline-block; flex: 0 0 auto; }
-.landing-page { position: relative; isolation: isolate; background: radial-gradient(circle at 68% 13%, rgba(116, 84, 111, .13), transparent 29rem), var(--void); }
+.landing-page { position: relative; isolation: isolate; overflow-x: clip; background: radial-gradient(circle at 68% 13%, rgba(116, 84, 111, .13), transparent 29rem), var(--void); }
 .landing-noise { position: fixed; z-index: 20; inset: 0; pointer-events: none; opacity: .032; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.8'/%3E%3C/svg%3E"); mix-blend-mode: soft-light; }
 .smoke-layer { position: absolute; z-index: -1; width: 42rem; height: 20rem; pointer-events: none; opacity: .12; filter: blur(45px); background: radial-gradient(ellipse, rgba(124, 116, 130, .32), transparent 67%); }
 .smoke-layer--one { top: 32rem; left: -20rem; transform: rotate(-14deg); }
@@ -70,7 +70,8 @@ a:focus-visible { outline: 1px solid var(--gold-light); outline-offset: 5px; }
 .brand strong, .brand small { display: block; letter-spacing: .19em; }
 .brand strong { font-size: .73rem; font-weight: 800; }
 .brand small { margin-top: .3rem; color: var(--ash); font-size: .54rem; font-weight: 700; }
-.nav-links { display: flex; align-items: center; gap: 2.25rem; margin-left: auto; margin-right: 2.8rem; color: var(--paper-soft); font-size: .68rem; font-weight: 600; letter-spacing: .05em; }
+.nav-links { display: flex; align-items: center; margin-left: auto; margin-right: 2.8rem; color: var(--paper-soft); font-size: .68rem; font-weight: 600; letter-spacing: .05em; }
+.nav-links-inner { display: flex; align-items: center; gap: 2.25rem; width: 100%; justify-content: center; }
 .nav-links a { position: relative; padding-block: .5rem; transition: color 180ms ease; }
 .nav-links a::after { position: absolute; right: 0; bottom: 0; left: 0; height: 1px; background: var(--gold); content: ""; transform: scaleX(0); transform-origin: right; transition: transform 180ms ease; }
 .nav-links a:hover { color: var(--paper); }
@@ -296,6 +297,59 @@ h1 em, h2 em, blockquote em { color: var(--ember-light); }
   .dragon-logo--hero { width: min(430px, 112vw); top: 0; }
   .hero-status-card { border-radius: 6px; }
 }
+/* Mobile Nav & Game Guide */
+.community-invite-link { display: inline-flex; align-items: center; gap: .7rem; margin-top: 1.25rem; padding-bottom: .35rem; color: var(--gold-light); border-bottom: 1px solid var(--gold); font-family: var(--mono); font-size: .75rem; overflow-wrap: anywhere; }
+.community-invite-link:hover { color: var(--paper); }
+.nav-actions { display: flex; align-items: center; gap: 1rem; }
+.mobile-menu-toggle { display: none; background: none; border: none; color: var(--paper); cursor: pointer; padding: 0.5rem; z-index: 100; }
+.nav-cta--mobile { display: none; margin-top: 2rem; width: 100%; justify-content: center; }
+.nav-links a.active { color: var(--gold); }
+.nav-links a.active::after { transform: scaleX(1); transform-origin: left; }
+
+/* Game Guide Layout */
+.game-guide-page { padding-top: 10rem; padding-bottom: 6rem; position: relative; min-height: 100vh; }
+.game-guide-header { text-align: center; max-width: 700px; margin: 0 auto 5rem; }
+.game-guide-header h1 { font-size: clamp(2.5rem, 5vw, 4.5rem); margin-bottom: 1.5rem; }
+.game-guide-header p { color: var(--ash); font-size: 0.95rem; line-height: 1.8; }
+.guide-grid { display: grid; grid-template-columns: 280px 1fr; gap: 4rem; align-items: start; }
+.guide-sidebar { position: sticky; top: 8rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.guide-nav-link { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; color: var(--ash); font-family: var(--mono); font-size: 0.65rem; letter-spacing: 0.1em; text-transform: uppercase; border-left: 2px solid transparent; transition: all 200ms ease; cursor: pointer; background: transparent; }
+.guide-nav-link:hover, .guide-nav-link.active { color: var(--gold-light); background: rgba(197,164,107,0.05); border-left-color: var(--gold); }
+.guide-nav-link .icon { opacity: 0.5; transition: opacity 200ms ease; }
+.guide-nav-link:hover .icon, .guide-nav-link.active .icon { opacity: 1; }
+
+.guide-content { display: flex; flex-direction: column; gap: 6rem; }
+.guide-section h2 { font-size: 2.2rem; color: var(--paper); margin-bottom: 2rem; display: flex; align-items: center; gap: 1rem; }
+.guide-section h2 .icon { color: var(--gold); }
+.guide-section p { color: var(--ash); font-size: 0.85rem; line-height: 1.8; margin-bottom: 1.5rem; }
+.guide-section p strong { color: var(--paper-soft); font-weight: 600; }
+.guide-card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.5rem; margin-top: 2rem; }
+.guide-card { background: rgba(25,21,22,0.6); border: 1px solid var(--line); padding: 1.5rem; border-radius: 4px; }
+.guide-card h3 { color: var(--paper); font-family: var(--display); font-size: 1.2rem; margin-bottom: 0.75rem; }
+.guide-card p { font-size: 0.75rem; margin-bottom: 0; }
+.guide-command { display: inline-block; background: var(--night); border: 1px solid var(--line); padding: 0.2rem 0.5rem; border-radius: 4px; font-family: var(--mono); font-size: 0.65rem; color: var(--gold-light); margin-right: 0.5rem; }
+
+@media (max-width: 900px) {
+  .guide-grid { grid-template-columns: 1fr; gap: 3rem; }
+  .guide-sidebar { display: none; }
+}
+
+@media (max-width: 768px) {
+  .site-nav { left: 0; width: 100%; padding-inline: 1.5rem; transform: none; }
+  .mobile-menu-toggle { display: block; }
+  .nav-cta:not(.nav-cta--mobile) { display: none; }
+  
+  .nav-links { position: fixed; inset: 0; margin: 0; overflow-y: auto; background: var(--void); z-index: 50; padding: 8rem 2rem 2rem; display: flex; flex-direction: column; align-items: center; visibility: hidden; opacity: 0; pointer-events: none; transition: opacity 300ms ease; }
+  .nav-links.is-open { visibility: visible; opacity: 1; pointer-events: auto; }
+  .nav-links-inner { display: flex; flex-direction: column; align-items: center; gap: 2rem; width: 100%; max-width: 300px; }
+  .nav-links a { font-size: 1.1rem; }
+  .nav-cta--mobile { display: flex; }
+  
+  @media (prefers-reduced-motion: reduce) {
+    .nav-links { transition: none; }
+  }
+}
+
 @layer base {
   :root, .dark {
     --background: 340 10% 4%;
