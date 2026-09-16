@@ -5,10 +5,9 @@ import {
   assertCsrf,
   assertLoginRateLimit,
   assertMutationRateLimit,
-  assertTrustedOrigin,
   assertGuildAccess,
   clearSessionCookie,
-  exchangeLoginCode,
+  createModerationSession,
   getModerationClient,
   listAccessibleGuilds,
   ModerationAuthError,
@@ -19,6 +18,13 @@ import {
 } from "./auth";
 import { EvidenceSchema, ModerationConfigSchema, type ModerationConfig } from "./config";
 import { ModerationRevisionConflictError } from "./errors";
+import {
+  beginDiscordOAuth,
+  consumeDiscordOAuthState,
+  exchangeDiscordOAuthCode,
+  fetchDiscordOAuthIdentity,
+  isDiscordOAuthConfigured,
+} from "./oauth";
 import { moderationStore } from "./store";
 
 const router = Router();
@@ -26,7 +32,6 @@ const snowflake = z.string().regex(/^\d{5,25}$/);
 const uuid = z.string().uuid();
 const actionType = z.enum(["warn", "mute", "kick", "ban", "unmute", "purge", "slowmode", "lock", "unlock", "nick", "role"]);
 
-const loginSchema = z.object({ code: z.string().trim().regex(/^[0-9A-F]{24}$/i) });
 const idempotencyKeySchema = z.string().trim().min(16).max(128).regex(/^[A-Za-z0-9._:-]+$/);
 const paginationSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
@@ -40,7 +45,7 @@ const actionSchema = z.object({
   channelId: snowflake.optional(),
   roleId: snowflake.optional(),
   nickname: z.string().trim().min(1).max(32).optional(),
-  amount: z.number().int().min(1).max(100).optional(),
+  amount: z.number().int().min(0).max(21_600).optional(),
 }).superRefine((value, ctx) => {
   if (["warn", "mute", "kick", "ban", "unmute", "nick", "role"].includes(value.type) && !value.targetId) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: "targetId is required for this action" });
@@ -48,8 +53,20 @@ const actionSchema = z.object({
   if (value.type === "mute" && !value.durationMinutes) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: "durationMinutes is required for mute" });
   }
-  if (value.type === "purge" && !value.amount) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "amount is required for purge" });
+  if (["purge", "slowmode", "lock", "unlock"].includes(value.type) && !value.channelId) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["channelId"], message: "Alege un canal pentru această comandă." });
+  }
+  if (value.type === "purge" && (value.amount === undefined || value.amount < 1 || value.amount > 100)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["amount"], message: "Purge necesită între 1 și 100 de mesaje." });
+  }
+  if (value.type === "slowmode" && value.amount === undefined) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["amount"], message: "Slowmode necesită 0–21600 secunde; 0 îl dezactivează." });
+  }
+  if (value.type === "nick" && !value.nickname) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["nickname"], message: "Introdu noul nickname." });
+  }
+  if (value.type === "role" && !value.roleId) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["roleId"], message: "Alege rolul de adăugat." });
   }
 });
 
@@ -142,16 +159,72 @@ router.get("/session", asyncRoute(async (req, res) => {
   }
 }));
 
-router.post("/login", asyncRoute(async (req, res) => {
-  assertTrustedOrigin(req);
-  assertLoginRateLimit(req);
-  const { code } = parse(loginSchema, req.body);
-  const { token, session } = await exchangeLoginCode(code);
-  await revokeRequestSessionIfPresent(req);
-  setSessionCookie(res, token, session.expiresAt);
-  const guilds = await listAccessibleGuilds(session.userId);
-  res.status(201).json({ guilds, csrfToken: session.csrfToken, expiresAt: session.expiresAt.toISOString() });
+router.get("/auth-config", (_req, res) => {
+  res.json({
+    discordOAuthConfigured: isDiscordOAuthConfigured(),
+    authorizationUrl: "/api/moderation/oauth/discord",
+  });
+});
+
+function oauthFailure(res: Response, code: "oauth_not_configured" | "state_mismatch" | "cancelled" | "oauth_failed" | "no_eligible_guild"): void {
+  res.redirect(`/moderare?auth_error=${code}`);
+}
+
+router.get("/oauth/discord", (req, res) => {
+  try {
+    assertLoginRateLimit(req);
+    res.redirect(beginDiscordOAuth(res));
+  } catch {
+    oauthFailure(res, "oauth_not_configured");
+  }
+});
+
+router.get("/oauth/discord/callback", asyncRoute(async (req, res) => {
+  const state = typeof req.query.state === "string" ? req.query.state : undefined;
+  const stateValid = consumeDiscordOAuthState(req, res, state);
+  if (!stateValid) {
+    oauthFailure(res, "state_mismatch");
+    return;
+  }
+
+  const oauthError = typeof req.query.error === "string" ? req.query.error : undefined;
+  if (oauthError === "access_denied") {
+    oauthFailure(res, "cancelled");
+    return;
+  }
+  const code = typeof req.query.code === "string" ? req.query.code : undefined;
+  if (!code || oauthError) {
+    oauthFailure(res, "oauth_failed");
+    return;
+  }
+
+  try {
+    const accessToken = await exchangeDiscordOAuthCode(code);
+    const identity = await fetchDiscordOAuthIdentity(accessToken);
+    // The OAuth guild list is only a candidate set.  listAccessibleGuilds
+    // intersects it with bot membership and then force-fetches current member
+    // permissions, so a forged OAuth permission field cannot grant access.
+    const guilds = await listAccessibleGuilds(identity.id, identity.guilds);
+    if (!guilds.length) {
+      oauthFailure(res, "no_eligible_guild");
+      return;
+    }
+    const { token, session } = await createModerationSession(identity.id);
+    await revokeRequestSessionIfPresent(req);
+    setSessionCookie(res, token, session.expiresAt);
+    res.redirect("/moderare");
+  } catch {
+    // Never reflect Discord's response or the authorization code in a browser
+    // redirect.  OAuth tokens are held only in this stack frame and are never
+    // logged or sent to the client.
+    oauthFailure(res, "oauth_failed");
+  }
 }));
+
+/** The old Discord-issued code flow is intentionally not accepted anymore. */
+router.post("/login", (_req, res) => {
+  res.status(410).json({ error: "Moderation login now uses Discord OAuth2" });
+});
 
 router.post("/logout", asyncRoute(async (req, res) => {
   const session = await requireSession(req);

@@ -41,24 +41,28 @@ export const ModerationSessionResponse = zod.object({
 })
 
 
-export const moderationLoginBodyCodeRegExp = new RegExp('^[0-9A-Fa-f]{24}$');
+/**
+ * @deprecated
+ */
+export const ModerationLoginResponse = zod.void()
 
 
-export const ModerationLoginBody = zod.object({
-  "code": zod.string().regex(moderationLoginBodyCodeRegExp)
+export const ModerationAuthConfigResponse = zod.object({
+  "discordOAuthConfigured": zod.boolean(),
+  "authorizationUrl": zod.string()
 })
 
-export const ModerationLoginResponse = zod.object({
-  "authenticated": zod.boolean(),
-  "userId": zod.string().optional(),
-  "csrfToken": zod.string().optional(),
-  "expiresAt": zod.coerce.date().optional(),
-  "guilds": zod.array(zod.object({
-  "id": zod.string(),
-  "name": zod.string(),
-  "access": zod.enum(['staff', 'manager', 'administrator', 'owner'])
-})).optional()
+
+export const ModerationDiscordAuthorizeResponse = zod.void()
+
+
+export const ModerationDiscordCallbackQueryParams = zod.object({
+  "code": zod.coerce.string().optional(),
+  "state": zod.coerce.string().optional(),
+  "error": zod.coerce.string().optional()
 })
+
+export const ModerationDiscordCallbackResponse = zod.void()
 
 
 export const ModerationLogoutResponse = zod.void()
@@ -125,6 +129,52 @@ export const ModerationAuditLogsResponse = zod.object({
   "detail": zod.record(zod.string(), zod.unknown()),
   "createdAt": zod.coerce.date()
 }))
+})
+
+
+export const ModerationExecuteActionParams = zod.object({
+  "guildId": zod.coerce.string()
+})
+
+export const moderationExecuteActionHeaderIdempotencyKeyMin = 16;
+export const moderationExecuteActionHeaderIdempotencyKeyMax = 128;
+
+
+
+export const ModerationExecuteActionHeader = zod.object({
+  "Idempotency-Key": zod.string().min(moderationExecuteActionHeaderIdempotencyKeyMin).max(moderationExecuteActionHeaderIdempotencyKeyMax),
+  "X-CSRF-Token": zod.string()
+})
+
+export const moderationExecuteActionBodyTargetIdRegExp = new RegExp('^\\d{5,25}$');
+export const moderationExecuteActionBodyChannelIdRegExp = new RegExp('^\\d{5,25}$');
+export const moderationExecuteActionBodyRoleIdRegExp = new RegExp('^\\d{5,25}$');
+export const moderationExecuteActionBodyReasonMax = 500;
+
+export const moderationExecuteActionBodyDurationMinutesMax = 40320;
+
+export const moderationExecuteActionBodyAmountMin = 0;
+export const moderationExecuteActionBodyAmountMax = 21600;
+
+export const moderationExecuteActionBodyNicknameMax = 32;
+
+
+
+export const ModerationExecuteActionBody = zod.object({
+  "type": zod.enum(['warn', 'mute', 'kick', 'ban', 'unmute', 'purge', 'slowmode', 'lock', 'unlock', 'nick', 'role']),
+  "targetId": zod.string().regex(moderationExecuteActionBodyTargetIdRegExp).optional(),
+  "channelId": zod.string().regex(moderationExecuteActionBodyChannelIdRegExp).optional(),
+  "roleId": zod.string().regex(moderationExecuteActionBodyRoleIdRegExp).optional(),
+  "reason": zod.string().min(1).max(moderationExecuteActionBodyReasonMax).optional(),
+  "durationMinutes": zod.number().min(1).max(moderationExecuteActionBodyDurationMinutesMax).optional(),
+  "amount": zod.number().min(moderationExecuteActionBodyAmountMin).max(moderationExecuteActionBodyAmountMax).optional(),
+  "nickname": zod.string().min(1).max(moderationExecuteActionBodyNicknameMax).optional()
+}).describe('Member commands require targetId; channel commands require channelId. Mute requires durationMinutes, nick requires nickname, role requires roleId. Purge requires amount 1–100; slowmode requires amount 0–21600 seconds (0 disables).')
+
+export const ModerationExecuteActionResponse = zod.object({
+  "actionId": zod.string().optional(),
+  "caseId": zod.string().optional(),
+  "summary": zod.string().optional()
 })
 
 

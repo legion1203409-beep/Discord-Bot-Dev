@@ -21,7 +21,6 @@ vi.mock("../auth", () => ({
   assertLoginRateLimit: vi.fn(),
   assertMutationRateLimit: vi.fn(),
   clearSessionCookie: vi.fn(),
-  exchangeLoginCode: vi.fn(),
   listAccessibleGuilds: vi.fn(),
   revokeRequestSessionIfPresent: vi.fn(),
   setSessionCookie: vi.fn(),
@@ -169,6 +168,34 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
       "idempotency-key": "test-action-unique-03",
     }));
     expect(response.status).toBe(409);
+    expect(mocks.execute).not.toHaveBeenCalled();
+  });
+
+  it.each([0, 600, 21600])("passes slowmode %i seconds unchanged, including disabling it", async (amount) => {
+    const response = await fetch(`${base}/actions`, post({
+      type: "slowmode", channelId: "555555555", amount,
+    }, { "idempotency-key": `test-slowmode-${amount}-unique` }));
+    expect(response.status).toBe(201);
+    expect(mocks.execute).toHaveBeenCalledWith(expect.objectContaining({
+      guildId, actorId, type: "slowmode", channelId: "555555555", amount,
+    }));
+  });
+
+  it.each([
+    { type: "purge", channelId: "555555555", amount: 0 },
+    { type: "purge", channelId: "555555555", amount: 101 },
+    { type: "purge", amount: 10 },
+    { type: "slowmode", channelId: "555555555" },
+    { type: "slowmode", channelId: "555555555", amount: 21601 },
+    { type: "lock" },
+    { type: "unlock" },
+    { type: "nick", targetId: "555555555" },
+    { type: "role", targetId: "555555555" },
+  ])("rejects incomplete command $type before calling Discord", async (payload) => {
+    const response = await fetch(`${base}/actions`, post(payload, {
+      "idempotency-key": "test-missing-argument-unique",
+    }));
+    expect(response.status).toBe(400);
     expect(mocks.execute).not.toHaveBeenCalled();
   });
 });

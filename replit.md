@@ -4,7 +4,7 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Run & Operate
 
-- Moderation operator guide: [docs/moderation.md](docs/moderation.md). The protected panel is `/moderare`; Discord `/moderare login` issues a private single-use login code.
+- Moderation operator guide: [docs/moderation.md](docs/moderation.md). The protected panel is `/moderare`; login uses Discord OAuth2, followed by selection of a permitted server containing the bot. `/moderare login` links to the website, not a code.
 
 - `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
 - `pnpm run typecheck` — full typecheck across all packages

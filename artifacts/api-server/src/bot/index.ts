@@ -330,6 +330,7 @@ let botClient: Client | null = null;
 export async function destroyBotClientForShutdown(): Promise<void> {
   const c = botClient;
   botClient = null;
+  setModerationClient(null);
   if (c) await c.destroy();
 }
 
@@ -4559,6 +4560,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
       logger.error({ err }, "Required database migrations failed — stopping Discord bot");
       shardStatus = "migration_failed";
       botClient = null;
+      setModerationClient(null);
       await client.destroy();
       rejectTerminated(err instanceof Error ? err : new Error(String(err)));
       return;
@@ -4617,6 +4619,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
           );
           shardStatus = "yielded";
           botClient = null;
+          setModerationClient(null);
           for (const [guildId] of client.guilds.cache) {
             stopGuildScheduler(guildId, { stopOracle: true });
           }
@@ -4753,6 +4756,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
       privilegedIntentFellBack = true;
       void markOracleFellBack();
       botClient = null;
+      setModerationClient(null);
       shardStatus = "fatal_disconnect";
       client.destroy();
       void sendAlert(
@@ -4768,6 +4772,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
         "Fatal Discord disconnect — discord.js will not reconnect; bot supervisor will restart",
       );
       botClient = null;
+      setModerationClient(null);
       shardStatus = "fatal_disconnect";
       client.destroy();
       void sendAlert(

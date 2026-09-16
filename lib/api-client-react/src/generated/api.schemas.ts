@@ -5,6 +5,67 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+export interface ModerationAuthConfig {
+  discordOAuthConfigured: boolean;
+  authorizationUrl: string;
+}
+
+export type ModerationCommandInputType = typeof ModerationCommandInputType[keyof typeof ModerationCommandInputType];
+
+
+export const ModerationCommandInputType = {
+  warn: 'warn',
+  mute: 'mute',
+  kick: 'kick',
+  ban: 'ban',
+  unmute: 'unmute',
+  purge: 'purge',
+  slowmode: 'slowmode',
+  lock: 'lock',
+  unlock: 'unlock',
+  nick: 'nick',
+  role: 'role',
+} as const;
+
+/**
+ * Member commands require targetId; channel commands require channelId. Mute requires durationMinutes, nick requires nickname, role requires roleId. Purge requires amount 1–100; slowmode requires amount 0–21600 seconds (0 disables).
+ */
+export interface ModerationCommandInput {
+  type: ModerationCommandInputType;
+  /** @pattern ^\d{5,25}$ */
+  targetId?: string;
+  /** @pattern ^\d{5,25}$ */
+  channelId?: string;
+  /** @pattern ^\d{5,25}$ */
+  roleId?: string;
+  /**
+     * @minLength 1
+     * @maxLength 500
+     */
+  reason?: string;
+  /**
+     * @minimum 1
+     * @maximum 40320
+     */
+  durationMinutes?: number;
+  /**
+     * @minimum 0
+     * @maximum 21600
+     */
+  amount?: number;
+  /**
+     * @minLength 1
+     * @maxLength 32
+     */
+  nickname?: string;
+}
+
+export interface ModerationCommandResult {
+  actionId?: string;
+  caseId?: string;
+  summary?: string;
+}
+
 export type ModerationSessionGuildsItemAccess = typeof ModerationSessionGuildsItemAccess[keyof typeof ModerationSessionGuildsItemAccess];
 
 
@@ -104,8 +165,9 @@ export interface HealthStatus {
   justiceScanLimit: number;
 }
 
-export type ModerationLoginBody = {
-  /** @pattern ^[0-9A-Fa-f]{24}$ */
-  code: string;
+export type ModerationDiscordCallbackParams = {
+code?: string;
+state?: string;
+error?: string;
 };
 

@@ -44,18 +44,34 @@ paths:
     post:
       operationId: moderationLogin
       tags: [moderation]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [code]
-              properties: { code: { type: string, pattern: "^[0-9A-Fa-f]{24}$" } }
+      deprecated: true
       responses:
-        "201":
-          description: Browser session established
-          content: { application/json: { schema: { $ref: "#/components/schemas/ModerationSession" } } }
+        "410": { description: Code login removed; use Discord OAuth2 }
+  /moderation/auth-config:
+    get:
+      operationId: moderationAuthConfig
+      tags: [moderation]
+      responses:
+        "200":
+          description: Public login availability; never includes credentials
+          content: { application/json: { schema: { $ref: "#/components/schemas/ModerationAuthConfig" } } }
+  /moderation/oauth/discord:
+    get:
+      operationId: moderationDiscordAuthorize
+      tags: [moderation]
+      responses:
+        "302": { description: Redirects to Discord with browser-bound OAuth state }
+        "503": { description: Discord OAuth is not configured }
+  /moderation/oauth/discord/callback:
+    get:
+      operationId: moderationDiscordCallback
+      tags: [moderation]
+      parameters:
+        - { name: code, in: query, schema: { type: string } }
+        - { name: state, in: query, schema: { type: string } }
+        - { name: error, in: query, schema: { type: string } }
+      responses:
+        "302": { description: Redirects to moderation after session creation or with a safe login error }
   /moderation/logout:
     post:
       operationId: moderationLogout
@@ -100,8 +116,56 @@ paths:
         "200":
           description: Owner/settings-admin audit trail
           content: { application/json: { schema: { $ref: "#/components/schemas/ModerationLogPage" } } }
+  /moderation/guilds/{guildId}/actions:
+    parameters: [{ name: guildId, in: path, required: true, schema: { type: string } }]
+    post:
+      operationId: moderationExecuteAction
+      tags: [moderation]
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 16, maxLength: 128 } }
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ModerationCommandInput" }
+      responses:
+        "201":
+          description: Discord command executed
+          content: { application/json: { schema: { $ref: "#/components/schemas/ModerationCommandResult" } } }
+        "200":
+          description: Previously completed command (not repeated)
+          content: { application/json: { schema: { $ref: "#/components/schemas/ModerationCommandResult" } } }
+        "400": { description: Missing or invalid command arguments }
+        "403": { description: Discord permissions or server policy deny the command }
+        "409": { description: Pending or uncertain command must not be repeated }
 components:
   schemas:
+    ModerationAuthConfig:
+      type: object
+      required: [discordOAuthConfigured, authorizationUrl]
+      properties:
+        discordOAuthConfigured: { type: boolean }
+        authorizationUrl: { type: string }
+    ModerationCommandInput:
+      type: object
+      required: [type]
+      description: Member commands require targetId; channel commands require channelId. Mute requires durationMinutes, nick requires nickname, role requires roleId. Purge requires amount 1–100; slowmode requires amount 0–21600 seconds (0 disables).
+      properties:
+        type: { type: string, enum: [warn, mute, kick, ban, unmute, purge, slowmode, lock, unlock, nick, role] }
+        targetId: { type: string, pattern: "^\\d{5,25}$" }
+        channelId: { type: string, pattern: "^\\d{5,25}$" }
+        roleId: { type: string, pattern: "^\\d{5,25}$" }
+        reason: { type: string, minLength: 1, maxLength: 500 }
+        durationMinutes: { type: integer, minimum: 1, maximum: 40320 }
+        amount: { type: integer, minimum: 0, maximum: 21600 }
+        nickname: { type: string, minLength: 1, maxLength: 32 }
+    ModerationCommandResult:
+      type: object
+      properties:
+        actionId: { type: string }
+        caseId: { type: string }
+        summary: { type: string }
     ModerationSession:
       type: object
       required: [authenticated]

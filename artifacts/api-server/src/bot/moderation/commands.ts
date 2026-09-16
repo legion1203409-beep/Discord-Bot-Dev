@@ -5,14 +5,14 @@ import {
   SlashCommandBuilder,
   type ChatInputCommandInteraction,
 } from "discord.js";
-import { issueLoginCode } from "../../moderation/auth";
+import { getModerationWebsiteUrl } from "../../moderation/oauth";
 import { executeModerationAction, type ModerationActionInput } from "./engine";
 
 export const moderationCommands = [
   new SlashCommandBuilder()
     .setName("moderare")
     .setDescription("Acces securizat la panoul de moderare")
-    .addSubcommand((sub) => sub.setName("login").setDescription("Generează un cod temporar pentru site")),
+    .addSubcommand((sub) => sub.setName("login").setDescription("Deschide autentificarea Discord pentru site")),
   new SlashCommandBuilder().setName("warn").setDescription("Avertizează un membru")
     .addUserOption((o) => o.setName("user").setDescription("Membrul").setRequired(true))
     .addStringOption((o) => o.setName("reason").setDescription("Motivul").setMaxLength(500)),
@@ -60,9 +60,9 @@ export async function handleModerationCommand(interaction: ChatInputCommandInter
   if (interaction.commandName === "moderare") {
     if (interaction.options.getSubcommand() !== "login") return false;
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    const code = await issueLoginCode(interaction.guildId!, interaction.user.id);
     await interaction.editReply(
-      `Codul tău de acces este: \`${code}\`\nEste temporar și poate fi folosit o singură dată. Introdu-l pe site-ul de moderare; nu îl distribui.`,
+      `Deschide panoul de moderare și autentifică-te cu Discord: ${getModerationWebsiteUrl()}\n` +
+      "Accesul este verificat din nou pentru serverele în care botul este prezent.",
     );
     return true;
   }

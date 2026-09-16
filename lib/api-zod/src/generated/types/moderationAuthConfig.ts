@@ -6,7 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type ModerationLoginBody = {
-  /** @pattern ^[0-9A-Fa-f]{24}$ */
-  code: string;
-};
+export interface ModerationAuthConfig {
+  discordOAuthConfigured: boolean;
+  authorizationUrl: string;
+}

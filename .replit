@@ -63,6 +63,10 @@ channel = "stable-25_05"
 ORACLE_MESSAGE_CONTENT_ENABLED = "true"
 ORACLE_OWNER_ID = "585841275765522442"
 
+[userenv.production]
+DISCORD_OAUTH_REDIRECT_URI = "https://discord-bot-dev-alaandrei09.replit.app/api/moderation/oauth/discord/callback"
+MODERATION_WEB_ORIGIN = "https://discord-bot-dev-alaandrei09.replit.app"
+
 [[ports]]
 localPort = 8080
 externalPort = 8080

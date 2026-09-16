@@ -2,9 +2,9 @@ import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypt
 import type { Request, Response } from "express";
 import { PermissionFlagsBits, type Client, type Guild, type GuildMember } from "discord.js";
 import { moderationStore, type ModerationSession } from "./store";
+import { fetchBotGuildSnapshot, type DiscordOAuthGuild } from "./oauth";
 
 const COOKIE_NAME = "moderation_session";
-const LOGIN_CODE_TTL_MS = 5 * 60_000;
 const SESSION_TTL_MS = 8 * 60 * 60_000;
 
 let moderationClient: Client | null = null;
@@ -18,7 +18,7 @@ export interface AuthenticatedRequest extends Request {
   moderationSession?: ModerationSession;
 }
 
-export function setModerationClient(client: Client): void {
+export function setModerationClient(client: Client | null): void {
   moderationClient = client;
 }
 
@@ -28,11 +28,6 @@ export function getModerationClient(): Client | null {
 
 export function hashSecret(value: string): string {
   return createHash("sha256").update(value).digest("hex");
-}
-
-function makeLoginCode(): string {
-  // Hex avoids ambiguous characters when staff types the code from Discord.
-  return randomBytes(12).toString("hex").toUpperCase();
 }
 
 function makeSessionToken(): string {
@@ -75,6 +70,7 @@ async function fetchGuildAndMember(guildId: string, userId: string): Promise<{ g
 }
 
 export async function getGuildAccess(guildId: string, userId: string): Promise<GuildAccess | null> {
+  if (!moderationClient) return getRestGuildAccess(guildId, userId);
   let guild: Guild;
   let member: GuildMember;
   try {
@@ -89,6 +85,47 @@ export async function getGuildAccess(guildId: string, userId: string): Promise<G
   const config = await moderationStore.getConfig(guildId);
   if (config.config.permissions.allowManageGuild && member.permissions.has(PermissionFlagsBits.ManageGuild)) return "manager";
   if (config.config.permissions.staffRoleIds.some((id) => member.roles.cache.has(id))) return "staff";
+  return null;
+}
+
+function hasRestPermission(permissionString: string | undefined, required: bigint): boolean {
+  if (!permissionString) return false;
+  try {
+    return (BigInt(permissionString) & required) === required;
+  } catch {
+    return false;
+  }
+}
+
+async function getRestGuildAccess(guildId: string, userId: string): Promise<GuildAccess | null> {
+  let snapshot;
+  try {
+    snapshot = await fetchBotGuildSnapshot(guildId, userId);
+  } catch {
+    // A Discord REST failure is an authorization failure, never an
+    // authorization fallback.
+    return null;
+  }
+  if (!snapshot) return null;
+  if (snapshot.guild.ownerId === userId) return "owner";
+
+  let permissions = snapshot.member.permissions;
+  if (!permissions) {
+    const rolePermissions = new Map(snapshot.roles.map((role) => [role.id, role.permissions]));
+    const values = [rolePermissions.get(guildId), ...snapshot.member.roleIds.map((id) => rolePermissions.get(id))]
+      .filter((value): value is string => Boolean(value));
+    try {
+      permissions = values.reduce((total, value) => total | BigInt(value), 0n).toString();
+    } catch {
+      permissions = undefined;
+    }
+  }
+  if (hasRestPermission(permissions, BigInt(PermissionFlagsBits.Administrator))) return "administrator";
+  const config = await moderationStore.getConfig(guildId);
+  if (config.config.permissions.allowManageGuild && hasRestPermission(permissions, BigInt(PermissionFlagsBits.ManageGuild))) {
+    return "manager";
+  }
+  if (config.config.permissions.staffRoleIds.some((id) => snapshot.member.roleIds.includes(id))) return "staff";
   return null;
 }
 
@@ -108,29 +145,15 @@ export class ModerationAuthError extends Error {
   }
 }
 
-/** Called by the Discord /moderare command; display the result only ephemerally. */
-export async function issueLoginCode(guildId: string, userId: string): Promise<string> {
-  await assertGuildAccess(guildId, userId, "operations");
-  const code = makeLoginCode();
-  await moderationStore.createLoginCode({
-    guildId, userId, codeHash: hashSecret(code), expiresAt: new Date(Date.now() + LOGIN_CODE_TTL_MS),
-  });
-  return code;
-}
-
-export async function exchangeLoginCode(code: string): Promise<{ token: string; session: ModerationSession; guildId: string }> {
-  const login = await moderationStore.consumeLoginCode(hashSecret(code));
-  if (!login) throw new ModerationAuthError(401, "Login code is invalid, expired, or has already been used");
-  // Revalidate identity at the time of exchange, not merely when /moderare ran.
-  await assertGuildAccess(login.guildId, login.userId, "operations");
+export async function createModerationSession(userId: string): Promise<{ token: string; session: ModerationSession }> {
   const token = makeSessionToken();
   const session: ModerationSession = {
-    id: randomUUID(), userId: login.userId, tokenHash: hashSecret(token),
+    id: randomUUID(), userId, tokenHash: hashSecret(token),
     csrfToken: randomBytes(24).toString("base64url"),
     expiresAt: new Date(Date.now() + SESSION_TTL_MS), revokedAt: null,
   };
   await moderationStore.createSession(session);
-  return { token, session, guildId: login.guildId };
+  return { token, session };
 }
 
 export async function requireSession(req: AuthenticatedRequest): Promise<ModerationSession> {
@@ -142,7 +165,7 @@ export async function requireSession(req: AuthenticatedRequest): Promise<Moderat
   return session;
 }
 
-/** Revoke an existing browser session after a successful code login replaces it. */
+/** Revoke an existing browser session after a successful OAuth login replaces it. */
 export async function revokeRequestSessionIfPresent(req: AuthenticatedRequest): Promise<void> {
   const token = parseCookie(req.headers.cookie, COOKIE_NAME);
   if (token) await moderationStore.revokeSession(hashSecret(token));
@@ -217,11 +240,30 @@ export function clearSessionCookie(res: Response): void {
   });
 }
 
-export async function listAccessibleGuilds(userId: string): Promise<Array<{ id: string; name: string; access: GuildAccess }>> {
-  const client = requireClient();
-  const guilds = await client.guilds.fetch();
+export async function listAccessibleGuilds(userId: string, userGuilds?: DiscordOAuthGuild[]): Promise<Array<{ id: string; name: string; access: GuildAccess }>> {
+  const candidateGuilds = userGuilds ? new Map(userGuilds.map((guild) => [guild.id, guild])) : null;
+  const client = getModerationClient();
+  if (!client) {
+    // The gateway is intentionally disabled in development.  When a bot token
+    // is available, getGuildAccess performs fresh REST verification for each
+    // OAuth candidate.  Without a candidate list (existing sessions), fail
+    // closed rather than trying to infer guild membership.
+    if (!candidateGuilds) return [];
+    const result: Array<{ id: string; name: string; access: GuildAccess }> = [];
+    for (const guild of candidateGuilds.values()) {
+      const access = await getGuildAccess(guild.id, userId);
+      if (access) result.push({ id: guild.id, name: guild.name, access });
+    }
+    return result;
+  }
+  const botGuilds = await client.guilds.fetch();
+  const candidates = candidateGuilds
+    ? [...candidateGuilds.keys()].filter((id) => botGuilds.has(id))
+    : [...botGuilds.keys()];
   const result: Array<{ id: string; name: string; access: GuildAccess }> = [];
-  for (const guild of guilds.values()) {
+  for (const guildId of candidates) {
+    const guild = botGuilds.get(guildId);
+    if (!guild) continue;
     const access = await getGuildAccess(guild.id, userId);
     if (access) result.push({ id: guild.id, name: guild.name, access });
   }

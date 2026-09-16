@@ -44,3 +44,4 @@
 - [Persistent cleanup and equipment rewards](event-cleanup-and-rewards.md) — rehydrate expiry timers after restart and write coupled equipment reward state atomically.
 - [Community vote settlement](community-vote-settlement.md) — closed votes with unfinished rewards must be retried after restart and publish an explicit beneficiary summary.
 - [Moderation safety](moderation-safety-boundaries.md) — Discord identity is authoritative; moderation stays independent of RPG pause and never sanctions an unverified actor.
+- [Protected panel verification](protected-panel-verification.md) — login screenshots miss authenticated routing and shared guild-state failures; test the real menu and mutations with two guilds.

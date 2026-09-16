@@ -30,7 +30,7 @@ const autoModFormSchema = z.object({
 
 export function AutoModPage() {
   const { guildId } = useActiveGuild();
-  const { data, update, loading } = useModerationConfig(guildId);
+  const { data, update, loading, error, refetch } = useModerationConfig(guildId);
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
 
@@ -109,7 +109,7 @@ export function AutoModPage() {
   }
 
   if (loading) return <div className="flex justify-center p-12 text-muted-foreground"><Loader2 className="w-8 h-8 animate-spin" /></div>;
-  if (!data) return <div className="p-8 text-center text-muted-foreground">Nu s-a putut încărca configurația.</div>;
+  if (error || !data) return <div role="alert" className="space-y-4 rounded-xl border border-destructive/30 bg-destructive/5 p-6"><p>{error?.message || "Nu s-a putut încărca configurația."}</p><Button variant="outline" onClick={() => void refetch()}>Reîncearcă</Button></div>;
 
   return (
     <div className="space-y-6 max-w-4xl">

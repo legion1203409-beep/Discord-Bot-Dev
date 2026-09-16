@@ -13,6 +13,7 @@ import { AuditPage } from "./pages/moderation/Audit";
 import { SettingsPage } from "./pages/moderation/Settings";
 import { ProtectionPage } from "./pages/moderation/Protection";
 import { PoliciesPage } from "./pages/moderation/Policies";
+import { useActiveGuild } from "./hooks/use-moderation-api";
 
 const DISCORD_INVITE = "https://discord.gg/JNYsGeMhzm";
 const API_BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
@@ -281,19 +282,26 @@ function LandingApp() {
 }
 
 function ModerationApp() {
+  // Keep the page subtree keyed by the shared guild selection. This remounts
+  // page-local drafts/forms while leaving the layout (and its selector)
+  // mounted, so a guild switch can never show another guild's form state.
+  const { guildId } = useActiveGuild();
   return (
     <ModerationLayout>
-      <Switch>
-        <Route path="/" component={DashboardOverview} />
-        <Route path="/automod" component={AutoModPage} />
-        <Route path="/protectie" component={ProtectionPage} />
-        <Route path="/politici" component={PoliciesPage} />
-        <Route path="/comenzi" component={CommandsPage} />
-        <Route path="/cazuri" component={CasesPage} />
-        <Route path="/audit" component={AuditPage} />
-        <Route path="/config" component={SettingsPage} />
-        <Route component={() => <div className="text-muted-foreground p-8 text-center border border-dashed border-border rounded-xl">Această secțiune este în lucru.</div>} />
-      </Switch>
+      <div key={guildId ?? "no-guild"}>
+        <Switch>
+          {/* These paths are intentionally relative to the /moderare nest. */}
+          <Route path="/" component={DashboardOverview} />
+          <Route path="/automod" component={AutoModPage} />
+          <Route path="/protectie" component={ProtectionPage} />
+          <Route path="/politici" component={PoliciesPage} />
+          <Route path="/comenzi" component={CommandsPage} />
+          <Route path="/cazuri" component={CasesPage} />
+          <Route path="/audit" component={AuditPage} />
+          <Route path="/config" component={SettingsPage} />
+          <Route component={() => <div className="text-muted-foreground p-8 text-center border border-dashed border-border rounded-xl">Această secțiune este în lucru.</div>} />
+        </Switch>
+      </div>
     </ModerationLayout>
   );
 }

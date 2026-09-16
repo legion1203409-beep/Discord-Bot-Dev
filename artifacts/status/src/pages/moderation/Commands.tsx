@@ -3,7 +3,7 @@ import { Zap, AlertTriangle, Send, Loader2 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useManualAction, useActiveGuild } from "../../hooks/use-moderation-api";
+import { useManualAction, useActiveGuild, useModerationMetadata } from "../../hooks/use-moderation-api";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "../../components/ui/form";
 import { Input } from "../../components/ui/input";
 import { Button } from "../../components/ui/button";
@@ -11,15 +11,24 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { useToast } from "../../hooks/use-toast";
 import { Textarea } from "../../components/ui/textarea";
 
+const optionalText = (max: number) => z.preprocess(
+  (value) => typeof value === "string" && !value.trim() ? undefined : value,
+  z.string().trim().max(max).optional(),
+);
+const optionalNumber = z.preprocess(
+  (value) => value === "" || value === undefined || value === null ? undefined : Number(value),
+  z.number().finite().optional(),
+);
+
 const actionSchema = z.object({
   type: z.enum(["warn", "mute", "kick", "ban", "unmute", "purge", "slowmode", "lock", "unlock", "nick", "role"]),
-  targetId: z.string().optional(),
-  reason: z.string().max(500).optional(),
-  durationMinutes: z.coerce.number().min(1).max(40320).optional(),
-  channelId: z.string().optional(),
-  roleId: z.string().optional(),
-  nickname: z.string().max(32).optional(),
-  amount: z.coerce.number().min(1).max(100).optional(),
+  targetId: optionalText(25),
+  reason: optionalText(500),
+  durationMinutes: optionalNumber.pipe(z.number().int().min(1).max(40320).optional()),
+  channelId: optionalText(25),
+  roleId: optionalText(25),
+  nickname: optionalText(32),
+  amount: optionalNumber.pipe(z.number().int().min(0).max(21600).optional()),
 }).superRefine((value, ctx) => {
   if (["warn", "mute", "kick", "ban", "unmute", "nick", "role"].includes(value.type) && !value.targetId) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: "ID-ul țintei este necesar", path: ["targetId"] });
@@ -27,16 +36,74 @@ const actionSchema = z.object({
   if (value.type === "mute" && !value.durationMinutes) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Durata este necesară", path: ["durationMinutes"] });
   }
-  if (value.type === "purge" && !value.amount) {
+  if (["purge", "lock", "unlock", "slowmode"].includes(value.type) && !value.channelId) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "ID-ul canalului este necesar", path: ["channelId"] });
+  }
+  if (value.type === "role" && !value.roleId) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "ID-ul rolului este necesar", path: ["roleId"] });
+  }
+  if (value.type === "nick" && !value.nickname) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Numele nou este necesar", path: ["nickname"] });
+  }
+  if (value.type === "purge" && (value.amount === undefined || value.amount < 1 || value.amount > 100)) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Numărul de mesaje este necesar", path: ["amount"] });
+  }
+  if (value.type === "slowmode" && value.amount === undefined) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Numărul de secunde este necesar (0 oprește slowmode)", path: ["amount"] });
   }
 });
 
+type ActionValues = z.infer<typeof actionSchema>;
+
+function MetadataSelectField({
+  label,
+  fallbackLabel,
+  field,
+  options,
+}: {
+  label: string;
+  fallbackLabel: string;
+  field: { value?: string; onChange: (value: string) => void };
+  options: Array<{ id: string; name: string; managed?: boolean }>;
+}) {
+  const selected = options.some((option) => option.id === field.value) ? field.value : undefined;
+  return (
+    <div className="space-y-2">
+      <FormLabel>{label}</FormLabel>
+      <Select value={selected} onValueChange={field.onChange}>
+        <FormControl>
+          <SelectTrigger className="bg-background">
+            <SelectValue placeholder={`Alege ${label.toLowerCase()}`} />
+          </SelectTrigger>
+        </FormControl>
+        <SelectContent>
+          {options.map((option) => (
+            <SelectItem key={option.id} value={option.id} disabled={option.managed}>
+              {option.name} ({option.id})
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Input
+        aria-label={`${label} - ${fallbackLabel}`}
+        placeholder={`${fallbackLabel} (ID Discord)`}
+        value={field.value || ""}
+        onChange={(event) => field.onChange(event.target.value.trim())}
+      />
+      <p className="text-xs text-muted-foreground">Poți introduce manual ID-ul dacă nu este disponibil în metadate.</p>
+    </div>
+  );
+}
+
 export function CommandsPage() {
   const { guildId } = useActiveGuild();
-  const { execute: executeAction, resetKey } = useManualAction(guildId);
+  const { execute: executeAction } = useManualAction(guildId);
+  const { data: metadata, error: metadataError } = useModerationMetadata(guildId);
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [lastResult, setLastResult] = useState<unknown>(null);
+  const [lastAttempt, setLastAttempt] = useState<ActionValues | null>(null);
 
   const form = useForm<z.infer<typeof actionSchema>>({
     resolver: zodResolver(actionSchema),
@@ -45,21 +112,31 @@ export function CommandsPage() {
 
   const actionType = form.watch("type");
 
-  async function onSubmit(values: z.infer<typeof actionSchema>) {
+  async function submitAction(values: ActionValues, isRetry = false) {
     if (!confirm(`Ești sigur că vrei să execuți acțiunea ${values.type.toUpperCase()}? Această operațiune va afecta direct serverul de Discord.`)) {
       return;
     }
     
+    setLastAttempt(values);
+    setLastResult(null);
     setLoading(true);
+    setActionError(null);
     try {
       const res = await executeAction(values);
+      setLastResult(res);
       toast({ title: "Acțiune executată", description: "Comanda a fost trimisă cu succes către Oracol." });
-      form.reset({ type: values.type, reason: "" });
     } catch (err: any) {
-      toast({ variant: "destructive", title: "Acțiune eșuată", description: err.message });
+      const message = err?.message || "Acțiunea nu a putut fi executată.";
+      setLastResult(null);
+      setActionError(message);
+      toast({ variant: "destructive", title: "Acțiune eșuată", description: message });
     } finally {
       setLoading(false);
     }
+  }
+
+  function onSubmit(values: ActionValues) {
+    void submitAction(values);
   }
 
   if (!guildId) return <div className="p-8 text-center text-muted-foreground">Selectează un server.</div>;
@@ -80,6 +157,27 @@ export function CommandsPage() {
           Toate comenzile sunt înregistrate în sistemul de audit.
         </div>
       </div>
+      {metadataError && (
+        <div role="alert" className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-700">
+          Metadatele Discord nu au putut fi încărcate ({metadataError.message}). Poți continua cu ID-uri introduse manual.
+        </div>
+      )}
+      {actionError && (
+        <div role="alert" className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
+          <p>{actionError}</p>
+          {lastAttempt && (
+            <Button type="button" variant="outline" className="mt-3" disabled={loading} onClick={() => void submitAction(lastAttempt, true)}>
+              Reîncearcă aceeași acțiune
+            </Button>
+          )}
+        </div>
+      )}
+      {lastResult !== null && (
+        <div role="status" data-testid="manual-action-result" className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-4 text-sm">
+          <strong>Rezultatul acțiunii</strong>
+          <pre className="mt-2 max-w-full overflow-auto whitespace-pre-wrap font-mono text-xs">{JSON.stringify(lastResult, null, 2)}</pre>
+        </div>
+      )}
 
       <div className="bg-card border border-border p-6 rounded-xl">
         <Form {...form}>
@@ -130,16 +228,18 @@ export function CommandsPage() {
                 />
               )}
 
-              {["lock", "unlock", "slowmode"].includes(actionType) && (
+              {["purge", "lock", "unlock", "slowmode"].includes(actionType) && (
                 <FormField
                   control={form.control}
                   name="channelId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>ID Canal</FormLabel>
-                      <FormControl>
-                        <Input placeholder="Discord Channel ID" {...field} value={field.value || ""} />
-                      </FormControl>
+                      <MetadataSelectField
+                        label="Canal"
+                        fallbackLabel="ID canal"
+                        field={field}
+                        options={(metadata?.channels || []).map((channel) => ({ id: channel.id, name: `#${channel.name}` }))}
+                      />
                       <FormMessage />
                     </FormItem>
                   )}
@@ -185,10 +285,12 @@ export function CommandsPage() {
                   name="roleId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>ID Rol</FormLabel>
-                      <FormControl>
-                        <Input placeholder="Discord Role ID" {...field} value={field.value || ""} />
-                      </FormControl>
+                      <MetadataSelectField
+                        label="Rol"
+                        fallbackLabel="ID rol"
+                        field={field}
+                        options={(metadata?.roles || []).map((role) => ({ id: role.id, name: `@${role.name}`, managed: role.managed }))}
+                      />
                       <FormMessage />
                     </FormItem>
                   )}
@@ -198,12 +300,12 @@ export function CommandsPage() {
               {actionType === "slowmode" && (
                 <FormField
                   control={form.control}
-                  name="durationMinutes"
+                  name="amount"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Durată Slowmode (Minute)</FormLabel>
+                         <FormLabel>Slowmode (secunde, 0 = oprit)</FormLabel>
                       <FormControl>
-                        <Input type="number" placeholder="5" {...field} value={field.value || ""} />
+                           <Input type="number" min={0} max={21600} placeholder="5" {...field} value={field.value ?? ""} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -219,7 +321,7 @@ export function CommandsPage() {
                     <FormItem>
                       <FormLabel>Număr de mesaje de șters</FormLabel>
                       <FormControl>
-                        <Input type="number" placeholder="Ex: 50 (Max: 100)" {...field} value={field.value || ""} />
+                        <Input type="number" min={1} max={100} placeholder="Ex: 50 (Max: 100)" {...field} value={field.value ?? ""} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

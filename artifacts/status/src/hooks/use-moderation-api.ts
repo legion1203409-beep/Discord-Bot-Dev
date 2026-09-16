@@ -1,13 +1,56 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 
 const BASE_URL = "/api/moderation";
+const ACTIVE_GUILD_STORAGE_KEY = "moderation.activeGuildId";
 
 export interface ModerationSession {
   authenticated: boolean;
   userId?: string;
-  guilds?: Array<{ id: string; name: string; icon: string | null }>;
+  guilds?: ModerationGuild[];
   csrfToken?: string;
   expiresAt?: string;
+}
+
+export interface ModerationGuild {
+  id: string;
+  name: string;
+  icon: string | null;
+}
+
+export interface ModerationAuthConfig {
+  discordOAuthConfigured: boolean;
+  authorizationUrl: string;
+}
+
+export interface ModerationRole {
+  id: string;
+  name: string;
+  position?: number;
+  managed?: boolean;
+}
+
+export interface ModerationChannel {
+  id: string;
+  name: string;
+  type: number | string;
+  parentId?: string | null;
+}
+
+export interface ModerationMetadata {
+  guild: { id: string; name: string; ownerId: string };
+  roles: ModerationRole[];
+  channels: ModerationChannel[];
+  botCapabilities?: {
+    online?: boolean;
+    messageContent: boolean;
+    guildMembers: boolean;
+    canManageGuild?: boolean;
+    canModerateMembers?: boolean;
+    canManageMessages?: boolean;
+    canManageChannels?: boolean;
+    canKickMembers?: boolean;
+    canBanMembers?: boolean;
+  };
 }
 
 export class ApiError extends Error {
@@ -17,15 +60,67 @@ export class ApiError extends Error {
   }
 }
 
-// Global state for session
+function readStoredGuildId(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(ACTIVE_GUILD_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function createIdempotencyKey(): string {
+  const randomUuid = globalThis.crypto?.randomUUID?.();
+  if (randomUuid) return randomUuid;
+  // The API only needs a stable, opaque value. This branch supports older
+  // browsers and test runners without weakening server-side validation.
+  return `moderation-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+// Session and guild selection are application state, not component state. A
+// layout and a page can therefore never silently disagree about the server.
 let cachedSession: ModerationSession | null = null;
 let sessionListeners: Array<() => void> = [];
+let activeGuildId: string | null = readStoredGuildId();
+let activeGuildListeners: Array<() => void> = [];
+let sessionRequest: Promise<ModerationSession> | null = null;
+let sessionEpoch = 0;
 
 function notifySession() {
   sessionListeners.forEach(fn => fn());
 }
 
-async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+function notifyActiveGuild() {
+  activeGuildListeners.forEach(fn => fn());
+}
+
+function setGlobalActiveGuild(guildId: string | null) {
+  activeGuildId = guildId;
+  if (typeof window !== "undefined") {
+    try {
+      if (guildId) window.localStorage.setItem(ACTIVE_GUILD_STORAGE_KEY, guildId);
+      else window.localStorage.removeItem(ACTIVE_GUILD_STORAGE_KEY);
+    } catch {
+      // Persistence is a convenience; private browsing must not break the UI.
+    }
+  }
+  notifyActiveGuild();
+}
+
+function selectGuildForSession(session: ModerationSession): string | null {
+  if (!session.authenticated || !session.guilds?.length) return null;
+  const persisted = activeGuildId;
+  // Never silently choose a server after sign-in. A persisted choice is safe
+  // to restore only when it is one of the guilds returned by the server.
+  return session.guilds.some((guild) => guild.id === persisted) ? persisted : null;
+}
+
+interface ApiResponse<T> {
+  data: T;
+  headers: Headers;
+}
+
+async function apiFetchWithMeta<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
   const headers = new Headers(options.headers);
   if (cachedSession?.csrfToken && !['GET', 'HEAD'].includes(options.method || 'GET')) {
     headers.set("x-csrf-token", cachedSession.csrfToken);
@@ -54,7 +149,56 @@ async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise
   }
 
   const text = await res.text();
-  return (text ? JSON.parse(text) : undefined) as T;
+  return {
+    data: (text ? JSON.parse(text) : undefined) as T,
+    headers: res.headers,
+  };
+}
+
+async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  return (await apiFetchWithMeta<T>(endpoint, options)).data;
+}
+
+export function useModerationAuthConfig() {
+  const [authConfig, setAuthConfig] = useState<ModerationAuthConfig | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<ApiError | null>(null);
+  const requestId = useRef(0);
+
+  const fetchAuthConfig = useCallback(async () => {
+    const thisRequest = ++requestId.current;
+    setLoading(true);
+    setError(null);
+
+    try {
+      const data = await apiFetch<ModerationAuthConfig>("/auth-config");
+      if (
+        typeof data?.discordOAuthConfigured !== "boolean" ||
+        typeof data?.authorizationUrl !== "string" ||
+        !data.authorizationUrl
+      ) {
+        throw new ApiError(0, "Configurația autentificării Discord este invalidă.");
+      }
+      if (thisRequest !== requestId.current) return data;
+      setAuthConfig(data);
+      return data;
+    } catch (e: any) {
+      const apiError = e instanceof ApiError ? e : new ApiError(0, "Nu am putut încărca configurația autentificării.");
+      if (thisRequest === requestId.current) {
+        setAuthConfig(null);
+        setError(apiError);
+      }
+      throw apiError;
+    } finally {
+      if (thisRequest === requestId.current) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchAuthConfig().catch(() => undefined);
+  }, [fetchAuthConfig]);
+
+  return { authConfig, loading, error, retry: fetchAuthConfig };
 }
 
 export function useSession() {
@@ -63,103 +207,207 @@ export function useSession() {
   const [error, setError] = useState<ApiError | null>(null);
 
   const fetchSession = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await apiFetch<ModerationSession>("/session");
-      cachedSession = data;
-      setSession(data);
-      notifySession();
-    } catch (e: any) {
-      if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
-        const unauth = { authenticated: false };
-        cachedSession = unauth;
-        setSession(unauth);
-      } else {
-        // Don't auto-logout on 502/network errors
-        setError(e instanceof ApiError ? e : new ApiError(0, "Unknown error"));
+    if (sessionRequest) return sessionRequest;
+    const requestEpoch = sessionEpoch;
+    let request!: Promise<ModerationSession>;
+    request = (async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const response = await apiFetchWithMeta<ModerationSession>("/session");
+        const data = response.data;
+        if (requestEpoch !== sessionEpoch) return cachedSession ?? { authenticated: false };
+        cachedSession = data;
+        setSession(data);
+        setGlobalActiveGuild(selectGuildForSession(data));
+        notifySession();
+        return data;
+      } catch (e: any) {
+        // A response from a request started before login/logout must not
+        // overwrite the newer authentication state.
+        if (requestEpoch !== sessionEpoch) return cachedSession ?? { authenticated: false };
+        if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+          const unauth = { authenticated: false };
+          cachedSession = unauth;
+          setGlobalActiveGuild(null);
+          setSession(unauth);
+          notifySession();
+          return unauth;
+        }
+        // Don't auto-logout on 502/network errors.
+        const apiError = e instanceof ApiError ? e : new ApiError(0, "Unknown error");
+        setError(apiError);
+        throw apiError;
+      } finally {
+        setLoading(false);
+        if (sessionRequest === request) sessionRequest = null;
       }
-    } finally {
-      setLoading(false);
-    }
+    })();
+    sessionRequest = request;
+    return request;
   }, []);
 
   useEffect(() => {
-    if (!cachedSession) fetchSession();
     const handler = () => setSession(cachedSession);
     sessionListeners.push(handler);
+    if (!cachedSession) {
+      void fetchSession()
+        .then(() => setLoading(false))
+        .catch((error: ApiError) => {
+          setLoading(false);
+          setError(error instanceof ApiError ? error : new ApiError(0, "Unknown error"));
+        });
+    }
     return () => { sessionListeners = sessionListeners.filter(f => f !== handler); };
   }, [fetchSession]);
 
-  const login = async (code: string) => {
-    const data = await apiFetch<ModerationSession>("/login", {
-      method: "POST",
-      body: JSON.stringify({ code }),
-    });
-    cachedSession = { ...data, authenticated: true };
-    setSession(cachedSession);
-    notifySession();
-  };
-
   const logout = async () => {
-    try { await apiFetch("/logout", { method: "POST" }); } catch {}
+    const logoutCsrfToken = cachedSession?.csrfToken;
+    sessionEpoch += 1;
+    sessionRequest = null;
+    // Invalidate local auth and guild/mutation eligibility before awaiting
+    // the network request. The captured token is used only for this logout
+    // request because cachedSession is intentionally cleared first.
     cachedSession = { authenticated: false };
+    setGlobalActiveGuild(null);
     setSession(cachedSession);
     notifySession();
+    try {
+      await apiFetch("/logout", {
+        method: "POST",
+        headers: logoutCsrfToken ? { "x-csrf-token": logoutCsrfToken } : undefined,
+      });
+    } catch {}
   };
 
-  return { session, loading, error, login, logout, retry: fetchSession };
+  return { session, loading, error, logout, retry: fetchSession };
 }
 
 export function useActiveGuild() {
   const { session } = useSession();
-  const [guildId, setGuildId] = useState<string | null>(null);
+  const [guildId, setGuildState] = useState<string | null>(activeGuildId);
 
   useEffect(() => {
-    if (!guildId && session?.guilds?.length) {
-      setGuildId(session.guilds[0].id);
+    const handler = () => setGuildState(activeGuildId);
+    activeGuildListeners.push(handler);
+    setGuildState(activeGuildId);
+    return () => {
+      activeGuildListeners = activeGuildListeners.filter((listener) => listener !== handler);
+    };
+  }, []);
+
+  useEffect(() => {
+    // `null` means the session request is still loading. Do not clear the
+    // persisted choice before that request tells us which guilds are allowed.
+    if (!session) return;
+    const nextGuildId = selectGuildForSession(session);
+    if (nextGuildId !== activeGuildId) {
+      setGlobalActiveGuild(nextGuildId);
     }
-  }, [session, guildId]);
+  }, [session]);
+
+  const setGuildId = useCallback((nextGuildId: string | null) => {
+    if (nextGuildId && !session?.guilds?.some((guild) => guild.id === nextGuildId)) return;
+    setGlobalActiveGuild(nextGuildId);
+  }, [session]);
 
   return { guildId, setGuildId, guilds: session?.guilds || [] };
 }
 
 export function useModerationConfig(guildId: string | null) {
   const [data, setData] = useState<any>(null);
+  const [dataGuildId, setDataGuildId] = useState<string | null>(null);
   const [version, setVersion] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const requestId = useRef(0);
+  const currentGuildId = useRef(guildId);
+  const controllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    currentGuildId.current = guildId;
+    requestId.current += 1;
+    controllerRef.current?.abort();
+    setData(null);
+    setDataGuildId(null);
+    setVersion(null);
+    setError(null);
+    setLoading(Boolean(guildId));
+  }, [guildId]);
 
   const fetchConfig = useCallback(async () => {
-    if (!guildId) return;
+    const requestedGuildId = guildId;
+    if (!requestedGuildId) {
+      setData(null);
+      setDataGuildId(null);
+      setVersion(null);
+      setLoading(false);
+      return;
+    }
+    const thisRequest = ++requestId.current;
+    controllerRef.current?.abort();
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    // A refetch is a new canonical snapshot. Clear the old object before the
+    // response arrives so a caller explicitly discarding a draft cannot
+    // accidentally initialize from the previous ETag/config pair.
+    setData(null);
+    setDataGuildId(null);
+    setVersion(null);
+    setError(null);
     setLoading(true);
     try {
-      const res = await apiFetch<any>(`/guilds/${guildId}/config`);
-      setData(res.config);
-      setVersion(res.version.toString());
-      setError(null);
+      const response = await apiFetchWithMeta<any>(`/guilds/${requestedGuildId}/config`, { signal: controller.signal });
+      if (currentGuildId.current !== requestedGuildId || requestId.current !== thisRequest) return;
+      setData(response.data.config);
+      setDataGuildId(requestedGuildId);
+      const etag = response.headers.get("etag")?.replace(/^W\//, "");
+      const nextVersion = response.data.version ?? etag;
+      setVersion(nextVersion == null ? null : String(nextVersion));
+      setError(nextVersion == null ? new Error("Configurația nu conține o versiune ETag.") : null);
     } catch (err: any) {
-      setError(err);
+      if (err?.name !== "AbortError" && currentGuildId.current === requestedGuildId && requestId.current === thisRequest) {
+        setData(null);
+        setDataGuildId(null);
+        setVersion(null);
+        setError(err);
+      }
     } finally {
-      setLoading(false);
+      if (currentGuildId.current === requestedGuildId && requestId.current === thisRequest) setLoading(false);
     }
   }, [guildId]);
 
   useEffect(() => {
-    fetchConfig();
+    void fetchConfig();
   }, [fetchConfig]);
 
   const update = async (newData: any) => {
-    if (!guildId) return;
+    const requestedGuildId = guildId;
+    if (!requestedGuildId) throw new Error("Nu este selectat niciun server.");
+    if (!cachedSession?.authenticated || activeGuildId !== requestedGuildId) {
+      throw new Error("Sesiunea de moderare nu mai este activă.");
+    }
     if (!version) throw new Error("Missing config version");
+    if (currentGuildId.current !== requestedGuildId || dataGuildId !== requestedGuildId) {
+      throw new Error("Serverul selectat s-a schimbat. Reîncarcă configurația înainte de salvare.");
+    }
     try {
-      const res = await apiFetch<any>(`/guilds/${guildId}/config`, {
+      const response = await apiFetchWithMeta<any>(`/guilds/${requestedGuildId}/config`, {
         method: "PUT",
-        headers: { "If-Match": version },
+        headers: { "If-Match": version.startsWith('"') ? version : `"${version}"` },
         body: JSON.stringify(newData),
       });
+      if (currentGuildId.current !== requestedGuildId || !cachedSession?.authenticated || activeGuildId !== requestedGuildId) {
+        throw new Error("Serverul selectat s-a schimbat în timpul salvării.");
+      }
+      const res = response.data;
       setData(res.config);
-      setVersion(res.version.toString());
+      setDataGuildId(requestedGuildId);
+      const etag = response.headers.get("etag")?.replace(/^W\//, "");
+      const nextVersion = res.version ?? etag;
+      if (nextVersion == null) throw new Error("Răspunsul de salvare nu conține versiunea ETag.");
+      setVersion(String(nextVersion));
+      setError(null);
       return res;
     } catch (e: any) {
       if (e instanceof ApiError && e.status === 409) {
@@ -171,15 +419,91 @@ export function useModerationConfig(guildId: string | null) {
     }
   };
 
-  return { data, version, loading, error, update, refetch: fetchConfig };
+  return {
+    data: dataGuildId === guildId ? data : null,
+    version: dataGuildId === guildId ? version : null,
+    loading: loading || Boolean(guildId && dataGuildId !== guildId),
+    error,
+    update,
+    refetch: fetchConfig,
+  };
+}
+
+export function useModerationMetadata(guildId: string | null) {
+  const [data, setData] = useState<ModerationMetadata | null>(null);
+  const [dataGuildId, setDataGuildId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+  const requestId = useRef(0);
+  const currentGuildId = useRef(guildId);
+  const controllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    currentGuildId.current = guildId;
+    requestId.current += 1;
+    controllerRef.current?.abort();
+    setData(null);
+    setDataGuildId(null);
+    setError(null);
+    setLoading(Boolean(guildId));
+  }, [guildId]);
+
+  const fetchMetadata = useCallback(async () => {
+    const requestedGuildId = guildId;
+    if (!requestedGuildId) {
+      setData(null);
+      setDataGuildId(null);
+      setLoading(false);
+      return;
+    }
+    const thisRequest = ++requestId.current;
+    controllerRef.current?.abort();
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    setLoading(true);
+    try {
+      const result = await apiFetch<ModerationMetadata>(`/guilds/${requestedGuildId}/metadata`, { signal: controller.signal });
+      if (currentGuildId.current !== requestedGuildId || requestId.current !== thisRequest) return;
+      setData(result);
+      setDataGuildId(requestedGuildId);
+      setError(null);
+    } catch (err: any) {
+      if (err?.name !== "AbortError" && currentGuildId.current === requestedGuildId && requestId.current === thisRequest) {
+        setData(null);
+        setDataGuildId(null);
+        setError(err);
+      }
+    } finally {
+      if (currentGuildId.current === requestedGuildId && requestId.current === thisRequest) setLoading(false);
+    }
+  }, [guildId]);
+
+  useEffect(() => { void fetchMetadata(); }, [fetchMetadata]);
+
+  return {
+    data: dataGuildId === guildId ? data : null,
+    loading: loading || Boolean(guildId && dataGuildId !== guildId),
+    error,
+    refetch: fetchMetadata,
+  };
 }
 
 export function useCases(guildId: string | null, params?: { status?: string, userId?: string, limit?: number, offset?: number }) {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const dataGuildId = useRef<string | null>(null);
+  const requestId = useRef(0);
 
   const fetchCases = useCallback(async () => {
-    if (!guildId) return;
+    const requestedGuildId = guildId;
+    if (!requestedGuildId) {
+      requestId.current += 1;
+      dataGuildId.current = null;
+      setData([]);
+      setLoading(false);
+      return;
+    }
+    const thisRequest = ++requestId.current;
     setLoading(true);
     const query = new URLSearchParams();
     if (params?.status) query.set("status", params.status);
@@ -188,54 +512,86 @@ export function useCases(guildId: string | null, params?: { status?: string, use
     if (params?.offset) query.set("offset", params.offset.toString());
     
     try {
-      const res = await apiFetch<any>(`/guilds/${guildId}/cases?${query}`);
+      const res = await apiFetch<any>(`/guilds/${requestedGuildId}/cases?${query}`);
+      if (requestedGuildId !== guildId || thisRequest !== requestId.current) return;
+      dataGuildId.current = requestedGuildId;
       setData(res.items || []);
     } catch {} finally {
-      setLoading(false);
+      if (requestedGuildId === guildId && thisRequest === requestId.current) setLoading(false);
     }
   }, [guildId, params?.status, params?.userId, params?.limit, params?.offset]);
 
   useEffect(() => { fetchCases(); }, [fetchCases]);
-  return { data, loading, refetch: fetchCases };
+  return { data: dataGuildId.current === guildId ? data : [], loading: loading || Boolean(guildId && dataGuildId.current !== guildId), refetch: fetchCases };
 }
 
 export function useAuditLogs(guildId: string | null) {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const dataGuildId = useRef<string | null>(null);
+  const requestId = useRef(0);
 
   const fetchLogs = useCallback(async () => {
-    if (!guildId) return;
+    const requestedGuildId = guildId;
+    if (!requestedGuildId) {
+      requestId.current += 1;
+      dataGuildId.current = null;
+      setData([]);
+      setLoading(false);
+      return;
+    }
+    const thisRequest = ++requestId.current;
     setLoading(true);
     try {
-      const res = await apiFetch<any>(`/guilds/${guildId}/logs/audit`);
+      const res = await apiFetch<any>(`/guilds/${requestedGuildId}/logs/audit`);
+      if (requestedGuildId !== guildId || thisRequest !== requestId.current) return;
+      dataGuildId.current = requestedGuildId;
       setData(res.items || []);
     } catch {} finally {
-      setLoading(false);
+      if (requestedGuildId === guildId && thisRequest === requestId.current) setLoading(false);
     }
   }, [guildId]);
 
   useEffect(() => { fetchLogs(); }, [fetchLogs]);
-  return { data, loading, refetch: fetchLogs };
+  return { data: dataGuildId.current === guildId ? data : [], loading: loading || Boolean(guildId && dataGuildId.current !== guildId), refetch: fetchLogs };
 }
 
 export function useManualAction(guildId: string | null) {
-  // Use a ref to persist the key across re-renders for the same intention
-  const idempotencyKeyRef = useRef<string>(crypto.randomUUID());
+  // The same payload keeps its key so a retry can never execute twice. A
+  // different payload gets a new key, even if the previous request failed.
+  const intentRef = useRef<{ fingerprint: string; key: string } | null>(null);
+  const currentGuildId = useRef(guildId);
+  useEffect(() => {
+    currentGuildId.current = guildId;
+    intentRef.current = null;
+  }, [guildId]);
 
   const resetKey = useCallback(() => {
-    idempotencyKeyRef.current = crypto.randomUUID();
+    intentRef.current = null;
   }, []);
 
   const execute = async (payload: { type: string, targetId?: string, reason?: string, durationMinutes?: number, channelId?: string, roleId?: string, nickname?: string, amount?: number }) => {
-    if (!guildId) throw new Error("No guild selected");
+    const requestedGuildId = guildId;
+    if (!requestedGuildId) throw new Error("No guild selected");
+    if (!cachedSession?.authenticated || activeGuildId !== requestedGuildId) {
+      throw new Error("Sesiunea de moderare nu mai este activă.");
+    }
+    const fingerprint = JSON.stringify(payload);
+    if (intentRef.current?.fingerprint !== fingerprint) {
+      intentRef.current = { fingerprint, key: createIdempotencyKey() };
+    }
+    const idempotencyKey = intentRef.current.key;
     try {
-      const res = await apiFetch(`/guilds/${guildId}/actions`, {
+      const res = await apiFetch(`/guilds/${requestedGuildId}/actions`, {
         method: "POST",
         headers: {
-          "Idempotency-Key": idempotencyKeyRef.current
+          "Idempotency-Key": idempotencyKey,
         },
         body: JSON.stringify(payload)
       });
+      if (currentGuildId.current !== requestedGuildId || !cachedSession?.authenticated || activeGuildId !== requestedGuildId) {
+        throw new Error("Serverul selectat s-a schimbat în timpul acțiunii.");
+      }
       // After success, prepare a new key for the next distinct action
       resetKey();
       return res;
@@ -252,20 +608,30 @@ export function useManualAction(guildId: string | null) {
 export function useCaseDetails(guildId: string | null, caseId: string | null) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const dataKey = useRef<string | null>(null);
+  const requestId = useRef(0);
 
   const fetchDetails = useCallback(async () => {
-    if (!caseId || !guildId) {
+    const requestedGuildId = guildId;
+    const requestedCaseId = caseId;
+    if (!requestedCaseId || !requestedGuildId) {
+      requestId.current += 1;
+      dataKey.current = null;
       setData(null);
+      setLoading(false);
       return;
     }
+    const thisRequest = ++requestId.current;
     setLoading(true);
     try {
-      const res = await apiFetch<any>(`/guilds/${guildId}/cases/${caseId}`);
+      const res = await apiFetch<any>(`/guilds/${requestedGuildId}/cases/${requestedCaseId}`);
+      if (requestedGuildId !== guildId || requestedCaseId !== caseId || thisRequest !== requestId.current) return;
+      dataKey.current = `${requestedGuildId}:${requestedCaseId}`;
       setData(res);
     } catch (err) {
       console.error(err);
     } finally {
-      setLoading(false);
+      if (requestedGuildId === guildId && requestedCaseId === caseId && thisRequest === requestId.current) setLoading(false);
     }
   }, [guildId, caseId]);
 
@@ -273,6 +639,7 @@ export function useCaseDetails(guildId: string | null, caseId: string | null) {
 
   const updateCase = async (newData: any) => {
     if (!caseId || !guildId) return;
+    if (!cachedSession?.authenticated || activeGuildId !== guildId) throw new Error("Sesiunea de moderare nu mai este activă.");
     await apiFetch<any>(`/guilds/${guildId}/cases/${caseId}`, {
       method: "PATCH",
       body: JSON.stringify(newData)
@@ -282,6 +649,7 @@ export function useCaseDetails(guildId: string | null, caseId: string | null) {
 
   const addNote = async (text: string) => {
     if (!caseId || !guildId) return;
+    if (!cachedSession?.authenticated || activeGuildId !== guildId) throw new Error("Sesiunea de moderare nu mai este activă.");
     await apiFetch<any>(`/guilds/${guildId}/cases/${caseId}/notes`, {
       method: "POST",
       body: JSON.stringify({ body: text })
@@ -295,9 +663,19 @@ export function useCaseDetails(guildId: string | null, caseId: string | null) {
 export function useActionLedger(guildId: string | null, params?: { status?: string, limit?: number, offset?: number }) {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const dataGuildId = useRef<string | null>(null);
+  const requestId = useRef(0);
 
   const fetchActions = useCallback(async () => {
-    if (!guildId) return;
+    const requestedGuildId = guildId;
+    if (!requestedGuildId) {
+      requestId.current += 1;
+      dataGuildId.current = null;
+      setData([]);
+      setLoading(false);
+      return;
+    }
+    const thisRequest = ++requestId.current;
     setLoading(true);
     const query = new URLSearchParams();
     if (params?.status) query.set("status", params.status);
@@ -305,20 +683,23 @@ export function useActionLedger(guildId: string | null, params?: { status?: stri
     if (params?.offset) query.set("offset", params.offset.toString());
     
     try {
-      const res = await apiFetch<any>(`/guilds/${guildId}/actions?${query}`);
+      const res = await apiFetch<any>(`/guilds/${requestedGuildId}/actions?${query}`);
+      if (requestedGuildId !== guildId || thisRequest !== requestId.current) return;
+      dataGuildId.current = requestedGuildId;
       setData(res.items || []);
     } catch {} finally {
-      setLoading(false);
+      if (requestedGuildId === guildId && thisRequest === requestId.current) setLoading(false);
     }
   }, [guildId, params?.status, params?.limit, params?.offset]);
 
   useEffect(() => { fetchActions(); }, [fetchActions]);
-  return { data, loading, refetch: fetchActions };
+  return { data: dataGuildId.current === guildId ? data : [], loading: loading || Boolean(guildId && dataGuildId.current !== guildId), refetch: fetchActions };
 }
 
 export function useReconcileAction(guildId: string | null) {
   return async (actionId: string, status: "applied" | "failed" | "uncertain", note: string) => {
     if (!guildId) throw new Error("No guild selected");
+    if (!cachedSession?.authenticated || activeGuildId !== guildId) throw new Error("Sesiunea de moderare nu mai este activă.");
     return apiFetch(`/guilds/${guildId}/actions/${actionId}/reconcile`, {
       method: "PATCH",
       body: JSON.stringify({ status, note })

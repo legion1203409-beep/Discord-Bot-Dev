@@ -3,11 +3,11 @@ name: Moderation safety boundaries
 description: Identity, sanction, and attribution decisions for moderation independent of the RPG.
 ---
 
-Moderation staff identity is established through a short-lived, single-use code issued privately by the Discord bot, rather than an unrelated website account.
+Do not substitute a workspace Discord connector for each moderation visitor's own Discord identity.
 
-**Why:** Discord membership and current guild permissions are the authority for moderation. A website account alone cannot prove either.
+**Why:** The workspace connection represents the creator's account, whereas the moderation panel serves different users with different server permissions. Connecting that account cannot authenticate arbitrary visitors.
 
-**How to apply:** Keep the exchange scoped to the identity verified by Discord and re-fetch current membership/permissions for protected requests. Never introduce a development login bypass into the shipped app.
+**How to apply:** When changing sign-in providers, preserve per-user Discord authorization instead of using the workspace account's server list. Keep bot-membership and staff checks independent of the chosen sign-in method.
 
 Moderation remains independent of the RPG pause state. Rule severity adjusts detection sensitivity, not the configured sanction; only explicitly enabled escalation may promote sanctions.
 
