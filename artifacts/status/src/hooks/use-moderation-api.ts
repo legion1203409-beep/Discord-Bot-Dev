@@ -131,6 +131,7 @@ async function apiFetchWithMeta<T>(endpoint: string, options: RequestInit = {}):
   try {
     res = await fetch(`${BASE_URL}${endpoint}`, {
       ...options,
+      cache: options.cache ?? "no-store",
       headers,
       credentials: "include",
     });

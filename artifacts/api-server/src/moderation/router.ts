@@ -240,7 +240,7 @@ router.get("/guilds/:guildId/config", asyncRoute(async (req, res) => {
   const guildId = parse(snowflake, req.params.guildId);
   await sessionAndGuild(req, guildId, "config");
   const result = await moderationStore.getConfig(guildId);
-  res.set("ETag", `"${result.version}"`).json(result);
+  res.set("Cache-Control", "no-store").set("ETag", `"${result.version}"`).json(result);
 }));
 
 router.put("/guilds/:guildId/config", asyncRoute(async (req, res) => {
@@ -255,7 +255,7 @@ router.put("/guilds/:guildId/config", asyncRoute(async (req, res) => {
       logger.warn({ error, guildId }, "Native Discord AutoMod synchronization failed after config save");
     });
   }
-  res.set("ETag", `"${result.version}"`).json(result);
+  res.set("Cache-Control", "no-store").set("ETag", `"${result.version}"`).json(result);
 }));
 
 router.get("/guilds/:guildId/metadata", asyncRoute(async (req, res) => {
