@@ -34,6 +34,24 @@ vi.mock("../db", () => {
     ) => {
       persistence.records.set(key(channelId, applicantId), structuredClone(progress));
     }),
+    rejectTicketAlliance: vi.fn(async (
+      channelId: string,
+      applicantId: string,
+    ) => {
+      const recordKey = key(channelId, applicantId);
+      const current = persistence.records.get(recordKey);
+      if (
+        !current ||
+        current.status !== "completed" ||
+        current.alliancePosted ||
+        current.alliancePublishing
+      ) {
+        return null;
+      }
+      const rejected = { ...current, status: "rejected" as const, alliancePublishing: false };
+      persistence.records.set(recordKey, rejected);
+      return clone(rejected);
+    }),
     claimTicketAlliancePublication: vi.fn(async (
       channelId: string,
       applicantId: string,
@@ -200,6 +218,25 @@ describe("persistent alliance publication flow", () => {
       alliancePublishing: false,
       alliancePublicMessageId: "public-message-1",
     });
+  });
+
+  it("lets alliance staff refuse a completed pact and prevents publication", async () => {
+    persistence.records.set("reject-ticket:404", completedDraft());
+    const { handleTicketButton } = await freshTicketUi();
+    const rejection = makeInteraction("ticket_alliance_reject_404", "reject-ticket");
+
+    expect(await handleTicketButton(rejection.interaction)).toBe(true);
+    expect(rejection.update).toHaveBeenCalledWith(expect.objectContaining({
+      content: expect.stringContaining("<@404>"),
+      components: [],
+      allowedMentions: { parse: [], users: ["404"] },
+    }));
+    expect(rejection.publicSend).not.toHaveBeenCalled();
+    expect(persistence.records.get("reject-ticket:404")).toMatchObject({
+      status: "rejected",
+      alliancePublishing: false,
+    });
+    expect(persistence.records.get("reject-ticket:404")?.alliancePosted).not.toBe(true);
   });
 
   it("allows only one announcement for concurrent publish clicks", async () => {

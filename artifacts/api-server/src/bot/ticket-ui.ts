@@ -20,6 +20,7 @@ import {
   claimTicketAlliancePublication,
   finishTicketAlliancePublication,
   loadTicketProgress,
+  rejectTicketAlliance,
   releaseTicketAlliancePublication,
   saveTicketProgress,
   type TicketProgressRecord,
@@ -947,6 +948,10 @@ export function partnershipConfirmRow(userId: string): ActionRowBuilder<ButtonBu
       .setCustomId(`ticket_alliance_confirm_${userId}`)
       .setLabel("🛡️ Confirmă pentru publicare")
       .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(`ticket_alliance_reject_${userId}`)
+      .setLabel("Refuză pactul")
+      .setStyle(ButtonStyle.Danger),
   );
 }
 
@@ -1024,12 +1029,17 @@ export function partnershipPublishRow(userId: string): ActionRowBuilder<ButtonBu
 export function allianceAnnouncementText(
   answers: Record<string, string>,
   applicantUsername: string,
+  applicantId?: string,
 ): string {
-  const applicant = safeAnswer(applicantUsername, "Reprezentant");
+  const applicant = applicantId && /^\d+$/.test(applicantId)
+    ? `<@${applicantId}>`
+    : safeAnswer(applicantUsername, "Reprezentant");
   const serverName = safeAnswer(answers.server_name).slice(0, 200);
   const description = safeAnswer(answers.description).slice(0, 650);
   const invite = safeAnswer(answers.invite).slice(0, 300);
-  const members = safeAnswer(answers.members).slice(0, 150);
+  const members = safeAnswer(answers.members)
+    .replace(/^membri\s*:\s*/i, "")
+    .slice(0, 150);
   const lines = [
     "🤝 PACTUL CELOR DOUĂ REGATE",
     "══════════════════════════",
@@ -1044,9 +1054,6 @@ export function allianceAnnouncementText(
     `👤 Contract completat de: ${applicant}`,
     `👥 Membri: ${members}`,
   ];
-  if (partnershipHasUnder200Members(answers.members)) {
-    lines.push("", "📌 Promovare: serverele sub 200 de membri se promovează fără niciun ping.");
-  }
   lines.push("", "Pact pecetluit · Regatul Cenușii");
   return lines.join("\n").slice(0, 1950);
 }
@@ -1352,6 +1359,56 @@ export async function handleTicketQuestionSelect(
 }
 
 export async function handleTicketButton(interaction: ButtonInteraction): Promise<boolean> {
+  const rejectAllianceMatch = interaction.customId.match(/^ticket_alliance_reject_(\d+)$/);
+  if (rejectAllianceMatch) {
+    if (!memberHasStaffReviewRole(interaction.member)) {
+      await interaction.reply({
+        content: "🛡️ Doar membrii cu rolul de staff al alianțelor pot refuza acest pact.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
+    const applicantId = rejectAllianceMatch[1]!;
+    const state = await getTicketProgress(interaction.channelId, applicantId, true);
+    if (
+      !state?.answers ||
+      state.status !== "completed" ||
+      !actionMatchesResponseMessage(interaction, state.responseMessageId) ||
+      !messageHasButton(interaction.message, interaction.customId)
+    ) {
+      await interaction.reply({
+        content: "❌ Acest buton nu mai aparține rezumatului activ al contractului.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
+    const rejectedState = await rejectTicketAlliance(interaction.channelId, applicantId);
+    if (!rejectedState) {
+      await interaction.reply({
+        content: "❌ Pactul a fost deja publicat, refuzat sau este în curs de publicare.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
+    ticketProgress.set(ticketProgressKey(interaction.channelId, applicantId), rejectedState);
+    await interaction.update({
+      content: `❌ Pactul propus de <@${applicantId}> a fost refuzat de staff.`,
+      embeds: [
+        partnershipSummaryEmbed(
+          rejectedState.applicantUsername ?? "Reprezentant",
+          rejectedState.answers!,
+          "REFUZAT · propunerea nu va fi publicată",
+        )
+          .setTitle("⛔ Contract de Parteneriat · Refuzat")
+          .setColor(0x8f2d3d)
+          .setFooter({ text: "Pact refuzat · Regatul Cenușii" }),
+      ],
+      components: [],
+      allowedMentions: { parse: [], users: [applicantId] },
+    });
+    return true;
+  }
+
   const confirmAllianceMatch = interaction.customId.match(/^ticket_alliance_confirm_(\d+)$/);
   if (confirmAllianceMatch) {
     if (!memberHasStaffReviewRole(interaction.member)) {
@@ -1491,8 +1548,9 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
         content: allianceAnnouncementText(
           claimedState.answers!,
           claimedState.applicantUsername ?? "Reprezentant",
+          applicantId,
         ),
-        allowedMentions: { parse: [] },
+        allowedMentions: { parse: [], users: [applicantId] },
       });
       announcementSent = true;
       const finishedState = await finishTicketAlliancePublication(

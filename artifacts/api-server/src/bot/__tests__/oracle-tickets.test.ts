@@ -203,10 +203,16 @@ describe("Oracle ticket categories", () => {
       "🎁 Ce oferă serverul",
       "📜 Așteptări și reguli",
     ]);
-    const confirmButton = partnershipConfirmRow("123").toJSON().components[0];
+    const confirmComponents = partnershipConfirmRow("123").toJSON().components;
+    const confirmButton = confirmComponents[0];
     expect(confirmButton && "custom_id" in confirmButton ? confirmButton.custom_id : undefined).toBe(
       "ticket_alliance_confirm_123",
     );
+    const rejectButton = confirmComponents[1];
+    expect(rejectButton && "custom_id" in rejectButton ? rejectButton.custom_id : undefined).toBe(
+      "ticket_alliance_reject_123",
+    );
+    expect(rejectButton && "style" in rejectButton ? rejectButton.style : undefined).toBe(4);
     const draft = partnershipDraftEmbed("Andrei", {
       server_name: "Regatul Umbrelor",
       representative: "Andrei#1234",
@@ -268,16 +274,19 @@ describe("Oracle ticket categories", () => {
         server_name: "Regatul Umbrelor",
         description: "Comunitate RPG medievală.",
         invite: "https://discord.gg/umbrelor",
-        members: "150 total · 60 activi",
+        members: "Membri:150 total · 60 activi",
         regat_description: "🌫️ Textul privat al Regatului Cenușii",
       },
       "Andrei",
+      "987654321",
     );
 
     expect(announcement).toContain("🤝 PACTUL CELOR DOUĂ REGATE");
     expect(announcement).toContain("🏰 Comunitatea parteneră: Regatul Umbrelor");
-    expect(announcement).toContain("👤 Contract completat de: Andrei");
-    expect(announcement).toContain("📌 Promovare: serverele sub 200 de membri");
+    expect(announcement).toContain("👤 Contract completat de: <@987654321>");
+    expect(announcement).toContain("👥 Membri: 150 total · 60 activi");
+    expect(announcement).not.toContain("👥 Membri: Membri:");
+    expect(announcement).not.toContain("📌 Promovare:");
     expect(announcement).not.toContain("Textul privat al Regatului Cenușii");
     expect(announcement).not.toContain("@everyone");
   });

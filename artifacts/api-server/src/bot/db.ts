@@ -2312,6 +2312,29 @@ export async function claimTicketAlliancePublication(
   return result.rows[0] ? parseTicketProgress(result.rows[0].value) : null;
 }
 
+export async function rejectTicketAlliance(
+  channelId: string,
+  applicantId: string,
+): Promise<TicketProgressRecord | null> {
+  await ensureBotStateTable();
+  const key = ticketProgressKey(channelId, applicantId);
+  const result = await pool.query<{ value: string }>(
+    `UPDATE bot_state
+     SET value = jsonb_set(
+       jsonb_set(value::jsonb, '{status}', to_jsonb('rejected'::text), true),
+       '{alliancePublishing}', 'false'::jsonb, true
+     )::text,
+         updated_at = now()
+     WHERE key = $1
+       AND value::jsonb->>'status' = 'completed'
+       AND COALESCE(value::jsonb->>'alliancePosted', 'false') <> 'true'
+       AND COALESCE(value::jsonb->>'alliancePublishing', 'false') <> 'true'
+     RETURNING value`,
+    [key],
+  );
+  return result.rows[0] ? parseTicketProgress(result.rows[0].value) : null;
+}
+
 export interface TicketProgressRecord {
   currentStep: number;
   panelMessageId: string;
