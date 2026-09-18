@@ -111,6 +111,7 @@ export interface TicketQuestionConfig {
   placeholder: string;
   multiline: boolean;
   required: boolean;
+  imageUrl?: string;
 }
 
 export interface TicketFlowConfig {
@@ -121,6 +122,9 @@ export interface TicketFlowConfig {
   requirementsText: string;
   completionMessage: string;
   staffNotificationMessage: string;
+  panelImageUrl?: string;
+  completionImageUrl?: string;
+  staffNotificationImageUrl?: string;
   completionAction: "lock" | "notify_staff" | "keep_open";
   questions: TicketQuestionConfig[];
 }

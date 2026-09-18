@@ -54,6 +54,7 @@ const ticketQuestionConfigSchema = z.object({
   placeholder: z.string().trim().min(1).max(100),
   multiline: z.boolean(),
   required: z.boolean(),
+  imageUrl: z.string().trim().max(2_000).optional().default(""),
 }).strict();
 const ticketFlowConfigSchema = z.object({
   mode: z.enum(["legacy", "custom"]),
@@ -63,6 +64,9 @@ const ticketFlowConfigSchema = z.object({
   requirementsText: z.string().trim().min(1).max(2_000),
   completionMessage: z.string().trim().min(1).max(2_000),
   staffNotificationMessage: z.string().trim().min(1).max(2_000),
+  panelImageUrl: z.string().trim().max(2_000).optional().default(""),
+  completionImageUrl: z.string().trim().max(2_000).optional().default(""),
+  staffNotificationImageUrl: z.string().trim().max(2_000).optional().default(""),
   completionAction: z.enum(["lock", "notify_staff", "keep_open"]),
   questions: z.array(ticketQuestionConfigSchema).min(1).max(20),
 }).strict();

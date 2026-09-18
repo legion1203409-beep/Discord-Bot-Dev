@@ -62,6 +62,19 @@ const REGAT_INVITE_URL = "https://discord.gg/regatulcenusii";
 const REGATUL_CENUSII_DESCRIPTION =
   "Regatul Cenușii este un server Discord RPG cooperativ dark-fantasy, cu clase, lupte, boss-i, XP, Oboli, companioni, relicve și evenimente pentru întreaga comunitate.";
 
+function publicTicketImageUrl(raw: string | undefined): string | null {
+  if (!raw) return null;
+  if (/^https?:\/\//i.test(raw)) return raw;
+  const domain = (process.env.REPLIT_DOMAINS ?? process.env.REPLIT_DEV_DOMAIN ?? "")
+    .split(",")[0]?.trim();
+  return domain && raw.startsWith("/") ? `https://${domain}${raw}` : null;
+}
+
+function setTicketImage(embed: EmbedBuilder, raw: string | undefined): void {
+  const imageUrl = publicTicketImageUrl(raw);
+  if (imageUrl) embed.setImage(imageUrl);
+}
+
 type RoleMembership = {
   roles:
     | readonly string[]
@@ -120,6 +133,7 @@ type TicketQuestion = {
   placeholder: string;
   multiline?: boolean;
   required?: boolean;
+  imageUrl?: string;
 };
 
 const TICKET_QUESTIONS: Record<OracleTicketKind, TicketQuestion[]> = {
@@ -390,6 +404,7 @@ export function ticketPanelPayload(
       )
       .setFooter({ text: "Regatul Cenușii · Citește informațiile înainte de a începe" });
     if (TICKET_SEAL) embed.setThumbnail(TICKET_SEAL);
+    setTicketImage(embed, flow.panelImageUrl);
     return {
       embeds: [embed],
       components: [new ActionRowBuilder<ButtonBuilder>().addComponents(ticketStartButton(kind, flow.startButtonLabel))],
@@ -1933,14 +1948,14 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
           progressState.answers ?? {},
         );
         const roleId = getTicketConfig(interaction.guildId).staffReviewRoleId;
+        const summaryEmbed = partnershipSummaryEmbed(
+          interaction.user.globalName ?? interaction.user.username,
+          partnershipAnswers,
+        );
+        setTicketImage(summaryEmbed, flow.staffNotificationImageUrl);
         const responseMessage = await interaction.channel.send({
           content: `<@&${roleId}>\n${flow.staffNotificationMessage}`,
-          embeds: [
-            partnershipSummaryEmbed(
-              interaction.user.globalName ?? interaction.user.username,
-              partnershipAnswers,
-            ),
-          ],
+          embeds: [summaryEmbed],
           components: [partnershipConfirmRow(interaction.user.id)],
           allowedMentions: { parse: [], roles: [roleId] },
         });
@@ -1979,6 +1994,12 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
         .setFooter({ text: complete ? "Formular complet · Regatul Cenușii" : "Răspunsul a fost salvat" })
         .setTimestamp();
       if (TICKET_SEAL) flowEmbed.setThumbnail(TICKET_SEAL);
+      setTicketImage(
+        flowEmbed,
+        complete
+          ? (flow.staffNotificationImageUrl ?? flow.completionImageUrl)
+          : question.imageUrl,
+      );
 
       const roleId = getTicketConfig(interaction.guildId).staffReviewRoleId;
       const notifyStaff = complete && flow.completionAction === "notify_staff";

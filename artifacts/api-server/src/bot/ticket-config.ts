@@ -11,6 +11,7 @@ export interface TicketQuestionConfig {
   placeholder: string;
   multiline: boolean;
   required: boolean;
+  imageUrl?: string;
 }
 
 export interface TicketFlowConfig {
@@ -21,6 +22,9 @@ export interface TicketFlowConfig {
   requirementsText: string;
   completionMessage: string;
   staffNotificationMessage: string;
+  panelImageUrl?: string;
+  completionImageUrl?: string;
+  staffNotificationImageUrl?: string;
   completionAction: TicketCompletionAction;
   questions: TicketQuestionConfig[];
 }
@@ -124,6 +128,14 @@ function textOrDefault(value: unknown, fallback: string, maxLength: number): str
     : fallback;
 }
 
+function imageUrlOrEmpty(value: unknown): string | undefined {
+  if (typeof value !== "string" || value.trim() === "") return undefined;
+  const candidate = value.trim().slice(0, 2_000);
+  return /^https?:\/\/\S+$/i.test(candidate) || /^\/api\/storage\/objects\/[a-zA-Z0-9/_-]+$/.test(candidate)
+    ? candidate
+    : undefined;
+}
+
 function normalizeFlow(value: unknown, fallback: TicketFlowConfig): TicketFlowConfig {
   const raw = value && typeof value === "object" ? value as Partial<TicketFlowConfig> : {};
   const rawQuestions = Array.isArray(raw.questions) ? raw.questions : [];
@@ -144,6 +156,7 @@ function normalizeFlow(value: unknown, fallback: TicketFlowConfig): TicketFlowCo
       placeholder: textOrDefault(question.placeholder, "Scrie răspunsul tău...", 100),
       multiline: question.multiline === true,
       required: question.required !== false,
+      imageUrl: imageUrlOrEmpty(question.imageUrl),
     });
   }
   return {
@@ -154,6 +167,9 @@ function normalizeFlow(value: unknown, fallback: TicketFlowConfig): TicketFlowCo
     requirementsText: textOrDefault(raw.requirementsText, fallback.requirementsText, 2_000),
     completionMessage: textOrDefault(raw.completionMessage, fallback.completionMessage, 2_000),
     staffNotificationMessage: textOrDefault(raw.staffNotificationMessage, fallback.staffNotificationMessage, 2_000),
+    panelImageUrl: imageUrlOrEmpty(raw.panelImageUrl),
+    completionImageUrl: imageUrlOrEmpty(raw.completionImageUrl),
+    staffNotificationImageUrl: imageUrlOrEmpty(raw.staffNotificationImageUrl),
     completionAction:
       raw.completionAction === "lock" || raw.completionAction === "notify_staff" || raw.completionAction === "keep_open"
         ? raw.completionAction
