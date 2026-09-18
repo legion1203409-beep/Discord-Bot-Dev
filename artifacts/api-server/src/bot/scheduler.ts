@@ -466,67 +466,122 @@ function rollBossRarity(): BossRarity {
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-const eventMessageDeletionTimers = new Map<number, ReturnType<typeof setTimeout>>();
+const eventMessageDeletionTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const EVENT_MESSAGE_DELETE_RETRY_MS = 60_000;
 
-async function deleteEventMessages(
+interface EventCleanupFailure {
+  target: "event" | "decree";
+  phase: "channel-config" | "channel-fetch" | "message-fetch" | "message-delete";
+  code: string;
+  message: string;
+  messageId: string;
+  channelId?: string;
+}
+
+function errorContext(err: unknown): { code: string; message: string } {
+  const code = typeof err === "object" && err !== null && "code" in err
+    ? String((err as { code?: unknown }).code ?? "UNKNOWN")
+    : "UNKNOWN";
+  const message = err instanceof Error
+    ? err.message
+    : typeof err === "string"
+      ? err
+      : "Unknown Discord error";
+  return { code, message };
+}
+
+async function deleteTrackedEventMessage(
+  client: Client,
+  guildId: string,
+  type: EventType,
+  target: EventCleanupFailure["target"],
+  messageId: string,
+): Promise<EventCleanupFailure | null> {
+  const channelId = getChannel(type, guildId);
+  if (!channelId) {
+    return {
+      target,
+      phase: "channel-config",
+      code: "CHANNEL_UNCONFIGURED",
+      message: `No ${type} channel is configured for guild`,
+      messageId,
+    };
+  }
+
+  let channel: unknown;
+  try {
+    channel = await client.channels.fetch(channelId);
+  } catch (err) {
+    const context = errorContext(err);
+    return { target, phase: "channel-fetch", ...context, messageId, channelId };
+  }
+  if (!(channel instanceof TextChannel)) {
+    return {
+      target,
+      phase: "channel-fetch",
+      code: "CHANNEL_UNAVAILABLE",
+      message: `Configured ${type} channel is unavailable or is not a text channel`,
+      messageId,
+      channelId,
+    };
+  }
+  if (isTicketCategoryParentId(channel.parentId)) {
+    return {
+      target,
+      phase: "channel-fetch",
+      code: "TICKET_CHANNEL",
+      message: `Configured ${type} channel belongs to a ticket category`,
+      messageId,
+      channelId,
+    };
+  }
+
+  let message: Message;
+  try {
+    message = await channel.messages.fetch(messageId);
+  } catch (err) {
+    const context = errorContext(err);
+    // Discord 10008 means the tracked message is already gone. Fetch and
+    // delete must treat it identically so stale rows cannot retry forever.
+    if (context.code === "10008") return null;
+    return { target, phase: "message-fetch", ...context, messageId, channelId };
+  }
+
+  try {
+    await message.delete();
+    return null;
+  } catch (err) {
+    const context = errorContext(err);
+    if (context.code === "10008") return null;
+    return { target, phase: "message-delete", ...context, messageId, channelId };
+  }
+}
+
+export async function deleteEventMessages(
   client: Client,
   guildId: string,
   eventId: number,
   messageId: string,
   decreeMessageId?: string | null,
 ): Promise<boolean> {
-  let retry = false;
-  const eventChannel = await fetchChannel(client, "event", guildId);
-  if (eventChannel instanceof TextChannel) {
-    let message: Message | null = null;
-    try {
-      message = await eventChannel.messages.fetch(messageId);
-    } catch {
-      // A missing message is already clean; a fetch failure is transient.
-      retry = true;
-    }
-    if (message) {
-      await message.delete().catch((err) => {
-        const code = typeof err === "object" && err !== null && "code" in err
-          ? String((err as { code?: unknown }).code)
-          : "";
-        if (code !== "10008") retry = true;
-      });
-    }
-  } else {
-    retry = true;
-  }
-
+  const failures: EventCleanupFailure[] = [];
+  const eventFailure = await deleteTrackedEventMessage(client, guildId, "event", "event", messageId);
+  if (eventFailure) failures.push(eventFailure);
   if (decreeMessageId) {
-    const mainChannel = await fetchChannel(client, "main", guildId);
-    if (mainChannel instanceof TextChannel) {
-      let decree: Message | null = null;
-      try {
-        decree = await mainChannel.messages.fetch(decreeMessageId);
-      } catch {
-        retry = true;
-      }
-      if (decree) {
-        await decree.delete().catch((err) => {
-          const code = typeof err === "object" && err !== null && "code" in err
-            ? String((err as { code?: unknown }).code)
-            : "";
-          if (code !== "10008") retry = true;
-        });
-      }
-    } else {
-      retry = true;
-    }
+    const decreeFailure = await deleteTrackedEventMessage(client, guildId, "main", "decree", decreeMessageId);
+    if (decreeFailure) failures.push(decreeFailure);
   }
 
-  if (retry) {
-    logger.warn({ eventId, guildId, messageId }, "Event message cleanup will retry");
+  if (failures.length > 0) {
+    logger.warn(
+      { eventId, guildId, messageId, decreeMessageId, failures },
+      "Event message cleanup will retry",
+    );
   }
-  return retry;
+  return failures.length > 0;
 }
 
-function scheduleEventMessageDeletion(
+export function scheduleEventMessageDeletion(
   client: Client,
   guildId: string,
   eventId: number,
@@ -534,23 +589,40 @@ function scheduleEventMessageDeletion(
   expiresAt: Date,
   decreeMessageId?: string | null,
 ): void {
-  if (eventMessageDeletionTimers.has(eventId)) return;
+  const timerKey = `${guildId}:${eventId}`;
+  if (eventMessageDeletionTimers.has(timerKey)) return;
   const cleanupAt = expiresAt.getTime() + EVENT_MESSAGE_RETENTION_MS;
   const timer = setTimeout(async () => {
-    eventMessageDeletionTimers.delete(eventId);
+    let retry = false;
     try {
-      if (await deleteEventMessages(client, guildId, eventId, messageId, decreeMessageId)) {
-        scheduleEventMessageDeletion(
-          client,
-          guildId,
-          eventId,
-          messageId,
-          new Date(Date.now() + EVENT_MESSAGE_DELETE_RETRY_MS - EVENT_MESSAGE_RETENTION_MS),
-          decreeMessageId,
-        );
+      retry = await deleteEventMessages(client, guildId, eventId, messageId, decreeMessageId);
+      if (!retry) {
+        await deleteEvent(eventId);
+        logger.info({ eventId, guildId, messageId, decreeMessageId }, "Expired event messages and DB record cleaned up");
       }
     } catch (err) {
-      logger.warn({ err, eventId, guildId, messageId }, "Failed to delete expired event message");
+      retry = true;
+      const context = errorContext(err);
+      logger.warn(
+        {
+          err,
+          eventId,
+          guildId,
+          messageId,
+          decreeMessageId,
+          phase: "database-delete",
+          ...context,
+        },
+        "Expired event cleanup failed and will retry",
+      );
+    } finally {
+      // Keep the entry while cleanup is in flight so startup/legacy cleanup
+      // cannot create a second timer for the same persisted event.
+      if (eventMessageDeletionTimers.get(timerKey) === timer) {
+        eventMessageDeletionTimers.delete(timerKey);
+      }
+    }
+    if (retry) {
       scheduleEventMessageDeletion(
         client,
         guildId,
@@ -562,25 +634,12 @@ function scheduleEventMessageDeletion(
     }
   }, Math.max(0, cleanupAt - Date.now()));
   timer.unref?.();
-  eventMessageDeletionTimers.set(eventId, timer);
+  eventMessageDeletionTimers.set(timerKey, timer);
 }
 
 async function rehydrateEventMessageDeletions(client: Client, guildId: string): Promise<void> {
   try {
-    const events = await getAllEvents(guildId);
-    const now = Date.now();
-    for (const ev of events) {
-      if (ev.expiresAt.getTime() <= now) {
-        scheduleEventMessageDeletion(
-          client,
-          guildId,
-          ev.id,
-          ev.messageId,
-          ev.expiresAt,
-          ev.decreeMessageId,
-        );
-      }
-    }
+    await cleanupOldEvents(client, guildId);
   } catch (err) {
     logger.warn({ err, guildId }, "Failed to rehydrate event message cleanup");
   }
@@ -875,30 +934,23 @@ export async function fireChest(client: Client, guildId: string, bypassGate = fa
 
 // ─── Old event cleanup ────────────────────────────────────────────────────────
 
-async function cleanupOldEvents(client: Client, guildId: string) {
+export async function cleanupOldEvents(client: Client, guildId: string) {
   const old = await getAllEvents(guildId);
   if (old.length === 0) return;
 
-  const eventChannel = await fetchChannel(client, "event", guildId);
-  const mainChannel = await fetchChannel(client, "main", guildId);
-
   for (const ev of old) {
-    try {
-      if (ev.expiresAt.getTime() + EVENT_MESSAGE_RETENTION_MS > Date.now()) continue;
-      if (eventChannel instanceof TextChannel) {
-        const msg = await eventChannel.messages.fetch(ev.messageId).catch(() => null);
-        if (msg) await msg.delete().catch(() => null);
-      }
-      if (ev.decreeMessageId && mainChannel instanceof TextChannel) {
-        const decree = await mainChannel.messages.fetch(ev.decreeMessageId).catch(() => null);
-        if (decree) await decree.delete().catch(() => null);
-      }
-      await deleteEvent(ev.id);
-    } catch (err) {
-      logger.error({ err, eventId: ev.id, guildId }, "Failed to cleanup old event");
-    }
+    if (ev.expiresAt.getTime() > Date.now()) continue;
+    // The legacy sweep now enters the same durable retry path as normal expiry.
+    // It never interprets a Discord/network error as permission to drop the row.
+    scheduleEventMessageDeletion(
+      client,
+      guildId,
+      ev.id,
+      ev.messageId,
+      ev.expiresAt,
+      ev.decreeMessageId,
+    );
   }
-  logger.info({ count: old.length, guildId }, "Old events cleaned up");
 }
 
 // ─── Fire event ───────────────────────────────────────────────────────────────
@@ -918,7 +970,9 @@ export async function fireEvent(client: Client, guildId: string) {
     }
     if (gs.stopped) return;
 
-    void cleanupOldEvents(client, guildId).catch(() => null);
+    void cleanupOldEvents(client, guildId).catch((err) =>
+      logger.warn({ err, guildId }, "Failed to schedule legacy event cleanup"),
+    );
 
     const expiresAt = new Date(Date.now() + EVENT_DURATION_MS);
 
@@ -1604,9 +1658,6 @@ export function startGuildScheduler(client: Client, guildId: string) {
   void rehydrateEventMessageDeletions(client, guildId);
   void expireOldEvents(client, guildId).catch((err) =>
     logger.warn({ err, guildId }, "Failed to expire events after scheduler start"),
-  );
-  void cleanupOldEvents(client, guildId).catch((err) =>
-    logger.warn({ err, guildId }, "Failed to clean old events after scheduler start"),
   );
   void rehydrateActiveBosses(client, guildId);
   if (LEGACY_CHEST_SPAWNS_ENABLED) {
