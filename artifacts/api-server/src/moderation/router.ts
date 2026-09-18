@@ -29,10 +29,26 @@ import type { DiscordOAuthFailureStage } from "./oauth";
 import { moderationStore } from "./store";
 import { syncNativeAutoMod } from "../bot/native-automod";
 import { logger } from "../lib/logger";
+import { initChannelConfig } from "../bot/channel-config";
+import { saveAllianceRecruitmentText, saveChannelConfig, loadAllianceRecruitmentText, loadChannelConfig, type ChannelConfig } from "../bot/db";
 
 const router = Router();
 const snowflake = z.string().regex(/^\d{5,25}$/);
 const uuid = z.string().uuid();
+const botChannelConfigSchema = z.object({
+  main: snowflake.nullable().optional(),
+  event: snowflake.nullable().optional(),
+  boss: snowflake.nullable().optional(),
+  trader: snowflake.nullable().optional(),
+  eventTop: snowflake.nullable().optional(),
+  bossTop: snowflake.nullable().optional(),
+  council: snowflake.nullable().optional(),
+  fratia: snowflake.nullable().optional(),
+}).strict();
+const botControlSchema = z.object({
+  channels: botChannelConfigSchema,
+  allianceRecruitmentText: z.string().trim().min(1).max(2_000),
+}).strict();
 const actionType = z.enum(["warn", "mute", "kick", "ban", "unmute", "purge", "slowmode", "lock", "unlock", "nick", "role"]);
 
 const idempotencyKeySchema = z.string().trim().min(16).max(128).regex(/^[A-Za-z0-9._:-]+$/);
@@ -285,6 +301,35 @@ router.put("/guilds/:guildId/config", asyncRoute(async (req, res) => {
     });
   }
   res.set("Cache-Control", "no-store").set("ETag", `"${result.version}"`).json(result);
+}));
+
+router.get("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  await sessionAndGuild(req, guildId, "config");
+  const [channels, allianceRecruitmentText] = await Promise.all([
+    loadChannelConfig(guildId),
+    loadAllianceRecruitmentText(guildId),
+  ]);
+  res.set("Cache-Control", "no-store").json({
+    channels: channels ?? {},
+    allianceRecruitmentText: allianceRecruitmentText ?? "",
+  });
+}));
+
+router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  await sessionAndGuild(req, guildId, "config", true);
+  const value = parse(botControlSchema, req.body);
+  const channels: ChannelConfig = Object.fromEntries(
+    Object.entries(value.channels).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+  ) as ChannelConfig;
+  await saveChannelConfig(guildId, channels);
+  await saveAllianceRecruitmentText(guildId, value.allianceRecruitmentText);
+  await initChannelConfig(guildId);
+  res.status(200).json({
+    channels,
+    allianceRecruitmentText: value.allianceRecruitmentText,
+  });
 }));
 
 router.get("/guilds/:guildId/metadata", asyncRoute(async (req, res) => {

@@ -53,6 +53,11 @@ export interface ModerationMetadata {
   };
 }
 
+export interface BotControlConfig {
+  channels: Record<string, string>;
+  allianceRecruitmentText: string;
+}
+
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message);
@@ -428,6 +433,56 @@ export function useModerationConfig(guildId: string | null) {
     update,
     refetch: fetchConfig,
   };
+}
+
+export function useBotControl(guildId: string | null) {
+  const [data, setData] = useState<BotControlConfig | null>(null);
+  const [loading, setLoading] = useState(Boolean(guildId));
+  const [error, setError] = useState<ApiError | null>(null);
+  const requestId = useRef(0);
+
+  const fetchControl = useCallback(async () => {
+    const requestedGuildId = guildId;
+    const thisRequest = ++requestId.current;
+    if (!requestedGuildId) {
+      setData(null);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await apiFetch<BotControlConfig>(`/guilds/${requestedGuildId}/bot-control`);
+      if (requestId.current === thisRequest) setData(response);
+    } catch (err: any) {
+      if (requestId.current === thisRequest) {
+        setData(null);
+        setError(err);
+      }
+    } finally {
+      if (requestId.current === thisRequest) setLoading(false);
+    }
+  }, [guildId]);
+
+  useEffect(() => {
+    void fetchControl();
+  }, [fetchControl]);
+
+  const update = async (value: BotControlConfig) => {
+    if (!guildId) throw new Error("Nu este selectat niciun server.");
+    try {
+      const saved = await apiFetch<BotControlConfig>(`/guilds/${guildId}/bot-control`, {
+        method: "PUT",
+        body: JSON.stringify(value),
+      });
+      setData(saved);
+      return saved;
+    } catch (err) {
+      throw err;
+    }
+  };
+
+  return { data, loading, error, update, refetch: fetchControl };
 }
 
 export function useModerationMetadata(guildId: string | null) {

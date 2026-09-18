@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { 
-  ShieldAlert, Settings, Shield, Bot, History, BookOpen, 
+  ShieldAlert, Settings, Shield, Bot, History, BookOpen, SlidersHorizontal,
   LogOut, ChevronLeft, Activity, Zap, Menu, X, Eye, Monitor, RefreshCw
 } from "lucide-react";
 import { ReactNode, useState, useEffect } from "react";
@@ -197,6 +197,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
     { href: "/cazuri", icon: ShieldAlert, label: "Cazuri (Cases)" },
     { href: "/audit", icon: History, label: "Loguri & Audit" },
     { href: "/config", icon: Settings, label: "Configurare" },
+    { href: "/bot", icon: SlidersHorizontal, label: "Control bot" },
   ];
 
   return (
