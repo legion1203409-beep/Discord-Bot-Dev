@@ -47,7 +47,7 @@ const botChannelConfigSchema = z.object({
   council: snowflake.nullable().optional(),
   fratia: snowflake.nullable().optional(),
 }).strict();
-const ticketQuestionConfigSchema = z.object({
+export const ticketQuestionConfigSchema = z.object({
   key: z.string().trim().min(1).max(32).regex(/^[a-z0-9_]+$/),
   label: z.string().trim().min(1).max(45),
   description: z.string().trim().min(1).max(900),
@@ -56,7 +56,7 @@ const ticketQuestionConfigSchema = z.object({
   required: z.boolean(),
   imageUrl: z.string().trim().max(2_000).optional().default(""),
 }).strict();
-const ticketFlowConfigSchema = z.object({
+export const ticketFlowConfigSchema = z.object({
   mode: z.enum(["legacy", "custom"]),
   title: z.string().trim().min(1).max(256),
   startButtonLabel: z.string().trim().min(1).max(80),
