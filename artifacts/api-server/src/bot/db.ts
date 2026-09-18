@@ -2237,7 +2237,7 @@ export async function loadChannelConfig(guildId: string): Promise<ChannelConfig 
   }
 }
 
-// ─── Alliance recruitment text persistence ────────────────────────────────────
+const GAMEPLAY_CONFIG_KEY = "gameplay_config";
 const ALLIANCE_RECRUITMENT_TEXT_KEY = "alliance_recruitment_text";
 
 export async function saveAllianceRecruitmentText(
@@ -2464,4 +2464,28 @@ export async function finishTicketAlliancePublication(
     [key, publicMessageId],
   );
   return result.rows[0] ? parseTicketProgress(result.rows[0].value) : null;
+}
+
+export async function saveGameplayConfig(guildId: string, config: unknown): Promise<void> {
+  await ensureBotStateTable();
+  const key = guildKey(guildId, GAMEPLAY_CONFIG_KEY);
+  const now = new Date();
+  await db
+    .insert(botStateTable)
+    .values({ key, value: JSON.stringify(config) })
+    .onConflictDoUpdate({
+      target: botStateTable.key,
+      set: { value: JSON.stringify(config), updatedAt: now },
+    });
+}
+
+export async function loadGameplayConfig(guildId: string): Promise<unknown | null> {
+  await ensureBotStateTable();
+  const [row] = await db.select().from(botStateTable).where(eq(botStateTable.key, guildKey(guildId, GAMEPLAY_CONFIG_KEY)));
+  if (!row) return null;
+  try {
+    return JSON.parse(row.value) as unknown;
+  } catch {
+    return null;
+  }
 }

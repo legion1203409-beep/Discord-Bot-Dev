@@ -55,7 +55,9 @@ export interface ModerationMetadata {
 
 export interface BotControlConfig {
   channels: Record<string, string>;
+
   allianceRecruitmentText: string;
+
   tickets: {
     categories: {
       staff: string;
@@ -68,6 +70,32 @@ export interface BotControlConfig {
     incompleteTimeoutMinutes: number;
     firstWarningMinutes: number;
     secondWarningMinutes: number;
+  };
+
+  gameplayConfig: {
+    events: {
+      eventDurationMinutes: number;
+      eventCooldownMinMinutes: number;
+      eventCooldownMaxMinutes: number;
+      finalBossDurationMinutes: number;
+      standaloneBossIntervalMinMinutes: number;
+      standaloneBossIntervalMaxMinutes: number;
+      standaloneBossDurationMinutes: number;
+      battleEventIntervalMinutes: number;
+      chestIntervalMinutes: number;
+      chestExpireMinutes: number;
+    };
+    missions: {
+      kill_10: { target: number; rewardQty: number };
+      rare_3: { target: number; rewardQty: number };
+      boss_1: { target: number; rewardQty: number };
+    };
+    economy: {
+      monsterGoldMultiplier: number;
+      monsterXpMultiplier: number;
+      bossGoldMultiplier: number;
+      bossXpMultiplier: number;
+    };
   };
 }
 

@@ -32,6 +32,7 @@ import { logger } from "../lib/logger";
 import { initChannelConfig } from "../bot/channel-config";
 import { saveAllianceRecruitmentText, saveChannelConfig, loadAllianceRecruitmentText, loadChannelConfig, saveTicketConfig, loadTicketConfig, type ChannelConfig } from "../bot/db";
 import { normalizeTicketConfig, setTicketConfig, type TicketConfig } from "../bot/ticket-config";
+import { saveGuildGameplayConfig, getGameplayConfig, initGameplayConfig } from "../bot/gameplay-store";
 
 const router = Router();
 const snowflake = z.string().regex(/^\d{5,25}$/);
@@ -46,7 +47,7 @@ const botChannelConfigSchema = z.object({
   council: snowflake.nullable().optional(),
   fratia: snowflake.nullable().optional(),
 }).strict();
-const botControlSchema = z.object({
+export const botControlSchema = z.object({
   channels: botChannelConfigSchema,
   allianceRecruitmentText: z.string().trim().min(1).max(2_000),
   tickets: z.object({
@@ -61,6 +62,38 @@ const botControlSchema = z.object({
     incompleteTimeoutMinutes: z.number().int().min(10).max(240),
     firstWarningMinutes: z.number().int().min(1).max(180),
     secondWarningMinutes: z.number().int().min(2).max(239),
+  }).strict(),
+  gameplayConfig: z.object({
+    events: z.object({
+      eventDurationMinutes: z.number().int().min(1).max(1_440),
+      eventCooldownMinMinutes: z.number().int().min(1).max(1_440),
+      eventCooldownMaxMinutes: z.number().int().min(1).max(1_440),
+      finalBossDurationMinutes: z.number().int().min(1).max(1_440),
+      standaloneBossIntervalMinMinutes: z.number().int().min(1).max(1_440),
+      standaloneBossIntervalMaxMinutes: z.number().int().min(1).max(1_440),
+      standaloneBossDurationMinutes: z.number().int().min(1).max(1_440),
+      battleEventIntervalMinutes: z.number().int().min(1).max(1_440),
+      chestIntervalMinutes: z.number().int().min(1).max(1_440),
+      chestExpireMinutes: z.number().int().min(1).max(120),
+    }).strict().superRefine((value, ctx) => {
+      if (value.eventCooldownMaxMinutes < value.eventCooldownMinMinutes) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["eventCooldownMaxMinutes"], message: "Intervalul maxim trebuie să fie cel puțin egal cu minimul." });
+      }
+      if (value.standaloneBossIntervalMaxMinutes < value.standaloneBossIntervalMinMinutes) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["standaloneBossIntervalMaxMinutes"], message: "Intervalul maxim trebuie să fie cel puțin egal cu minimul." });
+      }
+    }),
+    missions: z.object({
+      kill_10: z.object({ target: z.number().int().min(1).max(10_000), rewardQty: z.number().int().min(1).max(100) }).strict(),
+      rare_3: z.object({ target: z.number().int().min(1).max(10_000), rewardQty: z.number().int().min(1).max(100) }).strict(),
+      boss_1: z.object({ target: z.number().int().min(1).max(10_000), rewardQty: z.number().int().min(1).max(100) }).strict(),
+    }).strict(),
+    economy: z.object({
+      monsterGoldMultiplier: z.number().finite().min(0.1).max(10),
+      monsterXpMultiplier: z.number().finite().min(0.1).max(10),
+      bossGoldMultiplier: z.number().finite().min(0.1).max(10),
+      bossXpMultiplier: z.number().finite().min(0.1).max(10),
+    }).strict(),
   }).strict(),
 }).strict();
 const actionType = z.enum(["warn", "mute", "kick", "ban", "unmute", "purge", "slowmode", "lock", "unlock", "nick", "role"]);
@@ -320,6 +353,7 @@ router.put("/guilds/:guildId/config", asyncRoute(async (req, res) => {
 router.get("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   const guildId = parse(snowflake, req.params.guildId);
   await sessionAndGuild(req, guildId, "config");
+  await initGameplayConfig(guildId);
   const [channels, allianceRecruitmentText, tickets] = await Promise.all([
     loadChannelConfig(guildId),
     loadAllianceRecruitmentText(guildId),
@@ -329,6 +363,7 @@ router.get("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
     channels: channels ?? {},
     allianceRecruitmentText: allianceRecruitmentText ?? "",
     tickets: normalizeTicketConfig(tickets),
+    gameplayConfig: getGameplayConfig(guildId),
   });
 }));
 
@@ -343,12 +378,14 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   await saveChannelConfig(guildId, channels);
   await saveAllianceRecruitmentText(guildId, value.allianceRecruitmentText);
   await saveTicketConfig(guildId, tickets);
+  const gameplayConfig = await saveGuildGameplayConfig(guildId, value.gameplayConfig);
   await initChannelConfig(guildId);
   setTicketConfig(guildId, tickets);
   res.status(200).json({
     channels,
     allianceRecruitmentText: value.allianceRecruitmentText,
     tickets,
+    gameplayConfig,
   });
 }));
 

@@ -46,3 +46,4 @@
 - [Moderation safety](moderation-safety-boundaries.md) — Discord identity is authoritative; moderation stays independent of RPG pause and never sanctions an unverified actor.
 - [Protected panel verification](protected-panel-verification.md) — login screenshots miss authenticated routing and shared guild-state failures; test the real menu and mutations with two guilds.
 - [Public mobile navigation](public-mobile-navigation.md) — visibility alone misses blocked links; test actual menu clicks and document width, not just screenshots.
+- [Owner gameplay configuration hydration](gameplay-config-hydration.md) — hydrate persisted per-guild gameplay settings before bot or owner-panel reads to avoid transient defaults.

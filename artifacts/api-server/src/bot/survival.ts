@@ -24,6 +24,7 @@ import {
   formatActiveEffects,
   formatCombatEffects,
 } from "./status-effects";
+import type { GameplayConfig } from "./gameplay-config";
 
 const BASE_PRICES = { atac: 50, def: 60, dodge: 70, crit: 80, hp: 40 } as const;
 export type ShopKey = keyof typeof BASE_PRICES;
@@ -1204,6 +1205,23 @@ export const DAILY_QUESTS = {
 
 export type DailyQuestKey = keyof typeof DAILY_QUESTS;
 
+export type DailyQuestDefinition = {
+  label: string;
+  description: string;
+  target: number;
+  reward: { itemKey: ItemKey; qty: number };
+  emoji: string;
+};
+
+export function dailyQuestDefinitions(config?: GameplayConfig): Record<DailyQuestKey, DailyQuestDefinition> {
+  const missions = config?.missions;
+  return {
+    kill_10: { ...DAILY_QUESTS.kill_10, target: missions?.kill_10.target ?? DAILY_QUESTS.kill_10.target, reward: { ...DAILY_QUESTS.kill_10.reward, qty: missions?.kill_10.rewardQty ?? DAILY_QUESTS.kill_10.reward.qty } },
+    rare_3: { ...DAILY_QUESTS.rare_3, target: missions?.rare_3.target ?? DAILY_QUESTS.rare_3.target, reward: { ...DAILY_QUESTS.rare_3.reward, qty: missions?.rare_3.rewardQty ?? DAILY_QUESTS.rare_3.reward.qty } },
+    boss_1: { ...DAILY_QUESTS.boss_1, target: missions?.boss_1.target ?? DAILY_QUESTS.boss_1.target, reward: { ...DAILY_QUESTS.boss_1.reward, qty: missions?.boss_1.rewardQty ?? DAILY_QUESTS.boss_1.reward.qty } },
+  };
+}
+
 export function buildProgressBar(
   current: number,
   target: number,
@@ -1226,9 +1244,11 @@ export type DailyQuestRowLike = {
 export function buildMissionEmbed(
   rows: Partial<Record<DailyQuestKey, DailyQuestRowLike>>,
   today: string,
+  gameplayConfig?: GameplayConfig,
 ): EmbedBuilder {
-  const sections = (Object.keys(DAILY_QUESTS) as DailyQuestKey[]).map((key) => {
-    const quest = DAILY_QUESTS[key];
+  const quests = dailyQuestDefinitions(gameplayConfig);
+  const sections = (Object.keys(quests) as DailyQuestKey[]).map((key) => {
+    const quest = quests[key];
     const row = rows[key];
     const isToday = row?.questDate === today;
     const cur = isToday ? row!.progress : 0;
@@ -1693,6 +1713,7 @@ export function buildCombatEmbed(
   extra = "",
   avatarUrl?: string | null,
   player?: Player | null,
+  gameplayConfig?: GameplayConfig,
 ): EmbedBuilder {
   const rarity = (p.monsterRarity as Rarity) ?? "comun";
   const [mn, mx] = monsterDmgRange(p.monsterLevel, rarity);
@@ -1703,12 +1724,19 @@ export function buildCombatEmbed(
   const meta = RARITY[rarity] ?? RARITY.comun;
   const baseReward = monsterReward(p.monsterLevel, rarity);
   const rewardMult = veteranRewardMult(vetRank);
+  const bossEconomy = isBossFight(p.monsterLevel, rarity);
+  const goldMultiplier = bossEconomy
+    ? (gameplayConfig?.economy.bossGoldMultiplier ?? 1)
+    : (gameplayConfig?.economy.monsterGoldMultiplier ?? 1);
+  const xpMultiplier = bossEconomy
+    ? (gameplayConfig?.economy.bossXpMultiplier ?? 1)
+    : (gameplayConfig?.economy.monsterXpMultiplier ?? 1);
   const reward = {
-    xp: Math.round(baseReward.xp * rewardMult),
-    oboli: Math.round(baseReward.oboli * rewardMult),
+    xp: Math.round(baseReward.xp * rewardMult * xpMultiplier),
+    oboli: Math.round(baseReward.oboli * rewardMult * goldMultiplier),
   };
   const zone = zoneFor(p.monsterLevel);
-  const boss = isBossFight(p.monsterLevel, rarity);
+  const boss = bossEconomy;
   const title = boss
     ? `🔥 MINI-BOSS NIVEL ${p.monsterLevel} – ${monsterName(p.monsterLevel, rarity)} 🔥`
     : `${meta.emoji} MONSTRU ${meta.label.toUpperCase()} NIVEL ${p.monsterLevel} – ${monsterName(p.monsterLevel, rarity)}`;

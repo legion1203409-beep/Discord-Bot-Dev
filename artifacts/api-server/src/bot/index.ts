@@ -29,6 +29,7 @@ import { logger } from "../lib/logger";
 import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./alert";
 import { startGuildScheduler, stopGuildScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, recordGuildActivity, getGuildClaimedChests, getGuildActiveBossMap, isGuildGameStopped, checkBossEligibility, checkBossHitCooldown, BOSS_HIT_COOLDOWN_MS, persistBossState, publishLeaderboardResult, guildStates, isGuildActive, ACTIVITY_WINDOW_MINUTES, CHEST_MSG_MILESTONE, type BossState, type BossPlayerStats } from "./scheduler";
 import { getChannel, getAllChannels, setChannel, initChannelConfig, hasAnyChannelConfigured, EVENT_LABELS, type EventType } from "./channel-config";
+import { getGameplayConfig, initGameplayConfig } from "./gameplay-store";
 import {
   recordMessage,
   refreshOraclePresence,
@@ -283,6 +284,7 @@ import {
   isEquipmentKey,
   type EquipmentKey,
   buildMissionEmbed,
+  dailyQuestDefinitions,
   type DailyQuestKey,
   type DailyQuestRowLike,
   type ShopKey,
@@ -1093,6 +1095,7 @@ async function handleMisiune(interaction: ChatInputCommandInteraction) {
   const guildId = interaction.guildId!;
   const discordId = interaction.user.id;
   const today = todayDateUTC();
+  const gameplayConfig = getGameplayConfig(guildId);
   const rows = await getDailyQuestRows(discordId, guildId);
   const byKey: Partial<Record<DailyQuestKey, DailyQuestRowLike>> = {};
   for (const r of rows) {
@@ -1105,7 +1108,7 @@ async function handleMisiune(interaction: ChatInputCommandInteraction) {
       };
     }
   }
-  await interaction.editReply({ embeds: [buildMissionEmbed(byKey, today)] });
+  await interaction.editReply({ embeds: [buildMissionEmbed(byKey, today, gameplayConfig)] });
 }
 
 const PERSONAL_CHEST_REFRESH_MS = 10_000;
@@ -2451,7 +2454,7 @@ async function handleJoin(interaction: ButtonInteraction, eventId: number) {
     await interaction.editReply({ embeds: [buildLevelupEmbed(lvl)], components: levelupRows(eventId) });
     return;
   }
-  await interaction.editReply({ embeds: [buildCombatEmbed(participant, "", interaction.user.displayAvatarURL({ size: 256 }), pl)], components: [combatRow(eventId, participant)] });
+  await interaction.editReply({ embeds: [buildCombatEmbed(participant, "", interaction.user.displayAvatarURL({ size: 256 }), pl, getGameplayConfig(guildId))], components: [combatRow(eventId, participant)] });
 }
 
 async function handleAttack(interaction: ButtonInteraction, eventId: number) {
@@ -2483,7 +2486,11 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
 
   const talismanKey = pl?.talisman ?? null;
   const talismanLevel = pl?.talismanLevel ?? 1;
+  const gameplayConfig = getGameplayConfig(guildId);
   const result = doCombat(p, talismanKey, talismanLevel, pl?.bossKills, p.shieldHp);
+  const bossFight = isBossFight(p.monsterLevel, p.monsterRarity);
+  result.oboliGained = Math.round(result.oboliGained * (bossFight ? gameplayConfig.economy.bossGoldMultiplier : gameplayConfig.economy.monsterGoldMultiplier));
+  result.xpGained = Math.round(result.xpGained * (bossFight ? gameplayConfig.economy.bossXpMultiplier : gameplayConfig.economy.monsterXpMultiplier));
   if (result.monsterDefeated) {
     const activityWrites: Promise<void>[] = [
       recordPersonalActivity(p.discordId, guildId, "kills"),
@@ -2607,7 +2614,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
     if (p.monsterRarity && p.monsterRarity !== "comun") questKeys.push("rare_3");
     if (p.monsterRarity === "boss") questKeys.push("boss_1");
     const questResults = await Promise.all(
-      questKeys.map((k) => incrementDailyQuest(p.discordId, guildId, k, DAILY_QUESTS[k].target)),
+      questKeys.map((k) => incrementDailyQuest(p.discordId, guildId, k, dailyQuestDefinitions(gameplayConfig)[k].target)),
     );
     const completedQuests = questKeys.filter((_, i) => questResults[i]!.justCompleted);
     void Promise.all([
@@ -2621,14 +2628,14 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
         ? [grantEquipment(p.discordId, guildId, equipmentDrop)]
         : []),
       ...(corruptedKeyDrop ? [addPlayerKey(p.discordId, guildId, "pangarita")] : []),
-      ...completedQuests.map((k) => addPlayerItem(p.discordId, guildId, DAILY_QUESTS[k].reward.itemKey, DAILY_QUESTS[k].reward.qty)),
+      ...completedQuests.map((k) => addPlayerItem(p.discordId, guildId, DAILY_QUESTS[k].reward.itemKey, dailyQuestDefinitions(gameplayConfig)[k].reward.qty)),
     ]).catch((err) => logger.error({ err, discordId: p.discordId, guildId }, "Async combat writes failed"));
     if (completedQuests.length > 0) {
       void recordPersonalActivity(p.discordId, guildId, "quests", completedQuests.length).catch((err) =>
         logger.warn({ err, discordId: p.discordId, guildId }, "Personal quest activity update failed"),
       );
       const rewardLines = completedQuests.map((k) => {
-        const q = DAILY_QUESTS[k];
+        const q = dailyQuestDefinitions(gameplayConfig)[k];
         itemsFarmed[q.reward.itemKey] = (itemsFarmed[q.reward.itemKey] ?? 0) + q.reward.qty;
         return `${q.emoji} **${q.label}** — ai primit ${ITEMS[q.reward.itemKey].emoji} **${q.reward.qty}× ${ITEMS[q.reward.itemKey].label}**!`;
       });
@@ -2695,7 +2702,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
 
   await interaction.editReply({
     embeds: [
-      buildCombatEmbed(updated, extra, interaction.user.displayAvatarURL({ size: 256 }), plAfterMana),
+      buildCombatEmbed(updated, extra, interaction.user.displayAvatarURL({ size: 256 }), plAfterMana, gameplayConfig),
       ...(equipmentDrop ? [buildEquipmentLootEmbed(equipmentDrop)] : []),
     ],
     components: [combatRow(eventId, updated)],
@@ -2760,7 +2767,7 @@ async function handleLevelup(interaction: ButtonInteraction, eventId: number, bo
 
   const bonusValues = bonusMap[bonus] ?? {};
   const updated = await updateParticipant(p.id, { ...bonusValues, pendingLevelup: false });
-  await interaction.editReply({ embeds: [buildCombatEmbed(updated, "✨ **Bonus ales! Umbrele îți recunosc puterea.**", interaction.user.displayAvatarURL({ size: 256 }), pl)], components: [combatRow(eventId, updated)] });
+  await interaction.editReply({ embeds: [buildCombatEmbed(updated, "✨ **Bonus ales! Umbrele îți recunosc puterea.**", interaction.user.displayAvatarURL({ size: 256 }), pl, getGameplayConfig(guildId))], components: [combatRow(eventId, updated)] });
 }
 
 async function handleClasa(interaction: ChatInputCommandInteraction) {
@@ -3346,7 +3353,7 @@ async function handleAbility(interaction: ButtonInteraction, eventId: number, ki
     `\n🔷 −**${cost}** mană`;
   const updated = await updateParticipant(p.id, abilityFlags);
   await interaction.editReply({
-    embeds: [buildCombatEmbed(updated, note, interaction.user.displayAvatarURL({ size: 256 }), plMana)],
+    embeds: [buildCombatEmbed(updated, note, interaction.user.displayAvatarURL({ size: 256 }), plMana, getGameplayConfig(guildId))],
     components: [combatRow(eventId, updated)],
   });
 }
@@ -3656,6 +3663,11 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
       return null;
     });
     const bossRewards = computeBossRewards(activeBoss.damageBy, activeBoss.rarity, activeBoss.hitsBy, activeBoss.veteranRank ?? 0);
+    const gameplayConfig = getGameplayConfig(activeBoss.guildId);
+    for (const reward of bossRewards.values()) {
+      reward.gold = Math.round(reward.gold * gameplayConfig.economy.bossGoldMultiplier);
+      reward.xp = Math.round(reward.xp * gameplayConfig.economy.bossXpMultiplier);
+    }
     const baseRewards = new Map([...bossRewards.entries()].map(([id, r]) => [id, { gold: r.gold, xp: r.xp }]));
     const prestigeLevels = await getPrestigeLevels(activeBoss.guildId, [...bossRewards.keys()]).catch(() => new Map<string, number>());
     for (const [discordId, r] of bossRewards) {
@@ -4578,6 +4590,9 @@ export async function startBot(onReady?: () => void): Promise<void> {
       await initTicketConfig(guildId).catch((err) =>
         logger.error({ err, guildId }, "Failed to load ticket config for guild"),
       );
+      await initGameplayConfig(guildId).catch((err) =>
+        logger.error({ err, guildId }, "Failed to load gameplay config for guild"),
+      );
       await syncNativeAutoMod(client, guildId, await getModerationConfig(guildId)).catch((err) =>
         logger.warn({ err, guildId }, "Native Discord AutoMod synchronization failed"),
       );
@@ -4656,6 +4671,9 @@ export async function startBot(onReady?: () => void): Promise<void> {
     );
     await initTicketConfig(guild.id).catch((err) =>
       logger.error({ err, guildId: guild.id }, "Failed to init ticket config for new guild"),
+    );
+    await initGameplayConfig(guild.id).catch((err) =>
+      logger.error({ err, guildId: guild.id }, "Failed to init gameplay config for new guild"),
     );
     await syncNativeAutoMod(client, guild.id, await getModerationConfig(guild.id)).catch((err) =>
       logger.warn({ err, guildId: guild.id }, "Native Discord AutoMod synchronization failed"),
@@ -5042,3 +5060,599 @@ export async function startBot(onReady?: () => void): Promise<void> {
 
   await terminated;
 }
+/*
+export async function startBot(onReady?: () => void): Promise<void> {
+  const token = process.env["DISCORD_TOKEN"];
+  if (!token) {
+    logger.warn("DISCORD_TOKEN not set — bot will not start");
+    return;
+  }
+
+  const intents = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages];
+  // GuildMembers, GuildPresences and MessageContent are all privileged. Keep the
+  // bot online when the portal toggles are absent rather than requesting any one
+  // of them unconditionally and receiving gateway 4014.
+  const privilegedGatewayEnabled = process.env.DISCORD_PRIVILEGED_INTENTS_ENABLED === "true";
+  const wantsMessageContent = process.env.ORACLE_MESSAGE_CONTENT_ENABLED === "true";
+  const requestsPrivilegedIntents = (privilegedGatewayEnabled || wantsMessageContent) && !privilegedIntentFellBack;
+  if (requestsPrivilegedIntents) {
+    if (privilegedGatewayEnabled) {
+      intents.push(GatewayIntentBits.GuildPresences, GatewayIntentBits.GuildMembers);
+    }
+    if (wantsMessageContent) intents.push(GatewayIntentBits.MessageContent);
+  } else if ((privilegedGatewayEnabled || wantsMessageContent) && privilegedIntentFellBack) {
+    logger.warn(
+      "A privileged Discord intent was rejected (code 4014) on a prior attempt — booting WITHOUT privileged intents. " +
+        "Enable the required toggles in the Discord Developer Portal, then restart the bot.",
+    );
+  }
+  const client = new Client({ intents });
+
+  function scheduleTicketPanel(channel: unknown): void {
+    if (!channel || typeof channel !== "object") return;
+    const candidate = channel as {
+      guildId?: string | null;
+      parentId?: string | null;
+      isTextBased?: () => boolean;
+    };
+    if (!candidate.guildId || !candidate.parentId || !candidate.isTextBased?.()) return;
+    const kind = getOracleTicketKindFromParentId(candidate.parentId);
+    const botId = client.user?.id;
+    if (!kind || !botId) return;
+
+    scheduleIncompleteTicketDeletion(channel);
+    void postTicketPanelIfMissing(channel as Message["channel"], kind, botId)
+      .then((posted) => {
+        if (posted) {
+          logger.info(
+            { guildId: candidate.guildId, channelId: (channel as { id?: string }).id, ticketKind: kind },
+            "Interactive ticket panel posted when ticket channel opened",
+          );
+        }
+      })
+      .catch((err) => {
+        logger.warn(
+          { err, guildId: candidate.guildId, channelId: (channel as { id?: string }).id, ticketKind: kind },
+          "Could not post interactive ticket panel when ticket channel opened",
+        );
+      });
+  }
+
+  client.on(Events.ChannelCreate, (channel) => {
+    scheduleTicketPanel(channel);
+  });
+  client.on(Events.ChannelUpdate, (_oldChannel, channel) => {
+    scheduleTicketPanel(channel);
+  });
+
+  // Event-loop lag monitor: if the loop is blocked, interactions pile up and
+  // expire (10062). A tick scheduled every second should fire ~on time.
+  {
+    let lastTick = Date.now();
+    setInterval(() => {
+      const now = Date.now();
+      const lagMs = now - lastTick - 1000;
+      lastTick = now;
+      if (lagMs > 500) {
+        logger.warn({ lagMs }, "Event loop lag detected — something is blocking the process");
+      }
+    }, 1000).unref?.();
+  }
+
+  let rejectTerminated!: (err: Error) => void;
+  let resolveTerminated!: () => void;
+  const terminated = new Promise<void>((resolve, reject) => {
+    resolveTerminated = resolve;
+    rejectTerminated = reject;
+  });
+
+  // Set when a newer bot instance claims leadership in the DB and this one
+  // shuts itself down — suppresses disconnect alerts caused by our own destroy().
+  let yieldedLeadership = false;
+
+  client.once(Events.ClientReady, async (c) => {
+    logger.info({ tag: c.user.tag }, "✅ Discord bot online and ready");
+    botClient = client;
+    setModerationClient(client);
+    attachModeration(client);
+    botReadyAt = new Date();
+    shardStatus = "ready";
+
+    try {
+      await ensureBotStateTable();
+      // Required schema must exist before any player profile or Oracle handler runs.
+      await runMultiGuildMigrations();
+      setOracleToxicityRelationshipHandler(maybeRecordOracleToxicityRelationship);
+      setOracleTimeoutPersistence({
+        save: saveOracleTimeoutLock,
+        remove: deleteOracleTimeoutLock,
+      });
+      const oracleTimeoutLocks = await loadOracleTimeoutLocks();
+      restoreOracleTimeouts(oracleTimeoutLocks);
+      logger.info({ count: oracleTimeoutLocks.length }, "Restored Oracle timeout locks");
+    } catch (err) {
+      logger.error({ err }, "Required database migrations failed — stopping Discord bot");
+      shardStatus = "migration_failed";
+      botClient = null;
+      setModerationClient(null);
+      await client.destroy();
+      rejectTerminated(err instanceof Error ? err : new Error(String(err)));
+      return;
+    }
+
+    // Initialize each guild the bot is in
+    const guilds = c.guilds.cache;
+    logger.info({ guildCount: guilds.size }, "Bot is in guilds — initializing per-guild scheduler");
+
+    for (const [guildId, guild] of guilds) {
+      await initChannelConfig(guildId).catch((err) =>
+        logger.error({ err, guildId }, "Failed to load channel config for guild"),
+      );
+      await initGameplayConfig(guildId).catch((err) =>
+        logger.error({ err, guildId }, "Failed to load gameplay config for guild"),
+      );
+      await syncNativeAutoMod(client, guildId, await getModerationConfig(guildId)).catch((err) =>
+        logger.warn({ err, guildId }, "Native Discord AutoMod synchronization failed"),
+      );
+      if (!hasAnyChannelConfigured(guildId)) {
+        void sendOnboardingMessage(guild).catch((err) =>
+          logger.warn({ err, guildId }, "Failed to send onboarding message"),
+        );
+      }
+      startGuildScheduler(client, guildId);
+      void setupTrader(client, guildId);
+      for (const channel of guild.channels.cache.values()) {
+        scheduleTicketPanel(channel);
+      }
+    }
+
+    logOracleChatStatus();
+    if (onReady) onReady();
+
+    await maybeAlertOracleRecovery(getOracleReplyMode, consumeOracleFellBackMarker, sendAlert);
+
+    // ── Single-instance guard ─────────────────────────────────────────────────
+    // Claim leadership (last writer wins), then periodically re-check the
+    // marker. If a NEWER process claims it (e.g. after a redeploy while this
+    // old VM is still alive), shut this bot down so two gateway sessions never
+    // race to acknowledge the same interactions (40060/10062 → laggy bot).
+    const instanceId = randomUUID();
+    try {
+      await claimBotInstance(instanceId);
+      logger.info({ instanceId }, "Claimed bot instance leadership");
+    } catch (err) {
+      // Could not claim — skip the watchdog entirely so a stale marker from a
+      // previous instance can never make THIS legitimate instance yield.
+      logger.error({ err }, "Failed to claim bot instance leadership — watchdog disabled");
+      return;
+    }
+
+    const watchdog = setInterval(() => {
+      void getBotInstanceHolder()
+        .then((holder) => {
+          if (yieldedLeadership || !shouldYieldLeadership(holder, instanceId)) return;
+          yieldedLeadership = true;
+          clearInterval(watchdog);
+          logger.error(
+            { holder, instanceId },
+            "Another bot instance claimed leadership — yielding: stopping schedulers and disconnecting this bot",
+          );
+          shardStatus = "yielded";
+          botClient = null;
+          setModerationClient(null);
+          for (const [guildId] of client.guilds.cache) {
+            stopGuildScheduler(guildId, { stopOracle: true });
+          }
+          void sendAlert(
+            "⚠️ **Instanță duplicată detectată.** O instanță mai nouă a botului a preluat controlul — instanța veche s-a oprit singură pentru a evita răspunsuri duble/lente.",
+          );
+          void client.destroy();
+          resolveTerminated();
+        })
+        .catch((err) => {
+          logger.warn({ err }, "Bot instance watchdog check failed — will retry");
+        });
+    }, INSTANCE_WATCHDOG_INTERVAL_MS);
+    watchdog.unref?.();
+  });
+
+  // When the bot joins a new guild, start the scheduler for it
+  client.on(Events.GuildCreate, async (guild) => {
+    logger.info({ guildId: guild.id, guildName: guild.name }, "Bot joined new guild");
+    // Clear any guild-specific commands so only global commands show (prevents duplicates)
+    void new REST().setToken(token!).put(
+      Routes.applicationGuildCommands(APPLICATION_ID, guild.id),
+      { body: [] },
+    ).catch((err) => logger.warn({ err, guildId: guild.id }, "Could not clear guild commands on join"));
+    await initChannelConfig(guild.id).catch((err) =>
+      logger.error({ err, guildId: guild.id }, "Failed to init channel config for new guild"),
+    );
+    await initGameplayConfig(guild.id).catch((err) =>
+      logger.error({ err, guildId: guild.id }, "Failed to init gameplay config for new guild"),
+    );
+    await syncNativeAutoMod(client, guild.id, await getModerationConfig(guild.id)).catch((err) =>
+      logger.warn({ err, guildId: guild.id }, "Native Discord AutoMod synchronization failed"),
+    );
+    if (!hasAnyChannelConfigured(guild.id)) {
+      void sendOnboardingMessage(guild).catch((err) =>
+        logger.warn({ err, guildId: guild.id }, "Failed to send onboarding message"),
+      );
+    }
+    startGuildScheduler(client, guild.id);
+    void setupTrader(client, guild.id);
+  });
+
+  // When the bot leaves a guild, clean up in-memory state
+  client.on(Events.GuildDelete, (guild) => {
+    logger.info({ guildId: guild.id, guildName: guild.name }, "Bot left guild — cleaning up scheduler state");
+    stopGuildScheduler(guild.id, { stopOracle: true });
+    traderMessageIds.delete(guild.id);
+    traderSetupInProgress.delete(guild.id);
+  });
+
+  client.on(Events.Error, (err) => {
+    logger.error({ err }, "Discord client error");
+  });
+
+  client.on(Events.MessageCreate, (message) => {
+    if (message.author.bot || !message.guildId) return;
+    try {
+      recordMessage(
+        message.author.id,
+        message.member?.displayName ?? message.author.username,
+        message.content ?? "",
+        message.guildId,
+        message.channelId,
+        message.id,
+        message.reference?.messageId,
+      );
+      refreshOraclePresence(client, message.guildId);
+    } catch (err) {
+      logger.error({ err }, "Oracle messageCreate handler failed");
+    }
+    // Only messages in the configured main channel count toward the activity
+    // gate and milestone trigger — prevents unrelated channels from keeping
+    // chest spawns alive or triggering bonus chests.
+    const mainChannelId = getChannel("main", message.guildId);
+    if (mainChannelId && message.channelId === mainChannelId) {
+      recordGuildActivity(client, message.guildId);
+    }
+    void recordPersonalActivity(message.author.id, message.guildId, "messages").catch((err) =>
+      logger.warn({ err, discordId: message.author.id, guildId: message.guildId }, "Personal message activity update failed"),
+    );
+    void maybeHandleOracleClue(client, message).catch((err) =>
+      logger.warn({ err, guildId: message.guildId }, "Oracle clue handler failed"),
+    );
+    maybeNudgeGameHelp(message);
+    void handleModerationMessage(client, message).then((moderationHandled) => {
+      // When AutoMod actually performed an action, do not also invoke the
+      // Oracle's legacy toxicity timeout for this same message.
+      if (moderationHandled) return;
+      return handleToxicity(client, message);
+    }).then((handled) => {
+      if (handled) {
+        return;
+      }
+      void maybeReplyAsOracle(client, message);
+    }).catch((err) => {
+      // Moderation storage/config failure must not turn into a second Oracle
+      // sanction. The next message will retry after the operator resolves it.
+      logger.error({ err, guildId: message.guildId, messageId: message.id }, "Moderation message handler failed");
+    });
+  });
+
+  client.on(Events.GuildMemberUpdate, (oldMember, newMember) => {
+    void enforceOracleTimeout(oldMember, newMember);
+  });
+
+  function scheduleDisconnectAlert(closeCode: number) {
+    if (disconnectAlertTimer) return;
+    const thresholdMin = Math.round(DISCONNECT_ALERT_THRESHOLD_MS / 60_000);
+    disconnectAlertTimer = setTimeout(() => {
+      disconnectAlertTimer = null;
+      void sendAlert(
+        `⚠️ **Bot has been offline for over ${thresholdMin} minute${thresholdMin === 1 ? "" : "s"}** and has not reconnected yet.\nShard disconnected with code ${closeCode}. Check server logs for details.`,
+      );
+    }, DISCONNECT_ALERT_THRESHOLD_MS);
+  }
+
+  function clearDisconnectAlert(reason: string) {
+    if (disconnectAlertTimer) {
+      clearTimeout(disconnectAlertTimer);
+      disconnectAlertTimer = null;
+      disconnectStartedAt = null;
+      logger.info({ reason }, "Disconnect alert suppressed — bot reconnected within threshold");
+    } else if (disconnectStartedAt) {
+      const startedAt = disconnectStartedAt;
+      disconnectStartedAt = null;
+      logger.info({ reason }, "Sending recovery alert — bot back online after outage");
+      void sendRecoveryAlert(startedAt);
+    }
+  }
+
+  client.on(Events.ShardDisconnect, (event, shardId) => {
+    // Deliberate self-shutdown after losing instance leadership — not an outage.
+    if (yieldedLeadership) return;
+    if (event.code === 4014 && wantsMessageContent) {
+      logger.error(
+        { shardId },
+        "Discord rejected the MessageContent intent (code 4014) — it is not enabled in the Developer Portal. " +
+          "Restarting WITHOUT it; the Oracle will only answer @mentions and ping-on replies until the toggle is enabled.",
+      );
+      privilegedIntentFellBack = true;
+      void markOracleFellBack();
+      botClient = null;
+      setModerationClient(null);
+      shardStatus = "fatal_disconnect";
+      client.destroy();
+      void sendAlert(
+        "⚠️ **Oracolul nu a putut activa intenția \u201eMessage Content\u201d.**\nIntenția privilegiată nu este activată în Discord Developer Portal. " +
+          "Botul repornește fără ea — răspunde doar la @mention și la reply-uri cu ping. Activează comutatorul în portal, apoi repornește botul.",
+      );
+      rejectTerminated(new Error("Disallowed MessageContent intent (4014) — falling back without it"));
+      return;
+    }
+    if (FATAL_CLOSE_CODES.has(event.code)) {
+      logger.error(
+        { code: event.code, shardId },
+        "Fatal Discord disconnect — discord.js will not reconnect; bot supervisor will restart",
+      );
+      botClient = null;
+      setModerationClient(null);
+      shardStatus = "fatal_disconnect";
+      client.destroy();
+      void sendAlert(
+        `🚨 **Bot offline — fatal disconnect (code ${event.code}).**\nDiscord will not auto-reconnect. The bot supervisor is restarting. If it remains offline, check logs and verify \`DISCORD_TOKEN\`.`,
+      );
+      rejectTerminated(new Error(`Fatal Discord Gateway close code ${event.code}`));
+    } else {
+      logger.warn(
+        { code: event.code, shardId },
+        "Discord shard disconnected — discord.js will reconnect automatically",
+      );
+      shardStatus = "disconnected";
+      if (!disconnectStartedAt) disconnectStartedAt = new Date();
+      scheduleDisconnectAlert(event.code);
+    }
+  });
+
+  client.on(Events.ShardReconnecting, (shardId) => {
+    logger.info({ shardId }, "Discord shard reconnecting…");
+    shardStatus = "reconnecting";
+  });
+
+  client.on(Events.ShardResume, (shardId, replayedEvents) => {
+    clearDisconnectAlert("ShardResume");
+    shardStatus = "ready";
+    botReadyAt = new Date();
+    logger.info({ shardId, replayedEvents }, "Discord shard resumed");
+  });
+
+  client.on(Events.ShardReady, (shardId) => {
+    clearDisconnectAlert("ShardReady");
+    shardStatus = "ready";
+    botReadyAt = new Date();
+    // Re-setup trader for all known guilds on reconnect
+    for (const [guildId] of client.guilds.cache) {
+      void setupTrader(client, guildId);
+    }
+    logger.info({ shardId }, "Discord shard ready (fresh identify)");
+  });
+
+  client.on(Events.InteractionCreate, async (interaction) => {
+    if (seenInteractionIds.has(interaction.id)) {
+      logger.warn({ interactionId: interaction.id }, "Duplicate interaction delivery — skipping");
+      return;
+    }
+    seenInteractionIds.add(interaction.id);
+    setTimeout(() => seenInteractionIds.delete(interaction.id), INTERACTION_DEDUP_TTL_MS).unref?.();
+
+    // Ignore DM interactions — all commands require a guild context
+    if (!interaction.guildId) return;
+
+    const label = interaction.isChatInputCommand()
+      ? `/${interaction.commandName}`
+      : "customId" in interaction
+        ? String(interaction.customId)
+        : interaction.type.toString();
+
+    // Diagnose latency: how old was this interaction when it reached us?
+    const ageMs = Date.now() - interaction.createdTimestamp;
+    if (ageMs > 1500) {
+      logger.warn(
+        { ageMs, label, wsPing: client.ws.ping },
+        "Interaction arrived late — gateway/event-loop lag (>3s causes 10062)",
+      );
+    }
+
+    function dispatch(p: Promise<unknown>) {
+      const startedAt = Date.now();
+      p.then(
+        () => {
+          const durationMs = Date.now() - startedAt;
+          if (durationMs > 2500) {
+            logger.warn({ durationMs, label }, "Slow interaction handler");
+          }
+        },
+        (err) => {
+          logger.error({ err, label, ageMs, durationMs: Date.now() - startedAt }, "Interaction error");
+          if (interaction.isRepliable() && !interaction.deferred && !interaction.replied) {
+            void interaction.reply({
+              content: "❌ Acțiunea nu a putut fi procesată. Încearcă din nou.",
+              flags: MessageFlags.Ephemeral,
+            }).catch((replyErr) => {
+              logger.warn({ err: replyErr, label, ageMs }, "Interaction fallback reply failed");
+            });
+          }
+        },
+      );
+    }
+
+    if (interaction.guildId && isGuildGameStopped(interaction.guildId)) {
+      let allowedWhileStopped = false;
+      if (interaction.isChatInputCommand()) {
+        allowedWhileStopped = [
+          "stopjoc",
+          "startjoc",
+          "stopai",
+          "startai",
+          "ajutor",
+           "profetie",
+          "setcanal",
+          "setaliantatext",
+          "moderare",
+          "warn",
+          "mute",
+          "unmute",
+          "kick",
+          "ban",
+          "purge",
+          "slowmode",
+          "lock",
+          "unlock",
+          "nick",
+          "role",
+        ].includes(interaction.commandName);
+      } else if (interaction.isButton()) {
+        allowedWhileStopped =
+          interaction.customId.startsWith("ticket_") ||
+          interaction.customId.startsWith("help_") ||
+          interaction.customId.startsWith("council_");
+      } else if (interaction.isStringSelectMenu()) {
+        allowedWhileStopped = interaction.customId.startsWith("ticket_questions_");
+      } else if (interaction.isModalSubmit()) {
+        allowedWhileStopped =
+          interaction.customId.startsWith("ticket_") ||
+          interaction.customId.startsWith("help_question_");
+      }
+
+      if (!allowedWhileStopped) {
+        if (interaction.isRepliable()) {
+          dispatch(
+            interaction.reply({
+              content: "⏸️ Jocul este oprit momentan. Un administrator îl poate reporni cu `/startjoc`.",
+              flags: MessageFlags.Ephemeral,
+            }),
+          );
+        }
+        return;
+      }
+    }
+
+    if (interaction.isChatInputCommand()) {
+      if (await handleModerationCommand(interaction as ChatInputCommandInteraction)) return;
+      if (interaction.commandName === "profil") dispatch(handleProfil(interaction));
+      if (interaction.commandName === "inventar") dispatch(handleInventar(interaction));
+      if (interaction.commandName === "profetie") dispatch(handleProfetie(interaction));
+      if (interaction.commandName === "clasament") dispatch(handleClasament(interaction));
+      if (interaction.commandName === "magazin") dispatch(handleMagazin(interaction));
+      if (interaction.commandName === "clasa") dispatch(handleClasa(interaction));
+      if (interaction.commandName === "companion") dispatch(handleCompanion(interaction));
+      if (interaction.commandName === "ajutor") dispatch(handleAjutor(interaction));
+      if (interaction.commandName === "misiuni") dispatch(handleMisiune(interaction));
+      if (interaction.commandName === "cufarpersonal") dispatch(handlePersonalChest(interaction));
+      if (interaction.commandName === "fratie") dispatch(handleFratia(interaction));
+      if (interaction.commandName === "licitatie") dispatch(handleLicitatie(interaction));
+      if (interaction.commandName === "posteazalicitatie") dispatch(handlePosteazaLicitatie(interaction));
+      if (interaction.commandName === "schimbrelicve") dispatch(handleSchimbRelicve(interaction));
+      if (interaction.commandName === "purificacheie") dispatch(handlePurificaCheie(interaction));
+      if (interaction.commandName === "chei") dispatch(handleChei(interaction));
+      if (interaction.commandName === "setcanal") dispatch(handleSetCanal(interaction));
+      if (interaction.commandName === "setaliantatext") dispatch(handleSetAliantaText(interaction));
+      if (interaction.commandName === "stopjoc") dispatch(handleStopGame(interaction));
+      if (interaction.commandName === "startjoc") dispatch(handleStartGame(interaction));
+      if (interaction.commandName === "stopai") dispatch(handleStopAI(interaction));
+      if (interaction.commandName === "startai") dispatch(handleStartAI(interaction));
+    } else if (interaction.isButton()) {
+      dispatch(handleButton(interaction as ButtonInteraction));
+    } else if (interaction.isStringSelectMenu()) {
+      let handled = false;
+      if (interaction.customId === "leaderboard_profile_select") {
+        handled = true;
+        dispatch(handleClasamentSelect(interaction));
+      }
+      if (interaction.customId.startsWith("ticket_questions_")) {
+        handled = true;
+        dispatch(handleTicketQuestionSelect(interaction as StringSelectMenuInteraction));
+      }
+      if (!handled) {
+        dispatch(interaction.reply({
+          content: "⌛ Acest meniu nu mai este disponibil. Deschide-l din nou.",
+          flags: MessageFlags.Ephemeral,
+        }));
+      }
+    } else if (interaction.isModalSubmit()) {
+      let handled = false;
+      if (interaction.customId.startsWith("ticket_answer_")) {
+        handled = true;
+        dispatch(handleTicketQuestionModal(interaction));
+      }
+      if (interaction.customId.startsWith("ticket_form_")) {
+        handled = true;
+        dispatch(handleTicketModal(interaction));
+      }
+      if (interaction.customId.startsWith("help_question_")) {
+        handled = true;
+        dispatch(handleHelpQuestion(interaction));
+      }
+      if (interaction.customId.startsWith("tribute_submit_")) {
+        handled = true;
+        dispatch(handleTributeModal(interaction));
+      }
+      if (interaction.customId === "auction_bid_modal") {
+        handled = true;
+        dispatch(handleAuctionBidModal(interaction));
+      }
+      if (interaction.customId === "alliance_recruitment_text_modal") {
+        handled = true;
+        dispatch(handleSetAliantaTextModal(interaction));
+      }
+      if (!handled) {
+        dispatch(interaction.reply({
+          content: "⌛ Acest formular nu mai este disponibil. Deschide-l din nou.",
+          flags: MessageFlags.Ephemeral,
+        }));
+      }
+    }
+
+  });
+
+  try {
+    await client.login(token);
+  } catch (err) {
+    if (requestsPrivilegedIntents && isDisallowedIntentError(err)) {
+      logger.error(
+        { err },
+        "Login rejected for privileged Discord intents — restarting WITHOUT all privileged intents. " +
+          "Enable the required Discord Developer Portal toggles.",
+      );
+      privilegedIntentFellBack = true;
+      void markOracleFellBack();
+      void sendAlert(
+        "⚠️ **Oracolul nu a putut activa intenția \u201eMessage Content\u201d.**\nIntenția privilegiată nu este activată în Discord Developer Portal. " +
+          "Botul repornește fără ea — răspunde doar la @mention și la reply-uri cu ping. Activează comutatorul în portal, apoi repornește botul.",
+      );
+    }
+    throw err;
+  }
+
+  // Register commands globally so they appear on every server
+  const rest = new REST().setToken(token);
+  const body = [...slashCommands.map((c) => c.toJSON()), ...moderationCommands];
+  await rest.put(Routes.applicationCommands(APPLICATION_ID), { body });
+  logger.info("Commands registered globally");
+
+  // Remove any leftover guild-specific commands (can cause duplicates in Discord)
+  const clearGuildCommands = async (guildId: string) => {
+    try {
+      await rest.put(Routes.applicationGuildCommands(APPLICATION_ID, guildId), { body: [] });
+    } catch (err) {
+      logger.warn({ err, guildId }, "Could not clear guild commands (non-fatal)");
+    }
+  };
+  await Promise.all([...client.guilds.cache.keys()].map(clearGuildCommands));
+  logger.info({ count: client.guilds.cache.size }, "Cleared guild-specific commands for all guilds");
+
+  await terminated;
+}
+*/

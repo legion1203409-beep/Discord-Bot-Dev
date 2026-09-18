@@ -17,6 +17,7 @@ import {
   settleExpiredAuction,
 } from "./chest-expansions";
 import { setTributeGamePaused, startTributeScheduler, stopTributeScheduler } from "./tribute";
+import { getGameplayConfig } from "./gameplay-store";
 
 const APPLICATION_ID = "1472675543777280071";
 export const EVENT_DURATION_MS = 60 * 60 * 1000;
@@ -35,8 +36,9 @@ export const LEGACY_CHEST_SPAWNS_ENABLED = true;
 const ORACLE_INTERVAL_MS = 25 * 60 * 1000;
 const BATTLE_EVENT_INTERVAL_MS = 7 * 60 * 1000;
 
-// ─── Activity-gated chest spawn tuning ────────────────────────────────────────
-
+function eventDurationMs(guildId: string): number {
+  return getGameplayConfig(guildId).events.eventDurationMinutes * 60_000;
+}
 function readEnvInt(name: string, fallback: number, max: number): number {
   const raw = process.env[name];
   if (raw === undefined || raw.trim() === "") return fallback;
@@ -645,8 +647,11 @@ async function rehydrateEventMessageDeletions(client: Client, guildId: string): 
   }
 }
 
-function randomCooldown() {
-  return Math.floor(Math.random() * (MAX_COOLDOWN_MS - MIN_COOLDOWN_MS + 1)) + MIN_COOLDOWN_MS;
+export function randomCooldown(guildId?: string) {
+  const config = guildId ? getGameplayConfig(guildId).events : null;
+  const min = config ? config.eventCooldownMinMinutes * 60_000 : MIN_COOLDOWN_MS;
+  const max = config ? config.eventCooldownMaxMinutes * 60_000 : MAX_COOLDOWN_MS;
+  return Math.floor(Math.random() * (Math.max(min, max) - min + 1)) + min;
 }
 
 // ─── Event expiry ──────────────────────────────────────────────────────────────
@@ -743,7 +748,7 @@ export async function fireChestForced(
     const chestId = mult != null
       ? `chest_${Date.now()}_${rarity.key}_${gold}_${variant}_x${mult}`
       : `chest_${Date.now()}_${rarity.key}_${gold}_${variant}`;
-    const expireAt = Date.now() + CHEST_EXPIRE_MS;
+    const expireAt = Date.now() + chestExpireMs(guildId);
 
     const row = buildChestRow(chestId, rarity, gold, mult);
 
@@ -789,7 +794,7 @@ export async function fireChestForced(
       await deleteChestMessage(msg, { chestId, guildId, phase: "expire-forced" });
       logger.info({ chestId, guildId }, "Chest expired unclaimed (forced)");
       void clearActiveChest(guildId).catch(() => null);
-    }, CHEST_EXPIRE_MS);
+    }, chestExpireMs(guildId));
 
     timeout.unref?.();
     gs.lastChestTimeout = timeout;
@@ -835,7 +840,7 @@ export async function fireChest(client: Client, guildId: string, bypassGate = fa
     const variant = rollChestVariant();
 
     const chestId = `chest_${Date.now()}_${rarity.key}_${gold}_${variant}`;
-    const expireAt = Date.now() + CHEST_EXPIRE_MS;
+    const expireAt = Date.now() + chestExpireMs(guildId);
 
     const row = buildChestRow(chestId, rarity, gold);
 
@@ -918,7 +923,7 @@ export async function fireChest(client: Client, guildId: string, bypassGate = fa
       await deleteChestMessage(msg, { chestId, guildId, phase: "expire-scheduled" });
       logger.info({ chestId, guildId }, "Chest expired unclaimed");
       void clearActiveChest(guildId).catch(() => null);
-    }, CHEST_EXPIRE_MS);
+    }, chestExpireMs(guildId));
 
     timeout.unref?.();
     gs.lastChestTimeout = timeout;
@@ -974,7 +979,7 @@ export async function fireEvent(client: Client, guildId: string) {
       logger.warn({ err, guildId }, "Failed to schedule legacy event cleanup"),
     );
 
-    const expiresAt = new Date(Date.now() + EVENT_DURATION_MS);
+    const expiresAt = new Date(Date.now() + eventDurationMs(guildId));
 
     const placeholder = await channel.send({ embeds: [buildStartEmbed()] });
     if (gs.stopped) {
@@ -1021,7 +1026,7 @@ export async function fireFinalBoss(client: Client, guildId: string, eventId: nu
     const bossLevel = Math.max(5, Math.ceil(avgLevel / 2));
     const rarity = rollBossRarity();
     const maxHp = bossMaxHp(bossLevel, rarity);
-    const bossExpiresAt = Date.now() + FINAL_BOSS_ACTIVE_MS;
+    const bossExpiresAt = Date.now() + finalBossDurationMs(guildId);
 
     const msg = await channel.send({
       embeds: [buildFinalBossEmbed(bossLevel, rarity, maxHp, maxHp, undefined, undefined, undefined, undefined, bossExpiresAt, 0, 0)],
@@ -1204,12 +1209,13 @@ async function runFleeResolution(boss: BossState, client: Client): Promise<void>
       await bossMsg?.delete().catch(() => null);
     }
     const bossRewards = computeBossRewards(boss.damageBy, boss.rarity, boss.hitsBy, boss.veteranRank ?? 0);
+    const gameplayConfig = getGameplayConfig(boss.guildId);
     const prestigeLevels = await getPrestigeLevels(boss.guildId, [...bossRewards.keys()]).catch(() => new Map<string, number>());
     for (const [discordId, r] of bossRewards) {
       // Pass guildId so the guild-wide admin boost applies here too, matching the boss-defeat path
       const rmods = getRewardMultipliers(discordId, boss.guildId);
-      r.gold = Math.round(r.gold * rmods.goldMult * prestigeGoldMult(prestigeLevels.get(discordId) ?? 0));
-      r.xp = Math.round(r.xp * rmods.xpMult);
+      r.gold = Math.round(r.gold * gameplayConfig.economy.bossGoldMultiplier * rmods.goldMult * prestigeGoldMult(prestigeLevels.get(discordId) ?? 0));
+      r.xp = Math.round(r.xp * gameplayConfig.economy.bossXpMultiplier * rmods.xpMult);
     }
     await Promise.all([...bossRewards.entries()].flatMap(([discordId, r]) => [
       addPlayerReputation(discordId, boss.guildId, r.rep),
@@ -1419,7 +1425,7 @@ export async function fireStandaloneBoss(client: Client, guildId: string) {
     if (gs.stopped) return;
     const vRank = veteranRank(kills);
     const maxHp = Math.round(bossMaxHp(level, rarity) * veteranMult(vRank));
-    const bossExpiresAt = Date.now() + STANDALONE_BOSS_ACTIVE_MS;
+    const bossExpiresAt = Date.now() + getGameplayConfig(guildId).events.standaloneBossDurationMinutes * 60_000;
 
     const msg = await channel.send({
       embeds: [buildFinalBossEmbed(level, rarity, maxHp, maxHp, undefined, undefined, undefined, undefined, bossExpiresAt, 0, vRank)],
@@ -1485,7 +1491,7 @@ export async function fireLockedChest(client: Client, guildId: string, rarityKey
     }
     const { rarity, gold } = result;
     const chestId = `lockchest_${Date.now()}_${rarity.key}_${gold}`;
-    const expiresAt = Date.now() + CHEST_EXPIRE_MS;
+    const expiresAt = Date.now() + chestExpireMs(guildId);
 
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
@@ -1513,7 +1519,7 @@ export async function fireLockedChest(client: Client, guildId: string, rarityKey
       await deleteChestMessage(msg, { chestId, guildId, phase: "expire-locked" });
       logger.info({ chestId, guildId }, "Locked chest expired unclaimed");
       void clearActiveChest(guildId, LOCKCHEST_DBKEY).catch(() => null);
-    }, CHEST_EXPIRE_MS);
+    }, chestExpireMs(guildId));
     timeout.unref?.();
   } catch (err) {
     logger.error({ err, guildId }, "Failed to fire locked chest");
@@ -1540,7 +1546,7 @@ export async function fireKeyChest(client: Client, guildId: string, keyType?: st
 
     const kt = keyType && keyType !== "random" ? keyType : rollKeyChestType();
     const chestId = `keychest_${Date.now()}_${kt}`;
-    const expiresAt = Date.now() + CHEST_EXPIRE_MS;
+    const expiresAt = Date.now() + chestExpireMs(guildId);
 
     const lockedRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
@@ -1596,7 +1602,7 @@ export async function fireKeyChest(client: Client, guildId: string, keyType?: st
       await deleteChestMessage(msg, { chestId, guildId, phase: "expire-key" });
       logger.info({ chestId, guildId }, "Key chest expired unclaimed");
       void clearActiveChest(guildId, KEYCHEST_DBKEY).catch(() => null);
-    }, CHEST_EXPIRE_MS);
+    }, chestExpireMs(guildId));
     timeout.unref?.();
 
     return { chestId };
@@ -1691,7 +1697,7 @@ export function startGuildScheduler(client: Client, guildId: string) {
 
   const scheduleNext = () => {
     if (isStopped()) return;
-    const cooldown = randomCooldown();
+     const cooldown = randomCooldown(guildId);
     logger.info({ nextInHours: (cooldown / 3600000).toFixed(2), guildId }, "Next event scheduled");
     setTimeout(async () => { if (!isStopped()) { await fireEvent(client, guildId); scheduleNext(); } }, cooldown);
   };
@@ -1700,21 +1706,41 @@ export function startGuildScheduler(client: Client, guildId: string) {
   logger.info({ guildId }, "First Ora Umbrelor in 5 minutes");
 
   if (LEGACY_CHEST_SPAWNS_ENABLED) {
-    setInterval(() => { if (!isStopped()) void fireChest(client, guildId, true); }, CHEST_INTERVAL_MS);
-    logger.info({ everyMinutes: CHEST_INTERVAL_MS / 60000, guildId }, "Classic chest scheduler started — hourly");
+     const scheduleChest = () => {
+       if (isStopped()) return;
+       const delay = getGameplayConfig(guildId).events.chestIntervalMinutes * 60_000;
+       const timer = setTimeout(() => {
+         if (!isStopped()) void fireChest(client, guildId, true);
+         scheduleChest();
+       }, delay);
+       timer.unref?.();
+     };
+     scheduleChest();
+     logger.info({ guildId }, "Classic chest scheduler started");
   }
   logger.info({ everyMessages: SEASONAL_CHEST_MSG_MILESTONE, guildId }, "Seasonal chest scheduler started — message milestone");
 
   // Oracle messages disabled — user requested only chest in chat
   // setInterval(() => { void fireOracle(client, guildId); }, ORACLE_INTERVAL_MS);
 
-  setInterval(() => { if (!isStopped()) void fireBattleEvent(client, guildId); }, BATTLE_EVENT_INTERVAL_MS);
-  logger.info({ everyMinutes: BATTLE_EVENT_INTERVAL_MS / 60000, guildId }, "Battle-event scheduler started");
+   const scheduleBattleEvent = () => {
+     if (isStopped()) return;
+     const delay = getGameplayConfig(guildId).events.battleEventIntervalMinutes * 60_000;
+     const timer = setTimeout(() => {
+       if (!isStopped()) void fireBattleEvent(client, guildId);
+       scheduleBattleEvent();
+     }, delay);
+     timer.unref?.();
+   };
+   scheduleBattleEvent();
+   logger.info({ guildId }, "Battle-event scheduler started");
 
   const scheduleNextStandaloneBoss = () => {
     if (isStopped()) return;
-    const delay = STANDALONE_BOSS_MIN_MS +
-      Math.floor(Math.random() * (STANDALONE_BOSS_MAX_MS - STANDALONE_BOSS_MIN_MS + 1));
+     const { standaloneBossIntervalMinMinutes, standaloneBossIntervalMaxMinutes } = getGameplayConfig(guildId).events;
+     const min = standaloneBossIntervalMinMinutes * 60_000;
+     const max = standaloneBossIntervalMaxMinutes * 60_000;
+     const delay = min + Math.floor(Math.random() * (Math.max(min, max) - min + 1));
     const t = setTimeout(async () => {
       if (!isStopped()) { await fireStandaloneBoss(client, guildId); scheduleNextStandaloneBoss(); }
     }, delay);
@@ -1745,3 +1771,11 @@ export function startGuildScheduler(client: Client, guildId: string) {
 }
 
 export { APPLICATION_ID };
+
+function finalBossDurationMs(guildId: string): number {
+  return getGameplayConfig(guildId).events.finalBossDurationMinutes * 60_000;
+}
+
+function chestExpireMs(guildId: string): number {
+  return getGameplayConfig(guildId).events.chestExpireMinutes * 60_000;
+}

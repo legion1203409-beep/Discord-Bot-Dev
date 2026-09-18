@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Bot, Loader2, Save, Radio, Megaphone, Ticket, ShieldCheck } from "lucide-react";
+import { Bot, Loader2, Save, Radio, Megaphone, Ticket, ShieldCheck, Timer, ScrollText, Coins } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Textarea } from "../../components/ui/textarea";
@@ -63,6 +63,47 @@ export function BotControlPage() {
     });
   };
 
+  const setGameplay = (section: "events" | "missions" | "economy", key: string, value: string) => {
+    setDraft((current) => {
+      if (!current) return current;
+      const numeric = Number(value);
+      const [parent, child] = key.split(".");
+      const currentSection = current.gameplayConfig[section] as Record<string, unknown>;
+      const nextSection = child
+        ? { ...currentSection, [parent]: { ...(currentSection[parent] as Record<string, unknown>), [child]: Number.isFinite(numeric) ? numeric : 0 } }
+        : { ...currentSection, [key]: Number.isFinite(numeric) ? numeric : 0 };
+      return { ...current, gameplayConfig: { ...current.gameplayConfig, [section]: nextSection } };
+    });
+  };
+
+  const numberField = (
+    section: "events" | "missions" | "economy",
+    key: string,
+    label: string,
+    description: string,
+    step = 1,
+  ) => {
+    if (!draft) return null;
+    const [parent, child] = key.split(".");
+    const sectionValue = draft.gameplayConfig[section] as Record<string, unknown>;
+    const value = (child
+      ? (sectionValue[parent] as Record<string, unknown>)?.[child]
+      : sectionValue[key]) as number;
+    return (
+      <div className="space-y-2" key={`${section}-${key}`}>
+        <label className="text-sm font-medium">{label}</label>
+        <Input
+          type="number"
+          min={step === 0.1 ? 0.1 : 1}
+          step={step}
+          value={value}
+          onChange={(event) => setGameplay(section, key, event.target.value)}
+        />
+        <p className="text-xs text-muted-foreground">{description}</p>
+      </div>
+    );
+  };
+
   const save = async () => {
     if (!draft) return;
     setSaving(true);
@@ -100,9 +141,10 @@ export function BotControlPage() {
       </header>
 
       <Tabs defaultValue="channels" className="space-y-5">
-        <TabsList className="grid h-auto w-full grid-cols-3 rounded-xl border border-border bg-card p-1">
+        <TabsList className="grid h-auto w-full grid-cols-4 rounded-xl border border-border bg-card p-1">
           <TabsTrigger value="channels" className="gap-2 py-2.5"><Radio className="h-4 w-4" /> Canale</TabsTrigger>
           <TabsTrigger value="tickets" className="gap-2 py-2.5"><Ticket className="h-4 w-4" /> Tichete</TabsTrigger>
+          <TabsTrigger value="gameplay" className="gap-2 py-2.5"><Timer className="h-4 w-4" /> Gameplay</TabsTrigger>
           <TabsTrigger value="messages" className="gap-2 py-2.5"><Megaphone className="h-4 w-4" /> Mesaje</TabsTrigger>
         </TabsList>
 
@@ -133,6 +175,64 @@ export function BotControlPage() {
                   </div>
                 );
               })}
+            </div>
+          </section>
+        </TabsContent>
+
+        <TabsContent value="gameplay" className="mt-0 space-y-5">
+          <section className="space-y-5 rounded-xl border border-border bg-card p-5">
+            <div className="flex items-start gap-3">
+              <Timer className="mt-1 h-5 w-5 text-primary" />
+              <div>
+                <h2 className="font-medium">Evenimente și intervale</h2>
+                <p className="text-xs text-muted-foreground">Valorile sunt în minute și se aplică separat pe acest server. Intervalele maxime nu pot fi mai mici decât cele minime.</p>
+              </div>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              {numberField("events", "eventDurationMinutes", "Durata Ora Umbrelor", "Cât timp rămâne activ evenimentul.")}
+              {numberField("events", "eventCooldownMinMinutes", "Pauza minimă între evenimente", "Pauza minimă după un eveniment.")}
+              {numberField("events", "eventCooldownMaxMinutes", "Pauza maximă între evenimente", "Pauza maximă după un eveniment.")}
+              {numberField("events", "finalBossDurationMinutes", "Durata Dragonului Stins", "Cât timp poate fi atacat boss-ul final.")}
+              {numberField("events", "standaloneBossIntervalMinMinutes", "Boss rar: interval minim", "Pauza minimă între invocări independente.")}
+              {numberField("events", "standaloneBossIntervalMaxMinutes", "Boss rar: interval maxim", "Pauza maximă între invocări independente.")}
+              {numberField("events", "standaloneBossDurationMinutes", "Durata boss-ului rar", "Cât timp rămâne boss-ul rar activ.")}
+              {numberField("events", "battleEventIntervalMinutes", "Interval evenimente de luptă", "Frecvența anunțurilor dintr-o Ora a Umbrelor.")}
+              {numberField("events", "chestIntervalMinutes", "Interval cufere", "Frecvența cufărului clasic.")}
+              {numberField("events", "chestExpireMinutes", "Expirare cufere", "Cât timp poate fi revendicat un cufăr.")}
+            </div>
+          </section>
+
+          <section className="space-y-5 rounded-xl border border-border bg-card p-5">
+            <div className="flex items-start gap-3">
+              <ScrollText className="mt-1 h-5 w-5 text-primary" />
+              <div>
+                <h2 className="font-medium">Misiuni zilnice</h2>
+                <p className="text-xs text-muted-foreground">Țintele și cantitățile de materiale sunt folosite atât la progres, cât și la acordarea recompensei.</p>
+              </div>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              {numberField("missions", "kill_10.target", "Monștri uciși — țintă", "Numărul de monștri necesar.")}
+              {numberField("missions", "kill_10.rewardQty", "Monștri uciși — recompensă", "Cantitatea de material acordată.")}
+              {numberField("missions", "rare_3.target", "Monștri rari — țintă", "Numărul de monștri rari necesar.")}
+              {numberField("missions", "rare_3.rewardQty", "Monștri rari — recompensă", "Cantitatea de material acordată.")}
+              {numberField("missions", "boss_1.target", "Mini-boss — țintă", "Numărul de mini-bossi necesar.")}
+              {numberField("missions", "boss_1.rewardQty", "Mini-boss — recompensă", "Cantitatea de material acordată.")}
+            </div>
+          </section>
+
+          <section className="space-y-5 rounded-xl border border-border bg-card p-5">
+            <div className="flex items-start gap-3">
+              <Coins className="mt-1 h-5 w-5 text-primary" />
+              <div>
+                <h2 className="font-medium">Economie</h2>
+                <p className="text-xs text-muted-foreground">Multiplicatorii afectează recompensele de Oboli și XP din lupte și boss fights. Bonusurile existente se aplică separat.</p>
+              </div>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              {numberField("economy", "monsterGoldMultiplier", "Oboli din monștri", "1 = valoarea normală.", 0.1)}
+              {numberField("economy", "monsterXpMultiplier", "XP din monștri", "1 = valoarea normală.", 0.1)}
+              {numberField("economy", "bossGoldMultiplier", "Oboli din boss fights", "1 = valoarea normală.", 0.1)}
+              {numberField("economy", "bossXpMultiplier", "XP din boss fights", "1 = valoarea normală.", 0.1)}
             </div>
           </section>
         </TabsContent>
@@ -253,3 +353,218 @@ export function BotControlPage() {
     </div>
   );
 }
+/*
+export function BotControlPage() {
+  const { guildId } = useActiveGuild();
+  const { data, loading, error, update } = useBotControl(guildId);
+  const { data: metadata } = useModerationMetadata(guildId);
+  const { toast } = useToast();
+  const [draft, setDraft] = useState<BotControlConfig | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setDraft(data ? JSON.parse(JSON.stringify(data)) : null);
+  }, [data]);
+
+  const setChannel = (key: string, value: string) => {
+    setDraft((current) => current ? {
+      ...current,
+      channels: { ...current.channels, ...(value === "__none__" ? { [key]: "" } : { [key]: value }) },
+    } : current);
+  };
+
+  const setGameplay = (section: "events" | "missions" | "economy", key: string, value: string) => {
+    setDraft((current) => {
+      if (!current) return current;
+      const numeric = Number(value);
+      const [parent, child] = key.split(".");
+      const currentSection = current.gameplayConfig[section] as Record<string, unknown>;
+      const nextSection = child
+        ? { ...currentSection, [parent]: { ...(currentSection[parent] as Record<string, unknown>), [child]: Number.isFinite(numeric) ? numeric : 0 } }
+        : { ...currentSection, [key]: Number.isFinite(numeric) ? numeric : 0 };
+      return {
+        ...current,
+        gameplayConfig: {
+          ...current.gameplayConfig,
+          [section]: nextSection,
+        },
+      };
+    });
+  };
+
+  const numberField = (
+    section: "events" | "missions" | "economy",
+    key: string,
+    label: string,
+    description: string,
+    step = 1,
+  ) => {
+    if (!draft) return null;
+    const [parent, child] = key.split(".");
+    const sectionValue = draft.gameplayConfig[section] as Record<string, unknown>;
+    const value = (child
+      ? (sectionValue[parent] as Record<string, unknown>)?.[child]
+      : sectionValue[key]) as number;
+    return (
+      <div className="space-y-2" key={`${section}-${key}`}>
+        <label className="text-sm font-medium">{label}</label>
+        <Input
+          type="number"
+          min={step === 0.1 ? 0.1 : 1}
+          step={step}
+          value={value}
+          onChange={(event) => setGameplay(section, key, event.target.value)}
+        />
+        <p className="text-xs text-muted-foreground">{description}</p>
+      </div>
+    );
+  };
+
+  const save = async () => {
+    if (!draft) return;
+    setSaving(true);
+    try {
+      await update({
+        ...draft,
+        channels: Object.fromEntries(Object.entries(draft.channels).filter(([, value]) => value)),
+      });
+      toast({ title: "Setările botului au fost salvate", description: "Canalele și textul de alianță sunt persistente." });
+    } catch (saveError: any) {
+      toast({ variant: "destructive", title: "Salvarea a eșuat", description: saveError?.message ?? "Încearcă din nou." });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading && !draft) {
+    return <div className="flex justify-center p-12 text-muted-foreground"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+  }
+  if (!draft) {
+    return <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-6 text-sm text-destructive">{error?.message ?? "Setările botului nu au putut fi încărcate."}</div>;
+  }
+
+  return (
+    <div className="max-w-5xl space-y-6">
+      <header>
+        <p className="mod-eyebrow">CONTROL OWNER-ONLY</p>
+        <h1 className="mb-2 flex items-center gap-3 text-3xl font-bold tracking-tight text-foreground">
+          <Bot className="h-8 w-8 text-primary" /> Control bot
+        </h1>
+         <p className="text-muted-foreground">Canalele, textele și regulile gameplay pe care botul le folosește pe server. Accesul la această pagină este limitat la owner.</p>
+      </header>
+
+      <section className="space-y-4 rounded-xl border border-border bg-card p-5">
+        <div className="flex items-start gap-3">
+          <Radio className="mt-1 h-5 w-5 text-primary" />
+          <div>
+            <h2 className="font-medium">Canale Discord</h2>
+            <p className="text-xs text-muted-foreground">Alege un canal din lista live sau introdu ID-ul manual. Setarea se aplică sistemului asociat.</p>
+          </div>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          {CHANNELS.map(([key, label]) => {
+            const current = draft.channels[key] ?? "";
+            const selected = metadata?.channels.some((channel) => channel.id === current) ? current : "__none__";
+            return (
+              <div key={key} className="space-y-2">
+                <label className="text-sm font-medium">{label}</label>
+                <Select value={selected} onValueChange={(value) => setChannel(key, value)}>
+                  <SelectTrigger><SelectValue placeholder="Alege canal" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Neconfigurat</SelectItem>
+                    {metadata?.channels.map((channel) => (
+                      <SelectItem key={channel.id} value={channel.id}>#{channel.name} ({channel.id})</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input value={current} placeholder="ID canal Discord" aria-label={`${label} ID`} onChange={(event) => setChannel(key, event.target.value.trim())} />
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="space-y-5 rounded-xl border border-border bg-card p-5">
+        <div className="flex items-start gap-3">
+          <Timer className="mt-1 h-5 w-5 text-primary" />
+          <div>
+            <h2 className="font-medium">Evenimente și intervale</h2>
+            <p className="text-xs text-muted-foreground">Valorile sunt în minute și se aplică separat pe acest server. Intervalele maxime nu pot fi mai mici decât cele minime.</p>
+          </div>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          {numberField("events", "eventDurationMinutes", "Durata Ora Umbrelor", "Cât timp rămâne activ evenimentul.")}
+          {numberField("events", "eventCooldownMinMinutes", "Pauza minimă între evenimente", "Pauza minimă după un eveniment.")}
+          {numberField("events", "eventCooldownMaxMinutes", "Pauza maximă între evenimente", "Pauza maximă după un eveniment.")}
+          {numberField("events", "finalBossDurationMinutes", "Durata Dragonului Stins", "Cât timp poate fi atacat boss-ul final.")}
+          {numberField("events", "standaloneBossIntervalMinMinutes", "Boss rar: interval minim", "Pauza minimă între invocări independente.")}
+          {numberField("events", "standaloneBossIntervalMaxMinutes", "Boss rar: interval maxim", "Pauza maximă între invocări independente.")}
+          {numberField("events", "standaloneBossDurationMinutes", "Durata boss-ului rar", "Cât timp rămâne boss-ul rar activ.")}
+          {numberField("events", "battleEventIntervalMinutes", "Interval evenimente de luptă", "Frecvența anunțurilor dintr-o Ora a Umbrelor.")}
+          {numberField("events", "chestIntervalMinutes", "Interval cufere", "Frecvența cufărului clasic.")}
+          {numberField("events", "chestExpireMinutes", "Expirare cufere", "Cât timp poate fi revendicat un cufăr.", 1)}
+        </div>
+      </section>
+
+      <section className="space-y-5 rounded-xl border border-border bg-card p-5">
+        <div className="flex items-start gap-3">
+          <ScrollText className="mt-1 h-5 w-5 text-primary" />
+          <div>
+            <h2 className="font-medium">Misiuni zilnice</h2>
+            <p className="text-xs text-muted-foreground">Țintele și cantitățile de materiale sunt folosite atât la progres, cât și la acordarea recompensei.</p>
+          </div>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          {numberField("missions", "kill_10.target", "Monștri uciși — țintă", "Numărul de monștri necesar.")}
+          {numberField("missions", "kill_10.rewardQty", "Monștri uciși — recompensă", "Cantitatea de material acordată.")}
+          {numberField("missions", "rare_3.target", "Monștri rari — țintă", "Numărul de monștri rari necesar.")}
+          {numberField("missions", "rare_3.rewardQty", "Monștri rari — recompensă", "Cantitatea de material acordată.")}
+          {numberField("missions", "boss_1.target", "Mini-boss — țintă", "Numărul de mini-bossi necesar.")}
+          {numberField("missions", "boss_1.rewardQty", "Mini-boss — recompensă", "Cantitatea de material acordată.")}
+        </div>
+      </section>
+
+      <section className="space-y-5 rounded-xl border border-border bg-card p-5">
+        <div className="flex items-start gap-3">
+          <Coins className="mt-1 h-5 w-5 text-primary" />
+          <div>
+            <h2 className="font-medium">Economie</h2>
+            <p className="text-xs text-muted-foreground">Multiplicatorii afectează recompensele de aur/Oboli și XP din lupte și boss fights. Bonusurile de clasă, talisman și prestigiu se aplică în continuare separat.</p>
+          </div>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          {numberField("economy", "monsterGoldMultiplier", "Oboli din monștri", "1 = valoarea normală.", 0.1)}
+          {numberField("economy", "monsterXpMultiplier", "XP din monștri", "1 = valoarea normală.", 0.1)}
+          {numberField("economy", "bossGoldMultiplier", "Oboli din boss fights", "1 = valoarea normală.", 0.1)}
+          {numberField("economy", "bossXpMultiplier", "XP din boss fights", "1 = valoarea normală.", 0.1)}
+        </div>
+      </section>
+
+      <section className="space-y-4 rounded-xl border border-border bg-card p-5">
+        <div className="flex items-start gap-3">
+          <Megaphone className="mt-1 h-5 w-5 text-primary" />
+          <div>
+            <h2 className="font-medium">Textul mesajului de alianță</h2>
+            <p className="text-xs text-muted-foreground">Acest text este folosit la următoarea publicare a anunțului de recrutare. Discord limitează mesajul la 2.000 de caractere.</p>
+          </div>
+        </div>
+        <Textarea
+          value={draft.allianceRecruitmentText}
+          maxLength={2000}
+          rows={16}
+          placeholder="Scrie mesajul de recrutare..."
+          onChange={(event) => setDraft({ ...draft, allianceRecruitmentText: event.target.value })}
+        />
+        <p className="text-right text-xs text-muted-foreground">{draft.allianceRecruitmentText.length}/2000</p>
+      </section>
+
+      <div className="sticky bottom-3 flex justify-end border-t border-border bg-background/95 py-4 backdrop-blur">
+        <Button onClick={() => void save()} disabled={saving} className="gap-2 px-8">
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          {saving ? "Se salvează…" : "Salvează controlul botului"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+*/
