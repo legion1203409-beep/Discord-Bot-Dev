@@ -7,6 +7,11 @@ const mocks = vi.hoisted(() => ({
   getConfig: vi.fn(), putConfig: vi.fn(), listCases: vi.fn(),
   listAudit: vi.fn(), listLogs: vi.fn(), beginAction: vi.fn(), getAction: vi.fn(),
   completeAction: vi.fn(), writeAudit: vi.fn(), execute: vi.fn(),
+  loadChannelConfig: vi.fn(), saveChannelConfig: vi.fn(),
+  loadAllianceRecruitmentText: vi.fn(), saveAllianceRecruitmentText: vi.fn(),
+  loadTicketConfig: vi.fn(), saveTicketConfig: vi.fn(),
+  initGameplayConfig: vi.fn(), getGameplayConfig: vi.fn(), saveGuildGameplayConfig: vi.fn(),
+  initChannelConfig: vi.fn(),
 }));
 
 vi.mock("../auth", () => ({
@@ -36,16 +41,45 @@ vi.mock("../store", () => ({
   },
 }));
 vi.mock("../../bot/moderation/engine", () => ({ executeModerationAction: mocks.execute }));
+vi.mock("../../bot/db", () => ({
+  loadChannelConfig: mocks.loadChannelConfig,
+  saveChannelConfig: mocks.saveChannelConfig,
+  loadAllianceRecruitmentText: mocks.loadAllianceRecruitmentText,
+  saveAllianceRecruitmentText: mocks.saveAllianceRecruitmentText,
+  loadTicketConfig: mocks.loadTicketConfig,
+  saveTicketConfig: mocks.saveTicketConfig,
+}));
+vi.mock("../../bot/gameplay-store", () => ({
+  initGameplayConfig: mocks.initGameplayConfig,
+  getGameplayConfig: mocks.getGameplayConfig,
+  saveGuildGameplayConfig: mocks.saveGuildGameplayConfig,
+}));
+vi.mock("../../bot/channel-config", () => ({ initChannelConfig: mocks.initChannelConfig }));
 
 import router from "../router";
 import { ModerationAuthError } from "../auth";
 import { defaultModerationConfig } from "../config";
+import { DEFAULT_GAMEPLAY_CONFIG } from "../../bot/gameplay-config";
+import { DEFAULT_TICKET_CONFIG } from "../../bot/ticket-config";
+
+type BotControlResponse = {
+  tickets: {
+    staffReviewRoleId: string;
+    alliancePublicChannelId: string;
+    flows: {
+      staff: { completionAction: string; title: string; questions: Array<{ key: string; label: string }> };
+      partnership: { completionAction: string; staffNotificationMessage: string; questions: Array<{ key: string; label: string }> };
+      help_report: { completionAction: string; questions: Array<{ key: string; label: string }> };
+    };
+  };
+};
 
 describe("moderation HTTP authorization and mutation boundaries", () => {
   let server: Server;
   let base: string;
   const guildId = "123456789";
   const actorId = "987654321";
+  let persistedTicketConfig = structuredClone(DEFAULT_TICKET_CONFIG);
   beforeAll(async () => {
     const app = express();
     app.use(express.json());
@@ -75,10 +109,77 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     mocks.beginAction.mockResolvedValue({ created: true, action: { id: "ledger", status: "pending" } });
     mocks.getAction.mockResolvedValue(null);
     mocks.execute.mockResolvedValue({ actionId: "action", summary: "applied" });
+    persistedTicketConfig = structuredClone(DEFAULT_TICKET_CONFIG);
+    mocks.loadChannelConfig.mockResolvedValue({ main: "111111111" });
+    mocks.saveChannelConfig.mockResolvedValue(undefined);
+    mocks.loadAllianceRecruitmentText.mockResolvedValue("Text salvat");
+    mocks.saveAllianceRecruitmentText.mockResolvedValue(undefined);
+    mocks.loadTicketConfig.mockImplementation(async () => structuredClone(persistedTicketConfig));
+    mocks.saveTicketConfig.mockImplementation(async (_guildId, config) => {
+      persistedTicketConfig = structuredClone(config);
+    });
+    mocks.initGameplayConfig.mockResolvedValue(undefined);
+    mocks.getGameplayConfig.mockReturnValue(structuredClone(DEFAULT_GAMEPLAY_CONFIG));
+    mocks.saveGuildGameplayConfig.mockResolvedValue(structuredClone(DEFAULT_GAMEPLAY_CONFIG));
+    mocks.initChannelConfig.mockResolvedValue(undefined);
   });
   const post = (body: unknown, headers: Record<string, string> = {}) => ({
     method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body),
   });
+
+  const botControlPayload = () => {
+    const flow = (name: string, action: "lock" | "notify_staff" | "keep_open") => ({
+      mode: "custom" as const,
+      title: `${name} title`,
+      startButtonLabel: `${name} start`,
+      panelDescription: `${name} panel`,
+      requirementsText: `${name} requirements`,
+      completionMessage: `${name} completed`,
+      staffNotificationMessage: `${name} staff`,
+      completionAction: action,
+      questions: [
+        {
+          key: `${name.toLowerCase()}_first`,
+          label: `${name} first`,
+          description: `${name} first question`,
+          placeholder: "First answer",
+          multiline: false,
+          required: true,
+        },
+        {
+          key: `${name.toLowerCase()}_second`,
+          label: `${name} second`,
+          description: `${name} second question`,
+          placeholder: "Second answer",
+          multiline: true,
+          required: false,
+        },
+      ],
+    });
+    return {
+      channels: { main: "111111111" },
+      allianceRecruitmentText: "Mesajul alianței",
+      tickets: {
+        categories: {
+          staff: "222222222",
+          partnership: "333333333",
+          help_report: "444444444",
+        },
+        staffReviewRoleId: "555555555",
+        alliancePublicChannelId: "666666666",
+        allianceOwnerGuildId: guildId,
+        incompleteTimeoutMinutes: 60,
+        firstWarningMinutes: 20,
+        secondWarningMinutes: 50,
+        flows: {
+          staff: flow("Staff", "notify_staff"),
+          partnership: flow("Partnership", "keep_open"),
+          help_report: flow("Help", "lock"),
+        },
+      },
+      gameplayConfig: structuredClone(DEFAULT_GAMEPLAY_CONFIG),
+    };
+  };
 
   it("rejects unauthenticated configuration reads before reading stored data", async () => {
     mocks.session.mockRejectedValue(new ModerationAuthError(401, "Authentication required"));
@@ -110,6 +211,77 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     expect(response.status).toBe(200);
     expect(mocks.putConfig).toHaveBeenCalledWith(guildId, expect.any(Object), actorId, 3);
     expect(response.headers.get("etag")).toBe('"4"');
+  });
+
+  it("persists all custom ticket flows and returns them unchanged after a later GET", async () => {
+    const payload = botControlPayload();
+    const putResponse = await fetch(`${base}/bot-control`, {
+      ...post(payload),
+      method: "PUT",
+      headers: { "content-type": "application/json", "x-csrf-token": "csrf" },
+    });
+
+    expect(putResponse.status).toBe(200);
+    expect(mocks.saveTicketConfig).toHaveBeenCalledWith(guildId, expect.objectContaining({
+      staffReviewRoleId: "555555555",
+    }));
+    expect(mocks.saveTicketConfig.mock.calls[0]?.[1].flows).toEqual(
+      expect.objectContaining({
+        staff: expect.objectContaining({ mode: "custom" }),
+        partnership: expect.objectContaining({ mode: "custom" }),
+        help_report: expect.objectContaining({ mode: "custom" }),
+      }),
+    );
+
+    const getResponse = await fetch(`${base}/bot-control`);
+    expect(getResponse.status).toBe(200);
+    const result = await getResponse.json() as BotControlResponse;
+    expect(result.tickets.staffReviewRoleId).toBe("555555555");
+    expect(result.tickets.alliancePublicChannelId).toBe("666666666");
+    expect(result.tickets.flows.staff.completionAction).toBe("notify_staff");
+    expect(result.tickets.flows.partnership.completionAction).toBe("keep_open");
+    expect(result.tickets.flows.help_report.completionAction).toBe("lock");
+    expect(result.tickets.flows.staff.questions.map((question: { key: string }) => question.key))
+      .toEqual(["staff_first", "staff_second"]);
+    expect(result.tickets.flows.partnership.questions.map((question: { key: string }) => question.key))
+      .toEqual(["partnership_first", "partnership_second"]);
+    expect(result.tickets.flows.help_report.questions.map((question: { key: string }) => question.key))
+      .toEqual(["help_first", "help_second"]);
+    expect(result.tickets.flows.staff.title).toBe("Staff title");
+    expect(result.tickets.flows.partnership.staffNotificationMessage).toBe("Partnership staff");
+  });
+
+  it("rejects an invalid custom ticket payload before changing the existing configuration", async () => {
+    const payload = botControlPayload();
+    const initialPut = await fetch(`${base}/bot-control`, {
+      ...post(payload),
+      method: "PUT",
+      headers: { "content-type": "application/json", "x-csrf-token": "csrf" },
+    });
+    expect(initialPut.status).toBe(200);
+    mocks.saveTicketConfig.mockClear();
+    mocks.saveChannelConfig.mockClear();
+    mocks.saveAllianceRecruitmentText.mockClear();
+    mocks.saveGuildGameplayConfig.mockClear();
+
+    const invalidPayload = structuredClone(payload);
+    invalidPayload.tickets.flows.staff.questions[0].label = "";
+    const invalidPut = await fetch(`${base}/bot-control`, {
+      ...post(invalidPayload),
+      method: "PUT",
+      headers: { "content-type": "application/json", "x-csrf-token": "csrf" },
+    });
+
+    expect(invalidPut.status).toBe(400);
+    expect(mocks.saveTicketConfig).not.toHaveBeenCalled();
+    expect(mocks.saveChannelConfig).not.toHaveBeenCalled();
+    expect(mocks.saveAllianceRecruitmentText).not.toHaveBeenCalled();
+    expect(mocks.saveGuildGameplayConfig).not.toHaveBeenCalled();
+
+    const getResponse = await fetch(`${base}/bot-control`);
+    const result = await getResponse.json() as BotControlResponse;
+    expect(result.tickets.flows.staff.questions[0].label).toBe("Staff first");
+    expect(result.tickets.flows.partnership.questions[1].key).toBe("partnership_second");
   });
 
   it("does not accept configured roles belonging to another server", async () => {
