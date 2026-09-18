@@ -308,6 +308,10 @@ export function BotControlPage() {
   const categories = metadata?.channels.filter((channel) => isCategory(channel.type)) ?? [];
   const textChannels = metadata?.channels.filter((channel) => isTextChannel(channel.type)) ?? [];
   const activeFlow = draft.tickets.flows[activeFlowKind];
+  const activeCategory = draft.tickets.categories[activeFlowKind];
+  const selectedActiveCategory = categories.some((category) => category.id === activeCategory)
+    ? activeCategory
+    : "__manual__";
 
   return (
     <div className="max-w-5xl space-y-6">
@@ -361,22 +365,56 @@ export function BotControlPage() {
             <div className="flex items-start gap-3">
               <Ticket className="mt-1 h-5 w-5 text-primary" />
               <div>
-                <h2 className="font-medium">Editor complet al fluxului</h2>
+                <h2 className="font-medium">Editor flux ticket</h2>
                 <p className="text-xs text-muted-foreground">
-                  Modifică exact ce vede utilizatorul, întrebările și ce face botul după ultimul răspuns.
-                  La salvare, fluxul personalizat înlocuiește formularul clasic pentru tipul ales.
+                  Configurează un singur tip de ticket de la cap la coadă: destinație, panou, răspunsuri și acțiunea finală.
                 </p>
               </div>
             </div>
 
-            <Select value={activeFlowKind} onValueChange={(value) => setActiveFlowKind(value as typeof activeFlowKind)}>
-               <SelectTrigger className="mod-select-trigger"><SelectValue placeholder="Alege tipul de tichet" /></SelectTrigger>
-              <SelectContent>
-                {FLOW_KINDS.map(([kind, label]) => <SelectItem key={kind} value={kind}>{label}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <div className="space-y-3 rounded-lg border border-primary/25 bg-primary/[0.04] p-4">
+              <div>
+                <p className="text-xs font-mono tracking-widest text-primary">PASUL 1 · FLUX ȘI DESTINAȚIE</p>
+                <p className="mt-1 text-xs text-muted-foreground">Alege fluxul și categoria Discord în care vor fi create ticketurile.</p>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Tipul de ticket</label>
+                  <Select value={activeFlowKind} onValueChange={(value) => setActiveFlowKind(value as typeof activeFlowKind)}>
+                    <SelectTrigger className="mod-select-trigger"><SelectValue placeholder="Alege tipul de tichet" /></SelectTrigger>
+                    <SelectContent>
+                      {FLOW_KINDS.map(([kind, label]) => <SelectItem key={kind} value={kind}>{label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Categoria Discord</label>
+                  <Select
+                    value={selectedActiveCategory}
+                    onValueChange={(value) => setTicket(["categories", activeFlowKind], value === "__manual__" ? activeCategory : value)}
+                  >
+                    <SelectTrigger className="mod-select-trigger"><SelectValue placeholder="Alege categoria" /></SelectTrigger>
+                    <SelectContent className="max-h-[min(70vh,32rem)] overscroll-contain">
+                      <SelectItem value="__manual__">Introduc manual ID-ul</SelectItem>
+                      {categories.map((category) => <SelectItem key={category.id} value={category.id}>▰ {category.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    value={activeCategory}
+                    aria-label="ID categorie Discord pentru fluxul activ"
+                    placeholder="ID categorie Discord"
+                    onChange={(event) => setTicket(["categories", activeFlowKind], event.target.value.trim())}
+                  />
+                </div>
+              </div>
+            </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-3">
+              <div>
+                <p className="text-xs font-mono tracking-widest text-primary">PASUL 2 · PANOU ȘI COMPORTAMENT</p>
+                <p className="mt-1 text-xs text-muted-foreground">Acestea sunt mesajele și acțiunile pe care le vede membrul după ce deschide ticketul.</p>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Titlul panoului Discord</label>
                 <Input value={activeFlow.title} maxLength={256} onChange={(event) => setFlow(activeFlowKind, "title", event.target.value)} />
@@ -415,13 +453,15 @@ export function BotControlPage() {
               </div>
               <ImageField label="Imaginea mesajului de finalizare" value={activeFlow.completionImageUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setFlow(activeFlowKind, "completionImageUrl", value)} />
               <ImageField label="Imaginea mesajului pentru staff" value={activeFlow.staffNotificationImageUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setFlow(activeFlowKind, "staffNotificationImageUrl", value)} />
+              </div>
             </div>
 
             <div className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h3 className="font-medium">Întrebări ({activeFlow.questions.length}/20)</h3>
-                  <p className="text-xs text-muted-foreground">Ordinea de aici este ordinea în care botul le va cere.</p>
+                  <p className="text-xs font-mono tracking-widest text-primary">PASUL 3 · ÎNTREBĂRI</p>
+                  <h3 className="mt-1 font-medium">Întrebările ticketului ({activeFlow.questions.length}/20)</h3>
+                  <p className="text-xs text-muted-foreground">Adaugă întrebările pentru categoria aleasă. Ordinea de aici este ordinea în care botul le va cere.</p>
                 </div>
                 <Button type="button" variant="secondary" onClick={() => addQuestion(activeFlowKind)} disabled={activeFlow.questions.length >= 20}>
                   Adaugă întrebare
