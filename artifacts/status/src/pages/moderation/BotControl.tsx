@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { Bot, Loader2, Save, Radio, Megaphone, Ticket, ShieldCheck, Timer, ScrollText, Coins } from "lucide-react";
+import { Bot, Loader2, Save, Radio, Megaphone, Ticket, ShieldCheck, Timer, ScrollText, Coins, PlayCircle, RotateCcw, CheckCircle2 } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Textarea } from "../../components/ui/textarea";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { useActiveGuild, useBotControl, useModerationMetadata, useSession, type BotControlConfig, type TicketFlowConfig } from "../../hooks/use-moderation-api";
@@ -131,6 +132,13 @@ export function BotControlPage() {
   const [draft, setDraft] = useState<BotControlConfig | null>(null);
   const [saving, setSaving] = useState(false);
   const [activeFlowKind, setActiveFlowKind] = useState<keyof BotControlConfig["tickets"]["flows"]>("staff");
+  const [testOpen, setTestOpen] = useState(false);
+  const [testStarted, setTestStarted] = useState(false);
+  const [testCompleted, setTestCompleted] = useState(false);
+  const [testStep, setTestStep] = useState(0);
+  const [testDraftAnswer, setTestDraftAnswer] = useState("");
+  const [testAnswers, setTestAnswers] = useState<Record<string, string>>({});
+  const [testError, setTestError] = useState("");
 
   useEffect(() => {
     setDraft(data ? JSON.parse(JSON.stringify(data)) : null);
@@ -347,6 +355,36 @@ export function BotControlPage() {
   const postedQuestionKeys = new Set(
     activeFlow.postedQuestionKeys ?? activeFlow.questions.map((question) => question.key),
   );
+  const testQuestion = activeFlow.questions[testStep];
+  const resetFlowTest = () => {
+    setTestStarted(false);
+    setTestCompleted(false);
+    setTestStep(0);
+    setTestDraftAnswer("");
+    setTestAnswers({});
+    setTestError("");
+  };
+  const openFlowTest = () => {
+    resetFlowTest();
+    setTestOpen(true);
+  };
+  const submitTestAnswer = () => {
+    if (!testQuestion) return;
+    const answer = testDraftAnswer.trim();
+    if (testQuestion.required && !answer) {
+      setTestError("Răspunsul este obligatoriu pentru această întrebare.");
+      return;
+    }
+    const nextAnswers = { ...testAnswers, [testQuestion.key]: answer || "—" };
+    setTestAnswers(nextAnswers);
+    setTestError("");
+    setTestDraftAnswer("");
+    if (testStep >= activeFlow.questions.length - 1) {
+      setTestCompleted(true);
+    } else {
+      setTestStep((step) => step + 1);
+    }
+  };
 
   return (
     <div className="max-w-5xl space-y-6">
@@ -789,11 +827,134 @@ export function BotControlPage() {
       </Tabs>
 
       <div className="sticky bottom-3 flex justify-end border-t border-border bg-background/95 py-4 backdrop-blur">
-        <Button onClick={() => void save()} disabled={saving} className="gap-2 px-8">
+        <div className="flex w-full justify-end gap-3">
+          <Button type="button" variant="secondary" onClick={openFlowTest} className="gap-2">
+            <PlayCircle className="h-4 w-4" />
+            Testează fluxul
+          </Button>
+          <Button onClick={() => void save()} disabled={saving} className="gap-2 px-8">
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
           {saving ? "Se salvează…" : "Salvează controlul botului"}
-        </Button>
+          </Button>
+        </div>
       </div>
+
+      <Dialog open={testOpen} onOpenChange={setTestOpen}>
+        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto border-[#3f4147] bg-[#1e1f22] text-[#f2f3f5]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <PlayCircle className="h-5 w-5 text-primary" />
+              Test local · {FLOW_KINDS.find(([kind]) => kind === activeFlowKind)?.[1] ?? "Flux ticket"}
+            </DialogTitle>
+            <DialogDescription className="text-[#b5bac1]">
+              Simulează pașii pe care îi vede membrul. Nu se creează ticket și nu se postează nimic pe Discord.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="rounded-lg border border-[#3f4147] bg-[#2b2d31] p-4">
+              <p className="text-[10px] font-mono tracking-[0.18em] text-[#b5bac1]">PANOU DISCORD SIMULAT</p>
+              <h3 className="mt-2 text-lg font-semibold">{activeFlow.title}</h3>
+              <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[#dbdee1]">{activeFlow.panelDescription}</p>
+              <p className="mt-3 whitespace-pre-wrap text-xs text-[#b5bac1]">{activeFlow.requirementsText}</p>
+              {!testStarted && !testCompleted && (
+                <Button type="button" className="mt-4 gap-2" onClick={() => setTestStarted(true)}>
+                  <PlayCircle className="h-4 w-4" />
+                  {activeFlow.startButtonLabel}
+                </Button>
+              )}
+            </div>
+
+            {testStarted && !testCompleted && testQuestion && (
+              <div className="rounded-lg border border-primary/40 bg-[#2b2d31] p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-mono tracking-[0.14em] text-primary">
+                    ÎNTREBAREA {testStep + 1}/{activeFlow.questions.length}
+                  </p>
+                  <span className="text-xs text-[#b5bac1]">
+                    {testQuestion.required ? "Obligatoriu" : "Opțional"}
+                  </span>
+                </div>
+                <h3 className="mt-3 text-base font-semibold">{testQuestion.label}</h3>
+                <p className="mt-1 text-sm text-[#dbdee1]">{testQuestion.description}</p>
+                {testQuestion.multiline ? (
+                  <Textarea
+                    autoFocus
+                    rows={4}
+                    value={testDraftAnswer}
+                    placeholder={testQuestion.placeholder}
+                    onChange={(event) => {
+                      setTestDraftAnswer(event.target.value);
+                      setTestError("");
+                    }}
+                    className="mt-4 border-[#4b4f58] bg-[#1e1f22] text-[#f2f3f5]"
+                  />
+                ) : (
+                  <Input
+                    autoFocus
+                    value={testDraftAnswer}
+                    placeholder={testQuestion.placeholder}
+                    onChange={(event) => {
+                      setTestDraftAnswer(event.target.value);
+                      setTestError("");
+                    }}
+                    className="mt-4 border-[#4b4f58] bg-[#1e1f22] text-[#f2f3f5]"
+                  />
+                )}
+                {testError && <p className="mt-2 text-xs text-destructive">{testError}</p>}
+                <div className="mt-4 flex justify-end">
+                  <Button type="button" onClick={submitTestAnswer}>
+                    {testStep === activeFlow.questions.length - 1 ? "Finalizează simularea" : "Salvează și continuă"}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {Object.keys(testAnswers).length > 0 && (
+              <div className="space-y-2 rounded-lg border border-[#3f4147] bg-[#2b2d31] p-4">
+                <p className="text-[10px] font-mono tracking-[0.18em] text-[#b5bac1]">RĂSPUNSURI SIMULATE</p>
+                {activeFlow.questions
+                  .filter((question) => testAnswers[question.key] !== undefined)
+                  .map((question) => (
+                    <div key={`test-answer-${question.key}`} className="rounded-md bg-[#1e1f22] px-3 py-2">
+                      <p className="text-xs font-semibold">{question.label}</p>
+                      <p className="mt-1 whitespace-pre-wrap text-sm text-[#dbdee1]">{testAnswers[question.key]}</p>
+                    </div>
+                  ))}
+              </div>
+            )}
+
+            {testCompleted && (
+              <div className="rounded-lg border border-emerald-500/40 bg-[#2b2d31] p-4">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-5 w-5 text-emerald-400" />
+                  <p className="text-[10px] font-mono tracking-[0.18em] text-emerald-300">MESAJ FINAL SIMULAT</p>
+                </div>
+                <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-[#dbdee1]">{activeFlow.completionMessage}</p>
+                <div className="mt-4 space-y-2 border-t border-[#3f4147] pt-3">
+                  {activeFlow.questions.filter((question) => postedQuestionKeys.has(question.key)).map((question) => (
+                    <div key={`test-final-${question.key}`} className="rounded-md bg-[#1e1f22] px-3 py-2">
+                      <p className="text-xs font-semibold">{question.label}</p>
+                      <p className="mt-1 whitespace-pre-wrap text-sm text-[#dbdee1]">{testAnswers[question.key] ?? "—"}</p>
+                    </div>
+                  ))}
+                </div>
+                {activeFlow.completionAction === "notify_staff" && (
+                  <p className="mt-4 text-xs text-primary">{activeFlow.staffNotificationMessage}</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2 sm:justify-between">
+            <p className="text-xs text-[#b5bac1]">Modificările curente sunt testate local, chiar dacă nu sunt încă salvate.</p>
+            <Button type="button" variant="secondary" onClick={resetFlowTest} className="gap-2">
+              <RotateCcw className="h-4 w-4" />
+              Repornește testul
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
