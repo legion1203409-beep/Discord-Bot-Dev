@@ -201,7 +201,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
   ];
 
   return (
-    <div className="mod-shell dark flex min-h-[100dvh] overflow-hidden">
+    <div className="mod-shell dark flex h-[100dvh] min-h-[100dvh] overflow-hidden">
       {/* Mobile overlay */}
       {mobileMenuOpen && (
         <div 
@@ -213,7 +213,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
       {/* Sidebar */}
       <aside aria-label="Navigare moderare" className={`
         mod-sidebar fixed inset-y-0 left-0 z-50 w-72 border-r border-border flex flex-col
-        transition-transform duration-300 ease-in-out md:translate-x-0 md:static md:shrink-0
+        transition-transform duration-300 ease-in-out md:sticky md:top-0 md:h-[100dvh] md:translate-x-0 md:shrink-0
         ${mobileMenuOpen ? "translate-x-0" : "-translate-x-full"}
       `}>
         <div className="h-20 flex items-center justify-between px-5 border-b border-border/50 shrink-0">
@@ -237,7 +237,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
             </div>
             <div className="px-2">
               <Select value={guildId || ""} onValueChange={setGuildId}>
-               <SelectTrigger aria-label="Server curent" className="w-full bg-background/70 border-border/60 hover:border-primary/50 transition-colors" data-testid="select-active-guild">
+                <SelectTrigger aria-label="Server curent" className="mod-select-trigger w-full bg-background/70 border-border/60 hover:border-primary/50 transition-colors" data-testid="select-active-guild">
                   <SelectValue placeholder="Selectează server" />
                 </SelectTrigger>
                 <SelectContent>
@@ -292,7 +292,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
       </aside>
 
       {/* Main Content */}
-       <main key={`guild-${guildId}`} className="flex-1 flex flex-col min-w-0 min-h-[100dvh] bg-background">
+       <main key={`guild-${guildId}`} className="flex h-[100dvh] min-h-0 flex-1 flex-col min-w-0 bg-background">
         <header className="mod-topbar h-16 border-b border-border/50 backdrop-blur flex items-center justify-between px-4 sm:px-6 shrink-0 md:hidden sticky top-0 z-30">
           <div className="flex items-center gap-2 text-primary">
              <div className="mod-brand-mark h-8 w-8 rounded-lg"><Eye className="w-4 h-4" aria-hidden="true" /></div>
@@ -303,7 +303,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
           </button>
         </header>
         
-        <div className="mod-page flex-1 overflow-auto p-4 sm:p-6 md:p-8 relative">
+        <div className="mod-page min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6 md:p-8 relative">
           <div className="max-w-5xl mx-auto w-full">
             {children}
           </div>

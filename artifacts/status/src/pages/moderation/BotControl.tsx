@@ -321,13 +321,13 @@ export function BotControlPage() {
 
       <Tabs defaultValue="channels" className="space-y-5">
         <TabsList className="grid h-auto w-full grid-cols-4 rounded-xl border border-border bg-card p-1">
-          <TabsTrigger value="channels" className="gap-2 py-2.5"><Radio className="h-4 w-4" /> Canale</TabsTrigger>
-          <TabsTrigger value="tickets" className="gap-2 py-2.5"><Ticket className="h-4 w-4" /> Tichete</TabsTrigger>
-          <TabsTrigger value="gameplay" className="gap-2 py-2.5"><Timer className="h-4 w-4" /> Gameplay</TabsTrigger>
-          <TabsTrigger value="messages" className="gap-2 py-2.5"><Megaphone className="h-4 w-4" /> Mesaje</TabsTrigger>
+           <TabsTrigger value="channels" className="mod-tab-trigger gap-2 py-2.5"><Radio className="h-4 w-4" /> Canale</TabsTrigger>
+           <TabsTrigger value="tickets" className="mod-tab-trigger gap-2 py-2.5"><Ticket className="h-4 w-4" /> Tichete</TabsTrigger>
+           <TabsTrigger value="gameplay" className="mod-tab-trigger gap-2 py-2.5"><Timer className="h-4 w-4" /> Gameplay</TabsTrigger>
+           <TabsTrigger value="messages" className="mod-tab-trigger gap-2 py-2.5"><Megaphone className="h-4 w-4" /> Mesaje</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="channels" className="mt-0">
+         <TabsContent value="channels" className="mod-tab-content mt-0">
           <section className="space-y-4 rounded-xl border border-border bg-card p-5">
             <div className="flex items-start gap-3">
               <Radio className="mt-1 h-5 w-5 text-primary" />
@@ -341,11 +341,11 @@ export function BotControlPage() {
                 const current = draft.channels[key] ?? "";
                 const selected = metadata?.channels.some((channel) => channel.id === current) ? current : "__none__";
                 return (
-                  <div key={key} className="space-y-2">
+                  <div key={key} className={`mod-setting-card space-y-2 rounded-lg border border-transparent p-3 ${current ? "mod-setting-card--selected" : ""}`}>
                     <label className="text-sm font-medium">{label}</label>
                     <Select value={selected} onValueChange={(value) => setChannel(key, value)}>
-                      <SelectTrigger><SelectValue placeholder="Alege canal" /></SelectTrigger>
-                      <SelectContent>
+                      <SelectTrigger className="mod-select-trigger"><SelectValue placeholder="Alege canal" /></SelectTrigger>
+                      <SelectContent className="max-h-[min(70vh,32rem)] overscroll-contain">
                         <SelectItem value="__none__">Neconfigurat</SelectItem>
                         {metadata?.channels.map((channel) => <SelectItem key={channel.id} value={channel.id}>#{channel.name} ({channel.id})</SelectItem>)}
                       </SelectContent>
@@ -370,7 +370,7 @@ export function BotControlPage() {
             </div>
 
             <Select value={activeFlowKind} onValueChange={(value) => setActiveFlowKind(value as typeof activeFlowKind)}>
-              <SelectTrigger><SelectValue placeholder="Alege tipul de tichet" /></SelectTrigger>
+               <SelectTrigger className="mod-select-trigger"><SelectValue placeholder="Alege tipul de tichet" /></SelectTrigger>
               <SelectContent>
                 {FLOW_KINDS.map(([kind, label]) => <SelectItem key={kind} value={kind}>{label}</SelectItem>)}
               </SelectContent>
@@ -388,7 +388,7 @@ export function BotControlPage() {
               <div className="space-y-2">
                 <label className="text-sm font-medium">Acțiune după completare</label>
                 <Select value={activeFlow.completionAction} onValueChange={(value) => setFlow(activeFlowKind, "completionAction", value)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                 <SelectTrigger className="mod-select-trigger"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="notify_staff">Închide și anunță stafful</SelectItem>
                     <SelectItem value="lock">Închide fără mesaj staff</SelectItem>
@@ -538,7 +538,7 @@ export function BotControlPage() {
           </section>
         </TabsContent>
 
-        <TabsContent value="tickets" className="mt-0 space-y-5">
+         <TabsContent value="tickets" className="mod-tab-content mt-0 space-y-5">
           <section className="space-y-4 rounded-xl border border-border bg-card p-5">
             <div className="flex items-start gap-3">
               <Ticket className="mt-1 h-5 w-5 text-primary" />
@@ -555,8 +555,8 @@ export function BotControlPage() {
                   <div key={key} className="space-y-2">
                     <label className="text-sm font-medium">{label}</label>
                     <Select value={selected} onValueChange={(value) => setTicket(["categories", key], value === "__manual__" ? current : value)}>
-                      <SelectTrigger><SelectValue placeholder="Alege categorie" /></SelectTrigger>
-                      <SelectContent>
+                       <SelectTrigger className="mod-select-trigger"><SelectValue placeholder="Alege categorie" /></SelectTrigger>
+                      <SelectContent className="max-h-[min(70vh,32rem)] overscroll-contain">
                         <SelectItem value="__manual__">ID introdus manual</SelectItem>
                         {categories.map((category) => <SelectItem key={category.id} value={category.id}>▰ {category.name}</SelectItem>)}
                       </SelectContent>
@@ -580,8 +580,8 @@ export function BotControlPage() {
               <div className="space-y-2">
                 <label className="text-sm font-medium">Rol staff alianțe</label>
                 <Select value={metadata?.roles.some((role) => role.id === draft.tickets.staffReviewRoleId) ? draft.tickets.staffReviewRoleId : "__manual__"} onValueChange={(value) => setTicket(["staffReviewRoleId"], value === "__manual__" ? draft.tickets.staffReviewRoleId : value)}>
-                  <SelectTrigger><SelectValue placeholder="Alege rol" /></SelectTrigger>
-                  <SelectContent>
+                   <SelectTrigger className="mod-select-trigger"><SelectValue placeholder="Alege rol" /></SelectTrigger>
+                  <SelectContent className="max-h-[min(70vh,32rem)] overscroll-contain">
                     <SelectItem value="__manual__">ID introdus manual</SelectItem>
                     {metadata?.roles.filter((role) => !role.managed).map((role) => <SelectItem key={role.id} value={role.id}>@{role.name}</SelectItem>)}
                   </SelectContent>
@@ -591,8 +591,8 @@ export function BotControlPage() {
               <div className="space-y-2">
                 <label className="text-sm font-medium">Canal public alianțe</label>
                 <Select value={textChannels.some((channel) => channel.id === draft.tickets.alliancePublicChannelId) ? draft.tickets.alliancePublicChannelId : "__manual__"} onValueChange={(value) => setTicket(["alliancePublicChannelId"], value === "__manual__" ? draft.tickets.alliancePublicChannelId : value)}>
-                  <SelectTrigger><SelectValue placeholder="Alege canal" /></SelectTrigger>
-                  <SelectContent>
+                   <SelectTrigger className="mod-select-trigger"><SelectValue placeholder="Alege canal" /></SelectTrigger>
+                  <SelectContent className="max-h-[min(70vh,32rem)] overscroll-contain">
                     <SelectItem value="__manual__">ID introdus manual</SelectItem>
                     {textChannels.map((channel) => <SelectItem key={channel.id} value={channel.id}>#{channel.name}</SelectItem>)}
                   </SelectContent>
@@ -771,7 +771,7 @@ export function BotControlPage() {
                 <label className="text-sm font-medium">{label}</label>
                 <Select value={selected} onValueChange={(value) => setChannel(key, value)}>
                   <SelectTrigger><SelectValue placeholder="Alege canal" /></SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="max-h-[min(70vh,32rem)] overscroll-contain">
                     <SelectItem value="__none__">Neconfigurat</SelectItem>
                     {metadata?.channels.map((channel) => (
                       <SelectItem key={channel.id} value={channel.id}>#{channel.name} ({channel.id})</SelectItem>
