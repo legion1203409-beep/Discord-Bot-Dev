@@ -1037,9 +1037,6 @@ export function allianceAnnouncementText(
   const serverName = safeAnswer(answers.server_name).slice(0, 200);
   const description = safeAnswer(answers.description).slice(0, 650);
   const invite = safeAnswer(answers.invite).slice(0, 300);
-  const members = safeAnswer(answers.members)
-    .replace(/^membri\s*:\s*/i, "")
-    .slice(0, 150);
   const lines = [
     "🤝 PACTUL CELOR DOUĂ REGATE",
     "══════════════════════════",
@@ -1052,7 +1049,6 @@ export function allianceAnnouncementText(
     `🔗 Link: ${invite}`,
     "",
     `👤 Contract completat de: ${applicant}`,
-    `👥 Membri: ${members}`,
   ];
   lines.push("", "Pact pecetluit · Regatul Cenușii");
   return lines.join("\n").slice(0, 1950);

@@ -284,8 +284,7 @@ describe("Oracle ticket categories", () => {
     expect(announcement).toContain("🤝 PACTUL CELOR DOUĂ REGATE");
     expect(announcement).toContain("🏰 Comunitatea parteneră: Regatul Umbrelor");
     expect(announcement).toContain("👤 Contract completat de: <@987654321>");
-    expect(announcement).toContain("👥 Membri: 150 total · 60 activi");
-    expect(announcement).not.toContain("👥 Membri: Membri:");
+    expect(announcement).not.toContain("👥 Membri:");
     expect(announcement).not.toContain("📌 Promovare:");
     expect(announcement).not.toContain("Textul privat al Regatului Cenușii");
     expect(announcement).not.toContain("@everyone");
