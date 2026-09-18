@@ -70,6 +70,11 @@ export interface BotControlConfig {
     incompleteTimeoutMinutes: number;
     firstWarningMinutes: number;
     secondWarningMinutes: number;
+    flows: {
+      staff: TicketFlowConfig;
+      partnership: TicketFlowConfig;
+      help_report: TicketFlowConfig;
+    };
   };
 
   gameplayConfig: {
@@ -97,6 +102,27 @@ export interface BotControlConfig {
       bossXpMultiplier: number;
     };
   };
+}
+
+export interface TicketQuestionConfig {
+  key: string;
+  label: string;
+  description: string;
+  placeholder: string;
+  multiline: boolean;
+  required: boolean;
+}
+
+export interface TicketFlowConfig {
+  mode: "legacy" | "custom";
+  title: string;
+  startButtonLabel: string;
+  panelDescription: string;
+  requirementsText: string;
+  completionMessage: string;
+  staffNotificationMessage: string;
+  completionAction: "lock" | "notify_staff" | "keep_open";
+  questions: TicketQuestionConfig[];
 }
 
 export class ApiError extends Error {

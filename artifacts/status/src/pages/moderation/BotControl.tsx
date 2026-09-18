@@ -5,7 +5,7 @@ import { Input } from "../../components/ui/input";
 import { Textarea } from "../../components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
-import { useActiveGuild, useBotControl, useModerationMetadata, type BotControlConfig } from "../../hooks/use-moderation-api";
+import { useActiveGuild, useBotControl, useModerationMetadata, type BotControlConfig, type TicketFlowConfig } from "../../hooks/use-moderation-api";
 import { useToast } from "../../hooks/use-toast";
 
 const CHANNELS = [
@@ -25,6 +25,21 @@ const TICKET_CATEGORIES = [
   ["help_report", "Ajutor / raportare"],
 ] as const;
 
+const FLOW_KINDS = [
+  ["staff", "Aplicare staff"],
+  ["partnership", "Parteneriate"],
+  ["help_report", "Ajutor / raportare"],
+] as const;
+
+const NEW_QUESTION = {
+  key: "question",
+  label: "Întrebare nouă",
+  description: "Scrie întrebarea la care trebuie să răspundă membrul.",
+  placeholder: "Scrie răspunsul tău...",
+  multiline: true,
+  required: true,
+};
+
 function isCategory(type: number | string): boolean {
   return String(type) === "4" || type === "GuildCategory";
 }
@@ -40,6 +55,7 @@ export function BotControlPage() {
   const { toast } = useToast();
   const [draft, setDraft] = useState<BotControlConfig | null>(null);
   const [saving, setSaving] = useState(false);
+  const [activeFlowKind, setActiveFlowKind] = useState<keyof BotControlConfig["tickets"]["flows"]>("staff");
 
   useEffect(() => {
     setDraft(data ? JSON.parse(JSON.stringify(data)) : null);
@@ -60,6 +76,89 @@ export function BotControlPage() {
       path.slice(0, -1).forEach((part) => { target = target[part]; });
       target[path[path.length - 1]] = value;
       return { ...current, tickets };
+    });
+  };
+
+  const setFlow = (kind: keyof BotControlConfig["tickets"]["flows"], field: keyof TicketFlowConfig, value: string) => {
+    setDraft((current) => current ? {
+      ...current,
+      tickets: {
+        ...current.tickets,
+        flows: {
+          ...current.tickets.flows,
+          [kind]: { ...current.tickets.flows[kind], [field]: value },
+        },
+      },
+    } : current);
+  };
+
+  const updateQuestion = (
+    kind: keyof BotControlConfig["tickets"]["flows"],
+    index: number,
+    field: string,
+    value: string | boolean,
+  ) => {
+    setDraft((current) => {
+      if (!current) return current;
+      const questions = current.tickets.flows[kind].questions.map((question, questionIndex) =>
+        questionIndex === index ? { ...question, [field]: value } : question,
+      );
+      return {
+        ...current,
+        tickets: {
+          ...current.tickets,
+          flows: { ...current.tickets.flows, [kind]: { ...current.tickets.flows[kind], questions } },
+        },
+      };
+    });
+  };
+
+  const addQuestion = (kind: keyof BotControlConfig["tickets"]["flows"]) => {
+    setDraft((current) => {
+      if (!current) return current;
+      const flow = current.tickets.flows[kind];
+      const suffix = flow.questions.length + 1;
+      const question = { ...NEW_QUESTION, key: `question_${suffix}` };
+      return {
+        ...current,
+        tickets: {
+          ...current.tickets,
+          flows: { ...current.tickets.flows, [kind]: { ...flow, mode: "custom", questions: [...flow.questions, question] } },
+        },
+      };
+    });
+  };
+
+  const removeQuestion = (kind: keyof BotControlConfig["tickets"]["flows"], index: number) => {
+    setDraft((current) => {
+      if (!current) return current;
+      const flow = current.tickets.flows[kind];
+      if (flow.questions.length <= 1) return current;
+      return {
+        ...current,
+        tickets: {
+          ...current.tickets,
+          flows: { ...current.tickets.flows, [kind]: { ...flow, mode: "custom", questions: flow.questions.filter((_, questionIndex) => questionIndex !== index) } },
+        },
+      };
+    });
+  };
+
+  const moveQuestion = (kind: keyof BotControlConfig["tickets"]["flows"], index: number, direction: -1 | 1) => {
+    setDraft((current) => {
+      if (!current) return current;
+      const flow = current.tickets.flows[kind];
+      const target = index + direction;
+      if (target < 0 || target >= flow.questions.length) return current;
+      const questions = [...flow.questions];
+      [questions[index], questions[target]] = [questions[target]!, questions[index]!];
+      return {
+        ...current,
+        tickets: {
+          ...current.tickets,
+          flows: { ...current.tickets.flows, [kind]: { ...flow, mode: "custom", questions } },
+        },
+      };
     });
   };
 
@@ -108,9 +207,13 @@ export function BotControlPage() {
     if (!draft) return;
     setSaving(true);
     try {
+      const flows = Object.fromEntries(
+        Object.entries(draft.tickets.flows).map(([kind, flow]) => [kind, { ...flow, mode: "custom" }]),
+      ) as BotControlConfig["tickets"]["flows"];
       await update({
         ...draft,
         channels: Object.fromEntries(Object.entries(draft.channels).filter(([, value]) => value)),
+        tickets: { ...draft.tickets, flows },
       });
       toast({ title: "Setările botului au fost salvate", description: "Canalele, tichetele și mesajul de alianță sunt persistente." });
     } catch (saveError: any) {
@@ -129,6 +232,7 @@ export function BotControlPage() {
 
   const categories = metadata?.channels.filter((channel) => isCategory(channel.type)) ?? [];
   const textChannels = metadata?.channels.filter((channel) => isTextChannel(channel.type)) ?? [];
+  const activeFlow = draft.tickets.flows[activeFlowKind];
 
   return (
     <div className="max-w-5xl space-y-6">
@@ -175,6 +279,118 @@ export function BotControlPage() {
                   </div>
                 );
               })}
+            </div>
+          </section>
+
+          <section className="space-y-5 rounded-xl border border-border bg-card p-5">
+            <div className="flex items-start gap-3">
+              <Ticket className="mt-1 h-5 w-5 text-primary" />
+              <div>
+                <h2 className="font-medium">Editor complet al fluxului</h2>
+                <p className="text-xs text-muted-foreground">
+                  Modifică exact ce vede utilizatorul, întrebările și ce face botul după ultimul răspuns.
+                  La salvare, fluxul personalizat înlocuiește formularul clasic pentru tipul ales.
+                </p>
+              </div>
+            </div>
+
+            <Select value={activeFlowKind} onValueChange={(value) => setActiveFlowKind(value as typeof activeFlowKind)}>
+              <SelectTrigger><SelectValue placeholder="Alege tipul de tichet" /></SelectTrigger>
+              <SelectContent>
+                {FLOW_KINDS.map(([kind, label]) => <SelectItem key={kind} value={kind}>{label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Titlul panoului Discord</label>
+                <Input value={activeFlow.title} maxLength={256} onChange={(event) => setFlow(activeFlowKind, "title", event.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Textul butonului de start</label>
+                <Input value={activeFlow.startButtonLabel} maxLength={80} onChange={(event) => setFlow(activeFlowKind, "startButtonLabel", event.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Acțiune după completare</label>
+                <Select value={activeFlow.completionAction} onValueChange={(value) => setFlow(activeFlowKind, "completionAction", value)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="notify_staff">Închide și anunță stafful</SelectItem>
+                    <SelectItem value="lock">Închide fără mesaj staff</SelectItem>
+                    <SelectItem value="keep_open">Lasă ticketul deschis</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <label className="text-sm font-medium">Descrierea panoului</label>
+                <Textarea rows={3} maxLength={2000} value={activeFlow.panelDescription} onChange={(event) => setFlow(activeFlowKind, "panelDescription", event.target.value)} />
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <label className="text-sm font-medium">Ghidul afișat la „Întrebări”</label>
+                <Textarea rows={3} maxLength={2000} value={activeFlow.requirementsText} onChange={(event) => setFlow(activeFlowKind, "requirementsText", event.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Mesajul după completare</label>
+                <Textarea rows={4} maxLength={2000} value={activeFlow.completionMessage} onChange={(event) => setFlow(activeFlowKind, "completionMessage", event.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Mesajul pentru staff</label>
+                <Textarea rows={4} maxLength={2000} value={activeFlow.staffNotificationMessage} onChange={(event) => setFlow(activeFlowKind, "staffNotificationMessage", event.target.value)} />
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-medium">Întrebări ({activeFlow.questions.length}/20)</h3>
+                  <p className="text-xs text-muted-foreground">Ordinea de aici este ordinea în care botul le va cere.</p>
+                </div>
+                <Button type="button" variant="secondary" onClick={() => addQuestion(activeFlowKind)} disabled={activeFlow.questions.length >= 20}>
+                  Adaugă întrebare
+                </Button>
+              </div>
+              <div className="space-y-3">
+                {activeFlow.questions.map((question, index) => (
+                  <div key={`${question.key}-${index}`} className="space-y-3 rounded-lg border border-border/80 bg-background/40 p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-semibold">Întrebarea {index + 1}</p>
+                      <div className="flex gap-1">
+                        <Button type="button" size="sm" variant="ghost" onClick={() => moveQuestion(activeFlowKind, index, -1)} disabled={index === 0}>↑</Button>
+                        <Button type="button" size="sm" variant="ghost" onClick={() => moveQuestion(activeFlowKind, index, 1)} disabled={index === activeFlow.questions.length - 1}>↓</Button>
+                        <Button type="button" size="sm" variant="ghost" className="text-destructive" onClick={() => removeQuestion(activeFlowKind, index)} disabled={activeFlow.questions.length <= 1}>Șterge</Button>
+                      </div>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium">Cheie internă</label>
+                        <Input value={question.key} maxLength={32} onChange={(event) => updateQuestion(activeFlowKind, index, "key", event.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_"))} />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium">Etichetă</label>
+                        <Input value={question.label} maxLength={45} onChange={(event) => updateQuestion(activeFlowKind, index, "label", event.target.value)} />
+                      </div>
+                      <div className="space-y-1 md:col-span-2">
+                        <label className="text-xs font-medium">Întrebarea / descrierea afișată</label>
+                        <Textarea rows={2} maxLength={900} value={question.description} onChange={(event) => updateQuestion(activeFlowKind, index, "description", event.target.value)} />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium">Placeholder</label>
+                        <Input value={question.placeholder} maxLength={100} onChange={(event) => updateQuestion(activeFlowKind, index, "placeholder", event.target.value)} />
+                      </div>
+                      <div className="flex items-center gap-5 pt-6 text-sm">
+                        <label className="flex items-center gap-2">
+                          <input type="checkbox" checked={question.multiline} onChange={(event) => updateQuestion(activeFlowKind, index, "multiline", event.target.checked)} />
+                          Răspuns lung
+                        </label>
+                        <label className="flex items-center gap-2">
+                          <input type="checkbox" checked={question.required} onChange={(event) => updateQuestion(activeFlowKind, index, "required", event.target.checked)} />
+                          Obligatoriu
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </section>
         </TabsContent>

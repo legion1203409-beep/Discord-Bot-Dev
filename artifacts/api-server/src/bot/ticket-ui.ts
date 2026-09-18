@@ -26,7 +26,7 @@ import {
   type TicketProgressRecord,
 } from "./db";
 import type { OracleTicketKind } from "./oracle-chat";
-import { DEFAULT_TICKET_CONFIG, getTicketConfig } from "./ticket-config";
+import { DEFAULT_TICKET_CONFIG, getTicketConfig, type TicketFlowConfig } from "./ticket-config";
 
 const TICKET_COLORS: Record<OracleTicketKind, number> = {
   staff: 0x9b4655,
@@ -119,6 +119,7 @@ type TicketQuestion = {
   description: string;
   placeholder: string;
   multiline?: boolean;
+  required?: boolean;
 };
 
 const TICKET_QUESTIONS: Record<OracleTicketKind, TicketQuestion[]> = {
@@ -266,8 +267,21 @@ const TICKET_QUESTIONS: Record<OracleTicketKind, TicketQuestion[]> = {
   ],
 };
 
-function ticketQuestion(kind: OracleTicketKind, key: string): TicketQuestion | null {
-  return TICKET_QUESTIONS[kind].find((question) => question.key === key) ?? null;
+function ticketFlow(guildId: string | null | undefined, kind: OracleTicketKind): TicketFlowConfig {
+  return getTicketConfig(guildId).flows[kind];
+}
+
+function ticketQuestions(guildId: string | null | undefined, kind: OracleTicketKind): TicketQuestion[] {
+  const flow = ticketFlow(guildId, kind);
+  return flow.mode === "custom" ? flow.questions : TICKET_QUESTIONS[kind];
+}
+
+function ticketQuestion(
+  kind: OracleTicketKind,
+  key: string,
+  guildId?: string | null,
+): TicketQuestion | null {
+  return ticketQuestions(guildId, kind).find((question) => question.key === key) ?? null;
 }
 
 function ticketPanelFallback(kind: OracleTicketKind): string {
@@ -304,10 +318,10 @@ function isLegacyOracleTicketPrompt(message: Message, botId: string): boolean {
   return isLegacyOracleTicketPromptText(message.content ?? "");
 }
 
-function ticketStartButton(kind: OracleTicketKind): ButtonBuilder {
+function ticketStartButton(kind: OracleTicketKind, label?: string): ButtonBuilder {
   return new ButtonBuilder()
     .setCustomId(`ticket_start_${kind}`)
-    .setLabel("Deschide contractul")
+    .setLabel(label ?? "Deschide contractul")
     .setStyle(ButtonStyle.Primary);
 }
 
@@ -351,11 +365,36 @@ export function ticketStatusRow(
 export function ticketPanelPayload(
   kind: OracleTicketKind,
   deadline = ticketDeadlineForChannel(undefined),
+  guildId?: string | null,
 ): {
   embeds: EmbedBuilder[];
   components: ActionRowBuilder<ButtonBuilder>[];
 } {
   const color = TICKET_COLORS[kind];
+  const flow = ticketFlow(guildId, kind);
+  if (flow.mode === "custom") {
+    const embed = new EmbedBuilder()
+      .setColor(color)
+      .setTitle(flow.title)
+      .setDescription(flow.panelDescription)
+      .addFields(
+        { name: "📜 Întrebări", value: `${flow.questions.length} întrebări · răspunsurile sunt cerute în ordine.` },
+        { name: "📖 Ghid", value: flow.requirementsText, inline: false },
+        {
+          name: "⏳ Termen și stare",
+          value:
+            `Completează ticketul până la <t:${Math.floor(deadline / 1000)}:F> ` +
+            `(<t:${Math.floor(deadline / 1000)}:R>).`,
+          inline: false,
+        },
+      )
+      .setFooter({ text: "Regatul Cenușii · Citește informațiile înainte de a începe" });
+    if (TICKET_SEAL) embed.setThumbnail(TICKET_SEAL);
+    return {
+      embeds: [embed],
+      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(ticketStartButton(kind, flow.startButtonLabel))],
+    };
+  }
   const embed = new EmbedBuilder()
     .setColor(color)
     .setTitle(TICKET_PANEL_TITLES[kind])
@@ -408,8 +447,9 @@ export function ticketPanelPayload(
       value:
         `Completează ticketul până la <t:${Math.floor(deadline / 1000)}:F> ` +
         `(<t:${Math.floor(deadline / 1000)}:R>).\n` +
-        "Avertismentele vin după 20 și 50 de minute; un contract incomplet " +
-        "este șters după 60 de minute.",
+        `Avertismentele vin după ${getTicketConfig(guildId).firstWarningMinutes} și ` +
+        `${getTicketConfig(guildId).secondWarningMinutes} de minute; un contract incomplet ` +
+        `este șters după ${getTicketConfig(guildId).incompleteTimeoutMinutes} de minute.`,
       inline: false,
     })
     .setFooter({ text: "Regatul Cenușii · Citește contractul înainte de a începe" });
@@ -465,7 +505,11 @@ export async function postTicketPanelIfMissing(
       });
       if (isActivePanel) {
         const refreshed = await existingPanel.edit(
-          ticketPanelPayload(kind, ticketDeadlineForChannel(channel)),
+          ticketPanelPayload(
+            kind,
+            ticketDeadlineForChannel(channel),
+            "guildId" in channel && typeof channel.guildId === "string" ? channel.guildId : undefined,
+          ),
         ).then(() => true).catch((err) => {
           logger.warn(
             { err, channelId: channel.id, ticketKind: kind },
@@ -482,7 +526,11 @@ export async function postTicketPanelIfMissing(
     let interactiveSent = false;
     try {
       await channel.send(
-        ticketPanelPayload(kind, ticketDeadlineForChannel(channel)),
+        ticketPanelPayload(
+          kind,
+          ticketDeadlineForChannel(channel),
+          "guildId" in channel && typeof channel.guildId === "string" ? channel.guildId : undefined,
+        ),
       );
       interactiveSent = true;
     } catch (err) {
@@ -792,12 +840,20 @@ export function partnershipDetailsModal(): ModalBuilder {
   return modal;
 }
 
-export function ticketRequirementsEmbed(kind: OracleTicketKind): EmbedBuilder {
+export function ticketRequirementsEmbed(kind: OracleTicketKind, guildId?: string | null): EmbedBuilder {
   const embed = new EmbedBuilder()
     .setColor(TICKET_COLORS[kind])
     .setTitle(`${TICKET_ICONS[kind]} ${TICKET_LABELS[kind]} · Ghidul contractului`)
     .setFooter({ text: "Răspunde sincer și clar · Regatul Cenușii" });
   if (TICKET_SEAL) embed.setThumbnail(TICKET_SEAL);
+  const flow = ticketFlow(guildId, kind);
+  if (flow.mode === "custom") {
+    embed.setDescription(
+      `${flow.requirementsText}\n\n` +
+        flow.questions.map((question, index) => `${index + 1}. ${question.label} — ${question.description}`).join("\n"),
+    );
+    return embed;
+  }
 
   if (kind === "staff") {
     embed.setDescription(
@@ -952,6 +1008,31 @@ export function partnershipSummaryEmbed(
     .setTimestamp();
   if (TICKET_SEAL) embed.setThumbnail(TICKET_SEAL);
   return embed;
+}
+
+function partnershipAnswersForCustomFlow(
+  flow: TicketFlowConfig,
+  answers: Record<string, string>,
+): Record<string, string> {
+  const legacyKeys = [
+    "server_name",
+    "representative",
+    "invite",
+    "members",
+    "description",
+    "motivation",
+    "offer",
+    "terms",
+  ];
+  const orderedAnswers = flow.questions.map((question) => answers[question.key]).filter(
+    (value): value is string => typeof value === "string" && value.trim() !== "",
+  );
+  return Object.fromEntries(
+    legacyKeys.map((key, index) => [
+      key,
+      answers[key] ?? orderedAnswers[index] ?? "—",
+    ]),
+  );
 }
 
 export function partnershipConfirmRow(userId: string): ActionRowBuilder<ButtonBuilder> {
@@ -1233,8 +1314,12 @@ export function isStaffTagRefusal(value: string): boolean {
     /\b(refuz|nu vreau|nu accept|nu pot|niciodata)\b/.test(normalized);
 }
 
-export function ticketQuestionModal(kind: OracleTicketKind, key: string): ModalBuilder | null {
-  const question = ticketQuestion(kind, key);
+export function ticketQuestionModal(
+  kind: OracleTicketKind,
+  key: string,
+  guildId?: string | null,
+): ModalBuilder | null {
+  const question = ticketQuestion(kind, key, guildId);
   if (!question) return null;
 
   return new ModalBuilder()
@@ -1242,11 +1327,12 @@ export function ticketQuestionModal(kind: OracleTicketKind, key: string): ModalB
     .setTitle(`${TICKET_LABELS[kind]} · Răspuns`)
     .addComponents(
       new ActionRowBuilder<TextInputBuilder>().addComponents(
-        input(
+           input(
           "answer",
           question.label.slice(0, 45),
           question.placeholder,
           question.multiline ? TextInputStyle.Paragraph : TextInputStyle.Short,
+           question.required !== false,
         ),
       ),
     );
@@ -1339,11 +1425,12 @@ export async function handleTicketQuestionSelect(
 
   const kind = match[1] as OracleTicketKind;
   const selectedKey = interaction.values[0] ?? "";
-  const question = ticketQuestion(kind, selectedKey);
+  const question = ticketQuestion(kind, selectedKey, interaction.guildId);
+  const questions = ticketQuestions(interaction.guildId, kind);
   const state = await getTicketProgress(interaction.channelId, interaction.user.id);
   const expectedIndex = (state?.currentStep ?? 0) + 1;
   const selectedIndex = question
-    ? TICKET_QUESTIONS[kind].findIndex((entry) => entry.key === question.key) + 1
+    ? questions.findIndex((entry) => entry.key === question.key) + 1
     : -1;
   if (!state || state.status || selectedIndex !== expectedIndex) {
     await interaction.reply({
@@ -1351,12 +1438,12 @@ export async function handleTicketQuestionSelect(
         ? state.status === "completed"
           ? "✅ Contractul este deja completat."
           : "❌ Contractul a fost deja respins."
-        : `⏳ Continuă cu pasul ${expectedIndex}/${TICKET_QUESTIONS[kind].length}.`,
+        : `⏳ Continuă cu pasul ${expectedIndex}/${questions.length}.`,
       flags: MessageFlags.Ephemeral,
     });
     return true;
   }
-  const modal = ticketQuestionModal(kind, selectedKey);
+  const modal = ticketQuestionModal(kind, selectedKey, interaction.guildId);
   if (!modal) {
     await interaction.reply({
       content: "❌ Întrebarea nu mai este disponibilă. Folosește meniul din nou.",
@@ -1655,6 +1742,7 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
   const startMatch = interaction.customId.match(/^ticket_start_(staff|partnership|help_report)$/);
   if (startMatch) {
     const kind = startMatch[1] as OracleTicketKind;
+    const flow = ticketFlow(interaction.guildId, kind);
     if (!messageHasButton(interaction.message, interaction.customId)) {
       return rejectTicketAction(
         interaction,
@@ -1683,11 +1771,18 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
       panelMessageId: interaction.message.id,
       applicantUsername: interaction.user.globalName ?? interaction.user.username,
     });
+    if (flow.mode === "custom") {
+      const firstQuestion = ticketQuestions(interaction.guildId, kind)[0];
+      if (!firstQuestion) return false;
+      await interaction.showModal(ticketQuestionModal(kind, firstQuestion.key, interaction.guildId)!);
+      return true;
+    }
     if (kind === "staff" || kind === "partnership") {
       void interaction.message.edit(
-        ticketPanelPayload(
+          ticketPanelPayload(
           kind,
           ticketDeadlineForChannel(interaction.channel),
+            interaction.guildId,
         ),
       ).catch(() => null);
       await interaction.showModal(ticketModal(kind));
@@ -1703,8 +1798,9 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
   const nextMatch = interaction.customId.match(/^ticket_next_(staff|partnership|help_report)_(\d+)$/);
   if (nextMatch) {
     const kind = nextMatch[1] as OracleTicketKind;
+    const flow = ticketFlow(interaction.guildId, kind);
     const questionIndex = Number(nextMatch[2]);
-    const question = TICKET_QUESTIONS[kind][questionIndex - 1];
+    const question = ticketQuestions(interaction.guildId, kind)[questionIndex - 1];
     const progressState = await getTicketProgress(interaction.channelId, interaction.user.id);
     if (progressState?.status) {
       await interaction.reply({
@@ -1719,12 +1815,12 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
     const expectedIndex = (progressState?.currentStep ?? 0) + 1;
     if (!question || questionIndex !== expectedIndex) {
       await interaction.reply({
-        content: `⏳ Continuă cu pasul ${expectedIndex}/${TICKET_QUESTIONS[kind].length}.`,
+        content: `⏳ Continuă cu pasul ${expectedIndex}/${ticketQuestions(interaction.guildId, kind).length}.`,
         flags: MessageFlags.Ephemeral,
       });
       return true;
     }
-    await interaction.showModal(ticketQuestionModal(kind, question.key)!);
+    await interaction.showModal(ticketQuestionModal(kind, question.key, interaction.guildId)!);
     return true;
   }
 
@@ -1769,7 +1865,7 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
 
   if (match[1] === "requirements") {
     await interaction.reply({
-      embeds: [ticketRequirementsEmbed(kind)],
+      embeds: [ticketRequirementsEmbed(kind, interaction.guildId)],
       flags: MessageFlags.Ephemeral,
     });
     return true;
@@ -1784,7 +1880,7 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
   if (!match) return false;
 
   const kind = match[1] as OracleTicketKind;
-  const question = ticketQuestion(kind, match[2]!);
+  const question = ticketQuestion(kind, match[2]!, interaction.guildId);
   if (!question) return false;
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -1795,8 +1891,10 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
       ? DISCORD_PARAGRAPH_INPUT_MAX_LENGTH
       : DISCORD_SHORT_INPUT_MAX_LENGTH,
   );
-  const questionIndex = TICKET_QUESTIONS[kind].findIndex((entry) => entry.key === question.key) + 1;
-  const totalQuestions = TICKET_QUESTIONS[kind].length;
+  const questions = ticketQuestions(interaction.guildId, kind);
+  const flow = ticketFlow(interaction.guildId, kind);
+  const questionIndex = questions.findIndex((entry) => entry.key === question.key) + 1;
+  const totalQuestions = questions.length;
   const isLastQuestion = questionIndex === totalQuestions;
   const progressState = await getTicketProgress(interaction.channelId, interaction.user.id);
   const expectedIndex = (progressState?.currentStep ?? 0) + 1;
@@ -1822,6 +1920,98 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
     ...(progressState.answers ?? {}),
     [question.key]: answer,
   };
+  if (flow.mode === "custom") {
+    const complete = questionIndex === totalQuestions;
+    if (!interaction.channel || !interaction.channel.isTextBased() || !("send" in interaction.channel)) {
+      await interaction.editReply({ content: "❌ Răspunsul nu a putut fi publicat în acest ticket." });
+      return true;
+    }
+    try {
+      if (complete && kind === "partnership") {
+        const partnershipAnswers = partnershipAnswersForCustomFlow(
+          flow,
+          progressState.answers ?? {},
+        );
+        const roleId = getTicketConfig(interaction.guildId).staffReviewRoleId;
+        const responseMessage = await interaction.channel.send({
+          content: `<@&${roleId}>\n${flow.staffNotificationMessage}`,
+          embeds: [
+            partnershipSummaryEmbed(
+              interaction.user.globalName ?? interaction.user.username,
+              partnershipAnswers,
+            ),
+          ],
+          components: [partnershipConfirmRow(interaction.user.id)],
+          allowedMentions: { parse: [], roles: [roleId] },
+        });
+        progressState.currentStep = questionIndex;
+        progressState.status = "completed";
+        progressState.answers = partnershipAnswers;
+        progressState.responseMessageId = responseMessage.id;
+        await persistTicketProgress(interaction.channelId, interaction.user.id, progressState);
+        if (flow.completionAction !== "keep_open") {
+          await lockTicketPanel(interaction, kind, "completed");
+        }
+        await interaction.editReply({
+          content: flow.completionMessage,
+          components: [],
+        });
+        return true;
+      }
+      const flowEmbed = new EmbedBuilder()
+        .setColor(TICKET_COLORS[kind])
+        .setTitle(complete ? `${TICKET_ICONS[kind]} Formular complet` : `${TICKET_ICONS[kind]} Răspuns înregistrat`)
+        .setDescription(complete ? flow.completionMessage : question.description)
+        .setAuthor({ name: interaction.user.username, iconURL: interaction.user.displayAvatarURL() })
+        .addFields(
+          complete
+            ? questions.map((entry) => ({
+                name: entry.label.slice(0, 256),
+                value: safeAnswer(progressState.answers?.[entry.key], "—", 1_024),
+                inline: false,
+              }))
+            : [
+                { name: "🧾 Întrebarea", value: question.description, inline: false },
+                { name: "✍️ Răspunsul", value: answer, inline: false },
+                { name: "📈 Progresul", value: `${questionIndex}/${totalQuestions}`, inline: false },
+              ],
+        )
+        .setFooter({ text: complete ? "Formular complet · Regatul Cenușii" : "Răspunsul a fost salvat" })
+        .setTimestamp();
+      if (TICKET_SEAL) flowEmbed.setThumbnail(TICKET_SEAL);
+
+      const roleId = getTicketConfig(interaction.guildId).staffReviewRoleId;
+      const notifyStaff = complete && flow.completionAction === "notify_staff";
+      const responseMessage = await interaction.channel.send({
+        content: notifyStaff ? `<@&${roleId}>\n${flow.staffNotificationMessage}` : undefined,
+        embeds: [flowEmbed],
+        allowedMentions: notifyStaff ? { parse: [], roles: [roleId] } : { parse: [] },
+      });
+      progressState.currentStep = questionIndex;
+      if (complete) progressState.status = "completed";
+      if (complete) progressState.responseMessageId = responseMessage.id;
+      await persistTicketProgress(interaction.channelId, interaction.user.id, progressState);
+      if (complete && flow.completionAction !== "keep_open") {
+        await lockTicketPanel(interaction, kind, "completed");
+      }
+      const nextComponents = !complete
+        ? [new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder()
+              .setCustomId(`ticket_next_${kind}_${questionIndex + 1}`)
+              .setLabel(`➡️ Continuă · ${questionIndex + 1}/${totalQuestions}`)
+              .setStyle(ButtonStyle.Primary),
+          )]
+        : [];
+      await interaction.editReply({
+        content: complete ? flow.completionMessage : `✅ Răspunsul pentru **${question.label}** a fost salvat.`,
+        components: nextComponents,
+      });
+    } catch (err) {
+      logger.error({ err, guildId: interaction.guildId, channelId: interaction.channelId }, "Custom ticket answer could not be posted");
+      await interaction.editReply({ content: "❌ Răspunsul nu a putut fi adăugat în ticket. Încearcă din nou." });
+    }
+    return true;
+  }
   const partnershipAnswers = {
     ...(progressState.answers ?? {}),
     [question.key]: answer,

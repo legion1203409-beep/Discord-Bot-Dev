@@ -47,6 +47,25 @@ const botChannelConfigSchema = z.object({
   council: snowflake.nullable().optional(),
   fratia: snowflake.nullable().optional(),
 }).strict();
+const ticketQuestionConfigSchema = z.object({
+  key: z.string().trim().min(1).max(32).regex(/^[a-z0-9_]+$/),
+  label: z.string().trim().min(1).max(45),
+  description: z.string().trim().min(1).max(900),
+  placeholder: z.string().trim().min(1).max(100),
+  multiline: z.boolean(),
+  required: z.boolean(),
+}).strict();
+const ticketFlowConfigSchema = z.object({
+  mode: z.enum(["legacy", "custom"]),
+  title: z.string().trim().min(1).max(256),
+  startButtonLabel: z.string().trim().min(1).max(80),
+  panelDescription: z.string().trim().min(1).max(2_000),
+  requirementsText: z.string().trim().min(1).max(2_000),
+  completionMessage: z.string().trim().min(1).max(2_000),
+  staffNotificationMessage: z.string().trim().min(1).max(2_000),
+  completionAction: z.enum(["lock", "notify_staff", "keep_open"]),
+  questions: z.array(ticketQuestionConfigSchema).min(1).max(20),
+}).strict();
 export const botControlSchema = z.object({
   channels: botChannelConfigSchema,
   allianceRecruitmentText: z.string().trim().min(1).max(2_000),
@@ -62,7 +81,12 @@ export const botControlSchema = z.object({
     incompleteTimeoutMinutes: z.number().int().min(10).max(240),
     firstWarningMinutes: z.number().int().min(1).max(180),
     secondWarningMinutes: z.number().int().min(2).max(239),
-  }).strict(),
+    flows: z.object({
+      staff: ticketFlowConfigSchema,
+      partnership: ticketFlowConfigSchema,
+      help_report: ticketFlowConfigSchema,
+    }).strict(),
+  }).strict().optional(),
   gameplayConfig: z.object({
     events: z.object({
       eventDurationMinutes: z.number().int().min(1).max(1_440),
