@@ -27,6 +27,8 @@ export interface TicketFlowConfig {
   staffNotificationImageUrl?: string;
   completionAction: TicketCompletionAction;
   questions: TicketQuestionConfig[];
+  /** Question keys included in the final Discord summary; omitted means all. */
+  postedQuestionKeys?: string[];
 }
 
 export interface TicketConfig {
@@ -159,6 +161,12 @@ function normalizeFlow(value: unknown, fallback: TicketFlowConfig): TicketFlowCo
       imageUrl: imageUrlOrEmpty(question.imageUrl),
     });
   }
+  const normalizedQuestions = questions.length > 0 ? questions : fallback.questions;
+  const postedQuestionKeys = Array.isArray(raw.postedQuestionKeys)
+    ? normalizedQuestions
+      .filter((question) => raw.postedQuestionKeys?.includes(question.key))
+      .map((question) => question.key)
+    : normalizedQuestions.map((question) => question.key);
   return {
     mode: raw.mode === "custom" ? "custom" : fallback.mode,
     title: textOrDefault(raw.title, fallback.title, 256),
@@ -174,7 +182,8 @@ function normalizeFlow(value: unknown, fallback: TicketFlowConfig): TicketFlowCo
       raw.completionAction === "lock" || raw.completionAction === "notify_staff" || raw.completionAction === "keep_open"
         ? raw.completionAction
         : fallback.completionAction,
-    questions: questions.length > 0 ? questions : fallback.questions,
+    questions: normalizedQuestions,
+    postedQuestionKeys,
   };
 }
 

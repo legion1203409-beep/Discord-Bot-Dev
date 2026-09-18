@@ -127,6 +127,7 @@ export interface TicketFlowConfig {
   staffNotificationImageUrl?: string;
   completionAction: "lock" | "notify_staff" | "keep_open";
   questions: TicketQuestionConfig[];
+  postedQuestionKeys?: string[];
 }
 
 export class ApiError extends Error {

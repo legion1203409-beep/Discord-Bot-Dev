@@ -290,6 +290,12 @@ function ticketQuestions(guildId: string | null | undefined, kind: OracleTicketK
   return flow.mode === "custom" ? flow.questions : TICKET_QUESTIONS[kind];
 }
 
+function completionQuestions(flow: TicketFlowConfig, questions: TicketQuestion[]): TicketQuestion[] {
+  if (!flow.postedQuestionKeys) return questions;
+  const selected = new Set(flow.postedQuestionKeys);
+  return questions.filter((question) => selected.has(question.key));
+}
+
 function ticketQuestion(
   kind: OracleTicketKind,
   key: string,
@@ -962,6 +968,7 @@ export function partnershipSummaryEmbed(
   username: string,
   answers: Record<string, string>,
   statusText = "COMPLET · pregătit pentru verificarea și confirmarea staffului",
+  selectedQuestions?: TicketQuestion[],
 ): EmbedBuilder {
   const embed = new EmbedBuilder()
     .setColor(0x7c8fbd)
@@ -972,12 +979,24 @@ export function partnershipSummaryEmbed(
     .setDescription(
       "Datele de mai jos formează dosarul alianței. Verifică fiecare secțiune înainte de confirmare.",
     )
-    .addFields(
-      {
-        name: "📊 Starea dosarului",
-        value: statusText,
+    .addFields({
+      name: "📊 Starea dosarului",
+      value: statusText,
+      inline: false,
+    })
+    .setFooter({ text: "Regatul Cenușii · Verifică pactul înainte de publicare" })
+    .setTimestamp();
+  if (TICKET_SEAL) embed.setThumbnail(TICKET_SEAL);
+  if (selectedQuestions) {
+    embed.addFields(
+      selectedQuestions.map((question) => ({
+        name: question.label.slice(0, 256),
+        value: safeAnswer(answers[question.key]),
         inline: false,
-      },
+      })),
+    );
+  } else {
+    embed.addFields(
       {
         name: "🏰 Numele serverului",
         value: safeAnswer(answers.server_name),
@@ -1018,10 +1037,8 @@ export function partnershipSummaryEmbed(
         value: safeAnswer(answers.terms),
         inline: false,
       },
-    )
-    .setFooter({ text: "Regatul Cenușii · Verifică pactul înainte de publicare" })
-    .setTimestamp();
-  if (TICKET_SEAL) embed.setThumbnail(TICKET_SEAL);
+    );
+  }
   return embed;
 }
 
@@ -1947,10 +1964,13 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
           flow,
           progressState.answers ?? {},
         );
+        const selectedQuestions = completionQuestions(flow, questions);
         const roleId = getTicketConfig(interaction.guildId).staffReviewRoleId;
         const summaryEmbed = partnershipSummaryEmbed(
           interaction.user.globalName ?? interaction.user.username,
           partnershipAnswers,
+          undefined,
+          selectedQuestions,
         );
         setTicketImage(summaryEmbed, flow.staffNotificationImageUrl);
         const responseMessage = await interaction.channel.send({
@@ -1980,7 +2000,7 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
         .setAuthor({ name: interaction.user.username, iconURL: interaction.user.displayAvatarURL() })
         .addFields(
           complete
-            ? questions.map((entry) => ({
+            ? completionQuestions(flow, questions).map((entry) => ({
                 name: entry.label.slice(0, 256),
                 value: safeAnswer(progressState.answers?.[entry.key], "—", 1_024),
                 inline: false,

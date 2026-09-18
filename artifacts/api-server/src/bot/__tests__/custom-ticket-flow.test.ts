@@ -71,6 +71,7 @@ function customFlow(
   kind: TicketCategoryKind,
   completionAction: TicketFlowConfig["completionAction"],
   questions = [questionConfig(`${kind}_question`)],
+  postedQuestionKeys?: string[],
 ): TicketFlowConfig {
   return {
     mode: "custom",
@@ -82,6 +83,7 @@ function customFlow(
     staffNotificationMessage: `Notificare staff configurată pentru ${kind}`,
     completionAction,
     questions,
+    ...(postedQuestionKeys ? { postedQuestionKeys } : {}),
   };
 }
 
@@ -279,6 +281,39 @@ describe("custom ticket flows in Discord", () => {
       "Întrebarea original_third",
     ]);
     expect(completed?.answers).not.toHaveProperty("deleted_question");
+  });
+
+  it("posts only the selected questions in the completed custom summary", async () => {
+    const questions = [
+      questionConfig("visible_first"),
+      questionConfig("hidden_middle"),
+      questionConfig("visible_last"),
+    ];
+    configureFlows({
+      help_report: customFlow("help_report", "keep_open", questions, ["visible_first", "visible_last"]),
+    });
+    const channelId = "custom-selected-summary-channel";
+    const started = makeStartInteraction("help_report");
+    (started.interaction as unknown as { channelId: string }).channelId = channelId;
+
+    await handleTicketButton(started.interaction);
+    let completionPayloads: unknown[] = [];
+    for (const [key, value] of [
+      ["visible_first", "Primul răspuns"],
+      ["hidden_middle", "Răspunsul ascuns"],
+      ["visible_last", "Ultimul răspuns"],
+    ] as const) {
+      const answer = makeAnswerInteraction("help_report", key, value, channelId);
+      await handleTicketQuestionModal(answer.interaction);
+      completionPayloads = answer.sentPayloads;
+    }
+
+    const completed = persistence.records.get(`${channelId}:${USER_ID}`);
+    expect(completed?.status).toBe("completed");
+    expect(embedJson(completionPayloads[0]).fields?.map((field: { name?: string }) => field.name)).toEqual([
+      "Întrebarea visible_first",
+      "Întrebarea visible_last",
+    ]);
   });
 
   it.each([

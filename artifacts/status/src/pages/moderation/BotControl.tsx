@@ -167,6 +167,28 @@ export function BotControlPage() {
     } : current);
   };
 
+  const setPostedQuestion = (
+    kind: keyof BotControlConfig["tickets"]["flows"],
+    key: string,
+    included: boolean,
+  ) => {
+    setDraft((current) => {
+      if (!current) return current;
+      const flow = current.tickets.flows[kind];
+      const selected = flow.postedQuestionKeys ?? flow.questions.map((question) => question.key);
+      const postedQuestionKeys = included
+        ? Array.from(new Set([...selected, key]))
+        : selected.filter((selectedKey) => selectedKey !== key);
+      return {
+        ...current,
+        tickets: {
+          ...current.tickets,
+          flows: { ...current.tickets.flows, [kind]: { ...flow, mode: "custom", postedQuestionKeys } },
+        },
+      };
+    });
+  };
+
   const updateQuestion = (
     kind: keyof BotControlConfig["tickets"]["flows"],
     index: number,
@@ -175,14 +197,20 @@ export function BotControlPage() {
   ) => {
     setDraft((current) => {
       if (!current) return current;
-      const questions = current.tickets.flows[kind].questions.map((question, questionIndex) =>
+      const flow = current.tickets.flows[kind];
+      const previousKey = flow.questions[index]?.key;
+      const questions = flow.questions.map((question, questionIndex) =>
         questionIndex === index ? { ...question, [field]: value } : question,
       );
+      const currentPostedKeys = flow.postedQuestionKeys ?? flow.questions.map((question) => question.key);
+      const postedQuestionKeys = field === "key" && typeof value === "string"
+        ? currentPostedKeys.map((key) => key === previousKey ? value : key)
+        : currentPostedKeys.filter((key) => questions.some((question) => question.key === key));
       return {
         ...current,
         tickets: {
           ...current.tickets,
-          flows: { ...current.tickets.flows, [kind]: { ...current.tickets.flows[kind], questions } },
+          flows: { ...current.tickets.flows, [kind]: { ...flow, questions, postedQuestionKeys } },
         },
       };
     });
@@ -194,11 +222,12 @@ export function BotControlPage() {
       const flow = current.tickets.flows[kind];
       const suffix = flow.questions.length + 1;
       const question = { ...NEW_QUESTION, key: `question_${suffix}` };
+      const postedQuestionKeys = [...(flow.postedQuestionKeys ?? flow.questions.map((entry) => entry.key)), question.key];
       return {
         ...current,
         tickets: {
           ...current.tickets,
-          flows: { ...current.tickets.flows, [kind]: { ...flow, mode: "custom", questions: [...flow.questions, question] } },
+          flows: { ...current.tickets.flows, [kind]: { ...flow, mode: "custom", questions: [...flow.questions, question], postedQuestionKeys } },
         },
       };
     });
@@ -209,11 +238,14 @@ export function BotControlPage() {
       if (!current) return current;
       const flow = current.tickets.flows[kind];
       if (flow.questions.length <= 1) return current;
+      const removedKey = flow.questions[index]?.key;
+      const postedQuestionKeys = (flow.postedQuestionKeys ?? flow.questions.map((entry) => entry.key))
+        .filter((key) => key !== removedKey);
       return {
         ...current,
         tickets: {
           ...current.tickets,
-          flows: { ...current.tickets.flows, [kind]: { ...flow, mode: "custom", questions: flow.questions.filter((_, questionIndex) => questionIndex !== index) } },
+          flows: { ...current.tickets.flows, [kind]: { ...flow, mode: "custom", questions: flow.questions.filter((_, questionIndex) => questionIndex !== index), postedQuestionKeys } },
         },
       };
     });
@@ -312,6 +344,9 @@ export function BotControlPage() {
   const selectedActiveCategory = categories.some((category) => category.id === activeCategory)
     ? activeCategory
     : "__manual__";
+  const postedQuestionKeys = new Set(
+    activeFlow.postedQuestionKeys ?? activeFlow.questions.map((question) => question.key),
+  );
 
   return (
     <div className="max-w-5xl space-y-6">
@@ -471,8 +506,18 @@ export function BotControlPage() {
                 {activeFlow.questions.map((question, index) => (
                   <div key={`${question.key}-${index}`} className="space-y-3 rounded-lg border border-border/80 bg-background/40 p-4">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-semibold">Întrebarea {index + 1}</p>
-                      <div className="flex gap-1">
+                       <div className="flex items-center gap-3">
+                         <p className="text-sm font-semibold">Întrebarea {index + 1}</p>
+                         <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                           <input
+                             type="checkbox"
+                             checked={postedQuestionKeys.has(question.key)}
+                             onChange={(event) => setPostedQuestion(activeFlowKind, question.key, event.target.checked)}
+                           />
+                           Postează în mesajul final
+                         </label>
+                       </div>
+                       <div className="flex gap-1">
                         <Button type="button" size="sm" variant="ghost" onClick={() => moveQuestion(activeFlowKind, index, -1)} disabled={index === 0}>↑</Button>
                         <Button type="button" size="sm" variant="ghost" onClick={() => moveQuestion(activeFlowKind, index, 1)} disabled={index === activeFlow.questions.length - 1}>↓</Button>
                         <Button type="button" size="sm" variant="ghost" className="text-destructive" onClick={() => removeQuestion(activeFlowKind, index)} disabled={activeFlow.questions.length <= 1}>Șterge</Button>
@@ -517,6 +562,64 @@ export function BotControlPage() {
                 ))}
               </div>
             </div>
+
+            <details open className="overflow-hidden rounded-xl border border-[#3f4147] bg-[#1e1f22]">
+              <summary className="cursor-pointer list-none border-b border-[#3f4147] px-4 py-3 text-sm font-semibold text-[#f2f3f5]">
+                <span className="mr-2 text-primary">▶</span>
+                Previzualizare test · {FLOW_KINDS.find(([kind]) => kind === activeFlowKind)?.[1] ?? "Flux activ"}
+              </summary>
+              <div className="grid gap-4 p-4 lg:grid-cols-2">
+                <div className="rounded-lg bg-[#2b2d31] p-4">
+                  <p className="mb-3 text-[10px] font-mono tracking-[0.18em] text-[#b5bac1]">MESAJUL DIN PANOU</p>
+                  <h4 className="text-base font-semibold text-[#f2f3f5]">{activeFlow.title}</h4>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[#dbdee1]">
+                    {activeFlow.panelDescription}
+                  </p>
+                  <p className="mt-3 whitespace-pre-wrap text-xs text-[#b5bac1]">{activeFlow.requirementsText}</p>
+                  <div className="mt-4 space-y-2 border-t border-[#3f4147] pt-3">
+                    {activeFlow.questions.map((question, index) => (
+                      <div key={`preview-question-${question.key}-${index}`} className="flex gap-2 text-xs">
+                        <span className="font-semibold text-[#949ba4]">{index + 1}.</span>
+                        <span className="text-[#dbdee1]">{question.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <Button type="button" size="sm" className="mt-4 pointer-events-none">
+                    {activeFlow.startButtonLabel}
+                  </Button>
+                </div>
+
+                <div className="rounded-lg bg-[#2b2d31] p-4">
+                  <p className="mb-3 text-[10px] font-mono tracking-[0.18em] text-[#b5bac1]">MESAJUL DUPĂ COMPLETARE</p>
+                  <h4 className="text-base font-semibold text-[#f2f3f5]">Formular complet</h4>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[#dbdee1]">
+                    {activeFlow.completionMessage}
+                  </p>
+                  <div className="mt-4 space-y-2 border-t border-[#3f4147] pt-3">
+                    {activeFlow.questions.filter((question) => postedQuestionKeys.has(question.key)).length > 0 ? (
+                      activeFlow.questions
+                        .filter((question) => postedQuestionKeys.has(question.key))
+                        .map((question, index) => (
+                          <div key={`preview-answer-${question.key}-${index}`} className="rounded-md bg-[#1e1f22] px-3 py-2">
+                            <p className="text-xs font-semibold text-[#f2f3f5]">{question.label}</p>
+                            <p className="mt-1 text-xs italic text-[#949ba4]">
+                              {question.placeholder || "Răspunsul membrului va apărea aici"}
+                            </p>
+                          </div>
+                        ))
+                    ) : (
+                      <p className="text-xs italic text-[#949ba4]">Nu este selectat niciun răspuns pentru mesajul final.</p>
+                    )}
+                  </div>
+                  {activeFlow.completionAction === "notify_staff" && (
+                    <p className="mt-4 text-xs text-primary">Mesajul va anunța rolul staff configurat.</p>
+                  )}
+                </div>
+              </div>
+              <p className="border-t border-[#3f4147] px-4 py-3 text-xs text-[#b5bac1]">
+                Aceasta este o simulare. Pentru alt flux, schimbă „Tipul de ticket” de la Pasul 1.
+              </p>
+            </details>
           </section>
         </TabsContent>
 

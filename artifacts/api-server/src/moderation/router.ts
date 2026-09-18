@@ -69,6 +69,7 @@ export const ticketFlowConfigSchema = z.object({
   staffNotificationImageUrl: z.string().trim().max(2_000).optional().default(""),
   completionAction: z.enum(["lock", "notify_staff", "keep_open"]),
   questions: z.array(ticketQuestionConfigSchema).min(1).max(20),
+  postedQuestionKeys: z.array(z.string().trim().min(1).max(32).regex(/^[a-z0-9_]+$/)).max(20).optional(),
 }).strict();
 export const botControlSchema = z.object({
   channels: botChannelConfigSchema,
