@@ -68,7 +68,7 @@ import {
   startOracleCouncilScheduler,
   stopOracleCouncilScheduler,
 } from "./oracle-council";
-import { isTicketCategoryParentId } from "./ticket-categories";
+import { initTicketConfig, isTicketCategoryParentId } from "./ticket-categories";
 import {
   enforceOracleTimeout,
   handleToxicity,
@@ -3707,7 +3707,7 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
       }
       const bossTopId = getChannel("bossTop", guildId);
       const topCh = bossTopId ? await interaction.client.channels.fetch(bossTopId).catch(() => null) : null;
-      if (topCh instanceof TextChannel && !isTicketCategoryParentId(topCh.parentId)) {
+      if (topCh instanceof TextChannel && !isTicketCategoryParentId(topCh.parentId, topCh.guildId)) {
         const leaderboard = buildBossLeaderboard(activeBoss, activeBoss.damageBy, activeBoss.participants, activeBoss.playerNames, activeBoss.playerHp, activeBoss.hitsBy);
         const lootSections: string[] = [];
         if (eventKeyDrops.size > 0) {
@@ -4348,7 +4348,7 @@ async function setupTrader(client: Client, guildId: string): Promise<void> {
       logger.warn({ channelId: traderChannelId, guildId }, "Trader channel not found");
       return;
     }
-    if (isTicketCategoryParentId(channel.parentId)) {
+    if (isTicketCategoryParentId(channel.parentId, channel.guildId)) {
       logger.warn(
         { channelId: channel.id, parentId: channel.parentId, guildId },
         "Trader channel is a ticket channel — automated post skipped",
@@ -4483,7 +4483,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
       isTextBased?: () => boolean;
     };
     if (!candidate.guildId || !candidate.parentId || !candidate.isTextBased?.()) return;
-    const kind = getOracleTicketKindFromParentId(candidate.parentId);
+    const kind = getOracleTicketKindFromParentId(candidate.parentId, candidate.guildId);
     const botId = client.user?.id;
     if (!kind || !botId) return;
 
@@ -4575,6 +4575,9 @@ export async function startBot(onReady?: () => void): Promise<void> {
       await initChannelConfig(guildId).catch((err) =>
         logger.error({ err, guildId }, "Failed to load channel config for guild"),
       );
+      await initTicketConfig(guildId).catch((err) =>
+        logger.error({ err, guildId }, "Failed to load ticket config for guild"),
+      );
       await syncNativeAutoMod(client, guildId, await getModerationConfig(guildId)).catch((err) =>
         logger.warn({ err, guildId }, "Native Discord AutoMod synchronization failed"),
       );
@@ -4650,6 +4653,9 @@ export async function startBot(onReady?: () => void): Promise<void> {
     ).catch((err) => logger.warn({ err, guildId: guild.id }, "Could not clear guild commands on join"));
     await initChannelConfig(guild.id).catch((err) =>
       logger.error({ err, guildId: guild.id }, "Failed to init channel config for new guild"),
+    );
+    await initTicketConfig(guild.id).catch((err) =>
+      logger.error({ err, guildId: guild.id }, "Failed to init ticket config for new guild"),
     );
     await syncNativeAutoMod(client, guild.id, await getModerationConfig(guild.id)).catch((err) =>
       logger.warn({ err, guildId: guild.id }, "Native Discord AutoMod synchronization failed"),

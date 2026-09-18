@@ -26,6 +26,7 @@ import {
   type TicketProgressRecord,
 } from "./db";
 import type { OracleTicketKind } from "./oracle-chat";
+import { DEFAULT_TICKET_CONFIG, getTicketConfig } from "./ticket-config";
 
 const TICKET_COLORS: Record<OracleTicketKind, number> = {
   staff: 0x9b4655,
@@ -46,13 +47,13 @@ const TICKET_ICONS: Record<OracleTicketKind, string> = {
 };
 
 const TICKET_SEAL = IMG.ticketSeal;
-export const STAFF_REVIEW_ROLE_ID = "1472526137308745909";
+export const STAFF_REVIEW_ROLE_ID = DEFAULT_TICKET_CONFIG.staffReviewRoleId;
 /** The historical alliance destination, valid only in its owning guild. */
-export const ALLIANCE_PUBLIC_CHANNEL_ID = "1472997077373157602";
-const ALLIANCE_OWNER_GUILD_ID = "1382035307607883816";
-export const INCOMPLETE_TICKET_TIMEOUT_MS = 60 * 60 * 1000;
-export const INCOMPLETE_TICKET_FIRST_WARNING_AFTER_MS = 20 * 60 * 1000;
-export const INCOMPLETE_TICKET_SECOND_WARNING_AFTER_MS = 50 * 60 * 1000;
+export const ALLIANCE_PUBLIC_CHANNEL_ID = DEFAULT_TICKET_CONFIG.alliancePublicChannelId;
+const ALLIANCE_OWNER_GUILD_ID = DEFAULT_TICKET_CONFIG.allianceOwnerGuildId;
+export const INCOMPLETE_TICKET_TIMEOUT_MS = DEFAULT_TICKET_CONFIG.incompleteTimeoutMinutes * 60 * 1000;
+export const INCOMPLETE_TICKET_FIRST_WARNING_AFTER_MS = DEFAULT_TICKET_CONFIG.firstWarningMinutes * 60 * 1000;
+export const INCOMPLETE_TICKET_SECOND_WARNING_AFTER_MS = DEFAULT_TICKET_CONFIG.secondWarningMinutes * 60 * 1000;
 /** Backwards-compatible alias for the first warning threshold. */
 export const INCOMPLETE_TICKET_WARNING_AFTER_MS = INCOMPLETE_TICKET_FIRST_WARNING_AFTER_MS;
 const REGAT_RECRUITMENT_GIF_URL =
@@ -73,11 +74,12 @@ type RoleMembership = {
 
 export function memberHasStaffReviewRole(
   member: RoleMembership | null | undefined,
+  roleId = STAFF_REVIEW_ROLE_ID,
 ): boolean {
   if (!member) return false;
   return "cache" in member.roles
-    ? member.roles.cache.has(STAFF_REVIEW_ROLE_ID)
-    : member.roles.includes(STAFF_REVIEW_ROLE_ID);
+    ? member.roles.cache.has(roleId)
+    : member.roles.includes(roleId);
 }
 
 const postedTicketPanels = new Set<string>();
@@ -314,6 +316,14 @@ export function ticketDeadlineForChannel(
   channel: unknown,
   now = Date.now(),
 ): number {
+  const guildId =
+    channel &&
+    typeof channel === "object" &&
+    "guildId" in channel &&
+    typeof channel.guildId === "string"
+      ? channel.guildId
+      : undefined;
+  const timeoutMs = getTicketConfig(guildId).incompleteTimeoutMinutes * 60 * 1000;
   const createdTimestamp =
     channel &&
     typeof channel === "object" &&
@@ -322,7 +332,7 @@ export function ticketDeadlineForChannel(
     Number.isFinite(channel.createdTimestamp)
       ? channel.createdTimestamp
       : now;
-  return createdTimestamp + INCOMPLETE_TICKET_TIMEOUT_MS;
+  return createdTimestamp + timeoutMs;
 }
 
 export function ticketStatusRow(
@@ -538,6 +548,7 @@ export function scheduleIncompleteTicketDeletion(channel: unknown): void {
   if (!channel || typeof channel !== "object") return;
   const candidate = channel as {
     id?: string;
+    guildId?: string | null;
     createdTimestamp?: number;
     delete?: (reason?: string) => Promise<unknown>;
     send?: (payload: {
@@ -573,6 +584,7 @@ export function scheduleIncompleteTicketDeletion(channel: unknown): void {
   if (!deleteChannel) return;
 
   const deadline = ticketDeadlineForChannel(candidate);
+  const ticketConfig = getTicketConfig(candidate.guildId);
   const sendWarning = async (warningNumber: 1 | 2): Promise<void> => {
     const channelId = candidate.id!;
     const progressFinished = [...ticketProgress.entries()].some(
@@ -596,7 +608,7 @@ export function scheduleIncompleteTicketDeletion(channel: unknown): void {
     await candidate.send({
       content:
         `${warningNumber === 1 ? "⚠️" : "🚨"} ${mention}**Avertisment ${warningNumber}/2 — ticket incomplet**\n` +
-        `Au trecut ${warningNumber === 1 ? 20 : 50} de minute. ` +
+        `Au trecut ${warningNumber === 1 ? ticketConfig.firstWarningMinutes : ticketConfig.secondWarningMinutes} de minute. ` +
         `Formularul nu a fost finalizat. Dacă nu îl completezi până la <t:${Math.floor(deadline / 1000)}:R>, ` +
         "ticketul va fi șters automat.",
       allowedMentions: applicantId ? { parse: [], users: [applicantId] } : { parse: [] },
@@ -608,11 +620,11 @@ export function scheduleIncompleteTicketDeletion(channel: unknown): void {
   const warningTimers = [
     setTimeout(() => { void sendWarning(1); }, Math.max(
       0,
-      candidate.createdTimestamp + INCOMPLETE_TICKET_FIRST_WARNING_AFTER_MS - Date.now(),
+      candidate.createdTimestamp + ticketConfig.firstWarningMinutes * 60 * 1000 - Date.now(),
     )),
     setTimeout(() => { void sendWarning(2); }, Math.max(
       0,
-      candidate.createdTimestamp + INCOMPLETE_TICKET_SECOND_WARNING_AFTER_MS - Date.now(),
+      candidate.createdTimestamp + ticketConfig.secondWarningMinutes * 60 * 1000 - Date.now(),
     )),
   ];
   for (const warningTimer of warningTimers) warningTimer.unref?.();
@@ -635,7 +647,7 @@ export function scheduleIncompleteTicketDeletion(channel: unknown): void {
         clearTimeout(warningTimer);
       }
       ticketWarningTimers.delete(channelId);
-      await deleteChannel.call(candidate, "Ticket incomplet după 60 de minute");
+      await deleteChannel.call(candidate, `Ticket incomplet după ${ticketConfig.incompleteTimeoutMinutes} de minute`);
       postedTicketPanels.delete(channelId);
       for (const key of ticketProgress.keys()) {
         if (key.startsWith(`${channelId}:`)) ticketProgress.delete(key);
@@ -831,7 +843,7 @@ function safeAnswer(
     .slice(0, Math.min(Math.max(1, maxLength), 1024));
 }
 
-export function staffOracleReviewPayload(username: string): {
+export function staffOracleReviewPayload(username: string, staffRoleId = STAFF_REVIEW_ROLE_ID): {
   content: string;
   embeds: EmbedBuilder[];
   allowedMentions: { parse: never[]; roles: string[] };
@@ -853,7 +865,7 @@ export function staffOracleReviewPayload(username: string): {
       {
         name: "🛡️ Responsabili",
         value:
-          `Rolul <@&${STAFF_REVIEW_ROLE_ID}> verifică răspunsurile și comunică decizia finală.`,
+          `Rolul <@&${staffRoleId}> verifică răspunsurile și comunică decizia finală.`,
         inline: false,
       },
       {
@@ -869,9 +881,9 @@ export function staffOracleReviewPayload(username: string): {
   if (TICKET_SEAL) embed.setThumbnail(TICKET_SEAL);
 
   return {
-    content: `<@&${STAFF_REVIEW_ROLE_ID}>`,
+    content: `<@&${staffRoleId}>`,
     embeds: [embed],
-    allowedMentions: { parse: [], roles: [STAFF_REVIEW_ROLE_ID] },
+    allowedMentions: { parse: [], roles: [staffRoleId] },
   };
 }
 
@@ -1109,10 +1121,13 @@ export function allianceRecruitmentEmbed(
   return embed;
 }
 
-export function allianceStaffNotificationText(applicantUsername: string): string {
+export function allianceStaffNotificationText(
+  applicantUsername: string,
+  staffRoleId = STAFF_REVIEW_ROLE_ID,
+): string {
   const applicant = safeAnswer(applicantUsername, "un membru");
   return (
-    `<@&${STAFF_REVIEW_ROLE_ID}>\n` +
+    `<@&${staffRoleId}>\n` +
     `📨 O nouă cerere de alianță a fost completată de ${applicant} și așteaptă confirmarea staffului.`
   );
 }
@@ -1357,7 +1372,7 @@ export async function handleTicketQuestionSelect(
 export async function handleTicketButton(interaction: ButtonInteraction): Promise<boolean> {
   const rejectAllianceMatch = interaction.customId.match(/^ticket_alliance_reject_(\d+)$/);
   if (rejectAllianceMatch) {
-    if (!memberHasStaffReviewRole(interaction.member)) {
+    if (!memberHasStaffReviewRole(interaction.member, getTicketConfig(interaction.guildId).staffReviewRoleId)) {
       await interaction.reply({
         content: "🛡️ Doar membrii cu rolul de staff al alianțelor pot refuza acest pact.",
         flags: MessageFlags.Ephemeral,
@@ -1407,7 +1422,7 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
 
   const confirmAllianceMatch = interaction.customId.match(/^ticket_alliance_confirm_(\d+)$/);
   if (confirmAllianceMatch) {
-    if (!memberHasStaffReviewRole(interaction.member)) {
+    if (!memberHasStaffReviewRole(interaction.member, getTicketConfig(interaction.guildId).staffReviewRoleId)) {
       await interaction.reply({
         content: "🛡️ Doar membrii cu rolul de staff al alianțelor pot confirma acest pact.",
         flags: MessageFlags.Ephemeral,
@@ -1446,7 +1461,7 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
 
   const postAllianceMatch = interaction.customId.match(/^ticket_alliance_post_(\d+)$/);
   if (postAllianceMatch) {
-    if (!memberHasStaffReviewRole(interaction.member)) {
+    if (!memberHasStaffReviewRole(interaction.member, getTicketConfig(interaction.guildId).staffReviewRoleId)) {
       await interaction.reply({
         content: "🛡️ Doar membrii cu rolul de staff al alianțelor pot publica acest pact.",
         flags: MessageFlags.Ephemeral,
@@ -1489,7 +1504,8 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
       return true;
     }
 
-    if (interaction.guildId !== ALLIANCE_OWNER_GUILD_ID) {
+    const ticketConfig = getTicketConfig(interaction.guildId);
+    if (interaction.guildId !== ticketConfig.allianceOwnerGuildId) {
       await interaction.reply({
         content:
           "❌ Publicarea alianțelor nu este configurată pentru acest server. " +
@@ -1499,7 +1515,7 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
       return true;
     }
     const publicChannel = await interaction.client.channels
-      .fetch(ALLIANCE_PUBLIC_CHANNEL_ID)
+      .fetch(ticketConfig.alliancePublicChannelId)
       .catch(() => null);
     const fetchedGuildId =
       publicChannel &&
@@ -1515,7 +1531,7 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
     ) {
       await interaction.reply({
         content:
-          `❌ Canalul alianțelor (<#${ALLIANCE_PUBLIC_CHANNEL_ID}>) ` +
+          `❌ Canalul alianțelor (<#${ticketConfig.alliancePublicChannelId}>) ` +
           "nu este disponibil sau nu aparține serverului Regatului Cenușii.",
         flags: MessageFlags.Ephemeral,
       });
@@ -1559,7 +1575,7 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
       }
       ticketProgress.set(ticketProgressKey(interaction.channelId, applicantId), finishedState);
       await interaction.update({
-        content: `✅ Alianța a fost aprobată și publicată în <#${ALLIANCE_PUBLIC_CHANNEL_ID}>.`,
+        content: `✅ Alianța a fost aprobată și publicată în <#${ticketConfig.alliancePublicChannelId}>.`,
         embeds: [
           partnershipPublishedEmbed(
             finishedState.applicantUsername ?? "Reprezentant",
@@ -1578,7 +1594,7 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
         {
           err,
           channelId: interaction.channelId,
-          publicChannelId: ALLIANCE_PUBLIC_CHANNEL_ID,
+          publicChannelId: ticketConfig.alliancePublicChannelId,
         },
         "Alliance announcement could not be published",
       );
@@ -1601,7 +1617,7 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
 
   const editAllianceMatch = interaction.customId.match(/^ticket_alliance_edit_(\d+)$/);
   if (editAllianceMatch) {
-    if (!memberHasStaffReviewRole(interaction.member)) {
+    if (!memberHasStaffReviewRole(interaction.member, getTicketConfig(interaction.guildId).staffReviewRoleId)) {
       await interaction.reply({
         content: "🛡️ Doar membrii cu rolul de staff al alianțelor pot edita acest pact.",
         flags: MessageFlags.Ephemeral,
@@ -1874,6 +1890,7 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
       content: finalPartnership
         ? allianceStaffNotificationText(
             interaction.user.globalName ?? interaction.user.username,
+            getTicketConfig(interaction.guildId).staffReviewRoleId,
           )
         : undefined,
       embeds: [
@@ -1888,7 +1905,7 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
         ? [partnershipConfirmRow(interaction.user.id)]
         : [],
       allowedMentions: finalPartnership
-        ? { parse: [], roles: [STAFF_REVIEW_ROLE_ID] }
+        ? { parse: [], roles: [getTicketConfig(interaction.guildId).staffReviewRoleId] }
         : { parse: [] },
     });
     if (finalPartnership) {
@@ -1940,7 +1957,7 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
 export async function handleTicketModal(interaction: ModalSubmitInteraction): Promise<boolean> {
   const editAllianceMatch = interaction.customId.match(/^ticket_form_alliance_edit_submit_(\d+)$/);
   if (editAllianceMatch) {
-    if (!memberHasStaffReviewRole(interaction.member)) {
+    if (!memberHasStaffReviewRole(interaction.member, getTicketConfig(interaction.guildId).staffReviewRoleId)) {
       await interaction.reply({
         content: "🛡️ Doar membrii cu rolul de staff al alianțelor pot edita acest pact.",
         flags: MessageFlags.Ephemeral,
@@ -2045,10 +2062,11 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
           await firstResponse.edit({
             content: allianceStaffNotificationText(
               interaction.user.globalName ?? interaction.user.username,
+              getTicketConfig(interaction.guildId).staffReviewRoleId,
             ),
             embeds: [finalEmbed],
             components: [partnershipConfirmRow(interaction.user.id)],
-            allowedMentions: { parse: [], roles: [STAFF_REVIEW_ROLE_ID] },
+            allowedMentions: { parse: [], roles: [getTicketConfig(interaction.guildId).staffReviewRoleId] },
           });
           mergedIntoFirstResponse = true;
         }
@@ -2057,10 +2075,11 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
         const responseMessage = await interaction.channel.send({
           content: allianceStaffNotificationText(
             interaction.user.globalName ?? interaction.user.username,
+            getTicketConfig(interaction.guildId).staffReviewRoleId,
           ),
           embeds: [finalEmbed],
           components: [partnershipConfirmRow(interaction.user.id)],
-          allowedMentions: { parse: [], roles: [STAFF_REVIEW_ROLE_ID] },
+          allowedMentions: { parse: [], roles: [getTicketConfig(interaction.guildId).staffReviewRoleId] },
         });
         progressState.responseMessageId = responseMessage.id;
       }
@@ -2181,7 +2200,7 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
         name: rejectedForTag ? "⚖️ Verdict" : "📊 Starea dosarului",
         value: rejectedForTag
           ? "RESPINS AUTOMAT · condiția tag-ului nu a fost acceptată."
-          : `COMPLET · trimis către <@&${STAFF_REVIEW_ROLE_ID}> pentru decizia finală.`,
+          : `COMPLET · trimis către <@&${getTicketConfig(interaction.guildId).staffReviewRoleId}> pentru decizia finală.`,
         inline: false,
       })
       .setFooter({
@@ -2234,7 +2253,12 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
         rejectedForTag ? "rejected" : "completed",
       );
       if (!rejectedForTag) {
-        await interaction.channel.send(staffOracleReviewPayload(interaction.user.username));
+        await interaction.channel.send(
+          staffOracleReviewPayload(
+            interaction.user.username,
+            getTicketConfig(interaction.guildId).staffReviewRoleId,
+          ),
+        );
       }
       await interaction.editReply({
         content: rejectedForTag

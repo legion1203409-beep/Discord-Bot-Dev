@@ -1,10 +1,11 @@
-export type TicketCategoryKind = "staff" | "partnership" | "help_report";
+import {
+  DEFAULT_TICKET_CONFIG,
+  getTicketConfig,
+  initTicketConfig,
+  type TicketCategoryKind,
+} from "./ticket-config";
 
-function envString(name: string, fallback: string): string {
-  const raw = process.env[name];
-  if (raw === undefined || raw.trim() === "") return fallback;
-  return raw.trim();
-}
+export type { TicketCategoryKind } from "./ticket-config";
 
 /**
  * Ticket category IDs are shared by Oracle routing and every automated poster.
@@ -12,11 +13,12 @@ function envString(name: string, fallback: string): string {
  * becoming a chest, event, boss, or trader destination.
  */
 export const ORACLE_TICKET_CATEGORY_IDS: Record<TicketCategoryKind, string> = {
-  staff: envString("ORACLE_STAFF_TICKET_CATEGORY_ID", "1545688369332228167"),
-  partnership: envString("ORACLE_PARTNERSHIP_TICKET_CATEGORY_ID", "1545688531144413194"),
-  help_report: envString("ORACLE_HELP_REPORT_TICKET_CATEGORY_ID", "1545688638438772796"),
+  ...DEFAULT_TICKET_CONFIG.categories,
 };
 
-export function isTicketCategoryParentId(parentId: string | null | undefined): boolean {
-  return Object.values(ORACLE_TICKET_CATEGORY_IDS).includes(parentId ?? "");
+export { initTicketConfig };
+
+export function isTicketCategoryParentId(parentId: string | null | undefined, guildId?: string | null): boolean {
+  if (!parentId) return false;
+  return Object.values(guildId ? getTicketConfig(guildId).categories : ORACLE_TICKET_CATEGORY_IDS).includes(parentId);
 }

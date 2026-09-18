@@ -525,7 +525,7 @@ async function deleteTrackedEventMessage(
       channelId,
     };
   }
-  if (isTicketCategoryParentId(channel.parentId)) {
+  if (isTicketCategoryParentId(channel.parentId, channel.guildId)) {
     return {
       target,
       phase: "channel-fetch",
@@ -1093,7 +1093,7 @@ async function fetchChannel(client: Client, type: EventType, guildId: string): P
   }
   const ch = await client.channels.fetch(id).catch(() => null);
   if (!(ch instanceof TextChannel)) return null;
-  if (isTicketCategoryParentId(ch.parentId)) {
+  if (isTicketCategoryParentId(ch.parentId, ch.guildId)) {
     logger.warn(
       { guildId, type, channelId: ch.id, parentId: ch.parentId },
       "Configured channel is a ticket channel — automated post skipped",

@@ -254,7 +254,7 @@ export async function fireTribute(client: Client, guildId: string): Promise<Trib
       logger.warn({ guildId, channelId: config.channelId }, "Tribute channel is not a text channel");
       return null;
     }
-    if (isTicketCategoryParentId(channel.parentId)) {
+    if (isTicketCategoryParentId(channel.parentId, channel.guildId)) {
       logger.warn(
         { guildId, channelId: channel.id, parentId: channel.parentId },
         "Tribute channel is a ticket channel — automated post skipped",

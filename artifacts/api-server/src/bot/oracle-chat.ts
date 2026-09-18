@@ -14,6 +14,7 @@ import { handleJustice, handlePardon } from "./oracle-guard";
 import { getPlayerById, loadOracleCouncil, recordOracleInteraction, type OracleCouncilRecord } from "./db";
 import { postTicketPanelIfMissing } from "./ticket-ui";
 import { ORACLE_TICKET_CATEGORY_IDS, type TicketCategoryKind } from "./ticket-categories";
+import { getTicketConfig } from "./ticket-config";
 export { ORACLE_TICKET_CATEGORY_IDS } from "./ticket-categories";
 import type { Player } from "@workspace/db";
 
@@ -989,18 +990,21 @@ function isGameHelpQuestion(text: string): boolean {
   return /\b(cheie|chei|cufar|cufere|lupt|boss|dragon|misiun|magazin|clasa|companion|relicv|fragment|obol|xp|mana|oracol|profet|licitat|fratie|cavaler|umbrolog|strajer|alchimist|ratacitor)\b/.test(normalized);
 }
 
-export function getOracleTicketKind(message: Pick<Message, "channel">): OracleTicketKind | null {
+export function getOracleTicketKind(message: { channel: Message["channel"]; guildId?: string | null }): OracleTicketKind | null {
   const parentId =
     "parentId" in message.channel
       ? (message.channel as { parentId?: string | null }).parentId
       : null;
-  return getOracleTicketKindFromParentId(parentId);
+  return getOracleTicketKindFromParentId(parentId, message.guildId);
 }
 
-export function getOracleTicketKindFromParentId(parentId: string | null | undefined): OracleTicketKind | null {
+export function getOracleTicketKindFromParentId(parentId: string | null | undefined, guildId?: string | null): OracleTicketKind | null {
   if (!parentId) return null;
-  for (const kind of Object.keys(ORACLE_TICKET_CATEGORY_IDS) as OracleTicketKind[]) {
-    if (ORACLE_TICKET_CATEGORY_IDS[kind] === parentId) return kind;
+  const categories = guildId
+    ? getTicketConfig(guildId).categories
+    : ORACLE_TICKET_CATEGORY_IDS;
+  for (const kind of Object.keys(categories) as OracleTicketKind[]) {
+    if (categories[kind] === parentId) return kind;
   }
   return null;
 }

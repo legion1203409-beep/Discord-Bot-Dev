@@ -475,7 +475,7 @@ export async function openFratiaVote(client: Client, guildId: string): Promise<F
 
   const channelId = getChannel("fratia", guildId) ?? getChannel("main", guildId);
   const channel = channelId ? await client.channels.fetch(channelId).catch(() => null) : null;
-  if (!(channel instanceof TextChannel) || isTicketCategoryParentId(channel.parentId)) return null;
+  if (!(channel instanceof TextChannel) || isTicketCategoryParentId(channel.parentId, channel.guildId)) return null;
 
   const vote: FratiaVote = {
     id: `fratia_${Date.now()}`,
@@ -530,7 +530,7 @@ export async function closeAndRewardFratiaVote(client: Client, guildId: string):
     reward = await describeFratiaReward(closed);
   }
   const originalChannel = await client.channels.fetch(closed.channelId).catch(() => null);
-  if (originalChannel instanceof TextChannel && !isTicketCategoryParentId(originalChannel.parentId)) {
+  if (originalChannel instanceof TextChannel && !isTicketCategoryParentId(originalChannel.parentId, originalChannel.guildId)) {
     const message = await originalChannel.messages.fetch(closed.messageId).catch(() => null);
     await message?.edit({
       embeds: [buildFratiaVoteEmbed(closed)],
@@ -543,11 +543,11 @@ export async function closeAndRewardFratiaVote(client: Client, guildId: string):
       ? await client.channels.fetch(configuredRewardChannelId).catch(() => null)
       : null;
     const validConfiguredChannel =
-      configuredChannel instanceof TextChannel && !isTicketCategoryParentId(configuredChannel.parentId)
+      configuredChannel instanceof TextChannel && !isTicketCategoryParentId(configuredChannel.parentId, configuredChannel.guildId)
         ? configuredChannel
         : null;
     const validOriginalChannel =
-      originalChannel instanceof TextChannel && !isTicketCategoryParentId(originalChannel.parentId)
+      originalChannel instanceof TextChannel && !isTicketCategoryParentId(originalChannel.parentId, originalChannel.guildId)
         ? originalChannel
         : null;
     const rewardChannel = validConfiguredChannel ?? validOriginalChannel;
@@ -752,7 +752,7 @@ async function expireSeasonalChest(client: Client, chest: SeasonalChest): Promis
   };
   await saveState(stateKey(expired.guildId, `seasonal:${expired.id}`), expired);
   const channel = await client.channels.fetch(chest.channelId).catch(() => null);
-  if (channel instanceof TextChannel && !isTicketCategoryParentId(channel.parentId)) {
+  if (channel instanceof TextChannel && !isTicketCategoryParentId(channel.parentId, channel.guildId)) {
     const message = await channel.messages.fetch(chest.messageId).catch(() => null);
     await message?.edit({
       embeds: [buildSeasonalChestEmbed(expired, false, true)],
@@ -770,7 +770,7 @@ export async function spawnSeasonalChest(client: Client, guildId: string): Promi
 
   const channelId = getChannel("main", guildId);
   const channel = channelId ? await client.channels.fetch(channelId).catch(() => null) : null;
-  if (!(channel instanceof TextChannel) || isTicketCategoryParentId(channel.parentId)) return null;
+  if (!(channel instanceof TextChannel) || isTicketCategoryParentId(channel.parentId, channel.guildId)) return null;
 
   const meta = seasonalForBucket(bucket);
   const chest: SeasonalChest = {

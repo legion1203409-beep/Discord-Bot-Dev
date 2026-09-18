@@ -4,6 +4,7 @@ import type { ActiveBossRow, PlayerItem, PlayerTalisman, PlayerDailyQuest } from
 import { eq, and, gte, gt, lt, inArray, sql, desc } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import type { Player, EventParticipant } from "@workspace/db";
+import type { TicketConfig } from "./ticket-config";
 
 export type { PlayerItem };
 import {
@@ -2264,6 +2265,36 @@ export async function loadAllianceRecruitmentText(
     .from(botStateTable)
     .where(eq(botStateTable.key, guildKey(guildId, ALLIANCE_RECRUITMENT_TEXT_KEY)));
   return row?.value ?? null;
+}
+
+// ─── Ticket configuration persistence ─────────────────────────────────────────
+const TICKET_CONFIG_KEY = "ticket_config";
+
+export async function saveTicketConfig(guildId: string, config: TicketConfig): Promise<void> {
+  await ensureBotStateTable();
+  const key = guildKey(guildId, TICKET_CONFIG_KEY);
+  const now = new Date();
+  await db
+    .insert(botStateTable)
+    .values({ key, value: JSON.stringify(config) })
+    .onConflictDoUpdate({
+      target: botStateTable.key,
+      set: { value: JSON.stringify(config), updatedAt: now },
+    });
+}
+
+export async function loadTicketConfig(guildId: string): Promise<Partial<TicketConfig> | null> {
+  await ensureBotStateTable();
+  const [row] = await db
+    .select()
+    .from(botStateTable)
+    .where(eq(botStateTable.key, guildKey(guildId, TICKET_CONFIG_KEY)));
+  if (!row) return null;
+  try {
+    return JSON.parse(row.value) as Partial<TicketConfig>;
+  } catch {
+    return null;
+  }
 }
 
 function parseTicketProgress(value: string): TicketProgressRecord | null {

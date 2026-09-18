@@ -353,7 +353,7 @@ function pickUsersToCurse(state: GuildOracleState, now: number): string[] {
 
 async function getMainChannel(client: Client, channelId: string): Promise<TextChannel | null> {
   const channel = await client.channels.fetch(channelId).catch(() => null);
-  if (!(channel instanceof TextChannel) || isTicketCategoryParentId(channel.parentId)) return null;
+  if (!(channel instanceof TextChannel) || isTicketCategoryParentId(channel.parentId, channel.guildId)) return null;
   return channel;
 }
 

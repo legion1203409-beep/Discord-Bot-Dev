@@ -56,6 +56,19 @@ export interface ModerationMetadata {
 export interface BotControlConfig {
   channels: Record<string, string>;
   allianceRecruitmentText: string;
+  tickets: {
+    categories: {
+      staff: string;
+      partnership: string;
+      help_report: string;
+    };
+    staffReviewRoleId: string;
+    alliancePublicChannelId: string;
+    allianceOwnerGuildId: string;
+    incompleteTimeoutMinutes: number;
+    firstWarningMinutes: number;
+    secondWarningMinutes: number;
+  };
 }
 
 export class ApiError extends Error {

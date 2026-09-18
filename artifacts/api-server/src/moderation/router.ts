@@ -30,7 +30,8 @@ import { moderationStore } from "./store";
 import { syncNativeAutoMod } from "../bot/native-automod";
 import { logger } from "../lib/logger";
 import { initChannelConfig } from "../bot/channel-config";
-import { saveAllianceRecruitmentText, saveChannelConfig, loadAllianceRecruitmentText, loadChannelConfig, type ChannelConfig } from "../bot/db";
+import { saveAllianceRecruitmentText, saveChannelConfig, loadAllianceRecruitmentText, loadChannelConfig, saveTicketConfig, loadTicketConfig, type ChannelConfig } from "../bot/db";
+import { normalizeTicketConfig, setTicketConfig, type TicketConfig } from "../bot/ticket-config";
 
 const router = Router();
 const snowflake = z.string().regex(/^\d{5,25}$/);
@@ -48,6 +49,19 @@ const botChannelConfigSchema = z.object({
 const botControlSchema = z.object({
   channels: botChannelConfigSchema,
   allianceRecruitmentText: z.string().trim().min(1).max(2_000),
+  tickets: z.object({
+    categories: z.object({
+      staff: snowflake,
+      partnership: snowflake,
+      help_report: snowflake,
+    }).strict(),
+    staffReviewRoleId: snowflake,
+    alliancePublicChannelId: snowflake,
+    allianceOwnerGuildId: snowflake,
+    incompleteTimeoutMinutes: z.number().int().min(10).max(240),
+    firstWarningMinutes: z.number().int().min(1).max(180),
+    secondWarningMinutes: z.number().int().min(2).max(239),
+  }).strict(),
 }).strict();
 const actionType = z.enum(["warn", "mute", "kick", "ban", "unmute", "purge", "slowmode", "lock", "unlock", "nick", "role"]);
 
@@ -306,13 +320,15 @@ router.put("/guilds/:guildId/config", asyncRoute(async (req, res) => {
 router.get("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   const guildId = parse(snowflake, req.params.guildId);
   await sessionAndGuild(req, guildId, "config");
-  const [channels, allianceRecruitmentText] = await Promise.all([
+  const [channels, allianceRecruitmentText, tickets] = await Promise.all([
     loadChannelConfig(guildId),
     loadAllianceRecruitmentText(guildId),
+    loadTicketConfig(guildId),
   ]);
   res.set("Cache-Control", "no-store").json({
     channels: channels ?? {},
     allianceRecruitmentText: allianceRecruitmentText ?? "",
+    tickets: normalizeTicketConfig(tickets),
   });
 }));
 
@@ -320,15 +336,19 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   const guildId = parse(snowflake, req.params.guildId);
   await sessionAndGuild(req, guildId, "config", true);
   const value = parse(botControlSchema, req.body);
+  const tickets = normalizeTicketConfig(value.tickets);
   const channels: ChannelConfig = Object.fromEntries(
     Object.entries(value.channels).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
   ) as ChannelConfig;
   await saveChannelConfig(guildId, channels);
   await saveAllianceRecruitmentText(guildId, value.allianceRecruitmentText);
+  await saveTicketConfig(guildId, tickets);
   await initChannelConfig(guildId);
+  setTicketConfig(guildId, tickets);
   res.status(200).json({
     channels,
     allianceRecruitmentText: value.allianceRecruitmentText,
+    tickets,
   });
 }));
 
