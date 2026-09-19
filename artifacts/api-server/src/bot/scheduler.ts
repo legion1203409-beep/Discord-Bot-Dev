@@ -18,6 +18,7 @@ import {
 } from "./chest-expansions";
 import { setTributeGamePaused, startTributeScheduler, stopTributeScheduler } from "./tribute";
 import { getGameplayConfig, isGameplayPaused } from "./gameplay-store";
+import { startDailyStatsScheduler, stopDailyStatsScheduler } from "./daily-stats";
 
 const APPLICATION_ID = "1472675543777280071";
 export const EVENT_DURATION_MS = 60 * 60 * 1000;
@@ -258,6 +259,7 @@ export function stopGuildScheduler(
 ) {
   if (options.stopOracle) stopOracleCouncilScheduler(guildId);
   stopTributeScheduler(guildId);
+  stopDailyStatsScheduler(guildId);
   setTributeGamePaused(guildId, true);
   const gs = guildStates.get(guildId);
   if (gs) {
@@ -1648,6 +1650,9 @@ async function fireBattleEvent(client: Client, guildId: string) {
 
 export function startGuildScheduler(client: Client, guildId: string) {
   const gs = getOrCreateGuildState(guildId);
+  // Daily statistics are observational and should continue even when gameplay
+  // is paused; they are not part of the gameplay scheduler below.
+  startDailyStatsScheduler(client, guildId);
   if (isGameplayPaused(guildId)) {
     gs.stopped = true;
     gs.started = false;

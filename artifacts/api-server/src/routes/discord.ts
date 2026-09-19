@@ -3,8 +3,30 @@ import { desc } from "drizzle-orm";
 import { db, playersTable } from "@workspace/db";
 import { getBotClient, GUILD_ID, isBotOnline } from "../bot/index";
 import { fetchDiscordGuildStats, fetchDiscordGuildStatsViaRest } from "./discord-stats";
+import { completedStatsDay, getDailyStats } from "../bot/daily-stats";
 
 const router: IRouter = Router();
+
+router.get("/discord/daily-stats", async (req, res) => {
+  const requestedDay = typeof req.query.day === "string" ? req.query.day : completedStatsDay();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(requestedDay)) {
+    res.status(400).json({ error: "day must use YYYY-MM-DD" });
+    return;
+  }
+
+  try {
+    const report = await getDailyStats(GUILD_ID, requestedDay);
+    const guildName = getBotClient()?.guilds.cache.get(GUILD_ID)?.name ?? "Regatul Cenușii";
+    res.status(200).json({
+      guildName,
+      timezone: process.env.DISCORD_STATS_TIMEZONE || "Europe/Bucharest",
+      report,
+    });
+  } catch (err) {
+    req.log.error({ err, day: requestedDay }, "Failed to fetch daily Discord statistics");
+    res.status(503).json({ error: "Daily statistics are not available yet" });
+  }
+});
 
 router.get("/discord/stats", async (req, res) => {
   const client = getBotClient();

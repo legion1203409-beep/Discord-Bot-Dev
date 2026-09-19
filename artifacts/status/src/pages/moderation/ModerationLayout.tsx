@@ -128,7 +128,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
         <div className="mod-login-rune-field" aria-hidden="true">
           <span>01</span><span>03</span><span>07</span><span>11</span>
         </div>
-        <div data-aos="flip-left" className="w-full max-w-md bg-card border border-border p-7 sm:p-9 rounded-2xl relative overflow-hidden mod-card mod-login-card shadow-2xl">
+        <div className="w-full max-w-md bg-card border border-border p-7 sm:p-9 rounded-2xl relative overflow-hidden mod-card mod-login-card shadow-2xl">
           <div className="mod-card-glow" />
           <div className="mod-login-card-line" aria-hidden="true" />
           <div className="relative">
@@ -190,7 +190,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
 
           <div className="mt-8 pt-6 border-t border-border/50">
             <Link href="~/joc" data-testid="link-game-guide-login" className="text-xs font-mono tracking-widest text-muted-foreground hover:text-primary transition-colors inline-flex items-center gap-2">
-               <Server className="w-4 h-4" /> DETALII SERVER
+              <BookOpen className="w-4 h-4" /> GHIDUL JOCULUI
             </Link>
           </div>
           </div>
@@ -248,7 +248,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
         ${mobileMenuOpen ? "translate-x-0" : "-translate-x-full"}
       `}>
         <div className="fire-toolbar mod-toolbar h-20 flex items-center justify-between px-5 border-b border-border/50 shrink-0">
-          <div data-aos="flip-left" className="flex items-center gap-3 text-primary">
+          <div className="flex items-center gap-3 text-primary">
             <div className="mod-brand-mark overflow-hidden">
               {botProfile?.avatarUrl ? (
                 <img src={botProfile.avatarUrl} alt="" className="h-full w-full object-cover" />
@@ -356,7 +356,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
       {/* Main Content */}
        <main key={`guild-${guildId}`} className="flex h-[100dvh] min-h-0 flex-1 flex-col min-w-0 bg-background">
         <header className="fire-toolbar mod-toolbar mod-topbar h-16 border-b border-border/50 backdrop-blur flex items-center justify-between px-4 sm:px-6 shrink-0 md:hidden sticky top-0 z-30">
-           <div data-aos="flip-left" className="flex items-center gap-2 text-primary">
+          <div className="flex items-center gap-2 text-primary">
               <div className="mod-brand-mark h-8 w-8 overflow-hidden rounded-lg">
                 {botProfile?.avatarUrl ? (
                   <img src={botProfile.avatarUrl} alt="" className="h-full w-full object-cover" />
@@ -372,7 +372,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
         </header>
         
         <div className="mod-page min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6 md:p-8 relative">
-          <div data-aos="flip-left" className="max-w-5xl mx-auto w-full">
+          <div className="max-w-5xl mx-auto w-full">
             {children}
           </div>
         </div>

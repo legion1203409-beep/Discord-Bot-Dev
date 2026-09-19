@@ -356,6 +356,45 @@ export async function runMultiGuildMigrations(): Promise<void> {
   } else {
     logger.info("multi-guild migrations: data-loss restoration — already up-to-date, skipped");
   }
+
+  // ─── Daily Discord statistics ───────────────────────────────────────────────
+  // These tables are intentionally additive and also self-healed by the stats
+  // module when the API is running without the Discord gateway.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS discord_daily_stats (
+      guild_id text NOT NULL,
+      day text NOT NULL,
+      message_count integer NOT NULL DEFAULT 0,
+      joins integer NOT NULL DEFAULT 0,
+      leaves integer NOT NULL DEFAULT 0,
+      boosts integer NOT NULL DEFAULT 0,
+      peak_voice integer NOT NULL DEFAULT 0,
+      report_message_id text,
+      reported_at timestamptz,
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (guild_id, day)
+    );
+    CREATE TABLE IF NOT EXISTS discord_daily_channels (
+      guild_id text NOT NULL,
+      day text NOT NULL,
+      channel_id text NOT NULL,
+      channel_name text NOT NULL,
+      message_count integer NOT NULL DEFAULT 0,
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (guild_id, day, channel_id)
+    );
+    CREATE TABLE IF NOT EXISTS discord_daily_users (
+      guild_id text NOT NULL,
+      day text NOT NULL,
+      user_id text NOT NULL,
+      PRIMARY KEY (guild_id, day, user_id)
+    );
+    CREATE INDEX IF NOT EXISTS discord_daily_stats_guild_day_idx
+      ON discord_daily_stats (guild_id, day);
+    CREATE INDEX IF NOT EXISTS discord_daily_channels_guild_day_idx
+      ON discord_daily_channels (guild_id, day);
+  `);
+  logger.info("multi-guild migrations: daily Discord statistics tables ensured");
 }
 
 // ─── Player helpers ────────────────────────────────────────────────────────────

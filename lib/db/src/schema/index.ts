@@ -7,3 +7,4 @@ export * from "./player-items";
 export * from "./player-talismans";
 export * from "./player-daily-quests";
 export * from "./moderation";
+export * from "./discord-daily-stats";

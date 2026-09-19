@@ -18,6 +18,7 @@ import { PublicLayout } from "./components/public/PublicLayout";
 import { GameGuidePage } from "./pages/public/GameGuidePage";
 import { OperatorHealthPage } from "./pages/public/OperatorHealthPage";
 import { VerificationPage } from "./pages/public/VerificationPage";
+import { DailyStatsPage } from "./pages/public/DailyStatsPage";
 import { useEffect, useState } from "react";
 
 function ScrollAnimations() {
@@ -124,6 +125,7 @@ export default function App() {
         <Route path="/" component={HomeApp} />
         <Route path="/joc" component={GameApp} />
         <Route path="/verificare" component={VerificationPage} />
+        <Route path="/statistici" component={() => <PublicLayout><DailyStatsPage /></PublicLayout>} />
         <Route path="/moderare" nest>
           <ModerationApp />
         </Route>

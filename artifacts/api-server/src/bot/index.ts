@@ -84,6 +84,13 @@ import { setModerationClient } from "../moderation/auth";
 import { getVerificationWebsiteUrl } from "../moderation/oauth";
 import { handleVerificationButton } from "./verification";
 import { getRewardMultipliers, getCombatModifiers, formatActiveEffects, formatCombatEffects, rollChestEffectKind, grantRandomBlessing, grantRandomCurse, buildChestEffectMessage } from "./status-effects";
+import {
+  recordDailyBoost,
+  recordDailyJoin,
+  recordDailyLeave,
+  recordDailyMessage,
+  recordDailyVoicePeak,
+} from "./daily-stats";
 import { SUPER_ADMIN_ID } from "./constants";
 import {
   ensureTributePlayer,
@@ -4475,7 +4482,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
     return;
   }
 
-  const intents = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages];
+  const intents = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildVoiceStates];
   // GuildMembers, GuildPresences and MessageContent are all privileged. Keep the
   // bot online when the portal toggles are absent rather than requesting any one
   // of them unconditionally and receiving gateway 4014.
@@ -4709,6 +4716,12 @@ export async function startBot(onReady?: () => void): Promise<void> {
 
   client.on(Events.MessageCreate, (message) => {
     if (message.author.bot || !message.guildId) return;
+    const channelName = "name" in message.channel && typeof message.channel.name === "string"
+      ? message.channel.name
+      : message.channelId;
+    void recordDailyMessage(message.guildId, message.author.id, message.channelId, channelName).catch((err) =>
+      logger.warn({ err, guildId: message.guildId, channelId: message.channelId }, "Daily message statistics update failed"),
+    );
     try {
       recordMessage(
         message.author.id,
@@ -4754,7 +4767,35 @@ export async function startBot(onReady?: () => void): Promise<void> {
     });
   });
 
+  client.on(Events.GuildMemberAdd, (member) => {
+    void recordDailyJoin(member.guild.id).catch((err) =>
+      logger.warn({ err, guildId: member.guild.id }, "Daily join statistics update failed"),
+    );
+  });
+
+  client.on(Events.GuildMemberRemove, (member) => {
+    void recordDailyLeave(member.guild.id).catch((err) =>
+      logger.warn({ err, guildId: member.guild.id }, "Daily leave statistics update failed"),
+    );
+  });
+
+  client.on(Events.VoiceStateUpdate, (oldState, newState) => {
+    if (oldState.channelId === newState.channelId) return;
+    const guild = newState.guild;
+    const connectedMembers = guild.channels.cache.reduce((total, channel) => (
+      channel.isVoiceBased() ? total + channel.members.size : total
+    ), 0);
+    void recordDailyVoicePeak(guild.id, connectedMembers).catch((err) =>
+      logger.warn({ err, guildId: guild.id }, "Daily voice statistics update failed"),
+    );
+  });
+
   client.on(Events.GuildMemberUpdate, (oldMember, newMember) => {
+    if (!oldMember.premiumSince && newMember.premiumSince) {
+      void recordDailyBoost(newMember.guild.id).catch((err) =>
+        logger.warn({ err, guildId: newMember.guild.id }, "Daily boost statistics update failed"),
+      );
+    }
     void enforceOracleTimeout(oldMember, newMember);
   });
 
