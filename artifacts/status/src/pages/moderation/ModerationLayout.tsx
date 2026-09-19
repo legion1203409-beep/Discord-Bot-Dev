@@ -248,7 +248,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
         ${mobileMenuOpen ? "translate-x-0" : "-translate-x-full"}
       `}>
         <div className="fire-toolbar mod-toolbar h-20 flex items-center justify-between px-5 border-b border-border/50 shrink-0">
-          <div className="flex items-center gap-3 text-primary">
+          <div data-aos="flip-left" className="flex items-center gap-3 text-primary">
             <div className="mod-brand-mark overflow-hidden">
               {botProfile?.avatarUrl ? (
                 <img src={botProfile.avatarUrl} alt="" className="h-full w-full object-cover" />
@@ -356,7 +356,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
       {/* Main Content */}
        <main key={`guild-${guildId}`} className="flex h-[100dvh] min-h-0 flex-1 flex-col min-w-0 bg-background">
         <header className="fire-toolbar mod-toolbar mod-topbar h-16 border-b border-border/50 backdrop-blur flex items-center justify-between px-4 sm:px-6 shrink-0 md:hidden sticky top-0 z-30">
-          <div className="flex items-center gap-2 text-primary">
+           <div data-aos="flip-left" className="flex items-center gap-2 text-primary">
               <div className="mod-brand-mark h-8 w-8 overflow-hidden rounded-lg">
                 {botProfile?.avatarUrl ? (
                   <img src={botProfile.avatarUrl} alt="" className="h-full w-full object-cover" />
