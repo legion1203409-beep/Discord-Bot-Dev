@@ -1391,7 +1391,15 @@ router.get("/guilds/:guildId/verification/members", asyncRoute(async (req, res) 
 
   const config = normalizeVerificationConfig(await loadVerificationConfig(guildId));
   const guild = await client.guilds.fetch({ guild: guildId, force: true });
-  const role = config.roleId ? await guild.roles.fetch(config.roleId) : null;
+  let role = null;
+  if (config.roleId) {
+    try {
+      role = await guild.roles.fetch(config.roleId);
+    } catch (error) {
+      logger.warn({ error, guildId, roleId: config.roleId }, "Verification role could not be fetched");
+      throw new ModerationAuthError(400, "Rolul de verificare configurat nu mai există pe acest server. Alege un rol valid și salvează din nou.");
+    }
+  }
   if (!role) {
     res.set("Cache-Control", "no-store").json({
       guildId,
@@ -1403,7 +1411,13 @@ router.get("/guilds/:guildId/verification/members", asyncRoute(async (req, res) 
     return;
   }
 
-  const members = await guild.members.fetch();
+  let members;
+  try {
+    members = await guild.members.fetch();
+  } catch (error) {
+    logger.warn({ error, guildId }, "Verified members could not be fetched from Discord");
+    throw new ModerationAuthError(503, "Discord nu a permis încărcarea membrilor. Activează intenția privilegiată Server Members pentru bot și repornește-l.");
+  }
   const verifiedMembers = [...members.values()]
     .filter((member) => !member.user.bot && member.roles.cache.has(role.id))
     .map((member) => ({
@@ -1833,6 +1847,12 @@ router.post("/guilds/:guildId/actions", asyncRoute(async (req, res) =>
 
     
 }
+
+    if (error instanceof Error) {
+      logger.warn({ error, guildId, actorId: session.userId, actionId: idempotencyKey }, "Manual moderation action was rejected");
+      res.status(400).json({ error: error.message || "Acțiunea de moderare a fost respinsă." });
+      return;
+    }
 
     throw error
 ;
