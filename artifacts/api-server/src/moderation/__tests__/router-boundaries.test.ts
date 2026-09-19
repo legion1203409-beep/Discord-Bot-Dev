@@ -342,6 +342,27 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     expect(mocks.initChannelConfig).toHaveBeenCalledWith(guildId);
   });
 
+  it("does not let the bot-control page change the separate gameplay pause state", async () => {
+    const payload = botControlPayload();
+    mocks.getGameplayConfig.mockReturnValue({
+      ...structuredClone(DEFAULT_GAMEPLAY_CONFIG),
+      paused: true,
+    });
+    mocks.saveGuildGameplayConfig.mockImplementation(async (_guildId, config) => config);
+
+    const response = await fetch(`${base}/bot-control`, {
+      ...post(payload),
+      method: "PUT",
+      headers: { "content-type": "application/json", "x-csrf-token": "csrf" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.saveGuildGameplayConfig).toHaveBeenCalledWith(
+      guildId,
+      expect.objectContaining({ paused: true }),
+    );
+  });
+
   it("rejects an invalid custom ticket payload before changing the existing configuration", async () => {
     const payload = botControlPayload();
     const initialPut = await fetch(`${base}/bot-control`, {

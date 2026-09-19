@@ -1168,7 +1168,13 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   await saveTicketConfig(guildId, tickets);
   await initGameplayConfig(guildId);
   const previousGameplayConfig = getGameplayConfig(guildId);
-  const gameplayConfig = await saveGuildGameplayConfig(guildId, value.gameplayConfig);
+  // Pause/resume is controlled by the Dashboard endpoint. The bot-control
+  // page edits timers and gameplay values, but must not silently re-pause a
+  // guild when it submits a stale draft.
+  const gameplayConfig = await saveGuildGameplayConfig(guildId, {
+    ...value.gameplayConfig,
+    paused: previousGameplayConfig.paused,
+  });
   const verification = normalizeVerificationConfig(value.verification);
   const saveVerification = optionalExport(() => saveVerificationConfig);
   if (saveVerification && Object.prototype.hasOwnProperty.call(req.body ?? {}, "verification")) {

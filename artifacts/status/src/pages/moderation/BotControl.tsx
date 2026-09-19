@@ -487,6 +487,11 @@ export function BotControlPage() {
           Botul Discord nu este conectat la această instanță. Modificările pot fi salvate, dar devin active pe Discord doar după reconectarea botului.
         </div>
       )}
+      {draft.gameplayConfig.paused && (
+        <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive-foreground">
+          Jocul este suspendat: evenimentele, luptele și cuferele nu vor fi postate. Deschide Dashboard-ul și apasă „Pornește jocul”.
+        </div>
+      )}
 
       <Tabs defaultValue="channels" className="space-y-5">
          <TabsList className="grid h-auto w-full grid-cols-2 gap-1 rounded-xl border border-border bg-card p-1 sm:grid-cols-5">
