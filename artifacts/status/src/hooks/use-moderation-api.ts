@@ -546,12 +546,42 @@ export function useModerationConfig(guildId: string | null) {
     }
   };
 
+  const updateProtectionToggle = async (
+    key: "protection" | "wordFilter" | "linkBlock" | "antiRaid" | "antiSpam" | "antiFlood" | "ai",
+    enabled: boolean,
+  ) => {
+    const requestedGuildId = guildId;
+    if (!requestedGuildId) throw new Error("Nu este selectat niciun server.");
+    if (!cachedSession?.authenticated || activeGuildId !== requestedGuildId) {
+      throw new Error("Sesiunea de moderare nu mai este activă.");
+    }
+    const response = await apiFetchWithMeta<any>(`/guilds/${requestedGuildId}/protection-toggle`, {
+      method: "PUT",
+      body: JSON.stringify({ key, enabled }),
+    });
+    const res = response.data;
+    if (currentGuildId.current !== requestedGuildId) {
+      throw new Error("Serverul selectat s-a schimbat în timpul salvării.");
+    }
+    setData(res.config);
+    setDataGuildId(requestedGuildId);
+    dataGuildIdRef.current = requestedGuildId;
+    const etag = response.headers.get("etag")?.replace(/^W\//, "");
+    const nextVersion = res.version ?? etag;
+    if (nextVersion == null) throw new Error("Răspunsul de salvare nu conține versiunea ETag.");
+    setVersion(String(nextVersion));
+    versionRef.current = String(nextVersion);
+    setError(null);
+    return res;
+  };
+
   return {
     data: dataGuildId === guildId ? data : null,
     version: dataGuildId === guildId ? version : null,
     loading: loading || Boolean(guildId && dataGuildId !== guildId),
     error,
     update,
+    updateProtectionToggle,
     refetch: fetchConfig,
   };
 }

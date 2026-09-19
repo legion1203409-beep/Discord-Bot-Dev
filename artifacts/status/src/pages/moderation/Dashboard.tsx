@@ -29,13 +29,15 @@ type ProtectionModuleKey = "wordFilter" | "linkBlock" | "antiRaid" | "antiSpam" 
 
 export function DashboardOverview() {
   const { guildId, guilds } = useActiveGuild();
-  const { data: config, loading: configLoading, update: updateModerationConfig, refetch: refetchModerationConfig } = useModerationConfig(guildId);
+  const { data: config, loading: configLoading, update: updateModerationConfig, updateProtectionToggle, refetch: refetchModerationConfig } = useModerationConfig(guildId);
   const { data: casesData, loading: casesLoading } = useCases(guildId, { limit: 10 });
   const { data: auditLogs, loading: auditLoading } = useAuditLogs(guildId);
   const { paused: gamePaused, loading: gameStateLoading, update: updateGameState } = useGameplayState(guildId);
   const { toast } = useToast();
   const [savingModule, setSavingModule] = useState<string | null>(null);
   const [savingGameState, setSavingGameState] = useState(false);
+  const [optimisticConfig, setOptimisticConfig] = useState<any>(null);
+  const [deactivatingKey, setDeactivatingKey] = useState<string | null>(null);
   const activeGuild = guilds.find((guild) => guild.id === guildId);
   const activeGuildIcon = activeGuild?.icon
     ? (/^https?:\/\//i.test(activeGuild.icon)
@@ -77,32 +79,49 @@ export function DashboardOverview() {
 
   const openCases = (casesData || []).filter((item) => item.status === "open").length;
   const recentLogs = (auditLogs || []).slice(0, 7);
-  const protectionEnabled = config?.protection?.enabled ?? true;
+  const visibleConfig = optimisticConfig ?? config;
+  const protectionEnabled = visibleConfig?.protection?.enabled ?? true;
   const modules = [
-    { key: "wordFilter" as const, name: "Filtru Cuvinte", active: Boolean(protectionEnabled && config?.autoMod?.enabled && config?.autoMod?.wordFilter?.enabled), enabled: Boolean(config?.autoMod?.enabled && config?.autoMod?.wordFilter?.enabled), icon: BookOpen },
-    { key: "linkBlock" as const, name: "Blocare Linkuri", active: Boolean(protectionEnabled && config?.autoMod?.enabled && config?.autoMod?.linkBlock?.enabled), enabled: Boolean(config?.autoMod?.enabled && config?.autoMod?.linkBlock?.enabled), icon: Zap },
-    { key: "antiRaid" as const, name: "Anti-Raid", active: Boolean(protectionEnabled && config?.antiRaid?.enabled), enabled: Boolean(config?.antiRaid?.enabled), icon: ShieldAlert },
-    { key: "antiSpam" as const, name: "Anti-Spam", active: Boolean(protectionEnabled && config?.antiSpam?.enabled), enabled: Boolean(config?.antiSpam?.enabled), icon: Activity },
-    { key: "antiFlood" as const, name: "Anti-Flood", active: Boolean(protectionEnabled && config?.antiFlood?.enabled), enabled: Boolean(config?.antiFlood?.enabled), icon: Activity },
-    { key: "ai" as const, name: "Inteligență AI", active: Boolean(protectionEnabled && config?.ai?.enabled), enabled: Boolean(config?.ai?.enabled), icon: Bot },
+    { key: "wordFilter" as const, name: "Filtru Cuvinte", active: Boolean(protectionEnabled && visibleConfig?.autoMod?.enabled && visibleConfig?.autoMod?.wordFilter?.enabled), enabled: Boolean(visibleConfig?.autoMod?.enabled && visibleConfig?.autoMod?.wordFilter?.enabled), icon: BookOpen },
+    { key: "linkBlock" as const, name: "Blocare Linkuri", active: Boolean(protectionEnabled && visibleConfig?.autoMod?.enabled && visibleConfig?.autoMod?.linkBlock?.enabled), enabled: Boolean(visibleConfig?.autoMod?.enabled && visibleConfig?.autoMod?.linkBlock?.enabled), icon: Zap },
+    { key: "antiRaid" as const, name: "Anti-Raid", active: Boolean(protectionEnabled && visibleConfig?.antiRaid?.enabled), enabled: Boolean(visibleConfig?.antiRaid?.enabled), icon: ShieldAlert },
+    { key: "antiSpam" as const, name: "Anti-Spam", active: Boolean(protectionEnabled && visibleConfig?.antiSpam?.enabled), enabled: Boolean(visibleConfig?.antiSpam?.enabled), icon: Activity },
+    { key: "antiFlood" as const, name: "Anti-Flood", active: Boolean(protectionEnabled && visibleConfig?.antiFlood?.enabled), enabled: Boolean(visibleConfig?.antiFlood?.enabled), icon: Activity },
+    { key: "ai" as const, name: "Inteligență AI", active: Boolean(protectionEnabled && visibleConfig?.ai?.enabled), enabled: Boolean(visibleConfig?.ai?.enabled), icon: Bot },
   ];
 
   const saveProtectionChange = async (
     change: (current: any) => any,
     key: string,
     description: string,
+    toggleKey?: "protection" | ProtectionModuleKey,
+    enabled?: boolean,
   ) => {
     if (!config || savingModule) return;
     setSavingModule(key);
+    const nextConfig = change(config);
+    setOptimisticConfig(nextConfig);
     try {
-      await updateModerationConfig(change(config));
+      if (toggleKey && enabled !== undefined) {
+        await updateProtectionToggle(toggleKey, enabled);
+      } else {
+        await updateModerationConfig(nextConfig);
+      }
+      setOptimisticConfig(null);
       toast({ title: "Setare actualizată", description });
     } catch (error: any) {
       if (String(error?.message ?? "").includes("Conflict de versiune")) {
         try {
           const freshConfig = await refetchModerationConfig();
           if (freshConfig) {
-            await updateModerationConfig(change(freshConfig));
+            const retriedConfig = change(freshConfig);
+            setOptimisticConfig(retriedConfig);
+            if (toggleKey && enabled !== undefined) {
+              await updateProtectionToggle(toggleKey, enabled);
+            } else {
+              await updateModerationConfig(retriedConfig);
+            }
+            setOptimisticConfig(null);
             toast({ title: "Setare actualizată", description });
             return;
           }
@@ -115,6 +134,7 @@ export function DashboardOverview() {
         title: "Setarea nu a putut fi salvată",
         description: error?.message ?? "Încearcă din nou.",
       });
+      setOptimisticConfig(null);
     } finally {
       setSavingModule(null);
     }
@@ -122,15 +142,25 @@ export function DashboardOverview() {
 
   const toggleProtection = (enabled: boolean) => {
     if (!config) return;
+    if (!enabled) {
+      setDeactivatingKey("protection");
+      window.setTimeout(() => setDeactivatingKey((current) => current === "protection" ? null : current), 700);
+    }
     void saveProtectionChange(
       (current) => ({ ...current, protection: { ...current.protection, enabled } }),
       "protection",
       enabled ? "Toate modulele de protecție sunt disponibile." : "Toate modulele de protecție sunt oprite.",
+      "protection",
+      enabled,
     );
   };
 
   const toggleModule = (key: ProtectionModuleKey, enabled: boolean) => {
     if (!config) return;
+    if (!enabled) {
+      setDeactivatingKey(key);
+      window.setTimeout(() => setDeactivatingKey((current) => current === key ? null : current), 700);
+    }
     void saveProtectionChange((current) => {
       const nextConfig = { ...current };
       if (key === "wordFilter" || key === "linkBlock") {
@@ -143,7 +173,7 @@ export function DashboardOverview() {
         nextConfig[key] = { ...current[key], enabled };
       }
       return nextConfig;
-    }, key, `${key} este acum ${enabled ? "activ" : "oprit"}.`);
+    }, key, `${key} este acum ${enabled ? "activ" : "oprit"}.`, key, enabled);
   };
 
   const toggleGameState = async () => {
@@ -285,6 +315,7 @@ export function DashboardOverview() {
                 <Switch
                   checked={protectionEnabled}
                   onCheckedChange={toggleProtection}
+                  className={deactivatingKey === "protection" ? "protection-deactivating" : undefined}
                   disabled={savingModule !== null}
                   aria-label="Activează sau oprește toată protecția"
                 />
@@ -294,12 +325,13 @@ export function DashboardOverview() {
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             {modules.map((mod) => (
-              <div key={mod.name} className="mod-card flex items-center gap-3 rounded-xl p-4 transition-colors hover:border-primary/30" data-testid={`card-module-${mod.name.toLowerCase().replaceAll(" ", "-")}`}>
+              <div key={mod.name} className={`mod-card flex items-center gap-3 rounded-xl p-4 transition-colors hover:border-primary/30 ${deactivatingKey === mod.key ? "protection-deactivating" : ""}`} data-testid={`card-module-${mod.name.toLowerCase().replaceAll(" ", "-")}`}>
                 <div className={`rounded-lg border p-2.5 ${mod.active ? "border-primary/30 bg-primary/10 text-primary" : "border-transparent bg-secondary text-muted-foreground"}`}><mod.icon className="h-4 w-4" aria-hidden="true" /></div>
                 <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium text-foreground">{mod.name}</div><div className={`mt-1 flex items-center gap-1 font-mono text-[10px] tracking-widest ${mod.active ? "text-primary" : "text-muted-foreground"}`}>{mod.active ? <CheckCircle2 className="h-3 w-3" aria-hidden="true" /> : <XCircle className="h-3 w-3" aria-hidden="true" />} {mod.active ? "ACTIV" : "INACTIV"}</div></div>
                 <Switch
                   checked={protectionEnabled && mod.enabled}
                   onCheckedChange={(enabled) => toggleModule(mod.key, enabled)}
+                  className={deactivatingKey === mod.key ? "protection-deactivating" : undefined}
                   disabled={!protectionEnabled || savingModule !== null}
                   aria-label={`${mod.name}: activează sau oprește`}
                 />
