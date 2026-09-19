@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
   loadTicketConfig: vi.fn(), saveTicketConfig: vi.fn(),
   initGameplayConfig: vi.fn(), getGameplayConfig: vi.fn(), saveGuildGameplayConfig: vi.fn(),
   initChannelConfig: vi.fn(),
+  loadVerificationConfig: vi.fn(), saveVerificationConfig: vi.fn(),
+  provisionGuildChannels: vi.fn(),
 }));
 
 vi.mock("../auth", () => ({
@@ -48,6 +50,8 @@ vi.mock("../../bot/db", () => ({
   saveAllianceRecruitmentText: mocks.saveAllianceRecruitmentText,
   loadTicketConfig: mocks.loadTicketConfig,
   saveTicketConfig: mocks.saveTicketConfig,
+  loadVerificationConfig: mocks.loadVerificationConfig,
+  saveVerificationConfig: mocks.saveVerificationConfig,
 }));
 vi.mock("../../bot/gameplay-store", () => ({
   initGameplayConfig: mocks.initGameplayConfig,
@@ -55,6 +59,7 @@ vi.mock("../../bot/gameplay-store", () => ({
   saveGuildGameplayConfig: mocks.saveGuildGameplayConfig,
 }));
 vi.mock("../../bot/channel-config", () => ({ initChannelConfig: mocks.initChannelConfig }));
+vi.mock("../../bot/channel-provisioning", () => ({ provisionGuildChannels: mocks.provisionGuildChannels }));
 
 import router from "../router";
 import { ModerationAuthError } from "../auth";
@@ -124,6 +129,19 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     mocks.getGameplayConfig.mockReturnValue(structuredClone(DEFAULT_GAMEPLAY_CONFIG));
     mocks.saveGuildGameplayConfig.mockResolvedValue(structuredClone(DEFAULT_GAMEPLAY_CONFIG));
     mocks.initChannelConfig.mockResolvedValue(undefined);
+    mocks.loadVerificationConfig.mockResolvedValue(null);
+    mocks.saveVerificationConfig.mockResolvedValue(undefined);
+    mocks.provisionGuildChannels.mockResolvedValue({
+      channelConfig: { main: "111111111" },
+      ticketConfig: structuredClone(DEFAULT_TICKET_CONFIG),
+      moderationConfig: structuredClone(defaultModerationConfig),
+      verification: {
+        enabled: false, channelId: "777777777", roleId: "", title: "Verificare", message: "Mesaj",
+        buttonLabel: "Verifică", buttonEmoji: "✅", successMessage: "Gata", alreadyVerifiedMessage: "Deja", panelMessageId: "",
+      },
+      created: [{ key: "main", id: "111111111", name: "cufere-si-oracol", type: "text" }],
+      reused: [],
+    });
   });
   const post = (body: unknown, headers: Record<string, string> = {}) => ({
     method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body),
@@ -326,6 +344,31 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
       .toEqual(["help_first", "help_second"]);
     expect(result.tickets.flows.staff.title).toBe("Staff title");
     expect(result.tickets.flows.partnership.staffNotificationMessage).toBe("Partnership staff");
+  });
+
+  it("requires Manage Channels and persists the hybrid provisioning result", async () => {
+    const guild = {
+      members: { me: { permissions: { has: vi.fn().mockReturnValue(false) } } },
+    };
+    mocks.client.mockReturnValue({
+      isReady: () => true,
+      options: { intents: { has: () => true } },
+      guilds: { fetch: vi.fn().mockResolvedValue(guild) },
+    });
+    const denied = await fetch(`${base}/bot-control/provision-channels`, post({}));
+    expect(denied.status).toBe(403);
+    expect(mocks.provisionGuildChannels).not.toHaveBeenCalled();
+
+    guild.members.me.permissions.has.mockReturnValue(true);
+    const response = await fetch(`${base}/bot-control/provision-channels`, post({}));
+    expect(response.status).toBe(200);
+    expect(mocks.provisionGuildChannels).toHaveBeenCalledWith(guild, expect.objectContaining({
+      channelConfig: { main: "111111111" },
+    }));
+    expect(mocks.saveChannelConfig).toHaveBeenCalledWith(guildId, { main: "111111111" });
+    expect(mocks.saveVerificationConfig).toHaveBeenCalledWith(guildId, expect.objectContaining({ channelId: "777777777" }));
+    const result = await response.json() as { provisioning: { created: unknown[] } };
+    expect(result.provisioning.created).toHaveLength(1);
   });
 
   it("round-trips a fresh empty alliance message instead of rejecting the whole bot configuration", async () => {

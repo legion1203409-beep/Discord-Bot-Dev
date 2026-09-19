@@ -180,12 +180,13 @@ function renderAnnouncementTemplate(
 
 export function BotControlPage() {
   const { guildId } = useActiveGuild();
-  const { data, loading, error, update } = useBotControl(guildId);
-  const { data: metadata } = useModerationMetadata(guildId);
+  const { data, loading, error, update, provisionChannels } = useBotControl(guildId);
+  const { data: metadata, refetch: refetchMetadata } = useModerationMetadata(guildId);
   const { toast } = useToast();
   const { session } = useSession();
   const [draft, setDraft] = useState<BotControlConfig | null>(null);
   const [saving, setSaving] = useState(false);
+  const [provisioning, setProvisioning] = useState(false);
   const [activeFlowKind, setActiveFlowKind] = useState<keyof BotControlConfig["tickets"]["flows"]>("staff");
   const [testOpen, setTestOpen] = useState(false);
   const [testStarted, setTestStarted] = useState(false);
@@ -414,6 +415,28 @@ export function BotControlPage() {
     }
   };
 
+  const provision = async () => {
+    setProvisioning(true);
+    try {
+      const saved = await provisionChannels();
+      await refetchMetadata();
+      const created = saved.provisioning?.created.length ?? 0;
+      const reused = saved.provisioning?.reused.length ?? 0;
+      toast({
+        title: "Canalele au fost sincronizate",
+        description: `${created} create, ${reused} reutilizate. Configurația a fost salvată pentru acest server.`,
+      });
+    } catch (provisionError: any) {
+      toast({
+        variant: "destructive",
+        title: "Provisioningul a eșuat",
+        description: provisionError?.message ?? "Verifică permisiunea Manage Channels și încearcă din nou.",
+      });
+    } finally {
+      setProvisioning(false);
+    }
+  };
+
   if (loading && !draft) {
     return <div className="flex justify-center p-12 text-muted-foreground"><Loader2 className="h-8 w-8 animate-spin" /></div>;
   }
@@ -505,11 +528,27 @@ export function BotControlPage() {
           <section className="space-y-4 rounded-xl border border-border bg-card p-5">
             <div className="flex items-start gap-3">
               <Radio className="mt-1 h-5 w-5 text-primary" />
-              <div>
+               <div className="min-w-0 flex-1">
                 <h2 className="font-medium">Canale Discord</h2>
-                <p className="text-xs text-muted-foreground">Alege un canal din lista live sau introdu manual ID-ul. Fiecare sistem folosește destinația asociată.</p>
+                 <p className="text-xs text-muted-foreground">Folosește canalele configurate sau găsește canalele existente după nume. Creează doar destinațiile care lipsesc.</p>
               </div>
+               <Button
+                 type="button"
+                 variant="secondary"
+                 className="shrink-0 gap-2"
+                 onClick={() => void provision()}
+                 disabled={provisioning || metadata?.botCapabilities?.canManageChannels !== true}
+                 title={metadata?.botCapabilities?.canManageChannels === true ? "Sincronizează canalele Discord" : "Botul are nevoie de Manage Channels"}
+               >
+                 {provisioning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Radio className="h-4 w-4" />}
+                 {provisioning ? "Se sincronizează…" : "Creează ce lipsește"}
+               </Button>
             </div>
+             {metadata?.botCapabilities?.canManageChannels !== true && (
+               <p className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-100">
+                 Butonul este disponibil după ce botul primește permisiunea Discord <strong>Manage Channels</strong>.
+               </p>
+             )}
             <div className="grid gap-4 md:grid-cols-2">
               {CHANNELS.map(([key, label]) => {
                 const current = draft.channels[key] ?? "";

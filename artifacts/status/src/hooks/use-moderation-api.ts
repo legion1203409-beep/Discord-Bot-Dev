@@ -125,6 +125,10 @@ export interface BotControlConfig {
     };
   };
   discordLive?: boolean;
+  provisioning?: {
+    created: Array<{ key: string; id: string; name: string; type: "text" | "category" }>;
+    reused: Array<{ key: string; id: string; name: string; type: "text" | "category" }>;
+  };
 }
 
 export interface VerifiedMember {
@@ -688,7 +692,17 @@ export function useBotControl(guildId: string | null) {
     }
   };
 
-  return { data, loading, error, update, refetch: fetchControl };
+  const provisionChannels = async () => {
+    if (!guildId) throw new Error("Nu este selectat niciun server.");
+    const saved = await apiFetch<BotControlConfig>(`/guilds/${guildId}/bot-control/provision-channels`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    setData(saved);
+    return saved;
+  };
+
+  return { data, loading, error, update, provisionChannels, refetch: fetchControl };
 }
 
 export function useVerifiedMembers(guildId: string | null) {

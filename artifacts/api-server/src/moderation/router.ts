@@ -128,6 +128,7 @@ import
 ;
 
 import { startGuildScheduler, stopGuildScheduler } from "../bot/scheduler";
+import { provisionGuildChannels } from "../bot/channel-provisioning";
 
 import {
   DEFAULT_VERIFICATION_CONFIG,
@@ -1152,6 +1153,57 @@ router.get("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
     gameplayConfig: getGameplayConfig(guildId),
     verification: normalizeVerificationConfig(verification),
     discordLive: Boolean(getModerationClient()?.isReady()),
+  });
+}));
+
+router.post("/guilds/:guildId/bot-control/provision-channels", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  const session = await sessionAndGuild(req, guildId, "config", true);
+  const client = getModerationClient();
+  if (!client || !client.isReady()) {
+    throw new ModerationAuthError(503, "Botul Discord nu este conectat.");
+  }
+
+  const guild = await client.guilds.fetch({ guild: guildId, force: true });
+  if (!guild.members.me?.permissions.has("ManageChannels")) {
+    throw new ModerationAuthError(403, "Botul are nevoie de permisiunea Manage Channels pentru provisioning.");
+  }
+
+  await initGameplayConfig(guildId);
+  const [channelConfig, ticketConfig, moderationSnapshot, verification, allianceRecruitmentText] = await Promise.all([
+    loadChannelConfig(guildId),
+    loadTicketConfig(guildId),
+    moderationStore.getConfig(guildId),
+    loadVerificationConfig(guildId),
+    loadAllianceRecruitmentText(guildId),
+  ]);
+  const provisioned = await provisionGuildChannels(guild, {
+    channelConfig: channelConfig ?? {},
+    ticketConfig: normalizeTicketConfig(ticketConfig),
+    moderationConfig: moderationSnapshot.config,
+    verification: normalizeVerificationConfig(verification),
+  });
+
+  await saveChannelConfig(guildId, provisioned.channelConfig);
+  await saveTicketConfig(guildId, provisioned.ticketConfig);
+  await saveVerificationConfig(guildId, provisioned.verification);
+  if (JSON.stringify(provisioned.moderationConfig) !== JSON.stringify(moderationSnapshot.config)) {
+    await moderationStore.putConfig(guildId, provisioned.moderationConfig, session.userId, moderationSnapshot.version);
+  }
+  await initChannelConfig(guildId);
+  setTicketConfig(guildId, provisioned.ticketConfig);
+
+  res.status(200).json({
+    channels: provisioned.channelConfig,
+    allianceRecruitmentText: allianceRecruitmentText ?? "",
+    tickets: provisioned.ticketConfig,
+    gameplayConfig: getGameplayConfig(guildId),
+    verification: provisioned.verification,
+    discordLive: true,
+    provisioning: {
+      created: provisioned.created,
+      reused: provisioned.reused,
+    },
   });
 }));
 
