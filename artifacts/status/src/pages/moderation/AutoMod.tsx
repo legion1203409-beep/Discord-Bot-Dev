@@ -112,7 +112,7 @@ export function AutoModPage() {
   if (error || !data) return <div role="alert" className="space-y-4 rounded-xl border border-destructive/30 bg-destructive/5 p-6"><p>{error?.message || "Nu s-a putut încărca configurația."}</p><Button variant="outline" onClick={() => void refetch()}>Reîncearcă</Button></div>;
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="automod-page space-y-6 max-w-4xl">
       <div>
         <h1 className="text-3xl font-bold tracking-tight mb-2 text-foreground flex items-center gap-3">
           <Bot className="w-8 h-8 text-primary" /> AutoMod & AI
@@ -151,7 +151,7 @@ export function AutoModPage() {
                 <h3 className="text-lg font-medium">Filtru de Cuvinte</h3>
               </div>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="automod-field-grid grid grid-cols-1 md:grid-cols-2 gap-6">
                 <FormField
                   control={form.control}
                   name="wordFilter.enabled"
@@ -172,11 +172,11 @@ export function AutoModPage() {
                   control={form.control}
                   name="wordFilter.action"
                   render={({ field }) => (
-                    <FormItem>
+                    <FormItem className="min-w-0">
                       <FormLabel>Acțiune</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
-                          <SelectTrigger><SelectValue placeholder="Alege..." /></SelectTrigger>
+                          <SelectTrigger className="w-full min-w-0"><SelectValue placeholder="Alege..." /></SelectTrigger>
                         </FormControl>
                         <SelectContent>
                           <SelectItem value="none">Nicio acțiune</SelectItem>
@@ -214,7 +214,7 @@ export function AutoModPage() {
                 <h3 className="text-lg font-medium">Oracolul Judecător (AI Moderation)</h3>
               </div>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
+              <div className="automod-field-grid grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
                 <FormField
                   control={form.control}
                   name="aiEnabled"
@@ -236,11 +236,11 @@ export function AutoModPage() {
                     control={form.control}
                     name="aiAction"
                     render={({ field }) => (
-                      <FormItem>
+                      <FormItem className="min-w-0">
                         <FormLabel>Acțiune Automată AI</FormLabel>
                         <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
-                            <SelectTrigger className="bg-background"><SelectValue placeholder="Alege..." /></SelectTrigger>
+                            <SelectTrigger className="w-full min-w-0 bg-background"><SelectValue placeholder="Alege..." /></SelectTrigger>
                           </FormControl>
                           <SelectContent>
                             <SelectItem value="none">Nicio acțiune (Doar Audit)</SelectItem>
@@ -257,11 +257,11 @@ export function AutoModPage() {
                     control={form.control}
                     name="aiSensitivity"
                     render={({ field }) => (
-                      <FormItem>
+                      <FormItem className="min-w-0">
                         <FormLabel>Sensibilitate</FormLabel>
                         <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
-                            <SelectTrigger className="bg-background"><SelectValue placeholder="Alege..." /></SelectTrigger>
+                            <SelectTrigger className="w-full min-w-0 bg-background"><SelectValue placeholder="Alege..." /></SelectTrigger>
                           </FormControl>
                           <SelectContent>
                             <SelectItem value="low">Scăzută (Doar cazuri extreme)</SelectItem>
@@ -283,7 +283,7 @@ export function AutoModPage() {
                 <h3 className="text-lg font-medium">Blocare Link-uri</h3>
               </div>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="automod-field-grid grid grid-cols-1 md:grid-cols-2 gap-6">
                 <FormField
                   control={form.control}
                   name="linkBlock.enabled"
@@ -304,11 +304,11 @@ export function AutoModPage() {
                   control={form.control}
                   name="linkBlock.action"
                   render={({ field }) => (
-                    <FormItem>
+                    <FormItem className="min-w-0">
                       <FormLabel>Acțiune automată</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
-                          <SelectTrigger><SelectValue placeholder="Alege..." /></SelectTrigger>
+                          <SelectTrigger className="w-full min-w-0"><SelectValue placeholder="Alege..." /></SelectTrigger>
                         </FormControl>
                         <SelectContent>
                           <SelectItem value="none">Nicio acțiune</SelectItem>
