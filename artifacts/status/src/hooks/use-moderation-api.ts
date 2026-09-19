@@ -67,6 +67,8 @@ export interface BotControlConfig {
     staffReviewRoleId: string;
     alliancePublicChannelId: string;
     allianceOwnerGuildId: string;
+    allianceAnnouncementTemplate: string;
+    allianceAnnouncementMode: "text" | "embed";
     incompleteTimeoutMinutes: number;
     firstWarningMinutes: number;
     secondWarningMinutes: number;

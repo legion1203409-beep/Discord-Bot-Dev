@@ -153,23 +153,18 @@ function partnershipPreviewAnswers(
   );
 }
 
-function partnershipAnnouncementPreview(answers: Record<string, string>): string {
-  const lines = [
-    "🤝 PACTUL CELOR DOUĂ REGATE",
-    "══════════════════════════",
-    "",
-    `🏰 Comunitatea parteneră: ${previewValue(answers.server_name)}`,
-    "",
-    "📝 Descrierea serverului:",
-    previewValue(answers.description),
-    "",
-    `🔗 Link: ${previewValue(answers.invite)}`,
-    "",
-    "👤 Contract completat de: Membrul care testează",
-    "",
-    "Pact pecetluit · Regatul Cenușii",
-  ];
-  return lines.join("\n");
+function renderAnnouncementTemplate(
+  template: string,
+  answers: Record<string, string>,
+): string {
+  const values: Record<string, string> = {
+    ...answers,
+    applicant: "Membrul care testează",
+    applicant_mention: "@Membrul care testează",
+    members_total: answers.members_total ?? "150",
+    members_online: answers.members_online ?? "60",
+  };
+  return template.replace(/\{([a-z0-9_]+)\}/gi, (match, key: string) => values[key] ?? match);
 }
 
 export function BotControlPage() {
@@ -409,7 +404,10 @@ export function BotControlPage() {
     ? partnershipPreviewAnswers(activeFlow, testAnswers)
     : null;
   const partnershipAnnouncement = partnershipAnswers
-    ? partnershipAnnouncementPreview(partnershipAnswers)
+    ? renderAnnouncementTemplate(
+      draft.tickets.allianceAnnouncementTemplate,
+      partnershipAnswers,
+    )
     : "";
   const resetFlowTest = () => {
     setTestStarted(false);
@@ -837,6 +835,45 @@ export function BotControlPage() {
               </div>
             </div>
             <Input value={draft.tickets.allianceOwnerGuildId} placeholder="ID server owner pentru publicarea alianțelor" aria-label="ID server alianțe" onChange={(event) => setTicket(["allianceOwnerGuildId"], event.target.value.trim())} />
+             <div className="space-y-2 rounded-lg border border-primary/25 bg-primary/[0.04] p-4">
+               <div>
+                 <label className="text-sm font-medium">Mesajul public al parteneriatului</label>
+                 <p className="mt-1 text-xs text-muted-foreground">
+                   Acest șablon este folosit când stafful apasă „Publică pactul”. Poți decide exact ce apare și dacă este trimis ca text sau embed.
+                 </p>
+               </div>
+               <Textarea
+                 rows={12}
+                 maxLength={2000}
+                 value={draft.tickets.allianceAnnouncementTemplate}
+                 onChange={(event) => setTicket(["allianceAnnouncementTemplate"], event.target.value)}
+               />
+               <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                 <div className="space-y-2">
+                   <label className="text-sm font-medium">Formatul publicării</label>
+                   <Select
+                     value={draft.tickets.allianceAnnouncementMode}
+                     onValueChange={(value) => setTicket(["allianceAnnouncementMode"], value)}
+                   >
+                     <SelectTrigger className="mod-select-trigger"><SelectValue /></SelectTrigger>
+                     <SelectContent>
+                       <SelectItem value="text">Text simplu în mesaj</SelectItem>
+                       <SelectItem value="embed">Embed Discord</SelectItem>
+                     </SelectContent>
+                   </Select>
+                 </div>
+                 <div className="space-y-2 text-xs text-muted-foreground">
+                   <p className="font-medium text-foreground">Variabile disponibile</p>
+                   <p className="font-mono leading-relaxed">
+                     {"{server_name}"} · {"{description}"} · {"{invite}"} · {"{representative}"} · {"{members_total}"} · {"{members_online}"} · {"{members}"} · {"{motivation}"} · {"{offer}"} · {"{terms}"} · {"{applicant}"} · {"{applicant_mention}"}
+                   </p>
+                   <p>„Membri total” și „online” sunt citite din invitația Discord la publicare. Dacă Discord nu le poate oferi, se afișează „Nedisponibil”.</p>
+                 </div>
+               </div>
+               <p className="text-right text-xs text-muted-foreground">
+                 {draft.tickets.allianceAnnouncementTemplate.length}/2000
+               </p>
+             </div>
           </section>
 
           <section className="space-y-4 rounded-xl border border-border bg-card p-5">

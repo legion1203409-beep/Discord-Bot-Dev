@@ -12,6 +12,7 @@ import {
   partnershipEditModal,
   partnershipHasUnder200Members,
   allianceAnnouncementText,
+  fetchAllianceInviteStats,
   allianceRecruitmentEmbed,
   isLegacyOracleTicketPromptText,
   isStaffTagRefusal,
@@ -284,10 +285,41 @@ describe("Oracle ticket categories", () => {
     expect(announcement).toContain("🤝 PACTUL CELOR DOUĂ REGATE");
     expect(announcement).toContain("🏰 Comunitatea parteneră: Regatul Umbrelor");
     expect(announcement).toContain("👤 Contract completat de: <@987654321>");
-    expect(announcement).not.toContain("👥 Membri:");
+    expect(announcement).toContain("👥 Membri: 150 total · 60 online");
     expect(announcement).not.toContain("📌 Promovare:");
     expect(announcement).not.toContain("Textul privat al Regatului Cenușii");
     expect(announcement).not.toContain("@everyone");
+  });
+
+  it("renders a custom alliance template with live invite counts", async () => {
+    const fetchInvite = vi.fn(async () => ({
+      approximateMemberCount: 2_345,
+      approximatePresenceCount: 187,
+    }));
+    const stats = await fetchAllianceInviteStats(
+      { fetchInvite },
+      "https://discord.gg/umbrelor",
+    );
+    const announcement = allianceAnnouncementText(
+      {
+        server_name: "Regatul Umbrelor",
+        description: "Comunitate RPG medievală.",
+        invite: "https://discord.gg/umbrelor",
+        members: "150 total · 60 activi",
+      },
+      "Andrei",
+      "987654321",
+      "🎉 {server_name}\n👥 {members_total}/{members_online}\n🔗 {invite}\n{applicant_mention}",
+      stats,
+    );
+
+    expect(fetchInvite).toHaveBeenCalledWith(
+      "https://discord.gg/umbrelor",
+      { withCounts: true },
+    );
+    expect(announcement).toBe(
+      "🎉 Regatul Umbrelor\n👥 2345/187\n🔗 https://discord.gg/umbrelor\n<@987654321>",
+    );
   });
 
   it("builds a designed automatic recruitment advertisement from the partner answers", () => {

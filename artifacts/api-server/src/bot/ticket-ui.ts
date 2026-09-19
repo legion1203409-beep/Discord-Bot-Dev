@@ -1151,32 +1151,94 @@ export function partnershipPublishRow(userId: string): ActionRowBuilder<ButtonBu
   );
 }
 
+export interface AllianceInviteStats {
+  totalMembers: number | null;
+  onlineMembers: number | null;
+}
+
+interface AllianceInviteClient {
+  fetchInvite?: unknown;
+}
+
+function manualAllianceStats(value: string | undefined): AllianceInviteStats {
+  const numbers = (value ?? "").match(/\d[\d.,\s]*/g)
+    ?.map((entry) => Number(entry.replace(/[.,\s]/g, "")))
+    .filter((entry) => Number.isFinite(entry)) ?? [];
+  return {
+    totalMembers: numbers[0] ?? null,
+    onlineMembers: numbers[1] ?? null,
+  };
+}
+
+export async function fetchAllianceInviteStats(
+  client: AllianceInviteClient,
+  invite: string | undefined,
+): Promise<AllianceInviteStats> {
+  if (!invite?.trim() || typeof client.fetchInvite !== "function") {
+    return { totalMembers: null, onlineMembers: null };
+  }
+  try {
+    const fetched = await (
+      client.fetchInvite as (
+        invite: string,
+        options: { withCounts: boolean },
+      ) => Promise<{
+        approximateMemberCount?: number | null;
+        approximatePresenceCount?: number | null;
+      }>
+    )(invite.trim(), { withCounts: true });
+    return {
+      totalMembers: typeof fetched.approximateMemberCount === "number"
+        ? fetched.approximateMemberCount
+        : null,
+      onlineMembers: typeof fetched.approximatePresenceCount === "number"
+        ? fetched.approximatePresenceCount
+        : null,
+    };
+  } catch (error) {
+    logger.debug({ error }, "Alliance invite counts are unavailable");
+    return { totalMembers: null, onlineMembers: null };
+  }
+}
+
 export function allianceAnnouncementText(
   answers: Record<string, string>,
   applicantUsername: string,
   applicantId?: string,
+  template = DEFAULT_TICKET_CONFIG.allianceAnnouncementTemplate,
+  stats?: AllianceInviteStats,
 ): string {
-  const applicant = applicantId && /^\d+$/.test(applicantId)
+  const applicantMention = applicantId && /^\d+$/.test(applicantId)
     ? `<@${applicantId}>`
     : safeAnswer(applicantUsername, "Reprezentant");
-  const serverName = safeAnswer(answers.server_name).slice(0, 200);
-  const description = safeAnswer(answers.description).slice(0, 650);
-  const invite = safeAnswer(answers.invite).slice(0, 300);
-  const lines = [
-    "🤝 PACTUL CELOR DOUĂ REGATE",
-    "══════════════════════════",
-    "",
-    `🏰 Comunitatea parteneră: ${serverName}`,
-    "",
-    "📝 Descrierea serverului:",
-    description,
-    "",
-    `🔗 Link: ${invite}`,
-    "",
-    `👤 Contract completat de: ${applicant}`,
-  ];
-  lines.push("", "Pact pecetluit · Regatul Cenușii");
-  return lines.join("\n").slice(0, 1950);
+  const manualStats = manualAllianceStats(answers.members);
+  const values: Record<string, string> = {
+    server_name: safeAnswer(answers.server_name, "Comunitatea parteneră", 200),
+    representative: safeAnswer(answers.representative, "Reprezentant"),
+    invite: safeAnswer(answers.invite, "Nedisponibil", 300),
+    members: safeAnswer(answers.members, "Nedisponibil"),
+    members_total: String(stats?.totalMembers ?? manualStats.totalMembers ?? "Nedisponibil"),
+    members_online: String(stats?.onlineMembers ?? manualStats.onlineMembers ?? "Nedisponibil"),
+    description: safeAnswer(answers.description, "Comunitatea nu a oferit o descriere.", 650),
+    motivation: safeAnswer(answers.motivation),
+    offer: safeAnswer(answers.offer),
+    terms: safeAnswer(answers.terms),
+    applicant: safeAnswer(applicantUsername, "Reprezentant"),
+    applicant_mention: applicantMention,
+  };
+  return template
+    .replace(/\{([a-z0-9_]+)\}/gi, (match, key: string) => values[key] ?? match)
+    .slice(0, 1950);
+}
+
+export function allianceAnnouncementEmbed(
+  text: string,
+): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(0x7c8fbd)
+    .setDescription(text)
+    .setFooter({ text: "Pact confirmat · Regatul Cenușii" })
+    .setTimestamp();
 }
 
 export function allianceRecruitmentEmbed(
@@ -1675,12 +1737,21 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
 
     let announcementSent = false;
     try {
+      const inviteStats = await fetchAllianceInviteStats(
+        interaction.client,
+        claimedState.answers?.invite,
+      );
+      const announcementText = allianceAnnouncementText(
+        claimedState.answers!,
+        claimedState.applicantUsername ?? "Reprezentant",
+        applicantId,
+        ticketConfig.allianceAnnouncementTemplate,
+        inviteStats,
+      );
       const publicMessage = await publicChannel.send({
-        content: allianceAnnouncementText(
-          claimedState.answers!,
-          claimedState.applicantUsername ?? "Reprezentant",
-          applicantId,
-        ),
+        ...(ticketConfig.allianceAnnouncementMode === "embed"
+          ? { embeds: [allianceAnnouncementEmbed(announcementText)] }
+          : { content: announcementText }),
         allowedMentions: { parse: [], users: [applicantId] },
       });
       announcementSent = true;

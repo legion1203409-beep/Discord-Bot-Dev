@@ -3,6 +3,7 @@ import { loadTicketConfig } from "./db";
 export type TicketCategoryKind = "staff" | "partnership" | "help_report";
 
 export type TicketCompletionAction = "lock" | "notify_staff" | "keep_open";
+export type AllianceAnnouncementMode = "text" | "embed";
 
 export interface TicketQuestionConfig {
   key: string;
@@ -36,6 +37,8 @@ export interface TicketConfig {
   staffReviewRoleId: string;
   alliancePublicChannelId: string;
   allianceOwnerGuildId: string;
+  allianceAnnouncementTemplate: string;
+  allianceAnnouncementMode: AllianceAnnouncementMode;
   incompleteTimeoutMinutes: number;
   firstWarningMinutes: number;
   secondWarningMinutes: number;
@@ -56,6 +59,23 @@ export const DEFAULT_TICKET_CONFIG: TicketConfig = {
   staffReviewRoleId: envString("ORACLE_STAFF_REVIEW_ROLE_ID", "1472526137308745909"),
   alliancePublicChannelId: envString("ORACLE_ALLIANCE_PUBLIC_CHANNEL_ID", "1472997077373157602"),
   allianceOwnerGuildId: envString("ORACLE_ALLIANCE_OWNER_GUILD_ID", "1382035307607883816"),
+  allianceAnnouncementTemplate: [
+    "🤝 PACTUL CELOR DOUĂ REGATE",
+    "══════════════════════════",
+    "",
+    "🏰 Comunitatea parteneră: {server_name}",
+    "",
+    "📝 Descrierea serverului:",
+    "{description}",
+    "",
+    "👥 Membri: {members_total} total · {members_online} online",
+    "🔗 Link: {invite}",
+    "",
+    "👤 Contract completat de: {applicant_mention}",
+    "",
+    "Pact pecetluit · Regatul Cenușii",
+  ].join("\n"),
+  allianceAnnouncementMode: "text",
   incompleteTimeoutMinutes: 60,
   firstWarningMinutes: 20,
   secondWarningMinutes: 50,
@@ -209,6 +229,13 @@ export function normalizeTicketConfig(value: unknown): TicketConfig {
     staffReviewRoleId: validSnowflake(raw.staffReviewRoleId) ? raw.staffReviewRoleId : DEFAULT_TICKET_CONFIG.staffReviewRoleId,
     alliancePublicChannelId: validSnowflake(raw.alliancePublicChannelId) ? raw.alliancePublicChannelId : DEFAULT_TICKET_CONFIG.alliancePublicChannelId,
     allianceOwnerGuildId: validSnowflake(raw.allianceOwnerGuildId) ? raw.allianceOwnerGuildId : DEFAULT_TICKET_CONFIG.allianceOwnerGuildId,
+    allianceAnnouncementTemplate: textOrDefault(
+      raw.allianceAnnouncementTemplate,
+      DEFAULT_TICKET_CONFIG.allianceAnnouncementTemplate,
+      2_000,
+    ),
+    allianceAnnouncementMode:
+      raw.allianceAnnouncementMode === "embed" ? "embed" : DEFAULT_TICKET_CONFIG.allianceAnnouncementMode,
     incompleteTimeoutMinutes: numberOrDefault(raw.incompleteTimeoutMinutes, DEFAULT_TICKET_CONFIG.incompleteTimeoutMinutes, 10, 240),
     firstWarningMinutes: numberOrDefault(raw.firstWarningMinutes, DEFAULT_TICKET_CONFIG.firstWarningMinutes, 1, 180),
     secondWarningMinutes: numberOrDefault(raw.secondWarningMinutes, DEFAULT_TICKET_CONFIG.secondWarningMinutes, 2, 239),
