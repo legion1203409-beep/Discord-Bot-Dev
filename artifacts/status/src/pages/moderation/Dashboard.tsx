@@ -11,6 +11,7 @@ import {
   Settings,
   Shield,
   ShieldAlert,
+  Server,
   XCircle,
   Zap,
 } from "lucide-react";
@@ -19,6 +20,7 @@ import { Link } from "wouter";
 import { useModerationConfig, useCases, useActiveGuild, useAuditLogs } from "../../hooks/use-moderation-api";
 import { Switch } from "../../components/ui/switch";
 import { useToast } from "../../hooks/use-toast";
+import { DISCORD_INVITE } from "../../lib/public-constants";
 
 type ProtectionModuleKey = "wordFilter" | "linkBlock" | "antiRaid" | "antiSpam" | "antiFlood" | "ai";
 
@@ -30,6 +32,11 @@ export function DashboardOverview() {
   const { toast } = useToast();
   const [savingModule, setSavingModule] = useState<string | null>(null);
   const activeGuild = guilds.find((guild) => guild.id === guildId);
+  const activeGuildIcon = activeGuild?.icon
+    ? (/^https?:\/\//i.test(activeGuild.icon)
+      ? activeGuild.icon
+      : `https://cdn.discordapp.com/icons/${activeGuild.id}/${activeGuild.icon}.png?size=128`)
+    : null;
 
   if (!guildId) {
     return (
@@ -122,6 +129,34 @@ export function DashboardOverview() {
 
   return (
     <div className="space-y-8 pb-10 animate-in fade-in duration-500">
+      <a
+        href={DISCORD_INVITE}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="group flex w-full max-w-sm items-center gap-3 rounded-xl border border-primary/30 bg-gradient-to-br from-primary/20 via-card/90 to-background/80 px-3 py-3 shadow-lg transition-all hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-primary/10"
+        title={`Deschide invitația ${activeGuild?.name || "serverului"}`}
+        data-testid="link-dashboard-server-invite"
+      >
+        <span className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-primary/40 bg-background/80 text-primary shadow-inner">
+          {activeGuildIcon ? (
+            <img
+              src={activeGuildIcon}
+              alt=""
+              className="h-full w-full object-cover"
+              onError={(event) => { event.currentTarget.style.display = "none"; }}
+            />
+          ) : (
+            <Server className="h-6 w-6" aria-hidden="true" />
+          )}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block font-mono text-[9px] uppercase tracking-[0.16em] text-primary/80">Serverul oficial</span>
+          <strong className="block truncate font-display text-lg font-medium text-foreground">{activeGuild?.name || "Serverul meu"}</strong>
+          <span className="block truncate font-mono text-[10px] tracking-wider text-muted-foreground">{DISCORD_INVITE.replace(/^https?:\/\//, "")}</span>
+        </span>
+        <ArrowUpRight className="h-4 w-4 shrink-0 text-primary transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" aria-hidden="true" />
+      </a>
+
       <header className="flex flex-col gap-5 border-b border-border/60 pb-7 md:flex-row md:items-end md:justify-between">
         <div>
           <div className="mod-status-line mb-3">Sesiune autentificată</div>
