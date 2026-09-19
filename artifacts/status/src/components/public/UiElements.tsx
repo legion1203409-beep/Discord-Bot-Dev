@@ -52,7 +52,7 @@ export function Brand({ footer = false }: { footer?: boolean }) {
       <span className="brand-mark">
         <img src={dragonLogo} alt="" />
       </span>
-       <span className="brand-fire" data-aos="flip-left">
+       <span data-aos="flip-left">
         <strong>REGATUL</strong>
         <small>CENUȘII</small>
       </span>
