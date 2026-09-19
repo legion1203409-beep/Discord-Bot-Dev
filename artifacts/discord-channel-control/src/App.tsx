@@ -128,6 +128,18 @@ function Home() {
 
   return (
     <main className="control-app">
+      <div className="atmosphere" aria-hidden="true">
+        <span className="fire-glow fire-glow-left" />
+        <span className="fire-glow fire-glow-right" />
+        <span className="smoke smoke-one" />
+        <span className="smoke smoke-two" />
+        <span className="smoke smoke-three" />
+        <span className="spark spark-one" />
+        <span className="spark spark-two" />
+        <span className="spark spark-three" />
+        <span className="spark spark-four" />
+        <span className="spark spark-five" />
+      </div>
       <div className="shell">
         <header>
           <div className="brand-row">
