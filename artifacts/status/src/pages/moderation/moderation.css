@@ -127,8 +127,188 @@
 
 .mod-login-bg {
   background:
-    radial-gradient(circle at 50% 42%, hsl(356 42% 19% / .58), transparent 24rem),
+    radial-gradient(circle at 50% 42%, hsl(356 48% 24% / .46), transparent 24rem),
     linear-gradient(135deg, hsl(var(--background)) 0 52%, hsl(4 27% 10%) 100%);
+}
+
+.mod-login-stage {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  background-color: hsl(var(--background));
+  background-image:
+    linear-gradient(hsl(30 35% 84% / .028) 1px, transparent 1px),
+    linear-gradient(90deg, hsl(30 35% 84% / .028) 1px, transparent 1px),
+    radial-gradient(circle at 12% 18%, hsl(356 68% 40% / .16), transparent 24rem),
+    radial-gradient(circle at 86% 82%, hsl(28 72% 36% / .11), transparent 22rem),
+    radial-gradient(circle at 50% 44%, hsl(356 48% 24% / .46), transparent 29rem),
+    linear-gradient(135deg, hsl(var(--background)) 0 52%, hsl(4 27% 10%) 100%);
+  background-size: 56px 56px, 56px 56px, auto, auto, auto, auto;
+  animation: login-grid-drift 24s ease-in-out infinite alternate;
+}
+
+.mod-login-stage::before {
+  z-index: -2;
+  background:
+    linear-gradient(112deg, transparent 0 42%, hsl(356 58% 57% / .06) 42.1%, transparent 42.3%),
+    linear-gradient(292deg, transparent 0 64%, hsl(28 72% 58% / .045) 64.1%, transparent 64.3%),
+    radial-gradient(ellipse at 50% 50%, transparent 0 32%, hsl(0 0% 0% / .28) 100%);
+  animation: login-light-sweep 18s ease-in-out infinite alternate;
+}
+
+.mod-login-stage::after {
+  z-index: 5;
+  opacity: .025;
+}
+
+.mod-login-ambient {
+  position: absolute;
+  z-index: -1;
+  width: 25rem;
+  height: 25rem;
+  border: 1px solid hsl(356 58% 57% / .13);
+  border-radius: 50%;
+  pointer-events: none;
+  transform: rotate(-22deg) scaleY(.45);
+  box-shadow:
+    0 0 0 2.5rem hsl(356 58% 57% / .025),
+    0 0 0 5rem hsl(356 58% 57% / .02),
+    inset 0 0 2rem hsl(28 72% 58% / .06);
+  animation: login-orbit 22s linear infinite;
+}
+
+.mod-login-ambient::before,
+.mod-login-ambient::after {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: hsl(28 72% 68% / .8);
+  box-shadow: 0 0 18px hsl(28 72% 58% / .75);
+  content: "";
+}
+
+.mod-login-ambient::before { top: 6%; left: 29%; }
+.mod-login-ambient::after { right: 13%; bottom: 20%; width: 3px; height: 3px; }
+
+.mod-login-ambient--one { top: -8rem; right: -7rem; }
+.mod-login-ambient--two {
+  bottom: -10rem;
+  left: -10rem;
+  width: 31rem;
+  height: 31rem;
+  border-color: hsl(28 72% 58% / .1);
+  animation-direction: reverse;
+  animation-duration: 30s;
+}
+
+.mod-login-rune-field {
+  position: absolute;
+  right: clamp(1.5rem, 8vw, 9rem);
+  bottom: 2rem;
+  display: flex;
+  gap: 1.2rem;
+  color: hsl(30 22% 91% / .22);
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .22em;
+  pointer-events: none;
+  transform: rotate(-9deg);
+}
+
+.mod-login-rune-field span:nth-child(2),
+.mod-login-rune-field span:nth-child(4) {
+  transform: translateY(-.6rem);
+  color: hsl(356 62% 66% / .42);
+}
+
+.mod-login-card {
+  border-color: hsl(30 22% 91% / .13);
+  background:
+    linear-gradient(145deg, hsl(0 20% 12% / .94), hsl(0 18% 6% / .97)),
+    radial-gradient(circle at 15% 0%, hsl(356 62% 45% / .2), transparent 18rem);
+  box-shadow:
+    inset 0 1px hsl(30 30% 92% / .1),
+    0 28px 90px hsl(0 50% 2% / .5),
+    0 0 0 1px hsl(356 58% 57% / .025);
+  animation: login-card-arrive .7s cubic-bezier(.2,.8,.2,1) both;
+}
+
+.mod-login-card::before {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, hsl(30 35% 84% / .07), transparent 26%, transparent 75%, hsl(356 58% 57% / .07));
+  content: "";
+  pointer-events: none;
+}
+
+.mod-login-card-line {
+  position: absolute;
+  top: 0;
+  right: 22%;
+  left: 22%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, hsl(28 72% 68% / .72), transparent);
+  box-shadow: 0 0 18px hsl(28 72% 58% / .4);
+  opacity: .8;
+}
+
+.mod-login-card .mod-card-glow {
+  width: 16rem;
+  height: 16rem;
+  background: hsl(356 72% 52%);
+  filter: blur(74px);
+  opacity: .11;
+  animation: login-glow-drift 9s ease-in-out infinite alternate;
+}
+
+.mod-login-card .mod-brand-mark {
+  box-shadow:
+    inset 0 1px hsl(30 30% 92% / .14),
+    0 0 0 5px hsl(356 58% 57% / .04),
+    0 8px 30px hsl(356 58% 20% / .35);
+  animation: login-mark-pulse 4.8s ease-in-out infinite;
+}
+
+.mod-login-card button {
+  box-shadow: 0 12px 28px hsl(356 58% 20% / .2);
+  transition: transform 180ms ease, box-shadow 180ms ease, filter 180ms ease;
+}
+
+.mod-login-card button:hover {
+  filter: saturate(1.08);
+  transform: translateY(-2px);
+  box-shadow: 0 16px 34px hsl(356 58% 20% / .34);
+}
+
+@keyframes login-grid-drift {
+  from { background-position: 0 0, 0 0, 0 0, 0 0, 0 0, 0 0; }
+  to { background-position: 28px -18px, -18px 24px, 2% -3%, -3% 2%, 0 0, 0 0; }
+}
+
+@keyframes login-light-sweep {
+  from { opacity: .55; transform: translate3d(-1%, -1%, 0) scale(1); }
+  to { opacity: 1; transform: translate3d(1%, 1%, 0) scale(1.04); }
+}
+
+@keyframes login-orbit {
+  from { transform: rotate(-22deg) scaleY(.45); }
+  to { transform: rotate(338deg) scaleY(.45); }
+}
+
+@keyframes login-card-arrive {
+  from { opacity: 0; transform: translateY(14px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes login-glow-drift {
+  from { transform: translate(-18%, -18%) scale(.85); opacity: .07; }
+  to { transform: translate(12%, 12%) scale(1.15); opacity: .15; }
+}
+
+@keyframes login-mark-pulse {
+  0%, 100% { box-shadow: inset 0 1px hsl(30 30% 92% / .14), 0 0 0 5px hsl(356 58% 57% / .04), 0 8px 30px hsl(356 58% 20% / .35); }
+  50% { box-shadow: inset 0 1px hsl(30 30% 92% / .18), 0 0 0 8px hsl(356 58% 57% / .065), 0 10px 36px hsl(356 58% 20% / .46); }
 }
 
 /* The operator console is intentionally denser than the public site: ember
@@ -300,7 +480,12 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .mod-card, .mod-sidebar-item, .mod-skeleton, .mod-tab-content { animation: none; transition: none; }
+  .mod-card, .mod-sidebar-item, .mod-skeleton, .mod-tab-content,
+  .mod-login-stage, .mod-login-stage::before, .mod-login-ambient,
+  .mod-login-card, .mod-login-card .mod-card-glow, .mod-login-card .mod-brand-mark {
+    animation: none;
+    transition: none;
+  }
 }
 
 @media (max-width: 767px) {

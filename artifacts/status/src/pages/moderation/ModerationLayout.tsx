@@ -102,9 +102,15 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
     const authorizationUrl = sameOriginDiscordUrl(authConfig?.authorizationUrl);
 
     return (
-      <div className="mod-shell dark mod-login-bg flex items-center justify-center p-4">
-        <div className="w-full max-w-md bg-card border border-border p-7 sm:p-9 rounded-2xl relative overflow-hidden mod-card shadow-2xl">
+      <div className="mod-shell dark mod-login-bg mod-login-stage flex items-center justify-center p-4">
+        <div className="mod-login-ambient mod-login-ambient--one" aria-hidden="true" />
+        <div className="mod-login-ambient mod-login-ambient--two" aria-hidden="true" />
+        <div className="mod-login-rune-field" aria-hidden="true">
+          <span>01</span><span>03</span><span>07</span><span>11</span>
+        </div>
+        <div className="w-full max-w-md bg-card border border-border p-7 sm:p-9 rounded-2xl relative overflow-hidden mod-card mod-login-card shadow-2xl">
           <div className="mod-card-glow" />
+          <div className="mod-login-card-line" aria-hidden="true" />
           <div className="relative">
           <div className="mb-7 flex items-center gap-3">
             <div className="mod-brand-mark">
