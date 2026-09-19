@@ -53,3 +53,4 @@
 - [Multi-artifact deployment startup](multi-artifact-deployment-startup.md) — a VM deployment with multiple runnable artifacts can emit transient 500 healthchecks until every configured port is open.
 - [Moderation config ETag retries](moderation-config-etag-retry.md) — protection saves must refetch and reapply the user's change after a stale-version conflict.
 - [Atomic protection toggles](atomic-protection-toggles.md) — dashboard toggles must mutate one protection key server-side, not PUT a stale full config snapshot.
+- [AOS animation ownership](aos-animation-ownership.md) — elements using data-aos must not also have a competing CSS animation that owns opacity or transform.
