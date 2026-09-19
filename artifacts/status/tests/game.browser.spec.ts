@@ -30,7 +30,7 @@ test("public game category is reachable and survives a direct reload", async ({ 
   await page.locator('a[href="/joc"]:visible').first().click();
   await expect(page).toHaveURL("/joc");
   await expect(page.locator("h1")).toBeVisible();
-  await expect(page).toHaveTitle(/Joc|Ghid/i);
+  await expect(page).toHaveTitle(/Detalii server|Joc|Ghid/i);
   await expect(page.locator("body")).toContainText("/profil");
   await expect(page.locator("body")).toContainText("/clasa");
   await expect(page.locator("body")).toContainText("/inventar");
