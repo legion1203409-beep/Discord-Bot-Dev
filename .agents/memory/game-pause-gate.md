@@ -7,4 +7,4 @@ Stopping a guild's game must be enforced at two boundaries: scheduled producers 
 
 **Why:** Existing timers and already-posted Discord buttons continue to exist after a scheduler is stopped; pausing only the main scheduler lets old interactions or separate systems such as Tribute keep mutating gameplay.
 
-**How to apply:** Any new gameplay producer, timer callback, reward settlement, or interactive handler must check the guild pause state. Keep Oracle's manual enable/disable state independent from gameplay pause, including Oracle chat, `/profetie`, help questions, Council lifecycle, and Council buttons. Administrative start/stop and non-game support flows may remain available while paused.
+**How to apply:** Any new gameplay producer, timer callback, reward settlement, or interactive handler must check the guild pause state. Keep Oracle's manual enable/disable state independent from gameplay pause, including Oracle chat, `/profetie`, help questions, Council lifecycle, Council buttons, and verification buttons. Administrative start/stop and non-game support flows must remain available while paused.

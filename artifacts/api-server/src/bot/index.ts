@@ -4930,7 +4930,8 @@ export async function startBot(onReady?: () => void): Promise<void> {
         allowedWhileStopped =
           interaction.customId.startsWith("ticket_") ||
           interaction.customId.startsWith("help_") ||
-          interaction.customId.startsWith("council_");
+          interaction.customId.startsWith("council_") ||
+          interaction.customId.startsWith("verification_");
       } else if (interaction.isStringSelectMenu()) {
         allowedWhileStopped = interaction.customId.startsWith("ticket_questions_");
       } else if (interaction.isModalSubmit()) {
@@ -5525,7 +5526,8 @@ export async function startBot(onReady?: () => void): Promise<void> {
         allowedWhileStopped =
           interaction.customId.startsWith("ticket_") ||
           interaction.customId.startsWith("help_") ||
-          interaction.customId.startsWith("council_");
+          interaction.customId.startsWith("council_") ||
+          interaction.customId.startsWith("verification_");
       } else if (interaction.isStringSelectMenu()) {
         allowedWhileStopped = interaction.customId.startsWith("ticket_questions_");
       } else if (interaction.isModalSubmit()) {
