@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Bot, Loader2, Save, Radio, Megaphone, Ticket, ShieldCheck, PlayCircle, RotateCcw, CheckCircle2 } from "lucide-react";
+import { Activity, Bot, Loader2, Save, Radio, Megaphone, Ticket, ShieldCheck, PlayCircle, RotateCcw, CheckCircle2 } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Textarea } from "../../components/ui/textarea";
@@ -620,7 +620,9 @@ export function BotControlPage() {
          <TabsList className="grid h-auto w-full grid-cols-2 gap-1 rounded-xl border border-border bg-card p-1 sm:grid-cols-5">
            <TabsTrigger value="channels" className="mod-tab-trigger gap-2 py-2.5"><Radio className="h-4 w-4" /> Canale</TabsTrigger>
            <TabsTrigger value="tickets" className="mod-tab-trigger gap-2 py-2.5"><Ticket className="h-4 w-4" /> Tichete</TabsTrigger>
+           <TabsTrigger value="verification" className="mod-tab-trigger gap-2 py-2.5"><ShieldCheck className="h-4 w-4" /> Verificare</TabsTrigger>
            <TabsTrigger value="messages" className="mod-tab-trigger gap-2 py-2.5"><Megaphone className="h-4 w-4" /> Mesaje</TabsTrigger>
+           <TabsTrigger value="statistics" className="mod-tab-trigger gap-2 py-2.5"><Activity className="h-4 w-4" /> Statistici</TabsTrigger>
         </TabsList>
 
          <TabsContent value="channels" className="mod-tab-content mt-0">
@@ -1119,7 +1121,7 @@ export function BotControlPage() {
           </section>
         </TabsContent>
 
-        <TabsContent value="messages" className="mt-0 space-y-5">
+        <TabsContent value="verification" className="mt-0 space-y-5">
           <section className="space-y-4 rounded-xl border border-border bg-card p-5">
             <div className="flex items-start gap-3">
               <ShieldCheck className="mt-1 h-5 w-5 text-primary" />
@@ -1171,6 +1173,9 @@ export function BotControlPage() {
             </div>
           </section>
 
+        </TabsContent>
+
+        <TabsContent value="messages" className="mt-0 space-y-5">
           <section className="space-y-4 rounded-xl border border-border bg-card p-5">
             <div className="flex items-start gap-3">
               <Megaphone className="mt-1 h-5 w-5 text-primary" />
@@ -1193,7 +1198,9 @@ export function BotControlPage() {
               </label>
             </div>
           </section>
+        </TabsContent>
 
+        <TabsContent value="statistics" className="mt-0 space-y-5">
           <section className="space-y-5 rounded-xl border border-border bg-card p-5">
             <div className="flex items-start gap-3">
               <Megaphone className="mt-1 h-5 w-5 text-primary" />
