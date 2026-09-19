@@ -263,19 +263,35 @@
 }
 
 .mod-login-card .mod-brand-mark {
+  overflow: hidden;
+  border-color: transparent;
+  border-radius: 50%;
+  background: transparent;
   box-shadow:
-    inset 0 1px hsl(30 30% 92% / .14),
-    0 0 0 5px hsl(356 58% 57% / .04),
-    0 8px 30px hsl(356 58% 20% / .35);
+    0 0 0 5px hsl(356 58% 57% / .035),
+    0 8px 30px hsl(356 58% 20% / .25);
   animation: login-mark-pulse 4.8s ease-in-out infinite;
 }
 
 .mod-login-card .mod-brand-logo {
   width: 132%;
   height: 132%;
+  border-radius: 50%;
   object-fit: cover;
   mix-blend-mode: screen;
   filter: saturate(.7) contrast(1.12) brightness(.92);
+  -webkit-mask-image: radial-gradient(circle, #000 48%, transparent 76%);
+  mask-image: radial-gradient(circle, #000 48%, transparent 76%);
+}
+
+.mod-shell input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+.mod-shell input[type="number"]::-webkit-outer-spin-button,
+.mod-shell input[type="number"]::-webkit-inner-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
 }
 
 .mod-login-card button {
