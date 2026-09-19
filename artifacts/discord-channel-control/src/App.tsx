@@ -25,7 +25,8 @@ const channels = [
   { id: '121708440222', name: 'ora-umbrelor', parent: 'JOC ȘI EVENIMENTE', type: 'text' },
   { id: '121708440223', name: 'dragonul-stins', parent: 'JOC ȘI EVENIMENTE', type: 'text' },
   { id: '121708440224', name: 'negustorul', parent: 'JOC ȘI EVENIMENTE', type: 'text' },
-  { id: '121708440225', name: 'clasamente', parent: 'JOC ȘI EVENIMENTE', type: 'text' },
+  { id: '121708440225', name: 'top-ora-umbrelor', parent: 'JOC ȘI EVENIMENTE', type: 'text' },
+  { id: '121708440226', name: 'top-dragonul-stins', parent: 'JOC ȘI EVENIMENTE', type: 'text' },
   { id: '121708440231', name: 'consiliul-umbrelor', parent: 'ADMINISTRATOR', type: 'text' },
   { id: '121708440232', name: 'chivotul-fratiei', parent: 'ADMINISTRATOR', type: 'text' },
   { id: '121708440240', name: 'AUDIT', parent: 'ADMINISTRATOR', type: 'category' },
@@ -41,7 +42,7 @@ const categories = [
 const roles = ['Administrator', 'Moderator', 'Cronicar', 'Cavaler al Ordinului'];
 const defaultSelected: Record<ChannelKey, string> = {
   main: channels[0].id, event: channels[1].id, boss: channels[2].id, trader: channels[3].id,
-  eventTop: channels[4].id, bossTop: channels[4].id, council: channels[5].id, fratia: channels[6].id,
+  eventTop: channels[4].id, bossTop: channels[5].id, council: channels[6].id, fratia: channels[7].id,
 };
 const defaultPermissions: Record<string, PermissionState> = Object.fromEntries(categories.map(({ key }) => [key, { roles: ['Moderator'], history: true, send: true }]));
 
