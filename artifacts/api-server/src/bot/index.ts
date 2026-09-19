@@ -671,7 +671,7 @@ async function handleProfetie(interaction: ChatInputCommandInteraction) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   if (!isOracleEnabled(interaction.guildId!)) {
     await interaction.editReply(
-      "🛑 Oracle AI este oprit momentan. Un administrator îl poate reporni cu `/startai`.",
+      getGameplayConfig(interaction.guildId ?? "").messages.oraclePaused,
     );
     return;
   }
@@ -4985,7 +4985,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
         if (interaction.isRepliable()) {
           dispatch(
             interaction.reply({
-              content: "⏸️ Jocul este oprit momentan. Un administrator îl poate reporni cu `/startjoc`.",
+              content: getGameplayConfig(interaction.guildId ?? "").messages.gamePaused,
               flags: MessageFlags.Ephemeral,
             }),
           );
@@ -5581,7 +5581,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
         if (interaction.isRepliable()) {
           dispatch(
             interaction.reply({
-              content: "⏸️ Jocul este oprit momentan. Un administrator îl poate reporni cu `/startjoc`.",
+              content: getGameplayConfig(interaction.guildId ?? "").messages.gamePaused,
               flags: MessageFlags.Ephemeral,
             }),
           );

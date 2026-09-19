@@ -6,6 +6,11 @@ import {
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
 import { getChannel } from "./channel-config";
+import {
+  DEFAULT_DAILY_STATS_EMBED_CONFIG,
+  loadDailyStatsEmbedConfig,
+  type DailyStatsEmbedConfig,
+} from "./db";
 
 const STATS_TIME_ZONE = process.env.DISCORD_STATS_TIMEZONE || "Europe/Bucharest";
 const REPORT_CHECK_INTERVAL_MS = 60 * 1000;
@@ -269,9 +274,28 @@ function bar(value: number, max: number, width: number): string {
   return "█".repeat(Math.min(width, filled)) + "░".repeat(Math.max(0, width - filled));
 }
 
+function renderDailyStatsText(
+  template: string,
+  guildName: string,
+  report: DailyStatsReport,
+): string {
+  const values: Record<string, string> = {
+    guild: guildName,
+    date: formatStatsDay(report.day),
+    messages: report.metrics.messages.toLocaleString("ro-RO"),
+    uniqueUsers: report.metrics.uniqueUsers.toLocaleString("ro-RO"),
+    boosts: report.metrics.boosts.toLocaleString("ro-RO"),
+    joins: report.metrics.joins.toLocaleString("ro-RO"),
+    leaves: report.metrics.leaves.toLocaleString("ro-RO"),
+    peakVoice: report.metrics.peakVoice.toLocaleString("ro-RO"),
+  };
+  return template.replace(/\{([a-zA-Z0-9_]+)\}/g, (match, key: string) => values[key] ?? match);
+}
+
 export function buildDailyStatsEmbed(
   guildName: string,
   report: DailyStatsReport,
+  config: DailyStatsEmbedConfig = DEFAULT_DAILY_STATS_EMBED_CONFIG,
 ): EmbedBuilder {
   const activityMax = Math.max(...report.activity.map((item) => item.messages), 1);
   const channelMax = Math.max(...report.topChannels.map((item) => item.messages), 1);
@@ -282,23 +306,24 @@ export function buildDailyStatsEmbed(
     ? report.topChannels
       .map((item, index) => `${index + 1}. **#${item.channelName}**  ${bar(item.messages, channelMax, 10)} ${item.messages}`)
       .join("\n")
-    : "Încă nu există mesaje înregistrate.";
+    : config.emptyChannelsText;
 
   return new EmbedBuilder()
-    .setColor("#7c3aed")
-    .setTitle(`Statistici Zilnice: ${guildName}`)
-    .setDescription(`Raport pentru **${formatStatsDay(report.day)}**\nDatele sunt agregate de bot și sunt identice cu raportul de pe site.`)
+    .setColor(Number.parseInt(config.color.slice(1), 16))
+    .setAuthor({ name: "ORACOLUL CENUȘII · COMMUNITY INSIGHTS" })
+    .setTitle(renderDailyStatsText(config.title, guildName, report))
+    .setDescription(renderDailyStatsText(config.description, guildName, report))
     .addFields(
-      { name: "💬 Mesaje", value: report.metrics.messages.toLocaleString("ro-RO"), inline: true },
-      { name: "👥 Utilizatori unici", value: report.metrics.uniqueUsers.toLocaleString("ro-RO"), inline: true },
-      { name: "🚀 Boost-uri", value: report.metrics.boosts.toLocaleString("ro-RO"), inline: true },
-      { name: "🟢 Intrări", value: report.metrics.joins.toLocaleString("ro-RO"), inline: true },
-      { name: "🔴 Ieșiri", value: report.metrics.leaves.toLocaleString("ro-RO"), inline: true },
-      { name: "🔊 Vârf vocal", value: report.metrics.peakVoice.toLocaleString("ro-RO"), inline: true },
-      { name: "📈 Activitate — ultimele 7 zile", value: `\`\`\`\n${activityText}\n\`\`\`` },
-      { name: "🔥 Top canale", value: channelText },
+      { name: config.metricLabels.messages, value: report.metrics.messages.toLocaleString("ro-RO"), inline: true },
+      { name: config.metricLabels.uniqueUsers, value: report.metrics.uniqueUsers.toLocaleString("ro-RO"), inline: true },
+      { name: config.metricLabels.boosts, value: report.metrics.boosts.toLocaleString("ro-RO"), inline: true },
+      { name: config.metricLabels.joins, value: report.metrics.joins.toLocaleString("ro-RO"), inline: true },
+      { name: config.metricLabels.leaves, value: report.metrics.leaves.toLocaleString("ro-RO"), inline: true },
+      { name: config.metricLabels.peakVoice, value: report.metrics.peakVoice.toLocaleString("ro-RO"), inline: true },
+      { name: config.activityTitle, value: `\`\`\`\n${activityText}\n\`\`\`` },
+      { name: config.channelsTitle, value: channelText },
     )
-    .setFooter({ text: "Oracolul Cenușii · Raport zilnic" })
+    .setFooter({ text: config.footer })
     .setTimestamp(new Date(`${report.day}T12:00:00.000Z`));
 }
 
@@ -330,7 +355,8 @@ export async function publishDailyStatsReport(client: Client, guildId: string, d
   const guild = client.guilds.cache.get(guildId) ?? await client.guilds.fetch(guildId).catch(() => null);
   if (!guild) return false;
   const report = await getDailyStats(guildId, day);
-  const message = await channel.send({ embeds: [buildDailyStatsEmbed(guild.name, report)] });
+  const config = await loadDailyStatsEmbedConfig(guildId);
+  const message = await channel.send({ embeds: [buildDailyStatsEmbed(guild.name, report, config)] });
   await markReportPublished(guildId, day, message.id);
   logger.info({ guildId, day, channelId, messageId: message.id }, "Published daily Discord statistics report");
   return true;

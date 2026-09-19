@@ -108,7 +108,7 @@ import
 
 import 
 {
- saveAllianceRecruitmentText, saveChannelConfig, loadAllianceRecruitmentText, loadChannelConfig, saveTicketConfig, loadTicketConfig, type ChannelConfig 
+ loadDailyStatsEmbedConfig, loadAllianceRecruitmentText, loadChannelConfig, loadTicketConfig, saveAllianceRecruitmentText, saveChannelConfig, saveDailyStatsEmbedConfig, saveTicketConfig, type ChannelConfig
 }
  from "../bot/db"
 ;
@@ -194,6 +194,42 @@ const verificationConfigSchema = z.object({
   panelMessageId: z.union([snowflake, z.literal("")]),
 }).strict();
 
+const DEFAULT_DAILY_STATS_EMBED_CONFIG = {
+  title: "📊 Statistici Zilnice · {guild}",
+  description: "O privire asupra comunității pentru **{date}**.\n\nDatele sunt colectate de Oracolul Cenușii și sunt aceleași cu raportul de pe site.",
+  color: "#7c3aed",
+  footer: "Oracolul Cenușii · Community Insights",
+  activityTitle: "📈 Activitate · ultimele 7 zile",
+  channelsTitle: "🔥 Top 5 canale active",
+  emptyChannelsText: "Încă nu există mesaje înregistrate pentru această zi.",
+  metricLabels: {
+    messages: "💬 Mesaje",
+    uniqueUsers: "👥 Utilizatori unici",
+    boosts: "🚀 Boost-uri",
+    joins: "🟢 Intrări",
+    leaves: "🔴 Ieșiri",
+    peakVoice: "🔊 Vârf vocal",
+  },
+};
+
+const dailyStatsEmbedConfigSchema = z.object({
+  title: z.string().trim().min(1).max(256),
+  description: z.string().trim().min(1).max(4_000),
+  color: z.string().trim().regex(/^#[0-9a-f]{6}$/i),
+  footer: z.string().trim().min(1).max(2_048),
+  activityTitle: z.string().trim().min(1).max(256),
+  channelsTitle: z.string().trim().min(1).max(256),
+  emptyChannelsText: z.string().trim().min(1).max(1_024),
+  metricLabels: z.object({
+    messages: z.string().trim().min(1).max(256),
+    uniqueUsers: z.string().trim().min(1).max(256),
+    boosts: z.string().trim().min(1).max(256),
+    joins: z.string().trim().min(1).max(256),
+    leaves: z.string().trim().min(1).max(256),
+    peakVoice: z.string().trim().min(1).max(256),
+  }).strict(),
+}).strict().optional();
+
 export const ticketQuestionConfigSchema = z.object(
 {
 
@@ -274,6 +310,7 @@ export const botControlSchema = z.object(
   // endpoint already returns an empty string when no override is stored, so
   // PUT must accept that same round-trip value.
   allianceRecruitmentText: z.string().trim().max(2_000),
+  dailyStats: dailyStatsEmbedConfigSchema,
   tickets: z.object(
 {
 
@@ -311,6 +348,13 @@ export const botControlSchema = z.object(
   gameplayConfig: z.object(
 {
     paused: z.boolean(),
+    messages: z.object({
+      gamePaused: z.string().trim().min(1).max(2_000),
+      oraclePaused: z.string().trim().min(1).max(2_000),
+    }).strict().default({
+      gamePaused: "⏸️ Jocul este oprit momentan. Un administrator îl poate reporni cu `/startjoc`.",
+      oraclePaused: "🛑 Oracle AI este oprit momentan. Un administrator îl poate reporni cu `/startai`.",
+    }),
 
     events: z.object(
 {
@@ -1151,11 +1195,13 @@ router.get("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   const guildId = parse(snowflake, req.params.guildId);
   await sessionAndGuild(req, guildId, "config");
   await initGameplayConfig(guildId);
-  const [channels, allianceRecruitmentText, tickets, verification] = await Promise.all([
+  const loadDailyStats = optionalExport(() => loadDailyStatsEmbedConfig);
+  const [channels, allianceRecruitmentText, tickets, verification, dailyStats] = await Promise.all([
     loadChannelConfig(guildId),
     loadAllianceRecruitmentText(guildId),
     loadTicketConfig(guildId),
     optionalExport(() => loadVerificationConfig)?.(guildId) ?? Promise.resolve(null),
+    loadDailyStats?.(guildId) ?? Promise.resolve(DEFAULT_DAILY_STATS_EMBED_CONFIG),
   ]);
   res.set("Cache-Control", "no-store").json({
     channels: channels ?? {},
@@ -1163,6 +1209,7 @@ router.get("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
     tickets: normalizeTicketConfig(tickets),
     gameplayConfig: getGameplayConfig(guildId),
     verification: normalizeVerificationConfig(verification),
+    dailyStats,
     discordLive: Boolean(getModerationClient()?.isReady()),
   });
 }));
@@ -1182,12 +1229,14 @@ router.post("/guilds/:guildId/bot-control/provision-channels", asyncRoute(async 
   }
 
   await initGameplayConfig(guildId);
-  const [channelConfig, ticketConfig, moderationSnapshot, verification, allianceRecruitmentText] = await Promise.all([
+  const loadDailyStats = optionalExport(() => loadDailyStatsEmbedConfig);
+  const [channelConfig, ticketConfig, moderationSnapshot, verification, allianceRecruitmentText, dailyStats] = await Promise.all([
     loadChannelConfig(guildId),
     loadTicketConfig(guildId),
     moderationStore.getConfig(guildId),
     loadVerificationConfig(guildId),
     loadAllianceRecruitmentText(guildId),
+    loadDailyStats?.(guildId) ?? Promise.resolve(DEFAULT_DAILY_STATS_EMBED_CONFIG),
   ]);
   const provisioned = await provisionGuildChannels(guild, {
     channelConfig: channelConfig ?? {},
@@ -1212,6 +1261,7 @@ router.post("/guilds/:guildId/bot-control/provision-channels", asyncRoute(async 
     tickets: provisioned.ticketConfig,
     gameplayConfig: getGameplayConfig(guildId),
     verification: provisioned.verification,
+    dailyStats,
     discordLive: true,
     provisioning: {
       created: provisioned.created,
@@ -1230,6 +1280,9 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   ) as ChannelConfig;
   await saveChannelConfig(guildId, channels);
   await saveAllianceRecruitmentText(guildId, value.allianceRecruitmentText);
+  const dailyStats = value.dailyStats ?? DEFAULT_DAILY_STATS_EMBED_CONFIG;
+  const saveDailyStats = optionalExport(() => saveDailyStatsEmbedConfig);
+  if (saveDailyStats) await saveDailyStats(guildId, dailyStats);
   await saveTicketConfig(guildId, tickets);
   await initGameplayConfig(guildId);
   const previousGameplayConfig = getGameplayConfig(guildId);
@@ -1269,6 +1322,7 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
     tickets,
     gameplayConfig,
     verification: savedVerification,
+    dailyStats,
     discordLive: Boolean(client?.isReady()),
   });
 }));

@@ -1,5 +1,9 @@
 export interface GameplayConfig {
   paused: boolean;
+  messages: {
+    gamePaused: string;
+    oraclePaused: string;
+  };
   events: {
     eventDurationMinutes: number;
     eventCooldownMinMinutes: number;
@@ -27,6 +31,10 @@ export interface GameplayConfig {
 
 export const DEFAULT_GAMEPLAY_CONFIG: GameplayConfig = {
   paused: false,
+  messages: {
+    gamePaused: "⏸️ Jocul este oprit momentan. Un administrator îl poate reporni cu `/startjoc`.",
+    oraclePaused: "🛑 Oracle AI este oprit momentan. Un administrator îl poate reporni cu `/startai`.",
+  },
   events: {
     eventDurationMinutes: 60,
     eventCooldownMinMinutes: 10,
@@ -60,8 +68,13 @@ function multiplier(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
+function message(value: unknown, fallback: string): string {
+  return typeof value === "string" && value.trim() ? value.trim().slice(0, 2_000) : fallback;
+}
+
 export function normalizeGameplayConfig(value: unknown): GameplayConfig {
   const input = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const messages = input.messages && typeof input.messages === "object" ? input.messages as Record<string, unknown> : {};
   const events = input.events && typeof input.events === "object" ? input.events as Record<string, unknown> : {};
   const missions = input.missions && typeof input.missions === "object" ? input.missions as Record<string, unknown> : {};
   const economy = input.economy && typeof input.economy === "object" ? input.economy as Record<string, unknown> : {};
@@ -77,6 +90,10 @@ export function normalizeGameplayConfig(value: unknown): GameplayConfig {
 
   return {
     paused: input.paused === true,
+    messages: {
+      gamePaused: message(messages.gamePaused, DEFAULT_GAMEPLAY_CONFIG.messages.gamePaused),
+      oraclePaused: message(messages.oraclePaused, DEFAULT_GAMEPLAY_CONFIG.messages.oraclePaused),
+    },
     events: {
       eventDurationMinutes: positiveInt(events.eventDurationMinutes, DEFAULT_GAMEPLAY_CONFIG.events.eventDurationMinutes),
       eventCooldownMinMinutes: positiveInt(events.eventCooldownMinMinutes, DEFAULT_GAMEPLAY_CONFIG.events.eventCooldownMinMinutes),

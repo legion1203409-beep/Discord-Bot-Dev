@@ -2314,6 +2314,105 @@ export async function loadChannelConfig(guildId: string): Promise<ChannelConfig 
 
 const GAMEPLAY_CONFIG_KEY = "gameplay_config";
 const ALLIANCE_RECRUITMENT_TEXT_KEY = "alliance_recruitment_text";
+const DAILY_STATS_CONFIG_KEY = "daily_stats_config";
+
+export interface DailyStatsEmbedConfig {
+  title: string;
+  description: string;
+  color: string;
+  footer: string;
+  activityTitle: string;
+  channelsTitle: string;
+  emptyChannelsText: string;
+  metricLabels: {
+    messages: string;
+    uniqueUsers: string;
+    boosts: string;
+    joins: string;
+    leaves: string;
+    peakVoice: string;
+  };
+}
+
+export const DEFAULT_DAILY_STATS_EMBED_CONFIG: DailyStatsEmbedConfig = {
+  title: "📊 Statistici Zilnice · {guild}",
+  description: "O privire asupra comunității pentru **{date}**.\n\nDatele sunt colectate de Oracolul Cenușii și sunt aceleași cu raportul de pe site.",
+  color: "#7c3aed",
+  footer: "Oracolul Cenușii · Community Insights",
+  activityTitle: "📈 Activitate · ultimele 7 zile",
+  channelsTitle: "🔥 Top 5 canale active",
+  emptyChannelsText: "Încă nu există mesaje înregistrate pentru această zi.",
+  metricLabels: {
+    messages: "💬 Mesaje",
+    uniqueUsers: "👥 Utilizatori unici",
+    boosts: "🚀 Boost-uri",
+    joins: "🟢 Intrări",
+    leaves: "🔴 Ieșiri",
+    peakVoice: "🔊 Vârf vocal",
+  },
+};
+
+function normalizeDailyStatsEmbedConfig(value: unknown): DailyStatsEmbedConfig {
+  const input = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const labels = input.metricLabels && typeof input.metricLabels === "object"
+    ? input.metricLabels as Record<string, unknown>
+    : {};
+  const text = (key: keyof Omit<DailyStatsEmbedConfig, "metricLabels" | "color">): string => {
+    const current = input[key];
+    const fallback = DEFAULT_DAILY_STATS_EMBED_CONFIG[key];
+    return typeof current === "string" && current.trim() ? current.trim() : fallback;
+  };
+  const color = typeof input.color === "string" && /^#[0-9a-f]{6}$/i.test(input.color.trim())
+    ? input.color.trim()
+    : DEFAULT_DAILY_STATS_EMBED_CONFIG.color;
+  const label = (key: keyof DailyStatsEmbedConfig["metricLabels"]): string => {
+    const current = labels[key];
+    return typeof current === "string" && current.trim()
+      ? current.trim()
+      : DEFAULT_DAILY_STATS_EMBED_CONFIG.metricLabels[key];
+  };
+
+  return {
+    title: text("title").slice(0, 256),
+    description: text("description").slice(0, 4_000),
+    color,
+    footer: text("footer").slice(0, 2_048),
+    activityTitle: text("activityTitle").slice(0, 256),
+    channelsTitle: text("channelsTitle").slice(0, 256),
+    emptyChannelsText: text("emptyChannelsText").slice(0, 1_024),
+    metricLabels: {
+      messages: label("messages").slice(0, 256),
+      uniqueUsers: label("uniqueUsers").slice(0, 256),
+      boosts: label("boosts").slice(0, 256),
+      joins: label("joins").slice(0, 256),
+      leaves: label("leaves").slice(0, 256),
+      peakVoice: label("peakVoice").slice(0, 256),
+    },
+  };
+}
+
+export async function saveDailyStatsEmbedConfig(guildId: string, config: DailyStatsEmbedConfig): Promise<void> {
+  await ensureBotStateTable();
+  const key = guildKey(guildId, DAILY_STATS_CONFIG_KEY);
+  const now = new Date();
+  await db.insert(botStateTable)
+    .values({ key, value: JSON.stringify(normalizeDailyStatsEmbedConfig(config)) })
+    .onConflictDoUpdate({
+      target: botStateTable.key,
+      set: { value: JSON.stringify(normalizeDailyStatsEmbedConfig(config)), updatedAt: now },
+    });
+}
+
+export async function loadDailyStatsEmbedConfig(guildId: string): Promise<DailyStatsEmbedConfig> {
+  await ensureBotStateTable();
+  const [row] = await db.select().from(botStateTable).where(eq(botStateTable.key, guildKey(guildId, DAILY_STATS_CONFIG_KEY)));
+  if (!row) return DEFAULT_DAILY_STATS_EMBED_CONFIG;
+  try {
+    return normalizeDailyStatsEmbedConfig(JSON.parse(row.value));
+  } catch {
+    return DEFAULT_DAILY_STATS_EMBED_CONFIG;
+  }
+}
 
 export async function saveAllianceRecruitmentText(
   guildId: string,

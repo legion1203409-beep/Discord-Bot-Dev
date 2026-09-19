@@ -100,6 +100,10 @@ export interface BotControlConfig {
 
   gameplayConfig: {
     paused: boolean;
+    messages: {
+      gamePaused: string;
+      oraclePaused: string;
+    };
     events: {
       eventDurationMinutes: number;
       eventCooldownMinMinutes: number;
@@ -122,6 +126,23 @@ export interface BotControlConfig {
       monsterXpMultiplier: number;
       bossGoldMultiplier: number;
       bossXpMultiplier: number;
+    };
+  };
+  dailyStats: {
+    title: string;
+    description: string;
+    color: string;
+    footer: string;
+    activityTitle: string;
+    channelsTitle: string;
+    emptyChannelsText: string;
+    metricLabels: {
+      messages: string;
+      uniqueUsers: string;
+      boosts: string;
+      joins: string;
+      leaves: string;
+      peakVoice: string;
     };
   };
   discordLive?: boolean;

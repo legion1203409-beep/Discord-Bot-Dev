@@ -71,6 +71,38 @@ const FLOW_KINDS = [
   ["help_report", "Ajutor / raportare"],
 ] as const;
 
+const DEFAULT_VERIFICATION_TEXT = {
+  title: "Verifică-ți contul",
+  message: "Apasă butonul de mai jos pentru a confirma că deții contul Discord și pentru a primi rolul comunității.",
+  buttonLabel: "Verifică-mă",
+  buttonEmoji: "✅",
+  successMessage: "Contul tău a fost verificat. Rolul a fost acordat.",
+  alreadyVerifiedMessage: "Contul tău este deja verificat.",
+} as const;
+
+const DEFAULT_GAMEPLAY_MESSAGES = {
+  gamePaused: "⏸️ Jocul este oprit momentan. Un administrator îl poate reporni cu `/startjoc`.",
+  oraclePaused: "🛑 Oracle AI este oprit momentan. Un administrator îl poate reporni cu `/startai`.",
+} as const;
+
+const DEFAULT_DAILY_STATS = {
+  title: "📊 Statistici Zilnice · {guild}",
+  description: "O privire asupra comunității pentru **{date}**.\n\nDatele sunt colectate de Oracolul Cenușii și sunt aceleași cu raportul de pe site.",
+  color: "#7c3aed",
+  footer: "Oracolul Cenușii · Community Insights",
+  activityTitle: "📈 Activitate · ultimele 7 zile",
+  channelsTitle: "🔥 Top 5 canale active",
+  emptyChannelsText: "Încă nu există mesaje înregistrate pentru această zi.",
+  metricLabels: {
+    messages: "💬 Mesaje",
+    uniqueUsers: "👥 Utilizatori unici",
+    boosts: "🚀 Boost-uri",
+    joins: "🟢 Intrări",
+    leaves: "🔴 Ieșiri",
+    peakVoice: "🔊 Vârf vocal",
+  },
+} as const;
+
 const NEW_QUESTION = {
   key: "question",
   label: "Întrebare nouă",
@@ -258,6 +290,70 @@ export function BotControlPage() {
       target[path[path.length - 1]] = value;
       return { ...current, tickets };
     });
+  };
+
+  const setVerification = (field: keyof BotControlConfig["verification"], value: string | boolean) => {
+    setDraft((current) => current ? {
+      ...current,
+      verification: { ...current.verification, [field]: value },
+    } : current);
+  };
+
+  const setGameplayMessage = (field: keyof BotControlConfig["gameplayConfig"]["messages"], value: string) => {
+    setDraft((current) => current ? {
+      ...current,
+      gameplayConfig: {
+        ...current.gameplayConfig,
+        messages: { ...current.gameplayConfig.messages, [field]: value },
+      },
+    } : current);
+  };
+
+  const setDailyStats = (field: keyof Omit<BotControlConfig["dailyStats"], "metricLabels">, value: string) => {
+    setDraft((current) => current ? {
+      ...current,
+      dailyStats: { ...current.dailyStats, [field]: value },
+    } : current);
+  };
+
+  const setDailyStatsMetric = (
+    field: keyof BotControlConfig["dailyStats"]["metricLabels"],
+    value: string,
+  ) => {
+    setDraft((current) => current ? {
+      ...current,
+      dailyStats: {
+        ...current.dailyStats,
+        metricLabels: { ...current.dailyStats.metricLabels, [field]: value },
+      },
+    } : current);
+  };
+
+  const resetVerificationText = () => {
+    setDraft((current) => current ? {
+      ...current,
+      verification: { ...current.verification, ...DEFAULT_VERIFICATION_TEXT },
+    } : current);
+  };
+
+  const resetGameplayMessages = () => {
+    setDraft((current) => current ? {
+      ...current,
+      gameplayConfig: {
+        ...current.gameplayConfig,
+        messages: { ...DEFAULT_GAMEPLAY_MESSAGES },
+      },
+    } : current);
+  };
+
+  const resetDailyStats = () => {
+    setDraft((current) => current ? {
+      ...current,
+      dailyStats: {
+        ...DEFAULT_DAILY_STATS,
+        metricLabels: { ...DEFAULT_DAILY_STATS.metricLabels },
+      },
+    } : current);
   };
 
   const setFlow = (kind: keyof BotControlConfig["tickets"]["flows"], field: keyof TicketFlowConfig, value: string) => {
@@ -1023,7 +1119,145 @@ export function BotControlPage() {
           </section>
         </TabsContent>
 
-        <TabsContent value="messages" className="mt-0">
+        <TabsContent value="messages" className="mt-0 space-y-5">
+          <section className="space-y-4 rounded-xl border border-border bg-card p-5">
+            <div className="flex items-start gap-3">
+              <ShieldCheck className="mt-1 h-5 w-5 text-primary" />
+              <div>
+                <h2 className="font-medium">Panoul de verificare</h2>
+                <p className="text-xs text-muted-foreground">Editează exact textul și butonul pe care le vede membrul în canalul de verificare. Salvarea republică panoul dacă botul este online.</p>
+              </div>
+            </div>
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="space-y-1 text-sm">
+                  <span className="text-xs font-medium">Titlu</span>
+                  <Input maxLength={256} value={draft.verification.title} onChange={(event) => setVerification("title", event.target.value)} />
+                </label>
+                <label className="space-y-1 text-sm">
+                  <span className="text-xs font-medium">Emoji buton</span>
+                  <Input maxLength={100} value={draft.verification.buttonEmoji} onChange={(event) => setVerification("buttonEmoji", event.target.value)} />
+                </label>
+                <label className="space-y-1 text-sm md:col-span-2">
+                  <span className="text-xs font-medium">Descriere</span>
+                  <Textarea rows={5} maxLength={4000} value={draft.verification.message} onChange={(event) => setVerification("message", event.target.value)} />
+                </label>
+                <label className="space-y-1 text-sm">
+                  <span className="text-xs font-medium">Text buton</span>
+                  <Input maxLength={80} value={draft.verification.buttonLabel} onChange={(event) => setVerification("buttonLabel", event.target.value)} />
+                </label>
+                <label className="space-y-1 text-sm">
+                  <span className="text-xs font-medium">Mesaj după verificare</span>
+                  <Input maxLength={2000} value={draft.verification.successMessage} onChange={(event) => setVerification("successMessage", event.target.value)} />
+                </label>
+                <label className="space-y-1 text-sm md:col-span-2">
+                  <span className="text-xs font-medium">Mesaj dacă este deja verificat</span>
+                  <Input maxLength={2000} value={draft.verification.alreadyVerifiedMessage} onChange={(event) => setVerification("alreadyVerifiedMessage", event.target.value)} />
+                </label>
+              </div>
+              <div className="rounded-xl border border-[#5865f2]/40 bg-[#202225] p-4 text-[#f2f3f5] shadow-lg">
+                <p className="mb-3 text-[10px] font-semibold tracking-[0.18em] text-[#949cf7]">PREVIZUALIZARE DISCORD</p>
+                <div className="rounded-lg border-l-4 border-[#5865f2] bg-[#2b2d31] p-4">
+                  <h3 className="text-lg font-semibold">{draft.verification.title || "Titlul panoului"}</h3>
+                  <p className="mt-2 whitespace-pre-wrap text-sm text-[#b5bac1]">{draft.verification.message || "Descrierea panoului"}</p>
+                  <Button type="button" className="mt-4 bg-[#5865f2] text-white hover:bg-[#4752c4]">
+                    {draft.verification.buttonEmoji} {draft.verification.buttonLabel || "Verifică-mă"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="space-y-4 rounded-xl border border-border bg-card p-5">
+            <div className="flex items-start gap-3">
+              <Megaphone className="mt-1 h-5 w-5 text-primary" />
+              <div>
+                <h2 className="font-medium">Mesaje de stare</h2>
+                <p className="text-xs text-muted-foreground">Acestea sunt mesajele trimise când jocul sau Oracle AI sunt oprite.</p>
+              </div>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="space-y-1 text-sm">
+                <span className="text-xs font-medium">Joc oprit</span>
+                <Textarea rows={4} maxLength={2000} value={draft.gameplayConfig.messages.gamePaused} onChange={(event) => setGameplayMessage("gamePaused", event.target.value)} />
+              </label>
+              <label className="space-y-1 text-sm">
+                <span className="text-xs font-medium">Oracle AI oprit</span>
+                <Textarea rows={4} maxLength={2000} value={draft.gameplayConfig.messages.oraclePaused} onChange={(event) => setGameplayMessage("oraclePaused", event.target.value)} />
+              </label>
+            </div>
+          </section>
+
+          <section className="space-y-5 rounded-xl border border-border bg-card p-5">
+            <div className="flex items-start gap-3">
+              <Megaphone className="mt-1 h-5 w-5 text-primary" />
+              <div>
+                <h2 className="font-medium">Design statistici zilnice</h2>
+                <p className="text-xs text-muted-foreground">Personalizează raportul publicat automat în Discord. Poți folosi {`{guild}`}, {`{date}`}, {`{messages}`}, {`{uniqueUsers}`}, {`{boosts}`}, {`{joins}`}, {`{leaves}`} și {`{peakVoice}`} în titlu sau descriere.</p>
+              </div>
+            </div>
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
+              <div className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_9rem]">
+                  <label className="space-y-1 text-sm">
+                    <span className="text-xs font-medium">Titlu raport</span>
+                    <Input maxLength={256} value={draft.dailyStats.title} onChange={(event) => setDailyStats("title", event.target.value)} />
+                  </label>
+                  <label className="space-y-1 text-sm">
+                    <span className="text-xs font-medium">Culoare accent</span>
+                    <div className="flex gap-2">
+                      <Input type="color" className="w-12 cursor-pointer p-1" value={draft.dailyStats.color} onChange={(event) => setDailyStats("color", event.target.value)} />
+                      <Input maxLength={7} value={draft.dailyStats.color} onChange={(event) => setDailyStats("color", event.target.value)} />
+                    </div>
+                  </label>
+                </div>
+                <label className="block space-y-1 text-sm">
+                  <span className="text-xs font-medium">Descriere raport</span>
+                  <Textarea rows={4} maxLength={4000} value={draft.dailyStats.description} onChange={(event) => setDailyStats("description", event.target.value)} />
+                </label>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="space-y-1 text-sm">
+                    <span className="text-xs font-medium">Titlu activitate</span>
+                    <Input maxLength={256} value={draft.dailyStats.activityTitle} onChange={(event) => setDailyStats("activityTitle", event.target.value)} />
+                  </label>
+                  <label className="space-y-1 text-sm">
+                    <span className="text-xs font-medium">Titlu top canale</span>
+                    <Input maxLength={256} value={draft.dailyStats.channelsTitle} onChange={(event) => setDailyStats("channelsTitle", event.target.value)} />
+                  </label>
+                </div>
+                <label className="block space-y-1 text-sm">
+                  <span className="text-xs font-medium">Subsol</span>
+                  <Input maxLength={2048} value={draft.dailyStats.footer} onChange={(event) => setDailyStats("footer", event.target.value)} />
+                </label>
+                <div>
+                  <p className="mb-2 text-xs font-medium">Etichete indicatori</p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {(Object.entries(draft.dailyStats.metricLabels) as Array<[keyof BotControlConfig["dailyStats"]["metricLabels"], string]>).map(([key, value]) => (
+                      <Input key={key} maxLength={256} value={value} aria-label={key} onChange={(event) => setDailyStatsMetric(key, event.target.value)} />
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="h-fit rounded-xl border bg-[#1e1f22] p-3 text-[#f2f3f5] shadow-xl" style={{ borderLeftColor: draft.dailyStats.color, borderLeftWidth: 4 }}>
+                <p className="mb-3 text-[10px] font-semibold tracking-[0.18em] text-[#949cf7]">PREVIZUALIZARE EMBED</p>
+                <div className="rounded-md bg-[#2b2d31] p-3">
+                  <p className="text-[10px] font-semibold tracking-wider text-[#949cf7]">ORACOLUL CENUȘII · COMMUNITY INSIGHTS</p>
+                  <h3 className="mt-2 font-semibold">{draft.dailyStats.title.replace("{guild}", "Regatul Cenușii")}</h3>
+                  <p className="mt-2 whitespace-pre-wrap text-xs text-[#b5bac1]">{draft.dailyStats.description.replace("{guild}", "Regatul Cenușii").replace("{date}", "18 septembrie 2026")}</p>
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    {Object.values(draft.dailyStats.metricLabels).slice(0, 6).map((label, index) => (
+                      <div key={`${label}-${index}`} className="rounded bg-[#36393f] p-2">
+                        <p className="truncate text-[10px] text-[#b5bac1]">{label}</p>
+                        <p className="mt-1 font-semibold">{[307, 13, 0, 5, 5, 4][index].toLocaleString("ro-RO")}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-4 border-t border-white/10 pt-3 text-[10px] text-[#949ba4]">{draft.dailyStats.footer}</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
           <section className="space-y-4 rounded-xl border border-border bg-card p-5">
             <div className="flex items-start gap-3">
               <Megaphone className="mt-1 h-5 w-5 text-primary" />
@@ -1035,7 +1269,7 @@ export function BotControlPage() {
             <Textarea
               value={draft.allianceRecruitmentText}
               maxLength={2000}
-              rows={16}
+              rows={12}
               placeholder="Scrie mesajul de recrutare..."
               onChange={(event) => setDraft({ ...draft, allianceRecruitmentText: event.target.value })}
             />
