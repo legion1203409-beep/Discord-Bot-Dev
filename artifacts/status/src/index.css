@@ -91,10 +91,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .smoke-layer--two { top: 113rem; right: -19rem; transform: rotate(18deg); opacity: .08; }
 
 /* Navigation */
-.site-nav { position: absolute; z-index: 10; top: 0; left: 0; display: flex; width: 100%; min-height: 96px; align-items: center; justify-content: space-between; padding-inline: max(2rem, calc((100% - 1240px) / 2)); border-bottom: 1px solid rgba(9, 7, 8, .16); background: rgba(238, 231, 223, .96); color: #090708; }
-.fire-toolbar { position: relative; overflow: hidden; isolation: isolate; background: rgba(238, 231, 223, .96); color: #090708; box-shadow: inset 0 -14px 30px rgba(255, 92, 0, .16), 0 7px 30px rgba(255, 72, 0, .18); }
-.fire-toolbar::before { position: absolute; z-index: 0; inset: -14% -5%; pointer-events: none; background: radial-gradient(ellipse at 8% 105%, rgba(255, 70, 0, .7), transparent 31%), radial-gradient(ellipse at 52% 112%, rgba(255, 165, 0, .58), transparent 29%), radial-gradient(ellipse at 94% 105%, rgba(157, 32, 24, .56), transparent 31%); mix-blend-mode: multiply; content: ""; animation: toolbar-blazing 2.8s ease-in-out infinite alternate; }
-.fire-toolbar::after { position: absolute; z-index: 0; right: 2%; bottom: 0; left: 2%; height: 4px; pointer-events: none; background: linear-gradient(90deg, transparent, #9f2f36 12%, #ff5a00 34%, #ffd05a 50%, #ff5a00 66%, #9f2f36 88%, transparent); box-shadow: 0 0 9px #ff5a00, 0 0 24px rgba(255, 92, 0, .9); content: ""; animation: toolbar-ember-line 1.9s ease-in-out infinite alternate; }
+.site-nav { position: absolute; z-index: 10; top: 0; left: 0; display: flex; width: 100%; min-height: 96px; align-items: center; justify-content: space-between; padding-inline: max(2rem, calc((100% - 1240px) / 2)); border-bottom: 1px solid rgba(238, 231, 223, .12); background: #0d0a0b; color: var(--paper); }
+.fire-toolbar { position: relative; overflow: hidden; isolation: isolate; background: linear-gradient(180deg, #0d0a0b 0%, #110b0c 57%, #24100d 100%); color: var(--paper); box-shadow: inset 0 -24px 42px rgba(255, 72, 0, .3), 0 8px 32px rgba(255, 72, 0, .26); }
+.fire-toolbar::before { position: absolute; z-index: 0; right: -6%; bottom: -38px; left: -6%; height: 105px; pointer-events: none; background: radial-gradient(ellipse at 7% 100%, rgba(255, 52, 0, .98) 0 20%, transparent 45%), radial-gradient(ellipse at 27% 100%, rgba(255, 159, 0, .86) 0 18%, transparent 42%), radial-gradient(ellipse at 51% 100%, rgba(255, 77, 0, .96) 0 23%, transparent 48%), radial-gradient(ellipse at 75% 100%, rgba(255, 170, 0, .84) 0 19%, transparent 43%), radial-gradient(ellipse at 96% 100%, rgba(190, 35, 20, .94) 0 20%, transparent 45%); filter: blur(8px); mix-blend-mode: screen; content: ""; animation: toolbar-blazing 2.8s ease-in-out infinite alternate; }
+.fire-toolbar::after { position: absolute; z-index: 0; right: 1%; bottom: 0; left: 1%; height: 5px; pointer-events: none; background: linear-gradient(90deg, transparent, #9f2f36 8%, #ff4b00 23%, #ffd05a 38%, #ff5a00 53%, #ffe08a 67%, #ff4b00 82%, #9f2f36 92%, transparent); box-shadow: 0 0 12px #ff5a00, 0 0 34px rgba(255, 92, 0, 1); content: ""; animation: toolbar-ember-line 1.9s ease-in-out infinite alternate; }
 .fire-toolbar > * { position: relative; z-index: 1; }
 .fire-toolbar .brand strong,
 .fire-toolbar .brand small,
@@ -117,16 +117,16 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .site-nav .brand strong, .site-nav .brand small { display: block; letter-spacing: .19em; }
 .brand strong { font-size: .73rem; font-weight: 800; }
 .brand small { margin-top: .3rem; color: var(--ash); font-size: .54rem; font-weight: 700; }
-.site-nav .brand small { color: #3f3431; }
-.nav-links { display: flex; align-items: center; margin-left: auto; margin-right: 2.8rem; color: #090708; font-size: .68rem; font-weight: 600; letter-spacing: .05em; }
+.site-nav .brand small { color: var(--paper-soft); }
+.nav-links { display: flex; align-items: center; margin-left: auto; margin-right: 2.8rem; color: var(--paper); font-size: .68rem; font-weight: 600; letter-spacing: .05em; }
 .nav-links-inner { display: flex; align-items: center; gap: 2.25rem; width: 100%; justify-content: center; }
 .nav-links a { position: relative; padding-block: .5rem; transition: color 180ms ease; }
 .nav-links a::after { position: absolute; right: 0; bottom: 0; left: 0; height: 1px; background: var(--gold); content: ""; transform: scaleX(0); transform-origin: right; transition: transform 180ms ease; }
-.nav-links a:hover { color: #7d242b; }
+.nav-links a:hover { color: var(--gold-light); }
 .nav-links a:hover::after { transform: scaleX(1); transform-origin: left; }
 .nav-cta, .button { display: inline-flex; min-height: 45px; align-items: center; justify-content: center; gap: .65rem; border: 1px solid transparent; border-radius: 2px; font-size: .67rem; font-weight: 800; letter-spacing: .08em; transition: transform 180ms ease, background 180ms ease, border-color 180ms ease, color 180ms ease; }
-.nav-cta { padding: .7rem 1rem; border-color: rgba(9, 7, 8, .35); color: #090708; }
-.nav-cta:hover { border-color: var(--gold); background: rgba(197,164,107,.1); transform: translateY(-2px); }
+.nav-cta { padding: .7rem 1rem; border-color: rgba(238, 231, 223, .32); color: var(--paper); }
+.nav-cta:hover { border-color: var(--gold-light); background: rgba(210, 162, 126, .14); transform: translateY(-2px); }
 .nav-cta .icon, .button .icon { color: var(--gold-light); }
 
 /* Hero */
@@ -311,16 +311,16 @@ h1 em, h2 em, blockquote em { color: var(--ember-light); font-style: normal; }
   border-bottom-color: rgba(238, 229, 215, .11);
 }
 .nav-links {
-  color: #090708;
+  color: var(--paper);
   font-size: .7rem;
   letter-spacing: .02em;
 }
-.site-nav .nav-links a:hover { color: #7d242b; }
+.site-nav .nav-links a:hover { color: var(--gold-light); }
 .mod-toolbar .text-foreground,
 .mod-toolbar .text-primary,
 .mod-toolbar .text-muted-foreground,
 .mod-toolbar button {
-  color: #090708 !important;
+  color: var(--paper) !important;
 }
 @media (prefers-reduced-motion: reduce) {
   .fire-toolbar::before,
