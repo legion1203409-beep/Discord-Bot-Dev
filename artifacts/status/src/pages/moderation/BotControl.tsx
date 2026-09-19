@@ -939,15 +939,15 @@ export function BotControlPage() {
         </TabsContent>
       </Tabs>
 
-      <div className="sticky bottom-3 flex justify-end border-t border-border bg-background/95 py-4 backdrop-blur">
-        <div className="flex w-full justify-end gap-3">
+      <div className="sticky bottom-3 z-20 flex justify-end py-2">
+        <div className="flex flex-wrap justify-end gap-2 rounded-xl border border-border/80 bg-card/95 p-2 shadow-2xl backdrop-blur">
           <Button type="button" variant="secondary" onClick={openFlowTest} className="gap-2">
             <PlayCircle className="h-4 w-4" />
             Testează fluxul
           </Button>
           <Button onClick={() => void save()} disabled={saving} className="gap-2 px-8">
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          {saving ? "Se salvează…" : "Salvează controlul botului"}
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            {saving ? "Se salvează…" : "Salvează controlul botului"}
           </Button>
         </div>
       </div>
@@ -1362,11 +1362,13 @@ export function BotControlPage() {
         <p className="text-right text-xs text-muted-foreground">{draft.allianceRecruitmentText.length}/2000</p>
       </section>
 
-      <div className="sticky bottom-3 flex justify-end border-t border-border bg-background/95 py-4 backdrop-blur">
-        <Button onClick={() => void save()} disabled={saving} className="gap-2 px-8">
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          {saving ? "Se salvează…" : "Salvează controlul botului"}
-        </Button>
+      <div className="sticky bottom-3 z-20 flex justify-end py-2">
+        <div className="flex flex-wrap justify-end gap-2 rounded-xl border border-border/80 bg-card/95 p-2 shadow-2xl backdrop-blur">
+          <Button onClick={() => void save()} disabled={saving} className="gap-2 px-8">
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            {saving ? "Se salvează…" : "Salvează controlul botului"}
+          </Button>
+        </div>
       </div>
     </div>
   );
