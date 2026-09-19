@@ -1161,6 +1161,52 @@ router.get("/verification/:guildId/config", asyncRoute(async (req, res) => {
   });
 }));
 
+router.get("/guilds/:guildId/verification/members", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  await sessionAndGuild(req, guildId, "config");
+  const client = getModerationClient();
+  if (!client || !client.isReady()) {
+    throw new ModerationAuthError(503, "Discord botul nu este disponibil pentru încărcarea membrilor verificați.");
+  }
+  if (!client.options.intents.has(GatewayIntentBits.GuildMembers)) {
+    throw new ModerationAuthError(503, "Botul nu are intentul Guild Members necesar pentru lista membrilor verificați.");
+  }
+
+  const config = normalizeVerificationConfig(await loadVerificationConfig(guildId));
+  const guild = await client.guilds.fetch({ guild: guildId, force: true });
+  const role = config.roleId ? await guild.roles.fetch(config.roleId) : null;
+  if (!role) {
+    res.set("Cache-Control", "no-store").json({
+      guildId,
+      roleId: config.roleId,
+      roleName: null,
+      total: 0,
+      members: [],
+    });
+    return;
+  }
+
+  const members = await guild.members.fetch();
+  const verifiedMembers = [...members.values()]
+    .filter((member) => !member.user.bot && member.roles.cache.has(role.id))
+    .map((member) => ({
+      id: member.id,
+      username: member.user.username,
+      displayName: member.displayName,
+      avatarUrl: member.user.displayAvatarURL({ size: 64 }),
+      joinedAt: member.joinedAt?.toISOString() ?? null,
+    }))
+    .sort((left, right) => left.displayName.localeCompare(right.displayName, "ro", { sensitivity: "base" }));
+
+  res.set("Cache-Control", "no-store").json({
+    guildId,
+    roleId: role.id,
+    roleName: role.name,
+    total: verifiedMembers.length,
+    members: verifiedMembers,
+  });
+}));
+
 router.get("/verification/status", asyncRoute(async (req, res) => {
   const cookie = req.headers.cookie?.split(";").map((part) => part.trim()).find((part) => part.startsWith(`${verificationCookieName()}=`));
   const rawToken = cookie?.slice(verificationCookieName().length + 1);

@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from "react";
-import { Bot, Loader2, Save, Radio, Megaphone, Ticket, ShieldCheck, Timer, ScrollText, Coins, PlayCircle, RotateCcw, CheckCircle2 } from "lucide-react";
+import { Bot, Loader2, Save, Radio, Megaphone, Ticket, ShieldCheck, Timer, ScrollText, Coins, PlayCircle, RotateCcw, CheckCircle2, Users, RefreshCw, Search } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Textarea } from "../../components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
-import { useActiveGuild, useBotControl, useModerationMetadata, useSession, type BotControlConfig, type TicketFlowConfig } from "../../hooks/use-moderation-api";
+import { useActiveGuild, useBotControl, useModerationMetadata, useSession, useVerifiedMembers, type BotControlConfig, type TicketFlowConfig } from "../../hooks/use-moderation-api";
 import { useToast } from "../../hooks/use-toast";
 
 const CHANNELS = [
@@ -182,6 +182,7 @@ export function BotControlPage() {
   const { guildId } = useActiveGuild();
   const { data, loading, error, update } = useBotControl(guildId);
   const { data: metadata } = useModerationMetadata(guildId);
+  const { data: verifiedMembersData, loading: verifiedMembersLoading, error: verifiedMembersError, refetch: refetchVerifiedMembers } = useVerifiedMembers(guildId);
   const { toast } = useToast();
   const { session } = useSession();
   const [draft, setDraft] = useState<BotControlConfig | null>(null);
@@ -195,6 +196,7 @@ export function BotControlPage() {
   const [testAnswers, setTestAnswers] = useState<Record<string, string>>({});
   const [testError, setTestError] = useState("");
   const [inviteLoading, setInviteLoading] = useState(false);
+  const [verificationSearch, setVerificationSearch] = useState("");
 
   useEffect(() => {
     setDraft(data ? JSON.parse(JSON.stringify(data)) : null);
@@ -440,6 +442,12 @@ export function BotControlPage() {
   const activeFlow = draft.tickets.flows[activeFlowKind];
   const duplicateQuestionKeys = getDuplicateQuestionKeys(activeFlow);
   const activeCategory = draft.tickets.categories[activeFlowKind];
+  const normalizedVerificationSearch = verificationSearch.trim().toLocaleLowerCase("ro");
+  const filteredVerifiedMembers = (verifiedMembersData?.members ?? []).filter((member) => {
+    if (!normalizedVerificationSearch) return true;
+    return [member.displayName, member.username, member.id]
+      .some((value) => value.toLocaleLowerCase("ro").includes(normalizedVerificationSearch));
+  });
   const selectedActiveCategory = categories.some((category) => category.id === activeCategory)
     ? activeCategory
     : "__manual__";
@@ -904,6 +912,96 @@ export function BotControlPage() {
                </Button>
              </div>
            </section>
+
+            <section className="space-y-4 rounded-xl border border-border bg-card p-5">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <Users className="mt-1 h-5 w-5 text-primary" />
+                  <div>
+                    <h2 className="font-medium">Membri verificați</h2>
+                    <p className="text-xs text-muted-foreground">
+                      Lista live a membrilor care au în prezent rolul de verificare configurat.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full border border-primary/25 bg-primary/[0.06] px-3 py-1 text-xs font-medium">
+                    {verifiedMembersData?.total ?? 0} membri
+                  </span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void refetchVerifiedMembers()}
+                    disabled={verifiedMembersLoading}
+                    title="Reîncarcă lista"
+                  >
+                    <RefreshCw className={`mr-2 h-4 w-4 ${verifiedMembersLoading ? "animate-spin" : ""}`} />
+                    Reîncarcă
+                  </Button>
+                </div>
+              </div>
+
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={verificationSearch}
+                  onChange={(event) => setVerificationSearch(event.target.value)}
+                  placeholder="Caută după nume, username sau ID Discord"
+                  aria-label="Caută membri verificați"
+                  className="pl-9"
+                />
+              </div>
+
+              {verifiedMembersLoading && !verifiedMembersData ? (
+                <div className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-border p-8 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Se încarcă membrii verificați…
+                </div>
+              ) : verifiedMembersError ? (
+                <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
+                  {verifiedMembersError.message}
+                </div>
+              ) : !draft.verification.roleId ? (
+                <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+                  Configurează și salvează rolul de verificare pentru a vedea membrii.
+                </div>
+              ) : filteredVerifiedMembers.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+                  {verificationSearch.trim() ? "Nu există membri care corespund căutării." : "Nu există membri verificați în acest moment."}
+                </div>
+              ) : (
+                <div className="overflow-x-auto rounded-lg border border-border">
+                  <table className="w-full min-w-[620px] text-left text-sm">
+                    <thead className="border-b border-border bg-muted/30 text-xs uppercase tracking-wide text-muted-foreground">
+                      <tr>
+                        <th className="px-4 py-3 font-medium">Membru</th>
+                        <th className="px-4 py-3 font-medium">Username</th>
+                        <th className="px-4 py-3 font-medium">ID Discord</th>
+                        <th className="px-4 py-3 font-medium">În server din</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {filteredVerifiedMembers.map((member) => (
+                        <tr key={member.id} className="transition-colors hover:bg-muted/20">
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-3">
+                              <img src={member.avatarUrl} alt="" className="h-8 w-8 rounded-full bg-muted object-cover" />
+                              <span className="font-medium">{member.displayName}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-muted-foreground">@{member.username}</td>
+                          <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{member.id}</td>
+                          <td className="px-4 py-3 text-muted-foreground">
+                            {member.joinedAt ? new Date(member.joinedAt).toLocaleDateString("ro-RO") : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
          </TabsContent>
 
          <TabsContent value="tickets" className="mod-tab-content mt-0 space-y-5">

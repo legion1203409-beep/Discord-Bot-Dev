@@ -121,6 +121,22 @@ export interface BotControlConfig {
   };
 }
 
+export interface VerifiedMember {
+  id: string;
+  username: string;
+  displayName: string;
+  avatarUrl: string;
+  joinedAt: string | null;
+}
+
+export interface VerifiedMembersResponse {
+  guildId: string;
+  roleId: string;
+  roleName: string | null;
+  total: number;
+  members: VerifiedMember[];
+}
+
 export interface TicketQuestionConfig {
   key: string;
   label: string;
@@ -572,6 +588,42 @@ export function useBotControl(guildId: string | null) {
   };
 
   return { data, loading, error, update, refetch: fetchControl };
+}
+
+export function useVerifiedMembers(guildId: string | null) {
+  const [data, setData] = useState<VerifiedMembersResponse | null>(null);
+  const [loading, setLoading] = useState(Boolean(guildId));
+  const [error, setError] = useState<ApiError | null>(null);
+  const requestId = useRef(0);
+
+  const fetchMembers = useCallback(async () => {
+    const requestedGuildId = guildId;
+    const thisRequest = ++requestId.current;
+    if (!requestedGuildId) {
+      setData(null);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await apiFetch<VerifiedMembersResponse>(`/guilds/${requestedGuildId}/verification/members`);
+      if (requestId.current === thisRequest) setData(response);
+    } catch (err: any) {
+      if (requestId.current === thisRequest) {
+        setData(null);
+        setError(err);
+      }
+    } finally {
+      if (requestId.current === thisRequest) setLoading(false);
+    }
+  }, [guildId]);
+
+  useEffect(() => {
+    void fetchMembers();
+  }, [fetchMembers]);
+
+  return { data, loading, error, refetch: fetchMembers };
 }
 
 export function useModerationMetadata(guildId: string | null) {
