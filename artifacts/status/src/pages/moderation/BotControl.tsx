@@ -194,6 +194,7 @@ export function BotControlPage() {
   const [testDraftAnswer, setTestDraftAnswer] = useState("");
   const [testAnswers, setTestAnswers] = useState<Record<string, string>>({});
   const [testError, setTestError] = useState("");
+  const [inviteLoading, setInviteLoading] = useState(false);
 
   useEffect(() => {
     setDraft(data ? JSON.parse(JSON.stringify(data)) : null);
@@ -204,6 +205,28 @@ export function BotControlPage() {
       ...current,
       channels: { ...current.channels, [key]: value === "__none__" ? "" : value },
     } : current);
+  };
+
+  const setVerification = (field: keyof BotControlConfig["verification"], value: string | boolean) => {
+    setDraft((current) => current ? {
+      ...current,
+      verification: { ...current.verification, [field]: value },
+    } : current);
+  };
+
+  const openBotInvite = async () => {
+    if (!guildId) return;
+    setInviteLoading(true);
+    try {
+      const response = await fetch(`/api/moderation/guilds/${guildId}/verification/invite`, { credentials: "include" });
+      const payload = await response.json() as { inviteUrl?: string; installed?: boolean; error?: string };
+      if (!response.ok || !payload.inviteUrl) throw new Error(payload.error ?? "Linkul de autorizare nu este disponibil.");
+      window.open(payload.inviteUrl, "_blank", "noopener,noreferrer");
+    } catch (inviteError) {
+      toast({ variant: "destructive", title: "Autorizarea botului a eșuat", description: inviteError instanceof Error ? inviteError.message : "Încearcă din nou." });
+    } finally {
+      setInviteLoading(false);
+    }
   };
 
   const setTicket = (path: string[], value: string | number) => {
@@ -474,11 +497,12 @@ export function BotControlPage() {
       </header>
 
       <Tabs defaultValue="channels" className="space-y-5">
-        <TabsList className="grid h-auto w-full grid-cols-4 rounded-xl border border-border bg-card p-1">
+         <TabsList className="grid h-auto w-full grid-cols-2 gap-1 rounded-xl border border-border bg-card p-1 sm:grid-cols-5">
            <TabsTrigger value="channels" className="mod-tab-trigger gap-2 py-2.5"><Radio className="h-4 w-4" /> Canale</TabsTrigger>
            <TabsTrigger value="tickets" className="mod-tab-trigger gap-2 py-2.5"><Ticket className="h-4 w-4" /> Tichete</TabsTrigger>
            <TabsTrigger value="gameplay" className="mod-tab-trigger gap-2 py-2.5"><Timer className="h-4 w-4" /> Gameplay</TabsTrigger>
            <TabsTrigger value="messages" className="mod-tab-trigger gap-2 py-2.5"><Megaphone className="h-4 w-4" /> Mesaje</TabsTrigger>
+           <TabsTrigger value="verification" className="mod-tab-trigger gap-2 py-2.5"><ShieldCheck className="h-4 w-4" /> Verificare</TabsTrigger>
         </TabsList>
 
          <TabsContent value="channels" className="mod-tab-content mt-0">
@@ -800,6 +824,87 @@ export function BotControlPage() {
             </div>
           </section>
         </TabsContent>
+
+         <TabsContent value="verification" className="mod-tab-content mt-0 space-y-5">
+           <section className="space-y-5 rounded-xl border border-border bg-card p-5">
+             <div className="flex items-start justify-between gap-4">
+               <div className="flex items-start gap-3">
+                 <ShieldCheck className="mt-1 h-5 w-5 text-primary" />
+                 <div>
+                   <h2 className="font-medium">Verificare Discord + site</h2>
+                   <p className="text-xs text-muted-foreground">Membrul confirmă identitatea prin Discord, primește rolul ales și rămâne asociat cu sesiunea de verificare a site-ului.</p>
+                 </div>
+               </div>
+               <label className="flex items-center gap-2 text-sm font-medium">
+                 <input type="checkbox" checked={draft.verification.enabled} onChange={(event) => setVerification("enabled", event.target.checked)} />
+                 Activ
+               </label>
+             </div>
+
+             <div className="grid gap-4 md:grid-cols-2">
+               <div className="space-y-2">
+                 <label className="text-sm font-medium">Canalul panoului</label>
+                 <Select value={textChannels.some((channel) => channel.id === draft.verification.channelId) ? draft.verification.channelId : "__manual__"} onValueChange={(value) => setVerification("channelId", value === "__manual__" ? draft.verification.channelId : value)}>
+                   <SelectTrigger className="mod-select-trigger"><SelectValue placeholder="Alege canal" /></SelectTrigger>
+                   <SelectContent className="max-h-[min(70vh,32rem)] overscroll-contain">
+                     <SelectItem value="__manual__">ID introdus manual</SelectItem>
+                     {textChannels.map((channel) => <SelectItem key={channel.id} value={channel.id}>#{channel.name}</SelectItem>)}
+                   </SelectContent>
+                 </Select>
+                 <Input value={draft.verification.channelId} placeholder="ID canal Discord" onChange={(event) => setVerification("channelId", event.target.value.trim())} />
+               </div>
+               <div className="space-y-2">
+                 <label className="text-sm font-medium">Rolul acordat</label>
+                 <Select value={metadata?.roles.some((role) => role.id === draft.verification.roleId && !role.managed) ? draft.verification.roleId : "__manual__"} onValueChange={(value) => setVerification("roleId", value === "__manual__" ? draft.verification.roleId : value)}>
+                   <SelectTrigger className="mod-select-trigger"><SelectValue placeholder="Alege rol" /></SelectTrigger>
+                   <SelectContent className="max-h-[min(70vh,32rem)] overscroll-contain">
+                     <SelectItem value="__manual__">ID introdus manual</SelectItem>
+                     {metadata?.roles.filter((role) => !role.managed).map((role) => <SelectItem key={role.id} value={role.id}>@{role.name}</SelectItem>)}
+                   </SelectContent>
+                 </Select>
+                 <Input value={draft.verification.roleId} placeholder="ID rol Discord" onChange={(event) => setVerification("roleId", event.target.value.trim())} />
+               </div>
+             </div>
+
+             <div className="grid gap-4 md:grid-cols-2">
+               <div className="space-y-2">
+                 <label className="text-sm font-medium">Titlul mesajului</label>
+                 <Input maxLength={256} value={draft.verification.title} onChange={(event) => setVerification("title", event.target.value)} />
+               </div>
+               <div className="space-y-2">
+                 <label className="text-sm font-medium">Textul butonului</label>
+                 <Input maxLength={80} value={draft.verification.buttonLabel} onChange={(event) => setVerification("buttonLabel", event.target.value)} />
+               </div>
+               <div className="space-y-2">
+                 <label className="text-sm font-medium">Emoji buton</label>
+                 <Input maxLength={100} value={draft.verification.buttonEmoji} placeholder="✅" onChange={(event) => setVerification("buttonEmoji", event.target.value)} />
+               </div>
+               <div className="space-y-2">
+                 <label className="text-sm font-medium">Mesaj după succes</label>
+                 <Input maxLength={2000} value={draft.verification.successMessage} onChange={(event) => setVerification("successMessage", event.target.value)} />
+               </div>
+             </div>
+             <div className="space-y-2">
+               <label className="text-sm font-medium">Textul panoului</label>
+               <Textarea rows={5} maxLength={4000} value={draft.verification.message} onChange={(event) => setVerification("message", event.target.value)} />
+             </div>
+             <div className="space-y-2">
+               <label className="text-sm font-medium">Mesaj dacă membrul este deja verificat</label>
+               <Textarea rows={3} maxLength={2000} value={draft.verification.alreadyVerifiedMessage} onChange={(event) => setVerification("alreadyVerifiedMessage", event.target.value)} />
+             </div>
+
+             <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/25 bg-primary/[0.04] p-4">
+               <div>
+                 <p className="text-sm font-medium">Pasul administratorului</p>
+                 <p className="text-xs text-muted-foreground">Botul trebuie să fie instalat pe server și să aibă rolul botului deasupra rolului de verificare.</p>
+               </div>
+               <Button type="button" variant="secondary" onClick={() => void openBotInvite()} disabled={inviteLoading}>
+                 {inviteLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                 Autorizează / invită botul
+               </Button>
+             </div>
+           </section>
+         </TabsContent>
 
          <TabsContent value="tickets" className="mod-tab-content mt-0 space-y-5">
           <section className="space-y-4 rounded-xl border border-border bg-card p-5">

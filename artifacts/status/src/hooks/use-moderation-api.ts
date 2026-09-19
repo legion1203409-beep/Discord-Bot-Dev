@@ -58,6 +58,19 @@ export interface BotControlConfig {
 
   allianceRecruitmentText: string;
 
+  verification: {
+    enabled: boolean;
+    channelId: string;
+    roleId: string;
+    title: string;
+    message: string;
+    buttonLabel: string;
+    buttonEmoji: string;
+    successMessage: string;
+    alreadyVerifiedMessage: string;
+    panelMessageId: string;
+  };
+
   tickets: {
     categories: {
       staff: string;

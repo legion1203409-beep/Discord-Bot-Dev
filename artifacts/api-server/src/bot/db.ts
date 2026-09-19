@@ -2213,6 +2213,42 @@ export interface ChannelConfig {
   fratia?: string;
 }
 
+export interface VerificationConfig {
+  enabled: boolean;
+  channelId: string;
+  roleId: string;
+  title: string;
+  message: string;
+  buttonLabel: string;
+  buttonEmoji: string;
+  successMessage: string;
+  alreadyVerifiedMessage: string;
+  panelMessageId: string;
+}
+
+const VERIFICATION_CONFIG_KEY = "verification_config";
+
+export async function saveVerificationConfig(guildId: string, config: VerificationConfig): Promise<void> {
+  await ensureBotStateTable();
+  const key = guildKey(guildId, VERIFICATION_CONFIG_KEY);
+  const now = new Date();
+  await db.insert(botStateTable).values({ key, value: JSON.stringify(config) }).onConflictDoUpdate({
+    target: botStateTable.key,
+    set: { value: JSON.stringify(config), updatedAt: now },
+  });
+}
+
+export async function loadVerificationConfig(guildId: string): Promise<VerificationConfig | null> {
+  await ensureBotStateTable();
+  const [row] = await db.select().from(botStateTable).where(eq(botStateTable.key, guildKey(guildId, VERIFICATION_CONFIG_KEY)));
+  if (!row) return null;
+  try {
+    return JSON.parse(row.value) as VerificationConfig;
+  } catch {
+    return null;
+  }
+}
+
 export async function saveChannelConfig(guildId: string, config: ChannelConfig): Promise<void> {
   await ensureBotStateTable();
   const key = guildKey(guildId, CHANNEL_CONFIG_KEY);

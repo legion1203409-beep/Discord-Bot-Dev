@@ -57,9 +57,14 @@ import
 {
 
   beginDiscordOAuth,
+  beginVerificationOAuth,
+  consumeDiscordOAuthRequest,
   consumeDiscordOAuthState,
   exchangeDiscordOAuthCode,
+  fetchBotGuildSnapshot,
   fetchDiscordOAuthIdentity,
+  getDiscordBotInviteUrl,
+  getVerificationWebsiteUrl,
   isDiscordOAuthConfigured,
 }
  from "./oauth"
@@ -67,7 +72,8 @@ import
 
 import type 
 {
- DiscordOAuthFailureStage 
+ DiscordOAuthFailureStage,
+ PendingOAuthState,
 }
  from "./oauth"
 ;
@@ -121,15 +127,23 @@ import
  from "../bot/gameplay-store"
 ;
 
+import {
+  DEFAULT_VERIFICATION_CONFIG,
+  normalizeVerificationConfig,
+  publishVerificationPanel,
+  verifyMember,
+  createVerificationIdentityToken,
+  parseVerificationIdentityToken,
+  verificationCookieName,
+} from "../bot/verification";
+
+import { loadVerificationConfig, saveVerificationConfig } from "../bot/db";
+
 
 const router = Router()
 ;
 
-const snowflake = z.string().regex(/^\d
-{
-5,25
-}
-$/)
+const snowflake = z.string().regex(/^\d{5,25}$/)
 ;
 
 const uuid = z.string().uuid()
@@ -149,6 +163,19 @@ const botChannelConfigSchema = z.object(
 }
 ).strict()
 ;
+
+const verificationConfigSchema = z.object({
+  enabled: z.boolean(),
+  channelId: z.union([snowflake, z.literal("")]),
+  roleId: z.union([snowflake, z.literal("")]),
+  title: z.string().trim().min(1).max(256),
+  message: z.string().trim().min(1).max(4_000),
+  buttonLabel: z.string().trim().min(1).max(80),
+  buttonEmoji: z.string().trim().max(100),
+  successMessage: z.string().trim().min(1).max(2_000),
+  alreadyVerifiedMessage: z.string().trim().min(1).max(2_000),
+  panelMessageId: z.union([snowflake, z.literal("")]),
+}).strict();
 
 export const ticketQuestionConfigSchema = z.object(
 {
@@ -345,6 +372,7 @@ export const botControlSchema = z.object(
   
 }
 ).strict(),
+  verification: verificationConfigSchema.default(DEFAULT_VERIFICATION_CONFIG),
 }
 ).strict()
 ;
@@ -498,6 +526,14 @@ function parse<T extends z.ZodTypeAny>(schema: T, value: unknown): z.infer<T>
 
 }
 
+function optionalExport<T>(getter: () => T): T | null {
+  try {
+    return getter();
+  } catch {
+    return null;
+  }
+}
+
 
 function discordOAuthDetails(error: unknown): 
 {
@@ -533,21 +569,10 @@ function discordOAuthDetails(error: unknown):
   
 }
 
-  return 
-{
-
+  return {
     stage: value.stage,
-    ...(typeof value.status === "number" ? 
-{
- status: value.status 
-}
- : 
-{
-}
-),
-  
-}
-;
+    ...(typeof value.status === "number" ? { status: value.status } : {}),
+  };
 
 }
 
@@ -795,7 +820,7 @@ router.get("/auth-config", (_req, res) =>
 ;
 
 
-function oauthFailure(res: Response, code: "oauth_not_configured" | "state_mismatch" | "cancelled" | "oauth_failed" | "no_eligible_guild"): void 
+ function oauthFailure(res: Response, code: "oauth_not_configured" | "state_mismatch" | "cancelled" | "oauth_failed" | "no_eligible_guild"): void
 {
 
   res.redirect(`/moderare?auth_error=${code}`)
@@ -803,6 +828,10 @@ function oauthFailure(res: Response, code: "oauth_not_configured" | "state_misma
 
 }
 
+function verificationFailure(res: Response, guildId: string | undefined, code: string): void {
+  const suffix = guildId ? `&guildId=${encodeURIComponent(guildId)}` : "";
+  res.redirect(`/verificare?verification_error=${encodeURIComponent(code)}${suffix}`);
+}
 
 router.get("/oauth/discord", (req, res) => 
 {
@@ -812,6 +841,16 @@ router.get("/oauth/discord", (req, res) =>
 
     assertLoginRateLimit(req)
 ;
+
+    const verificationGuildId = typeof req.query.guildId === "string" ? parse(snowflake, req.query.guildId) : null;
+    if (req.query.verification === "1") {
+      if (!verificationGuildId) {
+        res.redirect("/verificare?verification_error=invalid_server");
+        return;
+      }
+      res.redirect(beginVerificationOAuth(res, verificationGuildId));
+      return;
+    }
 
     res.redirect(beginDiscordOAuth(res))
 ;
@@ -838,10 +877,16 @@ router.get("/oauth/discord/callback", asyncRoute(async (req, res) =>
   const state = typeof req.query.state === "string" ? req.query.state : undefined
 ;
 
-  const stateValid = consumeDiscordOAuthState(req, res, state)
-;
+  const consumeRequest = optionalExport(() => consumeDiscordOAuthRequest);
+  const consumeState = optionalExport(() => consumeDiscordOAuthState);
+  const pendingState: PendingOAuthState | null = consumeRequest
+    ? consumeRequest(req, res, state)
+    : consumeState?.(req, res, state)
+      ? { purpose: "moderation" as const, expiresAt: 0 }
+      : null
+  ;
 
-  if (!stateValid) 
+  if (!pendingState)
 {
 
     oauthFailure(res, "state_mismatch")
@@ -860,7 +905,11 @@ router.get("/oauth/discord/callback", asyncRoute(async (req, res) =>
   if (oauthError === "access_denied") 
 {
 
-    oauthFailure(res, "cancelled")
+    if (pendingState.purpose === "verification") {
+      verificationFailure(res, pendingState.guildId, "cancelled");
+    } else {
+      oauthFailure(res, "cancelled");
+    }
 ;
 
     return
@@ -875,7 +924,11 @@ router.get("/oauth/discord/callback", asyncRoute(async (req, res) =>
   if (!code || oauthError) 
 {
 
-    oauthFailure(res, "oauth_failed")
+    if (pendingState.purpose === "verification") {
+      verificationFailure(res, pendingState.guildId, "oauth_failed");
+    } else {
+      oauthFailure(res, "oauth_failed");
+    }
 ;
 
     return
@@ -899,6 +952,34 @@ router.get("/oauth/discord/callback", asyncRoute(async (req, res) =>
 
     const identity = await fetchDiscordOAuthIdentity(accessToken)
 ;
+
+    if (pendingState.purpose === "verification") {
+      const guildId = pendingState.guildId;
+      if (!guildId) {
+        res.redirect("/verificare?verification_error=invalid_server");
+        return;
+      }
+      const snapshot = await fetchBotGuildSnapshot(guildId, identity.id);
+      if (!snapshot) {
+        res.redirect(`/verificare?guildId=${encodeURIComponent(guildId)}&verification_error=not_member`);
+        return;
+      }
+      const client = getModerationClient();
+      if (!client) {
+        res.redirect(`/verificare?guildId=${encodeURIComponent(guildId)}&verification_error=bot_offline`);
+        return;
+      }
+      const result = await verifyMember(client, guildId, identity.id);
+      res.cookie(verificationCookieName(), createVerificationIdentityToken(guildId, identity.id), {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+        path: "/",
+        maxAge: 30 * 24 * 60 * 60 * 1_000,
+      });
+      res.redirect(`/verificare?guildId=${encodeURIComponent(guildId)}&verification=${result}`);
+      return;
+    }
 
     // The OAuth guild list is only a candidate set.  listAccessibleGuilds
     // intersects it with bot membership and then force-fetches current member
@@ -998,16 +1079,18 @@ router.get("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   const guildId = parse(snowflake, req.params.guildId);
   await sessionAndGuild(req, guildId, "config");
   await initGameplayConfig(guildId);
-  const [channels, allianceRecruitmentText, tickets] = await Promise.all([
+  const [channels, allianceRecruitmentText, tickets, verification] = await Promise.all([
     loadChannelConfig(guildId),
     loadAllianceRecruitmentText(guildId),
     loadTicketConfig(guildId),
+    optionalExport(() => loadVerificationConfig)?.(guildId) ?? Promise.resolve(null),
   ]);
   res.set("Cache-Control", "no-store").json({
     channels: channels ?? {},
     allianceRecruitmentText: allianceRecruitmentText ?? "",
     tickets: normalizeTicketConfig(tickets),
     gameplayConfig: getGameplayConfig(guildId),
+    verification: normalizeVerificationConfig(verification),
   });
 }));
 
@@ -1023,6 +1106,17 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   await saveAllianceRecruitmentText(guildId, value.allianceRecruitmentText);
   await saveTicketConfig(guildId, tickets);
   const gameplayConfig = await saveGuildGameplayConfig(guildId, value.gameplayConfig);
+  const verification = normalizeVerificationConfig(value.verification);
+  const saveVerification = optionalExport(() => saveVerificationConfig);
+  if (saveVerification && Object.prototype.hasOwnProperty.call(req.body ?? {}, "verification")) {
+    await saveVerification(guildId, verification);
+  }
+  let savedVerification = verification;
+  if (verification.enabled && Object.prototype.hasOwnProperty.call(req.body ?? {}, "verification")) {
+    const client = getModerationClient();
+    if (!client) throw new ModerationAuthError(503, "Discord botul nu este disponibil pentru publicarea panoului.");
+    savedVerification = await publishVerificationPanel(client, guildId, verification);
+  }
   await initChannelConfig(guildId);
   setTicketConfig(guildId, tickets);
   res.status(200).json({
@@ -1030,6 +1124,63 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
     allianceRecruitmentText: value.allianceRecruitmentText,
     tickets,
     gameplayConfig,
+    verification: savedVerification,
+  });
+}));
+
+router.get("/guilds/:guildId/verification/invite", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  await sessionAndGuild(req, guildId, "config");
+  const client = getModerationClient();
+  const inviteUrl = getDiscordBotInviteUrl(guildId);
+  res.json({
+    inviteUrl,
+    installed: client ? Boolean(await client.guilds.fetch({ guild: guildId, force: true }).catch(() => null)) : false,
+  });
+}));
+
+router.get("/verification/:guildId/config", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  const config = normalizeVerificationConfig(await loadVerificationConfig(guildId));
+  const client = getModerationClient();
+  let guildName: string | null = null;
+  if (client) {
+    guildName = (await client.guilds.fetch({ guild: guildId, force: true }).catch(() => null))?.name ?? null;
+  }
+  res.set("Cache-Control", "no-store").json({
+    guildId,
+    guildName,
+    enabled: config.enabled,
+    title: config.title,
+    message: config.message,
+    buttonLabel: config.buttonLabel,
+    buttonEmoji: config.buttonEmoji,
+    successMessage: config.successMessage,
+    alreadyVerifiedMessage: config.alreadyVerifiedMessage,
+    websiteUrl: getVerificationWebsiteUrl(guildId),
+  });
+}));
+
+router.get("/verification/status", asyncRoute(async (req, res) => {
+  const cookie = req.headers.cookie?.split(";").map((part) => part.trim()).find((part) => part.startsWith(`${verificationCookieName()}=`));
+  const rawToken = cookie?.slice(verificationCookieName().length + 1);
+  const identity = parseVerificationIdentityToken(rawToken);
+  const requestedGuildId = typeof req.query.guildId === "string" ? parse(snowflake, req.query.guildId) : null;
+  if (!identity || (requestedGuildId && requestedGuildId !== identity.guildId)) {
+    res.json({ verified: false });
+    return;
+  }
+  const client = getModerationClient();
+  if (!client) {
+    res.json({ verified: false, reason: "bot_offline" });
+    return;
+  }
+  const snapshot = await fetchBotGuildSnapshot(identity.guildId, identity.userId);
+  const config = normalizeVerificationConfig(await loadVerificationConfig(identity.guildId));
+  res.json({
+    verified: Boolean(snapshot && config.enabled && config.roleId && snapshot.member.roleIds.includes(config.roleId)),
+    guildId: identity.guildId,
+    userId: identity.userId,
   });
 }));
 
@@ -1386,12 +1537,8 @@ router.post("/guilds/:guildId/actions", asyncRoute(async (req, res) =>
  = await import("../bot/moderation/engine")
 ;
 
-    const result = await executeModerationAction(
-{
- guildId, actorId: session.userId, ...input, idempotencyKey 
-}
- as never)
-;
+    const actionInput = { guildId, actorId: session.userId, ...input, idempotencyKey } as never;
+    const result = await executeModerationAction(actionInput);
 
     res.status(201).json(result)
 ;

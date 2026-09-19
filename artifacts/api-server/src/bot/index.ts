@@ -81,6 +81,8 @@ import { moderationCommands, handleModerationCommand } from "./moderation/comman
 import { attachModeration, getConfig as getModerationConfig, handleModerationMessage } from "./moderation/engine";
 import { syncNativeAutoMod } from "./native-automod";
 import { setModerationClient } from "../moderation/auth";
+import { getVerificationWebsiteUrl } from "../moderation/oauth";
+import { handleVerificationButton } from "./verification";
 import { getRewardMultipliers, getCombatModifiers, formatActiveEffects, formatCombatEffects, rollChestEffectKind, grantRandomBlessing, grantRandomCurse, buildChestEffectMessage } from "./status-effects";
 import { SUPER_ADMIN_ID } from "./constants";
 import {
@@ -4173,6 +4175,10 @@ async function handleTributeModal(interaction: ModalSubmitInteraction) {
 
 async function handleButton(interaction: ButtonInteraction) {
   const id = interaction.customId;
+
+  if (id === "verification_start") {
+    return handleVerificationButton(interaction, getVerificationWebsiteUrl(interaction.guildId!));
+  }
 
   if (id.startsWith("ticket_")) {
     return handleTicketButton(interaction);

@@ -9,8 +9,10 @@ const OAUTH_STATE_TTL_MS = 10 * 60_000;
 const MAX_PENDING_STATES = 10_000;
 const SNOWFLAKE = /^\d{5,25}$/;
 
-interface PendingOAuthState {
+export interface PendingOAuthState {
   expiresAt: number;
+  purpose: "moderation" | "verification";
+  guildId?: string;
 }
 
 /**
@@ -166,6 +168,14 @@ function parseCookie(header: string | undefined, name: string): string | null {
 }
 
 export function beginDiscordOAuth(res: Response): string {
+  return beginOAuth(res, { purpose: "moderation" });
+}
+
+export function beginVerificationOAuth(res: Response, guildId: string): string {
+  return beginOAuth(res, { purpose: "verification", guildId });
+}
+
+function beginOAuth(res: Response, pendingState: Omit<PendingOAuthState, "expiresAt">): string {
   const config = getDiscordOAuthConfig();
   if (!config) throw new Error("Discord OAuth is not configured");
   clearExpiredStates();
@@ -176,7 +186,7 @@ export function beginDiscordOAuth(res: Response): string {
 
   const state = makeState();
   const expiresAt = new Date(Date.now() + OAUTH_STATE_TTL_MS);
-  pendingStates.set(state, { expiresAt: expiresAt.getTime() });
+  pendingStates.set(state, { ...pendingState, expiresAt: expiresAt.getTime() });
   res.cookie(OAUTH_STATE_COOKIE, state, stateCookieOptions(expiresAt));
 
   const url = new URL(OAUTH_AUTHORIZE_URL);
@@ -194,6 +204,10 @@ export function beginDiscordOAuth(res: Response): string {
  * network request, so replay cannot repeat a token exchange.
  */
 export function consumeDiscordOAuthState(req: Request, res: Response, state: string | undefined): boolean {
+  return consumeDiscordOAuthRequest(req, res, state) !== null;
+}
+
+export function consumeDiscordOAuthRequest(req: Request, res: Response, state: string | undefined): PendingOAuthState | null {
   const cookieState = parseCookie(req.headers.cookie, OAUTH_STATE_COOKIE);
   res.clearCookie(OAUTH_STATE_COOKIE, stateCookieOptions());
   clearExpiredStates();
@@ -203,15 +217,15 @@ export function consumeDiscordOAuthState(req: Request, res: Response, state: str
   if (!sameSecret(state, cookieState) || !state) {
     if (cookieState) pendingStates.delete(cookieState);
     if (state) pendingStates.delete(state);
-    return false;
+    return null;
   }
   const pending = pendingStates.get(state);
   if (!pending || pending.expiresAt <= Date.now()) {
     pendingStates.delete(state);
-    return false;
+    return null;
   }
   pendingStates.delete(state);
-  return true;
+  return pending;
 }
 
 export async function exchangeDiscordOAuthCode(code: string): Promise<string> {
@@ -330,6 +344,33 @@ export async function fetchBotGuildSnapshot(guildId: string, userId: string): Pr
     },
     roles,
   };
+}
+
+export function getVerificationWebsiteUrl(guildId: string): string {
+  const configuredOrigin = process.env.MODERATION_WEB_ORIGIN?.trim();
+  const redirectUri = configuredOrigin || configuredRedirectUri(process.env.DISCORD_OAUTH_REDIRECT_URI);
+  if (redirectUri) {
+    try {
+      const origin = new URL(redirectUri).origin;
+      return new URL(`/verificare?guildId=${encodeURIComponent(guildId)}`, origin).toString();
+    } catch {
+      // Use the relative portal link below.
+    }
+  }
+  return `/verificare?guildId=${encodeURIComponent(guildId)}`;
+}
+
+export function getDiscordBotInviteUrl(guildId: string): string | null {
+  const clientId = process.env.DISCORD_CLIENT_ID?.trim();
+  if (!clientId) return null;
+  const url = new URL(OAUTH_AUTHORIZE_URL);
+  url.searchParams.set("client_id", clientId);
+  url.searchParams.set("scope", "bot applications.commands");
+  // View channel, send messages, embed links, read history, and manage roles.
+  url.searchParams.set("permissions", "268504064");
+  url.searchParams.set("guild_id", guildId);
+  url.searchParams.set("disable_guild_select", "true");
+  return url.toString();
 }
 
 /** Test-only cleanup that does not weaken production replay protection. */

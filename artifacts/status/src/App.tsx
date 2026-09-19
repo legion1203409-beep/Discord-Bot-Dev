@@ -16,6 +16,7 @@ import { useActiveGuild } from "./hooks/use-moderation-api";
 import { PublicLayout } from "./components/public/PublicLayout";
 import { GameGuidePage } from "./pages/public/GameGuidePage";
 import { OperatorHealthPage } from "./pages/public/OperatorHealthPage";
+import { VerificationPage } from "./pages/public/VerificationPage";
 import { useEffect, useState } from "react";
 
 // The legacy operator/status logic uses hashes on root
@@ -82,6 +83,7 @@ export default function App() {
     <Switch>
       <Route path="/" component={HomeApp} />
       <Route path="/joc" component={GameApp} />
+      <Route path="/verificare" component={VerificationPage} />
       <Route path="/moderare" nest>
         <ModerationApp />
       </Route>
