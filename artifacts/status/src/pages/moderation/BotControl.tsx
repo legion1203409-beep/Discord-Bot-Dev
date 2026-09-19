@@ -1123,10 +1123,13 @@ export function BotControlPage() {
           <section className="space-y-4 rounded-xl border border-border bg-card p-5">
             <div className="flex items-start gap-3">
               <ShieldCheck className="mt-1 h-5 w-5 text-primary" />
-              <div>
+              <div className="min-w-0 flex-1">
                 <h2 className="font-medium">Panoul de verificare</h2>
                 <p className="text-xs text-muted-foreground">Editează exact textul și butonul pe care le vede membrul în canalul de verificare. Salvarea republică panoul dacă botul este online.</p>
               </div>
+              <Button type="button" variant="ghost" size="sm" className="shrink-0 gap-1" onClick={resetVerificationText}>
+                <RotateCcw className="h-3.5 w-3.5" /> Implicit
+              </Button>
             </div>
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
               <div className="grid gap-4 md:grid-cols-2">
@@ -1171,10 +1174,13 @@ export function BotControlPage() {
           <section className="space-y-4 rounded-xl border border-border bg-card p-5">
             <div className="flex items-start gap-3">
               <Megaphone className="mt-1 h-5 w-5 text-primary" />
-              <div>
+              <div className="min-w-0 flex-1">
                 <h2 className="font-medium">Mesaje de stare</h2>
                 <p className="text-xs text-muted-foreground">Acestea sunt mesajele trimise când jocul sau Oracle AI sunt oprite.</p>
               </div>
+              <Button type="button" variant="ghost" size="sm" className="shrink-0 gap-1" onClick={resetGameplayMessages}>
+                <RotateCcw className="h-3.5 w-3.5" /> Implicit
+              </Button>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <label className="space-y-1 text-sm">
@@ -1191,10 +1197,13 @@ export function BotControlPage() {
           <section className="space-y-5 rounded-xl border border-border bg-card p-5">
             <div className="flex items-start gap-3">
               <Megaphone className="mt-1 h-5 w-5 text-primary" />
-              <div>
+              <div className="min-w-0 flex-1">
                 <h2 className="font-medium">Design statistici zilnice</h2>
                 <p className="text-xs text-muted-foreground">Personalizează raportul publicat automat în Discord. Poți folosi {`{guild}`}, {`{date}`}, {`{messages}`}, {`{uniqueUsers}`}, {`{boosts}`}, {`{joins}`}, {`{leaves}`} și {`{peakVoice}`} în titlu sau descriere.</p>
               </div>
+              <Button type="button" variant="ghost" size="sm" className="shrink-0 gap-1" onClick={resetDailyStats}>
+                <RotateCcw className="h-3.5 w-3.5" /> Implicit
+              </Button>
             </div>
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
               <div className="space-y-4">
@@ -1261,10 +1270,13 @@ export function BotControlPage() {
           <section className="space-y-4 rounded-xl border border-border bg-card p-5">
             <div className="flex items-start gap-3">
               <Megaphone className="mt-1 h-5 w-5 text-primary" />
-              <div>
+              <div className="min-w-0 flex-1">
                 <h2 className="font-medium">Textul mesajului de alianță</h2>
                 <p className="text-xs text-muted-foreground">Textul este folosit la următoarea publicare a anunțului de recrutare. Discord limitează mesajul la 2.000 de caractere.</p>
               </div>
+              <Button type="button" variant="ghost" size="sm" className="shrink-0 gap-1" onClick={() => setDraft({ ...draft, allianceRecruitmentText: "" })}>
+                <RotateCcw className="h-3.5 w-3.5" /> Implicit
+              </Button>
             </div>
             <Textarea
               value={draft.allianceRecruitmentText}
