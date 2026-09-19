@@ -131,21 +131,22 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .smoke-layer--two { top: 113rem; right: -19rem; transform: rotate(18deg); opacity: .08; }
 
 /* Navigation */
-.site-nav { position: absolute; z-index: 10; top: 0; left: 50%; display: flex; width: min(calc(100% - 5rem), 1240px); min-height: 96px; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line-soft); transform: translateX(-50%); }
+.site-nav { position: absolute; z-index: 10; top: 0; left: 50%; display: flex; width: min(calc(100% - 5rem), 1240px); min-height: 96px; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(9, 7, 8, .16); background: rgba(238, 231, 223, .96); color: #090708; transform: translateX(-50%); }
 .brand { display: inline-flex; align-items: center; gap: .7rem; line-height: 1; }
 .brand-mark { display: grid; width: 35px; height: 35px; place-items: center; overflow: hidden; border: 1px solid rgba(197,164,107,.6); border-radius: 50%; background: var(--night); box-shadow: 0 0 22px rgba(197,164,107,.12); }
 .brand-mark img { width: 150%; height: 150%; object-fit: cover; mix-blend-mode: screen; filter: saturate(.6) contrast(1.15); }
-.brand strong, .brand small { display: block; letter-spacing: .19em; }
+.site-nav .brand strong, .site-nav .brand small { display: block; letter-spacing: .19em; }
 .brand strong { font-size: .73rem; font-weight: 800; }
 .brand small { margin-top: .3rem; color: var(--ash); font-size: .54rem; font-weight: 700; }
-.nav-links { display: flex; align-items: center; margin-left: auto; margin-right: 2.8rem; color: var(--paper-soft); font-size: .68rem; font-weight: 600; letter-spacing: .05em; }
+.site-nav .brand small { color: #3f3431; }
+.nav-links { display: flex; align-items: center; margin-left: auto; margin-right: 2.8rem; color: #090708; font-size: .68rem; font-weight: 600; letter-spacing: .05em; }
 .nav-links-inner { display: flex; align-items: center; gap: 2.25rem; width: 100%; justify-content: center; }
 .nav-links a { position: relative; padding-block: .5rem; transition: color 180ms ease; }
 .nav-links a::after { position: absolute; right: 0; bottom: 0; left: 0; height: 1px; background: var(--gold); content: ""; transform: scaleX(0); transform-origin: right; transition: transform 180ms ease; }
-.nav-links a:hover { color: var(--paper); }
+.nav-links a:hover { color: #7d242b; }
 .nav-links a:hover::after { transform: scaleX(1); transform-origin: left; }
 .nav-cta, .button { display: inline-flex; min-height: 45px; align-items: center; justify-content: center; gap: .65rem; border: 1px solid transparent; border-radius: 2px; font-size: .67rem; font-weight: 800; letter-spacing: .08em; transition: transform 180ms ease, background 180ms ease, border-color 180ms ease, color 180ms ease; }
-.nav-cta { padding: .7rem 1rem; border-color: rgba(197,164,107,.5); color: var(--paper); }
+.nav-cta { padding: .7rem 1rem; border-color: rgba(9, 7, 8, .35); color: #090708; }
 .nav-cta:hover { border-color: var(--gold); background: rgba(197,164,107,.1); transform: translateY(-2px); }
 .nav-cta .icon, .button .icon { color: var(--gold-light); }
 
@@ -684,7 +685,9 @@ h1 em, h2 em, blockquote em { color: var(--ember-light); }
   .mobile-menu-toggle { display: block; }
   .nav-cta:not(.nav-cta--mobile) { display: none; }
   
-  .nav-links { position: fixed; inset: 0; margin: 0; overflow-y: auto; background: var(--void); z-index: 50; padding: 8rem 2rem 2rem; display: flex; flex-direction: column; align-items: center; visibility: hidden; opacity: 0; pointer-events: none; transition: opacity 300ms ease; }
+  .nav-links { position: fixed; inset: 0; margin: 0; overflow-y: auto; background: var(--void); color: var(--paper-soft); z-index: 50; padding: 8rem 2rem 2rem; display: flex; flex-direction: column; align-items: center; visibility: hidden; opacity: 0; pointer-events: none; transition: opacity 300ms ease; }
+  .nav-links a:hover { color: var(--paper); }
+  .nav-links .nav-cta { color: var(--paper); border-color: rgba(197,164,107,.5); }
   .nav-links.is-open { visibility: visible; opacity: 1; pointer-events: auto; }
   .nav-links-inner { display: flex; flex-direction: column; align-items: center; gap: 2rem; width: 100%; max-width: 300px; }
   .nav-links a { font-size: 1.1rem; }
