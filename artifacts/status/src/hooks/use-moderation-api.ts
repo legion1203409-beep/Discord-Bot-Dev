@@ -692,11 +692,11 @@ export function useBotControl(guildId: string | null) {
     }
   };
 
-  const provisionChannels = async () => {
+  const provisionChannels = async (categories?: string[]) => {
     if (!guildId) throw new Error("Nu este selectat niciun server.");
     const saved = await apiFetch<BotControlConfig>(`/guilds/${guildId}/bot-control/provision-channels`, {
       method: "POST",
-      body: JSON.stringify({}),
+      body: JSON.stringify(categories ? { categories } : {}),
     });
     setData(saved);
     return saved;

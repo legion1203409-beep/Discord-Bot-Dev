@@ -29,7 +29,7 @@ type ChannelTarget = {
   category: ProvisioningCategoryKey;
 };
 
-type ProvisioningCategoryKey = "gameplay" | "admin" | "filtered" | "links" | "security" | "verification";
+export type ProvisioningCategoryKey = "gameplay" | "admin" | "filtered" | "links" | "security" | "verification";
 
 type ProvisioningCategoryTarget = {
   key: ProvisioningCategoryKey;
@@ -43,6 +43,15 @@ const CATEGORY_TARGETS: ProvisioningCategoryTarget[] = [
   { key: "links", names: ["🔗・LINKURI", "linkuri", "filtrare linkuri", "anti-link"] },
   { key: "security", names: ["🚨・SECURITATE", "securitate", "anti-raid", "alerte securitate"] },
   { key: "verification", names: ["✅・VERIFICARE", "verificare", "verification"] },
+];
+
+export const PROVISIONING_CATEGORY_KEYS: ProvisioningCategoryKey[] = [
+  "gameplay",
+  "admin",
+  "filtered",
+  "links",
+  "security",
+  "verification",
 ];
 
 const GAMEPLAY_TARGETS: Array<Omit<ChannelTarget, "currentId"> & { key: keyof ChannelConfig }> = [
@@ -122,14 +131,16 @@ async function provisionGuildChannelsUnlocked(
     ticketConfig: TicketConfig;
     moderationConfig: ModerationConfig;
     verification: VerificationConfig;
+    categories?: ProvisioningCategoryKey[];
   },
 ): Promise<ChannelProvisionResult> {
   const channels = await guild.channels.fetch();
   const created: ProvisionedChannel[] = [];
   const reused: ProvisionedChannel[] = [];
   const categoryIds = new Map<ProvisioningCategoryKey, string>();
+  const selectedCategories = new Set(input.categories ?? PROVISIONING_CATEGORY_KEYS);
 
-  for (const target of CATEGORY_TARGETS) {
+  for (const target of CATEGORY_TARGETS.filter((target) => selectedCategories.has(target.key))) {
     const existing = [...channels.values()].find((channel) =>
       channel !== null &&
       isExpectedType(channel, "category") &&
@@ -181,7 +192,7 @@ async function provisionGuildChannelsUnlocked(
   };
 
   const channelConfig: ChannelConfig = { ...input.channelConfig };
-  for (const target of GAMEPLAY_TARGETS) {
+  for (const target of GAMEPLAY_TARGETS.filter((target) => selectedCategories.has(target.category))) {
     channelConfig[target.key] = await resolve({
       ...target,
       currentId: input.channelConfig[target.key],
@@ -192,7 +203,8 @@ async function provisionGuildChannelsUnlocked(
     ...input.ticketConfig,
     categories: { ...input.ticketConfig.categories },
   };
-  for (const target of TICKET_TARGETS) {
+  if (selectedCategories.has("admin")) {
+    for (const target of TICKET_TARGETS) {
     ticketConfig.categories[target.key] = await resolve({
       key: `tickets.categories.${target.key}`,
       currentId: input.ticketConfig.categories[target.key],
@@ -200,10 +212,11 @@ async function provisionGuildChannelsUnlocked(
       type: "category",
       category: "admin",
     });
+    }
   }
 
   const moderationConfig: ModerationConfig = structuredClone(input.moderationConfig);
-  for (const target of MODERATION_TARGETS) {
+  for (const target of MODERATION_TARGETS.filter((target) => selectedCategories.has(target.category))) {
     const [section, field] = target.key.split(".");
     const currentId = (moderationConfig[section as keyof ModerationConfig] as Record<string, unknown>)[field];
     const id = await resolve({
@@ -217,13 +230,15 @@ async function provisionGuildChannelsUnlocked(
   }
 
   const verification = { ...input.verification };
-  verification.channelId = await resolve({
-    key: "verification.channelId",
-    currentId: verification.channelId,
-    names: ["verificare", "verificare-discord"],
-    type: "text",
-    category: "verification",
-  });
+  if (selectedCategories.has("verification")) {
+    verification.channelId = await resolve({
+      key: "verification.channelId",
+      currentId: verification.channelId,
+      names: ["verificare", "verificare-discord"],
+      type: "text",
+      category: "verification",
+    });
+  }
 
   return { channelConfig, ticketConfig, moderationConfig, verification, created, reused };
 }
@@ -235,6 +250,7 @@ export function provisionGuildChannels(
     ticketConfig: TicketConfig;
     moderationConfig: ModerationConfig;
     verification: VerificationConfig;
+    categories?: ProvisioningCategoryKey[];
   },
 ): Promise<ChannelProvisionResult> {
   // A double-click or two owner tabs must not both fetch the same snapshot and

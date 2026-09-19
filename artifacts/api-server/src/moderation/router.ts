@@ -170,6 +170,17 @@ const botChannelConfigSchema = z.object(
 ).strict()
 ;
 
+const provisionChannelsSchema = z.object({
+  categories: z.array(z.enum([
+    "gameplay",
+    "admin",
+    "filtered",
+    "links",
+    "security",
+    "verification",
+  ])).min(1).optional(),
+}).strict();
+
 const verificationConfigSchema = z.object({
   enabled: z.boolean(),
   channelId: z.union([snowflake, z.literal("")]),
@@ -1158,6 +1169,7 @@ router.get("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
 
 router.post("/guilds/:guildId/bot-control/provision-channels", asyncRoute(async (req, res) => {
   const guildId = parse(snowflake, req.params.guildId);
+  const { categories } = provisionChannelsSchema.parse(req.body ?? {});
   const session = await sessionAndGuild(req, guildId, "config", true);
   const client = getModerationClient();
   if (!client || !client.isReady()) {
@@ -1182,6 +1194,7 @@ router.post("/guilds/:guildId/bot-control/provision-channels", asyncRoute(async 
     ticketConfig: normalizeTicketConfig(ticketConfig),
     moderationConfig: moderationSnapshot.config,
     verification: normalizeVerificationConfig(verification),
+    categories,
   });
 
   await saveChannelConfig(guildId, provisioned.channelConfig);

@@ -20,6 +20,45 @@ const CHANNELS = [
   ["fratia", "Chivotul Frăției"],
 ] as const;
 
+const PROVISIONING_CATEGORIES = [
+  {
+    key: "gameplay",
+    label: "Joc și evenimente",
+    description: "Cufere, Oracol, lupte, boss, negustor și clasamente.",
+    items: ["Cufere și Oracol", "Ora Umbrelor", "Dragonul Stins", "Negustorul", "Clasamente"],
+  },
+  {
+    key: "admin",
+    label: "Administrator",
+    description: "Consiliu, Frăție, audit și categoriile de tichete.",
+    items: ["Consiliul Umbrelor", "Chivotul Frăției", "Tichete", "Audit"],
+  },
+  {
+    key: "filtered",
+    label: "Mesaje filtrate",
+    description: "Jurnale pentru anti-spam și moderarea AI.",
+    items: ["Jurnal anti-spam", "Jurnal moderare AI"],
+  },
+  {
+    key: "links",
+    label: "Linkuri",
+    description: "Categorie pregătită pentru canalele de filtrare linkuri.",
+    items: ["Categorie Linkuri"],
+  },
+  {
+    key: "security",
+    label: "Securitate",
+    description: "Alerte anti-raid și comportament suspect.",
+    items: ["Alerte anti-raid", "Alerte comportament suspect"],
+  },
+  {
+    key: "verification",
+    label: "Verificare",
+    description: "Canalul pentru verificarea membrilor.",
+    items: ["Canal verificare"],
+  },
+] as const;
+
 const TICKET_CATEGORIES = [
   ["staff", "Aplicare staff"],
   ["partnership", "Parteneriate"],
@@ -187,6 +226,9 @@ export function BotControlPage() {
   const [draft, setDraft] = useState<BotControlConfig | null>(null);
   const [saving, setSaving] = useState(false);
   const [provisioning, setProvisioning] = useState(false);
+  const [selectedProvisioningCategories, setSelectedProvisioningCategories] = useState<string[]>(
+    PROVISIONING_CATEGORIES.map((category) => category.key),
+  );
   const [activeFlowKind, setActiveFlowKind] = useState<keyof BotControlConfig["tickets"]["flows"]>("staff");
   const [testOpen, setTestOpen] = useState(false);
   const [testStarted, setTestStarted] = useState(false);
@@ -375,15 +417,23 @@ export function BotControlPage() {
   };
 
   const provision = async () => {
+    if (selectedProvisioningCategories.length === 0) {
+      toast({
+        variant: "destructive",
+        title: "Alege cel puțin o categorie",
+        description: "Bifează în partea dreaptă ce vrei să creezi.",
+      });
+      return;
+    }
     setProvisioning(true);
     try {
-      const saved = await provisionChannels();
+      const saved = await provisionChannels(selectedProvisioningCategories);
       await refetchMetadata();
       const created = saved.provisioning?.created.length ?? 0;
       const reused = saved.provisioning?.reused.length ?? 0;
       toast({
         title: "Canalele au fost sincronizate",
-        description: `${created} create, ${reused} reutilizate. Configurația a fost salvată pentru acest server.`,
+        description: `${created} create, ${reused} reutilizate pentru ${selectedProvisioningCategories.length} categorii. Configurația a fost salvată pentru acest server.`,
       });
     } catch (provisionError: any) {
       toast({
@@ -502,31 +552,97 @@ export function BotControlPage() {
                  Butonul este disponibil după ce botul primește permisiunea Discord <strong>Manage Channels</strong>.
                </p>
              )}
-            <div className="grid gap-4 md:grid-cols-2">
-              {CHANNELS.map(([key, label]) => {
-                const current = draft.channels[key] ?? "";
-                const selected = metadata?.channels.some((channel) => channel.id === current) ? current : "__none__";
-                return (
-                  <div key={key} className={`mod-setting-card space-y-2 rounded-lg border border-transparent p-3 ${current ? "mod-setting-card--selected" : ""}`}>
-                    <label className="text-sm font-medium">{label}</label>
-                    <Select value={selected} onValueChange={(value) => setChannel(key, value)}>
-                      <SelectTrigger className="mod-select-trigger"><SelectValue placeholder="Alege canal" /></SelectTrigger>
-                      <SelectContent className="max-h-[min(70vh,32rem)] overscroll-contain">
-                        <SelectItem value="__none__">Neconfigurat</SelectItem>
-                        {metadata?.channels.map((channel) => (
-                          <SelectItem key={channel.id} value={channel.id}>
-                            {isCategory(channel.type) ? "▰" : "#"} {channel.name}
-                            {channel.parentId && categoryNames.get(channel.parentId) ? ` · ${categoryNames.get(channel.parentId)}` : ""}
-                            {" "}({channel.id})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Input value={current} placeholder="ID canal Discord" aria-label={`${label} ID`} onChange={(event) => setChannel(key, event.target.value.trim())} />
-                  </div>
-                );
-              })}
-            </div>
+             <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
+               <div className="grid gap-4 md:grid-cols-2">
+                 {CHANNELS.map(([key, label]) => {
+                   const current = draft.channels[key] ?? "";
+                   const selected = metadata?.channels.some((channel) => channel.id === current) ? current : "__none__";
+                   return (
+                     <div key={key} className={`mod-setting-card space-y-2 rounded-lg border border-transparent p-3 ${current ? "mod-setting-card--selected" : ""}`}>
+                       <label className="text-sm font-medium">{label}</label>
+                       <Select value={selected} onValueChange={(value) => setChannel(key, value)}>
+                         <SelectTrigger className="mod-select-trigger"><SelectValue placeholder="Alege canal" /></SelectTrigger>
+                         <SelectContent className="max-h-[min(70vh,32rem)] overscroll-contain">
+                           <SelectItem value="__none__">Neconfigurat</SelectItem>
+                           {metadata?.channels.map((channel) => (
+                             <SelectItem key={channel.id} value={channel.id}>
+                               {isCategory(channel.type) ? "▰" : "#"} {channel.name}
+                               {channel.parentId && categoryNames.get(channel.parentId) ? ` · ${categoryNames.get(channel.parentId)}` : ""}
+                               {" "}({channel.id})
+                             </SelectItem>
+                           ))}
+                         </SelectContent>
+                       </Select>
+                       <Input value={current} placeholder="ID canal Discord" aria-label={`${label} ID`} onChange={(event) => setChannel(key, event.target.value.trim())} />
+                     </div>
+                   );
+                 })}
+               </div>
+
+               <aside className="h-fit rounded-lg border border-primary/25 bg-primary/[0.04] p-4">
+                 <div className="mb-3 flex items-start justify-between gap-3">
+                   <div>
+                     <p className="text-xs font-mono tracking-widest text-primary">CE SE CREEAZĂ</p>
+                     <h3 className="mt-1 font-medium">Alege categoriile</h3>
+                   </div>
+                   <span className="rounded-full border border-primary/30 px-2 py-1 text-[11px] text-primary">
+                     {selectedProvisioningCategories.length}/{PROVISIONING_CATEGORIES.length}
+                   </span>
+                 </div>
+                 <p className="mb-4 text-xs leading-5 text-muted-foreground">
+                   Bifează doar ce vrei să creeze botul. Categoriile nebifate nu sunt atinse.
+                 </p>
+                 <div className="space-y-2">
+                   {PROVISIONING_CATEGORIES.map((category) => {
+                     const checked = selectedProvisioningCategories.includes(category.key);
+                     return (
+                       <label
+                         key={category.key}
+                         className={`block cursor-pointer rounded-md border p-3 transition-colors ${checked ? "border-primary/40 bg-primary/10" : "border-border/70 hover:bg-muted/40"}`}
+                       >
+                         <span className="flex items-start gap-2">
+                           <input
+                             type="checkbox"
+                             className="mt-1 accent-primary"
+                             checked={checked}
+                             onChange={(event) => {
+                               setSelectedProvisioningCategories((current) => event.target.checked
+                                 ? [...current, category.key]
+                                 : current.filter((key) => key !== category.key));
+                             }}
+                           />
+                           <span className="min-w-0">
+                             <span className="block text-sm font-medium">{category.label}</span>
+                             <span className="mt-1 block text-xs leading-4 text-muted-foreground">{category.description}</span>
+                             <span className="mt-2 block text-[11px] leading-4 text-muted-foreground/80">{category.items.join(" · ")}</span>
+                           </span>
+                         </span>
+                       </label>
+                     );
+                   })}
+                 </div>
+                 <div className="mt-4 flex gap-2">
+                   <Button
+                     type="button"
+                     variant="ghost"
+                     size="sm"
+                     className="flex-1"
+                     onClick={() => setSelectedProvisioningCategories(PROVISIONING_CATEGORIES.map((category) => category.key))}
+                   >
+                     Toate
+                   </Button>
+                   <Button
+                     type="button"
+                     variant="ghost"
+                     size="sm"
+                     className="flex-1"
+                     onClick={() => setSelectedProvisioningCategories([])}
+                   >
+                     Niciuna
+                   </Button>
+                 </div>
+               </aside>
+             </div>
           </section>
 
           <section className="space-y-5 rounded-xl border border-border bg-card p-5">

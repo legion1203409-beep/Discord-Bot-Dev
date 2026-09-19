@@ -86,4 +86,51 @@ describe("guild channel provisioning", () => {
     expect(second.created).toEqual([]);
     expect(create).toHaveBeenCalledTimes(first.created.length);
   });
+
+  it("creates only the selected provisioning category", async () => {
+    const channels = new Map<string, ReturnType<typeof channel>>();
+    const create = vi.fn(async ({ name, type }: { name: string; type: ChannelType }) => {
+      const created = channel(`created-${channels.size}`, name, type);
+      channels.set(created.id, created);
+      return created;
+    });
+    const guild = {
+      id: "guild-selected-category",
+      channels: { fetch: vi.fn(async () => channels), create },
+    } as unknown as Guild;
+
+    const result = await provisionGuildChannels(guild, {
+      categories: ["gameplay"],
+      channelConfig: {},
+      ticketConfig: structuredClone(DEFAULT_TICKET_CONFIG),
+      moderationConfig: structuredClone(defaultModerationConfig),
+      verification: structuredClone(DEFAULT_VERIFICATION_CONFIG),
+    });
+
+    expect(result.created.map((entry) => entry.key)).toEqual(expect.arrayContaining([
+      "category.gameplay",
+      "main",
+      "event",
+      "boss",
+      "trader",
+      "eventTop",
+      "bossTop",
+    ]));
+    expect(result.created.map((entry) => entry.key)).not.toEqual(expect.arrayContaining([
+      "category.admin",
+      "category.security",
+      "council",
+      "fratia",
+      "moderation.audit.channelId",
+      "verification.channelId",
+    ]));
+    expect(result.created.every((entry) => entry.key === "category.gameplay" || [
+      "main",
+      "event",
+      "boss",
+      "trader",
+      "eventTop",
+      "bossTop",
+    ].includes(entry.key))).toBe(true);
+  });
 });
