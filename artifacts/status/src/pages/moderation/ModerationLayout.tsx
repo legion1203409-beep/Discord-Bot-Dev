@@ -179,17 +179,11 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
             </Button>
           )}
 
-          <div className="mt-5 text-center">
-            <a
-              href="/joc"
-              className="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-primary"
-              data-testid="server-presentation-link"
-            >
-              <BookOpen className="h-4 w-4" aria-hidden="true" />
-              Prezentarea serverului
-            </a>
+          <div className="mt-8 pt-6 border-t border-border/50">
+            <Link href="~/joc" data-testid="link-game-guide-login" className="text-xs font-mono tracking-widest text-muted-foreground hover:text-primary transition-colors inline-flex items-center gap-2">
+              <BookOpen className="w-4 h-4" /> GHIDUL JOCULUI
+            </Link>
           </div>
-
           </div>
         </div>
       </div>
