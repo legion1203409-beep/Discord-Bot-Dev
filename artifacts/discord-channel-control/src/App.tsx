@@ -45,10 +45,71 @@ const categories = [
 ] as const;
 const defaultSelected: Record<ChannelKey, string> = { main: channels[0].id, event: channels[1].id, boss: channels[2].id, trader: channels[3].id, eventTop: channels[4].id, bossTop: channels[5].id, council: channels[6].id, fratia: channels[7].id };
 const defaultPermissions: Record<string, PermissionState> = Object.fromEntries(categories.map((c) => [c.key, { roles: c.key === 'admin' ? ['Administrator', 'Moderator'] : ['Moderator'], readHistory: true, sendMessages: c.key !== 'filtered' }]));
+const moduleCopy = {
+  tickets: {
+    eyebrow: 'TICKET OPS',
+    label: 'Tichete Discord',
+    description: 'Configurează fluxul de suport și urmărește starea tichetelor fără să pierzi contextul.',
+    icon: Ticket,
+    metrics: [['Deschise', '4', 'Necesită atenție'], ['În așteptare', '2', 'Așteaptă răspuns'], ['Rezolvate', '18', 'În ultimele 30 zile']],
+    rows: [['#1042', 'Raportare comportament', 'Moderator', 'Acum 8 min'], ['#1041', 'Întrebare despre eveniment', 'Cronicar', 'Acum 24 min'], ['#1038', 'Acces rol verificat', 'Administrator', 'Ieri']],
+  },
+  verification: {
+    eyebrow: 'MEMBER GATE',
+    label: 'Verificare membri',
+    description: 'Pregătește verificarea membrilor noi și păstrează vizibil progresul fluxului.',
+    icon: ShieldCheck,
+    metrics: [['În așteptare', '12', 'Membri noi'], ['Verificați azi', '27', 'Flux finalizat'], ['Rată reușită', '94%', 'Ultimele 7 zile']],
+    rows: [['Canal verificare', 'Activ și conectat', 'Public', 'Pregătit'], ['Rol după verificare', 'Membru', 'Automat', 'Pregătit'], ['Mesaj de întâmpinare', 'Configurat', 'Oracol', 'Pregătit']],
+  },
+  messages: {
+    eyebrow: 'MESSAGE ROUTING',
+    label: 'Mesaje automate',
+    description: 'Verifică destinațiile și starea mesajelor automate trimise de bot.',
+    icon: Megaphone,
+    metrics: [['Trimise azi', '86', 'Toate destinațiile'], ['În coadă', '3', 'Vor fi trimise curând'], ['Eșecuri', '0', 'Ultimele 24 ore']],
+    rows: [['Oracol și cufere', 'cufere-si-oracol', 'Activ', 'Postare automată'], ['Ora Umbrelor', 'ora-umbrelor', 'Activ', 'Postare automată'], ['Negustorul', 'negustorul', 'Activ', 'Rotație zilnică']],
+  },
+  statistics: {
+    eyebrow: 'BOT PULSE',
+    label: 'Statistici bot',
+    description: 'O privire rapidă asupra activității botului și a sănătății destinațiilor configurate.',
+    icon: Activity,
+    metrics: [['Mesaje procesate', '1.284', 'Ultimele 30 zile'], ['Evenimente active', '7', 'În acest moment'], ['Disponibilitate', '99,2%', 'Ultimele 7 zile']],
+    rows: [['Activitate evenimente', '82%', 'Ritm normal', 'Acum'], ['Răspunsuri Oracol', '68%', 'În creștere', 'Săptămâna aceasta'], ['Destinații sănătoase', '8/8', 'Totul funcționează', 'Verificat acum']],
+  },
+} as const;
 
 function PermissionPanel({ category, permission, onChange }: { category: (typeof categories)[number]; permission: PermissionState; onChange: (p: PermissionState) => void }) {
   const toggleRole = (role: string) => onChange({ ...permission, roles: permission.roles.includes(role) ? permission.roles.filter((r) => r !== role) : [...permission.roles, role] });
   return <div className="permission-panel" data-testid={`panel-permissions-${category.key}`}><div className="permission-title"><LockKeyhole size={15} /><div><strong>Permisiuni pentru {category.label}</strong><p>Membrii cu rolurile selectate văd canalele create. Botul își păstrează accesul automat.</p></div></div><div className="role-grid">{roles.map((role) => <label className="permission-check" key={role}><input type="checkbox" checked={permission.roles.includes(role)} onChange={() => toggleRole(role)} data-testid={`checkbox-role-${category.key}-${role.replaceAll(' ', '-').toLowerCase()}`} /><Users size={12} />@{role}</label>)}</div><div className="permission-options"><label><input type="checkbox" checked={permission.readHistory} onChange={(e) => onChange({ ...permission, readHistory: e.target.checked })} data-testid={`checkbox-history-${category.key}`} /> Pot vedea istoricul</label><label><input type="checkbox" checked={permission.sendMessages} onChange={(e) => onChange({ ...permission, sendMessages: e.target.checked })} data-testid={`checkbox-send-${category.key}`} /> Pot scrie mesaje</label></div></div>;
+}
+
+function ModulePanel({ tab, ready, onToggle, onBack }: { tab: Exclude<TabKey, 'channels'>; ready: boolean; onToggle: () => void; onBack: () => void }) {
+  const copy = moduleCopy[tab];
+  const Icon = copy.icon;
+  return <section className="module-shell surface" data-testid={`tab-panel-${tab}`}>
+    <div className="module-header">
+      <div className="section-title"><span className="icon-box"><Icon size={16} /></span><div><span className="eyebrow">{copy.eyebrow}</span><h2>{copy.label}</h2><p>{copy.description}</p></div></div>
+      <div className={`module-status ${ready ? 'ready' : ''}`} data-testid={`status-module-${tab}`}><span className="status-dot" />{ready ? 'Pregătit local' : 'În configurare'}</div>
+    </div>
+    <div className="module-metrics">
+      {copy.metrics.map(([label, value, detail]) => <div className="metric-card" key={label} data-testid={`metric-${tab}-${label.toLowerCase().replaceAll(' ', '-')}`}><span>{label}</span><strong>{value}</strong><small>{detail}</small></div>)}
+    </div>
+    <div className="module-workspace">
+      <div className="module-list surface-inset">
+        <div className="module-list-head"><div><span className="eyebrow">CONFIGURAȚIE</span><h3>Fluxuri urmărite</h3></div><CheckCircle2 size={17} /></div>
+        {copy.rows.map(([name, value, owner, time], index) => <div className="module-row" key={name} data-testid={`row-${tab}-${index}`}><div className="module-row-icon"><Icon size={14} /></div><div className="module-row-main"><strong>{name}</strong><span>{value}</span></div><span className="module-row-owner">{owner}</span><small>{time}</small></div>)}
+      </div>
+      <aside className="module-side surface-inset">
+        <span className="eyebrow">CONTROL LOCAL</span><h3>Stare modul</h3><p>Acest spațiu folosește aceeași configurație owner-only ca zona de canale.</p>
+        <div className="module-check"><Check size={13} /> Configurația poate fi pregătită</div>
+        <div className="module-check"><Clock3 size={13} /> Se aplică după reconectarea botului</div>
+        <button type="button" className={`btn ${ready ? 'primary' : ''}`} onClick={onToggle} data-testid={`button-toggle-module-${tab}`}>{ready ? <Check size={14} /> : <Clock3 size={14} />}{ready ? 'Pregătit' : 'Marchează pregătit'}</button>
+      </aside>
+    </div>
+    <button type="button" className="module-back" onClick={onBack} data-testid={`button-return-to-channels-${tab}`}><Radio size={13} /> Înapoi la canale</button>
+  </section>;
 }
 
 function Home() {
@@ -58,6 +119,7 @@ function Home() {
   const [expanded, setExpanded] = useState<string | null>('gameplay');
   const [permissions, setPermissions] = useState(defaultPermissions);
   const [feedback, setFeedback] = useState<Feedback>('idle');
+  const [moduleReady, setModuleReady] = useState<Record<Exclude<TabKey, 'channels'>, boolean>>({ tickets: false, verification: false, messages: false, statistics: false });
   const [hydrated, setHydrated] = useState(false);
   const [savedSnapshot, setSavedSnapshot] = useState('');
   useEffect(() => { try { const raw = localStorage.getItem(storageKey); if (raw) { const v = JSON.parse(raw); setSelected({ ...defaultSelected, ...v.selected }); setChosen(v.chosen ?? chosen); setPermissions({ ...defaultPermissions, ...v.permissions }); } } catch { /* unavailable */ } setHydrated(true); }, []);
@@ -73,7 +135,7 @@ function Home() {
     <header className="hero"><div><div className="brand-row"><span className="brand-mark"><Bot size={18} /></span><span className="eyebrow">CONTROL OWNER-ONLY</span></div><h1>Control bot</h1><p className="subtitle">Configurează destinațiile Discord și regulile de creare fără să pierzi din vedere ce se schimbă.</p></div><div className="bot-status"><span className="status-pulse" /><div><strong>Bot deconectat</strong><small>Ultima verificare acum 4 min</small></div></div></header>
     <div className="offline-banner"><AlertTriangle size={15} /><span><strong>Modificările rămân în așteptare.</strong> Botul Discord nu este conectat la această instanță. Salvarea este disponibilă acum, iar setările devin active după reconectare.</span><button type="button" onClick={() => setFeedbackFor('tested')} data-testid="button-view-connection-help"><CircleHelp size={13} /> Detalii</button></div>
     <nav className="tab-bar" aria-label="Secțiuni control bot">{tabs.map(({ key, label, icon: Icon }) => <button type="button" className="tab" data-active={activeTab === key} data-testid={`tab-${key}`} key={key} onClick={() => setActiveTab(key)}><Icon size={14} />{label}</button>)}</nav>
-    {activeTab !== 'channels' ? <section className="placeholder surface" data-testid={`tab-panel-${activeTab}`}><Wrench size={24} /><h2>Modulul {tabs.find((t) => t.key === activeTab)?.label}</h2><p>Această zonă este disponibilă în controlul botului. Canalele și permisiunile pot fi pregătite din secțiunea Canale.</p><button type="button" className="btn" onClick={() => setActiveTab('channels')} data-testid="button-return-to-channels"><Radio size={14} /> Înapoi la canale</button></section> :
+     {activeTab !== 'channels' ? <ModulePanel tab={activeTab} ready={moduleReady[activeTab]} onToggle={() => { setModuleReady((current) => ({ ...current, [activeTab]: !current[activeTab] })); setFeedbackFor('tested'); }} onBack={() => setActiveTab('channels')} /> :
     <section className="content-grid" data-testid="tab-panel-channels"><div className="main-column"><section className="surface destinations"><div className="section-head"><div className="section-title"><span className="icon-box"><Radio size={16} /></span><div><div className="title-line"><h2>Destinații de canal</h2><span className="count-pill">{Object.values(selected).filter(Boolean).length}/8 configurate</span></div><p>Alege un canal existent sau introdu manual ID-ul Discord. Fiecare flux are o destinație vizibilă aici.</p></div></div><button type="button" className="btn outline" onClick={provision} disabled={feedback === 'provisioning'} data-testid="button-provision-channels"><RefreshCw size={13} className={feedback === 'provisioning' ? 'spin' : ''} />{feedback === 'provisioning' ? 'Se sincronizează' : feedback === 'provisioned' ? 'Destinații verificate' : 'Creează ce lipsește'}</button></div><div className="channel-grid">{channelFields.map(({ key, label, description, icon: Icon }) => { const value = selected[key]; const current = channels.find((c) => c.id === value); return <article className={`destination-card ${value ? 'selected' : ''} ${errors[key] ? 'has-error' : ''}`} key={key} data-testid={`card-channel-${key}`}><div className="destination-head"><Icon size={15} /><div><label htmlFor={`channel-${key}`}>{label}</label><p>{description}</p></div>{value && <CheckCircle2 size={14} />}</div><select value={value} onChange={(e) => setSelected({ ...selected, [key]: e.target.value })} data-testid={`select-channel-${key}`}><option value="">Neconfigurat</option>{channels.map((c) => <option value={c.id} key={c.id}>{c.type === 'category' ? 'Categorie' : '#'} {c.name} · {c.parent} ({c.id})</option>)}</select><div className="id-row"><Hash size={13} /><input id={`channel-${key}`} value={value} onChange={(e) => setSelected({ ...selected, [key]: e.target.value.trim() })} placeholder="ID canal Discord" aria-label={`${label} ID`} data-testid={`input-channel-id-${key}`} /><span>{current ? `#${current.name}` : 'ID manual'}</span></div>{errors[key] && <p className="field-error" data-testid={`validation-channel-${key}`}>{errors[key]}</p>}</article>; })}</div></section>
     <section className="surface permissions"><div className="section-title"><span className="icon-box amber"><ShieldCheck size={16} /></span><div><h2>Permisiuni necesare</h2><p>Verifică accesul botului înainte de provisioning pentru a evita categorii create incomplet.</p></div></div><div className="permission-summary"><span>Manage Channels <b>⚠ Necesară</b></span><span>Manage Permissions <b>⚠ Necesară</b></span><span>Send Messages <em>✓ Disponibilă</em></span></div><p className="help"><CircleHelp size={13} /> Butonul de provisioning va rămâne blocat pe Discord până când botul primește permisiunea <strong>Manage Channels</strong>.</p></section></div>
     <aside className="provision-panel" data-testid="panel-provisioning"><div className="panel-heading"><div><span className="eyebrow">PROVISIONING</span><h2>Ce se creează</h2></div><span className="count-pill">{chosen.length}/{categories.length}</span></div><p>Selectează doar categoriile pe care botul are voie să le pregătească. Celelalte nu sunt atinse.</p><div className="category-list">{categories.map((category) => { const isSelected = chosen.includes(category.key); const open = expanded === category.key; return <div className={`category-row ${isSelected ? 'selected' : ''}`} key={category.key} data-testid={`row-category-${category.key}`}><div className="category-top"><input type="checkbox" checked={isSelected} onChange={(e) => { setChosen(e.target.checked ? [...chosen, category.key] : chosen.filter((k) => k !== category.key)); if (e.target.checked) setExpanded(category.key); }} data-testid={`checkbox-category-${category.key}`} /><button type="button" onClick={() => setExpanded(open ? null : category.key)} data-testid={`button-expand-category-${category.key}`}><Folder size={13} /> <strong>{category.label}</strong><small>{category.items.length} destinații · {category.description}</small></button><ChevronDown size={13} className={open ? 'rotate' : ''} /></div>{open && isSelected && <div className="category-details"><div className="item-tags">{category.items.map((item) => <span key={item}>{item}</span>)}</div><PermissionPanel category={category} permission={permissions[category.key]} onChange={(p) => setPermissions({ ...permissions, [category.key]: p })} /></div>}</div>; })}</div><div className="panel-actions"><button type="button" className="btn quiet" onClick={() => setChosen(categories.map((c) => c.key))} data-testid="button-select-all-categories">Toate</button><button type="button" className="btn quiet" onClick={() => setChosen([])} data-testid="button-clear-categories">Niciuna</button></div></aside></section>}
