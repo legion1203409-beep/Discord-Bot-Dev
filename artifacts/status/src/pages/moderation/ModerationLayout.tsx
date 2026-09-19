@@ -128,7 +128,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
         <div className="mod-login-rune-field" aria-hidden="true">
           <span>01</span><span>03</span><span>07</span><span>11</span>
         </div>
-        <div className="w-full max-w-md bg-card border border-border p-7 sm:p-9 rounded-2xl relative overflow-hidden mod-card mod-login-card shadow-2xl">
+        <div data-aos="flip-left" className="w-full max-w-md bg-card border border-border p-7 sm:p-9 rounded-2xl relative overflow-hidden mod-card mod-login-card shadow-2xl">
           <div className="mod-card-glow" />
           <div className="mod-login-card-line" aria-hidden="true" />
           <div className="relative">
@@ -372,7 +372,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
         </header>
         
         <div className="mod-page min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6 md:p-8 relative">
-          <div className="max-w-5xl mx-auto w-full">
+          <div data-aos="flip-left" className="max-w-5xl mx-auto w-full">
             {children}
           </div>
         </div>

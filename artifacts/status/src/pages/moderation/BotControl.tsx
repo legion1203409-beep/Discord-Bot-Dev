@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Bot, Loader2, Save, Radio, Megaphone, Ticket, ShieldCheck, Timer, ScrollText, Coins, PlayCircle, RotateCcw, CheckCircle2 } from "lucide-react";
+import { Bot, Loader2, Save, Radio, Megaphone, Ticket, ShieldCheck, PlayCircle, RotateCcw, CheckCircle2 } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Textarea } from "../../components/ui/textarea";
@@ -333,47 +333,6 @@ export function BotControlPage() {
     });
   };
 
-  const setGameplay = (section: "events" | "missions" | "economy", key: string, value: string) => {
-    setDraft((current) => {
-      if (!current) return current;
-      const numeric = Number(value);
-      const [parent, child] = key.split(".");
-      const currentSection = current.gameplayConfig[section] as Record<string, unknown>;
-      const nextSection = child
-        ? { ...currentSection, [parent]: { ...(currentSection[parent] as Record<string, unknown>), [child]: Number.isFinite(numeric) ? numeric : 0 } }
-        : { ...currentSection, [key]: Number.isFinite(numeric) ? numeric : 0 };
-      return { ...current, gameplayConfig: { ...current.gameplayConfig, [section]: nextSection } };
-    });
-  };
-
-  const numberField = (
-    section: "events" | "missions" | "economy",
-    key: string,
-    label: string,
-    description: string,
-    step = 1,
-  ) => {
-    if (!draft) return null;
-    const [parent, child] = key.split(".");
-    const sectionValue = draft.gameplayConfig[section] as Record<string, unknown>;
-    const value = (child
-      ? (sectionValue[parent] as Record<string, unknown>)?.[child]
-      : sectionValue[key]) as number;
-    return (
-      <div className="space-y-2" key={`${section}-${key}`}>
-        <label className="text-sm font-medium">{label}</label>
-        <Input
-          type="number"
-          min={step === 0.1 ? 0.1 : 1}
-          step={step}
-          value={value}
-          onChange={(event) => setGameplay(section, key, event.target.value)}
-        />
-        <p className="text-xs text-muted-foreground">{description}</p>
-      </div>
-    );
-  };
-
   const save = async () => {
     if (!draft) return;
     const duplicateFlow = Object.entries(draft.tickets.flows)
@@ -511,17 +470,10 @@ export function BotControlPage() {
           Botul Discord nu este conectat la această instanță. Modificările pot fi salvate, dar devin active pe Discord doar după reconectarea botului.
         </div>
       )}
-      {draft.gameplayConfig.paused && (
-        <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive-foreground">
-          Jocul este suspendat: evenimentele, luptele și cuferele nu vor fi postate. Deschide Dashboard-ul și apasă „Pornește jocul”.
-        </div>
-      )}
-
       <Tabs defaultValue="channels" className="space-y-5">
          <TabsList className="grid h-auto w-full grid-cols-2 gap-1 rounded-xl border border-border bg-card p-1 sm:grid-cols-5">
            <TabsTrigger value="channels" className="mod-tab-trigger gap-2 py-2.5"><Radio className="h-4 w-4" /> Canale</TabsTrigger>
            <TabsTrigger value="tickets" className="mod-tab-trigger gap-2 py-2.5"><Ticket className="h-4 w-4" /> Tichete</TabsTrigger>
-           <TabsTrigger value="gameplay" className="mod-tab-trigger gap-2 py-2.5"><Timer className="h-4 w-4" /> Gameplay</TabsTrigger>
            <TabsTrigger value="messages" className="mod-tab-trigger gap-2 py-2.5"><Megaphone className="h-4 w-4" /> Mesaje</TabsTrigger>
         </TabsList>
 
@@ -806,64 +758,6 @@ export function BotControlPage() {
                 Aceasta este o simulare. Pentru alt flux, schimbă „Tipul de ticket” de la Pasul 1.
               </p>
             </details>
-          </section>
-        </TabsContent>
-
-        <TabsContent value="gameplay" className="mt-0 space-y-5">
-          <section className="space-y-5 rounded-xl border border-border bg-card p-5">
-            <div className="flex items-start gap-3">
-              <Timer className="mt-1 h-5 w-5 text-primary" />
-              <div>
-                <h2 className="font-medium">Evenimente și intervale</h2>
-                <p className="text-xs text-muted-foreground">Valorile sunt în minute și se aplică separat pe acest server. Intervalele maxime nu pot fi mai mici decât cele minime.</p>
-              </div>
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              {numberField("events", "eventDurationMinutes", "Durata Ora Umbrelor", "Cât timp rămâne activ evenimentul.")}
-              {numberField("events", "eventCooldownMinMinutes", "Pauza minimă între evenimente", "Pauza minimă după un eveniment.")}
-              {numberField("events", "eventCooldownMaxMinutes", "Pauza maximă între evenimente", "Pauza maximă după un eveniment.")}
-              {numberField("events", "finalBossDurationMinutes", "Durata Dragonului Stins", "Cât timp poate fi atacat boss-ul final.")}
-              {numberField("events", "standaloneBossIntervalMinMinutes", "Boss rar: interval minim", "Pauza minimă între invocări independente.")}
-              {numberField("events", "standaloneBossIntervalMaxMinutes", "Boss rar: interval maxim", "Pauza maximă între invocări independente.")}
-              {numberField("events", "standaloneBossDurationMinutes", "Durata boss-ului rar", "Cât timp rămâne boss-ul rar activ.")}
-              {numberField("events", "battleEventIntervalMinutes", "Interval evenimente de luptă", "Frecvența anunțurilor dintr-o Ora a Umbrelor.")}
-              {numberField("events", "chestIntervalMinutes", "Interval cufere", "Frecvența cufărului clasic.")}
-              {numberField("events", "chestExpireMinutes", "Expirare cufere", "Cât timp poate fi revendicat un cufăr.")}
-            </div>
-          </section>
-
-          <section className="space-y-5 rounded-xl border border-border bg-card p-5">
-            <div className="flex items-start gap-3">
-              <ScrollText className="mt-1 h-5 w-5 text-primary" />
-              <div>
-                <h2 className="font-medium">Misiuni zilnice</h2>
-                <p className="text-xs text-muted-foreground">Țintele și cantitățile de materiale sunt folosite atât la progres, cât și la acordarea recompensei.</p>
-              </div>
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              {numberField("missions", "kill_10.target", "Monștri uciși — țintă", "Numărul de monștri necesar.")}
-              {numberField("missions", "kill_10.rewardQty", "Monștri uciși — recompensă", "Cantitatea de material acordată.")}
-              {numberField("missions", "rare_3.target", "Monștri rari — țintă", "Numărul de monștri rari necesar.")}
-              {numberField("missions", "rare_3.rewardQty", "Monștri rari — recompensă", "Cantitatea de material acordată.")}
-              {numberField("missions", "boss_1.target", "Mini-boss — țintă", "Numărul de mini-bossi necesar.")}
-              {numberField("missions", "boss_1.rewardQty", "Mini-boss — recompensă", "Cantitatea de material acordată.")}
-            </div>
-          </section>
-
-          <section className="space-y-5 rounded-xl border border-border bg-card p-5">
-            <div className="flex items-start gap-3">
-              <Coins className="mt-1 h-5 w-5 text-primary" />
-              <div>
-                <h2 className="font-medium">Economie</h2>
-                <p className="text-xs text-muted-foreground">Multiplicatorii afectează recompensele de Oboli și XP din lupte și boss fights. Bonusurile existente se aplică separat.</p>
-              </div>
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              {numberField("economy", "monsterGoldMultiplier", "Oboli din monștri", "1 = valoarea normală.", 0.1)}
-              {numberField("economy", "monsterXpMultiplier", "XP din monștri", "1 = valoarea normală.", 0.1)}
-              {numberField("economy", "bossGoldMultiplier", "Oboli din boss fights", "1 = valoarea normală.", 0.1)}
-              {numberField("economy", "bossXpMultiplier", "XP din boss fights", "1 = valoarea normală.", 0.1)}
-            </div>
           </section>
         </TabsContent>
 

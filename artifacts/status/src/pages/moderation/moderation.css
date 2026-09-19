@@ -231,7 +231,6 @@
     inset 0 1px hsl(30 30% 92% / .1),
     0 28px 90px hsl(0 50% 2% / .5),
     0 0 0 1px hsl(356 58% 57% / .025);
-  animation: login-card-arrive .7s cubic-bezier(.2,.8,.2,1) both;
 }
 
 .mod-login-card::before {
@@ -318,11 +317,6 @@
 @keyframes login-orbit {
   from { transform: rotate(-22deg) scaleY(.45); }
   to { transform: rotate(338deg) scaleY(.45); }
-}
-
-@keyframes login-card-arrive {
-  from { opacity: 0; transform: translateY(14px) scale(.985); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 @keyframes login-glow-drift {
