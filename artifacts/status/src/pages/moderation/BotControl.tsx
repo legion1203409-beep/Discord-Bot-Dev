@@ -392,12 +392,21 @@ export function BotControlPage() {
       const flows = Object.fromEntries(
         Object.entries(draft.tickets.flows).map(([kind, flow]) => [kind, { ...flow, mode: "custom" }]),
       ) as BotControlConfig["tickets"]["flows"];
-      await update({
+      const saved = await update({
         ...draft,
         channels: Object.fromEntries(Object.entries(draft.channels).filter(([, value]) => value)),
         tickets: { ...draft.tickets, flows },
       });
-      toast({ title: "Setările botului au fost salvate", description: "Canalele, tichetele și mesajul de alianță sunt persistente." });
+      toast(saved.discordLive
+        ? {
+            title: "Setările sunt active pe Discord",
+            description: "Canalele, tichetele, mesajele și programul de evenimente au fost sincronizate cu botul.",
+          }
+        : {
+            variant: "destructive",
+            title: "Salvate, dar botul Discord este offline",
+            description: "Valorile sunt persistente și vor fi încărcate când botul se reconectează.",
+          });
     } catch (saveError: any) {
       toast({ variant: "destructive", title: "Salvarea a eșuat", description: saveError?.message ?? "Încearcă din nou." });
     } finally {
@@ -472,6 +481,12 @@ export function BotControlPage() {
         </h1>
         <p className="text-muted-foreground">Gestionează infrastructura botului dintr-un singur loc. Accesul la această pagină este limitat la owner.</p>
       </header>
+
+      {draft.discordLive === false && (
+        <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100">
+          Botul Discord nu este conectat la această instanță. Modificările pot fi salvate, dar devin active pe Discord doar după reconectarea botului.
+        </div>
+      )}
 
       <Tabs defaultValue="channels" className="space-y-5">
          <TabsList className="grid h-auto w-full grid-cols-2 gap-1 rounded-xl border border-border bg-card p-1 sm:grid-cols-5">

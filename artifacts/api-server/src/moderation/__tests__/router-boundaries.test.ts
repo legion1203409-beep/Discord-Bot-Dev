@@ -98,6 +98,7 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     mocks.putConfig.mockResolvedValue({ config: structuredClone(defaultModerationConfig), version: 4 });
     mocks.putProtectionToggle.mockResolvedValue({ config: structuredClone(defaultModerationConfig), version: 4 });
     mocks.client.mockReturnValue({
+      isReady: () => true,
       options: { intents: { has: () => true } },
       guilds: { fetch: vi.fn().mockResolvedValue({
         roles: { fetch: vi.fn().mockResolvedValue(new Map()) },
@@ -325,6 +326,20 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
       .toEqual(["help_first", "help_second"]);
     expect(result.tickets.flows.staff.title).toBe("Staff title");
     expect(result.tickets.flows.partnership.staffNotificationMessage).toBe("Partnership staff");
+  });
+
+  it("round-trips a fresh empty alliance message instead of rejecting the whole bot configuration", async () => {
+    const payload = botControlPayload();
+    payload.allianceRecruitmentText = "";
+    const response = await fetch(`${base}/bot-control`, {
+      ...post(payload),
+      method: "PUT",
+      headers: { "content-type": "application/json", "x-csrf-token": "csrf" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.saveAllianceRecruitmentText).toHaveBeenCalledWith(guildId, "");
+    expect(mocks.initChannelConfig).toHaveBeenCalledWith(guildId);
   });
 
   it("rejects an invalid custom ticket payload before changing the existing configuration", async () => {

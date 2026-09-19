@@ -124,6 +124,7 @@ export interface BotControlConfig {
       bossXpMultiplier: number;
     };
   };
+  discordLive?: boolean;
 }
 
 export interface VerifiedMember {
@@ -260,6 +261,14 @@ async function apiFetchWithMeta<T>(endpoint: string, options: RequestInit = {}):
     try {
       const err = await res.json();
       errorMsg = err.error || err.message || errorMsg;
+      if (Array.isArray(err.issues) && err.issues.length > 0) {
+        const details = err.issues
+          .slice(0, 3)
+          .map((issue: { path?: string; message?: string }) =>
+            `${issue.path || "setare"}: ${issue.message || "valoare invalidă"}`)
+          .join("; ");
+        errorMsg = `${errorMsg}: ${details}`;
+      }
     } catch {}
     throw new ApiError(res.status, errorMsg);
   }
@@ -667,9 +676,10 @@ export function useBotControl(guildId: string | null) {
   const update = async (value: BotControlConfig) => {
     if (!guildId) throw new Error("Nu este selectat niciun server.");
     try {
+      const { discordLive: _discardedStatus, ...payload } = value;
       const saved = await apiFetch<BotControlConfig>(`/guilds/${guildId}/bot-control`, {
         method: "PUT",
-        body: JSON.stringify(value),
+        body: JSON.stringify(payload),
       });
       setData(saved);
       return saved;

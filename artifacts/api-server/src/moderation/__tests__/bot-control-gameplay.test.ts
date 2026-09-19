@@ -31,4 +31,10 @@ describe("owner gameplay configuration limits", () => {
     const parsed = botControlSchema.parse(validPayload());
     expect(parsed.gameplayConfig).toEqual(DEFAULT_GAMEPLAY_CONFIG);
   });
+
+  it("accepts an empty alliance override returned by a fresh configuration", () => {
+    const payload = validPayload();
+    payload.allianceRecruitmentText = "";
+    expect(botControlSchema.parse(payload).allianceRecruitmentText).toBe("");
+  });
 });

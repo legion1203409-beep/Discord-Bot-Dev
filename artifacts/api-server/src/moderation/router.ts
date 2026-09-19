@@ -258,7 +258,10 @@ export const botControlSchema = z.object(
 {
 
   channels: botChannelConfigSchema,
-  allianceRecruitmentText: z.string().trim().min(1).max(2_000),
+  // An empty value means "use the bot's built-in recruitment text". The GET
+  // endpoint already returns an empty string when no override is stored, so
+  // PUT must accept that same round-trip value.
+  allianceRecruitmentText: z.string().trim().max(2_000),
   tickets: z.object(
 {
 
@@ -1148,6 +1151,7 @@ router.get("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
     tickets: normalizeTicketConfig(tickets),
     gameplayConfig: getGameplayConfig(guildId),
     verification: normalizeVerificationConfig(verification),
+    discordLive: Boolean(getModerationClient()?.isReady()),
   });
 }));
 
@@ -1162,6 +1166,8 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   await saveChannelConfig(guildId, channels);
   await saveAllianceRecruitmentText(guildId, value.allianceRecruitmentText);
   await saveTicketConfig(guildId, tickets);
+  await initGameplayConfig(guildId);
+  const previousGameplayConfig = getGameplayConfig(guildId);
   const gameplayConfig = await saveGuildGameplayConfig(guildId, value.gameplayConfig);
   const verification = normalizeVerificationConfig(value.verification);
   const saveVerification = optionalExport(() => saveVerificationConfig);
@@ -1176,12 +1182,23 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   }
   await initChannelConfig(guildId);
   setTicketConfig(guildId, tickets);
+  const client = getModerationClient();
+  const scheduleChanged =
+    previousGameplayConfig.paused !== gameplayConfig.paused ||
+    JSON.stringify(previousGameplayConfig.events) !== JSON.stringify(gameplayConfig.events);
+  if (scheduleChanged) {
+    stopGuildScheduler(guildId);
+    if (client?.isReady() && !gameplayConfig.paused) {
+      startGuildScheduler(client, guildId);
+    }
+  }
   res.status(200).json({
     channels,
     allianceRecruitmentText: value.allianceRecruitmentText,
     tickets,
     gameplayConfig,
     verification: savedVerification,
+    discordLive: Boolean(client?.isReady()),
   });
 }));
 
