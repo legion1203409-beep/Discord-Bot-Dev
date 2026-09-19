@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Activity, Bot, Loader2, Save, Radio, Megaphone, Ticket, ShieldCheck, PlayCircle, RotateCcw, CheckCircle2 } from "lucide-react";
+import { Activity, AlertTriangle, Bot, CircleHelp, Loader2, Save, Radio, Megaphone, Ticket, ShieldCheck, PlayCircle, RotateCcw, CheckCircle2 } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Textarea } from "../../components/ui/textarea";
@@ -641,27 +641,49 @@ export function BotControlPage() {
   };
 
   return (
-    <div className="max-w-5xl space-y-6">
-      <header>
-        <p className="mod-eyebrow">CONTROL OWNER-ONLY</p>
-        <h1 className="mb-2 flex items-center gap-3 text-3xl font-bold tracking-tight text-foreground">
-          <Bot className="h-8 w-8 text-primary" /> Control bot
-        </h1>
-        <p className="text-muted-foreground">Gestionează infrastructura botului dintr-un singur loc. Accesul la această pagină este limitat la owner.</p>
+    <div className="bot-control-page max-w-5xl space-y-6">
+      <header className="bot-control-hero">
+        <div>
+          <div className="bot-control-brand-row">
+            <span className="bot-control-brand-mark"><Bot className="h-4 w-4" /></span>
+            <p className="mod-eyebrow">CONTROL OWNER-ONLY</p>
+          </div>
+          <h1>Control bot</h1>
+          <p>Configurează destinațiile Discord și regulile de creare fără să pierzi din vedere ce se schimbă.</p>
+        </div>
+        <div className="bot-control-status" data-state={draft.discordLive === true ? "online" : "offline"}>
+          <span className="bot-control-status-dot" />
+          <div>
+            <strong>{draft.discordLive === true ? "Bot conectat" : "Bot deconectat"}</strong>
+            <small>{draft.discordLive === true ? "Setările pot fi sincronizate pe Discord" : "Salvarea rămâne disponibilă local"}</small>
+          </div>
+        </div>
       </header>
 
       {draft.discordLive === false && (
-        <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100">
-          Botul Discord nu este conectat la această instanță. Modificările pot fi salvate, dar devin active pe Discord doar după reconectarea botului.
+        <div className="bot-control-banner" role="status">
+          <AlertTriangle className="shrink-0" size={15} />
+          <div>
+            <strong>Modificările rămân în așteptare.</strong>{" "}
+            Botul Discord nu este conectat la această instanță. Salvarea este disponibilă acum, iar setările devin active după reconectare.
+          </div>
+          <button
+            type="button"
+            onClick={() => toast({ title: "Botul este offline", description: "Poți salva setările acum; botul le va aplica după reconectare." })}
+            className="bot-control-banner-help"
+            data-testid="button-view-connection-help"
+          >
+            <CircleHelp size={13} /> Detalii
+          </button>
         </div>
       )}
-      <Tabs defaultValue="channels" className="space-y-5">
-         <TabsList className="grid h-auto w-full grid-cols-2 gap-1 rounded-xl border border-border bg-card p-1 sm:grid-cols-5">
-           <TabsTrigger value="channels" className="mod-tab-trigger gap-2 py-2.5"><Radio className="h-4 w-4" /> Canale</TabsTrigger>
-           <TabsTrigger value="tickets" className="mod-tab-trigger gap-2 py-2.5"><Ticket className="h-4 w-4" /> Tichete</TabsTrigger>
-           <TabsTrigger value="verification" className="mod-tab-trigger gap-2 py-2.5"><ShieldCheck className="h-4 w-4" /> Verificare</TabsTrigger>
-           <TabsTrigger value="messages" className="mod-tab-trigger gap-2 py-2.5"><Megaphone className="h-4 w-4" /> Mesaje</TabsTrigger>
-           <TabsTrigger value="statistics" className="mod-tab-trigger gap-2 py-2.5"><Activity className="h-4 w-4" /> Statistici</TabsTrigger>
+      <Tabs defaultValue="channels" className="bot-control-tabs space-y-5">
+         <TabsList className="bot-control-tab-list grid h-auto w-full grid-cols-2 gap-1 rounded-xl border border-border p-1 sm:grid-cols-5">
+           <TabsTrigger value="channels" data-testid="tab-channels" className="mod-tab-trigger gap-2 py-2.5"><Radio className="h-4 w-4" /> Canale</TabsTrigger>
+           <TabsTrigger value="tickets" data-testid="tab-tickets" className="mod-tab-trigger gap-2 py-2.5"><Ticket className="h-4 w-4" /> Tichete</TabsTrigger>
+           <TabsTrigger value="verification" data-testid="tab-verification" className="mod-tab-trigger gap-2 py-2.5"><ShieldCheck className="h-4 w-4" /> Verificare</TabsTrigger>
+           <TabsTrigger value="messages" data-testid="tab-messages" className="mod-tab-trigger gap-2 py-2.5"><Megaphone className="h-4 w-4" /> Mesaje</TabsTrigger>
+           <TabsTrigger value="statistics" data-testid="tab-statistics" className="mod-tab-trigger gap-2 py-2.5"><Activity className="h-4 w-4" /> Statistici</TabsTrigger>
         </TabsList>
 
          <TabsContent value="channels" className="mod-tab-content mt-0">
@@ -1382,8 +1404,12 @@ export function BotControlPage() {
         </TabsContent>
       </Tabs>
 
-      <div className="sticky bottom-3 z-20 flex w-full justify-end py-2">
-        <div className="ml-auto flex flex-wrap justify-end gap-2 rounded-xl border border-border/80 bg-card/95 p-2 shadow-2xl backdrop-blur">
+      <div className="bot-control-footer sticky bottom-3 z-20 flex w-full items-center justify-between gap-3 py-2">
+        <div className="bot-control-save-state">
+          <span className={`bot-control-save-dot ${saving ? "is-saving" : ""}`} />
+          <span>{saving ? "Se salvează setările…" : draft.discordLive === false ? "Salvarea locală este disponibilă." : "Setările sunt pregătite pentru sincronizare."}</span>
+        </div>
+        <div className="ml-auto flex flex-wrap justify-end gap-2">
           <Button type="button" variant="secondary" onClick={openFlowTest} className="gap-2">
             <PlayCircle className="h-4 w-4" />
             Testează fluxul

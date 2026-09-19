@@ -25,6 +25,8 @@ args = ["pnpm", "--filter", "@workspace/status", "run", "build"]
 
 [services.production.build.env]
 NODE_ENV = "production"
+PORT = "25104"
+BASE_PATH = "/"
 
 [services.production.run]
 args = ["sh", "-c", "pnpm --filter @workspace/status run serve"]

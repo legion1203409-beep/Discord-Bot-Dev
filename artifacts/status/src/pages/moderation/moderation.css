@@ -479,3 +479,275 @@
   .mod-shell::after { opacity: .022; }
   .mod-page { background-size: 34px 34px; }
 }
+
+/* Bot control redesign: shared with the former standalone control panel, but
+   scoped to the authenticated Status console so the public site is unchanged. */
+.bot-control-page {
+  position: relative;
+  color: hsl(var(--foreground));
+}
+
+.bot-control-hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding-bottom: 1.35rem;
+  border-bottom: 1px solid hsl(var(--border) / .9);
+}
+
+.bot-control-brand-row {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+}
+
+.bot-control-brand-mark {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 1px solid hsl(var(--primary) / .45);
+  border-radius: 8px;
+  color: hsl(var(--primary));
+  background: hsl(var(--primary) / .1);
+}
+
+.bot-control-hero h1 {
+  margin: .6rem 0 .3rem;
+  color: hsl(var(--foreground));
+  font-size: clamp(1.85rem, 4vw, 2.5rem);
+  font-weight: 600;
+  letter-spacing: -.05em;
+}
+
+.bot-control-hero > div:first-child > p:last-child {
+  color: hsl(var(--muted-foreground));
+  font-size: .8rem;
+}
+
+.bot-control-status {
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  flex: 0 0 auto;
+  padding: .55rem .75rem;
+  border: 1px solid hsl(28 72% 58% / .34);
+  border-radius: 8px;
+  background: hsl(28 72% 36% / .08);
+}
+
+.bot-control-status strong,
+.bot-control-status small {
+  display: block;
+}
+
+.bot-control-status strong {
+  color: hsl(39 72% 82%);
+  font-size: .68rem;
+}
+
+.bot-control-status small {
+  margin-top: .12rem;
+  color: hsl(var(--muted-foreground));
+  font-size: .58rem;
+}
+
+.bot-control-status-dot,
+.bot-control-save-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 50%;
+  background: hsl(28 72% 58%);
+  box-shadow: 0 0 0 5px hsl(28 72% 58% / .12);
+}
+
+.bot-control-status[data-state="online"] {
+  border-color: hsl(145 44% 52% / .3);
+  background: hsl(145 44% 38% / .08);
+}
+
+.bot-control-status[data-state="online"] strong {
+  color: hsl(145 50% 78%);
+}
+
+.bot-control-status[data-state="online"] .bot-control-status-dot,
+.bot-control-save-dot:not(.is-saving) {
+  background: hsl(145 50% 62%);
+  box-shadow: 0 0 0 5px hsl(145 50% 62% / .1);
+}
+
+.bot-control-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: .65rem;
+  padding: .72rem .85rem;
+  border: 1px solid hsl(28 72% 58% / .38);
+  border-radius: 7px;
+  color: hsl(39 72% 82%);
+  background: hsl(28 72% 36% / .08);
+  font-size: .68rem;
+  line-height: 1.5;
+}
+
+.bot-control-banner > svg {
+  flex: 0 0 auto;
+  margin-top: .1rem;
+}
+
+.bot-control-banner-help {
+  display: inline-flex;
+  align-items: center;
+  gap: .25rem;
+  margin-left: auto;
+  flex: 0 0 auto;
+  border: 0;
+  color: hsl(39 72% 82%);
+  background: transparent;
+  font-size: .62rem;
+}
+
+.bot-control-banner-help:hover {
+  color: hsl(var(--foreground));
+}
+
+.bot-control-tab-list {
+  background: hsl(var(--card) / .82);
+  box-shadow: inset 0 1px hsl(30 30% 92% / .035);
+}
+
+.bot-control-tab-list .mod-tab-trigger {
+  min-height: 2.25rem;
+  border-radius: 6px;
+  color: hsl(var(--muted-foreground));
+  font-size: .68rem;
+}
+
+.bot-control-tab-list .mod-tab-trigger[data-state="active"] {
+  color: hsl(var(--foreground));
+  background: hsl(var(--primary) / .15);
+}
+
+.bot-control-page .mod-tab-content > section {
+  border-color: hsl(var(--border) / .9);
+  border-radius: 10px;
+  background: linear-gradient(145deg, hsl(0 20% 10% / .94), hsl(0 18% 6% / .96));
+  box-shadow: 0 15px 40px hsl(0 40% 2% / .2);
+}
+
+.bot-control-page .mod-tab-content > section > div:first-child svg {
+  color: hsl(var(--primary));
+}
+
+.bot-control-page .mod-tab-content > section h2 {
+  color: hsl(var(--foreground));
+  font-size: .92rem;
+}
+
+.bot-control-page .mod-tab-content > section > div:first-child p,
+.bot-control-page .mod-tab-content > section > div:first-child + p {
+  color: hsl(var(--muted-foreground));
+  font-size: .68rem;
+  line-height: 1.5;
+}
+
+.bot-control-page .mod-setting-card {
+  border-color: hsl(0 17% 21%);
+  border-radius: 7px;
+  background: hsl(0 18% 7% / .55);
+}
+
+.bot-control-page .mod-setting-card--selected {
+  border-color: hsl(var(--primary) / .42);
+  background: hsl(var(--primary) / .07);
+}
+
+.bot-control-page .mod-setting-card label,
+.bot-control-page .mod-setting-card .text-sm {
+  font-size: .68rem;
+}
+
+.bot-control-page .mod-setting-card input,
+.bot-control-page .mod-setting-card [role="combobox"] {
+  min-height: 1.95rem;
+  font-size: .64rem;
+}
+
+.bot-control-page .mod-tab-content > section .text-xs {
+  line-height: 1.45;
+}
+
+.bot-control-footer {
+  margin-top: .3rem;
+  padding: .7rem .8rem;
+  border: 1px solid hsl(var(--border) / .9);
+  border-radius: 9px;
+  background: hsl(var(--card) / .95);
+  box-shadow: 0 12px 30px hsl(0 40% 2% / .5);
+  backdrop-filter: blur(10px);
+}
+
+.bot-control-save-state {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  min-width: 0;
+  color: hsl(var(--muted-foreground));
+  font-size: .68rem;
+}
+
+.bot-control-save-dot {
+  width: 7px;
+  height: 7px;
+  flex-basis: 7px;
+  box-shadow: none;
+}
+
+.bot-control-save-dot.is-saving {
+  animation: bot-control-pulse 1s ease-in-out infinite;
+}
+
+@keyframes bot-control-pulse {
+  0%, 100% { opacity: .45; transform: scale(.8); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
+
+@media (max-width: 767px) {
+  .bot-control-hero {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .bot-control-status {
+    align-self: stretch;
+  }
+
+  .bot-control-status > div {
+    min-width: 0;
+  }
+
+  .bot-control-status small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .bot-control-banner-help {
+    display: none;
+  }
+
+  .bot-control-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .bot-control-footer > div:last-child {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .bot-control-footer button {
+    justify-content: center;
+  }
+}
