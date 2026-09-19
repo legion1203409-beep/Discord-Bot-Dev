@@ -1036,7 +1036,11 @@ router.get("/oauth/discord/callback", asyncRoute(async (req, res) =>
       discordStatus: discordError?.status,
       errorType: error instanceof Error ? error.name : typeof error,
     }, "Discord moderation OAuth callback failed");
-    oauthFailure(res, "oauth_failed");
+    if (pendingState.purpose === "verification") {
+      verificationFailure(res, pendingState.guildId, "oauth_failed");
+    } else {
+      oauthFailure(res, "oauth_failed");
+    }
   }
 }));
 
