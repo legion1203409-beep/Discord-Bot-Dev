@@ -179,6 +179,17 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
             </Button>
           )}
 
+          <div className="mt-5 text-center">
+            <Link
+              href="/joc"
+              className="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-primary"
+              data-testid="server-presentation-link"
+            >
+              <BookOpen className="h-4 w-4" aria-hidden="true" />
+              Prezentarea serverului
+            </Link>
+          </div>
+
           </div>
         </div>
       </div>
