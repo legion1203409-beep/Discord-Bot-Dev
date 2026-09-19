@@ -134,6 +134,11 @@ function Home() {
         <span className="smoke smoke-one" />
         <span className="smoke smoke-two" />
         <span className="smoke smoke-three" />
+        <span className="flame flame-one" />
+        <span className="flame flame-two" />
+        <span className="flame flame-three" />
+        <span className="flame flame-four" />
+        <span className="flame flame-five" />
         <span className="spark spark-one" />
         <span className="spark spark-two" />
         <span className="spark spark-three" />

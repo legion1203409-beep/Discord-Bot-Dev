@@ -71,8 +71,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
   overflow: hidden;
 }
 .atmosphere {
-  position: absolute;
+  position: fixed;
   inset: 0;
+  min-height: 100vh;
   overflow: hidden;
   pointer-events: none;
   z-index: 0;
@@ -87,11 +88,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
   height: 64%;
   border-radius: 50%;
   background:
-    radial-gradient(ellipse at 35% 72%, rgba(255, 103, 40, .24), transparent 13%),
-    radial-gradient(ellipse at 48% 78%, rgba(208, 40, 22, .21), transparent 28%),
-    radial-gradient(ellipse at 32% 94%, rgba(242, 113, 35, .18), transparent 50%);
-  filter: blur(28px);
-  opacity: .76;
+    radial-gradient(ellipse at 35% 72%, rgba(255, 125, 48, .34), transparent 13%),
+    radial-gradient(ellipse at 48% 78%, rgba(221, 46, 24, .3), transparent 28%),
+    radial-gradient(ellipse at 32% 94%, rgba(242, 113, 35, .25), transparent 50%);
+  filter: blur(25px);
+  opacity: .9;
   transform-origin: 45% 100%;
   animation: fire-breathe 4.8s ease-in-out infinite;
 }
@@ -99,32 +100,55 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
   content: "";
   position: absolute;
   right: -15%;
-  top: -18%;
-  width: 60%;
-  height: 70%;
+  top: -10%;
+  width: 72%;
+  height: 78%;
   border-radius: 50%;
-  background: radial-gradient(ellipse at center, rgba(98, 57, 42, .19), transparent 64%);
-  filter: blur(34px);
-  opacity: .75;
+  background:
+    radial-gradient(ellipse at 28% 35%, rgba(157, 88, 65, .18), transparent 26%),
+    radial-gradient(ellipse at 75% 22%, rgba(89, 73, 75, .17), transparent 32%),
+    radial-gradient(ellipse at center, rgba(98, 57, 42, .21), transparent 64%);
+  filter: blur(31px);
+  opacity: .9;
   animation: smoke-haze 14s ease-in-out infinite alternate;
 }
 .fire-glow {
   position: absolute;
-  bottom: -19%;
-  width: 22rem;
-  height: 23rem;
+  bottom: -15%;
+  width: 31rem;
+  height: 31rem;
   border-radius: 48% 52% 42% 58%;
   background:
     radial-gradient(ellipse at 50% 78%, rgba(255, 197, 101, .31) 0 4%, rgba(243, 90, 35, .18) 19%, transparent 55%),
     radial-gradient(ellipse at 50% 100%, rgba(174, 31, 20, .29), transparent 68%);
-  filter: blur(19px);
-  opacity: .58;
+  filter: blur(17px);
+  opacity: .72;
   mix-blend-mode: screen;
   transform-origin: 50% 100%;
   animation: flame-flicker 2.7s ease-in-out infinite;
 }
 .fire-glow-left { left: 6%; }
-.fire-glow-right { right: 4%; animation-delay: -1.4s; animation-duration: 3.4s; opacity: .42; }
+.fire-glow-right { right: 4%; animation-delay: -1.4s; animation-duration: 3.4s; opacity: .58; }
+.flame {
+  position: absolute;
+  bottom: -4%;
+  width: 8rem;
+  height: 18rem;
+  border-radius: 50%;
+  background:
+    radial-gradient(ellipse at 50% 84%, rgba(255, 218, 125, .9) 0 5%, rgba(255, 119, 45, .72) 20%, rgba(222, 44, 25, .32) 50%, transparent 72%);
+  clip-path: polygon(50% 0, 72% 25%, 64% 44%, 87% 61%, 75% 85%, 50% 100%, 19% 85%, 4% 62%, 31% 47%, 25% 25%);
+  filter: blur(7px);
+  mix-blend-mode: screen;
+  opacity: .58;
+  transform-origin: 50% 100%;
+  animation: flame-tongue 2.4s ease-in-out infinite;
+}
+.flame-one { left: 10%; height: 16rem; animation-delay: -.6s; }
+.flame-two { left: 25%; width: 10rem; height: 23rem; opacity: .7; animation-delay: -1.8s; animation-duration: 2.9s; }
+.flame-three { left: 47%; height: 19rem; animation-delay: -1.2s; animation-duration: 2.1s; }
+.flame-four { right: 24%; width: 10rem; height: 24rem; opacity: .64; animation-delay: -.9s; animation-duration: 3.2s; }
+.flame-five { right: 8%; height: 17rem; animation-delay: -2.1s; }
 .smoke {
   position: absolute;
   bottom: -16%;
@@ -132,16 +156,16 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
   height: 23rem;
   border-radius: 50%;
   background:
-    radial-gradient(ellipse at 50% 68%, rgba(135, 91, 78, .17), transparent 52%),
-    radial-gradient(ellipse at 42% 34%, rgba(90, 75, 75, .13), transparent 56%);
-  filter: blur(18px);
-  opacity: .45;
+    radial-gradient(ellipse at 50% 68%, rgba(169, 108, 89, .23), transparent 52%),
+    radial-gradient(ellipse at 42% 34%, rgba(113, 95, 99, .2), transparent 56%);
+  filter: blur(16px);
+  opacity: .6;
   mix-blend-mode: screen;
   animation: smoke-rise 14s ease-in-out infinite;
 }
-.smoke-one { left: 18%; animation-delay: -3s; }
-.smoke-two { left: 46%; width: 15rem; height: 28rem; opacity: .31; animation-delay: -8s; animation-duration: 18s; }
-.smoke-three { right: 14%; width: 10rem; height: 20rem; opacity: .34; animation-delay: -11s; animation-duration: 16s; }
+.smoke-one { left: 15%; top: 7%; bottom: auto; animation-delay: -3s; }
+.smoke-two { left: 44%; top: 20%; bottom: auto; width: 15rem; height: 28rem; opacity: .42; animation-delay: -8s; animation-duration: 18s; }
+.smoke-three { right: 12%; top: 3%; bottom: auto; width: 10rem; height: 20rem; opacity: .46; animation-delay: -11s; animation-duration: 16s; }
 .spark {
   position: absolute;
   bottom: 8%;
@@ -253,10 +277,16 @@ h1 { margin-top: 7px; font-size: clamp(25px, 3vw, 34px); letter-spacing: -.045em
   51% { transform: scale(1.09, .94) rotate(-4deg); opacity: .38; }
   77% { transform: scale(.97, 1.12) rotate(2deg); opacity: .58; }
 }
+@keyframes flame-tongue {
+  0%, 100% { transform: scaleX(.82) scaleY(.92) rotate(-3deg); opacity: .4; }
+  24% { transform: scaleX(1.08) scaleY(1.08) rotate(4deg); opacity: .7; }
+  51% { transform: scaleX(.9) scaleY(1.18) rotate(-5deg); opacity: .56; }
+  78% { transform: scaleX(1.15) scaleY(.98) rotate(2deg); opacity: .76; }
+}
 @keyframes smoke-rise {
-  0% { transform: translate3d(-12px, 8%, 0) scale(.72) rotate(-5deg); opacity: 0; }
-  16% { opacity: .42; }
-  54% { transform: translate3d(26px, -42%, 0) scale(1.12) rotate(8deg); opacity: .28; }
+  0% { transform: translate3d(-12px, 15%, 0) scale(.72) rotate(-5deg); opacity: .28; }
+  16% { opacity: .62; }
+  54% { transform: translate3d(26px, -42%, 0) scale(1.12) rotate(8deg); opacity: .34; }
   100% { transform: translate3d(-18px, -112%, 0) scale(1.48) rotate(-6deg); opacity: 0; }
 }
 @keyframes smoke-haze {
