@@ -1,259 +1,85 @@
 import { useEffect, useMemo, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Activity, AlertTriangle, Bot, Check, ChevronDown, CircleHelp, Clock3, Copy, FolderPlus, KeyRound, Megaphone, Radio, RefreshCw, Save, Send, ShieldCheck, Ticket, Users, Wrench, X } from 'lucide-react';
+import { Activity, AlertTriangle, Bot, Check, CheckCircle2, ChevronDown, CircleHelp, Clock3, Folder, Hash, LockKeyhole, Megaphone, Play, Radio, RefreshCw, Save, Settings2, ShieldCheck, Ticket, Users, Wrench } from 'lucide-react';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 import { Route, Switch, Router as WouterRouter, useLocation } from 'wouter';
 
-type ChannelKey = 'main' | 'event' | 'boss' | 'trader' | 'eventTop' | 'bossTop' | 'council' | 'fratia';
 type TabKey = 'channels' | 'tickets' | 'verification' | 'messages' | 'statistics';
-type PermissionState = { roles: string[]; history: boolean; send: boolean };
-
+type ChannelKey = 'main' | 'event' | 'boss' | 'trader' | 'eventTop' | 'bossTop' | 'council' | 'fratia';
+type PermissionState = { roles: string[]; readHistory: boolean; sendMessages: boolean };
+type Feedback = 'idle' | 'provisioning' | 'provisioned' | 'saved' | 'tested';
 const queryClient = new QueryClient();
 const storageKey = 'oracolul-umbrei:channel-control:v1';
-
-const channelFields: { key: ChannelKey; label: string }[] = [
-  { key: 'main', label: 'Cufere și Oracol' }, { key: 'event', label: 'Ora Umbrelor' },
-  { key: 'boss', label: 'Dragonul Stins' }, { key: 'trader', label: 'Negustorul' },
-  { key: 'eventTop', label: 'Top Ora Umbrelor' }, { key: 'bossTop', label: 'Top Dragonul Stins' },
-  { key: 'council', label: 'Consiliul Umbrelor' }, { key: 'fratia', label: 'Chivotul Frăției' },
-];
+const roles = ['Administrator', 'Moderator', 'Cronicar', 'Cavaler al Ordinului'];
 const channels = [
   { id: '121708440221', name: 'cufere-si-oracol', parent: 'JOC ȘI EVENIMENTE', type: 'text' },
   { id: '121708440222', name: 'ora-umbrelor', parent: 'JOC ȘI EVENIMENTE', type: 'text' },
   { id: '121708440223', name: 'dragonul-stins', parent: 'JOC ȘI EVENIMENTE', type: 'text' },
   { id: '121708440224', name: 'negustorul', parent: 'JOC ȘI EVENIMENTE', type: 'text' },
-  { id: '121708440225', name: 'top-ora-umbrelor', parent: 'JOC ȘI EVENIMENTE', type: 'text' },
+  { id: '121708440225', name: 'clasamente', parent: 'JOC ȘI EVENIMENTE', type: 'text' },
   { id: '121708440226', name: 'top-dragonul-stins', parent: 'JOC ȘI EVENIMENTE', type: 'text' },
   { id: '121708440231', name: 'consiliul-umbrelor', parent: 'ADMINISTRATOR', type: 'text' },
   { id: '121708440232', name: 'chivotul-fratiei', parent: 'ADMINISTRATOR', type: 'text' },
   { id: '121708440240', name: 'AUDIT', parent: 'ADMINISTRATOR', type: 'category' },
+] as const;
+const channelFields: { key: ChannelKey; label: string; description: string; icon: typeof Radio }[] = [
+  { key: 'main', label: 'Cufere și Oracol', description: 'Recompense, chei și mesajele Oracolului', icon: Radio },
+  { key: 'event', label: 'Ora Umbrelor', description: 'Anunțuri și rezultate pentru eveniment', icon: Clock3 },
+  { key: 'boss', label: 'Dragonul Stins', description: 'Lupte, damage și clasament de boss', icon: ShieldCheck },
+  { key: 'trader', label: 'Negustorul', description: 'Oferte și rotația comerciantului', icon: Settings2 },
+  { key: 'eventTop', label: 'Top Ora Umbrelor', description: 'Clasamentul ultimului eveniment', icon: Activity },
+  { key: 'bossTop', label: 'Top Dragonul Stins', description: 'Clasamentul permanent de boss', icon: Activity },
+  { key: 'council', label: 'Consiliul Umbrelor', description: 'Comenzi administrative și audit', icon: LockKeyhole },
+  { key: 'fratia', label: 'Chivotul Frăției', description: 'Mesaje și alerte pentru frăție', icon: Users },
 ];
 const categories = [
-  { key: 'gameplay', label: 'Joc și evenimente', description: 'Cufere, Oracol, lupte, boss, negustor și clasamente.', items: 'Cufere și Oracol · Ora Umbrelor · Dragonul Stins · Negustorul · Clasamente' },
-  { key: 'admin', label: 'Administrator', description: 'Consiliu, Frăție, audit și categoriile de tichete.', items: 'Consiliul Umbrelor · Chivotul Frăției · Tichete · Audit' },
-  { key: 'filtered', label: 'Mesaje filtrate', description: 'Jurnale pentru anti-spam și moderarea AI.', items: 'Jurnal anti-spam · Jurnal moderare AI' },
-  { key: 'links', label: 'Linkuri', description: 'Categorie pregătită pentru canalele de filtrare linkuri.', items: 'Categorie Linkuri' },
-  { key: 'security', label: 'Securitate', description: 'Alerte anti-raid și comportament suspect.', items: 'Alerte anti-raid · Alerte comportament suspect' },
-  { key: 'verification', label: 'Verificare', description: 'Canalul pentru verificarea membrilor.', items: 'Canal verificare' },
+  { key: 'gameplay', label: 'Joc și evenimente', description: 'Fluxurile care țin serverul activ și informativ.', items: ['Cufere și Oracol', 'Ora Umbrelor', 'Dragonul Stins', 'Negustorul', 'Clasamente'] },
+  { key: 'admin', label: 'Administrator', description: 'Instrumente private pentru echipă și audit.', items: ['Consiliul Umbrelor', 'Chivotul Frăției', 'Tichete', 'Audit'] },
+  { key: 'filtered', label: 'Mesaje filtrate', description: 'Jurnale pentru anti-spam și moderarea AI.', items: ['Jurnal anti-spam', 'Jurnal moderare AI'] },
+  { key: 'links', label: 'Linkuri', description: 'Destinație pentru mesajele cu linkuri filtrate.', items: ['Categorie Linkuri'] },
+  { key: 'security', label: 'Securitate', description: 'Alerte anti-raid și comportament suspect.', items: ['Alerte anti-raid', 'Alerte comportament suspect'] },
+  { key: 'verification', label: 'Verificare', description: 'Spațiul pentru verificarea membrilor noi.', items: ['Canal verificare'] },
 ] as const;
-const roles = ['Administrator', 'Moderator', 'Cronicar', 'Cavaler al Ordinului'];
-const defaultSelected: Record<ChannelKey, string> = {
-  main: channels[0].id, event: channels[1].id, boss: channels[2].id, trader: channels[3].id,
-  eventTop: channels[4].id, bossTop: channels[5].id, council: channels[6].id, fratia: channels[7].id,
-};
-const defaultPermissions: Record<string, PermissionState> = Object.fromEntries(categories.map(({ key }) => [key, { roles: ['Moderator'], history: true, send: true }]));
+const defaultSelected: Record<ChannelKey, string> = { main: channels[0].id, event: channels[1].id, boss: channels[2].id, trader: channels[3].id, eventTop: channels[4].id, bossTop: channels[5].id, council: channels[6].id, fratia: channels[7].id };
+const defaultPermissions: Record<string, PermissionState> = Object.fromEntries(categories.map((c) => [c.key, { roles: c.key === 'admin' ? ['Administrator', 'Moderator'] : ['Moderator'], readHistory: true, sendMessages: c.key !== 'filtered' }]));
 
-function safeRead() {
-  try {
-    const raw = window.localStorage.getItem(storageKey);
-    return raw ? JSON.parse(raw) as { selected?: Record<ChannelKey, string>; chosen?: string[]; permissions?: Record<string, PermissionState> } : null;
-  } catch { return null; }
+function PermissionPanel({ category, permission, onChange }: { category: (typeof categories)[number]; permission: PermissionState; onChange: (p: PermissionState) => void }) {
+  const toggleRole = (role: string) => onChange({ ...permission, roles: permission.roles.includes(role) ? permission.roles.filter((r) => r !== role) : [...permission.roles, role] });
+  return <div className="permission-panel" data-testid={`panel-permissions-${category.key}`}><div className="permission-title"><LockKeyhole size={15} /><div><strong>Permisiuni pentru {category.label}</strong><p>Membrii cu rolurile selectate văd canalele create. Botul își păstrează accesul automat.</p></div></div><div className="role-grid">{roles.map((role) => <label className="permission-check" key={role}><input type="checkbox" checked={permission.roles.includes(role)} onChange={() => toggleRole(role)} data-testid={`checkbox-role-${category.key}-${role.replaceAll(' ', '-').toLowerCase()}`} /><Users size={12} />@{role}</label>)}</div><div className="permission-options"><label><input type="checkbox" checked={permission.readHistory} onChange={(e) => onChange({ ...permission, readHistory: e.target.checked })} data-testid={`checkbox-history-${category.key}`} /> Pot vedea istoricul</label><label><input type="checkbox" checked={permission.sendMessages} onChange={(e) => onChange({ ...permission, sendMessages: e.target.checked })} data-testid={`checkbox-send-${category.key}`} /> Pot scrie mesaje</label></div></div>;
 }
 
 function Home() {
   const [activeTab, setActiveTab] = useState<TabKey>('channels');
-  const [selected, setSelected] = useState<Record<ChannelKey, string>>(defaultSelected);
+  const [selected, setSelected] = useState(defaultSelected);
   const [chosen, setChosen] = useState<string[]>(['gameplay', 'admin']);
-  const [permissions, setPermissions] = useState<Record<string, PermissionState>>(defaultPermissions);
+  const [expanded, setExpanded] = useState<string | null>('gameplay');
+  const [permissions, setPermissions] = useState(defaultPermissions);
+  const [feedback, setFeedback] = useState<Feedback>('idle');
   const [hydrated, setHydrated] = useState(false);
-  const [feedback, setFeedback] = useState<{ text: string; error?: boolean } | null>(null);
-  const [busy, setBusy] = useState<'create' | 'test' | 'save' | null>(null);
   const [savedSnapshot, setSavedSnapshot] = useState('');
-  const [prepared, setPrepared] = useState<Record<TabKey, boolean>>({ channels: false, tickets: false, verification: false, messages: false, statistics: false });
-
-  useEffect(() => {
-    const stored = safeRead();
-    if (stored?.selected) setSelected({ ...defaultSelected, ...stored.selected });
-    if (stored?.chosen) setChosen(stored.chosen);
-    if (stored?.permissions) setPermissions({ ...defaultPermissions, ...stored.permissions });
-    setHydrated(true);
-  }, []);
-
+  useEffect(() => { try { const raw = localStorage.getItem(storageKey); if (raw) { const v = JSON.parse(raw); setSelected({ ...defaultSelected, ...v.selected }); setChosen(v.chosen ?? chosen); setPermissions({ ...defaultPermissions, ...v.permissions }); } } catch { /* unavailable */ } setHydrated(true); }, []);
   const snapshot = useMemo(() => JSON.stringify({ selected, chosen, permissions }), [selected, chosen, permissions]);
   useEffect(() => { if (hydrated && !savedSnapshot) setSavedSnapshot(snapshot); }, [hydrated, savedSnapshot, snapshot]);
   const dirty = hydrated && snapshot !== savedSnapshot;
-  const errors = useMemo(() => {
-    const map: Partial<Record<ChannelKey, string>> = {};
-    const seen = new Map<string, ChannelKey>();
-    channelFields.forEach(({ key }) => {
-      const value = selected[key];
-      if (!value) return;
-      if (!/^\d{12,20}$/.test(value)) map[key] = 'ID-ul trebuie să conțină 12–20 cifre.';
-      else if (seen.has(value)) map[key] = `Duplicat cu „${channelFields.find((field) => field.key === seen.get(value))?.label}”.`;
-      else seen.set(value, key);
-    });
-    return map;
-  }, [selected]);
-  const errorCount = Object.keys(errors).length;
-
-  const updateSelected = (key: ChannelKey, value: string) => {
-    setSelected((current) => ({ ...current, [key]: value.trim() }));
-    setFeedback(null);
-  };
-  const updatePermission = (key: string, patch: Partial<PermissionState>) => setPermissions((current) => ({ ...current, [key]: { ...current[key], ...patch } }));
-  const toggleRole = (categoryKey: string, role: string) => {
-    const current = permissions[categoryKey].roles;
-    updatePermission(categoryKey, { roles: current.includes(role) ? current.filter((item) => item !== role) : [...current, role] });
-  };
-  const flash = (text: string, error = false) => {
-    setFeedback({ text, error });
-    window.setTimeout(() => setFeedback(null), 4200);
-  };
-  const runAction = (action: 'create' | 'test' | 'save') => {
-    if (action === 'save' && errorCount > 0) {
-      flash('Corectează ID-urile evidențiate înainte de salvare.', true);
-      return;
-    }
-    setBusy(action);
-    window.setTimeout(() => {
-      if (action === 'save') {
-        try { window.localStorage.setItem(storageKey, snapshot); } catch { /* storage may be unavailable */ }
-        setSavedSnapshot(snapshot);
-        flash('Configurația a fost salvată local. Botul o va aplica după reconectare.');
-      } else if (action === 'create') {
-        flash(chosen.length ? `Pregătire finalizată: ${chosen.length} categorii sunt gata de provisionare.` : 'Nu ai selectat nicio categorie pentru provisionare.', !chosen.length);
-      } else flash('Testul a trecut: destinațiile selectate răspund și permisiunile sunt coerente.');
-      setBusy(null);
-    }, 650);
-  };
-  const toggleCategory = (key: string, checked: boolean) => setChosen((current) => checked ? [...current, key] : current.filter((item) => item !== key));
-  const tabLabels: { key: TabKey; label: string; icon: typeof Radio }[] = [
-    { key: 'channels', label: 'Canale', icon: Radio }, { key: 'tickets', label: 'Tichete', icon: Ticket },
-    { key: 'verification', label: 'Verificare', icon: ShieldCheck }, { key: 'messages', label: 'Mesaje', icon: Megaphone },
-    { key: 'statistics', label: 'Statistici', icon: Activity },
-  ];
-
-  return (
-    <main className="control-app">
-      <div className="atmosphere" aria-hidden="true">
-        <span className="fire-glow fire-glow-left" />
-        <span className="fire-glow fire-glow-right" />
-        <span className="smoke smoke-one" />
-        <span className="smoke smoke-two" />
-        <span className="smoke smoke-three" />
-        <span className="flame flame-one" />
-        <span className="flame flame-two" />
-        <span className="flame flame-three" />
-        <span className="flame flame-four" />
-        <span className="flame flame-five" />
-        <span className="spark spark-one" />
-        <span className="spark spark-two" />
-        <span className="spark spark-three" />
-        <span className="spark spark-four" />
-        <span className="spark spark-five" />
-      </div>
-      <div className="shell">
-        <header>
-          <div className="brand-row">
-            <div className="brand-mark"><Bot size={21} strokeWidth={1.8} /></div>
-            <div>
-              <div className="eyebrow">Control owner-only</div>
-              <h1>Control bot</h1>
-              <p className="subtitle">Gestionează infrastructura botului dintr-un singur loc. Accesul la această pagină este limitat la owner.</p>
-            </div>
-          </div>
-          <div className="offline-banner" data-testid="status-discord-connection">
-            <AlertTriangle size={15} />
-            <span>Botul Discord nu este conectat la această instanță. Modificările pot fi salvate, dar devin active pe Discord doar după reconectarea botului.</span>
-          </div>
-        </header>
-
-        <nav className="tab-bar" aria-label="Secțiuni control bot" data-testid="nav-control-tabs">
-          {tabLabels.map(({ key, label, icon: Icon }) => (
-            <button key={key} type="button" className="tab" data-active={activeTab === key} data-testid={`tab-${key}`} onClick={() => setActiveTab(key)}>
-              <Icon size={14} /><span>{label}</span>
-            </button>
-          ))}
-        </nav>
-
-        {activeTab !== 'channels' ? (
-          <section className="surface placeholder" data-testid={`panel-${activeTab}`}>
-            <div>
-              <div className="placeholder-icon"><Wrench size={22} /></div>
-              <h2>{tabLabels.find((tab) => tab.key === activeTab)?.label} Discord</h2>
-              <p>Această zonă este disponibilă în controlul botului. Poți marca modulul ca pregătit pentru următoarea sesiune de configurare.</p>
-              <button type="button" className={`btn ${prepared[activeTab] ? 'btn-primary' : ''}`} data-testid={`button-prepare-${activeTab}`} onClick={() => { setPrepared((state) => ({ ...state, [activeTab]: !state[activeTab] })); flash(prepared[activeTab] ? 'Modulul a fost pus în așteptare.' : 'Modulul a fost marcat ca pregătit.'); }}>
-                {prepared[activeTab] ? <Check size={14} /> : <Clock3 size={14} />}{prepared[activeTab] ? 'Pregătit' : 'Marchează pregătit'}
-              </button>
-            </div>
-          </section>
-        ) : (
-          <section className="surface" data-testid="panel-channels">
-            <div className="surface-head">
-              <div className="surface-title"><Radio size={18} /><div><h2>Canale Discord</h2><p>Folosește canalele configurate sau găsește canalele existente după nume. Creează doar destinațiile care lipsesc.</p></div></div>
-              <button type="button" className="btn" disabled={busy !== null} data-testid="button-create-missing" onClick={() => runAction('create')}><FolderPlus size={14} />{busy === 'create' ? 'Se pregătește…' : 'Creează ce lipsește'}</button>
-            </div>
-            <div className="notice">Butonul este disponibil după ce botul primește permisiunea Discord <strong>Manage Channels</strong>. Selectează categoriile și salvează înainte de provisionare.</div>
-            <div className="workspace">
-              <div className="channel-grid" data-testid="list-channel-settings">
-                {channelFields.map(({ key, label }) => (
-                  <article className={`channel-card ${errors[key] ? 'has-error' : ''}`} key={key} data-testid={`card-channel-${key}`}>
-                    <label className="channel-label" htmlFor={`select-${key}`}>{label}</label>
-                    <div className="field-stack">
-                      <select id={`select-${key}`} className="select" value={selected[key]} data-testid={`select-channel-${key}`} onChange={(event) => updateSelected(key, event.target.value)}>
-                        <option value="">Neconfigurat</option>
-                        {channels.map((channel) => <option key={channel.id} value={channel.id}>{channel.type === 'category' ? 'Categorie' : '#'} {channel.name} · {channel.parent} ({channel.id})</option>)}
-                      </select>
-                      <input className="field" value={selected[key]} aria-label={`${label} ID`} placeholder="ID canal Discord" inputMode="numeric" data-testid={`input-channel-id-${key}`} onChange={(event) => updateSelected(key, event.target.value)} />
-                    </div>
-                    {errors[key] && <p className="field-error" data-testid={`validation-channel-${key}`}><X size={11} style={{ verticalAlign: 'middle', marginRight: 3 }} />{errors[key]}</p>}
-                  </article>
-                ))}
-              </div>
-              <aside className="category-panel" data-testid="panel-provision-categories">
-                <div className="category-head"><div><div className="eyebrow">Ce se creează</div><h3>Alege categoriile</h3><p>Bifează doar ce vrei să creeze botul. Categoriile nebifate nu sunt atinse.</p></div><span className="count-badge" data-testid="text-category-count">{chosen.length}/{categories.length}</span></div>
-                <div className="category-list">
-                  {categories.map((category) => {
-                    const checked = chosen.includes(category.key);
-                    const permission = permissions[category.key];
-                    return <div className="category-item" data-selected={checked} key={category.key} data-testid={`card-category-${category.key}`}>
-                      <label className="category-check">
-                        <input type="checkbox" checked={checked} data-testid={`checkbox-category-${category.key}`} onChange={(event) => toggleCategory(category.key, event.target.checked)} />
-                        <span><span className="category-name">{category.label}</span><span className="category-description">{category.description}</span><span className="category-items">{category.items}</span></span>
-                      </label>
-                      <details className="permission-details">
-                        <summary data-testid={`summary-permissions-${category.key}`}><ChevronDown size={11} />Permisiuni pentru această categorie</summary>
-                        <div className="permission-body">
-                          <p className="permission-note">Membrii fără unul dintre rolurile selectate nu vor vedea canalele. Botul își păstrează accesul automat.</p>
-                          <div className="role-grid">
-                            {roles.map((role) => <label className="permission-check" key={role}><input type="checkbox" checked={permission.roles.includes(role)} data-testid={`checkbox-role-${category.key}-${role.replaceAll(' ', '-').toLowerCase()}`} onChange={() => toggleRole(category.key, role)} /><Users size={11} /><span>@{role}</span></label>)}
-                          </div>
-                          <div className="permission-options">
-                            <label className="permission-check"><input type="checkbox" checked={permission.history} data-testid={`checkbox-history-${category.key}`} onChange={(event) => updatePermission(category.key, { history: event.target.checked })} />Poate vedea istoricul</label>
-                            <label className="permission-check"><input type="checkbox" checked={permission.send} data-testid={`checkbox-send-${category.key}`} onChange={(event) => updatePermission(category.key, { send: event.target.checked })} />Poate scrie mesaje</label>
-                          </div>
-                        </div>
-                      </details>
-                    </div>;
-                  })}
-                </div>
-                <div className="panel-actions"><button type="button" className="btn btn-quiet" data-testid="button-select-all-categories" onClick={() => setChosen(categories.map((category) => category.key))}>Toate</button><button type="button" className="btn btn-quiet" data-testid="button-clear-categories" onClick={() => setChosen([])}>Niciuna</button></div>
-              </aside>
-            </div>
-            <div className="bottom-bar">
-              <div className="save-state" data-testid="status-unsaved-changes"><span className={`status-dot ${dirty ? 'dirty' : ''}`} />{dirty ? 'Modificări nesalvate' : 'Totul este salvat local'}</div>
-              <button type="button" className="btn btn-quiet" disabled={busy !== null} data-testid="button-test-flow" onClick={() => runAction('test')}><Send size={14} />{busy === 'test' ? 'Se testează…' : 'Testează fluxul'}</button>
-              <button type="button" className="btn btn-primary" disabled={!dirty || busy !== null} data-testid="button-save-config" onClick={() => runAction('save')}><Save size={14} />{busy === 'save' ? 'Se salvează…' : 'Salvează configurația'}</button>
-              {feedback && <div className={`feedback ${feedback.error ? 'error' : ''}`} role="status" data-testid="status-feedback">{feedback.error ? <AlertTriangle size={12} /> : <Check size={12} />}{feedback.text}</div>}
-            </div>
-          </section>
-        )}
-        {feedback && activeTab !== 'channels' && <div className={`feedback ${feedback.error ? 'error' : ''}`} style={{ marginTop: 10 }} role="status" data-testid="status-feedback-secondary">{feedback.text}</div>}
-      </div>
-    </main>
-  );
+  const errors = useMemo(() => { const result: Partial<Record<ChannelKey, string>> = {}; const seen = new Map<string, ChannelKey>(); channelFields.forEach(({ key }) => { const value = selected[key]; if (!value) return; if (!/^\d{12,20}$/.test(value)) result[key] = 'ID-ul trebuie să conțină 12–20 cifre.'; else if (seen.has(value)) result[key] = `Duplicat cu „${channelFields.find((f) => f.key === seen.get(value))?.label}”.`; else seen.set(value, key); }); return result; }, [selected]);
+  const setFeedbackFor = (next: Feedback, duration = 2200) => { setFeedback(next); window.setTimeout(() => setFeedback('idle'), duration); };
+  const provision = () => { setFeedbackFor('provisioning', 1150); window.setTimeout(() => setFeedbackFor('provisioned'), 1150); };
+  const save = () => { if (Object.keys(errors).length) { setFeedbackFor('tested'); return; } try { localStorage.setItem(storageKey, snapshot); } catch { /* unavailable */ } setSavedSnapshot(snapshot); setFeedbackFor('saved'); };
+  const tabs: { key: TabKey; label: string; icon: typeof Radio }[] = [{ key: 'channels', label: 'Canale', icon: Radio }, { key: 'tickets', label: 'Tichete', icon: Ticket }, { key: 'verification', label: 'Verificare', icon: ShieldCheck }, { key: 'messages', label: 'Mesaje', icon: Megaphone }, { key: 'statistics', label: 'Statistici', icon: Activity }];
+  return <main className="control-app"><div className="atmosphere" aria-hidden="true"><span className="fire-glow fire-glow-left" /><span className="fire-glow fire-glow-right" /><span className="smoke smoke-one" /><span className="smoke smoke-two" /><span className="smoke smoke-three" /><span className="flame flame-one" /><span className="flame flame-two" /><span className="flame flame-three" /><span className="flame flame-four" /><span className="flame flame-five" /><span className="spark spark-one" /><span className="spark spark-two" /></div><div className="shell">
+    <header className="hero"><div><div className="brand-row"><span className="brand-mark"><Bot size={18} /></span><span className="eyebrow">CONTROL OWNER-ONLY</span></div><h1>Control bot</h1><p className="subtitle">Configurează destinațiile Discord și regulile de creare fără să pierzi din vedere ce se schimbă.</p></div><div className="bot-status"><span className="status-pulse" /><div><strong>Bot deconectat</strong><small>Ultima verificare acum 4 min</small></div></div></header>
+    <div className="offline-banner"><AlertTriangle size={15} /><span><strong>Modificările rămân în așteptare.</strong> Botul Discord nu este conectat la această instanță. Salvarea este disponibilă acum, iar setările devin active după reconectare.</span><button type="button" onClick={() => setFeedbackFor('tested')} data-testid="button-view-connection-help"><CircleHelp size={13} /> Detalii</button></div>
+    <nav className="tab-bar" aria-label="Secțiuni control bot">{tabs.map(({ key, label, icon: Icon }) => <button type="button" className="tab" data-active={activeTab === key} data-testid={`tab-${key}`} key={key} onClick={() => setActiveTab(key)}><Icon size={14} />{label}</button>)}</nav>
+    {activeTab !== 'channels' ? <section className="placeholder surface" data-testid={`tab-panel-${activeTab}`}><Wrench size={24} /><h2>Modulul {tabs.find((t) => t.key === activeTab)?.label}</h2><p>Această zonă este disponibilă în controlul botului. Canalele și permisiunile pot fi pregătite din secțiunea Canale.</p><button type="button" className="btn" onClick={() => setActiveTab('channels')} data-testid="button-return-to-channels"><Radio size={14} /> Înapoi la canale</button></section> :
+    <section className="content-grid" data-testid="tab-panel-channels"><div className="main-column"><section className="surface destinations"><div className="section-head"><div className="section-title"><span className="icon-box"><Radio size={16} /></span><div><div className="title-line"><h2>Destinații de canal</h2><span className="count-pill">{Object.values(selected).filter(Boolean).length}/8 configurate</span></div><p>Alege un canal existent sau introdu manual ID-ul Discord. Fiecare flux are o destinație vizibilă aici.</p></div></div><button type="button" className="btn outline" onClick={provision} disabled={feedback === 'provisioning'} data-testid="button-provision-channels"><RefreshCw size={13} className={feedback === 'provisioning' ? 'spin' : ''} />{feedback === 'provisioning' ? 'Se sincronizează' : feedback === 'provisioned' ? 'Destinații verificate' : 'Creează ce lipsește'}</button></div><div className="channel-grid">{channelFields.map(({ key, label, description, icon: Icon }) => { const value = selected[key]; const current = channels.find((c) => c.id === value); return <article className={`destination-card ${value ? 'selected' : ''} ${errors[key] ? 'has-error' : ''}`} key={key} data-testid={`card-channel-${key}`}><div className="destination-head"><Icon size={15} /><div><label htmlFor={`channel-${key}`}>{label}</label><p>{description}</p></div>{value && <CheckCircle2 size={14} />}</div><select value={value} onChange={(e) => setSelected({ ...selected, [key]: e.target.value })} data-testid={`select-channel-${key}`}><option value="">Neconfigurat</option>{channels.map((c) => <option value={c.id} key={c.id}>{c.type === 'category' ? 'Categorie' : '#'} {c.name} · {c.parent} ({c.id})</option>)}</select><div className="id-row"><Hash size={13} /><input id={`channel-${key}`} value={value} onChange={(e) => setSelected({ ...selected, [key]: e.target.value.trim() })} placeholder="ID canal Discord" aria-label={`${label} ID`} data-testid={`input-channel-id-${key}`} /><span>{current ? `#${current.name}` : 'ID manual'}</span></div>{errors[key] && <p className="field-error" data-testid={`validation-channel-${key}`}>{errors[key]}</p>}</article>; })}</div></section>
+    <section className="surface permissions"><div className="section-title"><span className="icon-box amber"><ShieldCheck size={16} /></span><div><h2>Permisiuni necesare</h2><p>Verifică accesul botului înainte de provisioning pentru a evita categorii create incomplet.</p></div></div><div className="permission-summary"><span>Manage Channels <b>⚠ Necesară</b></span><span>Manage Permissions <b>⚠ Necesară</b></span><span>Send Messages <em>✓ Disponibilă</em></span></div><p className="help"><CircleHelp size={13} /> Butonul de provisioning va rămâne blocat pe Discord până când botul primește permisiunea <strong>Manage Channels</strong>.</p></section></div>
+    <aside className="provision-panel" data-testid="panel-provisioning"><div className="panel-heading"><div><span className="eyebrow">PROVISIONING</span><h2>Ce se creează</h2></div><span className="count-pill">{chosen.length}/{categories.length}</span></div><p>Selectează doar categoriile pe care botul are voie să le pregătească. Celelalte nu sunt atinse.</p><div className="category-list">{categories.map((category) => { const isSelected = chosen.includes(category.key); const open = expanded === category.key; return <div className={`category-row ${isSelected ? 'selected' : ''}`} key={category.key} data-testid={`row-category-${category.key}`}><div className="category-top"><input type="checkbox" checked={isSelected} onChange={(e) => { setChosen(e.target.checked ? [...chosen, category.key] : chosen.filter((k) => k !== category.key)); if (e.target.checked) setExpanded(category.key); }} data-testid={`checkbox-category-${category.key}`} /><button type="button" onClick={() => setExpanded(open ? null : category.key)} data-testid={`button-expand-category-${category.key}`}><Folder size={13} /> <strong>{category.label}</strong><small>{category.items.length} destinații · {category.description}</small></button><ChevronDown size={13} className={open ? 'rotate' : ''} /></div>{open && isSelected && <div className="category-details"><div className="item-tags">{category.items.map((item) => <span key={item}>{item}</span>)}</div><PermissionPanel category={category} permission={permissions[category.key]} onChange={(p) => setPermissions({ ...permissions, [category.key]: p })} /></div>}</div>; })}</div><div className="panel-actions"><button type="button" className="btn quiet" onClick={() => setChosen(categories.map((c) => c.key))} data-testid="button-select-all-categories">Toate</button><button type="button" className="btn quiet" onClick={() => setChosen([])} data-testid="button-clear-categories">Niciuna</button></div></aside></section>}
+    <footer className="sticky-footer"><div className="save-state">{feedback === 'saved' || feedback === 'tested' ? <CheckCircle2 size={15} /> : <span className="status-dot" />}<span>{feedback === 'saved' ? 'Controlul botului a fost salvat local.' : feedback === 'tested' ? 'Fluxul de test a fost pregătit.' : dirty ? 'Ai modificări locale nesalvate.' : 'Totul este salvat local'}</span></div><div className="footer-actions"><button type="button" className="btn" onClick={() => setFeedbackFor('tested')} data-testid="button-test-flow"><Play size={13} /> Testează fluxul</button><button type="button" className="btn primary" onClick={save} disabled={!dirty} data-testid="button-save-bot-control"><Save size={13} /> {feedback === 'saved' ? 'Salvat' : 'Salvează controlul botului'}</button></div></footer>
+  </div></main>;
 }
-
-function Router() {
-  const [location] = useLocation();
-  return <ErrorBoundary resetKey={location}><Switch><Route path="/" component={Home} /><Route component={NotFound} /></Switch></ErrorBoundary>;
-}
-
-function App() {
-  return <QueryClientProvider client={queryClient}><TooltipProvider><WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}><Router /></WouterRouter><Toaster /></TooltipProvider></QueryClientProvider>;
-}
-
+function Router() { const [location] = useLocation(); return <ErrorBoundary resetKey={location}><Switch><Route path="/" component={Home} /><Route component={NotFound} /></Switch></ErrorBoundary>; }
+function App() { return <QueryClientProvider client={queryClient}><TooltipProvider><WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}><Router /></WouterRouter><Toaster /></TooltipProvider></QueryClientProvider>; }
 export default App;
