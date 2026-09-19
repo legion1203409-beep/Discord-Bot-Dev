@@ -38,7 +38,7 @@ export function Navigation() {
   }, [isOpen]);
 
   return (
-    <header className="site-nav site-nav--blazing">
+    <header className="site-nav fire-toolbar">
       <Brand />
 
       <nav id="public-navigation" className={`nav-links ${isOpen ? "is-open" : ""}`} aria-label="Navigație principală">

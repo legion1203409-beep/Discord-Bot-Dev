@@ -344,7 +344,8 @@
 }
 
 .mod-topbar {
-  background: hsl(0 20% 8% / .78);
+  background: rgba(238, 231, 223, .96);
+  color: #090708;
   box-shadow: 0 1px 0 hsl(var(--border) / .55), 0 14px 36px hsl(0 40% 2% / .24);
 }
 

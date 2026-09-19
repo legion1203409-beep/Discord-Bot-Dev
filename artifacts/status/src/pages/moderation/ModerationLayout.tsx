@@ -247,7 +247,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
         transition-transform duration-300 ease-in-out md:sticky md:top-0 md:h-[100dvh] md:translate-x-0 md:shrink-0
         ${mobileMenuOpen ? "translate-x-0" : "-translate-x-full"}
       `}>
-        <div className="h-20 flex items-center justify-between px-5 border-b border-border/50 shrink-0">
+        <div className="fire-toolbar mod-toolbar h-20 flex items-center justify-between px-5 border-b border-border/50 shrink-0">
           <div className="flex items-center gap-3 text-primary">
             <div className="mod-brand-mark overflow-hidden">
               {botProfile?.avatarUrl ? (
@@ -355,7 +355,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
 
       {/* Main Content */}
        <main key={`guild-${guildId}`} className="flex h-[100dvh] min-h-0 flex-1 flex-col min-w-0 bg-background">
-        <header className="mod-topbar h-16 border-b border-border/50 backdrop-blur flex items-center justify-between px-4 sm:px-6 shrink-0 md:hidden sticky top-0 z-30">
+        <header className="fire-toolbar mod-toolbar mod-topbar h-16 border-b border-border/50 backdrop-blur flex items-center justify-between px-4 sm:px-6 shrink-0 md:hidden sticky top-0 z-30">
           <div className="flex items-center gap-2 text-primary">
               <div className="mod-brand-mark h-8 w-8 overflow-hidden rounded-lg">
                 {botProfile?.avatarUrl ? (
