@@ -1,4 +1,4 @@
-import { ChannelType, type Guild } from "discord.js";
+import { ChannelType, PermissionFlagsBits, type Guild, type OverwriteData } from "discord.js";
 import type { ChannelConfig, VerificationConfig } from "./db";
 import type { ModerationConfig } from "../moderation/config";
 import type { TicketConfig, TicketCategoryKind } from "./ticket-config";
@@ -17,6 +17,12 @@ export type ChannelProvisionResult = {
   verification: VerificationConfig;
   created: ProvisionedChannel[];
   reused: ProvisionedChannel[];
+};
+
+export type ChannelPermissionConfig = {
+  roleIds: string[];
+  readMessageHistory: boolean;
+  sendMessages: boolean;
 };
 
 type ChannelTypeName = "text" | "category";
@@ -81,6 +87,54 @@ const MODERATION_TARGETS = [
 
 const provisionLocks = new Map<string, Promise<ChannelProvisionResult>>();
 
+function permissionOverwrites(
+  guild: Guild,
+  permission: ChannelPermissionConfig,
+): OverwriteData[] {
+  const roleIds = [...new Set(permission.roleIds)];
+  const missingRole = roleIds.find((roleId) => !guild.roles.cache.has(roleId));
+  if (missingRole) {
+    throw new Error(`Rolul ${missingRole} nu a fost găsit pe server.`);
+  }
+
+  const botRoleId = guild.members.me?.roles.highest?.id;
+  const allowedRoleIds = [...new Set([...roleIds, botRoleId].filter((id): id is string => Boolean(id)))];
+  return [
+    {
+      id: guild.roles.everyone.id,
+      deny: [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.ReadMessageHistory,
+        PermissionFlagsBits.SendMessages,
+      ],
+    },
+    ...allowedRoleIds.map((roleId) => ({
+      id: roleId,
+      allow: [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.ReadMessageHistory,
+        PermissionFlagsBits.SendMessages,
+      ],
+      deny: [
+        ...(permission.readMessageHistory ? [] : [PermissionFlagsBits.ReadMessageHistory]),
+        ...(permission.sendMessages ? [] : [PermissionFlagsBits.SendMessages]),
+      ],
+    })),
+  ];
+}
+
+async function applyPermissions(
+  guild: Guild,
+  channel: { permissionOverwrites?: { set: (overwrites: OverwriteData[], reason?: string) => Promise<unknown> } },
+  permission: ChannelPermissionConfig | undefined,
+): Promise<void> {
+  if (!permission || permission.roleIds.length === 0 || !channel.permissionOverwrites) return;
+  await channel.permissionOverwrites.set(
+    permissionOverwrites(guild, permission),
+    "Permisiuni configurate din panoul de control",
+  );
+}
+
 function normalizeName(value: string): string {
   return value
     .trim()
@@ -132,6 +186,7 @@ async function provisionGuildChannelsUnlocked(
     moderationConfig: ModerationConfig;
     verification: VerificationConfig;
     categories?: ProvisioningCategoryKey[];
+    permissions?: Partial<Record<ProvisioningCategoryKey, ChannelPermissionConfig>>;
   },
 ): Promise<ChannelProvisionResult> {
   const channels = await guild.channels.fetch();
@@ -149,6 +204,7 @@ async function provisionGuildChannelsUnlocked(
     if (existing) {
       reused.push({ key: `category.${target.key}`, id: existing.id, name: existing.name, type: "category" });
       categoryIds.set(target.key, existing.id);
+      await applyPermissions(guild, existing, input.permissions?.[target.key]);
       continue;
     }
 
@@ -156,6 +212,7 @@ async function provisionGuildChannelsUnlocked(
       name: target.names[0],
       type: ChannelType.GuildCategory,
     });
+    await applyPermissions(guild, createdCategory, input.permissions?.[target.key]);
     created.push({ key: `category.${target.key}`, id: createdCategory.id, name: createdCategory.name, type: "category" });
     categoryIds.set(target.key, createdCategory.id);
   }
@@ -176,6 +233,7 @@ async function provisionGuildChannelsUnlocked(
       if (target.type === "text") {
         await moveToCategory(existing, categoryId);
       }
+      await applyPermissions(guild, existing, input.permissions?.[target.category]);
       const result = { key: target.key, id: existing.id, name: existing.name, type: target.type };
       reused.push(result);
       return existing.id;
@@ -186,6 +244,7 @@ async function provisionGuildChannelsUnlocked(
       type: target.type === "category" ? ChannelType.GuildCategory : ChannelType.GuildText,
       ...(target.type === "text" ? { parent: categoryId } : {}),
     });
+    await applyPermissions(guild, createdChannel, input.permissions?.[target.category]);
     const result = { key: target.key, id: createdChannel.id, name: createdChannel.name, type: target.type };
     created.push(result);
     return createdChannel.id;
@@ -251,6 +310,7 @@ export function provisionGuildChannels(
     moderationConfig: ModerationConfig;
     verification: VerificationConfig;
     categories?: ProvisioningCategoryKey[];
+    permissions?: Partial<Record<ProvisioningCategoryKey, ChannelPermissionConfig>>;
   },
 ): Promise<ChannelProvisionResult> {
   // A double-click or two owner tabs must not both fetch the same snapshot and

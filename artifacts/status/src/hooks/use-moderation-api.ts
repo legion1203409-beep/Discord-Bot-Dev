@@ -57,6 +57,12 @@ export interface ModerationMetadata {
   };
 }
 
+export interface ChannelPermissionConfig {
+  roleIds: string[];
+  readMessageHistory: boolean;
+  sendMessages: boolean;
+}
+
 export interface BotControlConfig {
   channels: Record<string, string>;
 
@@ -713,11 +719,14 @@ export function useBotControl(guildId: string | null) {
     }
   };
 
-  const provisionChannels = async (categories?: string[]) => {
+  const provisionChannels = async (
+    categories?: string[],
+    permissions?: Record<string, ChannelPermissionConfig>,
+  ) => {
     if (!guildId) throw new Error("Nu este selectat niciun server.");
     const saved = await apiFetch<BotControlConfig>(`/guilds/${guildId}/bot-control/provision-channels`, {
       method: "POST",
-      body: JSON.stringify(categories ? { categories } : {}),
+      body: JSON.stringify(categories ? { categories, permissions } : {}),
     });
     setData(saved);
     return saved;

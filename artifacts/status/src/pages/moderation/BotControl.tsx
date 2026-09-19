@@ -6,7 +6,7 @@ import { Textarea } from "../../components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
-import { useActiveGuild, useBotControl, useModerationMetadata, useSession, type BotControlConfig, type TicketFlowConfig } from "../../hooks/use-moderation-api";
+import { useActiveGuild, useBotControl, useModerationMetadata, useSession, type BotControlConfig, type ChannelPermissionConfig, type TicketFlowConfig } from "../../hooks/use-moderation-api";
 import { useToast } from "../../hooks/use-toast";
 
 const CHANNELS = [
@@ -58,6 +58,12 @@ const PROVISIONING_CATEGORIES = [
     items: ["Canal verificare"],
   },
 ] as const;
+
+const DEFAULT_CHANNEL_PERMISSION: ChannelPermissionConfig = {
+  roleIds: [],
+  readMessageHistory: true,
+  sendMessages: true,
+};
 
 const TICKET_CATEGORIES = [
   ["staff", "Aplicare staff"],
@@ -261,6 +267,12 @@ export function BotControlPage() {
   const [selectedProvisioningCategories, setSelectedProvisioningCategories] = useState<string[]>(
     PROVISIONING_CATEGORIES.map((category) => category.key),
   );
+  const [provisioningPermissions, setProvisioningPermissions] = useState<Record<string, ChannelPermissionConfig>>(
+    () => Object.fromEntries(PROVISIONING_CATEGORIES.map((category) => [
+      category.key,
+      { ...DEFAULT_CHANNEL_PERMISSION, roleIds: [] },
+    ])),
+  );
   const [activeFlowKind, setActiveFlowKind] = useState<keyof BotControlConfig["tickets"]["flows"]>("staff");
   const [testOpen, setTestOpen] = useState(false);
   const [testStarted, setTestStarted] = useState(false);
@@ -279,6 +291,27 @@ export function BotControlPage() {
       ...current,
       channels: { ...current.channels, [key]: value === "__none__" ? "" : value },
     } : current);
+  };
+
+  const setProvisioningPermission = (
+    categoryKey: string,
+    change: Partial<ChannelPermissionConfig>,
+  ) => {
+    setProvisioningPermissions((current) => ({
+      ...current,
+      [categoryKey]: {
+        ...(current[categoryKey] ?? DEFAULT_CHANNEL_PERMISSION),
+        ...change,
+      },
+    }));
+  };
+
+  const toggleProvisioningRole = (categoryKey: string, roleId: string, checked: boolean) => {
+    const current = provisioningPermissions[categoryKey] ?? DEFAULT_CHANNEL_PERMISSION;
+    const roleIds = checked
+      ? Array.from(new Set([...current.roleIds, roleId]))
+      : current.roleIds.filter((id) => id !== roleId);
+    setProvisioningPermission(categoryKey, { roleIds });
   };
 
   const setTicket = (path: string[], value: string | number) => {
@@ -523,7 +556,10 @@ export function BotControlPage() {
     }
     setProvisioning(true);
     try {
-      const saved = await provisionChannels(selectedProvisioningCategories);
+      const permissions = Object.fromEntries(
+        selectedProvisioningCategories.map((key) => [key, provisioningPermissions[key] ?? DEFAULT_CHANNEL_PERMISSION]),
+      );
+      const saved = await provisionChannels(selectedProvisioningCategories, permissions);
       await refetchMetadata();
       const created = saved.provisioning?.created.length ?? 0;
       const reused = saved.provisioning?.reused.length ?? 0;
@@ -551,6 +587,9 @@ export function BotControlPage() {
 
   const categories = metadata?.channels.filter((channel) => isCategory(channel.type)) ?? [];
   const textChannels = metadata?.channels.filter((channel) => isTextChannel(channel.type)) ?? [];
+  const permissionRoles = (metadata?.roles ?? [])
+    .filter((role) => !role.managed && role.name !== "@everyone")
+    .sort((left, right) => (right.position ?? 0) - (left.position ?? 0));
   const categoryNames = new Map(categories.map((category) => [category.id, category.name]));
   const activeFlow = draft.tickets.flows[activeFlowKind];
   const duplicateQuestionKeys = getDuplicateQuestionKeys(activeFlow);
@@ -693,12 +732,13 @@ export function BotControlPage() {
                  <div className="space-y-2">
                    {PROVISIONING_CATEGORIES.map((category) => {
                      const checked = selectedProvisioningCategories.includes(category.key);
+                      const permission = provisioningPermissions[category.key] ?? DEFAULT_CHANNEL_PERMISSION;
                      return (
-                       <label
+                        <div
                          key={category.key}
-                         className={`block cursor-pointer rounded-md border p-3 transition-colors ${checked ? "border-primary/40 bg-primary/10" : "border-border/70 hover:bg-muted/40"}`}
+                          className={`rounded-md border p-3 transition-colors ${checked ? "border-primary/40 bg-primary/10" : "border-border/70 hover:bg-muted/40"}`}
                        >
-                         <span className="flex items-start gap-2">
+                          <label className="flex cursor-pointer items-start gap-2">
                            <input
                              type="checkbox"
                              className="mt-1 accent-primary"
@@ -714,8 +754,53 @@ export function BotControlPage() {
                              <span className="mt-1 block text-xs leading-4 text-muted-foreground">{category.description}</span>
                              <span className="mt-2 block text-[11px] leading-4 text-muted-foreground/80">{category.items.join(" · ")}</span>
                            </span>
-                         </span>
-                       </label>
+                          </label>
+                          <details className="mt-3 rounded-md border border-border/70 bg-background/30 p-2">
+                            <summary className="cursor-pointer select-none text-xs font-medium text-primary">
+                              Permisiuni pentru această categorie
+                            </summary>
+                            <div className="mt-3 space-y-3">
+                              <p className="text-[11px] leading-4 text-muted-foreground">
+                                Dacă alegi roluri, membrii fără unul dintre ele nu vor vedea canalele din categorie. Botul își păstrează accesul automat.
+                              </p>
+                              <div className="grid gap-2">
+                                {permissionRoles.length > 0 ? permissionRoles.map((role) => (
+                                  <label key={role.id} className="flex cursor-pointer items-center gap-2 rounded border border-border/60 px-2 py-1.5 text-xs hover:bg-muted/30">
+                                    <input
+                                      type="checkbox"
+                                      className="accent-primary"
+                                      checked={permission.roleIds.includes(role.id)}
+                                      onChange={(event) => toggleProvisioningRole(category.key, role.id, event.target.checked)}
+                                    />
+                                    <span className="min-w-0 flex-1 truncate">@{role.name}</span>
+                                  </label>
+                                )) : (
+                                  <p className="text-xs text-muted-foreground">Nu există roluri Discord disponibile.</p>
+                                )}
+                              </div>
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                <label className="flex cursor-pointer items-center gap-2 text-xs">
+                                  <input
+                                    type="checkbox"
+                                    className="accent-primary"
+                                    checked={permission.readMessageHistory}
+                                    onChange={(event) => setProvisioningPermission(category.key, { readMessageHistory: event.target.checked })}
+                                  />
+                                  Pot vedea istoricul
+                                </label>
+                                <label className="flex cursor-pointer items-center gap-2 text-xs">
+                                  <input
+                                    type="checkbox"
+                                    className="accent-primary"
+                                    checked={permission.sendMessages}
+                                    onChange={(event) => setProvisioningPermission(category.key, { sendMessages: event.target.checked })}
+                                  />
+                                  Pot scrie mesaje
+                                </label>
+                              </div>
+                            </div>
+                          </details>
+                        </div>
                      );
                    })}
                  </div>

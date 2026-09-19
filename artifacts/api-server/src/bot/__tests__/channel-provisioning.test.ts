@@ -1,4 +1,4 @@
-import { ChannelType, type Guild } from "discord.js";
+import { ChannelType, PermissionFlagsBits, type Guild } from "discord.js";
 import { describe, expect, it, vi } from "vitest";
 import { defaultModerationConfig } from "../../moderation/config";
 import { DEFAULT_VERIFICATION_CONFIG } from "../verification";
@@ -15,6 +15,9 @@ function channel(id: string, name: string, type: ChannelType) {
       value.parentId = parentId;
       return value;
     }),
+    permissionOverwrites: {
+      set: vi.fn(async (_overwrites: unknown[], _reason?: string) => value),
+    },
   };
   return value;
 }
@@ -132,5 +135,67 @@ describe("guild channel provisioning", () => {
       "eventTop",
       "bossTop",
     ].includes(entry.key))).toBe(true);
+  });
+
+  it("applies selected role visibility, history, and write permissions", async () => {
+    const channels = new Map<string, ReturnType<typeof channel>>();
+    const create = vi.fn(async ({ name, type }: { name: string; type: ChannelType }) => {
+      const created = channel(`created-${channels.size}`, name, type);
+      channels.set(created.id, created);
+      return created;
+    });
+    const guild = {
+      id: "guild-permissions",
+      channels: { fetch: vi.fn(async () => channels), create },
+      roles: {
+        cache: new Map([
+          ["role-staff", { id: "role-staff" }],
+          ["bot-role", { id: "bot-role" }],
+        ]),
+        everyone: { id: "everyone" },
+      },
+      members: {
+        me: { roles: { highest: { id: "bot-role" } } },
+      },
+    } as unknown as Guild;
+
+    await provisionGuildChannels(guild, {
+      categories: ["gameplay"],
+      permissions: {
+        gameplay: {
+          roleIds: ["role-staff"],
+          readMessageHistory: false,
+          sendMessages: false,
+        },
+      },
+      channelConfig: {},
+      ticketConfig: structuredClone(DEFAULT_TICKET_CONFIG),
+      moderationConfig: structuredClone(defaultModerationConfig),
+      verification: structuredClone(DEFAULT_VERIFICATION_CONFIG),
+    });
+
+    const permissionCalls = [...channels.values()]
+      .map((entry) => entry.permissionOverwrites.set.mock.calls[0]?.[0])
+      .filter(Boolean);
+    expect(permissionCalls.length).toBe(7);
+    expect(permissionCalls[0]).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "everyone",
+        deny: expect.arrayContaining([
+          PermissionFlagsBits.ViewChannel,
+          PermissionFlagsBits.ReadMessageHistory,
+          PermissionFlagsBits.SendMessages,
+        ]),
+      }),
+      expect.objectContaining({
+        id: "role-staff",
+        allow: expect.arrayContaining([PermissionFlagsBits.ViewChannel]),
+        deny: expect.arrayContaining([
+          PermissionFlagsBits.ReadMessageHistory,
+          PermissionFlagsBits.SendMessages,
+        ]),
+      }),
+      expect.objectContaining({ id: "bot-role" }),
+    ]));
   });
 });

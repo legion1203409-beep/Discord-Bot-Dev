@@ -170,6 +170,12 @@ const botChannelConfigSchema = z.object(
 ).strict()
 ;
 
+const provisioningPermissionSchema = z.object({
+  roleIds: z.array(snowflake).max(50),
+  readMessageHistory: z.boolean(),
+  sendMessages: z.boolean(),
+}).strict();
+
 const provisionChannelsSchema = z.object({
   categories: z.array(z.enum([
     "gameplay",
@@ -179,6 +185,7 @@ const provisionChannelsSchema = z.object({
     "security",
     "verification",
   ])).min(1).optional(),
+  permissions: z.record(z.string(), provisioningPermissionSchema).optional(),
 }).strict();
 
 const verificationConfigSchema = z.object({
@@ -1216,7 +1223,7 @@ router.get("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
 
 router.post("/guilds/:guildId/bot-control/provision-channels", asyncRoute(async (req, res) => {
   const guildId = parse(snowflake, req.params.guildId);
-  const { categories } = provisionChannelsSchema.parse(req.body ?? {});
+  const { categories, permissions } = provisionChannelsSchema.parse(req.body ?? {});
   const session = await sessionAndGuild(req, guildId, "config", true);
   const client = getModerationClient();
   if (!client || !client.isReady()) {
@@ -1244,6 +1251,7 @@ router.post("/guilds/:guildId/bot-control/provision-channels", asyncRoute(async 
     moderationConfig: moderationSnapshot.config,
     verification: normalizeVerificationConfig(verification),
     categories,
+    permissions: permissions as Parameters<typeof provisionGuildChannels>[1]["permissions"],
   });
 
   await saveChannelConfig(guildId, provisioned.channelConfig);
