@@ -69,6 +69,8 @@ export interface BotControlConfig {
     allianceOwnerGuildId: string;
     allianceAnnouncementTemplate: string;
     allianceAnnouncementMode: "text" | "embed";
+    allianceAnnouncementImageUrl?: string;
+    allianceAnnouncementImageMode: "none" | "large" | "thumbnail";
     incompleteTimeoutMinutes: number;
     firstWarningMinutes: number;
     secondWarningMinutes: number;

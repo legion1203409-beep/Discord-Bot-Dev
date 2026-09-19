@@ -1233,12 +1233,37 @@ export function allianceAnnouncementText(
 
 export function allianceAnnouncementEmbed(
   text: string,
+  imageUrl?: string,
+  imageMode: "none" | "large" | "thumbnail" = "none",
 ): EmbedBuilder {
-  return new EmbedBuilder()
+  const embed = new EmbedBuilder()
     .setColor(0x7c8fbd)
     .setDescription(text)
     .setFooter({ text: "Pact confirmat · Regatul Cenușii" })
     .setTimestamp();
+  applyAllianceAnnouncementImage(embed, imageUrl, imageMode);
+  return embed;
+}
+
+function applyAllianceAnnouncementImage(
+  embed: EmbedBuilder,
+  rawImageUrl: string | undefined,
+  imageMode: "none" | "large" | "thumbnail",
+): void {
+  const imageUrl = publicTicketImageUrl(rawImageUrl);
+  if (!imageUrl || imageMode === "none") return;
+  if (imageMode === "thumbnail") embed.setThumbnail(imageUrl);
+  else embed.setImage(imageUrl);
+}
+
+export function allianceAnnouncementImageEmbed(
+  imageUrl: string | undefined,
+  imageMode: "none" | "large" | "thumbnail",
+): EmbedBuilder | null {
+  if (!publicTicketImageUrl(imageUrl) || imageMode === "none") return null;
+  const embed = new EmbedBuilder().setColor(0x7c8fbd);
+  applyAllianceAnnouncementImage(embed, imageUrl, imageMode);
+  return embed;
 }
 
 export function allianceRecruitmentEmbed(
@@ -1748,10 +1773,25 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
         ticketConfig.allianceAnnouncementTemplate,
         inviteStats,
       );
+      const announcementImageEmbed = allianceAnnouncementImageEmbed(
+        ticketConfig.allianceAnnouncementImageUrl,
+        ticketConfig.allianceAnnouncementImageMode,
+      );
       const publicMessage = await publicChannel.send({
         ...(ticketConfig.allianceAnnouncementMode === "embed"
-          ? { embeds: [allianceAnnouncementEmbed(announcementText)] }
-          : { content: announcementText }),
+          ? {
+              embeds: [
+                allianceAnnouncementEmbed(
+                  announcementText,
+                  ticketConfig.allianceAnnouncementImageUrl,
+                  ticketConfig.allianceAnnouncementImageMode,
+                ),
+              ],
+            }
+          : {
+              content: announcementText,
+              ...(announcementImageEmbed ? { embeds: [announcementImageEmbed] } : {}),
+            }),
         allowedMentions: { parse: [], users: [applicantId] },
       });
       announcementSent = true;

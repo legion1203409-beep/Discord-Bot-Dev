@@ -4,6 +4,7 @@ export type TicketCategoryKind = "staff" | "partnership" | "help_report";
 
 export type TicketCompletionAction = "lock" | "notify_staff" | "keep_open";
 export type AllianceAnnouncementMode = "text" | "embed";
+export type AllianceAnnouncementImageMode = "none" | "large" | "thumbnail";
 
 export interface TicketQuestionConfig {
   key: string;
@@ -39,6 +40,8 @@ export interface TicketConfig {
   allianceOwnerGuildId: string;
   allianceAnnouncementTemplate: string;
   allianceAnnouncementMode: AllianceAnnouncementMode;
+  allianceAnnouncementImageUrl?: string;
+  allianceAnnouncementImageMode: AllianceAnnouncementImageMode;
   incompleteTimeoutMinutes: number;
   firstWarningMinutes: number;
   secondWarningMinutes: number;
@@ -76,6 +79,8 @@ export const DEFAULT_TICKET_CONFIG: TicketConfig = {
     "Pact pecetluit · Regatul Cenușii",
   ].join("\n"),
   allianceAnnouncementMode: "text",
+  allianceAnnouncementImageUrl: undefined,
+  allianceAnnouncementImageMode: "none",
   incompleteTimeoutMinutes: 60,
   firstWarningMinutes: 20,
   secondWarningMinutes: 50,
@@ -236,6 +241,11 @@ export function normalizeTicketConfig(value: unknown): TicketConfig {
     ),
     allianceAnnouncementMode:
       raw.allianceAnnouncementMode === "embed" ? "embed" : DEFAULT_TICKET_CONFIG.allianceAnnouncementMode,
+    allianceAnnouncementImageUrl: imageUrlOrEmpty(raw.allianceAnnouncementImageUrl),
+    allianceAnnouncementImageMode:
+      raw.allianceAnnouncementImageMode === "large" || raw.allianceAnnouncementImageMode === "thumbnail"
+        ? raw.allianceAnnouncementImageMode
+        : DEFAULT_TICKET_CONFIG.allianceAnnouncementImageMode,
     incompleteTimeoutMinutes: numberOrDefault(raw.incompleteTimeoutMinutes, DEFAULT_TICKET_CONFIG.incompleteTimeoutMinutes, 10, 240),
     firstWarningMinutes: numberOrDefault(raw.firstWarningMinutes, DEFAULT_TICKET_CONFIG.firstWarningMinutes, 1, 180),
     secondWarningMinutes: numberOrDefault(raw.secondWarningMinutes, DEFAULT_TICKET_CONFIG.secondWarningMinutes, 2, 239),

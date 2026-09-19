@@ -862,6 +862,20 @@ export function BotControlPage() {
                      </SelectContent>
                    </Select>
                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Afișarea imaginii</label>
+                    <Select
+                      value={draft.tickets.allianceAnnouncementImageMode}
+                      onValueChange={(value) => setTicket(["allianceAnnouncementImageMode"], value)}
+                    >
+                      <SelectTrigger className="mod-select-trigger"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Fără imagine</SelectItem>
+                        <SelectItem value="large">Imagine mare sub mesaj</SelectItem>
+                        <SelectItem value="thumbnail">Thumbnail în dreapta</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                  <div className="space-y-2 text-xs text-muted-foreground">
                    <p className="font-medium text-foreground">Variabile disponibile</p>
                    <p className="font-mono leading-relaxed">
@@ -870,6 +884,13 @@ export function BotControlPage() {
                    <p>„Membri total” și „online” sunt citite din invitația Discord la publicare. Dacă Discord nu le poate oferi, se afișează „Nedisponibil”.</p>
                  </div>
                </div>
+                <ImageField
+                  label="Imaginea anunțului public"
+                  value={draft.tickets.allianceAnnouncementImageUrl}
+                  guildId={guildId}
+                  csrfToken={session?.csrfToken}
+                  onChange={(value) => setTicket(["allianceAnnouncementImageUrl"], value)}
+                />
                <p className="text-right text-xs text-muted-foreground">
                  {draft.tickets.allianceAnnouncementTemplate.length}/2000
                </p>
@@ -1084,11 +1105,41 @@ export function BotControlPage() {
                 <div className="rounded-lg border border-amber-500/40 bg-[#2b2d31] p-4">
                   <p className="text-[10px] font-mono tracking-[0.18em] text-amber-300">TEXTUL POSTAT ÎN CANALUL ALIANȚELOR</p>
                   <p className="mt-2 text-xs text-[#b5bac1]">
-                    Acesta este mesajul public trimis după „Publică pactul”.
+                     Acesta este mesajul public trimis după „Publică pactul”. Imaginea este simulată aici ca preview Discord.
                   </p>
-                  <pre className="mt-3 whitespace-pre-wrap rounded-md bg-[#1e1f22] p-3 font-sans text-sm leading-relaxed text-[#f2f3f5]">
-                    {partnershipAnnouncement}
-                  </pre>
+                   <div className="mt-3 overflow-hidden rounded-md bg-[#1e1f22] p-3">
+                     {draft.tickets.allianceAnnouncementMode === "embed" ? (
+                       <div className="border-l-4 border-[#7c8fbd] pl-3">
+                         <p className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-[#f2f3f5]">{partnershipAnnouncement}</p>
+                         {draft.tickets.allianceAnnouncementImageUrl && draft.tickets.allianceAnnouncementImageMode !== "none" && (
+                           draft.tickets.allianceAnnouncementImageMode === "thumbnail" ? (
+                             <div className="mt-3 flex justify-between gap-3">
+                               <span />
+                               <img src={draft.tickets.allianceAnnouncementImageUrl} alt="" className="h-20 w-20 rounded object-cover" />
+                             </div>
+                           ) : (
+                             <img src={draft.tickets.allianceAnnouncementImageUrl} alt="" className="mt-3 max-h-56 w-full rounded object-cover" />
+                           )
+                         )}
+                       </div>
+                     ) : (
+                       <>
+                         <p className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-[#f2f3f5]">{partnershipAnnouncement}</p>
+                         {draft.tickets.allianceAnnouncementImageUrl && draft.tickets.allianceAnnouncementImageMode !== "none" && (
+                           <div className="mt-3 border-l-4 border-[#7c8fbd] pl-3">
+                             {draft.tickets.allianceAnnouncementImageMode === "thumbnail" ? (
+                               <div className="flex justify-between gap-3">
+                                 <span />
+                                 <img src={draft.tickets.allianceAnnouncementImageUrl} alt="" className="h-20 w-20 rounded object-cover" />
+                               </div>
+                             ) : (
+                               <img src={draft.tickets.allianceAnnouncementImageUrl} alt="" className="max-h-56 w-full rounded object-cover" />
+                             )}
+                           </div>
+                         )}
+                       </>
+                     )}
+                   </div>
                 </div>
               </>
             )}

@@ -85,6 +85,8 @@ export const botControlSchema = z.object({
     allianceOwnerGuildId: snowflake,
     allianceAnnouncementTemplate: z.string().trim().max(2_000).optional(),
     allianceAnnouncementMode: z.enum(["text", "embed"]).optional(),
+    allianceAnnouncementImageUrl: z.string().trim().max(2_000).optional(),
+    allianceAnnouncementImageMode: z.enum(["none", "large", "thumbnail"]).optional(),
     incompleteTimeoutMinutes: z.number().int().min(10).max(240),
     firstWarningMinutes: z.number().int().min(1).max(180),
     secondWarningMinutes: z.number().int().min(2).max(239),
