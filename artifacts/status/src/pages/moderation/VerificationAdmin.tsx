@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Loader2, RefreshCw, Save, Search, ShieldCheck, Users } from "lucide-react";
+import { AlertTriangle, CircleHelp, Loader2, RefreshCw, Save, Search, ShieldCheck, Users } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Textarea } from "../../components/ui/textarea";
@@ -114,22 +114,48 @@ export function VerificationAdminPage() {
   });
 
   return (
-    <div className="max-w-5xl space-y-6">
-      <header>
-        <p className="mod-eyebrow">CONFIGURARE SEPARATĂ</p>
-        <h1 className="mb-2 flex items-center gap-3 text-3xl font-bold tracking-tight text-foreground">
-          <ShieldCheck className="h-8 w-8 text-primary" /> Verificare
-        </h1>
-        <p className="text-muted-foreground">
-          Configurează verificarea Discord + site și vezi membrii care au rolul de verificare.
-        </p>
+    <div className="bot-control-page verification-admin-page max-w-5xl space-y-6">
+      <header className="bot-control-hero">
+        <div>
+          <div className="bot-control-brand-row">
+            <span className="bot-control-brand-mark"><ShieldCheck className="h-4 w-4" /></span>
+            <p className="mod-eyebrow">MEMBER GATE</p>
+          </div>
+          <h1>Verificare membri</h1>
+          <p>Configurează verificarea Discord + site și urmărește membrii care au primit rolul.</p>
+        </div>
+        <div className="bot-control-status" data-state={draft.verification.enabled ? "online" : "offline"}>
+          <span className="bot-control-status-dot" />
+          <div>
+            <strong>{draft.verification.enabled ? "Verificarea este activă" : "În configurare"}</strong>
+            <small>{draft.verification.enabled ? "Panoul poate fi folosit pe Discord" : "Activează și salvează configurația"}</small>
+          </div>
+        </div>
       </header>
 
-      <section className="space-y-5 rounded-xl border border-border bg-card p-5">
-        <div className="flex items-start justify-between gap-4">
+      {!draft.verification.enabled && (
+        <div className="bot-control-banner" role="status">
+          <AlertTriangle className="shrink-0" size={15} />
+          <div>
+            <strong>Fluxul nu este activ.</strong>{" "}
+            Completează canalul și rolul, apoi salvează verificarea pentru a publica panoul pe Discord.
+          </div>
+          <button
+            type="button"
+            onClick={() => toast({ title: "Verificarea este în configurare", description: "Alege canalul și rolul, apoi apasă Salvează verificarea." })}
+            className="bot-control-banner-help"
+          >
+            <CircleHelp size={13} /> Detalii
+          </button>
+        </div>
+      )}
+
+      <section className="verification-surface space-y-5 rounded-xl border border-border bg-card p-5">
+        <div className="verification-section-head flex items-start justify-between gap-4">
           <div className="flex items-start gap-3">
             <ShieldCheck className="mt-1 h-5 w-5 text-primary" />
             <div>
+              <p className="mod-eyebrow">CONFIGURAȚIE</p>
               <h2 className="font-medium">Verificare Discord + site</h2>
               <p className="text-xs text-muted-foreground">
                 Membrul confirmă identitatea prin Discord, primește rolul ales și rămâne asociat cu sesiunea de verificare a site-ului.
@@ -236,11 +262,12 @@ export function VerificationAdminPage() {
         </div>
       </section>
 
-      <section className="space-y-4 rounded-xl border border-border bg-card p-5">
+      <section className="verification-surface verification-members-surface space-y-4 rounded-xl border border-border bg-card p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-start gap-3">
             <Users className="mt-1 h-5 w-5 text-primary" />
             <div>
+              <p className="mod-eyebrow">MEMBER DIRECTORY</p>
               <h2 className="font-medium">Membri verificați</h2>
               <p className="text-xs text-muted-foreground">Lista live a membrilor care au în prezent rolul de verificare configurat.</p>
             </div>
@@ -292,7 +319,7 @@ export function VerificationAdminPage() {
             {verificationSearch.trim() ? "Nu există membri care corespund căutării." : "Nu există membri verificați în acest moment."}
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-border">
+          <div className="verification-table-wrap overflow-x-auto rounded-lg border border-border">
             <table className="w-full min-w-[620px] text-left text-sm">
               <thead className="border-b border-border bg-muted/30 text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
@@ -324,8 +351,12 @@ export function VerificationAdminPage() {
         )}
       </section>
 
-      <div className="sticky bottom-3 z-20 flex w-full justify-end py-2">
-        <div className="ml-auto rounded-xl border border-border/80 bg-card/95 p-2 shadow-2xl backdrop-blur">
+      <div className="bot-control-footer sticky bottom-3 z-20 flex w-full items-center justify-between gap-3 py-2">
+        <div className="bot-control-save-state">
+          <span className={`bot-control-save-dot ${saving ? "is-saving" : ""}`} />
+          <span>{saving ? "Se salvează verificarea…" : draft.verification.enabled ? "Configurația este pregătită pentru Discord." : "Completează configurația înainte de publicare."}</span>
+        </div>
+        <div className="ml-auto">
           <Button onClick={() => void save()} disabled={saving} className="gap-2 px-8">
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
             {saving ? "Se salvează…" : "Salvează verificarea"}

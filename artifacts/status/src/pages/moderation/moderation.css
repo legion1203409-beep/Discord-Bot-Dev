@@ -751,3 +751,143 @@
     justify-content: center;
   }
 }
+
+/* The standalone member-gate composition is now used by the authenticated
+   verification route as well, while its data and mutations remain live. */
+.verification-admin-page {
+  position: relative;
+}
+
+.verification-admin-page::before {
+  position: absolute;
+  z-index: -1;
+  top: -4rem;
+  right: -9rem;
+  width: 26rem;
+  height: 26rem;
+  border-radius: 50%;
+  background: radial-gradient(circle, hsl(4 57% 48% / .14), transparent 68%);
+  content: "";
+  pointer-events: none;
+  filter: blur(12px);
+}
+
+.verification-admin-page .verification-surface {
+  border-color: hsl(var(--border) / .9);
+  background: linear-gradient(145deg, hsl(0 20% 10% / .95), hsl(0 18% 6% / .97));
+  box-shadow: 0 15px 40px hsl(0 40% 2% / .2), inset 0 1px hsl(30 30% 92% / .035);
+}
+
+.verification-admin-page .verification-section-head {
+  padding-bottom: 1rem;
+  border-bottom: 1px solid hsl(var(--border) / .9);
+}
+
+.verification-admin-page .verification-section-head h2,
+.verification-admin-page .verification-members-surface h2 {
+  margin-top: .18rem;
+  color: hsl(var(--foreground));
+  font-family: var(--display);
+  font-size: 1.15rem;
+  font-weight: 600;
+  letter-spacing: -.035em;
+}
+
+.verification-admin-page .verification-section-head > label {
+  padding: .45rem .7rem;
+  border: 1px solid hsl(var(--primary) / .28);
+  border-radius: 6px;
+  color: hsl(var(--foreground));
+  background: hsl(var(--primary) / .07);
+  font-size: .68rem;
+}
+
+.verification-admin-page .verification-section-head > label input {
+  accent-color: hsl(var(--primary));
+}
+
+.verification-admin-page label {
+  color: hsl(var(--foreground));
+  font-size: .68rem;
+}
+
+.verification-admin-page input,
+.verification-admin-page textarea,
+.verification-admin-page [role="combobox"] {
+  border-color: hsl(var(--border));
+  border-radius: 6px;
+  background: hsl(0 18% 5% / .65);
+  color: hsl(var(--foreground));
+  font-size: .68rem;
+}
+
+.verification-admin-page input::placeholder,
+.verification-admin-page textarea::placeholder {
+  color: hsl(var(--muted-foreground) / .75);
+}
+
+.verification-admin-page input:focus,
+.verification-admin-page textarea:focus,
+.verification-admin-page [role="combobox"]:focus {
+  border-color: hsl(var(--primary) / .7);
+  box-shadow: 0 0 0 3px hsl(var(--primary) / .1);
+}
+
+.verification-admin-page .verification-surface > .flex.flex-wrap.items-center {
+  border-color: hsl(var(--primary) / .25);
+  background: hsl(var(--primary) / .045);
+}
+
+.verification-admin-page .verification-members-surface {
+  padding-top: 1.15rem;
+}
+
+.verification-admin-page .verification-members-surface > .flex:first-child {
+  padding-bottom: .75rem;
+  border-bottom: 1px solid hsl(var(--border) / .75);
+}
+
+.verification-admin-page .verification-members-surface > .flex:first-child svg {
+  color: hsl(var(--primary));
+}
+
+.verification-admin-page .verification-table-wrap {
+  border-color: hsl(var(--border) / .9);
+  background: hsl(0 18% 5% / .45);
+}
+
+.verification-admin-page .verification-table-wrap thead {
+  background: hsl(var(--primary) / .06);
+}
+
+.verification-admin-page .verification-table-wrap th {
+  color: hsl(var(--muted-foreground));
+  font-family: var(--mono);
+  font-size: .57rem;
+  letter-spacing: .11em;
+}
+
+.verification-admin-page .verification-table-wrap td {
+  border-color: hsl(var(--border) / .7);
+  color: hsl(var(--foreground));
+  font-size: .68rem;
+}
+
+.verification-admin-page .verification-table-wrap tbody tr:hover {
+  background: hsl(var(--primary) / .055);
+}
+
+.verification-admin-page .verification-table-wrap td.text-muted-foreground {
+  color: hsl(var(--muted-foreground));
+}
+
+@media (max-width: 767px) {
+  .verification-admin-page .verification-section-head {
+    flex-direction: column;
+  }
+
+  .verification-admin-page .verification-section-head > label {
+    align-self: stretch;
+    justify-content: center;
+  }
+}
