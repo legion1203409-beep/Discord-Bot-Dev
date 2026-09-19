@@ -148,7 +148,7 @@ export function GameGuidePage() {
             </div>
           </section>
 
-          <section id="profil" className="guide-section">
+          <section id="profil" className="guide-section" data-aos="flip-left">
             <h2><Icon name="mark" size={28} /> Crearea caracterului</h2>
             <p>Primul tău pas în regat. Pentru a-ți începe povestea, intră pe orice canal permis din serverul de Discord și folosește comanda de profil. Acest lucru îți va genera automat un erou.</p>
             <div className="guide-card-grid">
@@ -159,7 +159,7 @@ export function GameGuidePage() {
             </div>
           </section>
 
-          <section id="clase" className="guide-section">
+          <section id="clase" className="guide-section" data-aos="flip-left">
             <h2><Icon name="shield" size={28} /> Clasele regatului</h2>
             <p>Eroul tău are nevoie de o specializare. Folosește <span className="guide-command">/clasa</span> pentru a alege una dintre cele cinci căi disponibile. După selecția inițială, schimbarea clasei va necesita un obiect din magazin.</p>
             <div className="guide-card-grid">
@@ -187,7 +187,7 @@ export function GameGuidePage() {
             <p style={{ marginTop: '1.5rem' }}>Nu există o mecanică directă de alegere a facțiunilor. Veghetorii Nordului, Cronicarii de Sare și Fiii Fumului reprezintă jurămintele de suflet (lore), iar <strong>/fratie</strong> este modul în care comunitatea votează și se guvernează, nu o aliniere strictă de combat.</p>
           </section>
 
-          <section id="lupta" className="guide-section">
+          <section id="lupta" className="guide-section" data-aos="flip-left">
             <h2><Icon name="sword" size={28} /> Luptă și Evenimente</h2>
             <p>Bătăliile se nasc natural din neantul regatului, declanșate automat de evenimente pe canal. Nu există o comandă pe care să o apelezi pentru a genera un atac.</p>
             <div className="guide-card-grid">
@@ -206,7 +206,7 @@ export function GameGuidePage() {
             </div>
           </section>
 
-          <section id="economie" className="guide-section">
+          <section id="economie" className="guide-section" data-aos="flip-left">
             <h2><Icon name="chest" size={28} /> Progresie și Economie</h2>
             <p>Luptele aduc glorie, dar pentru a supraviețui vei avea nevoie de resurse, echipament și un inventar bine pus la punct.</p>
             <div className="guide-card-grid">
@@ -229,7 +229,7 @@ export function GameGuidePage() {
             </div>
           </section>
 
-          <section id="comenzi" className="guide-section">
+          <section id="comenzi" className="guide-section" data-aos="flip-left">
             <h2><Icon name="book" size={28} /> Lista de comenzi</h2>
             <p>Un rezumat rapid al comenzilor esențiale pe care le poți folosi în Discord:</p>
             

@@ -66,14 +66,14 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 }
 [data-aos] {
   opacity: 0;
-  transform: perspective(1000px) rotateY(-78deg) translate3d(18px, 0, 0);
+  transform: perspective(1200px) rotateY(-86deg) translate3d(42px, 0, 0);
   transform-origin: center right;
-  transition: opacity 700ms ease, transform 700ms cubic-bezier(.2, .8, .2, 1);
+  transition: opacity 900ms ease, transform 900ms cubic-bezier(.16, .84, .24, 1);
   will-change: opacity, transform;
 }
 [data-aos="flip-left"].aos-animate {
   opacity: 1;
-  transform: perspective(1000px) rotateY(0) translate3d(0, 0, 0);
+  transform: perspective(1200px) rotateY(0) translate3d(0, 0, 0);
 }
 @media (prefers-reduced-motion: reduce) {
   [data-aos] {
@@ -93,9 +93,15 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 /* Navigation */
 .site-nav { position: absolute; z-index: 10; top: 0; left: 0; display: flex; width: 100%; min-height: 96px; align-items: center; justify-content: space-between; padding-inline: max(2rem, calc((100% - 1240px) / 2)); border-bottom: 1px solid rgba(9, 7, 8, .16); background: rgba(238, 231, 223, .96); color: #090708; }
 .fire-toolbar { position: relative; overflow: hidden; isolation: isolate; background: rgba(238, 231, 223, .96); color: #090708; }
-.fire-toolbar::before { position: absolute; z-index: 0; inset: -55%; pointer-events: none; background: radial-gradient(ellipse at 18% 110%, rgba(255, 70, 0, .42), transparent 28%), radial-gradient(ellipse at 72% 115%, rgba(255, 165, 0, .32), transparent 25%), radial-gradient(ellipse at 48% -20%, rgba(157, 32, 24, .22), transparent 32%); content: ""; animation: toolbar-blazing 2.8s ease-in-out infinite alternate; }
+.fire-toolbar::before { position: absolute; z-index: 0; inset: -14%; pointer-events: none; background: radial-gradient(ellipse at 8% 105%, rgba(255, 70, 0, .54), transparent 31%), radial-gradient(ellipse at 52% 112%, rgba(255, 165, 0, .4), transparent 29%), radial-gradient(ellipse at 94% 105%, rgba(157, 32, 24, .38), transparent 31%); mix-blend-mode: multiply; content: ""; animation: toolbar-blazing 2.8s ease-in-out infinite alternate; }
 .fire-toolbar::after { position: absolute; z-index: 0; right: 4%; bottom: 0; left: 4%; height: 2px; pointer-events: none; background: linear-gradient(90deg, transparent, #9f2f36 18%, #ff8a00 50%, #9f2f36 82%, transparent); box-shadow: 0 0 14px rgba(255, 92, 0, .8); content: ""; animation: toolbar-ember-line 1.9s ease-in-out infinite alternate; }
 .fire-toolbar > * { position: relative; z-index: 1; }
+.fire-toolbar .brand strong,
+.fire-toolbar .brand small,
+.fire-toolbar .nav-links a,
+.fire-toolbar .nav-cta {
+  text-shadow: 0 0 8px rgba(255, 123, 26, .38);
+}
 @keyframes toolbar-blazing {
   0% { transform: translate3d(-2%, 2%, 0) scale(.98) rotate(-1deg); opacity: .55; }
   50% { opacity: .9; }

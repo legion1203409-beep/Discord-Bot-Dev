@@ -41,7 +41,7 @@ export function Navigation() {
     <header className="site-nav fire-toolbar">
       <Brand />
 
-      <nav id="public-navigation" className={`nav-links ${isOpen ? "is-open" : ""}`} aria-label="Navigație principală">
+      <nav id="public-navigation" data-aos="flip-left" className={`nav-links ${isOpen ? "is-open" : ""}`} aria-label="Navigație principală">
         <div className="nav-links-inner">
           <Link href="/" data-testid="link-nav-home">Panou de moderare</Link>
           <Link href="/joc" data-testid="link-nav-game" className={location === "/joc" ? "active" : ""}>Joc</Link>
@@ -52,7 +52,7 @@ export function Navigation() {
         </div>
       </nav>
 
-      <div className="nav-actions">
+      <div data-aos="flip-left" className="nav-actions">
         <a className="nav-cta" href={DISCORD_INVITE} target="_blank" rel="noopener noreferrer" onClick={() => trackEvent("discord_cta_click", { location: "nav" })} data-testid="link-nav-discord">
           Intră pe Discord <Icon name="arrow" size={15} />
         </a>
