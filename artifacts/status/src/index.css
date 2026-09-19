@@ -156,11 +156,97 @@ h1 em, h2 em, blockquote em { color: var(--ember-light); font-style: normal; }
 
 /* Editorial fantasy skin: quieter than a game HUD, richer than a dashboard. */
 .landing-page {
+  position: relative;
+  isolation: isolate;
+  overflow-x: clip;
   background:
-    radial-gradient(circle at 73% 8%, rgba(168, 78, 58, .1), transparent 30rem),
+    radial-gradient(circle at 73% 8%, rgba(168, 78, 58, .16), transparent 30rem),
+    radial-gradient(circle at 8% 66%, rgba(92, 67, 101, .12), transparent 35rem),
     var(--void);
 }
 .landing-noise { opacity: .018; }
+.landing-page::before {
+  position: absolute;
+  z-index: -2;
+  inset: 0;
+  min-height: 100%;
+  background:
+    linear-gradient(115deg, transparent 0 35%, rgba(210, 162, 126, .045) 35.1%, transparent 35.3%),
+    linear-gradient(294deg, transparent 0 61%, rgba(159, 47, 54, .05) 61.1%, transparent 61.3%),
+    radial-gradient(ellipse at 50% 18%, transparent 0 22rem, rgba(7, 5, 7, .35) 48rem);
+  content: "";
+  pointer-events: none;
+  animation: landing-light-shift 18s ease-in-out infinite alternate;
+}
+.landing-page::after {
+  position: absolute;
+  z-index: -1;
+  top: 11rem;
+  left: 50%;
+  width: min(100vw, 1100px);
+  height: 720px;
+  border: 1px solid rgba(210, 162, 126, .08);
+  border-radius: 50%;
+  content: "";
+  pointer-events: none;
+  transform: translateX(-50%) rotate(-13deg) scaleY(.54);
+  box-shadow:
+    0 0 0 45px rgba(159, 47, 54, .018),
+    0 0 0 90px rgba(159, 47, 54, .012);
+  animation: landing-orbit-breathe 15s ease-in-out infinite alternate;
+}
+.landing-particles {
+  position: fixed;
+  z-index: 1;
+  top: 10%;
+  left: 8%;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: rgba(242, 194, 145, .8);
+  box-shadow:
+    17vw 13vh 0 rgba(210, 162, 126, .45),
+    31vw 42vh 0 rgba(159, 47, 54, .55),
+    47vw 19vh 0 rgba(242, 194, 145, .65),
+    64vw 54vh 0 rgba(210, 162, 126, .38),
+    78vw 24vh 0 rgba(159, 47, 54, .5),
+    89vw 70vh 0 rgba(242, 194, 145, .58),
+    24vw 82vh 0 rgba(210, 162, 126, .36),
+    58vw 91vh 0 rgba(159, 47, 54, .42);
+  filter: blur(.2px);
+  opacity: .58;
+  pointer-events: none;
+  animation: landing-particles-float 12s ease-in-out infinite alternate;
+}
+.landing-particles::before,
+.landing-particles::after {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: rgba(242, 194, 145, .7);
+  box-shadow:
+    26vw 24vh 0 rgba(210, 162, 126, .4),
+    55vw 61vh 0 rgba(159, 47, 54, .48),
+    83vw 16vh 0 rgba(242, 194, 145, .58);
+  content: "";
+}
+.landing-particles::before { top: 8vh; left: 5vw; }
+.landing-particles::after { top: 48vh; left: 40vw; animation: landing-particles-float 8s ease-in-out infinite reverse; }
+.landing-orbit {
+  position: absolute;
+  z-index: -1;
+  width: 28rem;
+  height: 11rem;
+  border: 1px solid rgba(210, 162, 126, .1);
+  border-radius: 50%;
+  pointer-events: none;
+  transform: rotate(-18deg);
+  box-shadow: 0 0 45px rgba(159, 47, 54, .08);
+  animation: landing-orbit-spin 24s linear infinite;
+}
+.landing-orbit--one { top: 32rem; right: -12rem; }
+.landing-orbit--two { top: 108rem; left: -13rem; border-color: rgba(126, 107, 112, .13); animation-direction: reverse; animation-duration: 32s; }
 .hero-section {
   min-height: 900px;
   background: #100e0f;
@@ -309,26 +395,163 @@ h1 em, h2 em, blockquote em { color: var(--ember-light); }
 
 /* Game Guide Layout */
 .game-guide-page { padding-top: 10rem; padding-bottom: 6rem; position: relative; min-height: 100vh; }
-.game-guide-header { text-align: center; max-width: 700px; margin: 0 auto 5rem; }
-.game-guide-header h1 { font-size: clamp(2.5rem, 5vw, 4.5rem); margin-bottom: 1.5rem; }
+.game-guide-page::before {
+  position: absolute;
+  z-index: -1;
+  top: 6rem;
+  left: 50%;
+  width: min(78vw, 760px);
+  height: 26rem;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(159, 47, 54, .18), rgba(126, 107, 112, .06) 38%, transparent 72%);
+  content: "";
+  filter: blur(8px);
+  pointer-events: none;
+  transform: translateX(-50%);
+  animation: guide-header-glow 8s ease-in-out infinite alternate;
+}
+.game-guide-header {
+  position: relative;
+  text-align: center;
+  max-width: 700px;
+  margin: 0 auto 5rem;
+  animation: guide-header-arrive .75s cubic-bezier(.2,.8,.2,1) both;
+}
+.game-guide-header::after {
+  position: absolute;
+  right: 15%;
+  bottom: -2.5rem;
+  left: 15%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(210, 162, 126, .58), transparent);
+  box-shadow: 0 0 22px rgba(210, 162, 126, .32);
+  content: "";
+}
+.game-guide-header h1 {
+  margin-bottom: 1.5rem;
+  color: transparent;
+  background: linear-gradient(110deg, var(--paper) 15%, #f0c49e 48%, var(--ember-light) 82%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  filter: drop-shadow(0 0 26px rgba(159, 47, 54, .18));
+  font-size: clamp(2.5rem, 5vw, 4.5rem);
+}
 .game-guide-header p { color: var(--ash); font-size: 0.95rem; line-height: 1.8; }
 .guide-grid { display: grid; grid-template-columns: 280px 1fr; gap: 4rem; align-items: start; }
-.guide-sidebar { position: sticky; top: 8rem; display: flex; flex-direction: column; gap: 0.5rem; }
-.guide-nav-link { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; color: var(--ash); font-family: var(--mono); font-size: 0.65rem; letter-spacing: 0.1em; text-transform: uppercase; border-left: 2px solid transparent; transition: all 200ms ease; cursor: pointer; background: transparent; }
-.guide-nav-link:hover, .guide-nav-link.active { color: var(--gold-light); background: rgba(197,164,107,0.05); border-left-color: var(--gold); }
+.guide-sidebar {
+  position: sticky;
+  top: 8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem .75rem;
+  border: 1px solid rgba(238, 231, 223, .1);
+  border-radius: 10px;
+  background: linear-gradient(145deg, rgba(31, 20, 22, .76), rgba(16, 12, 14, .5));
+  box-shadow: inset 0 1px rgba(255,255,255,.04), 0 18px 45px rgba(0,0,0,.18);
+  backdrop-filter: blur(16px);
+}
+.guide-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.78rem 1rem;
+  border: 1px solid transparent;
+  border-left: 2px solid transparent;
+  border-radius: 6px;
+  color: var(--ash);
+  background: transparent;
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  transition: all 240ms ease;
+}
+.guide-nav-link:hover, .guide-nav-link.active {
+  border-color: rgba(210, 162, 126, .16);
+  border-left-color: var(--gold-light);
+  color: var(--gold-light);
+  background: linear-gradient(90deg, rgba(159, 47, 54, .18), rgba(210, 162, 126, .035));
+  box-shadow: inset 0 0 18px rgba(159, 47, 54, .08), 0 7px 18px rgba(0,0,0,.12);
+  transform: translateX(3px);
+}
 .guide-nav-link .icon { opacity: 0.5; transition: opacity 200ms ease; }
 .guide-nav-link:hover .icon, .guide-nav-link.active .icon { opacity: 1; }
 
 .guide-content { display: flex; flex-direction: column; gap: 6rem; }
+.guide-section { animation: guide-section-arrive .7s ease both; }
+.guide-section:nth-child(2) { animation-delay: .08s; }
+.guide-section:nth-child(3) { animation-delay: .16s; }
+.guide-section:nth-child(4) { animation-delay: .24s; }
+.guide-section:nth-child(5) { animation-delay: .32s; }
 .guide-section h2 { font-size: 2.2rem; color: var(--paper); margin-bottom: 2rem; display: flex; align-items: center; gap: 1rem; }
-.guide-section h2 .icon { color: var(--gold); }
+.guide-section h2 .icon { color: var(--gold-light); filter: drop-shadow(0 0 10px rgba(210, 162, 126, .28)); }
 .guide-section p { color: var(--ash); font-size: 0.85rem; line-height: 1.8; margin-bottom: 1.5rem; }
 .guide-section p strong { color: var(--paper-soft); font-weight: 600; }
 .guide-card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.5rem; margin-top: 2rem; }
-.guide-card { background: rgba(25,21,22,0.6); border: 1px solid var(--line); padding: 1.5rem; border-radius: 4px; }
+.guide-card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(238, 231, 223, .11);
+  border-radius: 9px;
+  background: linear-gradient(145deg, rgba(35, 24, 26, .82), rgba(18, 13, 15, .78));
+  box-shadow: inset 0 1px rgba(255,255,255,.035), 0 12px 28px rgba(0,0,0,.12);
+  padding: 1.5rem;
+  transition: border-color 240ms ease, transform 240ms ease, box-shadow 240ms ease, background 240ms ease;
+}
+.guide-card::before {
+  position: absolute;
+  top: -4rem;
+  right: -3rem;
+  width: 9rem;
+  height: 9rem;
+  border-radius: 50%;
+  background: rgba(159, 47, 54, .2);
+  content: "";
+  filter: blur(28px);
+  opacity: .45;
+  transition: opacity 240ms ease, transform 240ms ease;
+}
+.guide-card:hover {
+  border-color: rgba(210, 162, 126, .38);
+  background: linear-gradient(145deg, rgba(49, 29, 31, .92), rgba(22, 15, 17, .9));
+  box-shadow: inset 0 1px rgba(255,255,255,.06), 0 20px 42px rgba(0,0,0,.26), 0 0 24px rgba(159, 47, 54, .08);
+  transform: translateY(-6px);
+}
+.guide-card:hover::before { opacity: .85; transform: scale(1.18); }
 .guide-card h3 { color: var(--paper); font-family: var(--display); font-size: 1.2rem; margin-bottom: 0.75rem; }
 .guide-card p { font-size: 0.75rem; margin-bottom: 0; }
 .guide-command { display: inline-block; background: var(--night); border: 1px solid var(--line); padding: 0.2rem 0.5rem; border-radius: 4px; font-family: var(--mono); font-size: 0.65rem; color: var(--gold-light); margin-right: 0.5rem; }
+
+@keyframes landing-light-shift {
+  from { opacity: .55; transform: translate3d(-1%, -1%, 0) scale(1); }
+  to { opacity: 1; transform: translate3d(1%, 1%, 0) scale(1.035); }
+}
+@keyframes landing-orbit-breathe {
+  from { opacity: .45; transform: translateX(-50%) rotate(-13deg) scaleY(.54); }
+  to { opacity: 1; transform: translateX(-50%) rotate(-8deg) scaleY(.58); }
+}
+@keyframes landing-particles-float {
+  from { opacity: .3; transform: translate3d(0, 0, 0); }
+  to { opacity: .78; transform: translate3d(8px, -18px, 0); }
+}
+@keyframes landing-orbit-spin {
+  from { transform: rotate(-18deg) scaleY(.62); }
+  to { transform: rotate(342deg) scaleY(.62); }
+}
+@keyframes guide-header-arrive {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes guide-header-glow {
+  from { opacity: .55; transform: translateX(-50%) scale(.92); }
+  to { opacity: 1; transform: translateX(-50%) scale(1.06); }
+}
+@keyframes guide-section-arrive {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 
 @media (max-width: 900px) {
   .guide-grid { grid-template-columns: 1fr; gap: 3rem; }

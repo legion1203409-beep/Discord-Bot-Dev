@@ -9,6 +9,9 @@ export function PublicLayout({ children }: { children: ReactNode }) {
   return (
     <div className="landing-page">
       <div className="landing-noise" aria-hidden="true" />
+      <div className="landing-particles" aria-hidden="true" />
+      <div className="landing-orbit landing-orbit--one" aria-hidden="true" />
+      <div className="landing-orbit landing-orbit--two" aria-hidden="true" />
       <div className="smoke-layer smoke-layer--one" aria-hidden="true" />
       <div className="smoke-layer smoke-layer--two" aria-hidden="true" />
       
