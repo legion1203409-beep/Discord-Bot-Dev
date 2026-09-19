@@ -56,6 +56,12 @@ const commandName = z.enum([
 ]);
 
 export const ModerationConfigSchema = z.object({
+  // Global protection switch. Module settings remain stored while the
+  // category is disabled so an operator can turn protection back on without
+  // rebuilding every rule.
+  protection: z.object({
+    enabled: z.boolean().default(true),
+  }).default({}),
   // 1. AutoMod
   autoMod: z.object({
     enabled: z.boolean().default(false),

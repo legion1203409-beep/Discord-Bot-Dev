@@ -29,10 +29,16 @@ async function syncRule(
   guild: Guild,
   existingRules: Awaited<ReturnType<Guild["autoModerationRules"]["fetch"]>>,
   desired: NativeRuleOptions | null,
+  managedName?: string,
 ): Promise<void> {
-  const existing = existingRules.find((rule) => rule.name === (desired?.name ?? ""));
+  const existing = existingRules.find((rule) => rule.name === (desired?.name ?? managedName ?? ""));
 
-  if (!desired) return;
+  if (!desired) {
+    if (existing) {
+      await guild.autoModerationRules.delete(existing, "Protecția globală este dezactivată");
+    }
+    return;
+  }
 
   const options = {
     name: desired.name,
@@ -69,6 +75,13 @@ export async function syncNativeAutoMod(
   }
 
   const rules = await guild.autoModerationRules.fetch();
+  if (!config.protection.enabled) {
+    await syncRule(guild, rules, null, SPAM_RULE_NAME);
+    await syncRule(guild, rules, null, MENTION_RULE_NAME);
+    await syncRule(guild, rules, null, KEYWORD_RULE_NAME);
+    logger.info({ guildId }, "Native Discord AutoMod disabled — protection category is off");
+    return;
+  }
   const words = config.autoMod.enabled && config.autoMod.wordFilter.enabled
     ? config.autoMod.forbiddenWords
       .map((word) => word.trim())

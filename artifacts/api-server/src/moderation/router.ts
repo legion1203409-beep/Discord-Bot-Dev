@@ -616,7 +616,7 @@ async function validateConfigTargets(guildId: string, config: ModerationConfig):
   const hasGuildMembers = client.options.intents.has(GatewayIntentBits.GuildMembers)
 ;
 
-  if (!hasMessageContent && (config.autoMod.enabled || config.antiSpam.enabled || config.antiFlood.enabled || config.ai.enabled)) 
+  if (!hasMessageContent && config.protection.enabled && (config.autoMod.enabled || config.antiSpam.enabled || config.antiFlood.enabled || config.ai.enabled)) 
 {
 
     throw new ModerationAuthError(400, "Enable the Discord Message Content intent before enabling message moderation modules")
@@ -625,7 +625,7 @@ async function validateConfigTargets(guildId: string, config: ModerationConfig):
   
 }
 
-  if (!hasGuildMembers && (config.antiRaid.enabled || config.suspiciousBehavior.enabled)) 
+  if (!hasGuildMembers && config.protection.enabled && (config.antiRaid.enabled || config.suspiciousBehavior.enabled)) 
 {
 
     throw new ModerationAuthError(400, "Enable the Discord Server Members intent before enabling raid or member-behaviour detection")

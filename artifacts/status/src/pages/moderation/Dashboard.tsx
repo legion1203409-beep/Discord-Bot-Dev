@@ -14,14 +14,21 @@ import {
   XCircle,
   Zap,
 } from "lucide-react";
+import { useState } from "react";
 import { Link } from "wouter";
 import { useModerationConfig, useCases, useActiveGuild, useAuditLogs } from "../../hooks/use-moderation-api";
+import { Switch } from "../../components/ui/switch";
+import { useToast } from "../../hooks/use-toast";
+
+type ProtectionModuleKey = "wordFilter" | "linkBlock" | "antiRaid" | "antiSpam" | "antiFlood" | "ai";
 
 export function DashboardOverview() {
   const { guildId, guilds } = useActiveGuild();
-  const { data: config, loading: configLoading } = useModerationConfig(guildId);
+  const { data: config, loading: configLoading, update: updateModerationConfig } = useModerationConfig(guildId);
   const { data: casesData, loading: casesLoading } = useCases(guildId, { limit: 10 });
   const { data: auditLogs, loading: auditLoading } = useAuditLogs(guildId);
+  const { toast } = useToast();
+  const [savingModule, setSavingModule] = useState<string | null>(null);
   const activeGuild = guilds.find((guild) => guild.id === guildId);
 
   if (!guildId) {
@@ -58,14 +65,60 @@ export function DashboardOverview() {
 
   const openCases = (casesData || []).filter((item) => item.status === "open").length;
   const recentLogs = (auditLogs || []).slice(0, 7);
+  const protectionEnabled = config?.protection?.enabled ?? true;
   const modules = [
-    { name: "Filtru Cuvinte", active: Boolean(config?.autoMod?.enabled && config?.autoMod?.wordFilter?.enabled), icon: BookOpen },
-    { name: "Blocare Linkuri", active: Boolean(config?.autoMod?.enabled && config?.autoMod?.linkBlock?.enabled), icon: Zap },
-    { name: "Anti-Raid", active: Boolean(config?.antiRaid?.enabled), icon: ShieldAlert },
-    { name: "Anti-Spam", active: Boolean(config?.antiSpam?.enabled), icon: Activity },
-    { name: "Anti-Flood", active: Boolean(config?.antiFlood?.enabled), icon: Activity },
-    { name: "Inteligență AI", active: Boolean(config?.ai?.enabled), icon: Bot },
+    { key: "wordFilter" as const, name: "Filtru Cuvinte", active: Boolean(protectionEnabled && config?.autoMod?.enabled && config?.autoMod?.wordFilter?.enabled), enabled: Boolean(config?.autoMod?.enabled && config?.autoMod?.wordFilter?.enabled), icon: BookOpen },
+    { key: "linkBlock" as const, name: "Blocare Linkuri", active: Boolean(protectionEnabled && config?.autoMod?.enabled && config?.autoMod?.linkBlock?.enabled), enabled: Boolean(config?.autoMod?.enabled && config?.autoMod?.linkBlock?.enabled), icon: Zap },
+    { key: "antiRaid" as const, name: "Anti-Raid", active: Boolean(protectionEnabled && config?.antiRaid?.enabled), enabled: Boolean(config?.antiRaid?.enabled), icon: ShieldAlert },
+    { key: "antiSpam" as const, name: "Anti-Spam", active: Boolean(protectionEnabled && config?.antiSpam?.enabled), enabled: Boolean(config?.antiSpam?.enabled), icon: Activity },
+    { key: "antiFlood" as const, name: "Anti-Flood", active: Boolean(protectionEnabled && config?.antiFlood?.enabled), enabled: Boolean(config?.antiFlood?.enabled), icon: Activity },
+    { key: "ai" as const, name: "Inteligență AI", active: Boolean(protectionEnabled && config?.ai?.enabled), enabled: Boolean(config?.ai?.enabled), icon: Bot },
   ];
+
+  const saveProtectionChange = async (
+    nextConfig: any,
+    key: string,
+    description: string,
+  ) => {
+    if (!config || savingModule) return;
+    setSavingModule(key);
+    try {
+      await updateModerationConfig(nextConfig);
+      toast({ title: "Setare actualizată", description });
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Setarea nu a putut fi salvată",
+        description: error?.message ?? "Încearcă din nou.",
+      });
+    } finally {
+      setSavingModule(null);
+    }
+  };
+
+  const toggleProtection = (enabled: boolean) => {
+    if (!config) return;
+    void saveProtectionChange(
+      { ...config, protection: { ...config.protection, enabled } },
+      "protection",
+      enabled ? "Toate modulele de protecție sunt disponibile." : "Toate modulele de protecție sunt oprite.",
+    );
+  };
+
+  const toggleModule = (key: ProtectionModuleKey, enabled: boolean) => {
+    if (!config) return;
+    const nextConfig = { ...config };
+    if (key === "wordFilter" || key === "linkBlock") {
+      nextConfig.autoMod = {
+        ...config.autoMod,
+        enabled: enabled ? true : config.autoMod?.enabled,
+        [key]: { ...config.autoMod?.[key], enabled },
+      };
+    } else {
+      nextConfig[key] = { ...config[key], enabled };
+    }
+    void saveProtectionChange(nextConfig, key, `${key} este acum ${enabled ? "activ" : "oprit"}.`);
+  };
 
   return (
     <div className="space-y-8 pb-10 animate-in fade-in duration-500">
@@ -98,13 +151,13 @@ export function DashboardOverview() {
         <div className="mod-card group rounded-2xl p-5 sm:p-6">
           <div className="flex items-start justify-between">
             <span className="mod-eyebrow text-muted-foreground">Scut AutoMod</span>
-            <span className={`rounded-lg p-2.5 ${config?.autoMod?.enabled ? "bg-primary/10 text-primary" : "bg-secondary text-muted-foreground"}`}><Shield className="h-4 w-4" aria-hidden="true" /></span>
+            <span className={`rounded-lg p-2.5 ${protectionEnabled && config?.autoMod?.enabled ? "bg-primary/10 text-primary" : "bg-secondary text-muted-foreground"}`}><Shield className="h-4 w-4" aria-hidden="true" /></span>
           </div>
           <div className="mt-7 flex items-end justify-between gap-3">
-            <strong className="font-display text-4xl font-semibold text-foreground">{config?.autoMod?.enabled ? "Activ" : "Oprit"}</strong>
+            <strong className="font-display text-4xl font-semibold text-foreground">{protectionEnabled && config?.autoMod?.enabled ? "Activ" : "Oprit"}</strong>
             <span className="mb-1 text-xs text-muted-foreground">monitorizare live</span>
           </div>
-          <div className="mt-5 flex items-center gap-2 text-xs text-muted-foreground"><span className={`h-1.5 w-1.5 rounded-full ${config?.autoMod?.enabled ? "bg-primary" : "bg-muted-foreground"}`} /> reguli clasice</div>
+          <div className="mt-5 flex items-center gap-2 text-xs text-muted-foreground"><span className={`h-1.5 w-1.5 rounded-full ${protectionEnabled && config?.autoMod?.enabled ? "bg-primary" : "bg-muted-foreground"}`} /> reguli clasice</div>
         </div>
 
         <div className="mod-card group rounded-2xl p-5 sm:p-6">
@@ -126,13 +179,30 @@ export function DashboardOverview() {
         <section className="space-y-4">
           <div className="flex items-end justify-between border-b border-border/60 pb-3">
             <div><p className="mod-eyebrow">Sisteme</p><h2 className="mod-heading mt-1 text-2xl">Module de Protecție</h2></div>
-            <Link href="/protectie" data-testid="link-dashboard-protection" className="inline-flex items-center gap-1 text-xs font-mono tracking-widest text-primary hover:text-primary/80">GESTIONEAZĂ <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" /></Link>
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                <span>{protectionEnabled ? "ACTIVĂ" : "OPRITĂ"}</span>
+                <Switch
+                  checked={protectionEnabled}
+                  onCheckedChange={toggleProtection}
+                  disabled={savingModule !== null}
+                  aria-label="Activează sau oprește toată protecția"
+                />
+              </label>
+              <Link href="/protectie" data-testid="link-dashboard-protection" className="inline-flex items-center gap-1 text-xs font-mono tracking-widest text-primary hover:text-primary/80">GESTIONEAZĂ <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" /></Link>
+            </div>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             {modules.map((mod) => (
               <div key={mod.name} className="mod-card flex items-center gap-3 rounded-xl p-4 transition-colors hover:border-primary/30" data-testid={`card-module-${mod.name.toLowerCase().replaceAll(" ", "-")}`}>
                 <div className={`rounded-lg border p-2.5 ${mod.active ? "border-primary/30 bg-primary/10 text-primary" : "border-transparent bg-secondary text-muted-foreground"}`}><mod.icon className="h-4 w-4" aria-hidden="true" /></div>
                 <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium text-foreground">{mod.name}</div><div className={`mt-1 flex items-center gap-1 font-mono text-[10px] tracking-widest ${mod.active ? "text-primary" : "text-muted-foreground"}`}>{mod.active ? <CheckCircle2 className="h-3 w-3" aria-hidden="true" /> : <XCircle className="h-3 w-3" aria-hidden="true" />} {mod.active ? "ACTIV" : "INACTIV"}</div></div>
+                <Switch
+                  checked={protectionEnabled && mod.enabled}
+                  onCheckedChange={(enabled) => toggleModule(mod.key, enabled)}
+                  disabled={!protectionEnabled || savingModule !== null}
+                  aria-label={`${mod.name}: activează sau oprește`}
+                />
               </div>
             ))}
           </div>

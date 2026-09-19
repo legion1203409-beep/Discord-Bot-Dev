@@ -3,6 +3,7 @@ import { defaultModerationConfig, ModerationConfigSchema } from "../config";
 
 describe("moderation configuration defaults", () => {
   it("ships with every enforcement module disabled", () => {
+    expect(defaultModerationConfig.protection.enabled).toBe(true);
     expect(defaultModerationConfig.autoMod.enabled).toBe(false);
     expect(defaultModerationConfig.antiRaid.enabled).toBe(false);
     expect(defaultModerationConfig.antiSpam.enabled).toBe(false);
@@ -12,6 +13,11 @@ describe("moderation configuration defaults", () => {
     expect(defaultModerationConfig.ai.enabled).toBe(false);
     expect(defaultModerationConfig.escalation.enabled).toBe(false);
     expect(defaultModerationConfig.embeds.enabled).toBe(false);
+  });
+
+  it("preserves an explicitly disabled protection category", () => {
+    const config = ModerationConfigSchema.parse({ protection: { enabled: false } });
+    expect(config.protection.enabled).toBe(false);
   });
 
   it("retains a disabled rule unless an operator explicitly enables it", () => {

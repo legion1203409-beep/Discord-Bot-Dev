@@ -13,6 +13,7 @@ import { useToast } from "../../hooks/use-toast";
 import { ToastAction } from "../../components/ui/toast";
 
 const protectionFormSchema = z.object({
+  protectionEnabled: z.boolean(),
   antiRaidEnabled: z.boolean(),
   joinsPerMinute: z.coerce.number().min(1).max(1000),
   lockdown: z.boolean(),
@@ -30,6 +31,7 @@ export function ProtectionPage() {
   const form = useForm<z.infer<typeof protectionFormSchema>>({
     resolver: zodResolver(protectionFormSchema),
     defaultValues: {
+      protectionEnabled: true,
       antiRaidEnabled: false,
       joinsPerMinute: 10,
       lockdown: false,
@@ -40,10 +42,12 @@ export function ProtectionPage() {
   });
 
   const initializedForId = React.useRef<string | null>(null);
+  const protectionEnabled = form.watch("protectionEnabled");
   useEffect(() => {
     if (data && initializedForId.current !== guildId) {
       initializedForId.current = guildId;
       form.reset({
+         protectionEnabled: data.protection?.enabled ?? true,
         antiRaidEnabled: data.antiRaid?.enabled ?? false,
         joinsPerMinute: data.antiRaid?.joinsPerMinute ?? 10,
         lockdown: data.antiRaid?.lockdown ?? false,
@@ -60,6 +64,10 @@ export function ProtectionPage() {
     try {
       await update({
         ...data,
+         protection: {
+           ...data.protection,
+           enabled: values.protectionEnabled,
+         },
         antiRaid: {
           ...data.antiRaid,
           enabled: values.antiRaidEnabled,
@@ -101,6 +109,29 @@ export function ProtectionPage() {
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+          <div className="bg-card border border-border p-6 rounded-xl">
+            <FormField
+              control={form.control}
+              name="protectionEnabled"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center justify-between gap-6">
+                  <div className="space-y-1">
+                    <FormLabel className="text-base">Protecție Server</FormLabel>
+                    <FormDescription>
+                      Oprește toate modulele defensive fără să șteargă regulile configurate.
+                    </FormDescription>
+                  </div>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                      aria-label="Activează sau oprește toate modulele de protecție"
+                    />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+          </div>
           
           <div className="grid grid-cols-1 gap-6">
             {/* Anti-Raid */}
@@ -120,7 +151,7 @@ export function ProtectionPage() {
                       <FormDescription>Monitorizează valurile masive de intrări.</FormDescription>
                     </div>
                     <FormControl>
-                      <Switch checked={field.value} onCheckedChange={field.onChange} />
+                      <Switch checked={protectionEnabled && field.value} onCheckedChange={field.onChange} disabled={!protectionEnabled} />
                     </FormControl>
                   </FormItem>
                 )}
@@ -176,7 +207,7 @@ export function ProtectionPage() {
                         <FormDescription>Prevenire mesaje repetitive rapide.</FormDescription>
                       </div>
                       <FormControl>
-                        <Switch checked={field.value} onCheckedChange={field.onChange} />
+                        <Switch checked={protectionEnabled && field.value} onCheckedChange={field.onChange} disabled={!protectionEnabled} />
                       </FormControl>
                     </FormItem>
                   )}
@@ -192,7 +223,7 @@ export function ProtectionPage() {
                         <FormDescription>Blocare mesaje gigantice (ziduri de text).</FormDescription>
                       </div>
                       <FormControl>
-                        <Switch checked={field.value} onCheckedChange={field.onChange} />
+                      <Switch checked={protectionEnabled && field.value} onCheckedChange={field.onChange} disabled={!protectionEnabled} />
                       </FormControl>
                     </FormItem>
                   )}
@@ -217,7 +248,7 @@ export function ProtectionPage() {
                       <FormDescription>Monitorizează schimbări rapide de nickname și roluri.</FormDescription>
                     </div>
                     <FormControl>
-                      <Switch checked={field.value} onCheckedChange={field.onChange} />
+                      <Switch checked={protectionEnabled && field.value} onCheckedChange={field.onChange} disabled={!protectionEnabled} />
                     </FormControl>
                   </FormItem>
                 )}

@@ -588,6 +588,7 @@ async function applyAutomaticSerialized(guild: Guild, config: ModerationConfig, 
 export async function handleModerationMessage(client: Client, message: Message): Promise<boolean> {
   if (message.author.bot || !message.guild || !message.guildId) return false;
   const config = await getConfig(message.guildId);
+  if (!config.protection.enabled) return false;
   if (!config.autoMod.enabled && !config.antiSpam.enabled && !config.antiFlood.enabled && !config.ai.enabled) return false;
   if (config.channels.ignoredChannelIds.includes(message.channelId) || config.channels.protectedChannelIds.includes(message.channelId) ||
       message.member?.roles.cache.some((role) => config.roles.ignoredAutoModRoleIds.includes(role.id))) return false;

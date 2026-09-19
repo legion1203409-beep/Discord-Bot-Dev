@@ -269,6 +269,7 @@ async function unusualActivity(
   actor: AuditActor | null,
   policyExcluded: boolean,
 ): Promise<void> {
+  if (!config.protection.enabled) return;
   const rule = config.suspiciousBehavior.unusualActivity;
   if (!config.suspiciousBehavior.enabled || !rule.enabled || policyExcluded) return;
   // "Unusual activity" is a bounded guild-wide stream of independently
@@ -324,6 +325,7 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
 
   client.on(Events.GuildMemberAdd, (member) => safely(Events.GuildMemberAdd, async () => {
     const config = await helpers.getConfig(member.guild.id);
+    if (!config.protection.enabled) return;
     const joinLeave = config.suspiciousBehavior.joinLeaveFlood;
     if (config.suspiciousBehavior.enabled && joinLeave.enabled) {
       const rate = joinLeaveRates.hit(
@@ -388,6 +390,7 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
 
   client.on(Events.GuildMemberRemove, (member) => safely(Events.GuildMemberRemove, async () => {
     const config = await helpers.getConfig(member.guild.id);
+    if (!config.protection.enabled) return;
     const rule = config.suspiciousBehavior.joinLeaveFlood;
     if (!config.suspiciousBehavior.enabled || !rule.enabled) return;
     const rate = joinLeaveRates.hit(`${member.guild.id}:join-leave`, sensitivityThreshold(rule, config.suspiciousBehavior.sensitivity, 5), windowMs(rule));
@@ -409,6 +412,7 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
     const config = await helpers.getConfig(message.guildId);
     await recordAudit(helpers, config, message.guild, "discord.message_update", "message", message.id,
       auditDetail(config, { id: message.author.id, bot: false, staff: false, verified: true }, { channelId: message.channelId, contentChanged: oldMessage.content !== message.content }));
+    if (!config.protection.enabled) return;
     if (isExcludedChannel(config, message.channelId) || isExcludedMember(config, message.member)) return;
 
     let sanctioned = false;
@@ -478,6 +482,7 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
         : null;
       await recordAudit(helpers, config, guild, bulk ? "discord.message_bulk_delete" : "discord.message_delete", "channel", channelId ?? guild.id,
         auditDetail(config, actor, { messageCount: messages.length, policyExcluded: isExcludedChannel(config, channelId) }));
+      if (!config.protection.enabled) return;
       if ((!config.antiSpam.enabled || !rule.enabled) && (!config.suspiciousBehavior.enabled || !massDeletes.enabled)) return;
       if (isExcludedChannel(config, channelId)) return;
       const keyActor = actor?.id ?? "unverified";
@@ -536,6 +541,7 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
     await recordAudit(helpers, config, member.guild, "discord.member_update", "member", member.id,
       auditDetail(config, actor, { nicknameChanged: diff.nicknameChanged, rolesChanged: Boolean(diff.addedRoles.length || diff.removedRoles.length) },
         { oldNickname: oldMember.nickname, newNickname: member.nickname, addedRoles: diff.addedRoles, removedRoles: diff.removedRoles }));
+    if (!config.protection.enabled) return;
     if (!config.suspiciousBehavior.enabled || isExcludedMember(config, member)) return;
 
     const process = async (kind: "nickname" | "role", rule: ModerationConfig["suspiciousBehavior"]["nicknameChanges"], changed: boolean) => {
