@@ -190,7 +190,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
 
           <div className="mt-8 pt-6 border-t border-border/50">
             <Link href="~/joc" data-testid="link-game-guide-login" className="text-xs font-mono tracking-widest text-muted-foreground hover:text-primary transition-colors inline-flex items-center gap-2">
-              <BookOpen className="w-4 h-4" /> GHIDUL JOCULUI
+               <Server className="w-4 h-4" /> DETALII SERVER
             </Link>
           </div>
           </div>

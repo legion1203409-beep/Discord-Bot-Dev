@@ -45,10 +45,10 @@ export function GameGuidePage() {
     const originalOgDesc = ogDesc?.getAttribute("content") ?? "";
 
     // Set new metadata
-    document.title = "Ghidul Jocului | Regatul Cenușii";
-    if (metaDesc) metaDesc.setAttribute("content", "Află cum să joci Regatul Cenușii, RPG-ul tău pe Discord. Comenzi, clase, bătălii și mecanici de progresie explicate pe scurt.");
-    if (ogTitle) ogTitle.setAttribute("content", "Ghidul Jocului | Regatul Cenușii");
-    if (ogDesc) ogDesc.setAttribute("content", "Află cum să joci Regatul Cenușii, RPG-ul tău pe Discord. Comenzi, clase, bătălii și mecanici de progresie explicate pe scurt.");
+    document.title = "Detalii server | Regatul Cenușii";
+    if (metaDesc) metaDesc.setAttribute("content", "Descoperă serverul Regatul Cenușii pe Discord și află cum funcționează aventura RPG, comenzile, clasele și evenimentele.");
+    if (ogTitle) ogTitle.setAttribute("content", "Detalii server | Regatul Cenușii");
+    if (ogDesc) ogDesc.setAttribute("content", "Descoperă serverul Regatul Cenușii pe Discord și află cum funcționează aventura RPG, comenzile, clasele și evenimentele.");
     
     return () => {
       document.title = originalTitle;
@@ -86,7 +86,8 @@ export function GameGuidePage() {
 
       <div className="guide-grid">
         <aside className="guide-sidebar">
-          <a href="#profil" onClick={(e) => handleNavClick(e, 'profil')} className="guide-nav-link active"><Icon name="mark" size={14} /> Crearea caracterului</a>
+          <a href="#server" onClick={(e) => handleNavClick(e, 'server')} className="guide-nav-link active"><Icon name="crown" size={14} /> Detalii server</a>
+          <a href="#profil" onClick={(e) => handleNavClick(e, 'profil')} className="guide-nav-link"><Icon name="mark" size={14} /> Crearea caracterului</a>
           <a href="#clase" onClick={(e) => handleNavClick(e, 'clase')} className="guide-nav-link"><Icon name="shield" size={14} /> Clasele regatului</a>
           <a href="#lupta" onClick={(e) => handleNavClick(e, 'lupta')} className="guide-nav-link"><Icon name="sword" size={14} /> Luptă și Evenimente</a>
           <a href="#economie" onClick={(e) => handleNavClick(e, 'economie')} className="guide-nav-link"><Icon name="chest" size={14} /> Progresie și Economie</a>
@@ -116,6 +117,37 @@ export function GameGuidePage() {
         </aside>
 
         <div className="guide-content">
+          <section id="server" className="guide-section guide-server-details" data-aos="flip-left">
+            <h2><Icon name="crown" size={28} /> Detalii server</h2>
+            <div className="guide-server-details-card">
+              <span className="guide-server-details-card__logo">
+                {serverProfile.iconUrl ? (
+                  <img src={serverProfile.iconUrl} alt="" />
+                ) : (
+                  <DragonLogo className="guide-server-details-card__fallback-logo" />
+                )}
+              </span>
+              <div className="guide-server-details-card__copy">
+                <span className="guide-server-card__eyebrow">Comunitate RPG pe Discord</span>
+                <h3>{serverProfile.name}</h3>
+                <p>Intră în regat pentru lupte, evenimente, clase, progresie și o comunitate care își scrie propria poveste.</p>
+                <a
+                  href={serverProfile.inviteUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="button button--primary guide-server-details-card__button"
+                  onClick={() => trackEvent("discord_cta_click", { location: "server_details" })}
+                >
+                  Intră pe server <Icon name="arrow" size={15} />
+                </a>
+              </div>
+              <div className="guide-server-details-card__meta">
+                <span>Invitație</span>
+                <strong>{serverProfile.inviteUrl.replace(/^https?:\/\//, "")}</strong>
+              </div>
+            </div>
+          </section>
+
           <section id="profil" className="guide-section">
             <h2><Icon name="mark" size={28} /> Crearea caracterului</h2>
             <p>Primul tău pas în regat. Pentru a-ți începe povestea, intră pe orice canal permis din serverul de Discord și folosește comanda de profil. Acest lucru îți va genera automat un erou.</p>
