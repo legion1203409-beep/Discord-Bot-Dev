@@ -238,7 +238,7 @@ export function DashboardOverview() {
         </Link>
       </header>
 
-      <section className={`flex flex-col gap-5 rounded-2xl border p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6 ${gamePaused ? "border-destructive/40 bg-destructive/5" : "border-primary/25 bg-primary/5"}`} aria-label="Control stare joc">
+      <section data-aos="flip-left" className={`flex flex-col gap-5 rounded-2xl border p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6 ${gamePaused ? "border-destructive/40 bg-destructive/5" : "border-primary/25 bg-primary/5"}`} aria-label="Control stare joc">
         <div className="flex items-start gap-4">
           <span className={`mt-0.5 rounded-xl p-3 ${gamePaused ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"}`}>
             {gamePaused ? <PlayCircle className="h-5 w-5" aria-hidden="true" /> : <PauseCircle className="h-5 w-5" aria-hidden="true" />}
@@ -265,8 +265,8 @@ export function DashboardOverview() {
         </Button>
       </section>
 
-      <section aria-label="Indicatori principali" className="grid gap-4 md:grid-cols-3">
-        <div className="mod-card group rounded-2xl p-5 sm:p-6">
+      <section data-aos="flip-left" aria-label="Indicatori principali" className="grid gap-4 md:grid-cols-3">
+        <div data-aos="flip-left" className="mod-card group rounded-2xl p-5 sm:p-6">
           <div className="flex items-start justify-between">
             <span className="mod-eyebrow text-muted-foreground">Cazuri deschise</span>
             <span className={`rounded-lg p-2.5 ${openCases > 0 ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"}`}><AlertTriangle className="h-4 w-4" aria-hidden="true" /></span>
@@ -278,7 +278,7 @@ export function DashboardOverview() {
           <div className="mt-5 h-1 overflow-hidden rounded-full bg-secondary"><div className={`h-full rounded-full ${openCases ? "w-2/3 bg-destructive" : "w-1/4 bg-primary"}`} /></div>
         </div>
 
-        <div className="mod-card group rounded-2xl p-5 sm:p-6">
+        <div data-aos="flip-left" className="mod-card group rounded-2xl p-5 sm:p-6">
           <div className="flex items-start justify-between">
             <span className="mod-eyebrow text-muted-foreground">Scut AutoMod</span>
             <span className={`rounded-lg p-2.5 ${protectionEnabled && config?.autoMod?.enabled ? "bg-primary/10 text-primary" : "bg-secondary text-muted-foreground"}`}><Shield className="h-4 w-4" aria-hidden="true" /></span>
@@ -290,7 +290,7 @@ export function DashboardOverview() {
           <div className="mt-5 flex items-center gap-2 text-xs text-muted-foreground"><span className={`h-1.5 w-1.5 rounded-full ${protectionEnabled && config?.autoMod?.enabled ? "bg-primary" : "bg-muted-foreground"}`} /> reguli clasice</div>
         </div>
 
-        <div className="mod-card group rounded-2xl p-5 sm:p-6">
+        <div data-aos="flip-left" className="mod-card group rounded-2xl p-5 sm:p-6">
           <div className="flex items-start justify-between">
             <span className="mod-eyebrow text-muted-foreground">Loguri audit azi</span>
             <span className="rounded-lg bg-secondary p-2.5 text-primary"><Activity className="h-4 w-4" aria-hidden="true" /></span>
@@ -306,7 +306,7 @@ export function DashboardOverview() {
       </section>
 
       <div className="grid gap-6 lg:grid-cols-[.9fr_1.1fr]">
-        <section className="space-y-4">
+        <section data-aos="flip-left" className="space-y-4">
           <div className="flex items-end justify-between border-b border-border/60 pb-3">
             <div><p className="mod-eyebrow">Sisteme</p><h2 className="mod-heading mt-1 text-2xl">Module de Protecție</h2></div>
             <div className="flex items-center gap-3">
@@ -340,7 +340,7 @@ export function DashboardOverview() {
           </div>
         </section>
 
-        <section className="space-y-4">
+        <section data-aos="flip-left" className="space-y-4">
           <div className="flex items-end justify-between border-b border-border/60 pb-3">
             <div><p className="mod-eyebrow">Jurnal</p><h2 className="mod-heading mt-1 text-2xl">Activitate Recentă</h2></div>
             <Link href="/audit" data-testid="link-dashboard-audit" className="inline-flex items-center gap-1 text-xs font-mono tracking-widest text-primary hover:text-primary/80">VEZI TOT <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" /></Link>

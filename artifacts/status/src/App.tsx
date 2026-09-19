@@ -20,6 +20,42 @@ import { OperatorHealthPage } from "./pages/public/OperatorHealthPage";
 import { VerificationPage } from "./pages/public/VerificationPage";
 import { useEffect, useState } from "react";
 
+function ScrollAnimations() {
+  useEffect(() => {
+    const elements = () => Array.from(document.querySelectorAll<HTMLElement>("[data-aos]"));
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const revealAll = () => elements().forEach((element) => element.classList.add("aos-animate"));
+
+    if (prefersReducedMotion || !("IntersectionObserver" in window)) {
+      revealAll();
+      return;
+    }
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        entry.target.classList.add("aos-animate");
+        observer.unobserve(entry.target);
+      });
+    }, { threshold: 0.16, rootMargin: "0px 0px -7% 0px" });
+
+    const observeElements = () => elements()
+      .filter((element) => !element.classList.contains("aos-animate"))
+      .forEach((element) => observer.observe(element));
+    observeElements();
+
+    const mutations = new MutationObserver(observeElements);
+    mutations.observe(document.body, { childList: true, subtree: true });
+
+    return () => {
+      mutations.disconnect();
+      observer.disconnect();
+    };
+  }, []);
+
+  return null;
+}
+
 // The legacy operator/status logic uses hashes on root
 function HomeApp() {
   const [hash, setHash] = useState(window.location.hash);
@@ -82,14 +118,17 @@ function NotFound() {
 
 export default function App() {
   return (
-    <Switch>
-      <Route path="/" component={HomeApp} />
-      <Route path="/joc" component={GameApp} />
-      <Route path="/verificare" component={VerificationPage} />
-      <Route path="/moderare" nest>
-        <ModerationApp />
-      </Route>
-      <Route component={NotFound} />
-    </Switch>
+    <>
+      <ScrollAnimations />
+      <Switch>
+        <Route path="/" component={HomeApp} />
+        <Route path="/joc" component={GameApp} />
+        <Route path="/verificare" component={VerificationPage} />
+        <Route path="/moderare" nest>
+          <ModerationApp />
+        </Route>
+        <Route component={NotFound} />
+      </Switch>
+    </>
   );
 }

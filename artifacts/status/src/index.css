@@ -64,6 +64,24 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 @media (prefers-reduced-motion: reduce) {
   .protection-deactivating { animation: none; }
 }
+[data-aos] {
+  opacity: 0;
+  transform: perspective(1000px) rotateY(-78deg) translate3d(18px, 0, 0);
+  transform-origin: center right;
+  transition: opacity 700ms ease, transform 700ms cubic-bezier(.2, .8, .2, 1);
+  will-change: opacity, transform;
+}
+[data-aos="flip-left"].aos-animate {
+  opacity: 1;
+  transform: perspective(1000px) rotateY(0) translate3d(0, 0, 0);
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-aos] {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
 .page-width { width: min(calc(100% - 5rem), 1240px); margin-inline: auto; }
 .icon { display: inline-block; flex: 0 0 auto; }
 .landing-page { position: relative; isolation: isolate; overflow-x: clip; background: radial-gradient(circle at 68% 13%, rgba(116, 84, 111, .13), transparent 29rem), var(--void); }
