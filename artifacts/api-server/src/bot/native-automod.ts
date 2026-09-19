@@ -40,6 +40,19 @@ async function syncRule(
     return;
   }
 
+  // Discord permits only one Spam rule and a small number of rules per
+  // trigger type. Never overwrite an administrator's rule just to install a
+  // managed duplicate; the in-process moderation engine still handles the
+  // configured rules from the database.
+  const conflictingRule = existingRules.find((rule) => rule.triggerType === desired.triggerType);
+  if (!existing && conflictingRule) {
+    logger.warn(
+      { guildId: guild.id, triggerType: desired.triggerType, ruleId: conflictingRule.id },
+      "Native AutoMod rule skipped because Discord already has a rule of this type",
+    );
+    return;
+  }
+
   const options = {
     name: desired.name,
     eventType: AutoModerationRuleEventType.MessageSend,
@@ -82,6 +95,7 @@ export async function syncNativeAutoMod(
     logger.info({ guildId }, "Native Discord AutoMod disabled — protection category is off");
     return;
   }
+  const nativeSpamEnabled = config.antiSpam.enabled;
   const words = config.autoMod.enabled && config.autoMod.wordFilter.enabled
     ? config.autoMod.forbiddenWords
       .map((word) => word.trim())
@@ -89,15 +103,15 @@ export async function syncNativeAutoMod(
       .slice(0, 1000)
     : [];
 
-  await syncRule(guild, rules, {
+  await syncRule(guild, rules, nativeSpamEnabled ? {
     name: SPAM_RULE_NAME,
     triggerType: AutoModerationRuleTriggerType.Spam,
-  });
-  await syncRule(guild, rules, {
+  } : null, SPAM_RULE_NAME);
+  await syncRule(guild, rules, nativeSpamEnabled ? {
     name: MENTION_RULE_NAME,
     triggerType: AutoModerationRuleTriggerType.MentionSpam,
     triggerMetadata: { mentionTotalLimit: 5 },
-  });
+  } : null, MENTION_RULE_NAME);
 
   if (words.length > 0) {
     await syncRule(guild, rules, {

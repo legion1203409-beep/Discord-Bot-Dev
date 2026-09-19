@@ -1083,38 +1083,7 @@ router.put("/guilds/:guildId/protection-toggle", asyncRoute(async (req, res) => 
     enabled: z.boolean(),
   }).parse(req.body);
 
-  let result: Awaited<ReturnType<typeof moderationStore.putConfig>> | null = null;
-  for (let attempt = 0; attempt < 5 && !result; attempt += 1) {
-    const current = await moderationStore.getConfig(guildId);
-    const nextConfig: ModerationConfig = { ...current.config };
-
-    if (key === "protection") {
-      nextConfig.protection = { ...current.config.protection, enabled };
-    } else if (key === "wordFilter" || key === "linkBlock") {
-      nextConfig.autoMod = {
-        ...current.config.autoMod,
-        enabled: enabled ? true : current.config.autoMod?.enabled,
-        [key]: { ...current.config.autoMod?.[key], enabled },
-      };
-    } else if (key === "antiRaid") {
-      nextConfig.antiRaid = { ...current.config.antiRaid, enabled };
-    } else if (key === "antiSpam") {
-      nextConfig.antiSpam = { ...current.config.antiSpam, enabled };
-    } else if (key === "antiFlood") {
-      nextConfig.antiFlood = { ...current.config.antiFlood, enabled };
-    } else {
-      nextConfig.ai = { ...current.config.ai, enabled };
-    }
-
-    try {
-      await validateConfigTargets(guildId, nextConfig);
-      result = await moderationStore.putConfig(guildId, nextConfig, session.userId, current.version);
-    } catch (error) {
-      if (!(error instanceof ModerationRevisionConflictError) || attempt === 4) throw error;
-    }
-  }
-
-  if (!result) throw new Error("Configurația nu a putut fi salvată.");
+  const result = await moderationStore.putProtectionToggle(guildId, key, enabled, session.userId);
   const client = getModerationClient();
   if (client) {
     void syncNativeAutoMod(client, guildId, result.config).catch((error) => {

@@ -4,7 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 
 const mocks = vi.hoisted(() => ({
   session: vi.fn(), access: vi.fn(), csrf: vi.fn(), client: vi.fn(),
-  getConfig: vi.fn(), putConfig: vi.fn(), listCases: vi.fn(),
+  getConfig: vi.fn(), putConfig: vi.fn(), putProtectionToggle: vi.fn(), listCases: vi.fn(),
   listAudit: vi.fn(), listLogs: vi.fn(), beginAction: vi.fn(), getAction: vi.fn(),
   completeAction: vi.fn(), writeAudit: vi.fn(), execute: vi.fn(),
   loadChannelConfig: vi.fn(), saveChannelConfig: vi.fn(),
@@ -33,7 +33,7 @@ vi.mock("../auth", () => ({
 
 vi.mock("../store", () => ({
   moderationStore: {
-    getConfig: mocks.getConfig, putConfig: mocks.putConfig,
+    getConfig: mocks.getConfig, putConfig: mocks.putConfig, putProtectionToggle: mocks.putProtectionToggle,
     listCases: mocks.listCases, listAudit: mocks.listAudit,
     listModerationLogs: mocks.listLogs, pruneCases: vi.fn(),
     beginAction: mocks.beginAction, getAction: mocks.getAction, completeAction: mocks.completeAction,
@@ -59,7 +59,6 @@ vi.mock("../../bot/channel-config", () => ({ initChannelConfig: mocks.initChanne
 import router from "../router";
 import { ModerationAuthError } from "../auth";
 import { defaultModerationConfig } from "../config";
-import { ModerationRevisionConflictError } from "../errors";
 import { DEFAULT_GAMEPLAY_CONFIG } from "../../bot/gameplay-config";
 import { DEFAULT_TICKET_CONFIG } from "../../bot/ticket-config";
 
@@ -97,6 +96,7 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     mocks.access.mockResolvedValue("owner");
     mocks.getConfig.mockResolvedValue({ config: structuredClone(defaultModerationConfig), version: 3 });
     mocks.putConfig.mockResolvedValue({ config: structuredClone(defaultModerationConfig), version: 4 });
+    mocks.putProtectionToggle.mockResolvedValue({ config: structuredClone(defaultModerationConfig), version: 4 });
     mocks.client.mockReturnValue({
       options: { intents: { has: () => true } },
       guilds: { fetch: vi.fn().mockResolvedValue({
@@ -233,10 +233,20 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     initialConfig.antiFlood.enabled = true;
     initialConfig.ai.enabled = true;
     mocks.getConfig.mockResolvedValue({ config: initialConfig, version: 8 });
-    mocks.putConfig.mockImplementation(async (_guildId, config, _updatedBy, expectedVersion) => ({
-      config,
-      version: expectedVersion + 1,
-    }));
+    mocks.putProtectionToggle.mockImplementation(async (_guildId, key, enabled, _updatedBy) => {
+      const config = structuredClone(initialConfig);
+      if (key === "protection") config.protection.enabled = enabled;
+      else if (key === "wordFilter") config.autoMod.wordFilter.enabled = enabled;
+      else if (key === "linkBlock") config.autoMod.linkBlock.enabled = enabled;
+      else if (key === "antiRaid") config.antiRaid.enabled = enabled;
+      else if (key === "antiSpam") config.antiSpam.enabled = enabled;
+      else if (key === "antiFlood") config.antiFlood.enabled = enabled;
+      else config.ai.enabled = enabled;
+      return {
+        config,
+        version: 9,
+      };
+    });
 
     const response = await fetch(`${base}/protection-toggle`, {
       ...post({ key, enabled: false }),
@@ -256,29 +266,14 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     }));
     expect(result.config.autoMod.wordFilter.enabled).toBe(key === "wordFilter" ? false : true);
     expect(result.config.autoMod.linkBlock.enabled).toBe(key === "linkBlock" ? false : true);
-    expect(mocks.putConfig).toHaveBeenCalledWith(guildId, expect.objectContaining({
-      protection: expect.objectContaining({ enabled: key === "protection" ? false : true }),
-    }), actorId, 8);
+    expect(mocks.putProtectionToggle).toHaveBeenCalledWith(guildId, key, false, actorId);
   });
 
-  it("retries an atomic toggle after a revision conflict without losing concurrent changes", async () => {
-    const firstConfig = structuredClone(defaultModerationConfig);
-    firstConfig.protection.enabled = true;
-    firstConfig.ai.enabled = true;
-    firstConfig.antiRaid.joinsPerMinute = 12;
-    const concurrentConfig = structuredClone(firstConfig);
-    concurrentConfig.ai.enabled = false;
-    concurrentConfig.antiRaid.joinsPerMinute = 48;
-
-    mocks.getConfig
-      .mockResolvedValueOnce({ config: firstConfig, version: 3 })
-      .mockResolvedValueOnce({ config: concurrentConfig, version: 4 });
-    const writes: Array<{ config: typeof firstConfig; expectedVersion: number }> = [];
-    mocks.putConfig.mockImplementation(async (_guildId, config, _updatedBy, expectedVersion) => {
-      writes.push({ config, expectedVersion });
-      if (writes.length === 1) throw new ModerationRevisionConflictError();
-      return { config, version: 5 };
-    });
+  it("uses the atomic store mutation for a toggle instead of a stale full-config write", async () => {
+    const config = structuredClone(defaultModerationConfig);
+    config.protection.enabled = false;
+    config.ai.enabled = true;
+    mocks.putProtectionToggle.mockResolvedValue({ config, version: 5 });
 
     const response = await fetch(`${base}/protection-toggle`, {
       ...post({ key: "protection", enabled: false }),
@@ -287,16 +282,11 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("etag")).toBe('"5"');
-    const result = await response.json() as { config: typeof firstConfig; version: number };
+    const result = await response.json() as { config: typeof config; version: number };
     expect(result.version).toBe(5);
-    expect(writes).toHaveLength(2);
-    expect(writes[0]?.expectedVersion).toBe(3);
-    expect(writes[1]?.expectedVersion).toBe(4);
-    expect(writes[1]?.config).toEqual({
-      ...concurrentConfig,
-      protection: { ...concurrentConfig.protection, enabled: false },
-    });
-    expect(result.config).toEqual(writes[1]?.config);
+    expect(result.config).toEqual(config);
+    expect(mocks.putProtectionToggle).toHaveBeenCalledWith(guildId, "protection", false, actorId);
+    expect(mocks.putConfig).not.toHaveBeenCalled();
   });
 
   it("persists all custom ticket flows and returns them unchanged after a later GET", async () => {

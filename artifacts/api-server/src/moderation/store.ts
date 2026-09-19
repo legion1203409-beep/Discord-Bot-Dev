@@ -64,6 +64,12 @@ export interface ModerationStore {
   ensureSchema(): Promise<void>;
   getConfig(guildId: string): Promise<{ config: ModerationConfig; version: number; updatedAt: Date | null }>;
   putConfig(guildId: string, config: ModerationConfig, updatedBy: string, expectedVersion: number): Promise<{ config: ModerationConfig; version: number }>;
+  putProtectionToggle(
+    guildId: string,
+    key: "protection" | "wordFilter" | "linkBlock" | "antiRaid" | "antiSpam" | "antiFlood" | "ai",
+    enabled: boolean,
+    updatedBy: string,
+  ): Promise<{ config: ModerationConfig; version: number }>;
   createLoginCode(input: { guildId: string; userId: string; codeHash: string; expiresAt: Date }): Promise<void>;
   consumeLoginCode(codeHash: string): Promise<{ guildId: string; userId: string } | null>;
   createSession(input: Omit<ModerationSession, "revokedAt">): Promise<void>;
@@ -230,6 +236,74 @@ export class PostgresModerationStore implements ModerationStore {
       await client.query("COMMIT");
       await this.pruneCases(guildId, config.cases.retentionDays);
       return { config, version: rows[0].version };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async putProtectionToggle(
+    guildId: string,
+    key: "protection" | "wordFilter" | "linkBlock" | "antiRaid" | "antiSpam" | "antiFlood" | "ai",
+    enabled: boolean,
+    updatedBy: string,
+  ) {
+    await this.ensureSchema();
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      // Serialize first-write toggles too. FOR UPDATE cannot lock a row that
+      // does not exist yet, so an advisory transaction lock closes that gap.
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [guildId]);
+      const { rows } = await client.query<{ config: unknown; version: number }>(
+        "SELECT config, version FROM moderation_configs WHERE guild_id = $1 FOR UPDATE",
+        [guildId],
+      );
+      const current = rows[0]
+        ? { config: parseModerationConfig(rows[0].config), version: rows[0].version }
+        : { config: defaultModerationConfig, version: 0 };
+      const nextConfig: ModerationConfig = { ...current.config };
+
+      if (key === "protection") {
+        nextConfig.protection = { ...current.config.protection, enabled };
+      } else if (key === "wordFilter" || key === "linkBlock") {
+        nextConfig.autoMod = {
+          ...current.config.autoMod,
+          // Turning on a child rule must also turn on its AutoMod parent.
+          enabled: enabled ? true : current.config.autoMod.enabled,
+          [key]: { ...current.config.autoMod[key], enabled },
+        };
+      } else if (key === "antiRaid") {
+        nextConfig.antiRaid = { ...current.config.antiRaid, enabled };
+      } else if (key === "antiSpam") {
+        nextConfig.antiSpam = { ...current.config.antiSpam, enabled };
+      } else if (key === "antiFlood") {
+        nextConfig.antiFlood = { ...current.config.antiFlood, enabled };
+      } else {
+        nextConfig.ai = { ...current.config.ai, enabled };
+      }
+
+      const nextVersion = current.version + 1;
+      await client.query(
+        `INSERT INTO moderation_configs (guild_id, config, version, updated_by, updated_at)
+         VALUES ($1, $2::jsonb, $3, $4, now())
+         ON CONFLICT (guild_id) DO UPDATE SET config = EXCLUDED.config,
+           version = EXCLUDED.version, updated_by = EXCLUDED.updated_by, updated_at = now()`,
+        [guildId, JSON.stringify(nextConfig), nextVersion, updatedBy],
+      );
+      await this.insertAudit(client, {
+        guildId,
+        actorId: updatedBy,
+        eventType: "config.updated",
+        targetType: "config",
+        targetId: guildId,
+        detail: { version: nextVersion, protectionToggle: key, enabled },
+      });
+      await client.query("COMMIT");
+      await this.pruneCases(guildId, nextConfig.cases.retentionDays);
+      return { config: nextConfig, version: nextVersion };
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
