@@ -123,6 +123,55 @@ function isTextChannel(type: number | string): boolean {
   return String(type) === "0" || type === "GuildText";
 }
 
+const PARTNERSHIP_PREVIEW_KEYS = [
+  "server_name",
+  "representative",
+  "invite",
+  "members",
+  "description",
+  "motivation",
+  "offer",
+  "terms",
+] as const;
+
+function previewValue(value: string | undefined, fallback = "—"): string {
+  return value?.trim() || fallback;
+}
+
+function partnershipPreviewAnswers(
+  flow: TicketFlowConfig,
+  answers: Record<string, string>,
+): Record<string, string> {
+  const orderedAnswers = flow.questions
+    .map((question) => answers[question.key])
+    .filter((value): value is string => Boolean(value?.trim()));
+  return Object.fromEntries(
+    PARTNERSHIP_PREVIEW_KEYS.map((key, index) => [
+      key,
+      answers[key] ?? orderedAnswers[index] ?? "—",
+    ]),
+  );
+}
+
+function partnershipAnnouncementPreview(answers: Record<string, string>): string {
+  const lines = [
+    "🤝 PACTUL CELOR DOUĂ REGATE",
+    "══════════════════════════",
+    "",
+    `🏰 Comunitatea parteneră: ${previewValue(answers.server_name)}`,
+    "",
+    "📝 Descrierea serverului:",
+    previewValue(answers.description),
+    "",
+    `🔗 Link: ${previewValue(answers.invite)}`,
+    "",
+    "👤 Contract completat de: Membrul care testează",
+    "",
+    "Pact pecetluit · Regatul Cenușii",
+  ];
+  return lines.join("\n");
+}
+
 export function BotControlPage() {
   const { guildId } = useActiveGuild();
   const { data, loading, error, update } = useBotControl(guildId);
@@ -356,6 +405,12 @@ export function BotControlPage() {
     activeFlow.postedQuestionKeys ?? activeFlow.questions.map((question) => question.key),
   );
   const testQuestion = activeFlow.questions[testStep];
+  const partnershipAnswers = activeFlowKind === "partnership"
+    ? partnershipPreviewAnswers(activeFlow, testAnswers)
+    : null;
+  const partnershipAnnouncement = partnershipAnswers
+    ? partnershipAnnouncementPreview(partnershipAnswers)
+    : "";
   const resetFlowTest = () => {
     setTestStarted(false);
     setTestCompleted(false);
@@ -928,9 +983,16 @@ export function BotControlPage() {
               <div className="rounded-lg border border-emerald-500/40 bg-[#2b2d31] p-4">
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="h-5 w-5 text-emerald-400" />
-                  <p className="text-[10px] font-mono tracking-[0.18em] text-emerald-300">MESAJ FINAL SIMULAT</p>
+                  <p className="text-[10px] font-mono tracking-[0.18em] text-emerald-300">
+                    {activeFlowKind === "partnership" ? "REZUMAT STAFF ÎN TICKET" : "MESAJ FINAL SIMULAT"}
+                  </p>
                 </div>
-                <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-[#dbdee1]">{activeFlow.completionMessage}</p>
+                <h3 className="mt-3 text-base font-semibold">
+                  {activeFlowKind === "partnership"
+                    ? "🤝 Contract de Parteneriat · Rezumat pentru staff"
+                    : "Formular complet"}
+                </h3>
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[#dbdee1]">{activeFlow.completionMessage}</p>
                 <div className="mt-4 space-y-2 border-t border-[#3f4147] pt-3">
                   {activeFlow.questions.filter((question) => postedQuestionKeys.has(question.key)).map((question) => (
                     <div key={`test-final-${question.key}`} className="rounded-md bg-[#1e1f22] px-3 py-2">
@@ -939,10 +1001,59 @@ export function BotControlPage() {
                     </div>
                   ))}
                 </div>
+                {activeFlowKind === "partnership" && (
+                  <div className="mt-4 flex flex-wrap gap-2 border-t border-[#3f4147] pt-3">
+                    <Button type="button" size="sm" className="pointer-events-none">🛡️ Confirmă pentru publicare</Button>
+                    <Button type="button" size="sm" variant="destructive" className="pointer-events-none">Refuză pactul</Button>
+                  </div>
+                )}
                 {activeFlow.completionAction === "notify_staff" && (
                   <p className="mt-4 text-xs text-primary">{activeFlow.staffNotificationMessage}</p>
                 )}
               </div>
+            )}
+
+            {testCompleted && partnershipAnswers && (
+              <>
+                <div className="rounded-lg border border-[#7c8fbd]/50 bg-[#2b2d31] p-4">
+                  <p className="text-[10px] font-mono tracking-[0.18em] text-[#b9c8ef]">DRAFT DUPĂ CONFIRMAREA STAFFULUI</p>
+                  <h3 className="mt-2 text-base font-semibold">🤝 Contract de Parteneriat · Draft de publicare</h3>
+                  <p className="mt-2 text-sm text-[#dbdee1]">
+                    Draftul este vizibil în ticket până când stafful apasă „Publică pactul”.
+                  </p>
+                  <div className="mt-4 grid gap-2 border-t border-[#3f4147] pt-3 sm:grid-cols-2">
+                    {[
+                      ["🏰 Numele serverului", partnershipAnswers.server_name],
+                      ["👤 Reprezentantul serverului", partnershipAnswers.representative],
+                      ["🔗 Linkul serverului", partnershipAnswers.invite],
+                      ["👥 Membri și activitate", partnershipAnswers.members],
+                      ["📝 Descrierea serverului", partnershipAnswers.description],
+                      ["🕯️ Motivul alianței", partnershipAnswers.motivation],
+                      ["🎁 Ce oferă serverul", partnershipAnswers.offer],
+                      ["📜 Așteptări și reguli", partnershipAnswers.terms],
+                    ].map(([label, value]) => (
+                      <div key={label} className="rounded-md bg-[#1e1f22] px-3 py-2">
+                        <p className="text-xs font-semibold">{label}</p>
+                        <p className="mt-1 whitespace-pre-wrap text-sm text-[#dbdee1]">{previewValue(value)}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Button type="button" size="sm" className="pointer-events-none">📣 Publică pactul</Button>
+                    <Button type="button" size="sm" variant="secondary" className="pointer-events-none">✏️ Revizuiește draftul</Button>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-amber-500/40 bg-[#2b2d31] p-4">
+                  <p className="text-[10px] font-mono tracking-[0.18em] text-amber-300">TEXTUL POSTAT ÎN CANALUL ALIANȚELOR</p>
+                  <p className="mt-2 text-xs text-[#b5bac1]">
+                    Acesta este mesajul public trimis după „Publică pactul”.
+                  </p>
+                  <pre className="mt-3 whitespace-pre-wrap rounded-md bg-[#1e1f22] p-3 font-sans text-sm leading-relaxed text-[#f2f3f5]">
+                    {partnershipAnnouncement}
+                  </pre>
+                </div>
+              </>
             )}
           </div>
 
