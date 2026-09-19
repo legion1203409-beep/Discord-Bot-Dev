@@ -50,3 +50,4 @@
 - [Ticket media storage](ticket-media-storage.md) — issue owner-protected presigned uploads, then serve saved object paths publicly so Discord can fetch them.
 - [Alliance announcement templates](alliance-announcement-templates.md) — public partnership text supports placeholders and invite counts are snapshotted when staff publishes.
 - [Discord OAuth environments](discord-oauth-environments.md) — moderation login needs a separate development callback URI; production OAuth configuration does not automatically reach preview.
+- [Multi-artifact deployment startup](multi-artifact-deployment-startup.md) — a VM deployment with multiple runnable artifacts can emit transient 500 healthchecks until every configured port is open.
