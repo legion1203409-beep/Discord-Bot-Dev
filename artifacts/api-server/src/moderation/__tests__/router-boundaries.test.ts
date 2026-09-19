@@ -59,6 +59,7 @@ vi.mock("../../bot/channel-config", () => ({ initChannelConfig: mocks.initChanne
 import router from "../router";
 import { ModerationAuthError } from "../auth";
 import { defaultModerationConfig } from "../config";
+import { ModerationRevisionConflictError } from "../errors";
 import { DEFAULT_GAMEPLAY_CONFIG } from "../../bot/gameplay-config";
 import { DEFAULT_TICKET_CONFIG } from "../../bot/ticket-config";
 
@@ -211,6 +212,91 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     expect(response.status).toBe(200);
     expect(mocks.putConfig).toHaveBeenCalledWith(guildId, expect.any(Object), actorId, 3);
     expect(response.headers.get("etag")).toBe('"4"');
+  });
+
+  it.each([
+    "protection",
+    "wordFilter",
+    "linkBlock",
+    "antiRaid",
+    "antiSpam",
+    "antiFlood",
+    "ai",
+  ] as const)("saves disabling the %s protection toggle and returns the new revision", async (key) => {
+    const initialConfig = structuredClone(defaultModerationConfig);
+    initialConfig.protection.enabled = true;
+    initialConfig.autoMod.enabled = true;
+    initialConfig.autoMod.wordFilter.enabled = true;
+    initialConfig.autoMod.linkBlock.enabled = true;
+    initialConfig.antiRaid.enabled = true;
+    initialConfig.antiSpam.enabled = true;
+    initialConfig.antiFlood.enabled = true;
+    initialConfig.ai.enabled = true;
+    mocks.getConfig.mockResolvedValue({ config: initialConfig, version: 8 });
+    mocks.putConfig.mockImplementation(async (_guildId, config, _updatedBy, expectedVersion) => ({
+      config,
+      version: expectedVersion + 1,
+    }));
+
+    const response = await fetch(`${base}/protection-toggle`, {
+      ...post({ key, enabled: false }),
+      method: "PUT",
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("etag")).toBe('"9"');
+    const result = await response.json() as { config: typeof initialConfig; version: number };
+    expect(result.version).toBe(9);
+    expect(result.config).toEqual(expect.objectContaining({
+      protection: expect.objectContaining({ enabled: key === "protection" ? false : true }),
+      ai: expect.objectContaining({ enabled: key === "ai" ? false : true }),
+      antiRaid: expect.objectContaining({ enabled: key === "antiRaid" ? false : true }),
+      antiSpam: expect.objectContaining({ enabled: key === "antiSpam" ? false : true }),
+      antiFlood: expect.objectContaining({ enabled: key === "antiFlood" ? false : true }),
+    }));
+    expect(result.config.autoMod.wordFilter.enabled).toBe(key === "wordFilter" ? false : true);
+    expect(result.config.autoMod.linkBlock.enabled).toBe(key === "linkBlock" ? false : true);
+    expect(mocks.putConfig).toHaveBeenCalledWith(guildId, expect.objectContaining({
+      protection: expect.objectContaining({ enabled: key === "protection" ? false : true }),
+    }), actorId, 8);
+  });
+
+  it("retries an atomic toggle after a revision conflict without losing concurrent changes", async () => {
+    const firstConfig = structuredClone(defaultModerationConfig);
+    firstConfig.protection.enabled = true;
+    firstConfig.ai.enabled = true;
+    firstConfig.antiRaid.joinsPerMinute = 12;
+    const concurrentConfig = structuredClone(firstConfig);
+    concurrentConfig.ai.enabled = false;
+    concurrentConfig.antiRaid.joinsPerMinute = 48;
+
+    mocks.getConfig
+      .mockResolvedValueOnce({ config: firstConfig, version: 3 })
+      .mockResolvedValueOnce({ config: concurrentConfig, version: 4 });
+    const writes: Array<{ config: typeof firstConfig; expectedVersion: number }> = [];
+    mocks.putConfig.mockImplementation(async (_guildId, config, _updatedBy, expectedVersion) => {
+      writes.push({ config, expectedVersion });
+      if (writes.length === 1) throw new ModerationRevisionConflictError();
+      return { config, version: 5 };
+    });
+
+    const response = await fetch(`${base}/protection-toggle`, {
+      ...post({ key: "protection", enabled: false }),
+      method: "PUT",
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("etag")).toBe('"5"');
+    const result = await response.json() as { config: typeof firstConfig; version: number };
+    expect(result.version).toBe(5);
+    expect(writes).toHaveLength(2);
+    expect(writes[0]?.expectedVersion).toBe(3);
+    expect(writes[1]?.expectedVersion).toBe(4);
+    expect(writes[1]?.config).toEqual({
+      ...concurrentConfig,
+      protection: { ...concurrentConfig.protection, enabled: false },
+    });
+    expect(result.config).toEqual(writes[1]?.config);
   });
 
   it("persists all custom ticket flows and returns them unchanged after a later GET", async () => {
