@@ -139,6 +139,9 @@ import {
 
 import { loadVerificationConfig, saveVerificationConfig } from "../bot/db";
 
+const PUBLIC_DISCORD_INVITE =
+  process.env.PUBLIC_DISCORD_INVITE?.trim() || "https://discord.gg/regatulcenusii";
+
 
 const router = Router()
 ;
@@ -804,12 +807,17 @@ router.get("/session", asyncRoute(async (req, res) =>
 
 router.get("/auth-config", (_req, res) => 
 {
+  const bot = getModerationClient()?.user;
 
   res.json(
 {
 
     discordOAuthConfigured: isDiscordOAuthConfigured(),
     authorizationUrl: "/api/moderation/oauth/discord",
+    bot: bot ? {
+      name: bot.globalName || bot.username,
+      avatarUrl: bot.displayAvatarURL({ size: 128 }),
+    } : null,
   
 }
 )
@@ -1141,6 +1149,24 @@ router.get("/guilds/:guildId/verification/invite", asyncRoute(async (req, res) =
     inviteUrl,
     installed: client ? Boolean(await client.guilds.fetch({ guild: guildId, force: true }).catch(() => null)) : false,
   });
+}));
+
+router.get("/public/server-profile", asyncRoute(async (_req, res) => {
+  const client = getModerationClient();
+  const inviteUrl = PUBLIC_DISCORD_INVITE;
+  const inviteCode = inviteUrl.split("/").filter(Boolean).pop()?.split("?")[0] ?? "";
+  let name = "Regatul Cenușii";
+  let iconUrl: string | null = null;
+
+  if (client && inviteCode) {
+    const invite = await client.fetchInvite(inviteCode).catch(() => null);
+    if (invite?.guild) {
+      name = invite.guild.name;
+      iconUrl = invite.guild.iconURL({ size: 128 });
+    }
+  }
+
+  res.set("Cache-Control", "public, max-age=300").json({ name, iconUrl, inviteUrl });
 }));
 
 router.get("/verification/:guildId/config", asyncRoute(async (req, res) => {

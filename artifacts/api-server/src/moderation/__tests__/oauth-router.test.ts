@@ -132,6 +132,7 @@ describe("Discord OAuth moderation routes", () => {
     expect(await response.json()).toEqual({
       discordOAuthConfigured: true,
       authorizationUrl: "/api/moderation/oauth/discord",
+      bot: null,
     });
   });
 

@@ -1,16 +1,17 @@
 import { Link, useLocation } from "wouter";
 import { 
   ShieldAlert, Settings, Shield, Bot, History, BookOpen, SlidersHorizontal, ShieldCheck,
-  LogOut, ChevronLeft, Activity, Zap, Menu, X, Eye, Monitor, RefreshCw
+  LogOut, ChevronLeft, Activity, Zap, Menu, X, Eye, Monitor, RefreshCw, Server
 } from "lucide-react";
 import { ReactNode, useState, useEffect } from "react";
 import { FaDiscord } from "react-icons/fa";
-import { useSession, useActiveGuild, useModerationAuthConfig } from "../../hooks/use-moderation-api";
+import { useSession, useActiveGuild, useModerationAuthConfig, type ModerationGuild } from "../../hooks/use-moderation-api";
 import { Button } from "../../components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { GuildSelection } from "./GuildSelection";
 import "./moderation.css";
 import animatedDragonLogo from "@assets/ezgif.com-video-to-gif-converter_1789791978054.gif";
+import { DISCORD_INVITE } from "../../lib/public-constants";
 
 const DISCORD_OAUTH_START = "/api/moderation/oauth/discord";
 const AUTH_ERROR_FALLBACK = "Autentificarea Discord nu a putut fi finalizată. Încearcă din nou.";
@@ -39,6 +40,21 @@ function sameOriginDiscordUrl(value: string | undefined): string | null {
   }
 }
 
+function guildIconUrl(guild: ModerationGuild | undefined): string | null {
+  if (!guild?.icon) return null;
+  if (/^https?:\/\//i.test(guild.icon)) return guild.icon;
+  return `https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.png?size=128`;
+}
+
+function inviteLabel(inviteUrl: string): string {
+  try {
+    const url = new URL(inviteUrl);
+    return `${url.host}${url.pathname}`.replace(/\/$/, "");
+  } catch {
+    return inviteUrl;
+  }
+}
+
 export function ModerationLayout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   const { session, loading, error, logout, retry } = useSession();
@@ -50,6 +66,9 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
   } = useModerationAuthConfig();
   const { guildId, setGuildId, guilds } = useActiveGuild();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const activeGuild = guilds.find((guild) => guild.id === guildId);
+  const activeGuildIcon = guildIconUrl(activeGuild);
+  const botProfile = authConfig?.bot;
 
   useEffect(() => {
     setMobileMenuOpen(false);
@@ -114,11 +133,15 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
           <div className="mod-login-card-line" aria-hidden="true" />
           <div className="relative">
           <div className="mb-7 flex items-center gap-3">
-            <div className="mod-brand-mark">
-              <img src={animatedDragonLogo} alt="" className="mod-brand-logo" aria-hidden="true" />
+            <div className="mod-brand-mark overflow-hidden">
+              {botProfile?.avatarUrl ? (
+                <img src={botProfile.avatarUrl} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <img src={animatedDragonLogo} alt="" className="mod-brand-logo" aria-hidden="true" />
+              )}
             </div>
             <div>
-              <p className="mod-eyebrow">Regatul Cenușii</p>
+              <p className="mod-eyebrow">{botProfile?.name || "Oracolul Cenușii"}</p>
               <p className="text-xs text-muted-foreground">Operațiuni de moderare</p>
             </div>
           </div>
@@ -226,10 +249,16 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
       `}>
         <div className="h-20 flex items-center justify-between px-5 border-b border-border/50 shrink-0">
           <div className="flex items-center gap-3 text-primary">
-            <div className="mod-brand-mark"><Eye className="w-5 h-5" aria-hidden="true" /></div>
+            <div className="mod-brand-mark overflow-hidden">
+              {botProfile?.avatarUrl ? (
+                <img src={botProfile.avatarUrl} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <Eye className="w-5 h-5" aria-hidden="true" />
+              )}
+            </div>
             <div className="flex flex-col">
-              <span className="font-display font-semibold text-xl leading-none tracking-wide text-foreground">ORACOLUL</span>
-              <span className="text-[10px] font-mono tracking-widest leading-none mt-1 opacity-80">CENUȘII / CONSOLĂ</span>
+              <span className="max-w-[155px] truncate font-display font-semibold text-xl leading-none tracking-wide text-foreground">{botProfile?.name || "ORACOLUL"}</span>
+              <span className="text-[10px] font-mono tracking-widest leading-none mt-1 opacity-80">BOT / CONSOLĂ</span>
             </div>
           </div>
           <button aria-label="Închide meniul" onClick={() => setMobileMenuOpen(false)} className="md:hidden text-muted-foreground hover:text-foreground p-2">
@@ -283,9 +312,34 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
 
         <div className="p-4 border-t border-border/50 bg-background/50">
           <div className="flex items-center gap-2 mb-2">
-            <Link href="~/joc" className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-xs font-mono tracking-widest font-medium text-muted-foreground hover:text-foreground rounded-md transition-colors hover:bg-secondary/50 border border-transparent hover:border-border/50">
-              <BookOpen className="w-4 h-4" /> GHID JOC
-            </Link>
+            <a
+              href={DISCORD_INVITE}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex min-w-0 flex-1 items-center gap-2 rounded-md border border-transparent px-2 py-1.5 text-left transition-colors hover:border-primary/20 hover:bg-secondary/50"
+              title={`Deschide invitația ${activeGuild?.name || "serverului"}`}
+            >
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-primary/25 bg-primary/10 text-primary">
+                {activeGuildIcon ? (
+                  <img
+                    src={activeGuildIcon}
+                    alt=""
+                    className="h-full w-full object-cover"
+                    onError={(event) => { event.currentTarget.style.display = "none"; }}
+                  />
+                ) : (
+                  <Server className="h-4 w-4" aria-hidden="true" />
+                )}
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-xs font-semibold tracking-wide text-foreground">
+                  {activeGuild?.name || "Serverul meu"}
+                </span>
+                <span className="mt-0.5 block truncate font-mono text-[9px] tracking-wider text-muted-foreground">
+                  {inviteLabel(DISCORD_INVITE)}
+                </span>
+              </span>
+            </a>
             <button 
               onClick={() => logout()}
               aria-label="Deconectare"
@@ -303,8 +357,14 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
        <main key={`guild-${guildId}`} className="flex h-[100dvh] min-h-0 flex-1 flex-col min-w-0 bg-background">
         <header className="mod-topbar h-16 border-b border-border/50 backdrop-blur flex items-center justify-between px-4 sm:px-6 shrink-0 md:hidden sticky top-0 z-30">
           <div className="flex items-center gap-2 text-primary">
-             <div className="mod-brand-mark h-8 w-8 rounded-lg"><Eye className="w-4 h-4" aria-hidden="true" /></div>
-             <span className="font-display font-semibold text-lg text-foreground">ORACOLUL</span>
+              <div className="mod-brand-mark h-8 w-8 overflow-hidden rounded-lg">
+                {botProfile?.avatarUrl ? (
+                  <img src={botProfile.avatarUrl} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <Eye className="w-4 h-4" aria-hidden="true" />
+                )}
+              </div>
+              <span className="max-w-[170px] truncate font-display font-semibold text-lg text-foreground">{botProfile?.name || "ORACOLUL"}</span>
           </div>
           <button onClick={() => setMobileMenuOpen(true)} aria-label="Deschide meniul" aria-expanded={mobileMenuOpen} className="text-muted-foreground hover:text-foreground p-2 -mr-2">
              <Menu className="w-6 h-6" aria-hidden="true" />

@@ -1,12 +1,36 @@
-import { useEffect, useRef } from "react";
-import { Icon } from "../../components/public/UiElements";
+import { useEffect, useRef, useState } from "react";
+import { DragonLogo, Icon } from "../../components/public/UiElements";
 import { trackEvent } from "../../lib/analytics";
 import { DISCORD_INVITE } from "../../lib/public-constants";
 import { useLocation } from "wouter";
 
+type PublicServerProfile = {
+  name: string;
+  iconUrl: string | null;
+  inviteUrl: string;
+};
+
 export function GameGuidePage() {
   const [, setLocation] = useLocation();
   const activeSectionRef = useRef<string>("profil");
+  const [serverProfile, setServerProfile] = useState<PublicServerProfile>({
+    name: "Regatul Cenușii",
+    iconUrl: null,
+    inviteUrl: DISCORD_INVITE,
+  });
+
+  useEffect(() => {
+    let mounted = true;
+    void fetch("/api/moderation/public/server-profile", { cache: "no-store" })
+      .then((response) => response.ok ? response.json() as Promise<PublicServerProfile> : null)
+      .then((profile) => {
+        if (mounted && profile?.name && profile.inviteUrl) setServerProfile(profile);
+      })
+      .catch(() => {
+        // Keep the configured public identity when Discord is temporarily unavailable.
+      });
+    return () => { mounted = false; };
+  }, []);
 
   useEffect(() => {
     const originalTitle = document.title;
@@ -68,8 +92,26 @@ export function GameGuidePage() {
           <a href="#economie" onClick={(e) => handleNavClick(e, 'economie')} className="guide-nav-link"><Icon name="chest" size={14} /> Progresie și Economie</a>
           <a href="#comenzi" onClick={(e) => handleNavClick(e, 'comenzi')} className="guide-nav-link"><Icon name="book" size={14} /> Lista de comenzi</a>
           
-          <a href={DISCORD_INVITE} target="_blank" rel="noopener noreferrer" className="button button--ghost" style={{ marginTop: '2rem' }} onClick={() => trackEvent("discord_cta_click", { location: "guide_sidebar" })}>
-            Intră în joc <Icon name="arrow" size={14} />
+          <a
+            href={serverProfile.inviteUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="guide-server-card"
+            onClick={() => trackEvent("discord_cta_click", { location: "guide_server_card" })}
+          >
+            <span className="guide-server-card__logo">
+              {serverProfile.iconUrl ? (
+                <img src={serverProfile.iconUrl} alt="" />
+              ) : (
+                <DragonLogo className="guide-server-card__fallback-logo" />
+              )}
+            </span>
+            <span className="guide-server-card__copy">
+              <span className="guide-server-card__eyebrow">Serverul oficial</span>
+              <strong>{serverProfile.name}</strong>
+              <span className="guide-server-card__invite">{serverProfile.inviteUrl.replace(/^https?:\/\//, "")}</span>
+            </span>
+            <Icon name="arrow" size={15} />
           </a>
         </aside>
 
