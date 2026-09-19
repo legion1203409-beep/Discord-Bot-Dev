@@ -101,6 +101,25 @@ describe("custom ticket flow configuration", () => {
     });
   });
 
+  it("removes duplicate keys after normalizing saved flows", () => {
+    const normalized = normalizeTicketConfig({
+      flows: {
+        staff: flow("staff", {
+          questions: [
+            question("first"),
+            question("FIRST"),
+            question("second"),
+          ],
+        }),
+      },
+    });
+
+    expect(normalized.flows.staff.questions.map(({ key }) => key)).toEqual([
+      "first",
+      "second",
+    ]);
+  });
+
   it("rejects malformed flow payloads before they can be saved by the panel", () => {
     for (const kind of KINDS) {
       expect(ticketFlowConfigSchema.safeParse(flow(kind)).success).toBe(true);
@@ -121,5 +140,18 @@ describe("custom ticket flow configuration", () => {
         }),
       ).success,
     ).toBe(false);
+
+    const duplicateResult = ticketFlowConfigSchema.safeParse(
+      flow("staff", {
+        questions: [question("same"), question("same")],
+      }),
+    );
+    expect(duplicateResult.success).toBe(false);
+    if (!duplicateResult.success) {
+      expect(duplicateResult.error.issues).toContainEqual(expect.objectContaining({
+        path: ["questions", 1, "key"],
+        message: 'Cheia "same" este duplicată în acest flux.',
+      }));
+    }
   });
 });

@@ -41,6 +41,17 @@ const NEW_QUESTION = {
   required: true,
 };
 
+function getDuplicateQuestionKeys(flow: TicketFlowConfig): string[] {
+  const counts = new Map<string, number>();
+  for (const question of flow.questions) {
+    const key = question.key.trim().toLowerCase();
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([key]) => key);
+}
+
 function ImageField({
   label,
   value,
@@ -364,6 +375,18 @@ export function BotControlPage() {
 
   const save = async () => {
     if (!draft) return;
+    const duplicateFlow = Object.entries(draft.tickets.flows)
+      .map(([kind, flow]) => ({ kind, flow, duplicateKeys: getDuplicateQuestionKeys(flow) }))
+      .find(({ duplicateKeys }) => duplicateKeys.length > 0);
+    if (duplicateFlow) {
+      const flowLabel = FLOW_KINDS.find(([kind]) => kind === duplicateFlow.kind)?.[1] ?? duplicateFlow.kind;
+      toast({
+        variant: "destructive",
+        title: "Salvarea a fost blocată",
+        description: `Fluxul „${flowLabel}” are chei duplicate: ${duplicateFlow.duplicateKeys.join(", ")}. Schimbă cheile înainte de salvare.`,
+      });
+      return;
+    }
     setSaving(true);
     try {
       const flows = Object.fromEntries(
@@ -392,6 +415,7 @@ export function BotControlPage() {
   const categories = metadata?.channels.filter((channel) => isCategory(channel.type)) ?? [];
   const textChannels = metadata?.channels.filter((channel) => isTextChannel(channel.type)) ?? [];
   const activeFlow = draft.tickets.flows[activeFlowKind];
+  const duplicateQuestionKeys = getDuplicateQuestionKeys(activeFlow);
   const activeCategory = draft.tickets.categories[activeFlowKind];
   const selectedActiveCategory = categories.some((category) => category.id === activeCategory)
     ? activeCategory
@@ -593,6 +617,11 @@ export function BotControlPage() {
                   Adaugă întrebare
                 </Button>
               </div>
+              {duplicateQuestionKeys.length > 0 && (
+                <p className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+                  Chei duplicate în acest flux: {duplicateQuestionKeys.join(", ")}. Schimbă fiecare cheie astfel încât să fie unică înainte de salvare.
+                </p>
+              )}
               <div className="space-y-3">
                 {activeFlow.questions.map((question, index) => (
                   <div key={`${question.key}-${index}`} className="space-y-3 rounded-lg border border-border/80 bg-background/40 p-4">
