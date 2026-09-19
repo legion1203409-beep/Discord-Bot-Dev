@@ -371,6 +371,64 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     expect(result.provisioning.created).toHaveLength(1);
   });
 
+  it("loads verified members through Discord REST instead of the rate-limited gateway request", async () => {
+    const roleId = "444444444";
+    const restGet = vi.fn().mockResolvedValue([
+      {
+        nick: "Membru verificat",
+        roles: [roleId],
+        joined_at: "2026-09-19T12:00:00.000Z",
+        user: {
+          id: "888888888",
+          username: "verified-user",
+          global_name: "Membru verificat",
+          avatar: null,
+          bot: false,
+        },
+      },
+      {
+        roles: [roleId],
+        user: {
+          id: "999999999",
+          username: "bot-user",
+          global_name: "Bot",
+          avatar: null,
+          bot: true,
+        },
+      },
+    ]);
+    const role = { id: roleId, name: "Verificat" };
+    mocks.loadVerificationConfig.mockResolvedValue({ enabled: true, roleId });
+    mocks.client.mockReturnValue({
+      isReady: () => true,
+      rest: { get: restGet },
+      guilds: {
+        fetch: vi.fn().mockResolvedValue({
+          roles: { fetch: vi.fn().mockResolvedValue(role) },
+        }),
+      },
+    });
+
+    const response = await fetch(`${base}/verification/members`);
+    expect(response.status).toBe(200);
+    expect(restGet).toHaveBeenCalledWith(
+      expect.stringContaining(guildId),
+      expect.objectContaining({ query: expect.any(URLSearchParams) }),
+    );
+    const result = await response.json() as {
+      total: number;
+      members: Array<{ id: string; displayName: string; joinedAt: string | null }>;
+    };
+    expect(result.total).toBe(1);
+    expect(result.members).toEqual([
+      expect.objectContaining({
+        id: "888888888",
+        displayName: "Membru verificat",
+        joinedAt: "2026-09-19T12:00:00.000Z",
+      }),
+    ]);
+  });
+
   it("round-trips a fresh empty alliance message instead of rejecting the whole bot configuration", async () => {
     const payload = botControlPayload();
     payload.allianceRecruitmentText = "";

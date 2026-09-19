@@ -14,7 +14,8 @@ import
 
 import 
 {
- GatewayIntentBits 
+ GatewayIntentBits,
+ Routes,
 }
  from "discord.js"
 ;
@@ -1393,9 +1394,6 @@ router.get("/guilds/:guildId/verification/members", asyncRoute(async (req, res) 
   if (!client || !client.isReady()) {
     throw new ModerationAuthError(503, "Discord botul nu este disponibil pentru încărcarea membrilor verificați.");
   }
-  if (!client.options.intents.has(GatewayIntentBits.GuildMembers)) {
-    throw new ModerationAuthError(503, "Botul nu are intentul Guild Members necesar pentru lista membrilor verificați.");
-  }
 
   const config = normalizeVerificationConfig(await loadVerificationConfig(guildId));
   const guild = await client.guilds.fetch({ guild: guildId, force: true });
@@ -1419,21 +1417,50 @@ router.get("/guilds/:guildId/verification/members", asyncRoute(async (req, res) 
     return;
   }
 
-  let members;
+  type DiscordRestGuildMember = {
+    nick?: string | null;
+    roles?: unknown;
+    joined_at?: string | null;
+    user?: {
+      id?: string;
+      username?: string;
+      global_name?: string | null;
+      avatar?: string | null;
+      bot?: boolean;
+    };
+  };
+
+  const members: DiscordRestGuildMember[] = [];
   try {
-    members = await guild.members.fetch();
+    let after: string | undefined;
+    for (let page = 0; page < 100; page += 1) {
+      const query = new URLSearchParams({ limit: "1000" });
+      if (after) query.set("after", after);
+      const pageMembers = await client.rest.get(
+        Routes.guildMembers(guildId),
+        { query },
+      ) as DiscordRestGuildMember[];
+      if (!Array.isArray(pageMembers)) throw new Error("Discord returned an invalid member page");
+      members.push(...pageMembers);
+      if (pageMembers.length < 1000) break;
+      const nextAfter = pageMembers.at(-1)?.user?.id;
+      if (!nextAfter || nextAfter === after) break;
+      after = nextAfter;
+    }
   } catch (error) {
     logger.warn({ error, guildId }, "Verified members could not be fetched from Discord");
-    throw new ModerationAuthError(503, "Discord nu a permis încărcarea membrilor. Activează intenția privilegiată Server Members pentru bot și repornește-l.");
+    throw new ModerationAuthError(503, "Discord nu a permis încărcarea membrilor verificați. Verifică permisiunile botului și încearcă din nou.");
   }
   const verifiedMembers = [...members.values()]
-    .filter((member) => !member.user.bot && member.roles.cache.has(role.id))
+    .filter((member) => member.user?.id && !member.user.bot && Array.isArray(member.roles) && member.roles.includes(role.id))
     .map((member) => ({
-      id: member.id,
-      username: member.user.username,
-      displayName: member.displayName,
-      avatarUrl: member.user.displayAvatarURL({ size: 64 }),
-      joinedAt: member.joinedAt?.toISOString() ?? null,
+      id: member.user!.id!,
+      username: member.user!.username ?? member.user!.id!,
+      displayName: member.nick?.trim() || member.user!.global_name?.trim() || member.user!.username || member.user!.id!,
+      avatarUrl: member.user!.avatar
+        ? `https://cdn.discordapp.com/avatars/${member.user!.id}/${member.user!.avatar}.${member.user!.avatar.startsWith("a_") ? "gif" : "png"}?size=64`
+        : "https://cdn.discordapp.com/embed/avatars/0.png",
+      joinedAt: member.joined_at ?? null,
     }))
     .sort((left, right) => left.displayName.localeCompare(right.displayName, "ro", { sensitivity: "base" }));
 
