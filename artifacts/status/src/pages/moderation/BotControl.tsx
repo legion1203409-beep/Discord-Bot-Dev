@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from "react";
-import { Bot, Loader2, Save, Radio, Megaphone, Ticket, ShieldCheck, Timer, ScrollText, Coins, PlayCircle, RotateCcw, CheckCircle2, Users, RefreshCw, Search } from "lucide-react";
+import { Bot, Loader2, Save, Radio, Megaphone, Ticket, ShieldCheck, Timer, ScrollText, Coins, PlayCircle, RotateCcw, CheckCircle2 } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Textarea } from "../../components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
-import { useActiveGuild, useBotControl, useModerationMetadata, useSession, useVerifiedMembers, type BotControlConfig, type TicketFlowConfig } from "../../hooks/use-moderation-api";
+import { useActiveGuild, useBotControl, useModerationMetadata, useSession, type BotControlConfig, type TicketFlowConfig } from "../../hooks/use-moderation-api";
 import { useToast } from "../../hooks/use-toast";
 
 const CHANNELS = [
@@ -182,7 +182,6 @@ export function BotControlPage() {
   const { guildId } = useActiveGuild();
   const { data, loading, error, update } = useBotControl(guildId);
   const { data: metadata } = useModerationMetadata(guildId);
-  const { data: verifiedMembersData, loading: verifiedMembersLoading, error: verifiedMembersError, refetch: refetchVerifiedMembers } = useVerifiedMembers(guildId);
   const { toast } = useToast();
   const { session } = useSession();
   const [draft, setDraft] = useState<BotControlConfig | null>(null);
@@ -195,8 +194,6 @@ export function BotControlPage() {
   const [testDraftAnswer, setTestDraftAnswer] = useState("");
   const [testAnswers, setTestAnswers] = useState<Record<string, string>>({});
   const [testError, setTestError] = useState("");
-  const [inviteLoading, setInviteLoading] = useState(false);
-  const [verificationSearch, setVerificationSearch] = useState("");
 
   useEffect(() => {
     setDraft(data ? JSON.parse(JSON.stringify(data)) : null);
@@ -207,28 +204,6 @@ export function BotControlPage() {
       ...current,
       channels: { ...current.channels, [key]: value === "__none__" ? "" : value },
     } : current);
-  };
-
-  const setVerification = (field: keyof BotControlConfig["verification"], value: string | boolean) => {
-    setDraft((current) => current ? {
-      ...current,
-      verification: { ...current.verification, [field]: value },
-    } : current);
-  };
-
-  const openBotInvite = async () => {
-    if (!guildId) return;
-    setInviteLoading(true);
-    try {
-      const response = await fetch(`/api/moderation/guilds/${guildId}/verification/invite`, { credentials: "include" });
-      const payload = await response.json() as { inviteUrl?: string; installed?: boolean; error?: string };
-      if (!response.ok || !payload.inviteUrl) throw new Error(payload.error ?? "Linkul de autorizare nu este disponibil.");
-      window.open(payload.inviteUrl, "_blank", "noopener,noreferrer");
-    } catch (inviteError) {
-      toast({ variant: "destructive", title: "Autorizarea botului a eșuat", description: inviteError instanceof Error ? inviteError.message : "Încearcă din nou." });
-    } finally {
-      setInviteLoading(false);
-    }
   };
 
   const setTicket = (path: string[], value: string | number) => {
@@ -442,12 +417,6 @@ export function BotControlPage() {
   const activeFlow = draft.tickets.flows[activeFlowKind];
   const duplicateQuestionKeys = getDuplicateQuestionKeys(activeFlow);
   const activeCategory = draft.tickets.categories[activeFlowKind];
-  const normalizedVerificationSearch = verificationSearch.trim().toLocaleLowerCase("ro");
-  const filteredVerifiedMembers = (verifiedMembersData?.members ?? []).filter((member) => {
-    if (!normalizedVerificationSearch) return true;
-    return [member.displayName, member.username, member.id]
-      .some((value) => value.toLocaleLowerCase("ro").includes(normalizedVerificationSearch));
-  });
   const selectedActiveCategory = categories.some((category) => category.id === activeCategory)
     ? activeCategory
     : "__manual__";

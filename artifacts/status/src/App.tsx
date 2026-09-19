@@ -10,6 +10,7 @@ import { SettingsPage } from "./pages/moderation/Settings";
 import { ProtectionPage } from "./pages/moderation/Protection";
 import { PoliciesPage } from "./pages/moderation/Policies";
 import { BotControlPage } from "./pages/moderation/BotControl";
+import { VerificationAdminPage } from "./pages/moderation/VerificationAdmin";
 import { useActiveGuild } from "./hooks/use-moderation-api";
 
 // Public pages
@@ -59,6 +60,7 @@ function ModerationApp() {
           <Route path="/audit" component={AuditPage} />
           <Route path="/config" component={SettingsPage} />
           <Route path="/bot" component={BotControlPage} />
+          <Route path="/verificare" component={VerificationAdminPage} />
           <Route component={() => <div className="text-muted-foreground p-8 text-center border border-dashed border-border rounded-xl">Această secțiune este în lucru.</div>} />
         </Switch>
       </div>
