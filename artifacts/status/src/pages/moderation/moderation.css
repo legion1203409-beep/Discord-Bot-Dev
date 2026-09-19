@@ -270,6 +270,14 @@
   animation: login-mark-pulse 4.8s ease-in-out infinite;
 }
 
+.mod-login-card .mod-brand-logo {
+  width: 132%;
+  height: 132%;
+  object-fit: cover;
+  mix-blend-mode: screen;
+  filter: saturate(.7) contrast(1.12) brightness(.92);
+}
+
 .mod-login-card button {
   box-shadow: 0 12px 28px hsl(356 58% 20% / .2);
   transition: transform 180ms ease, box-shadow 180ms ease, filter 180ms ease;

@@ -10,6 +10,7 @@ import { Button } from "../../components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { GuildSelection } from "./GuildSelection";
 import "./moderation.css";
+import animatedDragonLogo from "@assets/ezgif.com-video-to-gif-converter_1789791978054.gif";
 
 const DISCORD_OAUTH_START = "/api/moderation/oauth/discord";
 const AUTH_ERROR_FALLBACK = "Autentificarea Discord nu a putut fi finalizată. Încearcă din nou.";
@@ -114,7 +115,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
           <div className="relative">
           <div className="mb-7 flex items-center gap-3">
             <div className="mod-brand-mark">
-              <Eye className="w-5 h-5" aria-hidden="true" />
+              <img src={animatedDragonLogo} alt="" className="mod-brand-logo" aria-hidden="true" />
             </div>
             <div>
               <p className="mod-eyebrow">Regatul Cenușii</p>
