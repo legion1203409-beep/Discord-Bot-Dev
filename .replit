@@ -68,6 +68,9 @@ ORACLE_OWNER_ID = "585841275765522442"
 DISCORD_OAUTH_REDIRECT_URI = "https://discord-bot-dev-alaandrei09.replit.app/api/moderation/oauth/discord/callback"
 MODERATION_WEB_ORIGIN = "https://discord-bot-dev-alaandrei09.replit.app"
 
+[userenv.development]
+DISCORD_OAUTH_REDIRECT_URI = "https://c6624cc8-e264-47e4-8a83-82fc52f0aaa6-00-3dpwd4oq8kbi3.picard.replit.dev/api/moderation/oauth/discord/callback"
+
 [[ports]]
 localPort = 8080
 externalPort = 8080
