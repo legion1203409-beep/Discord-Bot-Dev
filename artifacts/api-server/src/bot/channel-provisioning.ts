@@ -26,37 +26,62 @@ type ChannelTarget = {
   currentId?: string | null;
   names: string[];
   type: ChannelTypeName;
+  category: ProvisioningCategoryKey;
 };
 
+type ProvisioningCategoryKey = "gameplay" | "admin" | "filtered" | "links" | "security" | "verification";
+
+type ProvisioningCategoryTarget = {
+  key: ProvisioningCategoryKey;
+  names: string[];
+};
+
+const CATEGORY_TARGETS: ProvisioningCategoryTarget[] = [
+  { key: "gameplay", names: ["🎮・JOC ȘI EVENIMENTE", "joc si evenimente", "gameplay", "joc"] },
+  { key: "admin", names: ["🛠️・ADMINISTRAȚIE", "administratie", "admin", "operatiuni"] },
+  { key: "filtered", names: ["🧹・MESAJE FILTRATE", "mesaje filtrate", "moderare", "anti-spam"] },
+  { key: "links", names: ["🔗・LINKURI", "linkuri", "filtrare linkuri", "anti-link"] },
+  { key: "security", names: ["🚨・SECURITATE", "securitate", "anti-raid", "alerte securitate"] },
+  { key: "verification", names: ["✅・VERIFICARE", "verificare", "verification"] },
+];
+
 const GAMEPLAY_TARGETS: Array<Omit<ChannelTarget, "currentId"> & { key: keyof ChannelConfig }> = [
-  { key: "main", type: "text", names: ["cufere-si-oracol", "cufere", "oracol"] },
-  { key: "event", type: "text", names: ["ora-umbrelor"] },
-  { key: "boss", type: "text", names: ["dragonul-stins"] },
-  { key: "trader", type: "text", names: ["negustorul"] },
-  { key: "eventTop", type: "text", names: ["top-ora-umbrelor"] },
-  { key: "bossTop", type: "text", names: ["top-dragonul-stins"] },
-  { key: "council", type: "text", names: ["consiliul-umbrelor"] },
-  { key: "fratia", type: "text", names: ["chivotul-fratiei", "fratia"] },
+  { key: "main", type: "text", category: "gameplay", names: ["cufere-si-oracol", "cufere", "oracol"] },
+  { key: "event", type: "text", category: "gameplay", names: ["ora-umbrelor"] },
+  { key: "boss", type: "text", category: "gameplay", names: ["dragonul-stins"] },
+  { key: "trader", type: "text", category: "gameplay", names: ["negustorul"] },
+  { key: "eventTop", type: "text", category: "gameplay", names: ["top-ora-umbrelor"] },
+  { key: "bossTop", type: "text", category: "gameplay", names: ["top-dragonul-stins"] },
+  { key: "council", type: "text", category: "admin", names: ["consiliul-umbrelor"] },
+  { key: "fratia", type: "text", category: "admin", names: ["chivotul-fratiei", "fratia"] },
 ];
 
 const TICKET_TARGETS: Array<{ key: TicketCategoryKind; names: string[] }> = [
-  { key: "staff", names: ["tichete-staff", "aplicare-staff", "staff"] },
-  { key: "partnership", names: ["tichete-parteneriate", "parteneriate", "partnership"] },
-  { key: "help_report", names: ["tichete-ajutor-raportare", "ajutor-raportare", "help-report"] },
+  { key: "staff", names: ["🎫・TICHETE • STAFF", "tichete-staff", "aplicare-staff", "staff"] },
+  { key: "partnership", names: ["🎫・TICHETE • PARTENERIATE", "tichete-parteneriate", "parteneriate", "partnership"] },
+  { key: "help_report", names: ["🎫・TICHETE • AJUTOR", "tichete-ajutor-raportare", "ajutor-raportare", "help-report"] },
 ];
 
 const MODERATION_TARGETS = [
-  { key: "antiRaid.alertChannelId", names: ["mod-anti-raid", "alerte-raid"] },
-  { key: "antiSpam.logChannelId", names: ["mod-anti-spam", "jurnal-anti-spam"] },
-  { key: "suspiciousBehavior.alertChannelId", names: ["mod-comportament-suspect", "alerte-comportament"] },
-  { key: "ai.logChannelId", names: ["mod-ai", "jurnal-ai"] },
-  { key: "audit.channelId", names: ["mod-audit", "audit"] },
+  { key: "antiRaid.alertChannelId", category: "security", names: ["mod-anti-raid", "alerte-raid"] },
+  { key: "antiSpam.logChannelId", category: "filtered", names: ["mod-anti-spam", "jurnal-anti-spam"] },
+  { key: "suspiciousBehavior.alertChannelId", category: "security", names: ["mod-comportament-suspect", "alerte-comportament"] },
+  { key: "ai.logChannelId", category: "filtered", names: ["mod-ai", "jurnal-ai"] },
+  { key: "audit.channelId", category: "admin", names: ["mod-audit", "audit"] },
 ] as const;
 
 const provisionLocks = new Map<string, Promise<ChannelProvisionResult>>();
 
 function normalizeName(value: string): string {
-  return value.trim().toLocaleLowerCase("ro");
+  return value
+    .trim()
+    .toLocaleLowerCase("ro")
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/^[^\p{Letter}\p{Number}]+/u, "")
+    .replace(/[・|•]/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim();
 }
 
 function isExpectedType(channel: { type: ChannelType }, type: ChannelTypeName): boolean {
@@ -72,6 +97,17 @@ function setNestedChannelId(config: ModerationConfig, path: string, id: string):
   if (section === "suspiciousBehavior" && field === "alertChannelId") config.suspiciousBehavior.alertChannelId = id;
   if (section === "ai" && field === "logChannelId") config.ai.logChannelId = id;
   if (section === "audit" && field === "channelId") config.audit.channelId = id;
+}
+
+async function moveToCategory(
+  channel: { parentId?: string | null; setParent?: (categoryId: string) => Promise<unknown> },
+  categoryId: string,
+): Promise<void> {
+  if (channel.parentId === categoryId) return;
+  if (typeof channel.setParent !== "function") {
+    throw new Error(`Canalul ${categoryId} nu suportă mutarea într-o categorie.`);
+  }
+  await channel.setParent(categoryId);
 }
 
 /**
@@ -91,8 +127,31 @@ async function provisionGuildChannelsUnlocked(
   const channels = await guild.channels.fetch();
   const created: ProvisionedChannel[] = [];
   const reused: ProvisionedChannel[] = [];
+  const categoryIds = new Map<ProvisioningCategoryKey, string>();
+
+  for (const target of CATEGORY_TARGETS) {
+    const existing = [...channels.values()].find((channel) =>
+      channel !== null &&
+      isExpectedType(channel, "category") &&
+      target.names.some((name) => normalizeName(channel.name) === normalizeName(name)),
+    );
+    if (existing) {
+      reused.push({ key: `category.${target.key}`, id: existing.id, name: existing.name, type: "category" });
+      categoryIds.set(target.key, existing.id);
+      continue;
+    }
+
+    const createdCategory = await guild.channels.create({
+      name: target.names[0],
+      type: ChannelType.GuildCategory,
+    });
+    created.push({ key: `category.${target.key}`, id: createdCategory.id, name: createdCategory.name, type: "category" });
+    categoryIds.set(target.key, createdCategory.id);
+  }
 
   const resolve = async (target: ChannelTarget): Promise<string> => {
+    const categoryId = categoryIds.get(target.category);
+    if (!categoryId) throw new Error(`Categoria ${target.category} nu a putut fi pregătită.`);
     const configured = target.currentId ? channels.get(target.currentId) : null;
     const existing = configured && isExpectedType(configured, target.type)
       ? configured
@@ -103,6 +162,9 @@ async function provisionGuildChannelsUnlocked(
       );
 
     if (existing) {
+      if (target.type === "text") {
+        await moveToCategory(existing, categoryId);
+      }
       const result = { key: target.key, id: existing.id, name: existing.name, type: target.type };
       reused.push(result);
       return existing.id;
@@ -111,6 +173,7 @@ async function provisionGuildChannelsUnlocked(
     const createdChannel = await guild.channels.create({
       name: target.names[0],
       type: target.type === "category" ? ChannelType.GuildCategory : ChannelType.GuildText,
+      ...(target.type === "text" ? { parent: categoryId } : {}),
     });
     const result = { key: target.key, id: createdChannel.id, name: createdChannel.name, type: target.type };
     created.push(result);
@@ -135,6 +198,7 @@ async function provisionGuildChannelsUnlocked(
       currentId: input.ticketConfig.categories[target.key],
       names: target.names,
       type: "category",
+      category: "admin",
     });
   }
 
@@ -147,6 +211,7 @@ async function provisionGuildChannelsUnlocked(
       currentId: typeof currentId === "string" ? currentId : null,
       names: [...target.names],
       type: "text",
+      category: target.category,
     });
     setNestedChannelId(moderationConfig, target.key, id);
   }
@@ -157,6 +222,7 @@ async function provisionGuildChannelsUnlocked(
     currentId: verification.channelId,
     names: ["verificare", "verificare-discord"],
     type: "text",
+    category: "verification",
   });
 
   return { channelConfig, ticketConfig, moderationConfig, verification, created, reused };

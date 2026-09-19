@@ -446,6 +446,7 @@ export function BotControlPage() {
 
   const categories = metadata?.channels.filter((channel) => isCategory(channel.type)) ?? [];
   const textChannels = metadata?.channels.filter((channel) => isTextChannel(channel.type)) ?? [];
+  const categoryNames = new Map(categories.map((category) => [category.id, category.name]));
   const activeFlow = draft.tickets.flows[activeFlowKind];
   const duplicateQuestionKeys = getDuplicateQuestionKeys(activeFlow);
   const activeCategory = draft.tickets.categories[activeFlowKind];
@@ -560,7 +561,13 @@ export function BotControlPage() {
                       <SelectTrigger className="mod-select-trigger"><SelectValue placeholder="Alege canal" /></SelectTrigger>
                       <SelectContent className="max-h-[min(70vh,32rem)] overscroll-contain">
                         <SelectItem value="__none__">Neconfigurat</SelectItem>
-                        {metadata?.channels.map((channel) => <SelectItem key={channel.id} value={channel.id}>#{channel.name} ({channel.id})</SelectItem>)}
+                        {metadata?.channels.map((channel) => (
+                          <SelectItem key={channel.id} value={channel.id}>
+                            {isCategory(channel.type) ? "▰" : "#"} {channel.name}
+                            {channel.parentId && categoryNames.get(channel.parentId) ? ` · ${categoryNames.get(channel.parentId)}` : ""}
+                            {" "}({channel.id})
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                     <Input value={current} placeholder="ID canal Discord" aria-label={`${label} ID`} onChange={(event) => setChannel(key, event.target.value.trim())} />

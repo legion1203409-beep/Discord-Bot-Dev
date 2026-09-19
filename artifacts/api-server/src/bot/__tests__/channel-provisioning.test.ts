@@ -6,7 +6,17 @@ import { DEFAULT_TICKET_CONFIG } from "../ticket-config";
 import { provisionGuildChannels } from "../channel-provisioning";
 
 function channel(id: string, name: string, type: ChannelType) {
-  return { id, name, type, parentId: null };
+  const value = {
+    id,
+    name,
+    type,
+    parentId: null as string | null,
+    setParent: vi.fn(async (parentId: string) => {
+      value.parentId = parentId;
+      return value;
+    }),
+  };
+  return value;
 }
 
 describe("guild channel provisioning", () => {
@@ -60,6 +70,12 @@ describe("guild channel provisioning", () => {
       "moderation.audit.channelId",
     ]));
     expect(create).toHaveBeenCalledTimes(first.created.length);
+    expect(channels.get(first.channelConfig.event!)?.parentId).toBe(
+      first.created.find((entry) => entry.key === "category.gameplay")?.id,
+    );
+    expect(channels.get(first.verification.channelId)?.parentId).toBe(
+      first.created.find((entry) => entry.key === "category.verification")?.id,
+    );
 
     const second = await provisionGuildChannels(guild, {
       channelConfig: first.channelConfig,
