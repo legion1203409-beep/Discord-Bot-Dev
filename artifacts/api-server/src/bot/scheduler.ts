@@ -17,7 +17,7 @@ import {
   settleExpiredAuction,
 } from "./chest-expansions";
 import { setTributeGamePaused, startTributeScheduler, stopTributeScheduler } from "./tribute";
-import { getGameplayConfig } from "./gameplay-store";
+import { getGameplayConfig, isGameplayPaused } from "./gameplay-store";
 
 const APPLICATION_ID = "1472675543777280071";
 export const EVENT_DURATION_MS = 60 * 60 * 1000;
@@ -277,7 +277,7 @@ export function getGuildClaimedChests(guildId: string): Set<string> {
 }
 
 export function isGuildGameStopped(guildId: string): boolean {
-  return getOrCreateGuildState(guildId).stopped;
+  return getOrCreateGuildState(guildId).stopped || isGameplayPaused(guildId);
 }
 
 /** Get the activeBossMap for a guild (creates state if missing). */
@@ -1648,6 +1648,13 @@ async function fireBattleEvent(client: Client, guildId: string) {
 
 export function startGuildScheduler(client: Client, guildId: string) {
   const gs = getOrCreateGuildState(guildId);
+  if (isGameplayPaused(guildId)) {
+    gs.stopped = true;
+    gs.started = false;
+    setTributeGamePaused(guildId, true);
+    logger.info({ guildId }, "Guild scheduler remains paused by configuration");
+    return;
+  }
   if (gs.started) {
     logger.info({ guildId }, "Guild scheduler already running — skipping re-init");
     return;
@@ -1683,7 +1690,7 @@ export function startGuildScheduler(client: Client, guildId: string) {
 
   const isStopped = () => {
     const current = guildStates.get(guildId);
-    return current?.stopped === true || current?.runGeneration !== runGeneration;
+    return current?.stopped === true || current?.runGeneration !== runGeneration || isGameplayPaused(guildId);
   };
 
   setInterval(() => { if (!isStopped()) void expireOldEvents(client, guildId); }, 60 * 1000);

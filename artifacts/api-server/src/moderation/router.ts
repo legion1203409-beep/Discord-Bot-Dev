@@ -122,10 +122,12 @@ import
 
 import 
 {
- saveGuildGameplayConfig, getGameplayConfig, initGameplayConfig 
+ saveGuildGameplayConfig, getGameplayConfig, initGameplayConfig, isGameplayPaused, setGameplayPaused
 }
  from "../bot/gameplay-store"
 ;
+
+import { startGuildScheduler, stopGuildScheduler } from "../bot/scheduler";
 
 import {
   DEFAULT_VERIFICATION_CONFIG,
@@ -293,6 +295,7 @@ export const botControlSchema = z.object(
 ).strict().optional(),
   gameplayConfig: z.object(
 {
+    paused: z.boolean(),
 
     events: z.object(
 {
@@ -1070,6 +1073,30 @@ router.get("/guilds/:guildId/config", asyncRoute(async (req, res) => {
   await sessionAndGuild(req, guildId, "config");
   const result = await moderationStore.getConfig(guildId);
   res.set("Cache-Control", "no-store").set("ETag", `"${result.version}"`).json(result);
+}));
+
+router.get("/guilds/:guildId/gameplay-state", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  await sessionAndGuild(req, guildId, "config");
+  await initGameplayConfig(guildId);
+  res.set("Cache-Control", "no-store").json({ paused: isGameplayPaused(guildId) });
+}));
+
+router.put("/guilds/:guildId/gameplay-state", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  await sessionAndGuild(req, guildId, "config", true);
+  const { paused } = z.object({ paused: z.boolean() }).parse(req.body);
+  await initGameplayConfig(guildId);
+  await setGameplayPaused(guildId, paused);
+
+  if (paused) {
+    stopGuildScheduler(guildId);
+  } else {
+    const client = getModerationClient();
+    if (client) startGuildScheduler(client, guildId);
+  }
+
+  res.set("Cache-Control", "no-store").json({ paused });
 }));
 
 router.put("/guilds/:guildId/config", asyncRoute(async (req, res) => {

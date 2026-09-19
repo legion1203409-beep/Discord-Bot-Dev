@@ -99,6 +99,7 @@ export interface BotControlConfig {
   };
 
   gameplayConfig: {
+    paused: boolean;
     events: {
       eventDurationMinutes: number;
       eventCooldownMinMinutes: number;
@@ -438,6 +439,8 @@ export function useModerationConfig(guildId: string | null) {
   const requestId = useRef(0);
   const currentGuildId = useRef(guildId);
   const controllerRef = useRef<AbortController | null>(null);
+  const versionRef = useRef<string | null>(null);
+  const dataGuildIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     currentGuildId.current = guildId;
@@ -446,6 +449,8 @@ export function useModerationConfig(guildId: string | null) {
     setData(null);
     setDataGuildId(null);
     setVersion(null);
+    dataGuildIdRef.current = null;
+    versionRef.current = null;
     setError(null);
     setLoading(Boolean(guildId));
   }, [guildId]);
@@ -476,10 +481,13 @@ export function useModerationConfig(guildId: string | null) {
       if (currentGuildId.current !== requestedGuildId || requestId.current !== thisRequest) return;
       setData(response.data.config);
       setDataGuildId(requestedGuildId);
+      dataGuildIdRef.current = requestedGuildId;
       const etag = response.headers.get("etag")?.replace(/^W\//, "");
       const nextVersion = response.data.version ?? etag;
       setVersion(nextVersion == null ? null : String(nextVersion));
+      versionRef.current = nextVersion == null ? null : String(nextVersion);
       setError(nextVersion == null ? new Error("Configurația nu conține o versiune ETag.") : null);
+      return response.data.config;
     } catch (err: any) {
       if (err?.name !== "AbortError" && currentGuildId.current === requestedGuildId && requestId.current === thisRequest) {
         setData(null);
@@ -502,14 +510,16 @@ export function useModerationConfig(guildId: string | null) {
     if (!cachedSession?.authenticated || activeGuildId !== requestedGuildId) {
       throw new Error("Sesiunea de moderare nu mai este activă.");
     }
-    if (!version) throw new Error("Missing config version");
-    if (currentGuildId.current !== requestedGuildId || dataGuildId !== requestedGuildId) {
+    const currentVersion = versionRef.current ?? version;
+    const currentDataGuildId = dataGuildIdRef.current ?? dataGuildId;
+    if (!currentVersion) throw new Error("Missing config version");
+    if (currentGuildId.current !== requestedGuildId || currentDataGuildId !== requestedGuildId) {
       throw new Error("Serverul selectat s-a schimbat. Reîncarcă configurația înainte de salvare.");
     }
     try {
       const response = await apiFetchWithMeta<any>(`/guilds/${requestedGuildId}/config`, {
         method: "PUT",
-        headers: { "If-Match": version.startsWith('"') ? version : `"${version}"` },
+        headers: { "If-Match": currentVersion.startsWith('"') ? currentVersion : `"${currentVersion}"` },
         body: JSON.stringify(newData),
       });
       if (currentGuildId.current !== requestedGuildId || !cachedSession?.authenticated || activeGuildId !== requestedGuildId) {
@@ -518,10 +528,12 @@ export function useModerationConfig(guildId: string | null) {
       const res = response.data;
       setData(res.config);
       setDataGuildId(requestedGuildId);
+      dataGuildIdRef.current = requestedGuildId;
       const etag = response.headers.get("etag")?.replace(/^W\//, "");
       const nextVersion = res.version ?? etag;
       if (nextVersion == null) throw new Error("Răspunsul de salvare nu conține versiunea ETag.");
       setVersion(String(nextVersion));
+      versionRef.current = String(nextVersion);
       setError(null);
       return res;
     } catch (e: any) {
@@ -542,6 +554,51 @@ export function useModerationConfig(guildId: string | null) {
     update,
     refetch: fetchConfig,
   };
+}
+
+export function useGameplayState(guildId: string | null) {
+  const [paused, setPaused] = useState(false);
+  const [loading, setLoading] = useState(Boolean(guildId));
+  const [error, setError] = useState<Error | null>(null);
+  const requestId = useRef(0);
+
+  const refetch = useCallback(async () => {
+    const requestedGuildId = guildId;
+    const thisRequest = ++requestId.current;
+    if (!requestedGuildId) {
+      setPaused(false);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await apiFetch<{ paused: boolean }>(`/guilds/${requestedGuildId}/gameplay-state`);
+      if (requestId.current === thisRequest) setPaused(result.paused);
+    } catch (err: any) {
+      if (requestId.current === thisRequest) setError(err instanceof Error ? err : new Error("Nu s-a putut încărca starea jocului."));
+    } finally {
+      if (requestId.current === thisRequest) setLoading(false);
+    }
+  }, [guildId]);
+
+  useEffect(() => {
+    void refetch();
+  }, [refetch]);
+
+  const update = useCallback(async (nextPaused: boolean) => {
+    if (!guildId) throw new Error("Nu este selectat niciun server.");
+    const result = await apiFetch<{ paused: boolean }>(`/guilds/${guildId}/gameplay-state`, {
+      method: "PUT",
+      body: JSON.stringify({ paused: nextPaused }),
+    });
+    setPaused(result.paused);
+    setError(null);
+    return result.paused;
+  }, [guildId]);
+
+  return { paused, loading, error, update, refetch };
 }
 
 export function useBotControl(guildId: string | null) {

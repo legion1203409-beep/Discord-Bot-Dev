@@ -10,7 +10,6 @@ import { Switch } from "../../components/ui/switch";
 import { Button } from "../../components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { useToast } from "../../hooks/use-toast";
-import { ToastAction } from "../../components/ui/toast";
 
 const protectionFormSchema = z.object({
   protectionEnabled: z.boolean(),
@@ -61,32 +60,38 @@ export function ProtectionPage() {
   async function onSubmit(values: z.infer<typeof protectionFormSchema>) {
     if (!data) return;
     setSaving(true);
+    const buildConfig = (current: any) => ({
+      ...current,
+      protection: {
+        ...current.protection,
+        enabled: values.protectionEnabled,
+      },
+      antiRaid: {
+        ...current.antiRaid,
+        enabled: values.antiRaidEnabled,
+        joinsPerMinute: values.joinsPerMinute,
+        lockdown: values.lockdown,
+      },
+      antiSpam: { ...current.antiSpam, enabled: values.antiSpamEnabled },
+      antiFlood: { ...current.antiFlood, enabled: values.antiFloodEnabled },
+      suspiciousBehavior: { ...current.suspiciousBehavior, enabled: values.suspiciousEnabled },
+    });
     try {
-      await update({
-        ...data,
-         protection: {
-           ...data.protection,
-           enabled: values.protectionEnabled,
-         },
-        antiRaid: {
-          ...data.antiRaid,
-          enabled: values.antiRaidEnabled,
-          joinsPerMinute: values.joinsPerMinute,
-          lockdown: values.lockdown,
-        },
-        antiSpam: { ...data.antiSpam, enabled: values.antiSpamEnabled },
-        antiFlood: { ...data.antiFlood, enabled: values.antiFloodEnabled },
-        suspiciousBehavior: { ...data.suspiciousBehavior, enabled: values.suspiciousEnabled },
-      });
+      await update(buildConfig(data));
       toast({ title: "Setări salvate", description: "Configurația de protecție a fost actualizată." });
     } catch (err: any) {
       if (err.message.includes("Conflict")) {
-        toast({
-          variant: "destructive",
-          title: "Conflict de versiune",
-          description: "Setările au fost modificate în altă parte.",
-          action: <ToastAction altText="Reîncarcă" onClick={() => { if (initializedForId) initializedForId.current = null; window.location.reload(); }}>Reîncarcă</ToastAction>
-        });
+        try {
+          const freshData = await refetch();
+          if (freshData) {
+            await update(buildConfig(freshData));
+            toast({ title: "Setări salvate", description: "Configurația de protecție a fost actualizată." });
+            return;
+          }
+        } catch (retryError: any) {
+          err = retryError;
+        }
+        toast({ variant: "destructive", title: "Conflict de versiune", description: "Setările au fost modificate în altă parte. Reîncarcă pagina și încearcă din nou." });
       } else {
         toast({ variant: "destructive", title: "Eroare", description: err.message });
       }

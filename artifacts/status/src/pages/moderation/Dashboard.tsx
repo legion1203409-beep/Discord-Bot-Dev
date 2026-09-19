@@ -12,13 +12,16 @@ import {
   Shield,
   ShieldAlert,
   Server,
+  PauseCircle,
+  PlayCircle,
   XCircle,
   Zap,
 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "wouter";
-import { useModerationConfig, useCases, useActiveGuild, useAuditLogs } from "../../hooks/use-moderation-api";
+import { useModerationConfig, useCases, useActiveGuild, useAuditLogs, useGameplayState } from "../../hooks/use-moderation-api";
 import { Switch } from "../../components/ui/switch";
+import { Button } from "../../components/ui/button";
 import { useToast } from "../../hooks/use-toast";
 import { DISCORD_INVITE } from "../../lib/public-constants";
 
@@ -26,11 +29,13 @@ type ProtectionModuleKey = "wordFilter" | "linkBlock" | "antiRaid" | "antiSpam" 
 
 export function DashboardOverview() {
   const { guildId, guilds } = useActiveGuild();
-  const { data: config, loading: configLoading, update: updateModerationConfig } = useModerationConfig(guildId);
+  const { data: config, loading: configLoading, update: updateModerationConfig, refetch: refetchModerationConfig } = useModerationConfig(guildId);
   const { data: casesData, loading: casesLoading } = useCases(guildId, { limit: 10 });
   const { data: auditLogs, loading: auditLoading } = useAuditLogs(guildId);
+  const { paused: gamePaused, loading: gameStateLoading, update: updateGameState } = useGameplayState(guildId);
   const { toast } = useToast();
   const [savingModule, setSavingModule] = useState<string | null>(null);
+  const [savingGameState, setSavingGameState] = useState(false);
   const activeGuild = guilds.find((guild) => guild.id === guildId);
   const activeGuildIcon = activeGuild?.icon
     ? (/^https?:\/\//i.test(activeGuild.icon)
@@ -83,16 +88,28 @@ export function DashboardOverview() {
   ];
 
   const saveProtectionChange = async (
-    nextConfig: any,
+    change: (current: any) => any,
     key: string,
     description: string,
   ) => {
     if (!config || savingModule) return;
     setSavingModule(key);
     try {
-      await updateModerationConfig(nextConfig);
+      await updateModerationConfig(change(config));
       toast({ title: "Setare actualizată", description });
     } catch (error: any) {
+      if (String(error?.message ?? "").includes("Conflict de versiune")) {
+        try {
+          const freshConfig = await refetchModerationConfig();
+          if (freshConfig) {
+            await updateModerationConfig(change(freshConfig));
+            toast({ title: "Setare actualizată", description });
+            return;
+          }
+        } catch (retryError: any) {
+          error = retryError;
+        }
+      }
       toast({
         variant: "destructive",
         title: "Setarea nu a putut fi salvată",
@@ -106,7 +123,7 @@ export function DashboardOverview() {
   const toggleProtection = (enabled: boolean) => {
     if (!config) return;
     void saveProtectionChange(
-      { ...config, protection: { ...config.protection, enabled } },
+      (current) => ({ ...current, protection: { ...current.protection, enabled } }),
       "protection",
       enabled ? "Toate modulele de protecție sunt disponibile." : "Toate modulele de protecție sunt oprite.",
     );
@@ -114,17 +131,38 @@ export function DashboardOverview() {
 
   const toggleModule = (key: ProtectionModuleKey, enabled: boolean) => {
     if (!config) return;
-    const nextConfig = { ...config };
-    if (key === "wordFilter" || key === "linkBlock") {
-      nextConfig.autoMod = {
-        ...config.autoMod,
-        enabled: enabled ? true : config.autoMod?.enabled,
-        [key]: { ...config.autoMod?.[key], enabled },
-      };
-    } else {
-      nextConfig[key] = { ...config[key], enabled };
+    void saveProtectionChange((current) => {
+      const nextConfig = { ...current };
+      if (key === "wordFilter" || key === "linkBlock") {
+        nextConfig.autoMod = {
+          ...current.autoMod,
+          enabled: enabled ? true : current.autoMod?.enabled,
+          [key]: { ...current.autoMod?.[key], enabled },
+        };
+      } else {
+        nextConfig[key] = { ...current[key], enabled };
+      }
+      return nextConfig;
+    }, key, `${key} este acum ${enabled ? "activ" : "oprit"}.`);
+  };
+
+  const toggleGameState = async () => {
+    const nextPaused = !gamePaused;
+    if (nextPaused && !window.confirm("Oprești activitățile jocului pe acest server? Evenimentele, luptele și recompensele vor fi suspendate.")) return;
+    setSavingGameState(true);
+    try {
+      await updateGameState(nextPaused);
+      toast({
+        title: nextPaused ? "Joc oprit" : "Joc repornit",
+        description: nextPaused
+          ? "Activitățile jocului sunt suspendate. Oracle AI rămâne separat și nu este oprit."
+          : "Activitățile jocului pot porni din nou.",
+      });
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Starea jocului nu a putut fi schimbată", description: error?.message ?? "Încearcă din nou." });
+    } finally {
+      setSavingGameState(false);
     }
-    void saveProtectionChange(nextConfig, key, `${key} este acum ${enabled ? "activ" : "oprit"}.`);
   };
 
   return (
@@ -169,6 +207,33 @@ export function DashboardOverview() {
           <Settings className="h-4 w-4 text-primary" aria-hidden="true" /> Configurare <ArrowUpRight className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
         </Link>
       </header>
+
+      <section className={`flex flex-col gap-5 rounded-2xl border p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6 ${gamePaused ? "border-destructive/40 bg-destructive/5" : "border-primary/25 bg-primary/5"}`} aria-label="Control stare joc">
+        <div className="flex items-start gap-4">
+          <span className={`mt-0.5 rounded-xl p-3 ${gamePaused ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"}`}>
+            {gamePaused ? <PlayCircle className="h-5 w-5" aria-hidden="true" /> : <PauseCircle className="h-5 w-5" aria-hidden="true" />}
+          </span>
+          <div>
+            <p className="mod-eyebrow">{gamePaused ? "Joc suspendat" : "Joc activ"}</p>
+            <h2 className="mt-1 font-display text-2xl text-foreground">{gamePaused ? "Activitățile sunt oprite" : "Regatul rulează normal"}</h2>
+            <p className="mt-1 max-w-xl text-sm leading-relaxed text-muted-foreground">
+              {gamePaused
+                ? "Evenimentele, luptele, cuferele și recompensele sunt blocate până la repornire."
+                : "Poți suspenda temporar activitățile jocului fără să oprești moderarea sau Oracle AI."}
+            </p>
+          </div>
+        </div>
+        <Button
+          type="button"
+          variant={gamePaused ? "default" : "destructive"}
+          className="shrink-0 gap-2"
+          onClick={() => void toggleGameState()}
+          disabled={gameStateLoading || savingGameState}
+        >
+          {gamePaused ? <PlayCircle className="h-4 w-4" aria-hidden="true" /> : <PauseCircle className="h-4 w-4" aria-hidden="true" />}
+          {savingGameState ? "Se schimbă..." : gamePaused ? "Pornește jocul" : "Oprește jocul"}
+        </Button>
+      </section>
 
       <section aria-label="Indicatori principali" className="grid gap-4 md:grid-cols-3">
         <div className="mod-card group rounded-2xl p-5 sm:p-6">

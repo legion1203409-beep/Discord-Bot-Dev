@@ -23,5 +23,16 @@ export async function saveGuildGameplayConfig(guildId: string, value: unknown): 
   return config;
 }
 
+export function isGameplayPaused(guildId: string): boolean {
+  return getGameplayConfig(guildId).paused;
+}
+
+export async function setGameplayPaused(guildId: string, paused: boolean): Promise<GameplayConfig> {
+  return saveGuildGameplayConfig(guildId, {
+    ...getGameplayConfig(guildId),
+    paused,
+  });
+}
+
 export { DEFAULT_GAMEPLAY_CONFIG };
 export type { GameplayConfig };

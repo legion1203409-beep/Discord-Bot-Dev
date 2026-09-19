@@ -29,7 +29,7 @@ import { logger } from "../lib/logger";
 import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./alert";
 import { startGuildScheduler, stopGuildScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, recordGuildActivity, getGuildClaimedChests, getGuildActiveBossMap, isGuildGameStopped, checkBossEligibility, checkBossHitCooldown, BOSS_HIT_COOLDOWN_MS, persistBossState, publishLeaderboardResult, guildStates, isGuildActive, ACTIVITY_WINDOW_MINUTES, CHEST_MSG_MILESTONE, type BossState, type BossPlayerStats } from "./scheduler";
 import { getChannel, getAllChannels, setChannel, initChannelConfig, hasAnyChannelConfigured, EVENT_LABELS, type EventType } from "./channel-config";
-import { getGameplayConfig, initGameplayConfig } from "./gameplay-store";
+import { getGameplayConfig, initGameplayConfig, setGameplayPaused } from "./gameplay-store";
 import {
   recordMessage,
   refreshOraclePresence,
@@ -1500,6 +1500,7 @@ async function announceGameState(
 async function handleStopGame(interaction: ChatInputCommandInteraction): Promise<void> {
   if (!(await isOwner(interaction))) return;
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  await setGameplayPaused(interaction.guildId!, true);
   stopGuildScheduler(interaction.guildId!);
   await announceGameState(
     interaction,
@@ -1520,6 +1521,7 @@ async function handleStartGame(interaction: ChatInputCommandInteraction): Promis
     await interaction.editReply({ content: "❌ Botul Discord nu este disponibil momentan." });
     return;
   }
+  await setGameplayPaused(interaction.guildId!, false);
   startGuildScheduler(botClient, interaction.guildId!);
   await announceGameState(
     interaction,

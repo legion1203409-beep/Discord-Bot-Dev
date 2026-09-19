@@ -1,4 +1,5 @@
 export interface GameplayConfig {
+  paused: boolean;
   events: {
     eventDurationMinutes: number;
     eventCooldownMinMinutes: number;
@@ -25,6 +26,7 @@ export interface GameplayConfig {
 }
 
 export const DEFAULT_GAMEPLAY_CONFIG: GameplayConfig = {
+  paused: false,
   events: {
     eventDurationMinutes: 60,
     eventCooldownMinMinutes: 10,
@@ -74,6 +76,7 @@ export function normalizeGameplayConfig(value: unknown): GameplayConfig {
   };
 
   return {
+    paused: input.paused === true,
     events: {
       eventDurationMinutes: positiveInt(events.eventDurationMinutes, DEFAULT_GAMEPLAY_CONFIG.events.eventDurationMinutes),
       eventCooldownMinMinutes: positiveInt(events.eventCooldownMinMinutes, DEFAULT_GAMEPLAY_CONFIG.events.eventCooldownMinMinutes),
