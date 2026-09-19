@@ -37,6 +37,10 @@ export function VerificationAdminPage() {
     setDraft(data ? JSON.parse(JSON.stringify(data)) : null);
   }, [data]);
 
+  const hasUnsavedChanges = Boolean(
+    data && draft && JSON.stringify(draft) !== JSON.stringify(data),
+  );
+
   const setVerification = (
     field: keyof BotControlConfig["verification"],
     value: string | boolean,
@@ -71,7 +75,7 @@ export function VerificationAdminPage() {
   };
 
   const save = async () => {
-    if (!draft) return;
+    if (!draft || !hasUnsavedChanges) return;
     setSaving(true);
     try {
       await update({
@@ -114,7 +118,7 @@ export function VerificationAdminPage() {
   });
 
   return (
-    <div className="bot-control-page verification-admin-page max-w-5xl space-y-6">
+    <div className={`bot-control-page verification-admin-page max-w-5xl space-y-6 ${hasUnsavedChanges ? "pb-28" : ""}`}>
       <header className="bot-control-hero">
         <div>
           <div className="bot-control-brand-row">
@@ -351,18 +355,20 @@ export function VerificationAdminPage() {
         )}
       </section>
 
-      <div className="bot-control-footer sticky bottom-3 z-20 flex w-full items-center justify-between gap-3 py-2">
-        <div className="bot-control-save-state">
-          <span className={`bot-control-save-dot ${saving ? "is-saving" : ""}`} />
-          <span>{saving ? "Se salvează verificarea…" : draft.verification.enabled ? "Configurația este pregătită pentru Discord." : "Completează configurația înainte de publicare."}</span>
+      {hasUnsavedChanges && (
+        <div className="bot-control-footer sticky bottom-3 z-20 flex w-full items-center justify-between gap-3 py-2">
+          <div className="bot-control-save-state">
+            <span className={`bot-control-save-dot ${saving ? "is-saving" : ""}`} />
+            <span>{saving ? "Se salvează verificarea…" : "Ai modificări nesalvate."}</span>
+          </div>
+          <div className="ml-auto">
+            <Button onClick={() => void save()} disabled={saving} className="gap-2 px-8">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {saving ? "Se salvează…" : "Salvează verificarea"}
+            </Button>
+          </div>
         </div>
-        <div className="ml-auto">
-          <Button onClick={() => void save()} disabled={saving} className="gap-2 px-8">
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            {saving ? "Se salvează…" : "Salvează verificarea"}
-          </Button>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
