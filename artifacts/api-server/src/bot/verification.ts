@@ -10,6 +10,7 @@ import {
   type ButtonInteraction,
 } from "discord.js";
 import { loadVerificationConfig, saveVerificationConfig, type VerificationConfig } from "./db";
+import { normalizeMessageImageUrl, publicMessageImageUrl } from "./message-media";
 
 export const DEFAULT_VERIFICATION_CONFIG: VerificationConfig = {
   enabled: false,
@@ -21,6 +22,7 @@ export const DEFAULT_VERIFICATION_CONFIG: VerificationConfig = {
   buttonEmoji: "✅",
   successMessage: "Contul tău a fost verificat. Rolul a fost acordat.",
   alreadyVerifiedMessage: "Contul tău este deja verificat.",
+  imageUrl: "",
   panelMessageId: "",
 };
 
@@ -37,6 +39,7 @@ export function normalizeVerificationConfig(value: Partial<VerificationConfig> |
     buttonEmoji: typeof value?.buttonEmoji === "string" ? value.buttonEmoji.trim() : "",
     successMessage: typeof value?.successMessage === "string" && value.successMessage.trim() ? value.successMessage.trim() : DEFAULT_VERIFICATION_CONFIG.successMessage,
     alreadyVerifiedMessage: typeof value?.alreadyVerifiedMessage === "string" && value.alreadyVerifiedMessage.trim() ? value.alreadyVerifiedMessage.trim() : DEFAULT_VERIFICATION_CONFIG.alreadyVerifiedMessage,
+    imageUrl: normalizeMessageImageUrl(value?.imageUrl),
     panelMessageId: typeof value?.panelMessageId === "string" ? value.panelMessageId.trim() : "",
   };
 }
@@ -47,12 +50,15 @@ export function verificationPanel(config: VerificationConfig) {
     .setLabel(config.buttonLabel.slice(0, 80))
     .setStyle(ButtonStyle.Primary);
   if (config.buttonEmoji) button.setEmoji(config.buttonEmoji);
+  const embed = new EmbedBuilder()
+    .setTitle(config.title.slice(0, 256))
+    .setDescription(config.message.slice(0, 4_000))
+    .setColor(0x8f5bff);
+  const imageUrl = publicMessageImageUrl(config.imageUrl);
+  if (imageUrl) embed.setImage(imageUrl);
   return {
     embeds: [
-      new EmbedBuilder()
-        .setTitle(config.title.slice(0, 256))
-        .setDescription(config.message.slice(0, 4_000))
-        .setColor(0x8f5bff),
+      embed,
     ],
     components: [new ActionRowBuilder<ButtonBuilder>().addComponents(button)],
   };

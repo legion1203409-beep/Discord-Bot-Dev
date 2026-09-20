@@ -189,6 +189,12 @@ const provisionChannelsSchema = z.object({
   permissions: z.record(z.string(), provisioningPermissionSchema).optional(),
 }).strict();
 
+function isMessageImageUrl(value: string): boolean {
+  return value === "" ||
+    /^https:\/\/\S+$/i.test(value) ||
+    /^\/api\/storage\/objects\/[a-zA-Z0-9/_-]+$/.test(value);
+}
+
 const verificationConfigSchema = z.object({
   enabled: z.boolean(),
   channelId: z.union([snowflake, z.literal("")]),
@@ -199,6 +205,7 @@ const verificationConfigSchema = z.object({
   buttonEmoji: z.string().trim().max(100),
   successMessage: z.string().trim().min(1).max(2_000),
   alreadyVerifiedMessage: z.string().trim().min(1).max(2_000),
+  imageUrl: z.string().trim().max(2_000).refine(isMessageImageUrl, "Imaginea trebuie să fie HTTPS sau încărcată în storage."),
   panelMessageId: z.union([snowflake, z.literal("")]),
 }).strict();
 
@@ -210,6 +217,7 @@ const DEFAULT_DAILY_STATS_EMBED_CONFIG = {
   activityTitle: "📈 Activitate · ultimele 7 zile",
   channelsTitle: "🔥 Top 5 canale active",
   emptyChannelsText: "Încă nu există mesaje înregistrate pentru această zi.",
+  imageUrl: "",
   metricLabels: {
     messages: "💬 Mesaje",
     uniqueUsers: "👥 Utilizatori unici",
@@ -228,6 +236,7 @@ const dailyStatsEmbedConfigSchema = z.object({
   activityTitle: z.string().trim().min(1).max(256),
   channelsTitle: z.string().trim().min(1).max(256),
   emptyChannelsText: z.string().trim().min(1).max(1_024),
+  imageUrl: z.string().trim().max(2_000).refine(isMessageImageUrl, "Imaginea trebuie să fie HTTPS sau încărcată în storage."),
   metricLabels: z.object({
     messages: z.string().trim().min(1).max(256),
     uniqueUsers: z.string().trim().min(1).max(256),
@@ -359,9 +368,13 @@ export const botControlSchema = z.object(
     messages: z.object({
       gamePaused: z.string().trim().min(1).max(2_000),
       oraclePaused: z.string().trim().min(1).max(2_000),
+      gamePausedImageUrl: z.string().trim().max(2_000).refine(isMessageImageUrl, "Imaginea trebuie să fie HTTPS sau încărcată în storage."),
+      oraclePausedImageUrl: z.string().trim().max(2_000).refine(isMessageImageUrl, "Imaginea trebuie să fie HTTPS sau încărcată în storage."),
     }).strict().default({
       gamePaused: "⏸️ Jocul este oprit momentan. Un administrator îl poate reporni cu `/startjoc`.",
       oraclePaused: "🛑 Oracle AI este oprit momentan. Un administrator îl poate reporni cu `/startai`.",
+      gamePausedImageUrl: "",
+      oraclePausedImageUrl: "",
     }),
 
     events: z.object(

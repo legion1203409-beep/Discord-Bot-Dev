@@ -37,4 +37,16 @@ describe("owner gameplay configuration limits", () => {
     payload.allianceRecruitmentText = "";
     expect(botControlSchema.parse(payload).allianceRecruitmentText).toBe("");
   });
+
+  it("round-trips safe message image fields and rejects unsafe image URLs", () => {
+    const payload = validPayload();
+    payload.gameplayConfig.messages.gamePausedImageUrl = "/api/storage/objects/uploads/game-paused";
+    payload.gameplayConfig.messages.oraclePausedImageUrl = "https://cdn.example.test/oracle.png";
+    expect(botControlSchema.parse(payload).gameplayConfig.messages).toMatchObject({
+      gamePausedImageUrl: "/api/storage/objects/uploads/game-paused",
+      oraclePausedImageUrl: "https://cdn.example.test/oracle.png",
+    });
+    payload.gameplayConfig.messages.gamePausedImageUrl = "javascript:alert(1)";
+    expect(() => botControlSchema.parse(payload)).toThrow();
+  });
 });

@@ -5,6 +5,7 @@ import { eq, and, gte, gt, lt, inArray, sql, desc } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import type { Player, EventParticipant } from "@workspace/db";
 import type { TicketConfig } from "./ticket-config";
+import { normalizeMessageImageUrl } from "./message-media";
 
 export type { PlayerItem };
 import {
@@ -2262,6 +2263,7 @@ export interface VerificationConfig {
   buttonEmoji: string;
   successMessage: string;
   alreadyVerifiedMessage: string;
+  imageUrl: string;
   panelMessageId: string;
 }
 
@@ -2324,6 +2326,7 @@ export interface DailyStatsEmbedConfig {
   activityTitle: string;
   channelsTitle: string;
   emptyChannelsText: string;
+  imageUrl: string;
   metricLabels: {
     messages: string;
     uniqueUsers: string;
@@ -2342,6 +2345,7 @@ export const DEFAULT_DAILY_STATS_EMBED_CONFIG: DailyStatsEmbedConfig = {
   activityTitle: "📈 Activitate · ultimele 7 zile",
   channelsTitle: "🔥 Top 5 canale active",
   emptyChannelsText: "Încă nu există mesaje înregistrate pentru această zi.",
+  imageUrl: "",
   metricLabels: {
     messages: "💬 Mesaje",
     uniqueUsers: "👥 Utilizatori unici",
@@ -2352,12 +2356,12 @@ export const DEFAULT_DAILY_STATS_EMBED_CONFIG: DailyStatsEmbedConfig = {
   },
 };
 
-function normalizeDailyStatsEmbedConfig(value: unknown): DailyStatsEmbedConfig {
+export function normalizeDailyStatsEmbedConfig(value: unknown): DailyStatsEmbedConfig {
   const input = value && typeof value === "object" ? value as Record<string, unknown> : {};
   const labels = input.metricLabels && typeof input.metricLabels === "object"
     ? input.metricLabels as Record<string, unknown>
     : {};
-  const text = (key: keyof Omit<DailyStatsEmbedConfig, "metricLabels" | "color">): string => {
+  const text = (key: keyof Omit<DailyStatsEmbedConfig, "metricLabels" | "color" | "imageUrl">): string => {
     const current = input[key];
     const fallback = DEFAULT_DAILY_STATS_EMBED_CONFIG[key];
     return typeof current === "string" && current.trim() ? current.trim() : fallback;
@@ -2380,6 +2384,7 @@ function normalizeDailyStatsEmbedConfig(value: unknown): DailyStatsEmbedConfig {
     activityTitle: text("activityTitle").slice(0, 256),
     channelsTitle: text("channelsTitle").slice(0, 256),
     emptyChannelsText: text("emptyChannelsText").slice(0, 1_024),
+    imageUrl: normalizeMessageImageUrl(input.imageUrl),
     metricLabels: {
       messages: label("messages").slice(0, 256),
       uniqueUsers: label("uniqueUsers").slice(0, 256),

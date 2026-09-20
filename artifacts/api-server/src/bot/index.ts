@@ -30,6 +30,7 @@ import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./a
 import { startGuildScheduler, stopGuildScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, recordGuildActivity, getGuildClaimedChests, getGuildActiveBossMap, isGuildGameStopped, checkBossEligibility, checkBossHitCooldown, BOSS_HIT_COOLDOWN_MS, persistBossState, publishLeaderboardResult, guildStates, isGuildActive, ACTIVITY_WINDOW_MINUTES, CHEST_MSG_MILESTONE, type BossState, type BossPlayerStats } from "./scheduler";
 import { getChannel, getAllChannels, setChannel, initChannelConfig, hasAnyChannelConfigured, EVENT_LABELS, type EventType } from "./channel-config";
 import { getGameplayConfig, initGameplayConfig, setGameplayPaused } from "./gameplay-store";
+import { messageWithImage } from "./message-media";
 import {
   recordMessage,
   refreshOraclePresence,
@@ -670,9 +671,8 @@ async function handleInventar(interaction: ChatInputCommandInteraction) {
 async function handleProfetie(interaction: ChatInputCommandInteraction) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   if (!isOracleEnabled(interaction.guildId!)) {
-    await interaction.editReply(
-      getGameplayConfig(interaction.guildId ?? "").messages.oraclePaused,
-    );
+    const messages = getGameplayConfig(interaction.guildId ?? "").messages;
+    await interaction.editReply(messageWithImage(messages.oraclePaused, messages.oraclePausedImageUrl));
     return;
   }
   const userId = interaction.user.id;
@@ -4985,7 +4985,10 @@ export async function startBot(onReady?: () => void): Promise<void> {
         if (interaction.isRepliable()) {
           dispatch(
             interaction.reply({
-              content: getGameplayConfig(interaction.guildId ?? "").messages.gamePaused,
+              ...messageWithImage(
+                getGameplayConfig(interaction.guildId ?? "").messages.gamePaused,
+                getGameplayConfig(interaction.guildId ?? "").messages.gamePausedImageUrl,
+              ),
               flags: MessageFlags.Ephemeral,
             }),
           );
@@ -5581,7 +5584,10 @@ export async function startBot(onReady?: () => void): Promise<void> {
         if (interaction.isRepliable()) {
           dispatch(
             interaction.reply({
-              content: getGameplayConfig(interaction.guildId ?? "").messages.gamePaused,
+              ...messageWithImage(
+                getGameplayConfig(interaction.guildId ?? "").messages.gamePaused,
+                getGameplayConfig(interaction.guildId ?? "").messages.gamePausedImageUrl,
+              ),
               flags: MessageFlags.Ephemeral,
             }),
           );

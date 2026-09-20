@@ -99,11 +99,14 @@ const DEFAULT_VERIFICATION_TEXT = {
   buttonEmoji: "✅",
   successMessage: "Contul tău a fost verificat. Rolul a fost acordat.",
   alreadyVerifiedMessage: "Contul tău este deja verificat.",
+  imageUrl: "",
 } as const;
 
 const DEFAULT_GAMEPLAY_MESSAGES = {
   gamePaused: "⏸️ Jocul este oprit momentan. Un administrator îl poate reporni cu `/startjoc`.",
   oraclePaused: "🛑 Oracle AI este oprit momentan. Un administrator îl poate reporni cu `/startai`.",
+  gamePausedImageUrl: "",
+  oraclePausedImageUrl: "",
 } as const;
 
 const DEFAULT_DAILY_STATS = {
@@ -114,6 +117,7 @@ const DEFAULT_DAILY_STATS = {
   activityTitle: "📈 Activitate · ultimele 7 zile",
   channelsTitle: "🔥 Top 5 canale active",
   emptyChannelsText: "Încă nu există mesaje înregistrate pentru această zi.",
+  imageUrl: "",
   metricLabels: {
     messages: "💬 Mesaje",
     uniqueUsers: "👥 Utilizatori unici",
@@ -917,6 +921,9 @@ export function BotControlPage() {
           </div>
 
 
+          </TabsContent>
+
+          <TabsContent value="tickets" className="mod-tab-content mt-0 space-y-5">
           <section className="space-y-5 rounded-xl border border-border bg-card p-5">
             <div className="flex items-start gap-3">
               <Ticket className="mt-1 h-5 w-5 text-primary" />
@@ -1147,9 +1154,7 @@ export function BotControlPage() {
               </p>
             </details>
           </section>
-        </TabsContent>
 
-         <TabsContent value="tickets" className="mod-tab-content mt-0 space-y-5">
           <section className="space-y-4 rounded-xl border border-border bg-card p-5">
             <div className="flex items-start gap-3">
               <Ticket className="mt-1 h-5 w-5 text-primary" />
@@ -1179,6 +1184,7 @@ export function BotControlPage() {
             </div>
           </section>
 
+          {activeFlowKind === "partnership" && (
           <section className="space-y-4 rounded-xl border border-border bg-card p-5">
             <div className="flex items-start gap-3">
               <ShieldCheck className="mt-1 h-5 w-5 text-primary" />
@@ -1268,11 +1274,24 @@ export function BotControlPage() {
                   csrfToken={session?.csrfToken}
                   onChange={(value) => setTicket(["allianceAnnouncementImageUrl"], value)}
                 />
+                 <div className="mt-4 border-t border-border/70 pt-4">
+                   <label className="text-sm font-medium">Mesajul de recrutare al alianței</label>
+                   <p className="mt-1 text-xs text-muted-foreground">Text de recrutare păstrat în configurație. Pentru anunțul publicat pe Discord, folosește șablonul și imaginea de mai sus.</p>
+                   <Textarea
+                     value={draft.allianceRecruitmentText}
+                     maxLength={2000}
+                     rows={5}
+                     className="mt-2 resize-y"
+                     placeholder="Scrie mesajul de recrutare..."
+                     onChange={(event) => setDraft({ ...draft, allianceRecruitmentText: event.target.value })}
+                   />
+                 </div>
                <p className="text-right text-xs text-muted-foreground">
                  {draft.tickets.allianceAnnouncementTemplate.length}/2000
                </p>
              </div>
           </section>
+          )}
 
           <section className="space-y-4 rounded-xl border border-border bg-card p-5">
             <div>
@@ -1321,6 +1340,7 @@ export function BotControlPage() {
                   <span className="text-xs font-medium">Descriere</span>
                   <Textarea rows={5} maxLength={4000} value={draft.verification.message} onChange={(event) => setVerification("message", event.target.value)} />
                 </label>
+                <ImageField label="Imaginea panoului de verificare" value={draft.verification.imageUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setVerification("imageUrl", value)} />
                 <label className="space-y-1 text-sm">
                   <span className="text-xs font-medium">Text buton</span>
                   <Input maxLength={80} value={draft.verification.buttonLabel} onChange={(event) => setVerification("buttonLabel", event.target.value)} />
@@ -1365,10 +1385,12 @@ export function BotControlPage() {
               <label className="space-y-1 text-sm">
                 <span className="text-xs font-medium">Joc oprit</span>
                 <Textarea rows={4} maxLength={2000} value={draft.gameplayConfig.messages.gamePaused} onChange={(event) => setGameplayMessage("gamePaused", event.target.value)} />
+                <ImageField label="Imagine pentru mesajul Joc oprit" value={draft.gameplayConfig.messages.gamePausedImageUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setGameplayMessage("gamePausedImageUrl", value)} />
               </label>
               <label className="space-y-1 text-sm">
                 <span className="text-xs font-medium">Oracle AI oprit</span>
                 <Textarea rows={4} maxLength={2000} value={draft.gameplayConfig.messages.oraclePaused} onChange={(event) => setGameplayMessage("oraclePaused", event.target.value)} />
+                <ImageField label="Imagine pentru mesajul Oracle oprit" value={draft.gameplayConfig.messages.oraclePausedImageUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setGameplayMessage("oraclePausedImageUrl", value)} />
               </label>
             </div>
           </section>
@@ -1405,6 +1427,7 @@ export function BotControlPage() {
                   <span className="text-xs font-medium">Descriere raport</span>
                   <Textarea rows={4} maxLength={4000} value={draft.dailyStats.description} onChange={(event) => setDailyStats("description", event.target.value)} />
                 </label>
+                <ImageField label="Imaginea raportului zilnic" value={draft.dailyStats.imageUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setDailyStats("imageUrl", value)} />
                 <div className="grid gap-4 md:grid-cols-2">
                   <label className="space-y-1 text-sm">
                     <span className="text-xs font-medium">Titlu activitate</span>
@@ -1448,27 +1471,6 @@ export function BotControlPage() {
             </div>
           </section>
 
-          <section className="space-y-4 rounded-xl border border-border bg-card p-5">
-            <div className="flex items-start gap-3">
-              <Megaphone className="mt-1 h-5 w-5 text-primary" />
-              <div className="min-w-0 flex-1">
-                <h2 className="font-medium">Textul mesajului de alianță</h2>
-                <p className="text-xs text-muted-foreground">Textul este folosit la următoarea publicare a anunțului de recrutare. Discord limitează mesajul la 2.000 de caractere.</p>
-              </div>
-              <Button type="button" variant="ghost" size="sm" className="shrink-0 gap-1" onClick={() => setDraft({ ...draft, allianceRecruitmentText: "" })}>
-                <RotateCcw className="h-3.5 w-3.5" /> Implicit
-              </Button>
-            </div>
-            <Textarea
-              value={draft.allianceRecruitmentText}
-              maxLength={2000}
-              rows={6}
-              className="min-h-36 resize-y"
-              placeholder="Scrie mesajul de recrutare..."
-              onChange={(event) => setDraft({ ...draft, allianceRecruitmentText: event.target.value })}
-            />
-            <p className="text-right text-xs text-muted-foreground">{draft.allianceRecruitmentText.length}/2000</p>
-          </section>
         </TabsContent>
       </Tabs>
 

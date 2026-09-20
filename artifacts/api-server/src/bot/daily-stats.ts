@@ -11,6 +11,7 @@ import {
   loadDailyStatsEmbedConfig,
   type DailyStatsEmbedConfig,
 } from "./db";
+import { publicMessageImageUrl } from "./message-media";
 
 const STATS_TIME_ZONE = process.env.DISCORD_STATS_TIMEZONE || "Europe/Bucharest";
 const REPORT_CHECK_INTERVAL_MS = 60 * 1000;
@@ -308,7 +309,7 @@ export function buildDailyStatsEmbed(
       .join("\n")
     : config.emptyChannelsText;
 
-  return new EmbedBuilder()
+  const embed = new EmbedBuilder()
     .setColor(Number.parseInt(config.color.slice(1), 16))
     .setAuthor({ name: "ORACOLUL CENUȘII · COMMUNITY INSIGHTS" })
     .setTitle(renderDailyStatsText(config.title, guildName, report))
@@ -325,6 +326,9 @@ export function buildDailyStatsEmbed(
     )
     .setFooter({ text: config.footer })
     .setTimestamp(new Date(`${report.day}T12:00:00.000Z`));
+  const imageUrl = publicMessageImageUrl(config.imageUrl);
+  if (imageUrl) embed.setImage(imageUrl);
+  return embed;
 }
 
 async function isReportPublished(guildId: string, day: string): Promise<boolean> {

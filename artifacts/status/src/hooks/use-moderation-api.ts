@@ -78,6 +78,7 @@ export interface BotControlConfig {
     buttonEmoji: string;
     successMessage: string;
     alreadyVerifiedMessage: string;
+    imageUrl: string;
     panelMessageId: string;
   };
 
@@ -109,6 +110,8 @@ export interface BotControlConfig {
     messages: {
       gamePaused: string;
       oraclePaused: string;
+      gamePausedImageUrl: string;
+      oraclePausedImageUrl: string;
     };
     events: {
       eventDurationMinutes: number;
@@ -142,6 +145,7 @@ export interface BotControlConfig {
     activityTitle: string;
     channelsTitle: string;
     emptyChannelsText: string;
+    imageUrl: string;
     metricLabels: {
       messages: string;
       uniqueUsers: string;

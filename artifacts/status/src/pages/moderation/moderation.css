@@ -969,7 +969,7 @@
 /* --- START MIGRATED CHANNEL CONTROL CSS --- */
 .bot-control-page .content-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
+  grid-template-columns: 300px minmax(0, 1fr);
   gap: 15px;
   align-items: start;
   margin-top: 15px;
@@ -1142,6 +1142,7 @@
   color: #d59a57;
 }
 .bot-control-page .provision-panel {
+  order: -1;
   position: sticky;
   top: 20px;
   display: flex;
@@ -1287,6 +1288,10 @@
   grid-template-columns: 1fr 1fr;
   gap: 5px;
   margin-bottom: 10px;
+  max-height: 13rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 3px;
 }
 .bot-control-page .permission-check {
   display: flex;
