@@ -261,13 +261,11 @@ export function ProtectionPage() {
             </div>
           </div>
 
-          <div className="sticky bottom-3 z-20 flex w-full justify-end py-2">
-            <div className="ml-auto rounded-xl border border-border/80 bg-card/95 p-2 shadow-2xl backdrop-blur">
-              <Button type="submit" disabled={saving} className="gap-2">
-                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                {saving ? "Se salvează..." : "Salvează Setările"}
-              </Button>
-            </div>
+          <div className="mod-save-bar sticky bottom-3 z-20 flex w-full justify-end">
+            <Button type="submit" disabled={saving} className="gap-2">
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              {saving ? "Se salvează..." : "Salvează Setările"}
+            </Button>
           </div>
         </form>
       </Form>

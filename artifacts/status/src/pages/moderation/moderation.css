@@ -722,7 +722,7 @@
   line-height: 1.45;
 }
 
-.bot-control-footer {
+.mod-save-bar {
   margin-top: .3rem;
   padding: .7rem .8rem;
   border: 1px solid hsl(var(--border) / .9);
@@ -730,6 +730,13 @@
   background: hsl(var(--card) / .95);
   box-shadow: 0 12px 30px hsl(0 40% 2% / .5);
   backdrop-filter: blur(10px);
+}
+
+.mod-save-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: .5rem;
 }
 
 .bot-control-save-state {
@@ -781,17 +788,17 @@
     display: none;
   }
 
-  .bot-control-footer {
+  .mod-save-bar {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .bot-control-footer > div:last-child {
+  .mod-save-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
   }
 
-  .bot-control-footer button {
+  .mod-save-bar button {
     justify-content: center;
   }
 }

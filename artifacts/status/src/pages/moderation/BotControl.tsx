@@ -1435,12 +1435,12 @@ export function BotControlPage() {
       </Tabs>
 
       {hasUnsavedChanges && (
-        <div className="flex w-full items-center justify-between gap-3 pt-2">
+        <div className="mod-save-bar sticky bottom-3 z-20 flex w-full items-center justify-between gap-3">
           <div className="bot-control-save-state">
             <span className={`bot-control-save-dot ${saving ? "is-saving" : ""}`} />
             <span>{saving ? "Se salvează setările…" : "Ai modificări nesalvate."}</span>
           </div>
-          <div className="ml-auto flex flex-wrap justify-end gap-2">
+          <div className="mod-save-actions ml-auto flex flex-wrap justify-end gap-2">
             <Button type="button" variant="secondary" onClick={openFlowTest} className="gap-2">
               <PlayCircle className="h-4 w-4" />
               Testează fluxul
@@ -1863,13 +1863,11 @@ export function BotControlPage() {
         <p className="text-right text-xs text-muted-foreground">{draft.allianceRecruitmentText.length}/2000</p>
       </section>
 
-      <div className="flex w-full justify-end pt-2">
-        <div className="ml-auto flex flex-wrap justify-end gap-2">
-          <Button onClick={() => void save()} disabled={saving} className="gap-2 px-8">
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            {saving ? "Se salvează…" : "Salvează controlul botului"}
-          </Button>
-        </div>
+      <div className="mod-save-bar sticky bottom-3 z-20 flex w-full justify-end">
+        <Button onClick={() => void save()} disabled={saving} className="gap-2 px-8">
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          {saving ? "Se salvează…" : "Salvează controlul botului"}
+        </Button>
       </div>
     </div>
   );

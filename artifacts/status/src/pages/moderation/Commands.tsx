@@ -348,13 +348,11 @@ export function CommandsPage() {
               )}
             />
 
-            <div className="sticky bottom-3 z-20 flex w-full justify-end py-2">
-              <div className="ml-auto rounded-xl border border-border/80 bg-card/95 p-2 shadow-2xl backdrop-blur">
-                <Button type="submit" disabled={loading} className="gap-2 px-8">
-                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                  Execută Comanda
-                </Button>
-              </div>
+            <div className="mod-save-bar sticky bottom-3 z-20 flex w-full justify-end">
+              <Button type="submit" disabled={loading} className="gap-2 px-8">
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                Execută Comanda
+              </Button>
             </div>
           </form>
         </Form>
