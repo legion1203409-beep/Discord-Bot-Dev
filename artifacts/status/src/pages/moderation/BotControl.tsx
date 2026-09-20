@@ -8,6 +8,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { useActiveGuild, useBotControl, useModerationMetadata, useSession, type BotControlConfig, type ChannelPermissionConfig, type TicketFlowConfig } from "../../hooks/use-moderation-api";
 import { useToast } from "../../hooks/use-toast";
+import { useLocation } from "wouter";
+
+type BotControlTab = "channels" | "tickets" | "verification" | "messages" | "statistics";
+const BOT_CONTROL_TABS: BotControlTab[] = ["channels", "tickets", "verification", "messages", "statistics"];
 
 const CHANNELS = [
   ["main", "Cufere și Oracol"],
@@ -256,6 +260,7 @@ function renderAnnouncementTemplate(
 }
 
 export function BotControlPage() {
+  const [location, setLocation] = useLocation();
   const { guildId } = useActiveGuild();
   const { data, loading, error, update, provisionChannels } = useBotControl(guildId);
   const { data: metadata, refetch: refetchMetadata } = useModerationMetadata(guildId);
@@ -281,10 +286,22 @@ export function BotControlPage() {
   const [testDraftAnswer, setTestDraftAnswer] = useState("");
   const [testAnswers, setTestAnswers] = useState<Record<string, string>>({});
   const [testError, setTestError] = useState("");
+  const requestedTab = new URLSearchParams(location.split("?")[1] ?? "").get("tab");
+  const [activeTab, setActiveTab] = useState<BotControlTab>(
+    requestedTab && BOT_CONTROL_TABS.includes(requestedTab as BotControlTab)
+      ? requestedTab as BotControlTab
+      : "channels",
+  );
 
   useEffect(() => {
     setDraft(data ? JSON.parse(JSON.stringify(data)) : null);
   }, [data]);
+
+  useEffect(() => {
+    if (requestedTab && BOT_CONTROL_TABS.includes(requestedTab as BotControlTab)) {
+      setActiveTab(requestedTab as BotControlTab);
+    }
+  }, [requestedTab]);
 
   const hasUnsavedChanges = Boolean(
     data && draft && JSON.stringify(draft) !== JSON.stringify(data),
@@ -681,7 +698,16 @@ export function BotControlPage() {
           </button>
         </div>
       )}
-      <Tabs defaultValue="channels" className="bot-control-tabs space-y-5">
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => {
+          if (!BOT_CONTROL_TABS.includes(value as BotControlTab)) return;
+          const nextTab = value as BotControlTab;
+          setActiveTab(nextTab);
+          setLocation(`/bot?tab=${nextTab}`);
+        }}
+        className="bot-control-tabs space-y-5"
+      >
          <TabsList className="bot-control-tab-list grid h-auto w-full grid-cols-2 gap-1 rounded-xl border border-border p-1 sm:grid-cols-5">
            <TabsTrigger value="channels" data-testid="tab-channels" className="mod-tab-trigger gap-2 py-2.5"><Radio className="h-4 w-4" /> Canale</TabsTrigger>
            <TabsTrigger value="tickets" data-testid="tab-tickets" className="mod-tab-trigger gap-2 py-2.5"><Ticket className="h-4 w-4" /> Tichete</TabsTrigger>
@@ -1409,7 +1435,7 @@ export function BotControlPage() {
       </Tabs>
 
       {hasUnsavedChanges && (
-        <div className="bot-control-footer sticky bottom-3 z-20 flex w-full items-center justify-between gap-3 py-2">
+        <div className="flex w-full items-center justify-between gap-3 pt-2">
           <div className="bot-control-save-state">
             <span className={`bot-control-save-dot ${saving ? "is-saving" : ""}`} />
             <span>{saving ? "Se salvează setările…" : "Ai modificări nesalvate."}</span>
@@ -1837,8 +1863,8 @@ export function BotControlPage() {
         <p className="text-right text-xs text-muted-foreground">{draft.allianceRecruitmentText.length}/2000</p>
       </section>
 
-      <div className="sticky bottom-3 z-20 flex w-full justify-end py-2">
-        <div className="ml-auto flex flex-wrap justify-end gap-2 rounded-xl border border-border/80 bg-card/95 p-2 shadow-2xl backdrop-blur">
+      <div className="flex w-full justify-end pt-2">
+        <div className="ml-auto flex flex-wrap justify-end gap-2">
           <Button onClick={() => void save()} disabled={saving} className="gap-2 px-8">
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
             {saving ? "Se salvează…" : "Salvează controlul botului"}

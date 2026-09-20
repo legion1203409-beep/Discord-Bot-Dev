@@ -659,6 +659,20 @@
   background: hsl(var(--primary) / .15);
 }
 
+.mod-control-nav {
+  padding-top: 1.25rem;
+  border-top: 1px solid hsl(var(--border) / .65);
+}
+
+.mod-control-nav-item {
+  border-left-color: transparent;
+}
+
+.mod-control-nav-item[data-active="true"] {
+  color: hsl(var(--foreground));
+  background: linear-gradient(90deg, hsl(var(--primary) / .16), transparent 88%);
+}
+
 .bot-control-page .mod-tab-content > section {
   border-color: hsl(var(--border) / .9);
   border-radius: 10px;
