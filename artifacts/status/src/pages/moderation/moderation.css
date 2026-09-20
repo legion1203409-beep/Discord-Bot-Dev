@@ -673,6 +673,46 @@
   background: linear-gradient(90deg, hsl(var(--primary) / .16), transparent 88%);
 }
 
+/* Keep the moderation console usable when the preview pane is temporarily
+   narrower than a phone viewport. */
+@media (max-width: 319px) {
+  body {
+    min-width: 0;
+  }
+
+  .mod-shell,
+  .mod-login-stage {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .mod-login-stage {
+    padding: .5rem;
+  }
+
+  .mod-login-card {
+    min-width: 0;
+    padding: 1rem;
+  }
+
+  .mod-login-card h1 {
+    font-size: 1.75rem;
+    line-height: 1.05;
+    overflow-wrap: anywhere;
+  }
+
+  .mod-login-card p {
+    overflow-wrap: anywhere;
+  }
+
+  .mod-login-card button {
+    min-width: 0;
+    padding-inline: .5rem;
+    font-size: .7rem;
+    white-space: normal;
+  }
+}
+
 .bot-control-page .mod-tab-content > section {
   border-color: hsl(var(--border) / .9);
   border-radius: 10px;
