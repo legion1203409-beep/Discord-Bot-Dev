@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, CircleHelp, Loader2, RefreshCw, Save, Search, ShieldCheck, Users } from "lucide-react";
+import { AlertTriangle, CircleHelp, Loader2, RefreshCw, RotateCcw, Save, Search, ShieldCheck, Users } from "lucide-react";
 import { Button } from "../../components/ui/button";
+import { ImageField } from "../../components/moderation/ImageField";
 import { Input } from "../../components/ui/input";
 import { Textarea } from "../../components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
@@ -8,10 +9,21 @@ import {
   useActiveGuild,
   useBotControl,
   useModerationMetadata,
+  useSession,
   useVerifiedMembers,
   type BotControlConfig,
 } from "../../hooks/use-moderation-api";
 import { useToast } from "../../hooks/use-toast";
+
+const DEFAULT_VERIFICATION_TEXT = {
+  title: "Verifică-ți contul",
+  message: "Apasă butonul de mai jos pentru a confirma că deții contul Discord și pentru a primi rolul comunității.",
+  buttonLabel: "Verifică-mă",
+  buttonEmoji: "✅",
+  successMessage: "Contul tău a fost verificat. Rolul a fost acordat.",
+  alreadyVerifiedMessage: "Contul tău este deja verificat.",
+  imageUrl: "",
+} as const;
 
 function isTextChannel(type: number | string): boolean {
   return String(type) === "0" || type === "GuildText";
@@ -28,6 +40,7 @@ export function VerificationAdminPage() {
     refetch: refetchVerifiedMembers,
   } = useVerifiedMembers(guildId);
   const { toast } = useToast();
+  const { session } = useSession();
   const [draft, setDraft] = useState<BotControlConfig | null>(null);
   const [saving, setSaving] = useState(false);
   const [inviteLoading, setInviteLoading] = useState(false);
@@ -48,6 +61,13 @@ export function VerificationAdminPage() {
     setDraft((current) => current ? {
       ...current,
       verification: { ...current.verification, [field]: value },
+    } : current);
+  };
+
+  const resetVerificationText = () => {
+    setDraft((current) => current ? {
+      ...current,
+      verification: { ...current.verification, ...DEFAULT_VERIFICATION_TEXT },
     } : current);
   };
 
@@ -227,31 +247,68 @@ export function VerificationAdminPage() {
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Titlul mesajului</label>
-            <Input maxLength={256} value={draft.verification.title} onChange={(event) => setVerification("title", event.target.value)} />
+        <div className="flex items-start justify-between gap-3 border-t border-border pt-5">
+          <div>
+            <h3 className="font-medium">Panoul de verificare</h3>
+            <p className="text-xs text-muted-foreground">Editează mesajul publicat în canal. Salvarea republică panoul dacă botul este online.</p>
           </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Textul butonului</label>
-            <Input maxLength={80} value={draft.verification.buttonLabel} onChange={(event) => setVerification("buttonLabel", event.target.value)} />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Emoji buton</label>
-            <Input maxLength={100} value={draft.verification.buttonEmoji} placeholder="✅" onChange={(event) => setVerification("buttonEmoji", event.target.value)} />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Mesaj după succes</label>
-            <Input maxLength={2000} value={draft.verification.successMessage} onChange={(event) => setVerification("successMessage", event.target.value)} />
-          </div>
+          <Button type="button" variant="ghost" size="sm" className="shrink-0 gap-1" onClick={resetVerificationText}>
+            <RotateCcw className="h-3.5 w-3.5" /> Implicit
+          </Button>
         </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Textul panoului</label>
-          <Textarea rows={5} maxLength={4000} value={draft.verification.message} onChange={(event) => setVerification("message", event.target.value)} />
-        </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Mesaj dacă membrul este deja verificat</label>
-          <Textarea rows={3} maxLength={2000} value={draft.verification.alreadyVerifiedMessage} onChange={(event) => setVerification("alreadyVerifiedMessage", event.target.value)} />
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="space-y-1 text-sm">
+              <span className="text-xs font-medium">Titlu</span>
+              <Input maxLength={256} value={draft.verification.title} onChange={(event) => setVerification("title", event.target.value)} />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-xs font-medium">Emoji buton</span>
+              <Input maxLength={100} value={draft.verification.buttonEmoji} placeholder="✅" onChange={(event) => setVerification("buttonEmoji", event.target.value)} />
+            </label>
+            <label className="space-y-1 text-sm md:col-span-2">
+              <span className="text-xs font-medium">Descriere</span>
+              <Textarea rows={5} maxLength={4000} value={draft.verification.message} onChange={(event) => setVerification("message", event.target.value)} />
+            </label>
+            <ImageField
+              label="Imaginea panoului de verificare"
+              value={draft.verification.imageUrl}
+              guildId={guildId}
+              csrfToken={session?.csrfToken}
+              onChange={(value) => setVerification("imageUrl", value)}
+            />
+            <label className="space-y-1 text-sm">
+              <span className="text-xs font-medium">Text buton</span>
+              <Input maxLength={80} value={draft.verification.buttonLabel} onChange={(event) => setVerification("buttonLabel", event.target.value)} />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-xs font-medium">Mesaj după verificare</span>
+              <Input maxLength={2000} value={draft.verification.successMessage} onChange={(event) => setVerification("successMessage", event.target.value)} />
+            </label>
+            <label className="space-y-1 text-sm md:col-span-2">
+              <span className="text-xs font-medium">Mesaj dacă este deja verificat</span>
+              <Textarea rows={3} maxLength={2000} value={draft.verification.alreadyVerifiedMessage} onChange={(event) => setVerification("alreadyVerifiedMessage", event.target.value)} />
+            </label>
+          </div>
+          <div className="self-start rounded-xl border border-[#5865f2]/40 bg-[#202225] p-4 text-[#f2f3f5] shadow-lg">
+            <p className="mb-3 text-[10px] font-semibold tracking-[0.18em] text-[#949cf7]">PREVIZUALIZARE DISCORD</p>
+            <div className="overflow-hidden rounded-lg border-l-4 border-[#5865f2] bg-[#2b2d31]">
+              <div className="p-4">
+                <h3 className="text-lg font-semibold">{draft.verification.title || "Titlul panoului"}</h3>
+                <p className="mt-2 whitespace-pre-wrap text-sm text-[#b5bac1]">{draft.verification.message || "Descrierea panoului"}</p>
+                {draft.verification.imageUrl && (
+                  <img
+                    src={draft.verification.imageUrl}
+                    alt="Previzualizarea imaginii panoului"
+                    className="mt-3 max-h-52 w-full rounded object-contain"
+                  />
+                )}
+                <Button type="button" className="mt-4 bg-[#5865f2] text-white hover:bg-[#4752c4]">
+                  {draft.verification.buttonEmoji} {draft.verification.buttonLabel || "Verifică-mă"}
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/25 bg-primary/[0.04] p-4">

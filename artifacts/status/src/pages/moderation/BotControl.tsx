@@ -6,12 +6,13 @@ import { Textarea } from "../../components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
+import { ImageField } from "../../components/moderation/ImageField";
 import { useActiveGuild, useBotControl, useModerationMetadata, useSession, type BotControlConfig, type ChannelPermissionConfig, type TicketFlowConfig } from "../../hooks/use-moderation-api";
 import { useToast } from "../../hooks/use-toast";
 import { useLocation, useSearch } from "wouter";
 
-type BotControlTab = "channels" | "tickets" | "verification" | "messages" | "statistics";
-const BOT_CONTROL_TABS: BotControlTab[] = ["channels", "tickets", "verification", "messages", "statistics"];
+type BotControlTab = "channels" | "tickets" | "messages" | "statistics";
+const BOT_CONTROL_TABS: BotControlTab[] = ["channels", "tickets", "messages", "statistics"];
 
 const CHANNELS = [
   ["main", "Cufere și Oracol"],
@@ -92,16 +93,6 @@ const FLOW_KINDS = [
   ["help_report", "Ajutor / raportare"],
 ] as const;
 
-const DEFAULT_VERIFICATION_TEXT = {
-  title: "Verifică-ți contul",
-  message: "Apasă butonul de mai jos pentru a confirma că deții contul Discord și pentru a primi rolul comunității.",
-  buttonLabel: "Verifică-mă",
-  buttonEmoji: "✅",
-  successMessage: "Contul tău a fost verificat. Rolul a fost acordat.",
-  alreadyVerifiedMessage: "Contul tău este deja verificat.",
-  imageUrl: "",
-} as const;
-
 const DEFAULT_GAMEPLAY_MESSAGES = {
   gamePaused: "⏸️ Jocul este oprit momentan. Un administrator îl poate reporni cu `/startjoc`.",
   oraclePaused: "🛑 Oracle AI este oprit momentan. Un administrator îl poate reporni cu `/startai`.",
@@ -146,80 +137,6 @@ function getDuplicateQuestionKeys(flow: TicketFlowConfig): string[] {
   return [...counts.entries()]
     .filter(([, count]) => count > 1)
     .map(([key]) => key);
-}
-
-function ImageField({
-  label,
-  value,
-  guildId,
-  csrfToken,
-  onChange,
-}: {
-  label: string;
-  value?: string;
-  guildId: string | null;
-  csrfToken?: string;
-  onChange: (value: string) => void;
-}) {
-  const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState("");
-
-  const upload = async (file: File) => {
-    if (!guildId) return;
-    if (!file.type.match(/^image\/(jpeg|png|gif|webp)$/) || file.size > 10 * 1024 * 1024) {
-      setError("Alege PNG, JPG, GIF sau WEBP, maximum 10 MB.");
-      return;
-    }
-    setUploading(true);
-    setError("");
-    try {
-      const request = await fetch("/api/storage/uploads/request-url", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...(csrfToken ? { "x-csrf-token": csrfToken } : {}) },
-        credentials: "include",
-        body: JSON.stringify({ guildId, name: file.name, size: file.size, contentType: file.type }),
-      });
-      const payload = await request.json() as { uploadURL?: string; objectPath?: string; error?: string };
-      if (!request.ok || !payload.uploadURL || !payload.objectPath) throw new Error(payload.error ?? "Uploadul a eșuat.");
-      const uploaded = await fetch(payload.uploadURL, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
-      if (!uploaded.ok) throw new Error("Imaginea nu a putut fi încărcată în storage.");
-      onChange(`/api/storage${payload.objectPath}`);
-    } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : "Uploadul a eșuat.");
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  return (
-    <div className="space-y-2 md:col-span-2">
-      <label className="text-xs font-medium">{label}</label>
-      <div className="grid gap-2 md:grid-cols-[1fr_auto]">
-        <Input
-          value={value ?? ""}
-          placeholder="URL imagine sau folosește Upload"
-          onChange={(event) => onChange(event.target.value)}
-        />
-        <label className="inline-flex cursor-pointer items-center justify-center rounded-md border border-border px-3 text-sm hover:bg-muted">
-          {uploading ? "Se încarcă…" : "Încarcă imagine"}
-          <input
-            type="file"
-            className="sr-only"
-            accept="image/png,image/jpeg,image/gif,image/webp"
-            disabled={uploading}
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) void upload(file);
-              event.currentTarget.value = "";
-            }}
-          />
-        </label>
-      </div>
-      {value && <img src={value} alt="" className="max-h-32 rounded-md border border-border object-contain" />}
-      {error && <p className="text-xs text-destructive">{error}</p>}
-      <p className="text-xs text-muted-foreground">Emoji-urile se pot introduce direct în orice text. Sunt acceptate linkuri HTTPS și imagini încărcate aici.</p>
-    </div>
-  );
 }
 
 function isCategory(type: number | string): boolean {
@@ -315,10 +232,14 @@ export function BotControlPage() {
   }, [data]);
 
   useEffect(() => {
+    if (requestedTab === "verification") {
+      setLocation("/verificare");
+      return;
+    }
     if (requestedTab && BOT_CONTROL_TABS.includes(requestedTab as BotControlTab)) {
       setActiveTab(requestedTab as BotControlTab);
     }
-  }, [requestedTab]);
+  }, [requestedTab, setLocation]);
 
   const hasUnsavedChanges = Boolean(
     data && draft && JSON.stringify(draft) !== JSON.stringify(data),
@@ -363,13 +284,6 @@ export function BotControlPage() {
     });
   };
 
-  const setVerification = (field: keyof BotControlConfig["verification"], value: string | boolean) => {
-    setDraft((current) => current ? {
-      ...current,
-      verification: { ...current.verification, [field]: value },
-    } : current);
-  };
-
   const setGameplayMessage = (field: keyof BotControlConfig["gameplayConfig"]["messages"], value: string) => {
     setDraft((current) => current ? {
       ...current,
@@ -397,13 +311,6 @@ export function BotControlPage() {
         ...current.dailyStats,
         metricLabels: { ...current.dailyStats.metricLabels, [field]: value },
       },
-    } : current);
-  };
-
-  const resetVerificationText = () => {
-    setDraft((current) => current ? {
-      ...current,
-      verification: { ...current.verification, ...DEFAULT_VERIFICATION_TEXT },
     } : current);
   };
 
@@ -725,10 +632,9 @@ export function BotControlPage() {
         }}
         className="bot-control-tabs space-y-5"
       >
-         <TabsList className="bot-control-tab-list grid h-auto w-full grid-cols-2 gap-1 rounded-xl border border-border p-1 sm:grid-cols-5">
+         <TabsList className="bot-control-tab-list grid h-auto w-full grid-cols-2 gap-1 rounded-xl border border-border p-1 sm:grid-cols-4">
            <TabsTrigger value="channels" data-testid="tab-channels" className="mod-tab-trigger gap-2 py-2.5"><Radio className="h-4 w-4" /> Canale</TabsTrigger>
            <TabsTrigger value="tickets" data-testid="tab-tickets" className="mod-tab-trigger gap-2 py-2.5"><Ticket className="h-4 w-4" /> Tichete</TabsTrigger>
-           <TabsTrigger value="verification" data-testid="tab-verification" className="mod-tab-trigger gap-2 py-2.5"><ShieldCheck className="h-4 w-4" /> Verificare</TabsTrigger>
            <TabsTrigger value="messages" data-testid="tab-messages" className="mod-tab-trigger gap-2 py-2.5"><Megaphone className="h-4 w-4" /> Mesaje</TabsTrigger>
            <TabsTrigger value="statistics" data-testid="tab-statistics" className="mod-tab-trigger gap-2 py-2.5"><Activity className="h-4 w-4" /> Statistici</TabsTrigger>
         </TabsList>
@@ -1312,61 +1218,6 @@ export function BotControlPage() {
               ))}
             </div>
           </section>
-        </TabsContent>
-
-        <TabsContent value="verification" className="mt-0 space-y-5">
-          <section className="space-y-4 rounded-xl border border-border bg-card p-5">
-            <div className="flex items-start gap-3">
-              <ShieldCheck className="mt-1 h-5 w-5 text-primary" />
-              <div className="min-w-0 flex-1">
-                <h2 className="font-medium">Panoul de verificare</h2>
-                <p className="text-xs text-muted-foreground">Editează exact textul și butonul pe care le vede membrul în canalul de verificare. Salvarea republică panoul dacă botul este online.</p>
-              </div>
-              <Button type="button" variant="ghost" size="sm" className="shrink-0 gap-1" onClick={resetVerificationText}>
-                <RotateCcw className="h-3.5 w-3.5" /> Implicit
-              </Button>
-            </div>
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="space-y-1 text-sm">
-                  <span className="text-xs font-medium">Titlu</span>
-                  <Input maxLength={256} value={draft.verification.title} onChange={(event) => setVerification("title", event.target.value)} />
-                </label>
-                <label className="space-y-1 text-sm">
-                  <span className="text-xs font-medium">Emoji buton</span>
-                  <Input maxLength={100} value={draft.verification.buttonEmoji} onChange={(event) => setVerification("buttonEmoji", event.target.value)} />
-                </label>
-                <label className="space-y-1 text-sm md:col-span-2">
-                  <span className="text-xs font-medium">Descriere</span>
-                  <Textarea rows={5} maxLength={4000} value={draft.verification.message} onChange={(event) => setVerification("message", event.target.value)} />
-                </label>
-                <ImageField label="Imaginea panoului de verificare" value={draft.verification.imageUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setVerification("imageUrl", value)} />
-                <label className="space-y-1 text-sm">
-                  <span className="text-xs font-medium">Text buton</span>
-                  <Input maxLength={80} value={draft.verification.buttonLabel} onChange={(event) => setVerification("buttonLabel", event.target.value)} />
-                </label>
-                <label className="space-y-1 text-sm">
-                  <span className="text-xs font-medium">Mesaj după verificare</span>
-                  <Input maxLength={2000} value={draft.verification.successMessage} onChange={(event) => setVerification("successMessage", event.target.value)} />
-                </label>
-                <label className="space-y-1 text-sm md:col-span-2">
-                  <span className="text-xs font-medium">Mesaj dacă este deja verificat</span>
-                  <Input maxLength={2000} value={draft.verification.alreadyVerifiedMessage} onChange={(event) => setVerification("alreadyVerifiedMessage", event.target.value)} />
-                </label>
-              </div>
-              <div className="rounded-xl border border-[#5865f2]/40 bg-[#202225] p-4 text-[#f2f3f5] shadow-lg">
-                <p className="mb-3 text-[10px] font-semibold tracking-[0.18em] text-[#949cf7]">PREVIZUALIZARE DISCORD</p>
-                <div className="rounded-lg border-l-4 border-[#5865f2] bg-[#2b2d31] p-4">
-                  <h3 className="text-lg font-semibold">{draft.verification.title || "Titlul panoului"}</h3>
-                  <p className="mt-2 whitespace-pre-wrap text-sm text-[#b5bac1]">{draft.verification.message || "Descrierea panoului"}</p>
-                  <Button type="button" className="mt-4 bg-[#5865f2] text-white hover:bg-[#4752c4]">
-                    {draft.verification.buttonEmoji} {draft.verification.buttonLabel || "Verifică-mă"}
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </section>
-
         </TabsContent>
 
         <TabsContent value="messages" className="mt-0 space-y-5">
