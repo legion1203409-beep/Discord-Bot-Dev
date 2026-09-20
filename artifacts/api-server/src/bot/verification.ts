@@ -47,11 +47,18 @@ export function normalizeVerificationConfig(value: Partial<VerificationConfig> |
 }
 
 export function verificationPanel(config: VerificationConfig) {
+  const labelCustomEmoji = /<(a?):([a-zA-Z0-9_]+):(\d+)>/.exec(config.buttonLabel);
+  const cleanLabel = config.buttonLabel.replace(/<(?:a?):[a-zA-Z0-9_]+:\d+>/g, "").trim() || "Verifică-mă";
   const button = new ButtonBuilder()
     .setCustomId("verification_start")
-    .setLabel(config.buttonLabel.slice(0, 80))
+    .setLabel(cleanLabel.slice(0, 80))
     .setStyle(ButtonStyle.Primary);
-  if (config.buttonEmoji) button.setEmoji(config.buttonEmoji);
+  if (config.buttonEmoji || labelCustomEmoji) {
+    const custom = /^<(a?):([a-zA-Z0-9_]+):(\d+)>$/.exec(config.buttonEmoji) || labelCustomEmoji;
+    button.setEmoji(custom
+      ? { id: custom[3], name: custom[2], animated: custom[1] === "a" }
+      : config.buttonEmoji);
+  }
   const embed = new EmbedBuilder()
     .setTitle(config.title.slice(0, 256))
     .setDescription(config.message.slice(0, 4_000))

@@ -15,6 +15,7 @@ import
 import 
 {
  GatewayIntentBits,
+  PermissionFlagsBits,
  Routes,
 }
  from "discord.js"
@@ -152,6 +153,39 @@ const router = Router()
 
 const snowflake = z.string().regex(/^\d{5,25}$/)
 ;
+
+const createEmojiSchema = z.object({
+  name: z.string().trim().min(2).max(32).regex(/^[a-zA-Z0-9_]+$/, "Numele poate conține doar litere, cifre și underscore."),
+  image: z.string().max(350_000),
+}).strict();
+
+function decodeEmojiImage(dataUrl: string): { data: Buffer; mime: string } {
+  const match = /^data:(image\/(?:png|jpeg|gif));base64,([a-zA-Z0-9+/=]+)$/.exec(dataUrl);
+  if (!match) throw new ModerationAuthError(400, "Alege o imagine PNG, JPEG sau GIF validă.");
+  const data = Buffer.from(match[2], "base64");
+  if (!data.length || data.length > 256 * 1024) {
+    throw new ModerationAuthError(400, "Imaginea emoji trebuie să aibă cel mult 256 KiB.");
+  }
+  const png = data.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  const jpeg = data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff;
+  const gif = data.subarray(0, 6).toString("ascii") === "GIF87a" || data.subarray(0, 6).toString("ascii") === "GIF89a";
+  if (!(png || jpeg || gif) || (match[1] === "image/png" && !png) || (match[1] === "image/jpeg" && !jpeg) || (match[1] === "image/gif" && !gif)) {
+    throw new ModerationAuthError(400, "Conținutul fișierului nu corespunde tipului imaginii.");
+  }
+  return { data, mime: match[1] };
+}
+
+function emojiPayload(emoji: { id: string; name: string | null; animated?: boolean | null }) {
+  const name = emoji.name || "emoji";
+  const animated = Boolean(emoji.animated);
+  return {
+    id: emoji.id,
+    name,
+    animated,
+    markup: `<${animated ? "a" : ""}:${name}:${emoji.id}>`,
+    url: `https://cdn.discordapp.com/emojis/${emoji.id}.${animated ? "gif" : "png"}?size=64&quality=lossless`,
+  };
+}
 
 const uuid = z.string().uuid()
 ;
@@ -1527,13 +1561,14 @@ router.get("/guilds/:guildId/metadata", asyncRoute(async (req, res) => {
   const client = getModerationClient();
   if (!client) throw new ModerationAuthError(503, "Discord moderation client is not available");
   const guild = await client.guilds.fetch({ guild: guildId, force: true });
-  const [roles, channels] = await Promise.all([guild.roles.fetch(), guild.channels.fetch()]);
+  const [roles, channels, emojis] = await Promise.all([guild.roles.fetch(), guild.channels.fetch(), guild.emojis.fetch()]);
   res.json({
     guild: { id: guild.id, name: guild.name, ownerId: guild.ownerId },
     roles: [...roles.values()].filter(Boolean).map((role) => ({ id: role.id, name: role.name, position: role.position, managed: role.managed })),
     channels: [...channels.values()]
       .filter((channel): channel is NonNullable<typeof channel> => channel !== null)
       .map((channel) => ({ id: channel.id, name: channel.name, type: channel.type, parentId: channel.parentId })),
+    emojis: [...emojis.values()].map(emojiPayload),
     botCapabilities: {
       online: client.isReady(),
       messageContent: client.options.intents.has(GatewayIntentBits.MessageContent),
@@ -1546,6 +1581,28 @@ router.get("/guilds/:guildId/metadata", asyncRoute(async (req, res) => {
       canBanMembers: guild.members.me?.permissions.has("BanMembers") ?? false,
     },
   });
+}));
+
+router.post("/guilds/:guildId/emojis", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  await sessionAndGuild(req, guildId, "config", true);
+  const { name, image } = createEmojiSchema.parse(req.body);
+  const { data } = decodeEmojiImage(image);
+  const client = getModerationClient();
+  if (!client?.isReady()) throw new ModerationAuthError(503, "Botul Discord nu este conectat.");
+  const guild = await client.guilds.fetch({ guild: guildId, force: true });
+  if (!guild.members.me?.permissions.has(PermissionFlagsBits.ManageGuildExpressions)) {
+    throw new ModerationAuthError(403, "Botul are nevoie de permisiunea Create Guild Expressions.");
+  }
+  try {
+    const emoji = await guild.emojis.create({ attachment: data, name, reason: "Creat din panoul de administrare" });
+    res.status(201).json(emojiPayload(emoji));
+  } catch (error) {
+    const code = typeof error === "object" && error && "code" in error ? Number((error as { code: unknown }).code) : 0;
+    if (code === 30008) throw new ModerationAuthError(409, "Serverul a atins numărul maxim de emoji personalizate.");
+    logger.warn({ guildId, code, errorType: error instanceof Error ? error.name : typeof error }, "Guild emoji creation failed");
+    throw new ModerationAuthError(502, "Discord nu a putut crea emoji-ul. Verifică limita și permisiunile botului.");
+  }
 }));
 
 router.get("/guilds/:guildId/cases", asyncRoute(async (req, res) => {

@@ -44,6 +44,7 @@ export interface ModerationMetadata {
   guild: { id: string; name: string; ownerId: string };
   roles: ModerationRole[];
   channels: ModerationChannel[];
+  emojis: DiscordGuildEmoji[];
   botCapabilities?: {
     online?: boolean;
     messageContent: boolean;
@@ -55,6 +56,14 @@ export interface ModerationMetadata {
     canKickMembers?: boolean;
     canBanMembers?: boolean;
   };
+}
+
+export interface DiscordGuildEmoji {
+  id: string;
+  name: string;
+  animated: boolean;
+  markup: string;
+  url: string;
 }
 
 export interface ChannelPermissionConfig {

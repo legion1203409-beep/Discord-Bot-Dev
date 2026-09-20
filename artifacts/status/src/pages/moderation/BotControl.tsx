@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { ImageField } from "../../components/moderation/ImageField";
+import { DiscordEmojiText, EmojiField } from "../../components/moderation/EmojiField";
 import { useActiveGuild, useBotControl, useModerationMetadata, useSession, type BotControlConfig, type ChannelPermissionConfig, type TicketFlowConfig } from "../../hooks/use-moderation-api";
 import { useToast } from "../../hooks/use-toast";
 import { useLocation, useSearch } from "wouter";
@@ -889,11 +890,11 @@ export function BotControlPage() {
               <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Titlul panoului Discord</label>
-                <Input value={activeFlow.title} maxLength={256} onChange={(event) => setFlow(activeFlowKind, "title", event.target.value)} />
+                <EmojiField value={activeFlow.title} maxLength={256} onChange={(value) => setFlow(activeFlowKind, "title", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium">Textul butonului de start</label>
-                <Input value={activeFlow.startButtonLabel} maxLength={80} onChange={(event) => setFlow(activeFlowKind, "startButtonLabel", event.target.value)} />
+                <EmojiField value={activeFlow.startButtonLabel} maxLength={80} onChange={(value) => setFlow(activeFlowKind, "startButtonLabel", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium">Acțiune după completare</label>
@@ -908,21 +909,21 @@ export function BotControlPage() {
               </div>
               <div className="space-y-2 md:col-span-2">
                 <label className="text-sm font-medium">Descrierea panoului</label>
-                <Textarea rows={3} maxLength={2000} value={activeFlow.panelDescription} onChange={(event) => setFlow(activeFlowKind, "panelDescription", event.target.value)} />
+                <EmojiField multiline rows={3} maxLength={2000} value={activeFlow.panelDescription} onChange={(value) => setFlow(activeFlowKind, "panelDescription", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
               </div>
               <div className="space-y-2 md:col-span-2">
                 <label className="text-sm font-medium">Ghidul afișat la „Întrebări”</label>
-                <Textarea rows={3} maxLength={2000} value={activeFlow.requirementsText} onChange={(event) => setFlow(activeFlowKind, "requirementsText", event.target.value)} />
+                <EmojiField multiline rows={3} maxLength={2000} value={activeFlow.requirementsText} onChange={(value) => setFlow(activeFlowKind, "requirementsText", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
               </div>
               <ImageField label="Imaginea panoului" value={activeFlow.panelImageUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setFlow(activeFlowKind, "panelImageUrl", value)} />
               <ImageField label="Thumbnail-ul panoului (dreapta sus)" value={activeFlow.panelThumbnailUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setFlow(activeFlowKind, "panelThumbnailUrl", value)} />
               <div className="space-y-2">
                 <label className="text-sm font-medium">Mesajul după completare</label>
-                <Textarea rows={4} maxLength={2000} value={activeFlow.completionMessage} onChange={(event) => setFlow(activeFlowKind, "completionMessage", event.target.value)} />
+                <EmojiField multiline rows={4} maxLength={2000} value={activeFlow.completionMessage} onChange={(value) => setFlow(activeFlowKind, "completionMessage", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium">Mesajul pentru staff</label>
-                <Textarea rows={4} maxLength={2000} value={activeFlow.staffNotificationMessage} onChange={(event) => setFlow(activeFlowKind, "staffNotificationMessage", event.target.value)} />
+                <EmojiField multiline rows={4} maxLength={2000} value={activeFlow.staffNotificationMessage} onChange={(value) => setFlow(activeFlowKind, "staffNotificationMessage", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
               </div>
               <ImageField label="Imaginea mesajului de finalizare" value={activeFlow.completionImageUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setFlow(activeFlowKind, "completionImageUrl", value)} />
               <ImageField label="Thumbnail-ul mesajului de finalizare" value={activeFlow.completionThumbnailUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setFlow(activeFlowKind, "completionThumbnailUrl", value)} />
@@ -975,15 +976,15 @@ export function BotControlPage() {
                       </div>
                       <div className="space-y-1">
                         <label className="text-xs font-medium">Etichetă</label>
-                        <Input value={question.label} maxLength={45} onChange={(event) => updateQuestion(activeFlowKind, index, "label", event.target.value)} />
+                        <EmojiField value={question.label} maxLength={45} onChange={(value) => updateQuestion(activeFlowKind, index, "label", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
                       </div>
                       <div className="space-y-1 md:col-span-2">
                         <label className="text-xs font-medium">Întrebarea / descrierea afișată</label>
-                        <Textarea rows={2} maxLength={900} value={question.description} onChange={(event) => updateQuestion(activeFlowKind, index, "description", event.target.value)} />
+                        <EmojiField multiline rows={2} maxLength={900} value={question.description} onChange={(value) => updateQuestion(activeFlowKind, index, "description", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
                       </div>
                       <div className="space-y-1">
                         <label className="text-xs font-medium">Placeholder</label>
-                        <Input value={question.placeholder} maxLength={100} onChange={(event) => updateQuestion(activeFlowKind, index, "placeholder", event.target.value)} />
+                        <EmojiField value={question.placeholder} maxLength={100} onChange={(value) => updateQuestion(activeFlowKind, index, "placeholder", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
                       </div>
                       <ImageField
                         label="Thumbnail după acest răspuns (opțional)"
@@ -1024,21 +1025,21 @@ export function BotControlPage() {
                 <div className="rounded-lg bg-[#2b2d31] p-4">
                   <p className="mb-3 text-[10px] font-mono tracking-[0.18em] text-[#b5bac1]">MESAJUL DIN PANOU</p>
                   {activeFlow.panelThumbnailUrl && <img src={activeFlow.panelThumbnailUrl} alt="" className="float-right ml-3 h-16 w-16 rounded object-cover" />}
-                  <h4 className="text-base font-semibold text-[#f2f3f5]">{activeFlow.title}</h4>
+                  <h4 className="text-base font-semibold text-[#f2f3f5]"><DiscordEmojiText emojis={metadata?.emojis}>{activeFlow.title}</DiscordEmojiText></h4>
                   <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[#dbdee1]">
-                    {activeFlow.panelDescription}
+                    <DiscordEmojiText emojis={metadata?.emojis}>{activeFlow.panelDescription}</DiscordEmojiText>
                   </p>
-                  <p className="mt-3 whitespace-pre-wrap text-xs text-[#b5bac1]">{activeFlow.requirementsText}</p>
+                  <p className="mt-3 whitespace-pre-wrap text-xs text-[#b5bac1]"><DiscordEmojiText emojis={metadata?.emojis}>{activeFlow.requirementsText}</DiscordEmojiText></p>
                   <div className="mt-4 space-y-2 border-t border-[#3f4147] pt-3">
                     {activeFlow.questions.map((question, index) => (
                       <div key={`preview-question-${question.key}-${index}`} className="flex gap-2 text-xs">
                         <span className="font-semibold text-[#949ba4]">{index + 1}.</span>
-                        <span className="text-[#dbdee1]">{question.label}</span>
+                        <span className="text-[#dbdee1]"><DiscordEmojiText emojis={metadata?.emojis}>{question.label}</DiscordEmojiText></span>
                       </div>
                     ))}
                   </div>
                   <Button type="button" size="sm" className="mt-4 pointer-events-none">
-                    {activeFlow.startButtonLabel}
+                    <DiscordEmojiText emojis={metadata?.emojis}>{activeFlow.startButtonLabel}</DiscordEmojiText>
                   </Button>
                   {activeFlow.panelImageUrl && <img src={activeFlow.panelImageUrl} alt="" className="mt-3 max-h-40 w-full rounded object-contain" />}
                 </div>
@@ -1048,7 +1049,7 @@ export function BotControlPage() {
                   {activeFlow.completionThumbnailUrl && <img src={activeFlow.completionThumbnailUrl} alt="" className="float-right ml-3 h-16 w-16 rounded object-cover" />}
                   <h4 className="text-base font-semibold text-[#f2f3f5]">Formular complet</h4>
                   <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[#dbdee1]">
-                    {activeFlow.completionMessage}
+                    <DiscordEmojiText emojis={metadata?.emojis}>{activeFlow.completionMessage}</DiscordEmojiText>
                   </p>
                   <div className="mt-4 space-y-2 border-t border-[#3f4147] pt-3">
                     {activeFlow.questions.filter((question) => postedQuestionKeys.has(question.key)).length > 0 ? (
@@ -1056,7 +1057,7 @@ export function BotControlPage() {
                         .filter((question) => postedQuestionKeys.has(question.key))
                         .map((question, index) => (
                           <div key={`preview-answer-${question.key}-${index}`} className="rounded-md bg-[#1e1f22] px-3 py-2">
-                            <p className="text-xs font-semibold text-[#f2f3f5]">{question.label}</p>
+                            <p className="text-xs font-semibold text-[#f2f3f5]"><DiscordEmojiText emojis={metadata?.emojis}>{question.label}</DiscordEmojiText></p>
                             <p className="mt-1 text-xs italic text-[#949ba4]">
                               {question.placeholder || "Răspunsul membrului va apărea aici"}
                             </p>
@@ -1148,11 +1149,16 @@ export function BotControlPage() {
                    Acest șablon este folosit când stafful apasă „Publică pactul”. Poți decide exact ce apare și dacă este trimis ca text sau embed.
                  </p>
                </div>
-               <Textarea
+               <EmojiField
+                  multiline
                  rows={12}
                  maxLength={2000}
                  value={draft.tickets.allianceAnnouncementTemplate}
-                 onChange={(event) => setTicket(["allianceAnnouncementTemplate"], event.target.value)}
+                  onChange={(value) => setTicket(["allianceAnnouncementTemplate"], value)}
+                  guildId={guildId}
+                  csrfToken={session?.csrfToken}
+                  emojis={metadata?.emojis}
+                  onEmojiCreated={refetchMetadata}
                />
                <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                  <div className="space-y-2">
@@ -1199,13 +1205,18 @@ export function BotControlPage() {
                  <div className="mt-4 border-t border-border/70 pt-4">
                    <label className="text-sm font-medium">Mesajul de recrutare al alianței</label>
                    <p className="mt-1 text-xs text-muted-foreground">Text de recrutare păstrat în configurație. Pentru anunțul publicat pe Discord, folosește șablonul și imaginea de mai sus.</p>
-                   <Textarea
+                    <EmojiField
+                      multiline
                      value={draft.allianceRecruitmentText}
                      maxLength={2000}
                      rows={5}
                      className="mt-2 resize-y"
                      placeholder="Scrie mesajul de recrutare..."
-                     onChange={(event) => setDraft({ ...draft, allianceRecruitmentText: event.target.value })}
+                      onChange={(value) => setDraft({ ...draft, allianceRecruitmentText: value })}
+                      guildId={guildId}
+                      csrfToken={session?.csrfToken}
+                      emojis={metadata?.emojis}
+                      onEmojiCreated={refetchMetadata}
                    />
                  </div>
                <p className="text-right text-xs text-muted-foreground">
@@ -1251,13 +1262,13 @@ export function BotControlPage() {
             <div className="grid gap-4 md:grid-cols-2">
               <label className="space-y-1 text-sm">
                 <span className="text-xs font-medium">Joc oprit</span>
-                <Textarea rows={4} maxLength={2000} value={draft.gameplayConfig.messages.gamePaused} onChange={(event) => setGameplayMessage("gamePaused", event.target.value)} />
+                <EmojiField multiline rows={4} maxLength={2000} value={draft.gameplayConfig.messages.gamePaused} onChange={(value) => setGameplayMessage("gamePaused", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
                 <ImageField label="Imagine pentru mesajul Joc oprit" value={draft.gameplayConfig.messages.gamePausedImageUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setGameplayMessage("gamePausedImageUrl", value)} />
                 <ImageField label="Thumbnail pentru mesajul Joc oprit" value={draft.gameplayConfig.messages.gamePausedThumbnailUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setGameplayMessage("gamePausedThumbnailUrl", value)} />
               </label>
               <label className="space-y-1 text-sm">
                 <span className="text-xs font-medium">Oracle AI oprit</span>
-                <Textarea rows={4} maxLength={2000} value={draft.gameplayConfig.messages.oraclePaused} onChange={(event) => setGameplayMessage("oraclePaused", event.target.value)} />
+                <EmojiField multiline rows={4} maxLength={2000} value={draft.gameplayConfig.messages.oraclePaused} onChange={(value) => setGameplayMessage("oraclePaused", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
                 <ImageField label="Imagine pentru mesajul Oracle oprit" value={draft.gameplayConfig.messages.oraclePausedImageUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setGameplayMessage("oraclePausedImageUrl", value)} />
                 <ImageField label="Thumbnail pentru mesajul Oracle oprit" value={draft.gameplayConfig.messages.oraclePausedThumbnailUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setGameplayMessage("oraclePausedThumbnailUrl", value)} />
               </label>
@@ -1282,7 +1293,7 @@ export function BotControlPage() {
                 <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_9rem]">
                   <label className="space-y-1 text-sm">
                     <span className="text-xs font-medium">Titlu raport</span>
-                    <Input maxLength={256} value={draft.dailyStats.title} onChange={(event) => setDailyStats("title", event.target.value)} />
+                    <EmojiField maxLength={256} value={draft.dailyStats.title} onChange={(value) => setDailyStats("title", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
                   </label>
                   <label className="space-y-1 text-sm">
                     <span className="text-xs font-medium">Culoare accent</span>
@@ -1294,44 +1305,48 @@ export function BotControlPage() {
                 </div>
                 <label className="block space-y-1 text-sm">
                   <span className="text-xs font-medium">Descriere raport</span>
-                  <Textarea rows={4} maxLength={4000} value={draft.dailyStats.description} onChange={(event) => setDailyStats("description", event.target.value)} />
+                  <EmojiField multiline rows={4} maxLength={4000} value={draft.dailyStats.description} onChange={(value) => setDailyStats("description", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
                 </label>
                 <ImageField label="Imaginea raportului zilnic" value={draft.dailyStats.imageUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setDailyStats("imageUrl", value)} />
                 <ImageField label="Thumbnail-ul raportului zilnic" value={draft.dailyStats.thumbnailUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setDailyStats("thumbnailUrl", value)} />
                 <div className="grid gap-4 md:grid-cols-2">
                   <label className="space-y-1 text-sm">
                     <span className="text-xs font-medium">Titlu activitate</span>
-                    <Input maxLength={256} value={draft.dailyStats.activityTitle} onChange={(event) => setDailyStats("activityTitle", event.target.value)} />
+                    <EmojiField maxLength={256} value={draft.dailyStats.activityTitle} onChange={(value) => setDailyStats("activityTitle", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
                   </label>
                   <label className="space-y-1 text-sm">
                     <span className="text-xs font-medium">Titlu top canale</span>
-                    <Input maxLength={256} value={draft.dailyStats.channelsTitle} onChange={(event) => setDailyStats("channelsTitle", event.target.value)} />
+                    <EmojiField maxLength={256} value={draft.dailyStats.channelsTitle} onChange={(value) => setDailyStats("channelsTitle", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
                   </label>
                 </div>
                 <label className="block space-y-1 text-sm">
                   <span className="text-xs font-medium">Subsol</span>
-                  <Input maxLength={2048} value={draft.dailyStats.footer} onChange={(event) => setDailyStats("footer", event.target.value)} />
+                  <EmojiField maxLength={2048} value={draft.dailyStats.footer} onChange={(value) => setDailyStats("footer", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
                 </label>
                 <div>
                   <p className="mb-2 text-xs font-medium">Etichete indicatori</p>
                   <div className="grid gap-3 sm:grid-cols-2">
                     {(Object.entries(draft.dailyStats.metricLabels) as Array<[keyof BotControlConfig["dailyStats"]["metricLabels"], string]>).map(([key, value]) => (
-                      <Input key={key} maxLength={256} value={value} aria-label={key} onChange={(event) => setDailyStatsMetric(key, event.target.value)} />
+                      <EmojiField key={key} maxLength={256} value={value} aria-label={key} onChange={(next) => setDailyStatsMetric(key, next)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
                     ))}
                   </div>
                 </div>
+                <label className="block space-y-1 text-sm">
+                  <span className="text-xs font-medium">Text când nu există canale active</span>
+                  <EmojiField maxLength={1024} value={draft.dailyStats.emptyChannelsText} onChange={(value) => setDailyStats("emptyChannelsText", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
+                </label>
               </div>
               <div className="h-fit rounded-xl border bg-[#1e1f22] p-3 text-[#f2f3f5] shadow-xl" style={{ borderLeftColor: draft.dailyStats.color, borderLeftWidth: 4 }}>
                 <p className="mb-3 text-[10px] font-semibold tracking-[0.18em] text-[#949cf7]">PREVIZUALIZARE EMBED</p>
                 <div className="rounded-md bg-[#2b2d31] p-3">
                   {draft.dailyStats.thumbnailUrl && <img src={draft.dailyStats.thumbnailUrl} alt="" className="float-right ml-3 h-20 w-20 rounded object-cover" />}
                   <p className="text-[10px] font-semibold tracking-wider text-[#949cf7]">ORACOLUL CENUȘII · COMMUNITY INSIGHTS</p>
-                  <h3 className="mt-2 font-semibold">{draft.dailyStats.title.replace("{guild}", "Regatul Cenușii")}</h3>
-                  <p className="mt-2 whitespace-pre-wrap text-xs text-[#b5bac1]">{draft.dailyStats.description.replace("{guild}", "Regatul Cenușii").replace("{date}", "18 septembrie 2026")}</p>
+                  <h3 className="mt-2 font-semibold"><DiscordEmojiText emojis={metadata?.emojis}>{draft.dailyStats.title.replace("{guild}", "Regatul Cenușii")}</DiscordEmojiText></h3>
+                  <p className="mt-2 whitespace-pre-wrap text-xs text-[#b5bac1]"><DiscordEmojiText emojis={metadata?.emojis}>{draft.dailyStats.description.replace("{guild}", "Regatul Cenușii").replace("{date}", "18 septembrie 2026")}</DiscordEmojiText></p>
                   <div className="mt-4 grid grid-cols-2 gap-2">
                     {Object.values(draft.dailyStats.metricLabels).slice(0, 6).map((label, index) => (
                       <div key={`${label}-${index}`} className="rounded bg-[#36393f] p-2">
-                        <p className="truncate text-[10px] text-[#b5bac1]">{label}</p>
+                         <p className="truncate text-[10px] text-[#b5bac1]"><DiscordEmojiText emojis={metadata?.emojis}>{label}</DiscordEmojiText></p>
                         <p className="mt-1 font-semibold">{[307, 13, 0, 5, 5, 4][index].toLocaleString("ro-RO")}</p>
                       </div>
                     ))}
@@ -1381,13 +1396,13 @@ export function BotControlPage() {
             <div className="rounded-lg border border-[#3f4147] bg-[#2b2d31] p-4">
               <p className="text-[10px] font-mono tracking-[0.18em] text-[#b5bac1]">PANOU DISCORD SIMULAT</p>
               {activeFlow.panelThumbnailUrl && <img src={activeFlow.panelThumbnailUrl} alt="" className="float-right ml-3 h-16 w-16 rounded object-cover" />}
-              <h3 className="mt-2 text-lg font-semibold">{activeFlow.title}</h3>
-              <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[#dbdee1]">{activeFlow.panelDescription}</p>
-              <p className="mt-3 whitespace-pre-wrap text-xs text-[#b5bac1]">{activeFlow.requirementsText}</p>
+              <h3 className="mt-2 text-lg font-semibold"><DiscordEmojiText emojis={metadata?.emojis}>{activeFlow.title}</DiscordEmojiText></h3>
+              <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[#dbdee1]"><DiscordEmojiText emojis={metadata?.emojis}>{activeFlow.panelDescription}</DiscordEmojiText></p>
+              <p className="mt-3 whitespace-pre-wrap text-xs text-[#b5bac1]"><DiscordEmojiText emojis={metadata?.emojis}>{activeFlow.requirementsText}</DiscordEmojiText></p>
               {!testStarted && !testCompleted && (
                 <Button type="button" className="mt-4 gap-2" onClick={() => setTestStarted(true)}>
                   <PlayCircle className="h-4 w-4" />
-                  {activeFlow.startButtonLabel}
+                  <DiscordEmojiText emojis={metadata?.emojis}>{activeFlow.startButtonLabel}</DiscordEmojiText>
                 </Button>
               )}
               {activeFlow.panelImageUrl && <img src={activeFlow.panelImageUrl} alt="" className="mt-3 max-h-48 w-full rounded object-contain" />}
@@ -1403,9 +1418,9 @@ export function BotControlPage() {
                     {testQuestion.required ? "Obligatoriu" : "Opțional"}
                   </span>
                 </div>
-                <h3 className="mt-3 text-base font-semibold">{testQuestion.label}</h3>
+                <h3 className="mt-3 text-base font-semibold"><DiscordEmojiText emojis={metadata?.emojis}>{testQuestion.label}</DiscordEmojiText></h3>
                 {testQuestion.thumbnailUrl && <img src={testQuestion.thumbnailUrl} alt="" className="float-right ml-3 h-16 w-16 rounded object-cover" />}
-                <p className="mt-1 text-sm text-[#dbdee1]">{testQuestion.description}</p>
+                <p className="mt-1 text-sm text-[#dbdee1]"><DiscordEmojiText emojis={metadata?.emojis}>{testQuestion.description}</DiscordEmojiText></p>
                 {testQuestion.imageUrl && <img src={testQuestion.imageUrl} alt="" className="mt-3 max-h-48 w-full rounded object-contain" />}
                 {testQuestion.multiline ? (
                   <Textarea
@@ -1447,7 +1462,7 @@ export function BotControlPage() {
                   .filter((question) => testAnswers[question.key] !== undefined)
                   .map((question) => (
                     <div key={`test-answer-${question.key}`} className="rounded-md bg-[#1e1f22] px-3 py-2">
-                      <p className="text-xs font-semibold">{question.label}</p>
+                      <p className="text-xs font-semibold"><DiscordEmojiText emojis={metadata?.emojis}>{question.label}</DiscordEmojiText></p>
                       <p className="mt-1 whitespace-pre-wrap text-sm text-[#dbdee1]">{testAnswers[question.key]}</p>
                     </div>
                   ))}
@@ -1467,12 +1482,12 @@ export function BotControlPage() {
                     ? "🤝 Contract de Parteneriat · Rezumat pentru staff"
                     : "Formular complet"}
                 </h3>
-                <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[#dbdee1]">{activeFlow.completionMessage}</p>
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[#dbdee1]"><DiscordEmojiText emojis={metadata?.emojis}>{activeFlow.completionMessage}</DiscordEmojiText></p>
                 {activeFlow.completionThumbnailUrl && <img src={activeFlow.completionThumbnailUrl} alt="" className="float-right ml-3 h-16 w-16 rounded object-cover" />}
                 <div className="mt-4 space-y-2 border-t border-[#3f4147] pt-3">
                   {activeFlow.questions.filter((question) => postedQuestionKeys.has(question.key)).map((question) => (
                     <div key={`test-final-${question.key}`} className="rounded-md bg-[#1e1f22] px-3 py-2">
-                      <p className="text-xs font-semibold">{question.label}</p>
+                      <p className="text-xs font-semibold"><DiscordEmojiText emojis={metadata?.emojis}>{question.label}</DiscordEmojiText></p>
                       <p className="mt-1 whitespace-pre-wrap text-sm text-[#dbdee1]">{testAnswers[question.key] ?? "—"}</p>
                     </div>
                   ))}
@@ -1484,7 +1499,7 @@ export function BotControlPage() {
                   </div>
                 )}
                 {activeFlow.completionAction === "notify_staff" && (
-                  <p className="mt-4 text-xs text-primary">{activeFlow.staffNotificationMessage}</p>
+                  <p className="mt-4 text-xs text-primary"><DiscordEmojiText emojis={metadata?.emojis}>{activeFlow.staffNotificationMessage}</DiscordEmojiText></p>
                 )}
                 {activeFlow.completionImageUrl && <img src={activeFlow.completionImageUrl} alt="" className="mt-3 max-h-48 w-full rounded object-contain" />}
               </div>
@@ -1529,7 +1544,7 @@ export function BotControlPage() {
                    <div className="mt-3 overflow-hidden rounded-md bg-[#1e1f22] p-3">
                      {draft.tickets.allianceAnnouncementMode === "embed" ? (
                        <div className="border-l-4 border-[#7c8fbd] pl-3">
-                         <p className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-[#f2f3f5]">{partnershipAnnouncement}</p>
+                         <p className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-[#f2f3f5]"><DiscordEmojiText emojis={metadata?.emojis}>{partnershipAnnouncement}</DiscordEmojiText></p>
                           {draft.tickets.allianceAnnouncementThumbnailUrl && (
                             <img src={draft.tickets.allianceAnnouncementThumbnailUrl} alt="" className="float-right ml-3 h-20 w-20 rounded object-cover" />
                           )}
@@ -1539,7 +1554,7 @@ export function BotControlPage() {
                        </div>
                      ) : (
                        <>
-                         <p className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-[#f2f3f5]">{partnershipAnnouncement}</p>
+                         <p className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-[#f2f3f5]"><DiscordEmojiText emojis={metadata?.emojis}>{partnershipAnnouncement}</DiscordEmojiText></p>
                           {(draft.tickets.allianceAnnouncementImageUrl || draft.tickets.allianceAnnouncementThumbnailUrl) && (
                            <div className="mt-3 border-l-4 border-[#7c8fbd] pl-3">
                               {draft.tickets.allianceAnnouncementThumbnailUrl && (

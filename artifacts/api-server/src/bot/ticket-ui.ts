@@ -350,10 +350,16 @@ function isLegacyOracleTicketPrompt(message: Message, botId: string): boolean {
 }
 
 function ticketStartButton(kind: OracleTicketKind, label?: string): ButtonBuilder {
-  return new ButtonBuilder()
+  const rawLabel = label ?? "Deschide contractul";
+  const customEmoji = /<(a?):([a-zA-Z0-9_]+):(\d+)>/.exec(rawLabel);
+  const button = new ButtonBuilder()
     .setCustomId(`ticket_start_${kind}`)
-    .setLabel(label ?? "Deschide contractul")
+    .setLabel(rawLabel.replace(/<(?:a?):[a-zA-Z0-9_]+:\d+>/g, "").trim() || "Deschide contractul")
     .setStyle(ButtonStyle.Primary);
+  if (customEmoji) {
+    button.setEmoji({ id: customEmoji[3], name: customEmoji[2], animated: customEmoji[1] === "a" });
+  }
+  return button;
 }
 
 /** The ticket's single absolute deadline is anchored to channel creation. */

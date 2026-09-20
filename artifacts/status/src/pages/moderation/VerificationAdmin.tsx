@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { AlertTriangle, CircleHelp, Loader2, RefreshCw, RotateCcw, Save, Search, ShieldCheck, Users } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { ImageField } from "../../components/moderation/ImageField";
+import { DiscordEmojiText, EmojiField } from "../../components/moderation/EmojiField";
 import { Input } from "../../components/ui/input";
 import { Textarea } from "../../components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
@@ -33,7 +34,7 @@ function isTextChannel(type: number | string): boolean {
 export function VerificationAdminPage() {
   const { guildId } = useActiveGuild();
   const { data, loading, error, update } = useBotControl(guildId);
-  const { data: metadata } = useModerationMetadata(guildId);
+  const { data: metadata, refetch: refetchMetadata } = useModerationMetadata(guildId);
   const {
     data: verifiedMembersData,
     loading: verifiedMembersLoading,
@@ -261,15 +262,15 @@ export function VerificationAdminPage() {
           <div className="grid gap-4 md:grid-cols-2">
             <label className="space-y-1 text-sm">
               <span className="text-xs font-medium">Titlu</span>
-              <Input maxLength={256} value={draft.verification.title} onChange={(event) => setVerification("title", event.target.value)} />
+              <EmojiField maxLength={256} value={draft.verification.title} onChange={(value) => setVerification("title", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
             </label>
             <label className="space-y-1 text-sm">
               <span className="text-xs font-medium">Emoji buton</span>
-              <Input maxLength={100} value={draft.verification.buttonEmoji} placeholder="✅" onChange={(event) => setVerification("buttonEmoji", event.target.value)} />
+              <EmojiField replacement maxLength={100} value={draft.verification.buttonEmoji} placeholder="✅" onChange={(value) => setVerification("buttonEmoji", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
             </label>
             <label className="space-y-1 text-sm md:col-span-2">
               <span className="text-xs font-medium">Descriere</span>
-              <Textarea rows={5} maxLength={4000} value={draft.verification.message} onChange={(event) => setVerification("message", event.target.value)} />
+              <EmojiField multiline rows={5} maxLength={4000} value={draft.verification.message} onChange={(value) => setVerification("message", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
             </label>
             <ImageField
               label="Thumbnail mic (dreapta sus)"
@@ -287,15 +288,15 @@ export function VerificationAdminPage() {
             />
             <label className="space-y-1 text-sm">
               <span className="text-xs font-medium">Text buton</span>
-              <Input maxLength={80} value={draft.verification.buttonLabel} onChange={(event) => setVerification("buttonLabel", event.target.value)} />
+              <EmojiField maxLength={80} value={draft.verification.buttonLabel} onChange={(value) => setVerification("buttonLabel", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
             </label>
             <label className="space-y-1 text-sm">
               <span className="text-xs font-medium">Mesaj după verificare</span>
-              <Input maxLength={2000} value={draft.verification.successMessage} onChange={(event) => setVerification("successMessage", event.target.value)} />
+              <EmojiField maxLength={2000} value={draft.verification.successMessage} onChange={(value) => setVerification("successMessage", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
             </label>
             <label className="space-y-1 text-sm md:col-span-2">
               <span className="text-xs font-medium">Mesaj dacă este deja verificat</span>
-              <Textarea rows={3} maxLength={2000} value={draft.verification.alreadyVerifiedMessage} onChange={(event) => setVerification("alreadyVerifiedMessage", event.target.value)} />
+              <EmojiField multiline rows={3} maxLength={2000} value={draft.verification.alreadyVerifiedMessage} onChange={(value) => setVerification("alreadyVerifiedMessage", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
             </label>
           </div>
           <div className="self-start rounded-xl border border-[#5865f2]/40 bg-[#202225] p-4 text-[#f2f3f5] shadow-lg">
@@ -309,8 +310,8 @@ export function VerificationAdminPage() {
                     className="float-right ml-3 h-20 w-20 rounded object-cover"
                   />
                 )}
-                <h3 className="text-lg font-semibold">{draft.verification.title || "Titlul panoului"}</h3>
-                <p className="mt-2 whitespace-pre-wrap text-sm text-[#b5bac1]">{draft.verification.message || "Descrierea panoului"}</p>
+                <h3 className="text-lg font-semibold"><DiscordEmojiText emojis={metadata?.emojis}>{draft.verification.title || "Titlul panoului"}</DiscordEmojiText></h3>
+                <p className="mt-2 whitespace-pre-wrap text-sm text-[#b5bac1]"><DiscordEmojiText emojis={metadata?.emojis}>{draft.verification.message || "Descrierea panoului"}</DiscordEmojiText></p>
                 {draft.verification.imageUrl && (
                   <img
                     src={draft.verification.imageUrl}
@@ -319,7 +320,7 @@ export function VerificationAdminPage() {
                   />
                 )}
                 <Button type="button" className="mt-4 bg-[#5865f2] text-white hover:bg-[#4752c4]">
-                  {draft.verification.buttonEmoji} {draft.verification.buttonLabel || "Verifică-mă"}
+                  <DiscordEmojiText emojis={metadata?.emojis}>{`${draft.verification.buttonEmoji} ${draft.verification.buttonLabel || "Verifică-mă"}`}</DiscordEmojiText>
                 </Button>
               </div>
             </div>

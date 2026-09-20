@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   initChannelConfig: vi.fn(),
   loadVerificationConfig: vi.fn(), saveVerificationConfig: vi.fn(),
   provisionGuildChannels: vi.fn(),
+  emojiCreate: vi.fn(), emojiFetch: vi.fn(),
 }));
 
 vi.mock("../auth", () => ({
@@ -87,7 +88,7 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
   let persistedTicketConfig = structuredClone(DEFAULT_TICKET_CONFIG);
   beforeAll(async () => {
     const app = express();
-    app.use(express.json());
+    app.use(express.json({ limit: "400kb" }));
     app.use("/moderation", router);
     await new Promise<void>((resolve) => { server = app.listen(0, "127.0.0.1", () => resolve()); });
     const address = server.address();
@@ -106,8 +107,16 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
       isReady: () => true,
       options: { intents: { has: () => true } },
       guilds: { fetch: vi.fn().mockResolvedValue({
+        id: guildId,
+        name: "Regatul test",
+        ownerId: actorId,
+        members: { me: { permissions: { has: () => true } } },
         roles: { fetch: vi.fn().mockResolvedValue(new Map()) },
         channels: { fetch: vi.fn().mockResolvedValue(new Map()) },
+        emojis: {
+          fetch: mocks.emojiFetch,
+          create: mocks.emojiCreate,
+        },
       }) },
     });
     mocks.listCases.mockResolvedValue([]);
@@ -142,6 +151,8 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
       created: [{ key: "main", id: "111111111", name: "cufere-si-oracol", type: "text" }],
       reused: [],
     });
+    mocks.emojiCreate.mockResolvedValue({ id: "888888888", name: "cenusa", animated: false });
+    mocks.emojiFetch.mockResolvedValue(new Map());
   });
   const post = (body: unknown, headers: Record<string, string> = {}) => ({
     method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body),
@@ -219,6 +230,65 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     expect((await fetch(`${base}/actions`, post({ type: "warn", targetId: "555555555" }))).status).toBe(403);
     expect(mocks.beginAction).not.toHaveBeenCalled();
     expect(mocks.execute).not.toHaveBeenCalled();
+  });
+
+  describe("guild emoji upload", () => {
+    const validPng = `data:image/png;base64,${Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0]).toString("base64")}`;
+
+    it("requires authentication before touching Discord", async () => {
+      mocks.session.mockRejectedValue(new ModerationAuthError(401, "Authentication required"));
+      const response = await fetch(`${base}/emojis`, post({ name: "cenusa", image: validPng }));
+      expect(response.status).toBe(401);
+      expect(mocks.access).not.toHaveBeenCalled();
+      expect(mocks.emojiCreate).not.toHaveBeenCalled();
+    });
+
+    it("enforces CSRF and selected-guild owner access", async () => {
+      mocks.csrf.mockImplementationOnce(() => { throw new ModerationAuthError(403, "CSRF required"); });
+      expect((await fetch(`${base}/emojis`, post({ name: "cenusa", image: validPng }))).status).toBe(403);
+      expect(mocks.emojiCreate).not.toHaveBeenCalled();
+
+      mocks.access.mockRejectedValueOnce(new ModerationAuthError(403, "Owner only"));
+      expect((await fetch(`${base}/emojis`, post({ name: "cenusa", image: validPng }))).status).toBe(403);
+      expect(mocks.access).toHaveBeenLastCalledWith(guildId, actorId, "config");
+      expect(mocks.emojiCreate).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [{ name: "bad name!", image: validPng }, "invalid name"],
+      [{ name: "cenusa", image: "data:text/html;base64,PGgxPm5vPC9oMT4=" }, "invalid MIME"],
+      [{ name: "cenusa", image: `data:image/png;base64,${Buffer.alloc(256 * 1024 + 1).toString("base64")}` }, "oversized image"],
+    ])("rejects %s (%s) without a Discord mutation", async (payload) => {
+      const response = await fetch(`${base}/emojis`, post(payload));
+      expect(response.status).toBe(400);
+      expect(mocks.emojiCreate).not.toHaveBeenCalled();
+    });
+
+    it("creates the emoji on the authorized URL guild and returns refreshed metadata shape", async () => {
+      const response = await fetch(`${base}/emojis`, post({ name: "cenusa", image: validPng }, { "x-csrf-token": "csrf" }));
+      expect(response.status).toBe(201);
+      expect(mocks.access).toHaveBeenCalledWith(guildId, actorId, "config");
+      expect(mocks.emojiCreate).toHaveBeenCalledWith(expect.objectContaining({
+        name: "cenusa",
+        attachment: expect.any(Buffer),
+      }));
+      await expect(response.json()).resolves.toMatchObject({
+        id: "888888888",
+        name: "cenusa",
+        markup: "<:cenusa:888888888>",
+        url: expect.stringContaining("/888888888.png"),
+      });
+
+      mocks.emojiFetch.mockResolvedValue(new Map([
+        ["888888888", { id: "888888888", name: "cenusa", animated: false }],
+      ]));
+      const metadataResponse = await fetch(`${base}/metadata`);
+      expect(metadataResponse.status).toBe(200);
+      await expect(metadataResponse.json()).resolves.toMatchObject({
+        guild: { id: guildId },
+        emojis: [{ id: "888888888", markup: "<:cenusa:888888888>" }],
+      });
+    });
   });
 
   it("requires a configuration revision and passes it to the compare-and-swap write", async () => {
