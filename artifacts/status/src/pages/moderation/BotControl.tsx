@@ -1462,7 +1462,8 @@ export function BotControlPage() {
             <Textarea
               value={draft.allianceRecruitmentText}
               maxLength={2000}
-              rows={12}
+              rows={6}
+              className="min-h-36 resize-y"
               placeholder="Scrie mesajul de recrutare..."
               onChange={(event) => setDraft({ ...draft, allianceRecruitmentText: event.target.value })}
             />
