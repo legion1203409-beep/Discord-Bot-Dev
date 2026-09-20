@@ -206,6 +206,7 @@ const verificationConfigSchema = z.object({
   successMessage: z.string().trim().min(1).max(2_000),
   alreadyVerifiedMessage: z.string().trim().min(1).max(2_000),
   imageUrl: z.string().trim().max(2_000).refine(isMessageImageUrl, "Imaginea trebuie să fie HTTPS sau încărcată în storage."),
+  thumbnailUrl: z.string().trim().max(2_000).refine(isMessageImageUrl, "Thumbnail-ul trebuie să fie HTTPS sau încărcat în storage.").default(""),
   panelMessageId: z.union([snowflake, z.literal("")]),
 }).strict();
 
@@ -218,6 +219,7 @@ const DEFAULT_DAILY_STATS_EMBED_CONFIG = {
   channelsTitle: "🔥 Top 5 canale active",
   emptyChannelsText: "Încă nu există mesaje înregistrate pentru această zi.",
   imageUrl: "",
+  thumbnailUrl: "",
   metricLabels: {
     messages: "💬 Mesaje",
     uniqueUsers: "👥 Utilizatori unici",
@@ -237,6 +239,7 @@ const dailyStatsEmbedConfigSchema = z.object({
   channelsTitle: z.string().trim().min(1).max(256),
   emptyChannelsText: z.string().trim().min(1).max(1_024),
   imageUrl: z.string().trim().max(2_000).refine(isMessageImageUrl, "Imaginea trebuie să fie HTTPS sau încărcată în storage."),
+  thumbnailUrl: z.string().trim().max(2_000).refine(isMessageImageUrl, "Thumbnail-ul trebuie să fie HTTPS sau încărcat în storage.").default(""),
   metricLabels: z.object({
     messages: z.string().trim().min(1).max(256),
     uniqueUsers: z.string().trim().min(1).max(256),
@@ -256,7 +259,8 @@ export const ticketQuestionConfigSchema = z.object(
   placeholder: z.string().trim().min(1).max(100),
   multiline: z.boolean(),
   required: z.boolean(),
-  imageUrl: z.string().trim().max(2_000).optional().default(""),
+  imageUrl: z.string().trim().max(2_000).refine(isMessageImageUrl, "Imaginea trebuie să fie HTTPS sau încărcată în storage.").optional().default(""),
+  thumbnailUrl: z.string().trim().max(2_000).refine(isMessageImageUrl, "Thumbnail-ul trebuie să fie HTTPS sau încărcat în storage.").optional().default(""),
 }
 ).strict()
 ;
@@ -271,9 +275,12 @@ export const ticketFlowConfigSchema = z.object(
   requirementsText: z.string().trim().min(1).max(2_000),
   completionMessage: z.string().trim().min(1).max(2_000),
   staffNotificationMessage: z.string().trim().min(1).max(2_000),
-  panelImageUrl: z.string().trim().max(2_000).optional().default(""),
-  completionImageUrl: z.string().trim().max(2_000).optional().default(""),
-  staffNotificationImageUrl: z.string().trim().max(2_000).optional().default(""),
+  panelImageUrl: z.string().trim().max(2_000).refine(isMessageImageUrl, "Imaginea trebuie să fie HTTPS sau încărcată în storage.").optional().default(""),
+  panelThumbnailUrl: z.string().trim().max(2_000).refine(isMessageImageUrl, "Thumbnail-ul trebuie să fie HTTPS sau încărcat în storage.").optional().default(""),
+  completionImageUrl: z.string().trim().max(2_000).refine(isMessageImageUrl, "Imaginea trebuie să fie HTTPS sau încărcată în storage.").optional().default(""),
+  completionThumbnailUrl: z.string().trim().max(2_000).refine(isMessageImageUrl, "Thumbnail-ul trebuie să fie HTTPS sau încărcat în storage.").optional().default(""),
+  staffNotificationImageUrl: z.string().trim().max(2_000).refine(isMessageImageUrl, "Imaginea trebuie să fie HTTPS sau încărcată în storage.").optional().default(""),
+  staffNotificationThumbnailUrl: z.string().trim().max(2_000).refine(isMessageImageUrl, "Thumbnail-ul trebuie să fie HTTPS sau încărcat în storage.").optional().default(""),
   completionAction: z.enum(["lock", "notify_staff", "keep_open"]),
   questions: z.array(ticketQuestionConfigSchema).min(1).max(20),
   postedQuestionKeys: z.array(z.string().trim().min(1).max(32).regex(/^[a-z0-9_]+$/)).max(20).optional(),
@@ -345,7 +352,8 @@ export const botControlSchema = z.object(
     allianceOwnerGuildId: snowflake,
     allianceAnnouncementTemplate: z.string().trim().max(2_000).optional(),
     allianceAnnouncementMode: z.enum(["text", "embed"]).optional(),
-    allianceAnnouncementImageUrl: z.string().trim().max(2_000).optional(),
+    allianceAnnouncementImageUrl: z.string().trim().max(2_000).refine((value) => isMessageImageUrl(value), "Imaginea trebuie să fie HTTPS sau încărcată în storage.").optional(),
+    allianceAnnouncementThumbnailUrl: z.string().trim().max(2_000).refine((value) => isMessageImageUrl(value), "Thumbnail-ul trebuie să fie HTTPS sau încărcat în storage.").optional(),
     allianceAnnouncementImageMode: z.enum(["none", "large", "thumbnail"]).optional(),
     incompleteTimeoutMinutes: z.number().int().min(10).max(240),
     firstWarningMinutes: z.number().int().min(1).max(180),
@@ -369,12 +377,16 @@ export const botControlSchema = z.object(
       gamePaused: z.string().trim().min(1).max(2_000),
       oraclePaused: z.string().trim().min(1).max(2_000),
       gamePausedImageUrl: z.string().trim().max(2_000).refine(isMessageImageUrl, "Imaginea trebuie să fie HTTPS sau încărcată în storage."),
+      gamePausedThumbnailUrl: z.string().trim().max(2_000).refine(isMessageImageUrl, "Thumbnail-ul trebuie să fie HTTPS sau încărcat în storage.").default(""),
       oraclePausedImageUrl: z.string().trim().max(2_000).refine(isMessageImageUrl, "Imaginea trebuie să fie HTTPS sau încărcată în storage."),
+      oraclePausedThumbnailUrl: z.string().trim().max(2_000).refine(isMessageImageUrl, "Thumbnail-ul trebuie să fie HTTPS sau încărcat în storage.").default(""),
     }).strict().default({
       gamePaused: "⏸️ Jocul este oprit momentan. Un administrator îl poate reporni cu `/startjoc`.",
       oraclePaused: "🛑 Oracle AI este oprit momentan. Un administrator îl poate reporni cu `/startai`.",
       gamePausedImageUrl: "",
+      gamePausedThumbnailUrl: "",
       oraclePausedImageUrl: "",
+      oraclePausedThumbnailUrl: "",
     }),
 
     events: z.object(

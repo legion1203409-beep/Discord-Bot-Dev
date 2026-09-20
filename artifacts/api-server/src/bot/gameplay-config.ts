@@ -6,7 +6,9 @@ export interface GameplayConfig {
     gamePaused: string;
     oraclePaused: string;
     gamePausedImageUrl: string;
+    gamePausedThumbnailUrl: string;
     oraclePausedImageUrl: string;
+    oraclePausedThumbnailUrl: string;
   };
   events: {
     eventDurationMinutes: number;
@@ -39,7 +41,9 @@ export const DEFAULT_GAMEPLAY_CONFIG: GameplayConfig = {
     gamePaused: "⏸️ Jocul este oprit momentan. Un administrator îl poate reporni cu `/startjoc`.",
     oraclePaused: "🛑 Oracle AI este oprit momentan. Un administrator îl poate reporni cu `/startai`.",
     gamePausedImageUrl: "",
+    gamePausedThumbnailUrl: "",
     oraclePausedImageUrl: "",
+    oraclePausedThumbnailUrl: "",
   },
   events: {
     eventDurationMinutes: 60,
@@ -100,7 +104,9 @@ export function normalizeGameplayConfig(value: unknown): GameplayConfig {
       gamePaused: message(messages.gamePaused, DEFAULT_GAMEPLAY_CONFIG.messages.gamePaused),
       oraclePaused: message(messages.oraclePaused, DEFAULT_GAMEPLAY_CONFIG.messages.oraclePaused),
       gamePausedImageUrl: normalizeMessageImageUrl(messages.gamePausedImageUrl),
+      gamePausedThumbnailUrl: normalizeMessageImageUrl(messages.gamePausedThumbnailUrl),
       oraclePausedImageUrl: normalizeMessageImageUrl(messages.oraclePausedImageUrl),
+      oraclePausedThumbnailUrl: normalizeMessageImageUrl(messages.oraclePausedThumbnailUrl),
     },
     events: {
       eventDurationMinutes: positiveInt(events.eventDurationMinutes, DEFAULT_GAMEPLAY_CONFIG.events.eventDurationMinutes),

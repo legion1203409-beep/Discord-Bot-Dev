@@ -23,6 +23,7 @@ export const DEFAULT_VERIFICATION_CONFIG: VerificationConfig = {
   successMessage: "Contul tău a fost verificat. Rolul a fost acordat.",
   alreadyVerifiedMessage: "Contul tău este deja verificat.",
   imageUrl: "",
+  thumbnailUrl: "",
   panelMessageId: "",
 };
 
@@ -40,6 +41,7 @@ export function normalizeVerificationConfig(value: Partial<VerificationConfig> |
     successMessage: typeof value?.successMessage === "string" && value.successMessage.trim() ? value.successMessage.trim() : DEFAULT_VERIFICATION_CONFIG.successMessage,
     alreadyVerifiedMessage: typeof value?.alreadyVerifiedMessage === "string" && value.alreadyVerifiedMessage.trim() ? value.alreadyVerifiedMessage.trim() : DEFAULT_VERIFICATION_CONFIG.alreadyVerifiedMessage,
     imageUrl: normalizeMessageImageUrl(value?.imageUrl),
+    thumbnailUrl: normalizeMessageImageUrl(value?.thumbnailUrl),
     panelMessageId: typeof value?.panelMessageId === "string" ? value.panelMessageId.trim() : "",
   };
 }
@@ -55,7 +57,9 @@ export function verificationPanel(config: VerificationConfig) {
     .setDescription(config.message.slice(0, 4_000))
     .setColor(0x8f5bff);
   const imageUrl = publicMessageImageUrl(config.imageUrl);
+  const thumbnailUrl = publicMessageImageUrl(config.thumbnailUrl);
   if (imageUrl) embed.setImage(imageUrl);
+  if (thumbnailUrl) embed.setThumbnail(thumbnailUrl);
   return {
     embeds: [
       embed,

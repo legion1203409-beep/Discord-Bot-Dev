@@ -672,7 +672,7 @@ async function handleProfetie(interaction: ChatInputCommandInteraction) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   if (!isOracleEnabled(interaction.guildId!)) {
     const messages = getGameplayConfig(interaction.guildId ?? "").messages;
-    await interaction.editReply(messageWithImage(messages.oraclePaused, messages.oraclePausedImageUrl));
+    await interaction.editReply(messageWithImage(messages.oraclePaused, messages.oraclePausedImageUrl, messages.oraclePausedThumbnailUrl));
     return;
   }
   const userId = interaction.user.id;
@@ -4988,6 +4988,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
               ...messageWithImage(
                 getGameplayConfig(interaction.guildId ?? "").messages.gamePaused,
                 getGameplayConfig(interaction.guildId ?? "").messages.gamePausedImageUrl,
+                getGameplayConfig(interaction.guildId ?? "").messages.gamePausedThumbnailUrl,
               ),
               flags: MessageFlags.Ephemeral,
             }),
@@ -5587,6 +5588,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
               ...messageWithImage(
                 getGameplayConfig(interaction.guildId ?? "").messages.gamePaused,
                 getGameplayConfig(interaction.guildId ?? "").messages.gamePausedImageUrl,
+                getGameplayConfig(interaction.guildId ?? "").messages.gamePausedThumbnailUrl,
               ),
               flags: MessageFlags.Ephemeral,
             }),

@@ -12,6 +12,8 @@ import {
   partnershipEditModal,
   partnershipHasUnder200Members,
   allianceAnnouncementText,
+  allianceAnnouncementEmbed,
+  allianceAnnouncementImageEmbed,
   fetchAllianceInviteStats,
   allianceRecruitmentEmbed,
   isLegacyOracleTicketPromptText,
@@ -320,6 +322,18 @@ describe("Oracle ticket categories", () => {
     expect(announcement).toBe(
       "🎉 Regatul Umbrelor\n👥 2345/187\n🔗 https://discord.gg/umbrelor\n<@987654321>",
     );
+  });
+
+  it("renders partnership image and thumbnail concurrently in embed and text modes", () => {
+    const large = "https://cdn.example.test/alliance-large.png";
+    const thumbnail = "https://cdn.example.test/alliance-thumb.png";
+    const embed = allianceAnnouncementEmbed("Pact confirmat", large, "large", thumbnail).toJSON();
+    expect(embed.image?.url).toBe(large);
+    expect(embed.thumbnail?.url).toBe(thumbnail);
+
+    const mediaEmbed = allianceAnnouncementImageEmbed(large, "large", thumbnail)?.toJSON();
+    expect(mediaEmbed?.image?.url).toBe(large);
+    expect(mediaEmbed?.thumbnail?.url).toBe(thumbnail);
   });
 
   it("builds a designed automatic recruitment advertisement from the partner answers", () => {

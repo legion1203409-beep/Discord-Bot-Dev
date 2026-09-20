@@ -75,6 +75,16 @@ function setTicketImage(embed: EmbedBuilder, raw: string | undefined): void {
   if (imageUrl) embed.setImage(imageUrl);
 }
 
+function setTicketMedia(
+  embed: EmbedBuilder,
+  imageUrl: string | undefined,
+  thumbnailUrl: string | undefined,
+): void {
+  setTicketImage(embed, imageUrl);
+  const publicThumbnailUrl = publicTicketImageUrl(thumbnailUrl);
+  if (publicThumbnailUrl) embed.setThumbnail(publicThumbnailUrl);
+}
+
 type RoleMembership = {
   roles:
     | readonly string[]
@@ -134,6 +144,7 @@ type TicketQuestion = {
   multiline?: boolean;
   required?: boolean;
   imageUrl?: string;
+  thumbnailUrl?: string;
 };
 
 const TICKET_QUESTIONS: Record<OracleTicketKind, TicketQuestion[]> = {
@@ -410,7 +421,7 @@ export function ticketPanelPayload(
       )
       .setFooter({ text: "Regatul Cenușii · Citește informațiile înainte de a începe" });
     if (TICKET_SEAL) embed.setThumbnail(TICKET_SEAL);
-    setTicketImage(embed, flow.panelImageUrl);
+    setTicketMedia(embed, flow.panelImageUrl, flow.panelThumbnailUrl);
     return {
       embeds: [embed],
       components: [new ActionRowBuilder<ButtonBuilder>().addComponents(ticketStartButton(kind, flow.startButtonLabel))],
@@ -1235,13 +1246,14 @@ export function allianceAnnouncementEmbed(
   text: string,
   imageUrl?: string,
   imageMode: "none" | "large" | "thumbnail" = "none",
+  thumbnailUrl?: string,
 ): EmbedBuilder {
   const embed = new EmbedBuilder()
     .setColor(0x7c8fbd)
     .setDescription(text)
     .setFooter({ text: "Pact confirmat · Regatul Cenușii" })
     .setTimestamp();
-  applyAllianceAnnouncementImage(embed, imageUrl, imageMode);
+  applyAllianceAnnouncementImage(embed, imageUrl, imageMode, thumbnailUrl);
   return embed;
 }
 
@@ -1249,20 +1261,27 @@ function applyAllianceAnnouncementImage(
   embed: EmbedBuilder,
   rawImageUrl: string | undefined,
   imageMode: "none" | "large" | "thumbnail",
+  rawThumbnailUrl?: string,
 ): void {
   const imageUrl = publicTicketImageUrl(rawImageUrl);
-  if (!imageUrl || imageMode === "none") return;
-  if (imageMode === "thumbnail") embed.setThumbnail(imageUrl);
-  else embed.setImage(imageUrl);
+  const thumbnailUrl = publicTicketImageUrl(rawThumbnailUrl);
+  if (thumbnailUrl) embed.setThumbnail(thumbnailUrl);
+  if (!imageUrl) return;
+  if (imageMode === "thumbnail" && !rawThumbnailUrl) embed.setThumbnail(imageUrl);
+  else if (imageMode !== "none" || rawThumbnailUrl !== undefined) embed.setImage(imageUrl);
 }
 
 export function allianceAnnouncementImageEmbed(
   imageUrl: string | undefined,
   imageMode: "none" | "large" | "thumbnail",
+  thumbnailUrl?: string,
 ): EmbedBuilder | null {
-  if (!publicTicketImageUrl(imageUrl) || imageMode === "none") return null;
+  if (
+    !publicTicketImageUrl(thumbnailUrl) &&
+    (!publicTicketImageUrl(imageUrl) || imageMode === "none")
+  ) return null;
   const embed = new EmbedBuilder().setColor(0x7c8fbd);
-  applyAllianceAnnouncementImage(embed, imageUrl, imageMode);
+  applyAllianceAnnouncementImage(embed, imageUrl, imageMode, thumbnailUrl);
   return embed;
 }
 
@@ -1776,6 +1795,7 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
       const announcementImageEmbed = allianceAnnouncementImageEmbed(
         ticketConfig.allianceAnnouncementImageUrl,
         ticketConfig.allianceAnnouncementImageMode,
+        ticketConfig.allianceAnnouncementThumbnailUrl,
       );
       const publicMessage = await publicChannel.send({
         ...(ticketConfig.allianceAnnouncementMode === "embed"
@@ -1785,6 +1805,7 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
                   announcementText,
                   ticketConfig.allianceAnnouncementImageUrl,
                   ticketConfig.allianceAnnouncementImageMode,
+                  ticketConfig.allianceAnnouncementThumbnailUrl,
                 ),
               ],
             }
@@ -2083,7 +2104,7 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
           undefined,
           selectedQuestions,
         );
-        setTicketImage(summaryEmbed, flow.staffNotificationImageUrl);
+        setTicketMedia(summaryEmbed, flow.staffNotificationImageUrl, flow.staffNotificationThumbnailUrl);
         const responseMessage = await interaction.channel.send({
           content: `<@&${roleId}>\n${flow.staffNotificationMessage}`,
           embeds: [summaryEmbed],
@@ -2098,8 +2119,16 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
         if (flow.completionAction !== "keep_open") {
           await lockTicketPanel(interaction, kind, "completed");
         }
+        const completionMediaEmbed =
+          publicTicketImageUrl(flow.completionImageUrl) || publicTicketImageUrl(flow.completionThumbnailUrl)
+            ? new EmbedBuilder().setColor(TICKET_COLORS[kind])
+            : null;
+        if (completionMediaEmbed) {
+          setTicketMedia(completionMediaEmbed, flow.completionImageUrl, flow.completionThumbnailUrl);
+        }
         await interaction.editReply({
           content: flow.completionMessage,
+          ...(completionMediaEmbed ? { embeds: [completionMediaEmbed] } : {}),
           components: [],
         });
         return true;
@@ -2125,18 +2154,24 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
         .setFooter({ text: complete ? "Formular complet · Regatul Cenușii" : "Răspunsul a fost salvat" })
         .setTimestamp();
       if (TICKET_SEAL) flowEmbed.setThumbnail(TICKET_SEAL);
-      setTicketImage(
+      setTicketMedia(
         flowEmbed,
-        complete
-          ? (flow.staffNotificationImageUrl ?? flow.completionImageUrl)
-          : question.imageUrl,
+        complete ? flow.completionImageUrl : question.imageUrl,
+        complete ? flow.completionThumbnailUrl : question.thumbnailUrl,
       );
 
       const roleId = getTicketConfig(interaction.guildId).staffReviewRoleId;
       const notifyStaff = complete && flow.completionAction === "notify_staff";
+      const staffMediaEmbed = notifyStaff &&
+        (publicTicketImageUrl(flow.staffNotificationImageUrl) || publicTicketImageUrl(flow.staffNotificationThumbnailUrl))
+        ? new EmbedBuilder().setColor(TICKET_COLORS[kind])
+        : null;
+      if (staffMediaEmbed) {
+        setTicketMedia(staffMediaEmbed, flow.staffNotificationImageUrl, flow.staffNotificationThumbnailUrl);
+      }
       const responseMessage = await interaction.channel.send({
         content: notifyStaff ? `<@&${roleId}>\n${flow.staffNotificationMessage}` : undefined,
-        embeds: [flowEmbed],
+        embeds: staffMediaEmbed ? [flowEmbed, staffMediaEmbed] : [flowEmbed],
         allowedMentions: notifyStaff ? { parse: [], roles: [roleId] } : { parse: [] },
       });
       progressState.currentStep = questionIndex;

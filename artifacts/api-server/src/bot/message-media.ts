@@ -17,10 +17,19 @@ export function publicMessageImageUrl(value: unknown): string | null {
   return domain ? `https://${domain}${normalized}` : null;
 }
 
-export function messageWithImage(content: string, imageUrl: unknown) {
+export function messageWithImage(content: string, imageUrl: unknown, thumbnailUrl?: unknown) {
   const publicUrl = publicMessageImageUrl(imageUrl);
+  const publicThumbnailUrl = publicMessageImageUrl(thumbnailUrl);
   return {
     content,
-    ...(publicUrl ? { embeds: [new EmbedBuilder().setImage(publicUrl)] } : {}),
+    ...(publicUrl || publicThumbnailUrl
+      ? {
+          embeds: [
+            new EmbedBuilder()
+              .setImage(publicUrl)
+              .setThumbnail(publicThumbnailUrl),
+          ],
+        }
+      : {}),
   };
 }

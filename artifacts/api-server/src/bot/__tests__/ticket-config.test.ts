@@ -120,6 +120,60 @@ describe("custom ticket flow configuration", () => {
     ]);
   });
 
+  it("round-trips two independent media slots and allows each to be cleared", () => {
+    const normalized = normalizeTicketConfig({
+      flows: {
+        staff: flow("staff", {
+          panelImageUrl: "https://example.com/panel.png",
+          panelThumbnailUrl: "https://example.com/panel-thumb.png",
+          completionImageUrl: "",
+          completionThumbnailUrl: "https://example.com/completion-thumb.png",
+          questions: [question("first", {
+            imageUrl: "https://example.com/question.png",
+            thumbnailUrl: "https://example.com/question-thumb.png",
+          })],
+        }),
+      },
+    });
+
+    expect(normalized.flows.staff).toMatchObject({
+      panelImageUrl: "https://example.com/panel.png",
+      panelThumbnailUrl: "https://example.com/panel-thumb.png",
+      completionImageUrl: undefined,
+      completionThumbnailUrl: "https://example.com/completion-thumb.png",
+    });
+    expect(normalized.flows.staff.questions[0]).toMatchObject({
+      imageUrl: "https://example.com/question.png",
+      thumbnailUrl: "https://example.com/question-thumb.png",
+    });
+    expect(ticketFlowConfigSchema.safeParse(normalized.flows.staff).success).toBe(true);
+
+    const unsafe = flow("staff", {
+      panelThumbnailUrl: "http://insecure.example.com/thumb.png",
+    });
+    expect(ticketFlowConfigSchema.safeParse(unsafe).success).toBe(false);
+    expect(normalizeTicketConfig({ flows: { staff: unsafe } }).flows.staff.panelThumbnailUrl)
+      .toBeUndefined();
+  });
+
+  it("migrates legacy partnership thumbnail mode without losing its image", () => {
+    const legacy = normalizeTicketConfig({
+      allianceAnnouncementImageUrl: "https://example.com/legacy.png",
+      allianceAnnouncementImageMode: "thumbnail",
+    });
+    expect(legacy.allianceAnnouncementImageUrl).toBeUndefined();
+    expect(legacy.allianceAnnouncementThumbnailUrl).toBe("https://example.com/legacy.png");
+    expect(legacy.allianceAnnouncementImageMode).toBe("thumbnail");
+
+    const modern = normalizeTicketConfig({
+      allianceAnnouncementImageUrl: "https://example.com/large.png",
+      allianceAnnouncementThumbnailUrl: "https://example.com/thumb.png",
+      allianceAnnouncementImageMode: "thumbnail",
+    });
+    expect(modern.allianceAnnouncementImageUrl).toBe("https://example.com/large.png");
+    expect(modern.allianceAnnouncementThumbnailUrl).toBe("https://example.com/thumb.png");
+  });
+
   it("rejects malformed flow payloads before they can be saved by the panel", () => {
     for (const kind of KINDS) {
       expect(ticketFlowConfigSchema.safeParse(flow(kind)).success).toBe(true);

@@ -47,7 +47,7 @@ export function ImageField({
   return (
     <div className="space-y-2 md:col-span-2">
       <label className="text-xs font-medium">{label}</label>
-      <div className="grid gap-2 md:grid-cols-[1fr_auto]">
+      <div className="grid gap-2 md:grid-cols-[1fr_auto_auto]">
         <Input
           value={value ?? ""}
           placeholder="URL imagine sau folosește Upload"
@@ -67,6 +67,17 @@ export function ImageField({
             }}
           />
         </label>
+        <button
+          type="button"
+          className="rounded-md border border-border px-3 text-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+          disabled={!value || uploading}
+          onClick={() => {
+            setError("");
+            onChange("");
+          }}
+        >
+          Elimină
+        </button>
       </div>
       {value && <img src={value} alt="Previzualizarea imaginii selectate" className="max-h-32 rounded-md border border-border object-contain" />}
       {error && <p className="text-xs text-destructive">{error}</p>}

@@ -79,6 +79,7 @@ export interface BotControlConfig {
     successMessage: string;
     alreadyVerifiedMessage: string;
     imageUrl: string;
+    thumbnailUrl: string;
     panelMessageId: string;
   };
 
@@ -94,6 +95,7 @@ export interface BotControlConfig {
     allianceAnnouncementTemplate: string;
     allianceAnnouncementMode: "text" | "embed";
     allianceAnnouncementImageUrl?: string;
+    allianceAnnouncementThumbnailUrl?: string;
     allianceAnnouncementImageMode: "none" | "large" | "thumbnail";
     incompleteTimeoutMinutes: number;
     firstWarningMinutes: number;
@@ -111,7 +113,9 @@ export interface BotControlConfig {
       gamePaused: string;
       oraclePaused: string;
       gamePausedImageUrl: string;
+      gamePausedThumbnailUrl: string;
       oraclePausedImageUrl: string;
+      oraclePausedThumbnailUrl: string;
     };
     events: {
       eventDurationMinutes: number;
@@ -146,6 +150,7 @@ export interface BotControlConfig {
     channelsTitle: string;
     emptyChannelsText: string;
     imageUrl: string;
+    thumbnailUrl: string;
     metricLabels: {
       messages: string;
       uniqueUsers: string;
@@ -186,6 +191,7 @@ export interface TicketQuestionConfig {
   multiline: boolean;
   required: boolean;
   imageUrl?: string;
+  thumbnailUrl?: string;
 }
 
 export interface TicketFlowConfig {
@@ -197,8 +203,11 @@ export interface TicketFlowConfig {
   completionMessage: string;
   staffNotificationMessage: string;
   panelImageUrl?: string;
+  panelThumbnailUrl?: string;
   completionImageUrl?: string;
+  completionThumbnailUrl?: string;
   staffNotificationImageUrl?: string;
+  staffNotificationThumbnailUrl?: string;
   completionAction: "lock" | "notify_staff" | "keep_open";
   questions: TicketQuestionConfig[];
   postedQuestionKeys?: string[];

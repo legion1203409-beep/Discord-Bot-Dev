@@ -14,6 +14,7 @@ export interface TicketQuestionConfig {
   multiline: boolean;
   required: boolean;
   imageUrl?: string;
+  thumbnailUrl?: string;
 }
 
 export interface TicketFlowConfig {
@@ -25,8 +26,11 @@ export interface TicketFlowConfig {
   completionMessage: string;
   staffNotificationMessage: string;
   panelImageUrl?: string;
+  panelThumbnailUrl?: string;
   completionImageUrl?: string;
+  completionThumbnailUrl?: string;
   staffNotificationImageUrl?: string;
+  staffNotificationThumbnailUrl?: string;
   completionAction: TicketCompletionAction;
   questions: TicketQuestionConfig[];
   /** Question keys included in the final Discord summary; omitted means all. */
@@ -41,6 +45,7 @@ export interface TicketConfig {
   allianceAnnouncementTemplate: string;
   allianceAnnouncementMode: AllianceAnnouncementMode;
   allianceAnnouncementImageUrl?: string;
+  allianceAnnouncementThumbnailUrl?: string;
   allianceAnnouncementImageMode: AllianceAnnouncementImageMode;
   incompleteTimeoutMinutes: number;
   firstWarningMinutes: number;
@@ -158,7 +163,7 @@ function textOrDefault(value: unknown, fallback: string, maxLength: number): str
 function imageUrlOrEmpty(value: unknown): string | undefined {
   if (typeof value !== "string" || value.trim() === "") return undefined;
   const candidate = value.trim().slice(0, 2_000);
-  return /^https?:\/\/\S+$/i.test(candidate) || /^\/api\/storage\/objects\/[a-zA-Z0-9/_-]+$/.test(candidate)
+  return /^https:\/\/\S+$/i.test(candidate) || /^\/api\/storage\/objects\/[a-zA-Z0-9/_-]+$/.test(candidate)
     ? candidate
     : undefined;
 }
@@ -184,6 +189,7 @@ function normalizeFlow(value: unknown, fallback: TicketFlowConfig): TicketFlowCo
       multiline: question.multiline === true,
       required: question.required !== false,
       imageUrl: imageUrlOrEmpty(question.imageUrl),
+      thumbnailUrl: imageUrlOrEmpty(question.thumbnailUrl),
     });
   }
   const normalizedQuestions = questions.length > 0 ? questions : fallback.questions;
@@ -201,8 +207,11 @@ function normalizeFlow(value: unknown, fallback: TicketFlowConfig): TicketFlowCo
     completionMessage: textOrDefault(raw.completionMessage, fallback.completionMessage, 2_000),
     staffNotificationMessage: textOrDefault(raw.staffNotificationMessage, fallback.staffNotificationMessage, 2_000),
     panelImageUrl: imageUrlOrEmpty(raw.panelImageUrl),
+    panelThumbnailUrl: imageUrlOrEmpty(raw.panelThumbnailUrl),
     completionImageUrl: imageUrlOrEmpty(raw.completionImageUrl),
+    completionThumbnailUrl: imageUrlOrEmpty(raw.completionThumbnailUrl),
     staffNotificationImageUrl: imageUrlOrEmpty(raw.staffNotificationImageUrl),
+    staffNotificationThumbnailUrl: imageUrlOrEmpty(raw.staffNotificationThumbnailUrl),
     completionAction:
       raw.completionAction === "lock" || raw.completionAction === "notify_staff" || raw.completionAction === "keep_open"
         ? raw.completionAction
@@ -224,6 +233,11 @@ export function normalizeTicketConfig(value: unknown): TicketConfig {
   const rawFlows = raw.flows && typeof raw.flows === "object"
     ? raw.flows as Partial<Record<TicketCategoryKind, unknown>>
     : {};
+  const hasExplicitAnnouncementThumbnail = Object.prototype.hasOwnProperty.call(
+    raw,
+    "allianceAnnouncementThumbnailUrl",
+  );
+  const legacyAnnouncementImage = imageUrlOrEmpty(raw.allianceAnnouncementImageUrl);
 
   return {
     categories: {
@@ -241,7 +255,15 @@ export function normalizeTicketConfig(value: unknown): TicketConfig {
     ),
     allianceAnnouncementMode:
       raw.allianceAnnouncementMode === "embed" ? "embed" : DEFAULT_TICKET_CONFIG.allianceAnnouncementMode,
-    allianceAnnouncementImageUrl: imageUrlOrEmpty(raw.allianceAnnouncementImageUrl),
+    allianceAnnouncementImageUrl:
+      !hasExplicitAnnouncementThumbnail && raw.allianceAnnouncementImageMode === "thumbnail"
+        ? undefined
+        : legacyAnnouncementImage,
+    allianceAnnouncementThumbnailUrl:
+      imageUrlOrEmpty(raw.allianceAnnouncementThumbnailUrl) ??
+      (!hasExplicitAnnouncementThumbnail && raw.allianceAnnouncementImageMode === "thumbnail"
+        ? legacyAnnouncementImage
+        : undefined),
     allianceAnnouncementImageMode:
       raw.allianceAnnouncementImageMode === "large" || raw.allianceAnnouncementImageMode === "thumbnail"
         ? raw.allianceAnnouncementImageMode

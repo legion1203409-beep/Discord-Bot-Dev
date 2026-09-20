@@ -41,12 +41,17 @@ describe("owner gameplay configuration limits", () => {
   it("round-trips safe message image fields and rejects unsafe image URLs", () => {
     const payload = validPayload();
     payload.gameplayConfig.messages.gamePausedImageUrl = "/api/storage/objects/uploads/game-paused";
+    payload.gameplayConfig.messages.gamePausedThumbnailUrl = "https://cdn.example.test/game-thumb.png";
     payload.gameplayConfig.messages.oraclePausedImageUrl = "https://cdn.example.test/oracle.png";
+    payload.gameplayConfig.messages.oraclePausedThumbnailUrl = "";
     expect(botControlSchema.parse(payload).gameplayConfig.messages).toMatchObject({
       gamePausedImageUrl: "/api/storage/objects/uploads/game-paused",
+      gamePausedThumbnailUrl: "https://cdn.example.test/game-thumb.png",
       oraclePausedImageUrl: "https://cdn.example.test/oracle.png",
+      oraclePausedThumbnailUrl: "",
     });
-    payload.gameplayConfig.messages.gamePausedImageUrl = "javascript:alert(1)";
+    payload.gameplayConfig.messages.gamePausedImageUrl = "";
+    payload.gameplayConfig.messages.gamePausedThumbnailUrl = "javascript:alert(1)";
     expect(() => botControlSchema.parse(payload)).toThrow();
   });
 });

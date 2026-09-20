@@ -97,7 +97,9 @@ const DEFAULT_GAMEPLAY_MESSAGES = {
   gamePaused: "⏸️ Jocul este oprit momentan. Un administrator îl poate reporni cu `/startjoc`.",
   oraclePaused: "🛑 Oracle AI este oprit momentan. Un administrator îl poate reporni cu `/startai`.",
   gamePausedImageUrl: "",
+  gamePausedThumbnailUrl: "",
   oraclePausedImageUrl: "",
+  oraclePausedThumbnailUrl: "",
 } as const;
 
 const DEFAULT_DAILY_STATS = {
@@ -109,6 +111,7 @@ const DEFAULT_DAILY_STATS = {
   channelsTitle: "🔥 Top 5 canale active",
   emptyChannelsText: "Încă nu există mesaje înregistrate pentru această zi.",
   imageUrl: "",
+  thumbnailUrl: "",
   metricLabels: {
     messages: "💬 Mesaje",
     uniqueUsers: "👥 Utilizatori unici",
@@ -341,7 +344,7 @@ export function BotControlPage() {
         ...current.tickets,
         flows: {
           ...current.tickets.flows,
-          [kind]: { ...current.tickets.flows[kind], [field]: value },
+          [kind]: { ...current.tickets.flows[kind], mode: "custom", [field]: value },
         },
       },
     } : current);
@@ -912,6 +915,7 @@ export function BotControlPage() {
                 <Textarea rows={3} maxLength={2000} value={activeFlow.requirementsText} onChange={(event) => setFlow(activeFlowKind, "requirementsText", event.target.value)} />
               </div>
               <ImageField label="Imaginea panoului" value={activeFlow.panelImageUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setFlow(activeFlowKind, "panelImageUrl", value)} />
+              <ImageField label="Thumbnail-ul panoului (dreapta sus)" value={activeFlow.panelThumbnailUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setFlow(activeFlowKind, "panelThumbnailUrl", value)} />
               <div className="space-y-2">
                 <label className="text-sm font-medium">Mesajul după completare</label>
                 <Textarea rows={4} maxLength={2000} value={activeFlow.completionMessage} onChange={(event) => setFlow(activeFlowKind, "completionMessage", event.target.value)} />
@@ -921,7 +925,9 @@ export function BotControlPage() {
                 <Textarea rows={4} maxLength={2000} value={activeFlow.staffNotificationMessage} onChange={(event) => setFlow(activeFlowKind, "staffNotificationMessage", event.target.value)} />
               </div>
               <ImageField label="Imaginea mesajului de finalizare" value={activeFlow.completionImageUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setFlow(activeFlowKind, "completionImageUrl", value)} />
+              <ImageField label="Thumbnail-ul mesajului de finalizare" value={activeFlow.completionThumbnailUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setFlow(activeFlowKind, "completionThumbnailUrl", value)} />
               <ImageField label="Imaginea mesajului pentru staff" value={activeFlow.staffNotificationImageUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setFlow(activeFlowKind, "staffNotificationImageUrl", value)} />
+              <ImageField label="Thumbnail-ul mesajului pentru staff" value={activeFlow.staffNotificationThumbnailUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setFlow(activeFlowKind, "staffNotificationThumbnailUrl", value)} />
               </div>
             </div>
 
@@ -980,6 +986,13 @@ export function BotControlPage() {
                         <Input value={question.placeholder} maxLength={100} onChange={(event) => updateQuestion(activeFlowKind, index, "placeholder", event.target.value)} />
                       </div>
                       <ImageField
+                        label="Thumbnail după acest răspuns (opțional)"
+                        value={question.thumbnailUrl}
+                        guildId={guildId}
+                        csrfToken={session?.csrfToken}
+                        onChange={(value) => updateQuestion(activeFlowKind, index, "thumbnailUrl", value)}
+                      />
+                      <ImageField
                         label="Imaginea afișată după acest răspuns (opțional)"
                         value={question.imageUrl}
                         guildId={guildId}
@@ -1010,6 +1023,7 @@ export function BotControlPage() {
               <div className="grid gap-4 p-4 lg:grid-cols-2">
                 <div className="rounded-lg bg-[#2b2d31] p-4">
                   <p className="mb-3 text-[10px] font-mono tracking-[0.18em] text-[#b5bac1]">MESAJUL DIN PANOU</p>
+                  {activeFlow.panelThumbnailUrl && <img src={activeFlow.panelThumbnailUrl} alt="" className="float-right ml-3 h-16 w-16 rounded object-cover" />}
                   <h4 className="text-base font-semibold text-[#f2f3f5]">{activeFlow.title}</h4>
                   <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[#dbdee1]">
                     {activeFlow.panelDescription}
@@ -1026,10 +1040,12 @@ export function BotControlPage() {
                   <Button type="button" size="sm" className="mt-4 pointer-events-none">
                     {activeFlow.startButtonLabel}
                   </Button>
+                  {activeFlow.panelImageUrl && <img src={activeFlow.panelImageUrl} alt="" className="mt-3 max-h-40 w-full rounded object-contain" />}
                 </div>
 
                 <div className="rounded-lg bg-[#2b2d31] p-4">
                   <p className="mb-3 text-[10px] font-mono tracking-[0.18em] text-[#b5bac1]">MESAJUL DUPĂ COMPLETARE</p>
+                  {activeFlow.completionThumbnailUrl && <img src={activeFlow.completionThumbnailUrl} alt="" className="float-right ml-3 h-16 w-16 rounded object-cover" />}
                   <h4 className="text-base font-semibold text-[#f2f3f5]">Formular complet</h4>
                   <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[#dbdee1]">
                     {activeFlow.completionMessage}
@@ -1053,6 +1069,7 @@ export function BotControlPage() {
                   {activeFlow.completionAction === "notify_staff" && (
                     <p className="mt-4 text-xs text-primary">Mesajul va anunța rolul staff configurat.</p>
                   )}
+                  {activeFlow.completionImageUrl && <img src={activeFlow.completionImageUrl} alt="" className="mt-3 max-h-40 w-full rounded object-contain" />}
                 </div>
               </div>
               <p className="border-t border-[#3f4147] px-4 py-3 text-xs text-[#b5bac1]">
@@ -1151,20 +1168,6 @@ export function BotControlPage() {
                      </SelectContent>
                    </Select>
                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Afișarea imaginii</label>
-                    <Select
-                      value={draft.tickets.allianceAnnouncementImageMode}
-                      onValueChange={(value) => setTicket(["allianceAnnouncementImageMode"], value)}
-                    >
-                      <SelectTrigger className="mod-select-trigger"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">Fără imagine</SelectItem>
-                        <SelectItem value="large">Imagine mare sub mesaj</SelectItem>
-                        <SelectItem value="thumbnail">Thumbnail în dreapta</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
                  <div className="space-y-2 text-xs text-muted-foreground">
                    <p className="font-medium text-foreground">Variabile disponibile</p>
                    <p className="font-mono leading-relaxed">
@@ -1174,12 +1177,25 @@ export function BotControlPage() {
                  </div>
                </div>
                 <ImageField
-                  label="Imaginea anunțului public"
+                   label="Imagine mare sub anunțul public"
                   value={draft.tickets.allianceAnnouncementImageUrl}
                   guildId={guildId}
                   csrfToken={session?.csrfToken}
-                  onChange={(value) => setTicket(["allianceAnnouncementImageUrl"], value)}
+                  onChange={(value) => {
+                    setTicket(["allianceAnnouncementImageUrl"], value);
+                    setTicket(["allianceAnnouncementImageMode"], "large");
+                  }}
                 />
+                 <ImageField
+                   label="Thumbnail mic în dreapta anunțului public"
+                   value={draft.tickets.allianceAnnouncementThumbnailUrl}
+                   guildId={guildId}
+                   csrfToken={session?.csrfToken}
+                   onChange={(value) => {
+                     setTicket(["allianceAnnouncementThumbnailUrl"], value);
+                     setTicket(["allianceAnnouncementImageMode"], "large");
+                   }}
+                 />
                  <div className="mt-4 border-t border-border/70 pt-4">
                    <label className="text-sm font-medium">Mesajul de recrutare al alianței</label>
                    <p className="mt-1 text-xs text-muted-foreground">Text de recrutare păstrat în configurație. Pentru anunțul publicat pe Discord, folosește șablonul și imaginea de mai sus.</p>
@@ -1237,11 +1253,13 @@ export function BotControlPage() {
                 <span className="text-xs font-medium">Joc oprit</span>
                 <Textarea rows={4} maxLength={2000} value={draft.gameplayConfig.messages.gamePaused} onChange={(event) => setGameplayMessage("gamePaused", event.target.value)} />
                 <ImageField label="Imagine pentru mesajul Joc oprit" value={draft.gameplayConfig.messages.gamePausedImageUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setGameplayMessage("gamePausedImageUrl", value)} />
+                <ImageField label="Thumbnail pentru mesajul Joc oprit" value={draft.gameplayConfig.messages.gamePausedThumbnailUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setGameplayMessage("gamePausedThumbnailUrl", value)} />
               </label>
               <label className="space-y-1 text-sm">
                 <span className="text-xs font-medium">Oracle AI oprit</span>
                 <Textarea rows={4} maxLength={2000} value={draft.gameplayConfig.messages.oraclePaused} onChange={(event) => setGameplayMessage("oraclePaused", event.target.value)} />
                 <ImageField label="Imagine pentru mesajul Oracle oprit" value={draft.gameplayConfig.messages.oraclePausedImageUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setGameplayMessage("oraclePausedImageUrl", value)} />
+                <ImageField label="Thumbnail pentru mesajul Oracle oprit" value={draft.gameplayConfig.messages.oraclePausedThumbnailUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setGameplayMessage("oraclePausedThumbnailUrl", value)} />
               </label>
             </div>
           </section>
@@ -1279,6 +1297,7 @@ export function BotControlPage() {
                   <Textarea rows={4} maxLength={4000} value={draft.dailyStats.description} onChange={(event) => setDailyStats("description", event.target.value)} />
                 </label>
                 <ImageField label="Imaginea raportului zilnic" value={draft.dailyStats.imageUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setDailyStats("imageUrl", value)} />
+                <ImageField label="Thumbnail-ul raportului zilnic" value={draft.dailyStats.thumbnailUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setDailyStats("thumbnailUrl", value)} />
                 <div className="grid gap-4 md:grid-cols-2">
                   <label className="space-y-1 text-sm">
                     <span className="text-xs font-medium">Titlu activitate</span>
@@ -1305,6 +1324,7 @@ export function BotControlPage() {
               <div className="h-fit rounded-xl border bg-[#1e1f22] p-3 text-[#f2f3f5] shadow-xl" style={{ borderLeftColor: draft.dailyStats.color, borderLeftWidth: 4 }}>
                 <p className="mb-3 text-[10px] font-semibold tracking-[0.18em] text-[#949cf7]">PREVIZUALIZARE EMBED</p>
                 <div className="rounded-md bg-[#2b2d31] p-3">
+                  {draft.dailyStats.thumbnailUrl && <img src={draft.dailyStats.thumbnailUrl} alt="" className="float-right ml-3 h-20 w-20 rounded object-cover" />}
                   <p className="text-[10px] font-semibold tracking-wider text-[#949cf7]">ORACOLUL CENUȘII · COMMUNITY INSIGHTS</p>
                   <h3 className="mt-2 font-semibold">{draft.dailyStats.title.replace("{guild}", "Regatul Cenușii")}</h3>
                   <p className="mt-2 whitespace-pre-wrap text-xs text-[#b5bac1]">{draft.dailyStats.description.replace("{guild}", "Regatul Cenușii").replace("{date}", "18 septembrie 2026")}</p>
@@ -1317,6 +1337,7 @@ export function BotControlPage() {
                     ))}
                   </div>
                   <p className="mt-4 border-t border-white/10 pt-3 text-[10px] text-[#949ba4]">{draft.dailyStats.footer}</p>
+                  {draft.dailyStats.imageUrl && <img src={draft.dailyStats.imageUrl} alt="" className="mt-3 max-h-48 w-full rounded object-contain" />}
                 </div>
               </div>
             </div>
@@ -1359,6 +1380,7 @@ export function BotControlPage() {
           <div className="space-y-4">
             <div className="rounded-lg border border-[#3f4147] bg-[#2b2d31] p-4">
               <p className="text-[10px] font-mono tracking-[0.18em] text-[#b5bac1]">PANOU DISCORD SIMULAT</p>
+              {activeFlow.panelThumbnailUrl && <img src={activeFlow.panelThumbnailUrl} alt="" className="float-right ml-3 h-16 w-16 rounded object-cover" />}
               <h3 className="mt-2 text-lg font-semibold">{activeFlow.title}</h3>
               <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[#dbdee1]">{activeFlow.panelDescription}</p>
               <p className="mt-3 whitespace-pre-wrap text-xs text-[#b5bac1]">{activeFlow.requirementsText}</p>
@@ -1368,6 +1390,7 @@ export function BotControlPage() {
                   {activeFlow.startButtonLabel}
                 </Button>
               )}
+              {activeFlow.panelImageUrl && <img src={activeFlow.panelImageUrl} alt="" className="mt-3 max-h-48 w-full rounded object-contain" />}
             </div>
 
             {testStarted && !testCompleted && testQuestion && (
@@ -1381,7 +1404,9 @@ export function BotControlPage() {
                   </span>
                 </div>
                 <h3 className="mt-3 text-base font-semibold">{testQuestion.label}</h3>
+                {testQuestion.thumbnailUrl && <img src={testQuestion.thumbnailUrl} alt="" className="float-right ml-3 h-16 w-16 rounded object-cover" />}
                 <p className="mt-1 text-sm text-[#dbdee1]">{testQuestion.description}</p>
+                {testQuestion.imageUrl && <img src={testQuestion.imageUrl} alt="" className="mt-3 max-h-48 w-full rounded object-contain" />}
                 {testQuestion.multiline ? (
                   <Textarea
                     autoFocus
@@ -1443,6 +1468,7 @@ export function BotControlPage() {
                     : "Formular complet"}
                 </h3>
                 <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[#dbdee1]">{activeFlow.completionMessage}</p>
+                {activeFlow.completionThumbnailUrl && <img src={activeFlow.completionThumbnailUrl} alt="" className="float-right ml-3 h-16 w-16 rounded object-cover" />}
                 <div className="mt-4 space-y-2 border-t border-[#3f4147] pt-3">
                   {activeFlow.questions.filter((question) => postedQuestionKeys.has(question.key)).map((question) => (
                     <div key={`test-final-${question.key}`} className="rounded-md bg-[#1e1f22] px-3 py-2">
@@ -1460,6 +1486,7 @@ export function BotControlPage() {
                 {activeFlow.completionAction === "notify_staff" && (
                   <p className="mt-4 text-xs text-primary">{activeFlow.staffNotificationMessage}</p>
                 )}
+                {activeFlow.completionImageUrl && <img src={activeFlow.completionImageUrl} alt="" className="mt-3 max-h-48 w-full rounded object-contain" />}
               </div>
             )}
 
@@ -1503,30 +1530,24 @@ export function BotControlPage() {
                      {draft.tickets.allianceAnnouncementMode === "embed" ? (
                        <div className="border-l-4 border-[#7c8fbd] pl-3">
                          <p className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-[#f2f3f5]">{partnershipAnnouncement}</p>
-                         {draft.tickets.allianceAnnouncementImageUrl && draft.tickets.allianceAnnouncementImageMode !== "none" && (
-                           draft.tickets.allianceAnnouncementImageMode === "thumbnail" ? (
-                             <div className="mt-3 flex justify-between gap-3">
-                               <span />
-                               <img src={draft.tickets.allianceAnnouncementImageUrl} alt="" className="h-20 w-20 rounded object-cover" />
-                             </div>
-                           ) : (
-                             <img src={draft.tickets.allianceAnnouncementImageUrl} alt="" className="mt-3 max-h-56 w-full rounded object-cover" />
-                           )
-                         )}
+                          {draft.tickets.allianceAnnouncementThumbnailUrl && (
+                            <img src={draft.tickets.allianceAnnouncementThumbnailUrl} alt="" className="float-right ml-3 h-20 w-20 rounded object-cover" />
+                          )}
+                          {draft.tickets.allianceAnnouncementImageUrl && (
+                            <img src={draft.tickets.allianceAnnouncementImageUrl} alt="" className="mt-3 max-h-56 w-full rounded object-cover" />
+                          )}
                        </div>
                      ) : (
                        <>
                          <p className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-[#f2f3f5]">{partnershipAnnouncement}</p>
-                         {draft.tickets.allianceAnnouncementImageUrl && draft.tickets.allianceAnnouncementImageMode !== "none" && (
+                          {(draft.tickets.allianceAnnouncementImageUrl || draft.tickets.allianceAnnouncementThumbnailUrl) && (
                            <div className="mt-3 border-l-4 border-[#7c8fbd] pl-3">
-                             {draft.tickets.allianceAnnouncementImageMode === "thumbnail" ? (
-                               <div className="flex justify-between gap-3">
-                                 <span />
-                                 <img src={draft.tickets.allianceAnnouncementImageUrl} alt="" className="h-20 w-20 rounded object-cover" />
-                               </div>
-                             ) : (
-                               <img src={draft.tickets.allianceAnnouncementImageUrl} alt="" className="max-h-56 w-full rounded object-cover" />
-                             )}
+                              {draft.tickets.allianceAnnouncementThumbnailUrl && (
+                                <img src={draft.tickets.allianceAnnouncementThumbnailUrl} alt="" className="float-right ml-3 h-20 w-20 rounded object-cover" />
+                              )}
+                              {draft.tickets.allianceAnnouncementImageUrl && (
+                                <img src={draft.tickets.allianceAnnouncementImageUrl} alt="" className="max-h-56 w-full rounded object-cover" />
+                              )}
                            </div>
                          )}
                        </>

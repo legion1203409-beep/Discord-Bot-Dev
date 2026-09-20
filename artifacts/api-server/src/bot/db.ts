@@ -2264,6 +2264,7 @@ export interface VerificationConfig {
   successMessage: string;
   alreadyVerifiedMessage: string;
   imageUrl: string;
+  thumbnailUrl: string;
   panelMessageId: string;
 }
 
@@ -2327,6 +2328,7 @@ export interface DailyStatsEmbedConfig {
   channelsTitle: string;
   emptyChannelsText: string;
   imageUrl: string;
+  thumbnailUrl: string;
   metricLabels: {
     messages: string;
     uniqueUsers: string;
@@ -2346,6 +2348,7 @@ export const DEFAULT_DAILY_STATS_EMBED_CONFIG: DailyStatsEmbedConfig = {
   channelsTitle: "🔥 Top 5 canale active",
   emptyChannelsText: "Încă nu există mesaje înregistrate pentru această zi.",
   imageUrl: "",
+  thumbnailUrl: "",
   metricLabels: {
     messages: "💬 Mesaje",
     uniqueUsers: "👥 Utilizatori unici",
@@ -2361,7 +2364,7 @@ export function normalizeDailyStatsEmbedConfig(value: unknown): DailyStatsEmbedC
   const labels = input.metricLabels && typeof input.metricLabels === "object"
     ? input.metricLabels as Record<string, unknown>
     : {};
-  const text = (key: keyof Omit<DailyStatsEmbedConfig, "metricLabels" | "color" | "imageUrl">): string => {
+  const text = (key: keyof Omit<DailyStatsEmbedConfig, "metricLabels" | "color" | "imageUrl" | "thumbnailUrl">): string => {
     const current = input[key];
     const fallback = DEFAULT_DAILY_STATS_EMBED_CONFIG[key];
     return typeof current === "string" && current.trim() ? current.trim() : fallback;
@@ -2385,6 +2388,7 @@ export function normalizeDailyStatsEmbedConfig(value: unknown): DailyStatsEmbedC
     channelsTitle: text("channelsTitle").slice(0, 256),
     emptyChannelsText: text("emptyChannelsText").slice(0, 1_024),
     imageUrl: normalizeMessageImageUrl(input.imageUrl),
+    thumbnailUrl: normalizeMessageImageUrl(input.thumbnailUrl),
     metricLabels: {
       messages: label("messages").slice(0, 256),
       uniqueUsers: label("uniqueUsers").slice(0, 256),

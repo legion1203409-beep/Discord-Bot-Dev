@@ -327,7 +327,9 @@ export function buildDailyStatsEmbed(
     .setFooter({ text: config.footer })
     .setTimestamp(new Date(`${report.day}T12:00:00.000Z`));
   const imageUrl = publicMessageImageUrl(config.imageUrl);
+  const thumbnailUrl = publicMessageImageUrl(config.thumbnailUrl);
   if (imageUrl) embed.setImage(imageUrl);
+  if (thumbnailUrl) embed.setThumbnail(thumbnailUrl);
   return embed;
 }
 

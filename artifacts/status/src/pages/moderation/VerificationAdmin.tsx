@@ -23,6 +23,7 @@ const DEFAULT_VERIFICATION_TEXT = {
   successMessage: "Contul tău a fost verificat. Rolul a fost acordat.",
   alreadyVerifiedMessage: "Contul tău este deja verificat.",
   imageUrl: "",
+  thumbnailUrl: "",
 } as const;
 
 function isTextChannel(type: number | string): boolean {
@@ -271,6 +272,13 @@ export function VerificationAdminPage() {
               <Textarea rows={5} maxLength={4000} value={draft.verification.message} onChange={(event) => setVerification("message", event.target.value)} />
             </label>
             <ImageField
+              label="Thumbnail mic (dreapta sus)"
+              value={draft.verification.thumbnailUrl}
+              guildId={guildId}
+              csrfToken={session?.csrfToken}
+              onChange={(value) => setVerification("thumbnailUrl", value)}
+            />
+            <ImageField
               label="Imaginea panoului de verificare"
               value={draft.verification.imageUrl}
               guildId={guildId}
@@ -294,6 +302,13 @@ export function VerificationAdminPage() {
             <p className="mb-3 text-[10px] font-semibold tracking-[0.18em] text-[#949cf7]">PREVIZUALIZARE DISCORD</p>
             <div className="overflow-hidden rounded-lg border-l-4 border-[#5865f2] bg-[#2b2d31]">
               <div className="p-4">
+                {draft.verification.thumbnailUrl && (
+                  <img
+                    src={draft.verification.thumbnailUrl}
+                    alt="Previzualizarea thumbnail-ului panoului"
+                    className="float-right ml-3 h-20 w-20 rounded object-cover"
+                  />
+                )}
                 <h3 className="text-lg font-semibold">{draft.verification.title || "Titlul panoului"}</h3>
                 <p className="mt-2 whitespace-pre-wrap text-sm text-[#b5bac1]">{draft.verification.message || "Descrierea panoului"}</p>
                 {draft.verification.imageUrl && (
