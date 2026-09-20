@@ -286,6 +286,10 @@ export function BotControlPage() {
     setDraft(data ? JSON.parse(JSON.stringify(data)) : null);
   }, [data]);
 
+  const hasUnsavedChanges = Boolean(
+    data && draft && JSON.stringify(draft) !== JSON.stringify(data),
+  );
+
   const setChannel = (key: string, value: string) => {
     setDraft((current) => current ? {
       ...current,
@@ -505,7 +509,7 @@ export function BotControlPage() {
   };
 
   const save = async () => {
-    if (!draft) return;
+    if (!draft || !hasUnsavedChanges) return;
     const duplicateFlow = Object.entries(draft.tickets.flows)
       .map(([kind, flow]) => ({ kind, flow, duplicateKeys: getDuplicateQuestionKeys(flow) }))
       .find(({ duplicateKeys }) => duplicateKeys.length > 0);
@@ -641,7 +645,7 @@ export function BotControlPage() {
   };
 
   return (
-    <div className="bot-control-page max-w-5xl space-y-6">
+    <div className={`bot-control-page max-w-5xl space-y-6 ${hasUnsavedChanges ? "pb-28" : ""}`}>
       <header className="bot-control-hero">
         <div>
           <div className="bot-control-brand-row">
@@ -1404,22 +1408,24 @@ export function BotControlPage() {
         </TabsContent>
       </Tabs>
 
-      <div className="bot-control-footer sticky bottom-3 z-20 flex w-full items-center justify-between gap-3 py-2">
-        <div className="bot-control-save-state">
-          <span className={`bot-control-save-dot ${saving ? "is-saving" : ""}`} />
-          <span>{saving ? "Se salvează setările…" : draft.discordLive === false ? "Salvarea locală este disponibilă." : "Setările sunt pregătite pentru sincronizare."}</span>
+      {hasUnsavedChanges && (
+        <div className="bot-control-footer sticky bottom-3 z-20 flex w-full items-center justify-between gap-3 py-2">
+          <div className="bot-control-save-state">
+            <span className={`bot-control-save-dot ${saving ? "is-saving" : ""}`} />
+            <span>{saving ? "Se salvează setările…" : "Ai modificări nesalvate."}</span>
+          </div>
+          <div className="ml-auto flex flex-wrap justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={openFlowTest} className="gap-2">
+              <PlayCircle className="h-4 w-4" />
+              Testează fluxul
+            </Button>
+            <Button onClick={() => void save()} disabled={saving} className="gap-2 px-8">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {saving ? "Se salvează…" : "Salvează controlul botului"}
+            </Button>
+          </div>
         </div>
-        <div className="ml-auto flex flex-wrap justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={openFlowTest} className="gap-2">
-            <PlayCircle className="h-4 w-4" />
-            Testează fluxul
-          </Button>
-          <Button onClick={() => void save()} disabled={saving} className="gap-2 px-8">
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            {saving ? "Se salvează…" : "Salvează controlul botului"}
-          </Button>
-        </div>
-      </div>
+      )}
 
       <Dialog open={testOpen} onOpenChange={setTestOpen}>
         <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto border-[#3f4147] bg-[#1e1f22] text-[#f2f3f5]">
