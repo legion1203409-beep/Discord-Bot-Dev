@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Activity, AlertTriangle, Bot, CircleHelp, Loader2, Save, Radio, Megaphone, Ticket, ShieldCheck, PlayCircle, RotateCcw, CheckCircle2 } from "lucide-react";
+import { Activity, AlertTriangle, Bot, CircleHelp, Loader2, Save, Radio, Megaphone, Ticket, ShieldCheck, PlayCircle, RotateCcw, CheckCircle2, ChevronDown, Clock3, Folder, Hash, LockKeyhole, Settings2, Users, Wrench } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Textarea } from "../../components/ui/textarea";
@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { useActiveGuild, useBotControl, useModerationMetadata, useSession, type BotControlConfig, type ChannelPermissionConfig, type TicketFlowConfig } from "../../hooks/use-moderation-api";
 import { useToast } from "../../hooks/use-toast";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 
 type BotControlTab = "channels" | "tickets" | "verification" | "messages" | "statistics";
 const BOT_CONTROL_TABS: BotControlTab[] = ["channels", "tickets", "verification", "messages", "statistics"];
@@ -23,6 +23,17 @@ const CHANNELS = [
   ["council", "Consiliul Umbrelor"],
   ["fratia", "Chivotul Frăției"],
 ] as const;
+
+const channelFields: { key: string; label: string; description: string; icon: any }[] = [
+  { key: 'main', label: 'Cufere și Oracol', description: 'Recompense, chei și mesajele Oracolului', icon: Radio },
+  { key: 'event', label: 'Ora Umbrelor', description: 'Anunțuri și rezultate pentru eveniment', icon: Clock3 },
+  { key: 'boss', label: 'Dragonul Stins', description: 'Lupte, damage și clasament de boss', icon: ShieldCheck },
+  { key: 'trader', label: 'Negustorul', description: 'Oferte și rotația comerciantului', icon: Settings2 },
+  { key: 'eventTop', label: 'Top Ora Umbrelor', description: 'Clasamentul ultimului eveniment', icon: Activity },
+  { key: 'bossTop', label: 'Top Dragonul Stins', description: 'Clasamentul permanent de boss', icon: Activity },
+  { key: 'council', label: 'Consiliul Umbrelor', description: 'Comenzi administrative și audit', icon: LockKeyhole },
+  { key: 'fratia', label: 'Chivotul Frăției', description: 'Mesaje și alerte pentru frăție', icon: Users },
+];
 
 const PROVISIONING_CATEGORIES = [
   {
@@ -286,12 +297,14 @@ export function BotControlPage() {
   const [testDraftAnswer, setTestDraftAnswer] = useState("");
   const [testAnswers, setTestAnswers] = useState<Record<string, string>>({});
   const [testError, setTestError] = useState("");
-  const requestedTab = new URLSearchParams(location.split("?")[1] ?? "").get("tab");
+  const searchString = useSearch();
+  const requestedTab = new URLSearchParams(searchString || location.split("?")[1] || "").get("tab");
   const [activeTab, setActiveTab] = useState<BotControlTab>(
     requestedTab && BOT_CONTROL_TABS.includes(requestedTab as BotControlTab)
       ? requestedTab as BotControlTab
       : "channels",
   );
+  const [expandedCategory, setExpandedCategory] = useState<string | null>("gameplay");
 
   useEffect(() => {
     setDraft(data ? JSON.parse(JSON.stringify(data)) : null);
@@ -717,168 +730,192 @@ export function BotControlPage() {
         </TabsList>
 
          <TabsContent value="channels" className="mod-tab-content mt-0">
-          <section className="space-y-4 rounded-xl border border-border bg-card p-5">
-            <div className="flex items-start gap-3">
-              <Radio className="mt-1 h-5 w-5 text-primary" />
-               <div className="min-w-0 flex-1">
-                <h2 className="font-medium">Canale Discord</h2>
-                 <p className="text-xs text-muted-foreground">Folosește canalele configurate sau găsește canalele existente după nume. Creează doar destinațiile care lipsesc.</p>
-              </div>
-               <Button
-                 type="button"
-                 variant="secondary"
-                 className="shrink-0 gap-2"
-                 onClick={() => void provision()}
-                 disabled={provisioning || metadata?.botCapabilities?.canManageChannels !== true}
-                 title={metadata?.botCapabilities?.canManageChannels === true ? "Sincronizează canalele Discord" : "Botul are nevoie de Manage Channels"}
-               >
-                 {provisioning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Radio className="h-4 w-4" />}
-                 {provisioning ? "Se sincronizează…" : "Creează ce lipsește"}
-               </Button>
-            </div>
-             {metadata?.botCapabilities?.canManageChannels !== true && (
-               <p className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-100">
-                 Butonul este disponibil după ce botul primește permisiunea Discord <strong>Manage Channels</strong>.
-               </p>
-             )}
-             <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
-               <div className="grid gap-4 md:grid-cols-2">
-                 {CHANNELS.map(([key, label]) => {
-                   const current = draft.channels[key] ?? "";
-                   const selected = metadata?.channels.some((channel) => channel.id === current) ? current : "__none__";
-                   return (
-                     <div key={key} className={`mod-setting-card space-y-2 rounded-lg border border-transparent p-3 ${current ? "mod-setting-card--selected" : ""}`}>
-                       <label className="text-sm font-medium">{label}</label>
-                       <Select value={selected} onValueChange={(value) => setChannel(key, value)}>
-                         <SelectTrigger className="mod-select-trigger"><SelectValue placeholder="Alege canal" /></SelectTrigger>
-                         <SelectContent className="max-h-[min(70vh,32rem)] overscroll-contain">
-                           <SelectItem value="__none__">Neconfigurat</SelectItem>
-                           {metadata?.channels.map((channel) => (
-                             <SelectItem key={channel.id} value={channel.id}>
-                               {isCategory(channel.type) ? "▰" : "#"} {channel.name}
-                               {channel.parentId && categoryNames.get(channel.parentId) ? ` · ${categoryNames.get(channel.parentId)}` : ""}
-                               {" "}({channel.id})
-                             </SelectItem>
-                           ))}
-                         </SelectContent>
-                       </Select>
-                       <Input value={current} placeholder="ID canal Discord" aria-label={`${label} ID`} onChange={(event) => setChannel(key, event.target.value.trim())} />
-                     </div>
-                   );
-                 })}
-               </div>
+<div className="content-grid">
+            <div className="left-stack">
+              <section className="surface channel-list">
+                <div className="section-head">
+                  <div>
+                    <h2 className="font-medium text-foreground">Identifică destinațiile pe Discord</h2>
+                    <p className="text-xs text-muted-foreground">Selectează canale din server pentru fiecare funcție a botului.</p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="shrink-0 gap-2 h-8 text-xs"
+                    onClick={() => void refetchMetadata()}
+                  >
+                    <Radio className="h-3 w-3" /> Reîmprospătează
+                  </Button>
+                </div>
+                <div className="channel-grid">
+                  {channelFields.map(({ key, label, description, icon: Icon }) => {
+                    const current = draft.channels[key] ?? "";
+                    const selected = metadata?.channels.some((channel) => channel.id === current) ? current : "__none__";
+                    return (
+                      <article className="channel-card" key={key}>
+                        <div className="channel-card-head">
+                          <Icon size={14} />
+                          <div>
+                            <h3>{label}</h3>
+                            <p>{description}</p>
+                          </div>
+                        </div>
+                        <div className="channel-input">
+                          <Select value={selected} onValueChange={(value) => setChannel(key, value)}>
+                            <SelectTrigger className="border-0 h-auto p-0 bg-transparent focus:ring-0 shadow-none text-xs w-auto">
+                              <SelectValue placeholder="Alege canal" />
+                            </SelectTrigger>
+                            <SelectContent className="max-h-[min(70vh,32rem)] overscroll-contain">
+                              <SelectItem value="__none__">Neconfigurat</SelectItem>
+                              {metadata?.channels.map((channel) => (
+                                <SelectItem key={channel.id} value={channel.id}>
+                                  {isCategory(channel.type) ? "▰" : "#"} {channel.name}
+                                  {channel.parentId && categoryNames.get(channel.parentId) ? ` · ${categoryNames.get(channel.parentId)}` : ""}
+                                  {" "}({channel.id})
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <input
+                            type="text"
+                            value={current}
+                            onChange={(e) => setChannel(key, e.target.value.trim())}
+                            placeholder="ID canal Discord"
+                            aria-label={`${label} ID`}
+                          />
+                          <span>{current ? `#${metadata?.channels.find(c => c.id === current)?.name ?? "Manual"}` : 'ID manual'}</span>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              </section>
 
-               <aside className="h-fit rounded-lg border border-primary/25 bg-primary/[0.04] p-4">
-                 <div className="mb-3 flex items-start justify-between gap-3">
-                   <div>
-                     <p className="text-xs font-mono tracking-widest text-primary">CE SE CREEAZĂ</p>
-                     <h3 className="mt-1 font-medium">Alege categoriile</h3>
-                   </div>
-                   <span className="rounded-full border border-primary/30 px-2 py-1 text-[11px] text-primary">
-                     {selectedProvisioningCategories.length}/{PROVISIONING_CATEGORIES.length}
-                   </span>
-                 </div>
-                 <p className="mb-4 text-xs leading-5 text-muted-foreground">
-                   Bifează doar ce vrei să creeze botul. Categoriile nebifate nu sunt atinse.
-                 </p>
-                 <div className="space-y-2">
-                   {PROVISIONING_CATEGORIES.map((category) => {
-                     const checked = selectedProvisioningCategories.includes(category.key);
-                      const permission = provisioningPermissions[category.key] ?? DEFAULT_CHANNEL_PERMISSION;
-                     return (
-                        <div
-                         key={category.key}
-                          className={`rounded-md border p-3 transition-colors ${checked ? "border-primary/40 bg-primary/10" : "border-border/70 hover:bg-muted/40"}`}
-                       >
-                          <label className="flex cursor-pointer items-start gap-2">
-                           <input
-                             type="checkbox"
-                             className="mt-1 accent-primary"
-                             checked={checked}
-                             onChange={(event) => {
-                               setSelectedProvisioningCategories((current) => event.target.checked
-                                 ? [...current, category.key]
-                                 : current.filter((key) => key !== category.key));
-                             }}
-                           />
-                           <span className="min-w-0">
-                             <span className="block text-sm font-medium">{category.label}</span>
-                             <span className="mt-1 block text-xs leading-4 text-muted-foreground">{category.description}</span>
-                             <span className="mt-2 block text-[11px] leading-4 text-muted-foreground/80">{category.items.join(" · ")}</span>
-                           </span>
-                          </label>
-                          <details className="mt-3 rounded-md border border-border/70 bg-background/30 p-2">
-                            <summary className="cursor-pointer select-none text-xs font-medium text-primary">
-                              Permisiuni pentru această categorie
-                            </summary>
-                            <div className="mt-3 space-y-3">
-                              <p className="text-[11px] leading-4 text-muted-foreground">
-                                Dacă alegi roluri, membrii fără unul dintre ele nu vor vedea canalele din categorie. Botul își păstrează accesul automat.
-                              </p>
-                              <div className="grid gap-2">
-                                {permissionRoles.length > 0 ? permissionRoles.map((role) => (
-                                  <label key={role.id} className="flex cursor-pointer items-center gap-2 rounded border border-border/60 px-2 py-1.5 text-xs hover:bg-muted/30">
-                                    <input
-                                      type="checkbox"
-                                      className="accent-primary"
-                                      checked={permission.roleIds.includes(role.id)}
-                                      onChange={(event) => toggleProvisioningRole(category.key, role.id, event.target.checked)}
-                                    />
-                                    <span className="min-w-0 flex-1 truncate">@{role.name}</span>
-                                  </label>
-                                )) : (
-                                  <p className="text-xs text-muted-foreground">Nu există roluri Discord disponibile.</p>
-                                )}
-                              </div>
-                              <div className="grid gap-2 sm:grid-cols-2">
-                                <label className="flex cursor-pointer items-center gap-2 text-xs">
-                                  <input
-                                    type="checkbox"
-                                    className="accent-primary"
-                                    checked={permission.readMessageHistory}
-                                    onChange={(event) => setProvisioningPermission(category.key, { readMessageHistory: event.target.checked })}
-                                  />
-                                  Pot vedea istoricul
-                                </label>
-                                <label className="flex cursor-pointer items-center gap-2 text-xs">
-                                  <input
-                                    type="checkbox"
-                                    className="accent-primary"
-                                    checked={permission.sendMessages}
-                                    onChange={(event) => setProvisioningPermission(category.key, { sendMessages: event.target.checked })}
-                                  />
-                                  Pot scrie mesaje
-                                </label>
+              <section className="surface permissions">
+                <div className="section-title">
+                  <span className="icon-box amber"><ShieldCheck size={16} /></span>
+                  <div>
+                    <h2>Permisiuni necesare</h2>
+                    <p>Verifică accesul botului înainte de provisioning pentru a evita categorii create incomplet.</p>
+                  </div>
+                </div>
+                <div className="permission-summary">
+                  <span>Manage Channels {metadata?.botCapabilities?.canManageChannels ? <em>✓ Disponibilă</em> : <b>⚠ Necesară</b>}</span>
+                  <span>Manage Permissions <b>De verificat pe Discord</b></span>
+                  <span>Send Messages <b>De verificat pe canal</b></span>
+                </div>
+                <p className="help">
+                  <CircleHelp size={13} />
+                  Butonul de provisioning va rămâne blocat pe Discord până când botul primește permisiunea <strong>Manage Channels</strong>.
+                </p>
+              </section>
+            </div>
+
+            <aside className="provision-panel">
+              <div className="panel-heading">
+                <div>
+                  <span className="eyebrow">PROVISIONING</span>
+                  <h2>Ce se creează</h2>
+                </div>
+                <span className="count-pill">{selectedProvisioningCategories.length}/{PROVISIONING_CATEGORIES.length}</span>
+              </div>
+              <p>Selectează doar categoriile pe care botul are voie să le pregătească. Celelalte nu sunt atinse.</p>
+              <div className="category-list">
+                {PROVISIONING_CATEGORIES.map((category) => {
+                  const isSelected = selectedProvisioningCategories.includes(category.key);
+                  const open = expandedCategory === category.key;
+                  const permission = provisioningPermissions[category.key] ?? DEFAULT_CHANNEL_PERMISSION;
+                  return (
+                    <div className={`category-row ${isSelected ? 'selected' : ''}`} key={category.key}>
+                      <div className="category-top">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={(e) => {
+                            setSelectedProvisioningCategories(e.target.checked
+                              ? [...selectedProvisioningCategories, category.key]
+                              : selectedProvisioningCategories.filter((k) => k !== category.key));
+                            if (e.target.checked) setExpandedCategory(category.key);
+                          }}
+                        />
+                        <button type="button" onClick={() => setExpandedCategory(open ? null : category.key)}>
+                          <Folder size={13} /> <strong>{category.label}</strong>
+                          <small>{category.items.length} destinații · {category.description}</small>
+                        </button>
+                        <ChevronDown size={13} className={open ? 'rotate' : ''} />
+                      </div>
+                      {open && isSelected && (
+                        <div className="category-details">
+                          <div className="item-tags">
+                            {category.items.map((item) => <span key={item}>{item}</span>)}
+                          </div>
+
+                          <div className="permission-panel">
+                            <div className="permission-title">
+                              <LockKeyhole size={15} />
+                              <div>
+                                <strong>Permisiuni pentru {category.label}</strong>
+                                <p>Membrii cu rolurile selectate văd canalele. Botul își păstrează accesul automat.</p>
                               </div>
                             </div>
-                          </details>
+                            <div className="role-grid">
+                              {permissionRoles.length > 0 ? permissionRoles.map((role) => (
+                                <label className="permission-check" key={role.id}>
+                                  <input
+                                    type="checkbox"
+                                    checked={permission.roleIds.includes(role.id)}
+                                    onChange={(event) => toggleProvisioningRole(category.key, role.id, event.target.checked)}
+                                  />
+                                  <Users size={12} /> <span className="truncate">@{role.name}</span>
+                                </label>
+                              )) : (
+                                <p className="text-xs text-muted-foreground col-span-2">Nu există roluri Discord disponibile.</p>
+                              )}
+                            </div>
+                            <div className="permission-options">
+                              <label>
+                                <input
+                                  type="checkbox"
+                                  checked={permission.readMessageHistory}
+                                  onChange={(event) => setProvisioningPermission(category.key, { readMessageHistory: event.target.checked })}
+                                />
+                                Pot vedea istoricul
+                              </label>
+                              <label>
+                                <input
+                                  type="checkbox"
+                                  checked={permission.sendMessages}
+                                  onChange={(event) => setProvisioningPermission(category.key, { sendMessages: event.target.checked })}
+                                />
+                                Pot scrie mesaje
+                              </label>
+                            </div>
+                          </div>
                         </div>
-                     );
-                   })}
-                 </div>
-                 <div className="mt-4 flex gap-2">
-                   <Button
-                     type="button"
-                     variant="ghost"
-                     size="sm"
-                     className="flex-1"
-                     onClick={() => setSelectedProvisioningCategories(PROVISIONING_CATEGORIES.map((category) => category.key))}
-                   >
-                     Toate
-                   </Button>
-                   <Button
-                     type="button"
-                     variant="ghost"
-                     size="sm"
-                     className="flex-1"
-                     onClick={() => setSelectedProvisioningCategories([])}
-                   >
-                     Niciuna
-                   </Button>
-                 </div>
-               </aside>
-             </div>
-          </section>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="panel-actions gap-2 flex-col">
+                <div className="flex gap-2 w-full">
+                  <Button type="button" variant="ghost" className="flex-1 h-8 text-xs" onClick={() => setSelectedProvisioningCategories(PROVISIONING_CATEGORIES.map((c) => c.key))}>Toate</Button>
+                  <Button type="button" variant="ghost" className="flex-1 h-8 text-xs" onClick={() => setSelectedProvisioningCategories([])}>Niciuna</Button>
+                </div>
+                <Button
+                  type="button"
+                  variant="default"
+                  className="w-full gap-2 mt-2"
+                  onClick={() => void provision()}
+                  disabled={provisioning || metadata?.botCapabilities?.canManageChannels !== true}
+                >
+                  {provisioning ? <Loader2 size={13} className="animate-spin" /> : <Wrench size={13} />}
+                  {provisioning ? "Se sincronizează…" : "Creează ce lipsește"}
+                </Button>
+              </div>
+            </aside>
+          </div>
+
 
           <section className="space-y-5 rounded-xl border border-border bg-card p-5">
             <div className="flex items-start gap-3">
@@ -1658,218 +1695,3 @@ export function BotControlPage() {
     </div>
   );
 }
-/*
-export function BotControlPage() {
-  const { guildId } = useActiveGuild();
-  const { data, loading, error, update } = useBotControl(guildId);
-  const { data: metadata } = useModerationMetadata(guildId);
-  const { toast } = useToast();
-  const [draft, setDraft] = useState<BotControlConfig | null>(null);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    setDraft(data ? JSON.parse(JSON.stringify(data)) : null);
-  }, [data]);
-
-  const setChannel = (key: string, value: string) => {
-    setDraft((current) => current ? {
-      ...current,
-      channels: { ...current.channels, ...(value === "__none__" ? { [key]: "" } : { [key]: value }) },
-    } : current);
-  };
-
-  const setGameplay = (section: "events" | "missions" | "economy", key: string, value: string) => {
-    setDraft((current) => {
-      if (!current) return current;
-      const numeric = Number(value);
-      const [parent, child] = key.split(".");
-      const currentSection = current.gameplayConfig[section] as Record<string, unknown>;
-      const nextSection = child
-        ? { ...currentSection, [parent]: { ...(currentSection[parent] as Record<string, unknown>), [child]: Number.isFinite(numeric) ? numeric : 0 } }
-        : { ...currentSection, [key]: Number.isFinite(numeric) ? numeric : 0 };
-      return {
-        ...current,
-        gameplayConfig: {
-          ...current.gameplayConfig,
-          [section]: nextSection,
-        },
-      };
-    });
-  };
-
-  const numberField = (
-    section: "events" | "missions" | "economy",
-    key: string,
-    label: string,
-    description: string,
-    step = 1,
-  ) => {
-    if (!draft) return null;
-    const [parent, child] = key.split(".");
-    const sectionValue = draft.gameplayConfig[section] as Record<string, unknown>;
-    const value = (child
-      ? (sectionValue[parent] as Record<string, unknown>)?.[child]
-      : sectionValue[key]) as number;
-    return (
-      <div className="space-y-2" key={`${section}-${key}`}>
-        <label className="text-sm font-medium">{label}</label>
-        <Input
-          type="number"
-          min={step === 0.1 ? 0.1 : 1}
-          step={step}
-          value={value}
-          onChange={(event) => setGameplay(section, key, event.target.value)}
-        />
-        <p className="text-xs text-muted-foreground">{description}</p>
-      </div>
-    );
-  };
-
-  const save = async () => {
-    if (!draft) return;
-    setSaving(true);
-    try {
-      await update({
-        ...draft,
-        channels: Object.fromEntries(Object.entries(draft.channels).filter(([, value]) => value)),
-      });
-      toast({ title: "Setările botului au fost salvate", description: "Canalele și textul de alianță sunt persistente." });
-    } catch (saveError: any) {
-      toast({ variant: "destructive", title: "Salvarea a eșuat", description: saveError?.message ?? "Încearcă din nou." });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  if (loading && !draft) {
-    return <div className="flex justify-center p-12 text-muted-foreground"><Loader2 className="h-8 w-8 animate-spin" /></div>;
-  }
-  if (!draft) {
-    return <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-6 text-sm text-destructive">{error?.message ?? "Setările botului nu au putut fi încărcate."}</div>;
-  }
-
-  return (
-    <div className="max-w-5xl space-y-6">
-      <header>
-        <p className="mod-eyebrow">CONTROL OWNER-ONLY</p>
-        <h1 className="mb-2 flex items-center gap-3 text-3xl font-bold tracking-tight text-foreground">
-          <Bot className="h-8 w-8 text-primary" /> Control bot
-        </h1>
-         <p className="text-muted-foreground">Canalele, textele și regulile gameplay pe care botul le folosește pe server. Accesul la această pagină este limitat la owner.</p>
-      </header>
-
-      <section className="space-y-4 rounded-xl border border-border bg-card p-5">
-        <div className="flex items-start gap-3">
-          <Radio className="mt-1 h-5 w-5 text-primary" />
-          <div>
-            <h2 className="font-medium">Canale Discord</h2>
-            <p className="text-xs text-muted-foreground">Alege un canal din lista live sau introdu ID-ul manual. Setarea se aplică sistemului asociat.</p>
-          </div>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2">
-          {CHANNELS.map(([key, label]) => {
-            const current = draft.channels[key] ?? "";
-            const selected = metadata?.channels.some((channel) => channel.id === current) ? current : "__none__";
-            return (
-              <div key={key} className="space-y-2">
-                <label className="text-sm font-medium">{label}</label>
-                <Select value={selected} onValueChange={(value) => setChannel(key, value)}>
-                  <SelectTrigger><SelectValue placeholder="Alege canal" /></SelectTrigger>
-                  <SelectContent className="max-h-[min(70vh,32rem)] overscroll-contain">
-                    <SelectItem value="__none__">Neconfigurat</SelectItem>
-                    {metadata?.channels.map((channel) => (
-                      <SelectItem key={channel.id} value={channel.id}>#{channel.name} ({channel.id})</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Input value={current} placeholder="ID canal Discord" aria-label={`${label} ID`} onChange={(event) => setChannel(key, event.target.value.trim())} />
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      <section className="space-y-5 rounded-xl border border-border bg-card p-5">
-        <div className="flex items-start gap-3">
-          <Timer className="mt-1 h-5 w-5 text-primary" />
-          <div>
-            <h2 className="font-medium">Evenimente și intervale</h2>
-            <p className="text-xs text-muted-foreground">Valorile sunt în minute și se aplică separat pe acest server. Intervalele maxime nu pot fi mai mici decât cele minime.</p>
-          </div>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2">
-          {numberField("events", "eventDurationMinutes", "Durata Ora Umbrelor", "Cât timp rămâne activ evenimentul.")}
-          {numberField("events", "eventCooldownMinMinutes", "Pauza minimă între evenimente", "Pauza minimă după un eveniment.")}
-          {numberField("events", "eventCooldownMaxMinutes", "Pauza maximă între evenimente", "Pauza maximă după un eveniment.")}
-          {numberField("events", "finalBossDurationMinutes", "Durata Dragonului Stins", "Cât timp poate fi atacat boss-ul final.")}
-          {numberField("events", "standaloneBossIntervalMinMinutes", "Boss rar: interval minim", "Pauza minimă între invocări independente.")}
-          {numberField("events", "standaloneBossIntervalMaxMinutes", "Boss rar: interval maxim", "Pauza maximă între invocări independente.")}
-          {numberField("events", "standaloneBossDurationMinutes", "Durata boss-ului rar", "Cât timp rămâne boss-ul rar activ.")}
-          {numberField("events", "battleEventIntervalMinutes", "Interval evenimente de luptă", "Frecvența anunțurilor dintr-o Ora a Umbrelor.")}
-          {numberField("events", "chestIntervalMinutes", "Interval cufere", "Frecvența cufărului clasic.")}
-          {numberField("events", "chestExpireMinutes", "Expirare cufere", "Cât timp poate fi revendicat un cufăr.", 1)}
-        </div>
-      </section>
-
-      <section className="space-y-5 rounded-xl border border-border bg-card p-5">
-        <div className="flex items-start gap-3">
-          <ScrollText className="mt-1 h-5 w-5 text-primary" />
-          <div>
-            <h2 className="font-medium">Misiuni zilnice</h2>
-            <p className="text-xs text-muted-foreground">Țintele și cantitățile de materiale sunt folosite atât la progres, cât și la acordarea recompensei.</p>
-          </div>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2">
-          {numberField("missions", "kill_10.target", "Monștri uciși — țintă", "Numărul de monștri necesar.")}
-          {numberField("missions", "kill_10.rewardQty", "Monștri uciși — recompensă", "Cantitatea de material acordată.")}
-          {numberField("missions", "rare_3.target", "Monștri rari — țintă", "Numărul de monștri rari necesar.")}
-          {numberField("missions", "rare_3.rewardQty", "Monștri rari — recompensă", "Cantitatea de material acordată.")}
-          {numberField("missions", "boss_1.target", "Mini-boss — țintă", "Numărul de mini-bossi necesar.")}
-          {numberField("missions", "boss_1.rewardQty", "Mini-boss — recompensă", "Cantitatea de material acordată.")}
-        </div>
-      </section>
-
-      <section className="space-y-5 rounded-xl border border-border bg-card p-5">
-        <div className="flex items-start gap-3">
-          <Coins className="mt-1 h-5 w-5 text-primary" />
-          <div>
-            <h2 className="font-medium">Economie</h2>
-            <p className="text-xs text-muted-foreground">Multiplicatorii afectează recompensele de aur/Oboli și XP din lupte și boss fights. Bonusurile de clasă, talisman și prestigiu se aplică în continuare separat.</p>
-          </div>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2">
-          {numberField("economy", "monsterGoldMultiplier", "Oboli din monștri", "1 = valoarea normală.", 0.1)}
-          {numberField("economy", "monsterXpMultiplier", "XP din monștri", "1 = valoarea normală.", 0.1)}
-          {numberField("economy", "bossGoldMultiplier", "Oboli din boss fights", "1 = valoarea normală.", 0.1)}
-          {numberField("economy", "bossXpMultiplier", "XP din boss fights", "1 = valoarea normală.", 0.1)}
-        </div>
-      </section>
-
-      <section className="space-y-4 rounded-xl border border-border bg-card p-5">
-        <div className="flex items-start gap-3">
-          <Megaphone className="mt-1 h-5 w-5 text-primary" />
-          <div>
-            <h2 className="font-medium">Textul mesajului de alianță</h2>
-            <p className="text-xs text-muted-foreground">Acest text este folosit la următoarea publicare a anunțului de recrutare. Discord limitează mesajul la 2.000 de caractere.</p>
-          </div>
-        </div>
-        <Textarea
-          value={draft.allianceRecruitmentText}
-          maxLength={2000}
-          rows={16}
-          placeholder="Scrie mesajul de recrutare..."
-          onChange={(event) => setDraft({ ...draft, allianceRecruitmentText: event.target.value })}
-        />
-        <p className="text-right text-xs text-muted-foreground">{draft.allianceRecruitmentText.length}/2000</p>
-      </section>
-
-      <div className="mod-save-bar sticky bottom-3 z-20 flex w-full justify-end">
-        <Button onClick={() => void save()} disabled={saving} className="gap-2 px-8">
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          {saving ? "Se salvează…" : "Salvează controlul botului"}
-        </Button>
-      </div>
-    </div>
-  );
-}
-*/

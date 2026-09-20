@@ -142,7 +142,7 @@ export function CommandsPage() {
   if (!guildId) return <div className="p-8 text-center text-muted-foreground">Selectează un server.</div>;
 
   return (
-    <div className="space-y-6 max-w-3xl mx-auto">
+    <div className="max-w-3xl mx-auto space-y-6 pb-28">
       <div>
         <h1 className="text-3xl font-bold tracking-tight mb-2 text-foreground flex items-center gap-3">
           <Zap className="w-8 h-8 text-primary" /> Acțiuni Manuale
@@ -348,11 +348,13 @@ export function CommandsPage() {
               )}
             />
 
-            <div className="mod-save-bar sticky bottom-3 z-20 flex w-full justify-end">
-              <Button type="submit" disabled={loading} className="gap-2 px-8">
-                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                Execută Comanda
-              </Button>
+            <div className="mod-save-bar sticky bottom-3 z-20 flex w-full items-center justify-end gap-3">
+              <div className="mod-save-actions ml-auto">
+                <Button type="submit" disabled={loading} className="gap-2 px-8">
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  Execută Comanda
+                </Button>
+              </div>
             </div>
           </form>
         </Form>

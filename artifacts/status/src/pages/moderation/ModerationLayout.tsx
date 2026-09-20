@@ -1,4 +1,4 @@
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { 
   ShieldAlert, Settings, Shield, Bot, History, BookOpen, SlidersHorizontal, ShieldCheck,
   LogOut, ChevronLeft, Activity, Zap, Menu, X, Eye, Monitor, RefreshCw, Server
@@ -57,6 +57,7 @@ function inviteLabel(inviteUrl: string): string {
 
 export function ModerationLayout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
+  const searchString = useSearch();
   const { session, loading, error, logout, retry } = useSession();
   const {
     authConfig,
@@ -312,8 +313,8 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
               {botControlItems.map(item => {
                 const [itemPath] = item.href.split("?");
                 const itemTab = new URLSearchParams(item.href.split("?")[1] ?? "").get("tab");
-                const currentPath = location.split("?")[0];
-                const currentTab = new URLSearchParams(location.split("?")[1] ?? "").get("tab");
+                const currentPath = location;
+                const currentTab = new URLSearchParams(searchString || "").get("tab");
                 const active = currentPath === itemPath && (itemPath !== "/bot" || (itemTab ?? "channels") === (currentTab ?? "channels"));
                 return (
                   <Link

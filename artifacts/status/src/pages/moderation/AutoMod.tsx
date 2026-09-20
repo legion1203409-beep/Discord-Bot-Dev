@@ -111,8 +111,10 @@ export function AutoModPage() {
   if (loading) return <div className="flex justify-center p-12 text-muted-foreground"><Loader2 className="w-8 h-8 animate-spin" /></div>;
   if (error || !data) return <div role="alert" className="space-y-4 rounded-xl border border-destructive/30 bg-destructive/5 p-6"><p>{error?.message || "Nu s-a putut încărca configurația."}</p><Button variant="outline" onClick={() => void refetch()}>Reîncearcă</Button></div>;
 
+  const hasUnsavedChanges = form.formState.isDirty;
+
   return (
-    <div className="automod-page space-y-6 max-w-4xl">
+    <div className={`automod-page max-w-4xl space-y-6 ${hasUnsavedChanges ? "pb-28" : ""}`}>
       <div>
         <h1 className="text-3xl font-bold tracking-tight mb-2 text-foreground flex items-center gap-3">
           <Bot className="w-8 h-8 text-primary" /> AutoMod & AI
@@ -326,12 +328,20 @@ export function AutoModPage() {
             </div>
           </div>
 
-          <div className="mod-save-bar sticky bottom-3 z-20 flex w-full justify-end">
-            <Button type="submit" disabled={saving} className="gap-2">
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              {saving ? "Se salvează..." : "Salvează Setările"}
-            </Button>
-          </div>
+          {hasUnsavedChanges && (
+            <div className="mod-save-bar sticky bottom-3 z-20 flex w-full items-center justify-between gap-3">
+              <div className="bot-control-save-state">
+                <span className={`bot-control-save-dot ${saving ? "is-saving" : ""}`} />
+                <span>{saving ? "Se salvează setările…" : "Ai modificări nesalvate."}</span>
+              </div>
+              <div className="mod-save-actions ml-auto">
+                <Button type="submit" disabled={saving} className="gap-2 px-8">
+                  {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  {saving ? "Se salvează..." : "Salvează Setările"}
+                </Button>
+              </div>
+            </div>
+          )}
         </form>
       </Form>
     </div>

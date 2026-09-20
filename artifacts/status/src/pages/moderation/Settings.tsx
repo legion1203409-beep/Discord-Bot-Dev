@@ -114,8 +114,10 @@ export function SettingsPage() {
   const staffRoleId = localData.permissions?.staffRoleIds?.[0] || "";
   const selectedStaffRole = metadata?.roles.some((role) => role.id === staffRoleId) ? staffRoleId : "__none__";
 
+  const hasUnsavedChanges = data && localData && JSON.stringify(data) !== JSON.stringify(localData);
+
   return (
-    <div className="max-w-5xl space-y-6">
+    <div className={`max-w-5xl space-y-6 ${hasUnsavedChanges ? "pb-28" : ""}`}>
       <div>
         <h1 className="mb-2 flex items-center gap-3 text-3xl font-bold tracking-tight text-foreground">
           <Settings className="h-8 w-8 text-primary" /> Configurare completă
@@ -200,12 +202,20 @@ export function SettingsPage() {
 
       <ConfigEditor value={localData} onChange={setLocalData} />
 
-      <div className="mod-save-bar sticky bottom-3 z-20 flex w-full justify-end">
-        <Button onClick={handleSave} disabled={saving} className="gap-2 px-8">
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          {saving ? "Se salvează…" : "Salvează configurația"}
-        </Button>
-      </div>
+      {hasUnsavedChanges && (
+        <div className="mod-save-bar sticky bottom-3 z-20 flex w-full items-center justify-between gap-3">
+          <div className="bot-control-save-state">
+            <span className={`bot-control-save-dot ${saving ? "is-saving" : ""}`} />
+            <span>{saving ? "Se salvează setările…" : "Ai modificări nesalvate."}</span>
+          </div>
+          <div className="mod-save-actions ml-auto">
+            <Button onClick={handleSave} disabled={saving} className="gap-2 px-8">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {saving ? "Se salvează…" : "Salvează configurația"}
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

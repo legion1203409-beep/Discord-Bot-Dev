@@ -58,8 +58,10 @@ export function PoliciesPage() {
   if (loading) return <div className="flex justify-center p-12 text-muted-foreground"><Loader2 className="w-8 h-8 animate-spin" /></div>;
   if (error || !localData) return <div role="alert" className="space-y-4 rounded-xl border border-destructive/30 bg-destructive/5 p-6"><p>{error?.message || "Nu s-a putut încărca configurația."}</p><Button variant="outline" onClick={() => void refetch()}>Reîncearcă</Button></div>;
 
+  const hasUnsavedChanges = data && localData && JSON.stringify(data) !== JSON.stringify(localData);
+
   return (
-    <div className="space-y-8 max-w-5xl">
+    <div className={`max-w-5xl space-y-8 ${hasUnsavedChanges ? "pb-28" : ""}`}>
       <div>
         <h1 className="text-3xl font-bold tracking-tight mb-2 text-foreground flex items-center gap-3">
           <ShieldAlert className="w-8 h-8 text-primary" /> Escaladare & Politici
@@ -205,12 +207,20 @@ export function PoliciesPage() {
 
       </div>
       
-      <div className="mod-save-bar sticky bottom-3 z-20 flex w-full justify-end">
-        <Button onClick={handleSave} disabled={saving} className="gap-2 px-8">
-          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-          Salvează Politicile
-        </Button>
-      </div>
+      {hasUnsavedChanges && (
+        <div className="mod-save-bar sticky bottom-3 z-20 flex w-full items-center justify-between gap-3">
+          <div className="bot-control-save-state">
+            <span className={`bot-control-save-dot ${saving ? "is-saving" : ""}`} />
+            <span>{saving ? "Se salvează setările…" : "Ai modificări nesalvate."}</span>
+          </div>
+          <div className="mod-save-actions ml-auto">
+            <Button onClick={handleSave} disabled={saving} className="gap-2 px-8">
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              {saving ? "Se salvează..." : "Salvează Politicile"}
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
