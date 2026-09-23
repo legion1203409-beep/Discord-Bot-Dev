@@ -305,12 +305,19 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
 
   it.each([
     "protection",
+    "autoMod",
     "wordFilter",
     "linkBlock",
     "antiRaid",
     "antiSpam",
     "antiFlood",
+    "suspiciousBehavior",
     "ai",
+    "manualTools",
+    "cases",
+    "audit",
+    "escalation",
+    "embeds",
   ] as const)("saves disabling the %s protection toggle and returns the new revision", async (key) => {
     const initialConfig = structuredClone(defaultModerationConfig);
     initialConfig.protection.enabled = true;
@@ -321,16 +328,29 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     initialConfig.antiSpam.enabled = true;
     initialConfig.antiFlood.enabled = true;
     initialConfig.ai.enabled = true;
+    initialConfig.suspiciousBehavior.enabled = true;
+    initialConfig.manualTools.enabled = true;
+    initialConfig.cases.enabled = true;
+    initialConfig.audit.enabled = true;
+    initialConfig.escalation.enabled = true;
+    initialConfig.embeds.enabled = true;
     mocks.getConfig.mockResolvedValue({ config: initialConfig, version: 8 });
     mocks.putProtectionToggle.mockImplementation(async (_guildId, key, enabled, _updatedBy) => {
       const config = structuredClone(initialConfig);
       if (key === "protection") config.protection.enabled = enabled;
+      else if (key === "autoMod") config.autoMod.enabled = enabled;
       else if (key === "wordFilter") config.autoMod.wordFilter.enabled = enabled;
       else if (key === "linkBlock") config.autoMod.linkBlock.enabled = enabled;
       else if (key === "antiRaid") config.antiRaid.enabled = enabled;
       else if (key === "antiSpam") config.antiSpam.enabled = enabled;
       else if (key === "antiFlood") config.antiFlood.enabled = enabled;
-      else config.ai.enabled = enabled;
+      else if (key === "suspiciousBehavior") config.suspiciousBehavior.enabled = enabled;
+      else if (key === "ai") config.ai.enabled = enabled;
+      else if (key === "manualTools") config.manualTools.enabled = enabled;
+      else if (key === "cases") config.cases.enabled = enabled;
+      else if (key === "audit") config.audit.enabled = enabled;
+      else if (key === "escalation") config.escalation.enabled = enabled;
+      else config.embeds.enabled = enabled;
       return {
         config,
         version: 9,
@@ -352,7 +372,14 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
       antiRaid: expect.objectContaining({ enabled: key === "antiRaid" ? false : true }),
       antiSpam: expect.objectContaining({ enabled: key === "antiSpam" ? false : true }),
       antiFlood: expect.objectContaining({ enabled: key === "antiFlood" ? false : true }),
+      suspiciousBehavior: expect.objectContaining({ enabled: key === "suspiciousBehavior" ? false : true }),
+      manualTools: expect.objectContaining({ enabled: key === "manualTools" ? false : true }),
+      cases: expect.objectContaining({ enabled: key === "cases" ? false : true }),
+      audit: expect.objectContaining({ enabled: key === "audit" ? false : true }),
+      escalation: expect.objectContaining({ enabled: key === "escalation" ? false : true }),
+      embeds: expect.objectContaining({ enabled: key === "embeds" ? false : true }),
     }));
+    expect(result.config.autoMod.enabled).toBe(key === "autoMod" ? false : true);
     expect(result.config.autoMod.wordFilter.enabled).toBe(key === "wordFilter" ? false : true);
     expect(result.config.autoMod.linkBlock.enabled).toBe(key === "linkBlock" ? false : true);
     expect(mocks.putProtectionToggle).toHaveBeenCalledWith(guildId, key, false, actorId);

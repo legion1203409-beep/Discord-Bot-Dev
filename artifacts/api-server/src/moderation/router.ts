@@ -1205,7 +1205,11 @@ router.put("/guilds/:guildId/protection-toggle", asyncRoute(async (req, res) => 
   const guildId = parse(snowflake, req.params.guildId);
   const session = await sessionAndGuild(req, guildId, "config", true);
   const { key, enabled } = z.object({
-    key: z.enum(["protection", "wordFilter", "linkBlock", "antiRaid", "antiSpam", "antiFlood", "ai"]),
+    key: z.enum([
+      "protection", "autoMod", "wordFilter", "linkBlock", "antiRaid", "antiSpam",
+      "antiFlood", "suspiciousBehavior", "ai", "manualTools", "cases", "audit",
+      "escalation", "embeds",
+    ]),
     enabled: z.boolean(),
   }).parse(req.body);
 

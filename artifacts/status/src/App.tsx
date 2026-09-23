@@ -2,13 +2,13 @@ import { Switch, Route, Redirect } from "wouter";
 import "./index.css";
 import { ModerationLayout } from "./pages/moderation/ModerationLayout";
 import { DashboardOverview } from "./pages/moderation/Dashboard";
-import { AutoModPage } from "./pages/moderation/AutoMod";
 import { CasesPage } from "./pages/moderation/Cases";
 import { CommandsPage } from "./pages/moderation/Commands";
 import { AuditPage } from "./pages/moderation/Audit";
-import { SettingsPage } from "./pages/moderation/Settings";
+import { AdvancedSettingsPage } from "./pages/moderation/Settings";
+import { ConfigOverviewPage } from "./pages/moderation/ConfigOverview";
+import { CategorySettingsPage } from "./pages/moderation/CategorySettings";
 import { ProtectionPage } from "./pages/moderation/Protection";
-import { AntiRaidPage } from "./pages/moderation/AntiRaid";
 import { PoliciesPage } from "./pages/moderation/Policies";
 import { BotControlPage } from "./pages/moderation/BotControl";
 import { VerificationAdminPage } from "./pages/moderation/VerificationAdmin";
@@ -90,14 +90,23 @@ function ModerationApp() {
       <div key={guildId ?? "no-guild"}>
         <Switch>
           <Route path="/" component={DashboardOverview} />
-          <Route path="/automod" component={AutoModPage} />
+          <Route path="/automod" component={() => <CategorySettingsPage section="automod" />} />
+          <Route path="/ai" component={() => <CategorySettingsPage section="ai" />} />
+          <Route path="/anti-spam" component={() => <CategorySettingsPage section="anti-spam" />} />
+          <Route path="/anti-flood" component={() => <CategorySettingsPage section="anti-flood" />} />
+          <Route path="/comportament-suspect" component={() => <CategorySettingsPage section="suspicious" />} />
           <Route path="/protectie" component={ProtectionPage} />
-          <Route path="/anti-raid" component={AntiRaidPage} />
+          <Route path="/anti-raid" component={() => <CategorySettingsPage section="anti-raid" />} />
           <Route path="/politici" component={PoliciesPage} />
           <Route path="/comenzi" component={CommandsPage} />
           <Route path="/cazuri" component={CasesPage} />
           <Route path="/audit" component={AuditPage} />
-          <Route path="/config" component={SettingsPage} />
+          <Route path="/config" component={ConfigOverviewPage} />
+          <Route path="/config/avansat" component={AdvancedSettingsPage} />
+          <Route path="/config/unelte" component={() => <CategorySettingsPage section="tools" />} />
+          <Route path="/config/cazuri-audit" component={() => <CategorySettingsPage section="cases-audit" />} />
+          <Route path="/config/escaladare" component={() => <CategorySettingsPage section="escalation" />} />
+          <Route path="/config/embeduri" component={() => <CategorySettingsPage section="embeds" />} />
           <Route path="/bot" component={BotControlPage} />
           <Route path="/verificare" component={VerificationAdminPage} />
           <Route component={() => <div className="text-muted-foreground p-8 text-center border border-dashed border-border rounded-xl">Această secțiune este în lucru.</div>} />

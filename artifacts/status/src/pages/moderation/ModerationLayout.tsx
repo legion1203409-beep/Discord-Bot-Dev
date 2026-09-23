@@ -218,7 +218,10 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
     {
       label: "Moderare",
       items: [
-        { href: "/automod", icon: Bot, label: "AutoMod & AI" },
+        { href: "/automod", icon: Bot, label: "AutoMod" },
+        { href: "/ai", icon: Bot, label: "Moderare AI" },
+        { href: "/anti-spam", icon: Zap, label: "Anti-Spam" },
+        { href: "/anti-flood", icon: Activity, label: "Anti-Flood" },
         { href: "/comenzi", icon: Zap, label: "Acțiuni Manuale" },
         { href: "/cazuri", icon: ShieldAlert, label: "Cazuri (Cases)" },
         { href: "/audit", icon: History, label: "Loguri & Audit" },
@@ -229,13 +232,15 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
       items: [
         { href: "/protectie", icon: Shield, label: "Protecție Server" },
         { href: "/anti-raid", icon: ShieldAlert, label: "Anti-Raid" },
+        { href: "/comportament-suspect", icon: ShieldAlert, label: "Comportament suspect" },
       ],
     },
     {
       label: "Configurare",
       items: [
         { href: "/politici", icon: BookOpen, label: "Politici Generale" },
-        { href: "/config", icon: Settings, label: "Configurare completă" },
+        { href: "/config", icon: Settings, label: "Module și configurare" },
+        { href: "/config/avansat", icon: SlidersHorizontal, label: "Toate setările" },
       ],
     },
     {

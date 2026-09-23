@@ -14,6 +14,7 @@ const guilds = [
 
 const rule = () => ({ enabled: false, action: "none", severity: "normal", thresholds: {} });
 const fullConfig = () => ({
+  protection: { enabled: true },
   autoMod: { enabled: false, wordFilter: rule(), linkBlock: rule(), emojiLimit: rule(), capsLimit: rule(), repeatBlock: rule(), forbiddenWords: [], forbiddenLinks: [] },
   antiRaid: { enabled: false, joinsPerMinute: 10, accountAgeDays: 7, lockdown: false, alertChannelId: null, rule: rule() },
   antiSpam: { enabled: false, message: rule(), edit: rule(), delete: rule(), mention: rule(), emoji: rule(), logChannelId: null },
@@ -48,6 +49,7 @@ test.describe("authenticated moderation console", () => {
 
   test.beforeEach(async ({ page }) => {
     actionBodies = [];
+    for (const guild of guilds) savedConfigs.set(guild.id, fullConfig());
     await page.route("**/api/moderation/auth-config", async (route) => {
       await route.fulfill({ json: { discordOAuthConfigured: true, authorizationUrl: "/api/moderation/oauth/discord" } });
     });
@@ -63,6 +65,14 @@ test.describe("authenticated moderation console", () => {
         return;
       }
       await route.fulfill({ json: { config: savedConfigs.get(id), version: 1 }, headers: { ETag: '"1"' } });
+    });
+    await page.route("**/api/moderation/guilds/*/protection-toggle", async (route) => {
+      const id = route.request().url().match(/guilds\/(\d+)\/protection-toggle/)?.[1] || guilds[0].id;
+      const body = JSON.parse(route.request().postData() || "{}") as { key: string; enabled: boolean };
+      const config: any = structuredClone(savedConfigs.get(id));
+      config[body.key].enabled = body.enabled;
+      savedConfigs.set(id, config);
+      await route.fulfill({ json: { config, version: 3 }, headers: { ETag: '"3"' } });
     });
     await page.route("**/api/moderation/guilds/*/metadata", async (route) => {
       await route.fulfill({
@@ -99,7 +109,7 @@ test.describe("authenticated moderation console", () => {
     await chooseFirstGuild(page);
     await expect(page.getByRole("heading", { name: "Cenușa Nordului" })).toBeVisible();
     await page.screenshot({ path: "/tmp/moderation-dashboard-desktop.png", fullPage: true });
-    for (const path of ["/automod", "/protectie", "/politici", "/comenzi", "/cazuri", "/audit", "/config"]) {
+    for (const path of ["/automod", "/ai", "/anti-spam", "/anti-flood", "/comportament-suspect", "/anti-raid", "/protectie", "/politici", "/comenzi", "/cazuri", "/audit", "/config"]) {
       await page.locator(`nav a[href="/moderare${path}"]`).click();
       await expect(page).toHaveURL(`/moderare${path}`);
       await expect(page.locator("main h1")).toBeVisible();
@@ -108,7 +118,7 @@ test.describe("authenticated moderation console", () => {
   });
 
   test("switches guilds without displaying stale config and persists a full save", async ({ page }) => {
-    await page.goto("/moderare/config");
+    await page.goto("/moderare/config/avansat");
     await chooseFirstGuild(page);
     await expect(page.getByRole("combobox").first()).toContainText("Cenușa Nordului");
     const guildSelector = page.getByRole("combobox").first();
@@ -123,6 +133,35 @@ test.describe("authenticated moderation console", () => {
     await expect((await saveResponse).ok()).toBeTruthy();
     await page.reload();
     await expect(page.getByLabel("Canal audit ID fallback")).toHaveValue("444444444");
+  });
+
+  test("configuration cards navigate separately and toggles persist without navigation", async ({ page }) => {
+    await page.goto("/moderare/config");
+    await chooseFirstGuild(page);
+    const autoModSwitch = page.getByRole("switch", { name: "Activează AutoMod" });
+    await expect(autoModSwitch).not.toBeChecked();
+    const toggleResponse = page.waitForResponse((response) => response.url().includes("/protection-toggle") && response.request().method() === "PUT");
+    await autoModSwitch.click();
+    await expect((await toggleResponse).ok()).toBeTruthy();
+    await expect(page).toHaveURL("/moderare/config");
+    await expect(autoModSwitch).toBeChecked();
+    await page.reload();
+    await expect(page.getByRole("switch", { name: "Dezactivează AutoMod" })).toBeChecked();
+    await page.getByRole("link", { name: /AutoMod/ }).first().click();
+    await expect(page).toHaveURL("/moderare/automod");
+    await expect(page.getByText("Discord AutoMod nativ:")).toBeVisible();
+  });
+
+  test("shows stored module state as paused when global protection is off", async ({ page }) => {
+    const config = fullConfig();
+    config.protection.enabled = false;
+    config.antiRaid.enabled = true;
+    savedConfigs.set(guilds[0].id, config);
+    await page.goto("/moderare/config");
+    await chooseFirstGuild(page);
+    await expect(page.getByText("Protecția globală este oprită.")).toBeVisible();
+    await expect(page.getByText("Activat, dar în pauză globală").first()).toBeVisible();
+    await expect(page.getByRole("switch", { name: "Dezactivează Anti-Raid" })).toBeChecked();
   });
 
   test("supports mobile navigation without horizontal overflow", async ({ page }) => {

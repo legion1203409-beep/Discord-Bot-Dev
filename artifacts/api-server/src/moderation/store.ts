@@ -66,7 +66,7 @@ export interface ModerationStore {
   putConfig(guildId: string, config: ModerationConfig, updatedBy: string, expectedVersion: number): Promise<{ config: ModerationConfig; version: number }>;
   putProtectionToggle(
     guildId: string,
-    key: "protection" | "wordFilter" | "linkBlock" | "antiRaid" | "antiSpam" | "antiFlood" | "ai",
+    key: ProtectionToggleKey,
     enabled: boolean,
     updatedBy: string,
   ): Promise<{ config: ModerationConfig; version: number }>;
@@ -96,6 +96,11 @@ export interface ModerationStore {
   finalizeAction(input: { guildId: string; actionId: string; actorId: string; status: "applied" | "failed" | "uncertain"; caseId?: string; outcome: string; result?: Record<string, unknown>; error?: string; confirmedOffense?: { userId: string; resetAfterDays: number } }): Promise<{ offenseCount?: number }>;
   recordConfirmedOffense(input: { guildId: string; userId: string; resetAfterDays: number }): Promise<number>;
 }
+
+export type ProtectionToggleKey =
+  | "protection" | "autoMod" | "wordFilter" | "linkBlock"
+  | "antiRaid" | "antiSpam" | "antiFlood" | "suspiciousBehavior" | "ai"
+  | "manualTools" | "cases" | "audit" | "escalation" | "embeds";
 
 let schemaPromise: Promise<void> | undefined;
 
@@ -246,7 +251,7 @@ export class PostgresModerationStore implements ModerationStore {
 
   async putProtectionToggle(
     guildId: string,
-    key: "protection" | "wordFilter" | "linkBlock" | "antiRaid" | "antiSpam" | "antiFlood" | "ai",
+    key: ProtectionToggleKey,
     enabled: boolean,
     updatedBy: string,
   ) {
@@ -268,6 +273,8 @@ export class PostgresModerationStore implements ModerationStore {
 
       if (key === "protection") {
         nextConfig.protection = { ...current.config.protection, enabled };
+      } else if (key === "autoMod") {
+        nextConfig.autoMod = { ...current.config.autoMod, enabled };
       } else if (key === "wordFilter" || key === "linkBlock") {
         nextConfig.autoMod = {
           ...current.config.autoMod,
@@ -281,8 +288,20 @@ export class PostgresModerationStore implements ModerationStore {
         nextConfig.antiSpam = { ...current.config.antiSpam, enabled };
       } else if (key === "antiFlood") {
         nextConfig.antiFlood = { ...current.config.antiFlood, enabled };
-      } else {
+      } else if (key === "suspiciousBehavior") {
+        nextConfig.suspiciousBehavior = { ...current.config.suspiciousBehavior, enabled };
+      } else if (key === "ai") {
         nextConfig.ai = { ...current.config.ai, enabled };
+      } else if (key === "manualTools") {
+        nextConfig.manualTools = { ...current.config.manualTools, enabled };
+      } else if (key === "cases") {
+        nextConfig.cases = { ...current.config.cases, enabled };
+      } else if (key === "audit") {
+        nextConfig.audit = { ...current.config.audit, enabled };
+      } else if (key === "escalation") {
+        nextConfig.escalation = { ...current.config.escalation, enabled };
+      } else {
+        nextConfig.embeds = { ...current.config.embeds, enabled };
       }
 
       const nextVersion = current.version + 1;

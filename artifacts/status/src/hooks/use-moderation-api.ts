@@ -609,7 +609,7 @@ export function useModerationConfig(guildId: string | null) {
   };
 
   const updateProtectionToggle = async (
-    key: "protection" | "wordFilter" | "linkBlock" | "antiRaid" | "antiSpam" | "antiFlood" | "ai",
+    key: "protection" | "autoMod" | "wordFilter" | "linkBlock" | "antiRaid" | "antiSpam" | "antiFlood" | "suspiciousBehavior" | "ai" | "manualTools" | "cases" | "audit" | "escalation" | "embeds",
     enabled: boolean,
   ) => {
     const requestedGuildId = guildId;

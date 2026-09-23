@@ -48,10 +48,15 @@ export function AntiRaidPage() {
   const save = async () => {
     setSaving(true);
     try {
-      await update(draft);
+      const saved = await update(draft);
+      if (saved?.config) setDraft(JSON.parse(JSON.stringify(saved.config)));
       toast({ title: "Anti-Raid salvat", description: "Regulile anti-raid au fost actualizate pentru acest server." });
     } catch (saveError: any) {
       if (saveError?.message?.includes("Conflict")) {
+        // Never let canonical data overwrite a dirty draft silently. Clear the
+        // stale draft first, then let the next response initialize this guild.
+        setInitializedGuild(null);
+        setDraft(null);
         await refetch();
       }
       toast({ variant: "destructive", title: "Salvarea a eșuat", description: saveError?.message || "Reîncarcă pagina și încearcă din nou." });

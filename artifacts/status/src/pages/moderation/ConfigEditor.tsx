@@ -9,6 +9,8 @@ import { Textarea } from "../../components/ui/textarea";
 
 type Config = Record<string, any>;
 type Path = Array<string | number>;
+export type ConfigSection = "automod" | "anti-raid" | "anti-spam" | "anti-flood" | "suspicious" | "ai" | "tools" | "cases-audit" | "roles-channels" | "time" | "escalation" | "embeds" | "permissions";
+const VisibleSections = React.createContext<ReadonlySet<string> | null>(null);
 
 const ACTIONS = [
   ["none", "Nicio acțiune"],
@@ -220,6 +222,8 @@ const SUSPICIOUS_LIMIT = [
 ];
 
 function Section({ value, title, description, children }: { value: string; title: string; description: string; children: React.ReactNode }) {
+  const visible = React.useContext(VisibleSections);
+  if (visible && !visible.has(value)) return null;
   return (
     <AccordionItem value={value} className="rounded-xl border border-border bg-card px-5">
       <AccordionTrigger className="no-underline hover:no-underline">
@@ -230,7 +234,7 @@ function Section({ value, title, description, children }: { value: string; title
   );
 }
 
-export function ConfigEditor({ value, onChange }: { value: Config; onChange: (config: Config) => void }) {
+export function ConfigEditor({ value, onChange, sections }: { value: Config; onChange: (config: Config) => void; sections?: ConfigSection[] }) {
   const set = (path: Path, next: any) => {
     if (next === undefined && path.includes("thresholds")) onChange(removeConfigField(value, path));
     else onChange(updateConfigField(value, path, next));
@@ -238,7 +242,8 @@ export function ConfigEditor({ value, onChange }: { value: Config; onChange: (co
   const rule = (base: string[]) => (path: string[], next: any) => set([...base, ...path], next);
 
   return (
-    <Accordion type="multiple" defaultValue={["automod", "anti-raid", "anti-spam", "anti-flood"]} className="space-y-3">
+    <VisibleSections.Provider value={sections ? new Set(sections) : null}>
+    <Accordion type="multiple" defaultValue={sections ?? ["automod", "anti-raid", "anti-spam", "anti-flood"]} className="space-y-3">
       <Section value="automod" title="1. AutoMod" description="Filtre pentru cuvinte, linkuri, emoji, majuscule și repetări.">
         <Toggle label="Activează AutoMod" help="Comutatorul principal pentru regulile de mai jos." checked={value.autoMod.enabled} onChange={(next) => set(["autoMod", "enabled"], next)} />
         <RuleEditor title="Filtru cuvinte" help="Lista de mai jos determină potrivirile; regula nu are un prag numeric efectiv." rule={value.autoMod.wordFilter} thresholds={[]} onChange={rule(["autoMod", "wordFilter"])} />
@@ -412,5 +417,6 @@ export function ConfigEditor({ value, onChange }: { value: Config; onChange: (co
         <TextField label="Prefix bot" help="Comenzile de moderare sunt slash commands; prefixul este fix și nu poate fi schimbat." value="/" disabled onChange={() => undefined} />
       </Section>
     </Accordion>
+    </VisibleSections.Provider>
   );
 }

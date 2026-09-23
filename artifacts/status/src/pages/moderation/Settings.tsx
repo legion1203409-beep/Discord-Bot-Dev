@@ -10,7 +10,7 @@ import { Input } from "../../components/ui/input";
 
 type BotCapabilities = { messageContent: boolean; guildMembers: boolean };
 
-export function SettingsPage() {
+export function AdvancedSettingsPage() {
   const { guildId } = useActiveGuild();
   const { data, update, loading, error, refetch } = useModerationConfig(guildId);
   const { data: metadata, error: metadataError } = useModerationMetadata(guildId);
