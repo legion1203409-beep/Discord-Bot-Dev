@@ -20,6 +20,7 @@ import {
   claimTicketAlliancePublication,
   finishTicketAlliancePublication,
   loadTicketProgress,
+  loadTicketProgressForChannel,
   rejectTicketAlliance,
   releaseTicketAlliancePublication,
   saveTicketProgress,
@@ -301,10 +302,76 @@ function ticketQuestions(guildId: string | null | undefined, kind: OracleTicketK
   return flow.mode === "custom" ? flow.questions : TICKET_QUESTIONS[kind];
 }
 
-function completionQuestions(flow: TicketFlowConfig, questions: TicketQuestion[]): TicketQuestion[] {
-  if (!flow.postedQuestionKeys) return questions;
-  const selected = new Set(flow.postedQuestionKeys);
-  return questions.filter((question) => selected.has(question.key));
+/** Private ticket summaries include every configured question, regardless of public posting settings. */
+function privateQuestionSummaryEmbeds(
+  first: EmbedBuilder,
+  questions: TicketQuestion[],
+  answers: Record<string, string>,
+): EmbedBuilder[] {
+  const embeds = [first];
+  // Discord caps embeds at 25 fields and 6000 characters across the entire message.
+  // Send additional embeds as separate messages below if the total exceeds that limit.
+  let current = first;
+  let length = JSON.stringify(first.toJSON()).length;
+  let fields = first.toJSON().fields?.length ?? 0;
+  for (const question of questions) {
+    const answer = (answers[question.key]?.trim() || "—").replace(/@/g, "@\u200b");
+    for (let start = 0, part = 1; start < answer.length; start += 1024, part++) {
+      const name = part === 1
+        ? question.label.slice(0, 256)
+        : `${question.label.slice(0, 225)} (continuare ${part})`;
+      const value = answer.slice(start, start + 1024);
+      if (fields >= 25 || length + name.length + value.length > 4800) {
+        current = new EmbedBuilder().setColor(0x7c8fbd).setTitle("📜 Rezumat · continuare");
+        embeds.push(current);
+        length = 100;
+        fields = 0;
+      }
+      current.addFields({ name, value, inline: false });
+      length += name.length + value.length;
+      fields++;
+    }
+  }
+  return embeds;
+}
+
+async function sendPrivateSummary(
+  channel: { send: (payload: any) => Promise<Message> },
+  embeds: EmbedBuilder[],
+  payload: { content?: string; components?: ActionRowBuilder<ButtonBuilder>[]; allowedMentions: { parse: never[]; roles?: string[] } },
+): Promise<Message> {
+  // Keep the actionable summary last; all previous chunks contain only private answers.
+  for (let i = 0; i < embeds.length - 1; i++) {
+    await channel.send({ embeds: [embeds[i]!], allowedMentions: { parse: [] } });
+  }
+  return channel.send({ ...payload, embeds: [embeds[embeds.length - 1]!] });
+}
+
+async function removePreviousContinuation(
+  interaction: ModalSubmitInteraction,
+  previousMessageId: string | undefined,
+): Promise<void> {
+  if (!previousMessageId || !interaction.channel || !("messages" in interaction.channel)) return;
+  try {
+    const previous = await interaction.channel.messages.fetch(previousMessageId);
+    if (previous.id === previousMessageId &&
+      previous.components.some((row) => "components" in row && row.components.some((component) =>
+        "customId" in component && typeof component.customId === "string" &&
+        /^ticket_next_(staff|partnership|help_report)_\d+$/.test(component.customId),
+      ))) {
+      await previous.edit({ components: [] });
+    }
+  } catch (err) {
+    logger.debug({ err, channelId: interaction.channelId, previousMessageId }, "Could not clear old ticket continuation");
+  }
+}
+
+async function dismissTicketSuccess(interaction: ModalSubmitInteraction): Promise<void> {
+  try {
+    await interaction.deleteReply();
+  } catch (err) {
+    logger.debug({ err, channelId: interaction.channelId }, "Could not dismiss successful ticket modal reply");
+  }
 }
 
 function ticketQuestion(
@@ -630,6 +697,32 @@ async function ticketHasFinishedStatus(channel: {
   return false;
 }
 
+function ticketMemberOverwrites(channel: {
+  client?: { user?: { id: string } | null };
+  permissionOverwrites?: {
+    cache?: Iterable<{
+      id?: string;
+      type?: number | string;
+      allow?: { has?: (permission: bigint) => boolean };
+    }> | {
+      values(): IterableIterator<{
+        id?: string;
+        type?: number | string;
+        allow?: { has?: (permission: bigint) => boolean };
+      }>;
+    };
+  };
+}): string[] {
+  const cache = channel.permissionOverwrites?.cache;
+  const overwrites = cache && "values" in cache ? cache.values() : cache ?? [];
+  return [...overwrites].filter((overwrite) =>
+    (overwrite.type === 1 || overwrite.type === "member") &&
+    typeof overwrite.id === "string" &&
+    overwrite.id !== channel.client?.user?.id &&
+    overwrite.allow?.has?.(PermissionFlagsBits.ViewChannel) === true,
+  ).map((overwrite) => overwrite.id!);
+}
+
 export function scheduleIncompleteTicketDeletion(channel: unknown): void {
   if (!channel || typeof channel !== "object") return;
   const candidate = channel as {
@@ -637,17 +730,12 @@ export function scheduleIncompleteTicketDeletion(channel: unknown): void {
     guildId?: string | null;
     createdTimestamp?: number;
     delete?: (reason?: string) => Promise<unknown>;
+    client?: { user?: { id: string } | null };
     send?: (payload: {
       content: string;
       allowedMentions: { parse: never[]; users?: string[] };
     }) => Promise<unknown>;
-    permissionOverwrites?: {
-      cache?: Iterable<{
-        id?: string;
-        type?: number | string;
-        allow?: { has?: (permission: bigint) => boolean };
-      }>;
-    };
+    permissionOverwrites?: Parameters<typeof ticketMemberOverwrites>[0]["permissionOverwrites"];
     messages?: {
       fetch?: (options: { limit: number }) => Promise<Iterable<{ components?: readonly { components?: readonly { customId?: string | null }[] }[] }>>;
     };
@@ -673,22 +761,20 @@ export function scheduleIncompleteTicketDeletion(channel: unknown): void {
   const ticketConfig = getTicketConfig(candidate.guildId);
   const sendWarning = async (warningNumber: 1 | 2): Promise<void> => {
     const channelId = candidate.id!;
-    const progressFinished = [...ticketProgress.entries()].some(
-      ([key, state]) => key.startsWith(`${channelId}:`) && Boolean(state.status),
-    );
-    if (progressFinished || await ticketHasFinishedStatus(candidate)) return;
+    if (await ticketHasFinishedStatus(candidate)) return;
     if (typeof candidate.send !== "function") return;
-
-    const progressApplicantId = [...ticketProgress.keys()]
-      .find((key) => key.startsWith(`${channelId}:`))
-      ?.slice(channelId.length + 1);
-    const permissionApplicantId = [...(candidate.permissionOverwrites?.cache ?? [])]
-      .find((overwrite) =>
-        (overwrite.type === 1 || overwrite.type === "member") &&
-        typeof overwrite.id === "string" &&
-        overwrite.allow?.has?.(PermissionFlagsBits.ViewChannel) === true,
-      )?.id;
-    const applicantId = progressApplicantId || permissionApplicantId;
+    let applicants: Awaited<ReturnType<typeof loadTicketProgressForChannel>>;
+    try {
+      applicants = await loadTicketProgressForChannel(channelId);
+    } catch (err) {
+      logger.warn({ err, channelId }, "Could not verify ticket completion before warning");
+      return;
+    }
+    if (applicants.some(({ progress }) => progress.status)) return;
+    const fallbackMembers = ticketMemberOverwrites(candidate);
+    const applicantId = applicants.length === 1
+      ? applicants[0]!.applicantId
+      : applicants.length === 0 && fallbackMembers.length === 1 ? fallbackMembers[0] : undefined;
     const mention = applicantId ? `<@${applicantId}> ` : "";
 
     await candidate.send({
@@ -723,10 +809,14 @@ export function scheduleIncompleteTicketDeletion(channel: unknown): void {
   const timer = setTimeout(async () => {
     ticketDeletionTimers.delete(candidate.id!);
     const channelId = candidate.id!;
-    const progressFinished = [...ticketProgress.entries()].some(
-      ([key, state]) => key.startsWith(`${channelId}:`) && Boolean(state.status),
-    );
-    if (progressFinished || await ticketHasFinishedStatus(candidate)) return;
+    if (await ticketHasFinishedStatus(candidate)) return;
+    try {
+      const applicants = await loadTicketProgressForChannel(channelId);
+      if (applicants.some(({ progress }) => progress.status)) return;
+    } catch (err) {
+      logger.warn({ err, channelId }, "Could not verify ticket completion before deletion");
+      return;
+    }
 
     try {
       for (const warningTimer of ticketWarningTimers.get(channelId) ?? []) {
@@ -985,7 +1075,7 @@ export function partnershipSummaryEmbed(
   username: string,
   answers: Record<string, string>,
   statusText = "COMPLET · pregătit pentru verificarea și confirmarea staffului",
-  selectedQuestions?: TicketQuestion[],
+  includeLegacyFields = true,
 ): EmbedBuilder {
   const embed = new EmbedBuilder()
     .setColor(0x7c8fbd)
@@ -1004,16 +1094,7 @@ export function partnershipSummaryEmbed(
     .setFooter({ text: "Regatul Cenușii · Verifică pactul înainte de publicare" })
     .setTimestamp();
   if (TICKET_SEAL) embed.setThumbnail(TICKET_SEAL);
-  if (selectedQuestions) {
-    embed.addFields(
-      selectedQuestions.map((question) => ({
-        name: question.label.slice(0, 256),
-        value: safeAnswer(answers[question.key]),
-        inline: false,
-      })),
-    );
-  } else {
-    embed.addFields(
+  if (includeLegacyFields) embed.addFields(
       {
         name: "🏰 Numele serverului",
         value: safeAnswer(answers.server_name),
@@ -1054,8 +1135,7 @@ export function partnershipSummaryEmbed(
         value: safeAnswer(answers.terms),
         inline: false,
       },
-    );
-  }
+  );
   return embed;
 }
 
@@ -1073,15 +1153,16 @@ function partnershipAnswersForCustomFlow(
     "offer",
     "terms",
   ];
-  const orderedAnswers = flow.questions.map((question) => answers[question.key]).filter(
-    (value): value is string => typeof value === "string" && value.trim() !== "",
-  );
-  return Object.fromEntries(
-    legacyKeys.map((key, index) => [
-      key,
-      answers[key] ?? orderedAnswers[index] ?? "—",
-    ]),
-  );
+  const orderedAnswers = flow.questions.map((question) => answers[question.key]);
+  return {
+    ...answers,
+    ...Object.fromEntries(
+      legacyKeys.map((key, index) => [
+        key,
+        answers[key] ?? orderedAnswers[index] ?? "—",
+      ]),
+    ),
+  };
 }
 
 export function partnershipConfirmRow(userId: string): ActionRowBuilder<ButtonBuilder> {
@@ -1968,10 +2049,9 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
   const nextMatch = interaction.customId.match(/^ticket_next_(staff|partnership|help_report)_(\d+)$/);
   if (nextMatch) {
     const kind = nextMatch[1] as OracleTicketKind;
-    const flow = ticketFlow(interaction.guildId, kind);
     const questionIndex = Number(nextMatch[2]);
     const question = ticketQuestions(interaction.guildId, kind)[questionIndex - 1];
-    const progressState = await getTicketProgress(interaction.channelId, interaction.user.id);
+    const progressState = await getTicketProgress(interaction.channelId, interaction.user.id, true);
     if (progressState?.status) {
       await interaction.reply({
         content:
@@ -1983,7 +2063,13 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
       return true;
     }
     const expectedIndex = (progressState?.currentStep ?? 0) + 1;
-    if (!question || questionIndex !== expectedIndex) {
+    if (
+      !progressState ||
+      !question ||
+      questionIndex !== expectedIndex ||
+      !actionMatchesResponseMessage(interaction, progressState.responseMessageId) ||
+      !messageHasButton(interaction.message, interaction.customId)
+    ) {
       await interaction.reply({
         content: `⏳ Continuă cu pasul ${expectedIndex}/${ticketQuestions(interaction.guildId, kind).length}.`,
         flags: MessageFlags.Ephemeral,
@@ -2102,29 +2188,28 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
           flow,
           progressState.answers ?? {},
         );
-        const selectedQuestions = completionQuestions(flow, questions);
         const roleId = getTicketConfig(interaction.guildId).staffReviewRoleId;
         const summaryEmbed = partnershipSummaryEmbed(
           interaction.user.globalName ?? interaction.user.username,
           partnershipAnswers,
           undefined,
-          selectedQuestions,
+          false,
         );
-        setTicketMedia(summaryEmbed, flow.staffNotificationImageUrl, flow.staffNotificationThumbnailUrl);
-        const responseMessage = await interaction.channel.send({
+        const summaryEmbeds = privateQuestionSummaryEmbeds(summaryEmbed, questions, progressState.answers);
+        setTicketMedia(summaryEmbeds.at(-1)!, flow.staffNotificationImageUrl, flow.staffNotificationThumbnailUrl);
+        const responseMessage = await sendPrivateSummary(interaction.channel, summaryEmbeds, {
           content: `<@&${roleId}>\n${flow.staffNotificationMessage}`,
-          embeds: [summaryEmbed],
           components: [partnershipConfirmRow(interaction.user.id)],
           allowedMentions: { parse: [], roles: [roleId] },
         });
         progressState.currentStep = questionIndex;
         progressState.status = "completed";
         progressState.answers = partnershipAnswers;
+        const previousMessageId = progressState.responseMessageId;
         progressState.responseMessageId = responseMessage.id;
         await persistTicketProgress(interaction.channelId, interaction.user.id, progressState);
-        if (flow.completionAction !== "keep_open") {
-          await lockTicketPanel(interaction, kind, "completed");
-        }
+        await removePreviousContinuation(interaction, previousMessageId);
+        await lockTicketPanel(interaction, kind, "completed");
         const completionMediaEmbed =
           publicTicketImageUrl(flow.completionImageUrl) || publicTicketImageUrl(flow.completionThumbnailUrl)
             ? new EmbedBuilder().setColor(TICKET_COLORS[kind])
@@ -2132,11 +2217,8 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
         if (completionMediaEmbed) {
           setTicketMedia(completionMediaEmbed, flow.completionImageUrl, flow.completionThumbnailUrl);
         }
-        await interaction.editReply({
-          content: flow.completionMessage,
-          ...(completionMediaEmbed ? { embeds: [completionMediaEmbed] } : {}),
-          components: [],
-        });
+        if (completionMediaEmbed) await interaction.channel.send({ embeds: [completionMediaEmbed] });
+        await dismissTicketSuccess(interaction);
         return true;
       }
       const flowEmbed = new EmbedBuilder()
@@ -2146,11 +2228,7 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
         .setAuthor({ name: interaction.user.username, iconURL: interaction.user.displayAvatarURL() })
         .addFields(
           complete
-            ? completionQuestions(flow, questions).map((entry) => ({
-                name: entry.label.slice(0, 256),
-                value: safeAnswer(progressState.answers?.[entry.key], "—", 1_024),
-                inline: false,
-              }))
+            ? []
             : [
                 { name: "🧾 Întrebarea", value: question.description, inline: false },
                 { name: "✍️ Răspunsul", value: answer, inline: false },
@@ -2175,18 +2253,9 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
       if (staffMediaEmbed) {
         setTicketMedia(staffMediaEmbed, flow.staffNotificationImageUrl, flow.staffNotificationThumbnailUrl);
       }
-      const responseMessage = await interaction.channel.send({
-        content: notifyStaff ? `<@&${roleId}>\n${flow.staffNotificationMessage}` : undefined,
-        embeds: staffMediaEmbed ? [flowEmbed, staffMediaEmbed] : [flowEmbed],
-        allowedMentions: notifyStaff ? { parse: [], roles: [roleId] } : { parse: [] },
-      });
-      progressState.currentStep = questionIndex;
-      if (complete) progressState.status = "completed";
-      if (complete) progressState.responseMessageId = responseMessage.id;
-      await persistTicketProgress(interaction.channelId, interaction.user.id, progressState);
-      if (complete && flow.completionAction !== "keep_open") {
-        await lockTicketPanel(interaction, kind, "completed");
-      }
+      const summaryEmbeds = complete
+        ? privateQuestionSummaryEmbeds(flowEmbed, questions, progressState.answers ?? {})
+        : [flowEmbed];
       const nextComponents = !complete
         ? [new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
@@ -2195,10 +2264,22 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
               .setStyle(ButtonStyle.Primary),
           )]
         : [];
-      await interaction.editReply({
-        content: complete ? flow.completionMessage : `✅ Răspunsul pentru **${question.label}** a fost salvat.`,
+      const responseMessage = await sendPrivateSummary(interaction.channel, summaryEmbeds, {
+        content: notifyStaff ? `<@&${roleId}>\n${flow.staffNotificationMessage}` : undefined,
         components: nextComponents,
+        allowedMentions: notifyStaff ? { parse: [], roles: [roleId] } : { parse: [] },
       });
+      if (staffMediaEmbed) await interaction.channel.send({ embeds: [staffMediaEmbed] });
+      progressState.currentStep = questionIndex;
+      if (complete) progressState.status = "completed";
+      const previousMessageId = progressState.responseMessageId;
+      progressState.responseMessageId = responseMessage.id;
+      await persistTicketProgress(interaction.channelId, interaction.user.id, progressState);
+      await removePreviousContinuation(interaction, previousMessageId);
+      if (complete) {
+        await lockTicketPanel(interaction, kind, "completed");
+      }
+      await dismissTicketSuccess(interaction);
     } catch (err) {
       logger.error({ err, guildId: interaction.guildId, channelId: interaction.channelId }, "Custom ticket answer could not be posted");
       await interaction.editReply({ content: "❌ Răspunsul nu a putut fi adăugat în ticket. Încearcă din nou." });
@@ -2269,31 +2350,35 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
 
   try {
     const finalPartnership = kind === "partnership" && isLastQuestion;
-    const responseMessage = await interaction.channel.send({
+    const nextComponents = !rejectedForTag && !isLastQuestion
+      ? [new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`ticket_next_${kind}_${questionIndex + 1}`)
+            .setLabel(`➡️ Continuă contractul · ${questionIndex + 1}/${totalQuestions}`)
+            .setStyle(ButtonStyle.Primary),
+        )]
+      : [];
+    const finalEmbeds = isLastQuestion && !finalPartnership
+      ? privateQuestionSummaryEmbeds(answerEmbed, questions, partnershipAnswers)
+      : [finalPartnership
+          ? partnershipSummaryEmbed(interaction.user.globalName ?? interaction.user.username, partnershipAnswers)
+          : answerEmbed];
+    const responseMessage = await sendPrivateSummary(interaction.channel, finalEmbeds, {
       content: finalPartnership
         ? allianceStaffNotificationText(
             interaction.user.globalName ?? interaction.user.username,
             getTicketConfig(interaction.guildId).staffReviewRoleId,
           )
         : undefined,
-      embeds: [
-        finalPartnership
-          ? partnershipSummaryEmbed(
-              interaction.user.globalName ?? interaction.user.username,
-              partnershipAnswers,
-            )
-          : answerEmbed,
-      ],
       components: finalPartnership
         ? [partnershipConfirmRow(interaction.user.id)]
-        : [],
+        : nextComponents,
       allowedMentions: finalPartnership
         ? { parse: [], roles: [getTicketConfig(interaction.guildId).staffReviewRoleId] }
         : { parse: [] },
     });
-    if (finalPartnership) {
-      progressState.responseMessageId = responseMessage.id;
-    }
+    const previousMessageId = progressState.responseMessageId;
+    progressState.responseMessageId = responseMessage.id;
     if (rejectedForTag || isLastQuestion) {
       progressState.currentStep = questionIndex;
       progressState.status = rejectedForTag ? "rejected" : "completed";
@@ -2306,25 +2391,8 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
       progressState.currentStep = questionIndex;
     }
     await persistTicketProgress(interaction.channelId, interaction.user.id, progressState);
-    const nextComponents =
-      !rejectedForTag && !isLastQuestion
-        ? [
-            new ActionRowBuilder<ButtonBuilder>().addComponents(
-              new ButtonBuilder()
-                .setCustomId(`ticket_next_${kind}_${questionIndex + 1}`)
-                .setLabel(`➡️ Continuă contractul · ${questionIndex + 1}/${totalQuestions}`)
-                .setStyle(ButtonStyle.Primary),
-            ),
-          ]
-        : [];
-    await interaction.editReply({
-      content: rejectedForTag
-        ? "❌ Aplicația a fost respinsă deoarece nu ai acceptat purtarea tag-ului serverului."
-        : isLastQuestion
-          ? `✅ Răspunsul pentru **${question.label}** a fost adăugat. Formularul este complet.`
-          : `✅ Răspunsul pentru **${question.label}** a fost adăugat.`,
-      components: nextComponents,
-    });
+    await removePreviousContinuation(interaction, previousMessageId);
+    await dismissTicketSuccess(interaction);
   } catch (err) {
     logger.error(
       { err, guildId: interaction.guildId, channelId: interaction.channelId, ticketKind: kind },
@@ -2471,10 +2539,7 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
       progressState.status = "completed";
       await persistTicketProgress(interaction.channelId, interaction.user.id, progressState);
       await lockTicketPanel(interaction, "partnership", "completed");
-      await interaction.editReply({
-        content:
-          "✅ Contractul alianței este complet. Toate cele 8 răspunsuri au fost unite într-un singur rezumat.",
-      });
+      await dismissTicketSuccess(interaction);
     } catch (err) {
       logger.error(
         { err, guildId: interaction.guildId, channelId: interaction.channelId },
@@ -2643,11 +2708,7 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
           ),
         );
       }
-      await interaction.editReply({
-        content: rejectedForTag
-          ? "❌ Aplicația a fost respinsă deoarece nu ai acceptat purtarea tag-ului serverului."
-          : "✅ Aplicația este completă. Un membru al echipei te va prelua cât mai curând.",
-      });
+      await dismissTicketSuccess(interaction);
     } catch (err) {
       logger.error(
         { err, guildId: interaction.guildId, channelId: interaction.channelId },
@@ -2828,14 +2889,7 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
     return true;
   }
 
-  await interaction.editReply({
-    content:
-      kind === "staff"
-        ? "✅ Prima pagină a fost adăugată. Apasă **Continuă aplicația** în ticket pentru ultimele trei întrebări."
-        : kind === "partnership"
-          ? "✅ Prima pagină a fost adăugată. Apasă **Continuă contractul** în ticket pentru ultimele trei întrebări."
-        : "✅ Răspunsurile au fost adăugate în ticket. Un membru al echipei te va prelua cât mai curând.",
-  });
+  await dismissTicketSuccess(interaction);
   return true;
 }
 

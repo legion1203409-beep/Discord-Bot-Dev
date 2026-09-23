@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Message } from "discord.js";
+vi.mock("../db", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../db")>(),
+  loadTicketProgress: vi.fn(async () => null),
+  loadTicketProgressForChannel: vi.fn(async () => []),
+}));
 import { isTicketCategoryParentId } from "../ticket-categories";
 import {
   ORACLE_TICKET_CATEGORY_IDS,

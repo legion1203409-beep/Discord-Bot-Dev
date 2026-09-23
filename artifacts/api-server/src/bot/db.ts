@@ -2578,6 +2578,23 @@ export async function loadTicketProgress(
   return row ? parseTicketProgress(row.value) : null;
 }
 
+/** Discover ticket applicants from persisted progress, not Discord overwrite order. */
+export async function loadTicketProgressForChannel(
+  channelId: string,
+): Promise<{ applicantId: string; progress: TicketProgressRecord }[]> {
+  await ensureBotStateTable();
+  const prefix = `${TICKET_PROGRESS_PREFIX}${channelId}:`;
+  const result = await pool.query<{ key: string; value: string }>(
+    "SELECT key, value FROM bot_state WHERE left(key, length($1)) = $1",
+    [prefix],
+  );
+  return result.rows.map((row) => {
+    const progress = parseTicketProgress(row.value);
+    if (!progress) throw new Error(`Invalid persisted ticket progress for ${row.key}`);
+    return { applicantId: row.key.slice(prefix.length), progress };
+  });
+}
+
 export async function releaseTicketAlliancePublication(
   channelId: string,
   applicantId: string,
