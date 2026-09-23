@@ -336,8 +336,8 @@ export function DashboardOverview() {
                   <h3 className="flex items-center gap-1 text-sm font-medium leading-snug text-foreground">{mod.name}<ChevronRight className="h-3.5 w-3.5 shrink-0 text-primary/70" aria-hidden="true" /></h3>
                   <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{mod.description}</p>
                   <p className={`mt-2 flex items-center gap-1 font-mono text-[10px] tracking-wider ${mod.active ? "text-primary" : mod.enabled ? "text-amber-500" : "text-muted-foreground"}`}>
-                    {mod.active ? <CheckCircle2 className="h-3 w-3 shrink-0" aria-hidden="true" /> : <XCircle className="h-3 w-3 shrink-0" aria-hidden="true" />}
-                    {mod.active ? "ACTIV" : mod.enabled && !protectionEnabled ? "ACTIVAT, ÎN PAUZĂ GLOBALĂ" : mod.enabled && !mod.parentEnabled ? "ACTIVAT, AUTOMOD OPRIT" : "INACTIV"}
+                    {mod.active ? <CheckCircle2 className="h-3 w-3 shrink-0" aria-hidden="true" /> : mod.enabled ? <PauseCircle className="h-3 w-3 shrink-0" aria-hidden="true" /> : <XCircle className="h-3 w-3 shrink-0" aria-hidden="true" />}
+                    {mod.active ? "ACTIV" : mod.enabled && !protectionEnabled ? "CONFIGURAT · PROTECȚIA GLOBALĂ OPRITĂ" : mod.enabled && !mod.parentEnabled ? "CONFIGURAT · AUTOMOD OPRIT" : "INACTIV"}
                   </p>
                 </Link>
                 <div className="pt-1">

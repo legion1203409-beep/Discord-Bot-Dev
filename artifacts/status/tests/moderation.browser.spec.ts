@@ -232,14 +232,14 @@ test.describe("authenticated moderation console", () => {
     await page.goto("/moderare");
     await chooseFirstGuild(page);
     const wordCard = page.getByTestId("card-module-wordFilter");
-    await expect(wordCard.getByText("ACTIVAT, ÎN PAUZĂ GLOBALĂ")).toBeVisible();
+    await expect(wordCard.getByText("CONFIGURAT · PROTECȚIA GLOBALĂ OPRITĂ")).toBeVisible();
     await expect(page.getByRole("switch", { name: "Dezactivează Filtru cuvinte" })).toBeChecked();
 
     const protectionResponse = page.waitForResponse((response) =>
       response.url().includes("/protection-toggle") && response.request().method() === "PUT");
     await page.getByRole("switch", { name: "Activează sau oprește toată protecția" }).click();
     await expect((await protectionResponse).ok()).toBeTruthy();
-    await expect(wordCard.getByText("ACTIVAT, AUTOMOD OPRIT")).toBeVisible();
+    await expect(wordCard.getByText("CONFIGURAT · AUTOMOD OPRIT")).toBeVisible();
     await expect(page.getByRole("switch", { name: "Dezactivează Filtru cuvinte" })).toBeChecked();
   });
 

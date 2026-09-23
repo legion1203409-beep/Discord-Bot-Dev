@@ -735,12 +735,14 @@ export function BotControlPage() {
                 </div>
                 <div className="permission-summary">
                   <span>Manage Channels {metadata?.botCapabilities?.canManageChannels ? <em>✓ Disponibilă</em> : <b>⚠ Necesară</b>}</span>
-                  <span>Manage Permissions <b>De verificat pe Discord</b></span>
-                  <span>Send Messages <b>De verificat pe canal</b></span>
+                  <span>Suprascrieri de acces {metadata?.botCapabilities?.canManageChannels ? <em>✓ Se aplică automat</em> : <b>⚠ Necesită Manage Channels</b>}</span>
+                  <span>Mesaje și istoric <em>Configurabile pe categorie</em></span>
                 </div>
                 <p className="help">
                   <CircleHelp size={13} />
-                  Butonul de provisioning va rămâne blocat pe Discord până când botul primește permisiunea <strong>Manage Channels</strong>.
+                  <span>
+                    <strong>Manage Permissions</strong> nu este o permisiune Discord separată. Botul folosește <strong>Manage Channels</strong> pentru a crea canalele și a aplica accesul; <strong>Mesaje și istoric</strong> se aleg mai jos pentru fiecare categorie și rol.
+                  </span>
                 </p>
               </section>
             </div>

@@ -56,3 +56,4 @@
 - [Atomic protection toggles](atomic-protection-toggles.md) — dashboard toggles must mutate one protection key server-side, not PUT a stale full config snapshot.
 - [AOS animation ownership](aos-animation-ownership.md) — elements using data-aos must not also have a competing CSS animation that owns opacity or transform.
 - [Bot-control round trips](bot-control-round-trips.md) — every GET bot-control value must be accepted unchanged by PUT; schedule changes must restart the active guild scheduler.
+- [Provisioning permission language](bot-provisioning-permission-copy.md) — Manage Permissions is not a standalone Discord permission; channel overwrites use Manage Channels and member access is configured per category.
