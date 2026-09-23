@@ -70,7 +70,12 @@ test.describe("authenticated moderation console", () => {
       const id = route.request().url().match(/guilds\/(\d+)\/protection-toggle/)?.[1] || guilds[0].id;
       const body = JSON.parse(route.request().postData() || "{}") as { key: string; enabled: boolean };
       const config: any = structuredClone(savedConfigs.get(id));
-      config[body.key].enabled = body.enabled;
+      if (body.key === "wordFilter" || body.key === "linkBlock") {
+        config.autoMod[body.key].enabled = body.enabled;
+        if (body.enabled) config.autoMod.enabled = true;
+      } else {
+        config[body.key].enabled = body.enabled;
+      }
       savedConfigs.set(id, config);
       await route.fulfill({ json: { config, version: 3 }, headers: { ETag: '"3"' } });
     });
@@ -162,6 +167,52 @@ test.describe("authenticated moderation console", () => {
     await expect(page.getByText("Protecția globală este oprită.")).toBeVisible();
     await expect(page.getByText("Activat, dar în pauză globală").first()).toBeVisible();
     await expect(page.getByRole("switch", { name: "Dezactivează Anti-Raid" })).toBeChecked();
+  });
+
+  test("overview module cards navigate while their toggles stay put and persist per guild", async ({ page }) => {
+    await page.goto("/moderare");
+    await chooseFirstGuild(page);
+
+    const suspiciousSwitch = page.getByRole("switch", { name: "Activează Comportament suspect" });
+    const toggleResponse = page.waitForResponse((response) =>
+      response.url().includes("/api/moderation/guilds/111111111/protection-toggle")
+      && response.request().method() === "PUT");
+    await suspiciousSwitch.click();
+    await expect((await toggleResponse).ok()).toBeTruthy();
+    await expect(page).toHaveURL("/moderare");
+    await expect(page.getByRole("switch", { name: "Dezactivează Comportament suspect" })).toBeChecked();
+
+    await page.getByTestId("link-module-suspiciousBehavior").click();
+    await expect(page).toHaveURL("/moderare/comportament-suspect");
+    await expect(page.getByRole("heading", { name: "Comportament suspect", exact: true })).toBeVisible();
+
+    await page.goto("/moderare");
+    await expect(page.getByRole("switch", { name: "Dezactivează Comportament suspect" })).toBeChecked();
+    const guildSelector = page.getByRole("combobox").first();
+    await guildSelector.click();
+    await page.getByRole("option", { name: "Turnul Gol" }).click();
+    await expect(page.getByRole("switch", { name: "Activează Comportament suspect" })).not.toBeChecked();
+  });
+
+  test("overview shows stored subrule toggles while global or AutoMod parents are off", async ({ page }) => {
+    const config = fullConfig();
+    config.protection.enabled = false;
+    config.autoMod.enabled = false;
+    config.autoMod.wordFilter.enabled = true;
+    savedConfigs.set(guilds[0].id, config);
+
+    await page.goto("/moderare");
+    await chooseFirstGuild(page);
+    const wordCard = page.getByTestId("card-module-wordFilter");
+    await expect(wordCard.getByText("ACTIVAT, ÎN PAUZĂ GLOBALĂ")).toBeVisible();
+    await expect(page.getByRole("switch", { name: "Dezactivează Filtru cuvinte" })).toBeChecked();
+
+    const protectionResponse = page.waitForResponse((response) =>
+      response.url().includes("/protection-toggle") && response.request().method() === "PUT");
+    await page.getByRole("switch", { name: "Activează sau oprește toată protecția" }).click();
+    await expect((await protectionResponse).ok()).toBeTruthy();
+    await expect(wordCard.getByText("ACTIVAT, AUTOMOD OPRIT")).toBeVisible();
+    await expect(page.getByRole("switch", { name: "Dezactivează Filtru cuvinte" })).toBeChecked();
   });
 
   test("supports mobile navigation without horizontal overflow", async ({ page }) => {
