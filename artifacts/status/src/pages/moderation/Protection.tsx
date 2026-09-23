@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Save, Shield, UserMinus, MessageSquare, AlertOctagon, Loader2 } from "lucide-react";
+import { Save, Shield, MessageSquare, AlertOctagon, Loader2 } from "lucide-react";
 import { useModerationConfig, useActiveGuild } from "../../hooks/use-moderation-api";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "../../components/ui/form";
 import { Input } from "../../components/ui/input";
@@ -13,9 +13,6 @@ import { useToast } from "../../hooks/use-toast";
 
 const protectionFormSchema = z.object({
   protectionEnabled: z.boolean(),
-  antiRaidEnabled: z.boolean(),
-  joinsPerMinute: z.coerce.number().min(1).max(1000),
-  lockdown: z.boolean(),
   antiSpamEnabled: z.boolean(),
   antiFloodEnabled: z.boolean(),
   suspiciousEnabled: z.boolean(),
@@ -31,9 +28,6 @@ export function ProtectionPage() {
     resolver: zodResolver(protectionFormSchema),
     defaultValues: {
       protectionEnabled: true,
-      antiRaidEnabled: false,
-      joinsPerMinute: 10,
-      lockdown: false,
       antiSpamEnabled: false,
       antiFloodEnabled: false,
       suspiciousEnabled: false,
@@ -47,9 +41,6 @@ export function ProtectionPage() {
       initializedForId.current = guildId;
       form.reset({
          protectionEnabled: data.protection?.enabled ?? true,
-        antiRaidEnabled: data.antiRaid?.enabled ?? false,
-        joinsPerMinute: data.antiRaid?.joinsPerMinute ?? 10,
-        lockdown: data.antiRaid?.lockdown ?? false,
         antiSpamEnabled: data.antiSpam?.enabled ?? false,
         antiFloodEnabled: data.antiFlood?.enabled ?? false,
         suspiciousEnabled: data.suspiciousBehavior?.enabled ?? false,
@@ -65,12 +56,6 @@ export function ProtectionPage() {
       protection: {
         ...current.protection,
         enabled: values.protectionEnabled,
-      },
-      antiRaid: {
-        ...current.antiRaid,
-        enabled: values.antiRaidEnabled,
-        joinsPerMinute: values.joinsPerMinute,
-        lockdown: values.lockdown,
       },
       antiSpam: { ...current.antiSpam, enabled: values.antiSpamEnabled },
       antiFlood: { ...current.antiFlood, enabled: values.antiFloodEnabled },
@@ -141,61 +126,6 @@ export function ProtectionPage() {
           </div>
           
           <div className="grid grid-cols-1 gap-6">
-            {/* Anti-Raid */}
-            <div className="bg-card border border-border p-6 rounded-xl space-y-6">
-              <div className="flex items-center gap-3 mb-4 border-b border-border pb-4">
-                <UserMinus className="w-5 h-5 text-destructive" />
-                <h3 className="text-lg font-medium">Sistem Anti-Raid</h3>
-              </div>
-              
-              <FormField
-                control={form.control}
-                name="antiRaidEnabled"
-                render={({ field }) => (
-                  <FormItem className="flex flex-row items-center justify-between rounded-lg border border-border p-4">
-                    <div className="space-y-0.5">
-                      <FormLabel>Activează Anti-Raid</FormLabel>
-                      <FormDescription>Monitorizează valurile masive de intrări.</FormDescription>
-                    </div>
-                    <FormControl>
-                      <Switch checked={protectionEnabled && field.value} onCheckedChange={field.onChange} disabled={!protectionEnabled} />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <FormField
-                  control={form.control}
-                  name="joinsPerMinute"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Intrări permise per minut (Prag)</FormLabel>
-                      <FormControl>
-                        <Input type="number" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="lockdown"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-row items-center justify-between rounded-lg border border-border p-4 bg-background">
-                      <div className="space-y-0.5">
-                        <FormLabel>Auto-Lockdown</FormLabel>
-                        <FormDescription>Oprește complet intrările noi în caz de raid.</FormDescription>
-                      </div>
-                      <FormControl>
-                        <Switch checked={field.value} onCheckedChange={field.onChange} />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-              </div>
-            </div>
-
             {/* Spam & Flood */}
             <div className="bg-card border border-border p-6 rounded-xl space-y-6">
               <div className="flex items-center gap-3 mb-4 border-b border-border pb-4">

@@ -1,4 +1,4 @@
-import { Link, useLocation, useSearch } from "wouter";
+import { Link, useLocation } from "wouter";
 import { 
   ShieldAlert, Settings, Shield, Bot, History, BookOpen, SlidersHorizontal, ShieldCheck,
   LogOut, ChevronLeft, Activity, Zap, Menu, X, Eye, Monitor, RefreshCw, Server
@@ -57,7 +57,6 @@ function inviteLabel(inviteUrl: string): string {
 
 export function ModerationLayout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
-  const searchString = useSearch();
   const { session, loading, error, logout, retry } = useSession();
   const {
     authConfig,
@@ -210,22 +209,44 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
     );
   }
 
-  const navItems = [
-    { href: "/", icon: Activity, label: "Ansamblu" },
-    { href: "/automod", icon: Bot, label: "AutoMod & AI" },
-    { href: "/protectie", icon: Shield, label: "Protecție Server" },
-    { href: "/politici", icon: BookOpen, label: "Politici Generale" },
-    { href: "/comenzi", icon: Zap, label: "Acțiuni Manuale" },
-    { href: "/cazuri", icon: ShieldAlert, label: "Cazuri (Cases)" },
-    { href: "/audit", icon: History, label: "Loguri & Audit" },
-    { href: "/config", icon: Settings, label: "Configurare" },
-  ];
-  const botControlItems = [
-    { href: "/bot?tab=channels", icon: Monitor, label: "Canale" },
-    { href: "/bot?tab=tickets", icon: SlidersHorizontal, label: "Tichete" },
-    { href: "/verificare", icon: ShieldCheck, label: "Verificare" },
-    { href: "/bot?tab=messages", icon: Activity, label: "Mesaje" },
-    { href: "/bot?tab=statistics", icon: Monitor, label: "Statistici" },
+  const navGroups = [
+    {
+      label: "General",
+      items: [{ href: "/", icon: Activity, label: "Ansamblu" }],
+    },
+    {
+      label: "Moderare",
+      items: [
+        { href: "/automod", icon: Bot, label: "AutoMod & AI" },
+        { href: "/comenzi", icon: Zap, label: "Acțiuni Manuale" },
+        { href: "/cazuri", icon: ShieldAlert, label: "Cazuri (Cases)" },
+        { href: "/audit", icon: History, label: "Loguri & Audit" },
+      ],
+    },
+    {
+      label: "Protecție",
+      items: [
+        { href: "/protectie", icon: Shield, label: "Protecție Server" },
+        { href: "/anti-raid", icon: ShieldAlert, label: "Anti-Raid" },
+      ],
+    },
+    {
+      label: "Configurare",
+      items: [
+        { href: "/politici", icon: BookOpen, label: "Politici Generale" },
+        { href: "/config", icon: Settings, label: "Configurare completă" },
+      ],
+    },
+    {
+      label: "Control bot",
+      items: [
+        { href: "/bot?tab=channels", icon: Monitor, label: "Canale" },
+        { href: "/bot?tab=tickets", icon: SlidersHorizontal, label: "Tichete" },
+        { href: "/verificare", icon: ShieldCheck, label: "Verificare" },
+        { href: "/bot?tab=messages", icon: Activity, label: "Mesaje" },
+        { href: "/bot?tab=statistics", icon: Monitor, label: "Statistici" },
+      ],
+    },
   ];
 
   return (
@@ -283,54 +304,34 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
             </div>
           </div>
 
-          <div>
-            <div className="text-[10px] font-mono tracking-widest text-muted-foreground mb-3 px-3 uppercase">
-              Instrumente
+          {navGroups.map((group) => (
+            <div key={group.label} className={group.label === "Control bot" ? "mod-control-nav" : undefined}>
+              <div className="text-[10px] font-mono tracking-widest text-muted-foreground mb-3 px-3 uppercase">
+                {group.label}
+              </div>
+              <nav className="flex flex-col gap-1">
+                {group.items.map(item => {
+                  const [itemPath] = item.href.split("?");
+                  const currentTab = new URLSearchParams(searchString || "").get("tab");
+                  const itemTab = new URLSearchParams(item.href.split("?")[1] ?? "").get("tab");
+                  const active = location === itemPath
+                    && (itemPath !== "/bot" || (itemTab ?? "channels") === (currentTab ?? "channels"));
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      data-testid={`link-nav-${item.href === "/" ? "dashboard" : item.href.slice(1).replace("?", "-")}`}
+                      className={`mod-sidebar-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/50 ${group.label === "Control bot" ? "mod-control-nav-item" : ""}`}
+                      data-active={active}
+                    >
+                      <item.icon className="w-4 h-4 shrink-0" />
+                      {item.label}
+                    </Link>
+                  );
+                })}
+              </nav>
             </div>
-            <nav className="flex flex-col gap-1">
-              {navItems.map(item => {
-                const active = location === item.href || (item.href !== "/" && location.startsWith(item.href));
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    data-testid={`link-nav-${item.href === "/" ? "dashboard" : item.href.slice(1)}`}
-                    className="mod-sidebar-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/50"
-                    data-active={active}
-                  >
-                    <item.icon className="w-4 h-4 shrink-0" />
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </nav>
-          </div>
-          <div className="mod-control-nav">
-            <div className="text-[10px] font-mono tracking-widest text-muted-foreground mb-3 px-3 uppercase">
-              Control bot
-            </div>
-            <nav className="flex flex-col gap-1">
-              {botControlItems.map(item => {
-                const [itemPath] = item.href.split("?");
-                const itemTab = new URLSearchParams(item.href.split("?")[1] ?? "").get("tab");
-                const currentPath = location;
-                const currentTab = new URLSearchParams(searchString || "").get("tab");
-                const active = currentPath === itemPath && (itemPath !== "/bot" || (itemTab ?? "channels") === (currentTab ?? "channels"));
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    data-testid={`link-nav-control-${item.label.toLowerCase()}`}
-                    className="mod-sidebar-item mod-control-nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/50"
-                    data-active={active}
-                  >
-                    <item.icon className="w-4 h-4 shrink-0" />
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </nav>
-          </div>
+          ))}
         </div>
 
         <div className="p-4 border-t border-border/50 bg-background/50">

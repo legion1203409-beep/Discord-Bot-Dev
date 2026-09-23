@@ -8,6 +8,7 @@ import { CommandsPage } from "./pages/moderation/Commands";
 import { AuditPage } from "./pages/moderation/Audit";
 import { SettingsPage } from "./pages/moderation/Settings";
 import { ProtectionPage } from "./pages/moderation/Protection";
+import { AntiRaidPage } from "./pages/moderation/AntiRaid";
 import { PoliciesPage } from "./pages/moderation/Policies";
 import { BotControlPage } from "./pages/moderation/BotControl";
 import { VerificationAdminPage } from "./pages/moderation/VerificationAdmin";
@@ -91,6 +92,7 @@ function ModerationApp() {
           <Route path="/" component={DashboardOverview} />
           <Route path="/automod" component={AutoModPage} />
           <Route path="/protectie" component={ProtectionPage} />
+          <Route path="/anti-raid" component={AntiRaidPage} />
           <Route path="/politici" component={PoliciesPage} />
           <Route path="/comenzi" component={CommandsPage} />
           <Route path="/cazuri" component={CasesPage} />
