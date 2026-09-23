@@ -1,4 +1,4 @@
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { 
   ShieldAlert, Settings, Shield, Bot, History, BookOpen, SlidersHorizontal, ShieldCheck,
   LogOut, ChevronLeft, Activity, Zap, Menu, X, Eye, Monitor, RefreshCw, Server
@@ -57,6 +57,7 @@ function inviteLabel(inviteUrl: string): string {
 
 export function ModerationLayout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
+  const searchString = useSearch();
   const { session, loading, error, logout, retry } = useSession();
   const {
     authConfig,
