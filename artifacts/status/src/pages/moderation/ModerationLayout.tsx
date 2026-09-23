@@ -327,7 +327,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
                       key={item.href}
                       href={item.href}
                       data-testid={`link-nav-${item.href === "/" ? "dashboard" : item.href.slice(1).replace("?", "-")}`}
-                      className={`mod-sidebar-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/50 ${group.label === "Control bot" ? "mod-control-nav-item" : ""}`}
+                      className={`mod-sidebar-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-muted-foreground hover:text-foreground ${group.label === "Control bot" ? "mod-control-nav-item" : ""}`}
                       data-active={active}
                     >
                       <item.icon className="w-4 h-4 shrink-0" />

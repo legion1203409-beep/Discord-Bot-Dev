@@ -100,13 +100,13 @@ export function AuditPage() {
   ) : (auditEvents || []);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-stagger-1">
       {activeLedger.length > 0 && (
-        <div className="bg-destructive/10 border border-destructive text-destructive p-4 rounded-xl space-y-4">
+        <div className="bg-destructive/10 border border-destructive text-destructive p-4 rounded-xl space-y-4 animate-stagger-2 shadow-inner shadow-destructive/10">
           <div className="flex items-center gap-3">
             <ShieldAlert className="w-6 h-6 shrink-0" />
             <div>
-              <h2 className="font-bold text-lg">Atenție: Acțiuni neconfirmate în așteptare</h2>
+              <h2 className="font-bold text-lg mod-heading text-destructive">Atenție: Acțiuni neconfirmate în așteptare</h2>
               <p className="text-sm opacity-90">Unele acțiuni manuale sau automate necesită reconciliere (verificare manuală în Discord).</p>
             </div>
           </div>
@@ -116,12 +116,12 @@ export function AuditPage() {
               <div key={action.id} className="bg-background/80 border border-destructive/30 p-3 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs uppercase px-2 py-0.5 rounded bg-destructive text-white">{action.status}</span>
+                    <span className="font-mono text-xs uppercase px-2 py-0.5 rounded bg-destructive text-white shadow-[0_0_8px_rgba(214,84,81,0.6)]">{action.status}</span>
                     <span className="font-bold uppercase text-foreground">{action.actionType}</span>
                     <span className="text-xs font-mono text-muted-foreground">{action.id.substring(0,8)}</span>
                   </div>
                   <div className="text-sm text-foreground mt-1">
-                    Intent: <code>{JSON.stringify(action.input)}</code>
+                    Intent: <code className="font-mono text-xs">{JSON.stringify(action.input)}</code>
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">
                     Actor: {action.actorId} • Creat: {new Date(action.createdAt).toLocaleString()}
@@ -143,26 +143,26 @@ export function AuditPage() {
         onReconciled={() => { refetchPending(); refetchUncertain(); }}
       />
 
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight mb-2 text-foreground flex items-center gap-3">
+      <div className="animate-stagger-3">
+        <h1 className="text-3xl font-bold tracking-tight mb-2 text-foreground flex items-center gap-3 mod-heading">
           <History className="w-8 h-8 text-primary" /> Jurnal de Audit & Loguri
         </h1>
         <p className="text-muted-foreground">Monitorizare strictă pentru acțiunile staff-ului și evenimente AutoMod.</p>
       </div>
 
-      <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden flex flex-col">
-        <div className="p-4 border-b border-border flex items-center gap-4 bg-secondary/30">
+      <div className="mod-card flex flex-col animate-stagger-4">
+        <div className="p-4 border-b border-border/80 flex items-center gap-4 bg-background/40">
           <ShieldCheck className="w-5 h-5 text-primary shrink-0" />
           <p className="text-sm text-muted-foreground">Logurile sunt imuabile (nu pot fi șterse sau modificate).</p>
         </div>
-        <div className="p-4 border-b border-border bg-background">
+        <div className="p-4 border-b border-border/80 bg-background/40">
           <div className="relative w-full max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input 
               placeholder="Caută în audit (acțiune, actor)..." 
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="pl-9"
+              className="pl-9 bg-background/50 border-border/50"
             />
           </div>
         </div>
@@ -173,13 +173,13 @@ export function AuditPage() {
               <Loader2 className="w-6 h-6 animate-spin" />
             </div>
           ) : filtered.length > 0 ? (
-            <div className="divide-y divide-border">
+            <div className="divide-y divide-border/50">
               {filtered.map((ev: any, i: number) => (
-                <div key={i} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-secondary/20 transition-colors">
+                <div key={i} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-secondary/40 transition-colors">
                   <div>
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xs font-mono text-muted-foreground bg-secondary px-1.5 py-0.5 rounded">{ev.id ? ev.id.substring(0,8) : 'SISTEM'}</span>
-                      <span className="text-sm font-semibold uppercase">{ev.action || ev.type}</span>
+                      <span className="text-xs font-mono text-muted-foreground bg-background border border-border/50 px-1.5 py-0.5 rounded">{ev.id ? ev.id.substring(0,8) : 'SISTEM'}</span>
+                      <span className="text-sm font-semibold uppercase tracking-wide text-foreground">{ev.action || ev.type}</span>
                     </div>
                     <div className="text-sm text-muted-foreground">
                       Actor: <span className="text-foreground">{ev.actorId || "AutoMod"}</span>
@@ -189,7 +189,7 @@ export function AuditPage() {
                       {ev.details || ev.reason || "Fără detalii"}
                     </div>
                   </div>
-                  <div className="text-xs text-muted-foreground font-mono bg-background border border-border px-2 py-1 rounded whitespace-nowrap">
+                  <div className="text-xs text-muted-foreground font-mono bg-background border border-border px-2 py-1 rounded whitespace-nowrap shadow-inner">
                     {new Date(ev.createdAt).toLocaleString()}
                   </div>
                 </div>

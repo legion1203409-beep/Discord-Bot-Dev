@@ -61,42 +61,42 @@ function CaseDetailsDialog({ caseId, open, onOpenChange, onUpdated }: { caseId: 
         ) : details ? (
           <div className="flex-1 overflow-y-auto pr-4 space-y-6">
             <div className="grid grid-cols-2 gap-4">
-              <div className="bg-card border border-border p-4 rounded-xl">
+              <div className="mod-card p-4">
                 <div className="text-xs text-muted-foreground mb-1">Utilizator vizat</div>
                 <div className="font-medium text-lg">{details.subjectId}</div>
               </div>
-              <div className="bg-card border border-border p-4 rounded-xl">
+              <div className="mod-card p-4">
                 <div className="text-xs text-muted-foreground mb-1">Moderator / Sistem</div>
                 <div className="font-medium text-lg">{details.actorId}</div>
               </div>
-              <div className="bg-card border border-border p-4 rounded-xl">
+              <div className="mod-card p-4">
                 <div className="text-xs text-muted-foreground mb-1">Acțiune aplicată</div>
                 <div className={`inline-flex items-center px-2 py-0.5 rounded text-sm font-bold uppercase mt-1 ${
                   details.actionType === 'ban' ? 'bg-destructive/10 text-destructive' :
-                  details.actionType === 'mute' ? 'bg-primary/10 text-primary' :
+                  details.actionType === 'mute' ? 'bg-amber-500/10 text-amber-500' :
                   'bg-primary/10 text-primary'
                 }`}>
                   {details.actionType}
                 </div>
               </div>
-              <div className="bg-card border border-border p-4 rounded-xl">
+              <div className="mod-card p-4">
                 <div className="text-xs text-muted-foreground mb-1">Status Curent</div>
                 <div className="flex items-center justify-between mt-1">
                   <span className={`inline-flex items-center gap-1.5 font-medium ${details.status === 'open' ? 'text-primary' : 'text-muted-foreground'}`}>
-                    <span className={`w-2 h-2 rounded-full ${details.status === 'open' ? 'bg-primary' : 'bg-muted-foreground'}`} />
+                    <span className={`w-2 h-2 rounded-full ${details.status === 'open' ? 'bg-primary shadow-[0_0_8px_rgba(214,84,81,0.6)]' : 'bg-muted-foreground'}`} />
                     {details.status === 'open' ? 'Deschis' : 'Închis'}
                   </span>
                   <Button variant="outline" size="sm" onClick={handleToggleStatus} disabled={updating}>
                     {updating ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
-                    Schimbă Status
+                    Schimbă
                   </Button>
                 </div>
               </div>
             </div>
 
-            <div className="bg-card border border-border p-4 rounded-xl">
+            <div className="mod-card p-4">
               <div className="text-sm font-medium mb-2">Motivul Sancțiunii</div>
-              <p className="text-muted-foreground text-sm whitespace-pre-wrap bg-background p-3 rounded border border-border/50">
+              <p className="text-muted-foreground text-sm whitespace-pre-wrap bg-background/50 p-3 rounded-lg border border-border/50">
                 {details.reason || "Nespecificat"}
               </p>
             </div>
@@ -177,10 +177,10 @@ export function CasesPage() {
   if (!guildId) return <div className="p-8 text-center text-muted-foreground">Selectează un server.</div>;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+    <div className="space-y-6 animate-stagger-1">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 animate-stagger-2">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight mb-2 text-foreground flex items-center gap-3">
+          <h1 className="text-3xl font-bold tracking-tight mb-2 text-foreground flex items-center gap-3 mod-heading">
             <BookOpen className="w-8 h-8 text-primary" /> Cazuri
           </h1>
           <p className="text-muted-foreground">Arhiva sancțiunilor și dosarelor utilizatorilor.</p>
@@ -190,8 +190,8 @@ export function CasesPage() {
         </Button>
       </div>
 
-      <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden flex flex-col">
-        <div className="p-4 border-b border-border flex flex-col sm:flex-row gap-4 items-center justify-between bg-secondary/30">
+      <div className="mod-card flex flex-col animate-stagger-3">
+        <div className="p-4 border-b border-border/80 bg-background/40 flex flex-col sm:flex-row gap-4 items-center justify-between">
           <div className="relative w-full sm:w-96">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input 

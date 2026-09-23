@@ -609,14 +609,14 @@ export function BotControlPage() {
   };
 
   return (
-    <div className={`bot-control-page max-w-5xl space-y-6 ${hasUnsavedChanges ? "pb-28" : ""}`}>
-      <header className="bot-control-hero">
+    <div className={`bot-control-page max-w-5xl space-y-6 animate-stagger-1 ${hasUnsavedChanges ? "pb-28" : ""}`}>
+      <header className="bot-control-hero animate-stagger-2">
         <div>
           <div className="bot-control-brand-row">
             <span className="bot-control-brand-mark"><Bot className="h-4 w-4" /></span>
             <p className="mod-eyebrow">CONTROL OWNER-ONLY</p>
           </div>
-          <h1>Control bot</h1>
+          <h1 className="mod-heading text-4xl">Control bot</h1>
           <p>Configurează destinațiile Discord și regulile de creare fără să pierzi din vedere ce se schimbă.</p>
         </div>
         <div className="bot-control-status" data-state={draft.discordLive === true ? "online" : "offline"}>
@@ -629,7 +629,7 @@ export function BotControlPage() {
       </header>
 
       {draft.discordLive === false && (
-        <div className="bot-control-banner" role="status">
+        <div className="bot-control-banner animate-stagger-3" role="status">
           <AlertTriangle className="shrink-0" size={15} />
           <div>
             <strong>Modificările rămân în așteptare.</strong>{" "}
@@ -645,19 +645,20 @@ export function BotControlPage() {
           </button>
         </div>
       )}
-      <Tabs
-        value={activeTab}
-        onValueChange={(value) => {
-          if (!BOT_CONTROL_TABS.includes(value as BotControlTab)) return;
-          const nextTab = value as BotControlTab;
-          setActiveTab(nextTab);
-          setLocation(`/bot?tab=${nextTab}`);
-        }}
-        className="bot-control-tabs space-y-5"
-      >
-         <TabsList className="bot-control-tab-list grid h-auto w-full grid-cols-2 gap-1 rounded-xl border border-border p-1 sm:grid-cols-4">
-           <TabsTrigger value="channels" data-testid="tab-channels" className="mod-tab-trigger gap-2 py-2.5"><Radio className="h-4 w-4" /> Canale</TabsTrigger>
-           <TabsTrigger value="tickets" data-testid="tab-tickets" className="mod-tab-trigger gap-2 py-2.5"><Ticket className="h-4 w-4" /> Tichete</TabsTrigger>
+      <div className="animate-stagger-4">
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) => {
+            if (!BOT_CONTROL_TABS.includes(value as BotControlTab)) return;
+            const nextTab = value as BotControlTab;
+            setActiveTab(nextTab);
+            setLocation(`/bot?tab=${nextTab}`);
+          }}
+          className="bot-control-tabs space-y-5"
+        >
+           <TabsList className="bot-control-tab-list grid h-auto w-full grid-cols-2 gap-1 rounded-xl border border-border/80 p-1 sm:grid-cols-4 bg-background/50 shadow-inner">
+             <TabsTrigger value="channels" data-testid="tab-channels" className="mod-tab-trigger gap-2 py-2.5"><Radio className="h-4 w-4" /> Canale</TabsTrigger>
+             <TabsTrigger value="tickets" data-testid="tab-tickets" className="mod-tab-trigger gap-2 py-2.5"><Ticket className="h-4 w-4" /> Tichete</TabsTrigger>
            <TabsTrigger value="messages" data-testid="tab-messages" className="mod-tab-trigger gap-2 py-2.5"><Megaphone className="h-4 w-4" /> Mesaje</TabsTrigger>
            <TabsTrigger value="statistics" data-testid="tab-statistics" className="mod-tab-trigger gap-2 py-2.5"><Activity className="h-4 w-4" /> Statistici</TabsTrigger>
         </TabsList>
@@ -1379,19 +1380,20 @@ export function BotControlPage() {
 
         </TabsContent>
       </Tabs>
+      </div>
 
       {hasUnsavedChanges && (
         <div className="mod-save-bar sticky bottom-3 z-20 flex w-full items-center justify-between gap-3">
-          <div className="bot-control-save-state">
+          <div className="flex items-center gap-3 text-muted-foreground font-medium text-sm">
             <span className={`bot-control-save-dot ${saving ? "is-saving" : ""}`} />
             <span>{saving ? "Se salvează setările…" : "Ai modificări nesalvate."}</span>
           </div>
           <div className="mod-save-actions ml-auto flex flex-wrap justify-end gap-2">
-            <Button type="button" variant="secondary" onClick={openFlowTest} className="gap-2">
+            <Button type="button" variant="secondary" onClick={openFlowTest} className="gap-2 font-medium tracking-wide">
               <PlayCircle className="h-4 w-4" />
               Testează fluxul
             </Button>
-            <Button onClick={() => void save()} disabled={saving} className="gap-2 px-8">
+            <Button onClick={() => void save()} disabled={saving} className="gap-2 px-8 font-semibold tracking-wide shadow-lg shadow-primary/20">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               {saving ? "Se salvează…" : "Salvează controlul botului"}
             </Button>

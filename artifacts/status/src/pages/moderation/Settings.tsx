@@ -117,99 +117,101 @@ export function AdvancedSettingsPage() {
   const hasUnsavedChanges = data && localData && JSON.stringify(data) !== JSON.stringify(localData);
 
   return (
-    <div className={`max-w-5xl space-y-6 ${hasUnsavedChanges ? "pb-28" : ""}`}>
-      <div>
-        <h1 className="mb-2 flex items-center gap-3 text-3xl font-bold tracking-tight text-foreground">
+    <div className={`max-w-5xl space-y-6 animate-stagger-1 ${hasUnsavedChanges ? "pb-28" : ""}`}>
+      <header className="animate-stagger-2">
+        <h1 className="mb-2 flex items-center gap-3 text-3xl font-bold tracking-tight mod-heading">
           <Settings className="h-8 w-8 text-primary" /> Configurare completă
         </h1>
         <p className="text-muted-foreground">Editează toate regulile de moderare ale serverului. Modificările rămân în draft până la salvare.</p>
-      </div>
+      </header>
 
       {capabilities && (!capabilities.messageContent || !capabilities.guildMembers) && (
-          <div className="flex gap-3 rounded-xl border border-primary/40 bg-primary/10 p-4 text-sm">
+          <div className="animate-stagger-3 flex gap-3 rounded-xl border border-primary/40 bg-primary/10 p-4 text-sm shadow-inner shadow-primary/10">
             <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
           <div>
-            <p className="font-medium">Capabilități Discord lipsă</p>
-            {!capabilities.messageContent && <p className="text-muted-foreground">Intentul privilegiat <strong>Message Content</strong> este dezactivat: filtrele de conținut, anti-flood și moderarea AI nu pot analiza mesajele.</p>}
-            {!capabilities.guildMembers && <p className="text-muted-foreground">Intentul privilegiat <strong>Guild Members</strong> este dezactivat: verificările anti-raid și evenimentele bazate pe membri pot să nu funcționeze.</p>}
-            <p className="mt-1 text-muted-foreground">Configurarea unei reguli nu activează aceste intenții; activează-le în Discord Developer Portal și în bot.</p>
+            <p className="font-medium text-foreground">Capabilități Discord lipsă</p>
+            {!capabilities.messageContent && <p className="text-muted-foreground mt-1">Intentul privilegiat <strong>Message Content</strong> este dezactivat: filtrele de conținut, anti-flood și moderarea AI nu pot analiza mesajele.</p>}
+            {!capabilities.guildMembers && <p className="text-muted-foreground mt-1">Intentul privilegiat <strong>Guild Members</strong> este dezactivat: verificările anti-raid și evenimentele bazate pe membri pot să nu funcționeze.</p>}
+            <p className="mt-2 text-muted-foreground">Configurarea unei reguli nu activează aceste intenții; activează-le în Discord Developer Portal și în bot.</p>
           </div>
         </div>
       )}
       {metadataError && (
-        <div role="alert" className="rounded-xl border border-primary/40 bg-primary/10 p-4 text-sm text-primary">
+        <div role="alert" className="animate-stagger-3 rounded-xl border border-primary/40 bg-primary/10 p-4 text-sm text-primary shadow-inner shadow-primary/10">
           Metadatele Discord nu au putut fi încărcate ({metadataError.message}). Câmpurile complete de mai jos păstrează fallback-ul pentru ID-uri introduse manual.
         </div>
       )}
       {error && (
-        <div role="alert" className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
+        <div role="alert" className="animate-stagger-3 rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive shadow-inner shadow-destructive/10">
           Configurația de pe server nu a putut fi reîmprospătată: {error.message}. Draftul curent nu a fost șters.
         </div>
       )}
       {saveError && (
-        <div role="alert" className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
+        <div role="alert" className="animate-stagger-3 rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive shadow-inner shadow-destructive/10">
           {saveError}
           {conflictPending && (
-            <Button type="button" variant="outline" className="mt-3 border-destructive/40 text-destructive" onClick={discardDraftAndRefetch}>
+            <Button type="button" variant="outline" className="mt-3 border-destructive/40 text-destructive hover:bg-destructive/20" onClick={discardDraftAndRefetch}>
               Renunță la draft și reîncarcă
             </Button>
           )}
         </div>
       )}
       {saveSuccess && (
-        <div role="status" className="rounded-xl border border-primary/40 bg-primary/10 p-4 text-sm text-primary">
+        <div role="status" className="animate-stagger-3 rounded-xl border border-primary/40 bg-primary/10 p-4 text-sm text-primary shadow-inner shadow-primary/10">
           Configurație salvată. Versiunea ETag a fost actualizată.
         </div>
       )}
       {metadata && (
-        <div className="space-y-4 rounded-xl border border-border bg-card p-5">
+        <div className="animate-stagger-4 space-y-4 rounded-xl border border-border bg-card p-5 mod-card">
           <div>
-            <h2 className="font-medium">Ținte Discord din metadate live</h2>
-            <p className="text-xs text-muted-foreground">Alege canale și roluri reale din server. ID-urile pot fi completate manual ca fallback.</p>
+            <h2 className="font-semibold text-foreground">Ținte Discord din metadate live</h2>
+            <p className="text-xs text-muted-foreground mt-1">Alege canale și roluri reale din server. ID-urile pot fi completate manual ca fallback.</p>
           </div>
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-6 md:grid-cols-2 mt-4">
             {configuredChannels.map(({ label, path }) => {
               const current = path.reduce((value: any, key) => value?.[key], localData) || "";
               const selected = metadata.channels.some((channel) => channel.id === current) ? current : "__none__";
               return (
                 <div key={path.join(".")} className="space-y-2">
-                  <label className="text-sm font-medium">{label}</label>
+                  <label className="text-sm font-medium text-foreground/90">{label}</label>
                   <Select value={selected} onValueChange={(value) => updateChannel(path, value === "__none__" ? null : value)}>
-                    <SelectTrigger><SelectValue placeholder="Alege canal" /></SelectTrigger>
+                    <SelectTrigger className="bg-background/50"><SelectValue placeholder="Alege canal" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="__none__">Neconfigurat</SelectItem>
                       {metadata.channels.map((channel) => <SelectItem key={channel.id} value={channel.id}>#{channel.name} ({channel.id})</SelectItem>)}
                     </SelectContent>
                   </Select>
-                  <Input aria-label={`${label} ID fallback`} value={current} placeholder="ID canal Discord" onChange={(event) => updateChannel(path, event.target.value.trim() || null)} />
+                  <Input aria-label={`${label} ID fallback`} value={current} placeholder="ID canal Discord" onChange={(event) => updateChannel(path, event.target.value.trim() || null)} className="bg-background/50 font-mono text-xs" />
                 </div>
               );
             })}
             <div className="space-y-2">
-              <label className="text-sm font-medium">Rol staff (primul ID)</label>
+              <label className="text-sm font-medium text-foreground/90">Rol staff (primul ID)</label>
               <Select value={selectedStaffRole} onValueChange={(value) => setLocalData((current: any) => ({ ...current, permissions: { ...current.permissions, staffRoleIds: value === "__none__" ? [] : [value] } }))}>
-                <SelectTrigger><SelectValue placeholder="Alege rol" /></SelectTrigger>
+                <SelectTrigger className="bg-background/50"><SelectValue placeholder="Alege rol" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none__">Neconfigurat</SelectItem>
                   {metadata.roles.filter((role) => !role.managed).map((role) => <SelectItem key={role.id} value={role.id}>@{role.name} ({role.id})</SelectItem>)}
                 </SelectContent>
               </Select>
-              <Input aria-label="Rol staff ID fallback" value={staffRoleId} placeholder="ID rol Discord" onChange={(event) => setLocalData((current: any) => ({ ...current, permissions: { ...current.permissions, staffRoleIds: event.target.value.trim() ? [event.target.value.trim()] : [] } }))} />
+              <Input aria-label="Rol staff ID fallback" value={staffRoleId} placeholder="ID rol Discord" onChange={(event) => setLocalData((current: any) => ({ ...current, permissions: { ...current.permissions, staffRoleIds: event.target.value.trim() ? [event.target.value.trim()] : [] } }))} className="bg-background/50 font-mono text-xs" />
             </div>
           </div>
         </div>
       )}
 
-      <ConfigEditor value={localData} onChange={setLocalData} />
+      <div className="animate-stagger-5">
+        <ConfigEditor value={localData} onChange={setLocalData} />
+      </div>
 
       {hasUnsavedChanges && (
-        <div className="mod-save-bar sticky bottom-3 z-20 flex w-full items-center justify-between gap-3">
-          <div className="bot-control-save-state">
+        <div className="mod-save-bar flex w-full items-center justify-between gap-3">
+          <div className="flex items-center gap-3 text-muted-foreground font-medium text-sm">
             <span className={`bot-control-save-dot ${saving ? "is-saving" : ""}`} />
             <span>{saving ? "Se salvează setările…" : "Ai modificări nesalvate."}</span>
           </div>
           <div className="mod-save-actions ml-auto">
-            <Button onClick={handleSave} disabled={saving} className="gap-2 px-8">
+            <Button onClick={handleSave} disabled={saving} className="gap-2 px-8 font-semibold tracking-wide shadow-lg shadow-primary/20">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               {saving ? "Se salvează…" : "Salvează configurația"}
             </Button>

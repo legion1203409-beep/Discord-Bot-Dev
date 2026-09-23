@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Bot, Loader2, Save } from "lucide-react";
+import { AlertTriangle, Bot, ChevronRight, Loader2, Save } from "lucide-react";
 import { Link } from "wouter";
 import { useActiveGuild, useModerationConfig } from "../../hooks/use-moderation-api";
 import { Button } from "../../components/ui/button";
@@ -76,26 +76,35 @@ export function CategorySettingsPage({ section }: { section: ConfigSection }) {
   };
 
   return (
-    <div className={`max-w-5xl space-y-6 ${changed ? "pb-28" : ""}`}>
-      <header>
-        <p className="mb-2 text-sm"><Link href="/config" className="text-primary hover:underline">← Configurare</Link></p>
-        <h1 className="flex items-center gap-3 text-3xl font-bold"><Bot className="h-8 w-8 text-primary" />{detail.title}</h1>
-        <p className="mt-2 text-muted-foreground">{detail.description}</p>
+    <div className={`max-w-5xl space-y-6 animate-stagger-1 ${changed ? "pb-28" : ""}`}>
+      <header className="animate-stagger-2">
+        <p className="mb-3 text-sm"><Link href="/config" className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1 font-medium tracking-wide"><ChevronRight className="h-4 w-4 rotate-180" /> Configurare</Link></p>
+        <h1 className="flex items-center gap-3 text-3xl font-bold mod-heading"><Bot className="h-8 w-8 text-primary" />{detail.title}</h1>
+        <p className="mt-2 text-muted-foreground max-w-2xl">{detail.description}</p>
       </header>
       {section === "automod" && (
-        <div className="flex gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4 text-sm">
+        <div className="animate-stagger-3 flex gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4 text-sm shadow-inner shadow-primary/10">
           <AlertTriangle className="h-5 w-5 shrink-0 text-primary" />
           <p><strong>Discord AutoMod nativ:</strong> regulile compatibile sunt sincronizate de integrare după salvare. Nu există un comutator nativ separat; starea este controlată de AutoMod și regulile sale.</p>
         </div>
       )}
-      {error && <div role="alert" className="rounded-xl border border-destructive/40 p-4 text-destructive">{error.message}</div>}
-      <ConfigEditor value={draft} onChange={setDraft} sections={[section]} />
+      {error && <div role="alert" className="rounded-xl border border-destructive/40 bg-destructive/5 p-4 text-destructive shadow-inner shadow-destructive/10">{error.message}</div>}
+
+      <div className="animate-stagger-4">
+        <ConfigEditor value={draft} onChange={setDraft} sections={[section]} />
+      </div>
+
       {changed && (
         <div className="mod-save-bar sticky bottom-3 z-20 flex items-center justify-between gap-3">
-          <span>{saving ? "Se salvează…" : "Ai modificări nesalvate."}</span>
-          <Button onClick={() => void save()} disabled={saving} className="gap-2">
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Salvează
-          </Button>
+          <div className="flex items-center gap-3 text-muted-foreground font-medium text-sm">
+            <span className={`bot-control-save-dot ${saving ? "is-saving" : ""}`} />
+            <span>{saving ? "Se salvează…" : "Ai modificări nesalvate."}</span>
+          </div>
+          <div className="mod-save-actions ml-auto">
+            <Button onClick={() => void save()} disabled={saving} className="gap-2 px-8 font-semibold tracking-wide shadow-lg shadow-primary/20">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Salvează
+            </Button>
+          </div>
         </div>
       )}
       <Button variant="ghost" onClick={() => void refetch()} className="sr-only">Reîncarcă</Button>

@@ -200,25 +200,26 @@ export function DashboardOverview() {
   };
 
   return (
-    <div className="space-y-8 pb-10 animate-in fade-in duration-500">
+    <div className="space-y-8 pb-10 animate-stagger-1">
       <a
         href={DISCORD_INVITE}
         target="_blank"
         rel="noopener noreferrer"
-        className="group flex w-full max-w-sm items-center gap-3 rounded-xl border border-primary/30 bg-gradient-to-br from-primary/20 via-card/90 to-background/80 px-3 py-3 shadow-lg transition-all hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-primary/10"
+        className="group flex w-full max-w-sm items-center gap-3 rounded-xl border border-primary/30 bg-gradient-to-br from-primary/10 via-card/80 to-background/80 px-3 py-3 shadow-lg transition-all hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-[0_8px_20px_rgba(214,84,81,0.15)]"
         title={`Deschide invitația ${activeGuild?.name || "serverului"}`}
         data-testid="link-dashboard-server-invite"
       >
-        <span className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-primary/40 bg-background/80 text-primary shadow-inner">
+        <span className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-primary/40 bg-background/80 text-primary shadow-inner relative">
+          <div className="absolute inset-0 bg-primary/5 group-hover:bg-primary/10 transition-colors" />
           {activeGuildIcon ? (
             <img
               src={activeGuildIcon}
               alt=""
-              className="h-full w-full object-cover"
+              className="h-full w-full object-cover relative z-10"
               onError={(event) => { event.currentTarget.style.display = "none"; }}
             />
           ) : (
-            <Server className="h-6 w-6" aria-hidden="true" />
+            <Server className="h-6 w-6 relative z-10" aria-hidden="true" />
           )}
         </span>
         <span className="min-w-0 flex-1">
@@ -229,7 +230,7 @@ export function DashboardOverview() {
         <ArrowUpRight className="h-4 w-4 shrink-0 text-primary transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" aria-hidden="true" />
       </a>
 
-      <header className="flex flex-col gap-5 border-b border-border/60 pb-7 md:flex-row md:items-end md:justify-between">
+      <header className="flex flex-col gap-5 border-b border-border/60 pb-7 md:flex-row md:items-end md:justify-between animate-stagger-2">
         <div>
           <div className="mod-status-line mb-3">Sesiune autentificată</div>
           <h1 className="mod-heading text-5xl text-foreground sm:text-6xl">{activeGuild?.name || "Dashboard"}</h1>
@@ -242,7 +243,7 @@ export function DashboardOverview() {
         </Link>
       </header>
 
-      <section className={`flex flex-col gap-5 rounded-2xl border p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6 ${gamePaused ? "border-destructive/40 bg-destructive/5" : "border-primary/25 bg-primary/5"}`} aria-label="Control stare joc">
+      <section className={`animate-stagger-3 flex flex-col gap-5 rounded-2xl border p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6 ${gamePaused ? "border-destructive/40 bg-destructive/5" : "border-primary/25 bg-primary/5"}`} aria-label="Control stare joc">
         <div className="flex items-start gap-4">
           <span className={`mt-0.5 rounded-xl p-3 ${gamePaused ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"}`}>
             {gamePaused ? <PlayCircle className="h-5 w-5" aria-hidden="true" /> : <PauseCircle className="h-5 w-5" aria-hidden="true" />}
@@ -269,7 +270,7 @@ export function DashboardOverview() {
         </Button>
       </section>
 
-      <section aria-label="Indicatori principali" className="grid gap-4 md:grid-cols-3">
+      <section aria-label="Indicatori principali" className="grid gap-4 md:grid-cols-3 animate-stagger-4">
         <div className="mod-card group rounded-2xl p-5 sm:p-6">
           <div className="flex items-start justify-between">
             <span className="mod-eyebrow text-muted-foreground">Cazuri deschise</span>
@@ -309,13 +310,13 @@ export function DashboardOverview() {
         </div>
       </section>
 
-      <div className="grid gap-6 lg:grid-cols-[.9fr_1.1fr]">
+      <div className="grid gap-6 lg:grid-cols-[.9fr_1.1fr] animate-stagger-5">
         <section className="space-y-4">
           <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border/60 pb-3">
             <div><p className="mod-eyebrow">Sisteme</p><h2 className="mod-heading mt-1 text-2xl">Module de Protecție</h2></div>
             <div className="flex items-center gap-3">
-              <label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                <span>{protectionEnabled ? "ACTIVĂ" : "OPRITĂ"}</span>
+              <label className="flex items-center gap-2 text-xs font-medium text-muted-foreground cursor-pointer group">
+                <span className="group-hover:text-foreground transition-colors">{protectionEnabled ? "ACTIVĂ" : "OPRITĂ"}</span>
                 <Switch
                   checked={protectionEnabled}
                   onCheckedChange={toggleProtection}
@@ -324,28 +325,30 @@ export function DashboardOverview() {
                   aria-label="Activează sau oprește toată protecția"
                 />
               </label>
-              <Link href="/protectie" data-testid="link-dashboard-protection" className="inline-flex items-center gap-1 text-xs font-mono tracking-widest text-primary hover:text-primary/80">GESTIONEAZĂ <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" /></Link>
+              <Link href="/protectie" data-testid="link-dashboard-protection" className="inline-flex items-center gap-1 text-xs font-mono tracking-widest text-primary hover:text-primary/80 transition-colors">GESTIONEAZĂ <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" /></Link>
             </div>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             {modules.map((mod) => (
-              <article key={mod.key} className={`mod-card flex min-w-0 items-start gap-3 rounded-xl p-4 transition-colors hover:border-primary/30 ${deactivatingKey === mod.key ? "protection-deactivating" : ""}`} data-testid={`card-module-${mod.key}`}>
-                <div className={`shrink-0 rounded-lg border p-2.5 ${mod.active ? "border-primary/30 bg-primary/10 text-primary" : "border-transparent bg-secondary text-muted-foreground"}`}><mod.icon className="h-4 w-4" aria-hidden="true" /></div>
-                <Link href={mod.href} className="min-w-0 flex-1 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" data-testid={`link-module-${mod.key}`}>
-                  <h3 className="flex items-center gap-1 text-sm font-medium leading-snug text-foreground">{mod.name}<ChevronRight className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" /></h3>
+              <article key={mod.key} className={`mod-card mod-card-interactive flex min-w-0 items-start gap-3 p-4 ${deactivatingKey === mod.key ? "protection-deactivating" : ""}`} data-testid={`card-module-${mod.key}`}>
+                <div className={`shrink-0 rounded-lg border p-2.5 transition-colors ${mod.active ? "border-primary/30 bg-primary/10 text-primary" : "border-transparent bg-secondary text-muted-foreground"}`}><mod.icon className="h-4 w-4" aria-hidden="true" /></div>
+                <Link href={mod.href} className="min-w-0 flex-1 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50" data-testid={`link-module-${mod.key}`}>
+                  <h3 className="flex items-center gap-1 text-sm font-medium leading-snug text-foreground">{mod.name}<ChevronRight className="h-3.5 w-3.5 shrink-0 text-primary/70" aria-hidden="true" /></h3>
                   <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{mod.description}</p>
                   <p className={`mt-2 flex items-center gap-1 font-mono text-[10px] tracking-wider ${mod.active ? "text-primary" : mod.enabled ? "text-amber-500" : "text-muted-foreground"}`}>
                     {mod.active ? <CheckCircle2 className="h-3 w-3 shrink-0" aria-hidden="true" /> : <XCircle className="h-3 w-3 shrink-0" aria-hidden="true" />}
                     {mod.active ? "ACTIV" : mod.enabled && !protectionEnabled ? "ACTIVAT, ÎN PAUZĂ GLOBALĂ" : mod.enabled && !mod.parentEnabled ? "ACTIVAT, AUTOMOD OPRIT" : "INACTIV"}
                   </p>
                 </Link>
-                <Switch
-                  checked={mod.enabled}
-                  onCheckedChange={(enabled) => toggleModule(mod.key, enabled)}
-                  className={deactivatingKey === mod.key ? "protection-deactivating" : undefined}
-                  disabled={savingModule !== null}
-                  aria-label={`${mod.enabled ? "Dezactivează" : "Activează"} ${mod.name}`}
-                />
+                <div className="pt-1">
+                  <Switch
+                    checked={mod.enabled}
+                    onCheckedChange={(enabled) => toggleModule(mod.key, enabled)}
+                    className={deactivatingKey === mod.key ? "protection-deactivating" : undefined}
+                    disabled={savingModule !== null}
+                    aria-label={`${mod.enabled ? "Dezactivează" : "Activează"} ${mod.name}`}
+                  />
+                </div>
               </article>
             ))}
           </div>
@@ -354,14 +357,14 @@ export function DashboardOverview() {
         <section className="space-y-4">
           <div className="flex items-end justify-between border-b border-border/60 pb-3">
             <div><p className="mod-eyebrow">Jurnal</p><h2 className="mod-heading mt-1 text-2xl">Activitate Recentă</h2></div>
-            <Link href="/audit" data-testid="link-dashboard-audit" className="inline-flex items-center gap-1 text-xs font-mono tracking-widest text-primary hover:text-primary/80">VEZI TOT <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" /></Link>
+            <Link href="/audit" data-testid="link-dashboard-audit" className="inline-flex items-center gap-1 text-xs font-mono tracking-widest text-primary hover:text-primary/80 transition-colors">VEZI TOT <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" /></Link>
           </div>
-          <div className="mod-card overflow-hidden rounded-2xl p-1.5">
+          <div className="mod-card overflow-hidden p-1.5 shadow-lg shadow-black/40">
             {recentLogs.length > 0 ? (
               <div className="divide-y divide-border/40">
                 {recentLogs.map((log: any, index: number) => (
-                  <div key={index} className="flex gap-3 rounded-xl p-3.5 transition-colors hover:bg-secondary/45" data-testid={`row-dashboard-audit-${index}`}>
-                    <div className="mt-2 h-2 w-2 shrink-0 rounded-full bg-primary ring-4 ring-primary/10" />
+                  <div key={index} className="flex gap-3 rounded-xl p-3.5 transition-colors hover:bg-secondary/45 group" data-testid={`row-dashboard-audit-${index}`}>
+                    <div className="mt-2 h-2 w-2 shrink-0 rounded-full bg-primary ring-4 ring-primary/10 group-hover:ring-primary/20 transition-all" />
                     <div className="min-w-0 flex-1"><p className="truncate text-sm"><strong className="font-medium text-foreground">{log.actorId || "Sistem"}</strong><span className="mx-1 text-muted-foreground">a declanșat</span><span className="text-primary">{log.action || log.type}</span></p><p className="mt-1 truncate text-xs text-muted-foreground">{log.reason || log.details || "Fără detalii suplimentare"}</p></div>
                     <time className="shrink-0 font-mono text-[10px] text-muted-foreground" dateTime={log.createdAt}>{new Date(log.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>
                   </div>

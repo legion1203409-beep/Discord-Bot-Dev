@@ -140,14 +140,14 @@ export function VerificationAdminPage() {
   });
 
   return (
-    <div className={`bot-control-page verification-admin-page max-w-5xl space-y-6 ${hasUnsavedChanges ? "pb-28" : ""}`}>
-      <header className="bot-control-hero">
+    <div className={`bot-control-page verification-admin-page max-w-5xl space-y-6 animate-stagger-1 ${hasUnsavedChanges ? "pb-28" : ""}`}>
+      <header className="bot-control-hero animate-stagger-2">
         <div>
           <div className="bot-control-brand-row">
             <span className="bot-control-brand-mark"><ShieldCheck className="h-4 w-4" /></span>
             <p className="mod-eyebrow">MEMBER GATE</p>
           </div>
-          <h1>Verificare membri</h1>
+          <h1 className="mod-heading text-4xl">Verificare membri</h1>
           <p>Configurează verificarea Discord + site și urmărește membrii care au primit rolul.</p>
         </div>
         <div className="bot-control-status" data-state={draft.verification.enabled ? "online" : "offline"}>
@@ -160,7 +160,7 @@ export function VerificationAdminPage() {
       </header>
 
       {!draft.verification.enabled && (
-        <div className="bot-control-banner" role="status">
+        <div className="bot-control-banner animate-stagger-3" role="status">
           <AlertTriangle className="shrink-0" size={15} />
           <div>
             <strong>Fluxul nu este activ.</strong>{" "}
@@ -176,23 +176,24 @@ export function VerificationAdminPage() {
         </div>
       )}
 
-      <section className="verification-surface space-y-5 rounded-xl border border-border bg-card p-5">
-        <div className="verification-section-head flex items-start justify-between gap-4">
+      <section className="mod-card space-y-5 p-5 animate-stagger-4">
+        <div className="verification-section-head flex items-start justify-between gap-4 border-b border-border/60 pb-4">
           <div className="flex items-start gap-3">
             <ShieldCheck className="mt-1 h-5 w-5 text-primary" />
             <div>
               <p className="mod-eyebrow">CONFIGURAȚIE</p>
-              <h2 className="font-medium">Verificare Discord + site</h2>
-              <p className="text-xs text-muted-foreground">
+              <h2 className="font-semibold text-foreground text-lg">Verificare Discord + site</h2>
+              <p className="text-xs text-muted-foreground mt-1 max-w-xl">
                 Membrul confirmă identitatea prin Discord, primește rolul ales și rămâne asociat cu sesiunea de verificare a site-ului.
               </p>
             </div>
           </div>
-          <label className="flex items-center gap-2 text-sm font-medium">
+          <label className="flex items-center gap-2 text-sm font-medium cursor-pointer bg-secondary/40 px-3 py-2 rounded-lg border border-border/60 hover:bg-secondary transition-colors">
             <input
               type="checkbox"
               checked={draft.verification.enabled}
               onChange={(event) => setVerification("enabled", event.target.checked)}
+              className="accent-primary"
             />
             Activ
           </label>
@@ -430,12 +431,12 @@ export function VerificationAdminPage() {
 
       {hasUnsavedChanges && (
         <div className="mod-save-bar sticky bottom-3 z-20 flex w-full items-center justify-between gap-3">
-          <div className="bot-control-save-state">
+          <div className="flex items-center gap-3 text-muted-foreground font-medium text-sm">
             <span className={`bot-control-save-dot ${saving ? "is-saving" : ""}`} />
             <span>{saving ? "Se salvează verificarea…" : "Ai modificări nesalvate."}</span>
           </div>
           <div className="mod-save-actions ml-auto">
-            <Button onClick={() => void save()} disabled={saving} className="gap-2 px-8">
+            <Button onClick={() => void save()} disabled={saving} className="gap-2 px-8 font-semibold tracking-wide shadow-lg shadow-primary/20">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               {saving ? "Se salvează…" : "Salvează verificarea"}
             </Button>
