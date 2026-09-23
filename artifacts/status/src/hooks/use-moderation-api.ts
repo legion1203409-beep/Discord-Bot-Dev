@@ -608,6 +608,55 @@ export function useModerationConfig(guildId: string | null) {
     }
   };
 
+  const updateSection = async (keys: string[], draft: any) => {
+    const requestedGuildId = guildId;
+    if (!requestedGuildId) throw new Error("Nu este selectat niciun server.");
+    if (!cachedSession?.authenticated || activeGuildId !== requestedGuildId) {
+      throw new Error("Sesiunea de moderare nu mai este activă.");
+    }
+
+    const saveAttempt = async () => {
+      const snapshot = await apiFetchWithMeta<any>(`/guilds/${requestedGuildId}/config`);
+      if (currentGuildId.current !== requestedGuildId || activeGuildId !== requestedGuildId) {
+        throw new Error("Serverul selectat s-a schimbat în timpul salvării.");
+      }
+      const snapshotVersion = snapshot.data.version
+        ?? snapshot.headers.get("etag")?.replace(/^W\//, "").replaceAll('"', "");
+      if (snapshotVersion == null) throw new Error("Configurația nu conține o versiune ETag.");
+      const merged = { ...snapshot.data.config };
+      for (const key of keys) merged[key] = structuredClone(draft[key]);
+      return apiFetchWithMeta<any>(`/guilds/${requestedGuildId}/config`, {
+        method: "PUT",
+        headers: { "If-Match": `"${snapshotVersion}"` },
+        body: JSON.stringify(merged),
+      });
+    };
+
+    let response;
+    try {
+      response = await saveAttempt();
+    } catch (error) {
+      // Re-read and reapply only this editor's fields. Never retry a stale
+      // full configuration, because dashboard toggles may have changed it.
+      if (!(error instanceof ApiError) || error.status !== 409) throw error;
+      response = await saveAttempt();
+    }
+    if (currentGuildId.current !== requestedGuildId || activeGuildId !== requestedGuildId) {
+      throw new Error("Serverul selectat s-a schimbat în timpul salvării.");
+    }
+    const result = response.data;
+    const nextVersion = result.version
+      ?? response.headers.get("etag")?.replace(/^W\//, "").replaceAll('"', "");
+    if (nextVersion == null) throw new Error("Răspunsul de salvare nu conține versiunea ETag.");
+    setData(result.config);
+    setDataGuildId(requestedGuildId);
+    dataGuildIdRef.current = requestedGuildId;
+    setVersion(String(nextVersion));
+    versionRef.current = String(nextVersion);
+    setError(null);
+    return result;
+  };
+
   const updateProtectionToggle = async (
     key: "protection" | "autoMod" | "wordFilter" | "linkBlock" | "antiRaid" | "antiSpam" | "antiFlood" | "suspiciousBehavior" | "ai" | "manualTools" | "cases" | "audit" | "escalation" | "embeds",
     enabled: boolean,
@@ -643,6 +692,7 @@ export function useModerationConfig(guildId: string | null) {
     loading: loading || Boolean(guildId && dataGuildId !== guildId),
     error,
     update,
+    updateSection,
     updateProtectionToggle,
     refetch: fetchConfig,
   };
@@ -695,15 +745,27 @@ export function useGameplayState(guildId: string | null) {
 
 export function useBotControl(guildId: string | null) {
   const [data, setData] = useState<BotControlConfig | null>(null);
+  const [dataGuildId, setDataGuildId] = useState<string | null>(null);
   const [loading, setLoading] = useState(Boolean(guildId));
   const [error, setError] = useState<ApiError | null>(null);
   const requestId = useRef(0);
+  const currentGuildId = useRef(guildId);
+
+  useEffect(() => {
+    currentGuildId.current = guildId;
+    requestId.current += 1;
+    setData(null);
+    setDataGuildId(null);
+    setError(null);
+    setLoading(Boolean(guildId));
+  }, [guildId]);
 
   const fetchControl = useCallback(async () => {
     const requestedGuildId = guildId;
     const thisRequest = ++requestId.current;
     if (!requestedGuildId) {
       setData(null);
+      setDataGuildId(null);
       setLoading(false);
       return;
     }
@@ -711,14 +773,18 @@ export function useBotControl(guildId: string | null) {
     setError(null);
     try {
       const response = await apiFetch<BotControlConfig>(`/guilds/${requestedGuildId}/bot-control`);
-      if (requestId.current === thisRequest) setData(response);
+      if (requestId.current === thisRequest && currentGuildId.current === requestedGuildId) {
+        setData(response);
+        setDataGuildId(requestedGuildId);
+      }
     } catch (err: any) {
-      if (requestId.current === thisRequest) {
+      if (requestId.current === thisRequest && currentGuildId.current === requestedGuildId) {
         setData(null);
+        setDataGuildId(null);
         setError(err);
       }
     } finally {
-      if (requestId.current === thisRequest) setLoading(false);
+      if (requestId.current === thisRequest && currentGuildId.current === requestedGuildId) setLoading(false);
     }
   }, [guildId]);
 
@@ -727,14 +793,22 @@ export function useBotControl(guildId: string | null) {
   }, [fetchControl]);
 
   const update = async (value: BotControlConfig) => {
-    if (!guildId) throw new Error("Nu este selectat niciun server.");
+    const requestedGuildId = guildId;
+    if (!requestedGuildId) throw new Error("Nu este selectat niciun server.");
+    if (dataGuildId !== requestedGuildId || activeGuildId !== requestedGuildId) {
+      throw new Error("Serverul selectat s-a schimbat. Reîncarcă setările înainte de salvare.");
+    }
     try {
       const { discordLive: _discardedStatus, ...payload } = value;
-      const saved = await apiFetch<BotControlConfig>(`/guilds/${guildId}/bot-control`, {
+      const saved = await apiFetch<BotControlConfig>(`/guilds/${requestedGuildId}/bot-control`, {
         method: "PUT",
         body: JSON.stringify(payload),
       });
+      if (currentGuildId.current !== requestedGuildId || activeGuildId !== requestedGuildId) {
+        throw new Error("Serverul selectat s-a schimbat în timpul salvării.");
+      }
       setData(saved);
+      setDataGuildId(requestedGuildId);
       return saved;
     } catch (err) {
       throw err;
@@ -745,16 +819,31 @@ export function useBotControl(guildId: string | null) {
     categories?: string[],
     permissions?: Record<string, ChannelPermissionConfig>,
   ) => {
-    if (!guildId) throw new Error("Nu este selectat niciun server.");
-    const saved = await apiFetch<BotControlConfig>(`/guilds/${guildId}/bot-control/provision-channels`, {
+    const requestedGuildId = guildId;
+    if (!requestedGuildId) throw new Error("Nu este selectat niciun server.");
+    if (dataGuildId !== requestedGuildId || activeGuildId !== requestedGuildId) {
+      throw new Error("Serverul selectat s-a schimbat. Reîncarcă setările înainte de provisioning.");
+    }
+    const saved = await apiFetch<BotControlConfig>(`/guilds/${requestedGuildId}/bot-control/provision-channels`, {
       method: "POST",
       body: JSON.stringify(categories ? { categories, permissions } : {}),
     });
+    if (currentGuildId.current !== requestedGuildId || activeGuildId !== requestedGuildId) {
+      throw new Error("Serverul selectat s-a schimbat în timpul provisioningului.");
+    }
     setData(saved);
+    setDataGuildId(requestedGuildId);
     return saved;
   };
 
-  return { data, loading, error, update, provisionChannels, refetch: fetchControl };
+  return {
+    data: dataGuildId === guildId ? data : null,
+    loading: loading || Boolean(guildId && dataGuildId !== guildId),
+    error,
+    update,
+    provisionChannels,
+    refetch: fetchControl,
+  };
 }
 
 export function useVerifiedMembers(guildId: string | null) {

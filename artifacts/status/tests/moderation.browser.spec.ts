@@ -157,6 +157,34 @@ test.describe("authenticated moderation console", () => {
     await expect(page.getByText("Discord AutoMod nativ:")).toBeVisible();
   });
 
+  test("category save reapplies only its fields to the latest server snapshot", async ({ page }) => {
+    await page.goto("/moderare/automod");
+    await chooseFirstGuild(page);
+
+    await page.getByLabel("Cuvinte interzise").fill("valoare-salvată");
+
+    // Simulate an independent dashboard writer after this editor loaded. A
+    // category save must not put its older full snapshot over that change.
+    const concurrentlyUpdated = structuredClone(savedConfigs.get(guilds[0].id)!);
+    concurrentlyUpdated.antiRaid.enabled = true;
+    concurrentlyUpdated.audit.detailLevel = "verbose";
+    savedConfigs.set(guilds[0].id, concurrentlyUpdated);
+
+    const saveResponse = page.waitForResponse((response) =>
+      response.url().includes("/api/moderation/guilds/111111111/config")
+      && response.request().method() === "PUT");
+    await page.getByRole("button", { name: "Salvează" }).click();
+    await expect((await saveResponse).ok()).toBeTruthy();
+
+    expect(savedConfigs.get(guilds[0].id)?.autoMod.forbiddenWords).toEqual(["valoare-salvată"]);
+    expect(savedConfigs.get(guilds[0].id)?.antiRaid.enabled).toBe(true);
+    expect(savedConfigs.get(guilds[0].id)?.audit.detailLevel).toBe("verbose");
+    expect(savedConfigs.get(guilds[1].id)?.autoMod.forbiddenWords).toEqual([]);
+
+    await page.reload();
+    await expect(page.getByLabel("Cuvinte interzise")).toHaveValue("valoare-salvată");
+  });
+
   test("shows stored module state as paused when global protection is off", async ({ page }) => {
     const config = fullConfig();
     config.protection.enabled = false;

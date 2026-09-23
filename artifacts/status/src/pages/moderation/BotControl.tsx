@@ -230,10 +230,19 @@ export function BotControlPage() {
       : "channels",
   );
   const [expandedCategory, setExpandedCategory] = useState<string | null>("gameplay");
+  const initializedGuild = React.useRef<string | null>(null);
 
   useEffect(() => {
-    setDraft(data ? JSON.parse(JSON.stringify(data)) : null);
-  }, [data]);
+    if (!guildId) {
+      initializedGuild.current = null;
+      setDraft(null);
+      return;
+    }
+    if (data && initializedGuild.current !== guildId) {
+      initializedGuild.current = guildId;
+      setDraft(JSON.parse(JSON.stringify(data)));
+    }
+  }, [data, guildId]);
 
   useEffect(() => {
     if (requestedTab === "verification") {
@@ -477,6 +486,7 @@ export function BotControlPage() {
         channels: Object.fromEntries(Object.entries(draft.channels).filter(([, value]) => value)),
         tickets: { ...draft.tickets, flows },
       });
+      setDraft(JSON.parse(JSON.stringify(saved)));
       toast(saved.discordLive
         ? {
             title: "Setările sunt active pe Discord",
@@ -495,6 +505,14 @@ export function BotControlPage() {
   };
 
   const provision = async () => {
+    if (hasUnsavedChanges) {
+      toast({
+        variant: "destructive",
+        title: "Salvează sau renunță mai întâi la draft",
+        description: "Provisioningul reîncarcă setările persistente și nu trebuie să suprascrie modificările nesalvate.",
+      });
+      return;
+    }
     if (selectedProvisioningCategories.length === 0) {
       toast({
         variant: "destructive",
@@ -509,6 +527,7 @@ export function BotControlPage() {
         selectedProvisioningCategories.map((key) => [key, provisioningPermissions[key] ?? DEFAULT_CHANNEL_PERMISSION]),
       );
       const saved = await provisionChannels(selectedProvisioningCategories, permissions);
+      setDraft(JSON.parse(JSON.stringify(saved)));
       await refetchMetadata();
       const created = saved.provisioning?.created.length ?? 0;
       const reused = saved.provisioning?.reused.length ?? 0;

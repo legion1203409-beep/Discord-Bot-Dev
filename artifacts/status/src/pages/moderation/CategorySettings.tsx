@@ -22,23 +22,40 @@ const DETAILS: Record<ConfigSection, { title: string; description: string }> = {
   permissions: { title: "Permisiuni", description: "Acces staff și izolare multi-server." },
 };
 
+const SECTION_KEYS: Record<ConfigSection, string[]> = {
+  automod: ["autoMod"],
+  "anti-raid": ["antiRaid"],
+  "anti-spam": ["antiSpam"],
+  "anti-flood": ["antiFlood"],
+  suspicious: ["suspiciousBehavior"],
+  ai: ["ai"],
+  tools: ["manualTools"],
+  "cases-audit": ["cases", "audit"],
+  "roles-channels": ["roles", "channels"],
+  time: ["timeProfiles"],
+  escalation: ["escalation"],
+  embeds: ["embeds"],
+  permissions: ["permissions", "multiServer"],
+};
+
 export function CategorySettingsPage({ section }: { section: ConfigSection }) {
   const { guildId } = useActiveGuild();
-  const { data, update, loading, error, refetch } = useModerationConfig(guildId);
+  const { data, updateSection, loading, error, refetch } = useModerationConfig(guildId);
   const { toast } = useToast();
   const [draft, setDraft] = useState<any>(null);
   const [saving, setSaving] = useState(false);
-  const initializedGuild = useRef<string | null>(null);
+  const initializedEditor = useRef<string | null>(null);
+  const editorKey = guildId ? `${guildId}:${section}` : null;
 
   useEffect(() => {
     if (!guildId) {
-      initializedGuild.current = null;
+      initializedEditor.current = null;
       setDraft(null);
-    } else if (data && initializedGuild.current !== guildId) {
-      initializedGuild.current = guildId;
+    } else if (data && initializedEditor.current !== editorKey) {
+      initializedEditor.current = editorKey;
       setDraft(structuredClone(data));
     }
-  }, [data, guildId]);
+  }, [data, editorKey, guildId]);
 
   if (loading && !draft) return <div className="flex justify-center p-12"><Loader2 className="h-8 w-8 animate-spin" /></div>;
   if (!draft) return <div role="alert" className="rounded-xl border border-destructive/40 p-6 text-destructive">{error?.message || "Configurația nu a putut fi încărcată."}</div>;
@@ -48,7 +65,7 @@ export function CategorySettingsPage({ section }: { section: ConfigSection }) {
   const save = async () => {
     setSaving(true);
     try {
-      const result = await update(draft);
+      const result = await updateSection(SECTION_KEYS[section], draft);
       if (result?.config) setDraft(structuredClone(result.config));
       toast({ title: `${detail.title} salvat`, description: "Setările au fost actualizate pentru serverul selectat." });
     } catch (saveError: any) {
