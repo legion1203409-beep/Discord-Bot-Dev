@@ -16,7 +16,20 @@ import { publicMessageImageUrl } from "./message-media";
 const STATS_TIME_ZONE = process.env.DISCORD_STATS_TIMEZONE || "Europe/Bucharest";
 const REPORT_CHECK_INTERVAL_MS = 60 * 1000;
 const schedulerTimers = new Map<string, ReturnType<typeof setInterval>>();
+const lastReportSkipByGuild = new Map<string, string>();
 let schemaReady: Promise<void> | null = null;
+
+function warnDailyStatsReportSkipped(
+  guildId: string,
+  day: string,
+  reason: string,
+  context: Record<string, unknown> = {},
+): void {
+  const warningKey = `${day}:${reason}:${String(context.channelId ?? "")}`;
+  if (lastReportSkipByGuild.get(guildId) === warningKey) return;
+  lastReportSkipByGuild.set(guildId, warningKey);
+  logger.warn({ guildId, day, reason, ...context }, "Daily Discord statistics report skipped");
+}
 
 export interface DailyStatsReport {
   guildId: string;
@@ -355,21 +368,43 @@ export async function publishDailyStatsReport(client: Client, guildId: string, d
   await ensureDailyStatsTables();
   if (await isReportPublished(guildId, day)) return false;
   const channelId = getChannel("main", guildId);
-  if (!channelId) return false;
-  const channel = await client.channels.fetch(channelId).catch(() => null);
-  if (!(channel instanceof TextChannel)) return false;
+  if (!channelId) {
+    warnDailyStatsReportSkipped(guildId, day, "main_channel_not_configured");
+    return false;
+  }
+
+  let channel;
+  try {
+    channel = await client.channels.fetch(channelId);
+  } catch (error) {
+    warnDailyStatsReportSkipped(guildId, day, "main_channel_fetch_failed", { channelId, error });
+    return false;
+  }
+  if (!(channel instanceof TextChannel)) {
+    warnDailyStatsReportSkipped(guildId, day, "main_channel_not_text", {
+      channelId,
+      channelType: channel?.type ?? null,
+    });
+    return false;
+  }
+
   const guild = client.guilds.cache.get(guildId) ?? await client.guilds.fetch(guildId).catch(() => null);
-  if (!guild) return false;
+  if (!guild) {
+    warnDailyStatsReportSkipped(guildId, day, "guild_unavailable", { channelId });
+    return false;
+  }
   const report = await getDailyStats(guildId, day);
   const config = await loadDailyStatsEmbedConfig(guildId);
   const message = await channel.send({ embeds: [buildDailyStatsEmbed(guild.name, report, config)] });
   await markReportPublished(guildId, day, message.id);
+  lastReportSkipByGuild.delete(guildId);
   logger.info({ guildId, day, channelId, messageId: message.id }, "Published daily Discord statistics report");
   return true;
 }
 
 export function startDailyStatsScheduler(client: Client, guildId: string): void {
   if (schedulerTimers.has(guildId)) return;
+  logger.info({ guildId }, "Started daily Discord statistics scheduler");
   const timer = setInterval(() => {
     const currentDay = statsDay();
     const reportDay = previousDay(currentDay);

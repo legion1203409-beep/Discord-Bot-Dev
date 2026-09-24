@@ -229,12 +229,7 @@ const router = Router()
 ;
 
 
-const snowflake = z.string().regex(/^\d
-{
-5,25
-}
-$/)
-;
+const snowflake = z.string().regex(/^\d{5,25}$/);
 
 
 const createEmojiSchema = z.object(
@@ -256,10 +251,7 @@ function decodeEmojiImage(dataUrl: string):
  
 {
 
-  const match = /^data:(image\/(?:png|jpeg|gif))
-;
-base64,([a-zA-Z0-9+/=]+)$/.exec(dataUrl)
-;
+  const match = /^data:(image\/(?:png|jpeg|gif));base64,([a-zA-Z0-9+/=]+)$/.exec(dataUrl);
 
   if (!match) throw new ModerationAuthError(400, "Alege o imagine PNG, JPEG sau GIF validă.")
 ;
@@ -294,11 +286,7 @@ base64,([a-zA-Z0-9+/=]+)$/.exec(dataUrl)
   
 }
 
-  return 
-{
- data, mime: match[1] 
-}
-;
+  return { data, mime: match[1] };
 
 }
 
@@ -320,17 +308,13 @@ function emojiPayload(emoji:
   const animated = Boolean(emoji.animated)
 ;
 
-  return 
-{
-
+  return {
     id: emoji.id,
     name,
     animated,
     markup: `<${animated ? "a" : ""}:${name}:${emoji.id}>`,
     url: `https://cdn.discordapp.com/emojis/${emoji.id}.${animated ? "gif" : "png"}?size=64&quality=lossless`,
-  
-}
-;
+  };
 
 }
 
@@ -458,11 +442,7 @@ const dailyStatsEmbedConfigSchema = z.object(
 
   title: z.string().trim().min(1).max(256),
   description: z.string().trim().min(1).max(4_000),
-  color: z.string().trim().regex(/^#[0-9a-f]
-{
-6
-}
-$/i),
+  color: z.string().trim().regex(/^#[0-9a-f]{6}$/i),
   footer: z.string().trim().min(1).max(2_048),
   activityTitle: z.string().trim().min(1).max(256),
   channelsTitle: z.string().trim().min(1).max(256),
@@ -1108,21 +1088,10 @@ function discordOAuthDetails(error: unknown):
 }
 
 
-  return 
-{
-
+  return {
     stage: value.stage,
-    ...(typeof value.status === "number" ? 
-{
- status: value.status 
-}
- : 
-{
-}
-),
-  
-}
-;
+    ...(typeof value.status === "number" ? { status: value.status } : {}),
+  };
 
 
 }
@@ -2993,12 +2962,7 @@ router.post("/guilds/:guildId/actions", asyncRoute(async (req, res) =>
 ;
 
 
-    const actionInput = 
-{
- guildId, actorId: session.userId, ...input, idempotencyKey 
-}
- as never
-;
+    const actionInput = { guildId, actorId: session.userId, ...input, idempotencyKey } as never;
 
     const result = await executeModerationAction(actionInput)
 ;
