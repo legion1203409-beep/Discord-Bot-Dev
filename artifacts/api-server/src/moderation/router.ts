@@ -417,6 +417,7 @@ const verificationConfigSchema = z.object(
 const DEFAULT_DAILY_STATS_EMBED_CONFIG = 
 {
 
+  channelId: "",
   title: "📊 Statistici Zilnice · {guild}",
   description: "O privire asupra comunității pentru **{date}**.\n\nDatele sunt colectate de Oracolul Cenușii și sunt aceleași cu raportul de pe site.",
   color: "#7c3aed",
@@ -445,6 +446,7 @@ const DEFAULT_DAILY_STATS_EMBED_CONFIG =
 const dailyStatsEmbedConfigSchema = z.object(
 {
 
+  channelId: snowflake.or(z.literal("")),
   title: z.string().trim().min(1).max(256),
   description: z.string().trim().min(1).max(4_000),
   color: z.string().trim().regex(/^#[0-9a-f]{6}$/i),
@@ -1332,6 +1334,34 @@ async function validateInviteTrackingTargets(guildId: string, config: z.infer<ty
   return guild
 ;
 
+}
+
+async function validateDailyStatsChannelTarget(guildId: string, channelId: string): Promise<void> {
+  if (!channelId) return;
+  const client = getModerationClient();
+  if (!client?.isReady()) return;
+
+  const guild = client.guilds.cache.get(guildId) ?? await client.guilds.fetch({ guild: guildId, force: true })
+    .catch(() => {
+      throw new ModerationAuthError(503, "Serverul Discord nu este disponibil.");
+    });
+  const channel = await guild.channels.fetch(channelId).catch(() => null);
+  if (!(channel instanceof TextChannel) || channel.guildId !== guildId) {
+    throw new ModerationAuthError(400, "Alege un canal text valid din acest server pentru statisticile zilnice.");
+  }
+
+  const botMember = guild.members.me ?? await guild.members.fetchMe().catch(() => null);
+  const permissions = botMember ? channel.permissionsFor(botMember) : null;
+  if (
+    !permissions?.has(PermissionFlagsBits.ViewChannel)
+    || !permissions.has(PermissionFlagsBits.SendMessages)
+    || !permissions.has(PermissionFlagsBits.EmbedLinks)
+  ) {
+    throw new ModerationAuthError(
+      403,
+      "Botul are nevoie de permisiunile View Channel, Send Messages și Embed Links în canalul statisticilor.",
+    );
+  }
 }
 
 
@@ -2272,8 +2302,10 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   await sessionAndGuild(req, guildId, "config", true);
   const value = parse(botControlSchema, req.body);
   const inviteTracking = value.inviteTracking ?? DEFAULT_INVITE_TRACKING_CONFIG;
+  const dailyStats = value.dailyStats ?? DEFAULT_DAILY_STATS_EMBED_CONFIG;
   const client = getModerationClient();
   const inviteGuild = await validateInviteTrackingTargets(guildId, inviteTracking);
+  await validateDailyStatsChannelTarget(guildId, dailyStats.channelId);
   const tickets = normalizeTicketConfig(value.tickets);
   const channels: ChannelConfig = Object.fromEntries(
     Object.entries(value.channels).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
@@ -2281,7 +2313,6 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   await saveChannelConfig(guildId, channels);
   await saveProvisioningPermissions(guildId, value.provisioningPermissions);
   await saveAllianceRecruitmentText(guildId, value.allianceRecruitmentText);
-  const dailyStats = value.dailyStats ?? DEFAULT_DAILY_STATS_EMBED_CONFIG;
   const saveDailyStats = optionalExport(() => saveDailyStatsEmbedConfig);
   if (saveDailyStats) await saveDailyStats(guildId, dailyStats);
   const saveInviteTracking = optionalExport(() => saveInviteTrackingConfig);

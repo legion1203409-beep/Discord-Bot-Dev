@@ -10,6 +10,8 @@ import { useSession, useActiveGuild, useModerationAuthConfig, type ModerationGui
 import { Button } from "../../components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { GuildSelection } from "./GuildSelection";
+import { DiscordLoadingScreen } from "../../components/moderation/DiscordLoadingScreen";
+import { useMinimumLoading } from "../../hooks/use-minimum-loading";
 import "./moderation.css";
 import animatedDragonLogo from "@assets/ezgif.com-video-to-gif-converter_1789791978054.gif";
 import { DISCORD_INVITE } from "../../lib/public-constants";
@@ -138,6 +140,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
     error: authConfigError,
     retry: retryAuthConfig,
   } = useModerationAuthConfig();
+  const showLoadingScreen = useMinimumLoading(loading || authConfigLoading);
   const { guildId, setGuildId, guilds } = useActiveGuild();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [expandedNavGroups, setExpandedNavGroups] = useState<Record<string, boolean>>(() => {
@@ -163,27 +166,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
     }
   }, [navLocation]);
 
-  if (loading) {
-    return (
-      <div className="mod-shell dark flex min-h-[100dvh] items-center justify-center p-6">
-        <div className="w-full max-w-sm space-y-5 rounded-2xl border border-border/70 bg-card/80 p-7 shadow-2xl">
-          <div className="flex items-center gap-3">
-            <div className="mod-brand-mark"><Eye className="h-5 w-5" aria-hidden="true" /></div>
-            <div>
-              <p className="mod-eyebrow">Oracolul Cenușii</p>
-              <p className="text-sm text-muted-foreground">Se deschide consola</p>
-            </div>
-          </div>
-          <div className="space-y-3" aria-label="Se încarcă">
-            <div className="mod-skeleton h-3 w-2/3" />
-            <div className="mod-skeleton h-3 w-full" />
-            <div className="mod-skeleton h-24 w-full" />
-          </div>
-          <p className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground">CONECTARE LA ORACOL...</p>
-        </div>
-      </div>
-    );
-  }
+  if (showLoadingScreen) return <DiscordLoadingScreen />;
 
   if (error) {
     return (

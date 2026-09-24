@@ -129,6 +129,7 @@ const MEMBER_MESSAGE_STYLES = [
 ] as const;
 
 const DEFAULT_DAILY_STATS = {
+  channelId: "",
   title: "📊 Statistici Zilnice · {guild}",
   description: "O privire asupra comunității pentru **{date}**.\n\nDatele sunt colectate de Oracolul Cenușii și sunt aceleași cu raportul de pe site.",
   color: "#7c3aed",
@@ -147,6 +148,45 @@ const DEFAULT_DAILY_STATS = {
     peakVoice: "🔊 Vârf vocal",
   },
 } as const;
+
+const DAILY_STATS_PREVIEW_VALUES: Record<string, string> = {
+  guild: "Regatul Cenușii",
+  date: "18 septembrie 2026",
+  messages: "307",
+  uniqueUsers: "13",
+  boosts: "0",
+  joins: "5",
+  leaves: "5",
+  peakVoice: "4",
+};
+
+const DAILY_STATS_PREVIEW_ACTIVITY = [
+  { day: "2026-09-12", messages: 48 },
+  { day: "2026-09-13", messages: 83 },
+  { day: "2026-09-14", messages: 61 },
+  { day: "2026-09-15", messages: 119 },
+  { day: "2026-09-16", messages: 94 },
+  { day: "2026-09-17", messages: 176 },
+  { day: "2026-09-18", messages: 307 },
+];
+
+const DAILY_STATS_PREVIEW_CHANNELS = [
+  { name: "general", messages: 124 },
+  { name: "strategii", messages: 83 },
+  { name: "raiduri", messages: 61 },
+  { name: "ajutor", messages: 22 },
+  { name: "off-topic", messages: 17 },
+];
+
+function renderDailyStatsPreviewText(template: string): string {
+  return template.replace(/\{([a-zA-Z0-9_]+)\}/g, (match, key: string) => DAILY_STATS_PREVIEW_VALUES[key] ?? match);
+}
+
+function dailyStatsPreviewBar(value: number, max: number, width: number): string {
+  if (max <= 0 || value <= 0) return "░".repeat(width);
+  const filled = Math.max(1, Math.round((value / max) * width));
+  return "█".repeat(Math.min(width, filled)) + "░".repeat(Math.max(0, width - filled));
+}
 
 const NEW_QUESTION = {
   key: "question",
@@ -1895,7 +1935,7 @@ export function BotControlPage() {
               <Megaphone className="mt-1 h-5 w-5 text-primary" />
               <div className="min-w-0 flex-1">
                 <h2 className="font-medium">Design statistici zilnice</h2>
-                <p className="text-xs text-muted-foreground">Personalizează raportul publicat automat în Discord. Poți folosi {`{guild}`}, {`{date}`}, {`{messages}`}, {`{uniqueUsers}`}, {`{boosts}`}, {`{joins}`}, {`{leaves}`} și {`{peakVoice}`} în titlu sau descriere.</p>
+                  <p className="text-xs text-muted-foreground">Personalizează raportul publicat automat în Discord. Poți folosi {`{guild}`}, {`{date}`}, {`{messages}`}, {`{uniqueUsers}`}, {`{boosts}`}, {`{joins}`}, {`{leaves}`} și {`{peakVoice}`} în titlu sau descriere.</p>
               </div>
               <Button type="button" variant="ghost" size="sm" className="shrink-0 gap-1" onClick={resetDailyStats}>
                 <RotateCcw className="h-3.5 w-3.5" /> Implicit
@@ -1919,6 +1959,24 @@ export function BotControlPage() {
                 <label className="block space-y-1 text-sm">
                   <span className="text-xs font-medium">Descriere raport</span>
                   <EmojiField multiline rows={4} maxLength={4000} value={draft.dailyStats.description} onChange={(value) => setDailyStats("description", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
+                </label>
+                <label className="block space-y-1 text-sm">
+                  <span className="text-xs font-medium">Canal raport zilnic</span>
+                  <Select
+                    value={draft.dailyStats.channelId || "__main_channel__"}
+                    onValueChange={(value) => setDailyStats("channelId", value === "__main_channel__" ? "" : value)}
+                  >
+                    <SelectTrigger aria-label="Canal raport zilnic">
+                      <SelectValue placeholder="Canalul principal" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__main_channel__">Folosește canalul principal</SelectItem>
+                      {textChannels.map((channel) => (
+                        <SelectItem key={channel.id} value={channel.id}>#{channel.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <span className="block text-xs text-muted-foreground">Alege un canal separat sau păstrează canalul principal configurat la „Canale”.</span>
                 </label>
                 <ImageField label="Imaginea raportului zilnic" value={draft.dailyStats.imageUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setDailyStats("imageUrl", value)} />
                 <ImageField label="Thumbnail-ul raportului zilnic" value={draft.dailyStats.thumbnailUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setDailyStats("thumbnailUrl", value)} />
@@ -1954,18 +2012,44 @@ export function BotControlPage() {
                 <div className="rounded-md bg-[#2b2d31] p-3">
                   {draft.dailyStats.thumbnailUrl && <img src={draft.dailyStats.thumbnailUrl} alt="" className="float-right ml-3 h-20 w-20 rounded object-cover" />}
                   <p className="text-[10px] font-semibold tracking-wider text-[#949cf7]">ORACOLUL CENUȘII · COMMUNITY INSIGHTS</p>
-                  <h3 className="mt-2 font-semibold"><DiscordEmojiText emojis={metadata?.emojis}>{draft.dailyStats.title.replace("{guild}", "Regatul Cenușii")}</DiscordEmojiText></h3>
-                  <p className="mt-2 whitespace-pre-wrap text-xs text-[#b5bac1]"><DiscordEmojiText emojis={metadata?.emojis}>{draft.dailyStats.description.replace("{guild}", "Regatul Cenușii").replace("{date}", "18 septembrie 2026")}</DiscordEmojiText></p>
-                  <div className="mt-4 grid grid-cols-2 gap-2">
-                    {Object.values(draft.dailyStats.metricLabels).slice(0, 6).map((label, index) => (
-                      <div key={`${label}-${index}`} className="rounded bg-[#36393f] p-2">
-                         <p className="truncate text-[10px] text-[#b5bac1]"><DiscordEmojiText emojis={metadata?.emojis}>{label}</DiscordEmojiText></p>
-                        <p className="mt-1 font-semibold">{[307, 13, 0, 5, 5, 4][index].toLocaleString("ro-RO")}</p>
+                  <h3 className="mt-2 font-semibold"><DiscordEmojiText emojis={metadata?.emojis}>{renderDailyStatsPreviewText(draft.dailyStats.title)}</DiscordEmojiText></h3>
+                  <p className="mt-2 whitespace-pre-wrap text-xs text-[#b5bac1]"><DiscordEmojiText emojis={metadata?.emojis}>{renderDailyStatsPreviewText(draft.dailyStats.description)}</DiscordEmojiText></p>
+                  <div className="mt-4 grid grid-cols-3 gap-2">
+                    {([
+                      ["messages", 307],
+                      ["uniqueUsers", 13],
+                      ["boosts", 0],
+                      ["joins", 5],
+                      ["leaves", 5],
+                      ["peakVoice", 4],
+                    ] as const).map(([key, value]) => (
+                      <div key={key} className="min-w-0 rounded bg-[#36393f] p-2">
+                        <p className="truncate text-[10px] text-[#b5bac1]"><DiscordEmojiText emojis={metadata?.emojis}>{draft.dailyStats.metricLabels[key]}</DiscordEmojiText></p>
+                        <p className="mt-1 font-semibold">{value.toLocaleString("ro-RO")}</p>
                       </div>
                     ))}
                   </div>
-                  <p className="mt-4 border-t border-white/10 pt-3 text-[10px] text-[#949ba4]">{draft.dailyStats.footer}</p>
+                  <div className="mt-3">
+                    <p className="mb-1 text-xs font-semibold"><DiscordEmojiText emojis={metadata?.emojis}>{draft.dailyStats.activityTitle}</DiscordEmojiText></p>
+                    <pre className="overflow-x-auto rounded bg-[#1e1f22] p-2 font-mono text-[10px] leading-relaxed">
+                      {DAILY_STATS_PREVIEW_ACTIVITY.map((item) => `${item.day.slice(5)}  ${dailyStatsPreviewBar(item.messages, 307, 12)}  ${item.messages}`).join("\n")}
+                    </pre>
+                  </div>
+                  <div className="mt-3">
+                    <p className="mb-1 text-xs font-semibold"><DiscordEmojiText emojis={metadata?.emojis}>{draft.dailyStats.channelsTitle}</DiscordEmojiText></p>
+                    <div className="space-y-1 text-xs">
+                      {DAILY_STATS_PREVIEW_CHANNELS.map((channel, index) => (
+                        <p key={channel.name}>
+                          {index + 1}. <strong>#{channel.name}</strong> {dailyStatsPreviewBar(channel.messages, 124, 10)} {channel.messages}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
                   {draft.dailyStats.imageUrl && <img src={draft.dailyStats.imageUrl} alt="" className="mt-3 max-h-48 w-full rounded object-contain" />}
+                  <p className="mt-4 border-t border-white/10 pt-3 text-[10px] text-[#949ba4]">
+                    <DiscordEmojiText emojis={metadata?.emojis}>{draft.dailyStats.footer}</DiscordEmojiText>
+                    <span className="ml-2 text-[#777d86]">18 septembrie 2026</span>
+                  </p>
                 </div>
               </div>
             </div>

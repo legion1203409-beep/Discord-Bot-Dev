@@ -166,6 +166,7 @@ export interface BotControlConfig {
     };
   };
   dailyStats: {
+    channelId: string;
     title: string;
     description: string;
     color: string;

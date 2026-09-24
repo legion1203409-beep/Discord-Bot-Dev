@@ -81,7 +81,7 @@ function GameApp() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setIsLoading(false), 700);
+    const timer = window.setTimeout(() => setIsLoading(false), 2_000);
     return () => window.clearTimeout(timer);
   }, []);
 

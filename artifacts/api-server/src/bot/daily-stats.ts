@@ -306,6 +306,10 @@ function renderDailyStatsText(
   return template.replace(/\{([a-zA-Z0-9_]+)\}/g, (match, key: string) => values[key] ?? match);
 }
 
+export function resolveDailyStatsChannelId(configuredChannelId: string, guildId: string): string | null {
+  return configuredChannelId || getChannel("main", guildId);
+}
+
 export function buildDailyStatsEmbed(
   guildName: string,
   report: DailyStatsReport,
@@ -367,9 +371,10 @@ async function markReportPublished(guildId: string, day: string, messageId: stri
 export async function publishDailyStatsReport(client: Client, guildId: string, day: string): Promise<boolean> {
   await ensureDailyStatsTables();
   if (await isReportPublished(guildId, day)) return false;
-  const channelId = getChannel("main", guildId);
+  const config = await loadDailyStatsEmbedConfig(guildId);
+  const channelId = resolveDailyStatsChannelId(config.channelId, guildId);
   if (!channelId) {
-    warnDailyStatsReportSkipped(guildId, day, "main_channel_not_configured");
+    warnDailyStatsReportSkipped(guildId, day, "target_channel_not_configured");
     return false;
   }
 
@@ -394,7 +399,6 @@ export async function publishDailyStatsReport(client: Client, guildId: string, d
     return false;
   }
   const report = await getDailyStats(guildId, day);
-  const config = await loadDailyStatsEmbedConfig(guildId);
   const message = await channel.send({ embeds: [buildDailyStatsEmbed(guild.name, report, config)] });
   await markReportPublished(guildId, day, message.id);
   lastReportSkipByGuild.delete(guildId);

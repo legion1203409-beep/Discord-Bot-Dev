@@ -2486,6 +2486,7 @@ export async function loadInviteTrackingConfig(guildId: string): Promise<InviteT
 }
 
 export interface DailyStatsEmbedConfig {
+  channelId: string;
   title: string;
   description: string;
   color: string;
@@ -2506,6 +2507,7 @@ export interface DailyStatsEmbedConfig {
 }
 
 export const DEFAULT_DAILY_STATS_EMBED_CONFIG: DailyStatsEmbedConfig = {
+  channelId: "",
   title: "📊 Statistici Zilnice · {guild}",
   description: "O privire asupra comunității pentru **{date}**.\n\nDatele sunt colectate de Oracolul Cenușii și sunt aceleași cu raportul de pe site.",
   color: "#7c3aed",
@@ -2530,7 +2532,7 @@ export function normalizeDailyStatsEmbedConfig(value: unknown): DailyStatsEmbedC
   const labels = input.metricLabels && typeof input.metricLabels === "object"
     ? input.metricLabels as Record<string, unknown>
     : {};
-  const text = (key: keyof Omit<DailyStatsEmbedConfig, "metricLabels" | "color" | "imageUrl" | "thumbnailUrl">): string => {
+  const text = (key: keyof Omit<DailyStatsEmbedConfig, "metricLabels" | "color" | "imageUrl" | "thumbnailUrl" | "channelId">): string => {
     const current = input[key];
     const fallback = DEFAULT_DAILY_STATS_EMBED_CONFIG[key];
     return typeof current === "string" && current.trim() ? current.trim() : fallback;
@@ -2544,8 +2546,12 @@ export function normalizeDailyStatsEmbedConfig(value: unknown): DailyStatsEmbedC
       ? current.trim()
       : DEFAULT_DAILY_STATS_EMBED_CONFIG.metricLabels[key];
   };
+  const channelId = typeof input.channelId === "string" && /^\d{5,25}$/.test(input.channelId.trim())
+    ? input.channelId.trim()
+    : "";
 
   return {
+    channelId,
     title: text("title").slice(0, 256),
     description: text("description").slice(0, 4_000),
     color,

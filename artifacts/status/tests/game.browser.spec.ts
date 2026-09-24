@@ -21,6 +21,26 @@ test("home opens the moderation login instead of the retired landing page", asyn
   await expect(page.locator(".hero-section")).toHaveCount(0);
 });
 
+test("shows the guide loading screen for at least two seconds", async ({ page }) => {
+  await page.goto("/joc");
+  const loadingScreen = page.getByRole("status", { name: "Se încarcă ghidul jocului" });
+  await expect(loadingScreen).toBeVisible();
+  await page.waitForTimeout(500);
+  await expect(loadingScreen).toBeVisible();
+  await expect(loadingScreen).toHaveCount(0, { timeout: 3_000 });
+  await expect(page.locator("h1")).toBeVisible();
+});
+
+test("shows the Discord loading screen for at least two seconds", async ({ page }) => {
+  await page.goto("/moderare");
+  const loadingScreen = page.getByRole("status", { name: "Se încarcă panoul de moderare" });
+  await expect(loadingScreen).toBeVisible();
+  await page.waitForTimeout(500);
+  await expect(loadingScreen).toBeVisible();
+  await expect(loadingScreen).toHaveCount(0, { timeout: 3_000 });
+  await expect(page.getByTestId("discord-login-button")).toBeVisible();
+});
+
 test("public game category is reachable and survives a direct reload", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));

@@ -210,10 +210,12 @@ test.describe("authenticated moderation console", () => {
     // A separate test-only bot-control GET lets us verify the role tab itself;
     // sidebar navigation above is independent of whether that API is online.
     let savedInviteLogChannel = "";
+    let savedDailyStatsChannel = "";
     await page.route("**/api/moderation/guilds/*/bot-control", async (route) => {
       if (route.request().method() === "PUT") {
         const body = JSON.parse(route.request().postData() || "{}");
         savedInviteLogChannel = body.inviteTracking.joinLogChannelId;
+        savedDailyStatsChannel = body.dailyStats.channelId;
         await route.fulfill({ json: { ...body, discordLive: true } });
         return;
       }
@@ -230,9 +232,10 @@ test.describe("authenticated moderation console", () => {
         },
         allianceRecruitmentText: "",
         dailyStats: {
-          title: "Statistici {guild}", description: "Raport {date}", color: "#5865F2", footer: "",
-          activityTitle: "", channelsTitle: "", emptyChannelsText: "", imageUrl: "", thumbnailUrl: "",
-          metricLabels: { messages: "", uniqueUsers: "", boosts: "", joins: "", leaves: "", peakVoice: "" },
+          channelId: "", title: "Statistici {guild}", description: "Raport {date}", color: "#5865F2", footer: "",
+          activityTitle: "Activitate · ultimele 7 zile", channelsTitle: "Top 5 canale active",
+          emptyChannelsText: "Nu există canale active.", imageUrl: "", thumbnailUrl: "",
+          metricLabels: { messages: "Mesaje", uniqueUsers: "Utilizatori unici", boosts: "Boost-uri", joins: "Intrări", leaves: "Ieșiri", peakVoice: "Vârf vocal" },
         },
         inviteTracking: { enabled: false, joinLogChannelId: "", reportEnabled: false, reportChannelId: "", reportFrequency: "daily", reportTime: "09:00", reportTimeZone: "UTC", reportTopLimit: 5, reportWeekday: 1 },
         tickets: {
@@ -262,9 +265,14 @@ test.describe("authenticated moderation console", () => {
 
     await page.getByTestId("tab-statistics").click();
     await expect(page.getByText("Jurnal pentru fiecare intrare")).toBeVisible();
+    await expect(page.getByText("PREVIZUALIZARE EMBED")).toBeVisible();
+    await expect(page.getByText("Activitate · ultimele 7 zile").last()).toBeVisible();
+    await expect(page.getByText("Top 5 canale active").last()).toBeVisible();
     await page.getByRole("switch", { name: "Activează colectarea statisticilor invitațiilor" }).click();
     const inviteLogChannel = page.locator("label").filter({ hasText: "Canal jurnal invitații" }).getByRole("combobox");
     await inviteLogChannel.click();
+    await page.getByRole("option", { name: "#audit" }).click();
+    await page.getByRole("combobox", { name: "Canal raport zilnic" }).click();
     await page.getByRole("option", { name: "#audit" }).click();
     const configSave = page.waitForResponse((response) =>
       response.url().includes("/api/moderation/guilds/111111111/bot-control")
@@ -272,6 +280,7 @@ test.describe("authenticated moderation console", () => {
     await page.getByRole("button", { name: "Salvează controlul botului" }).click();
     await expect((await configSave).ok()).toBeTruthy();
     expect(savedInviteLogChannel).toBe("444444444");
+    expect(savedDailyStatsChannel).toBe("444444444");
 
     await page.locator('nav[aria-label="Categorii de moderare"] a[href="/moderare/verificare"]').click();
     await expect(page).toHaveURL("/moderare/verificare");
