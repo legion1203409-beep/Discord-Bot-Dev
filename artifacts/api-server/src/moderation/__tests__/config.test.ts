@@ -40,6 +40,31 @@ describe("moderation configuration defaults", () => {
     expect(config.autoMod.wordFilter.thresholds.matches).toBe(2);
   });
 
+  it("fills missing rule thresholds without replacing saved values or enabling rules", () => {
+    const defaults = defaultModerationConfig;
+    expect(defaults.autoMod.emojiLimit.thresholds.emoji).toBe(10);
+    expect(defaults.autoMod.capsLimit.thresholds.capsPercent).toBe(75);
+    expect(defaults.antiRaid.rule.thresholds.joins).toBe(10);
+    expect(defaults.antiRaid.rule.thresholds.windowSeconds).toBe(60);
+    expect(defaults.antiSpam.message.thresholds.messages).toBe(5);
+    expect(defaults.antiSpam.message.thresholds.windowMs).toBe(5);
+    expect(defaults.antiSpam.edit.thresholds.limit).toBe(5);
+    expect(defaults.antiFlood.longMessage.thresholds.length).toBe(1_500);
+    expect(defaults.suspiciousBehavior.joinLeaveFlood.thresholds.limit).toBe(10);
+    expect(defaults.antiSpam.message.enabled).toBe(false);
+
+    const config = ModerationConfigSchema.parse({
+      antiSpam: {
+        message: { thresholds: { limit: 12, window: 8 } },
+      },
+    });
+    expect(config.antiSpam.message.thresholds.limit).toBe(12);
+    expect(config.antiSpam.message.thresholds.window).toBe(8);
+    expect(config.antiSpam.message.thresholds.messages).toBeUndefined();
+    expect(config.antiSpam.message.thresholds.windowMs).toBeUndefined();
+    expect(config.antiSpam.message.enabled).toBe(false);
+  });
+
   it("rejects values outside Discord and moderation bounds", () => {
     expect(() => ModerationConfigSchema.parse({
       antiRaid: { alertChannelId: "not-a-snowflake" },

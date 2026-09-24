@@ -33,6 +33,24 @@ export const RuleSchema = z.object({
   thresholds: z.record(z.number().int().finite().min(1).max(100_000)).default({}),
 });
 
+type RuleThresholdDefault = { key: string; value: number; aliases?: string[] };
+function ruleSchemaWithThresholdDefaults(...defaults: RuleThresholdDefault[]) {
+  return RuleSchema.extend({
+    thresholds: z.record(z.number().int().finite().min(1).max(100_000)).default({}).transform((saved) => {
+      const thresholds = { ...saved };
+      for (const { key, value, aliases = [] } of defaults) {
+        // Older configurations may use a compatibility alias. Do not add a
+        // preferred key in that case: it would take precedence and override
+        // the operator's saved threshold.
+        if (![key, ...aliases].some((candidate) => saved[candidate] !== undefined)) {
+          thresholds[key] = value;
+        }
+      }
+      return thresholds;
+    }),
+  });
+}
+
 type ThresholdBound = readonly [minimum: number, maximum: number];
 function validateRuleThresholds(
   rule: { thresholds: Record<string, number> },
@@ -82,9 +100,9 @@ export const ModerationConfigSchema = z.object({
     enabled: z.boolean().default(false),
     wordFilter: RuleSchema.default({}),
     linkBlock: RuleSchema.default({}),
-    emojiLimit: RuleSchema.default({}),
-    capsLimit: RuleSchema.default({}),
-    repeatBlock: RuleSchema.default({}),
+    emojiLimit: ruleSchemaWithThresholdDefaults({ key: "emoji", value: 10, aliases: ["limit", "max"] }).default({}),
+    capsLimit: ruleSchemaWithThresholdDefaults({ key: "capsPercent", value: 75, aliases: ["percent", "limit"] }).default({}),
+    repeatBlock: ruleSchemaWithThresholdDefaults({ key: "repeat", value: 8, aliases: ["limit", "max"] }).default({}),
     forbiddenWords: textList.default([]),
     forbiddenLinks: textList.default([]),
   }).default({}),
@@ -95,25 +113,37 @@ export const ModerationConfigSchema = z.object({
     accountAgeDays: z.number().int().min(0).max(3650).default(7),
     lockdown: z.boolean().default(false),
     alertChannelId: snowflake.nullable().default(null),
-    rule: RuleSchema.default({}),
+    rule: ruleSchemaWithThresholdDefaults(
+      { key: "joins", value: 10, aliases: ["limit"] },
+      { key: "windowSeconds", value: 60, aliases: ["window"] },
+    ).default({}),
   }).default({}),
   // 3. Anti-spam
   antiSpam: z.object({
     enabled: z.boolean().default(false),
-    message: RuleSchema.default({}),
-    edit: RuleSchema.default({}),
-    delete: RuleSchema.default({}),
-    mention: RuleSchema.default({}),
-    emoji: RuleSchema.default({}),
+    message: ruleSchemaWithThresholdDefaults(
+      { key: "messages", value: 5, aliases: ["limit", "max"] },
+      { key: "windowMs", value: 5, aliases: ["window", "seconds"] },
+    ).default({}),
+    edit: ruleSchemaWithThresholdDefaults(
+      { key: "limit", value: 5, aliases: ["edits", "max"] },
+      { key: "windowMs", value: 10, aliases: ["window", "seconds"] },
+    ).default({}),
+    delete: ruleSchemaWithThresholdDefaults(
+      { key: "limit", value: 5, aliases: ["deletes", "max"] },
+      { key: "windowMs", value: 10, aliases: ["window", "seconds"] },
+    ).default({}),
+    mention: ruleSchemaWithThresholdDefaults({ key: "mentions", value: 5, aliases: ["limit", "max"] }).default({}),
+    emoji: ruleSchemaWithThresholdDefaults({ key: "emoji", value: 10, aliases: ["limit", "max"] }).default({}),
     logChannelId: snowflake.nullable().default(null),
   }).default({}),
   // 4. Anti-flood
   antiFlood: z.object({
     enabled: z.boolean().default(false),
-    longMessage: RuleSchema.default({}),
-    character: RuleSchema.default({}),
-    caps: RuleSchema.default({}),
-    symbol: RuleSchema.default({}),
+    longMessage: ruleSchemaWithThresholdDefaults({ key: "length", value: 1_500, aliases: ["maxLength", "limit"] }).default({}),
+    character: ruleSchemaWithThresholdDefaults({ key: "run", value: 16, aliases: ["limit", "max"] }).default({}),
+    caps: ruleSchemaWithThresholdDefaults({ key: "capsPercent", value: 75, aliases: ["percent", "limit"] }).default({}),
+    symbol: ruleSchemaWithThresholdDefaults({ key: "run", value: 16, aliases: ["limit", "max"] }).default({}),
   }).default({}),
   // 5. Manual staff tools and independent command grants
   manualTools: z.object({
@@ -198,12 +228,12 @@ export const ModerationConfigSchema = z.object({
     sensitivity: z.enum(["low", "medium", "high"]).default("medium"),
     action: action.default("none"),
     alertChannelId: snowflake.nullable().default(null),
-    nicknameChanges: RuleSchema.default({}),
-    roleChanges: RuleSchema.default({}),
-    massEdits: RuleSchema.default({}),
-    massDeletes: RuleSchema.default({}),
-    joinLeaveFlood: RuleSchema.default({}),
-    unusualActivity: RuleSchema.default({}),
+    nicknameChanges: ruleSchemaWithThresholdDefaults({ key: "limit", value: 5, aliases: ["changes"] }).default({}),
+    roleChanges: ruleSchemaWithThresholdDefaults({ key: "limit", value: 5, aliases: ["changes"] }).default({}),
+    massEdits: ruleSchemaWithThresholdDefaults({ key: "limit", value: 5, aliases: ["changes"] }).default({}),
+    massDeletes: ruleSchemaWithThresholdDefaults({ key: "limit", value: 5, aliases: ["changes"] }).default({}),
+    joinLeaveFlood: ruleSchemaWithThresholdDefaults({ key: "limit", value: 10, aliases: ["changes"] }).default({}),
+    unusualActivity: ruleSchemaWithThresholdDefaults({ key: "limit", value: 5, aliases: ["changes"] }).default({}),
   }).default({}),
   // 12. AI moderation
   ai: z.object({

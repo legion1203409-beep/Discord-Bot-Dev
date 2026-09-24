@@ -80,7 +80,32 @@ vi.mock("../../bot/gameplay-store", () => ({
 vi.mock("../../bot/channel-config", () => ({ initChannelConfig: mocks.initChannelConfig }));
 vi.mock("../../bot/channel-provisioning", () => ({ provisionGuildChannels: mocks.provisionGuildChannels }));
 
-import router from "../router";
+import router, { provisioningPermissionSchema } from "../router";
+
+describe("bot-control provisioning permission defaults", () => {
+  it("fills missing fields while preserving explicitly saved permission values", () => {
+    const permissions = provisioningPermissionSchema.parse({
+      roleIds: ["11111111111111111"],
+      sendMessages: false,
+      rolePermissions: {
+        "22222222222222222": { viewChannel: false },
+      },
+    });
+
+    expect(permissions).toEqual({
+      roleIds: ["11111111111111111"],
+      readMessageHistory: true,
+      sendMessages: false,
+      rolePermissions: {
+        "22222222222222222": {
+          viewChannel: false,
+          readMessageHistory: true,
+          sendMessages: true,
+        },
+      },
+    });
+  });
+});
 import { ModerationAuthError } from "../auth";
 import { defaultModerationConfig } from "../config";
 import { DEFAULT_GAMEPLAY_CONFIG } from "../../bot/gameplay-config";

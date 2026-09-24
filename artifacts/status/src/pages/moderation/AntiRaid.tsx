@@ -103,7 +103,7 @@ export function AntiRaidPage() {
           </label>
           <label className="space-y-2 text-sm">
             <span className="font-medium">Vârsta minimă a contului</span>
-            <Input type="number" min={0} max={3650} value={antiRaid.accountAgeDays ?? 0} onChange={(event) => setAntiRaid(["accountAgeDays"], Number(event.target.value))} />
+            <Input type="number" min={0} max={3650} value={antiRaid.accountAgeDays ?? 7} onChange={(event) => setAntiRaid(["accountAgeDays"], Number(event.target.value))} />
             <span className="block text-xs text-muted-foreground">Conturile mai noi pot declanșa regula.</span>
           </label>
         </div>

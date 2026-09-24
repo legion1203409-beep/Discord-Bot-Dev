@@ -135,10 +135,18 @@ function ListField({ label, help, values, onChange, ids = false }: {
   );
 }
 
-type Threshold = { key: string; label: string; help: string; min: number; max: number };
+type Threshold = { key: string; label: string; help: string; min: number; max: number; groupKeys: string[] };
 type RuleProps = { title: string; help?: string; rule: any; thresholds: Threshold[]; onChange: (path: string[], value: any) => void };
 
 function RuleEditor({ title, help, rule, thresholds, onChange }: RuleProps) {
+  const thresholdFields = thresholds.map((field) => ({
+    ...field,
+    groupKeys: field.groupKeys.length > 1
+      ? field.groupKeys
+      : thresholds
+        .filter((candidate) => candidate.min === field.min && candidate.max === field.max)
+        .map((candidate) => candidate.key),
+  }));
   return (
     <div className="space-y-4 rounded-lg border border-border bg-muted/20 p-4">
       <div><h4 className="font-medium">{title}</h4>{help && <p className="text-xs text-muted-foreground">{help}</p>}</div>
@@ -149,17 +157,23 @@ function RuleEditor({ title, help, rule, thresholds, onChange }: RuleProps) {
       </div>
       {thresholds.length > 0 && (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {thresholds.map((threshold) => (
+          {thresholdFields.map((threshold) => (
             <NumberField
               key={threshold.key}
               label={threshold.label}
               help={threshold.help}
-              value={rule.thresholds?.[threshold.key]}
+              value={rule.thresholds?.[threshold.key] ?? threshold.groupKeys
+                .map((key) => rule.thresholds?.[key])
+                .find((value) => value !== undefined)}
               min={threshold.min}
               max={threshold.max}
               onChange={(value) => {
-                if (value === undefined) onChange(["thresholds", threshold.key], undefined);
-                else onChange(["thresholds", threshold.key], value);
+                const nextThresholds = { ...(rule.thresholds ?? {}) };
+                for (const key of threshold.groupKeys) {
+                  if (value === undefined) delete nextThresholds[key];
+                  else nextThresholds[key] = value;
+                }
+                onChange(["thresholds"], nextThresholds);
               }}
             />
           ))}
@@ -169,46 +183,58 @@ function RuleEditor({ title, help, rule, thresholds, onChange }: RuleProps) {
   );
 }
 
-const threshold = (key: string, label: string, help: string, min: number, max: number): Threshold => ({ key, label, help, min, max });
+const threshold = (
+  key: string,
+  label: string,
+  help: string,
+  min: number,
+  max: number,
+  groupKeys: string[] = [key],
+): Threshold => ({ key, label, help, min, max, groupKeys });
+const EMOJI_KEYS = ["emoji", "limit", "max"];
+const CAPS_KEYS = ["capsPercent", "percent", "limit"];
+const REPEAT_KEYS = ["repeat", "limit", "max"];
+const RUN_KEYS = ["run", "limit", "max"];
+const WINDOW_KEYS = ["windowMs", "window", "seconds"];
 const EMOJI_LIMIT = [
-  threshold("emoji", "Emoji", "Număr maxim de emoji.", 1, 200),
-  threshold("limit", "Limită emoji (alias)", "Alias compatibil pentru limită.", 1, 200),
-  threshold("max", "Maxim emoji (alias)", "Alias compatibil pentru limită.", 1, 200),
+  threshold("emoji", "Emoji", "Număr maxim de emoji.", 1, 200, EMOJI_KEYS),
+  threshold("limit", "Limită emoji (alias)", "Alias compatibil pentru limită.", 1, 200, EMOJI_KEYS),
+  threshold("max", "Maxim emoji (alias)", "Alias compatibil pentru limită.", 1, 200, EMOJI_KEYS),
 ];
 const CAPS_LIMIT = [
-  threshold("capsPercent", "Procent majuscule", "Procent între 1 și 100.", 1, 100),
-  threshold("percent", "Procent (alias)", "Alias compatibil pentru procent.", 1, 100),
-  threshold("limit", "Limită (alias)", "Alias compatibil pentru procent.", 1, 100),
+  threshold("capsPercent", "Procent majuscule", "Procent între 1 și 100.", 1, 100, CAPS_KEYS),
+  threshold("percent", "Procent (alias)", "Alias compatibil pentru procent.", 1, 100, CAPS_KEYS),
+  threshold("limit", "Limită (alias)", "Alias compatibil pentru procent.", 1, 100, CAPS_KEYS),
 ];
 const REPEAT_LIMIT = [
-  threshold("repeat", "Repetări", "Număr de repetări consecutive.", 2, 200),
-  threshold("limit", "Limită repetări (alias)", "Alias compatibil pentru repetări.", 2, 200),
-  threshold("max", "Maxim repetări (alias)", "Alias compatibil pentru repetări.", 2, 200),
+  threshold("repeat", "Repetări", "Număr de repetări consecutive.", 2, 200, REPEAT_KEYS),
+  threshold("limit", "Limită repetări (alias)", "Alias compatibil pentru repetări.", 2, 200, REPEAT_KEYS),
+  threshold("max", "Maxim repetări (alias)", "Alias compatibil pentru repetări.", 2, 200, REPEAT_KEYS),
 ];
 const RAID_LIMIT = [
-  threshold("joins", "Intrări", "Intrări observate în fereastră.", 1, 10000),
-  threshold("limit", "Limită intrări (alias)", "Alias compatibil pentru intrări.", 1, 10000),
-  threshold("windowSeconds", "Fereastră (secunde)", "Intervalul de măsurare, în secunde.", 1, 3600),
+  threshold("joins", "Intrări", "Intrări observate în fereastră.", 1, 10000, ["limit", "joins"]),
+  threshold("limit", "Limită intrări (alias)", "Alias compatibil pentru intrări.", 1, 10000, ["limit", "joins"]),
+  threshold("windowSeconds", "Fereastră (secunde)", "Intervalul de măsurare, în secunde.", 1, 3600, ["windowSeconds", "window"]),
 ];
 const MESSAGE_SPAM = [
-  threshold("messages", "Mesaje", "Mesaje până la declanșare.", 1, 1000),
-  threshold("limit", "Limită mesaje (alias)", "Alias compatibil pentru numărul de mesaje.", 1, 1000),
-  threshold("max", "Maxim mesaje (alias)", "Alias compatibil pentru numărul de mesaje.", 1, 1000),
-  threshold("window", "Fereastră (secunde)", "Intervalul de măsurare în secunde.", 1, 3600),
-  threshold("seconds", "Secunde (alias)", "Alias compatibil pentru interval.", 1, 3600),
+  threshold("messages", "Mesaje", "Mesaje până la declanșare.", 1, 1000, ["messages", "limit", "max"]),
+  threshold("limit", "Limită mesaje (alias)", "Alias compatibil pentru numărul de mesaje.", 1, 1000, ["messages", "limit", "max"]),
+  threshold("max", "Maxim mesaje (alias)", "Alias compatibil pentru numărul de mesaje.", 1, 1000, ["messages", "limit", "max"]),
+  threshold("window", "Fereastră (secunde)", "Intervalul de măsurare în secunde.", 1, 3600, WINDOW_KEYS),
+  threshold("seconds", "Secunde (alias)", "Alias compatibil pentru interval.", 1, 3600, WINDOW_KEYS),
 ];
 const EDIT_SPAM = [
-  threshold("edits", "Editări", "Editări până la declanșare.", 1, 1000),
-  threshold("limit", "Limită editări (alias)", "Alias compatibil pentru numărul de editări.", 1, 1000),
-  threshold("window", "Fereastră (secunde)", "Intervalul de măsurare în secunde.", 1, 3600),
+  threshold("edits", "Editări", "Editări până la declanșare.", 1, 1000, ["limit", "edits", "max"]),
+  threshold("limit", "Limită editări (alias)", "Alias compatibil pentru numărul de editări.", 1, 1000, ["limit", "edits", "max"]),
+  threshold("window", "Fereastră (secunde)", "Intervalul de măsurare în secunde.", 1, 3600, WINDOW_KEYS),
 ];
 const DELETE_SPAM = [
-  threshold("deletes", "Ștergeri", "Ștergeri până la declanșare.", 1, 1000),
-  threshold("limit", "Limită ștergeri (alias)", "Alias compatibil pentru numărul de ștergeri.", 1, 1000),
-  threshold("window", "Fereastră (secunde)", "Intervalul de măsurare în secunde.", 1, 3600),
+  threshold("deletes", "Ștergeri", "Ștergeri până la declanșare.", 1, 1000, ["limit", "deletes", "max"]),
+  threshold("limit", "Limită ștergeri (alias)", "Alias compatibil pentru numărul de ștergeri.", 1, 1000, ["limit", "deletes", "max"]),
+  threshold("window", "Fereastră (secunde)", "Intervalul de măsurare în secunde.", 1, 3600, WINDOW_KEYS),
 ];
 const MENTION_LIMIT = [
-  threshold("mentions", "Mențiuni", "Mențiuni într-un mesaj până la declanșare.", 1, 100),
+  threshold("mentions", "Mențiuni", "Mențiuni într-un mesaj până la declanșare.", 1, 100, ["mentions", "limit", "max"]),
   threshold("limit", "Limită mențiuni (alias)", "Alias compatibil pentru numărul de mențiuni.", 1, 100),
   threshold("max", "Maxim mențiuni (alias)", "Alias compatibil pentru numărul de mențiuni.", 1, 100),
 ];

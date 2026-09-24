@@ -114,6 +114,31 @@ test.describe("authenticated moderation console", () => {
     }
   }
 
+  test("dashboard sections stack cleanly at a 1024px viewport", async ({ page }) => {
+    await page.setViewportSize({ width: 1024, height: 768 });
+    await page.goto("/");
+    await expect(page).toHaveURL("/moderare");
+    await chooseFirstGuild(page);
+
+    const columns = page.getByTestId("dashboard-columns");
+    await expect(columns).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Module de Protecție" })).toBeVisible();
+    await expect(page.getByTestId("card-module-autoMod")).toBeVisible();
+    await expect(columns).toHaveCSS("opacity", "1");
+    await columns.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: "/tmp/moderation-dashboard-1024px.png" });
+    const sections = columns.locator(":scope > section");
+    const modules = await sections.nth(0).boundingBox();
+    const activity = await sections.nth(1).boundingBox();
+    const firstModuleCard = await page.getByTestId("card-module-autoMod").boundingBox();
+
+    expect(modules?.width).toBeGreaterThan(500);
+    expect(activity?.width).toBeGreaterThan(500);
+    expect(Math.abs(activity!.x - modules!.x)).toBeLessThan(1);
+    expect(activity!.y).toBeGreaterThan(modules!.y + modules!.height);
+    expect(firstModuleCard?.width).toBeGreaterThan(500);
+  });
+
   test("renders every moderation destination instead of the work-in-progress fallback", async ({ page }) => {
     await page.goto("/");
     await expect(page).toHaveURL("/moderare");

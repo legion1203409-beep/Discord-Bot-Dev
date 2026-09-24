@@ -341,24 +341,29 @@ const botChannelConfigSchema = z.object(
 ;
 
 
-const provisioningPermissionSchema = z.object(
+export const provisioningPermissionSchema = z.object(
 {
 
-  roleIds: z.array(snowflake).max(50),
-  readMessageHistory: z.boolean(),
-  sendMessages: z.boolean(),
+  roleIds: z.array(snowflake).max(50).default([]),
+  readMessageHistory: z.boolean().default(true),
+  sendMessages: z.boolean().default(true),
   rolePermissions: z.record(snowflake, z.object(
 {
 
-    viewChannel: z.boolean(),
-    readMessageHistory: z.boolean(),
-    sendMessages: z.boolean(),
+    viewChannel: z.boolean().default(true),
+    readMessageHistory: z.boolean().default(true),
+    sendMessages: z.boolean().default(true),
   
 }
 ).strict()).optional(),
 }
 ).strict()
 ;
+
+const provisioningPermissionsSchema = z.record(
+  z.string().min(1).max(40),
+  provisioningPermissionSchema,
+);
 
 
 const provisionChannelsSchema = z.object(
@@ -564,7 +569,7 @@ export const botControlSchema = z.object(
 
 
   channels: botChannelConfigSchema,
-  provisioningPermissions: z.record(z.string().min(1).max(40), provisioningPermissionSchema).default(
+  provisioningPermissions: provisioningPermissionsSchema.default(
 {
 }
 ),
@@ -2147,7 +2152,7 @@ router.get("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
     verification: normalizeVerificationConfig(verification),
     dailyStats,
     inviteTracking,
-    provisioningPermissions,
+    provisioningPermissions: provisioningPermissionsSchema.parse(provisioningPermissions),
     discordLive: Boolean(getModerationClient()?.isReady()),
   });
 }));

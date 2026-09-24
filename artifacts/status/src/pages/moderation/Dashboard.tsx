@@ -318,8 +318,8 @@ export function DashboardOverview() {
         </div>
       </section>
 
-      <div className="grid gap-6 lg:grid-cols-[.9fr_1.1fr] animate-stagger-5">
-        <section className="space-y-4">
+      <div data-testid="dashboard-columns" className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] animate-stagger-5">
+        <section className="min-w-0 space-y-4">
           <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border/60 pb-3">
             <div><p className="mod-eyebrow">Sisteme</p><h2 className="mod-heading mt-1 text-2xl">Module de Protecție</h2></div>
             <div className="flex items-center gap-3">
@@ -336,7 +336,7 @@ export function DashboardOverview() {
               <Link href="/protectie" data-testid="link-dashboard-protection" className="inline-flex items-center gap-1 text-xs font-mono tracking-widest text-primary hover:text-primary/80 transition-colors">GESTIONEAZĂ <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" /></Link>
             </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 2xl:grid-cols-2">
             {modules.map((mod) => (
               <article key={mod.key} className={`mod-card mod-card-interactive flex min-w-0 items-start gap-3 p-4 ${deactivatingKey === mod.key ? "protection-deactivating" : ""}`} data-testid={`card-module-${mod.key}`}>
                 <div className={`shrink-0 rounded-lg border p-2.5 transition-colors ${mod.active ? "border-primary/30 bg-primary/10 text-primary" : "border-transparent bg-secondary text-muted-foreground"}`}><mod.icon className="h-4 w-4" aria-hidden="true" /></div>
@@ -362,7 +362,7 @@ export function DashboardOverview() {
           </div>
         </section>
 
-        <section className="space-y-4">
+        <section className="min-w-0 space-y-4">
           <div className="flex items-end justify-between border-b border-border/60 pb-3">
             <div><p className="mod-eyebrow">Jurnal</p><h2 className="mod-heading mt-1 text-2xl">Activitate Recentă</h2></div>
             <Link href="/audit" data-testid="link-dashboard-audit" className="inline-flex items-center gap-1 text-xs font-mono tracking-widest text-primary hover:text-primary/80 transition-colors">VEZI TOT <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" /></Link>
