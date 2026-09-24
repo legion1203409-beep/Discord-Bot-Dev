@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { defaultModerationConfig } from "../../moderation/config";
 import { DEFAULT_VERIFICATION_CONFIG } from "../verification";
 import { DEFAULT_TICKET_CONFIG } from "../ticket-config";
-import { provisionGuildChannels } from "../channel-provisioning";
+import { provisionActivityLogChannels, provisionGuildChannels } from "../channel-provisioning";
 
 function channel(id: string, name: string, type: ChannelType) {
   const value = {
@@ -231,5 +231,103 @@ describe("guild channel provisioning", () => {
     const edits = [...createdChannels.values()][0].permissionOverwrites.edit.mock.calls;
     expect(edits).toContainEqual(["role-visitor", { ViewChannel: true, ReadMessageHistory: true, SendMessages: false }, expect.anything()]);
     expect(edits).toContainEqual(["role-staff", { ViewChannel: true, ReadMessageHistory: true, SendMessages: true }, expect.anything()]);
+  });
+
+  it("creates private activity-log channels once and reuses them on retries", async () => {
+    const channels = new Map<string, ReturnType<typeof channel>>();
+    const create = vi.fn(async ({ name, type, parent }: { name: string; type: ChannelType; parent?: string }) => {
+      const created = channel(`activity-${channels.size}`, name, type);
+      created.parentId = parent ?? null;
+      channels.set(created.id, created);
+      return created;
+    });
+    const guild = {
+      id: "guild-activity-log",
+      channels: { fetch: vi.fn(async () => channels), create },
+      roles: {
+        everyone: { id: "everyone-role" },
+        cache: new Map([
+          ["everyone-role", { id: "everyone-role" }],
+          ["role-staff", { id: "role-staff" }],
+          ["role-new", { id: "role-new" }],
+          ["bot-role", { id: "bot-role" }],
+        ]),
+      },
+      members: { me: { roles: { highest: { id: "bot-role" } } } },
+    } as unknown as Guild;
+    const activityLog = {
+      ...structuredClone(defaultModerationConfig.activityLog),
+      enabled: true,
+      roleIds: ["role-staff"],
+    };
+
+    const first = await provisionActivityLogChannels(guild, { activityLog });
+    expect(first.created).toHaveLength(8);
+    expect(first.created[0]).toMatchObject({ key: "activityLog.category", type: "category" });
+    expect(Object.values(first.activityLog.channelIds).filter(Boolean)).toHaveLength(7);
+    const categoryId = first.activityLog.categoryId;
+    expect([...channels.values()].filter((entry) => entry.type === ChannelType.GuildText)
+      .every((entry) => entry.parentId === categoryId)).toBe(true);
+    for (const entry of channels.values()) {
+      expect(entry.permissionOverwrites.edit).toHaveBeenCalledWith(
+        "everyone-role",
+        { ViewChannel: false, ReadMessageHistory: false, SendMessages: false },
+        expect.anything(),
+      );
+      expect(entry.permissionOverwrites.edit).toHaveBeenCalledWith(
+        "role-staff",
+        { ViewChannel: true, ReadMessageHistory: true, SendMessages: false },
+        expect.anything(),
+      );
+    }
+
+    const second = await provisionActivityLogChannels(guild, {
+      activityLog: first.activityLog,
+      previousRoleIds: ["role-staff"],
+    });
+    expect(second.created).toEqual([]);
+    expect(second.reused).toHaveLength(8);
+    expect(create).toHaveBeenCalledTimes(8);
+
+    const membersChannelId = second.activityLog.channelIds.members!;
+    const third = await provisionActivityLogChannels(guild, {
+      activityLog: {
+        ...second.activityLog,
+        categories: { ...second.activityLog.categories, members: false },
+        roleIds: ["role-new"],
+      },
+      previousRoleIds: ["role-staff"],
+    });
+    expect(create).toHaveBeenCalledTimes(8);
+    expect(channels.get(membersChannelId)!.permissionOverwrites.edit).toHaveBeenCalledWith(
+      "role-staff",
+      { ViewChannel: null, ReadMessageHistory: null, SendMessages: null },
+      expect.anything(),
+    );
+    expect(channels.get(membersChannelId)!.permissionOverwrites.edit).toHaveBeenCalledWith(
+      "role-new",
+      { ViewChannel: true, ReadMessageHistory: true, SendMessages: false },
+      expect.anything(),
+    );
+    expect(third.activityLog.channelIds.members).toBe(membersChannelId);
+  });
+
+  it("rejects @everyone rather than making the private activity-log channels public", async () => {
+    const channels = new Map<string, ReturnType<typeof channel>>();
+    const guild = {
+      id: "guild-activity-everyone",
+      channels: {
+        fetch: vi.fn(async () => channels),
+        create: vi.fn(),
+      },
+      roles: { everyone: { id: "guild-activity-everyone" }, cache: new Map() },
+    } as unknown as Guild;
+    await expect(provisionActivityLogChannels(guild, {
+      activityLog: {
+        ...structuredClone(defaultModerationConfig.activityLog),
+        enabled: true,
+        roleIds: ["guild-activity-everyone"],
+      },
+    })).rejects.toThrow("@everyone");
   });
 });

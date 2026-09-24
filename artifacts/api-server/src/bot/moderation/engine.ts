@@ -22,7 +22,7 @@ import {
   hasManualGrant,
   type ModerationActionType,
 } from "./policy";
-import { attachModerationEvents } from "./events";
+import { attachModerationEvents, deliverActivityLog } from "./events";
 
 export type ModerationActionInput = {
   guildId: string;
@@ -217,8 +217,20 @@ async function createCase(input: ModerationActionInput, outcome: "pending" | "ap
 
 async function audit(input: ModerationActionInput, eventType: string, targetType: string | null, targetId: string | null, detail: Record<string, unknown>): Promise<void> {
   const config = await getConfig(input.guildId);
-  if (!config.audit.enabled && !(input.source === "manual" && config.manualTools.logActions)) return;
-  await moderationStore.writeAudit({ guildId: input.guildId, actorId: input.actorId, eventType, targetType, targetId, detail });
+  const auditDetail = {
+    ...detail,
+    actorVerified: /^\d{5,25}$/.test(input.actorId),
+    actorId: input.actorId,
+    ...(input.channelId ? { channelId: input.channelId } : {}),
+  };
+  if (config.audit.enabled || config.activityLog.enabled || (input.source === "manual" && config.manualTools.logActions)) {
+    await moderationStore.writeAudit({ guildId: input.guildId, actorId: input.actorId, eventType, targetType, targetId, detail: auditDetail });
+  }
+  if (config.activityLog.enabled && moderationClient) {
+    const guild = moderationClient.guilds.cache.get(input.guildId) ??
+      await moderationClient.guilds.fetch(input.guildId).catch(() => null);
+    if (guild) await deliverActivityLog(guild, config, eventType, targetType ?? "target", targetId ?? input.guildId, auditDetail);
+  }
 }
 
 function buildEmbed(config: ModerationConfig, title: string, description: string): EmbedBuilder | null {
@@ -664,8 +676,9 @@ export async function handleModerationMessage(client: Client, message: Message):
 
 export async function auditExternal(guildId: string, eventType: string, targetType: string, targetId: string, detail: Record<string, unknown>): Promise<void> {
   const config = await getConfig(guildId);
-  if (!config.audit.enabled) return;
-  await moderationStore.writeAudit({ guildId, actorId: null, eventType, targetType, targetId, detail });
+  if (!config.audit.enabled && !config.activityLog.enabled) return;
+  const actorId = detail.actorVerified === true && typeof detail.actorId === "string" ? detail.actorId : null;
+  await moderationStore.writeAudit({ guildId, actorId, eventType, targetType, targetId, detail });
 }
 
 /** Register the independently owned Discord-event adapter once per client. */

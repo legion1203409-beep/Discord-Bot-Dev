@@ -20,6 +20,17 @@ describe("moderation configuration defaults", () => {
     expect(config.protection.enabled).toBe(false);
   });
 
+  it("keeps automatic activity logs disabled by default and requires private-channel access when enabled", () => {
+    expect(defaultModerationConfig.activityLog.enabled).toBe(false);
+    expect(defaultModerationConfig.activityLog.channelIds.messages).toBeNull();
+    expect(() => ModerationConfigSchema.parse({
+      activityLog: { enabled: true, roleIds: [] },
+    })).toThrow(/cel puțin un rol/i);
+    expect(() => ModerationConfigSchema.parse({
+      activityLog: { enabled: true, roleIds: ["123456789012345678"], categories: { messages: false, members: false, channels: false, roles: false, voice: false, moderation: false, security: false } },
+    })).toThrow(/cel puțin o categorie/i);
+  });
+
   it("retains a disabled rule unless an operator explicitly enables it", () => {
     const config = ModerationConfigSchema.parse({
       autoMod: { wordFilter: { action: "mute", thresholds: { matches: 2 } } },

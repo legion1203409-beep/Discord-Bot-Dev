@@ -28,6 +28,19 @@ const eventTitles: Record<string, string> = {
   "ai.flagged": "Mesaj semnalat de moderarea AI",
   "raid.detected": "Alertă Anti-Raid",
   "raid.lockdown_failed": "Blocare Anti-Raid eșuată",
+  "discord.message_update": "Mesaj editat",
+  "discord.message_delete": "Mesaj șters",
+  "discord.message_bulk_delete": "Mesaje șterse în masă",
+  "discord.member_join": "Membru a intrat pe server",
+  "discord.member_leave": "Membru a părăsit serverul",
+  "discord.member_update": "Membru sau roluri actualizate",
+  "discord.voice_state_update": "Stare vocală schimbată",
+  "discord.channelCreate": "Canal creat",
+  "discord.channelUpdate": "Canal actualizat",
+  "discord.channelDelete": "Canal șters",
+  "discord.guildRoleCreate": "Rol creat",
+  "discord.guildRoleUpdate": "Rol actualizat",
+  "discord.guildRoleDelete": "Rol șters",
 };
 
 const actionLabels: Record<string, string> = {
@@ -96,11 +109,69 @@ function targetDescription(log: ModerationAuditLog): string | null {
   return `Țintă: ${targetType}${log.targetId}`;
 }
 
+export function presentAuditActor(log: ModerationAuditLog): string {
+  if (log.detail?.actorVerified === false) return "Actor neverificat";
+  return log.actorId || "Sistem";
+}
+
+function eventMetadataDetails(log: ModerationAuditLog, normalizedType: string): string | null {
+  const detail = log.detail ?? {};
+  const channelId = getText(detail.channelId);
+  const channel = channelId ? `Canal: ${channelId}.` : "";
+  const entityName = getText(detail.entityName) ?? getText(detail.name);
+
+  if (normalizedType === "discord.message_update") {
+    return `Mesajul a fost editat în ${channelId ? `canalul ${channelId}` : "un canal"}. Conținutul nu este salvat.`;
+  }
+  if (normalizedType === "discord.message_delete" || normalizedType === "discord.message_bulk_delete") {
+    const count = typeof detail.messageCount === "number" ? detail.messageCount : 1;
+    return `${count} ${count === 1 ? "mesaj a fost șters" : "mesaje au fost șterse"}${channelId ? ` din canalul ${channelId}` : ""}. Conținutul nu este salvat.`;
+  }
+  if (normalizedType === "discord.member_join") {
+    const age = typeof detail.accountAgeDays === "number" ? ` Contul are ${detail.accountAgeDays} zile.` : "";
+    return `Membrul a intrat pe server.${age}`;
+  }
+  if (normalizedType === "discord.member_leave") return "Membrul a părăsit serverul.";
+  if (normalizedType === "discord.member_update") {
+    const changes: string[] = [];
+    if (detail.nicknameChanged === true) {
+      changes.push(`Poreclă: „${getText(detail.oldNickname) ?? "fără poreclă"}” → „${getText(detail.newNickname) ?? "fără poreclă"}”.`);
+    }
+    if (Array.isArray(detail.addedRoles) && detail.addedRoles.length) changes.push(`Roluri adăugate: ${detail.addedRoles.map(String).join(", ")}.`);
+    if (Array.isArray(detail.removedRoles) && detail.removedRoles.length) changes.push(`Roluri eliminate: ${detail.removedRoles.map(String).join(", ")}.`);
+    return changes.join(" ") || "Detaliile schimbării membrului nu sunt disponibile.";
+  }
+  if (normalizedType === "discord.voice_state_update") {
+    const changes: string[] = [];
+    if (detail.channelChanged === true) changes.push(`Canal vocal: ${getText(detail.oldChannelId) ?? "în afara canalului"} → ${getText(detail.newChannelId) ?? "în afara canalului"}.`);
+    for (const [key, label] of [["selfMute", "Microfon propriu"], ["serverMute", "Microfon server"], ["selfDeaf", "Sunet propriu"], ["serverDeaf", "Sunet server"], ["streaming", "Transmisie"], ["video", "Video"]] as const) {
+      if (typeof detail[key] === "boolean") changes.push(`${label}: ${detail[key] ? "activ" : "inactiv"}.`);
+    }
+    return changes.join(" ") || "Starea vocală a fost actualizată.";
+  }
+  if (/^discord\.(channel|guild_role)_(create|update|delete)$/.test(normalizedType)) {
+    const operation = normalizedType.endsWith("_create") ? "a fost creat" : normalizedType.endsWith("_delete") ? "a fost șters" : "a fost actualizat";
+    const changes = detail.changes && typeof detail.changes === "object"
+      ? Object.entries(detail.changes as Record<string, unknown>)
+        .map(([key, value]) => `${humanize(key).toLocaleLowerCase()}: ${JSON.stringify(value)}`)
+        .join("; ")
+      : "";
+    return `${entityName ? `„${entityName}” ` : ""}${operation}.${channel ? ` ${channel}` : ""}${changes ? ` Modificări: ${changes}` : ""}`;
+  }
+  return null;
+}
+
 export function presentAuditLog(log: ModerationAuditLog): AuditLogPresentation {
   const detail = log.detail ?? {};
   const eventType = log.eventType || "unknown";
   const title = eventTitles[eventType] ?? humanize(eventType);
   let details: string | null = null;
+  const normalizedType = eventType.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLocaleLowerCase();
+
+  const metadataDetails = eventMetadataDetails(log, normalizedType);
+  if (metadataDetails) {
+    return { title, details: metadataDetails };
+  }
 
   switch (eventType) {
     case "config.updated": {

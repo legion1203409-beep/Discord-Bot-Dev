@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Textarea } from "../../components/ui/textarea";
 import { useToast } from "../../hooks/use-toast";
 import { AlertTriangle, ShieldAlert } from "lucide-react";
-import { presentAuditLog } from "../../lib/moderation-audit";
+import { presentAuditActor, presentAuditLog } from "../../lib/moderation-audit";
 
 function ReconcileDialog({ actionId, open, onOpenChange, onReconciled }: { actionId: string | null, open: boolean, onOpenChange: (o: boolean) => void, onReconciled: () => void }) {
   const { guildId } = useActiveGuild();
@@ -101,6 +101,7 @@ export function AuditPage() {
       return [
         presentation.title,
         presentation.details,
+        presentAuditActor(event),
         event.actorId,
         event.targetId,
       ].some((value) => value?.toLocaleLowerCase().includes(query));
@@ -192,7 +193,7 @@ export function AuditPage() {
                       <span className="text-sm font-semibold tracking-wide text-foreground">{presentation.title}</span>
                     </div>
                     <div className="text-sm text-muted-foreground">
-                      Actor: <span className="text-foreground">{ev.actorId || "Sistem"}</span>
+                      Actor: <span className="text-foreground">{presentAuditActor(ev)}</span>
                       {ev.targetId && <span> → Țintă: <span className="text-foreground">{ev.targetId}</span></span>}
                     </div>
                     <div className="text-xs text-muted-foreground mt-1">

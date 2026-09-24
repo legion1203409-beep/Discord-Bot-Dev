@@ -1,6 +1,6 @@
-import { ChannelType, type Guild, type NonThreadGuildBasedChannel } from "discord.js";
+import { ChannelType, PermissionFlagsBits, type Guild, type NonThreadGuildBasedChannel } from "discord.js";
 import type { ChannelConfig, VerificationConfig } from "./db";
-import type { ModerationConfig } from "../moderation/config";
+import type { ActivityLogCategory, ModerationConfig } from "../moderation/config";
 import type { TicketConfig, TicketCategoryKind } from "./ticket-config";
 
 export type ProvisionedChannel = {
@@ -41,6 +41,11 @@ type ChannelTarget = {
 };
 
 export type ProvisioningCategoryKey = "gameplay" | "admin" | "filtered" | "links" | "security" | "verification";
+export type ActivityLogProvisionResult = {
+  activityLog: ModerationConfig["activityLog"];
+  created: ProvisionedChannel[];
+  reused: ProvisionedChannel[];
+};
 
 type ProvisioningCategoryTarget = {
   key: ProvisioningCategoryKey;
@@ -91,6 +96,33 @@ const MODERATION_TARGETS = [
 ] as const;
 
 const provisionLocks = new Map<string, Promise<ChannelProvisionResult>>();
+const activityProvisionLocks = new Map<string, Promise<ActivityLogProvisionResult>>();
+
+const ACTIVITY_LOG_CATEGORIES: Array<{ key: ActivityLogCategory; name: string }> = [
+  { key: "messages", name: "jurnal-mesaje" },
+  { key: "members", name: "jurnal-membri" },
+  { key: "channels", name: "jurnal-canale" },
+  { key: "roles", name: "jurnal-roluri" },
+  { key: "voice", name: "jurnal-vocal" },
+  { key: "moderation", name: "jurnal-moderare" },
+  { key: "security", name: "jurnal-securitate" },
+];
+
+function activityLogPermissionOverwrites(guild: Guild, roleIds: string[]) {
+  const access = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory];
+  const botAccess = [...access, PermissionFlagsBits.SendMessages];
+  const botRoleId = guild.members.me?.roles.highest?.id;
+  return [
+    {
+      id: guild.roles.everyone.id,
+      deny: [...access, PermissionFlagsBits.SendMessages],
+    },
+    ...roleIds
+      .filter((id) => id !== guild.roles.everyone.id && id !== botRoleId)
+      .map((id) => ({ id, allow: access, deny: [PermissionFlagsBits.SendMessages] })),
+    ...(botRoleId ? [{ id: botRoleId, allow: botAccess }] : []),
+  ];
+}
 
 async function applyPermissions(
   guild: Guild,
@@ -324,8 +356,126 @@ export function provisionGuildChannels(
   const previous = provisionLocks.get(guild.id);
   const next = (previous ?? Promise.resolve()).then(() => provisionGuildChannelsUnlocked(guild, input));
   provisionLocks.set(guild.id, next);
-  void next.finally(() => {
+  const cleanup = () => {
     if (provisionLocks.get(guild.id) === next) provisionLocks.delete(guild.id);
-  });
+  };
+  void next.then(cleanup, cleanup);
+  return next;
+}
+
+async function provisionActivityLogChannelsUnlocked(
+  guild: Guild,
+  input: {
+    activityLog: ModerationConfig["activityLog"];
+    previousRoleIds?: string[];
+  },
+): Promise<ActivityLogProvisionResult> {
+  const channels = await guild.channels.fetch();
+  const created: ProvisionedChannel[] = [];
+  const reused: ProvisionedChannel[] = [];
+  if (input.activityLog.roleIds.includes(guild.roles.everyone.id)) {
+    throw new Error("@everyone nu poate fi selectat pentru canalele private de jurnal.");
+  }
+  const missingRole = input.activityLog.roleIds.find((roleId) => !guild.roles.cache.has(roleId));
+  if (missingRole) throw new Error(`Rolul ${missingRole} nu a fost găsit pe server.`);
+  const permission: ChannelPermissionConfig = {
+    roleIds: input.activityLog.roleIds,
+    readMessageHistory: true,
+    sendMessages: false,
+  };
+  const previousRoleIds = input.previousRoleIds ?? [];
+  const categoryNames = ["📋・JURNAL SERVER", "jurnal server", "server logs"];
+  const configuredCategory = input.activityLog.categoryId
+    ? channels.get(input.activityLog.categoryId)
+    : null;
+  const existingCategory = configuredCategory && isExpectedType(configuredCategory, "category")
+    ? configuredCategory
+    : [...channels.values()].find((channel) =>
+      channel !== null &&
+      isExpectedType(channel, "category") &&
+      categoryNames.some((name) => normalizeName(channel.name) === normalizeName(name)),
+    );
+
+  let category: NonThreadGuildBasedChannel;
+  if (existingCategory) {
+    category = existingCategory;
+    reused.push({ key: "activityLog.category", id: category.id, name: category.name, type: "category" });
+  } else {
+    category = await guild.channels.create({
+      name: categoryNames[0],
+      type: ChannelType.GuildCategory,
+      permissionOverwrites: activityLogPermissionOverwrites(guild, input.activityLog.roleIds),
+    });
+    created.push({ key: "activityLog.category", id: category.id, name: category.name, type: "category" });
+  }
+  await applyPermissions(guild, category, permission, previousRoleIds);
+
+  const channelIds = { ...input.activityLog.channelIds };
+  for (const target of ACTIVITY_LOG_CATEGORIES) {
+    if (!input.activityLog.categories[target.key]) {
+      const existingLogChannel = channelIds[target.key] ? channels.get(channelIds[target.key]!) : null;
+      if (existingLogChannel && isExpectedType(existingLogChannel, "text")) {
+        // Keep inactive destinations and their history, but still remove access
+        // from roles that were just de-selected for the private log system.
+        await applyPermissions(guild, existingLogChannel, permission, previousRoleIds);
+        reused.push({
+          key: `activityLog.${target.key}`,
+          id: existingLogChannel.id,
+          name: existingLogChannel.name,
+          type: "text",
+        });
+      }
+      continue;
+    }
+    const configured = channelIds[target.key] ? channels.get(channelIds[target.key]!) : null;
+    const existing = configured && isExpectedType(configured, "text")
+      ? configured
+      : [...channels.values()].find((channel) =>
+        channel !== null &&
+        isExpectedType(channel, "text") &&
+        normalizeName(channel.name) === normalizeName(target.name),
+      );
+
+    let logChannel: NonThreadGuildBasedChannel;
+    if (existing) {
+      logChannel = existing;
+      await moveToCategory(logChannel, category.id);
+      reused.push({ key: `activityLog.${target.key}`, id: logChannel.id, name: logChannel.name, type: "text" });
+    } else {
+      logChannel = await guild.channels.create({
+        name: target.name,
+        type: ChannelType.GuildText,
+        parent: category.id,
+        permissionOverwrites: activityLogPermissionOverwrites(guild, input.activityLog.roleIds),
+      });
+      created.push({ key: `activityLog.${target.key}`, id: logChannel.id, name: logChannel.name, type: "text" });
+    }
+    await applyPermissions(guild, logChannel, permission, previousRoleIds);
+    channelIds[target.key] = logChannel.id;
+  }
+
+  // Preserve destinations for categories that were switched off. Disabling
+  // never deletes their channels or historical messages.
+  return {
+    activityLog: { ...input.activityLog, categoryId: category.id, channelIds },
+    created,
+    reused,
+  };
+}
+
+export function provisionActivityLogChannels(
+  guild: Guild,
+  input: {
+    activityLog: ModerationConfig["activityLog"];
+    previousRoleIds?: string[];
+  },
+): Promise<ActivityLogProvisionResult> {
+  const previous = activityProvisionLocks.get(guild.id);
+  const next = (previous ?? Promise.resolve()).then(() => provisionActivityLogChannelsUnlocked(guild, input));
+  activityProvisionLocks.set(guild.id, next);
+  const cleanup = () => {
+    if (activityProvisionLocks.get(guild.id) === next) activityProvisionLocks.delete(guild.id);
+  };
+  void next.then(cleanup, cleanup);
   return next;
 }

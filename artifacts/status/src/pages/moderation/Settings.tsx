@@ -8,7 +8,13 @@ import { ToastAction } from "../../components/ui/toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Input } from "../../components/ui/input";
 
-type BotCapabilities = { messageContent: boolean; guildMembers: boolean };
+type BotCapabilities = {
+  messageContent: boolean;
+  guildMembers: boolean;
+  online: boolean;
+  canManageChannels: boolean;
+  canManageRoles: boolean;
+};
 
 export function AdvancedSettingsPage() {
   const { guildId } = useActiveGuild();
@@ -43,6 +49,9 @@ export function AdvancedSettingsPage() {
     setCapabilities(next ? {
       messageContent: next.messageContent === true,
       guildMembers: next.guildMembers === true,
+      online: next.online === true,
+      canManageChannels: next.canManageChannels === true,
+      canManageRoles: next.canManageRoles === true,
     } : null);
   }, [metadata]);
 
@@ -71,6 +80,14 @@ export function AdvancedSettingsPage() {
       toast({ title: "Configurație salvată", description: "Toate setările de moderare au fost aplicate." });
     } catch (saveError: any) {
       const message = saveError?.message || "Configurația nu a putut fi salvată.";
+      // Discord provisioning must not leave the failed activation looking live
+      // in the local draft. Preserve unrelated unsaved settings.
+      if (localData.activityLog?.enabled && !data?.activityLog?.enabled) {
+        setLocalData((current: any) => current ? {
+          ...current,
+          activityLog: structuredClone(data?.activityLog ?? current.activityLog),
+        } : current);
+      }
       setSaveError(message);
       if (saveError.message?.includes("Conflict")) {
         setConflictPending(true);
@@ -201,7 +218,13 @@ export function AdvancedSettingsPage() {
       )}
 
       <div className="animate-stagger-5">
-        <ConfigEditor value={localData} onChange={setLocalData} />
+        <ConfigEditor
+          value={localData}
+          onChange={setLocalData}
+          discordRoles={metadata?.roles ?? []}
+          guildId={metadata?.guild.id}
+          botCapabilities={capabilities ?? undefined}
+        />
       </div>
 
       {hasUnsavedChanges && (

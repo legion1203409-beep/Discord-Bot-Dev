@@ -55,6 +55,21 @@ const commandName = z.enum([
   "unlock", "nick", "role",
 ]);
 
+export const ActivityLogCategorySchema = z.enum([
+  "messages", "members", "channels", "roles", "voice", "moderation", "security",
+]);
+export type ActivityLogCategory = z.infer<typeof ActivityLogCategorySchema>;
+
+const activityLogCategories = z.object({
+  messages: z.boolean().default(true),
+  members: z.boolean().default(true),
+  channels: z.boolean().default(true),
+  roles: z.boolean().default(true),
+  voice: z.boolean().default(true),
+  moderation: z.boolean().default(true),
+  security: z.boolean().default(true),
+}).default({});
+
 export const ModerationConfigSchema = z.object({
   // Global protection switch. Module settings remain stored while the
   // category is disabled so an operator can turn protection back on without
@@ -120,6 +135,38 @@ export const ModerationConfigSchema = z.object({
     detailLevel: z.enum(["minimal", "standard", "verbose"]).default("standard"),
     channelId: snowflake.nullable().default(null),
   }).default({}),
+  // Automatic server activity logs are independent from the existing
+  // moderation-audit switch. Destinations are guild-scoped with this config.
+  activityLog: z.object({
+    enabled: z.boolean().default(false),
+    categories: activityLogCategories,
+    roleIds: idList.default([]),
+    categoryId: snowflake.nullable().default(null),
+    channelIds: z.object({
+      messages: snowflake.nullable().default(null),
+      members: snowflake.nullable().default(null),
+      channels: snowflake.nullable().default(null),
+      roles: snowflake.nullable().default(null),
+      voice: snowflake.nullable().default(null),
+      moderation: snowflake.nullable().default(null),
+      security: snowflake.nullable().default(null),
+    }).default({}),
+  }).default({}).superRefine((activityLog, ctx) => {
+    if (activityLog.enabled && !Object.values(activityLog.categories).some(Boolean)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["categories"],
+        message: "Selectează cel puțin o categorie pentru jurnalul Discord.",
+      });
+    }
+    if (activityLog.enabled && activityLog.roleIds.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["roleIds"],
+        message: "Selectează cel puțin un rol care poate vedea canalele private de jurnal.",
+      });
+    }
+  }),
   // 8. Roles
   roles: z.object({
     sanctionableRoleIds: idList.default([]),

@@ -11,6 +11,12 @@ type Config = Record<string, any>;
 type Path = Array<string | number>;
 export type ConfigSection = "automod" | "anti-raid" | "anti-spam" | "anti-flood" | "suspicious" | "ai" | "tools" | "cases-audit" | "roles-channels" | "time" | "escalation" | "embeds" | "permissions";
 const VisibleSections = React.createContext<ReadonlySet<string> | null>(null);
+type DiscordRoleOption = { id: string; name: string; managed?: boolean };
+type ActivityLogCapabilities = {
+  online?: boolean;
+  canManageChannels?: boolean;
+  canManageRoles?: boolean;
+};
 
 const ACTIONS = [
   ["none", "Nicio acțiune"],
@@ -234,12 +240,48 @@ function Section({ value, title, description, children }: { value: string; title
   );
 }
 
-export function ConfigEditor({ value, onChange, sections }: { value: Config; onChange: (config: Config) => void; sections?: ConfigSection[] }) {
+export function ConfigEditor({
+  value,
+  onChange,
+  sections,
+  discordRoles = [],
+  guildId,
+  botCapabilities,
+}: {
+  value: Config;
+  onChange: (config: Config) => void;
+  sections?: ConfigSection[];
+  discordRoles?: DiscordRoleOption[];
+  guildId?: string;
+  botCapabilities?: ActivityLogCapabilities;
+}) {
   const set = (path: Path, next: any) => {
     if (next === undefined && path.includes("thresholds")) onChange(removeConfigField(value, path));
     else onChange(updateConfigField(value, path, next));
   };
   const rule = (base: string[]) => (path: string[], next: any) => set([...base, ...path], next);
+  const activityLogCategories = [
+    ["messages", "Mesaje editate sau șterse"],
+    ["members", "Intrări, ieșiri și schimbări de membri"],
+    ["channels", "Canale create, schimbate sau șterse"],
+    ["roles", "Roluri create, schimbate sau șterse"],
+    ["voice", "Activitate vocală"],
+    ["moderation", "Acțiuni de moderare"],
+    ["security", "Alerte de securitate și AutoMod"],
+  ] as const;
+  const selectedActivityCategories = activityLogCategories.filter(([key]) => value.activityLog.categories[key]);
+  const configuredActivityCount = selectedActivityCategories.filter(([key]) => value.activityLog.channelIds[key]).length;
+  const missingActivityPermissions = [
+    botCapabilities?.online === false ? "Botul Discord este offline." : null,
+    botCapabilities?.canManageChannels === false ? "Lipsește Manage Channels." : null,
+    botCapabilities?.canManageRoles === false ? "Lipsește Manage Roles." : null,
+  ].filter((entry): entry is string => Boolean(entry));
+  const availableLogRoles = discordRoles.filter((role) =>
+    role.id !== guildId && !role.managed,
+  );
+  const unlistedSelectedLogRoles = (value.activityLog.roleIds as string[]).filter((id: string) =>
+    !availableLogRoles.some((role) => role.id === id),
+  );
 
   return (
     <VisibleSections.Provider value={sections ? new Set(sections) : null}>
@@ -337,6 +379,89 @@ export function ConfigEditor({ value, onChange, sections }: { value: Config; onC
           <Choice label="Nivel detalii audit" value={value.audit.detailLevel} options={[["minimal", "Minimal"], ["standard", "Standard"], ["verbose", "Detaliat"]]} onChange={(next) => set(["audit", "detailLevel"], next)} />
         </div>
         <IdField label="Canal audit" value={value.audit.channelId} onChange={(next) => set(["audit", "channelId"], next)} />
+
+        <div className="space-y-4 rounded-xl border border-primary/25 bg-primary/5 p-4">
+          <div>
+            <h4 className="font-semibold">Jurnal automat Discord</h4>
+            <p className="mt-1 text-xs text-muted-foreground">La salvare, botul creează sau reutilizează o categorie privată și câte un canal pentru fiecare categorie activă. Conținutul mesajelor nu este copiat în log.</p>
+          </div>
+          <Toggle
+            label="Activează jurnalizarea serverului"
+            help="Oprirea oprește postările noi și păstrează canalele și istoricul."
+            checked={value.activityLog.enabled}
+            onChange={(next) => set(["activityLog", "enabled"], next)}
+          />
+          {missingActivityPermissions.length > 0 && (
+            <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {missingActivityPermissions.join(" ")} Sunt necesare Manage Channels și Manage Roles pentru a crea ACL-uri private.
+            </div>
+          )}
+          <div className="grid gap-3 md:grid-cols-2">
+            {activityLogCategories.map(([key, label]) => (
+              <Toggle
+                key={key}
+                label={label}
+                checked={value.activityLog.categories[key]}
+                onChange={(next) => set(["activityLog", "categories", key], next)}
+              />
+            ))}
+          </div>
+          {availableLogRoles.length > 0 ? (
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Roluri care pot vedea istoricul</p>
+              <p className="text-xs text-muted-foreground">Toate celelalte roluri, inclusiv @everyone, sunt blocate implicit. Membrii fără unul dintre rolurile alese nu văd canalele.</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {availableLogRoles.map((role) => (
+                  <Toggle
+                    key={role.id}
+                    label={`@${role.name}`}
+                    help={role.id}
+                    checked={(value.activityLog.roleIds as string[]).includes(role.id)}
+                    onChange={(checked) => {
+                      const roleIds = checked
+                        ? Array.from(new Set([...(value.activityLog.roleIds as string[]), role.id]))
+                        : (value.activityLog.roleIds as string[]).filter((id: string) => id !== role.id);
+                      set(["activityLog", "roleIds"], roleIds);
+                    }}
+                  />
+                ))}
+                {unlistedSelectedLogRoles.map((roleId: string) => (
+                  <Toggle
+                    key={roleId}
+                    label={`Rol care nu mai este disponibil (${roleId})`}
+                    checked
+                    onChange={() => set(["activityLog", "roleIds"], (value.activityLog.roleIds as string[]).filter((id: string) => id !== roleId))}
+                  />
+                ))}
+              </div>
+            </div>
+          ) : (
+            <ListField
+              ids
+              label="Roluri care pot vedea istoricul"
+              help="ID-uri de rol pe rând. @everyone nu este acceptat; rolurile nealese rămân fără acces."
+              values={value.activityLog.roleIds}
+              onChange={(next) => set(["activityLog", "roleIds"], next)}
+            />
+          )}
+          <div role="status" className="rounded-lg border border-border bg-background/70 p-3 text-sm">
+            <p className="font-medium">
+              {value.activityLog.enabled
+                ? `Jurnal activ · ${configuredActivityCount}/${selectedActivityCategories.length} canale configurate`
+                : "Jurnal oprit · canalele și istoricul existente sunt păstrate"}
+            </p>
+            {value.activityLog.categoryId && <p className="mt-1 text-xs text-muted-foreground">Categorie: {value.activityLog.categoryId}</p>}
+            <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+              {selectedActivityCategories.map(([key, label]) => (
+                <li key={key}>
+                  {label}: {value.activityLog.channelIds[key]
+                    ? `configurat (${value.activityLog.channelIds[key]})`
+                    : value.activityLog.enabled ? "lipsește — verifică permisiunile și salvează din nou" : "se va crea la activare"}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
       </Section>
 
       <Section value="roles-channels" title="9. Roluri și canale" description="Excluderi, protecții și canale cu politici speciale.">

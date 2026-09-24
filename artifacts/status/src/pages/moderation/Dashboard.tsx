@@ -25,7 +25,7 @@ import { Button } from "../../components/ui/button";
 import { useToast } from "../../hooks/use-toast";
 import { DISCORD_INVITE } from "../../lib/public-constants";
 import { protectionToggleToastOptions } from "../../lib/protection-toggle-feedback";
-import { presentAuditLog } from "../../lib/moderation-audit";
+import { presentAuditActor, presentAuditLog } from "../../lib/moderation-audit";
 
 type ProtectionModuleKey = "autoMod" | "wordFilter" | "linkBlock" | "antiRaid" | "antiSpam" | "antiFlood" | "suspiciousBehavior" | "ai";
 
@@ -378,7 +378,7 @@ export function DashboardOverview() {
                       return (
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm">
-                            <strong className="font-medium text-foreground">{log.actorId || "Sistem"}</strong>
+                            <strong className="font-medium text-foreground">{presentAuditActor(log)}</strong>
                             <span className="mx-1 text-muted-foreground">·</span>
                             <span className="text-primary">{presentation.title}</span>
                           </p>

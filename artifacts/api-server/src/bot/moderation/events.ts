@@ -1,6 +1,7 @@
 import {
   AuditLogEvent,
   ChannelType,
+  EmbedBuilder,
   Events,
   PermissionFlagsBits,
   type Client,
@@ -10,7 +11,7 @@ import {
   type PartialGuildMember,
   type PartialMessage,
 } from "discord.js";
-import type { ModerationAction, ModerationConfig } from "../../moderation/config";
+import type { ActivityLogCategory, ModerationAction, ModerationConfig } from "../../moderation/config";
 import { logger } from "../../lib/logger";
 
 export type ModerationEventActionInput = {
@@ -199,9 +200,11 @@ function auditDetail(
     actorBot: actor?.bot ?? false,
     actorStaff: actor?.staff ?? null,
   };
-  if (config.audit.detailLevel === "minimal") return base;
+  if (config.audit.detailLevel === "minimal" && !config.activityLog.enabled) return base;
   Object.assign(base, standard);
-  if (config.audit.detailLevel === "verbose" && verbose) Object.assign(base, verbose);
+  if ((config.audit.detailLevel === "verbose" || config.activityLog.enabled) && verbose) {
+    Object.assign(base, verbose);
+  }
   return base;
 }
 
@@ -215,8 +218,113 @@ async function recordAudit(
   detail: Record<string, unknown>,
 ): Promise<void> {
   await helpers.auditExternal(guild.id, eventType, targetType, targetId, detail);
+  await deliverActivityLog(guild, config, eventType, targetType, targetId, detail);
   if (config.audit.enabled && config.audit.channelId) {
     await helpers.notify(config, guild, "Audit moderare", `${eventType} • ${targetType} \`${targetId}\``, config.audit.channelId);
+  }
+}
+
+const ACTIVITY_CATEGORY_LABELS: Record<ActivityLogCategory, string> = {
+  messages: "Mesaje",
+  members: "Membri",
+  channels: "Canale",
+  roles: "Roluri",
+  voice: "Activitate vocală",
+  moderation: "Moderare",
+  security: "Securitate",
+};
+
+const ACTIVITY_EVENT_TITLES: Record<string, string> = {
+  "discord.message_update": "Mesaj editat",
+  "discord.message_delete": "Mesaj șters",
+  "discord.message_bulk_delete": "Mesaje șterse în masă",
+  "discord.member_join": "Membru a intrat pe server",
+  "discord.member_leave": "Membru a părăsit serverul",
+  "discord.member_update": "Membru sau roluri actualizate",
+  "discord.voice_state_update": "Stare vocală schimbată",
+  "discord.channel_create": "Canal creat",
+  "discord.channel_update": "Canal actualizat",
+  "discord.channel_delete": "Canal șters",
+  "discord.guild_role_create": "Rol creat",
+  "discord.guild_role_update": "Rol actualizat",
+  "discord.guild_role_delete": "Rol șters",
+  "action.applied": "Acțiune de moderare aplicată",
+  "action.failed": "Acțiune de moderare eșuată",
+  "raid.detected": "Activitate anti-raid detectată",
+};
+
+function activityCategory(eventType: string): ActivityLogCategory | null {
+  const normalized = eventType.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLocaleLowerCase();
+  if (normalized.startsWith("discord.message_")) return "messages";
+  if (normalized.startsWith("discord.member_")) return "members";
+  if (normalized.startsWith("discord.channel_")) return "channels";
+  if (normalized.startsWith("discord.guild_role_")) return "roles";
+  if (normalized.startsWith("discord.voice_")) return "voice";
+  if (normalized.startsWith("action.")) return "moderation";
+  if (/^(raid\.|suspicious\.|spam\.|automod\.|ai\.|event\.)/.test(normalized)) return "security";
+  return null;
+}
+
+function readableDetail(detail: Record<string, unknown>): string {
+  const ignored = new Set(["actorId", "actorBot", "actorStaff", "actorVerified"]);
+  return Object.entries(detail)
+    .filter(([key, value]) =>
+      !ignored.has(key) && !/content|messagebody|message_text/i.test(key) &&
+      value !== null && value !== undefined && value !== "",
+    )
+    .slice(0, 12)
+    .map(([key, value]) => {
+      const label = key.replace(/([A-Z])/g, " $1").replace(/[_-]+/g, " ").trim();
+      let rendered: string;
+      if (Array.isArray(value)) rendered = value.map(String).join(", ");
+      else if (typeof value === "object") rendered = JSON.stringify(value);
+      else rendered = String(value);
+      return `**${label}:** ${rendered}`;
+    })
+    .join("\n")
+    .slice(0, 3_800);
+}
+
+/** Delivers metadata-only activity events; message contents are never included. */
+export async function deliverActivityLog(
+  guild: Guild,
+  config: ModerationConfig,
+  eventType: string,
+  targetType: string,
+  targetId: string,
+  detail: Record<string, unknown>,
+): Promise<void> {
+  const category = activityCategory(eventType);
+  if (!config.activityLog.enabled || !category || !config.activityLog.categories[category]) return;
+  const channelId = config.activityLog.channelIds[category];
+  if (!channelId) return;
+  try {
+    const channel = guild.channels.cache.get(channelId) ?? await guild.channels.fetch(channelId);
+    if (!channel?.isTextBased() || !("send" in channel)) {
+      logger.warn({ guildId: guild.id, channelId, category }, "Discord activity log destination is unavailable");
+      return;
+    }
+    const verified = detail.actorVerified === true && typeof detail.actorId === "string";
+    const actor = verified ? `<@${detail.actorId}>` : "Neverificat de Discord";
+    const channelTarget = typeof detail.channelId === "string" ? `<#${detail.channelId}>` : "—";
+    const normalizedEventType = eventType.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLocaleLowerCase();
+    const embed = new EmbedBuilder()
+      .setColor(category === "security" ? 0xed4245 : category === "moderation" ? 0xf0b232 : 0x5865f2)
+      .setTitle(ACTIVITY_EVENT_TITLES[normalizedEventType] ?? ACTIVITY_EVENT_TITLES[eventType] ?? eventType.replace(/[._-]+/g, " "))
+      .addFields(
+        { name: "Categorie", value: ACTIVITY_CATEGORY_LABELS[category], inline: true },
+        { name: "Actor", value: actor, inline: true },
+        { name: "Țintă", value: `${targetType}: ${targetId}`.slice(0, 1_024), inline: true },
+        { name: "Canal", value: channelTarget, inline: true },
+        { name: "Detalii", value: readableDetail(detail) || "Nu sunt disponibile alte detalii.", inline: false },
+      )
+      .setTimestamp();
+    await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
+  } catch (error) {
+    // Logging must never block moderation/event processing. Setup failures are
+    // surfaced by the configuration route; later permission/channel changes
+    // are recorded here so they remain diagnosable in server logs.
+    logger.warn({ error, guildId: guild.id, channelId, category }, "Discord activity log post failed");
   }
 }
 
@@ -325,6 +433,13 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
 
   client.on(Events.GuildMemberAdd, (member) => safely(Events.GuildMemberAdd, async () => {
     const config = await helpers.getConfig(member.guild.id);
+    await recordAudit(helpers, config, member.guild, "discord.member_join", "member", member.id,
+      auditDetail(config, null, {
+        actorVerified: false,
+        channelId: null,
+        accountCreatedAt: new Date(member.user.createdTimestamp).toISOString(),
+        accountAgeDays: Math.floor((Date.now() - member.user.createdTimestamp) / 86_400_000),
+      }));
     if (!config.protection.enabled) return;
     const joinLeave = config.suspiciousBehavior.joinLeaveFlood;
     if (config.suspiciousBehavior.enabled && joinLeave.enabled) {
@@ -390,6 +505,12 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
 
   client.on(Events.GuildMemberRemove, (member) => safely(Events.GuildMemberRemove, async () => {
     const config = await helpers.getConfig(member.guild.id);
+    await recordAudit(helpers, config, member.guild, "discord.member_leave", "member", member.id,
+      auditDetail(config, null, {
+        actorVerified: false,
+        channelId: null,
+        accountCreatedAt: new Date(member.user.createdTimestamp).toISOString(),
+      }));
     if (!config.protection.enabled) return;
     const rule = config.suspiciousBehavior.joinLeaveFlood;
     if (!config.suspiciousBehavior.enabled || !rule.enabled) return;
@@ -411,7 +532,12 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
     if (oldMessage.content !== message.content) await helpers.handleMessage(client, message);
     const config = await helpers.getConfig(message.guildId);
     await recordAudit(helpers, config, message.guild, "discord.message_update", "message", message.id,
-      auditDetail(config, { id: message.author.id, bot: false, staff: false, verified: true }, { channelId: message.channelId, contentChanged: oldMessage.content !== message.content }));
+      auditDetail(config, null, {
+        actorVerified: false,
+        targetAuthorId: message.author.id,
+        channelId: message.channelId,
+        contentChanged: oldMessage.content !== message.content,
+      }));
     if (!config.protection.enabled) return;
     if (isExcludedChannel(config, message.channelId) || isExcludedMember(config, message.member)) return;
 
@@ -480,8 +606,19 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
       const actor = targetId
         ? await findAuditActor(guild, config, bulk ? AuditLogEvent.MessageBulkDelete : AuditLogEvent.MessageDelete, targetId, channelId)
         : null;
-      await recordAudit(helpers, config, guild, bulk ? "discord.message_bulk_delete" : "discord.message_delete", "channel", channelId ?? guild.id,
-        auditDetail(config, actor, { messageCount: messages.length, policyExcluded: isExcludedChannel(config, channelId) }));
+      await recordAudit(
+        helpers,
+        config,
+        guild,
+        bulk ? "discord.message_bulk_delete" : "discord.message_delete",
+        bulk ? "channel" : "message",
+        bulk ? (channelId ?? guild.id) : (first?.id ?? guild.id),
+        auditDetail(config, actor, {
+          channelId,
+          messageCount: messages.length,
+          policyExcluded: isExcludedChannel(config, channelId),
+        }),
+      );
       if (!config.protection.enabled) return;
       if ((!config.antiSpam.enabled || !rule.enabled) && (!config.suspiciousBehavior.enabled || !massDeletes.enabled)) return;
       if (isExcludedChannel(config, channelId)) return;
@@ -588,7 +725,12 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
     const after = entity as unknown as Record<string, unknown>;
     const changes = resourceDiff(before, after, fields);
     await recordAudit(helpers, config, entity.guild, `discord.${event}`, targetType, entity.id,
-      auditDetail(config, actor, { excludedByPolicy: excluded, changedFields: Object.keys(changes) }, { changes }));
+      auditDetail(config, actor, {
+        excludedByPolicy: excluded,
+        changedFields: Object.keys(changes),
+        entityName: typeof after.name === "string" ? after.name : entity.id,
+        channelId: targetType === "channel" ? entity.id : null,
+      }, { changes }));
     await unusualActivity(helpers, client, entity.guild, config, event, actor, excluded);
   }, entity.guild.id);
 
@@ -602,4 +744,33 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
   client.on(Events.GuildRoleCreate, (role) => resource(Events.GuildRoleCreate, AuditLogEvent.RoleCreate, "role", null, role));
   client.on(Events.GuildRoleUpdate, (before, role) => resource(Events.GuildRoleUpdate, AuditLogEvent.RoleUpdate, "role", before as unknown as Record<string, unknown>, role));
   client.on(Events.GuildRoleDelete, (role) => resource(Events.GuildRoleDelete, AuditLogEvent.RoleDelete, "role", null, role));
+
+  client.on(Events.VoiceStateUpdate, (oldState, newState) => safely(Events.VoiceStateUpdate, async () => {
+    const guild = newState.guild ?? oldState.guild;
+    const memberId = newState.id || oldState.id;
+    const config = await helpers.getConfig(guild.id);
+    const channelChanged = oldState.channelId !== newState.channelId;
+    const actor = channelChanged
+      ? await findAuditActor(
+        guild,
+        config,
+        newState.channelId ? AuditLogEvent.MemberMove : AuditLogEvent.MemberDisconnect,
+        memberId,
+      )
+      : null;
+    await recordAudit(helpers, config, guild, "discord.voice_state_update", "member", memberId,
+      auditDetail(config, actor, {
+        actorVerified: Boolean(actor?.verified),
+        channelId: newState.channelId,
+        oldChannelId: oldState.channelId,
+        newChannelId: newState.channelId,
+        channelChanged,
+        selfMute: newState.selfMute,
+        serverMute: newState.serverMute,
+        selfDeaf: newState.selfDeaf,
+        serverDeaf: newState.serverDeaf,
+        streaming: newState.streaming,
+        video: newState.selfVideo,
+      }));
+  }, newState.guild.id));
 }

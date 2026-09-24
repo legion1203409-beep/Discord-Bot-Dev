@@ -54,6 +54,7 @@ export interface ModerationMetadata {
     canModerateMembers?: boolean;
     canManageMessages?: boolean;
     canManageChannels?: boolean;
+    canManageRoles?: boolean;
     canKickMembers?: boolean;
     canBanMembers?: boolean;
   };

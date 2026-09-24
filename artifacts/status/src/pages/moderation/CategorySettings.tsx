@@ -69,6 +69,12 @@ export function CategorySettingsPage({ section }: { section: ConfigSection }) {
       if (result?.config) setDraft(structuredClone(result.config));
       toast({ title: `${detail.title} salvat`, description: "Setările au fost actualizate pentru serverul selectat." });
     } catch (saveError: any) {
+      if (section === "cases-audit" && draft.activityLog?.enabled && !data?.activityLog?.enabled) {
+        setDraft((current: any) => current ? {
+          ...current,
+          activityLog: structuredClone(data?.activityLog ?? current.activityLog),
+        } : current);
+      }
       toast({ variant: "destructive", title: "Salvarea a eșuat", description: saveError?.message || "Draftul a fost păstrat." });
     } finally {
       setSaving(false);
