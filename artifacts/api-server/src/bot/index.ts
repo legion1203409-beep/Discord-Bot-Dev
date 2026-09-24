@@ -4805,7 +4805,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
     void recordDailyJoin(member.guild.id).catch((err) =>
       logger.warn({ err, guildId: member.guild.id }, "Daily join statistics update failed"),
     );
-    queueInviteJoin(member.guild);
+    queueInviteJoin(member.guild, member);
     void sendAiMemberMessage(member, "welcome").catch((err) =>
       logger.warn({ err, guildId: member.guild.id, userId: member.id }, "AI welcome message could not be sent"),
     );

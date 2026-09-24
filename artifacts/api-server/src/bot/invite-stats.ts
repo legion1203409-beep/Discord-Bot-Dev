@@ -2,6 +2,7 @@ import {
   Client,
   EmbedBuilder,
   Guild,
+  GuildMember,
   Invite,
   PermissionFlagsBits,
   TextChannel,
@@ -64,7 +65,7 @@ const reportTimers = new Map<string, ReturnType<typeof setInterval>>();
 interface GuildInviteState {
   usesByCode: Map<string, number>;
   pendingUsesByCode: Map<string, number>;
-  queuedJoins: number;
+  queuedMembers: GuildMember[];
   flushTimer: ReturnType<typeof setTimeout> | null;
   snapshotReady: boolean;
   operation: Promise<void>;
@@ -138,7 +139,7 @@ function stateFor(guildId: string): GuildInviteState {
     state = {
       usesByCode: new Map(),
       pendingUsesByCode: new Map(),
-      queuedJoins: 0,
+      queuedMembers: [],
       flushTimer: null,
       snapshotReady: false,
       operation: Promise.resolve(),
@@ -305,10 +306,10 @@ function scheduleJoinFlush(guild: Guild, state: GuildInviteState): void {
   state.flushTimer.unref?.();
 }
 
-export function queueInviteJoin(guild: Guild): void {
+export function queueInviteJoin(guild: Guild, member: GuildMember): void {
   if (!activeConfigs.get(guild.id)?.enabled) return;
   const state = stateFor(guild.id);
-  state.queuedJoins += 1;
+  state.queuedMembers.push(member);
   scheduleJoinFlush(guild, state);
 }
 
@@ -320,16 +321,19 @@ export async function flushQueuedInviteJoins(guild: Guild): Promise<void> {
   }
 
   await withGuildOperation(state, async () => {
-    const joinCount = state.queuedJoins;
-    state.queuedJoins = 0;
+    const members = state.queuedMembers.splice(0);
+    const joinCount = members.length;
     if (joinCount <= 0 || !activeConfigs.get(guild.id)?.enabled) return;
 
     const counts = new Map<string, number>();
+    let rowsForLog: InviteSnapshotRow[] = [];
+    const inviteUseDeltas = new Map<string, number>();
     try {
       const invites = await fetchGuildInvites(guild);
       const rows = invites
         .map(toSnapshotRow)
         .filter((row): row is InviteSnapshotRow => row !== null);
+      rowsForLog = rows;
       await persistInviteSnapshots(guild.id, rows);
 
       if (!state.snapshotReady) {
@@ -337,6 +341,7 @@ export async function flushQueuedInviteJoins(guild: Guild): Promise<void> {
         state.snapshotReady = true;
         counts.set("", joinCount);
         await persistDailyCounts(guild.id, counts);
+        await publishInviteJoinLogs(guild, members, inviteUseDeltas, rowsForLog);
         return;
       }
 
@@ -350,6 +355,7 @@ export async function flushQueuedInviteJoins(guild: Guild): Promise<void> {
         if (row.uses < previousUses) {
           state.pendingUsesByCode.delete(row.code);
         } else if (row.uses > previousUses) {
+          inviteUseDeltas.set(row.code, row.uses - previousUses);
           state.pendingUsesByCode.set(
             row.code,
             (state.pendingUsesByCode.get(row.code) ?? 0) + row.uses - previousUses,
@@ -363,17 +369,19 @@ export async function flushQueuedInviteJoins(guild: Guild): Promise<void> {
         counts.set(code, count);
       }
       await persistDailyCounts(guild.id, counts);
+      await publishInviteJoinLogs(guild, members, inviteUseDeltas, rowsForLog);
     } catch (error) {
       counts.clear();
       counts.set("", joinCount);
       await persistDailyCounts(guild.id, counts).catch((persistError) =>
         logger.error({ error: persistError, guildId: guild.id }, "Could not store unattributed invite joins"),
       );
+      await publishInviteJoinLogs(guild, members, new Map(), rowsForLog);
       logger.warn({ error, guildId: guild.id, joinCount }, "Could not fetch invites to attribute new members");
     }
   });
 
-  if (state.queuedJoins > 0) scheduleJoinFlush(guild, state);
+  if (state.queuedMembers.length > 0) scheduleJoinFlush(guild, state);
 }
 
 export async function recordCreatedInvite(invite: Invite): Promise<void> {
@@ -537,6 +545,87 @@ function safeEmbedText(value: string | null | undefined, maxLength: number): str
     .slice(0, maxLength);
 }
 
+export function resolveInviteCodesForJoinBatch(
+  joinCount: number,
+  inviteUseDeltas: Map<string, number>,
+): Array<string | null> {
+  const changedInvites = [...inviteUseDeltas.entries()].filter(([, uses]) => uses > 0);
+  if (
+    joinCount > 0
+    && changedInvites.length === 1
+    && changedInvites[0]![1] === joinCount
+  ) {
+    return Array.from({ length: joinCount }, () => changedInvites[0]![0]);
+  }
+  return Array.from({ length: Math.max(0, joinCount) }, () => null);
+}
+
+export function buildInviteJoinLogEmbed(
+  guildName: string,
+  data: {
+    memberId: string;
+    inviteCode: string | null;
+    inviterId: string | null;
+    inviterName: string | null;
+    attributionAmbiguous: boolean;
+  },
+): EmbedBuilder {
+  const invitedBy = data.inviterId
+    ? `<@${data.inviterId}>`
+    : data.inviterName
+      ? safeEmbedText(data.inviterName, 100)
+      : data.attributionAmbiguous
+        ? "Necunoscut — au intrat mai mulți membri simultan."
+        : "Necunoscut — Discord nu a confirmat codul folosit.";
+  const inviteCode = data.inviteCode
+    ? `[\`${safeEmbedText(data.inviteCode, 80)}\`](<https://discord.gg/${encodeURIComponent(data.inviteCode)}>)`
+    : "Necunoscut";
+
+  return new EmbedBuilder()
+    .setColor(data.inviterId ? 0x22c55e : 0xf59e0b)
+    .setAuthor({ name: `ORACOLUL CENUȘII · INVITE LOG · ${safeEmbedText(guildName, 100)}` })
+    .setTitle("A intrat un membru nou")
+    .setDescription(`**Membru:** <@${data.memberId}>\n**Invitat de:** ${invitedBy}\n**Codul invitației:** ${inviteCode}`)
+    .setTimestamp(new Date());
+}
+
+async function publishInviteJoinLogs(
+  guild: Guild,
+  members: GuildMember[],
+  inviteUseDeltas: Map<string, number>,
+  inviteRows: InviteSnapshotRow[],
+): Promise<void> {
+  const config = activeConfigs.get(guild.id);
+  if (!config?.enabled || !config.joinLogChannelId || members.length === 0) return;
+
+  try {
+    const channel = await guild.channels.fetch(config.joinLogChannelId).catch(() => null);
+    if (!(channel instanceof TextChannel) || channel.guildId !== guild.id) {
+      throw new Error(`Canalul jurnalului invitațiilor nu mai este disponibil: ${config.joinLogChannelId}`);
+    }
+    const codes = resolveInviteCodesForJoinBatch(members.length, inviteUseDeltas);
+    const inviteByCode = new Map(inviteRows.map((row) => [row.code, row]));
+    const attributionAmbiguous = inviteUseDeltas.size > 1
+      || (inviteUseDeltas.size === 1 && [...inviteUseDeltas.values()][0] !== members.length);
+    for (const [index, member] of members.entries()) {
+      const inviteCode = codes[index] ?? null;
+      const invite = inviteCode ? inviteByCode.get(inviteCode) : null;
+      await channel.send({
+        embeds: [buildInviteJoinLogEmbed(guild.name, {
+          memberId: member.id,
+          inviteCode,
+          inviterId: invite?.inviterId ?? null,
+          inviterName: invite?.inviterName ?? null,
+          attributionAmbiguous,
+        })],
+        allowedMentions: { parse: [] },
+      });
+    }
+  } catch (error) {
+    logger.warn({ error, guildId: guild.id, channelId: config.joinLogChannelId }, "Could not publish invite join log");
+  }
+}
+
 export function buildInviteStatsEmbed(
   guildName: string,
   period: InviteReportPeriod,
@@ -673,7 +762,7 @@ export async function applyInviteTrackingConfig(
   if (!config.enabled) {
     if (state.flushTimer) clearTimeout(state.flushTimer);
     state.flushTimer = null;
-    state.queuedJoins = 0;
+    state.queuedMembers = [];
     state.usesByCode.clear();
     state.pendingUsesByCode.clear();
     state.snapshotReady = false;

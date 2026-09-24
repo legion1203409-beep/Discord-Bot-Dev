@@ -1319,6 +1319,16 @@ async function validateInviteTrackingTargets(guildId: string, config: z.infer<ty
   
 }
 
+  if (config.joinLogChannelId) {
+    const channel = await guild.channels.fetch(config.joinLogChannelId).catch(() => null);
+    if (!(channel instanceof TextChannel) || channel.guildId !== guildId) {
+      throw new ModerationAuthError(400, "Alege un canal text valid din acest server pentru jurnalul invitațiilor.");
+    }
+    if (!channel.permissionsFor(botMember)?.has(PermissionFlagsBits.SendMessages)) {
+      throw new ModerationAuthError(403, "Botul nu are permisiunea de a trimite mesaje în canalul jurnalului invitațiilor.");
+    }
+  }
+
   return guild
 ;
 

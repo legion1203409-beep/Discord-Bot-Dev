@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_INVITE_TRACKING_CONFIG } from "../db";
+import { DEFAULT_INVITE_TRACKING_CONFIG, normalizeInviteTrackingConfig } from "../db";
 import {
   allocateInviteUseCredits,
+  buildInviteJoinLogEmbed,
   buildInviteStatsEmbed,
   getDueInviteReportPeriod,
+  resolveInviteCodesForJoinBatch,
   type InviteStatsResponse,
 } from "../invite-stats";
 
@@ -28,6 +30,42 @@ describe("invite statistics attribution", () => {
       ["", 2],
     ]));
     expect(pendingUses.size).toBe(0);
+  });
+});
+
+describe("invite join log attribution", () => {
+  it("attributes a batch only when one invite accounts for every joined member", () => {
+    expect(resolveInviteCodesForJoinBatch(2, new Map([["alpha", 2]]))).toEqual(["alpha", "alpha"]);
+    expect(resolveInviteCodesForJoinBatch(2, new Map([["alpha", 1], ["beta", 1]]))).toEqual([null, null]);
+    expect(resolveInviteCodesForJoinBatch(1, new Map())).toEqual([null]);
+  });
+
+  it("builds a member and inviter log entry without triggering mentions", () => {
+    const embed = buildInviteJoinLogEmbed("Server", {
+      memberId: "111111111",
+      inviteCode: "alpha",
+      inviterId: "222222222",
+      inviterName: "Inviter",
+      attributionAmbiguous: false,
+    }).toJSON();
+
+    expect(embed.title).toBe("A intrat un membru nou");
+    expect(embed.description).toContain("<@111111111>");
+    expect(embed.description).toContain("<@222222222>");
+    expect(embed.description).toContain("alpha");
+  });
+
+  it("defaults the optional join-log channel for previously saved settings", () => {
+    expect(normalizeInviteTrackingConfig({
+      enabled: true,
+      reportEnabled: false,
+      reportChannelId: "",
+      reportFrequency: "daily",
+      reportTime: "09:00",
+      reportWeekday: 1,
+      reportTimeZone: "UTC",
+      reportTopLimit: 5,
+    }).joinLogChannelId).toBe("");
   });
 });
 

@@ -39,6 +39,7 @@
 - [Postgres JSON parameter casts](postgres-json-parameter-casts.md) — placeholders used only inside jsonb_build_object may need explicit ::text casts or pg cannot infer their type.
 - [Artifact production env scope](artifact-production-env-scope.md) — Vite production variables must be explicit in build and/or run env, not only the shared artifact env.
 - [Discord guild count fetch](discord-guild-count-fetch.md) — GuildManager.fetch returns the gateway cache unless force=true; cached guilds can have null approximate member/presence counts.
+- [Invite attribution certainty](invite-attribution-certainty.md) — per-member invite logs must mark concurrent mixed-code joins unknown; Discord exposes invite-use deltas, not each member's invite.
 - [Discord member list REST](discord-member-list-rest.md) — full guild member listings should use paginated REST, not gateway fetches that can hit opcode 8 rate limits.
 - [Discord ticket menu flow](discord-ticket-modal-flow.md) — ticket intake uses one dropdown question at a time, preserving all fields while avoiding Discord's five-row modal limit.
 - [Game pause gate](game-pause-gate.md) — stopping a guild must guard both scheduler entry points and user interactions; independent timers such as Tribute need their own pause state.

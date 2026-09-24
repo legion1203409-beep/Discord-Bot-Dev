@@ -209,7 +209,14 @@ test.describe("authenticated moderation console", () => {
     }
     // A separate test-only bot-control GET lets us verify the role tab itself;
     // sidebar navigation above is independent of whether that API is online.
+    let savedInviteLogChannel = "";
     await page.route("**/api/moderation/guilds/*/bot-control", async (route) => {
+      if (route.request().method() === "PUT") {
+        const body = JSON.parse(route.request().postData() || "{}");
+        savedInviteLogChannel = body.inviteTracking.joinLogChannelId;
+        await route.fulfill({ json: { ...body, discordLive: true } });
+        return;
+      }
       await route.fulfill({ json: {
         channels: {}, provisioningPermissions: {}, discordLive: true,
         verification: {
@@ -227,7 +234,7 @@ test.describe("authenticated moderation console", () => {
           activityTitle: "", channelsTitle: "", emptyChannelsText: "", imageUrl: "", thumbnailUrl: "",
           metricLabels: { messages: "", uniqueUsers: "", boosts: "", joins: "", leaves: "", peakVoice: "" },
         },
-        inviteTracking: { enabled: false, reportEnabled: false, reportChannelId: "", reportFrequency: "daily", reportTime: "09:00", reportTimeZone: "UTC", reportTopLimit: 5, reportWeekday: 1 },
+        inviteTracking: { enabled: false, joinLogChannelId: "", reportEnabled: false, reportChannelId: "", reportFrequency: "daily", reportTime: "09:00", reportTimeZone: "UTC", reportTopLimit: 5, reportWeekday: 1 },
         tickets: {
           categories: { staff: "", partnership: "", help_report: "" },
           allianceAnnouncementTemplate: "", allianceAnnouncementMode: "text",
@@ -240,12 +247,32 @@ test.describe("authenticated moderation console", () => {
         },
       } });
     });
+    await page.route("**/api/moderation/guilds/*/invite-stats**", async (route) => {
+      await route.fulfill({ json: {
+        range: "7", startDay: "2026-09-18", endDay: "2026-09-24",
+        totals: { attributedJoins: 0, unknownJoins: 0 }, rows: [],
+      } });
+    });
     await page.goto("/moderare/bot?tab=roles");
     await expect(page.getByTestId("tab-roles")).toHaveAttribute("data-state", "active");
     await page.getByTestId("tab-channels").click();
     await page.getByTestId("tab-roles").click();
     await expect(page).toHaveURL("/moderare/bot?tab=roles");
     await expect(page.getByTestId("tab-roles")).toHaveAttribute("data-state", "active");
+
+    await page.getByTestId("tab-statistics").click();
+    await expect(page.getByText("Jurnal pentru fiecare intrare")).toBeVisible();
+    await page.getByRole("switch", { name: "Activează colectarea statisticilor invitațiilor" }).click();
+    const inviteLogChannel = page.locator("label").filter({ hasText: "Canal jurnal invitații" }).getByRole("combobox");
+    await inviteLogChannel.click();
+    await page.getByRole("option", { name: "#audit" }).click();
+    const configSave = page.waitForResponse((response) =>
+      response.url().includes("/api/moderation/guilds/111111111/bot-control")
+      && response.request().method() === "PUT");
+    await page.getByRole("button", { name: "Salvează controlul botului" }).click();
+    await expect((await configSave).ok()).toBeTruthy();
+    expect(savedInviteLogChannel).toBe("444444444");
+
     await page.locator('nav[aria-label="Categorii de moderare"] a[href="/moderare/verificare"]').click();
     await expect(page).toHaveURL("/moderare/verificare");
     await expect(page.locator('nav[aria-label="Categorii de moderare"] a[aria-current="page"]')).toHaveAttribute("href", "/moderare/verificare");

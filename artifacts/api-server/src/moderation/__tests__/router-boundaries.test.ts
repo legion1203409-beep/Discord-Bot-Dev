@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   loadInviteTrackingConfig: vi.fn(), saveInviteTrackingConfig: vi.fn(),
   defaultInviteTrackingConfig: {
     enabled: false,
+    joinLogChannelId: "",
     reportEnabled: false,
     reportChannelId: "",
     reportFrequency: "daily",
