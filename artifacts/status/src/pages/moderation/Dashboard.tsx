@@ -25,6 +25,7 @@ import { Button } from "../../components/ui/button";
 import { useToast } from "../../hooks/use-toast";
 import { DISCORD_INVITE } from "../../lib/public-constants";
 import { protectionToggleToastOptions } from "../../lib/protection-toggle-feedback";
+import { presentAuditLog } from "../../lib/moderation-audit";
 
 type ProtectionModuleKey = "autoMod" | "wordFilter" | "linkBlock" | "antiRaid" | "antiSpam" | "antiFlood" | "suspiciousBehavior" | "ai";
 
@@ -370,9 +371,21 @@ export function DashboardOverview() {
             {recentLogs.length > 0 ? (
               <div className="divide-y divide-border/40">
                 {recentLogs.map((log: any, index: number) => (
-                  <div key={index} className="flex gap-3 rounded-xl p-3.5 transition-colors hover:bg-secondary/45 group" data-testid={`row-dashboard-audit-${index}`}>
+                  <div key={log.id} className="flex gap-3 rounded-xl p-3.5 transition-colors hover:bg-secondary/45 group" data-testid={`row-dashboard-audit-${index}`}>
                     <div className="mt-2 h-2 w-2 shrink-0 rounded-full bg-primary ring-4 ring-primary/10 group-hover:ring-primary/20 transition-all" />
-                    <div className="min-w-0 flex-1"><p className="truncate text-sm"><strong className="font-medium text-foreground">{log.actorId || "Sistem"}</strong><span className="mx-1 text-muted-foreground">a declanșat</span><span className="text-primary">{log.action || log.type}</span></p><p className="mt-1 truncate text-xs text-muted-foreground">{log.reason || log.details || "Fără detalii suplimentare"}</p></div>
+                    {(() => {
+                      const presentation = presentAuditLog(log);
+                      return (
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm">
+                            <strong className="font-medium text-foreground">{log.actorId || "Sistem"}</strong>
+                            <span className="mx-1 text-muted-foreground">·</span>
+                            <span className="text-primary">{presentation.title}</span>
+                          </p>
+                          <p className="mt-1 truncate text-xs text-muted-foreground">{presentation.details}</p>
+                        </div>
+                      );
+                    })()}
                     <time className="shrink-0 font-mono text-[10px] text-muted-foreground" dateTime={log.createdAt}>{new Date(log.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>
                   </div>
                 ))}

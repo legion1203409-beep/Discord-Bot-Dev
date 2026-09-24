@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import type { ModerationAuditLog } from "../lib/moderation-audit";
 
 const BASE_URL = "/api/moderation";
 const ACTIVE_GUILD_STORAGE_KEY = "moderation.activeGuildId";
@@ -985,7 +986,7 @@ export function useCases(guildId: string | null, params?: { status?: string, use
 }
 
 export function useAuditLogs(guildId: string | null) {
-  const [data, setData] = useState<any[]>([]);
+  const [data, setData] = useState<ModerationAuditLog[]>([]);
   const [loading, setLoading] = useState(false);
   const dataGuildId = useRef<string | null>(null);
   const requestId = useRef(0);
@@ -1002,10 +1003,10 @@ export function useAuditLogs(guildId: string | null) {
     const thisRequest = ++requestId.current;
     setLoading(true);
     try {
-      const res = await apiFetch<any>(`/guilds/${requestedGuildId}/logs/audit`);
+      const res = await apiFetch<{ items: ModerationAuditLog[] }>(`/guilds/${requestedGuildId}/logs/audit`);
       if (requestedGuildId !== guildId || thisRequest !== requestId.current) return;
       dataGuildId.current = requestedGuildId;
-      setData(res.items || []);
+      setData(Array.isArray(res.items) ? res.items : []);
     } catch {} finally {
       if (requestedGuildId === guildId && thisRequest === requestId.current) setLoading(false);
     }

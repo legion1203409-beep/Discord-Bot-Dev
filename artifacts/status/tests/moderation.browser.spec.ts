@@ -158,6 +158,71 @@ test.describe("authenticated moderation console", () => {
     await expect(page.locator('nav[aria-label="Categorii de moderare"] a[aria-current="page"]')).toHaveAttribute("href", "/moderare/verificare");
   });
 
+  test("shows audit event labels and details from the API contract", async ({ page }) => {
+    await page.unroute("**/api/moderation/guilds/*/logs/audit");
+    await page.route("**/api/moderation/guilds/*/logs/audit", async (route) => {
+      await route.fulfill({
+        json: {
+          items: [
+            {
+              id: "audit-config-1",
+              guildId: guilds[0].id,
+              actorId: null,
+              eventType: "config.updated",
+              targetType: "config",
+              targetId: guilds[0].id,
+              detail: { version: 3, protectionToggle: "antiRaid", enabled: true },
+              createdAt: "2026-09-24T17:57:00.000Z",
+            },
+            {
+              id: "audit-action-1",
+              guildId: guilds[0].id,
+              actorId: "999999999",
+              eventType: "action.applied",
+              targetType: "member",
+              targetId: "555555555",
+              detail: { type: "mute", summary: "Timeout de 10 minute aplicat lui <@555555555>.", source: "automod" },
+              createdAt: "2026-09-24T17:37:00.000Z",
+            },
+            {
+              id: "audit-ai-1",
+              guildId: guilds[0].id,
+              actorId: null,
+              eventType: "ai.flagged",
+              targetType: "message",
+              targetId: "message-123",
+              detail: { category: "toxicity" },
+              createdAt: "2026-09-24T17:19:00.000Z",
+            },
+          ],
+        },
+      });
+    });
+
+    await page.goto("/moderare");
+    await chooseFirstGuild(page);
+
+    const configRow = page.getByTestId("row-dashboard-audit-0");
+    await expect(configRow).toContainText("Configurație actualizată");
+    await expect(configRow).toContainText("Anti-Raid a fost activat.");
+    const actionRow = page.getByTestId("row-dashboard-audit-1");
+    await expect(actionRow).toContainText("Acțiune aplicată");
+    await expect(actionRow).toContainText("Timeout de 10 minute aplicat");
+    const aiRow = page.getByTestId("row-dashboard-audit-2");
+    await expect(aiRow).toContainText("Mesaj semnalat de moderarea AI");
+    await expect(aiRow).toContainText("Categorie detectată: toxicitate.");
+    await expect(page.getByText("Fără detalii suplimentare")).toHaveCount(0);
+    await expect(page.getByText("a declanșat")).toHaveCount(0);
+
+    await page.getByTestId("link-dashboard-audit").click();
+    await expect(page).toHaveURL("/moderare/audit");
+    await expect(page.getByText("Configurație actualizată")).toBeVisible();
+    await expect(page.getByText("Anti-Raid a fost activat.")).toBeVisible();
+    await page.getByPlaceholder("Caută în audit (acțiune, actor)...").fill("toxicitate");
+    await expect(page.getByText("Mesaj semnalat de moderarea AI")).toBeVisible();
+    await expect(page.getByText("Configurație actualizată")).toHaveCount(0);
+  });
+
   test("switches guilds without displaying stale config and persists a full save", async ({ page }) => {
     await page.goto("/moderare/config/avansat");
     await chooseFirstGuild(page);

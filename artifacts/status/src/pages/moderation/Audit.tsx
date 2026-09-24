@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Textarea } from "../../components/ui/textarea";
 import { useToast } from "../../hooks/use-toast";
 import { AlertTriangle, ShieldAlert } from "lucide-react";
+import { presentAuditLog } from "../../lib/moderation-audit";
 
 function ReconcileDialog({ actionId, open, onOpenChange, onReconciled }: { actionId: string | null, open: boolean, onOpenChange: (o: boolean) => void, onReconciled: () => void }) {
   const { guildId } = useActiveGuild();
@@ -93,11 +94,18 @@ export function AuditPage() {
 
   if (!guildId) return <div className="p-8 text-center text-muted-foreground">Selectează un server.</div>;
 
-  const filtered = search ? (auditEvents || []).filter(e => 
-    e.action?.toLowerCase().includes(search.toLowerCase()) || 
-    e.actorId?.toLowerCase().includes(search.toLowerCase()) || 
-    e.details?.toLowerCase().includes(search.toLowerCase())
-  ) : (auditEvents || []);
+  const filtered = search
+    ? (auditEvents || []).filter((event) => {
+      const presentation = presentAuditLog(event);
+      const query = search.toLocaleLowerCase();
+      return [
+        presentation.title,
+        presentation.details,
+        event.actorId,
+        event.targetId,
+      ].some((value) => value?.toLocaleLowerCase().includes(query));
+    })
+    : (auditEvents || []);
 
   return (
     <div className="space-y-6 animate-stagger-1">
@@ -174,26 +182,29 @@ export function AuditPage() {
             </div>
           ) : filtered.length > 0 ? (
             <div className="divide-y divide-border/50">
-              {filtered.map((ev: any, i: number) => (
+              {filtered.map((ev, i: number) => {
+                const presentation = presentAuditLog(ev);
+                return (
                 <div key={i} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-secondary/40 transition-colors">
                   <div>
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-xs font-mono text-muted-foreground bg-background border border-border/50 px-1.5 py-0.5 rounded">{ev.id ? ev.id.substring(0,8) : 'SISTEM'}</span>
-                      <span className="text-sm font-semibold uppercase tracking-wide text-foreground">{ev.action || ev.type}</span>
+                      <span className="text-sm font-semibold tracking-wide text-foreground">{presentation.title}</span>
                     </div>
                     <div className="text-sm text-muted-foreground">
-                      Actor: <span className="text-foreground">{ev.actorId || "AutoMod"}</span>
+                      Actor: <span className="text-foreground">{ev.actorId || "Sistem"}</span>
                       {ev.targetId && <span> → Țintă: <span className="text-foreground">{ev.targetId}</span></span>}
                     </div>
                     <div className="text-xs text-muted-foreground mt-1">
-                      {ev.details || ev.reason || "Fără detalii"}
+                      {presentation.details}
                     </div>
                   </div>
                   <div className="text-xs text-muted-foreground font-mono bg-background border border-border px-2 py-1 rounded whitespace-nowrap shadow-inner">
                     {new Date(ev.createdAt).toLocaleString()}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
