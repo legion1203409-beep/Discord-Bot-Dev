@@ -1,15 +1,14 @@
-import { Link, useLocation, useSearch } from "wouter";
+import { Link, useLocation } from "wouter";
 import { 
   ShieldAlert, Settings, Shield, Bot, History, BookOpen, SlidersHorizontal, ShieldCheck,
   LogOut, ChevronDown, Activity, Zap, Menu, X, Eye, Monitor, RefreshCw, Server,
-  FileText, Sparkles, MessageSquareWarning, Gavel, Users,
+  FileText, Sparkles, MessageSquareWarning, Gavel,
 } from "lucide-react";
 import { ReactNode, useState, useEffect } from "react";
 import { FaDiscord } from "react-icons/fa";
 import { useSession, useActiveGuild, useModerationAuthConfig, type ModerationGuild } from "../../hooks/use-moderation-api";
 import { Button } from "../../components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
-import { DiscordLoadingScreen } from "../../components/moderation/DiscordLoadingScreen";
 import { GuildSelection } from "./GuildSelection";
 import "./moderation.css";
 import animatedDragonLogo from "@assets/ezgif.com-video-to-gif-converter_1789791978054.gif";
@@ -109,7 +108,6 @@ const moderationNavGroups: Array<{ id: string; label: string; items: ModerationN
     label: "Control bot",
     items: [
       { href: "/bot?tab=channels", icon: Monitor, label: "Canale" },
-      { href: "/bot?tab=roles", icon: Users, label: "Roluri" },
       { href: "/bot?tab=tickets", icon: SlidersHorizontal, label: "Tichete" },
       { href: "/verificare", icon: ShieldCheck, label: "Verificare" },
       { href: "/bot?tab=messages", icon: Activity, label: "Mesaje" },
@@ -118,38 +116,19 @@ const moderationNavGroups: Array<{ id: string; label: string; items: ModerationN
   },
 ];
 
-const NAV_GROUPS_STORAGE_KEY = "moderation-nav-groups-v1";
-
-function initialExpandedNavGroups(): Record<string, boolean> {
-  const allExpanded = Object.fromEntries(moderationNavGroups.map((group) => [group.id, true]));
-  if (typeof window === "undefined") return allExpanded;
-
-  try {
-    const stored = window.localStorage.getItem(NAV_GROUPS_STORAGE_KEY);
-    if (!stored) return allExpanded;
-    const parsed = JSON.parse(stored) as Record<string, unknown>;
-    return Object.fromEntries(moderationNavGroups.map((group) => [
-      group.id,
-      typeof parsed[group.id] === "boolean" ? parsed[group.id] as boolean : true,
-    ]));
-  } catch {
-    return allExpanded;
-  }
-}
-
-function isNavItemActive(href: string, location: string, searchString: string): boolean {
+function isNavItemActive(href: string, location: string): boolean {
   const [pathname, query] = href.split("?");
   if (location.split("?")[0] !== pathname) return false;
   if (!query) return true;
 
   const expected = new URLSearchParams(query);
-  const current = new URLSearchParams(searchString || location.split("?")[1] || "");
+  const currentQuery = typeof window === "undefined" ? location.split("?")[1] ?? "" : window.location.search;
+  const current = new URLSearchParams(currentQuery);
   return Array.from(expected.entries()).every(([key, value]) => current.get(key) === value);
 }
 
 export function ModerationLayout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
-  const searchString = useSearch();
   const { session, loading, error, logout, retry } = useSession();
   const {
     authConfig,
@@ -159,7 +138,12 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
   } = useModerationAuthConfig();
   const { guildId, setGuildId, guilds } = useActiveGuild();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [expandedNavGroups, setExpandedNavGroups] = useState<Record<string, boolean>>(initialExpandedNavGroups);
+  const [expandedNavGroups, setExpandedNavGroups] = useState<Record<string, boolean>>(() => {
+    const activeGroup = moderationNavGroups.find((group) =>
+      group.items.some((item) => isNavItemActive(item.href, location)),
+    );
+    return Object.fromEntries(moderationNavGroups.map((group) => [group.id, group.id === activeGroup?.id]));
+  });
   const activeGuild = guilds.find((guild) => guild.id === guildId);
   const activeGuildIcon = guildIconUrl(activeGuild);
   const botProfile = authConfig?.bot;
@@ -170,25 +154,33 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const activeGroup = moderationNavGroups.find((group) =>
-      group.items.some((item) => isNavItemActive(item.href, location, searchString)),
+      group.items.some((item) => isNavItemActive(item.href, location)),
     );
     if (activeGroup) {
-      setExpandedNavGroups((current) => current[activeGroup.id]
-        ? current
-        : { ...current, [activeGroup.id]: true });
+      setExpandedNavGroups((current) => ({ ...current, [activeGroup.id]: true }));
     }
-  }, [location, searchString]);
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(NAV_GROUPS_STORAGE_KEY, JSON.stringify(expandedNavGroups));
-    } catch {
-      // Navigation remains usable when browser storage is unavailable.
-    }
-  }, [expandedNavGroups]);
+  }, [location]);
 
   if (loading) {
-    return <DiscordLoadingScreen />;
+    return (
+      <div className="mod-shell dark flex min-h-[100dvh] items-center justify-center p-6">
+        <div className="w-full max-w-sm space-y-5 rounded-2xl border border-border/70 bg-card/80 p-7 shadow-2xl">
+          <div className="flex items-center gap-3">
+            <div className="mod-brand-mark"><Eye className="h-5 w-5" aria-hidden="true" /></div>
+            <div>
+              <p className="mod-eyebrow">Oracolul Cenușii</p>
+              <p className="text-sm text-muted-foreground">Se deschide consola</p>
+            </div>
+          </div>
+          <div className="space-y-3" aria-label="Se încarcă">
+            <div className="mod-skeleton h-3 w-2/3" />
+            <div className="mod-skeleton h-3 w-full" />
+            <div className="mod-skeleton h-24 w-full" />
+          </div>
+          <p className="font-mono text-[10px] tracking-[0.2em] text-muted-foreground">CONECTARE LA ORACOL...</p>
+        </div>
+      </div>
+    );
   }
 
   if (error) {
@@ -394,7 +386,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
                       className={`flex flex-col gap-1 ${expanded ? "mt-1" : "hidden"}`}
                     >
                       {group.items.map((item) => {
-                        const active = isNavItemActive(item.href, location, searchString);
+                        const active = isNavItemActive(item.href, location);
                         const testId = controlGroup
                           ? `link-nav-control-${item.label.toLowerCase()}`
                           : `link-nav-${item.href === "/" ? "dashboard" : item.href.slice(1).replace(/\//g, "-")}`;
