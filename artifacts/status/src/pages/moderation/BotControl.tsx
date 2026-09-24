@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/ta
 import { ImageField } from "../../components/moderation/ImageField";
 import { DiscordEmojiText, EmojiField } from "../../components/moderation/EmojiField";
 import { useActiveGuild, useBotControl, useInviteStats, useModerationMetadata, useSession, type BotControlConfig, type ChannelPermissionConfig, type InviteStatsRange, type TicketFlowConfig } from "../../hooks/use-moderation-api";
+import { rebaseDraftChanges } from "../../lib/utils";
 import { useToast } from "../../hooks/use-toast";
 import { useLocation, useSearch } from "wouter";
 
@@ -264,12 +265,18 @@ export function BotControlPage() {
   );
   const [expandedCategory, setExpandedCategory] = useState<string | null>("gameplay");
   const initializedGuild = React.useRef<string | null>(null);
+  const currentGuild = React.useRef(guildId);
+  currentGuild.current = guildId;
 
   useEffect(() => {
     if (!guildId) {
       initializedGuild.current = null;
       setDraft(null);
       return;
+    }
+    if (initializedGuild.current && initializedGuild.current !== guildId && !data) {
+      initializedGuild.current = null;
+      setDraft(null);
     }
     if (data && initializedGuild.current !== guildId) {
       initializedGuild.current = guildId;
@@ -288,9 +295,10 @@ export function BotControlPage() {
     }
   }, [requestedTab, setLocation]);
 
+  const currentDraft = initializedGuild.current === guildId && data ? draft : null;
   const hasUnsavedChanges = Boolean(
-    data && draft && (
-      JSON.stringify(draft) !== JSON.stringify(data) ||
+    data && currentDraft && (
+      JSON.stringify(currentDraft) !== JSON.stringify(data) ||
       JSON.stringify(provisioningPermissions) !== JSON.stringify(data.provisioningPermissions ?? {})
     ),
   );
@@ -571,8 +579,11 @@ export function BotControlPage() {
   };
 
   const save = async () => {
-    if (!draft || !hasUnsavedChanges) return;
-    const duplicateFlow = Object.entries(draft.tickets.flows)
+    if (!currentDraft || !hasUnsavedChanges || saving || provisioning) return;
+    const submittedGuild = guildId;
+    const submittedDraft = currentDraft;
+    const submittedPermissions = provisioningPermissions;
+    const duplicateFlow = Object.entries(submittedDraft.tickets.flows)
       .map(([kind, flow]) => ({ kind, flow, duplicateKeys: getDuplicateQuestionKeys(flow) }))
       .find(({ duplicateKeys }) => duplicateKeys.length > 0);
     if (duplicateFlow) {
@@ -587,19 +598,23 @@ export function BotControlPage() {
     setSaving(true);
     try {
       const flows = Object.fromEntries(
-        Object.entries(draft.tickets.flows).map(([kind, flow]) => [kind, { ...flow, mode: "custom" }]),
+        Object.entries(submittedDraft.tickets.flows).map(([kind, flow]) => [kind, { ...flow, mode: "custom" }]),
       ) as BotControlConfig["tickets"]["flows"];
       const saved = await update({
-        ...draft,
-        provisioningPermissions,
-        channels: Object.fromEntries(Object.entries(draft.channels).filter(([, value]) => value)),
-        tickets: { ...draft.tickets, flows },
+        ...submittedDraft,
+        provisioningPermissions: submittedPermissions,
+        channels: Object.fromEntries(Object.entries(submittedDraft.channels).filter(([, value]) => value)),
+        tickets: { ...submittedDraft.tickets, flows },
       });
-      setDraft(JSON.parse(JSON.stringify(saved)));
+      if (currentGuild.current !== submittedGuild || initializedGuild.current !== submittedGuild) return;
+      setDraft((current) => rebaseDraftChanges(structuredClone(saved), submittedDraft, current));
+      setProvisioningPermissions((current) => rebaseDraftChanges(
+        structuredClone(saved.provisioningPermissions ?? {}), submittedPermissions, current,
+      ));
       toast(saved.discordLive
         ? {
-            title: "Setările sunt active pe Discord",
-            description: "Canalele, tichetele, mesajele și programul de evenimente au fost sincronizate cu botul.",
+            title: "Setările au fost salvate",
+            description: "Botul este conectat. Verifică destinațiile și postările Discord; conectarea nu confirmă livrarea fiecărui mesaj.",
           }
         : {
             variant: "destructive",
@@ -607,6 +622,7 @@ export function BotControlPage() {
             description: "Valorile sunt persistente și vor fi încărcate când botul se reconectează.",
           });
     } catch (saveError: any) {
+      if (currentGuild.current !== submittedGuild) return;
       toast({ variant: "destructive", title: "Salvarea a eșuat", description: saveError?.message ?? "Încearcă din nou." });
     } finally {
       setSaving(false);
@@ -614,6 +630,7 @@ export function BotControlPage() {
   };
 
   const provision = async () => {
+    if (saving || provisioning) return;
     if (hasUnsavedChanges) {
       toast({
         variant: "destructive",
@@ -630,6 +647,7 @@ export function BotControlPage() {
       });
       return;
     }
+    const submittedGuild = guildId;
     setProvisionConfirmOpen(false);
     setProvisioning(true);
     try {
@@ -637,7 +655,9 @@ export function BotControlPage() {
         selectedProvisioningCategories.map((key) => [key, provisioningPermissions[key] ?? DEFAULT_CHANNEL_PERMISSION]),
       );
       const saved = await provisionChannels(selectedProvisioningCategories, permissions);
+      if (currentGuild.current !== submittedGuild) return;
       setDraft(JSON.parse(JSON.stringify(saved)));
+      setProvisioningPermissions(structuredClone(saved.provisioningPermissions ?? {}));
       await refetchMetadata();
       const created = saved.provisioning?.created.length ?? 0;
       const reused = saved.provisioning?.reused.length ?? 0;
@@ -646,6 +666,7 @@ export function BotControlPage() {
         description: `${created} create, ${reused} reutilizate pentru ${selectedProvisioningCategories.length} categorii. Configurația a fost salvată pentru acest server.`,
       });
     } catch (provisionError: any) {
+      if (currentGuild.current !== submittedGuild) return;
       toast({
         variant: "destructive",
         title: "Provisioningul a eșuat",
@@ -656,10 +677,10 @@ export function BotControlPage() {
     }
   };
 
-  if (loading && !draft) {
+  if ((loading || (data && initializedGuild.current !== guildId)) && !currentDraft) {
     return <div className="flex justify-center p-12 text-muted-foreground"><Loader2 className="h-8 w-8 animate-spin" /></div>;
   }
-  if (!draft) {
+  if (!draft || !currentDraft) {
     return <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-6 text-sm text-destructive">{error?.message ?? "Setările botului nu au putut fi încărcate."}</div>;
   }
 
@@ -1638,7 +1659,7 @@ export function BotControlPage() {
                 <h2 className="font-medium">Statistici pentru invitații Discord</h2>
                 <p className="text-xs text-muted-foreground">
                   Urmărește intrările atribuite fiecărui cod, creatorul invitației și utilizările raportate de Discord.
-                  Nu sunt păstrate ID-uri de membri.
+                  ID-urile membrilor nu sunt păstrate în statisticile invitațiilor.
                 </p>
               </div>
               <Switch
@@ -1659,6 +1680,31 @@ export function BotControlPage() {
               {metadata?.botCapabilities?.guildMembers === false && (
                 <p className="mt-2 font-medium text-destructive">Intenția Server Members nu este activă; intrările nu vor fi captate.</p>
               )}
+            </div>
+
+            <div className="space-y-3 rounded-lg border border-border/70 p-4">
+              <div>
+                <h3 className="text-sm font-medium">Jurnal pentru fiecare intrare</h3>
+                <p className="text-xs text-muted-foreground">
+                  Postează cine a intrat și cine l-a invitat. Dacă Discord nu poate confirma invitația, intrarea apare ca neatribuită.
+                </p>
+              </div>
+              <label className="block max-w-md space-y-1 text-sm">
+                <span className="text-xs font-medium">Canal jurnal invitații</span>
+                <Select
+                  disabled={!draft.inviteTracking.enabled}
+                  value={draft.inviteTracking.joinLogChannelId || "__none__"}
+                  onValueChange={(value) => setInviteTracking("joinLogChannelId", value === "__none__" ? "" : value)}
+                >
+                  <SelectTrigger className="mod-select-trigger"><SelectValue placeholder="Alege canal" /></SelectTrigger>
+                  <SelectContent className="max-h-[min(70vh,32rem)] overscroll-contain">
+                    <SelectItem value="__none__">Dezactivat</SelectItem>
+                    {textChannels.map((channel) => (
+                      <SelectItem key={channel.id} value={channel.id}>#{channel.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </label>
             </div>
 
             <div className="space-y-3 rounded-lg border border-border/70 p-4">

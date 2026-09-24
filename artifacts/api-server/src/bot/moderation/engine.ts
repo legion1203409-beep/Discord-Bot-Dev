@@ -237,30 +237,29 @@ function buildEmbed(config: ModerationConfig, title: string, description: string
   if (!config.embeds.enabled) return null;
   const embed = new EmbedBuilder()
     .setColor(config.embeds.color as `#${string}`)
-    .setTitle(config.embeds.titleTemplate.replace("{action}", title).slice(0, 256))
+    .setTitle(config.embeds.titleTemplate.replaceAll("{action}", title).slice(0, 256))
     .setDescription(config.embeds.descriptionTemplate
-      .replace("{action}", title)
-      .replace("{reason}", description)
+      .replaceAll("{action}", title)
+      .replaceAll("{reason}", description)
       .slice(0, 4_096));
   if (config.embeds.style === "compact") {
     embed.setFooter({ text: "Moderare" });
   } else if (config.embeds.style === "detailed") {
     embed.addFields({ name: "Detalii", value: description.slice(0, 1_024) }).setTimestamp();
   }
-  // Discord renders a configured GIF URL when animations are enabled; otherwise
-  // the same trusted URL remains a compact thumbnail.
-  if (config.embeds.iconUrl) {
-    if (config.embeds.animations && /\.gif(?:[?#]|$)/i.test(config.embeds.iconUrl)) embed.setImage(config.embeds.iconUrl);
-    else embed.setThumbnail(config.embeds.iconUrl);
-  }
+  if (config.embeds.iconUrl) embed.setThumbnail(config.embeds.iconUrl);
+  if (config.embeds.animations && config.embeds.animationUrl) embed.setImage(config.embeds.animationUrl);
   return embed;
 }
 
 export async function notify(config: ModerationConfig, guild: Guild, title: string, description: string, preferredChannelId?: string | null): Promise<void> {
-  const id = preferredChannelId ?? config.audit.channelId;
+  const id = preferredChannelId ?? (config.audit.enabled ? config.audit.channelId : null);
   if (!id) return;
   const channel = guild.channels.cache.get(id) ?? await guild.channels.fetch(id).catch(() => null);
-  if (!channel?.isTextBased() || !("send" in channel)) return;
+  if (!channel?.isTextBased() || !("send" in channel) || channel.guildId !== guild.id) {
+    logger.warn({ guildId: guild.id, channelId: id }, "Moderation notification destination is unavailable or belongs to another server");
+    return;
+  }
   const embed = buildEmbed(config, title, description);
   await channel.send(embed
     ? { embeds: [embed], allowedMentions: { parse: [] } }

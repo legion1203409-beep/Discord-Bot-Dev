@@ -1354,8 +1354,11 @@ function applyAllianceAnnouncementImage(
   const thumbnailUrl = publicTicketImageUrl(rawThumbnailUrl);
   if (thumbnailUrl) embed.setThumbnail(thumbnailUrl);
   if (!imageUrl) return;
-  if (imageMode === "thumbnail" && !rawThumbnailUrl) embed.setThumbnail(imageUrl);
-  else if (imageMode !== "none" || rawThumbnailUrl !== undefined) embed.setImage(imageUrl);
+  if (imageMode === "thumbnail") {
+    if (!thumbnailUrl) embed.setThumbnail(imageUrl);
+  } else if (imageMode === "large") {
+    embed.setImage(imageUrl);
+  }
 }
 
 export function allianceAnnouncementImageEmbed(

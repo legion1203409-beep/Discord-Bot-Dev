@@ -519,7 +519,7 @@ async function deleteTrackedEventMessage(
     const context = errorContext(err);
     return { target, phase: "channel-fetch", ...context, messageId, channelId };
   }
-  if (!(channel instanceof TextChannel)) {
+  if (!(channel instanceof TextChannel) || channel.guildId !== guildId) {
     return {
       target,
       phase: "channel-fetch",
@@ -1099,7 +1099,7 @@ async function fetchChannel(client: Client, type: EventType, guildId: string): P
     return null;
   }
   const ch = await client.channels.fetch(id).catch(() => null);
-  if (!(ch instanceof TextChannel)) return null;
+  if (!(ch instanceof TextChannel) || ch.guildId !== guildId) return null;
   if (isTicketCategoryParentId(ch.parentId, ch.guildId)) {
     logger.warn(
       { guildId, type, channelId: ch.id, parentId: ch.parentId },
@@ -1206,7 +1206,7 @@ export async function publishLeaderboardResult(
 async function runFleeResolution(boss: BossState, client: Client): Promise<void> {
   try {
     const fightCh = await client.channels.fetch(boss.channelId).catch(() => null);
-    if (fightCh instanceof TextChannel) {
+    if (fightCh instanceof TextChannel && fightCh.guildId === boss.guildId) {
       const bossMsg = await fightCh.messages.fetch(boss.messageId).catch(() => null);
       await bossMsg?.delete().catch(() => null);
     }
@@ -1314,7 +1314,7 @@ export async function rehydrateActiveChest(client: Client, guildId: string): Pro
 
     const now = Date.now();
     const ch = await client.channels.fetch(record.channelId).catch(() => null);
-    if (!(ch instanceof TextChannel)) {
+    if (!(ch instanceof TextChannel) || ch.guildId !== guildId) {
       await clearActiveChest(guildId).catch(() => null);
       logger.warn({ chestId: record.chestId, guildId }, "Chest channel not found on rehydration — row cleared");
       return;
@@ -1370,7 +1370,7 @@ export async function rehydrateSimpleChest(client: Client, guildId: string, dbKe
 
     const now = Date.now();
     const ch = await client.channels.fetch(record.channelId).catch(() => null);
-    if (!(ch instanceof TextChannel)) {
+    if (!(ch instanceof TextChannel) || ch.guildId !== guildId) {
       await clearActiveChest(guildId, dbKey).catch(() => null);
       logger.warn({ chestId: record.chestId, dbKey, guildId }, "Simple chest channel not found on rehydration — row cleared");
       return;

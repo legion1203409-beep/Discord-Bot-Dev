@@ -4380,7 +4380,7 @@ async function setupTrader(client: Client, guildId: string): Promise<void> {
       return;
     }
     const channel = await client.channels.fetch(traderChannelId).catch(() => null);
-    if (!(channel instanceof TextChannel)) {
+    if (!(channel instanceof TextChannel) || channel.guildId !== guildId) {
       logger.warn({ channelId: traderChannelId, guildId }, "Trader channel not found");
       return;
     }

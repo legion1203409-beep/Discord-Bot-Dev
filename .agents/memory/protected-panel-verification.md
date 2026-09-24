@@ -14,3 +14,9 @@ Visual redesign checks must wait for the real page controls, not just navigation
 **Why:** An authenticated Bot Control capture showed only a spinner because its API was not mocked; that capture provided no evidence about the edited layout.
 
 **How to apply:** Supply complete, contract-correct fixture responses and assert the expected editor is visible. Treat a loading-only screenshot as blocked verification, not a successful visual check.
+
+Mocked browser persistence does not prove that the real database accepts repeated saves.
+
+**Why:** A successful mocked PUT concealed an SQL write that inserted the first configuration but could never update an existing one. This led to wrongly treating a real persistence complaint as a missing Save click.
+
+**How to apply:** Pair browser save/reload checks with real PostgreSQL tests of first, repeated, and stale-version writes using isolated temporary tables. Do not infer user error from an unsaved indicator alone; failed saves leave the same indicator visible.

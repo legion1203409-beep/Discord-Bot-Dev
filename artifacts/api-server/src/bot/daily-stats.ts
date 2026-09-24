@@ -380,7 +380,7 @@ export async function publishDailyStatsReport(client: Client, guildId: string, d
     warnDailyStatsReportSkipped(guildId, day, "main_channel_fetch_failed", { channelId, error });
     return false;
   }
-  if (!(channel instanceof TextChannel)) {
+  if (!(channel instanceof TextChannel) || channel.guildId !== guildId) {
     warnDailyStatsReportSkipped(guildId, day, "main_channel_not_text", {
       channelId,
       channelType: channel?.type ?? null,

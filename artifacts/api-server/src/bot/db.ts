@@ -2405,6 +2405,7 @@ export type InviteReportFrequency = "daily" | "weekly";
 
 export interface InviteTrackingConfig {
   enabled: boolean;
+  joinLogChannelId: string;
   reportEnabled: boolean;
   reportChannelId: string;
   reportFrequency: InviteReportFrequency;
@@ -2416,6 +2417,7 @@ export interface InviteTrackingConfig {
 
 export const DEFAULT_INVITE_TRACKING_CONFIG: InviteTrackingConfig = {
   enabled: false,
+  joinLogChannelId: "",
   reportEnabled: false,
   reportChannelId: "",
   reportFrequency: "daily",
@@ -2427,6 +2429,7 @@ export const DEFAULT_INVITE_TRACKING_CONFIG: InviteTrackingConfig = {
 
 export function normalizeInviteTrackingConfig(value: unknown): InviteTrackingConfig {
   const input = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const rawJoinLogChannelId = typeof input.joinLogChannelId === "string" ? input.joinLogChannelId.trim() : "";
   const rawChannelId = typeof input.reportChannelId === "string" ? input.reportChannelId.trim() : "";
   const reportFrequency: InviteReportFrequency = input.reportFrequency === "weekly" ? "weekly" : "daily";
   const reportTime = typeof input.reportTime === "string" && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(input.reportTime)
@@ -2447,6 +2450,7 @@ export function normalizeInviteTrackingConfig(value: unknown): InviteTrackingCon
 
   return {
     enabled: input.enabled === true,
+    joinLogChannelId: /^\d{5,25}$/.test(rawJoinLogChannelId) ? rawJoinLogChannelId : "",
     reportEnabled: input.reportEnabled === true,
     reportChannelId: /^\d{5,25}$/.test(rawChannelId) ? rawChannelId : "",
     reportFrequency,

@@ -10,6 +10,7 @@ const {
   const instances = new WeakSet<object>();
   class MockTextChannel {
     id: string;
+    guildId = "";
     parentId: string | null = null;
     messages = { fetch: vi.fn() };
     send = vi.fn();
@@ -183,6 +184,7 @@ afterEach(() => {
 describe("persisted event message cleanup", () => {
   it("treats Discord 10008 from message fetch as already deleted", async () => {
     const eventChannel = new MockTextChannel("event-channel");
+    eventChannel.guildId = "guild-fetch-10008";
     eventChannel.messages.fetch.mockRejectedValue(discordError(10008, "Unknown Message"));
 
     await expect(deleteEventMessages(
@@ -198,6 +200,7 @@ describe("persisted event message cleanup", () => {
   it("removes the event DB record after timer cleanup succeeds", async () => {
     const eventMessage = { delete: vi.fn().mockResolvedValue(undefined) };
     const eventChannel = new MockTextChannel("event-channel");
+    eventChannel.guildId = "guild-success";
     eventChannel.messages.fetch.mockResolvedValue(eventMessage);
     const client = makeClient({ "event-channel": eventChannel });
 
@@ -211,6 +214,7 @@ describe("persisted event message cleanup", () => {
   it("retries a transient fetch failure without deleting its DB record", async () => {
     const eventMessage = { delete: vi.fn().mockResolvedValue(undefined) };
     const eventChannel = new MockTextChannel("event-channel");
+    eventChannel.guildId = "guild-fetch-retry";
     eventChannel.messages.fetch
       .mockRejectedValueOnce(discordError(500, "temporary gateway failure"))
       .mockResolvedValueOnce(eventMessage);
@@ -246,6 +250,7 @@ describe("persisted event message cleanup", () => {
         .mockResolvedValueOnce(undefined),
     };
     const eventChannel = new MockTextChannel("event-channel");
+    eventChannel.guildId = "guild-delete-retry";
     eventChannel.messages.fetch.mockResolvedValue(eventMessage);
 
     scheduleEventMessageDeletion(
@@ -290,6 +295,7 @@ describe("persisted event message cleanup", () => {
   it("does not create duplicate timers for the same guild event", async () => {
     const eventMessage = { delete: vi.fn().mockResolvedValue(undefined) };
     const eventChannel = new MockTextChannel("event-channel");
+    eventChannel.guildId = "guild-deduplicated";
     eventChannel.messages.fetch.mockResolvedValue(eventMessage);
     const client = makeClient({ "event-channel": eventChannel });
     const expiry = expiredAt();
@@ -308,6 +314,8 @@ describe("persisted event message cleanup", () => {
     const decreeMessage = { delete: vi.fn().mockResolvedValue(undefined) };
     const eventChannel = new MockTextChannel("event-channel");
     const mainChannel = new MockTextChannel("main-channel");
+    eventChannel.guildId = "guild-decree";
+    mainChannel.guildId = "guild-decree";
     eventChannel.messages.fetch.mockResolvedValue(eventMessage);
     mainChannel.messages.fetch.mockResolvedValue(decreeMessage);
 
@@ -331,6 +339,7 @@ describe("persisted event message cleanup", () => {
   it("routes the legacy old-event sweep through the retrying timer cleanup", async () => {
     const eventMessage = { delete: vi.fn().mockResolvedValue(undefined) };
     const eventChannel = new MockTextChannel("event-channel");
+    eventChannel.guildId = "guild-legacy";
     eventChannel.messages.fetch.mockResolvedValue(eventMessage);
     mockGetAllEvents.mockResolvedValue([{
       id: 106,
@@ -347,5 +356,18 @@ describe("persisted event message cleanup", () => {
 
     expect(eventChannel.messages.fetch).toHaveBeenCalledWith("legacy-event-message");
     expect(mockDeleteEvent).toHaveBeenCalledWith(106);
+  });
+
+  it("does not delete a tracked message through another server's channel", async () => {
+    const foreignChannel = new MockTextChannel("event-channel");
+    foreignChannel.guildId = "other-guild";
+    await expect(deleteEventMessages(
+      makeClient({ "event-channel": foreignChannel }),
+      "guild-routing",
+      109,
+      "event-message",
+    )).resolves.toBe(true);
+    expect(foreignChannel.messages.fetch).not.toHaveBeenCalled();
+    expect(mockDeleteEvent).not.toHaveBeenCalled();
   });
 });

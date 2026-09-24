@@ -300,7 +300,7 @@ export async function deliverActivityLog(
   if (!channelId) return;
   try {
     const channel = guild.channels.cache.get(channelId) ?? await guild.channels.fetch(channelId);
-    if (!channel?.isTextBased() || !("send" in channel)) {
+    if (!channel?.isTextBased() || !("send" in channel) || channel.guildId !== guild.id) {
       logger.warn({ guildId: guild.id, channelId, category }, "Discord activity log destination is unavailable");
       return;
     }

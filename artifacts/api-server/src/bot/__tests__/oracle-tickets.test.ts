@@ -341,6 +341,20 @@ describe("Oracle ticket categories", () => {
     expect(mediaEmbed?.thumbnail?.url).toBe(thumbnail);
   });
 
+  it("honors the saved partnership image mode even with a separate thumbnail", () => {
+    const large = "https://cdn.example.test/alliance-large.png";
+    const thumbnail = "https://cdn.example.test/alliance-thumb.png";
+    for (const mode of ["none", "thumbnail"] as const) {
+      const embed = allianceAnnouncementEmbed("Pact confirmat", large, mode, thumbnail).toJSON();
+      const media = allianceAnnouncementImageEmbed(large, mode, thumbnail)?.toJSON();
+      expect(embed.image).toBeUndefined();
+      expect(media?.image).toBeUndefined();
+      expect(embed.thumbnail?.url).toBe(thumbnail);
+      expect(media?.thumbnail?.url).toBe(thumbnail);
+    }
+    expect(allianceAnnouncementEmbed("Pact confirmat", large, "thumbnail").toJSON().thumbnail?.url).toBe(large);
+  });
+
   it("builds a designed automatic recruitment advertisement from the partner answers", () => {
     const ad = allianceRecruitmentEmbed(
       {

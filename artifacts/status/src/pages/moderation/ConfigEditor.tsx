@@ -77,7 +77,7 @@ function Toggle({ label, help, checked, onChange, disabled = false }: {
         <p className="text-sm font-medium">{label}</p>
         {help && <p className="text-xs text-muted-foreground">{help}</p>}
       </div>
-      <Switch checked={Boolean(checked)} onCheckedChange={onChange} disabled={disabled} />
+      <Switch aria-label={label} checked={Boolean(checked)} onCheckedChange={onChange} disabled={disabled} />
     </div>
   );
 }
@@ -146,7 +146,9 @@ function RuleEditor({ title, help, rule, thresholds, onChange }: RuleProps) {
       : thresholds
         .filter((candidate) => candidate.min === field.min && candidate.max === field.max)
         .map((candidate) => candidate.key),
-  }));
+  })).filter((field, index, fields) =>
+    fields.findIndex((candidate) => candidate.groupKeys.join("|") === field.groupKeys.join("|")) === index,
+  );
   return (
     <div className="space-y-4 rounded-lg border border-border bg-muted/20 p-4">
       <div><h4 className="font-medium">{title}</h4>{help && <p className="text-xs text-muted-foreground">{help}</p>}</div>
@@ -169,10 +171,10 @@ function RuleEditor({ title, help, rule, thresholds, onChange }: RuleProps) {
               max={threshold.max}
               onChange={(value) => {
                 const nextThresholds = { ...(rule.thresholds ?? {}) };
-                for (const key of threshold.groupKeys) {
-                  if (value === undefined) delete nextThresholds[key];
-                  else nextThresholds[key] = value;
-                }
+                // Remove legacy aliases before writing the preferred key. Otherwise
+                // the engine may read an older alias first despite a new UI value.
+                for (const key of threshold.groupKeys) delete nextThresholds[key];
+                if (value !== undefined) nextThresholds[threshold.key] = value;
                 onChange(["thresholds"], nextThresholds);
               }}
             />
@@ -220,37 +222,37 @@ const MESSAGE_SPAM = [
   threshold("messages", "Mesaje", "Mesaje până la declanșare.", 1, 1000, ["messages", "limit", "max"]),
   threshold("limit", "Limită mesaje (alias)", "Alias compatibil pentru numărul de mesaje.", 1, 1000, ["messages", "limit", "max"]),
   threshold("max", "Maxim mesaje (alias)", "Alias compatibil pentru numărul de mesaje.", 1, 1000, ["messages", "limit", "max"]),
-  threshold("window", "Fereastră (secunde)", "Intervalul de măsurare în secunde.", 1, 3600, WINDOW_KEYS),
+  threshold("windowMs", "Fereastră (secunde)", "Intervalul de măsurare în secunde.", 1, 3600, WINDOW_KEYS),
   threshold("seconds", "Secunde (alias)", "Alias compatibil pentru interval.", 1, 3600, WINDOW_KEYS),
 ];
 const EDIT_SPAM = [
   threshold("edits", "Editări", "Editări până la declanșare.", 1, 1000, ["limit", "edits", "max"]),
   threshold("limit", "Limită editări (alias)", "Alias compatibil pentru numărul de editări.", 1, 1000, ["limit", "edits", "max"]),
-  threshold("window", "Fereastră (secunde)", "Intervalul de măsurare în secunde.", 1, 3600, WINDOW_KEYS),
+  threshold("windowMs", "Fereastră (secunde)", "Intervalul de măsurare în secunde.", 1, 3600, WINDOW_KEYS),
 ];
 const DELETE_SPAM = [
   threshold("deletes", "Ștergeri", "Ștergeri până la declanșare.", 1, 1000, ["limit", "deletes", "max"]),
   threshold("limit", "Limită ștergeri (alias)", "Alias compatibil pentru numărul de ștergeri.", 1, 1000, ["limit", "deletes", "max"]),
-  threshold("window", "Fereastră (secunde)", "Intervalul de măsurare în secunde.", 1, 3600, WINDOW_KEYS),
+  threshold("windowMs", "Fereastră (secunde)", "Intervalul de măsurare în secunde.", 1, 3600, WINDOW_KEYS),
 ];
 const MENTION_LIMIT = [
   threshold("mentions", "Mențiuni", "Mențiuni într-un mesaj până la declanșare.", 1, 100, ["mentions", "limit", "max"]),
-  threshold("limit", "Limită mențiuni (alias)", "Alias compatibil pentru numărul de mențiuni.", 1, 100),
-  threshold("max", "Maxim mențiuni (alias)", "Alias compatibil pentru numărul de mențiuni.", 1, 100),
+  threshold("limit", "Limită mențiuni (alias)", "Alias compatibil pentru numărul de mențiuni.", 1, 100, ["mentions", "limit", "max"]),
+  threshold("max", "Maxim mențiuni (alias)", "Alias compatibil pentru numărul de mențiuni.", 1, 100, ["mentions", "limit", "max"]),
 ];
 const FLOOD_LENGTH = [
-  threshold("length", "Lungime mesaj", "Număr de caractere în mesaj.", 1, 10000),
-  threshold("maxLength", "Lungime maximă (alias)", "Alias compatibil pentru lungime.", 1, 10000),
-  threshold("limit", "Limită (alias)", "Alias compatibil pentru lungime.", 1, 10000),
+  threshold("length", "Lungime mesaj", "Număr de caractere în mesaj.", 1, 10000, ["length", "maxLength", "limit"]),
+  threshold("maxLength", "Lungime maximă (alias)", "Alias compatibil pentru lungime.", 1, 10000, ["length", "maxLength", "limit"]),
+  threshold("limit", "Limită (alias)", "Alias compatibil pentru lungime.", 1, 10000, ["length", "maxLength", "limit"]),
 ];
 const FLOOD_RUN = [
-  threshold("run", "Lungime șir", "Caractere identice consecutive.", 2, 2000),
-  threshold("limit", "Limită șir (alias)", "Alias compatibil pentru lungime șir.", 2, 2000),
-  threshold("max", "Maxim șir (alias)", "Alias compatibil pentru lungime șir.", 2, 2000),
+  threshold("run", "Lungime șir", "Caractere identice consecutive.", 2, 2000, ["run", "limit", "max"]),
+  threshold("limit", "Limită șir (alias)", "Alias compatibil pentru lungime șir.", 2, 2000, ["run", "limit", "max"]),
+  threshold("max", "Maxim șir (alias)", "Alias compatibil pentru lungime șir.", 2, 2000, ["run", "limit", "max"]),
 ];
 const SUSPICIOUS_LIMIT = [
-  threshold("changes", "Schimbări / evenimente", "Număr de evenimente până la alertă.", 1, 1000),
-  threshold("limit", "Limită (alias)", "Alias compatibil pentru numărul de evenimente.", 1, 1000),
+  threshold("changes", "Schimbări / evenimente", "Număr de evenimente până la alertă.", 1, 1000, ["changes", "limit"]),
+  threshold("limit", "Limită (alias)", "Alias compatibil pentru numărul de evenimente.", 1, 1000, ["changes", "limit"]),
 ];
 
 function Section({ value, title, description, children }: { value: string; title: string; description: string; children: React.ReactNode }) {
@@ -473,7 +475,7 @@ export function ConfigEditor({
           <div role="status" className="rounded-lg border border-border bg-background/70 p-3 text-sm">
             <p className="font-medium">
               {value.activityLog.enabled
-                ? `Jurnal activ · ${configuredActivityCount}/${selectedActivityCategories.length} canale configurate`
+                ? `Jurnal activat în formular · ${configuredActivityCount}/${selectedActivityCategories.length} canale configurate (salvează pentru a aplica)`
                 : "Jurnal oprit · canalele și istoricul existente sunt păstrate"}
             </p>
             {value.activityLog.categoryId && <p className="mt-1 text-xs text-muted-foreground">Categorie: {value.activityLog.categoryId}</p>}

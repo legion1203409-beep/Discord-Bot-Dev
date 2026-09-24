@@ -1,7 +1,18 @@
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
+import { rebaseDraftChanges } from "../utils";
 
 describe("UI API Contract Validation", () => {
+  it("rebases only edits made during a save without replacing server-provisioned IDs", () => {
+    const submitted = { activityLog: { enabled: true, roleIds: ["12345"], channelIds: { messages: null } }, audit: { enabled: false } };
+    const response = { activityLog: { enabled: true, roleIds: ["12345"], channelIds: { messages: "98765" } }, audit: { enabled: false } };
+    const current = { activityLog: { enabled: true, roleIds: ["54321"], channelIds: { messages: null } }, audit: { enabled: false } };
+    expect(rebaseDraftChanges(response, submitted, current)).toEqual({
+      activityLog: { enabled: true, roleIds: ["54321"], channelIds: { messages: "98765" } },
+      audit: { enabled: false },
+    });
+  });
+
   it("validates notes payload correctly", () => {
     const noteSchema = z.object({ body: z.string().trim().min(1).max(4_000) });
     expect(noteSchema.parse({ body: "This is a note." })).toEqual({ body: "This is a note." });

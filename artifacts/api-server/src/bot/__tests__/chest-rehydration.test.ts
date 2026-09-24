@@ -97,8 +97,10 @@ async function makeChannel(
 ) {
   const { TextChannel } = await import("discord.js");
   const ch = Object.create(TextChannel.prototype) as {
+    guildId: string;
     messages: { fetch: ReturnType<typeof vi.fn> };
   };
+  ch.guildId = TEST_GUILD_ID;
   ch.messages = {
     fetch: vi.fn().mockResolvedValue(msgEdit ? { id: "message-1", edit: msgEdit, delete: msgDelete } : null),
   };

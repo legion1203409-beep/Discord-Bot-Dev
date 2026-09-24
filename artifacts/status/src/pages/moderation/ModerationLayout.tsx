@@ -1,4 +1,4 @@
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { 
   ShieldAlert, Settings, Shield, Bot, History, BookOpen, SlidersHorizontal, ShieldCheck,
   LogOut, ChevronDown, Activity, Zap, Menu, X, Eye, Monitor, RefreshCw, Server,
@@ -122,13 +122,15 @@ function isNavItemActive(href: string, location: string): boolean {
   if (!query) return true;
 
   const expected = new URLSearchParams(query);
-  const currentQuery = typeof window === "undefined" ? location.split("?")[1] ?? "" : window.location.search;
+  const currentQuery = location.split("?")[1] ?? "";
   const current = new URLSearchParams(currentQuery);
   return Array.from(expected.entries()).every(([key, value]) => current.get(key) === value);
 }
 
 export function ModerationLayout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
+  const search = useSearch();
+  const navLocation = `${location.split("?")[0]}${search ? `?${search.replace(/^\?/, "")}` : location.includes("?") ? `?${location.split("?")[1]}` : ""}`;
   const { session, loading, error, logout, retry } = useSession();
   const {
     authConfig,
@@ -140,7 +142,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [expandedNavGroups, setExpandedNavGroups] = useState<Record<string, boolean>>(() => {
     const activeGroup = moderationNavGroups.find((group) =>
-      group.items.some((item) => isNavItemActive(item.href, location)),
+      group.items.some((item) => isNavItemActive(item.href, navLocation)),
     );
     return Object.fromEntries(moderationNavGroups.map((group) => [group.id, group.id === activeGroup?.id]));
   });
@@ -154,12 +156,12 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const activeGroup = moderationNavGroups.find((group) =>
-      group.items.some((item) => isNavItemActive(item.href, location)),
+      group.items.some((item) => isNavItemActive(item.href, navLocation)),
     );
     if (activeGroup) {
       setExpandedNavGroups((current) => ({ ...current, [activeGroup.id]: true }));
     }
-  }, [location]);
+  }, [navLocation]);
 
   if (loading) {
     return (
@@ -386,7 +388,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
                       className={`flex flex-col gap-1 ${expanded ? "mt-1" : "hidden"}`}
                     >
                       {group.items.map((item) => {
-                        const active = isNavItemActive(item.href, location);
+                        const active = isNavItemActive(item.href, navLocation);
                         const testId = controlGroup
                           ? `link-nav-control-${item.label.toLowerCase()}`
                           : `link-nav-${item.href === "/" ? "dashboard" : item.href.slice(1).replace(/\//g, "-")}`;

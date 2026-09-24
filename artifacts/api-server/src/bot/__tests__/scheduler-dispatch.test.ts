@@ -23,6 +23,7 @@ const { MockTextChannel } = vi.hoisted(() => {
   const _instances = new WeakSet<object>();
 
   class MockTextChannel {
+    guildId = "test-guild-1";
     send     = vi.fn();
     messages = { fetch: vi.fn() };
 

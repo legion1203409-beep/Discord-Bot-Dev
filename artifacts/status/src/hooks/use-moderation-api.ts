@@ -194,6 +194,7 @@ export interface BotControlConfig {
 
 export interface InviteTrackingConfig {
   enabled: boolean;
+  joinLogChannelId: string;
   reportEnabled: boolean;
   reportChannelId: string;
   reportFrequency: "daily" | "weekly";
@@ -630,13 +631,15 @@ export function useModerationConfig(guildId: string | null) {
     if (currentGuildId.current !== requestedGuildId || currentDataGuildId !== requestedGuildId) {
       throw new Error("Serverul selectat s-a schimbat. Reîncarcă configurația înainte de salvare.");
     }
+    const writeRequest = ++requestId.current; // A pending GET must not overwrite a newer write.
+    controllerRef.current?.abort();
     try {
       const response = await apiFetchWithMeta<any>(`/guilds/${requestedGuildId}/config`, {
         method: "PUT",
         headers: { "If-Match": currentVersion.startsWith('"') ? currentVersion : `"${currentVersion}"` },
         body: JSON.stringify(newData),
       });
-      if (currentGuildId.current !== requestedGuildId || !cachedSession?.authenticated || activeGuildId !== requestedGuildId) {
+      if (requestId.current !== writeRequest || currentGuildId.current !== requestedGuildId || !cachedSession?.authenticated || activeGuildId !== requestedGuildId) {
         throw new Error("Serverul selectat s-a schimbat în timpul salvării.");
       }
       const res = response.data;
@@ -666,10 +669,12 @@ export function useModerationConfig(guildId: string | null) {
     if (!cachedSession?.authenticated || activeGuildId !== requestedGuildId) {
       throw new Error("Sesiunea de moderare nu mai este activă.");
     }
+    const writeRequest = ++requestId.current;
+    controllerRef.current?.abort();
 
     const saveAttempt = async () => {
       const snapshot = await apiFetchWithMeta<any>(`/guilds/${requestedGuildId}/config`);
-      if (currentGuildId.current !== requestedGuildId || activeGuildId !== requestedGuildId) {
+      if (requestId.current !== writeRequest || currentGuildId.current !== requestedGuildId || activeGuildId !== requestedGuildId) {
         throw new Error("Serverul selectat s-a schimbat în timpul salvării.");
       }
       const snapshotVersion = snapshot.data.version
@@ -693,7 +698,7 @@ export function useModerationConfig(guildId: string | null) {
       if (!(error instanceof ApiError) || error.status !== 409) throw error;
       response = await saveAttempt();
     }
-    if (currentGuildId.current !== requestedGuildId || activeGuildId !== requestedGuildId) {
+    if (requestId.current !== writeRequest || currentGuildId.current !== requestedGuildId || activeGuildId !== requestedGuildId) {
       throw new Error("Serverul selectat s-a schimbat în timpul salvării.");
     }
     const result = response.data;
@@ -850,13 +855,16 @@ export function useBotControl(guildId: string | null) {
     if (dataGuildId !== requestedGuildId || activeGuildId !== requestedGuildId) {
       throw new Error("Serverul selectat s-a schimbat. Reîncarcă setările înainte de salvare.");
     }
+    const writeRequest = ++requestId.current;
     try {
-      const { discordLive: _discardedStatus, ...payload } = value;
+      // Both fields are response-only. A provision response includes a summary
+      // that the strict PUT schema explicitly rejects on the next edit.
+      const { discordLive: _discardedStatus, provisioning: _discardedProvisioning, ...payload } = value;
       const saved = await apiFetch<BotControlConfig>(`/guilds/${requestedGuildId}/bot-control`, {
         method: "PUT",
         body: JSON.stringify(payload),
       });
-      if (currentGuildId.current !== requestedGuildId || activeGuildId !== requestedGuildId) {
+      if (requestId.current !== writeRequest || currentGuildId.current !== requestedGuildId || activeGuildId !== requestedGuildId) {
         throw new Error("Serverul selectat s-a schimbat în timpul salvării.");
       }
       setData(saved);
@@ -876,11 +884,12 @@ export function useBotControl(guildId: string | null) {
     if (dataGuildId !== requestedGuildId || activeGuildId !== requestedGuildId) {
       throw new Error("Serverul selectat s-a schimbat. Reîncarcă setările înainte de provisioning.");
     }
+    const writeRequest = ++requestId.current;
     const saved = await apiFetch<BotControlConfig>(`/guilds/${requestedGuildId}/bot-control/provision-channels`, {
       method: "POST",
       body: JSON.stringify(categories ? { categories, permissions } : {}),
     });
-    if (currentGuildId.current !== requestedGuildId || activeGuildId !== requestedGuildId) {
+    if (requestId.current !== writeRequest || currentGuildId.current !== requestedGuildId || activeGuildId !== requestedGuildId) {
       throw new Error("Serverul selectat s-a schimbat în timpul provisioningului.");
     }
     setData(saved);

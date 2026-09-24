@@ -361,6 +361,45 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     expect(response.headers.get("etag")).toBe('"4"');
   });
 
+  it("rejects unknown sections and fields instead of silently reporting a successful save", async () => {
+    for (const payload of [
+      { ...defaultModerationConfig, embed: { titleTemplate: "Lost title" } },
+      { ...defaultModerationConfig, embeds: { ...defaultModerationConfig.embeds, titleTemplte: "Lost title" } },
+    ]) {
+      const response = await fetch(`${base}/config`, {
+        ...post(payload, { "if-match": '"3"' }), method: "PUT",
+      });
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({ error: expect.stringContaining("Unknown configuration field") });
+    }
+    expect(mocks.putConfig).not.toHaveBeenCalled();
+  });
+
+  it("checks the revision before any Discord configuration side effects", async () => {
+    const config = structuredClone(defaultModerationConfig);
+    config.activityLog.enabled = true;
+    config.activityLog.roleIds = ["111111111111111111"];
+    const response = await fetch(`${base}/config`, {
+      ...post(config, { "if-match": '"2"' }), method: "PUT",
+    });
+    expect(response.status).toBe(409);
+    expect(mocks.client).not.toHaveBeenCalled();
+    expect(mocks.putConfig).not.toHaveBeenCalled();
+  });
+
+  it("allows an embed-only save when an old configured channel was deleted from Discord", async () => {
+    const config = structuredClone(defaultModerationConfig);
+    config.audit.channelId = "555555555555555555";
+    mocks.getConfig.mockResolvedValue({ config, version: 3 });
+    const next = structuredClone(config);
+    next.embeds.titleTemplate = "Updated title";
+    const response = await fetch(`${base}/config`, {
+      ...post(next, { "if-match": '"3"' }), method: "PUT",
+    });
+    expect(response.status).toBe(200);
+    expect(mocks.putConfig).toHaveBeenCalledWith(guildId, next, actorId, 3);
+  });
+
   it("announces module activation when a settings page saves through the full-config endpoint", async () => {
     const channelId = "555555555555555555";
     const previousConfig = structuredClone(defaultModerationConfig);

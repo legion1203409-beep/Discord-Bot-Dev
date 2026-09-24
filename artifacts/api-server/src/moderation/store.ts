@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { pool } from "@workspace/db";
+import { logger } from "../lib/logger";
 import {
   defaultModerationConfig,
   EvidenceSchema,
@@ -222,31 +223,47 @@ export class PostgresModerationStore implements ModerationStore {
   async putConfig(guildId: string, config: ModerationConfig, updatedBy: string, expectedVersion: number) {
     await this.ensureSchema();
     const client = await pool.connect();
+    let version: number;
     try {
       await client.query("BEGIN");
-      const { rows } = await client.query<{ version: number }>(
-        `INSERT INTO moderation_configs (guild_id, config, version, updated_by, updated_at)
-         SELECT $1, $2::jsonb, 1, $3, now() WHERE $4 = 0
-         ON CONFLICT (guild_id) DO UPDATE SET config = EXCLUDED.config, updated_by = EXCLUDED.updated_by,
-           updated_at = now(), version = moderation_configs.version + 1
-         WHERE moderation_configs.version = $4
-         RETURNING version`,
-        [guildId, JSON.stringify(config), updatedBy, expectedVersion],
-      );
+      // INSERT ... SELECT WHERE expectedVersion = 0 cannot reach ON CONFLICT
+      // for any subsequent save: the SELECT produces no row at all. Use a
+      // version-guarded UPDATE for existing rows and a guarded INSERT for the
+      // first write. Both return no row on a stale revision.
+      const { rows } = expectedVersion === 0
+        ? await client.query<{ version: number }>(
+          `INSERT INTO moderation_configs (guild_id, config, version, updated_by, updated_at)
+           VALUES ($1, $2::jsonb, 1, $3, now())
+           ON CONFLICT (guild_id) DO NOTHING RETURNING version`,
+          [guildId, JSON.stringify(config), updatedBy],
+        )
+        : await client.query<{ version: number }>(
+          `UPDATE moderation_configs SET config = $2::jsonb, updated_by = $3,
+             updated_at = now(), version = version + 1
+           WHERE guild_id = $1 AND version = $4 RETURNING version`,
+          [guildId, JSON.stringify(config), updatedBy, expectedVersion],
+        );
       if (!rows[0]) throw new ModerationRevisionConflictError();
       await this.insertAudit(client, {
         guildId, actorId: updatedBy, eventType: "config.updated", targetType: "config",
         targetId: guildId, detail: { version: rows[0].version },
       });
       await client.query("COMMIT");
-      await this.pruneCases(guildId, config.cases.retentionDays);
-      return { config, version: rows[0].version };
+      version = rows[0].version;
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
     } finally {
       client.release();
     }
+    // Retention is best-effort housekeeping after the config and audit commit.
+    // It must not turn a committed write into a reported failure.
+    try {
+      await this.pruneCases(guildId, config.cases.retentionDays);
+    } catch (error) {
+      logger.warn({ error, guildId }, "Moderation case retention failed after config save");
+    }
+    return { config, version };
   }
 
   async putProtectionToggle(
@@ -257,6 +274,7 @@ export class PostgresModerationStore implements ModerationStore {
   ) {
     await this.ensureSchema();
     const client = await pool.connect();
+    let saved: { config: ModerationConfig; previousConfig: ModerationConfig; version: number };
     try {
       await client.query("BEGIN");
       // Serialize first-write toggles too. FOR UPDATE cannot lock a row that
@@ -321,14 +339,19 @@ export class PostgresModerationStore implements ModerationStore {
         detail: { version: nextVersion, protectionToggle: key, enabled },
       });
       await client.query("COMMIT");
-      await this.pruneCases(guildId, nextConfig.cases.retentionDays);
-      return { config: nextConfig, previousConfig: current.config, version: nextVersion };
+      saved = { config: nextConfig, previousConfig: current.config, version: nextVersion };
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
     } finally {
       client.release();
     }
+    try {
+      await this.pruneCases(guildId, saved.config.cases.retentionDays);
+    } catch (error) {
+      logger.warn({ error, guildId }, "Moderation case retention failed after protection toggle");
+    }
+    return saved;
   }
 
   async createLoginCode(input: { guildId: string; userId: string; codeHash: string; expiresAt: Date }) {

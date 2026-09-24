@@ -582,6 +582,7 @@ export const botControlSchema = z.object(
 {
 
     enabled: z.boolean(),
+    joinLogChannelId: snowflake.or(z.literal("")),
     reportEnabled: z.boolean(),
     reportChannelId: snowflake.or(z.literal("")),
     reportFrequency: z.enum(["daily", "weekly"]),
@@ -1133,7 +1134,7 @@ function expectedRevision(req: AuthenticatedRequest): number
 }
 
 
-async function validateConfigTargets(guildId: string, config: ModerationConfig): Promise<void> 
+async function validateConfigTargets(guildId: string, config: ModerationConfig, previous: ModerationConfig): Promise<void>
 {
 
 
@@ -1153,7 +1154,9 @@ async function validateConfigTargets(guildId: string, config: ModerationConfig):
 ;
 
 
-  if (!hasMessageContent && config.protection.enabled && (config.autoMod.enabled || config.antiSpam.enabled || config.antiFlood.enabled || config.ai.enabled)) 
+  const messageModuleActivated = (["autoMod", "antiSpam", "antiFlood", "ai"] as const)
+    .some((key) => config[key].enabled && (!previous[key].enabled || !previous.protection.enabled));
+  if (!hasMessageContent && config.protection.enabled && messageModuleActivated)
 {
 
 
@@ -1164,7 +1167,9 @@ async function validateConfigTargets(guildId: string, config: ModerationConfig):
 }
 
 
-  if (!hasGuildMembers && config.protection.enabled && (config.antiRaid.enabled || config.suspiciousBehavior.enabled)) 
+  const memberModuleActivated = (["antiRaid", "suspiciousBehavior"] as const)
+    .some((key) => config[key].enabled && (!previous[key].enabled || !previous.protection.enabled));
+  if (!hasGuildMembers && config.protection.enabled && memberModuleActivated)
 {
 
 
@@ -1175,6 +1180,33 @@ async function validateConfigTargets(guildId: string, config: ModerationConfig):
 }
 
 
+  const roleIds = [
+    ...config.permissions.staffRoleIds, ...config.roles.sanctionableRoleIds,
+    ...config.roles.protectedRoleIds, ...config.roles.ignoredAutoModRoleIds,
+    ...config.roles.specialPermissionRoleIds, ...Object.values(config.manualTools.commandGrants).flat(),
+  ];
+  const previousRoleIds = [
+    ...previous.permissions.staffRoleIds, ...previous.roles.sanctionableRoleIds,
+    ...previous.roles.protectedRoleIds, ...previous.roles.ignoredAutoModRoleIds,
+    ...previous.roles.specialPermissionRoleIds, ...Object.values(previous.manualTools.commandGrants).flat(),
+  ];
+  const channelIds = [
+    ...config.channels.ignoredChannelIds, ...config.channels.protectedChannelIds,
+    ...config.channels.autoSlowmodeChannelIds, ...config.channels.strictChannelIds,
+    ...config.channels.softChannelIds,
+    config.antiRaid.alertChannelId, config.antiSpam.logChannelId, config.audit.channelId,
+    config.suspiciousBehavior.alertChannelId, config.ai.logChannelId,
+  ].filter((id): id is string => Boolean(id));
+  const previousChannelIds = [
+    ...previous.channels.ignoredChannelIds, ...previous.channels.protectedChannelIds,
+    ...previous.channels.autoSlowmodeChannelIds, ...previous.channels.strictChannelIds,
+    ...previous.channels.softChannelIds,
+    previous.antiRaid.alertChannelId, previous.antiSpam.logChannelId, previous.audit.channelId,
+    previous.suspiciousBehavior.alertChannelId, previous.ai.logChannelId,
+  ].filter((id): id is string => Boolean(id));
+  const newRoleIds = roleIds.filter((id) => !previousRoleIds.includes(id));
+  const newChannelIds = channelIds.filter((id) => !previousChannelIds.includes(id));
+  if (!newRoleIds.length && !newChannelIds.length) return;
   const guild = await client.guilds.fetch(
 {
 
@@ -1189,25 +1221,7 @@ async function validateConfigTargets(guildId: string, config: ModerationConfig):
 ;
 
 
-  const roleIds = [
-    ...config.permissions.staffRoleIds, ...config.roles.sanctionableRoleIds,
-    ...config.roles.protectedRoleIds, ...config.roles.ignoredAutoModRoleIds,
-    ...config.roles.specialPermissionRoleIds, ...Object.values(config.manualTools.commandGrants).flat(),
-  ]
-;
-
-
-  const channelIds = [
-    ...config.channels.ignoredChannelIds, ...config.channels.protectedChannelIds,
-    ...config.channels.autoSlowmodeChannelIds, ...config.channels.strictChannelIds,
-    ...config.channels.softChannelIds,
-    config.antiRaid.alertChannelId, config.antiSpam.logChannelId, config.audit.channelId,
-    config.suspiciousBehavior.alertChannelId, config.ai.logChannelId,
-  ].filter((id): id is string => Boolean(id))
-;
-
-
-  const missingRole = roleIds.find((id) => !roles.has(id))
+  const missingRole = newRoleIds.find((id) => !roles.has(id))
 ;
 
 
@@ -1215,7 +1229,7 @@ async function validateConfigTargets(guildId: string, config: ModerationConfig):
 ;
 
 
-  const missingChannel = channelIds.find((id) => !channels.has(id))
+  const missingChannel = newChannelIds.find((id) => !channels.has(id))
 ;
 
 
@@ -1223,7 +1237,7 @@ async function validateConfigTargets(guildId: string, config: ModerationConfig):
 ;
 
 
-  const nonTextChannel = channelIds.find((id) => !channels.get(id)?.isTextBased())
+  const nonTextChannel = newChannelIds.find((id) => !channels.get(id)?.isTextBased())
 ;
 
 
@@ -2074,16 +2088,34 @@ router.put("/guilds/:guildId/gameplay-state", asyncRoute(async (req, res) => {
   res.set("Cache-Control", "no-store").json({ paused });
 }));
 
+// The persisted config parser fills defaults and intentionally tolerates older
+// stored shapes. For a new write, however, silently stripping a misspelled
+// section/field would acknowledge a change that was never saved.
+function rejectUnknownConfigFields(input: unknown, parsed: unknown, path = "config"): void {
+  if (Array.isArray(input) && Array.isArray(parsed)) {
+    input.forEach((item, index) => rejectUnknownConfigFields(item, parsed[index], `${path}[${index}]`));
+  } else if (input && typeof input === "object" && !Array.isArray(input) &&
+             parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    for (const [key, value] of Object.entries(input)) {
+      if (!Object.prototype.hasOwnProperty.call(parsed, key)) {
+        throw new ModerationAuthError(400, `Unknown configuration field: ${path}.${key}`);
+      }
+      rejectUnknownConfigFields(value, (parsed as Record<string, unknown>)[key], `${path}.${key}`);
+    }
+  }
+}
+
 router.put("/guilds/:guildId/config", asyncRoute(async (req, res) => {
   const guildId = parse(snowflake, req.params.guildId);
   const session = await sessionAndGuild(req, guildId, "config", true);
   let config = parse(ModerationConfigSchema, req.body);
-  await validateConfigTargets(guildId, config);
+  rejectUnknownConfigFields(req.body, config);
   const revision = expectedRevision(req);
   const previous = await moderationStore.getConfig(guildId);
   if (previous.version !== revision) throw new ModerationRevisionConflictError();
+  await validateConfigTargets(guildId, config, previous.config);
   let activityLogProvisioning: { created: unknown[]; reused: unknown[] } | null = null;
-  if (config.activityLog.enabled) {
+  if (config.activityLog.enabled && JSON.stringify(config.activityLog) !== JSON.stringify(previous.config.activityLog)) {
     const client = getModerationClient();
     if (!client?.isReady()) {
       throw new ModerationAuthError(503, "Jurnalul Discord nu a fost activat: botul Discord este offline.");

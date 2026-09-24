@@ -13,6 +13,7 @@ import { PoliciesPage } from "./pages/moderation/Policies";
 import { BotControlPage } from "./pages/moderation/BotControl";
 import { VerificationAdminPage } from "./pages/moderation/VerificationAdmin";
 import { useActiveGuild } from "./hooks/use-moderation-api";
+import { Toaster } from "./components/ui/toaster";
 
 // Public pages
 import { PublicLayout } from "./components/public/PublicLayout";
@@ -152,6 +153,7 @@ export default function App() {
         </Route>
         <Route component={NotFound} />
       </Switch>
+      <Toaster />
     </>
   );
 }

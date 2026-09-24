@@ -22,6 +22,13 @@ const fullConfig = () => ({
   manualTools: { enabled: false, commandGrants: {}, logActions: false },
   cases: { enabled: false, allowStaffClose: true, allowStaffNotes: true, allowStaffExport: false, retentionDays: 365 },
   audit: { enabled: false, detailLevel: "standard", channelId: null },
+  activityLog: {
+    enabled: false,
+    categories: { messages: true, members: true, channels: true, roles: true, voice: true, moderation: true, security: true },
+    roleIds: [],
+    categoryId: null,
+    channelIds: { messages: null, members: null, channels: null, roles: null, voice: null, moderation: null, security: null },
+  },
   roles: { sanctionableRoleIds: [], protectedRoleIds: [], ignoredAutoModRoleIds: [], specialPermissionRoleIds: [] },
   channels: { ignoredChannelIds: [], protectedChannelIds: [], autoSlowmodeChannelIds: [], strictChannelIds: [], softChannelIds: [] },
   timeProfiles: {
@@ -139,6 +146,28 @@ test.describe("authenticated moderation console", () => {
     expect(firstModuleCard?.width).toBeGreaterThan(500);
   });
 
+  test("AI settings persist after explicit save and reload", async ({ page }) => {
+    await page.goto("/moderare/ai");
+    await chooseFirstGuild(page);
+
+    const switches = page.getByRole("switch");
+    const aiEnabled = switches.nth(0);
+    const toxicityEnabled = switches.nth(1);
+    await expect(aiEnabled).not.toBeChecked();
+    await aiEnabled.click();
+    await toxicityEnabled.click();
+    await page.getByRole("button", { name: "Salvează" }).click();
+
+    await expect(page.getByRole("button", { name: "Salvează" })).toHaveCount(0);
+    expect(savedConfigs.get(guilds[0].id)?.ai.enabled).toBe(true);
+    expect(savedConfigs.get(guilds[0].id)?.ai.categories.toxicity).toBe(true);
+
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Moderare AI", exact: true })).toBeVisible();
+    await expect(page.getByRole("switch").nth(0)).toBeChecked();
+    await expect(page.getByRole("switch").nth(1)).toBeChecked();
+  });
+
   test("renders every moderation destination instead of the work-in-progress fallback", async ({ page }) => {
     await page.goto("/");
     await expect(page).toHaveURL("/moderare");
@@ -171,13 +200,52 @@ test.describe("authenticated moderation console", () => {
     }
 
     await expandNavGroup(page, "bot-control");
-    for (const tab of ["channels", "roles", "tickets", "messages", "statistics"]) {
+    for (const tab of ["channels", "tickets", "messages", "statistics"]) {
       const link = page.locator(`nav[aria-label="Categorii de moderare"] a[href="/moderare/bot?tab=${tab}"]`);
       await link.click();
       await expect(page).toHaveURL(`/moderare/bot?tab=${tab}`);
       await expect(link).toHaveAttribute("aria-current", "page");
       await expect(page.locator('nav[aria-label="Categorii de moderare"] a[aria-current="page"]')).toHaveCount(1);
     }
+    // A separate test-only bot-control GET lets us verify the role tab itself;
+    // sidebar navigation above is independent of whether that API is online.
+    await page.route("**/api/moderation/guilds/*/bot-control", async (route) => {
+      await route.fulfill({ json: {
+        channels: {}, provisioningPermissions: {}, discordLive: true,
+        verification: {
+          enabled: false, channelId: "", roleId: "", title: "", message: "", buttonLabel: "",
+          buttonEmoji: "", successMessage: "", alreadyVerifiedMessage: "", imageUrl: "", thumbnailUrl: "", panelMessageId: "",
+        },
+        gameplayConfig: {
+          memberMessages: { channelId: "", style: "normal", welcomeEnabled: false, leaveEnabled: false, customStyle: "" },
+          messages: { gamePaused: "", gamePausedImageUrl: "", gamePausedThumbnailUrl: "", oraclePaused: "", oraclePausedImageUrl: "", oraclePausedThumbnailUrl: "" },
+          events: {}, missions: {}, economy: {},
+        },
+        allianceRecruitmentText: "",
+        dailyStats: {
+          title: "Statistici {guild}", description: "Raport {date}", color: "#5865F2", footer: "",
+          activityTitle: "", channelsTitle: "", emptyChannelsText: "", imageUrl: "", thumbnailUrl: "",
+          metricLabels: { messages: "", uniqueUsers: "", boosts: "", joins: "", leaves: "", peakVoice: "" },
+        },
+        inviteTracking: { enabled: false, reportEnabled: false, reportChannelId: "", reportFrequency: "daily", reportTime: "09:00", reportTimeZone: "UTC", reportTopLimit: 5, reportWeekday: 1 },
+        tickets: {
+          categories: { staff: "", partnership: "", help_report: "" },
+          allianceAnnouncementTemplate: "", allianceAnnouncementMode: "text",
+          staffReviewRoleId: "", alliancePublicChannelId: "", allianceOwnerGuildId: "",
+          flows: {
+            staff: { questions: [], title: "", panelDescription: "", startButtonLabel: "", requirementsText: "", completionMessage: "", completionAction: "none" },
+            partnership: { questions: [], title: "", panelDescription: "", startButtonLabel: "", requirementsText: "", completionMessage: "", completionAction: "none" },
+            help_report: { questions: [], title: "", panelDescription: "", startButtonLabel: "", requirementsText: "", completionMessage: "", completionAction: "none" },
+          },
+        },
+      } });
+    });
+    await page.goto("/moderare/bot?tab=roles");
+    await expect(page.getByTestId("tab-roles")).toHaveAttribute("data-state", "active");
+    await page.getByTestId("tab-channels").click();
+    await page.getByTestId("tab-roles").click();
+    await expect(page).toHaveURL("/moderare/bot?tab=roles");
+    await expect(page.getByTestId("tab-roles")).toHaveAttribute("data-state", "active");
     await page.locator('nav[aria-label="Categorii de moderare"] a[href="/moderare/verificare"]').click();
     await expect(page).toHaveURL("/moderare/verificare");
     await expect(page.locator('nav[aria-label="Categorii de moderare"] a[aria-current="page"]')).toHaveAttribute("href", "/moderare/verificare");
@@ -309,6 +377,93 @@ test.describe("authenticated moderation console", () => {
 
     await page.reload();
     await expect(page.getByLabel("Cuvinte interzise")).toHaveValue("valoare-salvată");
+  });
+
+  test("automatic Discord log activation sends its category and keeps provisioned IDs after reload", async ({ page }) => {
+    await page.goto("/moderare/config/cazuri-audit");
+    await chooseFirstGuild(page);
+    const logToggle = page.getByRole("switch", { name: "Activează jurnalizarea serverului" });
+    await logToggle.click();
+    await page.getByRole("switch", { name: /@Moderatori/ }).click();
+    const saveResponse = page.waitForResponse((response) =>
+      response.url().includes("/api/moderation/guilds/111111111/config") && response.request().method() === "PUT");
+    await page.getByRole("button", { name: "Salvează" }).click();
+    expect((await saveResponse).ok()).toBe(true);
+    expect(savedConfigs.get(guilds[0].id)?.activityLog).toMatchObject({
+      enabled: true, roleIds: ["333333333"],
+    });
+    await page.reload();
+    await expect(logToggle).toBeChecked();
+    await expect(page.getByRole("switch", { name: /@Moderatori/ })).toBeChecked();
+  });
+
+  test("category draft edits during an in-flight save remain unsaved instead of being replaced", async ({ page }) => {
+    let releaseSave!: () => void;
+    const pendingSave = new Promise<void>((resolve) => { releaseSave = resolve; });
+    await page.route("**/api/moderation/guilds/111111111/config", async (route) => {
+      if (route.request().method() !== "PUT") return route.fallback();
+      const config = JSON.parse(route.request().postData() || "{}");
+      savedConfigs.set(guilds[0].id, config);
+      await pendingSave;
+      await route.fulfill({ json: { config, version: 2 }, headers: { ETag: '"2"' } });
+    });
+    await page.goto("/moderare/automod");
+    await chooseFirstGuild(page);
+    const words = page.getByLabel("Cuvinte interzise");
+    await words.fill("prima");
+    const request = page.waitForRequest((item) =>
+      item.url().includes("/guilds/111111111/config") && item.method() === "PUT");
+    await page.getByRole("button", { name: "Salvează" }).click();
+    await request;
+    await words.fill("a doua");
+    releaseSave();
+    await expect(words).toHaveValue("a doua");
+    await expect(page.getByRole("button", { name: "Salvează" })).toBeVisible();
+    expect(savedConfigs.get(guilds[0].id)?.autoMod.forbiddenWords).toEqual(["prima"]);
+  });
+
+  test("failed Discord log activation shows failure and does not claim a live log", async ({ page }) => {
+    await page.route("**/api/moderation/guilds/111111111/config", async (route) => {
+      if (route.request().method() !== "PUT") return route.fallback();
+      await route.fulfill({ status: 503, json: { error: "Botul nu poate crea canalele de jurnal." } });
+    });
+    await page.goto("/moderare/config/cazuri-audit");
+    await chooseFirstGuild(page);
+    await page.getByRole("switch", { name: "Activează jurnalizarea serverului" }).click();
+    await page.getByRole("switch", { name: /@Moderatori/ }).click();
+    await page.getByRole("button", { name: "Salvează" }).click();
+    await expect(page.getByText("Salvarea a eșuat")).toBeVisible();
+    await expect(page.getByRole("switch", { name: "Activează jurnalizarea serverului" })).not.toBeChecked();
+    expect(savedConfigs.get(guilds[0].id)?.activityLog.enabled).toBe(false);
+  });
+
+  test("spam window edit replaces conflicting aliases with the engine's preferred key", async ({ page }) => {
+    const config = fullConfig();
+    config.antiSpam.message.thresholds = { windowMs: 5, window: 9, limit: 3 };
+    savedConfigs.set(guilds[0].id, config);
+    await page.goto("/moderare/anti-spam");
+    await chooseFirstGuild(page);
+    await page.getByLabel("Fereastră (secunde)").first().fill("12");
+    await page.getByRole("button", { name: "Salvează" }).click();
+    await expect(page.getByRole("button", { name: "Salvează" })).toHaveCount(0);
+    expect(savedConfigs.get(guilds[0].id)?.antiSpam.message.thresholds).toEqual({ windowMs: 12, limit: 3 });
+  });
+
+  test("switching guilds discards the previous guild's unsaved category draft", async ({ page }) => {
+    await page.goto("/moderare/automod");
+    await chooseFirstGuild(page);
+    await page.getByLabel("Cuvinte interzise").fill("nesalvat nord");
+    await page.getByRole("combobox").first().click();
+    await page.getByRole("option", { name: guilds[1].name }).click();
+    await expect(page.getByLabel("Cuvinte interzise")).toHaveValue("");
+    await page.getByLabel("Cuvinte interzise").fill("salvat sud");
+    await page.getByRole("button", { name: "Salvează" }).click();
+    await expect(page.getByRole("button", { name: "Salvează" })).toHaveCount(0);
+    await page.getByRole("combobox").first().click();
+    await page.getByRole("option", { name: guilds[0].name }).click();
+    await expect(page.getByLabel("Cuvinte interzise")).toHaveValue("");
+    expect(savedConfigs.get(guilds[0].id)?.autoMod.forbiddenWords).toEqual([]);
+    expect(savedConfigs.get(guilds[1].id)?.autoMod.forbiddenWords).toEqual(["salvat sud"]);
   });
 
   test("shows stored module state as paused when global protection is off", async ({ page }) => {

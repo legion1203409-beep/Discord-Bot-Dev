@@ -14,13 +14,13 @@ const eventRoutes = [
 ] as const;
 
 function testGuild() {
-  const channels = new Map<string, { isTextBased: () => boolean; send: ReturnType<typeof vi.fn> }>();
+  const channels = new Map<string, { guildId: string; isTextBased: () => boolean; send: ReturnType<typeof vi.fn> }>();
   const sends = new Map<string, ReturnType<typeof vi.fn>>();
   for (const [, category] of eventRoutes) {
     const send = vi.fn(async () => undefined);
     const channelId = `log-${category}`;
     sends.set(category, send);
-    channels.set(channelId, { isTextBased: () => true, send });
+    channels.set(channelId, { guildId: "123456789012345678", isTextBased: () => true, send });
   }
   const guild = {
     id: "123456789012345678",
@@ -29,7 +29,7 @@ function testGuild() {
       fetch: vi.fn(async (id: string) => channels.get(id) ?? null),
     },
   } as unknown as Guild;
-  return { guild, sends };
+  return { guild, sends, channels };
 }
 
 describe("automatic Discord activity-log delivery", () => {
@@ -74,6 +74,17 @@ describe("automatic Discord activity-log delivery", () => {
     config.activityLog.enabled = false;
     await deliverActivityLog(guild, config, "discord.message_update", "message", "1", {});
 
+    expect(sends.get("messages")).not.toHaveBeenCalled();
+  });
+
+  it("does not post a guild's log to a channel from another server", async () => {
+    const config = structuredClone(defaultModerationConfig);
+    config.activityLog.enabled = true;
+    config.activityLog.categories.messages = true;
+    config.activityLog.channelIds.messages = "log-messages";
+    const { guild, sends, channels } = testGuild();
+    channels.get("log-messages")!.guildId = "another-guild";
+    await deliverActivityLog(guild, config, "discord.message_update", "message", "1", {});
     expect(sends.get("messages")).not.toHaveBeenCalled();
   });
 });
