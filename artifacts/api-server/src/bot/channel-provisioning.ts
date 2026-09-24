@@ -1,4 +1,4 @@
-import { ChannelType, PermissionFlagsBits, type Guild, type OverwriteData } from "discord.js";
+import { ChannelType, type Guild, type NonThreadGuildBasedChannel } from "discord.js";
 import type { ChannelConfig, VerificationConfig } from "./db";
 import type { ModerationConfig } from "../moderation/config";
 import type { TicketConfig, TicketCategoryKind } from "./ticket-config";
@@ -23,6 +23,11 @@ export type ChannelPermissionConfig = {
   roleIds: string[];
   readMessageHistory: boolean;
   sendMessages: boolean;
+  rolePermissions?: Record<string, {
+    viewChannel: boolean;
+    readMessageHistory: boolean;
+    sendMessages: boolean;
+  }>;
 };
 
 type ChannelTypeName = "text" | "category";
@@ -87,52 +92,51 @@ const MODERATION_TARGETS = [
 
 const provisionLocks = new Map<string, Promise<ChannelProvisionResult>>();
 
-function permissionOverwrites(
-  guild: Guild,
-  permission: ChannelPermissionConfig,
-): OverwriteData[] {
-  const roleIds = [...new Set(permission.roleIds)];
-  const missingRole = roleIds.find((roleId) => !guild.roles.cache.has(roleId));
-  if (missingRole) {
-    throw new Error(`Rolul ${missingRole} nu a fost găsit pe server.`);
-  }
-
-  const botRoleId = guild.members.me?.roles.highest?.id;
-  const allowedRoleIds = [...new Set([...roleIds, botRoleId].filter((id): id is string => Boolean(id)))];
-  return [
-    {
-      id: guild.roles.everyone.id,
-      deny: [
-        PermissionFlagsBits.ViewChannel,
-        PermissionFlagsBits.ReadMessageHistory,
-        PermissionFlagsBits.SendMessages,
-      ],
-    },
-    ...allowedRoleIds.map((roleId) => ({
-      id: roleId,
-      allow: [
-        PermissionFlagsBits.ViewChannel,
-        PermissionFlagsBits.ReadMessageHistory,
-        PermissionFlagsBits.SendMessages,
-      ],
-      deny: [
-        ...(permission.readMessageHistory ? [] : [PermissionFlagsBits.ReadMessageHistory]),
-        ...(permission.sendMessages ? [] : [PermissionFlagsBits.SendMessages]),
-      ],
-    })),
-  ];
-}
-
 async function applyPermissions(
   guild: Guild,
-  channel: { permissionOverwrites?: { set: (overwrites: OverwriteData[], reason?: string) => Promise<unknown> } },
+  channel: NonThreadGuildBasedChannel,
   permission: ChannelPermissionConfig | undefined,
+  previousRoleIds: string[] = [],
 ): Promise<void> {
-  if (!permission || permission.roleIds.length === 0 || !channel.permissionOverwrites) return;
-  await channel.permissionOverwrites.set(
-    permissionOverwrites(guild, permission),
-    "Permisiuni configurate din panoul de control",
-  );
+  if (!permission || !channel.permissionOverwrites) return;
+  const reason = "Permisiuni configurate din panoul de control";
+  const everyoneId = guild.roles.everyone.id;
+  const managedRoleIds = [...new Set([
+    ...permission.roleIds,
+    ...Object.keys(permission.rolePermissions ?? {}),
+  ])];
+  const missingRole = managedRoleIds.find((roleId) => !guild.roles.cache.has(roleId));
+  if (missingRole) throw new Error(`Rolul ${missingRole} nu a fost găsit pe server.`);
+  for (const roleId of new Set(previousRoleIds.filter((id) => id !== everyoneId && !managedRoleIds.includes(id)))) {
+    if (guild.roles.cache.has(roleId)) {
+      await channel.permissionOverwrites.edit(roleId, {
+        ViewChannel: null,
+        ReadMessageHistory: null,
+        SendMessages: null,
+      }, { reason });
+    }
+  }
+  await channel.permissionOverwrites.edit(everyoneId, {
+    ViewChannel: false,
+    ReadMessageHistory: false,
+    SendMessages: false,
+  }, { reason });
+  for (const roleId of managedRoleIds) {
+    const access = permission.rolePermissions?.[roleId];
+    await channel.permissionOverwrites.edit(roleId, {
+      ViewChannel: access?.viewChannel ?? true,
+      ReadMessageHistory: access?.readMessageHistory ?? permission.readMessageHistory,
+      SendMessages: access?.sendMessages ?? permission.sendMessages,
+    }, { reason });
+  }
+  const botRoleId = guild.members.me?.roles.highest?.id;
+  if (botRoleId) {
+    await channel.permissionOverwrites.edit(botRoleId, {
+      ViewChannel: true,
+      ReadMessageHistory: true,
+      SendMessages: true,
+    }, { reason });
+  }
 }
 
 function normalizeName(value: string): string {
@@ -187,6 +191,7 @@ async function provisionGuildChannelsUnlocked(
     verification: VerificationConfig;
     categories?: ProvisioningCategoryKey[];
     permissions?: Partial<Record<ProvisioningCategoryKey, ChannelPermissionConfig>>;
+    previousPermissions?: Partial<Record<ProvisioningCategoryKey, ChannelPermissionConfig>>;
   },
 ): Promise<ChannelProvisionResult> {
   const channels = await guild.channels.fetch();
@@ -204,7 +209,7 @@ async function provisionGuildChannelsUnlocked(
     if (existing) {
       reused.push({ key: `category.${target.key}`, id: existing.id, name: existing.name, type: "category" });
       categoryIds.set(target.key, existing.id);
-      await applyPermissions(guild, existing, input.permissions?.[target.key]);
+      await applyPermissions(guild, existing, input.permissions?.[target.key], input.previousPermissions?.[target.key]?.roleIds);
       continue;
     }
 
@@ -212,7 +217,7 @@ async function provisionGuildChannelsUnlocked(
       name: target.names[0],
       type: ChannelType.GuildCategory,
     });
-    await applyPermissions(guild, createdCategory, input.permissions?.[target.key]);
+    await applyPermissions(guild, createdCategory, input.permissions?.[target.key], input.previousPermissions?.[target.key]?.roleIds);
     created.push({ key: `category.${target.key}`, id: createdCategory.id, name: createdCategory.name, type: "category" });
     categoryIds.set(target.key, createdCategory.id);
   }
@@ -233,7 +238,7 @@ async function provisionGuildChannelsUnlocked(
       if (target.type === "text") {
         await moveToCategory(existing, categoryId);
       }
-      await applyPermissions(guild, existing, input.permissions?.[target.category]);
+      await applyPermissions(guild, existing, input.permissions?.[target.category], input.previousPermissions?.[target.category]?.roleIds);
       const result = { key: target.key, id: existing.id, name: existing.name, type: target.type };
       reused.push(result);
       return existing.id;
@@ -244,7 +249,7 @@ async function provisionGuildChannelsUnlocked(
       type: target.type === "category" ? ChannelType.GuildCategory : ChannelType.GuildText,
       ...(target.type === "text" ? { parent: categoryId } : {}),
     });
-    await applyPermissions(guild, createdChannel, input.permissions?.[target.category]);
+    await applyPermissions(guild, createdChannel, input.permissions?.[target.category], input.previousPermissions?.[target.category]?.roleIds);
     const result = { key: target.key, id: createdChannel.id, name: createdChannel.name, type: target.type };
     created.push(result);
     return createdChannel.id;
@@ -311,6 +316,7 @@ export function provisionGuildChannels(
     verification: VerificationConfig;
     categories?: ProvisioningCategoryKey[];
     permissions?: Partial<Record<ProvisioningCategoryKey, ChannelPermissionConfig>>;
+    previousPermissions?: Partial<Record<ProvisioningCategoryKey, ChannelPermissionConfig>>;
   },
 ): Promise<ChannelProvisionResult> {
   // A double-click or two owner tabs must not both fetch the same snapshot and

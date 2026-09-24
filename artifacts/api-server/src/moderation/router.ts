@@ -110,7 +110,7 @@ import
 
 import 
 {
- loadDailyStatsEmbedConfig, loadAllianceRecruitmentText, loadChannelConfig, loadTicketConfig, saveAllianceRecruitmentText, saveChannelConfig, saveDailyStatsEmbedConfig, saveTicketConfig, type ChannelConfig
+ loadDailyStatsEmbedConfig, loadAllianceRecruitmentText, loadChannelConfig, loadTicketConfig, loadProvisioningPermissions, saveProvisioningPermissions, saveAllianceRecruitmentText, saveChannelConfig, saveDailyStatsEmbedConfig, saveTicketConfig, type ChannelConfig
 }
  from "../bot/db"
 ;
@@ -209,6 +209,11 @@ const provisioningPermissionSchema = z.object({
   roleIds: z.array(snowflake).max(50),
   readMessageHistory: z.boolean(),
   sendMessages: z.boolean(),
+  rolePermissions: z.record(snowflake, z.object({
+    viewChannel: z.boolean(),
+    readMessageHistory: z.boolean(),
+    sendMessages: z.boolean(),
+  }).strict()).optional(),
 }).strict();
 
 const provisionChannelsSchema = z.object({
@@ -364,6 +369,7 @@ export const botControlSchema = z.object(
 {
 
   channels: botChannelConfigSchema,
+  provisioningPermissions: z.record(z.string().min(1).max(40), provisioningPermissionSchema).default({}),
   // An empty value means "use the bot's built-in recruitment text". The GET
   // endpoint already returns an empty string when no override is stored, so
   // PUT must accept that same round-trip value.
@@ -1267,12 +1273,13 @@ router.get("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   await sessionAndGuild(req, guildId, "config");
   await initGameplayConfig(guildId);
   const loadDailyStats = optionalExport(() => loadDailyStatsEmbedConfig);
-  const [channels, allianceRecruitmentText, tickets, verification, dailyStats] = await Promise.all([
+  const [channels, allianceRecruitmentText, tickets, verification, dailyStats, provisioningPermissions] = await Promise.all([
     loadChannelConfig(guildId),
     loadAllianceRecruitmentText(guildId),
     loadTicketConfig(guildId),
     optionalExport(() => loadVerificationConfig)?.(guildId) ?? Promise.resolve(null),
     loadDailyStats?.(guildId) ?? Promise.resolve(DEFAULT_DAILY_STATS_EMBED_CONFIG),
+    loadProvisioningPermissions(guildId),
   ]);
   res.set("Cache-Control", "no-store").json({
     channels: channels ?? {},
@@ -1281,6 +1288,7 @@ router.get("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
     gameplayConfig: getGameplayConfig(guildId),
     verification: normalizeVerificationConfig(verification),
     dailyStats,
+    provisioningPermissions,
     discordLive: Boolean(getModerationClient()?.isReady()),
   });
 }));
@@ -1309,6 +1317,7 @@ router.post("/guilds/:guildId/bot-control/provision-channels", asyncRoute(async 
     loadAllianceRecruitmentText(guildId),
     loadDailyStats?.(guildId) ?? Promise.resolve(DEFAULT_DAILY_STATS_EMBED_CONFIG),
   ]);
+  const previousPermissions = await loadProvisioningPermissions(guildId);
   const provisioned = await provisionGuildChannels(guild, {
     channelConfig: channelConfig ?? {},
     ticketConfig: normalizeTicketConfig(ticketConfig),
@@ -1316,7 +1325,13 @@ router.post("/guilds/:guildId/bot-control/provision-channels", asyncRoute(async 
     verification: normalizeVerificationConfig(verification),
     categories,
     permissions: permissions as Parameters<typeof provisionGuildChannels>[1]["permissions"],
+    previousPermissions,
   });
+  const savedPermissions = {
+    ...previousPermissions,
+    ...(permissions ?? {}),
+  };
+  if (permissions) await saveProvisioningPermissions(guildId, savedPermissions);
 
   await saveChannelConfig(guildId, provisioned.channelConfig);
   await saveTicketConfig(guildId, provisioned.ticketConfig);
@@ -1333,6 +1348,7 @@ router.post("/guilds/:guildId/bot-control/provision-channels", asyncRoute(async 
     tickets: provisioned.ticketConfig,
     gameplayConfig: getGameplayConfig(guildId),
     verification: provisioned.verification,
+    provisioningPermissions: savedPermissions,
     dailyStats,
     discordLive: true,
     provisioning: {
@@ -1351,6 +1367,7 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
     Object.entries(value.channels).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
   ) as ChannelConfig;
   await saveChannelConfig(guildId, channels);
+  await saveProvisioningPermissions(guildId, value.provisioningPermissions);
   await saveAllianceRecruitmentText(guildId, value.allianceRecruitmentText);
   const dailyStats = value.dailyStats ?? DEFAULT_DAILY_STATS_EMBED_CONFIG;
   const saveDailyStats = optionalExport(() => saveDailyStatsEmbedConfig);
@@ -1395,6 +1412,7 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
     gameplayConfig,
     verification: savedVerification,
     dailyStats,
+    provisioningPermissions: value.provisioningPermissions,
     discordLive: Boolean(client?.isReady()),
   });
 }));

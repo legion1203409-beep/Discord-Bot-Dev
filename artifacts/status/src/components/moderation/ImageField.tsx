@@ -26,7 +26,7 @@ export function ImageField({
     setUploading(true);
     setError("");
     try {
-      const request = await fetch("/api/storage/uploads/request-url", {
+      const request = await fetch("/api/moderation/storage/uploads/request-url", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(csrfToken ? { "x-csrf-token": csrfToken } : {}) },
         credentials: "include",

@@ -70,10 +70,16 @@ export interface ChannelPermissionConfig {
   roleIds: string[];
   readMessageHistory: boolean;
   sendMessages: boolean;
+  rolePermissions?: Record<string, {
+    viewChannel: boolean;
+    readMessageHistory: boolean;
+    sendMessages: boolean;
+  }>;
 }
 
 export interface BotControlConfig {
   channels: Record<string, string>;
+  provisioningPermissions: Record<string, ChannelPermissionConfig>;
 
   allianceRecruitmentText: string;
 

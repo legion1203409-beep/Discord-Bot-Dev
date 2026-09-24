@@ -2315,6 +2315,48 @@ export async function loadChannelConfig(guildId: string): Promise<ChannelConfig 
   }
 }
 
+export type SavedProvisioningPermission = {
+  roleIds: string[];
+  readMessageHistory: boolean;
+  sendMessages: boolean;
+  rolePermissions?: Record<string, {
+    viewChannel: boolean;
+    readMessageHistory: boolean;
+    sendMessages: boolean;
+  }>;
+};
+
+const PROVISIONING_PERMISSIONS_KEY = "bot_control_provisioning_permissions";
+
+export async function loadProvisioningPermissions(
+  guildId: string,
+): Promise<Record<string, SavedProvisioningPermission>> {
+  await ensureBotStateTable();
+  const [row] = await db.select().from(botStateTable)
+    .where(eq(botStateTable.key, guildKey(guildId, PROVISIONING_PERMISSIONS_KEY)));
+  if (!row) return {};
+  try {
+    const value = JSON.parse(row.value);
+    if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+    return value as Record<string, SavedProvisioningPermission>;
+  } catch {
+    return {};
+  }
+}
+
+export async function saveProvisioningPermissions(
+  guildId: string,
+  permissions: Record<string, SavedProvisioningPermission>,
+): Promise<void> {
+  await ensureBotStateTable();
+  const key = guildKey(guildId, PROVISIONING_PERMISSIONS_KEY);
+  const value = JSON.stringify(permissions);
+  await db.insert(botStateTable).values({ key, value }).onConflictDoUpdate({
+    target: botStateTable.key,
+    set: { value, updatedAt: new Date() },
+  });
+}
+
 const GAMEPLAY_CONFIG_KEY = "gameplay_config";
 const ALLIANCE_RECRUITMENT_TEXT_KEY = "alliance_recruitment_text";
 const DAILY_STATS_CONFIG_KEY = "daily_stats_config";

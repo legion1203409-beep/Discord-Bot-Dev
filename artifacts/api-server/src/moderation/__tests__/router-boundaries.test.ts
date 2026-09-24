@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   listAudit: vi.fn(), listLogs: vi.fn(), beginAction: vi.fn(), getAction: vi.fn(),
   completeAction: vi.fn(), writeAudit: vi.fn(), execute: vi.fn(),
   loadChannelConfig: vi.fn(), saveChannelConfig: vi.fn(),
+  loadProvisioningPermissions: vi.fn(), saveProvisioningPermissions: vi.fn(),
   loadAllianceRecruitmentText: vi.fn(), saveAllianceRecruitmentText: vi.fn(),
   loadTicketConfig: vi.fn(), saveTicketConfig: vi.fn(),
   initGameplayConfig: vi.fn(), getGameplayConfig: vi.fn(), saveGuildGameplayConfig: vi.fn(),
@@ -47,6 +48,8 @@ vi.mock("../../bot/moderation/engine", () => ({ executeModerationAction: mocks.e
 vi.mock("../../bot/db", () => ({
   loadChannelConfig: mocks.loadChannelConfig,
   saveChannelConfig: mocks.saveChannelConfig,
+  loadProvisioningPermissions: mocks.loadProvisioningPermissions,
+  saveProvisioningPermissions: mocks.saveProvisioningPermissions,
   loadAllianceRecruitmentText: mocks.loadAllianceRecruitmentText,
   saveAllianceRecruitmentText: mocks.saveAllianceRecruitmentText,
   loadTicketConfig: mocks.loadTicketConfig,
@@ -69,6 +72,12 @@ import { DEFAULT_GAMEPLAY_CONFIG } from "../../bot/gameplay-config";
 import { DEFAULT_TICKET_CONFIG } from "../../bot/ticket-config";
 
 type BotControlResponse = {
+  provisioningPermissions: Record<string, {
+    roleIds: string[];
+    readMessageHistory: boolean;
+    sendMessages: boolean;
+    rolePermissions?: Record<string, { viewChannel: boolean; readMessageHistory: boolean; sendMessages: boolean }>;
+  }>;
   tickets: {
     staffReviewRoleId: string;
     alliancePublicChannelId: string;
@@ -128,6 +137,8 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     persistedTicketConfig = structuredClone(DEFAULT_TICKET_CONFIG);
     mocks.loadChannelConfig.mockResolvedValue({ main: "111111111" });
     mocks.saveChannelConfig.mockResolvedValue(undefined);
+    mocks.loadProvisioningPermissions.mockResolvedValue({});
+    mocks.saveProvisioningPermissions.mockResolvedValue(undefined);
     mocks.loadAllianceRecruitmentText.mockResolvedValue("Text salvat");
     mocks.saveAllianceRecruitmentText.mockResolvedValue(undefined);
     mocks.loadTicketConfig.mockImplementation(async () => structuredClone(persistedTicketConfig));
@@ -189,6 +200,7 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     });
     return {
       channels: { main: "111111111" },
+      provisioningPermissions: {},
       allianceRecruitmentText: "Mesajul alianței",
       tickets: {
         categories: {
@@ -407,6 +419,18 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
 
   it("persists all custom ticket flows and returns them unchanged after a later GET", async () => {
     const payload = botControlPayload();
+    const provisioningPermissions = {
+      gameplay: {
+        roleIds: ["222222222"],
+        readMessageHistory: true,
+        sendMessages: false,
+        rolePermissions: {
+          "222222222": { viewChannel: true, readMessageHistory: true, sendMessages: false },
+        },
+      },
+    };
+    payload.provisioningPermissions = provisioningPermissions;
+    mocks.loadProvisioningPermissions.mockResolvedValue(provisioningPermissions);
     const putResponse = await fetch(`${base}/bot-control`, {
       ...post(payload),
       method: "PUT",
@@ -424,10 +448,12 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
         help_report: expect.objectContaining({ mode: "custom" }),
       }),
     );
+    expect(mocks.saveProvisioningPermissions).toHaveBeenCalledWith(guildId, provisioningPermissions);
 
     const getResponse = await fetch(`${base}/bot-control`);
     expect(getResponse.status).toBe(200);
     const result = await getResponse.json() as BotControlResponse;
+    expect(result.provisioningPermissions).toEqual(provisioningPermissions);
     expect(result.tickets.staffReviewRoleId).toBe("555555555");
     expect(result.tickets.alliancePublicChannelId).toBe("666666666");
     expect(result.tickets.flows.staff.completionAction).toBe("notify_staff");

@@ -31,7 +31,7 @@ const asyncRoute = (handler: (req: AuthenticatedRequest, res: Parameters<Request
     });
   };
 
-router.post("/storage/uploads/request-url", asyncRoute(async (req, res) => {
+const requestUploadUrl = asyncRoute(async (req, res) => {
   const session = await requireSession(req);
   assertCsrf(req, session);
   assertMutationRateLimit(session);
@@ -45,7 +45,13 @@ router.post("/storage/uploads/request-url", asyncRoute(async (req, res) => {
   const uploadURL = await storage.getObjectEntityUploadURL();
   const objectPath = storage.normalizeObjectEntityPath(uploadURL);
   res.json({ uploadURL, objectPath, metadata: parsed.data });
-}));
+});
+
+// The moderation session cookie is deliberately scoped to /api/moderation.
+// Keep the upload entry point under that path so authenticated panel requests
+// include the cookie; the legacy /api/storage path remains for compatible clients.
+router.post("/storage/uploads/request-url", requestUploadUrl);
+router.post("/moderation/storage/uploads/request-url", requestUploadUrl);
 
 router.get("/storage/objects/*path", asyncRoute(async (req, res) => {
   try {

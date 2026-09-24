@@ -1312,6 +1312,83 @@
 .bot-control-page .permission-check svg {
   color: hsl(var(--muted-foreground));
 }
+.bot-control-page .permission-role-row {
+  display: grid;
+  gap: 5px;
+}
+.bot-control-page .permission-role-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 0 5px 5px 20px;
+}
+.bot-control-page .permission-role-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: hsl(var(--muted-foreground));
+  font-size: 9px;
+}
+.bot-control-page .permission-role-options input,
+.bot-control-page .permission-presets input {
+  accent-color: hsl(var(--primary));
+}
+.bot-control-page .permission-presets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid hsl(var(--border));
+}
+.bot-control-page .permission-presets > span {
+  width: 100%;
+  color: hsl(var(--muted-foreground));
+  font-size: 9px;
+}
+.bot-control-page .role-presets-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.bot-control-page .role-preset-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 9px;
+  background: hsl(var(--background) / 0.55);
+}
+.bot-control-page .role-preset-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.bot-control-page .role-preset-heading h3 {
+  margin: 0;
+  color: hsl(var(--foreground));
+  font-size: 13px;
+}
+.bot-control-page .role-preset-heading p {
+  margin: 3px 0 0;
+  color: hsl(var(--muted-foreground));
+  font-size: 10px;
+}
+.bot-control-page .role-preset-card ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 17px;
+  color: hsl(var(--muted-foreground));
+  font-size: 10px;
+}
+.bot-control-page .role-presets-note {
+  margin: 0;
+  color: hsl(var(--muted-foreground));
+  font-size: 10px;
+  line-height: 1.5;
+}
 .bot-control-page .permission-options {
   display: grid;
   grid-template-columns: 1fr 1fr;

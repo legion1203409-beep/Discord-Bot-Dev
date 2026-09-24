@@ -12,8 +12,8 @@ import { useActiveGuild, useBotControl, useModerationMetadata, useSession, type 
 import { useToast } from "../../hooks/use-toast";
 import { useLocation, useSearch } from "wouter";
 
-type BotControlTab = "channels" | "tickets" | "messages" | "statistics";
-const BOT_CONTROL_TABS: BotControlTab[] = ["channels", "tickets", "messages", "statistics"];
+type BotControlTab = "channels" | "roles" | "tickets" | "messages" | "statistics";
+const BOT_CONTROL_TABS: BotControlTab[] = ["channels", "roles", "tickets", "messages", "statistics"];
 
 const CHANNELS = [
   ["main", "Cufere și Oracol"],
@@ -81,6 +81,12 @@ const DEFAULT_CHANNEL_PERMISSION: ChannelPermissionConfig = {
   readMessageHistory: true,
   sendMessages: true,
 };
+const ROLE_PRESETS = [
+  { key: "visitor", label: "Vizitator", match: /vizitator|visitor/i, history: true, send: false },
+  { key: "member", label: "Membru", match: /membru|member/i, history: true, send: true },
+  { key: "moderator", label: "Moderator", match: /moderator|moderator/i, history: true, send: true },
+  { key: "administrator", label: "Administrator", match: /administrator|admin/i, history: true, send: true },
+] as const;
 
 const TICKET_CATEGORIES = [
   ["staff", "Aplicare staff"],
@@ -205,6 +211,7 @@ export function BotControlPage() {
   const [draft, setDraft] = useState<BotControlConfig | null>(null);
   const [saving, setSaving] = useState(false);
   const [provisioning, setProvisioning] = useState(false);
+  const [provisionConfirmOpen, setProvisionConfirmOpen] = useState(false);
   const [selectedProvisioningCategories, setSelectedProvisioningCategories] = useState<string[]>(
     PROVISIONING_CATEGORIES.map((category) => category.key),
   );
@@ -241,6 +248,7 @@ export function BotControlPage() {
     if (data && initializedGuild.current !== guildId) {
       initializedGuild.current = guildId;
       setDraft(JSON.parse(JSON.stringify(data)));
+      setProvisioningPermissions(JSON.parse(JSON.stringify(data.provisioningPermissions ?? {})));
     }
   }, [data, guildId]);
 
@@ -255,7 +263,10 @@ export function BotControlPage() {
   }, [requestedTab, setLocation]);
 
   const hasUnsavedChanges = Boolean(
-    data && draft && JSON.stringify(draft) !== JSON.stringify(data),
+    data && draft && (
+      JSON.stringify(draft) !== JSON.stringify(data) ||
+      JSON.stringify(provisioningPermissions) !== JSON.stringify(data.provisioningPermissions ?? {})
+    ),
   );
 
   const setChannel = (key: string, value: string) => {
@@ -283,7 +294,45 @@ export function BotControlPage() {
     const roleIds = checked
       ? Array.from(new Set([...current.roleIds, roleId]))
       : current.roleIds.filter((id) => id !== roleId);
-    setProvisioningPermission(categoryKey, { roleIds });
+    const rolePermissions = { ...(current.rolePermissions ?? {}) };
+    if (checked) {
+      rolePermissions[roleId] ??= {
+        viewChannel: true,
+        readMessageHistory: current.readMessageHistory,
+        sendMessages: current.sendMessages,
+      };
+    } else {
+      delete rolePermissions[roleId];
+    }
+    setProvisioningPermission(categoryKey, { roleIds, rolePermissions });
+  };
+
+  const applyRolePreset = (categoryKey: string, presetKey: string) => {
+    const preset = ROLE_PRESETS.find((candidate) => candidate.key === presetKey);
+    if (!preset || !metadata) return;
+    const role = preset.key === "visitor"
+      ? metadata.roles.find((candidate) => candidate.id === metadata.guild.id)
+      : metadata.roles.find((candidate) => preset.match.test(candidate.name));
+    if (!role) {
+      toast({
+        variant: "destructive",
+        title: `Nu am găsit rolul pentru ${preset.label}`,
+        description: "Alege un rol existent din listă sau creează-l în Discord și reîncarcă pagina.",
+      });
+      return;
+    }
+    setProvisioningPermission(categoryKey, {
+      roleIds: [role.id],
+      readMessageHistory: preset.history,
+      sendMessages: preset.send,
+      rolePermissions: {
+        [role.id]: {
+          viewChannel: true,
+          readMessageHistory: preset.history,
+          sendMessages: preset.send,
+        },
+      },
+    });
   };
 
   const setTicket = (path: string[], value: string | number) => {
@@ -483,6 +532,7 @@ export function BotControlPage() {
       ) as BotControlConfig["tickets"]["flows"];
       const saved = await update({
         ...draft,
+        provisioningPermissions,
         channels: Object.fromEntries(Object.entries(draft.channels).filter(([, value]) => value)),
         tickets: { ...draft.tickets, flows },
       });
@@ -521,6 +571,7 @@ export function BotControlPage() {
       });
       return;
     }
+    setProvisionConfirmOpen(false);
     setProvisioning(true);
     try {
       const permissions = Object.fromEntries(
@@ -556,7 +607,7 @@ export function BotControlPage() {
   const categories = metadata?.channels.filter((channel) => isCategory(channel.type)) ?? [];
   const textChannels = metadata?.channels.filter((channel) => isTextChannel(channel.type)) ?? [];
   const permissionRoles = (metadata?.roles ?? [])
-    .filter((role) => !role.managed && role.name !== "@everyone")
+    .filter((role) => !role.managed || role.id === metadata?.guild.id)
     .sort((left, right) => (right.position ?? 0) - (left.position ?? 0));
   const categoryNames = new Map(categories.map((category) => [category.id, category.name]));
   const activeFlow = draft.tickets.flows[activeFlowKind];
@@ -656,12 +707,73 @@ export function BotControlPage() {
           }}
           className="bot-control-tabs space-y-5"
         >
-           <TabsList className="bot-control-tab-list grid h-auto w-full grid-cols-2 gap-1 rounded-xl border border-border/80 p-1 sm:grid-cols-4 bg-background/50 shadow-inner">
+             <TabsList className="bot-control-tab-list grid h-auto w-full grid-cols-2 gap-1 rounded-xl border border-border/80 p-1 sm:grid-cols-5 bg-background/50 shadow-inner">
              <TabsTrigger value="channels" data-testid="tab-channels" className="mod-tab-trigger gap-2 py-2.5"><Radio className="h-4 w-4" /> Canale</TabsTrigger>
+              <TabsTrigger value="roles" data-testid="tab-roles" className="mod-tab-trigger gap-2 py-2.5"><Users className="h-4 w-4" /> Roluri</TabsTrigger>
              <TabsTrigger value="tickets" data-testid="tab-tickets" className="mod-tab-trigger gap-2 py-2.5"><Ticket className="h-4 w-4" /> Tichete</TabsTrigger>
            <TabsTrigger value="messages" data-testid="tab-messages" className="mod-tab-trigger gap-2 py-2.5"><Megaphone className="h-4 w-4" /> Mesaje</TabsTrigger>
            <TabsTrigger value="statistics" data-testid="tab-statistics" className="mod-tab-trigger gap-2 py-2.5"><Activity className="h-4 w-4" /> Statistici</TabsTrigger>
         </TabsList>
+
+          <TabsContent value="roles" className="mod-tab-content mt-0">
+            <section className="surface role-presets-surface space-y-4">
+              <div className="section-head">
+                <div>
+                  <h2 className="font-medium text-foreground">Presetări de rol</h2>
+                  <p className="text-xs text-muted-foreground">Pornește cu setări uzuale, apoi ajustează permisiunile fiecărui rol pe categorii în secțiunea Canale.</p>
+                </div>
+              </div>
+              <div className="role-presets-grid">
+                {ROLE_PRESETS.map((preset) => {
+                  const role = preset.key === "visitor"
+                    ? metadata?.roles.find((candidate) => candidate.id === metadata.guild.id)
+                    : metadata?.roles.find((candidate) => preset.match.test(candidate.name));
+                  const applyPreset = () => {
+                    if (!role) return;
+                    setProvisioningPermissions((current) => Object.fromEntries(
+                      PROVISIONING_CATEGORIES.map(({ key }) => {
+                        const permission = current[key] ?? DEFAULT_CHANNEL_PERMISSION;
+                        const roleIds = Array.from(new Set([...permission.roleIds, role.id]));
+                        return [key, {
+                          ...permission,
+                          roleIds,
+                          rolePermissions: {
+                            ...(permission.rolePermissions ?? {}),
+                            [role.id]: {
+                              viewChannel: true,
+                              readMessageHistory: preset.history,
+                              sendMessages: preset.send,
+                            },
+                          },
+                        }];
+                      }),
+                    ));
+                    toast({
+                      title: `Presetarea ${preset.label} a fost aplicată`,
+                      description: "Setările sunt pregătite pentru toate categoriile. Apasă Salvează controlul botului, apoi sincronizează categoriile dorite.",
+                    });
+                  };
+                  return (
+                    <article className="role-preset-card" key={preset.key}>
+                      <div className="role-preset-heading">
+                        <span className="icon-box amber"><Users size={15} /></span>
+                        <div><h3>{preset.label}</h3><p>{role ? `Rol Discord: ${preset.key === "visitor" ? "@everyone" : `@${role.name}`}` : "Rolul nu a fost găsit pe server"}</p></div>
+                      </div>
+                      <ul>
+                        <li>Poate vedea canalele: Da</li>
+                        <li>Poate vedea istoricul: {preset.history ? "Da" : "Nu"}</li>
+                        <li>Poate scrie mesaje: {preset.send ? "Da" : "Nu"}</li>
+                      </ul>
+                      <Button type="button" variant="outline" className="w-full" disabled={!role} onClick={applyPreset}>
+                        Aplică pe toate categoriile
+                      </Button>
+                    </article>
+                  );
+                })}
+              </div>
+              <p className="role-presets-note">Presetările modifică doar draftul până îl salvezi. Pentru a activa accesul în Discord, sincronizează apoi categoriile din fila Canale.</p>
+            </section>
+          </TabsContent>
 
          <TabsContent value="channels" className="mod-tab-content mt-0">
 <div className="content-grid">
@@ -791,22 +903,53 @@ export function BotControlPage() {
                               <LockKeyhole size={15} />
                               <div>
                                 <strong>Permisiuni pentru {category.label}</strong>
-                                <p>Membrii cu rolurile selectate văd canalele. Botul își păstrează accesul automat.</p>
+                                <p>Permisiunile de mai jos se aplică rolurilor alese; suprascrierile Discord pentru celelalte roluri sunt păstrate.</p>
                               </div>
                             </div>
                             <div className="role-grid">
-                              {permissionRoles.length > 0 ? permissionRoles.map((role) => (
-                                <label className="permission-check" key={role.id}>
-                                  <input
-                                    type="checkbox"
-                                    checked={permission.roleIds.includes(role.id)}
-                                    onChange={(event) => toggleProvisioningRole(category.key, role.id, event.target.checked)}
-                                  />
-                                  <Users size={12} /> <span className="truncate">@{role.name}</span>
-                                </label>
-                              )) : (
+                              {permissionRoles.length > 0 ? permissionRoles.map((role) => {
+                                const roleAccess = permission.rolePermissions?.[role.id] ?? {
+                                  viewChannel: permission.roleIds.includes(role.id),
+                                  readMessageHistory: permission.readMessageHistory,
+                                  sendMessages: permission.sendMessages,
+                                };
+                                return (
+                                <div className="permission-role-row" key={role.id}>
+                                  <label className="permission-check">
+                                    <input
+                                      type="checkbox"
+                                      checked={permission.roleIds.includes(role.id)}
+                                      onChange={(event) => toggleProvisioningRole(category.key, role.id, event.target.checked)}
+                                    />
+                                    <Users size={12} /> <span className="truncate">{role.id === metadata?.guild.id ? "@everyone · implicit" : `@${role.name}`}</span>
+                                  </label>
+                                  {permission.roleIds.includes(role.id) && (
+                                    <div className="permission-role-options">
+                                      <label><input type="checkbox" aria-label={`${role.name}: poate vedea`} checked={roleAccess.viewChannel} onChange={(event) => setProvisioningPermission(category.key, { rolePermissions: { ...(permission.rolePermissions ?? {}), [role.id]: { ...roleAccess, viewChannel: event.target.checked } } })} /> Vede</label>
+                                      <label><input type="checkbox" aria-label={`${role.name}: poate vedea istoricul`} checked={roleAccess.readMessageHistory} onChange={(event) => setProvisioningPermission(category.key, { rolePermissions: { ...(permission.rolePermissions ?? {}), [role.id]: { ...roleAccess, readMessageHistory: event.target.checked } } })} /> Istoric</label>
+                                      <label><input type="checkbox" aria-label={`${role.name}: poate scrie`} checked={roleAccess.sendMessages} onChange={(event) => setProvisioningPermission(category.key, { rolePermissions: { ...(permission.rolePermissions ?? {}), [role.id]: { ...roleAccess, sendMessages: event.target.checked } } })} /> Scrie</label>
+                                    </div>
+                                  )}
+                                </div>
+                                );
+                              }) : (
                                 <p className="text-xs text-muted-foreground col-span-2">Nu există roluri Discord disponibile.</p>
                               )}
+                            </div>
+                            <div className="permission-presets" aria-label={`Presetări roluri ${category.label}`}>
+                              <span>Presetare rapidă</span>
+                              {ROLE_PRESETS.map((preset) => (
+                                <Button
+                                  key={preset.key}
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 px-2 text-[10px]"
+                                  onClick={() => applyRolePreset(category.key, preset.key)}
+                                >
+                                  {preset.label}
+                                </Button>
+                              ))}
                             </div>
                             <div className="permission-options">
                               <label>
@@ -842,7 +985,25 @@ export function BotControlPage() {
                   type="button"
                   variant="default"
                   className="w-full gap-2 mt-2"
-                  onClick={() => void provision()}
+                  onClick={() => {
+                    if (hasUnsavedChanges) {
+                      toast({
+                        variant: "destructive",
+                        title: "Salvează sau renunță mai întâi la draft",
+                        description: "Setările nesalvate nu se aplică pe Discord.",
+                      });
+                      return;
+                    }
+                    if (selectedProvisioningCategories.length === 0) {
+                      toast({
+                        variant: "destructive",
+                        title: "Alege cel puțin o categorie",
+                        description: "Bifează categoriile pe care vrei să le sincronizezi.",
+                      });
+                      return;
+                    }
+                    setProvisionConfirmOpen(true);
+                  }}
                   disabled={provisioning || metadata?.botCapabilities?.canManageChannels !== true}
                 >
                   {provisioning ? <Loader2 size={13} className="animate-spin" /> : <Wrench size={13} />}
@@ -1402,6 +1563,68 @@ export function BotControlPage() {
           </div>
         </div>
       )}
+
+      <Dialog open={provisionConfirmOpen} onOpenChange={setProvisionConfirmOpen}>
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Confirmă sincronizarea cu Discord</DialogTitle>
+            <DialogDescription>
+              Verifică categoriile și accesul înainte de a modifica serverul. Vor fi create canalele lipsă, iar permisiunile de acces gestionate aici vor fi actualizate.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            {PROVISIONING_CATEGORIES
+              .filter((category) => selectedProvisioningCategories.includes(category.key))
+              .map((category) => {
+                const permission = provisioningPermissions[category.key] ?? DEFAULT_CHANNEL_PERMISSION;
+                const allowedRoles = permission.roleIds
+                  .map((roleId) => metadata?.roles.find((role) => role.id === roleId))
+                  .filter((role): role is NonNullable<typeof role> => Boolean(role));
+                return (
+                  <article key={category.key} className="rounded-lg border border-border bg-muted/20 p-3">
+                    <h3 className="text-sm font-medium">{category.label}</h3>
+                    {allowedRoles.length ? (
+                      <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+                        {allowedRoles.map((role) => {
+                          const access = permission.rolePermissions?.[role.id] ?? {
+                            viewChannel: true,
+                            readMessageHistory: permission.readMessageHistory,
+                            sendMessages: permission.sendMessages,
+                          };
+                          const roleLabel = role.id === metadata?.guild.id ? "@everyone" : `@${role.name}`;
+                          return (
+                            <li key={role.id}>
+                              {roleLabel}: vede {access.viewChannel ? "Da" : "Nu"} · istoric {access.readMessageHistory ? "Da" : "Nu"} · scrie {access.sendMessages ? "Da" : "Nu"}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    ) : (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Niciun rol suplimentar selectat. Regulile Discord existente pentru celelalte roluri rămân neschimbate.
+                      </p>
+                    )}
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      {category.items.join(" · ")}
+                    </p>
+                  </article>
+                );
+              })}
+            <p className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-relaxed text-muted-foreground">
+              Suprascrierile pentru roluri care nu sunt gestionate de aceste setări rămân neschimbate. La eliminarea unui rol din configurație se șterg doar regulile de vizualizare, istoric și scriere create de acest panou.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setProvisionConfirmOpen(false)}>
+              Înapoi
+            </Button>
+            <Button type="button" onClick={() => void provision()} disabled={provisioning}>
+              {provisioning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wrench className="mr-2 h-4 w-4" />}
+              Aplică și sincronizează
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={testOpen} onOpenChange={setTestOpen}>
         <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto border-[#3f4147] bg-[#1e1f22] text-[#f2f3f5]">

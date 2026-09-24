@@ -16,7 +16,7 @@ function channel(id: string, name: string, type: ChannelType) {
       return value;
     }),
     permissionOverwrites: {
-      set: vi.fn(async (_overwrites: unknown[], _reason?: string) => value),
+      edit: vi.fn(async (_roleId: string, _permissions: Record<string, boolean | null>, _options?: { reason?: string }) => value),
     },
   };
   return value;
@@ -150,6 +150,8 @@ describe("guild channel provisioning", () => {
       roles: {
         cache: new Map([
           ["role-staff", { id: "role-staff" }],
+          ["role-old", { id: "role-old" }],
+          ["role-unrelated", { id: "role-unrelated" }],
           ["bot-role", { id: "bot-role" }],
         ]),
         everyone: { id: "everyone" },
@@ -168,34 +170,66 @@ describe("guild channel provisioning", () => {
           sendMessages: false,
         },
       },
+      previousPermissions: {
+        gameplay: {
+          roleIds: ["role-old"],
+          readMessageHistory: true,
+          sendMessages: true,
+        },
+      },
       channelConfig: {},
       ticketConfig: structuredClone(DEFAULT_TICKET_CONFIG),
       moderationConfig: structuredClone(defaultModerationConfig),
       verification: structuredClone(DEFAULT_VERIFICATION_CONFIG),
     });
 
-    const permissionCalls = [...channels.values()]
-      .map((entry) => entry.permissionOverwrites.set.mock.calls[0]?.[0])
-      .filter(Boolean);
-    expect(permissionCalls.length).toBe(7);
-    expect(permissionCalls[0]).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        id: "everyone",
-        deny: expect.arrayContaining([
-          PermissionFlagsBits.ViewChannel,
-          PermissionFlagsBits.ReadMessageHistory,
-          PermissionFlagsBits.SendMessages,
-        ]),
-      }),
-      expect.objectContaining({
-        id: "role-staff",
-        allow: expect.arrayContaining([PermissionFlagsBits.ViewChannel]),
-        deny: expect.arrayContaining([
-          PermissionFlagsBits.ReadMessageHistory,
-          PermissionFlagsBits.SendMessages,
-        ]),
-      }),
-      expect.objectContaining({ id: "bot-role" }),
+    const channelCalls = [...channels.values()].map((entry) => entry.permissionOverwrites.edit.mock.calls);
+    expect(channelCalls).toHaveLength(7);
+    expect(channelCalls[0]).toEqual(expect.arrayContaining([
+      ["everyone", { ViewChannel: false, ReadMessageHistory: false, SendMessages: false }, expect.anything()],
+      ["role-old", { ViewChannel: null, ReadMessageHistory: null, SendMessages: null }, expect.anything()],
+      ["role-staff", { ViewChannel: true, ReadMessageHistory: false, SendMessages: false }, expect.anything()],
+      ["bot-role", { ViewChannel: true, ReadMessageHistory: true, SendMessages: true }, expect.anything()],
     ]));
+    expect(channelCalls[0]?.map(([roleId]) => roleId)).not.toContain("role-unrelated");
+  });
+
+  it("applies independent per-role access settings", async () => {
+    const createdChannels = new Map<string, ReturnType<typeof channel>>();
+    const create = vi.fn(async ({ name, type }: { name: string; type: ChannelType }) => {
+      const created = channel(`new-${createdChannels.size}`, name, type);
+      createdChannels.set(created.id, created);
+      return created;
+    });
+    const guild = {
+      id: "guild-profile",
+      channels: { fetch: vi.fn(async () => createdChannels), create },
+      roles: {
+        cache: new Map([["role-visitor", { id: "role-visitor" }], ["role-staff", { id: "role-staff" }], ["bot-role", { id: "bot-role" }]]),
+        everyone: { id: "everyone" },
+      },
+      members: { me: { roles: { highest: { id: "bot-role" } } } },
+    } as unknown as Guild;
+    await provisionGuildChannels(guild, {
+      categories: ["gameplay"],
+      permissions: {
+        gameplay: {
+          roleIds: ["role-visitor", "role-staff"],
+          readMessageHistory: true,
+          sendMessages: true,
+          rolePermissions: {
+            "role-visitor": { viewChannel: true, readMessageHistory: true, sendMessages: false },
+            "role-staff": { viewChannel: true, readMessageHistory: true, sendMessages: true },
+          },
+        },
+      },
+      channelConfig: {},
+      ticketConfig: structuredClone(DEFAULT_TICKET_CONFIG),
+      moderationConfig: structuredClone(defaultModerationConfig),
+      verification: structuredClone(DEFAULT_VERIFICATION_CONFIG),
+    });
+    const edits = [...createdChannels.values()][0].permissionOverwrites.edit.mock.calls;
+    expect(edits).toContainEqual(["role-visitor", { ViewChannel: true, ReadMessageHistory: true, SendMessages: false }, expect.anything()]);
+    expect(edits).toContainEqual(["role-staff", { ViewChannel: true, ReadMessageHistory: true, SendMessages: true }, expect.anything()]);
   });
 });
