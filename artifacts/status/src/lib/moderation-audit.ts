@@ -14,6 +14,55 @@ export interface AuditLogPresentation {
   details: string;
 }
 
+export const AUDIT_EVENT_CATEGORIES = [
+  { value: "messages", label: "Mesaje" },
+  { value: "members", label: "Membri" },
+  { value: "channels", label: "Canale" },
+  { value: "roles", label: "Roluri" },
+  { value: "voice", label: "Activitate vocală" },
+  { value: "moderation", label: "Moderare" },
+  { value: "security", label: "Securitate" },
+  { value: "other", label: "Altele" },
+] as const;
+
+export type AuditEventCategory = (typeof AUDIT_EVENT_CATEGORIES)[number]["value"];
+export type AuditEventCategoryFilter = AuditEventCategory | "all";
+
+export function getAuditEventCategory(eventType: string): AuditEventCategory {
+  const normalized = eventType.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLocaleLowerCase();
+  if (normalized.startsWith("discord.message_")) return "messages";
+  if (normalized.startsWith("discord.member_")) return "members";
+  if (normalized.startsWith("discord.channel_")) return "channels";
+  if (normalized.startsWith("discord.guild_role_")) return "roles";
+  if (normalized.startsWith("discord.voice_")) return "voice";
+  if (/^(config\.|case\.|cases\.|action\.)/.test(normalized)) return "moderation";
+  if (/^(raid\.|suspicious\.|spam\.|automod\.|ai\.|event\.)/.test(normalized)) return "security";
+  return "other";
+}
+
+export function filterAuditEvents(
+  events: ModerationAuditLog[],
+  search: string,
+  category: AuditEventCategoryFilter,
+): ModerationAuditLog[] {
+  const query = search.toLocaleLowerCase();
+  return events.filter((event) => {
+    if (category !== "all" && getAuditEventCategory(event.eventType || "unknown") !== category) {
+      return false;
+    }
+    if (!query) return true;
+
+    const presentation = presentAuditLog(event);
+    return [
+      presentation.title,
+      presentation.details,
+      presentAuditActor(event),
+      event.actorId,
+      event.targetId,
+    ].some((value) => value?.toLocaleLowerCase().includes(query));
+  });
+}
+
 const eventTitles: Record<string, string> = {
   "config.updated": "Configurație actualizată",
   "case.created": "Caz de moderare creat",

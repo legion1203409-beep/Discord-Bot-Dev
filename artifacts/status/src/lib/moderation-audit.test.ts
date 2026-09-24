@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { presentAuditActor, presentAuditLog, type ModerationAuditLog } from "./moderation-audit";
+import {
+  filterAuditEvents,
+  getAuditEventCategory,
+  presentAuditActor,
+  presentAuditLog,
+  type ModerationAuditLog,
+} from "./moderation-audit";
 
 function log(eventType: string, detail: Record<string, unknown>, targetType = "member"): ModerationAuditLog {
   return {
@@ -53,5 +59,37 @@ describe("moderation audit event presentation", () => {
     expect(presentAuditLog(roleEvent).title).toBe("Rol actualizat");
     expect(presentAuditLog(roleEvent).details).toContain("Moderator");
     expect(presentAuditLog(roleEvent).details).toContain("Membru");
+  });
+});
+
+describe("moderation audit event categories", () => {
+  it.each([
+    ["discord.message_update", "messages"],
+    ["discord.member_join", "members"],
+    ["discord.channelCreate", "channels"],
+    ["discord.guildRoleUpdate", "roles"],
+    ["discord.voice_state_update", "voice"],
+    ["case.created", "moderation"],
+    ["action.applied", "moderation"],
+    ["raid.detected", "security"],
+    ["automod.message_delete_failed", "security"],
+    ["future.event", "other"],
+  ] as const)("categorizes %s as %s", (eventType, category) => {
+    expect(getAuditEventCategory(eventType)).toBe(category);
+  });
+
+  it("combines category and text search filters", () => {
+    const events = [
+      log("discord.member_join", { summary: "Umbra entered" }),
+      log("discord.message_delete", { summary: "Umbra message removed" }),
+      log("discord.member_leave", { summary: "Different member left" }),
+    ];
+
+    expect(filterAuditEvents(events, "intrat pe server", "members").map((event) => event.eventType))
+      .toEqual(["discord.member_join"]);
+    expect(filterAuditEvents(events, "", "members").map((event) => event.eventType))
+      .toEqual(["discord.member_join", "discord.member_leave"]);
+    expect(filterAuditEvents(events, "intrat pe server", "all").map((event) => event.eventType))
+      .toEqual(["discord.member_join"]);
   });
 });

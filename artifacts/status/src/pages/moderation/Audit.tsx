@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { History, Search, ShieldCheck, Loader2 } from "lucide-react";
+import { History, Search, ShieldCheck, Loader2, X } from "lucide-react";
 import { Input } from "../../components/ui/input";
 import { useAuditLogs, useActiveGuild, useActionLedger, useReconcileAction } from "../../hooks/use-moderation-api";
 import { Button } from "../../components/ui/button";
@@ -7,7 +7,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Textarea } from "../../components/ui/textarea";
 import { useToast } from "../../hooks/use-toast";
 import { AlertTriangle, ShieldAlert } from "lucide-react";
-import { presentAuditActor, presentAuditLog } from "../../lib/moderation-audit";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
+import {
+  AUDIT_EVENT_CATEGORIES,
+  filterAuditEvents,
+  type AuditEventCategoryFilter,
+  presentAuditActor,
+  presentAuditLog,
+} from "../../lib/moderation-audit";
 
 function ReconcileDialog({ actionId, open, onOpenChange, onReconciled }: { actionId: string | null, open: boolean, onOpenChange: (o: boolean) => void, onReconciled: () => void }) {
   const { guildId } = useActiveGuild();
@@ -82,6 +89,7 @@ function ReconcileDialog({ actionId, open, onOpenChange, onReconciled }: { actio
 
 export function AuditPage() {
   const [search, setSearch] = useState("");
+  const [category, setCategory] = useState<AuditEventCategoryFilter>("all");
   const { guildId } = useActiveGuild();
   const { data: auditEvents, loading } = useAuditLogs(guildId);
   
@@ -94,19 +102,15 @@ export function AuditPage() {
 
   if (!guildId) return <div className="p-8 text-center text-muted-foreground">Selectează un server.</div>;
 
-  const filtered = search
-    ? (auditEvents || []).filter((event) => {
-      const presentation = presentAuditLog(event);
-      const query = search.toLocaleLowerCase();
-      return [
-        presentation.title,
-        presentation.details,
-        presentAuditActor(event),
-        event.actorId,
-        event.targetId,
-      ].some((value) => value?.toLocaleLowerCase().includes(query));
-    })
-    : (auditEvents || []);
+  const filtered = filterAuditEvents(auditEvents || [], search, category);
+  const selectedCategoryLabel = AUDIT_EVENT_CATEGORIES.find((option) => option.value === category)?.label;
+  const emptyMessage = category !== "all" && search
+    ? `Niciun eveniment din categoria „${selectedCategoryLabel}” nu corespunde căutării.`
+    : category !== "all"
+      ? `Niciun eveniment în categoria „${selectedCategoryLabel}”.`
+      : search
+        ? "Niciun eveniment nu corespunde căutării."
+        : "Niciun eveniment găsit.";
 
   return (
     <div className="space-y-6 animate-stagger-1">
@@ -165,14 +169,38 @@ export function AuditPage() {
           <p className="text-sm text-muted-foreground">Logurile sunt imuabile (nu pot fi șterse sau modificate).</p>
         </div>
         <div className="p-4 border-b border-border/80 bg-background/40">
-          <div className="relative w-full max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input 
-              placeholder="Caută în audit (acțiune, actor)..." 
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="pl-9 bg-background/50 border-border/50"
-            />
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="relative w-full max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                placeholder="Caută în audit (acțiune, actor)..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="pl-9 bg-background/50 border-border/50"
+              />
+            </div>
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="space-y-1.5">
+                <label id="audit-category-label" className="text-xs font-medium text-muted-foreground">Categorie</label>
+                <Select value={category} onValueChange={(value) => setCategory(value as AuditEventCategoryFilter)}>
+                  <SelectTrigger aria-labelledby="audit-category-label" className="w-full sm:w-56 bg-background/50 border-border/50">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Toate categoriile</SelectItem>
+                    {AUDIT_EVENT_CATEGORIES.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {category !== "all" && (
+                <Button type="button" variant="outline" size="sm" onClick={() => setCategory("all")}>
+                  <X className="mr-1.5 h-4 w-4" />
+                  Elimină filtrul
+                </Button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -210,7 +238,7 @@ export function AuditPage() {
           ) : (
             <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
               <History className="w-8 h-8 mb-2 opacity-20" />
-              <p>Niciun eveniment găsit.</p>
+              <p>{emptyMessage}</p>
             </div>
           )}
         </div>
