@@ -117,6 +117,25 @@ const moderationNavGroups: Array<{ id: string; label: string; items: ModerationN
   },
 ];
 
+const NAV_GROUPS_STORAGE_KEY = "moderation-nav-groups-v1";
+
+function initialExpandedNavGroups(): Record<string, boolean> {
+  const allExpanded = Object.fromEntries(moderationNavGroups.map((group) => [group.id, true]));
+  if (typeof window === "undefined") return allExpanded;
+
+  try {
+    const stored = window.localStorage.getItem(NAV_GROUPS_STORAGE_KEY);
+    if (!stored) return allExpanded;
+    const parsed = JSON.parse(stored) as Record<string, unknown>;
+    return Object.fromEntries(moderationNavGroups.map((group) => [
+      group.id,
+      typeof parsed[group.id] === "boolean" ? parsed[group.id] as boolean : true,
+    ]));
+  } catch {
+    return allExpanded;
+  }
+}
+
 function isNavItemActive(href: string, location: string, searchString: string): boolean {
   const [pathname, query] = href.split("?");
   if (location.split("?")[0] !== pathname) return false;
@@ -139,12 +158,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
   } = useModerationAuthConfig();
   const { guildId, setGuildId, guilds } = useActiveGuild();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [expandedNavGroups, setExpandedNavGroups] = useState<Record<string, boolean>>(() => {
-    const activeGroup = moderationNavGroups.find((group) =>
-      group.items.some((item) => isNavItemActive(item.href, location, searchString)),
-    );
-    return Object.fromEntries(moderationNavGroups.map((group) => [group.id, group.id === activeGroup?.id]));
-  });
+  const [expandedNavGroups, setExpandedNavGroups] = useState<Record<string, boolean>>(initialExpandedNavGroups);
   const activeGuild = guilds.find((guild) => guild.id === guildId);
   const activeGuildIcon = guildIconUrl(activeGuild);
   const botProfile = authConfig?.bot;
@@ -158,9 +172,19 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
       group.items.some((item) => isNavItemActive(item.href, location, searchString)),
     );
     if (activeGroup) {
-      setExpandedNavGroups((current) => ({ ...current, [activeGroup.id]: true }));
+      setExpandedNavGroups((current) => current[activeGroup.id]
+        ? current
+        : { ...current, [activeGroup.id]: true });
     }
   }, [location, searchString]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(NAV_GROUPS_STORAGE_KEY, JSON.stringify(expandedNavGroups));
+    } catch {
+      // Navigation remains usable when browser storage is unavailable.
+    }
+  }, [expandedNavGroups]);
 
   if (loading) {
     return (
