@@ -10,6 +10,7 @@ import { Switch } from "../../components/ui/switch";
 import { Button } from "../../components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { useToast } from "../../hooks/use-toast";
+import { configSaveToastOptions } from "../../lib/protection-toggle-feedback";
 
 const protectionFormSchema = z.object({
   protectionEnabled: z.boolean(),
@@ -62,15 +63,23 @@ export function ProtectionPage() {
       suspiciousBehavior: { ...current.suspiciousBehavior, enabled: values.suspiciousEnabled },
     });
     try {
-      await update(buildConfig(data));
-      toast({ title: "Setări salvate", description: "Configurația de protecție a fost actualizată." });
+      const saved = await update(buildConfig(data));
+      toast(configSaveToastOptions(
+        saved?.notification?.status,
+        "Setări salvate",
+        "Configurația de protecție a fost actualizată.",
+      ));
     } catch (err: any) {
       if (err.message.includes("Conflict")) {
         try {
           const freshData = await refetch();
           if (freshData) {
-            await update(buildConfig(freshData));
-            toast({ title: "Setări salvate", description: "Configurația de protecție a fost actualizată." });
+            const saved = await update(buildConfig(freshData));
+            toast(configSaveToastOptions(
+              saved?.notification?.status,
+              "Setări salvate",
+              "Configurația de protecție a fost actualizată.",
+            ));
             return;
           }
         } catch (retryError: any) {

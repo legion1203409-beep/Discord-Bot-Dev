@@ -95,10 +95,80 @@ export interface ModerationSession {
  */
 export interface ModerationConfig { [key: string]: unknown }
 
+export type ProtectionToggleInputKey = typeof ProtectionToggleInputKey[keyof typeof ProtectionToggleInputKey];
+
+
+export const ProtectionToggleInputKey = {
+  protection: 'protection',
+  autoMod: 'autoMod',
+  wordFilter: 'wordFilter',
+  linkBlock: 'linkBlock',
+  antiRaid: 'antiRaid',
+  antiSpam: 'antiSpam',
+  antiFlood: 'antiFlood',
+  suspiciousBehavior: 'suspiciousBehavior',
+  ai: 'ai',
+  manualTools: 'manualTools',
+  cases: 'cases',
+  audit: 'audit',
+  escalation: 'escalation',
+  embeds: 'embeds',
+} as const;
+
+export interface ProtectionToggleInput {
+  key: ProtectionToggleInputKey;
+  enabled: boolean;
+}
+
+export interface ModerationStorageUploadRequest {
+  /**
+     * @minLength 5
+     * @maxLength 25
+     */
+  guildId: string;
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  name: string;
+  /**
+     * @minimum 1
+     * @maximum 10485760
+     */
+  size: number;
+  /** @pattern ^image/(jpeg|png|gif|webp)$ */
+  contentType: string;
+}
+
+export interface ModerationStorageUploadResponse {
+  uploadURL: string;
+  objectPath: string;
+  metadata: ModerationStorageUploadRequest;
+}
+
+export type ModerationConfigResponseNotificationStatus = typeof ModerationConfigResponseNotificationStatus[keyof typeof ModerationConfigResponseNotificationStatus];
+
+
+export const ModerationConfigResponseNotificationStatus = {
+  not_applicable: 'not_applicable',
+  sent: 'sent',
+  no_channel: 'no_channel',
+  bot_offline: 'bot_offline',
+  guild_unavailable: 'guild_unavailable',
+  channel_unavailable: 'channel_unavailable',
+  send_failed: 'send_failed',
+} as const;
+
+export type ModerationConfigResponseNotification = {
+  status: ModerationConfigResponseNotificationStatus;
+  modules: string[];
+};
+
 export interface ModerationConfigResponse {
   config: ModerationConfig;
   version: number;
   updatedAt?: string | null;
+  notification?: ModerationConfigResponseNotification;
 }
 
 export type ModerationLogDetail = { [key: string]: unknown };

@@ -28,7 +28,10 @@ import type {
   ModerationConfigResponse,
   ModerationDiscordCallbackParams,
   ModerationLogPage,
-  ModerationSession
+  ModerationSession,
+  ModerationStorageUploadRequest,
+  ModerationStorageUploadResponse,
+  ProtectionToggleInput
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -561,6 +564,70 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       return useMutation(getModerationLogoutMutationOptions(options));
     }
 
+export const getRequestModerationStorageUploadUrlUrl = () => {
+
+
+
+
+  return `/api/moderation/storage/uploads/request-url`
+}
+
+export const requestModerationStorageUploadUrl = async (moderationStorageUploadRequest: ModerationStorageUploadRequest, options?: RequestInit): Promise<ModerationStorageUploadResponse> => {
+
+  return customFetch<ModerationStorageUploadResponse>(getRequestModerationStorageUploadUrlUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(moderationStorageUploadRequest)
+  }
+);}
+
+
+
+
+export const getRequestModerationStorageUploadUrlMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestModerationStorageUploadUrl>>, TError,{data: BodyType<ModerationStorageUploadRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof requestModerationStorageUploadUrl>>, TError,{data: BodyType<ModerationStorageUploadRequest>}, TContext> => {
+
+const mutationKey = ['requestModerationStorageUploadUrl'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof requestModerationStorageUploadUrl>>, {data: BodyType<ModerationStorageUploadRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  requestModerationStorageUploadUrl(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RequestModerationStorageUploadUrlMutationResult = NonNullable<Awaited<ReturnType<typeof requestModerationStorageUploadUrl>>>
+    export type RequestModerationStorageUploadUrlMutationBody = BodyType<ModerationStorageUploadRequest>
+    export type RequestModerationStorageUploadUrlMutationError = ErrorType<void>
+
+    export const useRequestModerationStorageUploadUrl = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestModerationStorageUploadUrl>>, TError,{data: BodyType<ModerationStorageUploadRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof requestModerationStorageUploadUrl>>,
+        TError,
+        {data: BodyType<ModerationStorageUploadRequest>},
+        TContext
+      > => {
+      return useMutation(getRequestModerationStorageUploadUrlMutationOptions(options));
+    }
+
 export const getModerationGetConfigUrl = (guildId: string,) => {
 
 
@@ -695,6 +762,71 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getModerationPutConfigMutationOptions(options));
+    }
+
+export const getModerationProtectionToggleUrl = (guildId: string,) => {
+
+
+
+
+  return `/api/moderation/guilds/${guildId}/protection-toggle`
+}
+
+export const moderationProtectionToggle = async (guildId: string,
+    protectionToggleInput: ProtectionToggleInput, options?: RequestInit): Promise<ModerationConfigResponse> => {
+
+  return customFetch<ModerationConfigResponse>(getModerationProtectionToggleUrl(guildId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(protectionToggleInput)
+  }
+);}
+
+
+
+
+export const getModerationProtectionToggleMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof moderationProtectionToggle>>, TError,{guildId: string;data: BodyType<ProtectionToggleInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof moderationProtectionToggle>>, TError,{guildId: string;data: BodyType<ProtectionToggleInput>}, TContext> => {
+
+const mutationKey = ['moderationProtectionToggle'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof moderationProtectionToggle>>, {guildId: string;data: BodyType<ProtectionToggleInput>}> = (props) => {
+          const {guildId,data} = props ?? {};
+
+          return  moderationProtectionToggle(guildId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ModerationProtectionToggleMutationResult = NonNullable<Awaited<ReturnType<typeof moderationProtectionToggle>>>
+    export type ModerationProtectionToggleMutationBody = BodyType<ProtectionToggleInput>
+    export type ModerationProtectionToggleMutationError = ErrorType<void>
+
+    export const useModerationProtectionToggle = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof moderationProtectionToggle>>, TError,{guildId: string;data: BodyType<ProtectionToggleInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof moderationProtectionToggle>>,
+        TError,
+        {guildId: string;data: BodyType<ProtectionToggleInput>},
+        TContext
+      > => {
+      return useMutation(getModerationProtectionToggleMutationOptions(options));
     }
 
 export const getModerationLogsUrl = (guildId: string,) => {

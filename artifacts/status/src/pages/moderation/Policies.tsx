@@ -7,6 +7,7 @@ import { Input } from "../../components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { useToast } from "../../hooks/use-toast";
 import { ToastAction } from "../../components/ui/toast";
+import { configSaveToastOptions } from "../../lib/protection-toggle-feedback";
 
 export function PoliciesPage() {
   const { guildId } = useActiveGuild();
@@ -27,8 +28,12 @@ export function PoliciesPage() {
     if (!localData || !guildId) return;
     setSaving(true);
     try {
-      await update(localData);
-      toast({ title: "Configurație salvată", description: "Politicile și escaladarea au fost actualizate." });
+      const saved = await update(localData);
+      toast(configSaveToastOptions(
+        saved?.notification?.status,
+        "Configurație salvată",
+        "Politicile și escaladarea au fost actualizate.",
+      ));
     } catch (err: any) {
       if (err.message.includes("Conflict")) {
         toast({

@@ -111,7 +111,11 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     mocks.access.mockResolvedValue("owner");
     mocks.getConfig.mockResolvedValue({ config: structuredClone(defaultModerationConfig), version: 3 });
     mocks.putConfig.mockResolvedValue({ config: structuredClone(defaultModerationConfig), version: 4 });
-    mocks.putProtectionToggle.mockResolvedValue({ config: structuredClone(defaultModerationConfig), version: 4 });
+    mocks.putProtectionToggle.mockResolvedValue({
+      config: structuredClone(defaultModerationConfig),
+      previousConfig: structuredClone(defaultModerationConfig),
+      version: 4,
+    });
     mocks.client.mockReturnValue({
       isReady: () => true,
       options: { intents: { has: () => true } },
@@ -315,6 +319,50 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     expect(response.headers.get("etag")).toBe('"4"');
   });
 
+  it("announces module activation when a settings page saves through the full-config endpoint", async () => {
+    const channelId = "555555555555555555";
+    const previousConfig = structuredClone(defaultModerationConfig);
+    previousConfig.audit.channelId = channelId;
+    previousConfig.audit.enabled = false;
+    const config = structuredClone(previousConfig);
+    config.escalation.enabled = true;
+    mocks.getConfig.mockResolvedValue({ config: previousConfig, version: 3 });
+    mocks.putConfig.mockResolvedValue({ config, version: 4 });
+
+    const send = vi.fn().mockResolvedValue({});
+    const channel = { isTextBased: () => true, send };
+    const guild = {
+      id: guildId,
+      ownerId: actorId,
+      members: { me: { permissions: { has: () => false } } },
+      roles: { fetch: vi.fn().mockResolvedValue(new Map()) },
+      channels: {
+        cache: new Map([[channelId, channel]]),
+        fetch: vi.fn().mockImplementation(async (id?: string) =>
+          id ? channel : new Map([[channelId, channel]]),
+        ),
+      },
+      emojis: { fetch: mocks.emojiFetch, create: mocks.emojiCreate },
+    };
+    mocks.client.mockReturnValue({
+      isReady: () => true,
+      options: { intents: { has: () => true } },
+      guilds: { cache: new Map([[guildId, guild]]), fetch: vi.fn().mockResolvedValue(guild) },
+    });
+
+    const response = await fetch(`${base}/config`, {
+      ...post(config, { "if-match": '"3"' }),
+      method: "PUT",
+    });
+
+    expect(response.status).toBe(200);
+    const result = await response.json() as {
+      notification: { status: string; modules: string[] };
+    };
+    expect(result.notification).toEqual({ status: "sent", modules: ["Escaladarea"] });
+    expect(send).toHaveBeenCalledOnce();
+  });
+
   it.each([
     "protection",
     "autoMod",
@@ -365,6 +413,7 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
       else config.embeds.enabled = enabled;
       return {
         config,
+        previousConfig: structuredClone(initialConfig),
         version: 9,
       };
     });
@@ -401,7 +450,11 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     const config = structuredClone(defaultModerationConfig);
     config.protection.enabled = false;
     config.ai.enabled = true;
-    mocks.putProtectionToggle.mockResolvedValue({ config, version: 5 });
+    mocks.putProtectionToggle.mockResolvedValue({
+      config,
+      previousConfig: structuredClone(config),
+      version: 5,
+    });
 
     const response = await fetch(`${base}/protection-toggle`, {
       ...post({ key: "protection", enabled: false }),
@@ -415,6 +468,45 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     expect(result.config).toEqual(config);
     expect(mocks.putProtectionToggle).toHaveBeenCalledWith(guildId, "protection", false, actorId);
     expect(mocks.putConfig).not.toHaveBeenCalled();
+  });
+
+  it("announces a newly enabled module in the configured audit channel without pinging anyone", async () => {
+    const channelId = "555555555555555555";
+    const previousConfig = structuredClone(defaultModerationConfig);
+    previousConfig.protection.enabled = true;
+    previousConfig.audit.channelId = channelId;
+    previousConfig.audit.enabled = false;
+    const config = structuredClone(previousConfig);
+    config.antiRaid.enabled = true;
+    mocks.putProtectionToggle.mockResolvedValue({ config, previousConfig, version: 5 });
+
+    const send = vi.fn().mockResolvedValue({});
+    const channel = { isTextBased: () => true, send };
+    const guild = {
+      id: guildId,
+      members: { me: { permissions: { has: () => false } } },
+      channels: { cache: new Map(), fetch: vi.fn().mockResolvedValue(channel) },
+    };
+    mocks.client.mockReturnValue({
+      isReady: () => true,
+      options: { intents: { has: () => true } },
+      guilds: { cache: new Map(), fetch: vi.fn().mockResolvedValue(guild) },
+    });
+
+    const response = await fetch(`${base}/protection-toggle`, {
+      ...post({ key: "antiRaid", enabled: true }),
+      method: "PUT",
+    });
+
+    expect(response.status).toBe(200);
+    const result = await response.json() as {
+      notification: { status: string; module: string };
+    };
+    expect(result.notification).toEqual({ status: "sent", modules: ["Anti-Raid"] });
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({
+      content: expect.stringContaining("Anti-Raid activat"),
+      allowedMentions: { parse: [] },
+    }));
   });
 
   it("persists all custom ticket flows and returns them unchanged after a later GET", async () => {

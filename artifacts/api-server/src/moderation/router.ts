@@ -1207,6 +1207,104 @@ router.get("/guilds/:guildId/config", asyncRoute(async (req, res) => {
   res.set("Cache-Control", "no-store").set("ETag", `"${result.version}"`).json(result);
 }));
 
+type ProtectionToggleKey = Parameters<typeof moderationStore.putProtectionToggle>[1];
+
+const protectionToggleLabels: Record<ProtectionToggleKey, string> = {
+  protection: "Protecția globală",
+  autoMod: "AutoMod",
+  wordFilter: "Filtrul de cuvinte",
+  linkBlock: "Blocarea linkurilor",
+  antiRaid: "Anti-Raid",
+  antiSpam: "Anti-Spam",
+  antiFlood: "Anti-Flood",
+  suspiciousBehavior: "Comportament suspect",
+  ai: "Moderarea AI",
+  manualTools: "Uneltele staff",
+  cases: "Cazurile de moderare",
+  audit: "Auditul",
+  escalation: "Escaladarea",
+  embeds: "Embed-urile",
+};
+const protectionToggleKeys = Object.keys(protectionToggleLabels) as ProtectionToggleKey[];
+
+function protectionToggleEnabled(config: ModerationConfig, key: ProtectionToggleKey): boolean {
+  switch (key) {
+    case "protection": return config.protection.enabled;
+    case "autoMod": return config.autoMod.enabled;
+    case "wordFilter": return config.autoMod.wordFilter.enabled;
+    case "linkBlock": return config.autoMod.linkBlock.enabled;
+    case "antiRaid": return config.antiRaid.enabled;
+    case "antiSpam": return config.antiSpam.enabled;
+    case "antiFlood": return config.antiFlood.enabled;
+    case "suspiciousBehavior": return config.suspiciousBehavior.enabled;
+    case "ai": return config.ai.enabled;
+    case "manualTools": return config.manualTools.enabled;
+    case "cases": return config.cases.enabled;
+    case "audit": return config.audit.enabled;
+    case "escalation": return config.escalation.enabled;
+    case "embeds": return config.embeds.enabled;
+  }
+}
+
+type ActivationNoticeStatus =
+  | "sent"
+  | "no_channel"
+  | "bot_offline"
+  | "guild_unavailable"
+  | "channel_unavailable"
+  | "send_failed";
+
+async function sendProtectionActivationNotice(
+  guildId: string,
+  actorId: string,
+  keys: ProtectionToggleKey[],
+  config: ModerationConfig,
+): Promise<ActivationNoticeStatus> {
+  const channelId = config.audit.channelId;
+  if (!channelId) return "no_channel";
+
+  const client = getModerationClient();
+  if (!client?.isReady()) return "bot_offline";
+
+  const guild = client.guilds.cache.get(guildId) ?? await client.guilds.fetch(guildId).catch(() => null);
+  if (!guild) return "guild_unavailable";
+  const channel = guild.channels.cache.get(channelId) ?? await guild.channels.fetch(channelId).catch(() => null);
+  if (!channel?.isTextBased() || !("send" in channel)) return "channel_unavailable";
+
+  const hasPausedModule = keys.some((key) =>
+    key === "autoMod" || key === "wordFilter" || key === "linkBlock" ||
+    key === "antiRaid" || key === "antiSpam" || key === "antiFlood" ||
+    key === "suspiciousBehavior" || key === "ai",
+  );
+  const pausedNote = hasPausedModule && !config.protection.enabled
+    ? " Protecția globală este oprită, deci modulul nu va procesa evenimente până când aceasta este pornită."
+    : "";
+  const moduleLines = keys.map((key) => `• **${protectionToggleLabels[key]} activat**`).join("\n");
+  const content = `🛡️ **${keys.length === 1 ? "Modul de moderare activat" : "Module de moderare activate"}**\n${moduleLines}\nActivat de <@${actorId}> din panoul web.${pausedNote}`;
+
+  try {
+    await channel.send({ content, allowedMentions: { parse: [] } });
+    return "sent";
+  } catch (error) {
+    logger.warn({ error, guildId, channelId, keys }, "Moderation module activation notice could not be sent");
+    return "send_failed";
+  }
+}
+
+async function notifyNewlyEnabledModules(
+  guildId: string,
+  actorId: string,
+  previousConfig: ModerationConfig,
+  config: ModerationConfig,
+): Promise<{ status: ActivationNoticeStatus | "not_applicable"; modules: string[] }> {
+  const newlyEnabled = protectionToggleKeys.filter((key) =>
+    !protectionToggleEnabled(previousConfig, key) && protectionToggleEnabled(config, key),
+  );
+  if (!newlyEnabled.length) return { status: "not_applicable", modules: [] };
+  const status = await sendProtectionActivationNotice(guildId, actorId, newlyEnabled, config);
+  return { status, modules: newlyEnabled.map((key) => protectionToggleLabels[key]) };
+}
+
 router.put("/guilds/:guildId/protection-toggle", asyncRoute(async (req, res) => {
   const guildId = parse(snowflake, req.params.guildId);
   const session = await sessionAndGuild(req, guildId, "config", true);
@@ -1220,13 +1318,23 @@ router.put("/guilds/:guildId/protection-toggle", asyncRoute(async (req, res) => 
   }).parse(req.body);
 
   const result = await moderationStore.putProtectionToggle(guildId, key, enabled, session.userId);
+  const notification = await notifyNewlyEnabledModules(
+    guildId,
+    session.userId,
+    result.previousConfig,
+    result.config,
+  );
   const client = getModerationClient();
   if (client) {
     void syncNativeAutoMod(client, guildId, result.config).catch((error) => {
       logger.warn({ error, guildId }, "Native Discord AutoMod synchronization failed after protection toggle");
     });
   }
-  res.set("Cache-Control", "no-store").set("ETag", `"${result.version}"`).json(result);
+  res.set("Cache-Control", "no-store").set("ETag", `"${result.version}"`).json({
+    config: result.config,
+    version: result.version,
+    notification,
+  });
 }));
 
 router.get("/guilds/:guildId/gameplay-state", asyncRoute(async (req, res) => {
@@ -1258,14 +1366,17 @@ router.put("/guilds/:guildId/config", asyncRoute(async (req, res) => {
   const session = await sessionAndGuild(req, guildId, "config", true);
   const config = parse(ModerationConfigSchema, req.body);
   await validateConfigTargets(guildId, config);
-  const result = await moderationStore.putConfig(guildId, config, session.userId, expectedRevision(req));
+  const revision = expectedRevision(req);
+  const previous = await moderationStore.getConfig(guildId);
+  const result = await moderationStore.putConfig(guildId, config, session.userId, revision);
+  const notification = await notifyNewlyEnabledModules(guildId, session.userId, previous.config, result.config);
   const client = getModerationClient();
   if (client) {
     void syncNativeAutoMod(client, guildId, result.config).catch((error) => {
       logger.warn({ error, guildId }, "Native Discord AutoMod synchronization failed after config save");
     });
   }
-  res.set("Cache-Control", "no-store").set("ETag", `"${result.version}"`).json(result);
+  res.set("Cache-Control", "no-store").set("ETag", `"${result.version}"`).json({ ...result, notification });
 }));
 
 router.get("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {

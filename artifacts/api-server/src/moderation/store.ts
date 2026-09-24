@@ -69,7 +69,7 @@ export interface ModerationStore {
     key: ProtectionToggleKey,
     enabled: boolean,
     updatedBy: string,
-  ): Promise<{ config: ModerationConfig; version: number }>;
+  ): Promise<{ config: ModerationConfig; previousConfig: ModerationConfig; version: number }>;
   createLoginCode(input: { guildId: string; userId: string; codeHash: string; expiresAt: Date }): Promise<void>;
   consumeLoginCode(codeHash: string): Promise<{ guildId: string; userId: string } | null>;
   createSession(input: Omit<ModerationSession, "revokedAt">): Promise<void>;
@@ -322,7 +322,7 @@ export class PostgresModerationStore implements ModerationStore {
       });
       await client.query("COMMIT");
       await this.pruneCases(guildId, nextConfig.cases.retentionDays);
-      return { config: nextConfig, version: nextVersion };
+      return { config: nextConfig, previousConfig: current.config, version: nextVersion };
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;

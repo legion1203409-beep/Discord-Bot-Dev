@@ -6,6 +6,7 @@ import { Input } from "../../components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Switch } from "../../components/ui/switch";
 import { useToast } from "../../hooks/use-toast";
+import { configSaveToastOptions } from "../../lib/protection-toggle-feedback";
 
 const isTextChannel = (type: number | string) => String(type) === "0" || type === "GuildText";
 
@@ -50,7 +51,11 @@ export function AntiRaidPage() {
     try {
       const saved = await update(draft);
       if (saved?.config) setDraft(JSON.parse(JSON.stringify(saved.config)));
-      toast({ title: "Anti-Raid salvat", description: "Regulile anti-raid au fost actualizate pentru acest server." });
+      toast(configSaveToastOptions(
+        saved?.notification?.status,
+        "Anti-Raid salvat",
+        "Regulile anti-raid au fost actualizate pentru acest server.",
+      ));
     } catch (saveError: any) {
       if (saveError?.message?.includes("Conflict")) {
         // Never let canonical data overwrite a dirty draft silently. Clear the

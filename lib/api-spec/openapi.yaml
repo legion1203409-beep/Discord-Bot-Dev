@@ -77,6 +77,20 @@ paths:
       operationId: moderationLogout
       tags: [moderation]
       responses: { "204": { description: Session revoked } }
+  /moderation/storage/uploads/request-url:
+    post:
+      operationId: requestModerationStorageUploadUrl
+      tags: [moderation]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/ModerationStorageUploadRequest" } } }
+      responses:
+        "200":
+          description: Owner-authorized temporary upload URL and object path
+          content: { application/json: { schema: { $ref: "#/components/schemas/ModerationStorageUploadResponse" } } }
+        "400": { description: Invalid image metadata }
+        "401": { description: Moderation session is required }
+        "403": { description: Guild ownership is required }
   /moderation/guilds/{guildId}/config:
     parameters: [{ name: guildId, in: path, required: true, schema: { type: string } }]
     get:
@@ -98,6 +112,21 @@ paths:
           description: Saved configuration
           content: { application/json: { schema: { $ref: "#/components/schemas/ModerationConfigResponse" } } }
         "409": { description: Stale configuration revision }
+  /moderation/guilds/{guildId}/protection-toggle:
+    parameters: [{ name: guildId, in: path, required: true, schema: { type: string } }]
+    put:
+      operationId: moderationProtectionToggle
+      tags: [moderation]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/ProtectionToggleInput" } } }
+      responses:
+        "200":
+          description: Updated module setting and Discord announcement delivery status
+          content: { application/json: { schema: { $ref: "#/components/schemas/ModerationConfigResponse" } } }
+        "401": { description: Moderation session is required }
+        "403": { description: Guild configuration access is required }
+        "400": { description: Invalid toggle }
   /moderation/guilds/{guildId}/logs:
     parameters: [{ name: guildId, in: path, required: true, schema: { type: string } }]
     get:
@@ -187,6 +216,31 @@ components:
       type: object
       additionalProperties: true
       description: Validated by the server's ModerationConfigSchema; use GET response config as the write body.
+    ProtectionToggleInput:
+      type: object
+      additionalProperties: false
+      required: [key, enabled]
+      properties:
+        key:
+          type: string
+          enum: [protection, autoMod, wordFilter, linkBlock, antiRaid, antiSpam, antiFlood, suspiciousBehavior, ai, manualTools, cases, audit, escalation, embeds]
+        enabled: { type: boolean }
+    ModerationStorageUploadRequest:
+      type: object
+      additionalProperties: false
+      required: [guildId, name, size, contentType]
+      properties:
+        guildId: { type: string, minLength: 5, maxLength: 25 }
+        name: { type: string, minLength: 1, maxLength: 200 }
+        size: { type: integer, minimum: 1, maximum: 10485760 }
+        contentType: { type: string, pattern: "^image/(jpeg|png|gif|webp)$" }
+    ModerationStorageUploadResponse:
+      type: object
+      required: [uploadURL, objectPath, metadata]
+      properties:
+        uploadURL: { type: string, format: uri }
+        objectPath: { type: string }
+        metadata: { $ref: "#/components/schemas/ModerationStorageUploadRequest" }
     ModerationConfigResponse:
       type: object
       required: [config, version]
@@ -194,6 +248,14 @@ components:
         config: { $ref: "#/components/schemas/ModerationConfig" }
         version: { type: integer }
         updatedAt: { type: string, format: date-time, nullable: true }
+        notification:
+          type: object
+          required: [status, modules]
+          properties:
+            status: { type: string, enum: [not_applicable, sent, no_channel, bot_offline, guild_unavailable, channel_unavailable, send_failed] }
+            modules:
+              type: array
+              items: { type: string }
     ModerationLog:
       type: object
       required: [id, guildId, eventType, detail, createdAt]

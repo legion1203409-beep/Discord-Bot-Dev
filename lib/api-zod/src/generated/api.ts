@@ -68,6 +68,45 @@ export const ModerationDiscordCallbackResponse = zod.void()
 export const ModerationLogoutResponse = zod.void()
 
 
+export const requestModerationStorageUploadUrlBodyGuildIdMin = 5;
+export const requestModerationStorageUploadUrlBodyGuildIdMax = 25;
+
+export const requestModerationStorageUploadUrlBodyNameMax = 200;
+
+export const requestModerationStorageUploadUrlBodySizeMax = 10485760;
+
+export const requestModerationStorageUploadUrlBodyContentTypeRegExp = new RegExp('^image/(jpeg|png|gif|webp)$');
+
+
+export const RequestModerationStorageUploadUrlBody = zod.object({
+  "guildId": zod.string().min(requestModerationStorageUploadUrlBodyGuildIdMin).max(requestModerationStorageUploadUrlBodyGuildIdMax),
+  "name": zod.string().min(1).max(requestModerationStorageUploadUrlBodyNameMax),
+  "size": zod.number().min(1).max(requestModerationStorageUploadUrlBodySizeMax),
+  "contentType": zod.string().regex(requestModerationStorageUploadUrlBodyContentTypeRegExp)
+})
+
+export const requestModerationStorageUploadUrlResponseMetadataGuildIdMin = 5;
+export const requestModerationStorageUploadUrlResponseMetadataGuildIdMax = 25;
+
+export const requestModerationStorageUploadUrlResponseMetadataNameMax = 200;
+
+export const requestModerationStorageUploadUrlResponseMetadataSizeMax = 10485760;
+
+export const requestModerationStorageUploadUrlResponseMetadataContentTypeRegExp = new RegExp('^image/(jpeg|png|gif|webp)$');
+
+
+export const RequestModerationStorageUploadUrlResponse = zod.object({
+  "uploadURL": zod.string().url(),
+  "objectPath": zod.string(),
+  "metadata": zod.object({
+  "guildId": zod.string().min(requestModerationStorageUploadUrlResponseMetadataGuildIdMin).max(requestModerationStorageUploadUrlResponseMetadataGuildIdMax),
+  "name": zod.string().min(1).max(requestModerationStorageUploadUrlResponseMetadataNameMax),
+  "size": zod.number().min(1).max(requestModerationStorageUploadUrlResponseMetadataSizeMax),
+  "contentType": zod.string().regex(requestModerationStorageUploadUrlResponseMetadataContentTypeRegExp)
+})
+})
+
+
 export const ModerationGetConfigParams = zod.object({
   "guildId": zod.coerce.string()
 })
@@ -75,7 +114,11 @@ export const ModerationGetConfigParams = zod.object({
 export const ModerationGetConfigResponse = zod.object({
   "config": zod.record(zod.string(), zod.unknown()).describe('Validated by the server\'s ModerationConfigSchema; use GET response config as the write body.'),
   "version": zod.number(),
-  "updatedAt": zod.coerce.date().nullish()
+  "updatedAt": zod.coerce.date().nullish(),
+  "notification": zod.object({
+  "status": zod.enum(['not_applicable', 'sent', 'no_channel', 'bot_offline', 'guild_unavailable', 'channel_unavailable', 'send_failed']),
+  "modules": zod.array(zod.string())
+}).optional()
 })
 
 
@@ -92,7 +135,31 @@ export const ModerationPutConfigBody = zod.record(zod.string(), zod.unknown()).d
 export const ModerationPutConfigResponse = zod.object({
   "config": zod.record(zod.string(), zod.unknown()).describe('Validated by the server\'s ModerationConfigSchema; use GET response config as the write body.'),
   "version": zod.number(),
-  "updatedAt": zod.coerce.date().nullish()
+  "updatedAt": zod.coerce.date().nullish(),
+  "notification": zod.object({
+  "status": zod.enum(['not_applicable', 'sent', 'no_channel', 'bot_offline', 'guild_unavailable', 'channel_unavailable', 'send_failed']),
+  "modules": zod.array(zod.string())
+}).optional()
+})
+
+
+export const ModerationProtectionToggleParams = zod.object({
+  "guildId": zod.coerce.string()
+})
+
+export const ModerationProtectionToggleBody = zod.object({
+  "key": zod.enum(['protection', 'autoMod', 'wordFilter', 'linkBlock', 'antiRaid', 'antiSpam', 'antiFlood', 'suspiciousBehavior', 'ai', 'manualTools', 'cases', 'audit', 'escalation', 'embeds']),
+  "enabled": zod.boolean()
+})
+
+export const ModerationProtectionToggleResponse = zod.object({
+  "config": zod.record(zod.string(), zod.unknown()).describe('Validated by the server\'s ModerationConfigSchema; use GET response config as the write body.'),
+  "version": zod.number(),
+  "updatedAt": zod.coerce.date().nullish(),
+  "notification": zod.object({
+  "status": zod.enum(['not_applicable', 'sent', 'no_channel', 'bot_offline', 'guild_unavailable', 'channel_unavailable', 'send_failed']),
+  "modules": zod.array(zod.string())
+}).optional()
 })
 
 

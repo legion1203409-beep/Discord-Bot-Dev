@@ -11,6 +11,7 @@ import { Button } from "../../components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { useToast } from "../../hooks/use-toast";
 import { ToastAction } from "../../components/ui/toast";
+import { configSaveToastOptions } from "../../lib/protection-toggle-feedback";
 
 const ruleSchema = z.object({
   enabled: z.boolean(),
@@ -75,7 +76,7 @@ export function AutoModPage() {
     if (!data) return;
     setSaving(true);
     try {
-      await update({
+      const saved = await update({
         ...data,
         autoMod: {
           ...data.autoMod,
@@ -91,7 +92,11 @@ export function AutoModPage() {
           sensitivity: values.aiSensitivity,
         }
       });
-      toast({ title: "Setări salvate", description: "Configurația AutoMod și AI a fost actualizată cu succes." });
+      toast(configSaveToastOptions(
+        saved?.notification?.status,
+        "Setări salvate",
+        "Configurația AutoMod și AI a fost actualizată cu succes.",
+      ));
     } catch (err: any) {
       if (err.message.includes("Conflict")) {
         toast({

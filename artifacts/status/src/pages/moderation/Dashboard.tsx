@@ -24,6 +24,7 @@ import { Switch } from "../../components/ui/switch";
 import { Button } from "../../components/ui/button";
 import { useToast } from "../../hooks/use-toast";
 import { DISCORD_INVITE } from "../../lib/public-constants";
+import { protectionToggleToastOptions } from "../../lib/protection-toggle-feedback";
 
 type ProtectionModuleKey = "autoMod" | "wordFilter" | "linkBlock" | "antiRaid" | "antiSpam" | "antiFlood" | "suspiciousBehavior" | "ai";
 
@@ -104,13 +105,16 @@ export function DashboardOverview() {
     const nextConfig = change(config);
     setOptimisticConfig(nextConfig);
     try {
+      let toggleResult: any;
       if (toggleKey && enabled !== undefined) {
-        await updateProtectionToggle(toggleKey, enabled);
+        toggleResult = await updateProtectionToggle(toggleKey, enabled);
       } else {
         await updateModerationConfig(nextConfig);
       }
       setOptimisticConfig(null);
-      toast({ title: "Setare actualizată", description });
+      toast(toggleKey && enabled !== undefined
+        ? protectionToggleToastOptions(enabled, toggleResult?.notification?.status, description)
+        : { title: "Setare actualizată", description });
     } catch (error: any) {
       if (String(error?.message ?? "").includes("Conflict de versiune")) {
         try {
@@ -118,13 +122,16 @@ export function DashboardOverview() {
           if (freshConfig) {
             const retriedConfig = change(freshConfig);
             setOptimisticConfig(retriedConfig);
+            let retryToggleResult: any;
             if (toggleKey && enabled !== undefined) {
-              await updateProtectionToggle(toggleKey, enabled);
+              retryToggleResult = await updateProtectionToggle(toggleKey, enabled);
             } else {
               await updateModerationConfig(retriedConfig);
             }
             setOptimisticConfig(null);
-            toast({ title: "Setare actualizată", description });
+            toast(toggleKey && enabled !== undefined
+              ? protectionToggleToastOptions(enabled, retryToggleResult?.notification?.status, description)
+              : { title: "Setare actualizată", description });
             return;
           }
         } catch (retryError: any) {

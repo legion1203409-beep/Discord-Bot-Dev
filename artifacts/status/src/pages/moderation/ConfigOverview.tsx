@@ -4,6 +4,7 @@ import { Link } from "wouter";
 import { useActiveGuild, useModerationConfig } from "../../hooks/use-moderation-api";
 import { Switch } from "../../components/ui/switch";
 import { useToast } from "../../hooks/use-toast";
+import { protectionToggleToastOptions } from "../../lib/protection-toggle-feedback";
 
 type ToggleKey = "autoMod" | "antiRaid" | "antiSpam" | "antiFlood" | "suspiciousBehavior" | "ai" | "manualTools" | "cases" | "audit" | "escalation" | "embeds";
 
@@ -33,8 +34,8 @@ export function ConfigOverviewPage() {
   const toggle = async (key: ToggleKey, enabled: boolean) => {
     setSaving(key);
     try {
-      await updateProtectionToggle(key, enabled);
-      toast({ title: enabled ? "Modul activat" : "Modul dezactivat" });
+      const result = await updateProtectionToggle(key, enabled);
+      toast(protectionToggleToastOptions(enabled, result?.notification?.status));
     } catch (toggleError: any) {
       toast({ variant: "destructive", title: "Modificarea nu a fost salvată", description: toggleError?.message });
     } finally {
