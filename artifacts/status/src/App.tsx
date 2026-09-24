@@ -17,6 +17,7 @@ import { useActiveGuild } from "./hooks/use-moderation-api";
 // Public pages
 import { PublicLayout } from "./components/public/PublicLayout";
 import { GameGuidePage } from "./pages/public/GameGuidePage";
+import { GameGuideLoadingScreen } from "./components/public/GameGuideLoadingScreen";
 import { OperatorHealthPage } from "./pages/public/OperatorHealthPage";
 import { VerificationPage } from "./pages/public/VerificationPage";
 import { DailyStatsPage } from "./pages/public/DailyStatsPage";
@@ -76,6 +77,15 @@ function HomeApp() {
 }
 
 function GameApp() {
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setIsLoading(false), 700);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  if (isLoading) return <GameGuideLoadingScreen />;
+
   return (
     <PublicLayout>
       <GameGuidePage />
