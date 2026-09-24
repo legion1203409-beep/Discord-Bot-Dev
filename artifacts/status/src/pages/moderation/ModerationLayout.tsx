@@ -1,7 +1,8 @@
 import { Link, useLocation } from "wouter";
 import { 
   ShieldAlert, Settings, Shield, Bot, History, BookOpen, SlidersHorizontal, ShieldCheck,
-  LogOut, ChevronLeft, Activity, Zap, Menu, X, Eye, Monitor, RefreshCw, Server
+  LogOut, ChevronDown, Activity, Zap, Menu, X, Eye, Monitor, RefreshCw, Server,
+  FileText, Sparkles, MessageSquareWarning, Gavel,
 } from "lucide-react";
 import { ReactNode, useState, useEffect } from "react";
 import { FaDiscord } from "react-icons/fa";
@@ -55,6 +56,77 @@ function inviteLabel(inviteUrl: string): string {
   }
 }
 
+type ModerationNavItem = {
+  href: string;
+  icon: typeof Activity;
+  label: string;
+};
+
+const moderationNavGroups: Array<{ id: string; label: string; items: ModerationNavItem[] }> = [
+  {
+    id: "overview",
+    label: "Privire generală",
+    items: [{ href: "/", icon: Activity, label: "Ansamblu" }],
+  },
+  {
+    id: "protection",
+    label: "Protecție și detecție",
+    items: [
+      { href: "/protectie", icon: Shield, label: "Protecție server" },
+      { href: "/automod", icon: Bot, label: "AutoMod" },
+      { href: "/ai", icon: Sparkles, label: "Moderare AI" },
+      { href: "/anti-raid", icon: ShieldAlert, label: "Anti-Raid" },
+      { href: "/anti-spam", icon: MessageSquareWarning, label: "Anti-Spam" },
+      { href: "/anti-flood", icon: Activity, label: "Anti-Flood" },
+      { href: "/comportament-suspect", icon: Eye, label: "Comportament suspect" },
+    ],
+  },
+  {
+    id: "moderation",
+    label: "Moderare și evidențe",
+    items: [
+      { href: "/politici", icon: BookOpen, label: "Politici generale" },
+      { href: "/comenzi", icon: Zap, label: "Acțiuni manuale" },
+      { href: "/cazuri", icon: ShieldAlert, label: "Cazuri" },
+      { href: "/audit", icon: History, label: "Loguri și audit" },
+    ],
+  },
+  {
+    id: "configuration",
+    label: "Configurare",
+    items: [
+      { href: "/config", icon: Settings, label: "Configurare module" },
+      { href: "/config/avansat", icon: SlidersHorizontal, label: "Setări avansate" },
+      { href: "/config/unelte", icon: Zap, label: "Unelte staff" },
+      { href: "/config/cazuri-audit", icon: FileText, label: "Setări cazuri și audit" },
+      { href: "/config/escaladare", icon: Gavel, label: "Escaladare" },
+      { href: "/config/embeduri", icon: Sparkles, label: "Embed-uri" },
+    ],
+  },
+  {
+    id: "bot-control",
+    label: "Control bot",
+    items: [
+      { href: "/bot?tab=channels", icon: Monitor, label: "Canale" },
+      { href: "/bot?tab=tickets", icon: SlidersHorizontal, label: "Tichete" },
+      { href: "/verificare", icon: ShieldCheck, label: "Verificare" },
+      { href: "/bot?tab=messages", icon: Activity, label: "Mesaje" },
+      { href: "/bot?tab=statistics", icon: Monitor, label: "Statistici" },
+    ],
+  },
+];
+
+function isNavItemActive(href: string, location: string): boolean {
+  const [pathname, query] = href.split("?");
+  if (location.split("?")[0] !== pathname) return false;
+  if (!query) return true;
+
+  const expected = new URLSearchParams(query);
+  const currentQuery = typeof window === "undefined" ? location.split("?")[1] ?? "" : window.location.search;
+  const current = new URLSearchParams(currentQuery);
+  return Array.from(expected.entries()).every(([key, value]) => current.get(key) === value);
+}
+
 export function ModerationLayout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   const { session, loading, error, logout, retry } = useSession();
@@ -66,12 +138,27 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
   } = useModerationAuthConfig();
   const { guildId, setGuildId, guilds } = useActiveGuild();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [expandedNavGroups, setExpandedNavGroups] = useState<Record<string, boolean>>(() => {
+    const activeGroup = moderationNavGroups.find((group) =>
+      group.items.some((item) => isNavItemActive(item.href, location)),
+    );
+    return Object.fromEntries(moderationNavGroups.map((group) => [group.id, group.id === activeGroup?.id]));
+  });
   const activeGuild = guilds.find((guild) => guild.id === guildId);
   const activeGuildIcon = guildIconUrl(activeGuild);
   const botProfile = authConfig?.bot;
 
   useEffect(() => {
     setMobileMenuOpen(false);
+  }, [location]);
+
+  useEffect(() => {
+    const activeGroup = moderationNavGroups.find((group) =>
+      group.items.some((item) => isNavItemActive(item.href, location)),
+    );
+    if (activeGroup) {
+      setExpandedNavGroups((current) => ({ ...current, [activeGroup.id]: true }));
+    }
   }, [location]);
 
   if (loading) {
@@ -209,25 +296,6 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
     );
   }
 
-  const navItems = [
-    { href: "/", icon: Activity, label: "Ansamblu" },
-    { href: "/automod", icon: Bot, label: "AutoMod & AI" },
-    { href: "/protectie", icon: Shield, label: "Protecție Server" },
-    { href: "/anti-raid", icon: ShieldAlert, label: "Anti-Raid" },
-    { href: "/politici", icon: BookOpen, label: "Politici Generale" },
-    { href: "/comenzi", icon: Zap, label: "Acțiuni Manuale" },
-    { href: "/cazuri", icon: ShieldAlert, label: "Cazuri (Cases)" },
-    { href: "/audit", icon: History, label: "Loguri & Audit" },
-    { href: "/config", icon: Settings, label: "Configurare" },
-  ];
-  const botControlItems = [
-    { href: "/bot?tab=channels", icon: Monitor, label: "Canale" },
-    { href: "/bot?tab=tickets", icon: SlidersHorizontal, label: "Tichete" },
-    { href: "/verificare", icon: ShieldCheck, label: "Verificare" },
-    { href: "/bot?tab=messages", icon: Activity, label: "Mesaje" },
-    { href: "/bot?tab=statistics", icon: Monitor, label: "Statistici" },
-  ];
-
   return (
     <div className="mod-shell dark flex h-[100dvh] min-h-[100dvh] overflow-hidden">
       {/* Mobile overlay */}
@@ -284,46 +352,60 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
           </div>
 
           <div>
-            <div className="text-[10px] font-mono tracking-widest text-muted-foreground mb-3 px-3 uppercase">
+            <div className="mb-2 px-3 text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
               Instrumente
             </div>
-            <nav className="flex flex-col gap-1">
-              {navItems.map(item => {
-                const active = location === item.href || (item.href !== "/" && location.startsWith(item.href));
+            <nav aria-label="Categorii de moderare" className="space-y-2">
+              {moderationNavGroups.map((group) => {
+                const expanded = Boolean(expandedNavGroups[group.id]);
+                const controlGroup = group.id === "bot-control";
                 return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    data-testid={`link-nav-${item.href === "/" ? "dashboard" : item.href.slice(1)}`}
-                    className="mod-sidebar-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/50"
-                    data-active={active}
-                  >
-                    <item.icon className="w-4 h-4 shrink-0" />
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </nav>
-          </div>
-          <div className="mod-control-nav">
-            <div className="text-[10px] font-mono tracking-widest text-muted-foreground mb-3 px-3 uppercase">
-              Control bot
-            </div>
-            <nav className="flex flex-col gap-1">
-              {botControlItems.map(item => {
-                const [itemPath] = item.href.split("?");
-                const active = location === itemPath || (itemPath !== "/" && location.startsWith(itemPath));
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    data-testid={`link-nav-control-${item.label.toLowerCase()}`}
-                    className="mod-sidebar-item mod-control-nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/50"
-                    data-active={active}
-                  >
-                    <item.icon className="w-4 h-4 shrink-0" />
-                    {item.label}
-                  </Link>
+                  <section key={group.id} className={controlGroup ? "mod-control-nav" : undefined}>
+                    <button
+                      type="button"
+                      aria-expanded={expanded}
+                      aria-controls={`nav-group-${group.id}`}
+                      data-testid={`nav-group-${group.id}`}
+                      onClick={() => setExpandedNavGroups((current) => ({
+                        ...current,
+                        [group.id]: !current[group.id],
+                      }))}
+                      className="flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-[10px] font-mono uppercase tracking-widest text-muted-foreground transition-colors hover:bg-secondary/40 hover:text-foreground"
+                    >
+                      <span className="flex min-w-0 items-center gap-2">
+                        {group.label}
+                        <span className="text-[9px] text-muted-foreground/70">{String(group.items.length).padStart(2, "0")}</span>
+                      </span>
+                      <ChevronDown
+                        className={`h-3.5 w-3.5 shrink-0 transition-transform ${expanded ? "rotate-0" : "-rotate-90"}`}
+                        aria-hidden="true"
+                      />
+                    </button>
+                    <div
+                      id={`nav-group-${group.id}`}
+                      className={`flex flex-col gap-1 ${expanded ? "mt-1" : "hidden"}`}
+                    >
+                      {group.items.map((item) => {
+                        const active = isNavItemActive(item.href, location);
+                        const testId = controlGroup
+                          ? `link-nav-control-${item.label.toLowerCase()}`
+                          : `link-nav-${item.href === "/" ? "dashboard" : item.href.slice(1).replace(/\//g, "-")}`;
+                        return (
+                          <Link
+                            key={item.href}
+                            href={item.href}
+                            data-testid={testId}
+                            aria-current={active ? "page" : undefined}
+                            className={`mod-sidebar-item flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-secondary/50 hover:text-foreground ${controlGroup ? "mod-control-nav-item" : ""}`}
+                            data-active={active}
+                          >
+                            <item.icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                            <span className="truncate">{item.label}</span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </section>
                 );
               })}
             </nav>
