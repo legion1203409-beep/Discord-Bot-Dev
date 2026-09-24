@@ -30,6 +30,28 @@ describe("gameplay configuration normalization", () => {
     config.missions.kill_10.target = 99;
     expect(DEFAULT_GAMEPLAY_CONFIG.missions.kill_10.target).toBe(10);
   });
+
+  it("normalizes member announcement settings and keeps disabled defaults for old guild data", () => {
+    const oldConfig = normalizeGameplayConfig({ events: { eventDurationMinutes: 12 } });
+    expect(oldConfig.memberMessages).toEqual(DEFAULT_GAMEPLAY_CONFIG.memberMessages);
+
+    const config = normalizeGameplayConfig({
+      memberMessages: {
+        welcomeEnabled: true,
+        leaveEnabled: true,
+        channelId: "12345678901234567",
+        style: "custom",
+        customStyle: "  basm românesc  ",
+      },
+    });
+    expect(config.memberMessages).toEqual({
+      welcomeEnabled: true,
+      leaveEnabled: true,
+      channelId: "12345678901234567",
+      style: "custom",
+      customStyle: "basm românesc",
+    });
+  });
 });
 
 const dbState = new Map<string, unknown>();

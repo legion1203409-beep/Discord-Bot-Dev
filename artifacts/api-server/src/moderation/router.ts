@@ -429,6 +429,20 @@ export const botControlSchema = z.object(
       oraclePausedThumbnailUrl: "",
     }),
 
+    memberMessages: z.object({
+      welcomeEnabled: z.boolean(),
+      leaveEnabled: z.boolean(),
+      channelId: snowflake.or(z.literal("")).default(""),
+      style: z.enum(["medieval", "normal", "fantasy", "sci_fi", "humorous", "custom"]).default("normal"),
+      customStyle: z.string().trim().max(180).default(""),
+    }).strict().default({
+      welcomeEnabled: false,
+      leaveEnabled: false,
+      channelId: "",
+      style: "normal",
+      customStyle: "",
+    }),
+
     events: z.object(
 {
 

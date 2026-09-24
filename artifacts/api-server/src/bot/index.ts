@@ -30,6 +30,7 @@ import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./a
 import { startGuildScheduler, stopGuildScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, recordGuildActivity, getGuildClaimedChests, getGuildActiveBossMap, isGuildGameStopped, checkBossEligibility, checkBossHitCooldown, BOSS_HIT_COOLDOWN_MS, persistBossState, publishLeaderboardResult, guildStates, isGuildActive, ACTIVITY_WINDOW_MINUTES, CHEST_MSG_MILESTONE, type BossState, type BossPlayerStats } from "./scheduler";
 import { getChannel, getAllChannels, setChannel, initChannelConfig, hasAnyChannelConfigured, EVENT_LABELS, type EventType } from "./channel-config";
 import { getGameplayConfig, initGameplayConfig, setGameplayPaused } from "./gameplay-store";
+import { sendAiMemberMessage } from "./member-messages";
 import { messageWithImage } from "./message-media";
 import {
   recordMessage,
@@ -4771,11 +4772,17 @@ export async function startBot(onReady?: () => void): Promise<void> {
     void recordDailyJoin(member.guild.id).catch((err) =>
       logger.warn({ err, guildId: member.guild.id }, "Daily join statistics update failed"),
     );
+    void sendAiMemberMessage(member, "welcome").catch((err) =>
+      logger.warn({ err, guildId: member.guild.id, userId: member.id }, "AI welcome message could not be sent"),
+    );
   });
 
   client.on(Events.GuildMemberRemove, (member) => {
     void recordDailyLeave(member.guild.id).catch((err) =>
       logger.warn({ err, guildId: member.guild.id }, "Daily leave statistics update failed"),
+    );
+    void sendAiMemberMessage(member, "leave").catch((err) =>
+      logger.warn({ err, guildId: member.guild.id, userId: member.id }, "AI departure message could not be sent"),
     );
   });
 

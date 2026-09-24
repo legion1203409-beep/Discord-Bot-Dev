@@ -133,6 +133,13 @@ export interface BotControlConfig {
       oraclePausedImageUrl: string;
       oraclePausedThumbnailUrl: string;
     };
+    memberMessages: {
+      welcomeEnabled: boolean;
+      leaveEnabled: boolean;
+      channelId: string;
+      style: "medieval" | "normal" | "fantasy" | "sci_fi" | "humorous" | "custom";
+      customStyle: string;
+    };
     events: {
       eventDurationMinutes: number;
       eventCooldownMinMinutes: number;

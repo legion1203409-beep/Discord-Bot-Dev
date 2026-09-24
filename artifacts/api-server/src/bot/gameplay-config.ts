@@ -1,5 +1,7 @@
 import { normalizeMessageImageUrl } from "./message-media";
 
+export type MemberMessageStyle = "medieval" | "normal" | "fantasy" | "sci_fi" | "humorous" | "custom";
+
 export interface GameplayConfig {
   paused: boolean;
   messages: {
@@ -9,6 +11,13 @@ export interface GameplayConfig {
     gamePausedThumbnailUrl: string;
     oraclePausedImageUrl: string;
     oraclePausedThumbnailUrl: string;
+  };
+  memberMessages: {
+    welcomeEnabled: boolean;
+    leaveEnabled: boolean;
+    channelId: string;
+    style: MemberMessageStyle;
+    customStyle: string;
   };
   events: {
     eventDurationMinutes: number;
@@ -44,6 +53,13 @@ export const DEFAULT_GAMEPLAY_CONFIG: GameplayConfig = {
     gamePausedThumbnailUrl: "",
     oraclePausedImageUrl: "",
     oraclePausedThumbnailUrl: "",
+  },
+  memberMessages: {
+    welcomeEnabled: false,
+    leaveEnabled: false,
+    channelId: "",
+    style: "normal",
+    customStyle: "",
   },
   events: {
     eventDurationMinutes: 60,
@@ -85,6 +101,9 @@ function message(value: unknown, fallback: string): string {
 export function normalizeGameplayConfig(value: unknown): GameplayConfig {
   const input = value && typeof value === "object" ? value as Record<string, unknown> : {};
   const messages = input.messages && typeof input.messages === "object" ? input.messages as Record<string, unknown> : {};
+  const memberMessages = input.memberMessages && typeof input.memberMessages === "object"
+    ? input.memberMessages as Record<string, unknown>
+    : {};
   const events = input.events && typeof input.events === "object" ? input.events as Record<string, unknown> : {};
   const missions = input.missions && typeof input.missions === "object" ? input.missions as Record<string, unknown> : {};
   const economy = input.economy && typeof input.economy === "object" ? input.economy as Record<string, unknown> : {};
@@ -97,6 +116,11 @@ export function normalizeGameplayConfig(value: unknown): GameplayConfig {
       rewardQty: positiveInt(record.rewardQty, defaults.rewardQty),
     };
   };
+  const validStyles: MemberMessageStyle[] = ["medieval", "normal", "fantasy", "sci_fi", "humorous", "custom"];
+  const style = typeof memberMessages.style === "string" && validStyles.includes(memberMessages.style as MemberMessageStyle)
+    ? memberMessages.style as MemberMessageStyle
+    : DEFAULT_GAMEPLAY_CONFIG.memberMessages.style;
+  const rawChannelId = typeof memberMessages.channelId === "string" ? memberMessages.channelId.trim() : "";
 
   return {
     paused: input.paused === true,
@@ -107,6 +131,13 @@ export function normalizeGameplayConfig(value: unknown): GameplayConfig {
       gamePausedThumbnailUrl: normalizeMessageImageUrl(messages.gamePausedThumbnailUrl),
       oraclePausedImageUrl: normalizeMessageImageUrl(messages.oraclePausedImageUrl),
       oraclePausedThumbnailUrl: normalizeMessageImageUrl(messages.oraclePausedThumbnailUrl),
+    },
+    memberMessages: {
+      welcomeEnabled: memberMessages.welcomeEnabled === true,
+      leaveEnabled: memberMessages.leaveEnabled === true,
+      channelId: /^\d{5,25}$/.test(rawChannelId) ? rawChannelId : "",
+      style,
+      customStyle: typeof memberMessages.customStyle === "string" ? memberMessages.customStyle.trim().slice(0, 180) : "",
     },
     events: {
       eventDurationMinutes: positiveInt(events.eventDurationMinutes, DEFAULT_GAMEPLAY_CONFIG.events.eventDurationMinutes),
