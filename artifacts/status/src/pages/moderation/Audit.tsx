@@ -10,6 +10,7 @@ import { AlertTriangle, ShieldAlert } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import {
   AUDIT_EVENT_CATEGORIES,
+  auditDateRangeError,
   filterAuditEvents,
   type AuditEventCategoryFilter,
   presentAuditActor,
@@ -90,6 +91,8 @@ function ReconcileDialog({ actionId, open, onOpenChange, onReconciled }: { actio
 export function AuditPage() {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<AuditEventCategoryFilter>("all");
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
   const { guildId } = useActiveGuild();
   const { data: auditEvents, loading } = useAuditLogs(guildId);
   
@@ -102,15 +105,18 @@ export function AuditPage() {
 
   if (!guildId) return <div className="p-8 text-center text-muted-foreground">Selectează un server.</div>;
 
-  const filtered = filterAuditEvents(auditEvents || [], search, category);
+  const rangeError = auditDateRangeError({ start, end });
+  const filtered = filterAuditEvents(auditEvents || [], search, category, { start, end });
   const selectedCategoryLabel = AUDIT_EVENT_CATEGORIES.find((option) => option.value === category)?.label;
-  const emptyMessage = category !== "all" && search
+  const emptyMessage = rangeError || (start || end
+    ? "Niciun eveniment în intervalul selectat nu corespunde filtrelor."
+    : category !== "all" && search
     ? `Niciun eveniment din categoria „${selectedCategoryLabel}” nu corespunde căutării.`
     : category !== "all"
       ? `Niciun eveniment în categoria „${selectedCategoryLabel}”.`
       : search
         ? "Niciun eveniment nu corespunde căutării."
-        : "Niciun eveniment găsit.";
+        : "Niciun eveniment găsit.");
 
   return (
     <div className="space-y-6 animate-stagger-1">
@@ -202,6 +208,29 @@ export function AuditPage() {
               )}
             </div>
           </div>
+          <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+            <div className="min-w-0 space-y-1.5">
+              <label htmlFor="audit-start" className="text-xs font-medium text-muted-foreground">De la</label>
+              <Input id="audit-start" type="datetime-local" step="1" value={start}
+                onChange={e => setStart(e.target.value)} aria-invalid={!!rangeError}
+                aria-describedby="audit-range-help" className="bg-background/50 border-border/50" />
+            </div>
+            <div className="min-w-0 space-y-1.5">
+              <label htmlFor="audit-end" className="text-xs font-medium text-muted-foreground">Până la</label>
+              <Input id="audit-end" type="datetime-local" step="1" value={end}
+                onChange={e => setEnd(e.target.value)} aria-invalid={!!rangeError}
+                aria-describedby="audit-range-help" className="bg-background/50 border-border/50" />
+            </div>
+            {(start || end) && (
+              <Button type="button" variant="outline" size="sm" onClick={() => { setStart(""); setEnd(""); }}>
+                <X className="mr-1.5 h-4 w-4" /> Elimină intervalul
+              </Button>
+            )}
+          </div>
+          <p id="audit-range-help" className="mt-2 text-xs text-muted-foreground">
+            Orele sunt locale; limitele sunt incluse. Filtrarea se aplică evenimentelor încărcate.
+          </p>
+          {rangeError && <p role="alert" className="mt-2 text-sm text-destructive">{rangeError}</p>}
         </div>
 
         <div className="min-h-[300px]">

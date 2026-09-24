@@ -28,6 +28,21 @@ export const AUDIT_EVENT_CATEGORIES = [
 export type AuditEventCategory = (typeof AUDIT_EVENT_CATEGORIES)[number]["value"];
 export type AuditEventCategoryFilter = AuditEventCategory | "all";
 
+export interface AuditDateRange {
+  start?: string;
+  end?: string;
+}
+
+export function auditDateRangeError({ start, end }: AuditDateRange): string | null {
+  if ((start && !Number.isFinite(Date.parse(start))) || (end && !Number.isFinite(Date.parse(end)))) {
+    return "Introdu o dată și o oră valide.";
+  }
+  if (start && end && Date.parse(start) > Date.parse(end)) {
+    return "Data de început trebuie să fie înaintea sau egală cu data de sfârșit.";
+  }
+  return null;
+}
+
 export function getAuditEventCategory(eventType: string): AuditEventCategory {
   const normalized = eventType.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLocaleLowerCase();
   if (normalized.startsWith("discord.message_")) return "messages";
@@ -44,9 +59,17 @@ export function filterAuditEvents(
   events: ModerationAuditLog[],
   search: string,
   category: AuditEventCategoryFilter,
+  range: AuditDateRange = {},
 ): ModerationAuditLog[] {
+  if (auditDateRangeError(range)) return [];
+  const start = range.start ? Date.parse(range.start) : -Infinity;
+  const end = range.end ? Date.parse(range.end) : Infinity;
   const query = search.toLocaleLowerCase();
   return events.filter((event) => {
+    if (range.start || range.end) {
+      const timestamp = Date.parse(event.createdAt);
+      if (!Number.isFinite(timestamp) || timestamp < start || timestamp > end) return false;
+    }
     if (category !== "all" && getAuditEventCategory(event.eventType || "unknown") !== category) {
       return false;
     }

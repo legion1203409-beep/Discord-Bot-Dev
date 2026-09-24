@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   filterAuditEvents,
+  auditDateRangeError,
   getAuditEventCategory,
   presentAuditActor,
   presentAuditLog,
@@ -91,5 +92,43 @@ describe("moderation audit event categories", () => {
       .toEqual(["discord.member_join", "discord.member_leave"]);
     expect(filterAuditEvents(events, "intrat pe server", "all").map((event) => event.eventType))
       .toEqual(["discord.member_join"]);
+  });
+});
+
+describe("audit date ranges", () => {
+  const events = ["11:59:59.999", "12:00:00.000", "13:00:00.000", "13:00:00.001"].map(time => ({
+    ...log("discord.member_join", {}),
+    createdAt: `2026-09-24T${time}Z`,
+  }));
+  const start = "2026-09-24T12:00:00Z";
+  const end = "2026-09-24T13:00:00Z";
+
+  it("includes both exact boundaries and excludes surrounding milliseconds", () => {
+    expect(filterAuditEvents(events, "", "all", { start, end })).toEqual(events.slice(1, 3));
+  });
+  it("allows either boundary independently and clearing both", () => {
+    expect(filterAuditEvents(events, "", "all", { start })).toEqual(events.slice(1));
+    expect(filterAuditEvents(events, "", "all", { end })).toEqual(events.slice(0, 3));
+    expect(filterAuditEvents(events, "", "all", { start: "", end: "" })).toEqual(events);
+  });
+  it("combines dates with category and text search", () => {
+    const mixed = [...events, log("discord.message_delete", {})];
+    expect(filterAuditEvents(mixed, "intrat pe server", "members", { start, end })).toEqual(events.slice(1, 3));
+    expect(filterAuditEvents(mixed, "absent", "members", { start, end })).toEqual([]);
+  });
+  it("interprets local input and timezone offsets as instants", () => {
+    const local = "2026-09-24T12:00:00";
+    const event = { ...events[0], createdAt: new Date(local).toISOString() };
+    expect(filterAuditEvents([event], "", "all", { start: local, end: local })).toEqual([event]);
+    expect(filterAuditEvents(events, "", "all", { start: "2026-09-24T15:00:00+03:00", end })).toEqual(events.slice(1, 3));
+  });
+  it("rejects reversed or invalid ranges and excludes undated events only when filtering", () => {
+    expect(auditDateRangeError({ start: end, end: start })).toBeTruthy();
+    expect(auditDateRangeError({ start, end: start })).toBeNull();
+    expect(filterAuditEvents(events, "", "all", { start: end, end: start })).toEqual([]);
+    expect(filterAuditEvents(events, "", "all", { start: "invalid" })).toEqual([]);
+    const invalid = { ...events[0], createdAt: "invalid" };
+    expect(filterAuditEvents([invalid], "", "all", { start })).toEqual([]);
+    expect(filterAuditEvents([invalid], "", "all")).toEqual([invalid]);
   });
 });

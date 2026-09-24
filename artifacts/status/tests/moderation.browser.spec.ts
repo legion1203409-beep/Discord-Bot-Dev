@@ -279,6 +279,7 @@ test.describe("authenticated moderation console", () => {
   });
 
   test("shows audit event labels and details from the API contract", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
     await page.unroute("**/api/moderation/guilds/*/logs/audit");
     await page.route("**/api/moderation/guilds/*/logs/audit", async (route) => {
       await route.fulfill({
@@ -341,6 +342,29 @@ test.describe("authenticated moderation console", () => {
     await page.getByPlaceholder("Caută în audit (acțiune, actor)...").fill("toxicitate");
     await expect(page.getByText("Mesaj semnalat de moderarea AI")).toBeVisible();
     await expect(page.getByText("Configurație actualizată")).toHaveCount(0);
+    await page.getByRole("combobox", { name: "Categorie" }).click();
+    await page.getByRole("option", { name: "Securitate", exact: true }).click();
+    // Use the browser's local timezone, as datetime-local does.
+    const localInput = await page.evaluate(() => {
+      const date = new Date("2026-09-24T17:19:00Z");
+      const pad = (n: number) => String(n).padStart(2, "0");
+      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    });
+    await page.getByLabel("De la", { exact: true }).fill(localInput);
+    await page.getByLabel("Până la", { exact: true }).fill(localInput);
+    await expect(page.getByText("Mesaj semnalat de moderarea AI")).toBeVisible();
+    await page.getByLabel("De la", { exact: true }).fill("2099-01-01T00:00");
+    await expect(page.getByRole("alert")).toContainText("Data de început");
+    await expect(page.getByText("Mesaj semnalat de moderarea AI")).toHaveCount(0);
+    await page.getByRole("button", { name: "Elimină intervalul" }).click();
+    await expect(page.getByLabel("De la", { exact: true })).toHaveValue("");
+    await expect(page.getByLabel("Până la", { exact: true })).toHaveValue("");
+    await expect(page.getByRole("combobox", { name: "Categorie" })).toContainText("Securitate");
+    await expect(page.getByPlaceholder("Caută în audit (acțiune, actor)...")).toHaveValue("toxicitate");
+    await expect(page.getByText("Mesaj semnalat de moderarea AI")).toBeVisible();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.getByLabel("Până la", { exact: true })).toBeVisible();
+    await page.screenshot({ path: "/tmp/audit-date-range-mobile.png", fullPage: true });
   });
 
   test("switches guilds without displaying stale config and persists a full save", async ({ page }) => {
