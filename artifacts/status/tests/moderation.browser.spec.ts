@@ -107,6 +107,13 @@ test.describe("authenticated moderation console", () => {
     await page.getByRole("button", { name: guilds[0].name }).click();
   }
 
+  async function expandNavGroup(page: import("@playwright/test").Page, groupId: string) {
+    const group = page.getByTestId(`nav-group-${groupId}`);
+    if (await group.getAttribute("aria-expanded") !== "true") {
+      await group.click();
+    }
+  }
+
   test("renders every moderation destination instead of the work-in-progress fallback", async ({ page }) => {
     await page.goto("/");
     await expect(page).toHaveURL("/moderare");
@@ -114,12 +121,41 @@ test.describe("authenticated moderation console", () => {
     await chooseFirstGuild(page);
     await expect(page.getByRole("heading", { name: "Cenușa Nordului" })).toBeVisible();
     await page.screenshot({ path: "/tmp/moderation-dashboard-desktop.png", fullPage: true });
-    for (const path of ["/automod", "/ai", "/anti-spam", "/anti-flood", "/comportament-suspect", "/anti-raid", "/protectie", "/politici", "/comenzi", "/cazuri", "/audit", "/config"]) {
-      await page.locator(`nav a[href="/moderare${path}"]`).click();
-      await expect(page).toHaveURL(`/moderare${path}`);
-      await expect(page.locator("main h1")).toBeVisible();
-      await expect(page.getByText("Această secțiune este în lucru.")).toHaveCount(0);
+    const destinations = [
+      {
+        group: "protection",
+        routes: ["/protectie", "/automod", "/ai", "/anti-raid", "/anti-spam", "/anti-flood", "/comportament-suspect"],
+      },
+      {
+        group: "moderation",
+        routes: ["/politici", "/comenzi", "/cazuri", "/audit"],
+      },
+      {
+        group: "configuration",
+        routes: ["/config", "/config/avansat", "/config/unelte", "/config/cazuri-audit", "/config/escaladare", "/config/embeduri"],
+      },
+    ];
+    for (const destinationGroup of destinations) {
+      await expandNavGroup(page, destinationGroup.group);
+      for (const path of destinationGroup.routes) {
+        await page.locator(`nav[aria-label="Categorii de moderare"] a[href="/moderare${path}"]`).click();
+        await expect(page).toHaveURL(`/moderare${path}`);
+        await expect(page.locator("main h1")).toBeVisible();
+        await expect(page.getByText("Această secțiune este în lucru.")).toHaveCount(0);
+      }
     }
+
+    await expandNavGroup(page, "bot-control");
+    for (const tab of ["channels", "roles", "tickets", "messages", "statistics"]) {
+      const link = page.locator(`nav[aria-label="Categorii de moderare"] a[href="/moderare/bot?tab=${tab}"]`);
+      await link.click();
+      await expect(page).toHaveURL(`/moderare/bot?tab=${tab}`);
+      await expect(link).toHaveAttribute("aria-current", "page");
+      await expect(page.locator('nav[aria-label="Categorii de moderare"] a[aria-current="page"]')).toHaveCount(1);
+    }
+    await page.locator('nav[aria-label="Categorii de moderare"] a[href="/moderare/verificare"]').click();
+    await expect(page).toHaveURL("/moderare/verificare");
+    await expect(page.locator('nav[aria-label="Categorii de moderare"] a[aria-current="page"]')).toHaveAttribute("href", "/moderare/verificare");
   });
 
   test("switches guilds without displaying stale config and persists a full save", async ({ page }) => {
@@ -248,6 +284,11 @@ test.describe("authenticated moderation console", () => {
     await page.goto("/moderare");
     await chooseFirstGuild(page);
     await expect(page.getByRole("heading", { name: "Cenușa Nordului" })).toBeVisible();
+    await page.getByRole("button", { name: "Deschide meniul" }).click();
+    await expandNavGroup(page, "protection");
+    await page.getByTestId("link-nav-anti-flood").click();
+    await expect(page).toHaveURL("/moderare/anti-flood");
+    await expect(page.getByRole("button", { name: "Deschide meniul" })).toBeVisible();
     await page.screenshot({ path: "/tmp/moderation-dashboard-mobile.png", fullPage: true });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });

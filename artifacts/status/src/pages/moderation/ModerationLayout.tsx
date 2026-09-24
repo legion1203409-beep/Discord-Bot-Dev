@@ -1,8 +1,8 @@
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { 
   ShieldAlert, Settings, Shield, Bot, History, BookOpen, SlidersHorizontal, ShieldCheck,
   LogOut, ChevronDown, Activity, Zap, Menu, X, Eye, Monitor, RefreshCw, Server,
-  FileText, Sparkles, MessageSquareWarning, Gavel,
+  FileText, Sparkles, MessageSquareWarning, Gavel, Users,
 } from "lucide-react";
 import { ReactNode, useState, useEffect } from "react";
 import { FaDiscord } from "react-icons/fa";
@@ -108,6 +108,7 @@ const moderationNavGroups: Array<{ id: string; label: string; items: ModerationN
     label: "Control bot",
     items: [
       { href: "/bot?tab=channels", icon: Monitor, label: "Canale" },
+      { href: "/bot?tab=roles", icon: Users, label: "Roluri" },
       { href: "/bot?tab=tickets", icon: SlidersHorizontal, label: "Tichete" },
       { href: "/verificare", icon: ShieldCheck, label: "Verificare" },
       { href: "/bot?tab=messages", icon: Activity, label: "Mesaje" },
@@ -116,19 +117,19 @@ const moderationNavGroups: Array<{ id: string; label: string; items: ModerationN
   },
 ];
 
-function isNavItemActive(href: string, location: string): boolean {
+function isNavItemActive(href: string, location: string, searchString: string): boolean {
   const [pathname, query] = href.split("?");
   if (location.split("?")[0] !== pathname) return false;
   if (!query) return true;
 
   const expected = new URLSearchParams(query);
-  const currentQuery = typeof window === "undefined" ? location.split("?")[1] ?? "" : window.location.search;
-  const current = new URLSearchParams(currentQuery);
+  const current = new URLSearchParams(searchString || location.split("?")[1] || "");
   return Array.from(expected.entries()).every(([key, value]) => current.get(key) === value);
 }
 
 export function ModerationLayout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
+  const searchString = useSearch();
   const { session, loading, error, logout, retry } = useSession();
   const {
     authConfig,
@@ -140,7 +141,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [expandedNavGroups, setExpandedNavGroups] = useState<Record<string, boolean>>(() => {
     const activeGroup = moderationNavGroups.find((group) =>
-      group.items.some((item) => isNavItemActive(item.href, location)),
+      group.items.some((item) => isNavItemActive(item.href, location, searchString)),
     );
     return Object.fromEntries(moderationNavGroups.map((group) => [group.id, group.id === activeGroup?.id]));
   });
@@ -154,12 +155,12 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const activeGroup = moderationNavGroups.find((group) =>
-      group.items.some((item) => isNavItemActive(item.href, location)),
+      group.items.some((item) => isNavItemActive(item.href, location, searchString)),
     );
     if (activeGroup) {
       setExpandedNavGroups((current) => ({ ...current, [activeGroup.id]: true }));
     }
-  }, [location]);
+  }, [location, searchString]);
 
   if (loading) {
     return (
@@ -386,7 +387,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
                       className={`flex flex-col gap-1 ${expanded ? "mt-1" : "hidden"}`}
                     >
                       {group.items.map((item) => {
-                        const active = isNavItemActive(item.href, location);
+                        const active = isNavItemActive(item.href, location, searchString);
                         const testId = controlGroup
                           ? `link-nav-control-${item.label.toLowerCase()}`
                           : `link-nav-${item.href === "/" ? "dashboard" : item.href.slice(1).replace(/\//g, "-")}`;

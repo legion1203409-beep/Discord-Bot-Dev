@@ -58,3 +58,4 @@
 - [Bot-control round trips](bot-control-round-trips.md) — every GET bot-control value must be accepted unchanged by PUT; schedule changes must restart the active guild scheduler.
 - [Provisioning permission language](bot-provisioning-permission-copy.md) — Manage Permissions is not a standalone Discord permission; channel overwrites use Manage Channels and member access is configured per category.
 - [Discord overwrite preservation](discord-acl-preservation.md) — edit only managed permission bits; replacing an overwrite set destroys unrelated server access.
+- [Wouter query navigation](wouter-query-navigation.md) — components tracking query-only tabs need `useSearch`; `useLocation` alone won't refresh active navigation markers.
