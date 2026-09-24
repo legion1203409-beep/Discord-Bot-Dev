@@ -362,6 +362,43 @@ export async function runMultiGuildMigrations(): Promise<void> {
   // These tables are intentionally additive and also self-healed by the stats
   // module when the API is running without the Discord gateway.
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS discord_invite_links (
+      guild_id text NOT NULL,
+      invite_code text NOT NULL,
+      channel_id text,
+      inviter_id text,
+      inviter_name text,
+      discord_uses integer NOT NULL DEFAULT 0,
+      max_uses integer,
+      expires_at timestamptz,
+      active boolean NOT NULL DEFAULT true,
+      last_synced_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (guild_id, invite_code)
+    );
+    CREATE TABLE IF NOT EXISTS discord_invite_daily (
+      guild_id text NOT NULL,
+      day text NOT NULL,
+      invite_code text NOT NULL DEFAULT '',
+      join_count integer NOT NULL DEFAULT 0,
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (guild_id, day, invite_code)
+    );
+    CREATE TABLE IF NOT EXISTS discord_invite_reports (
+      guild_id text NOT NULL,
+      report_key text NOT NULL,
+      claim_token text,
+      claim_expires_at timestamptz,
+      message_id text,
+      reported_at timestamptz,
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (guild_id, report_key)
+    );
+    CREATE INDEX IF NOT EXISTS discord_invite_daily_guild_day_idx
+      ON discord_invite_daily (guild_id, day);
+  `);
+  logger.info("multi-guild migrations: invite statistics tables ensured");
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS discord_daily_stats (
       guild_id text NOT NULL,
       day text NOT NULL,
@@ -2360,6 +2397,89 @@ export async function saveProvisioningPermissions(
 const GAMEPLAY_CONFIG_KEY = "gameplay_config";
 const ALLIANCE_RECRUITMENT_TEXT_KEY = "alliance_recruitment_text";
 const DAILY_STATS_CONFIG_KEY = "daily_stats_config";
+const INVITE_TRACKING_CONFIG_KEY = "invite_tracking_config";
+
+export const INVITE_REPORT_TIME_ZONES = ["Europe/Bucharest", "Europe/Paris", "UTC"] as const;
+export type InviteReportTimeZone = (typeof INVITE_REPORT_TIME_ZONES)[number];
+export type InviteReportFrequency = "daily" | "weekly";
+
+export interface InviteTrackingConfig {
+  enabled: boolean;
+  reportEnabled: boolean;
+  reportChannelId: string;
+  reportFrequency: InviteReportFrequency;
+  reportTime: string;
+  reportWeekday: number;
+  reportTimeZone: InviteReportTimeZone;
+  reportTopLimit: number;
+}
+
+export const DEFAULT_INVITE_TRACKING_CONFIG: InviteTrackingConfig = {
+  enabled: false,
+  reportEnabled: false,
+  reportChannelId: "",
+  reportFrequency: "daily",
+  reportTime: "09:00",
+  reportWeekday: 1,
+  reportTimeZone: "Europe/Bucharest",
+  reportTopLimit: 5,
+};
+
+export function normalizeInviteTrackingConfig(value: unknown): InviteTrackingConfig {
+  const input = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const rawChannelId = typeof input.reportChannelId === "string" ? input.reportChannelId.trim() : "";
+  const reportFrequency: InviteReportFrequency = input.reportFrequency === "weekly" ? "weekly" : "daily";
+  const reportTime = typeof input.reportTime === "string" && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(input.reportTime)
+    ? input.reportTime
+    : DEFAULT_INVITE_TRACKING_CONFIG.reportTime;
+  const reportWeekday = typeof input.reportWeekday === "number" && Number.isInteger(input.reportWeekday)
+    && input.reportWeekday >= 1 && input.reportWeekday <= 7
+    ? input.reportWeekday
+    : DEFAULT_INVITE_TRACKING_CONFIG.reportWeekday;
+  const reportTimeZone = typeof input.reportTimeZone === "string"
+    && INVITE_REPORT_TIME_ZONES.includes(input.reportTimeZone as InviteReportTimeZone)
+    ? input.reportTimeZone as InviteReportTimeZone
+    : DEFAULT_INVITE_TRACKING_CONFIG.reportTimeZone;
+  const reportTopLimit = typeof input.reportTopLimit === "number" && Number.isInteger(input.reportTopLimit)
+    && input.reportTopLimit >= 3 && input.reportTopLimit <= 10
+    ? input.reportTopLimit
+    : DEFAULT_INVITE_TRACKING_CONFIG.reportTopLimit;
+
+  return {
+    enabled: input.enabled === true,
+    reportEnabled: input.reportEnabled === true,
+    reportChannelId: /^\d{5,25}$/.test(rawChannelId) ? rawChannelId : "",
+    reportFrequency,
+    reportTime,
+    reportWeekday,
+    reportTimeZone,
+    reportTopLimit,
+  };
+}
+
+export async function saveInviteTrackingConfig(guildId: string, config: InviteTrackingConfig): Promise<void> {
+  await ensureBotStateTable();
+  const key = guildKey(guildId, INVITE_TRACKING_CONFIG_KEY);
+  const value = JSON.stringify(normalizeInviteTrackingConfig(config));
+  const now = new Date();
+  await db.insert(botStateTable)
+    .values({ key, value })
+    .onConflictDoUpdate({
+      target: botStateTable.key,
+      set: { value, updatedAt: now },
+    });
+}
+
+export async function loadInviteTrackingConfig(guildId: string): Promise<InviteTrackingConfig> {
+  await ensureBotStateTable();
+  const [row] = await db.select().from(botStateTable).where(eq(botStateTable.key, guildKey(guildId, INVITE_TRACKING_CONFIG_KEY)));
+  if (!row) return { ...DEFAULT_INVITE_TRACKING_CONFIG };
+  try {
+    return normalizeInviteTrackingConfig(JSON.parse(row.value));
+  } catch {
+    return { ...DEFAULT_INVITE_TRACKING_CONFIG };
+  }
+}
 
 export interface DailyStatsEmbedConfig {
   title: string;

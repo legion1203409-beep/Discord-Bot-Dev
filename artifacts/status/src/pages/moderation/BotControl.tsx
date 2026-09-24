@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Activity, AlertTriangle, Bot, CircleHelp, Loader2, Save, Radio, Megaphone, Ticket, ShieldCheck, PlayCircle, RotateCcw, CheckCircle2, ChevronDown, Clock3, Folder, Hash, LockKeyhole, Settings2, Users, Wrench } from "lucide-react";
+import { Activity, AlertTriangle, Bot, CircleHelp, Loader2, Save, Radio, Megaphone, Ticket, ShieldCheck, PlayCircle, RotateCcw, CheckCircle2, ChevronDown, Clock3, Folder, Hash, LockKeyhole, Settings2, Users, Wrench, Link2, RefreshCw } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Textarea } from "../../components/ui/textarea";
@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { ImageField } from "../../components/moderation/ImageField";
 import { DiscordEmojiText, EmojiField } from "../../components/moderation/EmojiField";
-import { useActiveGuild, useBotControl, useModerationMetadata, useSession, type BotControlConfig, type ChannelPermissionConfig, type TicketFlowConfig } from "../../hooks/use-moderation-api";
+import { useActiveGuild, useBotControl, useInviteStats, useModerationMetadata, useSession, type BotControlConfig, type ChannelPermissionConfig, type InviteStatsRange, type TicketFlowConfig } from "../../hooks/use-moderation-api";
 import { useToast } from "../../hooks/use-toast";
 import { useLocation, useSearch } from "wouter";
 
@@ -223,6 +223,14 @@ export function BotControlPage() {
   const [location, setLocation] = useLocation();
   const { guildId } = useActiveGuild();
   const { data, loading, error, update, provisionChannels } = useBotControl(guildId);
+  const [inviteRange, setInviteRange] = useState<InviteStatsRange>("7");
+  const {
+    data: inviteStats,
+    loading: inviteStatsLoading,
+    syncing: inviteStatsSyncing,
+    error: inviteStatsError,
+    sync: syncInviteStats,
+  } = useInviteStats(guildId, inviteRange);
   const { data: metadata, refetch: refetchMetadata } = useModerationMetadata(guildId);
   const { toast } = useToast();
   const { session } = useSession();
@@ -404,6 +412,16 @@ export function BotControlPage() {
         ...current.dailyStats,
         metricLabels: { ...current.dailyStats.metricLabels, [field]: value },
       },
+    } : current);
+  };
+
+  const setInviteTracking = <K extends keyof BotControlConfig["inviteTracking"]>(
+    field: K,
+    value: BotControlConfig["inviteTracking"][K],
+  ) => {
+    setDraft((current) => current ? {
+      ...current,
+      inviteTracking: { ...current.inviteTracking, [field]: value },
     } : current);
   };
 
@@ -1613,6 +1631,219 @@ export function BotControlPage() {
         </TabsContent>
 
         <TabsContent value="statistics" className="mt-0 space-y-5">
+          <section className="space-y-5 rounded-xl border border-border bg-card p-5">
+            <div className="flex items-start gap-3">
+              <Link2 className="mt-1 h-5 w-5 text-primary" />
+              <div className="min-w-0 flex-1">
+                <h2 className="font-medium">Statistici pentru invitații Discord</h2>
+                <p className="text-xs text-muted-foreground">
+                  Urmărește intrările atribuite fiecărui cod, creatorul invitației și utilizările raportate de Discord.
+                  Nu sunt păstrate ID-uri de membri.
+                </p>
+              </div>
+              <Switch
+                checked={draft.inviteTracking.enabled}
+                onCheckedChange={(checked) => setInviteTracking("enabled", checked)}
+                aria-label="Activează colectarea statisticilor invitațiilor"
+              />
+            </div>
+
+            <div className="rounded-lg border border-primary/20 bg-primary/[0.04] p-3 text-xs text-muted-foreground">
+              Pentru atribuire, botul are nevoie de permisiunea Discord <strong>Manage Server</strong> și de intenția
+              privilegiată <strong>Server Members</strong> activată în Discord Developer Portal și în configurația botului.
+              Diferențele dintre utilizările codurilor și evenimentele de intrare sunt atribuite; cazurile neconfirmate
+              rămân marcate ca neatribuite.
+              {metadata?.botCapabilities?.canManageGuild === false && (
+                <p className="mt-2 font-medium text-destructive">Botului îi lipsește momentan permisiunea Manage Server.</p>
+              )}
+              {metadata?.botCapabilities?.guildMembers === false && (
+                <p className="mt-2 font-medium text-destructive">Intenția Server Members nu este activă; intrările nu vor fi captate.</p>
+              )}
+            </div>
+
+            <div className="space-y-3 rounded-lg border border-border/70 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-medium">Raport automat în Discord</h3>
+                  <p className="text-xs text-muted-foreground">Publică în canal un clasament zilnic sau săptămânal.</p>
+                </div>
+                <Switch
+                  checked={draft.inviteTracking.reportEnabled}
+                  disabled={!draft.inviteTracking.enabled}
+                  onCheckedChange={(checked) => setInviteTracking("reportEnabled", checked)}
+                  aria-label="Activează raportul automat al invitațiilor"
+                />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <label className="space-y-1 text-sm">
+                  <span className="text-xs font-medium">Canal raport</span>
+                  <Select
+                    value={draft.inviteTracking.reportChannelId || "__none__"}
+                    onValueChange={(value) => setInviteTracking("reportChannelId", value === "__none__" ? "" : value)}
+                  >
+                    <SelectTrigger className="mod-select-trigger"><SelectValue placeholder="Alege canal" /></SelectTrigger>
+                    <SelectContent className="max-h-[min(70vh,32rem)] overscroll-contain">
+                      <SelectItem value="__none__">Alege canal</SelectItem>
+                      {textChannels.map((channel) => (
+                        <SelectItem key={channel.id} value={channel.id}>#{channel.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </label>
+                <label className="space-y-1 text-sm">
+                  <span className="text-xs font-medium">Frecvență</span>
+                  <Select
+                    value={draft.inviteTracking.reportFrequency}
+                    onValueChange={(value) => setInviteTracking("reportFrequency", value as BotControlConfig["inviteTracking"]["reportFrequency"])}
+                  >
+                    <SelectTrigger className="mod-select-trigger"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="daily">Zilnic</SelectItem>
+                      <SelectItem value="weekly">Săptămânal</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </label>
+                <label className="space-y-1 text-sm">
+                  <span className="text-xs font-medium">Ora raportului</span>
+                  <Input
+                    type="time"
+                    value={draft.inviteTracking.reportTime}
+                    onChange={(event) => setInviteTracking("reportTime", event.target.value)}
+                  />
+                </label>
+                <label className="space-y-1 text-sm">
+                  <span className="text-xs font-medium">Fus orar</span>
+                  <Select
+                    value={draft.inviteTracking.reportTimeZone}
+                    onValueChange={(value) => setInviteTracking("reportTimeZone", value as BotControlConfig["inviteTracking"]["reportTimeZone"])}
+                  >
+                    <SelectTrigger className="mod-select-trigger"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Europe/Bucharest">Europe/Bucharest</SelectItem>
+                      <SelectItem value="Europe/Paris">Europe/Paris</SelectItem>
+                      <SelectItem value="UTC">UTC</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </label>
+                {draft.inviteTracking.reportFrequency === "weekly" && (
+                  <label className="space-y-1 text-sm">
+                    <span className="text-xs font-medium">Ziua raportului săptămânal</span>
+                    <Select
+                      value={String(draft.inviteTracking.reportWeekday)}
+                      onValueChange={(value) => setInviteTracking("reportWeekday", Number(value))}
+                    >
+                      <SelectTrigger className="mod-select-trigger"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1">Luni</SelectItem>
+                        <SelectItem value="2">Marți</SelectItem>
+                        <SelectItem value="3">Miercuri</SelectItem>
+                        <SelectItem value="4">Joi</SelectItem>
+                        <SelectItem value="5">Vineri</SelectItem>
+                        <SelectItem value="6">Sâmbătă</SelectItem>
+                        <SelectItem value="7">Duminică</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </label>
+                )}
+                <label className="space-y-1 text-sm">
+                  <span className="text-xs font-medium">Linkuri afișate în raport (3–10)</span>
+                  <Input
+                    type="number"
+                    min={3}
+                    max={10}
+                    step={1}
+                    value={draft.inviteTracking.reportTopLimit}
+                    onChange={(event) => setInviteTracking("reportTopLimit", Number(event.target.value))}
+                  />
+                </label>
+              </div>
+            </div>
+
+            <div className="space-y-3 rounded-lg border border-border/70 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-medium">Performanța linkurilor</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Intrările atribuite sunt colectate numai după activarea urmăririi.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Select value={inviteRange} onValueChange={(value) => setInviteRange(value as InviteStatsRange)}>
+                    <SelectTrigger className="mod-select-trigger w-36"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="7">Ultimele 7 zile</SelectItem>
+                      <SelectItem value="30">Ultimele 30 zile</SelectItem>
+                      <SelectItem value="90">Ultimele 90 zile</SelectItem>
+                      <SelectItem value="all">Tot istoricul</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button type="button" variant="outline" size="sm" disabled={inviteStatsSyncing} onClick={() => {
+                    void syncInviteStats().then(() => {
+                      toast({ title: "Invitațiile au fost sincronizate", description: "Lista și numărul curent de utilizări au fost reîmprospătate." });
+                    }).catch((syncError: any) => {
+                      toast({ variant: "destructive", title: "Sincronizarea a eșuat", description: syncError?.message ?? "Verifică permisiunea Manage Server a botului." });
+                    });
+                  }}>
+                    {inviteStatsSyncing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                    Sincronizează
+                  </Button>
+                </div>
+              </div>
+
+              {inviteStatsError && (
+                <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+                  {inviteStatsError.message}
+                </p>
+              )}
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-lg bg-muted/40 p-3">
+                  <p className="text-xs text-muted-foreground">Intrări atribuite</p>
+                  <p className="mt-1 text-2xl font-semibold">{(inviteStats?.totals.attributedJoins ?? 0).toLocaleString("ro-RO")}</p>
+                </div>
+                <div className="rounded-lg bg-muted/40 p-3">
+                  <p className="text-xs text-muted-foreground">Intrări neatribuite</p>
+                  <p className="mt-1 text-2xl font-semibold">{(inviteStats?.totals.unknownJoins ?? 0).toLocaleString("ro-RO")}</p>
+                </div>
+              </div>
+
+              {inviteStatsLoading ? (
+                <div className="flex justify-center p-6 text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" /></div>
+              ) : inviteStats?.rows.length ? (
+                <div className="overflow-x-auto rounded-lg border border-border/70">
+                  <table className="w-full min-w-[680px] text-left text-sm">
+                    <thead className="bg-muted/40 text-xs text-muted-foreground">
+                      <tr>
+                        <th className="px-3 py-2 font-medium">Link de invitație</th>
+                        <th className="px-3 py-2 font-medium">Creator</th>
+                        <th className="px-3 py-2 font-medium">Intrări atribuite</th>
+                        <th className="px-3 py-2 font-medium">Utilizări Discord</th>
+                        <th className="px-3 py-2 font-medium">Stare</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/70">
+                      {inviteStats.rows.map((row) => (
+                        <tr key={row.code}>
+                          <td className="px-3 py-2">
+                            <a href={row.url} target="_blank" rel="noreferrer" className="font-medium text-primary hover:underline">{row.code}</a>
+                          </td>
+                          <td className="px-3 py-2">{row.inviterName ?? "Necunoscut"}</td>
+                          <td className="px-3 py-2">{row.attributedJoins.toLocaleString("ro-RO")}</td>
+                          <td className="px-3 py-2">{row.totalDiscordUses.toLocaleString("ro-RO")}</td>
+                          <td className="px-3 py-2">{row.active ? "Activ" : "Inactiv"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="rounded-lg border border-dashed border-border p-5 text-center text-sm text-muted-foreground">
+                  Nu există invitații sincronizate. Apasă „Sincronizează” pentru a încărca linkurile active din Discord.
+                </p>
+              )}
+            </div>
+          </section>
+
           <section className="space-y-5 rounded-xl border border-border bg-card p-5">
             <div className="flex items-start gap-3">
               <Megaphone className="mt-1 h-5 w-5 text-primary" />

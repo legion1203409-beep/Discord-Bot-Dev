@@ -14,6 +14,17 @@ const mocks = vi.hoisted(() => ({
   initGameplayConfig: vi.fn(), getGameplayConfig: vi.fn(), saveGuildGameplayConfig: vi.fn(),
   initChannelConfig: vi.fn(),
   loadVerificationConfig: vi.fn(), saveVerificationConfig: vi.fn(),
+  loadInviteTrackingConfig: vi.fn(), saveInviteTrackingConfig: vi.fn(),
+  defaultInviteTrackingConfig: {
+    enabled: false,
+    reportEnabled: false,
+    reportChannelId: "",
+    reportFrequency: "daily",
+    reportTime: "09:00",
+    reportWeekday: 1,
+    reportTimeZone: "Europe/Bucharest",
+    reportTopLimit: 5,
+  },
   provisionGuildChannels: vi.fn(),
   emojiCreate: vi.fn(), emojiFetch: vi.fn(),
 }));
@@ -56,6 +67,10 @@ vi.mock("../../bot/db", () => ({
   saveTicketConfig: mocks.saveTicketConfig,
   loadVerificationConfig: mocks.loadVerificationConfig,
   saveVerificationConfig: mocks.saveVerificationConfig,
+  loadInviteTrackingConfig: mocks.loadInviteTrackingConfig,
+  saveInviteTrackingConfig: mocks.saveInviteTrackingConfig,
+  DEFAULT_INVITE_TRACKING_CONFIG: mocks.defaultInviteTrackingConfig,
+  INVITE_REPORT_TIME_ZONES: ["Europe/Bucharest", "Europe/Paris", "UTC"],
 }));
 vi.mock("../../bot/gameplay-store", () => ({
   initGameplayConfig: mocks.initGameplayConfig,
@@ -155,6 +170,8 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     mocks.initChannelConfig.mockResolvedValue(undefined);
     mocks.loadVerificationConfig.mockResolvedValue(null);
     mocks.saveVerificationConfig.mockResolvedValue(undefined);
+    mocks.loadInviteTrackingConfig.mockResolvedValue(structuredClone(mocks.defaultInviteTrackingConfig));
+    mocks.saveInviteTrackingConfig.mockResolvedValue(undefined);
     mocks.provisionGuildChannels.mockResolvedValue({
       channelConfig: { main: "111111111" },
       ticketConfig: structuredClone(DEFAULT_TICKET_CONFIG),

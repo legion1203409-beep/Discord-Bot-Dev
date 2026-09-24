@@ -93,6 +93,14 @@ import {
   recordDailyMessage,
   recordDailyVoicePeak,
 } from "./daily-stats";
+import { loadInviteTrackingConfig } from "./db";
+import {
+  applyInviteTrackingConfig,
+  queueInviteJoin,
+  recordCreatedInvite,
+  recordDeletedInvite,
+  stopInviteTracking,
+} from "./invite-stats";
 import { SUPER_ADMIN_ID } from "./constants";
 import {
   ensureTributePlayer,
@@ -4483,7 +4491,12 @@ export async function startBot(onReady?: () => void): Promise<void> {
     return;
   }
 
-  const intents = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildVoiceStates];
+  const intents = [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildVoiceStates,
+    GatewayIntentBits.GuildInvites,
+  ];
   // GuildMembers, GuildPresences and MessageContent are all privileged. Keep the
   // bot online when the portal toggles are absent rather than requesting any one
   // of them unconditionally and receiving gateway 4014.
@@ -4609,6 +4622,15 @@ export async function startBot(onReady?: () => void): Promise<void> {
       await initGameplayConfig(guildId).catch((err) =>
         logger.error({ err, guildId }, "Failed to load gameplay config for guild"),
       );
+      const inviteTracking = await loadInviteTrackingConfig(guildId).catch((err) => {
+        logger.warn({ err, guildId }, "Failed to load invite statistics settings");
+        return null;
+      });
+      if (inviteTracking) {
+        await applyInviteTrackingConfig(client, guild, inviteTracking).catch((err) =>
+          logger.warn({ err, guildId }, "Failed to initialize invite statistics"),
+        );
+      }
       await syncNativeAutoMod(client, guildId, await getModerationConfig(guildId)).catch((err) =>
         logger.warn({ err, guildId }, "Native Discord AutoMod synchronization failed"),
       );
@@ -4660,6 +4682,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
           setModerationClient(null);
           for (const [guildId] of client.guilds.cache) {
             stopGuildScheduler(guildId, { stopOracle: true });
+            stopInviteTracking(guildId);
           }
           void sendAlert(
             "⚠️ **Instanță duplicată detectată.** O instanță mai nouă a botului a preluat controlul — instanța veche s-a oprit singură pentru a evita răspunsuri duble/lente.",
@@ -4691,6 +4714,15 @@ export async function startBot(onReady?: () => void): Promise<void> {
     await initGameplayConfig(guild.id).catch((err) =>
       logger.error({ err, guildId: guild.id }, "Failed to init gameplay config for new guild"),
     );
+    const inviteTracking = await loadInviteTrackingConfig(guild.id).catch((err) => {
+      logger.warn({ err, guildId: guild.id }, "Failed to load invite statistics settings for new guild");
+      return null;
+    });
+    if (inviteTracking) {
+      await applyInviteTrackingConfig(client, guild, inviteTracking).catch((err) =>
+        logger.warn({ err, guildId: guild.id }, "Failed to initialize invite statistics for new guild"),
+      );
+    }
     await syncNativeAutoMod(client, guild.id, await getModerationConfig(guild.id)).catch((err) =>
       logger.warn({ err, guildId: guild.id }, "Native Discord AutoMod synchronization failed"),
     );
@@ -4707,6 +4739,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
   client.on(Events.GuildDelete, (guild) => {
     logger.info({ guildId: guild.id, guildName: guild.name }, "Bot left guild — cleaning up scheduler state");
     stopGuildScheduler(guild.id, { stopOracle: true });
+    stopInviteTracking(guild.id);
     traderMessageIds.delete(guild.id);
     traderSetupInProgress.delete(guild.id);
   });
@@ -4772,8 +4805,21 @@ export async function startBot(onReady?: () => void): Promise<void> {
     void recordDailyJoin(member.guild.id).catch((err) =>
       logger.warn({ err, guildId: member.guild.id }, "Daily join statistics update failed"),
     );
+    queueInviteJoin(member.guild);
     void sendAiMemberMessage(member, "welcome").catch((err) =>
       logger.warn({ err, guildId: member.guild.id, userId: member.id }, "AI welcome message could not be sent"),
+    );
+  });
+
+  client.on(Events.InviteCreate, (invite) => {
+    void recordCreatedInvite(invite).catch((err) =>
+      logger.warn({ err, guildId: invite.guild?.id, inviteCode: invite.code }, "New Discord invite could not be recorded"),
+    );
+  });
+
+  client.on(Events.InviteDelete, (invite) => {
+    void recordDeletedInvite(invite).catch((err) =>
+      logger.warn({ err, guildId: invite.guild?.id, inviteCode: invite.code }, "Deleted Discord invite could not be recorded"),
     );
   });
 

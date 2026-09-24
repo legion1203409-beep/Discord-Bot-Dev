@@ -183,11 +183,48 @@ export interface BotControlConfig {
       peakVoice: string;
     };
   };
+  inviteTracking: InviteTrackingConfig;
   discordLive?: boolean;
   provisioning?: {
     created: Array<{ key: string; id: string; name: string; type: "text" | "category" }>;
     reused: Array<{ key: string; id: string; name: string; type: "text" | "category" }>;
   };
+}
+
+export interface InviteTrackingConfig {
+  enabled: boolean;
+  reportEnabled: boolean;
+  reportChannelId: string;
+  reportFrequency: "daily" | "weekly";
+  reportTime: string;
+  reportWeekday: number;
+  reportTimeZone: "Europe/Bucharest" | "Europe/Paris" | "UTC";
+  reportTopLimit: number;
+}
+
+export type InviteStatsRange = "7" | "30" | "90" | "all";
+
+export interface InviteStatsResponse {
+  range: InviteStatsRange;
+  startDay: string | null;
+  endDay: string;
+  totals: {
+    attributedJoins: number;
+    unknownJoins: number;
+  };
+  rows: Array<{
+    code: string;
+    url: string;
+    inviterId: string | null;
+    inviterName: string | null;
+    channelId: string | null;
+    totalDiscordUses: number;
+    attributedJoins: number;
+    maxUses: number | null;
+    expiresAt: string | null;
+    active: boolean;
+    lastSyncedAt: string | null;
+  }>;
 }
 
 export interface VerifiedMember {
@@ -857,6 +894,100 @@ export function useBotControl(guildId: string | null) {
     update,
     provisionChannels,
     refetch: fetchControl,
+  };
+}
+
+export function useInviteStats(guildId: string | null, range: InviteStatsRange) {
+  const [data, setData] = useState<InviteStatsResponse | null>(null);
+  const [dataGuildId, setDataGuildId] = useState<string | null>(null);
+  const [dataRange, setDataRange] = useState<InviteStatsRange | null>(null);
+  const [loading, setLoading] = useState(Boolean(guildId));
+  const [syncing, setSyncing] = useState(false);
+  const [error, setError] = useState<ApiError | null>(null);
+  const requestId = useRef(0);
+  const currentGuildId = useRef(guildId);
+
+  useEffect(() => {
+    currentGuildId.current = guildId;
+    requestId.current += 1;
+    setData(null);
+    setDataGuildId(null);
+    setDataRange(null);
+    setError(null);
+    setLoading(Boolean(guildId));
+  }, [guildId, range]);
+
+  const fetchStats = useCallback(async () => {
+    const requestedGuildId = guildId;
+    const requestedRange = range;
+    const thisRequest = ++requestId.current;
+    if (!requestedGuildId) {
+      setData(null);
+      setDataGuildId(null);
+      setDataRange(null);
+      setLoading(false);
+      return null;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await apiFetch<InviteStatsResponse>(
+        `/guilds/${requestedGuildId}/invite-stats?range=${requestedRange}`,
+      );
+      if (requestId.current === thisRequest && currentGuildId.current === requestedGuildId) {
+        setData(response);
+        setDataGuildId(requestedGuildId);
+        setDataRange(requestedRange);
+      }
+      return response;
+    } catch (err) {
+      if (requestId.current === thisRequest && currentGuildId.current === requestedGuildId) {
+        setData(null);
+        setDataGuildId(null);
+        setDataRange(null);
+        setError(err as ApiError);
+      }
+      throw err;
+    } finally {
+      if (requestId.current === thisRequest && currentGuildId.current === requestedGuildId) {
+        setLoading(false);
+      }
+    }
+  }, [guildId, range]);
+
+  useEffect(() => {
+    void fetchStats().catch(() => {});
+  }, [fetchStats]);
+
+  const sync = useCallback(async () => {
+    const requestedGuildId = guildId;
+    if (!requestedGuildId) throw new Error("Nu este selectat niciun server.");
+    if (activeGuildId !== requestedGuildId) {
+      throw new Error("Serverul selectat s-a schimbat. Reîncarcă pagina înainte de sincronizare.");
+    }
+    setSyncing(true);
+    setError(null);
+    try {
+      await apiFetch(`/guilds/${requestedGuildId}/invite-stats/sync`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      return await fetchStats();
+    } catch (err) {
+      setError(err as ApiError);
+      throw err;
+    } finally {
+      setSyncing(false);
+    }
+  }, [fetchStats, guildId]);
+
+  return {
+    data: dataGuildId === guildId && dataRange === range ? data : null,
+    loading: loading || Boolean(guildId && (dataGuildId !== guildId || dataRange !== range)),
+    syncing,
+    error,
+    refresh: fetchStats,
+    sync,
   };
 }
 

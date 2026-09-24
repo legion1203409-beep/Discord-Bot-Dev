@@ -14,6 +14,7 @@ import
 
 import 
 {
+  TextChannel,
  GatewayIntentBits,
   PermissionFlagsBits,
  Routes,
@@ -110,7 +111,7 @@ import
 
 import 
 {
- loadDailyStatsEmbedConfig, loadAllianceRecruitmentText, loadChannelConfig, loadTicketConfig, loadProvisioningPermissions, saveProvisioningPermissions, saveAllianceRecruitmentText, saveChannelConfig, saveDailyStatsEmbedConfig, saveTicketConfig, type ChannelConfig
+ DEFAULT_INVITE_TRACKING_CONFIG, INVITE_REPORT_TIME_ZONES, loadInviteTrackingConfig, saveInviteTrackingConfig, loadDailyStatsEmbedConfig, loadAllianceRecruitmentText, loadChannelConfig, loadTicketConfig, loadProvisioningPermissions, saveProvisioningPermissions, saveAllianceRecruitmentText, saveChannelConfig, saveDailyStatsEmbedConfig, saveTicketConfig, type ChannelConfig
 }
  from "../bot/db"
 ;
@@ -131,6 +132,7 @@ import
 
 import { startGuildScheduler, stopGuildScheduler } from "../bot/scheduler";
 import { provisionGuildChannels } from "../bot/channel-provisioning";
+import { applyInviteTrackingConfig, getInviteStats, syncGuildInviteSnapshot } from "../bot/invite-stats";
 
 import {
   DEFAULT_VERIFICATION_CONFIG,
@@ -375,6 +377,31 @@ export const botControlSchema = z.object(
   // PUT must accept that same round-trip value.
   allianceRecruitmentText: z.string().trim().max(2_000),
   dailyStats: dailyStatsEmbedConfigSchema,
+  inviteTracking: z.object({
+    enabled: z.boolean(),
+    reportEnabled: z.boolean(),
+    reportChannelId: snowflake.or(z.literal("")),
+    reportFrequency: z.enum(["daily", "weekly"]),
+    reportTime: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/),
+    reportWeekday: z.number().int().min(1).max(7),
+    reportTimeZone: z.enum(INVITE_REPORT_TIME_ZONES),
+    reportTopLimit: z.number().int().min(3).max(10),
+  }).strict().default(DEFAULT_INVITE_TRACKING_CONFIG).superRefine((config, ctx) => {
+    if (config.reportEnabled && !config.enabled) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["reportEnabled"],
+        message: "Activează mai întâi colectarea statisticilor.",
+      });
+    }
+    if (config.reportEnabled && !config.reportChannelId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["reportChannelId"],
+        message: "Alege canalul pentru raportul automat.",
+      });
+    }
+  }),
   tickets: z.object(
 {
 
@@ -830,6 +857,32 @@ async function validateConfigTargets(guildId: string, config: ModerationConfig):
   if (nonTextChannel) throw new ModerationAuthError(400, `Channel ${nonTextChannel} is not a text-based guild channel`)
 ;
 
+}
+
+async function validateInviteTrackingTargets(guildId: string, config: z.infer<typeof botControlSchema>["inviteTracking"]) {
+  const client = getModerationClient();
+  if (!client?.isReady()) return null;
+
+  const cachedGuild = client.guilds.cache?.get(guildId);
+  if (!config.enabled) return cachedGuild ?? null;
+  const guild = cachedGuild ?? await client.guilds.fetch({ guild: guildId, force: true })
+    .catch(() => { throw new ModerationAuthError(503, "Serverul Discord nu este disponibil."); });
+
+  const botMember = guild.members.me ?? await guild.members.fetchMe().catch(() => null);
+  if (!botMember?.permissions.has(PermissionFlagsBits.ManageGuild)) {
+    throw new ModerationAuthError(403, "Botul are nevoie de permisiunea Manage Server pentru a urmări invitațiile.");
+  }
+
+  if (config.reportEnabled) {
+    const channel = await guild.channels.fetch(config.reportChannelId).catch(() => null);
+    if (!(channel instanceof TextChannel) || channel.guildId !== guildId) {
+      throw new ModerationAuthError(400, "Alege un canal text valid din acest server pentru raportul invitațiilor.");
+    }
+    if (!channel.permissionsFor(botMember)?.has(PermissionFlagsBits.SendMessages)) {
+      throw new ModerationAuthError(403, "Botul nu are permisiunea de a trimite mesaje în canalul raportului.");
+    }
+  }
+  return guild;
 }
 
 
@@ -1398,12 +1451,14 @@ router.get("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   await sessionAndGuild(req, guildId, "config");
   await initGameplayConfig(guildId);
   const loadDailyStats = optionalExport(() => loadDailyStatsEmbedConfig);
-  const [channels, allianceRecruitmentText, tickets, verification, dailyStats, provisioningPermissions] = await Promise.all([
+  const loadInviteTracking = optionalExport(() => loadInviteTrackingConfig);
+  const [channels, allianceRecruitmentText, tickets, verification, dailyStats, inviteTracking, provisioningPermissions] = await Promise.all([
     loadChannelConfig(guildId),
     loadAllianceRecruitmentText(guildId),
     loadTicketConfig(guildId),
     optionalExport(() => loadVerificationConfig)?.(guildId) ?? Promise.resolve(null),
     loadDailyStats?.(guildId) ?? Promise.resolve(DEFAULT_DAILY_STATS_EMBED_CONFIG),
+    loadInviteTracking?.(guildId) ?? Promise.resolve(DEFAULT_INVITE_TRACKING_CONFIG),
     loadProvisioningPermissions(guildId),
   ]);
   res.set("Cache-Control", "no-store").json({
@@ -1413,6 +1468,7 @@ router.get("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
     gameplayConfig: getGameplayConfig(guildId),
     verification: normalizeVerificationConfig(verification),
     dailyStats,
+    inviteTracking,
     provisioningPermissions,
     discordLive: Boolean(getModerationClient()?.isReady()),
   });
@@ -1434,13 +1490,15 @@ router.post("/guilds/:guildId/bot-control/provision-channels", asyncRoute(async 
 
   await initGameplayConfig(guildId);
   const loadDailyStats = optionalExport(() => loadDailyStatsEmbedConfig);
-  const [channelConfig, ticketConfig, moderationSnapshot, verification, allianceRecruitmentText, dailyStats] = await Promise.all([
+  const loadInviteTracking = optionalExport(() => loadInviteTrackingConfig);
+  const [channelConfig, ticketConfig, moderationSnapshot, verification, allianceRecruitmentText, dailyStats, inviteTracking] = await Promise.all([
     loadChannelConfig(guildId),
     loadTicketConfig(guildId),
     moderationStore.getConfig(guildId),
     loadVerificationConfig(guildId),
     loadAllianceRecruitmentText(guildId),
     loadDailyStats?.(guildId) ?? Promise.resolve(DEFAULT_DAILY_STATS_EMBED_CONFIG),
+    loadInviteTracking?.(guildId) ?? Promise.resolve(DEFAULT_INVITE_TRACKING_CONFIG),
   ]);
   const previousPermissions = await loadProvisioningPermissions(guildId);
   const provisioned = await provisionGuildChannels(guild, {
@@ -1475,6 +1533,7 @@ router.post("/guilds/:guildId/bot-control/provision-channels", asyncRoute(async 
     verification: provisioned.verification,
     provisioningPermissions: savedPermissions,
     dailyStats,
+    inviteTracking,
     discordLive: true,
     provisioning: {
       created: provisioned.created,
@@ -1487,6 +1546,9 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   const guildId = parse(snowflake, req.params.guildId);
   await sessionAndGuild(req, guildId, "config", true);
   const value = parse(botControlSchema, req.body);
+  const inviteTracking = value.inviteTracking ?? DEFAULT_INVITE_TRACKING_CONFIG;
+  const client = getModerationClient();
+  const inviteGuild = await validateInviteTrackingTargets(guildId, inviteTracking);
   const tickets = normalizeTicketConfig(value.tickets);
   const channels: ChannelConfig = Object.fromEntries(
     Object.entries(value.channels).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
@@ -1497,6 +1559,8 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   const dailyStats = value.dailyStats ?? DEFAULT_DAILY_STATS_EMBED_CONFIG;
   const saveDailyStats = optionalExport(() => saveDailyStatsEmbedConfig);
   if (saveDailyStats) await saveDailyStats(guildId, dailyStats);
+  const saveInviteTracking = optionalExport(() => saveInviteTrackingConfig);
+  if (saveInviteTracking) await saveInviteTracking(guildId, inviteTracking);
   await saveTicketConfig(guildId, tickets);
   await initGameplayConfig(guildId);
   const previousGameplayConfig = getGameplayConfig(guildId);
@@ -1520,7 +1584,9 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   }
   await initChannelConfig(guildId);
   setTicketConfig(guildId, tickets);
-  const client = getModerationClient();
+  if (client?.isReady() && inviteGuild) {
+    await applyInviteTrackingConfig(client, inviteGuild, inviteTracking);
+  }
   const scheduleChanged =
     previousGameplayConfig.paused !== gameplayConfig.paused ||
     JSON.stringify(previousGameplayConfig.events) !== JSON.stringify(gameplayConfig.events);
@@ -1537,9 +1603,42 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
     gameplayConfig,
     verification: savedVerification,
     dailyStats,
+    inviteTracking,
     provisioningPermissions: value.provisioningPermissions,
     discordLive: Boolean(client?.isReady()),
   });
+}));
+
+router.get("/guilds/:guildId/invite-stats", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  await sessionAndGuild(req, guildId, "config");
+  const range = parse(z.enum(["7", "30", "90", "all"]), typeof req.query.range === "string" ? req.query.range : "7");
+  const stats = await getInviteStats(guildId, range);
+  res.set("Cache-Control", "no-store").json(stats);
+}));
+
+router.post("/guilds/:guildId/invite-stats/sync", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  await sessionAndGuild(req, guildId, "config", true);
+  const client = getModerationClient();
+  if (!client?.isReady()) throw new ModerationAuthError(503, "Botul Discord nu este conectat.");
+  const guild = client.guilds.cache?.get(guildId) ?? await client.guilds.fetch({ guild: guildId, force: true })
+    .catch(() => { throw new ModerationAuthError(503, "Serverul Discord nu este disponibil."); });
+  const botMember = guild.members.me ?? await guild.members.fetchMe().catch(() => null);
+  if (!botMember?.permissions.has(PermissionFlagsBits.ManageGuild)) {
+    throw new ModerationAuthError(403, "Botul are nevoie de permisiunea Manage Server pentru a citi invitațiile.");
+  }
+  let sync: { activeInvites: number; syncedAt: string };
+  try {
+    sync = await syncGuildInviteSnapshot(guild);
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error ? Number(error.code) : null;
+    if (code === 50013 || code === 50001) {
+      throw new ModerationAuthError(403, "Botul nu are permisiunea Manage Server pentru a citi invitațiile.");
+    }
+    throw error;
+  }
+  res.set("Cache-Control", "no-store").json({ ...sync, stats: await getInviteStats(guildId, "7") });
 }));
 
 router.get("/guilds/:guildId/verification/invite", asyncRoute(async (req, res) => {
