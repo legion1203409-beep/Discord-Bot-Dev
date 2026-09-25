@@ -18,7 +18,7 @@ type BotControlTab = "channels" | "roles" | "tickets" | "messages" | "statistics
 const BOT_CONTROL_TABS: BotControlTab[] = ["channels", "roles", "tickets", "messages", "statistics"];
 
 const CHANNELS = [
-  ["main", "Cufere și Oracol"],
+  ["main", "Cufere"],
   ["event", "Ora Umbrelor"],
   ["boss", "Dragonul Stins"],
   ["trader", "Negustorul"],
@@ -29,7 +29,7 @@ const CHANNELS = [
 ] as const;
 
 const channelFields: { key: string; label: string; description: string; icon: any }[] = [
-  { key: 'main', label: 'Cufere și Oracol', description: 'Recompense, chei și mesajele Oracolului', icon: Radio },
+  { key: 'main', label: 'Cufere', description: 'Cufere, recompense și chei', icon: Radio },
   { key: 'event', label: 'Ora Umbrelor', description: 'Anunțuri și rezultate pentru eveniment', icon: Clock3 },
   { key: 'boss', label: 'Dragonul Stins', description: 'Lupte, damage și clasament de boss', icon: ShieldCheck },
   { key: 'trader', label: 'Negustorul', description: 'Oferte și rotația comerciantului', icon: Settings2 },
@@ -43,8 +43,8 @@ const PROVISIONING_CATEGORIES = [
   {
     key: "gameplay",
     label: "Joc și evenimente",
-    description: "Cufere, Oracol, lupte, boss, negustor și clasamente.",
-    items: ["Cufere și Oracol", "Ora Umbrelor", "Dragonul Stins", "Negustorul", "Clasamente"],
+    description: "Cufere, lupte, boss, negustor și clasamente.",
+    items: ["Cufere", "Ora Umbrelor", "Dragonul Stins", "Negustorul", "Clasamente"],
   },
   {
     key: "admin",

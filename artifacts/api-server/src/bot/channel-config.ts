@@ -84,7 +84,7 @@ export async function resetAllChannels(guildId: string): Promise<void> {
 
 /** Human-readable Romanian labels for each event type. */
 export const EVENT_LABELS: Record<keyof ChannelConfig, string> = {
-  main:     "Cufere și Oracol",
+  main:     "Cufere",
   event:    "Ora Umbrelor",
   boss:     "Dragonul Stins",
   trader:   "Negustorul (Forja Cenușii)",

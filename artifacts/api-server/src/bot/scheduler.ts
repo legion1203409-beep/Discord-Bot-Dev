@@ -1,9 +1,9 @@
 import { Client, TextChannel, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, type Message } from "discord.js";
 import { logger } from "../lib/logger";
-import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, rollChest, oracleMessage, buildFinalBossEmbed, buildBossLeaderboard, buildEventLeaderboard, buildLockedChestEmbed, buildKeyChestEmbed, spawnLockedChest, rollKeyChestType, computeBossRewards, prestigeGoldMult, finalBossRow, bossMaxHp, veteranRank, veteranMult, CHEST_RARITIES, type ChestVariant, type BossRarity, type BossPlayerStats } from "./survival";
+import { buildStartEmbed, buildExpiredCronica, buildChestEmbed, rollChest, buildFinalBossEmbed, buildBossLeaderboard, buildEventLeaderboard, buildLockedChestEmbed, buildKeyChestEmbed, spawnLockedChest, rollKeyChestType, computeBossRewards, prestigeGoldMult, finalBossRow, bossMaxHp, veteranRank, veteranMult, CHEST_RARITIES, type ChestVariant, type BossRarity, type BossPlayerStats } from "./survival";
 import { triggerRandomBattleEvent } from "./combat-events";
 import { getRewardMultipliers } from "./status-effects";
-import { startOracle, setOracleExtatic } from "./oracle";
+import { setOracleExtatic } from "./oracle";
 import { rehydrateCouncilDecree, startOracleCouncilScheduler, stopOracleCouncilScheduler } from "./oracle-council";
 import { createEvent, deactivateEvent, getExpiredActiveEvents, getEventParticipants, getAllEvents, setEventDecreeMessage, deleteEvent, getLatestActiveEvent, getActiveEvent, setHonorTitle, addPlayerReputation, addPlayerGold, addPlayerXp, getPrestigeLevels, persistActiveBoss, loadActiveBossRowsByGuild, deleteActiveBoss, createActiveBossesTableIfNotExists, persistActiveChest, loadActiveChest, clearActiveChest, getFinalBossKills, KEYCHEST_DBKEY, LOCKCHEST_DBKEY, runMultiGuildMigrations, loadLeaderboardMessageId, saveLeaderboardMessageId, type LeaderboardFeedType } from "./db";
 import { getChannel, initChannelConfig, hasAnyChannelConfigured, type EventType } from "./channel-config";
@@ -1618,17 +1618,6 @@ export async function fireKeyChest(client: Client, guildId: string, keyType?: st
 
 // ─── Oracle / battle event ────────────────────────────────────────────────────
 
-async function fireOracle(client: Client, guildId: string) {
-  if (isGuildGameStopped(guildId)) return;
-  try {
-    const channel = await fetchChannel(client, "main", guildId);
-    if (!channel) return;
-    await channel.send({ content: oracleMessage() });
-  } catch (err) {
-    logger.error({ err, guildId }, "Failed to send oracle message");
-  }
-}
-
 async function fireBattleEvent(client: Client, guildId: string) {
   if (isGuildGameStopped(guildId)) return;
   try {
@@ -1772,11 +1761,9 @@ export function startGuildScheduler(client: Client, guildId: string) {
     logger.warn({ err, guildId }, "Failed to start Tributul Regatului scheduler"),
   );
 
-  const oracleChannelId = getChannel("main", guildId);
-  const councilChannelId = getChannel("council", guildId) ?? oracleChannelId;
-  if (oracleChannelId) {
-    startOracle(client, oracleChannelId, guildId);
-  }
+  // The main channel is reserved for chests. Oracle proactive posts must not
+  // share it; only the separately configured council scheduler starts here.
+  const councilChannelId = getChannel("council", guildId);
   if (councilChannelId) {
     startOracleCouncilScheduler(client, guildId, councilChannelId);
   }

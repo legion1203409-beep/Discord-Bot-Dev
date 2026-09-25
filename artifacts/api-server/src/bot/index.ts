@@ -37,7 +37,6 @@ import {
   refreshOraclePresence,
   getCurrentMood,
   resumeOracle,
-  startOracle,
   stopOracle,
   isOracleEnabled,
 } from "./oracle";
@@ -428,7 +427,7 @@ async function sendOnboardingMessage(guild: Guild): Promise<void> {
     "👋 **Bun venit în Regatul Cenușii!**\n\n" +
     "Botul a fost adăugat pe serverul tău, dar **nu are canalele configurate** încă.\n" +
     "Folosește comanda `/setcanal` pentru a configura canalele unde botul va posta:\n\n" +
-    "📺 **Cufere și Oracol** — cufere, chei și mesaje Oracol\n" +
+    "📺 **Cufere** — cufere, recompense și chei\n" +
     "🔥 **Ora Umbrelor** — evenimentele principale de luptă\n" +
     "🐉 **Dragonul Stins** — boss final\n" +
     "🏺 **Negustorul** — magazinul permanent\n" +
@@ -586,7 +585,7 @@ const slashCommands = [
         .setDescription("Ce activitate va fi publicată în canal")
         .setRequired(true)
         .addChoices(
-          { name: "Cufere și Oracol", value: "main" },
+          { name: "Cufere", value: "main" },
           { name: "Ora Umbrelor", value: "event" },
           { name: "Dragonul Stins", value: "boss" },
           { name: "Negustorul (Forja Cenușii)", value: "trader" },
@@ -1470,10 +1469,9 @@ async function handleSetCanal(interaction: ChatInputCommandInteraction) {
       await reconfigureTraderChannel(interaction.guildId!, channel);
     } else {
       await setChannel(interaction.guildId!, eventKey, channel.id);
-      if ((eventKey === "council" || eventKey === "main") && botClient) {
+      if (eventKey === "council" && botClient) {
         stopOracleCouncilScheduler(interaction.guildId!);
-        const councilChannelId = getChannel("council", interaction.guildId!) ?? channel.id;
-        startOracleCouncilScheduler(botClient, interaction.guildId!, councilChannelId);
+        startOracleCouncilScheduler(botClient, interaction.guildId!, channel.id);
       }
     }
     await interaction.editReply({
@@ -1561,17 +1559,17 @@ async function handleStopAI(interaction: ChatInputCommandInteraction): Promise<v
 async function handleStartAI(interaction: ChatInputCommandInteraction): Promise<void> {
   if (!(await isOwner(interaction))) return;
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-  const mainChannelId = getChannel("main", interaction.guildId!);
-  const councilChannelId = getChannel("council", interaction.guildId!) ?? mainChannelId;
-  if (!mainChannelId || !councilChannelId || !botClient) {
+  const councilChannelId = getChannel("council", interaction.guildId!);
+  if (!botClient) {
     await interaction.editReply({
-      content: "❌ Nu există un canal principal configurat sau botul nu este disponibil.",
+      content: "❌ Botul nu este disponibil momentan.",
     });
     return;
   }
   resumeOracle(interaction.guildId!);
-  startOracle(botClient, mainChannelId, interaction.guildId!);
-  startOracleCouncilScheduler(botClient, interaction.guildId!, councilChannelId);
+  if (councilChannelId) {
+    startOracleCouncilScheduler(botClient, interaction.guildId!, councilChannelId);
+  }
   await interaction.editReply({
     content: "✨ **Oracle AI a fost repornit pe acest server.**",
   });

@@ -71,7 +71,8 @@ export const PROVISIONING_CATEGORY_KEYS: ProvisioningCategoryKey[] = [
 ];
 
 const GAMEPLAY_TARGETS: Array<Omit<ChannelTarget, "currentId"> & { key: keyof ChannelConfig }> = [
-  { key: "main", type: "text", category: "gameplay", names: ["cufere-si-oracol", "cufere", "oracol"] },
+  // Keep the legacy name as a reuse alias, but new channels are created as #cufere.
+  { key: "main", type: "text", category: "gameplay", names: ["cufere", "cufere-si-oracol"] },
   { key: "event", type: "text", category: "gameplay", names: ["ora-umbrelor"] },
   { key: "boss", type: "text", category: "gameplay", names: ["dragonul-stins"] },
   { key: "trader", type: "text", category: "gameplay", names: ["negustorul"] },
