@@ -315,6 +315,8 @@ let activeGuildId: string | null = readStoredGuildId();
 let activeGuildListeners: Array<() => void> = [];
 let sessionRequest: Promise<ModerationSession> | null = null;
 let sessionEpoch = 0;
+let csrfSessionRefresh: Promise<void> | null = null;
+const CSRF_ERROR_MESSAGE = "A valid CSRF token is required";
 
 function notifySession() {
   sessionListeners.forEach(fn => fn());
@@ -350,9 +352,41 @@ interface ApiResponse<T> {
   headers: Headers;
 }
 
-async function apiFetchWithMeta<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
+async function refreshSessionAfterCsrfFailure(): Promise<void> {
+  if (!csrfSessionRefresh) {
+    const requestEpoch = sessionEpoch;
+    const previousUserId = cachedSession?.userId;
+    const request = (async () => {
+      const { data } = await apiFetchWithMeta<ModerationSession>("/session", {}, false);
+      if (requestEpoch !== sessionEpoch) {
+        throw new ApiError(403, "Sesiunea s-a schimbat. Reîncarcă pagina înainte de a salva.");
+      }
+      const sameUser = Boolean(previousUserId && data.authenticated && data.userId === previousUserId);
+      cachedSession = data;
+      setGlobalActiveGuild(sameUser ? selectGuildForSession(data) : null);
+      notifySession();
+      if (!sameUser || !data.csrfToken) {
+        throw new ApiError(403, "Sesiunea s-a schimbat. Autentifică-te din nou înainte de a salva.");
+      }
+    })();
+    csrfSessionRefresh = request;
+    void request.finally(() => {
+      if (csrfSessionRefresh === request) csrfSessionRefresh = null;
+    }).catch(() => undefined);
+  }
+  return csrfSessionRefresh;
+}
+
+export async function apiFetchWithMeta<T>(
+  endpoint: string,
+  options: RequestInit = {},
+  retryOnCsrfFailure = true,
+): Promise<ApiResponse<T>> {
   const headers = new Headers(options.headers);
-  if (cachedSession?.csrfToken && !['GET', 'HEAD'].includes(options.method || 'GET')) {
+  const method = (options.method || "GET").toUpperCase();
+  const requestEpoch = sessionEpoch;
+  const requestGuildId = activeGuildId;
+  if (cachedSession?.csrfToken && !["GET", "HEAD"].includes(method)) {
     headers.set("x-csrf-token", cachedSession.csrfToken);
   }
   headers.set("Content-Type", "application/json");
@@ -384,6 +418,18 @@ async function apiFetchWithMeta<T>(endpoint: string, options: RequestInit = {}):
         errorMsg = `${errorMsg}: ${details}`;
       }
     } catch {}
+    if (
+      retryOnCsrfFailure &&
+      res.status === 403 &&
+      errorMsg === CSRF_ERROR_MESSAGE &&
+      !["GET", "HEAD"].includes(method)
+    ) {
+      await refreshSessionAfterCsrfFailure();
+      if (sessionEpoch !== requestEpoch || activeGuildId !== requestGuildId) {
+        throw new ApiError(403, "Serverul sau sesiunea s-a schimbat. Reîncarcă setările înainte de a salva.");
+      }
+      return apiFetchWithMeta<T>(endpoint, options, false);
+    }
     throw new ApiError(res.status, errorMsg);
   }
 
