@@ -50,6 +50,78 @@ const fullConfig = () => ({
   permissions: { staffRoleIds: [], allowManageGuild: true, allowAdminsSettings: false },
 });
 
+const verificationBotControlConfig = (enabled: boolean, panelMessageId: string, discordLive = true) => ({
+  channels: {},
+  provisioningPermissions: {},
+  allianceRecruitmentText: "",
+  discordLive,
+  verification: {
+    enabled,
+    channelId: "",
+    roleId: "",
+    title: "Verifică-ți contul",
+    message: "Apasă butonul pentru verificare.",
+    buttonLabel: "Verifică-mă",
+    buttonEmoji: "✅",
+    successMessage: "Verificare reușită.",
+    alreadyVerifiedMessage: "Deja verificat.",
+    imageUrl: "",
+    thumbnailUrl: "",
+    panelMessageId,
+  },
+});
+
+async function installPartialBotControlFixture(
+  page: import("@playwright/test").Page,
+  configs: Map<string, ReturnType<typeof verificationBotControlConfig>>,
+  createPartialResponse?: (body: any) => Record<string, unknown>,
+) {
+  const putBodies = new Map<string, any[]>();
+  await page.route("**/api/moderation/auth-config", async (route) => {
+    await route.fulfill({ json: { discordOAuthConfigured: true, authorizationUrl: "/api/moderation/oauth/discord" } });
+  });
+  await page.route("**/api/moderation/session", async (route) => {
+    await route.fulfill({
+      json: { authenticated: true, userId: "999999999", guilds, csrfToken: "test-csrf", expiresAt: "2099-01-01T00:00:00.000Z" },
+    });
+  });
+  await page.route("**/api/moderation/guilds/*/bot-control", async (route) => {
+    const guildId = route.request().url().match(/guilds\/(\d+)\/bot-control/)?.[1] ?? guilds[0].id;
+    if (route.request().method() !== "PUT") {
+      await route.fulfill({ json: structuredClone(configs.get(guildId)!) });
+      return;
+    }
+    const body = JSON.parse(route.request().postData() || "{}");
+    const guildBodies = putBodies.get(guildId) ?? [];
+    guildBodies.push(body);
+    putBodies.set(guildId, guildBodies);
+    if (guildId === guilds[0].id && guildBodies.length === 1 && createPartialResponse) {
+      await route.fulfill({ status: 207, json: createPartialResponse(body) });
+      return;
+    }
+    const canonical = { ...body, discordLive: configs.get(guildId)?.discordLive ?? true };
+    configs.set(guildId, canonical);
+    await route.fulfill({ json: canonical });
+  });
+  await page.route("**/api/moderation/guilds/*/metadata", async (route) => {
+    const guildId = route.request().url().match(/guilds\/(\d+)\/metadata/)?.[1] ?? guilds[0].id;
+    await route.fulfill({
+      json: {
+        guild: { id: guildId, name: guilds.find((guild) => guild.id === guildId)?.name ?? guilds[0].name, ownerId: "999999999" },
+        roles: [],
+        channels: [],
+        emojis: [],
+        botCapabilities: { online: true, messageContent: true, guildMembers: true },
+      },
+    });
+  });
+  await page.route("**/api/moderation/guilds/*/verification/members", async (route) => {
+    const guildId = route.request().url().match(/guilds\/(\d+)\/verification\/members/)?.[1] ?? guilds[0].id;
+    await route.fulfill({ json: { guildId, roleId: "", roleName: null, total: 0, members: [] } });
+  });
+  return putBodies;
+}
+
 test.describe("authenticated moderation console", () => {
   const savedConfigs = new Map(guilds.map(({ id }) => [id, fullConfig()]));
   let actionBodies: unknown[] = [];
@@ -120,6 +192,67 @@ test.describe("authenticated moderation console", () => {
       await group.click();
     }
   }
+
+  test("keeps gameplay status unknown after GET failure, retries, and preserves guild-specific toggles", async ({ page }) => {
+    const gameplayGets = new Map<string, number>();
+    const gameplayPuts: Array<{ guildId: string; paused: boolean }> = [];
+    const pausedByGuild = new Map([
+      [guilds[0].id, false],
+      [guilds[1].id, true],
+    ]);
+    await page.route("**/api/moderation/guilds/*/gameplay-state", async (route) => {
+      const guildId = route.request().url().match(/guilds\/(\d+)\/gameplay-state/)?.[1] ?? guilds[0].id;
+      if (route.request().method() === "GET") {
+        const attempts = (gameplayGets.get(guildId) ?? 0) + 1;
+        gameplayGets.set(guildId, attempts);
+        if (guildId === guilds[0].id && attempts === 1) {
+          await route.fulfill({ status: 503, json: { error: "Gameplay state temporarily unavailable" } });
+          return;
+        }
+        await route.fulfill({ json: { paused: pausedByGuild.get(guildId) } });
+        return;
+      }
+      const body = JSON.parse(route.request().postData() || "{}") as { paused: boolean };
+      gameplayPuts.push({ guildId, paused: body.paused });
+      pausedByGuild.set(guildId, body.paused);
+      await route.fulfill({ json: { paused: body.paused } });
+    });
+
+    await page.goto("/moderare");
+    await chooseFirstGuild(page);
+
+    await expect(page.getByRole("heading", { name: "Starea jocului nu este confirmată" })).toBeVisible();
+    await expect(page.getByRole("alert")).toContainText("Nu am putut confirma starea jocului.");
+    const gameToggle = page.getByTestId("button-gameplay-state-toggle");
+    await expect(gameToggle).toBeDisabled();
+    await expect(gameToggle).not.toHaveText("Oprește jocul");
+
+    await page.getByTestId("button-gameplay-state-retry").click();
+    await expect(page.getByRole("heading", { name: "Regatul rulează normal" })).toBeVisible();
+    await expect(gameToggle).toBeEnabled();
+
+    page.once("dialog", (dialog) => dialog.accept());
+    await gameToggle.click();
+    await expect(page.getByRole("heading", { name: "Activitățile sunt oprite" })).toBeVisible();
+    await gameToggle.click();
+    await expect(page.getByRole("heading", { name: "Regatul rulează normal" })).toBeVisible();
+    expect(gameplayPuts).toEqual([
+      { guildId: guilds[0].id, paused: true },
+      { guildId: guilds[0].id, paused: false },
+    ]);
+
+    const guildSelector = page.getByRole("combobox").first();
+    await guildSelector.click();
+    await page.getByRole("option", { name: guilds[1].name }).click();
+    await expect(page.getByRole("heading", { name: "Activitățile sunt oprite" })).toBeVisible();
+    await expect(gameToggle).toBeEnabled();
+    expect(gameplayGets.get(guilds[1].id)).toBe(1);
+
+    await guildSelector.click();
+    await page.getByRole("option", { name: guilds[0].name }).click();
+    await expect(page.getByRole("heading", { name: "Regatul rulează normal" })).toBeVisible();
+    expect(gameplayGets.get(guilds[0].id)).toBe(3);
+  });
 
   test("dashboard sections stack cleanly at a 1024px viewport", async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 768 });
@@ -289,11 +422,9 @@ test.describe("authenticated moderation console", () => {
 
   test("shows audit event labels and details from the API contract", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
-    await page.unroute("**/api/moderation/guilds/*/logs/audit");
-    await page.route("**/api/moderation/guilds/*/logs/audit", async (route) => {
-      await route.fulfill({
-        json: {
-          items: [
+    await page.unroute("**/api/moderation/guilds/*/logs/audit**");
+    await page.route("**/api/moderation/guilds/*/logs/audit**", async (route) => {
+      const items = [
             {
               id: "audit-config-1",
               guildId: guilds[0].id,
@@ -324,9 +455,12 @@ test.describe("authenticated moderation console", () => {
               detail: { category: "toxicity" },
               createdAt: "2026-09-24T17:19:00.000Z",
             },
-          ],
-        },
-      });
+      ];
+      const search = new URL(route.request().url()).searchParams.get("search")?.trim().toLowerCase();
+      const matching = search === "toxicitate"
+        ? items.filter((item) => item.eventType === "ai.flagged")
+        : items;
+      await route.fulfill({ json: { items: matching, total: matching.length } });
     });
 
     await page.goto("/moderare");
@@ -674,6 +808,144 @@ test.describe("Discord moderation authentication", () => {
     await page.goto("/moderare");
     await expect(page.getByRole("status")).toContainText("Autentificarea Discord nu este disponibilă");
     await expect(page.getByTestId("discord-login-button")).toHaveCount(0);
+  });
+});
+
+test.describe("verification panel partial applies", () => {
+  test("retains the published panel ID per guild and sends it on retry", async ({ page }) => {
+    const configs = new Map([
+      [guilds[0].id, verificationBotControlConfig(false, "")],
+      [guilds[1].id, verificationBotControlConfig(true, "panel-south", false)],
+    ]);
+    const putBodies = await installPartialBotControlFixture(page, configs, (body) => ({
+      partialApply: true,
+      verificationPanelPublished: true,
+      verification: { ...body.verification, panelMessageId: "panel-north" },
+      message: "Persistarea configurației a eșuat.",
+    }));
+
+    await page.goto("/moderare/verificare");
+    await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible();
+    await page.getByRole("button", { name: guilds[0].name }).click();
+    const enabled = page.getByRole("checkbox", { name: "Activ" });
+    await expect(enabled).not.toBeChecked();
+    await enabled.check();
+    await page.getByRole("button", { name: "Salvează verificarea" }).click();
+
+    await expect(page.getByRole("alert")).toContainText("Panoul a fost publicat, dar salvarea configurației a fost parțială.");
+    await expect(page.getByRole("alert")).toContainText("panel-north");
+    await expect(page.getByText("Panou publicat; salvare parțială")).toBeVisible();
+
+    await page.reload();
+    await expect(page.getByRole("alert")).toContainText("panel-north");
+
+    const guildSelector = page.getByRole("combobox").first();
+    await guildSelector.click();
+    await page.getByRole("option", { name: guilds[1].name }).click();
+    await expect(page.getByRole("checkbox", { name: "Activ" })).toBeChecked();
+    await expect(page.getByText("Activată în configurație; botul Discord este offline")).toBeVisible();
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await page.getByRole("checkbox", { name: "Activ" }).uncheck();
+    await page.getByRole("button", { name: "Salvează verificarea" }).click();
+    expect(putBodies.get(guilds[1].id)?.[0].verification.panelMessageId).toBe("panel-south");
+
+    await guildSelector.click();
+    await page.getByRole("option", { name: guilds[0].name }).click();
+    await expect(page.getByRole("alert")).toContainText("panel-north");
+    await expect(page.getByRole("checkbox", { name: "Activ" })).not.toBeChecked();
+    await page.getByRole("checkbox", { name: "Activ" }).check();
+    const retry = page.waitForRequest((request) =>
+      request.url().includes(`/guilds/${guilds[0].id}/bot-control`) && request.method() === "PUT");
+    await page.getByRole("button", { name: "Salvează verificarea" }).click();
+    const retryBody = JSON.parse((await retry).postData() || "{}");
+    expect(retryBody.verification.panelMessageId).toBe("panel-north");
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    expect(putBodies.get(guilds[0].id)?.[1].verification.panelMessageId).toBe("panel-north");
+  });
+
+  test("blocks retry when a published panel ID is missing until manual reconciliation", async ({ page }) => {
+    const configs = new Map([
+      [guilds[0].id, verificationBotControlConfig(false, "")],
+      [guilds[1].id, verificationBotControlConfig(false, "")],
+    ]);
+    const putBodies = await installPartialBotControlFixture(page, configs, (body) => ({
+      partialApply: true,
+      verificationPanelPublished: true,
+      verification: { ...body.verification, panelMessageId: "" },
+      message: "Discord a publicat panoul, dar nu a returnat ID-ul.",
+    }));
+
+    await page.goto("/moderare/verificare");
+    await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible();
+    await page.getByRole("button", { name: guilds[0].name }).click();
+    await page.getByRole("checkbox", { name: "Activ" }).check();
+    await page.getByRole("button", { name: "Salvează verificarea" }).click();
+    await expect(page.getByRole("alert")).toContainText("Elimină sau reconciliază manual panoul");
+    const saveButton = page.getByRole("button", { name: "Salvează verificarea" });
+    await expect(saveButton).toBeDisabled();
+
+    page.once("dialog", (dialog) => dialog.accept());
+    await page.getByRole("button", { name: "Confirmă reconcilierea manuală" }).click();
+    await expect(saveButton).toBeEnabled();
+    await saveButton.click();
+    await expect.poll(() => putBodies.get(guilds[0].id)?.length).toBe(2);
+  });
+
+  test("blocks retry when session storage cannot preserve a published panel ID", async ({ page }) => {
+    await page.addInitScript(() => {
+      const setItem = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (key, value) {
+        if (key === "moderation.botControlPanelRecovery.v1") {
+          throw new DOMException("Session storage unavailable", "QuotaExceededError");
+        }
+        setItem.call(this, key, value);
+      };
+    });
+    const configs = new Map([
+      [guilds[0].id, verificationBotControlConfig(false, "")],
+      [guilds[1].id, verificationBotControlConfig(false, "")],
+    ]);
+    await installPartialBotControlFixture(page, configs, (body) => ({
+      partialApply: true,
+      verificationPanelPublished: true,
+      verification: { ...body.verification, panelMessageId: "panel-north" },
+      message: "Partial response from Discord.",
+    }));
+
+    await page.goto("/moderare/verificare");
+    await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible();
+    await page.getByRole("button", { name: guilds[0].name }).click();
+    await page.getByRole("checkbox", { name: "Activ" }).check();
+    await page.getByRole("button", { name: "Salvează verificarea" }).click();
+
+    const recoveryAlert = page.getByRole("alert");
+    await expect(recoveryAlert).toContainText("panel-north");
+    await expect(recoveryAlert).toContainText("Stocarea sesiunii nu este disponibilă.");
+    await expect(page.getByRole("button", { name: "Salvează verificarea" })).toBeDisabled();
+  });
+
+  test("does not claim a panel was published for a generic partial apply", async ({ page }) => {
+    const configs = new Map([
+      [guilds[0].id, verificationBotControlConfig(false, "")],
+      [guilds[1].id, verificationBotControlConfig(false, "")],
+    ]);
+    await installPartialBotControlFixture(page, configs, (body) => ({
+      partialApply: true,
+      verificationPanelPublished: false,
+      verification: body.verification,
+      message: "Salvarea configurației nu a fost efectuată.",
+    }));
+
+    await page.goto("/moderare/verificare");
+    await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible();
+    await page.getByRole("button", { name: guilds[0].name }).click();
+    await page.getByRole("checkbox", { name: "Activ" }).check();
+    await page.getByRole("button", { name: "Salvează verificarea" }).click();
+    const partialAlert = page.getByRole("alert");
+    await expect(partialAlert).toContainText("Serverul a raportat un rezultat parțial; efectele Discord nu sunt confirmate.");
+    await expect(partialAlert).not.toContainText("Panoul a fost publicat");
+    await expect(partialAlert).not.toContainText("Salvarea configurației nu a fost efectuată.");
+    await expect(page.getByText("Aplicare parțială; efecte neconfirmate")).toBeVisible();
   });
 });
 

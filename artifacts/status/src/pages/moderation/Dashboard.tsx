@@ -34,7 +34,13 @@ export function DashboardOverview() {
   const { data: config, loading: configLoading, update: updateModerationConfig, updateProtectionToggle, refetch: refetchModerationConfig } = useModerationConfig(guildId);
   const { data: casesData, loading: casesLoading } = useCases(guildId, { limit: 10 });
   const { data: auditLogs, loading: auditLoading } = useAuditLogs(guildId);
-  const { paused: gamePaused, loading: gameStateLoading, update: updateGameState } = useGameplayState(guildId);
+  const {
+    paused: gamePaused,
+    loading: gameStateLoading,
+    error: gameStateError,
+    update: updateGameState,
+    refetch: refetchGameState,
+  } = useGameplayState(guildId);
   const { toast } = useToast();
   const [savingModule, setSavingModule] = useState<string | null>(null);
   const [savingGameState, setSavingGameState] = useState(false);
@@ -82,7 +88,7 @@ export function DashboardOverview() {
   const openCases = (casesData || []).filter((item) => item.status === "open").length;
   const recentLogs = (auditLogs || []).slice(0, 7);
   const visibleConfig = optimisticConfig ?? config;
-  const protectionEnabled = visibleConfig?.protection?.enabled ?? true;
+  const protectionEnabled = visibleConfig?.protection?.enabled ?? false;
   const modules = [
     { key: "autoMod" as const, name: "AutoMod", description: "Filtre clasice și sincronizare Discord AutoMod nativ.", href: "/automod", active: Boolean(protectionEnabled && visibleConfig?.autoMod?.enabled), enabled: Boolean(visibleConfig?.autoMod?.enabled), parentEnabled: true, icon: Bot },
     { key: "wordFilter" as const, name: "Filtru cuvinte", description: "Cuvinte interzise și acțiunea aplicată la detectare.", href: "/automod", active: Boolean(protectionEnabled && visibleConfig?.autoMod?.enabled && visibleConfig?.autoMod?.wordFilter?.enabled), enabled: Boolean(visibleConfig?.autoMod?.wordFilter?.enabled), parentEnabled: Boolean(visibleConfig?.autoMod?.enabled), icon: BookOpen },
@@ -114,7 +120,7 @@ export function DashboardOverview() {
       }
       setOptimisticConfig(null);
       toast(toggleKey && enabled !== undefined
-        ? protectionToggleToastOptions(enabled, toggleResult?.notification?.status, description)
+        ? protectionToggleToastOptions(enabled, toggleResult?.notification?.status, description, toggleResult?.nativeAutoMod?.status)
         : { title: "Setare actualizată", description });
     } catch (error: any) {
       if (String(error?.message ?? "").includes("Conflict de versiune")) {
@@ -131,7 +137,7 @@ export function DashboardOverview() {
             }
             setOptimisticConfig(null);
             toast(toggleKey && enabled !== undefined
-              ? protectionToggleToastOptions(enabled, retryToggleResult?.notification?.status, description)
+              ? protectionToggleToastOptions(enabled, retryToggleResult?.notification?.status, description, retryToggleResult?.nativeAutoMod?.status)
               : { title: "Setare actualizată", description });
             return;
           }
@@ -189,6 +195,7 @@ export function DashboardOverview() {
   };
 
   const toggleGameState = async () => {
+    if (gamePaused === null) return;
     const nextPaused = !gamePaused;
     if (nextPaused && !window.confirm("Oprești activitățile jocului pe acest server? Evenimentele, luptele și recompensele vor fi suspendate.")) return;
     setSavingGameState(true);
@@ -251,30 +258,81 @@ export function DashboardOverview() {
         </Link>
       </header>
 
-      <section className={`animate-stagger-3 flex flex-col gap-5 rounded-2xl border p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6 ${gamePaused ? "border-destructive/40 bg-destructive/5" : "border-primary/25 bg-primary/5"}`} aria-label="Control stare joc">
+      <section
+        className={`animate-stagger-3 flex flex-col gap-5 rounded-2xl border p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6 ${
+          gamePaused === true
+            ? "border-destructive/40 bg-destructive/5"
+            : gamePaused === false
+              ? "border-primary/25 bg-primary/5"
+              : "border-amber-500/40 bg-amber-500/5"
+        }`}
+        aria-label="Control stare joc"
+      >
         <div className="flex items-start gap-4">
-          <span className={`mt-0.5 rounded-xl p-3 ${gamePaused ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"}`}>
-            {gamePaused ? <PlayCircle className="h-5 w-5" aria-hidden="true" /> : <PauseCircle className="h-5 w-5" aria-hidden="true" />}
+          <span className={`mt-0.5 rounded-xl p-3 ${
+            gamePaused === true
+              ? "bg-destructive/10 text-destructive"
+              : gamePaused === false
+                ? "bg-primary/10 text-primary"
+                : "bg-amber-500/10 text-amber-600"
+          }`}>
+            {gamePaused === true
+              ? <PlayCircle className="h-5 w-5" aria-hidden="true" />
+              : gamePaused === false
+                ? <PauseCircle className="h-5 w-5" aria-hidden="true" />
+                : <AlertTriangle className="h-5 w-5" aria-hidden="true" />}
           </span>
           <div>
-            <p className="mod-eyebrow">{gamePaused ? "Joc suspendat" : "Joc activ"}</p>
-            <h2 className="mt-1 font-display text-2xl text-foreground">{gamePaused ? "Activitățile sunt oprite" : "Regatul rulează normal"}</h2>
-            <p className="mt-1 max-w-xl text-sm leading-relaxed text-muted-foreground">
-              {gamePaused
-                ? "Evenimentele, luptele, cuferele și recompensele sunt blocate până la repornire."
-                : "Poți suspenda temporar activitățile jocului fără să oprești moderarea sau Oracle AI."}
+            <p className="mod-eyebrow">
+              {gamePaused === null
+                ? gameStateLoading ? "Se încarcă starea jocului" : "Stare necunoscută"
+                : gamePaused ? "Joc suspendat" : "Joc activ"}
             </p>
+            <h2 className="mt-1 font-display text-2xl text-foreground">
+              {gamePaused === null
+                ? "Starea jocului nu este confirmată"
+                : gamePaused ? "Activitățile sunt oprite" : "Regatul rulează normal"}
+            </h2>
+            <p className="mt-1 max-w-xl text-sm leading-relaxed text-muted-foreground">
+              {gamePaused === null
+                ? "Starea nu este disponibilă momentan; comanda de oprire sau repornire este dezactivată până la confirmarea serverului."
+                : gamePaused
+                  ? "Evenimentele, luptele, cuferele și recompensele sunt blocate până la repornire."
+                  : "Poți suspenda temporar activitățile jocului fără să oprești moderarea sau Oracle AI."}
+            </p>
+            {gameStateError && (
+              <div role="alert" className="mt-3 flex flex-wrap items-center gap-3 text-sm text-destructive">
+                <span>Nu am putut confirma starea jocului. {gameStateError.message}</span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void refetchGameState()}
+                  disabled={gameStateLoading}
+                  data-testid="button-gameplay-state-retry"
+                >
+                  {gameStateLoading ? "Se reîncarcă…" : "Reîncearcă"}
+                </Button>
+              </div>
+            )}
           </div>
         </div>
         <Button
           type="button"
-          variant={gamePaused ? "default" : "destructive"}
+          variant={gamePaused === true ? "default" : "destructive"}
           className="shrink-0 gap-2"
           onClick={() => void toggleGameState()}
-          disabled={gameStateLoading || savingGameState}
+          disabled={gameStateLoading || gamePaused === null || savingGameState}
+          data-testid="button-gameplay-state-toggle"
         >
-          {gamePaused ? <PlayCircle className="h-4 w-4" aria-hidden="true" /> : <PauseCircle className="h-4 w-4" aria-hidden="true" />}
-          {savingGameState ? "Se schimbă..." : gamePaused ? "Pornește jocul" : "Oprește jocul"}
+          {gamePaused === true
+            ? <PlayCircle className="h-4 w-4" aria-hidden="true" />
+            : <PauseCircle className="h-4 w-4" aria-hidden="true" />}
+          {savingGameState
+            ? "Se schimbă..."
+            : gamePaused === null
+              ? gameStateLoading ? "Se încarcă starea…" : "Stare necunoscută"
+              : gamePaused ? "Pornește jocul" : "Oprește jocul"}
         </Button>
       </section>
 

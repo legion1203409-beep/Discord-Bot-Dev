@@ -49,6 +49,34 @@ export function AutoModPage() {
   });
 
   const initializedForId = React.useRef<string | null>(null);
+  const acceptSavedConfig = (config: any, submittedValues: z.infer<typeof autoModFormSchema>) => {
+    if (!config) throw new Error("Răspunsul de salvare nu conține configurația canonică.");
+    const canonicalValues = {
+      enabled: config.autoMod?.enabled ?? false,
+      wordFilter: {
+        enabled: config.autoMod?.wordFilter?.enabled ?? false,
+        action: config.autoMod?.wordFilter?.action ?? "none",
+        severity: config.autoMod?.wordFilter?.severity ?? "normal",
+      },
+      linkBlock: {
+        enabled: config.autoMod?.linkBlock?.enabled ?? false,
+        action: config.autoMod?.linkBlock?.action ?? "none",
+        severity: config.autoMod?.linkBlock?.severity ?? "normal",
+      },
+      forbiddenWords: (config.autoMod?.forbiddenWords || []).join(", "),
+      aiEnabled: config.ai?.enabled ?? false,
+      aiAction: config.ai?.action ?? "none",
+      aiSensitivity: config.ai?.sensitivity ?? "medium",
+    };
+    const latestValues = form.getValues();
+    form.reset(canonicalValues);
+    (Object.keys(canonicalValues) as Array<keyof typeof canonicalValues>).forEach((key) => {
+      if (JSON.stringify(latestValues[key]) !== JSON.stringify(submittedValues[key])) {
+        form.setValue(key, latestValues[key], { shouldDirty: true });
+      }
+    });
+  };
+
   useEffect(() => {
     if (data && initializedForId.current !== guildId) {
       initializedForId.current = guildId;
@@ -92,10 +120,12 @@ export function AutoModPage() {
           sensitivity: values.aiSensitivity,
         }
       });
+      acceptSavedConfig(saved?.config, values);
       toast(configSaveToastOptions(
         saved?.notification?.status,
         "Setări salvate",
         "Configurația AutoMod și AI a fost actualizată cu succes.",
+        saved?.nativeAutoMod?.status,
       ));
     } catch (err: any) {
       if (err.message.includes("Conflict")) {

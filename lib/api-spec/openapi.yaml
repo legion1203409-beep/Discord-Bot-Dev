@@ -112,6 +112,34 @@ paths:
           description: Saved configuration
           content: { application/json: { schema: { $ref: "#/components/schemas/ModerationConfigResponse" } } }
         "409": { description: Stale configuration revision }
+  /moderation/guilds/{guildId}/bot-control:
+    parameters: [{ name: guildId, in: path, required: true, schema: { type: string } }]
+    get:
+      operationId: moderationGetBotControl
+      tags: [moderation]
+      responses:
+        "200":
+          description: Current bot-control settings
+          content: { application/json: { schema: { $ref: "#/components/schemas/BotControlResponse" } } }
+        "401": { description: Moderation session is required }
+        "403": { description: Guild configuration access is required }
+    put:
+      operationId: moderationPutBotControl
+      tags: [moderation]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/BotControlSettings" } } }
+      responses:
+        "200":
+          description: Bot-control settings saved
+          content: { application/json: { schema: { $ref: "#/components/schemas/BotControlResponse" } } }
+        "207":
+          description: Some settings were applied before a later write failed; verification details are present only when its panel was published
+          content: { application/json: { schema: { $ref: "#/components/schemas/BotControlPartialApplyResponse" } } }
+        "400": { description: Invalid settings or Discord target }
+        "401": { description: Moderation session is required }
+        "403": { description: Guild configuration access is required or the bot cannot post to a configured channel }
+        "503": { description: Required Discord service is unavailable }
   /moderation/guilds/{guildId}/protection-toggle:
     parameters: [{ name: guildId, in: path, required: true, schema: { type: string } }]
     put:
@@ -122,7 +150,7 @@ paths:
         content: { application/json: { schema: { $ref: "#/components/schemas/ProtectionToggleInput" } } }
       responses:
         "200":
-          description: Updated module setting and Discord announcement delivery status
+          description: Updated module setting, Discord announcement, and native AutoMod synchronization status
           content: { application/json: { schema: { $ref: "#/components/schemas/ModerationConfigResponse" } } }
         "401": { description: Moderation session is required }
         "403": { description: Guild configuration access is required }
@@ -225,6 +253,26 @@ components:
           type: string
           enum: [protection, autoMod, wordFilter, linkBlock, antiRaid, antiSpam, antiFlood, suspiciousBehavior, ai, manualTools, cases, audit, escalation, embeds]
         enabled: { type: boolean }
+    BotControlSettings:
+      type: object
+      additionalProperties: true
+      description: Bot-control write payload. Nested settings are validated by the API; use the GET response as the round-trip payload.
+    BotControlResponse:
+      type: object
+      additionalProperties: true
+      description: Bot-control settings returned by GET or after a successful PUT.
+    BotControlPartialApplyResponse:
+      type: object
+      additionalProperties: false
+      required: [partialApply, verificationPanelPublished, message]
+      properties:
+        partialApply: { type: boolean, const: true }
+        verificationPanelPublished: { type: boolean }
+        verification:
+          type: object
+          additionalProperties: true
+          description: Published verification settings, included only when the verification panel was published; retains panelMessageId when available.
+        message: { type: string }
     ModerationStorageUploadRequest:
       type: object
       additionalProperties: false
@@ -248,6 +296,11 @@ components:
         config: { $ref: "#/components/schemas/ModerationConfig" }
         version: { type: integer }
         updatedAt: { type: string, format: date-time, nullable: true }
+        nativeAutoMod:
+          type: object
+          required: [status]
+          properties:
+            status: { type: string, enum: [synced, bot_offline, missing_permission, conflict, failed] }
         notification:
           type: object
           required: [status, modules]

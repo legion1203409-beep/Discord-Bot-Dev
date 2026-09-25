@@ -115,6 +115,9 @@ export const ModerationGetConfigResponse = zod.object({
   "config": zod.record(zod.string(), zod.unknown()).describe('Validated by the server\'s ModerationConfigSchema; use GET response config as the write body.'),
   "version": zod.number(),
   "updatedAt": zod.coerce.date().nullish(),
+  "nativeAutoMod": zod.object({
+  "status": zod.enum(['synced', 'bot_offline', 'missing_permission', 'conflict', 'failed'])
+}).optional(),
   "notification": zod.object({
   "status": zod.enum(['not_applicable', 'sent', 'no_channel', 'bot_offline', 'guild_unavailable', 'channel_unavailable', 'send_failed']),
   "modules": zod.array(zod.string())
@@ -136,11 +139,30 @@ export const ModerationPutConfigResponse = zod.object({
   "config": zod.record(zod.string(), zod.unknown()).describe('Validated by the server\'s ModerationConfigSchema; use GET response config as the write body.'),
   "version": zod.number(),
   "updatedAt": zod.coerce.date().nullish(),
+  "nativeAutoMod": zod.object({
+  "status": zod.enum(['synced', 'bot_offline', 'missing_permission', 'conflict', 'failed'])
+}).optional(),
   "notification": zod.object({
   "status": zod.enum(['not_applicable', 'sent', 'no_channel', 'bot_offline', 'guild_unavailable', 'channel_unavailable', 'send_failed']),
   "modules": zod.array(zod.string())
 }).optional()
 })
+
+
+export const ModerationGetBotControlParams = zod.object({
+  "guildId": zod.coerce.string()
+})
+
+export const ModerationGetBotControlResponse = zod.record(zod.string(), zod.unknown()).describe('Bot-control settings returned by GET or after a successful PUT.')
+
+
+export const ModerationPutBotControlParams = zod.object({
+  "guildId": zod.coerce.string()
+})
+
+export const ModerationPutBotControlBody = zod.record(zod.string(), zod.unknown()).describe('Bot-control write payload. Nested settings are validated by the API; use the GET response as the round-trip payload.')
+
+export const ModerationPutBotControlResponse = zod.record(zod.string(), zod.unknown()).describe('Bot-control settings returned by GET or after a successful PUT.')
 
 
 export const ModerationProtectionToggleParams = zod.object({
@@ -156,6 +178,9 @@ export const ModerationProtectionToggleResponse = zod.object({
   "config": zod.record(zod.string(), zod.unknown()).describe('Validated by the server\'s ModerationConfigSchema; use GET response config as the write body.'),
   "version": zod.number(),
   "updatedAt": zod.coerce.date().nullish(),
+  "nativeAutoMod": zod.object({
+  "status": zod.enum(['synced', 'bot_offline', 'missing_permission', 'conflict', 'failed'])
+}).optional(),
   "notification": zod.object({
   "status": zod.enum(['not_applicable', 'sent', 'no_channel', 'bot_offline', 'guild_unavailable', 'channel_unavailable', 'send_failed']),
   "modules": zod.array(zod.string())

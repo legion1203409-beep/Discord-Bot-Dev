@@ -55,6 +55,7 @@ export function AntiRaidPage() {
         saved?.notification?.status,
         "Anti-Raid salvat",
         "Regulile anti-raid au fost actualizate pentru acest server.",
+        saved?.nativeAutoMod?.status,
       ));
     } catch (saveError: any) {
       if (saveError?.message?.includes("Conflict")) {

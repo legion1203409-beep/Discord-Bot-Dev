@@ -7,6 +7,7 @@ import { useToast } from "../../hooks/use-toast";
 import { ToastAction } from "../../components/ui/toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Input } from "../../components/ui/input";
+import { configSaveToastOptions } from "../../lib/protection-toggle-feedback";
 
 type BotCapabilities = {
   messageContent: boolean;
@@ -15,6 +16,24 @@ type BotCapabilities = {
   canManageChannels: boolean;
   canManageRoles: boolean;
 };
+
+function preserveEditsMadeDuringSave(before: any, current: any, canonical: any): any {
+  if (JSON.stringify(before) === JSON.stringify(current)) return canonical;
+  if (
+    before && current && canonical &&
+    typeof before === "object" && typeof current === "object" && typeof canonical === "object" &&
+    !Array.isArray(before) && !Array.isArray(current) && !Array.isArray(canonical)
+  ) {
+    const merged = { ...canonical };
+    for (const key of new Set([...Object.keys(before), ...Object.keys(current)])) {
+      if (JSON.stringify(before[key]) !== JSON.stringify(current[key])) {
+        merged[key] = preserveEditsMadeDuringSave(before[key], current[key], canonical[key]);
+      }
+    }
+    return merged;
+  }
+  return current;
+}
 
 export function AdvancedSettingsPage() {
   const { guildId } = useActiveGuild();
@@ -73,11 +92,22 @@ export function AdvancedSettingsPage() {
     setSaveError(null);
     setSaveSuccess(false);
     setConflictPending(false);
+    const submittedData = structuredClone(localData);
     try {
-      const saved = await update(localData);
-      if (saved?.config) setLocalData(JSON.parse(JSON.stringify(saved.config)));
+      const saved = await update(submittedData);
+      if (!saved?.config) throw new Error("Răspunsul de salvare nu conține configurația canonică.");
+      setLocalData((current: any) => preserveEditsMadeDuringSave(
+        submittedData,
+        current ?? submittedData,
+        saved.config,
+      ));
       setSaveSuccess(true);
-      toast({ title: "Configurație salvată", description: "Toate setările de moderare au fost aplicate." });
+      toast(configSaveToastOptions(
+        saved?.notification?.status,
+        "Configurație salvată",
+        "Configurația a fost salvată în baza de date.",
+        saved?.nativeAutoMod?.status,
+      ));
     } catch (saveError: any) {
       const message = saveError?.message || "Configurația nu a putut fi salvată.";
       // Discord provisioning must not leave the failed activation looking live
@@ -166,6 +196,7 @@ export function AdvancedSettingsPage() {
       {saveError && (
         <div role="alert" className="animate-stagger-3 rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive shadow-inner shadow-destructive/10">
           {saveError}
+          <p className="mt-2">Modificările încercate nu au putut fi confirmate ca salvate. Verifică eroarea; draftul local disponibil a fost păstrat.</p>
           {conflictPending && (
             <Button type="button" variant="outline" className="mt-3 border-destructive/40 text-destructive hover:bg-destructive/20" onClick={discardDraftAndRefetch}>
               Renunță la draft și reîncarcă
@@ -231,7 +262,7 @@ export function AdvancedSettingsPage() {
         <div className="mod-save-bar flex w-full items-center justify-between gap-3">
           <div className="flex items-center gap-3 text-muted-foreground font-medium text-sm">
             <span className={`bot-control-save-dot ${saving ? "is-saving" : ""}`} />
-            <span>{saving ? "Se salvează setările…" : "Ai modificări nesalvate."}</span>
+            <span>{saving ? "Se salvează setările…" : saveError ? "Salvarea a eșuat; modificările nu sunt confirmate." : "Ai modificări nesalvate."}</span>
           </div>
           <div className="mod-save-actions ml-auto">
             <Button onClick={handleSave} disabled={saving} className="gap-2 px-8 font-semibold tracking-wide shadow-lg shadow-primary/20">

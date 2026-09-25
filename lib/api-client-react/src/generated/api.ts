@@ -20,6 +20,9 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  BotControlPartialApplyResponse,
+  BotControlResponse,
+  BotControlSettings,
   HealthStatus,
   ModerationAuthConfig,
   ModerationCommandInput,
@@ -762,6 +765,142 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getModerationPutConfigMutationOptions(options));
+    }
+
+export const getModerationGetBotControlUrl = (guildId: string,) => {
+
+
+
+
+  return `/api/moderation/guilds/${guildId}/bot-control`
+}
+
+export const moderationGetBotControl = async (guildId: string, options?: RequestInit): Promise<BotControlResponse> => {
+
+  return customFetch<BotControlResponse>(getModerationGetBotControlUrl(guildId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getModerationGetBotControlQueryKey = (guildId: string,) => {
+    return [
+    `/api/moderation/guilds/${guildId}/bot-control`
+    ] as const;
+    }
+
+
+export const getModerationGetBotControlQueryOptions = <TData = Awaited<ReturnType<typeof moderationGetBotControl>>, TError = ErrorType<void>>(guildId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof moderationGetBotControl>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getModerationGetBotControlQueryKey(guildId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof moderationGetBotControl>>> = ({ signal }) => moderationGetBotControl(guildId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: guildId !== null && guildId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof moderationGetBotControl>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ModerationGetBotControlQueryResult = NonNullable<Awaited<ReturnType<typeof moderationGetBotControl>>>
+export type ModerationGetBotControlQueryError = ErrorType<void>
+
+
+
+export function useModerationGetBotControl<TData = Awaited<ReturnType<typeof moderationGetBotControl>>, TError = ErrorType<void>>(
+ guildId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof moderationGetBotControl>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getModerationGetBotControlQueryOptions(guildId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getModerationPutBotControlUrl = (guildId: string,) => {
+
+
+
+
+  return `/api/moderation/guilds/${guildId}/bot-control`
+}
+
+export const moderationPutBotControl = async (guildId: string,
+    botControlSettings: BotControlSettings, options?: RequestInit): Promise<BotControlResponse | BotControlPartialApplyResponse> => {
+
+  return customFetch<BotControlResponse | BotControlPartialApplyResponse>(getModerationPutBotControlUrl(guildId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(botControlSettings)
+  }
+);}
+
+
+
+
+export const getModerationPutBotControlMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof moderationPutBotControl>>, TError,{guildId: string;data: BodyType<BotControlSettings>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof moderationPutBotControl>>, TError,{guildId: string;data: BodyType<BotControlSettings>}, TContext> => {
+
+const mutationKey = ['moderationPutBotControl'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof moderationPutBotControl>>, {guildId: string;data: BodyType<BotControlSettings>}> = (props) => {
+          const {guildId,data} = props ?? {};
+
+          return  moderationPutBotControl(guildId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ModerationPutBotControlMutationResult = NonNullable<Awaited<ReturnType<typeof moderationPutBotControl>>>
+    export type ModerationPutBotControlMutationBody = BodyType<BotControlSettings>
+    export type ModerationPutBotControlMutationError = ErrorType<void>
+
+    export const useModerationPutBotControl = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof moderationPutBotControl>>, TError,{guildId: string;data: BodyType<BotControlSettings>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof moderationPutBotControl>>,
+        TError,
+        {guildId: string;data: BodyType<BotControlSettings>},
+        TContext
+      > => {
+      return useMutation(getModerationPutBotControlMutationOptions(options));
     }
 
 export const getModerationProtectionToggleUrl = (guildId: string,) => {

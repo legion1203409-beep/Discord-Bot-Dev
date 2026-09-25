@@ -18,5 +18,10 @@ returned **500**, failing platform healthchecks ("healthcheck /api returned
 status 500"). That was half of an "aplicația nu răspunde" report.
 
 **How to apply:** keep `app.ts` mounting only `app.use("/api", router)`. Do not
-re-add `express.static` / SPA `sendFile` fallbacks to api-server. After removal,
-`GET /api` returns 404 (fine) and `/api/healthz` stays 200.
+re-add `express.static` / SPA `sendFile` fallbacks to api-server. Answer the API
+artifact's base paths (`GET /api` and `/api/`) with 200 inside its own router
+while leaving unknown API routes at 404; keep `/api/healthz` at 200.
+Multi-artifact deployment probes also request the base path, so a recurring
+`/api` 404 is not harmless even when `/api/healthz` succeeds. It can make
+uptime monitoring report an unhealthy artifact without proving the bot was
+disconnected.

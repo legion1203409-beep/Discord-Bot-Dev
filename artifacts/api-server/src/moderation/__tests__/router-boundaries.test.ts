@@ -1,5 +1,6 @@
 import express from "express";
 import type { Server } from "node:http";
+import { TextChannel } from "discord.js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -7,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   getConfig: vi.fn(), putConfig: vi.fn(), putProtectionToggle: vi.fn(), listCases: vi.fn(),
   listAudit: vi.fn(), listLogs: vi.fn(), beginAction: vi.fn(), getAction: vi.fn(),
   completeAction: vi.fn(), writeAudit: vi.fn(), execute: vi.fn(),
+  syncNativeAutoMod: vi.fn(),
   loadChannelConfig: vi.fn(), saveChannelConfig: vi.fn(),
   loadProvisioningPermissions: vi.fn(), saveProvisioningPermissions: vi.fn(),
   loadAllianceRecruitmentText: vi.fn(), saveAllianceRecruitmentText: vi.fn(),
@@ -14,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   initGameplayConfig: vi.fn(), getGameplayConfig: vi.fn(), saveGuildGameplayConfig: vi.fn(),
   initChannelConfig: vi.fn(),
   loadVerificationConfig: vi.fn(), saveVerificationConfig: vi.fn(),
+  publishVerificationPanel: vi.fn(),
   loadInviteTrackingConfig: vi.fn(), saveInviteTrackingConfig: vi.fn(),
   defaultInviteTrackingConfig: {
     enabled: false,
@@ -57,6 +60,7 @@ vi.mock("../store", () => ({
   },
 }));
 vi.mock("../../bot/moderation/engine", () => ({ executeModerationAction: mocks.execute }));
+vi.mock("../../bot/native-automod", () => ({ syncNativeAutoMod: mocks.syncNativeAutoMod }));
 vi.mock("../../bot/db", () => ({
   loadChannelConfig: mocks.loadChannelConfig,
   saveChannelConfig: mocks.saveChannelConfig,
@@ -80,6 +84,10 @@ vi.mock("../../bot/gameplay-store", () => ({
 }));
 vi.mock("../../bot/channel-config", () => ({ initChannelConfig: mocks.initChannelConfig }));
 vi.mock("../../bot/channel-provisioning", () => ({ provisionGuildChannels: mocks.provisionGuildChannels }));
+vi.mock("../../bot/verification", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../bot/verification")>(),
+  publishVerificationPanel: mocks.publishVerificationPanel,
+}));
 
 import router, { provisioningPermissionSchema } from "../router";
 
@@ -111,6 +119,7 @@ import { ModerationAuthError } from "../auth";
 import { defaultModerationConfig } from "../config";
 import { DEFAULT_GAMEPLAY_CONFIG } from "../../bot/gameplay-config";
 import { DEFAULT_TICKET_CONFIG } from "../../bot/ticket-config";
+import { VerificationPanelPersistenceError } from "../../bot/verification";
 
 type BotControlResponse = {
   provisioningPermissions: Record<string, {
@@ -157,6 +166,7 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
       previousConfig: structuredClone(defaultModerationConfig),
       version: 4,
     });
+    mocks.syncNativeAutoMod.mockResolvedValue("synced");
     mocks.client.mockReturnValue({
       isReady: () => true,
       options: { intents: { has: () => true } },
@@ -164,9 +174,21 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
         id: guildId,
         name: "Regatul test",
         ownerId: actorId,
-        members: { me: { permissions: { has: () => true } } },
+        members: { me: { permissions: { has: () => true } }, fetchMe: vi.fn().mockResolvedValue({ permissions: { has: () => true } }) },
         roles: { fetch: vi.fn().mockResolvedValue(new Map()) },
-        channels: { fetch: vi.fn().mockResolvedValue(new Map()) },
+        channels: {
+          fetch: vi.fn(async (id?: string) => {
+            if (id) {
+              const channel = Object.create(TextChannel.prototype) as TextChannel;
+              Object.assign(channel, {
+                guildId,
+                permissionsFor: () => ({ has: () => true }),
+              });
+              return channel;
+            }
+            return new Map();
+          }),
+        },
         emojis: {
           fetch: mocks.emojiFetch,
           create: mocks.emojiCreate,
@@ -196,6 +218,10 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     mocks.initChannelConfig.mockResolvedValue(undefined);
     mocks.loadVerificationConfig.mockResolvedValue(null);
     mocks.saveVerificationConfig.mockResolvedValue(undefined);
+    mocks.publishVerificationPanel.mockImplementation(async (_client, _guildId, config) => ({
+      ...config,
+      panelMessageId: "888888888",
+    }));
     mocks.loadInviteTrackingConfig.mockResolvedValue(structuredClone(mocks.defaultInviteTrackingConfig));
     mocks.saveInviteTrackingConfig.mockResolvedValue(undefined);
     mocks.provisionGuildChannels.mockResolvedValue({
@@ -215,6 +241,59 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
   const post = (body: unknown, headers: Record<string, string> = {}) => ({
     method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body),
   });
+
+  const putNativeAutoModRoute = (route: "config" | "protection-toggle") => {
+    if (route === "config") {
+      return fetch(`${base}/config`, {
+        ...post(structuredClone(defaultModerationConfig), { "if-match": '"3"' }),
+        method: "PUT",
+      });
+    }
+    return fetch(`${base}/protection-toggle`, {
+      ...post({ key: "autoMod", enabled: false }),
+      method: "PUT",
+    });
+  };
+
+  it.each(["config", "protection-toggle"] as const)(
+    "%s reports bot_offline when native AutoMod cannot be synchronized offline",
+    async (route) => {
+      mocks.client.mockReturnValue({
+        isReady: () => false,
+        options: { intents: { has: () => true } },
+        guilds: { cache: new Map() },
+      });
+
+      const response = await putNativeAutoModRoute(route);
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ nativeAutoMod: { status: "bot_offline" } });
+      expect(mocks.syncNativeAutoMod).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["config", "protection-toggle"] as const)(
+    "%s distinguishes native AutoMod sync outcomes after saving",
+    async (route) => {
+      mocks.syncNativeAutoMod
+        .mockResolvedValueOnce("synced")
+        .mockResolvedValueOnce("missing_permission")
+        .mockResolvedValueOnce("conflict")
+        .mockRejectedValueOnce(new Error("Discord API unavailable"));
+
+      const observedStatuses: string[] = [];
+      for (const expectedStatus of ["synced", "missing_permission", "conflict", "failed"]) {
+        const response = await putNativeAutoModRoute(route);
+        expect(response.status).toBe(200);
+        const result = await response.json() as { nativeAutoMod: { status: string } };
+        observedStatuses.push(result.nativeAutoMod.status);
+        expect(result.nativeAutoMod.status).toBe(expectedStatus);
+      }
+
+      expect(observedStatuses).toEqual(["synced", "missing_permission", "conflict", "failed"]);
+      expect(mocks.syncNativeAutoMod).toHaveBeenCalledTimes(4);
+    },
+  );
 
   const botControlPayload = () => {
     const flow = (name: string, action: "lock" | "notify_staff" | "keep_open") => ({
@@ -738,6 +817,300 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     expect(response.status).toBe(200);
     expect(mocks.saveAllianceRecruitmentText).toHaveBeenCalledWith(guildId, "");
     expect(mocks.initChannelConfig).toHaveBeenCalledWith(guildId);
+  });
+
+  it("rejects configured channels that are missing from the target guild before persisting", async () => {
+    mocks.client.mockReturnValue({
+      isReady: () => true,
+      guilds: {
+        cache: new Map(),
+        fetch: vi.fn().mockResolvedValue({
+          members: {
+            me: { permissions: { has: () => true } },
+            fetchMe: vi.fn().mockResolvedValue({ permissions: { has: () => true } }),
+          },
+          channels: { fetch: vi.fn().mockResolvedValue(null) },
+        }),
+      },
+    });
+
+    const response = await fetch(`${base}/bot-control`, {
+      ...post(botControlPayload()),
+      method: "PUT",
+      headers: { "content-type": "application/json", "x-csrf-token": "csrf" },
+    });
+
+    expect(response.status).toBe(400);
+    expect(mocks.saveChannelConfig).not.toHaveBeenCalled();
+    expect(mocks.saveAllianceRecruitmentText).not.toHaveBeenCalled();
+    expect(mocks.saveGuildGameplayConfig).not.toHaveBeenCalled();
+  });
+
+  it("rejects configured channels where the bot cannot post embeds before persisting", async () => {
+    const channel = Object.create(TextChannel.prototype) as TextChannel;
+    const permissionHas = vi.fn().mockReturnValueOnce(true).mockReturnValueOnce(true).mockReturnValueOnce(false);
+    Object.assign(channel, { guildId, permissionsFor: () => ({ has: permissionHas }) });
+    mocks.client.mockReturnValue({
+      isReady: () => true,
+      guilds: {
+        cache: new Map(),
+        fetch: vi.fn().mockResolvedValue({
+          members: { me: { permissions: { has: () => true } } },
+          channels: { fetch: vi.fn().mockResolvedValue(channel) },
+        }),
+      },
+    });
+
+    const response = await fetch(`${base}/bot-control`, {
+      ...post(botControlPayload()),
+      method: "PUT",
+      headers: { "content-type": "application/json", "x-csrf-token": "csrf" },
+    });
+
+    expect(response.status).toBe(403);
+    expect(mocks.saveChannelConfig).not.toHaveBeenCalled();
+    expect(mocks.saveGuildGameplayConfig).not.toHaveBeenCalled();
+  });
+
+  it("rejects a nonexistent member-message channel before persisting bot-control settings", async () => {
+    const payload = botControlPayload();
+    delete (payload.channels as Record<string, string | undefined>).main;
+    payload.gameplayConfig.memberMessages = {
+      welcomeEnabled: true,
+      leaveEnabled: false,
+      channelId: "777777777",
+      style: "normal",
+      customStyle: "",
+    };
+    mocks.client.mockReturnValue({
+      isReady: () => true,
+      options: { intents: { has: () => true } },
+      guilds: {
+        cache: new Map(),
+        fetch: vi.fn().mockResolvedValue({
+          members: { me: { permissions: { has: () => true } } },
+          channels: { fetch: vi.fn().mockResolvedValue(null) },
+        }),
+      },
+    });
+
+    const response = await fetch(`${base}/bot-control`, {
+      ...post(payload),
+      method: "PUT",
+      headers: { "content-type": "application/json", "x-csrf-token": "csrf" },
+    });
+
+    expect(response.status).toBe(400);
+    expect(mocks.saveChannelConfig).not.toHaveBeenCalled();
+    expect(mocks.saveAllianceRecruitmentText).not.toHaveBeenCalled();
+    expect(mocks.saveGuildGameplayConfig).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unwritable member-message channel before persisting bot-control settings", async () => {
+    const payload = botControlPayload();
+    delete (payload.channels as Record<string, string | undefined>).main;
+    payload.gameplayConfig.memberMessages = {
+      welcomeEnabled: false,
+      leaveEnabled: true,
+      channelId: "777777777",
+      style: "normal",
+      customStyle: "",
+    };
+    const channel = Object.create(TextChannel.prototype) as TextChannel;
+    const permissionHas = vi.fn().mockReturnValueOnce(true).mockReturnValueOnce(true).mockReturnValueOnce(false);
+    Object.assign(channel, { guildId, permissionsFor: () => ({ has: permissionHas }) });
+    mocks.client.mockReturnValue({
+      isReady: () => true,
+      options: { intents: { has: () => true } },
+      guilds: {
+        cache: new Map(),
+        fetch: vi.fn().mockResolvedValue({
+          members: { me: { permissions: { has: () => true } } },
+          channels: { fetch: vi.fn().mockResolvedValue(channel) },
+        }),
+      },
+    });
+
+    const response = await fetch(`${base}/bot-control`, {
+      ...post(payload),
+      method: "PUT",
+      headers: { "content-type": "application/json", "x-csrf-token": "csrf" },
+    });
+
+    expect(response.status).toBe(403);
+    expect(mocks.saveChannelConfig).not.toHaveBeenCalled();
+    expect(mocks.saveAllianceRecruitmentText).not.toHaveBeenCalled();
+    expect(mocks.saveGuildGameplayConfig).not.toHaveBeenCalled();
+  });
+
+  it("keeps offline bot-control writes honest when a member-message channel cannot be checked live", async () => {
+    const payload = botControlPayload();
+    delete (payload.channels as Record<string, string | undefined>).main;
+    payload.gameplayConfig.memberMessages = {
+      welcomeEnabled: true,
+      leaveEnabled: false,
+      channelId: "777777777",
+      style: "normal",
+      customStyle: "",
+    };
+    mocks.client.mockReturnValue({
+      isReady: () => false,
+      options: { intents: { has: () => true } },
+      guilds: { cache: new Map() },
+    });
+
+    const response = await fetch(`${base}/bot-control`, {
+      ...post(payload),
+      method: "PUT",
+      headers: { "content-type": "application/json", "x-csrf-token": "csrf" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ discordLive: false });
+    expect(mocks.saveGuildGameplayConfig).toHaveBeenCalledOnce();
+  });
+
+  it("publishes verification before saving settings so Discord failures do not partially apply the request", async () => {
+    const payload = {
+      ...botControlPayload(),
+      verification: {
+      enabled: true,
+      channelId: "777777777",
+      roleId: "444444444",
+      title: "Verificare",
+      message: "Confirmă verificarea",
+      buttonLabel: "Verifică",
+      buttonEmoji: "✅",
+      successMessage: "Gata",
+      alreadyVerifiedMessage: "Deja verificat",
+      imageUrl: "",
+      thumbnailUrl: "",
+      panelMessageId: "",
+      },
+    };
+    mocks.publishVerificationPanel.mockRejectedValue(new Error("Discord publish failed"));
+
+    const response = await fetch(`${base}/bot-control`, {
+      ...post(payload),
+      method: "PUT",
+      headers: { "content-type": "application/json", "x-csrf-token": "csrf" },
+    });
+
+    expect(response.status).toBe(500);
+    expect(mocks.publishVerificationPanel).toHaveBeenCalledOnce();
+    expect(mocks.saveChannelConfig).not.toHaveBeenCalled();
+    expect(mocks.saveAllianceRecruitmentText).not.toHaveBeenCalled();
+    expect(mocks.saveTicketConfig).not.toHaveBeenCalled();
+    expect(mocks.saveGuildGameplayConfig).not.toHaveBeenCalled();
+    expect(mocks.saveVerificationConfig).not.toHaveBeenCalled();
+  });
+
+  it("reports the published panel when its verification record cannot be persisted", async () => {
+    const payload = {
+      ...botControlPayload(),
+      verification: {
+        enabled: true,
+        channelId: "777777777",
+        roleId: "444444444",
+        title: "Verificare",
+        message: "Confirmă verificarea",
+        buttonLabel: "Verifică",
+        buttonEmoji: "✅",
+        successMessage: "Gata",
+        alreadyVerifiedMessage: "Deja verificat",
+        imageUrl: "",
+        thumbnailUrl: "",
+        panelMessageId: "",
+      },
+    };
+    mocks.publishVerificationPanel.mockRejectedValue(
+      new VerificationPanelPersistenceError({ ...payload.verification, panelMessageId: "888888888" }),
+    );
+
+    const response = await fetch(`${base}/bot-control`, {
+      ...post(payload),
+      method: "PUT",
+      headers: { "content-type": "application/json", "x-csrf-token": "csrf" },
+    });
+
+    expect(response.status).toBe(207);
+    expect(await response.json()).toMatchObject({
+      partialApply: true,
+      verificationPanelPublished: true,
+      verification: { panelMessageId: "888888888" },
+    });
+    expect(mocks.saveChannelConfig).not.toHaveBeenCalled();
+  });
+
+  it("reports a partial apply if settings persistence fails after the verification panel was published", async () => {
+    const payload = {
+      ...botControlPayload(),
+      verification: {
+        enabled: true,
+        channelId: "777777777",
+        roleId: "444444444",
+        title: "Verificare",
+        message: "Confirmă verificarea",
+        buttonLabel: "Verifică",
+        buttonEmoji: "✅",
+        successMessage: "Gata",
+        alreadyVerifiedMessage: "Deja verificat",
+        imageUrl: "",
+        thumbnailUrl: "",
+        panelMessageId: "",
+      },
+    };
+    mocks.saveChannelConfig.mockRejectedValue(new Error("database unavailable"));
+
+    const response = await fetch(`${base}/bot-control`, {
+      ...post(payload),
+      method: "PUT",
+      headers: { "content-type": "application/json", "x-csrf-token": "csrf" },
+    });
+
+    expect(response.status).toBe(207);
+    expect(await response.json()).toMatchObject({
+      partialApply: true,
+      verificationPanelPublished: true,
+      message: expect.stringContaining("aplicată doar parțial"),
+    });
+    expect(mocks.publishVerificationPanel).toHaveBeenCalledOnce();
+    expect(mocks.saveChannelConfig).toHaveBeenCalledOnce();
+  });
+
+  it("returns an explicit partial-apply response after an earlier write succeeds without verification", async () => {
+    mocks.saveProvisioningPermissions.mockRejectedValue(new Error("database unavailable"));
+
+    const response = await fetch(`${base}/bot-control`, {
+      ...post(botControlPayload()),
+      method: "PUT",
+      headers: { "content-type": "application/json", "x-csrf-token": "csrf" },
+    });
+
+    expect(response.status).toBe(207);
+    expect(await response.json()).toEqual({
+      partialApply: true,
+      verificationPanelPublished: false,
+      message: expect.stringContaining("aplicată doar parțial"),
+    });
+    expect(mocks.saveChannelConfig).toHaveBeenCalledOnce();
+    expect(mocks.saveProvisioningPermissions).toHaveBeenCalledOnce();
+    expect(mocks.saveAllianceRecruitmentText).not.toHaveBeenCalled();
+  });
+
+  it("returns the ordinary error when the first bot-control write fails", async () => {
+    mocks.saveChannelConfig.mockRejectedValue(new Error("database unavailable"));
+
+    const response = await fetch(`${base}/bot-control`, {
+      ...post(botControlPayload()),
+      method: "PUT",
+      headers: { "content-type": "application/json", "x-csrf-token": "csrf" },
+    });
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).not.toHaveProperty("partialApply");
+    expect(mocks.saveChannelConfig).toHaveBeenCalledOnce();
+    expect(mocks.saveProvisioningPermissions).not.toHaveBeenCalled();
   });
 
   it("does not let the bot-control page change the separate gameplay pause state", async () => {

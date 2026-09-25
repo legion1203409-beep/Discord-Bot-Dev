@@ -8,6 +8,7 @@ import {
   MessageFlags,
   PermissionFlagsBits,
   type ButtonInteraction,
+  type Message,
 } from "discord.js";
 import { loadVerificationConfig, saveVerificationConfig, type VerificationConfig } from "./db";
 import { normalizeMessageImageUrl, publicMessageImageUrl } from "./message-media";
@@ -75,33 +76,164 @@ export function verificationPanel(config: VerificationConfig) {
   };
 }
 
+export class VerificationPanelPersistenceError extends Error {
+  constructor(public readonly publishedConfig: VerificationConfig, options?: ErrorOptions) {
+    super("Verification panel was published but its configuration could not be persisted.", options);
+    this.name = "VerificationPanelPersistenceError";
+  }
+}
+
+const VERIFICATION_PANEL_RECONCILE_PAGE_SIZE = 100;
+const VERIFICATION_PANEL_RECONCILE_MAX_MESSAGES = 500;
+const verificationPanelLocks = new Map<string, Promise<void>>();
+
+async function withVerificationPanelLock<T>(key: string, operation: () => Promise<T>): Promise<T> {
+  const previous = verificationPanelLocks.get(key) ?? Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => { release = resolve; });
+  verificationPanelLocks.set(key, current);
+  await previous;
+  try {
+    return await operation();
+  } finally {
+    release();
+    if (verificationPanelLocks.get(key) === current) verificationPanelLocks.delete(key);
+  }
+}
+
+function isVerificationPanelMessage(message: Message, botUserId: string): boolean {
+  return message.author.id === botUserId
+    && message.components.some((row) => "components" in row && row.components.some(
+      (component) => "customId" in component && component.customId === "verification_start",
+    ));
+}
+
+function verificationPanelReconciliationError(reason: string): Error {
+  return new Error(
+    `Nu pot verifica în siguranță dacă panoul de verificare există deja (${reason}). Verifică permisiunea Read Message History și panourile existente, apoi reîncearcă; nu a fost trimis un panou nou.`,
+  );
+}
+
+function discordErrorCode(error: unknown): number | null {
+  if (typeof error !== "object" || error === null || !("code" in error)) return null;
+  const code = Number((error as { code: unknown }).code);
+  return Number.isFinite(code) ? code : null;
+}
+
+function isOlderDiscordMessage(candidate: Message, current: Message): boolean {
+  if (candidate.createdTimestamp !== current.createdTimestamp) {
+    return candidate.createdTimestamp < current.createdTimestamp;
+  }
+  try {
+    return BigInt(candidate.id) < BigInt(current.id);
+  } catch {
+    return false;
+  }
+}
+
+type VerificationPanelHistoryChannel = {
+  messages: {
+    fetch(options: { limit: number; before?: string }): Promise<{
+      size: number;
+      values(): IterableIterator<Message>;
+    }>;
+  };
+};
+
+async function findExistingVerificationPanel(
+  channel: VerificationPanelHistoryChannel,
+  botUserId: string,
+): Promise<Message | null> {
+  const found: Message[] = [];
+  let scanned = 0;
+  let before: string | undefined;
+  while (true) {
+    const limit = Math.min(VERIFICATION_PANEL_RECONCILE_PAGE_SIZE, VERIFICATION_PANEL_RECONCILE_MAX_MESSAGES - scanned);
+    let page;
+    try {
+      page = await channel.messages.fetch({ limit, ...(before ? { before } : {}) });
+    } catch {
+      throw verificationPanelReconciliationError("fetching channel history failed");
+    }
+    const messages = [...page.values()];
+    for (const message of messages) {
+      if (isVerificationPanelMessage(message, botUserId)) {
+        found.push(message);
+        if (found.length > 1) {
+          throw verificationPanelReconciliationError("multiple bot-authored verification panels were found");
+        }
+      }
+    }
+
+    scanned += messages.length;
+    if (messages.length < limit) return found[0] ?? null;
+    if (scanned >= VERIFICATION_PANEL_RECONCILE_MAX_MESSAGES) {
+      throw verificationPanelReconciliationError("channel history exceeds the safe scan limit");
+    }
+
+    const oldest = messages.reduce((oldestMessage, message) =>
+      isOlderDiscordMessage(message, oldestMessage) ? message : oldestMessage,
+    );
+    if (oldest.id === before) {
+      throw verificationPanelReconciliationError("channel history pagination did not advance");
+    }
+    before = oldest.id;
+  }
+}
+
 export async function publishVerificationPanel(client: Client, guildId: string, input: VerificationConfig): Promise<VerificationConfig> {
   const config = normalizeVerificationConfig(input);
   if (!config.enabled) return config;
   if (!config.channelId || !config.roleId) throw new Error("Configurează canalul și rolul pentru verificare.");
 
-  const guild = await client.guilds.fetch({ guild: guildId, force: true });
-  const channel = await guild.channels.fetch(config.channelId);
-  if (!channel?.isTextBased() || !("send" in channel)) throw new Error("Canalul de verificare nu este un canal text.");
-
-  const payload = verificationPanel(config);
-  let messageId = config.panelMessageId;
-  if (messageId && "messages" in channel) {
-    try {
-      const message = await channel.messages.fetch(messageId);
-      await message.edit(payload);
-    } catch {
-      messageId = "";
+  return withVerificationPanelLock(`${guildId}:${config.channelId}`, async () => {
+    const botUserId = client.user?.id;
+    if (!botUserId) {
+      throw verificationPanelReconciliationError("the bot identity is unavailable");
     }
-  }
-  if (!messageId) {
-    const message = await channel.send(payload);
-    messageId = message.id;
-  }
+    const guild = await client.guilds.fetch({ guild: guildId, force: true });
+    const channel = await guild.channels.fetch(config.channelId);
+    if (!channel?.isTextBased() || !("send" in channel) || !("messages" in channel)) {
+      throw new Error("Canalul de verificare nu este un canal text cu istoric de mesaje accesibil.");
+    }
 
-  const saved = { ...config, panelMessageId: messageId };
-  await saveVerificationConfig(guildId, saved);
-  return saved;
+    const payload = verificationPanel(config);
+    let existingPanel: Message | null = null;
+    if (config.panelMessageId) {
+      try {
+        const savedMessage = await channel.messages.fetch(config.panelMessageId);
+        if (isVerificationPanelMessage(savedMessage, botUserId)) existingPanel = savedMessage;
+      } catch (error) {
+        if (discordErrorCode(error) !== 10008) {
+          throw verificationPanelReconciliationError("the saved panel message could not be checked");
+        }
+      }
+    }
+    if (!existingPanel) {
+      existingPanel = await findExistingVerificationPanel(channel, botUserId);
+    }
+
+    let messageId: string;
+    if (existingPanel) {
+      try {
+        await existingPanel.edit(payload);
+      } catch {
+        throw verificationPanelReconciliationError("the existing bot-authored panel could not be edited");
+      }
+      messageId = existingPanel.id;
+    } else {
+      const message = await channel.send(payload);
+      messageId = message.id;
+    }
+
+    const saved = { ...config, panelMessageId: messageId };
+    try {
+      await saveVerificationConfig(guildId, saved);
+    } catch (error) {
+      throw new VerificationPanelPersistenceError(saved, { cause: error });
+    }
+    return saved;
+  });
 }
 
 export async function verifyMember(client: Client, guildId: string, userId: string): Promise<"verified" | "already_verified"> {

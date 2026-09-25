@@ -30,14 +30,14 @@ async function syncRule(
   existingRules: Awaited<ReturnType<Guild["autoModerationRules"]["fetch"]>>,
   desired: NativeRuleOptions | null,
   managedName?: string,
-): Promise<void> {
+): Promise<"synced" | "conflict"> {
   const existing = existingRules.find((rule) => rule.name === (desired?.name ?? managedName ?? ""));
 
   if (!desired) {
     if (existing) {
       await guild.autoModerationRules.delete(existing, "Protecția globală este dezactivată");
     }
-    return;
+    return "synced";
   }
 
   // Discord permits only one Spam rule and a small number of rules per
@@ -50,7 +50,7 @@ async function syncRule(
       { guildId: guild.id, triggerType: desired.triggerType, ruleId: conflictingRule.id },
       "Native AutoMod rule skipped because Discord already has a rule of this type",
     );
-    return;
+    return "conflict";
   }
 
   const options = {
@@ -68,6 +68,7 @@ async function syncRule(
   } else {
     await guild.autoModerationRules.create(options);
   }
+  return "synced";
 }
 
 /**
@@ -80,11 +81,11 @@ export async function syncNativeAutoMod(
   client: Client,
   guildId: string,
   config: ModerationConfig,
-): Promise<void> {
+): Promise<"synced" | "missing_permission" | "conflict"> {
   const guild = client.guilds.cache.get(guildId) ?? await client.guilds.fetch(guildId);
   if (!await hasManageGuild(guild)) {
     logger.warn({ guildId }, "Native AutoMod skipped — bot lacks Manage Server");
-    return;
+    return "missing_permission";
   }
 
   const rules = await guild.autoModerationRules.fetch();
@@ -93,7 +94,7 @@ export async function syncNativeAutoMod(
     await syncRule(guild, rules, null, MENTION_RULE_NAME);
     await syncRule(guild, rules, null, KEYWORD_RULE_NAME);
     logger.info({ guildId }, "Native Discord AutoMod disabled — protection category is off");
-    return;
+    return "synced";
   }
   const nativeSpamEnabled = config.antiSpam.enabled;
   const words = config.autoMod.enabled && config.autoMod.wordFilter.enabled
@@ -103,18 +104,19 @@ export async function syncNativeAutoMod(
       .slice(0, 1000)
     : [];
 
-  await syncRule(guild, rules, nativeSpamEnabled ? {
+  const spamResult = await syncRule(guild, rules, nativeSpamEnabled ? {
     name: SPAM_RULE_NAME,
     triggerType: AutoModerationRuleTriggerType.Spam,
   } : null, SPAM_RULE_NAME);
-  await syncRule(guild, rules, nativeSpamEnabled ? {
+  const mentionResult = await syncRule(guild, rules, nativeSpamEnabled ? {
     name: MENTION_RULE_NAME,
     triggerType: AutoModerationRuleTriggerType.MentionSpam,
     triggerMetadata: { mentionTotalLimit: 5 },
   } : null, MENTION_RULE_NAME);
 
+  let keywordResult: "synced" | "conflict" = "synced";
   if (words.length > 0) {
-    await syncRule(guild, rules, {
+    keywordResult = await syncRule(guild, rules, {
       name: KEYWORD_RULE_NAME,
       triggerType: AutoModerationRuleTriggerType.Keyword,
       triggerMetadata: { keywordFilter: words },
@@ -129,8 +131,10 @@ export async function syncNativeAutoMod(
     }
   }
 
+  const status = [spamResult, mentionResult, keywordResult].includes("conflict") ? "conflict" : "synced";
   logger.info(
-    { guildId, nativeRules: words.length > 0 ? 3 : 2 },
-    "Native Discord AutoMod synchronized",
+    { guildId, nativeRules: words.length > 0 ? 3 : 2, status },
+    status === "synced" ? "Native Discord AutoMod synchronized" : "Native Discord AutoMod partially synchronized",
   );
+  return status;
 }

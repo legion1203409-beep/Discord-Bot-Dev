@@ -4,14 +4,14 @@
 - [Ash Shield own HP pool](shield-own-hp-pool.md) — shield state lives in TWO places (participant column + boss state map); mechanic changes must hit both.
 - [Boss combat path is separate](boss-combat-path-separate.md) — bosses use handleFinalBoss (not doCombat); crit/effects/reward-mults must be wired in there + both scheduler flee-reward paths or they silently don't apply to bosses.
 - [drizzle push blocked](drizzle-push-blocked.md) — db push is interactive; unrelated destructive drift blocks it. Apply additive columns via ALTER TABLE ... ADD COLUMN IF NOT EXISTS + edit schema file.
-- [Publish DB diff drops prod columns](publish-db-diff-drops-prod-columns.md) — publish diffs the dev DATABASE vs prod; prod-only columns get dropped (prestige wipe). Always push-force dev DB after schema changes.
+- [Publish DB diff drops prod columns](publish-db-diff-drops-prod-columns.md) — compare dev DB with prod before publishing; inspect raw SQL even if the diff claims no data loss.
 - [Final boss reward auth](final-boss-auth.md) — reward buttons tied to an event must re-check active+not-expired+participant+isAlive server-side; stale button messages otherwise let non-eligible users claim.
 - [Drizzle tx return commits](drizzle-tx-return-commits.md) — returning null from db.transaction COMMITS; guard failures must throw a sentinel to roll back earlier deductions.
 - [Escalating upgrade guard](escalating-upgrade-guard.md) — tier-priced upgrades must guard UPDATE...WHERE on expectedLevel, not just balance, or concurrent clicks double-upgrade at the cheap tier.
 - [undici discord.js compat](undici-discordjs-compat.md) — pin undici override to ^6.x (not >=6.27.0); undici 8.x breaks discord.js REST via Symbol(sensitiveHeaders) in Headers ctor.
 - [Discord interaction defer](discord-interaction-defer.md) — handlers doing DB/network work must deferReply/deferUpdate first or prod DB latency causes 10062; bot is prod-only so it's invisible in dev.
 - [Discord dispatcher must be fire-and-forget](discord-dispatcher-pattern.md) — interactionCreate must dispatch handlers with void, not await; sequential await causes 10062 under concurrent clicks.
-- [api-server is /api-only](api-server-is-api-only.md) — don't serve the status SPA from api-server; status is a separate web artifact on "/", else GET /api 500s via a broken catch-all.
+- [api-server is /api-only](api-server-is-api-only.md) — don't serve the status SPA from api-server; answer /api with 200 for artifact probes, while unknown routes remain 404.
 - [Discord embed field markdown](discord-embed-field-markdown.md) — embed field NAMES render markdown literally (raw `**`); use plain dividers there, keep bold for description/value only.
 - [Delayed window.open popup-block](delayed-window-open-popup-block.md) — click→animate→open: open about:blank synchronously on click (opener=null, no noopener flag), set location after delay.
 - [Locked chest race guard](locked-chest-race-guard.md) — consumePlayerKey is atomic (WHERE key>=1); but two key-holders can both pass claimedChests.has() before either adds — fix: consume first, then check+add to claimedChests, refund on collision.
@@ -56,7 +56,7 @@
 - [Moderation config ETag retries](moderation-config-etag-retry.md) — protection saves must refetch and reapply the user's change after a stale-version conflict.
 - [Atomic protection toggles](atomic-protection-toggles.md) — dashboard toggles must mutate one protection key server-side, not PUT a stale full config snapshot.
 - [AOS animation ownership](aos-animation-ownership.md) — elements using data-aos must not also have a competing CSS animation that owns opacity or transform.
-- [Bot-control round trips](bot-control-round-trips.md) — every GET bot-control value must be accepted unchanged by PUT; schedule changes must restart the active guild scheduler.
+- [Bot-control round trips](bot-control-round-trips.md) — GET→PUT must round-trip; live caches refresh, and partial Discord publication must never duplicate a verification panel on retry.
 - [Provisioning permission language](bot-provisioning-permission-copy.md) — Manage Permissions is not a standalone Discord permission; channel overwrites use Manage Channels and member access is configured per category.
 - [Discord overwrite preservation](discord-acl-preservation.md) — edit only managed permission bits; replacing an overwrite set destroys unrelated server access.
 - [Wouter query navigation](wouter-query-navigation.md) — components tracking query-only tabs need `useSearch`; `useLocation` alone won't refresh active navigation markers.

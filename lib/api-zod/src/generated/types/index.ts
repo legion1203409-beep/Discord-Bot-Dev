@@ -6,6 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './botControlPartialApplyResponse';
+export * from './botControlPartialApplyResponseVerification';
+export * from './botControlResponse';
+export * from './botControlSettings';
 export * from './healthStatus';
 export * from './healthStatusOracleReplyMode';
 export * from './healthStatusOracleReplyReason';
@@ -15,6 +19,8 @@ export * from './moderationCommandInputType';
 export * from './moderationCommandResult';
 export * from './moderationConfig';
 export * from './moderationConfigResponse';
+export * from './moderationConfigResponseNativeAutoMod';
+export * from './moderationConfigResponseNativeAutoModStatus';
 export * from './moderationConfigResponseNotification';
 export * from './moderationConfigResponseNotificationStatus';
 export * from './moderationDiscordCallbackParams';

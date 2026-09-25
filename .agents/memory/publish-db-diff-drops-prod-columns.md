@@ -20,3 +20,14 @@ columns), sync the dev DB before the user publishes:
 or ordering errors from drift, dev data is disposable — TRUNCATE/DROP the
 drifted dev tables and re-run push-force. Verify parity with an
 information_schema column diff between dev and prod before declaring it safe.
+
+Inspect the raw statements in a pending publish diff, not only its safety
+flags. A diff can report `hasStructuralDataLoss: false` and empty removal lists
+while its statements still include `DROP TABLE ... CASCADE`.
+
+**Why:** A summary flag concealed destructive SQL when production-only tables
+were absent from development.
+
+**How to apply:** Before recommending publish, review every SQL statement for
+DROP/TRUNCATE operations. Reconcile missing development schema additively,
+then recompute the diff until it contains no unintended destructive statements.

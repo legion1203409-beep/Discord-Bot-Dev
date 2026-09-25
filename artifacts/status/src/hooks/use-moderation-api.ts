@@ -762,16 +762,19 @@ export function useModerationConfig(guildId: string | null) {
 }
 
 export function useGameplayState(guildId: string | null) {
-  const [paused, setPaused] = useState(false);
+  const [paused, setPaused] = useState<boolean | null>(null);
+  const [pausedGuildId, setPausedGuildId] = useState<string | null>(null);
   const [loading, setLoading] = useState(Boolean(guildId));
   const [error, setError] = useState<Error | null>(null);
   const requestId = useRef(0);
+  const currentGuildId = useRef(guildId);
 
   const refetch = useCallback(async () => {
     const requestedGuildId = guildId;
     const thisRequest = ++requestId.current;
+    setPaused(null);
+    setPausedGuildId(null);
     if (!requestedGuildId) {
-      setPaused(false);
       setLoading(false);
       setError(null);
       return;
@@ -780,30 +783,184 @@ export function useGameplayState(guildId: string | null) {
     setError(null);
     try {
       const result = await apiFetch<{ paused: boolean }>(`/guilds/${requestedGuildId}/gameplay-state`);
-      if (requestId.current === thisRequest) setPaused(result.paused);
+      if (typeof result?.paused !== "boolean") {
+        throw new Error("Răspunsul nu conține o stare validă a jocului.");
+      }
+      if (requestId.current === thisRequest && currentGuildId.current === requestedGuildId) {
+        setPaused(result.paused);
+        setPausedGuildId(requestedGuildId);
+      }
     } catch (err: any) {
-      if (requestId.current === thisRequest) setError(err instanceof Error ? err : new Error("Nu s-a putut încărca starea jocului."));
+      if (requestId.current === thisRequest && currentGuildId.current === requestedGuildId) {
+        setPaused(null);
+        setPausedGuildId(null);
+        setError(err instanceof Error ? err : new Error("Nu s-a putut încărca starea jocului."));
+      }
     } finally {
-      if (requestId.current === thisRequest) setLoading(false);
+      if (requestId.current === thisRequest && currentGuildId.current === requestedGuildId) setLoading(false);
     }
   }, [guildId]);
 
   useEffect(() => {
+    currentGuildId.current = guildId;
     void refetch();
   }, [refetch]);
 
   const update = useCallback(async (nextPaused: boolean) => {
     if (!guildId) throw new Error("Nu este selectat niciun server.");
+    if (pausedGuildId !== guildId || paused === null) {
+      throw new Error("Starea jocului nu este confirmată. Reîncarcă starea înainte de a o schimba.");
+    }
     const result = await apiFetch<{ paused: boolean }>(`/guilds/${guildId}/gameplay-state`, {
       method: "PUT",
       body: JSON.stringify({ paused: nextPaused }),
     });
+    if (typeof result?.paused !== "boolean") {
+      throw new Error("Răspunsul nu conține o stare validă a jocului.");
+    }
+    if (currentGuildId.current !== guildId) {
+      throw new Error("Serverul selectat s-a schimbat în timpul salvării stării jocului.");
+    }
     setPaused(result.paused);
+    setPausedGuildId(guildId);
     setError(null);
     return result.paused;
-  }, [guildId]);
+  }, [guildId, paused, pausedGuildId]);
 
-  return { paused, loading, error, update, refetch };
+  return {
+    paused: pausedGuildId === guildId ? paused : null,
+    loading,
+    error,
+    update,
+    refetch,
+  };
+}
+
+export interface PartialBotControlApplyResponse {
+  partialApply: true;
+  verificationPanelPublished?: boolean;
+  message?: string;
+  verification?: unknown;
+}
+
+export function isPartialBotControlApplyResponse(value: unknown): value is PartialBotControlApplyResponse {
+  return typeof value === "object" && value !== null &&
+    (value as { partialApply?: unknown }).partialApply === true;
+}
+
+export interface BotControlPanelRecovery {
+  message: string;
+  panelMessageId?: string;
+  requiresManualReconciliation: boolean;
+  manualReconciliationComplete: boolean;
+  storageUnavailable?: boolean;
+}
+
+const BOT_CONTROL_PANEL_RECOVERY_STORAGE_KEY = "moderation.botControlPanelRecovery.v1";
+
+function restoreBotControlPanelRecovery(): Map<string, BotControlPanelRecovery> {
+  const recovered = new Map<string, BotControlPanelRecovery>();
+  if (typeof window === "undefined") return recovered;
+  try {
+    const stored = window.sessionStorage.getItem(BOT_CONTROL_PANEL_RECOVERY_STORAGE_KEY);
+    if (!stored) return recovered;
+    const parsed = JSON.parse(stored) as Record<string, unknown>;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return recovered;
+    for (const [guildId, raw] of Object.entries(parsed)) {
+      if (!guildId || !raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+      const item = raw as {
+        panelMessageId?: unknown;
+        requiresManualReconciliation?: unknown;
+        manualReconciliationComplete?: unknown;
+      };
+      const panelMessageId = typeof item.panelMessageId === "string" ? item.panelMessageId.trim() : "";
+      const requiresManualReconciliation = item.requiresManualReconciliation === true;
+      const manualReconciliationComplete = item.manualReconciliationComplete === true;
+      if (!panelMessageId && !requiresManualReconciliation && !manualReconciliationComplete) continue;
+      recovered.set(guildId, {
+        message: panelMessageId
+          ? "ID-ul panoului publicat a fost recuperat din stocarea acestei sesiuni."
+          : "Discord a publicat panoul, dar ID-ul nu este disponibil; reconcilierea manuală este necesară.",
+        panelMessageId: panelMessageId || undefined,
+        requiresManualReconciliation,
+        manualReconciliationComplete,
+      });
+    }
+  } catch {
+    // Storage may be disabled or contain malformed data. The UI will fail
+    // closed if a subsequent partial publish cannot be persisted.
+  }
+  return recovered;
+}
+
+const botControlPanelRecoveryByGuild = restoreBotControlPanelRecovery();
+
+function persistBotControlPanelRecovery(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const persisted = Object.fromEntries(
+      [...botControlPanelRecoveryByGuild.entries()].map(([guildId, recovery]) => [
+        guildId,
+        {
+          ...(recovery.panelMessageId ? { panelMessageId: recovery.panelMessageId } : {}),
+          requiresManualReconciliation: recovery.requiresManualReconciliation,
+          manualReconciliationComplete: recovery.manualReconciliationComplete,
+        },
+      ]),
+    );
+    window.sessionStorage.setItem(BOT_CONTROL_PANEL_RECOVERY_STORAGE_KEY, JSON.stringify(persisted));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function storeBotControlPanelRecovery(
+  guildId: string,
+  recovery: BotControlPanelRecovery,
+): BotControlPanelRecovery {
+  botControlPanelRecoveryByGuild.set(guildId, recovery);
+  if (persistBotControlPanelRecovery()) return recovery;
+
+  for (const [storedGuildId, storedRecovery] of botControlPanelRecoveryByGuild) {
+    const storageUnavailable: BotControlPanelRecovery = {
+      ...storedRecovery,
+      message: "Nu s-a putut păstra recuperarea panoului în stocarea sesiunii. Reconciliază manual panoul înainte de reîncercare; reîncărcarea poate pierde ID-ul recuperat.",
+      requiresManualReconciliation: !storedRecovery.manualReconciliationComplete,
+      storageUnavailable: true,
+    };
+    botControlPanelRecoveryByGuild.set(storedGuildId, storageUnavailable);
+  }
+  return botControlPanelRecoveryByGuild.get(guildId)!;
+}
+
+export class BotControlPartialApplyError extends Error {
+  readonly verificationPanelPublished: boolean;
+  readonly panelMessageId?: string;
+
+  constructor(response: PartialBotControlApplyResponse, canonicalReloaded: boolean) {
+    const verificationPanelPublished = response.verificationPanelPublished === true;
+    const summary = verificationPanelPublished
+      ? "Panoul de verificare a fost publicat pe Discord, dar cererea nu a fost finalizată integral."
+      : "Serverul a raportat un rezultat parțial; configurația și efectele Discord trebuie verificate.";
+    const verification = response.verification;
+    const panelMessageId = verification && typeof verification === "object"
+      ? (verification as { panelMessageId?: unknown }).panelMessageId
+      : undefined;
+    const reloadMessage = canonicalReloaded
+      ? " Configurația canonică a fost reîncărcată."
+      : " Reîncărcarea configurației canonice a eșuat; ultima stare confirmată a fost păstrată.";
+    super([
+      summary,
+      verificationPanelPublished ? response.message : undefined,
+      reloadMessage,
+    ].filter(Boolean).join(" "));
+    this.verificationPanelPublished = verificationPanelPublished;
+    if (typeof panelMessageId === "string" && panelMessageId.trim()) {
+      this.panelMessageId = panelMessageId.trim();
+    }
+    this.name = "BotControlPartialApplyError";
+  }
 }
 
 export function useBotControl(guildId: string | null) {
@@ -811,6 +968,9 @@ export function useBotControl(guildId: string | null) {
   const [dataGuildId, setDataGuildId] = useState<string | null>(null);
   const [loading, setLoading] = useState(Boolean(guildId));
   const [error, setError] = useState<ApiError | null>(null);
+  const [panelRecovery, setPanelRecovery] = useState<BotControlPanelRecovery | null>(
+    () => guildId ? botControlPanelRecoveryByGuild.get(guildId) ?? null : null,
+  );
   const requestId = useRef(0);
   const currentGuildId = useRef(guildId);
 
@@ -821,31 +981,41 @@ export function useBotControl(guildId: string | null) {
     setDataGuildId(null);
     setError(null);
     setLoading(Boolean(guildId));
+    setPanelRecovery(guildId ? botControlPanelRecoveryByGuild.get(guildId) ?? null : null);
   }, [guildId]);
 
-  const fetchControl = useCallback(async () => {
+  const fetchControl = useCallback(async (preserveExistingOnError = false): Promise<BotControlConfig | null> => {
     const requestedGuildId = guildId;
     const thisRequest = ++requestId.current;
     if (!requestedGuildId) {
       setData(null);
       setDataGuildId(null);
       setLoading(false);
-      return;
+      return null;
     }
     setLoading(true);
     setError(null);
     try {
-      const response = await apiFetch<BotControlConfig>(`/guilds/${requestedGuildId}/bot-control`);
-      if (requestId.current === thisRequest && currentGuildId.current === requestedGuildId) {
-        setData(response);
-        setDataGuildId(requestedGuildId);
+      const response = await apiFetch<unknown>(`/guilds/${requestedGuildId}/bot-control`);
+      if (isPartialBotControlApplyResponse(response)) {
+        throw new Error("Reîncărcarea configurației Control Bot a returnat un rezultat parțial invalid.");
       }
+      if (requestId.current === thisRequest && currentGuildId.current === requestedGuildId) {
+        const canonical = response as BotControlConfig;
+        setData(canonical);
+        setDataGuildId(requestedGuildId);
+        return canonical;
+      }
+      return null;
     } catch (err: any) {
       if (requestId.current === thisRequest && currentGuildId.current === requestedGuildId) {
-        setData(null);
-        setDataGuildId(null);
+        if (!preserveExistingOnError) {
+          setData(null);
+          setDataGuildId(null);
+        }
         setError(err);
       }
+      return null;
     } finally {
       if (requestId.current === thisRequest && currentGuildId.current === requestedGuildId) setLoading(false);
     }
@@ -861,24 +1031,95 @@ export function useBotControl(guildId: string | null) {
     if (dataGuildId !== requestedGuildId || activeGuildId !== requestedGuildId) {
       throw new Error("Serverul selectat s-a schimbat. Reîncarcă setările înainte de salvare.");
     }
+    const pendingPanelRecovery = botControlPanelRecoveryByGuild.get(requestedGuildId);
+    if (pendingPanelRecovery?.requiresManualReconciliation) {
+      throw new Error("Salvarea este blocată: reconciliază manual în Discord panoul publicat fără ID înainte de a reîncerca.");
+    }
     const writeRequest = ++requestId.current;
     try {
       // Both fields are response-only. A provision response includes a summary
       // that the strict PUT schema explicitly rejects on the next edit.
-      const { discordLive: _discardedStatus, provisioning: _discardedProvisioning, ...payload } = value;
-      const saved = await apiFetch<BotControlConfig>(`/guilds/${requestedGuildId}/bot-control`, {
+      const payloadSource = pendingPanelRecovery?.panelMessageId
+        ? {
+            ...value,
+            verification: {
+              ...value.verification,
+              panelMessageId: pendingPanelRecovery.panelMessageId,
+            },
+          }
+        : value;
+      const { discordLive: _discardedStatus, provisioning: _discardedProvisioning, ...payload } = payloadSource;
+      const result = await apiFetch<unknown>(`/guilds/${requestedGuildId}/bot-control`, {
         method: "PUT",
         body: JSON.stringify(payload),
       });
+      if (isPartialBotControlApplyResponse(result)) {
+        if (result.verificationPanelPublished === true) {
+          const responseVerification = result.verification && typeof result.verification === "object"
+            ? result.verification as { panelMessageId?: unknown }
+            : null;
+          const responsePanelId = typeof responseVerification?.panelMessageId === "string"
+            ? responseVerification.panelMessageId.trim()
+            : "";
+          const submittedPanelId = typeof payload.verification?.panelMessageId === "string"
+            ? payload.verification.panelMessageId.trim()
+            : "";
+          const panelMessageId = responsePanelId || submittedPanelId || pendingPanelRecovery?.panelMessageId;
+          const recoveredPanel: BotControlPanelRecovery = {
+            message: "",
+            panelMessageId,
+            requiresManualReconciliation: !panelMessageId,
+            manualReconciliationComplete: false,
+          };
+          const storedRecovery = storeBotControlPanelRecovery(requestedGuildId, recoveredPanel);
+          if (currentGuildId.current === requestedGuildId && activeGuildId === requestedGuildId) {
+            setPanelRecovery(storedRecovery);
+          }
+        }
+        if (requestId.current !== writeRequest || currentGuildId.current !== requestedGuildId || activeGuildId !== requestedGuildId) {
+          throw new Error("Serverul selectat s-a schimbat în timpul salvării.");
+        }
+        const canonical = await fetchControl(true);
+        if (currentGuildId.current !== requestedGuildId || activeGuildId !== requestedGuildId) {
+          throw new Error("Serverul selectat s-a schimbat în timpul reîncărcării configurației.");
+        }
+        const partialError = new BotControlPartialApplyError(result, canonical !== null);
+        if (result.verificationPanelPublished === true) {
+          const previousRecovery = botControlPanelRecoveryByGuild.get(requestedGuildId);
+          if (previousRecovery) {
+            const updatedRecovery = { ...previousRecovery, message: partialError.message };
+            const storedRecovery = storeBotControlPanelRecovery(requestedGuildId, updatedRecovery);
+            setPanelRecovery(storedRecovery);
+          }
+        }
+        throw partialError;
+      }
       if (requestId.current !== writeRequest || currentGuildId.current !== requestedGuildId || activeGuildId !== requestedGuildId) {
         throw new Error("Serverul selectat s-a schimbat în timpul salvării.");
       }
+      const saved = result as BotControlConfig;
       setData(saved);
       setDataGuildId(requestedGuildId);
+      botControlPanelRecoveryByGuild.delete(requestedGuildId);
+      persistBotControlPanelRecovery();
+      setPanelRecovery(null);
       return saved;
     } catch (err) {
       throw err;
     }
+  };
+
+  const confirmPanelReconciliation = () => {
+    if (!guildId) return;
+    const current = botControlPanelRecoveryByGuild.get(guildId);
+    if (!current?.requiresManualReconciliation) return;
+    const reconciled = {
+      ...current,
+      requiresManualReconciliation: false,
+      manualReconciliationComplete: true,
+    };
+    const storedRecovery = storeBotControlPanelRecovery(guildId, reconciled);
+    setPanelRecovery(storedRecovery);
   };
 
   const provisionChannels = async (
@@ -908,6 +1149,8 @@ export function useBotControl(guildId: string | null) {
     loading: loading || Boolean(guildId && dataGuildId !== guildId),
     error,
     update,
+    panelRecovery,
+    confirmPanelReconciliation,
     provisionChannels,
     refetch: fetchControl,
   };

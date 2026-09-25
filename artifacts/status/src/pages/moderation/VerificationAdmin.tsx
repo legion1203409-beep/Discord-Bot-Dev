@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, CircleHelp, Loader2, RefreshCw, RotateCcw, Save, Search, ShieldCheck, Users } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { ImageField } from "../../components/moderation/ImageField";
@@ -8,6 +8,7 @@ import { Textarea } from "../../components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import {
   useActiveGuild,
+  BotControlPartialApplyError,
   useBotControl,
   useModerationMetadata,
   useSession,
@@ -33,7 +34,16 @@ function isTextChannel(type: number | string): boolean {
 
 export function VerificationAdminPage() {
   const { guildId } = useActiveGuild();
-  const { data, loading, error, update } = useBotControl(guildId);
+  const currentGuild = useRef(guildId);
+  currentGuild.current = guildId;
+  const {
+    data,
+    loading,
+    error,
+    update,
+    panelRecovery,
+    confirmPanelReconciliation,
+  } = useBotControl(guildId);
   const { data: metadata, refetch: refetchMetadata } = useModerationMetadata(guildId);
   const {
     data: verifiedMembersData,
@@ -45,12 +55,25 @@ export function VerificationAdminPage() {
   const { session } = useSession();
   const [draft, setDraft] = useState<BotControlConfig | null>(null);
   const [saving, setSaving] = useState(false);
+  const [partialApplyError, setPartialApplyError] = useState<{ guildId: string; message: string } | null>(null);
   const [inviteLoading, setInviteLoading] = useState(false);
   const [verificationSearch, setVerificationSearch] = useState("");
 
   useEffect(() => {
-    setDraft(data ? JSON.parse(JSON.stringify(data)) : null);
-  }, [data]);
+    if (!data) {
+      setDraft(null);
+      return;
+    }
+    // Do not replace an in-progress local draft when the save hook publishes
+    // its new canonical snapshot; a guild switch clears it above.
+    setDraft((current) => {
+      if (current) return current;
+      const nextDraft = JSON.parse(JSON.stringify(data)) as BotControlConfig;
+      const retainedPanelId = panelRecovery?.panelMessageId;
+      if (retainedPanelId) nextDraft.verification.panelMessageId = retainedPanelId;
+      return nextDraft;
+    });
+  }, [data, guildId, panelRecovery]);
 
   const hasUnsavedChanges = Boolean(
     data && draft && JSON.stringify(draft) !== JSON.stringify(data),
@@ -98,22 +121,73 @@ export function VerificationAdminPage() {
 
   const save = async () => {
     if (!draft || !hasUnsavedChanges) return;
+    if (panelRecovery?.requiresManualReconciliation) {
+      toast({
+        variant: "destructive",
+        title: "Salvarea este blocată",
+        description: "Identificatorul panoului publicat nu este disponibil. Reconciliază manual panoul din Discord înainte de a reîncerca.",
+      });
+      return;
+    }
+    const submittedDraft = JSON.parse(JSON.stringify(draft)) as BotControlConfig;
+    const submittedGuild = guildId;
+    if (!submittedGuild) return;
     setSaving(true);
     try {
-      await update({
-        ...draft,
-        channels: Object.fromEntries(Object.entries(draft.channels).filter(([, value]) => value)),
+      const saved = await update({
+        ...submittedDraft,
+        channels: Object.fromEntries(Object.entries(submittedDraft.channels).filter(([, value]) => value)),
       });
+      setDraft((current) => {
+        if (!current) return saved;
+        // A user may continue editing while the request is in flight. Adopt
+        // the server's canonical values, then keep only edits made since submit.
+        const keepNewerEdits = (before: any, after: any, canonical: any): any => {
+          if (JSON.stringify(before) === JSON.stringify(after)) return canonical;
+          if (
+            before && after && canonical &&
+            typeof before === "object" && typeof after === "object" && typeof canonical === "object" &&
+            !Array.isArray(before) && !Array.isArray(after) && !Array.isArray(canonical)
+          ) {
+            const merged = { ...canonical };
+            for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+              if (JSON.stringify(before[key]) !== JSON.stringify(after[key])) {
+                merged[key] = keepNewerEdits(before[key], after[key], canonical[key]);
+              }
+            }
+            return merged;
+          }
+          return after;
+        };
+        return keepNewerEdits(submittedDraft, current, saved);
+      });
+      setPartialApplyError((current) => current?.guildId === submittedGuild ? null : current);
       toast({
         title: "Verificarea a fost salvată",
         description: "Configurația Discord și asocierea cu site-ul sunt persistente.",
       });
     } catch (saveError) {
-      toast({
-        variant: "destructive",
-        title: "Salvarea a eșuat",
-        description: saveError instanceof Error ? saveError.message : "Încearcă din nou.",
-      });
+      if (currentGuild.current !== submittedGuild) return;
+      if (saveError instanceof BotControlPartialApplyError) {
+        if (!saveError.verificationPanelPublished) {
+          setPartialApplyError({ guildId: submittedGuild, message: saveError.message });
+        } else {
+          setPartialApplyError((current) => current?.guildId === submittedGuild ? null : current);
+        }
+        toast({
+          variant: "destructive",
+          title: saveError.verificationPanelPublished
+            ? "Salvare parțială: panoul a fost publicat"
+            : "Rezultat parțial; efectele Discord nu sunt confirmate",
+          description: saveError.message,
+        });
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Salvarea a eșuat",
+          description: saveError instanceof Error ? saveError.message : "Încearcă din nou.",
+        });
+      }
     } finally {
       setSaving(false);
     }
@@ -138,6 +212,7 @@ export function VerificationAdminPage() {
     return [member.displayName, member.username, member.id]
       .some((value) => value.toLocaleLowerCase("ro").includes(normalizedSearch));
   });
+  const guildPartialApplyError = partialApplyError?.guildId === guildId ? partialApplyError : null;
 
   return (
     <div className={`bot-control-page verification-admin-page max-w-5xl space-y-6 animate-stagger-1 ${hasUnsavedChanges ? "pb-28" : ""}`}>
@@ -150,16 +225,88 @@ export function VerificationAdminPage() {
           <h1 className="mod-heading text-4xl">Verificare membri</h1>
           <p>Configurează verificarea Discord + site și urmărește membrii care au primit rolul.</p>
         </div>
-        <div className="bot-control-status" data-state={draft.verification.enabled ? "online" : "offline"}>
+        <div
+          className="bot-control-status"
+          data-state={data?.verification.enabled && data.discordLive !== false && !panelRecovery && !guildPartialApplyError ? "online" : "offline"}
+        >
           <span className="bot-control-status-dot" />
           <div>
-            <strong>{draft.verification.enabled ? "Verificarea este activă" : "În configurare"}</strong>
-            <small>{draft.verification.enabled ? "Panoul poate fi folosit pe Discord" : "Activează și salvează configurația"}</small>
+            <strong>
+              {!data
+                ? "Starea nu este confirmată"
+                : panelRecovery
+                  ? "Panou publicat; salvare parțială"
+                  : guildPartialApplyError
+                    ? "Aplicare parțială; efecte neconfirmate"
+                  : !data.verification.enabled
+                    ? "În configurare"
+                    : data.discordLive === false
+                      ? "Activată în configurație; botul Discord este offline"
+                      : "Verificarea este activă"}
+            </strong>
+            <small>
+              {!data
+                ? "Se încarcă starea salvată"
+                : panelRecovery || guildPartialApplyError
+                  ? panelRecovery?.message ?? guildPartialApplyError?.message
+                  : data.verification.enabled && data.discordLive === false
+                    ? "Activarea este persistentă, dar nu este live până când botul se reconectează"
+                    : draft.verification.enabled !== data.verification.enabled
+                  ? "Modificarea stării este nesalvată; statusul arată configurația de pe server"
+                  : data.verification.enabled
+                    ? data.discordLive === true
+                      ? "Panoul poate fi folosit pe Discord"
+                      : "Activarea este salvată; starea conexiunii Discord nu este confirmată"
+                    : "Activează și salvează configurația"}
+            </small>
           </div>
         </div>
       </header>
 
-      {!draft.verification.enabled && (
+      {(panelRecovery || guildPartialApplyError) && (
+        <div role="alert" className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
+          <strong>
+            {panelRecovery
+              ? "Panoul a fost publicat, dar salvarea configurației a fost parțială."
+              : "Serverul a raportat un rezultat parțial; efectele Discord nu sunt confirmate."}
+          </strong>
+          <p className="mt-1">{panelRecovery?.message ?? guildPartialApplyError?.message}</p>
+          {panelRecovery?.panelMessageId && !panelRecovery.storageUnavailable && (
+            <p className="mt-1">ID-ul panoului publicat ({panelRecovery.panelMessageId}) a fost păstrat pentru acest server și va fi folosit la reîncercare, evitând publicarea unui duplicat.</p>
+          )}
+          {panelRecovery?.panelMessageId && panelRecovery.storageUnavailable && (
+            <p className="mt-1">ID-ul panoului ({panelRecovery.panelMessageId}) este disponibil doar în memoria acestei pagini; stocarea sesiunii nu l-a putut păstra în siguranță după reîncărcare.</p>
+          )}
+          {panelRecovery?.requiresManualReconciliation && (
+            <div className="mt-2 space-y-2">
+              <p>
+                {panelRecovery.storageUnavailable
+                  ? "Stocarea sesiunii nu este disponibilă. Reconciliază manual panoul din Discord înainte de o nouă salvare; reîncărcarea poate pierde ID-ul de recuperare."
+                  : "ID-ul panoului publicat nu a fost returnat. Elimină sau reconciliază manual panoul din Discord înainte de o nouă salvare."}
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  if (!window.confirm("Ai reconciliat manual panoul publicat în Discord și este sigur să permiți reîncercarea?")) return;
+                  confirmPanelReconciliation();
+                }}
+              >
+                Confirmă reconcilierea manuală
+              </Button>
+            </div>
+          )}
+          {panelRecovery?.manualReconciliationComplete && (
+            <p className="mt-1">Reconcilierea manuală a fost confirmată; reîncercarea este permisă.</p>
+          )}
+          {!panelRecovery && guildPartialApplyError && (
+            <p className="mt-1">Starea configurației și efectele Discord pot fi incomplete; verifică-le înainte de o nouă salvare.</p>
+          )}
+        </div>
+      )}
+
+      {data && !data.verification.enabled && (
         <div className="bot-control-banner animate-stagger-3" role="status">
           <AlertTriangle className="shrink-0" size={15} />
           <div>
@@ -388,7 +535,7 @@ export function VerificationAdminPage() {
           <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
             {verifiedMembersError.message}
           </div>
-        ) : !draft.verification.roleId ? (
+        ) : !data?.verification.roleId ? (
           <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
             Configurează și salvează rolul de verificare pentru a vedea membrii.
           </div>
@@ -433,10 +580,10 @@ export function VerificationAdminPage() {
         <div className="mod-save-bar sticky bottom-3 z-20 flex w-full items-center justify-between gap-3">
           <div className="flex items-center gap-3 text-muted-foreground font-medium text-sm">
             <span className={`bot-control-save-dot ${saving ? "is-saving" : ""}`} />
-            <span>{saving ? "Se salvează verificarea…" : "Ai modificări nesalvate."}</span>
+            <span>{saving ? "Se salvează verificarea…" : (panelRecovery || guildPartialApplyError) ? "Rezultatul aplicării este parțial; verifică valorile serverului." : "Ai modificări nesalvate."}</span>
           </div>
           <div className="mod-save-actions ml-auto">
-            <Button onClick={() => void save()} disabled={saving} className="gap-2 px-8 font-semibold tracking-wide shadow-lg shadow-primary/20">
+            <Button onClick={() => void save()} disabled={saving || Boolean(panelRecovery?.requiresManualReconciliation)} className="gap-2 px-8 font-semibold tracking-wide shadow-lg shadow-primary/20">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               {saving ? "Se salvează…" : "Salvează verificarea"}
             </Button>

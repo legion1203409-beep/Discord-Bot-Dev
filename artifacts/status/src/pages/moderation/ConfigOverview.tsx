@@ -6,7 +6,7 @@ import { Switch } from "../../components/ui/switch";
 import { useToast } from "../../hooks/use-toast";
 import { protectionToggleToastOptions } from "../../lib/protection-toggle-feedback";
 
-type ToggleKey = "autoMod" | "antiRaid" | "antiSpam" | "antiFlood" | "suspiciousBehavior" | "ai" | "manualTools" | "cases" | "audit" | "escalation" | "embeds";
+type ToggleKey = "protection" | "autoMod" | "antiRaid" | "antiSpam" | "antiFlood" | "suspiciousBehavior" | "ai" | "manualTools" | "cases" | "audit" | "escalation" | "embeds";
 
 export function ConfigOverviewPage() {
   const { guildId } = useActiveGuild();
@@ -35,7 +35,7 @@ export function ConfigOverviewPage() {
     setSaving(key);
     try {
       const result = await updateProtectionToggle(key, enabled);
-      toast(protectionToggleToastOptions(enabled, result?.notification?.status));
+      toast(protectionToggleToastOptions(enabled, result?.notification?.status, undefined, result?.nativeAutoMod?.status));
     } catch (toggleError: any) {
       toast({ variant: "destructive", title: "Modificarea nu a fost salvată", description: toggleError?.message });
     } finally {
@@ -45,8 +45,20 @@ export function ConfigOverviewPage() {
 
   return (
     <div className="max-w-6xl space-y-6 animate-stagger-1">
-      <header className="animate-stagger-2"><h1 className="flex items-center gap-3 text-3xl font-bold mod-heading"><Settings className="h-8 w-8 text-primary" />Configurare</h1><p className="mt-2 text-muted-foreground">Activează fiecare modul independent sau deschide setările sale.</p></header>
-      {!master && <div role="status" className="animate-stagger-2 rounded-xl border border-primary/40 bg-primary/10 p-4 text-sm"><strong>Protecția globală este oprită.</strong> Modulele automate își păstrează setarea, dar sunt momentan în pauză. Le poți configura și activa pentru momentul repornirii.</div>}
+      <header className="animate-stagger-2"><h1 className="flex items-center gap-3 text-3xl font-bold mod-heading"><Settings className="h-8 w-8 text-primary" />Configurare</h1><p className="mt-2 text-muted-foreground">Activează fiecare modul independent sau deschide setările sale. Modulele automate necesită și protecția globală pornită.</p></header>
+      <div role="status" className={`animate-stagger-2 flex items-center justify-between gap-4 rounded-xl border p-4 text-sm ${master ? "border-primary/25 bg-primary/5" : "border-amber-500/40 bg-amber-500/10"}`}>
+        <div>
+          <strong>Protecția globală este {master ? "pornită" : "oprită"}.</strong>{" "}
+          {master ? "Modulele automate activate pot procesa evenimente în Discord." : "Modulele automate își păstrează setarea, dar nu procesează evenimente până când pornești protecția globală."}
+        </div>
+        <Switch
+          aria-label="Activează sau oprește protecția globală"
+          data-testid="switch-global-protection"
+          checked={master}
+          disabled={saving !== null}
+          onCheckedChange={(checked) => void toggle("protection", checked)}
+        />
+      </div>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 animate-stagger-3">
         {modules.map((module) => {
           const effective = module.enabled && (!module.dependent || master);

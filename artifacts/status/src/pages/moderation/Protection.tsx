@@ -37,6 +37,23 @@ export function ProtectionPage() {
 
   const initializedForId = React.useRef<string | null>(null);
   const protectionEnabled = form.watch("protectionEnabled");
+  const acceptSavedConfig = (config: any, submittedValues: z.infer<typeof protectionFormSchema>) => {
+    if (!config) throw new Error("Răspunsul de salvare nu conține configurația canonică.");
+    const canonicalValues = {
+      protectionEnabled: config.protection?.enabled ?? true,
+      antiSpamEnabled: config.antiSpam?.enabled ?? false,
+      antiFloodEnabled: config.antiFlood?.enabled ?? false,
+      suspiciousEnabled: config.suspiciousBehavior?.enabled ?? false,
+    };
+    const latestValues = form.getValues();
+    form.reset(canonicalValues);
+    (Object.keys(canonicalValues) as Array<keyof typeof canonicalValues>).forEach((key) => {
+      if (latestValues[key] !== submittedValues[key]) {
+        form.setValue(key, latestValues[key], { shouldDirty: true });
+      }
+    });
+  };
+
   useEffect(() => {
     if (data && initializedForId.current !== guildId) {
       initializedForId.current = guildId;
@@ -64,10 +81,12 @@ export function ProtectionPage() {
     });
     try {
       const saved = await update(buildConfig(data));
+      acceptSavedConfig(saved?.config, values);
       toast(configSaveToastOptions(
         saved?.notification?.status,
         "Setări salvate",
         "Configurația de protecție a fost actualizată.",
+        saved?.nativeAutoMod?.status,
       ));
     } catch (err: any) {
       if (err.message.includes("Conflict")) {
@@ -75,10 +94,12 @@ export function ProtectionPage() {
           const freshData = await refetch();
           if (freshData) {
             const saved = await update(buildConfig(freshData));
+            acceptSavedConfig(saved?.config, values);
             toast(configSaveToastOptions(
               saved?.notification?.status,
               "Setări salvate",
               "Configurația de protecție a fost actualizată.",
+              saved?.nativeAutoMod?.status,
             ));
             return;
           }

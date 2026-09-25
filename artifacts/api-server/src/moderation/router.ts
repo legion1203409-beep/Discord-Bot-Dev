@@ -201,6 +201,7 @@ import
 {
 
   DEFAULT_VERIFICATION_CONFIG,
+  VerificationPanelPersistenceError,
   normalizeVerificationConfig,
   publishVerificationPanel,
   verifyMember,
@@ -1379,6 +1380,76 @@ async function validateDailyStatsChannelTarget(guildId: string, channelId: strin
   }
 }
 
+async function validateBotControlChannelTargets(guildId: string, channels: ChannelConfig): Promise<void> {
+  const configuredTargets = Object.entries(channels).filter((entry): entry is [string, string] => Boolean(entry[1]));
+  if (!configuredTargets.length) return;
+
+  const client = getModerationClient();
+  if (!client?.isReady()) return;
+
+  const guild = client.guilds.cache?.get(guildId) ?? await client.guilds.fetch({ guild: guildId, force: true })
+    .catch(() => {
+      throw new ModerationAuthError(503, "Serverul Discord nu este disponibil.");
+    });
+  const botMember = guild.members.me ?? await guild.members.fetchMe().catch(() => null);
+  if (!botMember) throw new ModerationAuthError(503, "Membrii serverului Discord nu sunt disponibili.");
+
+  for (const [key, channelId] of configuredTargets) {
+    const channel = await guild.channels.fetch(channelId).catch(() => null);
+    if (!(channel instanceof TextChannel) || channel.guildId !== guildId) {
+      throw new ModerationAuthError(400, `Canalul configurat pentru ${key} nu este un canal text valid din acest server.`);
+    }
+
+    const permissions = channel.permissionsFor(botMember);
+    if (
+      !permissions?.has(PermissionFlagsBits.ViewChannel)
+      || !permissions.has(PermissionFlagsBits.SendMessages)
+      || !permissions.has(PermissionFlagsBits.EmbedLinks)
+    ) {
+      throw new ModerationAuthError(
+        403,
+        `Botul are nevoie de permisiunile View Channel, Send Messages și Embed Links în canalul ${key}.`,
+      );
+    }
+  }
+}
+
+async function validateMemberMessagesChannelTarget(
+  guildId: string,
+  gameplayConfig: z.infer<typeof botControlSchema>["gameplayConfig"],
+): Promise<void> {
+  const memberMessages = gameplayConfig.memberMessages;
+  if (!memberMessages.welcomeEnabled && !memberMessages.leaveEnabled) return;
+  if (!memberMessages.channelId) {
+    throw new ModerationAuthError(400, "Configurează un canal text pentru mesajele de bun venit și plecare.");
+  }
+
+  const client = getModerationClient();
+  if (!client?.isReady()) return;
+
+  const guild = client.guilds.cache?.get(guildId) ?? await client.guilds.fetch({ guild: guildId, force: true })
+    .catch(() => {
+      throw new ModerationAuthError(503, "Serverul Discord nu este disponibil.");
+    });
+  const channel = await guild.channels.fetch(memberMessages.channelId).catch(() => null);
+  if (!(channel instanceof TextChannel) || channel.guildId !== guildId) {
+    throw new ModerationAuthError(400, "Canalul mesajelor de bun venit și plecare nu este un canal text valid din acest server.");
+  }
+
+  const botMember = guild.members.me ?? await guild.members.fetchMe().catch(() => null);
+  const permissions = botMember ? channel.permissionsFor(botMember) : null;
+  if (
+    !permissions?.has(PermissionFlagsBits.ViewChannel)
+    || !permissions.has(PermissionFlagsBits.SendMessages)
+    || !permissions.has(PermissionFlagsBits.EmbedLinks)
+  ) {
+    throw new ModerationAuthError(
+      403,
+      "Botul are nevoie de permisiunile View Channel, Send Messages și Embed Links în canalul mesajelor de bun venit și plecare.",
+    );
+  }
+}
+
 
 async function validateEvidenceTargets(guildId: string, evidence: z.infer<typeof EvidenceSchema>): Promise<void> 
 {
@@ -2087,6 +2158,20 @@ async function notifyNewlyEnabledModules(
   return { status, modules: newlyEnabled.map((key) => protectionToggleLabels[key]) };
 }
 
+async function syncNativeAutoModForResponse(
+  guildId: string,
+  config: ModerationConfig,
+): Promise<{ status: "synced" | "bot_offline" | "missing_permission" | "conflict" | "failed" }> {
+  const client = getModerationClient();
+  if (!client?.isReady()) return { status: "bot_offline" };
+  try {
+    return { status: await syncNativeAutoMod(client, guildId, config) };
+  } catch (error) {
+    logger.warn({ error, guildId }, "Native Discord AutoMod synchronization failed after config save");
+    return { status: "failed" };
+  }
+}
+
 router.put("/guilds/:guildId/protection-toggle", asyncRoute(async (req, res) => {
   const guildId = parse(snowflake, req.params.guildId);
   const session = await sessionAndGuild(req, guildId, "config", true);
@@ -2106,16 +2191,12 @@ router.put("/guilds/:guildId/protection-toggle", asyncRoute(async (req, res) => 
     result.previousConfig,
     result.config,
   );
-  const client = getModerationClient();
-  if (client) {
-    void syncNativeAutoMod(client, guildId, result.config).catch((error) => {
-      logger.warn({ error, guildId }, "Native Discord AutoMod synchronization failed after protection toggle");
-    });
-  }
+  const nativeAutoMod = await syncNativeAutoModForResponse(guildId, result.config);
   res.set("Cache-Control", "no-store").set("ETag", `"${result.version}"`).json({
     config: result.config,
     version: result.version,
     notification,
+    nativeAutoMod,
   });
 }));
 
@@ -2203,15 +2284,11 @@ router.put("/guilds/:guildId/config", asyncRoute(async (req, res) => {
   }
   const result = await moderationStore.putConfig(guildId, config, session.userId, revision);
   const notification = await notifyNewlyEnabledModules(guildId, session.userId, previous.config, result.config);
-  const client = getModerationClient();
-  if (client) {
-    void syncNativeAutoMod(client, guildId, result.config).catch((error) => {
-      logger.warn({ error, guildId }, "Native Discord AutoMod synchronization failed after config save");
-    });
-  }
+  const nativeAutoMod = await syncNativeAutoModForResponse(guildId, result.config);
   res.set("Cache-Control", "no-store").set("ETag", `"${result.version}"`).json({
     ...result,
     notification,
+    nativeAutoMod,
     ...(activityLogProvisioning ? { activityLogProvisioning } : {}),
   });
 }));
@@ -2325,33 +2402,69 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   const channels: ChannelConfig = Object.fromEntries(
     Object.entries(value.channels).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
   ) as ChannelConfig;
+  await validateBotControlChannelTargets(guildId, channels);
+  await validateMemberMessagesChannelTarget(guildId, value.gameplayConfig);
+  const verification = normalizeVerificationConfig(value.verification);
+  const verificationRequested = Object.prototype.hasOwnProperty.call(req.body ?? {}, "verification");
+  let savedVerification = verification;
+  let verificationPanelPublished = false;
+  let anyWriteSucceeded = false;
+  if (verification.enabled && verificationRequested) {
+    if (!client?.isReady()) throw new ModerationAuthError(503, "Discord botul nu este conectat pentru publicarea panoului.");
+    // Publish before mutating the rest of the settings. A Discord failure must
+    // not leave the caller with a failed response after unrelated settings save.
+    try {
+      savedVerification = await publishVerificationPanel(client, guildId, verification);
+      verificationPanelPublished = true;
+      anyWriteSucceeded = true;
+    } catch (error) {
+      if (error instanceof VerificationPanelPersistenceError) {
+        res.status(207).json({
+          partialApply: true,
+          verificationPanelPublished: true,
+          verification: error.publishedConfig,
+          message: "Panoul Discord a fost publicat, dar setările de verificare nu au putut fi salvate.",
+        });
+        return;
+      }
+      throw error;
+    }
+  }
+
+  let gameplayConfig = value.gameplayConfig;
+  try {
   await saveChannelConfig(guildId, channels);
+  anyWriteSucceeded = true;
   await saveProvisioningPermissions(guildId, value.provisioningPermissions);
+  anyWriteSucceeded = true;
   await saveAllianceRecruitmentText(guildId, value.allianceRecruitmentText);
+  anyWriteSucceeded = true;
   const saveDailyStats = optionalExport(() => saveDailyStatsEmbedConfig);
-  if (saveDailyStats) await saveDailyStats(guildId, dailyStats);
+  if (saveDailyStats) {
+    await saveDailyStats(guildId, dailyStats);
+    anyWriteSucceeded = true;
+  }
   const saveInviteTracking = optionalExport(() => saveInviteTrackingConfig);
-  if (saveInviteTracking) await saveInviteTracking(guildId, inviteTracking);
+  if (saveInviteTracking) {
+    await saveInviteTracking(guildId, inviteTracking);
+    anyWriteSucceeded = true;
+  }
   await saveTicketConfig(guildId, tickets);
+  anyWriteSucceeded = true;
   await initGameplayConfig(guildId);
   const previousGameplayConfig = getGameplayConfig(guildId);
   // Pause/resume is controlled by the Dashboard endpoint. The bot-control
   // page edits timers and gameplay values, but must not silently re-pause a
   // guild when it submits a stale draft.
-  const gameplayConfig = await saveGuildGameplayConfig(guildId, {
+  gameplayConfig = await saveGuildGameplayConfig(guildId, {
     ...value.gameplayConfig,
     paused: previousGameplayConfig.paused,
   });
-  const verification = normalizeVerificationConfig(value.verification);
+  anyWriteSucceeded = true;
   const saveVerification = optionalExport(() => saveVerificationConfig);
-  if (saveVerification && Object.prototype.hasOwnProperty.call(req.body ?? {}, "verification")) {
+  if (saveVerification && verificationRequested && !verification.enabled) {
     await saveVerification(guildId, verification);
-  }
-  let savedVerification = verification;
-  if (verification.enabled && Object.prototype.hasOwnProperty.call(req.body ?? {}, "verification")) {
-    const client = getModerationClient();
-    if (!client) throw new ModerationAuthError(503, "Discord botul nu este disponibil pentru publicarea panoului.");
-    savedVerification = await publishVerificationPanel(client, guildId, verification);
+    anyWriteSucceeded = true;
   }
   await initChannelConfig(guildId);
   setTicketConfig(guildId, tickets);
@@ -2367,6 +2480,17 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
       startGuildScheduler(client, guildId);
     }
   }
+  } catch (error) {
+    if (!anyWriteSucceeded) throw error;
+    res.status(207).json({
+      partialApply: true,
+      verificationPanelPublished,
+      ...(verificationPanelPublished ? { verification: savedVerification } : {}),
+      message: "Cererea a fost aplicată doar parțial. Unele setări sau efecte din Discord nu au putut fi finalizate; verifică starea după reîncărcare.",
+    });
+    return;
+  }
+
   res.status(200).json({
     channels,
     allianceRecruitmentText: value.allianceRecruitmentText,

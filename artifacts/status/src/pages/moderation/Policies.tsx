@@ -33,6 +33,7 @@ export function PoliciesPage() {
         saved?.notification?.status,
         "Configurație salvată",
         "Politicile și escaladarea au fost actualizate.",
+        saved?.nativeAutoMod?.status,
       ));
     } catch (err: any) {
       if (err.message.includes("Conflict")) {

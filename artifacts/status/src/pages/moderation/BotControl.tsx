@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { ImageField } from "../../components/moderation/ImageField";
 import { DiscordEmojiText, EmojiField } from "../../components/moderation/EmojiField";
-import { useActiveGuild, useBotControl, useInviteStats, useModerationMetadata, useSession, type BotControlConfig, type ChannelPermissionConfig, type InviteStatsRange, type TicketFlowConfig } from "../../hooks/use-moderation-api";
+import { BotControlPartialApplyError, useActiveGuild, useBotControl, useInviteStats, useModerationMetadata, useSession, type BotControlConfig, type ChannelPermissionConfig, type InviteStatsRange, type TicketFlowConfig } from "../../hooks/use-moderation-api";
 import { rebaseDraftChanges } from "../../lib/utils";
 import { useToast } from "../../hooks/use-toast";
 import { useLocation, useSearch } from "wouter";
@@ -263,7 +263,15 @@ function renderAnnouncementTemplate(
 export function BotControlPage() {
   const [location, setLocation] = useLocation();
   const { guildId } = useActiveGuild();
-  const { data, loading, error, update, provisionChannels } = useBotControl(guildId);
+  const {
+    data,
+    loading,
+    error,
+    update,
+    provisionChannels,
+    panelRecovery,
+    confirmPanelReconciliation,
+  } = useBotControl(guildId);
   const [inviteRange, setInviteRange] = useState<InviteStatsRange>("7");
   const {
     data: inviteStats,
@@ -277,6 +285,7 @@ export function BotControlPage() {
   const { session } = useSession();
   const [draft, setDraft] = useState<BotControlConfig | null>(null);
   const [saving, setSaving] = useState(false);
+  const [partialApplyError, setPartialApplyError] = useState<{ guildId: string; message: string } | null>(null);
   const [provisioning, setProvisioning] = useState(false);
   const [provisionConfirmOpen, setProvisionConfirmOpen] = useState(false);
   const [selectedProvisioningCategories, setSelectedProvisioningCategories] = useState<string[]>(
@@ -320,10 +329,13 @@ export function BotControlPage() {
     }
     if (data && initializedGuild.current !== guildId) {
       initializedGuild.current = guildId;
-      setDraft(JSON.parse(JSON.stringify(data)));
+      const nextDraft = JSON.parse(JSON.stringify(data)) as BotControlConfig;
+      const retainedPanelId = panelRecovery?.panelMessageId;
+      if (retainedPanelId) nextDraft.verification.panelMessageId = retainedPanelId;
+      setDraft(nextDraft);
       setProvisioningPermissions(JSON.parse(JSON.stringify(data.provisioningPermissions ?? {})));
     }
-  }, [data, guildId]);
+  }, [data, guildId, panelRecovery]);
 
   useEffect(() => {
     if (requestedTab === "verification") {
@@ -619,7 +631,15 @@ export function BotControlPage() {
   };
 
   const save = async () => {
-    if (!currentDraft || !hasUnsavedChanges || saving || provisioning) return;
+    if (!guildId || !currentDraft || !hasUnsavedChanges || saving || provisioning) return;
+    if (panelRecovery?.requiresManualReconciliation) {
+      toast({
+        variant: "destructive",
+        title: "Salvarea este blocată",
+        description: "Identificatorul panoului publicat nu este disponibil. Reconciliază manual panoul din Discord înainte de a reîncerca.",
+      });
+      return;
+    }
     const submittedGuild = guildId;
     const submittedDraft = currentDraft;
     const submittedPermissions = provisioningPermissions;
@@ -651,6 +671,7 @@ export function BotControlPage() {
       setProvisioningPermissions((current) => rebaseDraftChanges(
         structuredClone(saved.provisioningPermissions ?? {}), submittedPermissions, current,
       ));
+      setPartialApplyError((current) => current?.guildId === submittedGuild ? null : current);
       toast(saved.discordLive
         ? {
             title: "Setările au fost salvate",
@@ -663,7 +684,22 @@ export function BotControlPage() {
           });
     } catch (saveError: any) {
       if (currentGuild.current !== submittedGuild) return;
-      toast({ variant: "destructive", title: "Salvarea a eșuat", description: saveError?.message ?? "Încearcă din nou." });
+      if (saveError instanceof BotControlPartialApplyError) {
+        if (!saveError.verificationPanelPublished) {
+          setPartialApplyError({ guildId: submittedGuild, message: saveError.message });
+        } else {
+          setPartialApplyError((current) => current?.guildId === submittedGuild ? null : current);
+        }
+        toast({
+          variant: "destructive",
+          title: saveError.verificationPanelPublished
+            ? "Salvare parțială: panoul a fost publicat"
+            : "Rezultat parțial; efectele Discord nu sunt confirmate",
+          description: saveError.message,
+        });
+      } else {
+        toast({ variant: "destructive", title: "Salvarea a eșuat", description: saveError?.message ?? "Încearcă din nou." });
+      }
     } finally {
       setSaving(false);
     }
@@ -818,6 +854,48 @@ export function BotControlPage() {
           >
             <CircleHelp size={13} /> Detalii
           </button>
+        </div>
+      )}
+      {(panelRecovery || partialApplyError?.guildId === guildId) && (
+        <div role="alert" className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
+          <strong>
+            {panelRecovery
+              ? "Panoul a fost publicat, dar salvarea configurației a fost parțială."
+              : "Serverul a raportat un rezultat parțial; efectele Discord nu sunt confirmate."}
+          </strong>
+          <p className="mt-1">{panelRecovery?.message ?? partialApplyError?.message}</p>
+          {panelRecovery?.panelMessageId && !panelRecovery.storageUnavailable && (
+            <p className="mt-1">ID-ul panoului publicat ({panelRecovery.panelMessageId}) a fost păstrat pentru acest server și va fi folosit la reîncercare, evitând publicarea unui duplicat.</p>
+          )}
+          {panelRecovery?.panelMessageId && panelRecovery.storageUnavailable && (
+            <p className="mt-1">ID-ul panoului ({panelRecovery.panelMessageId}) este disponibil doar în memoria acestei pagini; stocarea sesiunii nu l-a putut păstra în siguranță după reîncărcare.</p>
+          )}
+          {panelRecovery?.requiresManualReconciliation && (
+            <div className="mt-2 space-y-2">
+              <p>
+                {panelRecovery.storageUnavailable
+                  ? "Stocarea sesiunii nu este disponibilă. Reconciliază manual panoul din Discord înainte de o nouă salvare; reîncărcarea poate pierde ID-ul de recuperare."
+                  : "ID-ul panoului publicat nu a fost returnat. Elimină sau reconciliază manual panoul din Discord înainte de o nouă salvare."}
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  if (!window.confirm("Ai reconciliat manual panoul publicat în Discord și este sigur să permiți reîncercarea?")) return;
+                  confirmPanelReconciliation();
+                }}
+              >
+                Confirmă reconcilierea manuală
+              </Button>
+            </div>
+          )}
+          {panelRecovery?.manualReconciliationComplete && (
+            <p className="mt-1">Reconcilierea manuală a fost confirmată; reîncercarea este permisă.</p>
+          )}
+          {!panelRecovery && partialApplyError?.guildId === guildId && (
+            <p className="mt-1">Starea configurației și efectele Discord pot fi incomplete; verifică-le înainte de o nouă salvare.</p>
+          )}
         </div>
       )}
       <div className="animate-stagger-4">
@@ -2064,14 +2142,14 @@ export function BotControlPage() {
         <div className="mod-save-bar sticky bottom-3 z-20 flex w-full items-center justify-between gap-3">
           <div className="flex items-center gap-3 text-muted-foreground font-medium text-sm">
             <span className={`bot-control-save-dot ${saving ? "is-saving" : ""}`} />
-            <span>{saving ? "Se salvează setările…" : "Ai modificări nesalvate."}</span>
+            <span>{saving ? "Se salvează setările…" : (panelRecovery || partialApplyError?.guildId === guildId) ? "Rezultatul aplicării este parțial; verifică valorile serverului." : "Ai modificări nesalvate."}</span>
           </div>
           <div className="mod-save-actions ml-auto flex flex-wrap justify-end gap-2">
             <Button type="button" variant="secondary" onClick={openFlowTest} className="gap-2 font-medium tracking-wide">
               <PlayCircle className="h-4 w-4" />
               Testează fluxul
             </Button>
-            <Button onClick={() => void save()} disabled={saving} className="gap-2 px-8 font-semibold tracking-wide shadow-lg shadow-primary/20">
+            <Button onClick={() => void save()} disabled={saving || panelRecovery?.requiresManualReconciliation} className="gap-2 px-8 font-semibold tracking-wide shadow-lg shadow-primary/20">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               {saving ? "Se salvează…" : "Salvează controlul botului"}
             </Button>

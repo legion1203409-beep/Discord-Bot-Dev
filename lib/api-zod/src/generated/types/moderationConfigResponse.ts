@@ -6,11 +6,13 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ModerationConfig } from './moderationConfig';
+import type { ModerationConfigResponseNativeAutoMod } from './moderationConfigResponseNativeAutoMod';
 import type { ModerationConfigResponseNotification } from './moderationConfigResponseNotification';
 
 export interface ModerationConfigResponse {
   config: ModerationConfig;
   version: number;
   updatedAt?: Date | null;
+  nativeAutoMod?: ModerationConfigResponseNativeAutoMod;
   notification?: ModerationConfigResponseNotification;
 }

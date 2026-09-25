@@ -120,6 +120,29 @@ export interface ProtectionToggleInput {
   enabled: boolean;
 }
 
+/**
+ * Bot-control write payload. Nested settings are validated by the API; use the GET response as the round-trip payload.
+ */
+export interface BotControlSettings { [key: string]: unknown }
+
+/**
+ * Bot-control settings returned by GET or after a successful PUT.
+ */
+export interface BotControlResponse { [key: string]: unknown }
+
+/**
+ * Published verification settings, included only when the verification panel was published; retains panelMessageId when available.
+ */
+export type BotControlPartialApplyResponseVerification = { [key: string]: unknown };
+
+export interface BotControlPartialApplyResponse {
+  partialApply: true;
+  verificationPanelPublished: boolean;
+  /** Published verification settings, included only when the verification panel was published; retains panelMessageId when available. */
+  verification?: BotControlPartialApplyResponseVerification;
+  message: string;
+}
+
 export interface ModerationStorageUploadRequest {
   /**
      * @minLength 5
@@ -146,6 +169,21 @@ export interface ModerationStorageUploadResponse {
   metadata: ModerationStorageUploadRequest;
 }
 
+export type ModerationConfigResponseNativeAutoModStatus = typeof ModerationConfigResponseNativeAutoModStatus[keyof typeof ModerationConfigResponseNativeAutoModStatus];
+
+
+export const ModerationConfigResponseNativeAutoModStatus = {
+  synced: 'synced',
+  bot_offline: 'bot_offline',
+  missing_permission: 'missing_permission',
+  conflict: 'conflict',
+  failed: 'failed',
+} as const;
+
+export type ModerationConfigResponseNativeAutoMod = {
+  status: ModerationConfigResponseNativeAutoModStatus;
+};
+
 export type ModerationConfigResponseNotificationStatus = typeof ModerationConfigResponseNotificationStatus[keyof typeof ModerationConfigResponseNotificationStatus];
 
 
@@ -168,6 +206,7 @@ export interface ModerationConfigResponse {
   config: ModerationConfig;
   version: number;
   updatedAt?: string | null;
+  nativeAutoMod?: ModerationConfigResponseNativeAutoMod;
   notification?: ModerationConfigResponseNotification;
 }
 
