@@ -63,11 +63,45 @@ describe("buildDailyStatsEmbed", () => {
 
     expect(embed.title).toBe("Statistici Regatul Cenușii · 307");
     expect(embed.description).toContain("13 utilizatori");
-    expect(embed.fields).toHaveLength(8);
-    expect(embed.fields?.[0]).toMatchObject({ name: "Mesaje totale", value: "307", inline: true });
-    expect(embed.fields?.[6]?.name).toBe("Activitate recentă");
-    expect(embed.fields?.[6]?.value).toContain("09-18");
-    expect(embed.fields?.[7]?.name).toBe("Canale active");
-    expect(embed.fields?.[7]?.value).toContain("#general");
+    expect(embed.fields).toHaveLength(3);
+    expect(embed.fields?.[0]).toMatchObject({ name: "📊 Rezumat", inline: false });
+    expect(embed.fields?.[0]?.value).toContain("Mesaje totale: **307**");
+    expect(embed.fields?.[0]?.value).toContain("👥 Utilizatori unici: **13**");
+    expect(embed.fields?.[1]?.name).toBe("Activitate recentă");
+    expect(embed.fields?.[1]?.value).toContain("18/09: 307");
+    expect(embed.fields?.[1]?.value).not.toContain("```");
+    expect(embed.fields?.[1]?.value).not.toContain("█");
+    expect(embed.fields?.[2]?.name).toBe("Canale active");
+    expect(embed.fields?.[2]?.value).toContain("#general");
+    expect(embed.fields?.[2]?.value).toContain("124 mesaje");
+    expect(embed.fields?.[2]?.value).not.toContain("░");
+  });
+
+  it("splits unusually long custom metric labels without exceeding Discord field limits", () => {
+    const report: DailyStatsReport = {
+      guildId: "guild-1",
+      day: "2026-09-18",
+      metrics: { messages: 307, uniqueUsers: 13, boosts: 0, joins: 5, leaves: 5, peakVoice: 4 },
+      activity: [],
+      topChannels: [],
+    };
+    const longLabel = "x".repeat(256);
+    const config = {
+      ...DEFAULT_DAILY_STATS_EMBED_CONFIG,
+      metricLabels: {
+        messages: longLabel,
+        uniqueUsers: longLabel,
+        boosts: longLabel,
+        joins: longLabel,
+        leaves: longLabel,
+        peakVoice: longLabel,
+      },
+    };
+
+    const embed = buildDailyStatsEmbed("Regatul Cenușii", report, config).toJSON();
+    const metricFields = embed.fields?.filter((field) => field.name.startsWith("📊 Rezumat")) ?? [];
+
+    expect(metricFields.length).toBeGreaterThan(1);
+    expect(metricFields.every((field) => field.value.length <= 1024)).toBe(true);
   });
 });

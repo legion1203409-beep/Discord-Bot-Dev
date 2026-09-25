@@ -282,12 +282,6 @@ export async function getDailyStats(guildId: string, day = statsDay()): Promise<
   };
 }
 
-function bar(value: number, max: number, width: number): string {
-  if (max <= 0 || value <= 0) return "░".repeat(width);
-  const filled = Math.max(1, Math.round((value / max) * width));
-  return "█".repeat(Math.min(width, filled)) + "░".repeat(Math.max(0, width - filled));
-}
-
 function renderDailyStatsText(
   template: string,
   guildName: string,
@@ -315,16 +309,52 @@ export function buildDailyStatsEmbed(
   report: DailyStatsReport,
   config: DailyStatsEmbedConfig = DEFAULT_DAILY_STATS_EMBED_CONFIG,
 ): EmbedBuilder {
-  const activityMax = Math.max(...report.activity.map((item) => item.messages), 1);
-  const channelMax = Math.max(...report.topChannels.map((item) => item.messages), 1);
   const activityText = report.activity
-    .map((item) => `${item.day.slice(5)}  ${bar(item.messages, activityMax, 12)}  ${item.messages}`)
-    .join("\n");
+    .map((item) => `${item.day.slice(8, 10)}/${item.day.slice(5, 7)}: ${item.messages.toLocaleString("ro-RO")}`)
+    .join(" · ");
   const channelText = report.topChannels.length > 0
     ? report.topChannels
-      .map((item, index) => `${index + 1}. **#${item.channelName}**  ${bar(item.messages, channelMax, 10)} ${item.messages}`)
+      .map((item, index) => `${index + 1}. **#${item.channelName}** · ${item.messages.toLocaleString("ro-RO")} mesaje`)
       .join("\n")
     : config.emptyChannelsText;
+  const metricLines = [
+    [
+      [config.metricLabels.messages, report.metrics.messages],
+      [config.metricLabels.uniqueUsers, report.metrics.uniqueUsers],
+    ],
+    [
+      [config.metricLabels.boosts, report.metrics.boosts],
+      [config.metricLabels.joins, report.metrics.joins],
+    ],
+    [
+      [config.metricLabels.leaves, report.metrics.leaves],
+      [config.metricLabels.peakVoice, report.metrics.peakVoice],
+    ],
+  ].map((row) => row
+    .map(([label, value]) => `${label.replace(/\s+/g, " ").trim()}: **${value.toLocaleString("ro-RO")}**`)
+    .join(" · "));
+  const metricFields: { name: string; value: string; inline: false }[] = [];
+  let metricValue = "";
+  for (const line of metricLines) {
+    const nextValue = metricValue ? `${metricValue}\n${line}` : line;
+    if (metricValue && nextValue.length > 1024) {
+      metricFields.push({
+        name: metricFields.length === 0 ? "📊 Rezumat" : "📊 Rezumat (continuare)",
+        value: metricValue,
+        inline: false,
+      });
+      metricValue = line;
+    } else {
+      metricValue = nextValue;
+    }
+  }
+  if (metricValue) {
+    metricFields.push({
+      name: metricFields.length === 0 ? "📊 Rezumat" : "📊 Rezumat (continuare)",
+      value: metricValue,
+      inline: false,
+    });
+  }
 
   const embed = new EmbedBuilder()
     .setColor(Number.parseInt(config.color.slice(1), 16))
@@ -332,13 +362,8 @@ export function buildDailyStatsEmbed(
     .setTitle(renderDailyStatsText(config.title, guildName, report))
     .setDescription(renderDailyStatsText(config.description, guildName, report))
     .addFields(
-      { name: config.metricLabels.messages, value: report.metrics.messages.toLocaleString("ro-RO"), inline: true },
-      { name: config.metricLabels.uniqueUsers, value: report.metrics.uniqueUsers.toLocaleString("ro-RO"), inline: true },
-      { name: config.metricLabels.boosts, value: report.metrics.boosts.toLocaleString("ro-RO"), inline: true },
-      { name: config.metricLabels.joins, value: report.metrics.joins.toLocaleString("ro-RO"), inline: true },
-      { name: config.metricLabels.leaves, value: report.metrics.leaves.toLocaleString("ro-RO"), inline: true },
-      { name: config.metricLabels.peakVoice, value: report.metrics.peakVoice.toLocaleString("ro-RO"), inline: true },
-      { name: config.activityTitle, value: `\`\`\`\n${activityText}\n\`\`\`` },
+      ...metricFields,
+      { name: config.activityTitle, value: activityText },
       { name: config.channelsTitle, value: channelText },
     )
     .setFooter({ text: config.footer })
