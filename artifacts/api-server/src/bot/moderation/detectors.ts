@@ -12,7 +12,8 @@ export type DetectorKind =
   | "editSpam"
   | "deleteSpam"
   | "joinRaid"
-  | "newAccount";
+  | "newAccount"
+  | "scam";
 
 export type Detection = {
   kind: DetectorKind;
@@ -56,6 +57,33 @@ export function containsBlockedWord(content: string, words: readonly string[]): 
     const pattern = new RegExp(`(^|[^\\p{L}\\p{N}])${escaped(word)}(?=$|[^\\p{L}\\p{N}])`, "u");
     if (pattern.test(normalized)) return raw.trim();
   }
+  return null;
+}
+
+function normalizeScamText(value: string): string {
+  return normalizeModerationText(value).replace(/[\u200B-\u200F\u2060\uFEFF]/g, "");
+}
+
+export function detectScamContent(content: string, configuredPhrases: readonly string[] = []): Detection | null {
+  const normalized = normalizeScamText(content);
+  if (!normalized) return null;
+
+  const configuredPhrase = containsBlockedWord(normalized, configuredPhrases);
+  if (configuredPhrase) {
+    return { kind: "scam", detail: `Expresie anti-scam configurată: ${configuredPhrase}` };
+  }
+
+  const winningClaim = /\b(?:(?:you|i|we)(?:'ve)?\s+(?:(?:have|has)\s+)?(?:just\s+)?won|just\s+won|won|winner|winning|(?:ai|am|a|ati)\s+(?:tocmai\s+)?castig(?:at|ata|ate|ati|ator|atoare)?|castigator(?:i|e)?|castiguri)\b/u;
+  const moneyAmount = /(?:[$€£]\s*\d[\d.,]*|\b\d[\d.,]*\s*(?:de\s*)?(?:usd|dollars?|dola(?:r|ri)|eur|euros?|ron|lei|btc|bitcoin|eth|ethereum|usdt|sol)\b|\b(?:usd|dollars?|dola(?:r|ri)|eur|euros?|ron|lei|btc|bitcoin|eth|ethereum|usdt|sol)\s*\d[\d.,]*\b)/u;
+  if (winningClaim.test(normalized) && moneyAmount.test(normalized)) {
+    return { kind: "scam", detail: "Afirmație despre câștig în bani sau criptomonede" };
+  }
+
+  const highRiskOffer = /\b(?:claim(?: your)? (?:free )?(?:prize|reward|bonus)|free (?:money|crypto|bitcoin|btc|ethereum|eth|usd|usdt)|(?:verify|connect) (?:your )?wallet|wallet (?:verification|verify)|(?:crypto|bitcoin|btc|ethereum|eth|usdt) (?:airdrop|giveaway)|double your (?:money|crypto|bitcoin|btc)|you(?:'ve)? been selected (?:for|to win))\b/u;
+  if (highRiskOffer.test(normalized)) {
+    return { kind: "scam", detail: "Promisiune suspectă de recompensă sau verificare de portofel" };
+  }
+
   return null;
 }
 

@@ -5,6 +5,7 @@ import {
   containsBlockedWord,
   countEmoji,
   detectContent,
+  detectScamContent,
   findBlockedLink,
   longestRepeatedRun,
 } from "../detectors";
@@ -14,6 +15,14 @@ describe("moderation detectors", () => {
   it("matches blocked words at boundaries and ignores innocent substrings", () => {
     expect(containsBlockedWord("Acesta este un prost.", ["prost"])).toBe("prost");
     expect(containsBlockedWord("prostește nu este atacul configurat", ["prost"])).toBeNull();
+  });
+
+  it("detects money-winning claims, high-risk reward prompts, and configured phrases", () => {
+    expect(detectScamContent("Ai câștigat 500 USD! Intră pe link.")).toMatchObject({ kind: "scam" });
+    expect(detectScamContent("You just won $250, claim your reward now.")).toMatchObject({ kind: "scam" });
+    expect(detectScamContent("Verify your wallet to receive the free crypto")).toMatchObject({ kind: "scam" });
+    expect(detectScamContent("Ai câștigat campionatul anul trecut.")).toBeNull();
+    expect(detectScamContent("un mesaj cu zero-width cl\u200Baim bonus", ["claim bonus"])).toMatchObject({ kind: "scam" });
   });
 
   it("matches exact and subdomain blocked link hosts", () => {

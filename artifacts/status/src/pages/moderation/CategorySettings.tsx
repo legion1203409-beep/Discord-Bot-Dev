@@ -8,7 +8,7 @@ import { ConfigEditor, type ConfigSection } from "./ConfigEditor";
 import { rebaseDraftChanges } from "../../lib/utils";
 
 const DETAILS: Record<ConfigSection, { title: string; description: string }> = {
-  automod: { title: "AutoMod", description: "Filtre clasice pentru cuvinte, linkuri, emoji, majuscule și repetări." },
+  automod: { title: "AutoMod", description: "Filtre de cuvinte, linkuri, anti-scam, emoji, majuscule și repetări." },
   "anti-raid": { title: "Anti-Raid", description: "Detectează valurile de intrări și conturile prea noi." },
   "anti-spam": { title: "Anti-Spam", description: "Limite pentru mesaje, editări, ștergeri, mențiuni și emoji." },
   "anti-flood": { title: "Anti-Flood", description: "Controlează mesajele foarte lungi și șirurile excesive." },

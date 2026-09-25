@@ -26,6 +26,11 @@ const ACTIONS = [
   ["ban", "Blochează (ban)"],
   ["delete", "Șterge mesajul"],
 ] as const;
+const SCAM_ACTIONS = [
+  ["delete", "Șterge doar mesajul"],
+  ["mute", "Șterge + timeout 10 minute"],
+  ["kick", "Șterge + elimină membrul (kick)"],
+] as const;
 const SEVERITIES = [["soft", "Blândă"], ["normal", "Normală"], ["hard", "Strictă"]] as const;
 const SENSITIVITIES = [["low", "Scăzută"], ["medium", "Medie"], ["high", "Ridicată"]] as const;
 
@@ -68,8 +73,8 @@ function Field({ label, help, children }: { label: string; help?: string; childr
   );
 }
 
-function Toggle({ label, help, checked, onChange, disabled = false }: {
-  label: string; help?: string; checked: boolean; onChange: (value: boolean) => void; disabled?: boolean;
+function Toggle({ label, help, checked, onChange, disabled = false, testId }: {
+  label: string; help?: string; checked: boolean; onChange: (value: boolean) => void; disabled?: boolean; testId?: string;
 }) {
   return (
     <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-3">
@@ -77,7 +82,7 @@ function Toggle({ label, help, checked, onChange, disabled = false }: {
         <p className="text-sm font-medium">{label}</p>
         {help && <p className="text-xs text-muted-foreground">{help}</p>}
       </div>
-      <Switch aria-label={label} checked={Boolean(checked)} onCheckedChange={onChange} disabled={disabled} />
+      <Switch aria-label={label} data-testid={testId} checked={Boolean(checked)} onCheckedChange={onChange} disabled={disabled} />
     </div>
   );
 }
@@ -102,13 +107,13 @@ function NumberField({ label, help, value, onChange, min, max }: {
   );
 }
 
-function Choice({ label, help, value, options, onChange }: {
-  label: string; help?: string; value: string; options: readonly (readonly [string, string])[]; onChange: (value: string) => void;
+function Choice({ label, help, value, options, onChange, testId }: {
+  label: string; help?: string; value: string; options: readonly (readonly [string, string])[]; onChange: (value: string) => void; testId?: string;
 }) {
   return (
     <Field label={label} help={help}>
       <Select value={value} onValueChange={onChange}>
-        <SelectTrigger><SelectValue /></SelectTrigger>
+        <SelectTrigger data-testid={testId}><SelectValue /></SelectTrigger>
         <SelectContent>{options.map(([optionValue, optionLabel]) => <SelectItem key={optionValue} value={optionValue}>{optionLabel}</SelectItem>)}</SelectContent>
       </Select>
     </Field>
@@ -121,13 +126,14 @@ function IdField({ label, help, value, onChange, role = false }: {
   return <TextField label={label} help={help ?? `ID ${role ? "rol" : "canal"} Discord (Developer Mode); lasă gol pentru neconfigurat.`} value={value} placeholder="123456789012345678" onChange={(next) => onChange(next.trim() || null)} />;
 }
 
-function ListField({ label, help, values, onChange, ids = false }: {
-  label: string; help: string; values: string[]; onChange: (value: string[]) => void; ids?: boolean;
+function ListField({ label, help, values, onChange, ids = false, testId }: {
+  label: string; help: string; values: string[]; onChange: (value: string[]) => void; ids?: boolean; testId?: string;
 }) {
   return (
     <Field label={label} help={help}>
       <Textarea
         value={(values ?? []).join("\n")}
+        data-testid={testId}
         placeholder={ids ? "123456789012345678\n987654321098765432" : "Un element pe fiecare rând"}
         onChange={(event) => onChange(event.target.value.split("\n").map((item) => item.trim()).filter(Boolean))}
       />
@@ -314,8 +320,45 @@ export function ConfigEditor({
   return (
     <VisibleSections.Provider value={sections ? new Set(sections) : null}>
     <Accordion type="multiple" defaultValue={sections ?? ["automod", "anti-raid", "anti-spam", "anti-flood"]} className="space-y-3">
-      <Section value="automod" title="1. AutoMod" description="Filtre pentru cuvinte, linkuri, emoji, majuscule și repetări.">
+      <Section value="automod" title="1. AutoMod" description="Filtre de cuvinte, linkuri, anti-scam, emoji, majuscule și repetări.">
         <Toggle label="Activează AutoMod" help="Comutatorul principal pentru regulile de mai jos." checked={value.autoMod.enabled} onChange={(next) => set(["autoMod", "enabled"], next)} />
+        <div className="space-y-4 rounded-xl border border-primary/30 bg-primary/5 p-4">
+          <div>
+            <h3 className="font-semibold">Anti-Scam</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Detectează afirmații clare despre câștiguri în bani sau crypto și mesaje suspecte de tip „claim reward” ori verificare de portofel.
+            </p>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <Toggle
+              testId="toggle-anti-scam"
+              label="Activează Anti-Scam"
+              help="Este oprit implicit; pornește-l doar după ce alegi acțiunea."
+              checked={Boolean(value.autoMod.scamFilter?.enabled)}
+              onChange={(next) => set(["autoMod", "scamFilter", "enabled"], next)}
+            />
+            <Choice
+              testId="select-anti-scam-action"
+              label="Acțiune pentru mesajele detectate"
+              help="Mesajul se șterge întotdeauna; timeout și kick adaugă și sancțiunea aleasă."
+              value={value.autoMod.scamFilter?.action ?? "delete"}
+              options={SCAM_ACTIONS}
+              onChange={(next) => set(["autoMod", "scamFilter", "action"], next)}
+            />
+          </div>
+          <ListField
+            testId="input-anti-scam-phrases"
+            label="Expresii suplimentare de blocat"
+            help="Opțional: o expresie pe rând. Orice mesaj care conține una dintre ele va fi tratat ca scam."
+            values={value.autoMod.scamPhrases ?? []}
+            onChange={(next) => set(["autoMod", "scamPhrases"], next)}
+          />
+          <p className="text-xs text-muted-foreground" data-testid="text-anti-scam-requirements">
+            Rulează numai când Protecția serverului și AutoMod general sunt pornite. Mesajele și sancțiunile apar în Cazuri/Audit.
+            Timeout-ul este de 10 minute. Botul are nevoie de Message Content și Manage Messages; mute cere Moderate Members,
+            iar kick cere Kick Members și un rol bot suficient de sus. Kick-ul elimină membrul, fără ban.
+          </p>
+        </div>
         <RuleEditor title="Filtru cuvinte" help="Lista de mai jos determină potrivirile; regula nu are un prag numeric efectiv." rule={value.autoMod.wordFilter} thresholds={[]} onChange={rule(["autoMod", "wordFilter"])} />
         <ListField label="Cuvinte interzise" help="Un cuvânt sau o expresie pe rând; maximum 500." values={value.autoMod.forbiddenWords} onChange={(next) => set(["autoMod", "forbiddenWords"], next)} />
         <RuleEditor title="Blocare linkuri" help="Lista de mai jos determină potrivirile; regula nu are un prag numeric efectiv." rule={value.autoMod.linkBlock} thresholds={[]} onChange={rule(["autoMod", "linkBlock"])} />

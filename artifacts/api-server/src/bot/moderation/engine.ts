@@ -14,7 +14,7 @@ import { pool } from "@workspace/db";
 import { moderationStore } from "../../moderation/store";
 import type { ModerationConfig, ModerationAction as ConfiguredAction } from "../../moderation/config";
 import { logger } from "../../lib/logger";
-import { detectContent, SlidingRateLimiter, type Detection } from "./detectors";
+import { detectContent, detectScamContent, SlidingRateLimiter, type Detection } from "./detectors";
 import {
   assertRoleGrantSafe,
   assertTargetHierarchy,
@@ -388,7 +388,7 @@ export async function executeModerationAction(input: ModerationActionInput): Pro
       const messageId = (input.evidence[0] as { messageId?: unknown }).messageId;
       if (typeof messageId !== "string") throw new Error("ID-ul mesajului lipsește.");
       const channel = await guild.channels.fetch(input.channelId);
-      if (!channel || channel.type !== ChannelType.GuildText) throw new Error("Canal text invalid.");
+      if (!channel || !channel.isTextBased() || !("messages" in channel)) throw new Error("Canal text invalid.");
       if (!bot.permissionsIn(channel).has(PermissionFlagsBits.ManageMessages)) throw new Error("Botul nu poate șterge mesajul.");
       const victim = await channel.messages.fetch(messageId);
       await victim.delete();
@@ -555,6 +555,23 @@ async function applyAutomaticSerialized(guild: Guild, config: ModerationConfig, 
   // Severity changes only detector thresholds. Escalation changes sanctions
   // solely when the owner explicitly enabled and configured its levels.
   const selectedAction = await actionAtEscalationLevel(config, guild.id, message.author.id, rule.action);
+  const isScamDetection = detection.kind === "scam";
+  if (isScamDetection && selectedAction !== "delete") {
+    try {
+      await executeModerationAction({
+        guildId: guild.id, actorId: moderationClient!.user!.id, targetId: message.author.id, channelId: message.channelId,
+        type: "delete", reason: `AutoMod anti-scam: ${why}`, source: "automod",
+        idempotencyKey: `${incidentKey}:message:${message.id}`,
+        evidence: [{ messageId: message.id, channelId: message.channelId, kind: detection.kind }],
+      });
+    } catch (error) {
+      logger.warn({ error, guildId: guild.id, userId: message.author.id, messageId: message.id }, "AutoMod scam message deletion failed");
+      await audit({ guildId: guild.id, actorId: moderationClient!.user!.id, type: "warn", source: "automod" }, "automod.message_delete_failed", "message", message.id, {
+        kind: detection.kind,
+        error: error instanceof Error ? error.message : "delete failed",
+      }).catch(() => undefined);
+    }
+  }
   if (config.channels.autoSlowmodeChannelIds.includes(message.channelId)) {
     const channel = await guild.channels.fetch(message.channelId).catch(() => null);
     if (channel?.type === ChannelType.GuildText &&
@@ -567,7 +584,8 @@ async function applyAutomaticSerialized(guild: Guild, config: ModerationConfig, 
     try {
       await executeModerationAction({
         guildId: guild.id, actorId: moderationClient!.user!.id, targetId: message.author.id, channelId: message.channelId,
-        type: "delete", reason: `AutoMod delete: ${why}`, source: "automod", idempotencyKey: incidentKey,
+        type: "delete", reason: `AutoMod delete: ${why}`, source: "automod",
+        idempotencyKey: isScamDetection ? `${incidentKey}:message:${message.id}` : incidentKey,
         evidence: [{ messageId: message.id, channelId: message.channelId, kind: detection.kind }],
       });
       return true;
@@ -579,7 +597,7 @@ async function applyAutomaticSerialized(guild: Guild, config: ModerationConfig, 
     }
   }
   const action = eventAction(selectedAction);
-  if (!action) return false;
+  if (!action) return isScamDetection;
   try {
     await executeModerationAction({
       guildId: guild.id, actorId: moderationClient!.user!.id, targetId: message.author.id, type: action,
@@ -614,6 +632,21 @@ export async function handleModerationMessage(client: Client, message: Message):
 
   const content = message.content ?? "";
   const auto = config.autoMod;
+  if (config.autoMod.enabled && auto.scamFilter.enabled) {
+    const embedContent = message.embeds.flatMap((embed) => [
+      embed.title,
+      embed.description,
+      embed.url,
+      embed.author?.name,
+      embed.footer?.text,
+      ...embed.fields.flatMap((field) => [field.name, field.value]),
+    ]);
+    const scamFinding = detectScamContent(
+      [content, ...embedContent].filter((part): part is string => Boolean(part)).join("\n"),
+      auto.scamPhrases,
+    );
+    if (scamFinding && await applyAutomatic(message.guild, config, message, scamFinding, auto.scamFilter)) return true;
+  }
   const threshold = (value: number, base: "soft" | "normal" | "hard") => {
     const currentSeverity = activeSeverity(config, message.channelId, base);
     return currentSeverity === "hard"

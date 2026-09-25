@@ -98,6 +98,11 @@ export const ModerationConfigSchema = z.object({
   // 1. AutoMod
   autoMod: z.object({
     enabled: z.boolean().default(false),
+    scamFilter: z.object({
+      enabled: z.boolean().default(false),
+      action: z.enum(["delete", "mute", "kick"]).default("delete"),
+    }).default({}),
+    scamPhrases: textList.default([]),
     wordFilter: RuleSchema.default({}),
     linkBlock: RuleSchema.default({}),
     emojiLimit: ruleSchemaWithThresholdDefaults({ key: "emoji", value: 10, aliases: ["limit", "max"] }).default({}),

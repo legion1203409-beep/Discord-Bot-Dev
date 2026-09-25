@@ -5,6 +5,8 @@ describe("moderation configuration defaults", () => {
   it("ships with every enforcement module disabled", () => {
     expect(defaultModerationConfig.protection.enabled).toBe(true);
     expect(defaultModerationConfig.autoMod.enabled).toBe(false);
+    expect(defaultModerationConfig.autoMod.scamFilter).toEqual({ enabled: false, action: "delete" });
+    expect(defaultModerationConfig.autoMod.scamPhrases).toEqual([]);
     expect(defaultModerationConfig.antiRaid.enabled).toBe(false);
     expect(defaultModerationConfig.antiSpam.enabled).toBe(false);
     expect(defaultModerationConfig.antiFlood.enabled).toBe(false);
@@ -38,6 +40,20 @@ describe("moderation configuration defaults", () => {
     expect(config.autoMod.wordFilter.enabled).toBe(false);
     expect(config.autoMod.wordFilter.action).toBe("mute");
     expect(config.autoMod.wordFilter.thresholds.matches).toBe(2);
+  });
+
+  it("accepts only the requested anti-scam actions and persists custom phrases", () => {
+    const config = ModerationConfigSchema.parse({
+      autoMod: {
+        scamFilter: { enabled: true, action: "kick" },
+        scamPhrases: ["claim bonus", "ai câștigat bani"],
+      },
+    });
+    expect(config.autoMod.scamFilter).toEqual({ enabled: true, action: "kick" });
+    expect(config.autoMod.scamPhrases).toEqual(["claim bonus", "ai câștigat bani"]);
+    expect(() => ModerationConfigSchema.parse({
+      autoMod: { scamFilter: { action: "ban" } },
+    })).toThrow();
   });
 
   it("fills missing rule thresholds without replacing saved values or enabling rules", () => {
