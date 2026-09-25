@@ -174,7 +174,7 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
       }) },
     });
     mocks.listCases.mockResolvedValue([]);
-    mocks.listAudit.mockResolvedValue([]);
+    mocks.listAudit.mockResolvedValue({ items: [], total: 0 });
     mocks.listLogs.mockResolvedValue([]);
     mocks.beginAction.mockResolvedValue({ created: true, action: { id: "ledger", status: "pending" } });
     mocks.getAction.mockResolvedValue(null);
@@ -808,7 +808,46 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     expect(mocks.listLogs).toHaveBeenCalledWith(guildId, 50, 0);
     await fetch(`${base}/logs/audit`);
     expect(mocks.access).toHaveBeenLastCalledWith(guildId, actorId, "audit");
-    expect(mocks.listAudit).toHaveBeenCalledWith(guildId, 50, 0);
+    expect(mocks.listAudit).toHaveBeenCalledWith(guildId, {
+      search: "",
+      category: "all",
+      start: undefined,
+      end: undefined,
+      limit: 50,
+      offset: 0,
+    });
+  });
+
+  it("applies validated audit filters through the authorized guild-scoped query", async () => {
+    const response = await fetch(
+      `${base}/logs/audit?search=actor&category=members&start=2026-09-24T10%3A00%3A00.000Z&end=2026-09-24T12%3A00%3A00.000Z&limit=25&offset=50`,
+    );
+    expect(response.status).toBe(200);
+    expect(mocks.access).toHaveBeenLastCalledWith(guildId, actorId, "audit");
+    expect(mocks.listAudit).toHaveBeenCalledWith(guildId, {
+      search: "actor",
+      category: "members",
+      start: new Date("2026-09-24T10:00:00.000Z"),
+      end: new Date("2026-09-24T12:00:00.000Z"),
+      limit: 25,
+      offset: 50,
+    });
+    await expect(response.json()).resolves.toMatchObject({ items: [], total: 0, limit: 25, offset: 50 });
+  });
+
+  it.each([
+    "start=not-a-date",
+    "start=2026-09-24T12%3A00%3A00.000Z&end=2026-09-24T10%3A00%3A00.000Z",
+    "category=unknown",
+  ])("rejects invalid audit filters (%s) before querying", async (query) => {
+    expect((await fetch(`${base}/logs/audit?${query}`)).status).toBe(400);
+    expect(mocks.listAudit).not.toHaveBeenCalled();
+  });
+
+  it("preserves audit guild authorization before querying filtered records", async () => {
+    mocks.access.mockRejectedValueOnce(new ModerationAuthError(403, "Forbidden"));
+    expect((await fetch(`${base}/logs/audit?category=members`)).status).toBe(403);
+    expect(mocks.listAudit).not.toHaveBeenCalled();
   });
 
   it("rejects unbounded pagination before running the cases query", async () => {

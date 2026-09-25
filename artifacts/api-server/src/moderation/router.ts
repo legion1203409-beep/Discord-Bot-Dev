@@ -854,6 +854,21 @@ const paginationSchema = z.object(
 )
 ;
 
+const auditQuerySchema = paginationSchema.extend({
+  search: z.string().trim().max(200).default(""),
+  category: z.enum(["all", "messages", "members", "channels", "roles", "voice", "moderation", "security", "other"]).default("all"),
+  start: z.string().datetime({ offset: true }).optional(),
+  end: z.string().datetime({ offset: true }).optional(),
+}).superRefine((query, context) => {
+  if (query.start && query.end && Date.parse(query.start) > Date.parse(query.end)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["end"],
+      message: "The audit end date must be on or after the start date.",
+    });
+  }
+});
+
 
 const actionSchema = z.object(
 {
@@ -2894,24 +2909,22 @@ router.get("/guilds/:guildId/logs/audit", asyncRoute(async (req, res) =>
 ;
 
 
-  const 
-{
+  const query = parse(auditQuerySchema, req.query);
+  const result = await moderationStore.listAudit(guildId, {
+    search: query.search,
+    category: query.category,
+    start: query.start ? new Date(query.start) : undefined,
+    end: query.end ? new Date(query.end) : undefined,
+    limit: query.limit,
+    offset: query.offset,
+  });
 
- limit, offset 
-}
-
- = parse(paginationSchema, req.query)
-;
-
-
-  res.json(
-{
-
- items: await moderationStore.listAudit(guildId, limit, offset) 
-}
-
-)
-;
+  res.json({
+    items: result.items,
+    total: result.total,
+    limit: query.limit,
+    offset: query.offset,
+  });
 
 
 }

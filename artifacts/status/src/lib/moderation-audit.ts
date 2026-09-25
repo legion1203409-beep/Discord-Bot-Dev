@@ -27,6 +27,16 @@ export const AUDIT_EVENT_CATEGORIES = [
 
 export type AuditEventCategory = (typeof AUDIT_EVENT_CATEGORIES)[number]["value"];
 export type AuditEventCategoryFilter = AuditEventCategory | "all";
+export const AUDIT_PAGE_SIZE = 50;
+
+export interface AuditLogQuery {
+  search?: string;
+  category?: AuditEventCategoryFilter;
+  start?: string;
+  end?: string;
+  limit?: number;
+  offset?: number;
+}
 
 export interface AuditDateRange {
   start?: string;

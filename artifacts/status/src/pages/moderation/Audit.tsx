@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { History, Search, ShieldCheck, Loader2, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { History, Search, ShieldCheck, Loader2, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { Input } from "../../components/ui/input";
 import { useAuditLogs, useActiveGuild, useActionLedger, useReconcileAction } from "../../hooks/use-moderation-api";
 import { Button } from "../../components/ui/button";
@@ -10,8 +10,8 @@ import { AlertTriangle, ShieldAlert } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import {
   AUDIT_EVENT_CATEGORIES,
+  AUDIT_PAGE_SIZE,
   auditDateRangeError,
-  filterAuditEvents,
   type AuditEventCategoryFilter,
   presentAuditActor,
   presentAuditLog,
@@ -93,8 +93,13 @@ export function AuditPage() {
   const [category, setCategory] = useState<AuditEventCategoryFilter>("all");
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
+  const [page, setPage] = useState(0);
   const { guildId } = useActiveGuild();
-  const { data: auditEvents, loading } = useAuditLogs(guildId);
+  const offset = page * AUDIT_PAGE_SIZE;
+  const { data: auditEvents, total, loading } = useAuditLogs(guildId, {
+    search, category, start, end, limit: AUDIT_PAGE_SIZE, offset,
+  });
+  useEffect(() => { setPage(0); }, [guildId]);
   
   // Pending actions ledger
   const { data: pendingActions, refetch: refetchPending } = useActionLedger(guildId, { status: "pending" });
@@ -106,15 +111,14 @@ export function AuditPage() {
   if (!guildId) return <div className="p-8 text-center text-muted-foreground">Selectează un server.</div>;
 
   const rangeError = auditDateRangeError({ start, end });
-  const filtered = filterAuditEvents(auditEvents || [], search, category, { start, end });
   const selectedCategoryLabel = AUDIT_EVENT_CATEGORIES.find((option) => option.value === category)?.label;
   const emptyMessage = rangeError || (start || end
     ? "Niciun eveniment în intervalul selectat nu corespunde filtrelor."
-    : category !== "all" && search
+    : category !== "all" && search.trim()
     ? `Niciun eveniment din categoria „${selectedCategoryLabel}” nu corespunde căutării.`
     : category !== "all"
       ? `Niciun eveniment în categoria „${selectedCategoryLabel}”.`
-      : search
+      : search.trim()
         ? "Niciun eveniment nu corespunde căutării."
         : "Niciun eveniment găsit.");
 
@@ -181,14 +185,15 @@ export function AuditPage() {
               <Input
                 placeholder="Caută în audit (acțiune, actor)..."
                 value={search}
-                onChange={e => setSearch(e.target.value)}
+                maxLength={200}
+                onChange={e => { setSearch(e.target.value); setPage(0); }}
                 className="pl-9 bg-background/50 border-border/50"
               />
             </div>
             <div className="flex flex-wrap items-end gap-2">
               <div className="space-y-1.5">
                 <label id="audit-category-label" className="text-xs font-medium text-muted-foreground">Categorie</label>
-                <Select value={category} onValueChange={(value) => setCategory(value as AuditEventCategoryFilter)}>
+                <Select value={category} onValueChange={(value) => { setCategory(value as AuditEventCategoryFilter); setPage(0); }}>
                   <SelectTrigger aria-labelledby="audit-category-label" className="w-full sm:w-56 bg-background/50 border-border/50">
                     <SelectValue />
                   </SelectTrigger>
@@ -201,7 +206,7 @@ export function AuditPage() {
                 </Select>
               </div>
               {category !== "all" && (
-                <Button type="button" variant="outline" size="sm" onClick={() => setCategory("all")}>
+              <Button type="button" variant="outline" size="sm" onClick={() => { setCategory("all"); setPage(0); }}>
                   <X className="mr-1.5 h-4 w-4" />
                   Elimină filtrul
                 </Button>
@@ -212,23 +217,23 @@ export function AuditPage() {
             <div className="min-w-0 space-y-1.5">
               <label htmlFor="audit-start" className="text-xs font-medium text-muted-foreground">De la</label>
               <Input id="audit-start" type="datetime-local" step="1" value={start}
-                onChange={e => setStart(e.target.value)} aria-invalid={!!rangeError}
+                onChange={e => { setStart(e.target.value); setPage(0); }} aria-invalid={!!rangeError}
                 aria-describedby="audit-range-help" className="bg-background/50 border-border/50" />
             </div>
             <div className="min-w-0 space-y-1.5">
               <label htmlFor="audit-end" className="text-xs font-medium text-muted-foreground">Până la</label>
               <Input id="audit-end" type="datetime-local" step="1" value={end}
-                onChange={e => setEnd(e.target.value)} aria-invalid={!!rangeError}
+                onChange={e => { setEnd(e.target.value); setPage(0); }} aria-invalid={!!rangeError}
                 aria-describedby="audit-range-help" className="bg-background/50 border-border/50" />
             </div>
             {(start || end) && (
-              <Button type="button" variant="outline" size="sm" onClick={() => { setStart(""); setEnd(""); }}>
+              <Button type="button" variant="outline" size="sm" onClick={() => { setStart(""); setEnd(""); setPage(0); }}>
                 <X className="mr-1.5 h-4 w-4" /> Elimină intervalul
               </Button>
             )}
           </div>
           <p id="audit-range-help" className="mt-2 text-xs text-muted-foreground">
-            Orele sunt locale; limitele sunt incluse. Filtrarea se aplică evenimentelor încărcate.
+            Orele sunt locale; limitele sunt incluse. Filtrele caută în toate evenimentele disponibile.
           </p>
           {rangeError && <p role="alert" className="mt-2 text-sm text-destructive">{rangeError}</p>}
         </div>
@@ -238,12 +243,12 @@ export function AuditPage() {
             <div className="flex justify-center items-center h-48 text-muted-foreground">
               <Loader2 className="w-6 h-6 animate-spin" />
             </div>
-          ) : filtered.length > 0 ? (
+          ) : auditEvents.length > 0 ? (
             <div className="divide-y divide-border/50">
-              {filtered.map((ev, i: number) => {
+              {auditEvents.map((ev) => {
                 const presentation = presentAuditLog(ev);
                 return (
-                <div key={i} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-secondary/40 transition-colors">
+                <div key={ev.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-secondary/40 transition-colors">
                   <div>
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-xs font-mono text-muted-foreground bg-background border border-border/50 px-1.5 py-0.5 rounded">{ev.id ? ev.id.substring(0,8) : 'SISTEM'}</span>
@@ -271,6 +276,23 @@ export function AuditPage() {
             </div>
           )}
         </div>
+        {!loading && total > 0 && (
+          <div className="flex flex-col gap-3 border-t border-border/80 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-muted-foreground">
+              {offset + 1}–{Math.min(offset + auditEvents.length, total)} din {total} evenimente
+            </p>
+            <div className="flex items-center gap-2">
+              <Button type="button" variant="outline" size="sm" disabled={page === 0}
+                onClick={() => setPage((current) => Math.max(0, current - 1))}>
+                <ChevronLeft className="mr-1 h-4 w-4" /> Anterioare
+              </Button>
+              <Button type="button" variant="outline" size="sm" disabled={offset + AUDIT_PAGE_SIZE >= total}
+                onClick={() => setPage((current) => current + 1)}>
+                Următoarele <ChevronRight className="ml-1 h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -47,6 +47,31 @@ export interface ModerationAuditLog {
   createdAt: Date;
 }
 
+export type ModerationAuditCategory =
+  | "all"
+  | "messages"
+  | "members"
+  | "channels"
+  | "roles"
+  | "voice"
+  | "moderation"
+  | "security"
+  | "other";
+
+export interface ModerationAuditFilters {
+  search: string;
+  category: ModerationAuditCategory;
+  start?: Date;
+  end?: Date;
+  limit: number;
+  offset: number;
+}
+
+export interface ModerationAuditPage {
+  items: ModerationAuditLog[];
+  total: number;
+}
+
 export interface ModerationSession {
   id: string;
   userId: string;
@@ -86,7 +111,7 @@ export interface ModerationStore {
   addCaseNote(input: { guildId: string; caseId: string; authorId: string; body: string }): Promise<ModerationCaseNote | null>;
   listCaseNotes(guildId: string, caseId: string): Promise<ModerationCaseNote[]>;
   pruneCases(guildId: string, retentionDays: number): Promise<number>;
-  listAudit(guildId: string, limit: number, offset: number): Promise<ModerationAuditLog[]>;
+  listAudit(guildId: string, filters: ModerationAuditFilters): Promise<ModerationAuditPage>;
   listModerationLogs(guildId: string, limit: number, offset: number): Promise<ModerationAuditLog[]>;
   writeAudit(input: Omit<ModerationAuditLog, "id" | "createdAt">): Promise<void>;
   beginAction(input: { guildId: string; idempotencyKey: string; actorId: string; actionType: string; input: Record<string, unknown> }): Promise<{ created: boolean; action: ModerationActionLedger }>;
@@ -550,13 +575,63 @@ export class PostgresModerationStore implements ModerationStore {
     }
   }
 
-  async listAudit(guildId: string, limit: number, offset: number) {
+  async listAudit(guildId: string, filters: ModerationAuditFilters): Promise<ModerationAuditPage> {
     await this.ensureSchema();
-    const { rows } = await pool.query<Record<string, unknown>>(
-      "SELECT * FROM moderation_audit_logs WHERE guild_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3",
-      [guildId, limit, offset],
-    );
-    return rows.map(auditFromRow);
+    const values: unknown[] = [guildId];
+    const conditions = ["guild_id = $1"];
+    const addValue = (value: unknown) => {
+      values.push(value);
+      return `$${values.length}`;
+    };
+
+    if (filters.start) conditions.push(`created_at >= ${addValue(filters.start)}`);
+    if (filters.end) conditions.push(`created_at <= ${addValue(filters.end)}`);
+    if (filters.category !== "all") {
+      const categoryParam = addValue(filters.category);
+      conditions.push(`(
+        CASE
+          WHEN lower(event_type) LIKE 'discord.message%' THEN 'messages'
+          WHEN lower(event_type) LIKE 'discord.member%' THEN 'members'
+          WHEN lower(event_type) LIKE 'discord.channel%' THEN 'channels'
+          WHEN lower(event_type) LIKE 'discord.guild_role%' OR lower(event_type) LIKE 'discord.guildrole%' THEN 'roles'
+          WHEN lower(event_type) LIKE 'discord.voice%' THEN 'voice'
+          WHEN lower(event_type) LIKE 'config.%' OR lower(event_type) LIKE 'case.%'
+            OR lower(event_type) LIKE 'cases.%' OR lower(event_type) LIKE 'action.%' THEN 'moderation'
+          WHEN lower(event_type) LIKE 'raid.%' OR lower(event_type) LIKE 'suspicious.%'
+            OR lower(event_type) LIKE 'spam.%' OR lower(event_type) LIKE 'automod.%'
+            OR lower(event_type) LIKE 'ai.%' OR lower(event_type) LIKE 'event.%' THEN 'security'
+          ELSE 'other'
+        END
+      ) = ${categoryParam}`);
+    }
+    if (filters.search) {
+      const searchParam = addValue(filters.search);
+      conditions.push(`position(lower(${searchParam}) in lower(concat_ws(
+        ' ', event_type, actor_id, target_type, target_id, detail::text
+      ))) > 0`);
+    }
+
+    const where = conditions.join(" AND ");
+    const countValues = [...values];
+    const pageLimit = addValue(filters.limit);
+    const pageOffset = addValue(filters.offset);
+    const [countResult, pageResult] = await Promise.all([
+      pool.query<{ total: string | number }>(
+        `SELECT COUNT(*) AS total FROM moderation_audit_logs WHERE ${where}`,
+        countValues,
+      ),
+      pool.query<Record<string, unknown>>(
+        `SELECT * FROM moderation_audit_logs
+         WHERE ${where}
+         ORDER BY created_at DESC, id DESC
+         LIMIT ${pageLimit} OFFSET ${pageOffset}`,
+        values,
+      ),
+    ]);
+    return {
+      items: pageResult.rows.map(auditFromRow),
+      total: Number(countResult.rows[0]?.total ?? 0),
+    };
   }
 
   async listModerationLogs(guildId: string, limit: number, offset: number) {

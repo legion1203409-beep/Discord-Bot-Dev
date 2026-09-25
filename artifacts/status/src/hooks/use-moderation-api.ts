@@ -1,5 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import type { ModerationAuditLog } from "../lib/moderation-audit";
+import {
+  AUDIT_PAGE_SIZE,
+  auditDateRangeError,
+  type AuditLogQuery,
+  type ModerationAuditLog,
+} from "../lib/moderation-audit";
 
 const BASE_URL = "/api/moderation";
 const ACTIVE_GUILD_STORAGE_KEY = "moderation.activeGuildId";
@@ -1134,11 +1139,18 @@ export function useCases(guildId: string | null, params?: { status?: string, use
   return { data: dataGuildId.current === guildId ? data : [], loading: loading || Boolean(guildId && dataGuildId.current !== guildId), refetch: fetchCases };
 }
 
-export function useAuditLogs(guildId: string | null) {
+export function useAuditLogs(guildId: string | null, params: AuditLogQuery = {}) {
   const [data, setData] = useState<ModerationAuditLog[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const dataGuildId = useRef<string | null>(null);
   const requestId = useRef(0);
+  const search = params.search?.trim() ?? "";
+  const category = params.category ?? "all";
+  const start = params.start ?? "";
+  const end = params.end ?? "";
+  const limit = params.limit ?? AUDIT_PAGE_SIZE;
+  const offset = params.offset ?? 0;
 
   const fetchLogs = useCallback(async () => {
     const requestedGuildId = guildId;
@@ -1146,23 +1158,46 @@ export function useAuditLogs(guildId: string | null) {
       requestId.current += 1;
       dataGuildId.current = null;
       setData([]);
+      setTotal(0);
       setLoading(false);
       return;
     }
     const thisRequest = ++requestId.current;
+    if (auditDateRangeError({ start, end })) {
+      dataGuildId.current = requestedGuildId;
+      setData([]);
+      setTotal(0);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
+    setData([]);
+    setTotal(0);
     try {
-      const res = await apiFetch<{ items: ModerationAuditLog[] }>(`/guilds/${requestedGuildId}/logs/audit`);
+      const query = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+      if (search) query.set("search", search);
+      if (category !== "all") query.set("category", category);
+      if (start) query.set("start", new Date(start).toISOString());
+      if (end) query.set("end", new Date(end).toISOString());
+      const res = await apiFetch<{ items: ModerationAuditLog[]; total: number }>(
+        `/guilds/${requestedGuildId}/logs/audit?${query.toString()}`,
+      );
       if (requestedGuildId !== guildId || thisRequest !== requestId.current) return;
       dataGuildId.current = requestedGuildId;
       setData(Array.isArray(res.items) ? res.items : []);
+      setTotal(Number.isFinite(res.total) ? res.total : 0);
     } catch {} finally {
       if (requestedGuildId === guildId && thisRequest === requestId.current) setLoading(false);
     }
-  }, [guildId]);
+  }, [guildId, search, category, start, end, limit, offset]);
 
   useEffect(() => { fetchLogs(); }, [fetchLogs]);
-  return { data: dataGuildId.current === guildId ? data : [], loading: loading || Boolean(guildId && dataGuildId.current !== guildId), refetch: fetchLogs };
+  return {
+    data: dataGuildId.current === guildId ? data : [],
+    total: dataGuildId.current === guildId ? total : 0,
+    loading: loading || Boolean(guildId && dataGuildId.current !== guildId),
+    refetch: fetchLogs,
+  };
 }
 
 export function useManualAction(guildId: string | null) {
