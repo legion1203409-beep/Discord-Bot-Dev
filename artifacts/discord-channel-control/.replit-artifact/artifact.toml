@@ -14,27 +14,6 @@ localPort = 21520
 [services.development]
 run = "pnpm --filter @workspace/discord-channel-control run dev"
 
-[services.production]
-
-[services.production.build]
-args = ["pnpm", "--filter", "@workspace/discord-channel-control", "run", "build"]
-
-[services.production.build.env]
-NODE_ENV = "production"
-PORT = "21520"
-BASE_PATH = "/discord-channel-control/"
-
-[services.production.run]
-args = ["sh", "-c", "pnpm --filter @workspace/discord-channel-control run serve"]
-
-[services.production.run.env]
-PORT = "21520"
-NODE_ENV = "production"
-BASE_PATH = "/discord-channel-control/"
-
-[services.production.health.startup]
-path = "/discord-channel-control/"
-
 [services.env]
 PORT = "21520"
 BASE_PATH = "/discord-channel-control/"
