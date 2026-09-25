@@ -8,6 +8,11 @@ import storageRouter from "./storage";
 
 const router: IRouter = Router();
 
+// The deployment also probes the API artifact's base path, not only /api/healthz.
+router.get("/", (_req, res) => {
+  res.sendStatus(200);
+});
+
 const assetsDir = path.join(import.meta.dirname, "..", "assets");
 router.use("/assets", express.static(assetsDir, { maxAge: "7d" }));
 

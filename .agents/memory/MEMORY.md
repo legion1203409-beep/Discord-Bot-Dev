@@ -52,7 +52,7 @@
 - [Ticket media storage](ticket-media-storage.md) — issue owner-protected presigned uploads, then serve saved object paths publicly so Discord can fetch them.
 - [Alliance announcement templates](alliance-announcement-templates.md) — public partnership text supports placeholders and invite counts are snapshotted when staff publishes.
 - [Discord OAuth environments](discord-oauth-environments.md) — moderation login needs a separate development callback URI; production OAuth configuration does not automatically reach preview.
-- [Multi-artifact deployment startup](multi-artifact-deployment-startup.md) — a VM deployment with multiple runnable artifacts can emit transient 500 healthchecks until every configured port is open.
+- [Multi-artifact health probes](multi-artifact-deployment-startup.md) — startup 500s can be transient; recurring probes may also hit artifact base paths.
 - [Moderation config ETag retries](moderation-config-etag-retry.md) — protection saves must refetch and reapply the user's change after a stale-version conflict.
 - [Atomic protection toggles](atomic-protection-toggles.md) — dashboard toggles must mutate one protection key server-side, not PUT a stale full config snapshot.
 - [AOS animation ownership](aos-animation-ownership.md) — elements using data-aos must not also have a competing CSS animation that owns opacity or transform.
