@@ -17,6 +17,9 @@ const STATS_TIME_ZONE = process.env.DISCORD_STATS_TIMEZONE || "Europe/Bucharest"
 const REPORT_CHECK_INTERVAL_MS = 60 * 1000;
 const schedulerTimers = new Map<string, ReturnType<typeof setInterval>>();
 const lastReportSkipByGuild = new Map<string, string>();
+const correctedUnavailableReports = new Set<string>();
+const correctionsInProgress = new Set<string>();
+const UNAVAILABLE_CORRECTION = "Date indisponibile pentru această zi.";
 let schemaReady: Promise<void> | null = null;
 
 function warnDailyStatsReportSkipped(
@@ -90,6 +93,12 @@ export function formatStatsDay(day: string): string {
     dateStyle: "long",
     timeZone: STATS_TIME_ZONE,
   }).format(new Date(`${day}T12:00:00.000Z`));
+}
+
+export function isReportDayBeforeBotJoined(day: string, joinedTimestamp: number | null | undefined): boolean {
+  return joinedTimestamp != null
+    && Number.isFinite(joinedTimestamp)
+    && day < statsDay(joinedTimestamp);
 }
 
 export async function ensureDailyStatsTables(): Promise<void> {
@@ -282,6 +291,10 @@ export async function getDailyStats(guildId: string, day = statsDay()): Promise<
   };
 }
 
+export function hasRecordedStats(report: DailyStatsReport): boolean {
+  return Object.values(report.metrics).some((value) => value > 0) || report.topChannels.length > 0;
+}
+
 function renderDailyStatsText(
   template: string,
   guildName: string,
@@ -308,9 +321,16 @@ export function buildDailyStatsEmbed(
   guildName: string,
   report: DailyStatsReport,
   config: DailyStatsEmbedConfig = DEFAULT_DAILY_STATS_EMBED_CONFIG,
+  joinedTimestamp?: number | null,
 ): EmbedBuilder {
+  const joinedDay = joinedTimestamp != null && Number.isFinite(joinedTimestamp)
+    ? statsDay(joinedTimestamp)
+    : null;
+  const hasUnavailableDays = joinedDay !== null && report.activity.some((item) => item.day < joinedDay);
   const activityText = report.activity
-    .map((item) => `${item.day.slice(8, 10)}/${item.day.slice(5, 7)}: ${item.messages.toLocaleString("ro-RO")}`)
+    .map((item) => `${item.day.slice(8, 10)}/${item.day.slice(5, 7)}: ${
+      joinedDay !== null && item.day < joinedDay ? "—" : item.messages.toLocaleString("ro-RO")
+    }`)
     .join(" · ") || "Nicio activitate în ultimele 7 zile.";
   const channelText = report.topChannels.length > 0
     ? report.topChannels
@@ -356,6 +376,10 @@ export function buildDailyStatsEmbed(
     });
   }
 
+  const coverageNotes = [
+    joinedDay === report.day ? "Prima zi include doar activitatea observată după instalarea botului." : null,
+    hasUnavailableDays ? "„—” marchează zilele dinaintea instalării; nu există date istorice pentru ele." : null,
+  ].filter((note): note is string => note !== null);
   const embed = new EmbedBuilder()
     .setColor(Number.parseInt(config.color.slice(1), 16))
     .setAuthor({ name: "ORACOLUL CENUȘII · COMMUNITY INSIGHTS" })
@@ -365,6 +389,7 @@ export function buildDailyStatsEmbed(
       ...metricFields,
       { name: config.activityTitle, value: activityText },
       { name: config.channelsTitle, value: channelText },
+      ...(coverageNotes.length > 0 ? [{ name: "Acoperirea datelor", value: coverageNotes.join("\n") }] : []),
     )
     .setFooter({ text: config.footer })
     .setTimestamp(new Date(`${report.day}T12:00:00.000Z`));
@@ -375,12 +400,85 @@ export function buildDailyStatsEmbed(
   return embed;
 }
 
-async function isReportPublished(guildId: string, day: string): Promise<boolean> {
-  const result = await pool.query(
+async function publishedReportMessageId(guildId: string, day: string): Promise<string | null> {
+  const result = await pool.query<{ report_message_id: string | null }>(
     `SELECT report_message_id FROM discord_daily_stats WHERE guild_id = $1 AND day = $2`,
     [guildId, day],
   );
-  return Boolean(result.rows[0]?.report_message_id);
+  return result.rows[0]?.report_message_id ?? null;
+}
+
+async function correctUnavailableReport(
+  client: Client,
+  guildId: string,
+  guildName: string,
+  day: string,
+  messageId: string,
+  reason: string,
+): Promise<void> {
+  const correctionKey = `${guildId}:${day}`;
+  if (correctedUnavailableReports.has(correctionKey) || correctionsInProgress.has(correctionKey)) return;
+  correctionsInProgress.add(correctionKey);
+  try {
+    const config = await loadDailyStatsEmbedConfig(guildId);
+    const channelId = resolveDailyStatsChannelId(config.channelId, guildId);
+    if (!channelId) {
+      warnDailyStatsReportSkipped(guildId, day, "correction_channel_not_configured");
+      return;
+    }
+    const channel = await client.channels.fetch(channelId);
+    if (!(channel instanceof TextChannel) || channel.guildId !== guildId) {
+      warnDailyStatsReportSkipped(guildId, day, "correction_channel_not_text", { channelId });
+      return;
+    }
+    const message = await channel.messages.fetch(messageId);
+    if (message.author.id !== client.user?.id ||
+        message.embeds[0]?.author?.name !== "ORACOLUL CENUȘII · COMMUNITY INSIGHTS") {
+      warnDailyStatsReportSkipped(guildId, day, "correction_message_not_ours", { channelId });
+      return;
+    }
+    if (!message.embeds[0]?.description?.startsWith(UNAVAILABLE_CORRECTION)) {
+      await message.edit({
+        embeds: [new EmbedBuilder()
+          .setColor(Number.parseInt(config.color.slice(1), 16))
+          .setAuthor({ name: "ORACOLUL CENUȘII · COMMUNITY INSIGHTS" })
+          .setTitle(`📊 Statistici indisponibile · ${guildName}`)
+          .setDescription(`${UNAVAILABLE_CORRECTION} ${reason} Zerourile din raportul inițial nu reprezentau date confirmate pentru ${formatStatsDay(day)}.`)
+          .setFooter({ text: config.footer })
+          .setTimestamp(new Date(`${day}T12:00:00.000Z`))],
+      });
+      logger.info({ guildId, day, messageId }, "Corrected unavailable daily statistics report");
+    }
+    correctedUnavailableReports.add(correctionKey);
+  } catch (error) {
+    warnDailyStatsReportSkipped(guildId, day, "correction_failed", { error });
+  } finally {
+    correctionsInProgress.delete(correctionKey);
+  }
+}
+
+export async function repairRecentUnavailableReports(client: Client, guildId: string): Promise<void> {
+  await ensureDailyStatsTables();
+  const guild = client.guilds.cache.get(guildId) ?? await client.guilds.fetch(guildId).catch(() => null);
+  if (!guild) return;
+  const currentDay = statsDay();
+  const firstDay = daysEndingAt(previousDay(currentDay), 7)[0];
+  const result = await pool.query<{ day: string; report_message_id: string }>(
+    `SELECT day, report_message_id FROM discord_daily_stats
+     WHERE guild_id = $1 AND day >= $2 AND day < $3
+       AND report_message_id IS NOT NULL
+       AND message_count = 0 AND joins = 0 AND leaves = 0 AND boosts = 0 AND peak_voice = 0
+     ORDER BY day DESC LIMIT 7`,
+    [guildId, firstDay, currentDay],
+  );
+  for (const row of result.rows) {
+    await correctUnavailableReport(
+      client, guildId, guild.name, row.day, row.report_message_id,
+      isReportDayBeforeBotJoined(row.day, guild.joinedTimestamp)
+        ? "Botul nu era încă în server în această zi."
+        : "Nu s-au înregistrat evenimente în această zi; nu putem confirma dacă serverul a fost inactiv sau botul nu colecta date.",
+    );
+  }
 }
 
 async function markReportPublished(guildId: string, day: string, messageId: string): Promise<void> {
@@ -395,7 +493,28 @@ async function markReportPublished(guildId: string, day: string, messageId: stri
 
 export async function publishDailyStatsReport(client: Client, guildId: string, day: string): Promise<boolean> {
   await ensureDailyStatsTables();
-  if (await isReportPublished(guildId, day)) return false;
+  const existingMessageId = await publishedReportMessageId(guildId, day);
+  const guild = client.guilds.cache.get(guildId) ?? await client.guilds.fetch(guildId).catch(() => null);
+  if (!guild) {
+    warnDailyStatsReportSkipped(guildId, day, "guild_unavailable");
+    return false;
+  }
+  const beforeBotJoined = isReportDayBeforeBotJoined(day, guild.joinedTimestamp);
+  const report = await getDailyStats(guildId, day);
+  if (beforeBotJoined || !hasRecordedStats(report)) {
+    if (existingMessageId) {
+      await correctUnavailableReport(
+        client, guildId, guild.name, day, existingMessageId,
+        beforeBotJoined
+          ? "Botul nu era încă în server în această zi."
+          : "Nu s-au înregistrat evenimente în această zi; nu putem confirma dacă serverul a fost inactiv sau botul nu colecta date.",
+      );
+    } else {
+      warnDailyStatsReportSkipped(guildId, day, beforeBotJoined ? "day_before_bot_joined_guild" : "no_observations_for_day");
+    }
+    return false;
+  }
+  if (existingMessageId) return false;
   const config = await loadDailyStatsEmbedConfig(guildId);
   const channelId = resolveDailyStatsChannelId(config.channelId, guildId);
   if (!channelId) {
@@ -418,13 +537,7 @@ export async function publishDailyStatsReport(client: Client, guildId: string, d
     return false;
   }
 
-  const guild = client.guilds.cache.get(guildId) ?? await client.guilds.fetch(guildId).catch(() => null);
-  if (!guild) {
-    warnDailyStatsReportSkipped(guildId, day, "guild_unavailable", { channelId });
-    return false;
-  }
-  const report = await getDailyStats(guildId, day);
-  const message = await channel.send({ embeds: [buildDailyStatsEmbed(guild.name, report, config)] });
+  const message = await channel.send({ embeds: [buildDailyStatsEmbed(guild.name, report, config, guild.joinedTimestamp)] });
   await markReportPublished(guildId, day, message.id);
   lastReportSkipByGuild.delete(guildId);
   logger.info({ guildId, day, channelId, messageId: message.id }, "Published daily Discord statistics report");
@@ -434,6 +547,9 @@ export async function publishDailyStatsReport(client: Client, guildId: string, d
 export function startDailyStatsScheduler(client: Client, guildId: string): void {
   if (schedulerTimers.has(guildId)) return;
   logger.info({ guildId }, "Started daily Discord statistics scheduler");
+  void repairRecentUnavailableReports(client, guildId).catch((error) =>
+    logger.warn({ error, guildId }, "Could not inspect recently published daily statistics reports"),
+  );
   const timer = setInterval(() => {
     const currentDay = statsDay();
     const reportDay = previousDay(currentDay);
