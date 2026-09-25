@@ -61,3 +61,4 @@
 - [Discord overwrite preservation](discord-acl-preservation.md) — edit only managed permission bits; replacing an overwrite set destroys unrelated server access.
 - [Wouter query navigation](wouter-query-navigation.md) — components tracking query-only tabs need `useSearch`; `useLocation` alone won't refresh active navigation markers.
 - [Moderation threshold compatibility](moderation-threshold-defaults.md) — fill missing rule defaults only when no accepted legacy alias is saved; keep all aliases aligned in the editor.
+- [Discord mobile embed layout](discord-mobile-embed-layout.md) — inline fields stack on phones; avoid code-block/Unicode bars and keep previews mobile-first.

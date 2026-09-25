@@ -178,14 +178,14 @@ const DAILY_STATS_PREVIEW_CHANNELS = [
   { name: "off-topic", messages: 17 },
 ];
 
+const DAILY_STATS_PREVIEW_METRIC_ROWS = [
+  [["messages", 307], ["uniqueUsers", 13]],
+  [["boosts", 0], ["joins", 5]],
+  [["leaves", 5], ["peakVoice", 4]],
+] as const;
+
 function renderDailyStatsPreviewText(template: string): string {
   return template.replace(/\{([a-zA-Z0-9_]+)\}/g, (match, key: string) => DAILY_STATS_PREVIEW_VALUES[key] ?? match);
-}
-
-function dailyStatsPreviewBar(value: number, max: number, width: number): string {
-  if (max <= 0 || value <= 0) return "░".repeat(width);
-  const filled = Math.max(1, Math.round((value / max) * width));
-  return "█".repeat(Math.min(width, filled)) + "░".repeat(Math.max(0, width - filled));
 }
 
 const NEW_QUESTION = {
@@ -2014,33 +2014,34 @@ export function BotControlPage() {
                   <p className="text-[10px] font-semibold tracking-wider text-[#949cf7]">ORACOLUL CENUȘII · COMMUNITY INSIGHTS</p>
                   <h3 className="mt-2 font-semibold"><DiscordEmojiText emojis={metadata?.emojis}>{renderDailyStatsPreviewText(draft.dailyStats.title)}</DiscordEmojiText></h3>
                   <p className="mt-2 whitespace-pre-wrap text-xs text-[#b5bac1]"><DiscordEmojiText emojis={metadata?.emojis}>{renderDailyStatsPreviewText(draft.dailyStats.description)}</DiscordEmojiText></p>
-                  <div className="mt-4 grid grid-cols-3 gap-2">
-                    {([
-                      ["messages", 307],
-                      ["uniqueUsers", 13],
-                      ["boosts", 0],
-                      ["joins", 5],
-                      ["leaves", 5],
-                      ["peakVoice", 4],
-                    ] as const).map(([key, value]) => (
-                      <div key={key} className="min-w-0 rounded bg-[#36393f] p-2">
-                        <p className="truncate text-[10px] text-[#b5bac1]"><DiscordEmojiText emojis={metadata?.emojis}>{draft.dailyStats.metricLabels[key]}</DiscordEmojiText></p>
-                        <p className="mt-1 font-semibold">{value.toLocaleString("ro-RO")}</p>
-                      </div>
-                    ))}
+                  <div className="mt-4">
+                    <p className="mb-1 text-xs font-semibold">📊 Rezumat</p>
+                    <div className="space-y-1 rounded bg-[#36393f] p-2 text-xs leading-relaxed">
+                      {DAILY_STATS_PREVIEW_METRIC_ROWS.map((row) => (
+                        <p key={row[0][0]} className="break-words">
+                          {row.map(([key, value], index) => (
+                            <span key={key}>
+                              {index > 0 && <span className="mx-1 text-[#b5bac1]">·</span>}
+                              <DiscordEmojiText emojis={metadata?.emojis}>{draft.dailyStats.metricLabels[key]}</DiscordEmojiText>{": "}
+                              <strong>{value.toLocaleString("ro-RO")}</strong>
+                            </span>
+                          ))}
+                        </p>
+                      ))}
+                    </div>
                   </div>
                   <div className="mt-3">
                     <p className="mb-1 text-xs font-semibold"><DiscordEmojiText emojis={metadata?.emojis}>{draft.dailyStats.activityTitle}</DiscordEmojiText></p>
-                    <pre className="overflow-x-auto rounded bg-[#1e1f22] p-2 font-mono text-[10px] leading-relaxed">
-                      {DAILY_STATS_PREVIEW_ACTIVITY.map((item) => `${item.day.slice(5)}  ${dailyStatsPreviewBar(item.messages, 307, 12)}  ${item.messages}`).join("\n")}
-                    </pre>
+                    <p className="break-words rounded bg-[#1e1f22] p-2 text-xs leading-relaxed">
+                      {DAILY_STATS_PREVIEW_ACTIVITY.map((item) => `${item.day.slice(8, 10)}/${item.day.slice(5, 7)}: ${item.messages.toLocaleString("ro-RO")}`).join(" · ")}
+                    </p>
                   </div>
                   <div className="mt-3">
                     <p className="mb-1 text-xs font-semibold"><DiscordEmojiText emojis={metadata?.emojis}>{draft.dailyStats.channelsTitle}</DiscordEmojiText></p>
                     <div className="space-y-1 text-xs">
                       {DAILY_STATS_PREVIEW_CHANNELS.map((channel, index) => (
                         <p key={channel.name}>
-                          {index + 1}. <strong>#{channel.name}</strong> {dailyStatsPreviewBar(channel.messages, 124, 10)} {channel.messages}
+                          {index + 1}. <strong>#{channel.name}</strong> · {channel.messages.toLocaleString("ro-RO")} mesaje
                         </p>
                       ))}
                     </div>

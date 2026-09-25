@@ -311,13 +311,13 @@ export function buildDailyStatsEmbed(
 ): EmbedBuilder {
   const activityText = report.activity
     .map((item) => `${item.day.slice(8, 10)}/${item.day.slice(5, 7)}: ${item.messages.toLocaleString("ro-RO")}`)
-    .join(" · ");
+    .join(" · ") || "Nicio activitate în ultimele 7 zile.";
   const channelText = report.topChannels.length > 0
     ? report.topChannels
       .map((item, index) => `${index + 1}. **#${item.channelName}** · ${item.messages.toLocaleString("ro-RO")} mesaje`)
       .join("\n")
     : config.emptyChannelsText;
-  const metricLines = [
+  const metricLines = ([
     [
       [config.metricLabels.messages, report.metrics.messages],
       [config.metricLabels.uniqueUsers, report.metrics.uniqueUsers],
@@ -330,7 +330,7 @@ export function buildDailyStatsEmbed(
       [config.metricLabels.leaves, report.metrics.leaves],
       [config.metricLabels.peakVoice, report.metrics.peakVoice],
     ],
-  ].map((row) => row
+  ] as const).map((row) => row
     .map(([label, value]) => `${label.replace(/\s+/g, " ").trim()}: **${value.toLocaleString("ro-RO")}**`)
     .join(" · "));
   const metricFields: { name: string; value: string; inline: false }[] = [];
