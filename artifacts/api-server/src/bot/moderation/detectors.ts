@@ -1,5 +1,6 @@
 export type DetectorKind =
   | "word"
+  | "ai"
   | "link"
   | "caps"
   | "emoji"
@@ -87,20 +88,42 @@ export function detectScamContent(content: string, configuredPhrases: readonly s
   return null;
 }
 
-export function findBlockedLink(content: string, blockedLinks: readonly string[]): string | null {
-  const urls = content.match(/(?:https?:\/\/|www\.)[^\s<>()]+/gi) ?? [];
+export type ForbiddenLinkCategories = Partial<Record<"discordInvite" | "social" | "video" | "shortener" | "all", boolean>>;
+
+const socialHosts = ["facebook.com", "fb.com", "instagram.com", "tiktok.com", "x.com", "twitter.com", "threads.net", "reddit.com", "bsky.app"];
+const videoHosts = ["youtube.com", "youtu.be", "twitch.tv", "kick.com"];
+const shortenerHosts = ["bit.ly", "tinyurl.com", "t.co", "cutt.ly", "is.gd", "shorturl.at"];
+const matchesHost = (hostname: string, domain: string) => hostname === domain || hostname.endsWith(`.${domain}`);
+
+export function findBlockedLink(content: string, blockedLinks: readonly string[], categories: ForbiddenLinkCategories = {}): string | null {
+  const urls: string[] = content.match(/(?:https?:\/\/|www\.)[^\s<>()]+/gi) ?? [];
+  // Discord invites are often pasted without a scheme or www.
+  if (categories.discordInvite || categories.all) {
+    const bareInvites = content.matchAll(/(?:^|[\s<(])((?:discord\.gg\/|discord(?:app)?\.com\/invite\/)[^\s<>()]+)/gi);
+    for (const match of bareInvites) urls.push(match[1]);
+  }
   for (const url of urls) {
-    let hostname = "";
+    let parsed: URL;
     try {
-      hostname = new URL(url.startsWith("www.") ? `https://${url}` : url).hostname.toLowerCase();
+      parsed = new URL(/^https?:\/\//i.test(url) ? url : `https://${url}`);
     } catch {
       continue;
     }
+    if (!["http:", "https:"].includes(parsed.protocol)) continue;
+    const hostname = parsed.hostname.toLowerCase();
     for (const configured of blockedLinks) {
       const normalized = configured.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
       if (!normalized) continue;
-      if (hostname === normalized || hostname.endsWith(`.${normalized}`)) return configured.trim();
+      if (matchesHost(hostname, normalized)) return configured.trim();
     }
+    if (categories.all) return "Categoria: toate linkurile";
+    if (categories.discordInvite && (
+      (matchesHost(hostname, "discord.gg") && /^\/[^/]+/.test(parsed.pathname))
+      || (["discord.com", "discordapp.com"].some((host) => matchesHost(hostname, host)) && /^\/invite\/[^/]+/i.test(parsed.pathname))
+    )) return "Categoria: invitații Discord";
+    if (categories.social && socialHosts.some((host) => matchesHost(hostname, host))) return "Categoria: rețele sociale";
+    if (categories.video && videoHosts.some((host) => matchesHost(hostname, host))) return "Categoria: video și streaming";
+    if (categories.shortener && shortenerHosts.some((host) => matchesHost(hostname, host))) return "Categoria: linkuri scurtate";
   }
   return null;
 }
@@ -153,6 +176,7 @@ export function detectContent(
   options: {
     blockedWords?: readonly string[];
     blockedLinks?: readonly string[];
+    blockedLinkCategories?: ForbiddenLinkCategories;
     thresholds?: ContentThresholds;
   },
 ): Detection[] {
@@ -160,7 +184,7 @@ export function detectContent(
   const thresholds = options.thresholds ?? {};
   const word = containsBlockedWord(content, options.blockedWords ?? []);
   if (word) results.push({ kind: "word", detail: `Cuvânt filtrat: ${word}` });
-  const link = findBlockedLink(content, options.blockedLinks ?? []);
+  const link = findBlockedLink(content, options.blockedLinks ?? [], options.blockedLinkCategories);
   if (link) results.push({ kind: "link", detail: `Link blocat: ${link}` });
 
   const emoji = countEmoji(content);
@@ -192,5 +216,20 @@ export class SlidingRateLimiter {
 
   clear(key: string): void {
     this.samples.delete(key);
+  }
+}
+
+/** Counts distinct messages, not repeated processing of the same message after an edit. */
+export class SlidingUniqueMessageRateLimiter {
+  private readonly samples = new Map<string, Array<{ id: string; at: number }>>();
+
+  hit(key: string, messageId: string, threshold: number, windowMs: number, now = Date.now()): { count: number; reached: boolean } {
+    const kept = (this.samples.get(key) ?? []).filter((sample) => sample.at > now - Math.max(1, windowMs));
+    if (!kept.some((sample) => sample.id === messageId)) kept.push({ id: messageId, at: now });
+    if (kept.length > 1_024) kept.splice(0, kept.length - 1_024);
+    this.samples.delete(key);
+    this.samples.set(key, kept);
+    if (this.samples.size > 2_048) this.samples.delete(this.samples.keys().next().value!);
+    return { count: kept.length, reached: kept.length >= Math.max(1, threshold) };
   }
 }

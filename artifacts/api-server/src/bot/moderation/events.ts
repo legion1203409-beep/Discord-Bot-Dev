@@ -353,9 +353,13 @@ async function sanction(
 ): Promise<boolean> {
   if (!action || !client.user?.id) return false;
   try {
+    const channelId = evidence
+      .find((entry): entry is { channelId: string } =>
+        !!entry && typeof entry === "object" && "channelId" in entry && typeof entry.channelId === "string")
+      ?.channelId;
     await helpers.executeModerationAction({
       guildId: guild.id, actorId: client.user.id, targetId: actorId, type: action,
-      reason, evidence, source, idempotencyKey,
+      reason, evidence, source, idempotencyKey, channelId,
     });
     return true;
   } catch (error) {
@@ -450,12 +454,13 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
       );
       if (rate.exceeded) {
         const incidentKey = `join-leave:${member.guild.id}:${Math.floor(Date.now() / windowMs(joinLeave))}`;
-        if (!claimIncident(incidentKey, windowMs(joinLeave))) return;
-        const description = `Flux join/leave detectat: ${rate.count} intrări/plecări în fereastra configurată. Nu există un actor sancționabil.`;
-        await alert(helpers, config, member.guild, "Activitate suspectă", description, config.suspiciousBehavior.alertChannelId);
-        await recordAudit(helpers, config, member.guild, "suspicious.join_leave_alert_only", "member", member.id,
-          auditDetail(config, null, { count: rate.count, noSanction: "join/leave stream has no verified actor" }));
-        await unusualActivity(helpers, client, member.guild, config, "member_join", null, false);
+        if (claimIncident(incidentKey, windowMs(joinLeave))) {
+          const description = `Flux join/leave detectat: ${rate.count} intrări/plecări în fereastra configurată. Nu există un actor sancționabil.`;
+          await alert(helpers, config, member.guild, "Activitate suspectă", description, config.suspiciousBehavior.alertChannelId);
+          await recordAudit(helpers, config, member.guild, "suspicious.join_leave_alert_only", "member", member.id,
+            auditDetail(config, null, { count: rate.count, noSanction: "join/leave stream has no verified actor" }));
+          await unusualActivity(helpers, client, member.guild, config, "member_join", null, false);
+        }
       }
     }
     const rule = config.antiRaid.rule;
@@ -480,7 +485,16 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
       auditDetail(config, null, { joins: joins.count, youngAccount: young, lockdown: config.antiRaid.lockdown }));
 
     if (config.antiRaid.lockdown) {
-      for (const channel of member.guild.channels.cache.values()) {
+      const lockdownChannels = new Map(member.guild.channels.cache);
+      try {
+        const fetchedChannels = await member.guild.channels.fetch();
+        for (const [channelId, channel] of fetchedChannels) {
+          if (channel) lockdownChannels.set(channelId, channel);
+        }
+      } catch (error) {
+        logger.warn({ error, guildId: member.guild.id }, "Anti-raid guild channel fetch failed; using cached channels");
+      }
+      for (const channel of lockdownChannels.values()) {
         if (channel.type !== ChannelType.GuildText || isExcludedChannel(config, channel.id)) continue;
         try {
           await helpers.executeModerationAction({
@@ -528,33 +542,34 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
   client.on(Events.MessageUpdate, (oldMessage, incoming) => safely(Events.MessageUpdate, async () => {
     const message = await resolveMessage(incoming);
     if (!message?.guild || !message.guildId || message.author.bot) return;
+    const contentChanged = oldMessage.content != null && oldMessage.content !== message.content;
     // Edited content has to take the same AutoMod path as a new message.
-    if (oldMessage.content !== message.content) await helpers.handleMessage(client, message);
+    if (oldMessage.content == null || contentChanged) await helpers.handleMessage(client, message);
     const config = await helpers.getConfig(message.guildId);
     await recordAudit(helpers, config, message.guild, "discord.message_update", "message", message.id,
       auditDetail(config, null, {
         actorVerified: false,
         targetAuthorId: message.author.id,
         channelId: message.channelId,
-        contentChanged: oldMessage.content !== message.content,
+        contentChanged,
       }));
     if (!config.protection.enabled) return;
     if (isExcludedChannel(config, message.channelId) || isExcludedMember(config, message.member)) return;
 
     let sanctioned = false;
-    if (config.antiSpam.enabled && config.antiSpam.edit.enabled) {
+    if (contentChanged && config.antiSpam.enabled && config.antiSpam.edit.enabled) {
       const rule = config.antiSpam.edit;
       const rate = editRates.hit(`${message.guildId}:edit:${message.author.id}`, threshold(rule, 5), windowMs(rule, 10));
       if (rate.exceeded) {
-        const incidentKey = `edit:${message.guildId}:${message.author.id}:${Math.floor(Date.now() / 60_000)}`;
-        if (!claimIncident(incidentKey, 60_000)) return;
+        const incidentKey = `edit:${message.guildId}:${message.author.id}:${Math.floor(Date.now() / windowMs(rule, 10))}`;
+        if (claimIncident(`edit-cooldown:${message.guildId}:${message.author.id}`, windowMs(rule, 10))) {
         const description = `Spam de editări: ${rate.count} editări în fereastra configurată.`;
         await recordAudit(helpers, config, message.guild, "spam.edit_burst", "member", message.author.id,
           auditDetail(config, { id: message.author.id, bot: false, staff: false, verified: true }, { count: rate.count, messageId: message.id }));
         if (rule.action === "delete") {
           try {
             await helpers.executeModerationAction({
-              guildId: message.guildId, actorId: client.user?.id ?? "system", type: "delete",
+              guildId: message.guildId, actorId: client.user?.id ?? "system", targetId: message.author.id, type: "delete",
               messageId: message.id, channelId: message.channelId, reason: description, source: "automod",
               evidence: [{ messageId: message.id, channelId: message.channelId, kind: "edit-spam" }],
               idempotencyKey: incidentKey,
@@ -573,14 +588,15 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
             [{ messageId: message.id, channelId: message.channelId, kind: "edit-spam" }], incidentKey,
           );
         }
+        }
       }
     }
     const massEdits = config.suspiciousBehavior.massEdits;
-    if (config.suspiciousBehavior.enabled && massEdits.enabled) {
+    if (contentChanged && config.suspiciousBehavior.enabled && massEdits.enabled) {
       const rate = editRates.hit(`${message.guildId}:mass-edit:${message.author.id}`, sensitivityThreshold(massEdits, config.suspiciousBehavior.sensitivity, 5), windowMs(massEdits));
       if (rate.exceeded) {
-        const incidentKey = `edit:${message.guildId}:${message.author.id}:${Math.floor(Date.now() / 60_000)}`;
-        if (!claimIncident(incidentKey, 60_000)) return;
+        const incidentKey = `mass-edit:${message.guildId}:${message.author.id}:${Math.floor(Date.now() / windowMs(massEdits))}`;
+        if (!claimIncident(`mass-edit-cooldown:${message.guildId}:${message.author.id}`, windowMs(massEdits))) return;
         const description = `Editări în masă: ${rate.count} editări în fereastra configurată.`;
         await alert(helpers, config, message.guild, "Activitate suspectă", description, config.suspiciousBehavior.alertChannelId);
         if (!sanctioned) {
@@ -651,7 +667,7 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
         return;
       }
       const action = configuredAction(activeRule.action) ??
-        (config.suspiciousBehavior.enabled ? configuredAction(config.suspiciousBehavior.action) : null);
+        (activeRule === massDeletes ? configuredAction(config.suspiciousBehavior.action) : null);
       await sanction(
         helpers, client, guild, config, actor.id, action, description,
         [{ channelId: channelId ?? undefined, kind: bulk ? "bulk-delete" : "delete-spam" }], incidentKey,

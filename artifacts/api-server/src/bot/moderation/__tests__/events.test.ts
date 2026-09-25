@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { Events, type Client } from "discord.js";
+import { ChannelType, Events, type Client } from "discord.js";
 import { describe, expect, it, vi } from "vitest";
 import { defaultModerationConfig, type ModerationConfig } from "../../../moderation/config";
 import { attachModerationEvents, type ModerationEventHelpers } from "../events";
@@ -18,7 +18,7 @@ const roles = {
 function guild(id: string) {
   return {
     id,
-    channels: { cache: new Map() },
+    channels: { cache: new Map(), fetch: vi.fn(async () => new Map()) },
     members: { fetch: vi.fn() },
     fetchAuditLogs: vi.fn(async () => ({ entries: new Map() })),
   };
@@ -100,6 +100,7 @@ describe("non-message moderation events", () => {
     expect(helpers.executeModerationAction).toHaveBeenCalledTimes(1);
     expect(helpers.executeModerationAction).toHaveBeenCalledWith(expect.objectContaining({
       guildId: "10001", targetId: "20001", type: "mute", source: "automod",
+      channelId: "33333",
       idempotencyKey: expect.stringMatching(/^edit:10001:20001:/),
     }));
   });
@@ -118,11 +119,88 @@ describe("non-message moderation events", () => {
     await waitForHandlers();
 
     expect(helpers.executeModerationAction).toHaveBeenCalledWith(expect.objectContaining({
-      guildId: "10007", type: "delete", messageId: second.id, channelId: "33333",
+      guildId: "10007", targetId: "20007", type: "delete", messageId: second.id, channelId: "33333",
       source: "automod", idempotencyKey: expect.stringMatching(/^edit:10007:20007:/),
     }));
     expect(first.delete).not.toHaveBeenCalled();
     expect(second.delete).not.toHaveBeenCalled();
+  });
+
+  it("does not count a content-neutral message update as edit spam", async () => {
+    const config = structuredClone(defaultModerationConfig);
+    config.antiSpam.enabled = true;
+    config.antiSpam.edit = { enabled: true, action: "warn", severity: "normal", thresholds: { limit: 1, window: 60 } };
+    const { emitter, helpers } = setup(config);
+    const targetGuild = guild("10008");
+    const edited = message(targetGuild, "20008");
+    emitter.emit(Events.MessageUpdate, { content: edited.content }, edited);
+    emitter.emit(Events.MessageUpdate, { content: edited.content }, edited);
+    await waitForHandlers();
+    expect(helpers.handleMessage).not.toHaveBeenCalled();
+    expect(helpers.executeModerationAction).not.toHaveBeenCalled();
+  });
+
+  it("rechecks updates with unknown old content without counting them as edits", async () => {
+    const config = structuredClone(defaultModerationConfig);
+    config.protection.enabled = true;
+    config.antiSpam.enabled = true;
+    config.antiSpam.edit = { enabled: true, action: "warn", severity: "normal", thresholds: { limit: 1, window: 60 } };
+    config.suspiciousBehavior.enabled = true;
+    config.suspiciousBehavior.massEdits = {
+      enabled: true, action: "warn", severity: "normal", thresholds: { limit: 1, window: 60 },
+    };
+    const { client, emitter, helpers } = setup(config);
+    const targetGuild = guild("10010");
+    const first = message(targetGuild, "20010");
+    const second = message(targetGuild, "20010");
+
+    emitter.emit(Events.MessageUpdate, { content: null }, first);
+    emitter.emit(Events.MessageUpdate, { content: undefined }, second);
+    await waitForHandlers();
+
+    expect(helpers.handleMessage).toHaveBeenCalledTimes(2);
+    expect(helpers.handleMessage).toHaveBeenCalledWith(client, first);
+    expect(helpers.handleMessage).toHaveBeenCalledWith(client, second);
+    expect(helpers.executeModerationAction).not.toHaveBeenCalled();
+    expect(helpers.notify).not.toHaveBeenCalled();
+  });
+
+  it("locks fetchable uncached text channels during anti-raid lockdown", async () => {
+    const config = structuredClone(defaultModerationConfig);
+    config.antiRaid.enabled = true;
+    config.antiRaid.lockdown = true;
+    config.antiRaid.rule = { enabled: true, action: "none", severity: "normal", thresholds: { joins: 0, windowSeconds: 60 } };
+    config.channels.ignoredChannelIds = ["ignored-channel"];
+    config.channels.protectedChannelIds = ["protected-channel"];
+    const { emitter, helpers } = setup(config);
+    const targetGuild = guild("10011");
+    const cachedText = { id: "cached-text", type: ChannelType.GuildText };
+    const fetchedText = { id: "fetched-text", type: ChannelType.GuildText };
+    const ignoredText = { id: "ignored-channel", type: ChannelType.GuildText };
+    const protectedText = { id: "protected-channel", type: ChannelType.GuildText };
+    const fetchedVoice = { id: "fetched-voice", type: ChannelType.GuildVoice };
+    targetGuild.channels.cache.set(cachedText.id, cachedText);
+    (targetGuild.channels.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(new Map([
+      [fetchedText.id, fetchedText],
+      [ignoredText.id, ignoredText],
+      [protectedText.id, protectedText],
+      [fetchedVoice.id, fetchedVoice],
+    ]));
+
+    emitter.emit(Events.GuildMemberAdd, member(targetGuild, "20011", Date.now()));
+    await waitForHandlers();
+
+    expect(targetGuild.channels.fetch).toHaveBeenCalledOnce();
+    expect(helpers.executeModerationAction).toHaveBeenCalledTimes(2);
+    expect(helpers.executeModerationAction).toHaveBeenCalledWith(expect.objectContaining({
+      guildId: "10011", type: "lock", channelId: "cached-text", source: "raid",
+    }));
+    expect(helpers.executeModerationAction).toHaveBeenCalledWith(expect.objectContaining({
+      guildId: "10011", type: "lock", channelId: "fetched-text", source: "raid",
+    }));
+    expect(helpers.executeModerationAction).not.toHaveBeenCalledWith(expect.objectContaining({
+      type: "lock", channelId: expect.stringMatching(/^(ignored-channel|protected-channel|fetched-voice)$/),
+    }));
   });
 
   it("routes a rapid-join raid alert to antiRaid.alertChannelId", async () => {
@@ -141,6 +219,39 @@ describe("non-message moderation events", () => {
     expect(helpers.executeModerationAction).toHaveBeenCalledWith(expect.objectContaining({
       targetId: "20003", type: "warn", source: "raid",
     }));
+  });
+
+  it("keeps evaluating anti-raid when a repeated join/leave alert is on cooldown", async () => {
+    const config = structuredClone(defaultModerationConfig);
+    config.suspiciousBehavior.enabled = true;
+    config.suspiciousBehavior.alertChannelId = "44445";
+    config.suspiciousBehavior.joinLeaveFlood = {
+      enabled: true, action: "none", severity: "normal", thresholds: { limit: 1, windowSeconds: 60 },
+    };
+    config.antiRaid.enabled = true;
+    config.antiRaid.alertChannelId = "44444";
+    config.antiRaid.rule = {
+      enabled: true, action: "warn", severity: "normal", thresholds: { joins: 1, windowSeconds: 1 },
+    };
+    const { emitter, helpers } = setup(config);
+    const targetGuild = guild("10009");
+    let now = 1_000_000;
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    try {
+      emitter.emit(Events.GuildMemberAdd, member(targetGuild, "20009"));
+      emitter.emit(Events.GuildMemberAdd, member(targetGuild, "20010"));
+      await waitForHandlers();
+      now += 15_100;
+      emitter.emit(Events.GuildMemberAdd, member(targetGuild, "20011"));
+      await waitForHandlers();
+      expect((helpers.notify as ReturnType<typeof vi.fn>).mock.calls
+        .filter(([, , title]) => title === "Alertă anti-raid")).toHaveLength(2);
+      expect(helpers.executeModerationAction).toHaveBeenCalledWith(expect.objectContaining({
+        targetId: "20011", type: "warn", source: "raid",
+      }));
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   it("catches handler and enforcement failures instead of leaking rejected listeners", async () => {

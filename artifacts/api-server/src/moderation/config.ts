@@ -110,6 +110,13 @@ export const ModerationConfigSchema = z.object({
     repeatBlock: ruleSchemaWithThresholdDefaults({ key: "repeat", value: 8, aliases: ["limit", "max"] }).default({}),
     forbiddenWords: textList.default([]),
     forbiddenLinks: textList.default([]),
+    forbiddenLinkCategories: z.object({
+      discordInvite: z.boolean().default(false),
+      social: z.boolean().default(false),
+      video: z.boolean().default(false),
+      shortener: z.boolean().default(false),
+      all: z.boolean().default(false),
+    }).strict().default({}),
   }).default({}),
   // 2. Anti-raid
   antiRaid: z.object({
@@ -304,7 +311,11 @@ export const ModerationConfigSchema = z.object({
   validateRuleThresholds(config.autoMod.linkBlock, ["autoMod", "linkBlock"], { matches: [1, 100] }, ctx);
   validateRuleThresholds(config.autoMod.emojiLimit, ["autoMod", "emojiLimit"], { emoji: [1, 200], limit: [1, 200], max: [1, 200] }, ctx);
   validateRuleThresholds(config.autoMod.capsLimit, ["autoMod", "capsLimit"], { capsPercent: [1, 100], percent: [1, 100], limit: [1, 100] }, ctx);
-  validateRuleThresholds(config.autoMod.repeatBlock, ["autoMod", "repeatBlock"], { repeat: [2, 200], limit: [2, 200], max: [2, 200] }, ctx);
+  validateRuleThresholds(config.autoMod.repeatBlock, ["autoMod", "repeatBlock"], {
+    repeat: [2, 200], limit: [2, 200], max: [2, 200],
+    messages: [2, 100], count: [2, 100],
+    windowMs: [1, 3_600], window: [1, 3_600], seconds: [1, 3_600],
+  }, ctx);
   validateRuleThresholds(config.antiRaid.rule, ["antiRaid", "rule"], { joins: [1, 10_000], limit: [1, 10_000], windowSeconds: [1, 3_600] }, ctx);
   validateRuleThresholds(config.antiSpam.message, ["antiSpam", "message"], { messages: [1, 1_000], limit: [1, 1_000], max: [1, 1_000], windowMs: [1, 3_600], window: [1, 3_600], seconds: [1, 3_600] }, ctx);
   validateRuleThresholds(config.antiSpam.edit, ["antiSpam", "edit"], { edits: [1, 1_000], limit: [1, 1_000], max: [1, 1_000], windowMs: [1, 3_600], window: [1, 3_600], seconds: [1, 3_600] }, ctx);

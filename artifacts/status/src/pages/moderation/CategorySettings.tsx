@@ -6,6 +6,8 @@ import { Button } from "../../components/ui/button";
 import { useToast } from "../../hooks/use-toast";
 import { ConfigEditor, type ConfigSection } from "./ConfigEditor";
 import { rebaseDraftChanges } from "../../lib/utils";
+import { activityLogDraftError } from "../../lib/activity-log-validation";
+import { embedUrlDraftError } from "../../lib/embed-url-validation";
 
 const DETAILS: Record<ConfigSection, { title: string; description: string }> = {
   automod: { title: "AutoMod", description: "Filtre de cuvinte, linkuri, anti-scam, emoji, majuscule și repetări." },
@@ -76,6 +78,12 @@ export function CategorySettingsPage({ section }: { section: ConfigSection }) {
   const changed = Boolean(data && JSON.stringify(data) !== JSON.stringify(currentDraft));
   const save = async () => {
     if (saving || !editorKey) return;
+    const draftError = section === "cases-audit" ? activityLogDraftError(currentDraft.activityLog)
+      : section === "embeds" ? embedUrlDraftError(currentDraft.embeds) : null;
+    if (draftError) {
+      toast({ variant: "destructive", title: "Verifică setările înainte de salvare", description: draftError });
+      return;
+    }
     const savingKey = editorKey;
     const savingRevision = draftRevision.current;
     setSaving(true);
@@ -95,13 +103,7 @@ export function CategorySettingsPage({ section }: { section: ConfigSection }) {
       toast({ title: `${detail.title} salvat`, description: "Setările trimise au fost actualizate. Verifică eventualele modificări rămase nesalvate." });
     } catch (saveError: any) {
       if (initializedEditor.current !== savingKey) return;
-      if (section === "cases-audit" && currentDraft.activityLog?.enabled && !data?.activityLog?.enabled) {
-        setDraft((current: any) => current && draftRevision.current === savingRevision ? {
-          ...current,
-          activityLog: structuredClone(data?.activityLog ?? current.activityLog),
-        } : current);
-      }
-      toast({ variant: "destructive", title: "Salvarea a eșuat", description: saveError?.message || "Draftul a fost păstrat." });
+      toast({ variant: "destructive", title: "Salvarea a eșuat", description: saveError?.message || "Draftul nu a fost salvat; modificările rămân în formular." });
     } finally {
       setSaving(false);
     }

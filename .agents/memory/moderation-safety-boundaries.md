@@ -21,6 +21,30 @@ Do not infer who deleted a message or changed roles from the affected member.
 
 **How to apply:** Use reliable actor attribution where available; otherwise alert staff without automatic punishment.
 
+Automatic warnings need a safe delivery fallback when members block DMs; they must retain the source channel context without bypassing the moderation action ledger.
+
+**Why:** An attempted emoji warning can be correctly detected but marked failed when DM delivery is unavailable, making moderation appear inactive and causing later same-minute attempts to hit the failed incident record.
+
+**How to apply:** Preserve the message channel on warning actions, and keep failed or uncertain ledger outcomes terminal rather than blindly retrying a possibly applied sanction.
+
+Repetition enforcement needs a floor of two occurrences, and repeated-message counting must distinguish messages from repeated processing of the same message.
+
+**Why:** Hard severity can scale a configured minimum of two down to one, falsely matching ordinary text. Edit events recheck content, so event-counting alone could also punish a single edited message as a repeated send.
+
+**How to apply:** Keep the minimum for consecutive characters and identical messages at two; count distinct message IDs inside the configured time window, and let prior blocked-content checks take precedence over repeated-message sanctions.
+
+Message-spam counters must observe eligible messages before any content-rule action returns, but count each Discord message ID only once across edits or event replays. Apply at most one sanction to a message.
+
+**Why:** A rule chain that returns after AutoMod detections can starve a later spam counter, making active Anti-spam settings appear inert; naively moving the counter earlier without deduplication makes edited messages look like new sends.
+
+**How to apply:** Record the unique message before rule precedence checks; keep explicit forbidden-word/link actions ahead of generic burst actions, and never use message edits to increase send rate.
+
+Deduplicating one moderation alert must not exit an event handler before other independent protections see the event.
+
+**Why:** A repeated join/leave alert could be on cooldown while a new join still needed Anti-raid evaluation; returning from the shared handler silently skipped Anti-raid.
+
+**How to apply:** Scope cooldown checks to their own alert/action block. Continue recording the event for separately configured protection modules, while retaining one sanction per independent incident.
+
 The preview proxy terminates browser HTTPS before Express; the observed request protocol may be HTTP while the preserved Host still names the public development host.
 
 **Why:** Comparing a browser Origin to Express's protocol plus Host rejected legitimate login requests behind the proxy.

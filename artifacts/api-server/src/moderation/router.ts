@@ -2372,12 +2372,33 @@ router.post("/guilds/:guildId/bot-control/provision-channels", asyncRoute(async 
   await initChannelConfig(guildId);
   setTicketConfig(guildId, provisioned.ticketConfig);
 
-  res.status(200).json({
+  let savedVerification = provisioned.verification;
+  let verificationPanel: "not_requested" | "disabled" | "needs_role" | "published" | "failed" | "published_not_saved" = "not_requested";
+  if (!categories || categories.includes("verification")) {
+    if (!savedVerification.enabled) verificationPanel = "disabled";
+    else if (!savedVerification.roleId) verificationPanel = "needs_role";
+    else {
+      try {
+        savedVerification = await publishVerificationPanel(client, guildId, savedVerification);
+        verificationPanel = "published";
+      } catch (error) {
+        if (error instanceof VerificationPanelPersistenceError) {
+          savedVerification = error.publishedConfig;
+          verificationPanel = "published_not_saved";
+        } else {
+          logger.warn({ error, guildId }, "Verification panel could not be published after channel provisioning");
+          verificationPanel = "failed";
+        }
+      }
+    }
+  }
+
+  res.status(verificationPanel === "failed" || verificationPanel === "published_not_saved" ? 207 : 200).json({
     channels: provisioned.channelConfig,
     allianceRecruitmentText: allianceRecruitmentText ?? "",
     tickets: provisioned.ticketConfig,
     gameplayConfig: getGameplayConfig(guildId),
-    verification: provisioned.verification,
+    verification: savedVerification,
     provisioningPermissions: savedPermissions,
     dailyStats,
     inviteTracking,
@@ -2385,6 +2406,7 @@ router.post("/guilds/:guildId/bot-control/provision-channels", asyncRoute(async 
     provisioning: {
       created: provisioned.created,
       reused: provisioned.reused,
+      verificationPanel,
     },
   });
 }));

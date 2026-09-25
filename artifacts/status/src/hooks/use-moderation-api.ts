@@ -195,6 +195,7 @@ export interface BotControlConfig {
   provisioning?: {
     created: Array<{ key: string; id: string; name: string; type: "text" | "category" }>;
     reused: Array<{ key: string; id: string; name: string; type: "text" | "category" }>;
+    verificationPanel?: "not_requested" | "disabled" | "needs_role" | "published" | "failed" | "published_not_saved";
   };
 }
 

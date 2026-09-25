@@ -737,9 +737,22 @@ export function BotControlPage() {
       await refetchMetadata();
       const created = saved.provisioning?.created.length ?? 0;
       const reused = saved.provisioning?.reused.length ?? 0;
+      const panelStatus = saved.provisioning?.verificationPanel;
+      const panelNotice = panelStatus === "published"
+        ? " Panoul de verificare a fost publicat în canalul său."
+        : panelStatus === "disabled"
+          ? " Panoul nu a fost publicat: activează verificarea și salvează setările."
+          : panelStatus === "needs_role"
+            ? " Panoul nu a fost publicat: configurează rolul de verificare și activează verificarea."
+            : panelStatus === "failed"
+              ? " Canalele au fost salvate, dar panoul de verificare nu a putut fi publicat. Verifică permisiunile și reîncearcă."
+              : panelStatus === "published_not_saved"
+                ? " Panoul a fost publicat, dar ID-ul mesajului nu a putut fi salvat. Reîncearcă după verificarea conexiunii."
+                : "";
       toast({
-        title: "Canalele au fost sincronizate",
-        description: `${created} create, ${reused} reutilizate pentru ${selectedProvisioningCategories.length} categorii. Configurația a fost salvată pentru acest server.`,
+        variant: panelStatus === "failed" || panelStatus === "published_not_saved" ? "destructive" : undefined,
+        title: panelStatus === "failed" || panelStatus === "published_not_saved" ? "Canale create, panou incomplet" : "Canalele au fost sincronizate",
+        description: `${created} create, ${reused} reutilizate pentru ${selectedProvisioningCategories.length} categorii. Configurația a fost salvată pentru acest server.${panelNotice}${selectedProvisioningCategories.includes("gameplay") ? " Cuferele vor apărea la următorul interval programat în canalul de cufere." : ""}`,
       });
     } catch (provisionError: any) {
       if (currentGuild.current !== submittedGuild) return;

@@ -573,6 +573,91 @@ test.describe("authenticated moderation console", () => {
     await expect(page.getByLabel("Cuvinte interzise")).toHaveValue("valoare-salvată");
   });
 
+  test("saves an enabled module and rule, then rehydrates both after reload", async ({ page }) => {
+    await page.goto("/moderare/anti-raid");
+    await chooseFirstGuild(page);
+
+    await page.getByRole("switch", { name: "Activează anti-raid" }).click();
+    await page.getByRole("switch", { name: "Regulă activă" }).click();
+    await page.getByLabel("Intrări pe minut").fill("24");
+
+    const saveResponse = page.waitForResponse((response) =>
+      response.url().includes("/api/moderation/guilds/111111111/config")
+      && response.request().method() === "PUT");
+    await page.getByRole("button", { name: "Salvează" }).click();
+    expect((await saveResponse).ok()).toBe(true);
+    expect(savedConfigs.get(guilds[0].id)?.antiRaid).toMatchObject({
+      enabled: true,
+      rule: { enabled: true },
+      joinsPerMinute: 24,
+    });
+
+    await page.reload();
+    await expect(page.getByRole("switch", { name: "Activează anti-raid" })).toBeChecked();
+    await expect(page.getByRole("switch", { name: "Regulă activă" })).toBeChecked();
+    await expect(page.getByLabel("Intrări pe minut")).toHaveValue("24");
+  });
+
+  test("rejects an active activity log without a viewing role and preserves the draft", async ({ page }) => {
+    const configPuts: string[] = [];
+    page.on("request", (request) => {
+      if (request.url().includes("/api/moderation/guilds/111111111/config") && request.method() === "PUT") {
+        configPuts.push(request.url());
+      }
+    });
+    await page.goto("/moderare/config/cazuri-audit");
+    await chooseFirstGuild(page);
+    const logToggle = page.getByRole("switch", { name: "Activează jurnalizarea serverului" });
+    await logToggle.click();
+
+    await expect(page.getByRole("alert")).toContainText("Selectează cel puțin un rol care poate vedea canalele private de jurnal.");
+    await page.getByRole("button", { name: "Salvează" }).click();
+
+    expect(configPuts).toEqual([]);
+    await expect(logToggle).toBeChecked();
+    await expect(page.getByRole("button", { name: "Salvează" })).toBeVisible();
+  });
+
+  test("rejects an invalid animation GIF URL and preserves the draft", async ({ page }) => {
+    const configPuts: string[] = [];
+    page.on("request", (request) => {
+      if (request.url().includes("/api/moderation/guilds/111111111/config") && request.method() === "PUT") {
+        configPuts.push(request.url());
+      }
+    });
+    await page.goto("/moderare/config/embeduri");
+    await chooseFirstGuild(page);
+    const animationToggle = page.getByRole("switch", { name: "Activează animațiile" });
+    await animationToggle.click();
+    const animationUrl = page.getByLabel("URL animație GIF");
+    await animationUrl.fill("https://example.com/not-a-gif.png");
+
+    await expect(page.getByRole("alert")).toContainText("URL-ul animației trebuie să fie un link HTTPS public către un fișier .gif");
+    await page.getByRole("button", { name: "Salvează" }).click();
+
+    expect(configPuts).toEqual([]);
+    await expect(animationToggle).toBeChecked();
+    await expect(animationUrl).toHaveValue("https://example.com/not-a-gif.png");
+    await expect(page.getByRole("button", { name: "Salvează" })).toBeVisible();
+  });
+
+  test("keeps category edits visible after the server rejects the save", async ({ page }) => {
+    await page.route("**/api/moderation/guilds/111111111/config", async (route) => {
+      if (route.request().method() !== "PUT") return route.fallback();
+      await route.fulfill({ status: 503, json: { error: "Setările nu au putut fi salvate." } });
+    });
+    await page.goto("/moderare/anti-raid");
+    await chooseFirstGuild(page);
+    const joinsPerMinute = page.getByLabel("Intrări pe minut");
+    await joinsPerMinute.fill("24");
+    await page.getByRole("button", { name: "Salvează" }).click();
+
+    await expect(page.getByText("Salvarea a eșuat")).toBeVisible();
+    await expect(joinsPerMinute).toHaveValue("24");
+    await expect(page.getByRole("button", { name: "Salvează" })).toBeVisible();
+    expect(savedConfigs.get(guilds[0].id)?.antiRaid.joinsPerMinute).toBe(10);
+  });
+
   test("automatic Discord log activation sends its category and keeps provisioned IDs after reload", async ({ page }) => {
     await page.goto("/moderare/config/cazuri-audit");
     await chooseFirstGuild(page);
@@ -627,7 +712,9 @@ test.describe("authenticated moderation console", () => {
     await page.getByRole("switch", { name: /@Moderatori/ }).click();
     await page.getByRole("button", { name: "Salvează" }).click();
     await expect(page.getByText("Salvarea a eșuat")).toBeVisible();
-    await expect(page.getByRole("switch", { name: "Activează jurnalizarea serverului" })).not.toBeChecked();
+    // The attempted activation is still an unsaved draft; only the persisted
+    // fixture stays off after the server rejects the request.
+    await expect(page.getByRole("switch", { name: "Activează jurnalizarea serverului" })).toBeChecked();
     expect(savedConfigs.get(guilds[0].id)?.activityLog.enabled).toBe(false);
   });
 

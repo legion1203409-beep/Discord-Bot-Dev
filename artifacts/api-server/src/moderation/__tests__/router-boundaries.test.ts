@@ -747,6 +747,58 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     expect(result.provisioning.created).toHaveLength(1);
   });
 
+  it("publishes the verification panel after its channel is saved and routed", async () => {
+    const verification = {
+      enabled: true, channelId: "777777777", roleId: "444444444",
+      title: "Verificare", message: "Confirmă", buttonLabel: "Verifică", buttonEmoji: "✅",
+      successMessage: "Gata", alreadyVerifiedMessage: "Deja", panelMessageId: "",
+    };
+    mocks.provisionGuildChannels.mockResolvedValueOnce({
+      channelConfig: { main: "111111111" },
+      ticketConfig: structuredClone(DEFAULT_TICKET_CONFIG),
+      moderationConfig: structuredClone(defaultModerationConfig),
+      verification, created: [], reused: [],
+    });
+    const response = await fetch(`${base}/bot-control/provision-channels`, post({ categories: ["verification", "gameplay"] }));
+    expect(response.status).toBe(200);
+    expect(mocks.saveChannelConfig).toHaveBeenCalledWith(guildId, { main: "111111111" });
+    expect(mocks.initChannelConfig).toHaveBeenCalledWith(guildId);
+    expect(mocks.publishVerificationPanel).toHaveBeenCalledWith(expect.anything(), guildId, verification);
+    expect(mocks.saveVerificationConfig.mock.invocationCallOrder[0]).toBeLessThan(mocks.publishVerificationPanel.mock.invocationCallOrder[0]);
+    expect(await response.json()).toMatchObject({
+      verification: { channelId: "777777777", panelMessageId: "888888888" },
+      provisioning: { verificationPanel: "published" },
+    });
+  });
+
+  it("does not publish on unrelated provisioning or when verification is disabled", async () => {
+    const unrelated = await fetch(`${base}/bot-control/provision-channels`, post({ categories: ["gameplay"] }));
+    expect(unrelated.status).toBe(200);
+    expect(await unrelated.json()).toMatchObject({ provisioning: { verificationPanel: "not_requested" } });
+    const disabled = await fetch(`${base}/bot-control/provision-channels`, post({ categories: ["verification"] }));
+    expect(disabled.status).toBe(200);
+    expect(await disabled.json()).toMatchObject({ provisioning: { verificationPanel: "disabled" } });
+    expect(mocks.publishVerificationPanel).not.toHaveBeenCalled();
+  });
+
+  it("reports a partial result when the verification channel was saved but panel publication fails", async () => {
+    mocks.provisionGuildChannels.mockResolvedValueOnce({
+      channelConfig: { main: "111111111" },
+      ticketConfig: structuredClone(DEFAULT_TICKET_CONFIG),
+      moderationConfig: structuredClone(defaultModerationConfig),
+      verification: {
+        enabled: true, channelId: "777777777", roleId: "444444444",
+        title: "Verificare", message: "Confirmă", buttonLabel: "Verifică", buttonEmoji: "✅",
+        successMessage: "Gata", alreadyVerifiedMessage: "Deja", panelMessageId: "",
+      }, created: [], reused: [],
+    });
+    mocks.publishVerificationPanel.mockRejectedValueOnce(new Error("missing Send Messages"));
+    const response = await fetch(`${base}/bot-control/provision-channels`, post({ categories: ["verification"] }));
+    expect(response.status).toBe(207);
+    expect(await response.json()).toMatchObject({ provisioning: { verificationPanel: "failed" } });
+    expect(mocks.saveVerificationConfig).toHaveBeenCalledOnce();
+  });
+
   it("loads verified members through Discord REST instead of the rate-limited gateway request", async () => {
     const roleId = "444444444";
     const restGet = vi.fn().mockResolvedValue([

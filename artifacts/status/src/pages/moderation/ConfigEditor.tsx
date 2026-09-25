@@ -6,6 +6,8 @@ import { Input } from "../../components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Switch } from "../../components/ui/switch";
 import { Textarea } from "../../components/ui/textarea";
+import { activityLogDraftError } from "../../lib/activity-log-validation";
+import { embedUrlDraftError, isPublicGifUrl, isPublicHttpsUrl } from "../../lib/embed-url-validation";
 
 type Config = Record<string, any>;
 type Path = Array<string | number>;
@@ -26,6 +28,7 @@ const ACTIONS = [
   ["ban", "Blochează (ban)"],
   ["delete", "Șterge mesajul"],
 ] as const;
+const SUSPICIOUS_ACTIONS = ACTIONS.filter(([action]) => action !== "delete");
 const SCAM_ACTIONS = [
   ["delete", "Șterge doar mesajul"],
   ["mute", "Șterge + timeout 10 minute"],
@@ -33,6 +36,13 @@ const SCAM_ACTIONS = [
 ] as const;
 const SEVERITIES = [["soft", "Blândă"], ["normal", "Normală"], ["hard", "Strictă"]] as const;
 const SENSITIVITIES = [["low", "Scăzută"], ["medium", "Medie"], ["high", "Ridicată"]] as const;
+const LINK_CATEGORIES = [
+  ["discordInvite", "Invitații Discord", "discord.gg și discord.com/invite"],
+  ["social", "Rețele sociale", "Facebook, Instagram, TikTok, X, Reddit"],
+  ["video", "Video și streaming", "YouTube, Twitch, Kick"],
+  ["shortener", "Linkuri scurtate", "bit.ly, tinyurl.com, t.co"],
+  ["all", "Toate linkurile", "Orice URL http(s) sau www și invitații Discord"],
+] as const;
 
 /** Immutable nested update used by every control, including numeric thresholds. */
 export function updateConfigField<T extends Config>(config: T, path: Path, value: unknown): T {
@@ -126,6 +136,12 @@ function IdField({ label, help, value, onChange, role = false }: {
   return <TextField label={label} help={help ?? `ID ${role ? "rol" : "canal"} Discord (Developer Mode); lasă gol pentru neconfigurat.`} value={value} placeholder="123456789012345678" onChange={(next) => onChange(next.trim() || null)} />;
 }
 
+function UrlField({ label, help, value, onChange, placeholder }: {
+  label: string; help: string; value: string | null; onChange: (value: string | null) => void; placeholder: string;
+}) {
+  return <TextField label={label} help={help} value={value} placeholder={placeholder} onChange={(next) => onChange(next.trim() || null)} />;
+}
+
 function ListField({ label, help, values, onChange, ids = false, testId }: {
   label: string; help: string; values: string[]; onChange: (value: string[]) => void; ids?: boolean; testId?: string;
 }) {
@@ -142,9 +158,9 @@ function ListField({ label, help, values, onChange, ids = false, testId }: {
 }
 
 type Threshold = { key: string; label: string; help: string; min: number; max: number; groupKeys: string[] };
-type RuleProps = { title: string; help?: string; rule: any; thresholds: Threshold[]; onChange: (path: string[], value: any) => void };
+type RuleProps = { title: string; help?: string; rule: any; thresholds: Threshold[]; actions?: readonly (readonly [string, string])[]; showAction?: boolean; onChange: (path: string[], value: any) => void };
 
-function RuleEditor({ title, help, rule, thresholds, onChange }: RuleProps) {
+function RuleEditor({ title, help, rule, thresholds, actions = ACTIONS, showAction = true, onChange }: RuleProps) {
   const thresholdFields = thresholds.map((field) => ({
     ...field,
     groupKeys: field.groupKeys.length > 1
@@ -158,9 +174,13 @@ function RuleEditor({ title, help, rule, thresholds, onChange }: RuleProps) {
   return (
     <div className="space-y-4 rounded-lg border border-border bg-muted/20 p-4">
       <div><h4 className="font-medium">{title}</h4>{help && <p className="text-xs text-muted-foreground">{help}</p>}</div>
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className={`grid gap-3 ${showAction ? "md:grid-cols-3" : "md:grid-cols-2"}`}>
         <Toggle label="Regulă activă" checked={rule.enabled} onChange={(value) => onChange(["enabled"], value)} />
-        <Choice label="Acțiune" value={rule.action} options={ACTIONS} onChange={(value) => onChange(["action"], value)} />
+        {showAction && (
+          <Choice label="Acțiune" value={rule.action} options={rule.action === "delete" && !actions.some(([key]) => key === "delete")
+            ? [...actions, ["delete", "Șterge mesajul (indisponibil)"] as const] : actions}
+            onChange={(value) => onChange(["action"], value)} />
+        )}
         <Choice label="Severitate" value={rule.severity} options={SEVERITIES} onChange={(value) => onChange(["severity"], value)} />
       </div>
       {thresholds.length > 0 && (
@@ -215,9 +235,11 @@ const CAPS_LIMIT = [
   threshold("limit", "Limită (alias)", "Alias compatibil pentru procent.", 1, 100, CAPS_KEYS),
 ];
 const REPEAT_LIMIT = [
-  threshold("repeat", "Repetări", "Număr de repetări consecutive.", 2, 200, REPEAT_KEYS),
+  threshold("repeat", "Caractere identice la rând", "Număr de caractere consecutive dintr-un mesaj.", 2, 200, REPEAT_KEYS),
   threshold("limit", "Limită repetări (alias)", "Alias compatibil pentru repetări.", 2, 200, REPEAT_KEYS),
   threshold("max", "Maxim repetări (alias)", "Alias compatibil pentru repetări.", 2, 200, REPEAT_KEYS),
+  threshold("messages", "Mesaje identice", "Număr de mesaje identice trimise consecutiv în același canal; implicit 3, minim 2.", 2, 100, ["messages", "count"]),
+  threshold("windowMs", "Interval (secunde)", "Timpul în care sunt numărate mesajele identice; implicit 10 secunde.", 1, 3600, WINDOW_KEYS),
 ];
 const RAID_LIMIT = [
   threshold("joins", "Intrări", "Intrări observate în fereastră.", 1, 10000, ["limit", "joins"]),
@@ -294,6 +316,21 @@ export function ConfigEditor({
     else onChange(updateConfigField(value, path, next));
   };
   const rule = (base: string[]) => (path: string[], next: any) => set([...base, ...path], next);
+  const floodRules = [
+    value.antiFlood.longMessage,
+    value.antiFlood.character,
+    value.antiFlood.caps,
+    value.antiFlood.symbol,
+  ];
+  const hasActionableFloodRule = floodRules.some((item) => item.enabled && item.action !== "none");
+  const suspiciousRules = [
+    value.suspiciousBehavior.nicknameChanges,
+    value.suspiciousBehavior.roleChanges,
+    value.suspiciousBehavior.massEdits,
+    value.suspiciousBehavior.massDeletes,
+    value.suspiciousBehavior.joinLeaveFlood,
+    value.suspiciousBehavior.unusualActivity,
+  ];
   const activityLogCategories = [
     ["messages", "Mesaje editate sau șterse"],
     ["members", "Intrări, ieșiri și schimbări de membri"],
@@ -361,11 +398,23 @@ export function ConfigEditor({
         </div>
         <RuleEditor title="Filtru cuvinte" help="Lista de mai jos determină potrivirile; regula nu are un prag numeric efectiv." rule={value.autoMod.wordFilter} thresholds={[]} onChange={rule(["autoMod", "wordFilter"])} />
         <ListField label="Cuvinte interzise" help="Un cuvânt sau o expresie pe rând; maximum 500." values={value.autoMod.forbiddenWords} onChange={(next) => set(["autoMod", "forbiddenWords"], next)} />
-        <RuleEditor title="Blocare linkuri" help="Lista de mai jos determină potrivirile; regula nu are un prag numeric efectiv." rule={value.autoMod.linkBlock} thresholds={[]} onChange={rule(["autoMod", "linkBlock"])} />
+        <RuleEditor title="Blocare linkuri" help="Categoriile și lista de mai jos determină potrivirile; regula nu are un prag numeric efectiv." rule={value.autoMod.linkBlock} thresholds={[]} onChange={rule(["autoMod", "linkBlock"])} />
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Categorii de linkuri interzise</p>
+          <p className="text-xs text-muted-foreground">Bifează tipurile de blocat. Necesită Protecția serverului, AutoMod și Blocare linkuri active.</p>
+          <div className="grid gap-2 md:grid-cols-2">
+            {LINK_CATEGORIES.map(([key, label, help]) => (
+              <Toggle key={key} label={label} help={help}
+                checked={Boolean(value.autoMod.forbiddenLinkCategories?.[key])}
+                onChange={(next) => set(["autoMod", "forbiddenLinkCategories", key], next)}
+                testId={`link-category-${key}`} />
+            ))}
+          </div>
+        </div>
         <ListField label="Linkuri interzise" help="Un domeniu sau link pe rând; maximum 500." values={value.autoMod.forbiddenLinks} onChange={(next) => set(["autoMod", "forbiddenLinks"], next)} />
         <RuleEditor title="Limită emoji" rule={value.autoMod.emojiLimit} thresholds={EMOJI_LIMIT} onChange={rule(["autoMod", "emojiLimit"])} />
         <RuleEditor title="Limită majuscule" rule={value.autoMod.capsLimit} thresholds={CAPS_LIMIT} onChange={rule(["autoMod", "capsLimit"])} />
-        <RuleEditor title="Blocare repetări" rule={value.autoMod.repeatBlock} thresholds={REPEAT_LIMIT} onChange={rule(["autoMod", "repeatBlock"])} />
+        <RuleEditor title="Repetări de caractere și mesaje" rule={value.autoMod.repeatBlock} thresholds={REPEAT_LIMIT} onChange={rule(["autoMod", "repeatBlock"])} />
       </Section>
 
       <Section value="anti-raid" title="2. Anti-raid" description="Detectează intrările rapide și conturile prea noi.">
@@ -381,16 +430,40 @@ export function ConfigEditor({
 
       <Section value="anti-spam" title="3. Anti-spam" description="Limite separate pentru mesaje, editări, ștergeri, mențiuni și emoji.">
         <Toggle label="Activează anti-spam" checked={value.antiSpam.enabled} onChange={(next) => set(["antiSpam", "enabled"], next)} />
+        {value.antiSpam.enabled && !value.protection.enabled && (
+          <p className="text-sm text-amber-600">Activează și Protecția generală; altfel regulile anti-spam nu rulează.</p>
+        )}
         <IdField label="Canal jurnal anti-spam" value={value.antiSpam.logChannelId} onChange={(next) => set(["antiSpam", "logChannelId"], next)} />
         <RuleEditor title="Spam de mesaje" rule={value.antiSpam.message} thresholds={MESSAGE_SPAM} onChange={rule(["antiSpam", "message"])} />
         <RuleEditor title="Spam de editări" rule={value.antiSpam.edit} thresholds={EDIT_SPAM} onChange={rule(["antiSpam", "edit"])} />
-        <RuleEditor title="Spam de ștergeri" rule={value.antiSpam.delete} thresholds={DELETE_SPAM} onChange={rule(["antiSpam", "delete"])} />
+        {value.antiSpam.enabled && value.antiSpam.edit.enabled && value.antiSpam.edit.action === "none" && (
+          <p className="text-sm text-amber-600">Regula de editări nu va sancționa: acțiunea este „Nicio acțiune”.</p>
+        )}
+        <RuleEditor title="Spam de ștergeri" rule={value.antiSpam.delete} thresholds={DELETE_SPAM}
+          actions={ACTIONS.filter(([key]) => key !== "delete")} onChange={rule(["antiSpam", "delete"])} />
+        {value.antiSpam.enabled && value.antiSpam.delete.enabled && (
+          <p className="text-sm text-muted-foreground">
+            Sancțiunile pentru ștergeri necesită „Vezi jurnalul de audit” și un operator identificat acolo. Pentru ștergeri fără autor verificabil, botul doar alertează; un mesaj deja șters nu poate fi șters din nou.
+          </p>
+        )}
         <RuleEditor title="Spam de mențiuni" rule={value.antiSpam.mention} thresholds={MENTION_LIMIT} onChange={rule(["antiSpam", "mention"])} />
         <RuleEditor title="Spam de emoji" rule={value.antiSpam.emoji} thresholds={EMOJI_LIMIT} onChange={rule(["antiSpam", "emoji"])} />
       </Section>
 
       <Section value="anti-flood" title="4. Anti-flood" description="Controlează mesaje foarte lungi, șiruri, majuscule și simboluri.">
         <Toggle label="Activează anti-flood" checked={value.antiFlood.enabled} onChange={(next) => set(["antiFlood", "enabled"], next)} />
+        {!value.antiFlood.enabled && (
+          <p className="text-sm text-amber-600">Anti-flood este oprit. Regulile de mai jos nu verifică mesajele până când activezi modulul.</p>
+        )}
+        {value.antiFlood.enabled && !value.protection.enabled && (
+          <p className="text-sm text-amber-600">Activează și Protecția generală; altfel Anti-flood nu rulează.</p>
+        )}
+        {value.antiFlood.enabled && !hasActionableFloodRule && (
+          <p className="text-sm text-amber-600">Nicio regulă Anti-flood nu poate sancționa: activează cel puțin o regulă și alege o acțiune diferită de „Nicio acțiune”.</p>
+        )}
+        {value.antiFlood.enabled && value.antiFlood.caps.enabled && value.autoMod.enabled && value.autoMod.capsLimit.enabled && (
+          <p className="text-sm text-muted-foreground">Limita de majuscule din AutoMod are prioritate față de cea din Anti-flood; pentru aceeași abatere se aplică o singură acțiune.</p>
+        )}
         <RuleEditor title="Mesaj lung" rule={value.antiFlood.longMessage} thresholds={FLOOD_LENGTH} onChange={rule(["antiFlood", "longMessage"])} />
         <RuleEditor title="Șir de caractere" rule={value.antiFlood.character} thresholds={FLOOD_RUN} onChange={rule(["antiFlood", "character"])} />
         <RuleEditor title="Majuscule excesive" rule={value.antiFlood.caps} thresholds={CAPS_LIMIT} onChange={rule(["antiFlood", "caps"])} />
@@ -401,13 +474,36 @@ export function ConfigEditor({
         <div className="grid gap-3 md:grid-cols-3">
           <Toggle label="Activează detecția" checked={value.suspiciousBehavior.enabled} onChange={(next) => set(["suspiciousBehavior", "enabled"], next)} />
           <Choice label="Sensibilitate" value={value.suspiciousBehavior.sensitivity} options={SENSITIVITIES} onChange={(next) => set(["suspiciousBehavior", "sensitivity"], next)} />
-          <Choice label="Acțiune principală" value={value.suspiciousBehavior.action} options={ACTIONS} onChange={(next) => set(["suspiciousBehavior", "action"], next)} />
+          <Choice label="Acțiune principală" value={value.suspiciousBehavior.action}
+            options={value.suspiciousBehavior.action === "delete"
+              ? [...SUSPICIOUS_ACTIONS, ["delete", "Șterge mesajul (indisponibil)"] as const] : SUSPICIOUS_ACTIONS}
+            onChange={(next) => set(["suspiciousBehavior", "action"], next)} />
         </div>
+        {!value.suspiciousBehavior.enabled && (
+          <p className="text-sm text-amber-600">Detecția este oprită. Regulile de mai jos nu rulează până când activezi modulul.</p>
+        )}
+        {value.suspiciousBehavior.enabled && !value.protection.enabled && (
+          <p className="text-sm text-amber-600">Activează și Protecția generală; altfel detecția nu rulează.</p>
+        )}
+        {value.suspiciousBehavior.enabled && !suspiciousRules.some((item) => item.enabled) && (
+          <p className="text-sm text-amber-600">Nicio regulă de comportament suspect nu este activă. Activează cel puțin una pentru a primi alerte.</p>
+        )}
+        {value.suspiciousBehavior.enabled && suspiciousRules.some((item) => item.enabled) && !value.suspiciousBehavior.alertChannelId && (
+          <p className="text-sm text-amber-600">Alege un canal de alerte; fără el, regulile care doar semnalează nu vor publica avertizări.</p>
+        )}
+        {value.suspiciousBehavior.enabled && (value.suspiciousBehavior.action === "delete" ||
+          suspiciousRules.some((item) => item.enabled && item.action === "delete")) && (
+          <p className="text-sm text-amber-600">„Șterge mesajul” nu este o acțiune disponibilă pentru comportament suspect. Alege o sancțiune permisă sau folosește alerte.</p>
+        )}
         <IdField label="Canal alerte comportament suspect" value={value.suspiciousBehavior.alertChannelId} onChange={(next) => set(["suspiciousBehavior", "alertChannelId"], next)} />
         {[
           ["nicknameChanges", "Schimbări nickname"], ["roleChanges", "Schimbări roluri"], ["massEdits", "Editări în masă"],
           ["massDeletes", "Ștergeri în masă"], ["joinLeaveFlood", "Flux intrări / ieșiri"], ["unusualActivity", "Activitate neobișnuită"],
-        ].map(([key, label]) => <RuleEditor key={key} title={label} rule={value.suspiciousBehavior[key]} thresholds={SUSPICIOUS_LIMIT} onChange={rule(["suspiciousBehavior", key])} />)}
+        ].map(([key, label]) => <RuleEditor key={key} title={label} rule={value.suspiciousBehavior[key]}
+          thresholds={SUSPICIOUS_LIMIT} actions={SUSPICIOUS_ACTIONS} showAction={key !== "joinLeaveFlood"}
+          help={key === "joinLeaveFlood" ? "Doar alertă: intrările și ieșirile nu au un actor care poate fi sancționat automat."
+            : key === "unusualActivity" ? "Combină incidentele detectate de celelalte reguli și schimbările de canale, roluri sau webhook-uri." : undefined}
+          onChange={rule(["suspiciousBehavior", key])} />)}
       </Section>
 
       <Section value="ai" title="6. Moderare AI" description="Categorii de analiză, tonul răspunsului și jurnalizarea deciziilor AI.">
@@ -424,6 +520,12 @@ export function ConfigEditor({
             ["intelligentSpam", "Spam inteligent"], ["trolling", "Trolling"],
           ].map(([key, label]) => <Toggle key={key} label={label} checked={value.ai.categories[key]} onChange={(next) => set(["ai", "categories", key], next)} />)}
         </div>
+        {value.ai.enabled && !Object.values(value.ai.categories).some(Boolean) && (
+          <p className="text-sm text-amber-600">Selectează cel puțin o categorie; fără categorii, analiza AI nu rulează.</p>
+        )}
+        {value.ai.enabled && value.ai.action === "none" && (
+          <p className="text-sm text-muted-foreground">Acțiunea „Nimic” doar semnalează rezultatele; alege o acțiune pentru sancțiuni automate.</p>
+        )}
       </Section>
 
       <Section value="tools" title="7. Unelte staff" description="Acordă separat rolurile care pot rula fiecare comandă de moderare.">
@@ -462,6 +564,11 @@ export function ConfigEditor({
             checked={value.activityLog.enabled}
             onChange={(next) => set(["activityLog", "enabled"], next)}
           />
+          {activityLogDraftError(value.activityLog) && (
+            <p role="alert" className="text-sm text-amber-600">
+              Nu poți salva jurnalizarea activă: {activityLogDraftError(value.activityLog)}
+            </p>
+          )}
           {missingActivityPermissions.length > 0 && (
             <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
               {missingActivityPermissions.join(" ")} Sunt necesare Manage Channels și Manage Roles pentru a crea ACL-uri private.
@@ -590,15 +697,18 @@ export function ConfigEditor({
         <div className="grid gap-3 md:grid-cols-2">
           <TextField label="Culoare HEX" help="Format obligatoriu #RRGGBB." value={value.embeds.color} placeholder="#5865F2" onChange={(next) => set(["embeds", "color"], next)} />
           <Choice label="Stil" value={value.embeds.style} options={[["plain", "Simplu"], ["compact", "Compact"], ["detailed", "Detaliat"]]} onChange={(next) => set(["embeds", "style"], next)} />
-          <IdField label="URL icon" help="URL HTTPS public pentru icon; lasă gol pentru fără icon." value={value.embeds.iconUrl} onChange={(next) => set(["embeds", "iconUrl"], next)} />
+          <UrlField label="URL icon" help="URL HTTPS public pentru icon; lasă gol pentru fără icon." placeholder="https://example.com/icon.png" value={value.embeds.iconUrl} onChange={(next) => set(["embeds", "iconUrl"], next)} />
           <Toggle label="Activează animațiile" help="Necesită URL HTTPS către un fișier .gif." checked={value.embeds.animations} onChange={(next) => set(["embeds", "animations"], next)} />
-          <IdField label="URL animație GIF" help="URL HTTPS public care se termină în .gif; obligatoriu când animațiile sunt active." value={value.embeds.animationUrl} onChange={(next) => set(["embeds", "animationUrl"], next)} />
+          <UrlField label="URL animație GIF" help="URL HTTPS public care se termină în .gif; obligatoriu când animațiile sunt active." placeholder="https://example.com/animation.gif" value={value.embeds.animationUrl} onChange={(next) => set(["embeds", "animationUrl"], next)} />
         </div>
+        {embedUrlDraftError(value.embeds) && (
+          <p role="alert" className="text-sm text-amber-600">Nu poți salva aceste setări: {embedUrlDraftError(value.embeds)}</p>
+        )}
         <Field label="Titlu mesaj" help="Maximum 200 caractere."><Input value={value.embeds.titleTemplate} maxLength={200} onChange={(event) => set(["embeds", "titleTemplate"], event.target.value)} /></Field>
         <Field label="Descriere mesaj" help="Maximum 2000 caractere; poți folosi {`{action}`} și {`{reason}`} ."><Textarea value={value.embeds.descriptionTemplate} maxLength={2000} onChange={(event) => set(["embeds", "descriptionTemplate"], event.target.value)} /></Field>
         <div className="rounded-lg border border-border bg-background p-4" style={{ borderLeftWidth: 4, borderLeftColor: /^#[0-9a-fA-F]{6}$/.test(value.embeds.color) ? value.embeds.color : undefined }}>
-          <div className="flex gap-3">{value.embeds.iconUrl && <img src={value.embeds.iconUrl} alt="" className="h-10 w-10 rounded-full object-cover" />}<div><p className="font-semibold">{value.embeds.titleTemplate.replace("{action}", "Avertisment")}</p><p className="whitespace-pre-wrap text-sm text-muted-foreground">{value.embeds.descriptionTemplate.replace("{action}", "Avertisment").replace("{reason}", "Exemplu de motiv")}</p></div></div>
-          {value.embeds.animations && value.embeds.animationUrl && <img src={value.embeds.animationUrl} alt="Previzualizare animație" className="mt-3 max-h-40 rounded-md" />}
+          <div className="flex gap-3">{value.embeds.iconUrl && isPublicHttpsUrl(value.embeds.iconUrl) && <img src={value.embeds.iconUrl} alt="" className="h-10 w-10 rounded-full object-cover" />}<div><p className="font-semibold">{value.embeds.titleTemplate.replace("{action}", "Avertisment")}</p><p className="whitespace-pre-wrap text-sm text-muted-foreground">{value.embeds.descriptionTemplate.replace("{action}", "Avertisment").replace("{reason}", "Exemplu de motiv")}</p></div></div>
+          {value.embeds.animations && value.embeds.animationUrl && isPublicGifUrl(value.embeds.animationUrl) && <img src={value.embeds.animationUrl} alt="Previzualizare animație" className="mt-3 max-h-40 rounded-md" />}
         </div>
       </Section>
 
