@@ -27,7 +27,11 @@ afterEach(() => {
 });
 
 describe("moderation CSRF recovery", () => {
-  it("refreshes the same user's session and retries a rejected save once with the new token", async () => {
+  it.each([
+    { path: endpoint, method: "PUT" },
+    { path: "/guilds/guild-1/emojis", method: "POST" },
+    { path: "/storage/uploads/request-url", method: "POST" },
+  ])("retries a rejected $method $path once with the same user's new token", async ({ path, method }) => {
     let sessionReads = 0;
     const sentTokens: Array<string | null> = [];
     const body = JSON.stringify({ verification: { enabled: true } });
@@ -41,6 +45,7 @@ describe("moderation CSRF recovery", () => {
           csrfToken: sessionReads === 1 ? "old-token" : "new-token",
         });
       }
+      expect(url).toBe(`/api/moderation${path}`);
       expect(init?.body).toBe(body);
       sentTokens.push(new Headers(init?.headers).get("x-csrf-token"));
       return sentTokens.length === 1
@@ -49,7 +54,7 @@ describe("moderation CSRF recovery", () => {
     }));
 
     await seedSession();
-    const response = await apiFetchWithMeta<{ saved: boolean }>(endpoint, { method: "PUT", body });
+    const response = await apiFetchWithMeta<{ saved: boolean }>(path, { method, body });
 
     expect(response.data.saved).toBe(true);
     expect(sessionReads).toBe(2);

@@ -4,7 +4,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
-import type { DiscordGuildEmoji } from "../../hooks/use-moderation-api";
+import { apiFetchWithMeta, type DiscordGuildEmoji } from "../../hooks/use-moderation-api";
 import { applyEmojiSelection } from "./emoji-utils";
 
 const COMMON_EMOJIS = [
@@ -86,14 +86,11 @@ export function EmojiField({
         reader.onerror = () => reject(new Error("Fișierul nu a putut fi citit."));
         reader.readAsDataURL(file);
       });
-      const response = await fetch(`/api/moderation/guilds/${guildId}/emojis`, {
+      const { data: payload } = await apiFetchWithMeta<DiscordGuildEmoji>(`/guilds/${guildId}/emojis`, {
         method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json", "x-csrf-token": csrfToken || "" },
+        headers: csrfToken ? { "x-csrf-token": csrfToken } : undefined,
         body: JSON.stringify({ name, image }),
       });
-      const payload = await response.json() as DiscordGuildEmoji & { error?: string };
-      if (!response.ok) throw new Error(payload.error || "Emoji-ul nu a putut fi creat.");
       await onEmojiCreated?.();
       choose(payload.markup);
     } catch (error) {

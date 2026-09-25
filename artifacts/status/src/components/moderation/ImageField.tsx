@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { apiFetchWithMeta } from "../../hooks/use-moderation-api";
 import { Input } from "../ui/input";
 
 export function ImageField({
@@ -26,14 +27,12 @@ export function ImageField({
     setUploading(true);
     setError("");
     try {
-      const request = await fetch("/api/moderation/storage/uploads/request-url", {
+      const { data: payload } = await apiFetchWithMeta<{ uploadURL?: string; objectPath?: string }>("/storage/uploads/request-url", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...(csrfToken ? { "x-csrf-token": csrfToken } : {}) },
-        credentials: "include",
+        headers: csrfToken ? { "x-csrf-token": csrfToken } : undefined,
         body: JSON.stringify({ guildId, name: file.name, size: file.size, contentType: file.type }),
       });
-      const payload = await request.json() as { uploadURL?: string; objectPath?: string; error?: string };
-      if (!request.ok || !payload.uploadURL || !payload.objectPath) throw new Error(payload.error ?? "Uploadul a eșuat.");
+      if (!payload.uploadURL || !payload.objectPath) throw new Error("Uploadul a eșuat.");
       const uploaded = await fetch(payload.uploadURL, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
       if (!uploaded.ok) throw new Error("Imaginea nu a putut fi încărcată în storage.");
       onChange(`/api/storage${payload.objectPath}`);
