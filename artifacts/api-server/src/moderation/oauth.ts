@@ -360,7 +360,7 @@ export function getVerificationWebsiteUrl(guildId: string): string {
   return `/verificare?guildId=${encodeURIComponent(guildId)}`;
 }
 
-export function getDiscordBotInviteUrl(guildId: string): string | null {
+export function getDiscordBotInviteUrl(guildId?: string): string | null {
   const clientId = process.env.DISCORD_CLIENT_ID?.trim();
   if (!clientId) return null;
   const url = new URL(OAUTH_AUTHORIZE_URL);
@@ -368,8 +368,10 @@ export function getDiscordBotInviteUrl(guildId: string): string | null {
   url.searchParams.set("scope", "bot applications.commands");
   // View channel, send messages, embed links, read history, and manage roles.
   url.searchParams.set("permissions", "268504064");
-  url.searchParams.set("guild_id", guildId);
-  url.searchParams.set("disable_guild_select", "true");
+  if (guildId) {
+    url.searchParams.set("guild_id", guildId);
+    url.searchParams.set("disable_guild_select", "true");
+  }
   return url.toString();
 }
 

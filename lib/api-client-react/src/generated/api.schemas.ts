@@ -8,6 +8,11 @@
 export interface ModerationAuthConfig {
   discordOAuthConfigured: boolean;
   authorizationUrl: string;
+  /**
+     * Public Discord bot invitation URL; null when the application ID is unavailable.
+     * @nullable
+     */
+  botInviteUrl: string | null;
 }
 
 export type ModerationCommandInputType = typeof ModerationCommandInputType[keyof typeof ModerationCommandInputType];

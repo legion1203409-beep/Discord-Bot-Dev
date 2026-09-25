@@ -49,7 +49,8 @@ export const ModerationLoginResponse = zod.void()
 
 export const ModerationAuthConfigResponse = zod.object({
   "discordOAuthConfigured": zod.boolean(),
-  "authorizationUrl": zod.string()
+  "authorizationUrl": zod.string(),
+  "botInviteUrl": zod.string().url().nullable().describe('Public Discord bot invitation URL; null when the application ID is unavailable.')
 })
 
 

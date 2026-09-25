@@ -26,6 +26,7 @@ export interface ModerationGuild {
 export interface ModerationAuthConfig {
   discordOAuthConfigured: boolean;
   authorizationUrl: string;
+  botInviteUrl: string | null;
   bot?: {
     name: string;
     avatarUrl: string | null;

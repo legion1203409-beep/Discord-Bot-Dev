@@ -10,6 +10,7 @@ import { useSession, useActiveGuild, useModerationAuthConfig, type ModerationGui
 import { Button } from "../../components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { GuildSelection } from "./GuildSelection";
+import { BotInviteLink } from "../../components/moderation/BotInviteLink";
 import "./moderation.css";
 import animatedDragonLogo from "@assets/ezgif.com-video-to-gif-converter_1789791978054.gif";
 import { DISCORD_INVITE } from "../../lib/public-constants";
@@ -267,6 +268,9 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
               Conectează-te cu Discord
             </Button>
           )}
+          {authConfig?.botInviteUrl && (
+            <BotInviteLink href={authConfig.botInviteUrl} className="mt-3 w-full gap-2 py-5" />
+          )}
 
           <div className="mt-8 pt-6 border-t border-border/50">
             <Link href="~/joc" data-testid="link-game-guide-login" className="text-xs font-mono tracking-widest text-muted-foreground hover:text-primary transition-colors inline-flex items-center gap-2">
@@ -294,6 +298,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
         onSelect={setGuildId}
         onLogout={logout}
         onSwitchAccount={switchAccount}
+        botInviteUrl={authConfig?.botInviteUrl}
       />
     );
   }
@@ -412,6 +417,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
               })}
             </nav>
           </div>
+          <BotInviteLink href={authConfig?.botInviteUrl} className="w-full gap-2" />
         </div>
 
         <div className="p-4 border-t border-border/50 bg-background/50">

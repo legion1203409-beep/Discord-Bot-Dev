@@ -200,10 +200,11 @@ components:
   schemas:
     ModerationAuthConfig:
       type: object
-      required: [discordOAuthConfigured, authorizationUrl]
+      required: [discordOAuthConfigured, authorizationUrl, botInviteUrl]
       properties:
         discordOAuthConfigured: { type: boolean }
         authorizationUrl: { type: string }
+        botInviteUrl: { type: ["string", "null"], format: uri, description: Public Discord bot invitation URL; null when the application ID is unavailable. }
     ModerationCommandInput:
       type: object
       required: [type]

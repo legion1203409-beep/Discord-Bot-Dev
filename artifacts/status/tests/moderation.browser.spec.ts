@@ -871,6 +871,23 @@ test.describe("Discord moderation authentication", () => {
     await expect(page.getByRole("alert")).toContainText("rol de staff sau administrator");
   });
 
+  test("offers a real bot invite next to login without redirecting through the site", async ({ page }) => {
+    const inviteUrl = "https://discord.com/oauth2/authorize?client_id=123456789012345678&scope=bot+applications.commands&permissions=268504064";
+    await page.route("**/api/moderation/auth-config", async (route) => {
+      await route.fulfill({ json: {
+        discordOAuthConfigured: true,
+        authorizationUrl: "/api/moderation/oauth/discord",
+        botInviteUrl: inviteUrl,
+      } });
+    });
+    await page.goto("/moderare?auth_error=no_eligible_guild");
+    const invite = page.getByRole("link", { name: "Invită botul pe server" });
+    await expect(invite).toHaveAttribute("href", inviteUrl);
+    await expect(invite).toHaveAttribute("target", "_blank");
+    await expect(invite).toHaveAttribute("rel", /noopener.*noreferrer/);
+    await expect(page.getByTestId("discord-login-button")).toBeVisible();
+  });
+
   test("uses a safe fallback for an unknown callback error", async ({ page }) => {
     await page.goto("/moderare?auth_error=unexpected_internal_detail");
     await expect(page.getByRole("alert")).toContainText("Autentificarea Discord nu a putut fi finalizată");
@@ -1064,6 +1081,13 @@ test.describe("moderation guild chooser", () => {
   });
 
   test("shows a clear empty state when no eligible guilds are returned", async ({ page }) => {
+    await page.route("**/api/moderation/auth-config", async (route) => {
+      await route.fulfill({ json: {
+        discordOAuthConfigured: true,
+        authorizationUrl: "/api/moderation/oauth/discord",
+        botInviteUrl: "https://discord.com/oauth2/authorize?client_id=123456789012345678&scope=bot+applications.commands&permissions=268504064",
+      } });
+    });
     await page.route("**/api/moderation/session", async (route) => {
       await route.fulfill({
         json: {
@@ -1079,5 +1103,7 @@ test.describe("moderation guild chooser", () => {
     await expect(page.getByRole("heading", { name: "Nu ai servere de gestionat" })).toBeVisible();
     await expect(page.getByText("botul trebuie să fie prezent")).toBeVisible();
     await expect(page.getByRole("button", { name: "Schimbă contul" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Invită botul pe server" })).toBeVisible();
+    await expect(page.getByText("conectează-te din nou pentru a vedea noul server")).toBeVisible();
   });
 });

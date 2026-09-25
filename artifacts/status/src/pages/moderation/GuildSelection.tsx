@@ -1,12 +1,14 @@
 import { ArrowRight, LogOut, Server, ShieldCheck, Users } from "lucide-react";
 import type { ModerationGuild } from "../../hooks/use-moderation-api";
 import { Button } from "../../components/ui/button";
+import { BotInviteLink } from "../../components/moderation/BotInviteLink";
 
 interface GuildSelectionProps {
   guilds: ModerationGuild[];
   onSelect: (guildId: string) => void;
   onLogout: () => void | Promise<void>;
   onSwitchAccount?: () => void | Promise<void>;
+  botInviteUrl?: string | null;
 }
 
 function guildIconUrl(guild: ModerationGuild): string | null {
@@ -41,6 +43,7 @@ export function GuildSelection({
   onSelect,
   onLogout,
   onSwitchAccount,
+  botInviteUrl,
 }: GuildSelectionProps) {
   const hasEligibleGuilds = guilds.length > 0;
 
@@ -112,6 +115,7 @@ export function GuildSelection({
                   <LogOut className="w-4 h-4" aria-hidden="true" />
                   Deconectează-te
                 </Button>
+                <BotInviteLink href={botInviteUrl} className="gap-2" />
                 {onSwitchAccount && (
                   <Button type="button" onClick={() => void onSwitchAccount()} className="gap-2" data-testid="button-switch-discord-account">
                     <Users className="w-4 h-4" aria-hidden="true" />
@@ -119,11 +123,17 @@ export function GuildSelection({
                   </Button>
                 )}
               </div>
+              {botInviteUrl && (
+                <p className="mt-3 text-center text-xs text-muted-foreground">
+                  După ce inviți botul, conectează-te din nou pentru a vedea noul server.
+                </p>
+              )}
             </>
           )}
 
           {hasEligibleGuilds && (
-            <div className="mt-8 pt-6 border-t border-border/50 flex justify-center">
+            <div className="mt-8 pt-6 border-t border-border/50 flex flex-wrap items-center justify-center gap-4">
+              <BotInviteLink href={botInviteUrl} label="Invită botul pe alt server" className="gap-2" />
               <button
                 type="button"
                 onClick={() => void onLogout()}

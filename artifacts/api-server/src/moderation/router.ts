@@ -1621,6 +1621,7 @@ router.get("/auth-config", (_req, res) =>
 
     discordOAuthConfigured: isDiscordOAuthConfigured(),
     authorizationUrl: "/api/moderation/oauth/discord",
+    botInviteUrl: getDiscordBotInviteUrl(),
     bot: bot ? 
 {
 

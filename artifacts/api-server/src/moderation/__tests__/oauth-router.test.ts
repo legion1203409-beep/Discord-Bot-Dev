@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   setCookie: vi.fn(),
   clearCookie: vi.fn(),
   configured: vi.fn(),
+  invite: vi.fn(),
   beginVerification: vi.fn(),
   snapshot: vi.fn(),
   verifyMember: vi.fn(),
@@ -55,6 +56,7 @@ vi.mock("../oauth", () => ({
   fetchDiscordOAuthIdentity: mocks.identity,
   fetchBotGuildSnapshot: mocks.snapshot,
   isDiscordOAuthConfigured: mocks.configured,
+  getDiscordBotInviteUrl: mocks.invite,
 }));
 
 vi.mock("../../bot/verification", () => ({
@@ -104,6 +106,7 @@ describe("Discord OAuth moderation routes", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     mocks.configured.mockReturnValue(true);
+    mocks.invite.mockReturnValue("https://discord.com/oauth2/authorize?client_id=123456789&scope=bot+applications.commands&permissions=268504064");
     mocks.consumeRequest.mockReturnValue({ purpose: "moderation", expiresAt: Date.now() + 60_000 });
     mocks.consumeState.mockReturnValue(true);
     mocks.exchange.mockResolvedValue("server-only-oauth-token");
@@ -132,8 +135,17 @@ describe("Discord OAuth moderation routes", () => {
     expect(await response.json()).toEqual({
       discordOAuthConfigured: true,
       authorizationUrl: "/api/moderation/oauth/discord",
+      botInviteUrl: "https://discord.com/oauth2/authorize?client_id=123456789&scope=bot+applications.commands&permissions=268504064",
       bot: null,
     });
+    expect(mocks.invite).toHaveBeenCalledWith();
+  });
+
+  it("does not offer a dead invitation when the application ID is unavailable", async () => {
+    mocks.invite.mockReturnValue(null);
+    const response = await fetch(`${base}/auth-config`);
+    const body = await response.json() as { botInviteUrl: string | null };
+    expect(body.botInviteUrl).toBeNull();
   });
 
   it("redirects a cancelled callback without exchanging a code", async () => {
