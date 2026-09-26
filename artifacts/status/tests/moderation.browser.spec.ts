@@ -333,7 +333,11 @@ test.describe("authenticated moderation console", () => {
     }
 
     await expectNavGroupExpanded(page, "bot-control");
-    for (const tab of ["channels", "tickets", "messages", "statistics"]) {
+    const channelLink = page.locator('nav[aria-label="Categorii de moderare"] a[href="/moderare/canale"]');
+    await channelLink.click();
+    await expect(page).toHaveURL("/moderare/canale");
+    await expect(channelLink).toHaveAttribute("aria-current", "page");
+    for (const tab of ["tickets", "messages", "statistics"]) {
       const link = page.locator(`nav[aria-label="Categorii de moderare"] a[href="/moderare/bot?tab=${tab}"]`);
       await link.click();
       await expect(page).toHaveURL(`/moderare/bot?tab=${tab}`);
@@ -344,11 +348,13 @@ test.describe("authenticated moderation console", () => {
     // sidebar navigation above is independent of whether that API is online.
     let savedInviteLogChannel = "";
     let savedDailyStatsChannel = "";
+    let savedMainChannel = "";
     await page.route("**/api/moderation/guilds/*/bot-control", async (route) => {
       if (route.request().method() === "PUT") {
         const body = JSON.parse(route.request().postData() || "{}");
         savedInviteLogChannel = body.inviteTracking.joinLogChannelId;
         savedDailyStatsChannel = body.dailyStats.channelId;
+        savedMainChannel = body.channels.main;
         await route.fulfill({ json: { ...body, discordLive: true } });
         return;
       }
@@ -391,11 +397,29 @@ test.describe("authenticated moderation console", () => {
     });
     await page.goto("/moderare/bot?tab=roles");
     await expect(page.getByTestId("tab-roles")).toHaveAttribute("data-state", "active");
-    await page.getByTestId("tab-channels").click();
     await page.getByTestId("tab-roles").click();
     await expect(page).toHaveURL("/moderare/bot?tab=roles");
     await expect(page.getByTestId("tab-roles")).toHaveAttribute("data-state", "active");
 
+    await page.goto("/moderare/canale");
+    await expect(page.getByRole("heading", { name: "Canale Discord", exact: true })).toBeVisible();
+    await expect(page.getByRole("tab")).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Identifică destinațiile pe Discord" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Creează ce lipsește" })).toBeDisabled();
+    await page.getByLabel("Cufere ID").fill("555555555");
+    const channelSave = page.waitForResponse((response) =>
+      response.url().includes("/api/moderation/guilds/111111111/bot-control")
+      && response.request().method() === "PUT");
+    await page.getByRole("button", { name: "Salvează setările canalelor" }).click();
+    await expect((await channelSave).ok()).toBeTruthy();
+    expect(savedMainChannel).toBe("555555555");
+
+    await page.goto("/moderare/bot?tab=channels");
+    await expect(page).toHaveURL("/moderare/canale");
+    await expect(page.getByRole("heading", { name: "Canale Discord", exact: true })).toBeVisible();
+
+    await page.goto("/moderare/bot?tab=roles");
+    await expect(page.getByTestId("tab-roles")).toHaveAttribute("data-state", "active");
     await page.getByTestId("tab-statistics").click();
     await expect(page.getByText("Jurnal pentru fiecare intrare")).toBeVisible();
     await expect(page.getByText("PREVIZUALIZARE EMBED")).toBeVisible();

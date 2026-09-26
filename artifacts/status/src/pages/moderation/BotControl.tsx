@@ -260,7 +260,7 @@ function renderAnnouncementTemplate(
   return template.replace(/\{([a-z0-9_]+)\}/gi, (match, key: string) => values[key] ?? match);
 }
 
-export function BotControlPage() {
+export function BotControlPage({ channelsOnly = false }: { channelsOnly?: boolean }) {
   const [location, setLocation] = useLocation();
   const { guildId } = useActiveGuild();
   const {
@@ -310,7 +310,7 @@ export function BotControlPage() {
   const [activeTab, setActiveTab] = useState<BotControlTab>(
     requestedTab && BOT_CONTROL_TABS.includes(requestedTab as BotControlTab)
       ? requestedTab as BotControlTab
-      : "channels",
+      : "roles",
   );
   const [expandedCategory, setExpandedCategory] = useState<string | null>("gameplay");
   const initializedGuild = React.useRef<string | null>(null);
@@ -338,6 +338,10 @@ export function BotControlPage() {
   }, [data, guildId, panelRecovery]);
 
   useEffect(() => {
+    if (!channelsOnly && requestedTab === "channels") {
+      setLocation("/canale");
+      return;
+    }
     if (requestedTab === "verification") {
       setLocation("/verificare");
       return;
@@ -345,7 +349,7 @@ export function BotControlPage() {
     if (requestedTab && BOT_CONTROL_TABS.includes(requestedTab as BotControlTab)) {
       setActiveTab(requestedTab as BotControlTab);
     }
-  }, [requestedTab, setLocation]);
+  }, [channelsOnly, requestedTab, setLocation]);
 
   const currentDraft = initializedGuild.current === guildId && data ? draft : null;
   const hasUnsavedChanges = Boolean(
@@ -840,8 +844,12 @@ export function BotControlPage() {
             <span className="bot-control-brand-mark"><Bot className="h-4 w-4" /></span>
             <p className="mod-eyebrow">CONTROL OWNER-ONLY</p>
           </div>
-          <h1 className="mod-heading text-4xl">Control bot</h1>
-          <p>Configurează destinațiile Discord și regulile de creare fără să pierzi din vedere ce se schimbă.</p>
+          <h1 className="mod-heading text-4xl">{channelsOnly ? "Canale Discord" : "Control bot"}</h1>
+          <p>
+            {channelsOnly
+              ? "Configurează destinațiile folosite de bot și pregătește doar categoriile Discord pe care le selectezi."
+              : "Configurează roluri, tichete, mesaje și statistici pentru botul Discord."}
+          </p>
         </div>
         <div className="bot-control-status" data-state={draft.discordLive === true ? "online" : "offline"}>
           <span className="bot-control-status-dot" />
@@ -913,8 +921,9 @@ export function BotControlPage() {
       )}
       <div className="animate-stagger-4">
         <Tabs
-          value={activeTab}
+          value={channelsOnly ? "channels" : activeTab}
           onValueChange={(value) => {
+            if (channelsOnly) return;
             if (!BOT_CONTROL_TABS.includes(value as BotControlTab)) return;
             const nextTab = value as BotControlTab;
             setActiveTab(nextTab);
@@ -922,13 +931,14 @@ export function BotControlPage() {
           }}
           className="bot-control-tabs space-y-5"
         >
-             <TabsList className="bot-control-tab-list grid h-auto w-full grid-cols-2 gap-1 rounded-xl border border-border/80 p-1 sm:grid-cols-5 bg-background/50 shadow-inner">
-             <TabsTrigger value="channels" data-testid="tab-channels" className="mod-tab-trigger gap-2 py-2.5"><Radio className="h-4 w-4" /> Canale</TabsTrigger>
+          {!channelsOnly && (
+            <TabsList className="bot-control-tab-list grid h-auto w-full grid-cols-2 gap-1 rounded-xl border border-border/80 p-1 sm:grid-cols-4 bg-background/50 shadow-inner">
               <TabsTrigger value="roles" data-testid="tab-roles" className="mod-tab-trigger gap-2 py-2.5"><Users className="h-4 w-4" /> Roluri</TabsTrigger>
-             <TabsTrigger value="tickets" data-testid="tab-tickets" className="mod-tab-trigger gap-2 py-2.5"><Ticket className="h-4 w-4" /> Tichete</TabsTrigger>
-           <TabsTrigger value="messages" data-testid="tab-messages" className="mod-tab-trigger gap-2 py-2.5"><Megaphone className="h-4 w-4" /> Mesaje</TabsTrigger>
-           <TabsTrigger value="statistics" data-testid="tab-statistics" className="mod-tab-trigger gap-2 py-2.5"><Activity className="h-4 w-4" /> Statistici</TabsTrigger>
-        </TabsList>
+              <TabsTrigger value="tickets" data-testid="tab-tickets" className="mod-tab-trigger gap-2 py-2.5"><Ticket className="h-4 w-4" /> Tichete</TabsTrigger>
+              <TabsTrigger value="messages" data-testid="tab-messages" className="mod-tab-trigger gap-2 py-2.5"><Megaphone className="h-4 w-4" /> Mesaje</TabsTrigger>
+              <TabsTrigger value="statistics" data-testid="tab-statistics" className="mod-tab-trigger gap-2 py-2.5"><Activity className="h-4 w-4" /> Statistici</TabsTrigger>
+            </TabsList>
+          )}
 
           <TabsContent value="roles" className="mod-tab-content mt-0">
             <section className="surface role-presets-surface space-y-4">
@@ -2158,13 +2168,15 @@ export function BotControlPage() {
             <span>{saving ? "Se salvează setările…" : (panelRecovery || partialApplyError?.guildId === guildId) ? "Rezultatul aplicării este parțial; verifică valorile serverului." : "Ai modificări nesalvate."}</span>
           </div>
           <div className="mod-save-actions ml-auto flex flex-wrap justify-end gap-2">
-            <Button type="button" variant="secondary" onClick={openFlowTest} className="gap-2 font-medium tracking-wide">
-              <PlayCircle className="h-4 w-4" />
-              Testează fluxul
-            </Button>
+            {!channelsOnly && (
+              <Button type="button" variant="secondary" onClick={openFlowTest} className="gap-2 font-medium tracking-wide">
+                <PlayCircle className="h-4 w-4" />
+                Testează fluxul
+              </Button>
+            )}
             <Button onClick={() => void save()} disabled={saving || panelRecovery?.requiresManualReconciliation} className="gap-2 px-8 font-semibold tracking-wide shadow-lg shadow-primary/20">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              {saving ? "Se salvează…" : "Salvează controlul botului"}
+              {saving ? "Se salvează…" : channelsOnly ? "Salvează setările canalelor" : "Salvează controlul botului"}
             </Button>
           </div>
         </div>

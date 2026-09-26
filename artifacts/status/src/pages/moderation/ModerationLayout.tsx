@@ -1,7 +1,7 @@
 import { Link, useLocation, useSearch } from "wouter";
 import { 
   ShieldAlert, Settings, Shield, Bot, History, BookOpen, SlidersHorizontal, ShieldCheck,
-  LogOut, Activity, Zap, Menu, X, Eye, Monitor, RefreshCw, Server,
+  LogOut, Activity, Zap, Menu, X, Eye, Monitor, Radio, RefreshCw, Server,
   FileText, Sparkles, MessageSquareWarning, Gavel,
 } from "lucide-react";
 import { ReactNode, useState, useEffect } from "react";
@@ -108,7 +108,7 @@ const moderationNavGroups: Array<{ id: string; label: string; items: ModerationN
     id: "bot-control",
     label: "Control bot",
     items: [
-      { href: "/bot?tab=channels", icon: Monitor, label: "Canale" },
+      { href: "/canale", icon: Radio, label: "Canale" },
       { href: "/bot?tab=tickets", icon: SlidersHorizontal, label: "Tichete" },
       { href: "/verificare", icon: ShieldCheck, label: "Verificare" },
       { href: "/bot?tab=messages", icon: Activity, label: "Mesaje" },
