@@ -1,7 +1,7 @@
 import { Link, useLocation, useSearch } from "wouter";
 import { 
   ShieldAlert, Settings, Shield, Bot, History, BookOpen, SlidersHorizontal, ShieldCheck,
-  LogOut, ChevronDown, Activity, Zap, Menu, X, Eye, Monitor, RefreshCw, Server,
+  LogOut, Activity, Zap, Menu, X, Eye, Monitor, RefreshCw, Server,
   FileText, Sparkles, MessageSquareWarning, Gavel,
 } from "lucide-react";
 import { ReactNode, useState, useEffect } from "react";
@@ -141,12 +141,6 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
   } = useModerationAuthConfig();
   const { guildId, setGuildId, guilds } = useActiveGuild();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [expandedNavGroups, setExpandedNavGroups] = useState<Record<string, boolean>>(() => {
-    const activeGroup = moderationNavGroups.find((group) =>
-      group.items.some((item) => isNavItemActive(item.href, navLocation)),
-    );
-    return Object.fromEntries(moderationNavGroups.map((group) => [group.id, group.id === activeGroup?.id]));
-  });
   const activeGuild = guilds.find((guild) => guild.id === guildId);
   const activeGuildIcon = guildIconUrl(activeGuild);
   const botProfile = authConfig?.bot;
@@ -154,15 +148,6 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     setMobileMenuOpen(false);
   }, [location]);
-
-  useEffect(() => {
-    const activeGroup = moderationNavGroups.find((group) =>
-      group.items.some((item) => isNavItemActive(item.href, navLocation)),
-    );
-    if (activeGroup) {
-      setExpandedNavGroups((current) => ({ ...current, [activeGroup.id]: true }));
-    }
-  }, [navLocation]);
 
   if (loading) {
     return (
@@ -362,35 +347,28 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
             <div className="mb-2 px-3 text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
               Instrumente
             </div>
-            <nav aria-label="Categorii de moderare" className="space-y-2">
+            <nav aria-label="Categorii de moderare" className="space-y-3">
               {moderationNavGroups.map((group) => {
-                const expanded = Boolean(expandedNavGroups[group.id]);
                 const controlGroup = group.id === "bot-control";
                 return (
-                  <section key={group.id} className={controlGroup ? "mod-control-nav" : undefined}>
-                    <button
-                      type="button"
-                      aria-expanded={expanded}
-                      aria-controls={`nav-group-${group.id}`}
+                  <section
+                    key={group.id}
+                    aria-labelledby={`nav-group-heading-${group.id}`}
+                    className={controlGroup ? "mod-control-nav" : undefined}
+                  >
+                    <h3
+                      id={`nav-group-heading-${group.id}`}
                       data-testid={`nav-group-${group.id}`}
-                      onClick={() => setExpandedNavGroups((current) => ({
-                        ...current,
-                        [group.id]: !current[group.id],
-                      }))}
-                      className="flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-[10px] font-mono uppercase tracking-widest text-muted-foreground transition-colors hover:bg-secondary/40 hover:text-foreground"
+                      className="flex min-h-10 items-center rounded-md px-3 py-2.5 text-[11px] font-mono font-medium uppercase tracking-[0.14em] text-muted-foreground"
                     >
                       <span className="flex min-w-0 items-center gap-2">
                         {group.label}
-                        <span className="text-[9px] text-muted-foreground/70">{String(group.items.length).padStart(2, "0")}</span>
+                        <span className="text-[10px] text-muted-foreground/70">{String(group.items.length).padStart(2, "0")}</span>
                       </span>
-                      <ChevronDown
-                        className={`h-3.5 w-3.5 shrink-0 transition-transform ${expanded ? "rotate-0" : "-rotate-90"}`}
-                        aria-hidden="true"
-                      />
-                    </button>
+                    </h3>
                     <div
                       id={`nav-group-${group.id}`}
-                      className={`flex flex-col gap-1 ${expanded ? "mt-1" : "hidden"}`}
+                      className="mt-1 flex flex-col gap-1"
                     >
                       {group.items.map((item) => {
                         const active = isNavItemActive(item.href, navLocation);

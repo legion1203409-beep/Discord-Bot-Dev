@@ -186,11 +186,11 @@ test.describe("authenticated moderation console", () => {
     await page.getByRole("button", { name: guilds[0].name }).click();
   }
 
-  async function expandNavGroup(page: import("@playwright/test").Page, groupId: string) {
+  async function expectNavGroupExpanded(page: import("@playwright/test").Page, groupId: string) {
     const group = page.getByTestId(`nav-group-${groupId}`);
-    if (await group.getAttribute("aria-expanded") !== "true") {
-      await group.click();
-    }
+    await expect(group).toBeVisible();
+    await expect(group).not.toHaveAttribute("aria-expanded");
+    await expect(page.locator(`#nav-group-${groupId}`)).toBeVisible();
   }
 
   test("keeps gameplay status unknown after GET failure, retries, and preserves guild-specific toggles", async ({ page }) => {
@@ -323,7 +323,7 @@ test.describe("authenticated moderation console", () => {
       },
     ];
     for (const destinationGroup of destinations) {
-      await expandNavGroup(page, destinationGroup.group);
+      await expectNavGroupExpanded(page, destinationGroup.group);
       for (const path of destinationGroup.routes) {
         await page.locator(`nav[aria-label="Categorii de moderare"] a[href="/moderare${path}"]`).click();
         await expect(page).toHaveURL(`/moderare${path}`);
@@ -332,7 +332,7 @@ test.describe("authenticated moderation console", () => {
       }
     }
 
-    await expandNavGroup(page, "bot-control");
+    await expectNavGroupExpanded(page, "bot-control");
     for (const tab of ["channels", "tickets", "messages", "statistics"]) {
       const link = page.locator(`nav[aria-label="Categorii de moderare"] a[href="/moderare/bot?tab=${tab}"]`);
       await link.click();
@@ -811,7 +811,7 @@ test.describe("authenticated moderation console", () => {
     await chooseFirstGuild(page);
     await expect(page.getByRole("heading", { name: "Cenușa Nordului" })).toBeVisible();
     await page.getByRole("button", { name: "Deschide meniul" }).click();
-    await expandNavGroup(page, "protection");
+    await expectNavGroupExpanded(page, "protection");
     await page.getByTestId("link-nav-anti-flood").click();
     await expect(page).toHaveURL("/moderare/anti-flood");
     await expect(page.getByRole("button", { name: "Deschide meniul" })).toBeVisible();
