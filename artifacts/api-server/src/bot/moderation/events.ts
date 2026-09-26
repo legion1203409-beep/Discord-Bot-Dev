@@ -11,6 +11,7 @@ import {
   type PartialGuildMember,
   type PartialMessage,
 } from "discord.js";
+import type { AutoModerationActionExecution } from "discord.js";
 import type { ActivityLogCategory, ModerationAction, ModerationConfig } from "../../moderation/config";
 import { logger } from "../../lib/logger";
 
@@ -41,6 +42,7 @@ export type ModerationEventHelpers = {
   getConfig(guildId: string): Promise<ModerationConfig>;
   executeModerationAction(input: ModerationEventActionInput): Promise<unknown>;
   handleMessage(client: Client, message: Message): Promise<boolean>;
+  handleNativeAutoModerationExecution(client: Client, execution: AutoModerationActionExecution): Promise<void>;
   notify(config: ModerationConfig, guild: Guild, title: string, description: string, preferredChannelId?: string | null): Promise<void>;
   auditExternal(guildId: string, eventType: string, targetType: string, targetId: string, detail: Record<string, unknown>): Promise<void>;
 };
@@ -434,6 +436,12 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
   const safely = (event: string, work: () => Promise<void>, guildId?: string) => {
     void work().catch((error: unknown) => logger.error({ error, event, guildId }, "Moderation event handler failed"));
   };
+
+  client.on(Events.AutoModerationActionExecution, (execution) => safely(
+    Events.AutoModerationActionExecution,
+    () => helpers.handleNativeAutoModerationExecution(client, execution),
+    execution.guild.id,
+  ));
 
   client.on(Events.GuildMemberAdd, (member) => safely(Events.GuildMemberAdd, async () => {
     const config = await helpers.getConfig(member.guild.id);

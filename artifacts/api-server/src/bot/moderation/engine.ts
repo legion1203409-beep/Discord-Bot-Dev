@@ -14,6 +14,9 @@ import { pool } from "@workspace/db";
 import { moderationStore } from "../../moderation/store";
 import type { ModerationConfig, ModerationAction as ConfiguredAction } from "../../moderation/config";
 import { logger } from "../../lib/logger";
+import { shouldDeleteAutoModMessage } from "./automod-policy";
+import type { AutoModerationActionExecution } from "discord.js";
+import { NATIVE_AUTOMOD_KEYWORD_RULE_NAME } from "../native-automod";
 import { detectContent, detectScamContent, SlidingRateLimiter, SlidingUniqueMessageRateLimiter, type ContentThresholds, type Detection } from "./detectors";
 import {
   assertRoleGrantSafe,
@@ -564,13 +567,13 @@ export async function executeModerationAction(input: ModerationActionInput): Pro
   }
 }
 
-async function applyAutomatic(guild: Guild, config: ModerationConfig, message: Message, detection: Detection, rule: { action: ConfiguredAction; severity?: "soft" | "normal" | "hard" }): Promise<boolean> {
+async function applyAutomatic(guild: Guild, config: ModerationConfig, message: Message, detection: Detection, rule: { action: ConfiguredAction; severity?: "soft" | "normal" | "hard"; deleteMessage?: boolean }): Promise<boolean> {
   return serializedEscalation(`${guild.id}:${message.author.id}`, () =>
     applyAutomaticSerialized(guild, config, message, detection, rule),
   );
 }
 
-async function applyAutomaticSerialized(guild: Guild, config: ModerationConfig, message: Message, detection: Detection, rule: { action: ConfiguredAction; severity?: "soft" | "normal" | "hard" }): Promise<boolean> {
+async function applyAutomaticSerialized(guild: Guild, config: ModerationConfig, message: Message, detection: Detection, rule: { action: ConfiguredAction; severity?: "soft" | "normal" | "hard"; deleteMessage?: boolean }): Promise<boolean> {
   const idempotencyKey = `${guild.id}:${message.id}:${detection.kind}:${rule.action}`;
   if (!reserveAutomaticAction(idempotencyKey)) return false;
   const incidentKey = `automod:${guild.id}:${message.author.id}:${detection.kind}:${Math.floor(Date.now() / 60_000)}`;
@@ -579,16 +582,17 @@ async function applyAutomaticSerialized(guild: Guild, config: ModerationConfig, 
   // solely when the owner explicitly enabled and configured its levels.
   const selectedAction = await actionAtEscalationLevel(config, guild.id, message.author.id, rule.action);
   const isScamDetection = detection.kind === "scam";
-  if (isScamDetection && selectedAction !== "delete") {
+  const deleteMessage = shouldDeleteAutoModMessage(selectedAction, rule.deleteMessage, isScamDetection);
+  if (deleteMessage) {
     try {
       await executeModerationAction({
         guildId: guild.id, actorId: moderationClient!.user!.id, targetId: message.author.id, channelId: message.channelId,
-        type: "delete", reason: `AutoMod anti-scam: ${why}`, source: "automod",
+        type: "delete", reason: `AutoMod delete: ${why}`, source: "automod",
         idempotencyKey: `${incidentKey}:message:${message.id}`,
         evidence: [{ messageId: message.id, channelId: message.channelId, kind: detection.kind }],
       });
     } catch (error) {
-      logger.warn({ error, guildId: guild.id, userId: message.author.id, messageId: message.id }, "AutoMod scam message deletion failed");
+      logger.warn({ error, guildId: guild.id, userId: message.author.id, messageId: message.id }, "AutoMod message deletion failed");
       await audit({ guildId: guild.id, actorId: moderationClient!.user!.id, type: "warn", source: "automod" }, "automod.message_delete_failed", "message", message.id, {
         kind: detection.kind,
         error: error instanceof Error ? error.message : "delete failed",
@@ -604,23 +608,12 @@ async function applyAutomaticSerialized(guild: Guild, config: ModerationConfig, 
     }
   }
   if (selectedAction === "delete") {
-    try {
-      await executeModerationAction({
-        guildId: guild.id, actorId: moderationClient!.user!.id, targetId: message.author.id, channelId: message.channelId,
-        type: "delete", reason: `AutoMod delete: ${why}`, source: "automod",
-        idempotencyKey: isScamDetection ? `${incidentKey}:message:${message.id}` : incidentKey,
-        evidence: [{ messageId: message.id, channelId: message.channelId, kind: detection.kind }],
-      });
-      return true;
-    } catch (error) {
-      await audit({ guildId: guild.id, actorId: moderationClient!.user!.id, type: "warn", source: "automod" }, "automod.message_delete_failed", "message", message.id, { kind: detection.kind, error: error instanceof Error ? error.message : "delete failed" }).catch(() => undefined);
-      // The rule attempted a moderation action. Do not hand this same message to
-      // the legacy Oracle toxicity path, which could impose a second sanction.
-      return true;
-    }
+    // Each message gets its own delete ledger key above. Do not try to delete
+    // it a second time when deletion is also the selected sanction.
+    return true;
   }
   const action = eventAction(selectedAction);
-  if (!action) return isScamDetection;
+  if (!action) return deleteMessage;
   try {
     await executeModerationAction({
       guildId: guild.id, actorId: moderationClient!.user!.id, targetId: message.author.id, channelId: message.channelId, type: action,
@@ -755,8 +748,11 @@ export async function handleModerationMessage(client: Client, message: Message):
   const aiFinding = await detectWithAi(config, message);
   if (aiFinding) {
     await notify(config, message.guild, "Semnalare AI", aiFinding.detail, config.ai.logChannelId);
-    if (config.ai.action !== "none") {
-      return applyAutomatic(message.guild, config, message, aiFinding, { action: config.ai.action });
+    if (config.ai.action !== "none" || config.ai.deleteMessage) {
+      return applyAutomatic(message.guild, config, message, aiFinding, {
+        action: config.ai.action,
+        deleteMessage: config.ai.deleteMessage,
+      });
     }
     await audit({ guildId: message.guildId, actorId: client.user?.id ?? "system", type: "warn", source: "automod" }, "ai.flagged", "message", message.id, { category: aiFinding.detail });
   }
@@ -770,6 +766,56 @@ export async function auditExternal(guildId: string, eventType: string, targetTy
   await moderationStore.writeAudit({ guildId, actorId, eventType, targetType, targetId, detail });
 }
 
+async function handleNativeAutoModerationExecution(
+  client: Client,
+  execution: AutoModerationActionExecution,
+): Promise<void> {
+  const config = await getConfig(execution.guild.id);
+  const { autoMod, protection } = config;
+  const rule = autoMod.wordFilter;
+  const channelId = execution.channelId;
+  if (
+    !protection.enabled ||
+    !autoMod.enabled ||
+    !rule.enabled ||
+    !channelId ||
+    rule.action === "delete" ||
+    config.channels.ignoredChannelIds.includes(channelId) ||
+    config.channels.protectedChannelIds.includes(channelId)
+  ) return;
+
+  const managedRule = execution.autoModerationRule ??
+    (await execution.guild.autoModerationRules.fetch().catch(() => null))?.get(execution.ruleId) ??
+    null;
+  if (managedRule?.name !== NATIVE_AUTOMOD_KEYWORD_RULE_NAME) return;
+
+  const target = await getMember(execution.guild, execution.userId).catch(() => null);
+  if (!target || target.user.bot || target.roles.cache.some((role) =>
+    config.roles.ignoredAutoModRoleIds.includes(role.id) || config.roles.protectedRoleIds.includes(role.id),
+  )) return;
+
+  const actorId = client.user?.id;
+  if (!actorId) return;
+  const selectedAction = await actionAtEscalationLevel(config, execution.guild.id, target.id, rule.action);
+  if (selectedAction === "none" || selectedAction === "delete") return;
+  const matched = execution.matchedKeyword?.trim();
+  await executeModerationAction({
+    guildId: execution.guild.id,
+    actorId,
+    targetId: target.id,
+    channelId,
+    type: selectedAction,
+    reason: `AutoMod: cuvânt interzis${matched ? ` „${matched}”` : ""}`,
+    source: "automod",
+    idempotencyKey: `automod:${execution.guild.id}:${target.id}:word:${Math.floor(Date.now() / 60_000)}`,
+    evidence: [{
+      messageId: execution.messageId ?? undefined,
+      channelId,
+      kind: "word",
+    }],
+  });
+}
+
 /** Register the independently owned Discord-event adapter once per client. */
 export function attachModeration(client: Client): void {
   moderationClient = client;
@@ -780,6 +826,7 @@ export function attachModeration(client: Client): void {
     getConfig,
     executeModerationAction,
     handleMessage: handleModerationMessage,
+    handleNativeAutoModerationExecution,
     notify,
     auditExternal,
   });

@@ -16,6 +16,7 @@ import { configSaveToastOptions } from "../../lib/protection-toggle-feedback";
 const ruleSchema = z.object({
   enabled: z.boolean(),
   action: z.enum(["none", "warn", "mute", "kick", "ban", "delete"]),
+  deleteMessage: z.boolean(),
   severity: z.enum(["soft", "normal", "hard"]),
 });
 
@@ -26,6 +27,7 @@ const autoModFormSchema = z.object({
   forbiddenWords: z.string(),
   aiEnabled: z.boolean(),
   aiAction: z.enum(["none", "warn", "mute", "kick", "ban", "delete"]),
+  aiDeleteMessage: z.boolean(),
   aiSensitivity: z.enum(["low", "medium", "high"]),
 });
 
@@ -39,11 +41,12 @@ export function AutoModPage() {
     resolver: zodResolver(autoModFormSchema),
     defaultValues: {
       enabled: false,
-      wordFilter: { enabled: false, action: "none", severity: "normal" },
-      linkBlock: { enabled: false, action: "none", severity: "normal" },
+      wordFilter: { enabled: false, action: "none", deleteMessage: false, severity: "normal" },
+      linkBlock: { enabled: false, action: "none", deleteMessage: false, severity: "normal" },
       forbiddenWords: "",
       aiEnabled: false,
       aiAction: "none",
+      aiDeleteMessage: false,
       aiSensitivity: "medium",
     },
   });
@@ -56,16 +59,19 @@ export function AutoModPage() {
       wordFilter: {
         enabled: config.autoMod?.wordFilter?.enabled ?? false,
         action: config.autoMod?.wordFilter?.action ?? "none",
+          deleteMessage: config.autoMod?.wordFilter?.deleteMessage ?? false,
         severity: config.autoMod?.wordFilter?.severity ?? "normal",
       },
       linkBlock: {
         enabled: config.autoMod?.linkBlock?.enabled ?? false,
         action: config.autoMod?.linkBlock?.action ?? "none",
+          deleteMessage: config.autoMod?.linkBlock?.deleteMessage ?? false,
         severity: config.autoMod?.linkBlock?.severity ?? "normal",
       },
       forbiddenWords: (config.autoMod?.forbiddenWords || []).join(", "),
       aiEnabled: config.ai?.enabled ?? false,
       aiAction: config.ai?.action ?? "none",
+        aiDeleteMessage: config.ai?.deleteMessage ?? false,
       aiSensitivity: config.ai?.sensitivity ?? "medium",
     };
     const latestValues = form.getValues();
@@ -82,19 +88,22 @@ export function AutoModPage() {
       initializedForId.current = guildId;
       form.reset({
         enabled: data.autoMod?.enabled ?? false,
-        wordFilter: { 
-          enabled: data.autoMod?.wordFilter?.enabled ?? false, 
-          action: data.autoMod?.wordFilter?.action ?? "none", 
-          severity: data.autoMod?.wordFilter?.severity ?? "normal" 
+        wordFilter: {
+          enabled: data.autoMod?.wordFilter?.enabled ?? false,
+          action: data.autoMod?.wordFilter?.action ?? "none",
+          deleteMessage: data.autoMod?.wordFilter?.deleteMessage ?? false,
+          severity: data.autoMod?.wordFilter?.severity ?? "normal"
         },
-        linkBlock: { 
-          enabled: data.autoMod?.linkBlock?.enabled ?? false, 
-          action: data.autoMod?.linkBlock?.action ?? "none", 
-          severity: data.autoMod?.linkBlock?.severity ?? "normal" 
+        linkBlock: {
+          enabled: data.autoMod?.linkBlock?.enabled ?? false,
+          action: data.autoMod?.linkBlock?.action ?? "none",
+          deleteMessage: data.autoMod?.linkBlock?.deleteMessage ?? false,
+          severity: data.autoMod?.linkBlock?.severity ?? "normal"
         },
         forbiddenWords: (data.autoMod?.forbiddenWords || []).join(", "),
         aiEnabled: data.ai?.enabled ?? false,
         aiAction: data.ai?.action ?? "none",
+        aiDeleteMessage: data.ai?.deleteMessage ?? false,
         aiSensitivity: data.ai?.sensitivity ?? "medium",
       });
     }
@@ -117,6 +126,7 @@ export function AutoModPage() {
           ...data.ai,
           enabled: values.aiEnabled,
           action: values.aiAction,
+          deleteMessage: values.aiDeleteMessage,
           sensitivity: values.aiSensitivity,
         }
       });
@@ -225,6 +235,21 @@ export function AutoModPage() {
                     </FormItem>
                   )}
                 />
+                <FormField
+                  control={form.control}
+                  name="wordFilter.deleteMessage"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-center justify-between rounded-lg border border-border p-4">
+                      <div className="space-y-0.5">
+                        <FormLabel>Șterge mesajul detectat</FormLabel>
+                        <FormDescription>Șterge mesajul pe lângă acțiunea aleasă.</FormDescription>
+                      </div>
+                      <FormControl>
+                        <Switch checked={field.value} onCheckedChange={field.onChange} />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
               </div>
 
               <FormField
@@ -286,6 +311,22 @@ export function AutoModPage() {
                             <SelectItem value="mute">Mute</SelectItem>
                           </SelectContent>
                         </Select>
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="aiDeleteMessage"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-center justify-between rounded-lg border border-border p-4 bg-background">
+                        <div className="space-y-0.5">
+                          <FormLabel>Șterge mesajul detectat</FormLabel>
+                          <FormDescription>Șterge mesajul, apoi aplică acțiunea AI aleasă.</FormDescription>
+                        </div>
+                        <FormControl>
+                          <Switch checked={field.value} onCheckedChange={field.onChange} />
+                        </FormControl>
                       </FormItem>
                     )}
                   />
@@ -356,6 +397,21 @@ export function AutoModPage() {
                           <SelectItem value="ban">Ban</SelectItem>
                         </SelectContent>
                       </Select>
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="linkBlock.deleteMessage"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-center justify-between rounded-lg border border-border p-4">
+                      <div className="space-y-0.5">
+                        <FormLabel>Șterge mesajul detectat</FormLabel>
+                        <FormDescription>Șterge mesajul pe lângă acțiunea aleasă.</FormDescription>
+                      </div>
+                      <FormControl>
+                        <Switch checked={field.value} onCheckedChange={field.onChange} />
+                      </FormControl>
                     </FormItem>
                   )}
                 />

@@ -27,6 +27,7 @@ export const EvidenceSchema = z.array(EvidenceItemSchema).max(25);
 export const RuleSchema = z.object({
   enabled: z.boolean().default(false),
   action: action.default("none"),
+  deleteMessage: z.boolean().optional(),
   severity: severity.default("normal"),
   // A zero threshold silently sanctions every event (or creates a zero-length
   // rate window), so thresholds are always positive integers.
@@ -253,6 +254,7 @@ export const ModerationConfigSchema = z.object({
     sensitivity: z.enum(["low", "medium", "high"]).default("medium"),
     tone: z.enum(["serious", "calm", "strict"]).default("calm"),
     action: action.default("none"),
+    deleteMessage: z.boolean().optional(),
     logChannelId: snowflake.nullable().default(null),
     categories: z.object({
       toxicity: z.boolean().default(false),

@@ -13,6 +13,7 @@ const MANAGED_PREFIX = "Regatul Cenușii • AutoMod";
 const SPAM_RULE_NAME = `${MANAGED_PREFIX} • spam`;
 const MENTION_RULE_NAME = `${MANAGED_PREFIX} • mention spam`;
 const KEYWORD_RULE_NAME = `${MANAGED_PREFIX} • cuvinte`;
+export const NATIVE_AUTOMOD_KEYWORD_RULE_NAME = KEYWORD_RULE_NAME;
 
 type NativeRuleOptions = {
   name: string;

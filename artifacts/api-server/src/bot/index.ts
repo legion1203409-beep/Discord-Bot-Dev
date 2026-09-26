@@ -4492,6 +4492,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
   const intents = [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.AutoModerationExecution,
     GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.GuildInvites,
   ];
@@ -5173,7 +5174,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
     return;
   }
 
-  const intents = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages];
+  const intents = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.AutoModerationExecution];
   // GuildMembers, GuildPresences and MessageContent are all privileged. Keep the
   // bot online when the portal toggles are absent rather than requesting any one
   // of them unconditionally and receiving gateway 4014.

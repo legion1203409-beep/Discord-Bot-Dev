@@ -55,6 +55,7 @@ function setup(config: ModerationConfig) {
     getConfig: vi.fn(async () => config),
     executeModerationAction: vi.fn(async () => ({})),
     handleMessage: vi.fn(async () => false),
+    handleNativeAutoModerationExecution: vi.fn(async () => undefined),
     notify: vi.fn(async () => undefined),
     auditExternal: vi.fn(async () => undefined),
   };
@@ -63,6 +64,18 @@ function setup(config: ModerationConfig) {
 }
 
 describe("non-message moderation events", () => {
+  it("routes native AutoMod blocks to the managed-rule handler", async () => {
+    const config = structuredClone(defaultModerationConfig);
+    const { client, emitter, helpers } = setup(config);
+    const targetGuild = guild("10007");
+    const execution = { guild: targetGuild, ruleId: "30001" } as never;
+
+    emitter.emit(Events.AutoModerationActionExecution, execution);
+    await waitForHandlers();
+
+    expect(helpers.handleNativeAutoModerationExecution).toHaveBeenCalledWith(client, execution);
+  });
+
   it("does not notify or enforce when defaults are disabled", async () => {
     const config = structuredClone(defaultModerationConfig);
     const { client, emitter, helpers } = setup(config);
