@@ -30,7 +30,7 @@ export function SwordCursor() {
       if (event.pointerType === "touch" || !cursor) return;
 
       x = event.clientX - 4;
-      y = event.clientY - 4;
+      y = event.clientY - 3;
       cursor.classList.toggle("sword-cursor-hidden", isTextEntry(event.target));
       cursor.classList.add("sword-cursor-visible");
 
@@ -100,10 +100,10 @@ export function SwordCursor() {
           strokeLinejoin="round"
         />
         <path d="m7.6 7.7 19.5 20.2" stroke="#fff7e4" strokeWidth="1" strokeLinecap="round" opacity=".9" />
-        <path d="m23.1 30.5 7.3-7.3 4.2 4.2-7.3 7.3-4.2-4.2Z" fill="url(#sword-cursor-gold)" stroke="#39251d" strokeWidth="1.4" strokeLinejoin="round" />
-        <path d="m27.6 34.9 8.8 8.8 3.4-3.4-8.8-8.8-3.4 3.4Z" fill="#684237" stroke="#2c1c19" strokeWidth="1.4" strokeLinejoin="round" />
-        <path d="m30.2 33.5 6.2 6.2" stroke="#e1b879" strokeWidth="1.2" strokeLinecap="round" />
-        <circle cx="41.4" cy="43" r="2.4" fill="url(#sword-cursor-gold)" stroke="#38271f" strokeWidth="1.2" />
+        <path d="m23.5 32.5 9-9 3 3-9 9-3-3Z" fill="url(#sword-cursor-gold)" stroke="#39251d" strokeWidth="1.4" strokeLinejoin="round" />
+        <path d="m27 31 4-4 10 10-4 4-10-10Z" fill="#684237" stroke="#2c1c19" strokeWidth="1.4" strokeLinejoin="round" />
+        <path d="m30 32 2-2 6 6-2 2-6-6Z" stroke="#e1b879" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx="41" cy="41" r="2.4" fill="url(#sword-cursor-gold)" stroke="#38271f" strokeWidth="1.2" />
       </svg>
       <span className="sword-cursor-spark" />
     </div>
