@@ -1,0 +1,92 @@
+.sword-cursor {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 2147483647;
+  width: 48px;
+  height: 48px;
+  opacity: 0;
+  pointer-events: none;
+  will-change: transform, opacity;
+  transition: opacity 100ms ease-out;
+}
+
+.sword-cursor-visible {
+  opacity: 1;
+}
+
+.sword-cursor-hidden {
+  opacity: 0;
+}
+
+.sword-cursor-blade {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  transform-origin: 8px 8px;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, .8)) drop-shadow(0 0 5px rgba(210, 162, 126, .35));
+}
+
+.sword-cursor-swing {
+  animation: sword-cursor-slash 360ms cubic-bezier(.2, .8, .25, 1);
+}
+
+.sword-cursor-spark {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #ffe2a8;
+  box-shadow: 0 0 7px 2px rgba(255, 201, 120, .62);
+  opacity: 0;
+  transform: scale(.35);
+}
+
+.sword-cursor-visible .sword-cursor-spark {
+  animation: sword-cursor-glint 2.8s ease-in-out infinite;
+}
+
+@keyframes sword-cursor-slash {
+  0% { transform: rotate(0) translate(0, 0); }
+  38% { transform: rotate(-34deg) translate(-2px, 2px); }
+  72% { transform: rotate(22deg) translate(4px, -3px); }
+  100% { transform: rotate(0) translate(0, 0); }
+}
+
+@keyframes sword-cursor-glint {
+  0%, 75%, 100% { opacity: 0; transform: scale(.35); }
+  82% { opacity: .9; transform: scale(1.2); }
+  89% { opacity: .2; transform: scale(.65); }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  html.sword-cursor-enabled,
+  html.sword-cursor-enabled body,
+  html.sword-cursor-enabled body * {
+    cursor: none !important;
+  }
+
+  html.sword-cursor-enabled input:not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="checkbox"]):not([type="radio"]),
+  html.sword-cursor-enabled textarea,
+  html.sword-cursor-enabled [contenteditable="true"],
+  html.sword-cursor-enabled [contenteditable="true"] *,
+  html.sword-cursor-enabled [role="textbox"] {
+    cursor: text !important;
+  }
+
+  html.sword-cursor-enabled select {
+    cursor: auto !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sword-cursor,
+  .sword-cursor-swing,
+  .sword-cursor-spark {
+    animation: none !important;
+    transition: none;
+  }
+}
