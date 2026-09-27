@@ -1,0 +1,74 @@
+import { ActivityType, EmbedBuilder, type PresenceData } from "discord.js";
+
+export const SERVER_ACTIVITY_NAME = "Regatul Cenușii";
+
+export function buildServerActivityPresence(): PresenceData {
+  return {
+    status: "online",
+    activities: [{ name: SERVER_ACTIVITY_NAME, type: ActivityType.Playing }],
+  };
+}
+
+export function normalizeDiscordInviteUrl(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+
+  try {
+    const url = new URL(trimmed);
+    const hostname = url.hostname.toLowerCase();
+    const isDiscordInviteHost = hostname === "discord.gg" || hostname === "www.discord.gg";
+    const isDiscordInvitePath =
+      (hostname === "discord.com" || hostname === "www.discord.com") &&
+      /^\/invite\/[^/]+\/?$/.test(url.pathname);
+
+    if (
+      url.protocol !== "https:" ||
+      (!isDiscordInviteHost && !isDiscordInvitePath) ||
+      (isDiscordInviteHost && url.pathname.split("/").filter(Boolean).length !== 1)
+    ) {
+      return null;
+    }
+
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+export interface ServerInfoEmbedOptions {
+  serverName: string;
+  serverIconUrl: string | null;
+  inviteUrl: string | null;
+  sessionStartedAt: Date | null;
+}
+
+export function buildServerInfoEmbed({
+  serverName,
+  serverIconUrl,
+  inviteUrl,
+  sessionStartedAt,
+}: ServerInfoEmbedOptions): EmbedBuilder {
+  const safeInviteUrl = normalizeDiscordInviteUrl(inviteUrl);
+  const embed = new EmbedBuilder()
+    .setColor(0x7c3aed)
+    .setTitle(`🏰 ${serverName}`)
+    .setDescription(
+      safeInviteUrl
+        ? `🔗 [Intră pe server](<${safeInviteUrl}>)`
+        : "Linkul de invitație nu este configurat sau nu este valid.",
+    );
+
+  if (serverIconUrl) embed.setThumbnail(serverIconUrl);
+
+  const startedAtMs = sessionStartedAt?.getTime();
+  const hasValidStart = typeof startedAtMs === "number" && Number.isFinite(startedAtMs);
+  embed.addFields({
+    name: "⏱️ Botul este online de",
+    value: hasValidStart
+      ? `<t:${Math.floor(startedAtMs / 1000)}:R>`
+      : "Momentul conectării nu este disponibil.",
+    inline: false,
+  });
+
+  return embed;
+}

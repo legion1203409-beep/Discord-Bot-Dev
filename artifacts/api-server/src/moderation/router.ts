@@ -1,3 +1,5 @@
+import { PUBLIC_DISCORD_INVITE } from "../lib/discord-invite";
+
 import 
 {
 
@@ -218,11 +220,6 @@ import
  loadVerificationConfig, saveVerificationConfig 
 }
  from "../bot/db"
-;
-
-
-const PUBLIC_DISCORD_INVITE =
-  process.env.PUBLIC_DISCORD_INVITE?.trim() || "https://discord.gg/regatulcenusii"
 ;
 
 

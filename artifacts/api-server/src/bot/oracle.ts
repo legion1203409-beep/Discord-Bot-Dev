@@ -11,7 +11,7 @@
 // Privacy: message CONTENT is only inspected for keyword toxicity and is NEVER
 // logged or echoed. Curses are announced in lore language, never by quoting.
 
-import { ActivityType, Client, TextChannel } from "discord.js";
+import { Client, TextChannel } from "discord.js";
 import { logger } from "../lib/logger";
 import {
   MOOD_META,
@@ -91,7 +91,6 @@ const DEFAULT_GUILD_ID = "__default__";
 const guildOracleStates = new Map<string, GuildOracleState>();
 const manuallyStoppedGuilds = new Set<string>();
 let extaticUntil = 0;
-let lastPresenceMood: MoodState | null = null;
 
 function getGuildState(guildId = DEFAULT_GUILD_ID): GuildOracleState {
   let state = guildOracleStates.get(guildId);
@@ -380,26 +379,7 @@ function checkInQuestion(mood: MoodState): string {
   ]);
 }
 
-function updatePresence(client: Client, mood: MoodState): void {
-  if (lastPresenceMood === mood) return;
-  lastPresenceMood = mood;
-  const meta = MOOD_META[mood];
-  try {
-    client.user?.setPresence({
-      status: "online",
-      activities: [{ name: `Veghe: ${meta.label} în Regat`, type: ActivityType.Watching }],
-    });
-  } catch (err) {
-    logger.warn({ err, mood }, "Oracle could not update presence");
-  }
-}
-
-export function refreshOraclePresence(client: Client, guildId: string): void {
-  updatePresence(client, getCurrentMood(guildId));
-}
-
 async function postMood(
-  client: Client,
   channel: TextChannel,
   mood: MoodState,
   now: number,
@@ -428,7 +408,6 @@ async function postMood(
     neutral: 0,
   };
   getGuildState(guildId).lastCheckInAt = now;
-  updatePresence(client, mood);
 }
 
 async function runBehaviorGrants(channel: TextChannel, state: GuildOracleState, now: number): Promise<void> {
@@ -470,7 +449,7 @@ async function oracleTick(
     if (!channel) return;
 
     const mood = getCurrentMood(guildId);
-    await postMood(client, channel, mood, now, guildId);
+    await postMood(channel, mood, now, guildId);
     await runBehaviorGrants(channel, state, now);
     logger.info(
       { mood, silentForMinutes: Math.round((now - state.lastMessageAt) / MIN) },
