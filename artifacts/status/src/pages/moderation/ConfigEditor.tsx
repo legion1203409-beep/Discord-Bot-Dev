@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Switch } from "../../components/ui/switch";
 import { Textarea } from "../../components/ui/textarea";
 import { activityLogDraftError } from "../../lib/activity-log-validation";
+import { DELETE_SPAM, EDIT_SPAM, EMOJI_LIMIT, groupThresholdFields, MENTION_LIMIT, MESSAGE_SPAM, type Threshold } from "../../lib/anti-spam-validation";
 import { embedUrlDraftError, isPublicGifUrl, isPublicHttpsUrl } from "../../lib/embed-url-validation";
 
 type Config = Record<string, any>;
@@ -104,15 +105,30 @@ function TextField({ label, help, value, onChange, placeholder, type = "text", d
   return <Field label={label} help={help}><Input type={type} value={value ?? ""} placeholder={placeholder} disabled={disabled} onChange={(event) => onChange(event.target.value)} /></Field>;
 }
 
-function NumberField({ label, help, value, onChange, min, max }: {
-  label: string; help?: string; value: number | undefined; onChange: (value: number | undefined) => void; min?: number; max?: number;
+function NumberField({ label, help, value, onChange, min, max, valuesToValidate }: {
+  label: string; help?: string; value: number | undefined; onChange: (value: number | undefined) => void;
+  min?: number; max?: number; valuesToValidate?: Array<number | undefined>;
 }) {
+  const values = valuesToValidate ?? [value];
+  const invalid = values.some((candidate) => candidate !== undefined && (
+    !Number.isFinite(candidate)
+    || !Number.isInteger(candidate)
+    || (min !== undefined && candidate < min)
+    || (max !== undefined && candidate > max)
+  ));
   return (
     <Field label={label} help={help}>
-      <Input type="number" min={min} max={max} value={value ?? ""} onChange={(event) => {
+      <Input type="number" min={min} max={max} step={1} aria-invalid={invalid}
+        value={typeof value === "number" && Number.isFinite(value) ? value : ""}
+        onChange={(event) => {
         const raw = event.target.value;
         onChange(raw === "" ? undefined : Number(raw));
       }} />
+      {invalid && (
+        <span className="block text-xs text-destructive" role="alert">
+          Introdu un număr întreg între {min ?? "valoarea minimă"} și {max ?? "valoarea maximă"}.
+        </span>
+      )}
     </Field>
   );
 }
@@ -157,23 +173,12 @@ function ListField({ label, help, values, onChange, ids = false, testId }: {
   );
 }
 
-type Threshold = { key: string; label: string; help: string; min: number; max: number; groupKeys: string[] };
-type RuleProps = { title: string; help?: string; rule: any; thresholds: Threshold[]; actions?: readonly (readonly [string, string])[]; showAction?: boolean; onChange: (path: string[], value: any) => void };
+type RuleProps = { title: string; help?: string; rule: any; thresholds: Threshold[]; actions?: readonly (readonly [string, string])[]; showAction?: boolean; collapsible?: boolean; onChange: (path: string[], value: any) => void };
 
-function RuleEditor({ title, help, rule, thresholds, actions = ACTIONS, showAction = true, onChange }: RuleProps) {
-  const thresholdFields = thresholds.map((field) => ({
-    ...field,
-    groupKeys: field.groupKeys.length > 1
-      ? field.groupKeys
-      : thresholds
-        .filter((candidate) => candidate.min === field.min && candidate.max === field.max)
-        .map((candidate) => candidate.key),
-  })).filter((field, index, fields) =>
-    fields.findIndex((candidate) => candidate.groupKeys.join("|") === field.groupKeys.join("|")) === index,
-  );
-  return (
-    <div className="space-y-4 rounded-lg border border-border bg-muted/20 p-4">
-      <div><h4 className="font-medium">{title}</h4>{help && <p className="text-xs text-muted-foreground">{help}</p>}</div>
+function RuleEditor({ title, help, rule, thresholds, actions = ACTIONS, showAction = true, collapsible = false, onChange }: RuleProps) {
+  const thresholdFields = groupThresholdFields(thresholds);
+  const controls = (
+    <>
       <div className={`grid gap-3 ${showAction ? "md:grid-cols-3" : "md:grid-cols-2"}`}>
         <Toggle label="Regulă activă" checked={rule.enabled} onChange={(value) => onChange(["enabled"], value)} />
         {showAction && (
@@ -193,6 +198,7 @@ function RuleEditor({ title, help, rule, thresholds, actions = ACTIONS, showActi
               value={rule.thresholds?.[threshold.key] ?? threshold.groupKeys
                 .map((key) => rule.thresholds?.[key])
                 .find((value) => value !== undefined)}
+              valuesToValidate={threshold.groupKeys.map((key) => rule.thresholds?.[key])}
               min={threshold.min}
               max={threshold.max}
               onChange={(value) => {
@@ -207,6 +213,38 @@ function RuleEditor({ title, help, rule, thresholds, actions = ACTIONS, showActi
           ))}
         </div>
       )}
+    </>
+  );
+
+  if (collapsible) {
+    return (
+      <Accordion type="single" collapsible className="space-y-0">
+        <AccordionItem value={title} className="rounded-lg border border-border bg-muted/20 px-4">
+          <AccordionTrigger className="gap-3 text-left hover:no-underline">
+            <span className="min-w-0 flex-1 text-left">
+              <span className="block font-medium">{title}</span>
+              {help && <span className="mt-1 block text-xs font-normal text-muted-foreground">{help}</span>}
+            </span>
+            <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+              rule.enabled
+                ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-200"
+                : "border-border bg-muted text-muted-foreground"
+            }`}>
+              {rule.enabled ? "Activă" : "Inactivă"}
+            </span>
+          </AccordionTrigger>
+          <AccordionContent className="space-y-4 border-t border-border pt-4">
+            {controls}
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
+    );
+  }
+
+  return (
+    <div className="space-y-4 rounded-lg border border-border bg-muted/20 p-4">
+      <div><h4 className="font-medium">{title}</h4>{help && <p className="text-xs text-muted-foreground">{help}</p>}</div>
+      {controls}
     </div>
   );
 }
@@ -219,16 +257,10 @@ const threshold = (
   max: number,
   groupKeys: string[] = [key],
 ): Threshold => ({ key, label, help, min, max, groupKeys });
-const EMOJI_KEYS = ["emoji", "limit", "max"];
 const CAPS_KEYS = ["capsPercent", "percent", "limit"];
 const REPEAT_KEYS = ["repeat", "limit", "max"];
 const RUN_KEYS = ["run", "limit", "max"];
 const WINDOW_KEYS = ["windowMs", "window", "seconds"];
-const EMOJI_LIMIT = [
-  threshold("emoji", "Emoji", "Număr maxim de emoji.", 1, 200, EMOJI_KEYS),
-  threshold("limit", "Limită emoji (alias)", "Alias compatibil pentru limită.", 1, 200, EMOJI_KEYS),
-  threshold("max", "Maxim emoji (alias)", "Alias compatibil pentru limită.", 1, 200, EMOJI_KEYS),
-];
 const CAPS_LIMIT = [
   threshold("capsPercent", "Procent majuscule", "Procent între 1 și 100.", 1, 100, CAPS_KEYS),
   threshold("percent", "Procent (alias)", "Alias compatibil pentru procent.", 1, 100, CAPS_KEYS),
@@ -245,28 +277,6 @@ const RAID_LIMIT = [
   threshold("joins", "Intrări", "Intrări observate în fereastră.", 1, 10000, ["limit", "joins"]),
   threshold("limit", "Limită intrări (alias)", "Alias compatibil pentru intrări.", 1, 10000, ["limit", "joins"]),
   threshold("windowSeconds", "Fereastră (secunde)", "Intervalul de măsurare, în secunde.", 1, 3600, ["windowSeconds", "window"]),
-];
-const MESSAGE_SPAM = [
-  threshold("messages", "Mesaje", "Mesaje până la declanșare.", 1, 1000, ["messages", "limit", "max"]),
-  threshold("limit", "Limită mesaje (alias)", "Alias compatibil pentru numărul de mesaje.", 1, 1000, ["messages", "limit", "max"]),
-  threshold("max", "Maxim mesaje (alias)", "Alias compatibil pentru numărul de mesaje.", 1, 1000, ["messages", "limit", "max"]),
-  threshold("windowMs", "Fereastră (secunde)", "Intervalul de măsurare în secunde.", 1, 3600, WINDOW_KEYS),
-  threshold("seconds", "Secunde (alias)", "Alias compatibil pentru interval.", 1, 3600, WINDOW_KEYS),
-];
-const EDIT_SPAM = [
-  threshold("edits", "Editări", "Editări până la declanșare.", 1, 1000, ["limit", "edits", "max"]),
-  threshold("limit", "Limită editări (alias)", "Alias compatibil pentru numărul de editări.", 1, 1000, ["limit", "edits", "max"]),
-  threshold("windowMs", "Fereastră (secunde)", "Intervalul de măsurare în secunde.", 1, 3600, WINDOW_KEYS),
-];
-const DELETE_SPAM = [
-  threshold("deletes", "Ștergeri", "Ștergeri până la declanșare.", 1, 1000, ["limit", "deletes", "max"]),
-  threshold("limit", "Limită ștergeri (alias)", "Alias compatibil pentru numărul de ștergeri.", 1, 1000, ["limit", "deletes", "max"]),
-  threshold("windowMs", "Fereastră (secunde)", "Intervalul de măsurare în secunde.", 1, 3600, WINDOW_KEYS),
-];
-const MENTION_LIMIT = [
-  threshold("mentions", "Mențiuni", "Mențiuni într-un mesaj până la declanșare.", 1, 100, ["mentions", "limit", "max"]),
-  threshold("limit", "Limită mențiuni (alias)", "Alias compatibil pentru numărul de mențiuni.", 1, 100, ["mentions", "limit", "max"]),
-  threshold("max", "Maxim mențiuni (alias)", "Alias compatibil pentru numărul de mențiuni.", 1, 100, ["mentions", "limit", "max"]),
 ];
 const FLOOD_LENGTH = [
   threshold("length", "Lungime mesaj", "Număr de caractere în mesaj.", 1, 10000, ["length", "maxLength", "limit"]),
@@ -323,6 +333,13 @@ export function ConfigEditor({
     value.antiFlood.symbol,
   ];
   const hasActionableFloodRule = floodRules.some((item) => item.enabled && item.action !== "none");
+  const activeAntiSpamRules = [
+    value.antiSpam.message,
+    value.antiSpam.edit,
+    value.antiSpam.delete,
+    value.antiSpam.mention,
+    value.antiSpam.emoji,
+  ].filter((item) => item.enabled).length;
   const suspiciousRules = [
     value.suspiciousBehavior.nicknameChanges,
     value.suspiciousBehavior.roleChanges,
@@ -431,23 +448,34 @@ export function ConfigEditor({
       <Section value="anti-spam" title="3. Anti-spam" description="Limite separate pentru mesaje, editări, ștergeri, mențiuni și emoji.">
         <Toggle label="Activează anti-spam" checked={value.antiSpam.enabled} onChange={(next) => set(["antiSpam", "enabled"], next)} />
         {value.antiSpam.enabled && !value.protection.enabled && (
-          <p className="text-sm text-amber-600">Activează și Protecția generală; altfel regulile anti-spam nu rulează.</p>
+          <p role="status" className="rounded-lg border border-[#D94A2B]/25 bg-[#D94A2B]/5 px-3 py-2 text-sm text-[#D94A2B]">
+            Activează și Protecția generală; altfel regulile anti-spam nu rulează.
+          </p>
         )}
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-muted/20 px-4 py-3">
+          <div>
+            <p className="text-sm font-medium">Reguli anti-spam</p>
+            <p className="mt-1 text-xs text-muted-foreground">Deschide o regulă pentru a ajusta acțiunea, severitatea și pragurile.</p>
+          </div>
+          <span className="rounded-full border border-[#D94A2B]/25 bg-[#D94A2B]/10 px-3 py-1 font-mono text-xs font-semibold text-[#D94A2B]">
+            {activeAntiSpamRules} din 5 bifate
+          </span>
+        </div>
         <IdField label="Canal jurnal anti-spam" value={value.antiSpam.logChannelId} onChange={(next) => set(["antiSpam", "logChannelId"], next)} />
-        <RuleEditor title="Spam de mesaje" rule={value.antiSpam.message} thresholds={MESSAGE_SPAM} onChange={rule(["antiSpam", "message"])} />
-        <RuleEditor title="Spam de editări" rule={value.antiSpam.edit} thresholds={EDIT_SPAM} onChange={rule(["antiSpam", "edit"])} />
+        <RuleEditor title="Spam de mesaje" help="Mesaje repetate într-o fereastră de timp." collapsible rule={value.antiSpam.message} thresholds={MESSAGE_SPAM} onChange={rule(["antiSpam", "message"])} />
+        <RuleEditor title="Spam de editări" help="Editări repetate într-o fereastră de timp." collapsible rule={value.antiSpam.edit} thresholds={EDIT_SPAM} onChange={rule(["antiSpam", "edit"])} />
         {value.antiSpam.enabled && value.antiSpam.edit.enabled && value.antiSpam.edit.action === "none" && (
           <p className="text-sm text-amber-600">Regula de editări nu va sancționa: acțiunea este „Nicio acțiune”.</p>
         )}
-        <RuleEditor title="Spam de ștergeri" rule={value.antiSpam.delete} thresholds={DELETE_SPAM}
+        <RuleEditor title="Spam de ștergeri" help="Ștergeri repetate într-o fereastră de timp." collapsible rule={value.antiSpam.delete} thresholds={DELETE_SPAM}
           actions={ACTIONS.filter(([key]) => key !== "delete")} onChange={rule(["antiSpam", "delete"])} />
         {value.antiSpam.enabled && value.antiSpam.delete.enabled && (
           <p className="text-sm text-muted-foreground">
             Sancțiunile pentru ștergeri necesită „Vezi jurnalul de audit” și un operator identificat acolo. Pentru ștergeri fără autor verificabil, botul doar alertează; un mesaj deja șters nu poate fi șters din nou.
           </p>
         )}
-        <RuleEditor title="Spam de mențiuni" rule={value.antiSpam.mention} thresholds={MENTION_LIMIT} onChange={rule(["antiSpam", "mention"])} />
-        <RuleEditor title="Spam de emoji" rule={value.antiSpam.emoji} thresholds={EMOJI_LIMIT} onChange={rule(["antiSpam", "emoji"])} />
+        <RuleEditor title="Spam de mențiuni" help="Mențiuni într-un singur mesaj." collapsible rule={value.antiSpam.mention} thresholds={MENTION_LIMIT} onChange={rule(["antiSpam", "mention"])} />
+        <RuleEditor title="Spam de emoji" help="Numărul maxim de emoji într-un mesaj." collapsible rule={value.antiSpam.emoji} thresholds={EMOJI_LIMIT} onChange={rule(["antiSpam", "emoji"])} />
       </Section>
 
       <Section value="anti-flood" title="4. Anti-flood" description="Controlează mesaje foarte lungi, șiruri, majuscule și simboluri.">

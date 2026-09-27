@@ -26,6 +26,7 @@
 - [Oracle guard relationship accounting](oracle-guard.md) — direct toxic messages are intercepted before Oracle chat, so they must still apply exactly one negative relationship change.
 - [Oracle relationship bounds](oracle-relationship-bounds.md) — negative relationship is intentionally unbounded; positive relationship remains capped at +100.
 - [Vitest discord.js mock pattern](vitest-discordjs-mock.md) — mocking discord.js classes (ActionRowBuilder, ButtonBuilder, EmbedBuilder) for scheduler tests requires real class bodies, not arrow-function factories; fake timers need advanceTimersByTimeAsync not runAllTimers for chest expiry.
+- [Vitest pure helpers](vitest-pure-helpers.md) — test deterministic editor validation through dependency-light helpers; importing React editors can pull unresolved app aliases into Vitest.
 - [Discord live countdown](discord-live-countdown.md) — `<t:UNIX:R>` countdown must use a stored absolute expiresAt that ALSO schedules the expiry setTimeout (delay = expiresAt - Date.now()); footers can't render it.
 - [bot_state table self-heal](bot-state-table-self-heal.md) — guard EVERY bot_state helper with singleton ensureBotStateTable() (idempotent CREATE TABLE); ShardReady/ClientReady race a one-shot startup create.
 - [Permanent trader repost guard](permanent-trader-repost-guard.md) — re-post the single persistent trader only on Discord 10008; treating any fetch/edit error as deleted duplicates it on transient blips.

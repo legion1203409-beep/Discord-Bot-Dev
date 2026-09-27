@@ -1,11 +1,11 @@
 .discord-auth-loading {
-  --loading-bg: #0a0707;
-  --loading-card: #150c0d;
-  --loading-border: rgba(220, 90, 100, 0.18);
-  --loading-fg: #f2eceb;
-  --loading-muted: #a89a99;
-  --loading-accent: #d9505f;
-  --loading-accent-dark: #7a2530;
+  --loading-bg: #121212;
+  --loading-card: #1E1E1E;
+  --loading-border: rgba(255, 255, 255, .14);
+  --loading-fg: #FFFFFF;
+  --loading-muted: #B0B0B0;
+  --loading-accent: #D94A2B;
+  --loading-accent-dark: #B33C24;
 
   display: flex;
   min-height: 100vh;
@@ -20,8 +20,8 @@
     max(1.25rem, env(safe-area-inset-bottom, 0px))
     max(1.25rem, env(safe-area-inset-left, 0px));
   background:
-    radial-gradient(circle at 20% 15%, rgba(217, 80, 95, 0.1), transparent 45%),
-    radial-gradient(circle at 80% 10%, rgba(217, 80, 95, 0.08), transparent 40%),
+    radial-gradient(circle at 20% 15%, rgba(217, 74, 43, .1), transparent 45%),
+    radial-gradient(circle at 80% 10%, rgba(217, 74, 43, .08), transparent 40%),
     var(--loading-bg);
   color: var(--loading-fg);
   font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
@@ -36,7 +36,7 @@
   padding: 36px 32px;
   border: 1px solid var(--loading-border);
   border-radius: 20px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent), var(--loading-card);
+   background: linear-gradient(180deg, rgba(255, 255, 255, .02), transparent), var(--loading-card);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
   text-align: center;
 }
@@ -54,7 +54,7 @@
   position: absolute;
   inset: -14px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(217, 80, 95, 0.35), transparent 70%);
+   background: radial-gradient(circle, rgba(217, 74, 43, .35), transparent 70%);
   filter: blur(3px);
   animation: discord-auth-loading-pulse 2s ease-in-out infinite;
 }
@@ -74,7 +74,7 @@
   z-index: 1;
   width: 34px;
   height: 34px;
-  filter: drop-shadow(0 0 6px rgba(217, 80, 95, 0.55));
+   filter: drop-shadow(0 0 6px rgba(217, 74, 43, .55));
   animation: discord-auth-loading-breathe 2s ease-in-out infinite;
 }
 

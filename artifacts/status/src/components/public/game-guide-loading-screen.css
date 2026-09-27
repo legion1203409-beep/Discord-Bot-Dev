@@ -1,11 +1,11 @@
 .game-guide-loading {
-  --guide-loading-bg: #0a0707;
-  --guide-loading-card: #150c0d;
-  --guide-loading-border: rgba(220, 90, 100, 0.18);
-  --guide-loading-fg: #f2eceb;
-  --guide-loading-muted: #a89a99;
-  --guide-loading-accent: #d9505f;
-  --guide-loading-accent-dark: #7a2530;
+  --guide-loading-bg: #121212;
+  --guide-loading-card: #1e1e1e;
+  --guide-loading-border: rgba(255, 255, 255, 0.14);
+  --guide-loading-fg: #ffffff;
+  --guide-loading-muted: #b0b0b0;
+  --guide-loading-accent: #d94a2b;
+  --guide-loading-accent-dark: #b33c24;
 
   display: flex;
   min-height: 100vh;
@@ -20,8 +20,8 @@
     max(1.25rem, env(safe-area-inset-bottom, 0px))
     max(1.25rem, env(safe-area-inset-left, 0px));
   background:
-    radial-gradient(circle at 20% 15%, rgba(217, 80, 95, 0.1), transparent 45%),
-    radial-gradient(circle at 80% 10%, rgba(217, 80, 95, 0.08), transparent 40%),
+    radial-gradient(circle at 20% 15%, rgba(217, 74, 43, 0.1), transparent 45%),
+    radial-gradient(circle at 80% 10%, rgba(217, 74, 43, 0.08), transparent 40%),
     var(--guide-loading-bg);
   color: var(--guide-loading-fg);
   font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
@@ -54,7 +54,7 @@
   position: absolute;
   inset: -14px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(217, 80, 95, 0.35), transparent 70%);
+  background: radial-gradient(circle, rgba(217, 74, 43, 0.35), transparent 70%);
   filter: blur(3px);
   animation: game-guide-loading-pulse 2s ease-in-out infinite;
 }
@@ -74,7 +74,7 @@
   z-index: 1;
   width: 32px;
   height: 32px;
-  filter: drop-shadow(0 0 6px rgba(217, 80, 95, 0.55));
+  filter: drop-shadow(0 0 6px rgba(217, 74, 43, 0.55));
   animation: game-guide-loading-breathe 2s ease-in-out infinite;
 }
 

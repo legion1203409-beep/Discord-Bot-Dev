@@ -1,31 +1,31 @@
 .mod-shell, .mod-shell.dark {
-  --background: 0 18% 4%;
-  --foreground: 30 22% 91%;
+  --background: 0 0% 7%;
+  --foreground: 0 0% 100%;
 
-  --card: 0 20% 7%;
-  --card-foreground: 30 22% 91%;
+  --card: 0 0% 12%;
+  --card-foreground: 0 0% 100%;
 
-  --popover: 0 20% 9%;
-  --popover-foreground: 30 22% 91%;
+  --popover: 0 0% 14%;
+  --popover-foreground: 0 0% 100%;
 
-  --primary: 356 58% 57%;
-  --primary-foreground: 30 22% 96%;
+  --primary: 10 69% 51%;
+  --primary-foreground: 0 0% 100%;
 
-  --secondary: 0 17% 11%;
-  --secondary-foreground: 30 22% 91%;
+  --secondary: 0 0% 15%;
+  --secondary-foreground: 0 0% 100%;
 
-  --muted: 0 17% 11%;
-  --muted-foreground: 18 11% 63%;
+  --muted: 0 0% 15%;
+  --muted-foreground: 0 0% 69%;
 
-  --accent: 4 57% 48%;
-  --accent-foreground: 30 22% 96%;
+  --accent: 10 67% 42%;
+  --accent-foreground: 0 0% 100%;
 
-  --destructive: 3 68% 55%;
-  --destructive-foreground: 30 22% 96%;
+  --destructive: 10 69% 51%;
+  --destructive-foreground: 0 0% 100%;
 
-  --border: 0 17% 15%;
-  --input: 0 18% 18%;
-  --ring: 356 58% 57%;
+  --border: 0 0% 20%;
+  --input: 0 0% 18%;
+  --ring: 10 69% 51%;
 
   --display: "Cormorant Garamond", Georgia, serif;
   --mono: "DM Mono", monospace;
@@ -71,9 +71,9 @@
   pointer-events: none;
   content: "";
   background:
-    radial-gradient(circle at 92% 4%, hsl(356 62% 30% / .2), transparent 28rem),
+    radial-gradient(circle at 92% 4%, rgba(217, 74, 43, .2), transparent 28rem),
     radial-gradient(circle at 9% 88%, hsl(4 57% 28% / .12), transparent 26rem),
-    linear-gradient(125deg, transparent 0 48%, hsl(356 58% 57% / .035) 48.1%, transparent 48.3%);
+    linear-gradient(125deg, transparent 0 48%, rgba(217, 74, 43, .035) 48.1%, transparent 48.3%);
 }
 
 .mod-shell::after {
@@ -150,8 +150,8 @@
 
 .mod-login-bg {
   background:
-    radial-gradient(circle at 50% 42%, hsl(356 48% 24% / .46), transparent 24rem),
-    linear-gradient(135deg, hsl(var(--background)) 0 52%, hsl(4 27% 10%) 100%);
+    radial-gradient(circle at 50% 42%, hsl(10 69% 35% / .22), transparent 24rem),
+    linear-gradient(135deg, #121212 0 52%, #171717 100%);
 }
 
 .mod-login-stage {
@@ -160,20 +160,20 @@
   isolation: isolate;
   background-color: hsl(var(--background));
   background-image:
-    linear-gradient(hsl(30 35% 84% / .028) 1px, transparent 1px),
-    linear-gradient(90deg, hsl(30 35% 84% / .028) 1px, transparent 1px),
-    radial-gradient(circle at 12% 18%, hsl(356 68% 40% / .16), transparent 24rem),
-    radial-gradient(circle at 86% 82%, hsl(28 72% 36% / .11), transparent 22rem),
-    radial-gradient(circle at 50% 44%, hsl(356 48% 24% / .46), transparent 29rem),
-    linear-gradient(135deg, hsl(var(--background)) 0 52%, hsl(4 27% 10%) 100%);
+    linear-gradient(rgba(255, 255, 255, .025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, .025) 1px, transparent 1px),
+    radial-gradient(circle at 12% 18%, hsl(10 69% 45% / .12), transparent 24rem),
+    radial-gradient(circle at 86% 82%, hsl(10 67% 42% / .08), transparent 22rem),
+    radial-gradient(circle at 50% 44%, hsl(10 69% 35% / .22), transparent 29rem),
+    linear-gradient(135deg, #121212 0 52%, #171717 100%);
   background-size: 56px 56px, 56px 56px, auto, auto, auto, auto;
 }
 
 .mod-login-stage::before {
   z-index: -2;
   background:
-    linear-gradient(112deg, transparent 0 42%, hsl(356 58% 57% / .06) 42.1%, transparent 42.3%),
-    linear-gradient(292deg, transparent 0 64%, hsl(28 72% 58% / .045) 64.1%, transparent 64.3%),
+    linear-gradient(112deg, transparent 0 42%, hsl(10 69% 51% / .06) 42.1%, transparent 42.3%),
+    linear-gradient(292deg, transparent 0 64%, hsl(10 67% 42% / .045) 64.1%, transparent 64.3%),
     radial-gradient(ellipse at 50% 50%, transparent 0 32%, hsl(0 0% 0% / .28) 100%);
 }
 
@@ -187,14 +187,14 @@
   z-index: -1;
   width: 25rem;
   height: 25rem;
-  border: 1px solid hsl(356 58% 57% / .13);
+  border: 1px solid hsl(10 69% 51% / .13);
   border-radius: 50%;
   pointer-events: none;
   transform: rotate(-22deg) scaleY(.45);
   box-shadow:
-    0 0 0 2.5rem hsl(356 58% 57% / .025),
-    0 0 0 5rem hsl(356 58% 57% / .02),
-    inset 0 0 2rem hsl(28 72% 58% / .06);
+    0 0 0 2.5rem hsl(10 69% 51% / .025),
+    0 0 0 5rem hsl(10 69% 51% / .02),
+    inset 0 0 2rem hsl(10 67% 42% / .06);
 }
 
 .mod-login-ambient::before,
@@ -203,8 +203,8 @@
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: hsl(28 72% 68% / .8);
-  box-shadow: 0 0 18px hsl(28 72% 58% / .75);
+  background: hsl(10 69% 68% / .8);
+  box-shadow: 0 0 18px hsl(10 69% 51% / .55);
   content: "";
 }
 
@@ -217,7 +217,7 @@
   left: -10rem;
   width: 31rem;
   height: 31rem;
-  border-color: hsl(28 72% 58% / .1);
+  border-color: hsl(10 69% 51% / .1);
 }
 
 .mod-login-rune-field {
@@ -226,7 +226,7 @@
   bottom: 2rem;
   display: flex;
   gap: 1.2rem;
-  color: hsl(30 22% 91% / .22);
+  color: rgba(255, 255, 255, .22);
   font-family: var(--mono);
   font-size: 9px;
   letter-spacing: .22em;
@@ -237,24 +237,22 @@
 .mod-login-rune-field span:nth-child(2),
 .mod-login-rune-field span:nth-child(4) {
   transform: translateY(-.6rem);
-  color: hsl(356 62% 66% / .42);
+   color: rgba(217, 74, 43, .42);
 }
 
 .mod-login-card {
-  border-color: hsl(30 22% 91% / .13);
-  background:
-    linear-gradient(145deg, hsl(0 20% 12% / .94), hsl(0 18% 6% / .97)),
-    radial-gradient(circle at 15% 0%, hsl(356 62% 45% / .2), transparent 18rem);
+  border-color: hsl(0 0% 100% / .14);
+  background: #1e1e1e;
   box-shadow:
-    inset 0 1px hsl(30 30% 92% / .1),
-    0 28px 90px hsl(0 50% 2% / .5),
-    0 0 0 1px hsl(356 58% 57% / .025);
+    inset 0 1px hsl(0 0% 100% / .05),
+    0 28px 90px hsl(0 0% 0% / .5),
+    0 0 0 1px hsl(10 69% 51% / .025);
 }
 
 .mod-login-card::before {
   position: absolute;
   inset: 0;
-  background: linear-gradient(120deg, hsl(30 35% 84% / .07), transparent 26%, transparent 75%, hsl(356 58% 57% / .07));
+  background: linear-gradient(120deg, hsl(0 0% 100% / .05), transparent 26%, transparent 75%, hsl(10 69% 51% / .06));
   content: "";
   pointer-events: none;
 }
@@ -265,15 +263,15 @@
   right: 22%;
   left: 22%;
   height: 1px;
-  background: linear-gradient(90deg, transparent, hsl(28 72% 68% / .72), transparent);
-  box-shadow: 0 0 18px hsl(28 72% 58% / .4);
+  background: linear-gradient(90deg, transparent, hsl(10 69% 51% / .8), transparent);
+  box-shadow: 0 0 18px hsl(10 69% 51% / .4);
   opacity: .8;
 }
 
 .mod-login-card .mod-card-glow {
   width: 16rem;
   height: 16rem;
-  background: hsl(356 72% 52%);
+  background: hsl(10 69% 51%);
   filter: blur(74px);
   opacity: .11;
 }
@@ -284,8 +282,8 @@
   border-radius: 50%;
   background: transparent;
   box-shadow:
-    0 0 0 5px hsl(356 58% 57% / .035),
-    0 8px 30px hsl(356 58% 20% / .25);
+    0 0 0 5px hsl(10 69% 51% / .035),
+    0 8px 30px hsl(10 69% 20% / .25);
 }
 
 .mod-login-card .mod-brand-logo {
@@ -310,14 +308,24 @@
 }
 
 .mod-login-card button {
-  box-shadow: 0 12px 28px hsl(356 58% 20% / .2);
+  box-shadow: 0 12px 28px hsl(10 69% 20% / .2);
   transition: transform 180ms ease, box-shadow 180ms ease, filter 180ms ease;
+}
+
+.mod-login-card [data-testid="discord-login-button"] {
+  border-color: #d94a2b;
+  background: #d94a2b;
+  color: #ffffff;
+}
+
+.mod-login-card [data-testid="discord-login-button"]:hover {
+  background: #b33c24;
 }
 
 .mod-login-card button:hover {
   filter: saturate(1.08);
   transform: translateY(-2px);
-  box-shadow: 0 16px 34px hsl(356 58% 20% / .34);
+  box-shadow: 0 16px 34px hsl(10 69% 20% / .34);
 }
 
 /* The operator console is intentionally denser than the public site: ember
@@ -335,7 +343,7 @@
 }
 
 .mod-page {
-  background-image: linear-gradient(hsl(356 25% 64% / .028) 1px, transparent 1px), linear-gradient(90deg, hsl(356 25% 64% / .028) 1px, transparent 1px);
+  background-image: linear-gradient(rgba(217, 74, 43, .028) 1px, transparent 1px), linear-gradient(90deg, rgba(217, 74, 43, .028) 1px, transparent 1px);
   background-size: 44px 44px;
 }
 
@@ -448,8 +456,8 @@
   border: 1px solid hsl(var(--primary) / .65);
   border-radius: 11px;
   color: hsl(var(--primary));
-  background: linear-gradient(145deg, hsl(356 54% 27% / .68), hsl(0 20% 12% / .9));
-  box-shadow: inset 0 1px hsl(30 30% 92% / .12), 0 8px 24px hsl(356 58% 20% / .24);
+  background: linear-gradient(145deg, rgba(179, 60, 36, .68), rgba(18, 18, 18, .9));
+  box-shadow: inset 0 1px rgba(255, 255, 255, .12), 0 8px 24px rgba(217, 74, 43, .24);
 }
 
 .mod-eyebrow {
@@ -490,7 +498,7 @@
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  color: hsl(356 62% 66%);
+  color: #D94A2B;
   font-family: var(--mono);
   font-size: 10px;
   letter-spacing: .12em;
@@ -502,11 +510,11 @@
   height: 7px;
   border-radius: 50%;
   background: currentColor;
-  box-shadow: 0 0 0 4px hsl(356 62% 66% / .14);
+  box-shadow: 0 0 0 4px rgba(217, 74, 43, .14);
   content: "";
 }
 
-.mod-status-line[data-state="off"] { color: hsl(18 11% 59%); }
+.mod-status-line[data-state="off"] { color: #B0B0B0; }
 .mod-status-line[data-state="off"]::before { box-shadow: none; opacity: .5; }
 
 .mod-mobile-nav {
@@ -1563,7 +1571,7 @@
 
 .mod-shell::before {
   background:
-    radial-gradient(circle at 92% 4%, hsl(356 62% 30% / .15), transparent 35rem),
+    radial-gradient(circle at 92% 4%, rgba(217, 74, 43, .15), transparent 35rem),
     radial-gradient(circle at 5% 95%, hsl(4 57% 28% / .1), transparent 30rem),
     linear-gradient(135deg, hsl(var(--background)) 0%, transparent 100%) !important;
 }
@@ -1718,7 +1726,7 @@
   border: 1px solid rgba(238, 231, 223, .13);
   border-radius: 999px;
   background: rgba(255, 255, 255, .025);
-  color: #ad9b94;
+  color: #B0B0B0;
   font-size: 11px;
   font-weight: 600;
   cursor: pointer;
@@ -1726,14 +1734,14 @@
 }
 
 .verification-active-toggle:hover {
-  border-color: rgba(210, 162, 126, .32);
-  background: rgba(210, 162, 126, .06);
+  border-color: rgba(217, 74, 43, .32);
+  background: rgba(217, 74, 43, .06);
 }
 
 .verification-active-toggle.is-enabled {
-  border-color: rgba(210, 162, 126, .32);
-  background: linear-gradient(110deg, rgba(159, 47, 54, .18), rgba(210, 162, 126, .06));
-  color: #e6c09f;
+  border-color: rgba(217, 74, 43, .32);
+  background: linear-gradient(110deg, rgba(179, 60, 36, .18), rgba(217, 74, 43, .06));
+  color: #FFFFFF;
 }
 
 .verification-active-toggle input {
@@ -1765,24 +1773,24 @@
   width: 11px;
   height: 11px;
   border-radius: 50%;
-  background: #a99791;
+  background: #B0B0B0;
   content: "";
   transition: transform .18s ease, background .18s ease;
 }
 
 .verification-active-toggle.is-enabled .verification-active-track {
-  border-color: rgba(210, 162, 126, .56);
-  background: rgba(159, 47, 54, .56);
+  border-color: rgba(217, 74, 43, .56);
+  background: rgba(179, 60, 36, .56);
 }
 
 .verification-active-toggle.is-enabled .verification-active-track::after {
   transform: translateX(15px);
-  background: #f0c6a2;
-  box-shadow: 0 0 7px rgba(210, 162, 126, .3);
+  background: #FFFFFF;
+  box-shadow: 0 0 7px rgba(217, 74, 43, .3);
 }
 
 .verification-active-toggle input:focus-visible + .verification-active-track {
-  outline: 2px solid #f0c6a2;
+  outline: 2px solid #D94A2B;
   outline-offset: 3px;
 }
 
@@ -1874,76 +1882,78 @@
   }
 }
 
-/* Extend the ember-and-copper treatment across the moderation console. */
+/* Keep the shared console palette consistent across all protected routes. */
 .mod-shell,
 .mod-shell.dark {
-  --primary: 4 57% 48%;
-  --accent: 35 30% 50%;
-  --ring: 4 57% 48%;
+  --primary: 10 69% 51%;
+  --accent: 10 67% 42%;
+  --ring: 10 69% 51%;
+}
+
+/* Protected shell surfaces use the product palette; status colors below remain
+   reserved for success, warning, and destructive feedback. */
+.mod-shell,
+.mod-shell.dark {
+  background-color: #121212;
+  color: #FFFFFF;
 }
 
 .mod-shell::before {
   background:
-    radial-gradient(ellipse at 88% 0%, hsl(4 57% 38% / .2), transparent 34rem),
-    radial-gradient(ellipse at 8% 92%, hsl(35 30% 42% / .12), transparent 30rem),
+    radial-gradient(ellipse at 88% 0%, rgba(217, 74, 43, .16), transparent 34rem),
+    radial-gradient(ellipse at 8% 92%, rgba(179, 60, 36, .08), transparent 30rem),
     linear-gradient(135deg, hsl(var(--background)) 0%, transparent 100%) !important;
 }
 
 .mod-sidebar {
   background:
-    radial-gradient(ellipse at 0% 18%, hsl(4 57% 35% / .12), transparent 22rem),
-    linear-gradient(180deg, hsl(0 18% 6% / .98), hsl(0 18% 4% / .98));
+    radial-gradient(ellipse at 0% 18%, rgba(217, 74, 43, .1), transparent 22rem),
+    linear-gradient(180deg, #1e1e1e, #121212);
 }
 
 .mod-sidebar-item::before {
-  background: linear-gradient(180deg, var(--gold-light), var(--ember));
+  background: linear-gradient(180deg, #D94A2B, #B33C24);
 }
 
 .mod-sidebar-item[data-active="true"] {
-  border: 1px solid rgba(210, 162, 126, .19);
-  background: linear-gradient(100deg, rgba(159, 47, 54, .2), rgba(210, 162, 126, .045) 82%);
-  color: #e4b68f;
-  box-shadow: inset 2px 0 #d2a27e, 0 5px 18px rgba(0, 0, 0, .12);
+  border: 1px solid rgba(217, 74, 43, .22);
+  background: linear-gradient(100deg, rgba(217, 74, 43, .15), rgba(217, 74, 43, .025) 82%);
+  color: #d94a2b;
+  box-shadow: inset 2px 0 #d94a2b, 0 5px 18px rgba(0, 0, 0, .12);
 }
 
 .mod-sidebar-item[data-active="true"] svg {
-  color: #d2a27e;
+  color: #d94a2b;
 }
 
 .mod-sidebar-item:hover {
-  border-color: rgba(210, 162, 126, .16);
-  background: linear-gradient(100deg, rgba(159, 47, 54, .13), rgba(210, 162, 126, .035) 82%);
-  color: #eee7df;
+  border-color: rgba(217, 74, 43, .2);
+  background: linear-gradient(100deg, rgba(217, 74, 43, .1), rgba(217, 74, 43, .02) 82%);
+  color: #ffffff;
 }
 
 .mod-card {
-  border-color: rgba(210, 162, 126, .13);
-  background:
-    radial-gradient(ellipse at 100% 0%, rgba(159, 47, 54, .09), transparent 52%),
-    linear-gradient(145deg, rgba(36, 20, 22, .96), rgba(18, 12, 14, .98) 72%);
+  border-color: rgba(255, 255, 255, .1);
+  background: #1e1e1e;
 }
 
 .mod-card:hover {
-  border-color: rgba(210, 162, 126, .3);
+  border-color: rgba(217, 74, 43, .4);
   box-shadow:
-    inset 0 1px 0 0 rgba(238, 231, 223, .07),
+    inset 0 1px 0 0 rgba(255, 255, 255, .05),
     0 10px 28px rgba(0, 0, 0, .3),
-    0 0 22px rgba(159, 47, 54, .08);
+    0 0 22px rgba(217, 74, 43, .08);
 }
 
 .mod-save-bar {
-  border-color: rgba(210, 162, 126, .27);
-  background:
-    radial-gradient(ellipse at 100% 0%, rgba(159, 47, 54, .12), transparent 58%),
-    linear-gradient(145deg, rgba(36, 20, 22, .94), rgba(18, 12, 14, .97));
+  border-color: rgba(217, 74, 43, .22);
+  background: #1e1e1e;
 }
 
 .bot-control-page .surface,
 .bot-control-page .channel-card {
-  border-color: rgba(210, 162, 126, .16);
-  background:
-    radial-gradient(ellipse at 100% 0%, rgba(159, 47, 54, .07), transparent 58%),
-    linear-gradient(145deg, rgba(31, 18, 20, .94), rgba(17, 12, 14, .98));
+  border-color: rgba(255, 255, 255, .1);
+  background: #1e1e1e;
 }
 
 .bot-control-page .channel-card {
@@ -1952,6 +1962,119 @@
 
 .bot-control-page .channel-card:hover {
   transform: translateY(-1px);
-  border-color: rgba(210, 162, 126, .34);
-  box-shadow: 0 8px 22px rgba(0, 0, 0, .2), 0 0 18px rgba(159, 47, 54, .07);
+  border-color: rgba(217, 74, 43, .35);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .2), 0 0 18px rgba(217, 74, 43, .07);
+}
+
+/* Last-in-file overrides win over the older protected-console skin rules. */
+.mod-topbar {
+  background: rgba(18, 18, 18, .96);
+  color: #FFFFFF;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .12), 0 14px 36px rgba(0, 0, 0, .5);
+}
+
+.mod-page {
+  background-color: #121212;
+  background-image:
+    linear-gradient(rgba(217, 74, 43, .028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(217, 74, 43, .028) 1px, transparent 1px);
+}
+
+.mod-brand-mark {
+  background: linear-gradient(135deg, rgba(217, 74, 43, .15), rgba(18, 18, 18, .9));
+  box-shadow:
+    inset 0 1px rgba(255, 255, 255, .1),
+    0 4px 12px rgba(217, 74, 43, .15) !important;
+}
+
+.mod-card,
+.mod-save-bar {
+  border-color: rgba(255, 255, 255, .1);
+  background: #1E1E1E;
+}
+
+.mod-card:hover {
+  border-color: rgba(217, 74, 43, .4);
+}
+
+.mod-login-card {
+  background: #1E1E1E;
+}
+
+.bot-control-page .provision-panel {
+  border-color: rgba(255, 255, 255, .14);
+  background:
+    radial-gradient(ellipse at 88% 0%, rgba(217, 74, 43, .16), transparent 48%),
+    linear-gradient(150deg, rgba(30, 30, 30, .98), rgba(18, 18, 18, .98) 68%);
+}
+
+.bot-control-page .panel-heading,
+.bot-control-page .category-details {
+  border-color: rgba(255, 255, 255, .1);
+}
+
+.bot-control-page .count-pill {
+  border-color: rgba(255, 255, 255, .14);
+  background: rgba(255, 255, 255, .05);
+  color: #B0B0B0;
+}
+
+.bot-control-page .count-pill strong,
+.bot-control-page .category-copy strong {
+  color: #FFFFFF;
+}
+
+.bot-control-page .provision-panel > p,
+.bot-control-page .category-copy small {
+  color: #B0B0B0;
+}
+
+.bot-control-page .provision-progress {
+  background: rgba(255, 255, 255, .09);
+}
+
+.bot-control-page .provision-progress span {
+  background: linear-gradient(90deg, #B33C24, #D94A2B);
+  box-shadow: 0 0 12px rgba(217, 74, 43, .32);
+}
+
+.bot-control-page .category-row {
+  border-color: rgba(255, 255, 255, .1);
+  background: linear-gradient(115deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, .012));
+}
+
+.bot-control-page .category-row:hover {
+  border-color: rgba(217, 74, 43, .34);
+  background: linear-gradient(115deg, rgba(217, 74, 43, .09), rgba(255, 255, 255, .018));
+}
+
+.bot-control-page .category-row.selected {
+  border-color: rgba(217, 74, 43, .42);
+  background: linear-gradient(115deg, rgba(179, 60, 36, .15), rgba(217, 74, 43, .035) 72%);
+  box-shadow: inset 2px 0 #D94A2B, 0 5px 16px rgba(0, 0, 0, .12);
+}
+
+.bot-control-page .category-icon {
+  border-color: rgba(217, 74, 43, .2);
+  background: rgba(217, 74, 43, .07);
+  color: #D94A2B;
+}
+
+.bot-control-page .category-row.selected .category-icon {
+  border-color: rgba(217, 74, 43, .3);
+  background: rgba(217, 74, 43, .12);
+  color: #D94A2B;
+}
+
+.bot-control-page .category-meta,
+.bot-control-page .category-expand:hover {
+  color: #D94A2B;
+}
+
+.bot-control-page .category-expand {
+  color: #B0B0B0;
+}
+
+.bot-control-page .category-expand:hover {
+  background: rgba(217, 74, 43, .12);
 }

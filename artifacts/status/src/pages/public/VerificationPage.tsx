@@ -67,34 +67,34 @@ export function VerificationPage() {
   return (
     <PublicLayout>
       <main className="page-width flex min-h-[70vh] items-center justify-center py-16">
-        <section className="w-full max-w-xl rounded-2xl border border-[#5b3b8f]/50 bg-[#15121e]/95 p-6 shadow-2xl sm:p-10">
+        <section className="w-full max-w-xl rounded-2xl border border-white/10 bg-[#1E1E1E] p-6 shadow-2xl shadow-black/40 sm:p-10">
           <div className="mb-8 flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#5b3b8f]/25 text-[#c7a8ff]">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#D94A2B]/15 text-[#D94A2B]">
               <ShieldCheck className="h-6 w-6" />
             </div>
             <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-[#c7a8ff]">Verificare Discord</p>
-              <h1 className="mt-1 text-2xl font-semibold text-[#f2f3f5]">{config?.guildName ?? "Acces în comunitate"}</h1>
+              <p className="text-xs uppercase tracking-[0.2em] text-[#D94A2B]">Verificare Discord</p>
+              <h1 className="mt-1 text-2xl font-semibold text-white">{config?.guildName ?? "Acces în comunitate"}</h1>
             </div>
           </div>
 
           {loading ? (
-            <div className="flex items-center gap-3 text-sm text-[#b5bac1]"><Loader2 className="h-5 w-5 animate-spin" /> Se încarcă panoul…</div>
+            <div className="flex items-center gap-3 text-sm text-[#B0B0B0]"><Loader2 className="h-5 w-5 animate-spin text-[#D94A2B]" /> Se încarcă panoul…</div>
           ) : !guildId ? (
-            <div className="space-y-3 text-sm text-[#dbdee1]">
-              <TriangleAlert className="h-6 w-6 text-amber-300" />
+            <div className="space-y-3 text-sm text-[#B0B0B0]">
+              <TriangleAlert className="h-6 w-6 text-[#D94A2B]" />
               <p>Deschide acest link din butonul de verificare din serverul Discord.</p>
             </div>
           ) : !config?.enabled ? (
-            <div className="space-y-3 text-sm text-[#dbdee1]">
-              <TriangleAlert className="h-6 w-6 text-amber-300" />
+            <div className="space-y-3 text-sm text-[#B0B0B0]">
+              <TriangleAlert className="h-6 w-6 text-[#D94A2B]" />
               <p>Verificarea nu este activată pentru acest server.</p>
             </div>
           ) : (
             <div className="space-y-6">
-              <p className="whitespace-pre-wrap leading-relaxed text-[#dbdee1]">{config.message}</p>
+              <p className="whitespace-pre-wrap leading-relaxed text-[#B0B0B0]">{config.message}</p>
               {errorMessage && (
-                <p className="flex gap-2 rounded-lg border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-200">
+                <p className="flex gap-2 rounded-lg border border-[#D94A2B]/35 bg-[#D94A2B]/10 p-3 text-sm text-[#D94A2B]">
                   <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" /> {errorMessage}
                 </p>
               )}
@@ -105,13 +105,13 @@ export function VerificationPage() {
               )}
               {!successText && (
                 <a
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#7050b5] px-4 py-3 font-semibold text-white transition hover:bg-[#8060c6]"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#D94A2B] px-4 py-3 font-semibold text-white transition-colors hover:bg-[#B33C24] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#D94A2B]"
                   href={`/api/moderation/oauth/discord?verification=1&guildId=${encodeURIComponent(guildId)}`}
                 >
                   {config.buttonEmoji} {config.buttonLabel} <ExternalLink className="h-4 w-4" />
                 </a>
               )}
-              <p className="text-xs leading-relaxed text-[#949ba4]">
+              <p className="text-xs leading-relaxed text-[#B0B0B0]">
                 Vei autoriza Discord să confirme identitatea contului. Site-ul nu primește parola și nu cere permisiuni de administrare.
               </p>
             </div>

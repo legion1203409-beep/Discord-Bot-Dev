@@ -153,7 +153,7 @@ const DEFAULT_DAILY_STATS = {
   channelId: "",
   title: "📊 Statistici Zilnice · {guild}",
   description: "O privire asupra comunității pentru **{date}**.\n\nDatele sunt colectate de Oracolul Cenușii și sunt aceleași cu raportul de pe site.",
-  color: "#7c3aed",
+  color: "#D94A2B",
   footer: "Oracolul Cenușii · Community Insights",
   activityTitle: "📈 Activitate · ultimele 7 zile",
   channelsTitle: "🔥 Top 5 canale active",
@@ -1522,25 +1522,25 @@ export function BotControlPage({
               </div>
             </div>
 
-            <details open className="overflow-hidden rounded-xl border border-[#3f4147] bg-[#1e1f22]">
-              <summary className="cursor-pointer list-none border-b border-[#3f4147] px-4 py-3 text-sm font-semibold text-[#f2f3f5]">
+            <details open className="overflow-hidden rounded-xl border border-white/15 bg-[#1E1E1E]">
+              <summary className="cursor-pointer list-none border-b border-white/15 px-4 py-3 text-sm font-semibold text-[#FFFFFF]">
                 <span className="mr-2 text-primary">▶</span>
                 Previzualizare test · {FLOW_KINDS.find(([kind]) => kind === activeFlowKind)?.[1] ?? "Flux activ"}
               </summary>
               <div className="grid gap-4 p-4 lg:grid-cols-2">
-                <div className="rounded-lg bg-[#2b2d31] p-4">
-                  <p className="mb-3 text-[10px] font-mono tracking-[0.18em] text-[#b5bac1]">MESAJUL DIN PANOU</p>
+                <div className="rounded-lg bg-[#1E1E1E] p-4">
+                  <p className="mb-3 text-[10px] font-mono tracking-[0.18em] text-[#B0B0B0]">MESAJUL DIN PANOU</p>
                   {activeFlow.panelThumbnailUrl && <img src={activeFlow.panelThumbnailUrl} alt="" className="float-right ml-3 h-16 w-16 rounded object-cover" />}
-                  <h4 className="text-base font-semibold text-[#f2f3f5]"><DiscordEmojiText emojis={metadata?.emojis}>{activeFlow.title}</DiscordEmojiText></h4>
-                  <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[#dbdee1]">
+                  <h4 className="text-base font-semibold text-[#FFFFFF]"><DiscordEmojiText emojis={metadata?.emojis}>{activeFlow.title}</DiscordEmojiText></h4>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[#B0B0B0]">
                     <DiscordEmojiText emojis={metadata?.emojis}>{activeFlow.panelDescription}</DiscordEmojiText>
                   </p>
-                  <p className="mt-3 whitespace-pre-wrap text-xs text-[#b5bac1]"><DiscordEmojiText emojis={metadata?.emojis}>{activeFlow.requirementsText}</DiscordEmojiText></p>
-                  <div className="mt-4 space-y-2 border-t border-[#3f4147] pt-3">
+                  <p className="mt-3 whitespace-pre-wrap text-xs text-[#B0B0B0]"><DiscordEmojiText emojis={metadata?.emojis}>{activeFlow.requirementsText}</DiscordEmojiText></p>
+                  <div className="mt-4 space-y-2 border-t border-white/15 pt-3">
                     {activeFlow.questions.map((question, index) => (
                       <div key={`preview-question-${question.key}-${index}`} className="flex gap-2 text-xs">
-                        <span className="font-semibold text-[#949ba4]">{index + 1}.</span>
-                        <span className="text-[#dbdee1]"><DiscordEmojiText emojis={metadata?.emojis}>{question.label}</DiscordEmojiText></span>
+                        <span className="font-semibold text-[#B0B0B0]">{index + 1}.</span>
+                        <span className="text-[#B0B0B0]"><DiscordEmojiText emojis={metadata?.emojis}>{question.label}</DiscordEmojiText></span>
                       </div>
                     ))}
                   </div>
@@ -1550,27 +1550,27 @@ export function BotControlPage({
                   {activeFlow.panelImageUrl && <img src={activeFlow.panelImageUrl} alt="" className="mt-3 max-h-40 w-full rounded object-contain" />}
                 </div>
 
-                <div className="rounded-lg bg-[#2b2d31] p-4">
-                  <p className="mb-3 text-[10px] font-mono tracking-[0.18em] text-[#b5bac1]">MESAJUL DUPĂ COMPLETARE</p>
+                <div className="rounded-lg bg-[#1E1E1E] p-4">
+                  <p className="mb-3 text-[10px] font-mono tracking-[0.18em] text-[#B0B0B0]">MESAJUL DUPĂ COMPLETARE</p>
                   {activeFlow.completionThumbnailUrl && <img src={activeFlow.completionThumbnailUrl} alt="" className="float-right ml-3 h-16 w-16 rounded object-cover" />}
-                  <h4 className="text-base font-semibold text-[#f2f3f5]">Formular complet</h4>
-                  <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[#dbdee1]">
+                  <h4 className="text-base font-semibold text-[#FFFFFF]">Formular complet</h4>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[#B0B0B0]">
                     <DiscordEmojiText emojis={metadata?.emojis}>{activeFlow.completionMessage}</DiscordEmojiText>
                   </p>
-                  <div className="mt-4 space-y-2 border-t border-[#3f4147] pt-3">
+                  <div className="mt-4 space-y-2 border-t border-white/15 pt-3">
                     {activeFlow.questions.filter((question) => postedQuestionKeys.has(question.key)).length > 0 ? (
                       activeFlow.questions
                         .filter((question) => postedQuestionKeys.has(question.key))
                         .map((question, index) => (
-                          <div key={`preview-answer-${question.key}-${index}`} className="rounded-md bg-[#1e1f22] px-3 py-2">
-                            <p className="text-xs font-semibold text-[#f2f3f5]"><DiscordEmojiText emojis={metadata?.emojis}>{question.label}</DiscordEmojiText></p>
-                            <p className="mt-1 text-xs italic text-[#949ba4]">
+                          <div key={`preview-answer-${question.key}-${index}`} className="rounded-md bg-[#121212] px-3 py-2">
+                            <p className="text-xs font-semibold text-[#FFFFFF]"><DiscordEmojiText emojis={metadata?.emojis}>{question.label}</DiscordEmojiText></p>
+                            <p className="mt-1 text-xs italic text-[#B0B0B0]">
                               {question.placeholder || "Răspunsul membrului va apărea aici"}
                             </p>
                           </div>
                         ))
                     ) : (
-                      <p className="text-xs italic text-[#949ba4]">Nu este selectat niciun răspuns pentru mesajul final.</p>
+                      <p className="text-xs italic text-[#B0B0B0]">Nu este selectat niciun răspuns pentru mesajul final.</p>
                     )}
                   </div>
                   {activeFlow.completionAction === "notify_staff" && (
@@ -1579,7 +1579,7 @@ export function BotControlPage({
                   {activeFlow.completionImageUrl && <img src={activeFlow.completionImageUrl} alt="" className="mt-3 max-h-40 w-full rounded object-contain" />}
                 </div>
               </div>
-              <p className="border-t border-[#3f4147] px-4 py-3 text-xs text-[#b5bac1]">
+              <p className="border-t border-white/15 px-4 py-3 text-xs text-[#B0B0B0]">
                 Aceasta este o simulare. Pentru alt flux, schimbă „Tipul de ticket” de la Pasul 1.
               </p>
             </details>
@@ -2226,21 +2226,21 @@ export function BotControlPage({
                   <EmojiField maxLength={1024} value={draft.dailyStats.emptyChannelsText} onChange={(value) => setDailyStats("emptyChannelsText", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
                 </label>
               </div>
-              <div className="h-fit rounded-xl border bg-[#1e1f22] p-3 text-[#f2f3f5] shadow-xl" style={{ borderLeftColor: draft.dailyStats.color, borderLeftWidth: 4 }}>
-                <p className="mb-3 text-[10px] font-semibold tracking-[0.18em] text-[#949cf7]">PREVIZUALIZARE EMBED</p>
-                <div className="rounded-md bg-[#2b2d31] p-3">
+              <div className="h-fit rounded-xl border bg-[#1E1E1E] p-3 text-[#FFFFFF] shadow-xl" style={{ borderLeftColor: draft.dailyStats.color, borderLeftWidth: 4 }}>
+                <p className="mb-3 text-[10px] font-semibold tracking-[0.18em] text-[#D94A2B]">PREVIZUALIZARE EMBED</p>
+                <div className="rounded-md bg-[#1E1E1E] p-3">
                   {draft.dailyStats.thumbnailUrl && <img src={draft.dailyStats.thumbnailUrl} alt="" className="float-right ml-3 h-20 w-20 rounded object-cover" />}
-                  <p className="text-[10px] font-semibold tracking-wider text-[#949cf7]">ORACOLUL CENUȘII · COMMUNITY INSIGHTS</p>
+                  <p className="text-[10px] font-semibold tracking-wider text-[#D94A2B]">ORACOLUL CENUȘII · COMMUNITY INSIGHTS</p>
                   <h3 className="mt-2 font-semibold"><DiscordEmojiText emojis={metadata?.emojis}>{renderDailyStatsPreviewText(draft.dailyStats.title)}</DiscordEmojiText></h3>
-                  <p className="mt-2 whitespace-pre-wrap text-xs text-[#b5bac1]"><DiscordEmojiText emojis={metadata?.emojis}>{renderDailyStatsPreviewText(draft.dailyStats.description)}</DiscordEmojiText></p>
+                  <p className="mt-2 whitespace-pre-wrap text-xs text-[#B0B0B0]"><DiscordEmojiText emojis={metadata?.emojis}>{renderDailyStatsPreviewText(draft.dailyStats.description)}</DiscordEmojiText></p>
                   <div className="mt-4">
                     <p className="mb-1 text-xs font-semibold">📊 Rezumat</p>
-                    <div className="space-y-1 rounded bg-[#36393f] p-2 text-xs leading-relaxed">
+                    <div className="space-y-1 rounded bg-[#1E1E1E] p-2 text-xs leading-relaxed">
                       {DAILY_STATS_PREVIEW_METRIC_ROWS.map((row) => (
                         <p key={row[0][0]} className="break-words">
                           {row.map(([key, value], index) => (
                             <span key={key}>
-                              {index > 0 && <span className="mx-1 text-[#b5bac1]">·</span>}
+                              {index > 0 && <span className="mx-1 text-[#B0B0B0]">·</span>}
                               <DiscordEmojiText emojis={metadata?.emojis}>{draft.dailyStats.metricLabels[key]}</DiscordEmojiText>{": "}
                               <strong>{value.toLocaleString("ro-RO")}</strong>
                             </span>
@@ -2251,7 +2251,7 @@ export function BotControlPage({
                   </div>
                   <div className="mt-3">
                     <p className="mb-1 text-xs font-semibold"><DiscordEmojiText emojis={metadata?.emojis}>{draft.dailyStats.activityTitle}</DiscordEmojiText></p>
-                    <p className="break-words rounded bg-[#1e1f22] p-2 text-xs leading-relaxed">
+                    <p className="break-words rounded bg-[#121212] p-2 text-xs leading-relaxed">
                       {DAILY_STATS_PREVIEW_ACTIVITY.map((item) => `${item.day.slice(8, 10)}/${item.day.slice(5, 7)}: ${item.messages.toLocaleString("ro-RO")}`).join(" · ")}
                     </p>
                   </div>
@@ -2266,9 +2266,9 @@ export function BotControlPage({
                     </div>
                   </div>
                   {draft.dailyStats.imageUrl && <img src={draft.dailyStats.imageUrl} alt="" className="mt-3 max-h-48 w-full rounded object-contain" />}
-                  <p className="mt-4 border-t border-white/10 pt-3 text-[10px] text-[#949ba4]">
+                  <p className="mt-4 border-t border-white/10 pt-3 text-[10px] text-[#B0B0B0]">
                     <DiscordEmojiText emojis={metadata?.emojis}>{draft.dailyStats.footer}</DiscordEmojiText>
-                    <span className="ml-2 text-[#777d86]">18 septembrie 2026</span>
+                    <span className="ml-2 text-[#B0B0B0]">18 septembrie 2026</span>
                   </p>
                 </div>
               </div>
@@ -2400,24 +2400,24 @@ export function BotControlPage({
       </Dialog>
 
       <Dialog open={testOpen} onOpenChange={setTestOpen}>
-        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto border-[#3f4147] bg-[#1e1f22] text-[#f2f3f5]">
+        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto border-white/15 bg-[#1E1E1E] text-[#FFFFFF]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <PlayCircle className="h-5 w-5 text-primary" />
               Test local · {FLOW_KINDS.find(([kind]) => kind === activeFlowKind)?.[1] ?? "Flux ticket"}
             </DialogTitle>
-            <DialogDescription className="text-[#b5bac1]">
+            <DialogDescription className="text-[#B0B0B0]">
               Simulează pașii pe care îi vede membrul. Nu se creează ticket și nu se postează nimic pe Discord.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
-            <div className="rounded-lg border border-[#3f4147] bg-[#2b2d31] p-4">
-              <p className="text-[10px] font-mono tracking-[0.18em] text-[#b5bac1]">PANOU DISCORD SIMULAT</p>
+            <div className="rounded-lg border border-white/15 bg-[#1E1E1E] p-4">
+              <p className="text-[10px] font-mono tracking-[0.18em] text-[#B0B0B0]">PANOU DISCORD SIMULAT</p>
               {activeFlow.panelThumbnailUrl && <img src={activeFlow.panelThumbnailUrl} alt="" className="float-right ml-3 h-16 w-16 rounded object-cover" />}
               <h3 className="mt-2 text-lg font-semibold"><DiscordEmojiText emojis={metadata?.emojis}>{activeFlow.title}</DiscordEmojiText></h3>
-              <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[#dbdee1]"><DiscordEmojiText emojis={metadata?.emojis}>{activeFlow.panelDescription}</DiscordEmojiText></p>
-              <p className="mt-3 whitespace-pre-wrap text-xs text-[#b5bac1]"><DiscordEmojiText emojis={metadata?.emojis}>{activeFlow.requirementsText}</DiscordEmojiText></p>
+              <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[#B0B0B0]"><DiscordEmojiText emojis={metadata?.emojis}>{activeFlow.panelDescription}</DiscordEmojiText></p>
+              <p className="mt-3 whitespace-pre-wrap text-xs text-[#B0B0B0]"><DiscordEmojiText emojis={metadata?.emojis}>{activeFlow.requirementsText}</DiscordEmojiText></p>
               {!testStarted && !testCompleted && (
                 <Button type="button" className="mt-4 gap-2" onClick={() => setTestStarted(true)}>
                   <PlayCircle className="h-4 w-4" />
@@ -2428,18 +2428,18 @@ export function BotControlPage({
             </div>
 
             {testStarted && !testCompleted && testQuestion && (
-              <div className="rounded-lg border border-primary/40 bg-[#2b2d31] p-4">
+              <div className="rounded-lg border border-primary/40 bg-[#1E1E1E] p-4">
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-xs font-mono tracking-[0.14em] text-primary">
                     ÎNTREBAREA {testStep + 1}/{activeFlow.questions.length}
                   </p>
-                  <span className="text-xs text-[#b5bac1]">
+                  <span className="text-xs text-[#B0B0B0]">
                     {testQuestion.required ? "Obligatoriu" : "Opțional"}
                   </span>
                 </div>
                 <h3 className="mt-3 text-base font-semibold"><DiscordEmojiText emojis={metadata?.emojis}>{testQuestion.label}</DiscordEmojiText></h3>
                 {testQuestion.thumbnailUrl && <img src={testQuestion.thumbnailUrl} alt="" className="float-right ml-3 h-16 w-16 rounded object-cover" />}
-                <p className="mt-1 text-sm text-[#dbdee1]"><DiscordEmojiText emojis={metadata?.emojis}>{testQuestion.description}</DiscordEmojiText></p>
+                <p className="mt-1 text-sm text-[#B0B0B0]"><DiscordEmojiText emojis={metadata?.emojis}>{testQuestion.description}</DiscordEmojiText></p>
                 {testQuestion.imageUrl && <img src={testQuestion.imageUrl} alt="" className="mt-3 max-h-48 w-full rounded object-contain" />}
                 {testQuestion.multiline ? (
                   <Textarea
@@ -2451,7 +2451,7 @@ export function BotControlPage({
                       setTestDraftAnswer(event.target.value);
                       setTestError("");
                     }}
-                    className="mt-4 border-[#4b4f58] bg-[#1e1f22] text-[#f2f3f5]"
+                    className="mt-4 border-white/15 bg-[#121212] text-[#FFFFFF]"
                   />
                 ) : (
                   <Input
@@ -2462,7 +2462,7 @@ export function BotControlPage({
                       setTestDraftAnswer(event.target.value);
                       setTestError("");
                     }}
-                    className="mt-4 border-[#4b4f58] bg-[#1e1f22] text-[#f2f3f5]"
+                    className="mt-4 border-white/15 bg-[#121212] text-[#FFFFFF]"
                   />
                 )}
                 {testError && <p className="mt-2 text-xs text-destructive">{testError}</p>}
@@ -2475,21 +2475,21 @@ export function BotControlPage({
             )}
 
             {Object.keys(testAnswers).length > 0 && (
-              <div className="space-y-2 rounded-lg border border-[#3f4147] bg-[#2b2d31] p-4">
-                <p className="text-[10px] font-mono tracking-[0.18em] text-[#b5bac1]">RĂSPUNSURI SIMULATE</p>
+              <div className="space-y-2 rounded-lg border border-white/15 bg-[#1E1E1E] p-4">
+                <p className="text-[10px] font-mono tracking-[0.18em] text-[#B0B0B0]">RĂSPUNSURI SIMULATE</p>
                 {activeFlow.questions
                   .filter((question) => testAnswers[question.key] !== undefined)
                   .map((question) => (
-                    <div key={`test-answer-${question.key}`} className="rounded-md bg-[#1e1f22] px-3 py-2">
+                    <div key={`test-answer-${question.key}`} className="rounded-md bg-[#121212] px-3 py-2">
                       <p className="text-xs font-semibold"><DiscordEmojiText emojis={metadata?.emojis}>{question.label}</DiscordEmojiText></p>
-                      <p className="mt-1 whitespace-pre-wrap text-sm text-[#dbdee1]">{testAnswers[question.key]}</p>
+                      <p className="mt-1 whitespace-pre-wrap text-sm text-[#B0B0B0]">{testAnswers[question.key]}</p>
                     </div>
                   ))}
               </div>
             )}
 
             {testCompleted && (
-              <div className="rounded-lg border border-emerald-500/40 bg-[#2b2d31] p-4">
+              <div className="rounded-lg border border-emerald-500/40 bg-[#1E1E1E] p-4">
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="h-5 w-5 text-emerald-400" />
                   <p className="text-[10px] font-mono tracking-[0.18em] text-emerald-300">
@@ -2501,18 +2501,18 @@ export function BotControlPage({
                     ? "🤝 Contract de Parteneriat · Rezumat pentru staff"
                     : "Formular complet"}
                 </h3>
-                <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[#dbdee1]"><DiscordEmojiText emojis={metadata?.emojis}>{activeFlow.completionMessage}</DiscordEmojiText></p>
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[#B0B0B0]"><DiscordEmojiText emojis={metadata?.emojis}>{activeFlow.completionMessage}</DiscordEmojiText></p>
                 {activeFlow.completionThumbnailUrl && <img src={activeFlow.completionThumbnailUrl} alt="" className="float-right ml-3 h-16 w-16 rounded object-cover" />}
-                <div className="mt-4 space-y-2 border-t border-[#3f4147] pt-3">
+                <div className="mt-4 space-y-2 border-t border-white/15 pt-3">
                   {activeFlow.questions.filter((question) => postedQuestionKeys.has(question.key)).map((question) => (
-                    <div key={`test-final-${question.key}`} className="rounded-md bg-[#1e1f22] px-3 py-2">
+                    <div key={`test-final-${question.key}`} className="rounded-md bg-[#121212] px-3 py-2">
                       <p className="text-xs font-semibold"><DiscordEmojiText emojis={metadata?.emojis}>{question.label}</DiscordEmojiText></p>
-                      <p className="mt-1 whitespace-pre-wrap text-sm text-[#dbdee1]">{testAnswers[question.key] ?? "—"}</p>
+                      <p className="mt-1 whitespace-pre-wrap text-sm text-[#B0B0B0]">{testAnswers[question.key] ?? "—"}</p>
                     </div>
                   ))}
                 </div>
                 {activeFlowKind === "partnership" && (
-                  <div className="mt-4 flex flex-wrap gap-2 border-t border-[#3f4147] pt-3">
+                  <div className="mt-4 flex flex-wrap gap-2 border-t border-white/15 pt-3">
                     <Button type="button" size="sm" className="pointer-events-none">🛡️ Confirmă pentru publicare</Button>
                     <Button type="button" size="sm" variant="destructive" className="pointer-events-none">Refuză pactul</Button>
                   </div>
@@ -2526,13 +2526,13 @@ export function BotControlPage({
 
             {testCompleted && partnershipAnswers && (
               <>
-                <div className="rounded-lg border border-[#7c8fbd]/50 bg-[#2b2d31] p-4">
-                  <p className="text-[10px] font-mono tracking-[0.18em] text-[#b9c8ef]">DRAFT DUPĂ CONFIRMAREA STAFFULUI</p>
+                <div className="rounded-lg border border-[#D94A2B]/50 bg-[#1E1E1E] p-4">
+                  <p className="text-[10px] font-mono tracking-[0.18em] text-[#D94A2B]">DRAFT DUPĂ CONFIRMAREA STAFFULUI</p>
                   <h3 className="mt-2 text-base font-semibold">🤝 Contract de Parteneriat · Draft de publicare</h3>
-                  <p className="mt-2 text-sm text-[#dbdee1]">
+                  <p className="mt-2 text-sm text-[#B0B0B0]">
                     Draftul este vizibil în ticket până când stafful apasă „Publică pactul”.
                   </p>
-                  <div className="mt-4 grid gap-2 border-t border-[#3f4147] pt-3 sm:grid-cols-2">
+                  <div className="mt-4 grid gap-2 border-t border-white/15 pt-3 sm:grid-cols-2">
                     {[
                       ["🏰 Numele serverului", partnershipAnswers.server_name],
                       ["👤 Reprezentantul serverului", partnershipAnswers.representative],
@@ -2543,9 +2543,9 @@ export function BotControlPage({
                       ["🎁 Ce oferă serverul", partnershipAnswers.offer],
                       ["📜 Așteptări și reguli", partnershipAnswers.terms],
                     ].map(([label, value]) => (
-                      <div key={label} className="rounded-md bg-[#1e1f22] px-3 py-2">
+                      <div key={label} className="rounded-md bg-[#121212] px-3 py-2">
                         <p className="text-xs font-semibold">{label}</p>
-                        <p className="mt-1 whitespace-pre-wrap text-sm text-[#dbdee1]">{previewValue(value)}</p>
+                        <p className="mt-1 whitespace-pre-wrap text-sm text-[#B0B0B0]">{previewValue(value)}</p>
                       </div>
                     ))}
                   </div>
@@ -2555,15 +2555,15 @@ export function BotControlPage({
                   </div>
                 </div>
 
-                <div className="rounded-lg border border-amber-500/40 bg-[#2b2d31] p-4">
+                <div className="rounded-lg border border-amber-500/40 bg-[#1E1E1E] p-4">
                   <p className="text-[10px] font-mono tracking-[0.18em] text-amber-300">TEXTUL POSTAT ÎN CANALUL ALIANȚELOR</p>
-                  <p className="mt-2 text-xs text-[#b5bac1]">
+                   <p className="mt-2 text-xs text-[#B0B0B0]">
                      Acesta este mesajul public trimis după „Publică pactul”. Imaginea este simulată aici ca preview Discord.
                   </p>
-                   <div className="mt-3 overflow-hidden rounded-md bg-[#1e1f22] p-3">
+                    <div className="mt-3 overflow-hidden rounded-md bg-[#121212] p-3">
                      {draft.tickets.allianceAnnouncementMode === "embed" ? (
-                       <div className="border-l-4 border-[#7c8fbd] pl-3">
-                         <p className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-[#f2f3f5]"><DiscordEmojiText emojis={metadata?.emojis}>{partnershipAnnouncement}</DiscordEmojiText></p>
+                        <div className="border-l-4 border-[#D94A2B] pl-3">
+                          <p className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-[#FFFFFF]"><DiscordEmojiText emojis={metadata?.emojis}>{partnershipAnnouncement}</DiscordEmojiText></p>
                           {draft.tickets.allianceAnnouncementThumbnailUrl && (
                             <img src={draft.tickets.allianceAnnouncementThumbnailUrl} alt="" className="float-right ml-3 h-20 w-20 rounded object-cover" />
                           )}
@@ -2573,9 +2573,9 @@ export function BotControlPage({
                        </div>
                      ) : (
                        <>
-                         <p className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-[#f2f3f5]"><DiscordEmojiText emojis={metadata?.emojis}>{partnershipAnnouncement}</DiscordEmojiText></p>
+                          <p className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-[#FFFFFF]"><DiscordEmojiText emojis={metadata?.emojis}>{partnershipAnnouncement}</DiscordEmojiText></p>
                           {(draft.tickets.allianceAnnouncementImageUrl || draft.tickets.allianceAnnouncementThumbnailUrl) && (
-                           <div className="mt-3 border-l-4 border-[#7c8fbd] pl-3">
+                            <div className="mt-3 border-l-4 border-[#D94A2B] pl-3">
                               {draft.tickets.allianceAnnouncementThumbnailUrl && (
                                 <img src={draft.tickets.allianceAnnouncementThumbnailUrl} alt="" className="float-right ml-3 h-20 w-20 rounded object-cover" />
                               )}
@@ -2593,7 +2593,7 @@ export function BotControlPage({
           </div>
 
           <DialogFooter className="gap-2 sm:justify-between">
-            <p className="text-xs text-[#b5bac1]">Modificările curente sunt testate local, chiar dacă nu sunt încă salvate.</p>
+            <p className="text-xs text-[#B0B0B0]">Modificările curente sunt testate local, chiar dacă nu sunt încă salvate.</p>
             <Button type="button" variant="secondary" onClick={resetFlowTest} className="gap-2">
               <RotateCcw className="h-4 w-4" />
               Repornește testul

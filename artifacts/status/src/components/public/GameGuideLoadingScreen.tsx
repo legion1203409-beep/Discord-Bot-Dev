@@ -19,14 +19,14 @@ export function GameGuideLoadingScreen() {
               stroke="url(#game-guide-loading-gradient)"
               strokeWidth="1.6"
               strokeLinejoin="round"
-              fill="rgba(217,80,95,0.14)"
+              fill="rgba(217,74,43,0.14)"
             />
             <path
               d="M20 5.5C20 4.67 19.33 4 18.5 4H13V20H18.5C19.33 20 20 19.33 20 18.5V5.5Z"
               stroke="url(#game-guide-loading-gradient)"
               strokeWidth="1.6"
               strokeLinejoin="round"
-              fill="rgba(217,80,95,0.14)"
+              fill="rgba(217,74,43,0.14)"
             />
             <path
               d="M11 4C11 4 12 5 12 7V20"
@@ -36,8 +36,8 @@ export function GameGuideLoadingScreen() {
             />
             <defs>
               <linearGradient id="game-guide-loading-gradient" x1="4" y1="4" x2="20" y2="20">
-                <stop offset="0" stopColor="#d9505f" />
-                <stop offset="1" stopColor="#7a2530" />
+                <stop offset="0" stopColor="#D94A2B" />
+                <stop offset="1" stopColor="#B33C24" />
               </linearGradient>
             </defs>
           </svg>

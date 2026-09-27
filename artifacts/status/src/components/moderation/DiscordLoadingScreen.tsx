@@ -19,7 +19,7 @@ export function DiscordLoadingScreen() {
               stroke="url(#discord-auth-loading-gradient)"
               strokeWidth="1.6"
               strokeLinejoin="round"
-              fill="rgba(217,80,95,0.14)"
+              fill="rgba(217,74,43,0.14)"
             />
             <path
               d="M9 12L11 14L15.5 9.5"
@@ -30,8 +30,8 @@ export function DiscordLoadingScreen() {
             />
             <defs>
               <linearGradient id="discord-auth-loading-gradient" x1="4" y1="2" x2="20" y2="22">
-                <stop offset="0" stopColor="#d9505f" />
-                <stop offset="1" stopColor="#7a2530" />
+                <stop offset="0" stopColor="#D94A2B" />
+                <stop offset="1" stopColor="#B33C24" />
               </linearGradient>
             </defs>
           </svg>

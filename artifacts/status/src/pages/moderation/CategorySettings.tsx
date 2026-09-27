@@ -4,6 +4,7 @@ import { Link } from "wouter";
 import { useActiveGuild, useModerationConfig, useModerationMetadata } from "../../hooks/use-moderation-api";
 import { Button } from "../../components/ui/button";
 import { useToast } from "../../hooks/use-toast";
+import { getAntiSpamThresholdError } from "../../lib/anti-spam-validation";
 import { ConfigEditor, type ConfigSection } from "./ConfigEditor";
 import { rebaseDraftChanges } from "../../lib/utils";
 import { activityLogDraftError } from "../../lib/activity-log-validation";
@@ -79,7 +80,8 @@ export function CategorySettingsPage({ section }: { section: ConfigSection }) {
   const save = async () => {
     if (saving || !editorKey) return;
     const draftError = section === "cases-audit" ? activityLogDraftError(currentDraft.activityLog)
-      : section === "embeds" ? embedUrlDraftError(currentDraft.embeds) : null;
+      : section === "embeds" ? embedUrlDraftError(currentDraft.embeds)
+      : section === "anti-spam" ? getAntiSpamThresholdError(currentDraft) : null;
     if (draftError) {
       toast({ variant: "destructive", title: "Verifică setările înainte de salvare", description: draftError });
       return;
