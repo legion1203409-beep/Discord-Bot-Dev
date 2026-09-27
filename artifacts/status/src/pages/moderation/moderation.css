@@ -2156,3 +2156,26 @@
 .bot-control-page .category-expand:hover {
   background: rgba(217, 74, 43, .12);
 }
+
+.bot-control-page .category-top input[type=checkbox]:not(:disabled):hover {
+  border-color: var(--gold-light);
+  box-shadow: 0 0 0 3px rgba(217, 74, 43, .16);
+}
+
+.bot-control-page .category-top input[type=checkbox]:checked:not(:disabled):hover {
+  filter: brightness(1.08);
+}
+
+.bot-control-page details > summary {
+  transition: background-color .16s ease, color .16s ease;
+}
+
+.bot-control-page details > summary:hover {
+  background: rgba(217, 74, 43, .08);
+  color: #fff;
+}
+
+.bot-control-page details > summary:focus-visible {
+  outline: 2px solid #D94A2B;
+  outline-offset: -2px;
+}
