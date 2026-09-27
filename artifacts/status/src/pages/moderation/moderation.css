@@ -1839,3 +1839,119 @@
     min-height: 36px;
   }
 }
+
+.bot-control-page .content-grid--full,
+.bot-control-page.provisioning-only-page .content-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.bot-control-page.channels-only-page .provision-panel {
+  display: none;
+}
+
+.bot-control-page.provisioning-only-page .left-stack {
+  display: none;
+}
+
+.bot-control-page.provisioning-only-page .provision-panel {
+  position: relative;
+  top: auto;
+  order: 0;
+  width: 100%;
+}
+
+.bot-control-page.provisioning-only-page .category-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.bot-control-page.provisioning-only-page .category-row {
+  min-width: 0;
+}
+
+@media (max-width: 850px) {
+  .bot-control-page.provisioning-only-page .category-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Extend the ember-and-copper treatment across the moderation console. */
+.mod-shell,
+.mod-shell.dark {
+  --primary: 4 57% 48%;
+  --accent: 35 30% 50%;
+  --ring: 4 57% 48%;
+}
+
+.mod-shell::before {
+  background:
+    radial-gradient(ellipse at 88% 0%, hsl(4 57% 38% / .2), transparent 34rem),
+    radial-gradient(ellipse at 8% 92%, hsl(35 30% 42% / .12), transparent 30rem),
+    linear-gradient(135deg, hsl(var(--background)) 0%, transparent 100%) !important;
+}
+
+.mod-sidebar {
+  background:
+    radial-gradient(ellipse at 0% 18%, hsl(4 57% 35% / .12), transparent 22rem),
+    linear-gradient(180deg, hsl(0 18% 6% / .98), hsl(0 18% 4% / .98));
+}
+
+.mod-sidebar-item::before {
+  background: linear-gradient(180deg, var(--gold-light), var(--ember));
+}
+
+.mod-sidebar-item[data-active="true"] {
+  border: 1px solid rgba(210, 162, 126, .19);
+  background: linear-gradient(100deg, rgba(159, 47, 54, .2), rgba(210, 162, 126, .045) 82%);
+  color: #e4b68f;
+  box-shadow: inset 2px 0 #d2a27e, 0 5px 18px rgba(0, 0, 0, .12);
+}
+
+.mod-sidebar-item[data-active="true"] svg {
+  color: #d2a27e;
+}
+
+.mod-sidebar-item:hover {
+  border-color: rgba(210, 162, 126, .16);
+  background: linear-gradient(100deg, rgba(159, 47, 54, .13), rgba(210, 162, 126, .035) 82%);
+  color: #eee7df;
+}
+
+.mod-card {
+  border-color: rgba(210, 162, 126, .13);
+  background:
+    radial-gradient(ellipse at 100% 0%, rgba(159, 47, 54, .09), transparent 52%),
+    linear-gradient(145deg, rgba(36, 20, 22, .96), rgba(18, 12, 14, .98) 72%);
+}
+
+.mod-card:hover {
+  border-color: rgba(210, 162, 126, .3);
+  box-shadow:
+    inset 0 1px 0 0 rgba(238, 231, 223, .07),
+    0 10px 28px rgba(0, 0, 0, .3),
+    0 0 22px rgba(159, 47, 54, .08);
+}
+
+.mod-save-bar {
+  border-color: rgba(210, 162, 126, .27);
+  background:
+    radial-gradient(ellipse at 100% 0%, rgba(159, 47, 54, .12), transparent 58%),
+    linear-gradient(145deg, rgba(36, 20, 22, .94), rgba(18, 12, 14, .97));
+}
+
+.bot-control-page .surface,
+.bot-control-page .channel-card {
+  border-color: rgba(210, 162, 126, .16);
+  background:
+    radial-gradient(ellipse at 100% 0%, rgba(159, 47, 54, .07), transparent 58%),
+    linear-gradient(145deg, rgba(31, 18, 20, .94), rgba(17, 12, 14, .98));
+}
+
+.bot-control-page .channel-card {
+  transition: border-color .18s ease, background .18s ease, transform .18s ease, box-shadow .18s ease;
+}
+
+.bot-control-page .channel-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(210, 162, 126, .34);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .2), 0 0 18px rgba(159, 47, 54, .07);
+}
