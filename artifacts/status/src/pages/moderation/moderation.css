@@ -354,7 +354,7 @@
 
 .mod-page {
   background-image: linear-gradient(rgba(217, 74, 43, .028) 1px, transparent 1px), linear-gradient(90deg, rgba(217, 74, 43, .028) 1px, transparent 1px);
-  background-size: 44px 44px;
+  background-size: 32px 32px;
 }
 
 .mod-tab-trigger {
@@ -548,7 +548,7 @@
 
 @media (max-width: 767px) {
   .mod-shell::after { opacity: .022; }
-  .mod-page { background-size: 34px 34px; }
+  .mod-page { background-size: 26px 26px; }
 }
 
 /* Bot control redesign: shared with the former standalone control panel, but
@@ -766,9 +766,9 @@
   z-index: 30;
   display: flex;
   flex-direction: column;
-  gap: .55rem;
+  gap: .75rem;
   margin-bottom: 1.25rem;
-  padding: .6rem;
+  padding: .9rem;
   border: 1px solid hsl(var(--border) / .9);
   border-radius: 10px;
   background: rgba(18, 18, 18, .96);
@@ -794,7 +794,7 @@
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: .25rem;
+  gap: .4rem;
   overflow-x: auto;
   overscroll-behavior-x: contain;
   scrollbar-width: thin;
@@ -802,15 +802,15 @@
 
 .bot-control-toolbar-link {
   display: inline-flex;
-  min-height: 2rem;
+  min-height: 2.5rem;
   flex: 0 0 auto;
   align-items: center;
-  gap: .4rem;
-  padding: .4rem .55rem;
+  gap: .5rem;
+  padding: .55rem .75rem;
   border: 1px solid transparent;
   border-radius: 6px;
   color: hsl(var(--muted-foreground));
-  font-size: .68rem;
+  font-size: .76rem;
   font-weight: 600;
   text-decoration: none;
   transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease;
@@ -828,11 +828,11 @@
   flex: 0 0 auto;
   align-items: center;
   gap: .45rem;
-  padding: .35rem .55rem;
+  padding: .5rem .7rem;
   border: 1px solid hsl(var(--border) / .75);
   border-radius: 999px;
   color: hsl(var(--muted-foreground));
-  font-size: .62rem;
+  font-size: .7rem;
   white-space: nowrap;
 }
 
@@ -954,7 +954,7 @@
   }
 
   .bot-control-toolbar {
-    padding: .45rem;
+    padding: .7rem;
   }
 
   .bot-control-toolbar-main {
@@ -964,6 +964,12 @@
 
   .bot-control-toolbar-status {
     align-self: flex-start;
+  }
+
+  .bot-control-toolbar-link {
+    min-height: 2.65rem;
+    padding: .65rem .8rem;
+    font-size: .8rem;
   }
 
   .bot-control-toolbar-actions,
