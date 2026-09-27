@@ -13,10 +13,19 @@ import { BotControlPartialApplyError, useActiveGuild, useBotControl, useInviteSt
 import { clearBotControlDestinations, DESTINATION_CLEAR_CATEGORIES, type DestinationClearScope } from "../../lib/bot-control-destinations";
 import { rebaseDraftChanges } from "../../lib/utils";
 import { useToast } from "../../hooks/use-toast";
-import { useLocation, useSearch } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 
 type BotControlTab = "channels" | "roles" | "tickets" | "messages" | "statistics";
 const BOT_CONTROL_TABS: BotControlTab[] = ["channels", "roles", "tickets", "messages", "statistics"];
+const BOT_CONTROL_QUICK_LINKS = [
+  { href: "/bot?tab=roles", label: "Roluri", icon: Users, tab: "roles" },
+  { href: "/canale", label: "Canale", icon: Radio },
+  { href: "/bot?tab=tickets", label: "Tichete", icon: Ticket, tab: "tickets" },
+  { href: "/verificare", label: "Verificare", icon: ShieldCheck },
+  { href: "/bot?tab=messages", label: "Mesaje", icon: Megaphone, tab: "messages" },
+  { href: "/bot?tab=statistics", label: "Statistici", icon: Activity, tab: "statistics" },
+  { href: "/provisioning", label: "Provisioning", icon: Wrench },
+] as const;
 
 const CHANNELS = [
   ["main", "Cufere"],
@@ -892,7 +901,7 @@ export function BotControlPage({
   };
 
   return (
-    <div className={`bot-control-page max-w-5xl space-y-6 animate-stagger-1 ${channelsOnly ? "channels-only-page" : ""} ${provisioningOnly ? "provisioning-only-page" : ""} ${hasUnsavedChanges ? "pb-28" : ""}`}>
+    <div className={`bot-control-page max-w-5xl space-y-6 animate-stagger-1 ${channelsOnly ? "channels-only-page" : ""} ${provisioningOnly ? "provisioning-only-page" : ""}`}>
       <header className="bot-control-hero animate-stagger-2">
         <div>
           <div className="bot-control-brand-row">
@@ -978,6 +987,86 @@ export function BotControlPage({
           )}
         </div>
       )}
+      <div className="bot-control-toolbar">
+        <div className="bot-control-toolbar-main">
+          <nav className="bot-control-quick-nav" aria-label="Acces rapid la setările botului">
+            {BOT_CONTROL_QUICK_LINKS.map((item) => {
+              const active = "tab" in item
+                ? location.split("?")[0] === "/bot" && activeTab === item.tab
+                : location.split("?")[0] === item.href;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="bot-control-toolbar-link"
+                  data-active={active}
+                  aria-current={active ? "page" : undefined}
+                >
+                  <item.icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
+          </nav>
+          <div className="bot-control-toolbar-status" data-state={draft.discordLive === true ? "online" : "offline"}>
+            <span className="bot-control-status-dot" />
+            <span>{draft.discordLive === true ? "Bot conectat" : "Bot deconectat"}</span>
+          </div>
+        </div>
+        {(hasUnsavedChanges || (!channelsOnly && !provisioningOnly && activeTab === "statistics")) && (
+          <div className="bot-control-toolbar-actions">
+            {!channelsOnly && !provisioningOnly && activeTab === "statistics" && (
+              <div className="bot-control-toolbar-stat-actions">
+                <Select value={inviteRange} onValueChange={(value) => setInviteRange(value as InviteStatsRange)}>
+                  <SelectTrigger className="mod-select-trigger w-36" aria-label="Perioada statisticilor invitațiilor"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="7">Ultimele 7 zile</SelectItem>
+                    <SelectItem value="30">Ultimele 30 zile</SelectItem>
+                    <SelectItem value="90">Ultimele 90 zile</SelectItem>
+                    <SelectItem value="all">Tot istoricul</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button type="button" variant="outline" size="sm" disabled={inviteStatsSyncing} onClick={() => {
+                  void syncInviteStats().then(() => {
+                    toast({ title: "Invitațiile au fost sincronizate", description: "Lista și numărul curent de utilizări au fost reîmprospătate." });
+                  }).catch((syncError: any) => {
+                    toast({ variant: "destructive", title: "Sincronizarea a eșuat", description: syncError?.message ?? "Verifică permisiunea Manage Server a botului." });
+                  });
+                }}>
+                  {inviteStatsSyncing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                  Sincronizează
+                </Button>
+              </div>
+            )}
+            {hasUnsavedChanges && (
+              <div className="bot-control-toolbar-save">
+                <div className="bot-control-save-state">
+                  <span className={`bot-control-save-dot ${saving ? "is-saving" : ""}`} />
+                  <span>
+                    {saving
+                      ? "Se salvează setările…"
+                      : (panelRecovery || partialApplyError?.guildId === guildId)
+                        ? "Rezultatul aplicării este parțial; verifică valorile serverului."
+                        : "Ai modificări nesalvate."}
+                  </span>
+                </div>
+                <div className="mod-save-actions">
+                  {!channelsOnly && (
+                    <Button type="button" variant="secondary" size="sm" onClick={openFlowTest} className="gap-2 font-medium tracking-wide">
+                      <PlayCircle className="h-4 w-4" />
+                      Testează fluxul
+                    </Button>
+                  )}
+                  <Button onClick={() => void save()} disabled={saving || panelRecovery?.requiresManualReconciliation} size="sm" className="gap-2 font-semibold tracking-wide">
+                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                    {saving ? "Se salvează…" : "Salvează"}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
       <div className="animate-stagger-4">
         <Tabs
           value={channelsOnly || provisioningOnly ? "channels" : activeTab}
@@ -2072,27 +2161,6 @@ export function BotControlPage({
                     Intrările atribuite sunt colectate numai după activarea urmăririi.
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Select value={inviteRange} onValueChange={(value) => setInviteRange(value as InviteStatsRange)}>
-                    <SelectTrigger className="mod-select-trigger w-36"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="7">Ultimele 7 zile</SelectItem>
-                      <SelectItem value="30">Ultimele 30 zile</SelectItem>
-                      <SelectItem value="90">Ultimele 90 zile</SelectItem>
-                      <SelectItem value="all">Tot istoricul</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Button type="button" variant="outline" size="sm" disabled={inviteStatsSyncing} onClick={() => {
-                    void syncInviteStats().then(() => {
-                      toast({ title: "Invitațiile au fost sincronizate", description: "Lista și numărul curent de utilizări au fost reîmprospătate." });
-                    }).catch((syncError: any) => {
-                      toast({ variant: "destructive", title: "Sincronizarea a eșuat", description: syncError?.message ?? "Verifică permisiunea Manage Server a botului." });
-                    });
-                  }}>
-                    {inviteStatsSyncing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                    Sincronizează
-                  </Button>
-                </div>
               </div>
 
               {inviteStatsError && (
@@ -2278,27 +2346,6 @@ export function BotControlPage({
         </TabsContent>
       </Tabs>
       </div>
-
-      {hasUnsavedChanges && (
-        <div className="mod-save-bar sticky bottom-3 z-20 flex w-full items-center justify-between gap-3">
-          <div className="flex items-center gap-3 text-muted-foreground font-medium text-sm">
-            <span className={`bot-control-save-dot ${saving ? "is-saving" : ""}`} />
-            <span>{saving ? "Se salvează setările…" : (panelRecovery || partialApplyError?.guildId === guildId) ? "Rezultatul aplicării este parțial; verifică valorile serverului." : "Ai modificări nesalvate."}</span>
-          </div>
-          <div className="mod-save-actions ml-auto flex flex-wrap justify-end gap-2">
-            {!channelsOnly && (
-              <Button type="button" variant="secondary" onClick={openFlowTest} className="gap-2 font-medium tracking-wide">
-                <PlayCircle className="h-4 w-4" />
-                Testează fluxul
-              </Button>
-            )}
-            <Button onClick={() => void save()} disabled={saving || panelRecovery?.requiresManualReconciliation} className="gap-2 px-8 font-semibold tracking-wide shadow-lg shadow-primary/20">
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              {saving ? "Se salvează…" : channelsOnly ? "Salvează setările canalelor" : "Salvează controlul botului"}
-            </Button>
-          </div>
-        </div>
-      )}
 
       <Dialog open={clearCategoryDialogOpen} onOpenChange={setClearCategoryDialogOpen}>
         <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
