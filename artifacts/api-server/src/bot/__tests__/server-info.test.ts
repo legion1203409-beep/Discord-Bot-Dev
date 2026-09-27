@@ -1,23 +1,18 @@
-import { ActivityType, ButtonStyle } from "discord.js";
+import { ButtonStyle } from "discord.js";
 import { describe, expect, it } from "vitest";
 import {
-  buildServerActivityPresence,
+  buildServerPresence,
   buildServerInfoComponents,
   buildServerInfoEmbed,
   normalizeDiscordInviteUrl,
-  SERVER_ACTIVITY_NAME,
 } from "../server-info";
 
-describe("server activity presence", () => {
-  it("uses the Regatul Cenușii game activity without unsupported rich-presence fields", () => {
-    const presence = buildServerActivityPresence();
-
-    expect(presence.status).toBe("online");
-    expect(presence.activities).toEqual([
-      { name: "Regatul Cenușii", type: ActivityType.Playing },
-    ]);
-    expect(presence.activities?.[0]).not.toHaveProperty("timestamps");
-    expect(SERVER_ACTIVITY_NAME).toBe("Regatul Cenușii");
+describe("server presence", () => {
+  it("keeps the bot online without a visible activity", () => {
+    expect(buildServerPresence()).toEqual({
+      status: "online",
+      activities: [],
+    });
   });
 });
 

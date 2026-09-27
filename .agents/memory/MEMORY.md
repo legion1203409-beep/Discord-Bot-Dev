@@ -34,7 +34,7 @@
 - [Boss fights by rarity](boss-by-rarity.md) — boss check must use stored monsterRarity==="boss" (ambush bosses exist at any level); stat fns need the rarity arg or HP desyncs.
 - [Ephemeral anti-spam pattern](ephemeral-anti-spam.md) — repeated feedback must use ephemeralNote/sendOrEditEphemeral (60s edit window + delete-old); public announcements replace their predecessor under a per-key lock.
 - [DB pool & interaction latency](db-pool-interaction-latency.md) — default pg Pool (max 10) congests the event loop under concurrent clicks, delaying even deferUpdate past 3s → 10062; size pool + timeouts.
-- [Oracle social mood per guild](oracle-social-mood.md) — proactive check-ins and reply sentiment must stay isolated per guild; bot presence reflects the latest derived mood.
+- [Oracle social mood per guild](oracle-social-mood.md) — mood stays guild-scoped; keep global Discord presence online without game or mood activity unless requested.
 - [Chest channel ownership](chest-channel-ownership.md) — the main gameplay channel is only for chests; Oracle proactive and council posts must not fall back to it.
 - [Strict Vitest module mocks](strict-vitest-mocks.md) — new optional scheduler exports can break old partial mocks; use local compatibility code or lazy optional lookup.
 - [Discord class images](discord-class-images.md) — map stable internal class keys to sanitized API asset filenames; never use uploaded timestamped filenames directly.

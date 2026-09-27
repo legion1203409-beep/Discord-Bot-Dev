@@ -39,7 +39,7 @@ import {
   isOracleEnabled,
 } from "./oracle";
 import {
-  buildServerActivityPresence,
+  buildServerPresence,
   buildServerInfoComponents,
   buildServerInfoEmbed,
 } from "./server-info";
@@ -365,11 +365,11 @@ let botReadyAt: Date | null = null;
 let botSessionStartedAt: Date | null = null;
 let shardStatus: string = "disconnected";
 
-function applyServerActivity(client: Client): void {
+function applyServerPresence(client: Client): void {
   try {
-    client.user?.setPresence(buildServerActivityPresence());
+    client.user?.setPresence(buildServerPresence());
   } catch (err) {
-    logger.warn({ err }, "Could not set the Regatul Cenușii activity");
+    logger.warn({ err }, "Could not clear the bot activity");
   }
 }
 
@@ -4637,7 +4637,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
     const readyAt = new Date();
     botReadyAt = readyAt;
     botSessionStartedAt ??= readyAt;
-    applyServerActivity(client);
+    applyServerPresence(client);
     shardStatus = "ready";
 
     try {
@@ -4985,7 +4985,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
     clearDisconnectAlert("ShardResume");
     shardStatus = "ready";
     botReadyAt = new Date();
-    applyServerActivity(client);
+    applyServerPresence(client);
     logger.info({ shardId, replayedEvents }, "Discord shard resumed");
   });
 
@@ -4994,7 +4994,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
     shardStatus = "ready";
     botReadyAt = new Date();
     botSessionStartedAt ??= botReadyAt;
-    applyServerActivity(client);
+    applyServerPresence(client);
     // Re-setup trader for all known guilds on reconnect
     for (const [guildId] of client.guilds.cache) {
       void setupTrader(client, guildId);

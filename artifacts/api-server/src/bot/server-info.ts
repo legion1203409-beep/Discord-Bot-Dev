@@ -1,18 +1,15 @@
 import {
   ActionRowBuilder,
-  ActivityType,
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
   type PresenceData,
 } from "discord.js";
 
-export const SERVER_ACTIVITY_NAME = "Regatul Cenușii";
-
-export function buildServerActivityPresence(): PresenceData {
+export function buildServerPresence(): PresenceData {
   return {
     status: "online",
-    activities: [{ name: SERVER_ACTIVITY_NAME, type: ActivityType.Playing }],
+    activities: [],
   };
 }
 
