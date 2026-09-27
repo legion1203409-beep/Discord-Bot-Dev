@@ -779,6 +779,10 @@ export function BotControlPage({ channelsOnly = false }: { channelsOnly?: boolea
 
   const categories = metadata?.channels.filter((channel) => isCategory(channel.type)) ?? [];
   const textChannels = metadata?.channels.filter((channel) => isTextChannel(channel.type)) ?? [];
+  const dailyStatsChestChannelId = draft.channels.main ?? "";
+  const dailyStatsTargetChannelId = draft.dailyStats.channelId === dailyStatsChestChannelId
+    ? ""
+    : draft.dailyStats.channelId;
   const memberMessageChannelId = draft?.gameplayConfig.memberMessages.channelId ?? "";
   const selectedMemberMessageChannel = textChannels.some((channel) => channel.id === memberMessageChannelId)
     ? memberMessageChannelId
@@ -2064,20 +2068,20 @@ export function BotControlPage({ channelsOnly = false }: { channelsOnly?: boolea
                 <label className="block space-y-1 text-sm">
                   <span className="text-xs font-medium">Canal raport zilnic</span>
                   <Select
-                    value={draft.dailyStats.channelId || "__main_channel__"}
-                    onValueChange={(value) => setDailyStats("channelId", value === "__main_channel__" ? "" : value)}
+                    value={dailyStatsTargetChannelId || "__none__"}
+                    onValueChange={(value) => setDailyStats("channelId", value === "__none__" ? "" : value)}
                   >
                     <SelectTrigger aria-label="Canal raport zilnic">
-                      <SelectValue placeholder="Canalul principal" />
+                      <SelectValue placeholder="Alege un canal dedicat" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="__main_channel__">Folosește canalul principal</SelectItem>
-                      {textChannels.map((channel) => (
+                      <SelectItem value="__none__">Nu publica automat</SelectItem>
+                      {textChannels.filter((channel) => channel.id !== dailyStatsChestChannelId).map((channel) => (
                         <SelectItem key={channel.id} value={channel.id}>#{channel.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  <span className="block text-xs text-muted-foreground">Alege un canal separat sau păstrează canalul principal configurat la „Canale”.</span>
+                  <span className="block text-xs text-muted-foreground">Alege un canal dedicat; canalul „Cufere” este rezervat jocului. Fără o alegere, raportul nu se publică automat.</span>
                 </label>
                 <ImageField label="Imaginea raportului zilnic" value={draft.dailyStats.imageUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setDailyStats("imageUrl", value)} />
                 <ImageField label="Thumbnail-ul raportului zilnic" value={draft.dailyStats.thumbnailUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setDailyStats("thumbnailUrl", value)} />

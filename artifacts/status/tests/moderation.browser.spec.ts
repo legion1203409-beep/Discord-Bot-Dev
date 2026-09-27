@@ -430,6 +430,8 @@ test.describe("authenticated moderation console", () => {
     await inviteLogChannel.click();
     await page.getByRole("option", { name: "#audit" }).click();
     await page.getByRole("combobox", { name: "Canal raport zilnic" }).click();
+    await expect(page.getByRole("option", { name: "Nu publica automat" })).toBeVisible();
+    await expect(page.getByRole("option", { name: "Folosește canalul principal" })).toHaveCount(0);
     await page.getByRole("option", { name: "#audit" }).click();
     const configSave = page.waitForResponse((response) =>
       response.url().includes("/api/moderation/guilds/111111111/bot-control")

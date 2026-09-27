@@ -21,24 +21,31 @@ describe("daily statistics report destination", () => {
   });
 
   it("uses the explicitly configured report channel", () => {
-    vi.mocked(getChannel).mockReturnValue("main-channel");
+    vi.mocked(getChannel).mockReturnValue("chest-channel");
 
     expect(resolveDailyStatsChannelId("stats-channel", "guild-1")).toBe("stats-channel");
-    expect(getChannel).not.toHaveBeenCalled();
-  });
-
-  it("falls back to the guild's main channel when no report channel is configured", () => {
-    vi.mocked(getChannel).mockReturnValue("main-channel");
-
-    expect(resolveDailyStatsChannelId("", "guild-1")).toBe("main-channel");
     expect(getChannel).toHaveBeenCalledWith("main", "guild-1");
   });
 
-  it("returns no destination when neither a report nor main channel is configured", () => {
+  it("does not fall back to the chest channel when no report channel is configured", () => {
+    vi.mocked(getChannel).mockReturnValue("main-channel");
+
+    expect(resolveDailyStatsChannelId("", "guild-1")).toBeNull();
+    expect(getChannel).not.toHaveBeenCalled();
+  });
+
+  it("refuses to publish a report explicitly configured for the chest channel", () => {
+    vi.mocked(getChannel).mockReturnValue("chest-channel");
+
+    expect(resolveDailyStatsChannelId("chest-channel", "guild-1")).toBeNull();
+    expect(getChannel).toHaveBeenCalledWith("main", "guild-1");
+  });
+
+  it("returns no destination when no report channel is configured", () => {
     vi.mocked(getChannel).mockReturnValue(null);
 
     expect(resolveDailyStatsChannelId("", "guild-2")).toBeNull();
-    expect(getChannel).toHaveBeenCalledWith("main", "guild-2");
+    expect(getChannel).not.toHaveBeenCalled();
   });
 });
 
@@ -185,7 +192,7 @@ describe("daily report collection window", () => {
         : [],
     }) as never);
     const config = vi.mocked(statsConfig.loadDailyStatsEmbedConfig);
-    config.mockResolvedValue(DEFAULT_DAILY_STATS_EMBED_CONFIG);
+    config.mockResolvedValue({ ...DEFAULT_DAILY_STATS_EMBED_CONFIG, channelId: "stats-channel" });
     const edit = vi.fn().mockResolvedValue(undefined);
     const fetchMessage = vi.fn().mockResolvedValue({
       author: { id: "bot-1" },
@@ -223,7 +230,7 @@ describe("daily report collection window", () => {
         : [],
     }) as never);
     const config = vi.mocked(statsConfig.loadDailyStatsEmbedConfig);
-    config.mockResolvedValue(DEFAULT_DAILY_STATS_EMBED_CONFIG);
+    config.mockResolvedValue({ ...DEFAULT_DAILY_STATS_EMBED_CONFIG, channelId: "stats-channel" });
     const edit = vi.fn().mockResolvedValue(undefined);
     const channel = Object.create(TextChannel.prototype) as TextChannel;
     Object.defineProperties(channel, {

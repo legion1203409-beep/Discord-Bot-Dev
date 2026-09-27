@@ -314,7 +314,10 @@ function renderDailyStatsText(
 }
 
 export function resolveDailyStatsChannelId(configuredChannelId: string, guildId: string): string | null {
-  return configuredChannelId || getChannel("main", guildId);
+  const reportChannelId = configuredChannelId.trim();
+  if (!reportChannelId) return null;
+  const chestChannelId = getChannel("main", guildId);
+  return reportChannelId === chestChannelId ? null : reportChannelId;
 }
 
 export function buildDailyStatsEmbed(
@@ -526,11 +529,11 @@ export async function publishDailyStatsReport(client: Client, guildId: string, d
   try {
     channel = await client.channels.fetch(channelId);
   } catch (error) {
-    warnDailyStatsReportSkipped(guildId, day, "main_channel_fetch_failed", { channelId, error });
+    warnDailyStatsReportSkipped(guildId, day, "daily_stats_channel_fetch_failed", { channelId, error });
     return false;
   }
   if (!(channel instanceof TextChannel) || channel.guildId !== guildId) {
-    warnDailyStatsReportSkipped(guildId, day, "main_channel_not_text", {
+    warnDailyStatsReportSkipped(guildId, day, "daily_stats_channel_not_text", {
       channelId,
       channelType: channel?.type ?? null,
     });
