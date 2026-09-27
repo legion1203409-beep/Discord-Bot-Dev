@@ -281,7 +281,13 @@ function renderAnnouncementTemplate(
   return template.replace(/\{([a-z0-9_]+)\}/gi, (match, key: string) => values[key] ?? match);
 }
 
-export function BotControlPage({ channelsOnly = false }: { channelsOnly?: boolean }) {
+export function BotControlPage({
+  channelsOnly = false,
+  provisioningOnly = false,
+}: {
+  channelsOnly?: boolean;
+  provisioningOnly?: boolean;
+}) {
   const [location, setLocation] = useLocation();
   const { guildId } = useActiveGuild();
   const {
@@ -355,7 +361,7 @@ export function BotControlPage({ channelsOnly = false }: { channelsOnly?: boolea
   }, [data, guildId, panelRecovery]);
 
   useEffect(() => {
-    if (!channelsOnly && requestedTab === "channels") {
+    if (!channelsOnly && !provisioningOnly && requestedTab === "channels") {
       setLocation("/canale");
       return;
     }
@@ -366,7 +372,7 @@ export function BotControlPage({ channelsOnly = false }: { channelsOnly?: boolea
     if (requestedTab && BOT_CONTROL_TABS.includes(requestedTab as BotControlTab)) {
       setActiveTab(requestedTab as BotControlTab);
     }
-  }, [channelsOnly, requestedTab, setLocation]);
+  }, [channelsOnly, provisioningOnly, requestedTab, setLocation]);
 
   const currentDraft = initializedGuild.current === guildId && data ? draft : null;
   const hasUnsavedChanges = Boolean(
@@ -763,7 +769,7 @@ export function BotControlPage({ channelsOnly = false }: { channelsOnly?: boolea
       toast({
         variant: "destructive",
         title: "Alege cel puțin o categorie",
-        description: "Bifează în partea dreaptă ce vrei să creezi.",
+        description: "Bifează categoriile pe care vrei să le creezi.",
       });
       return;
     }
@@ -886,17 +892,21 @@ export function BotControlPage({ channelsOnly = false }: { channelsOnly?: boolea
   };
 
   return (
-    <div className={`bot-control-page max-w-5xl space-y-6 animate-stagger-1 ${hasUnsavedChanges ? "pb-28" : ""}`}>
+    <div className={`bot-control-page max-w-5xl space-y-6 animate-stagger-1 ${channelsOnly ? "channels-only-page" : ""} ${provisioningOnly ? "provisioning-only-page" : ""} ${hasUnsavedChanges ? "pb-28" : ""}`}>
       <header className="bot-control-hero animate-stagger-2">
         <div>
           <div className="bot-control-brand-row">
             <span className="bot-control-brand-mark"><Bot className="h-4 w-4" /></span>
             <p className="mod-eyebrow">CONTROL OWNER-ONLY</p>
           </div>
-          <h1 className="mod-heading text-4xl">{channelsOnly ? "Canale Discord" : "Control bot"}</h1>
+          <h1 className="mod-heading text-4xl">
+            {provisioningOnly ? "Provisioning" : channelsOnly ? "Canale Discord" : "Control bot"}
+          </h1>
           <p>
-            {channelsOnly
-              ? "Configurează destinațiile folosite de bot și pregătește doar categoriile Discord pe care le selectezi."
+            {provisioningOnly
+              ? "Alege categoriile Discord, configurează accesul și sincronizează doar ce ai nevoie."
+              : channelsOnly
+                ? "Configurează destinațiile folosite de bot. Lista completă este afișată aici."
               : "Configurează roluri, tichete, mesaje și statistici pentru botul Discord."}
           </p>
         </div>
@@ -970,9 +980,9 @@ export function BotControlPage({ channelsOnly = false }: { channelsOnly?: boolea
       )}
       <div className="animate-stagger-4">
         <Tabs
-          value={channelsOnly ? "channels" : activeTab}
+          value={channelsOnly || provisioningOnly ? "channels" : activeTab}
           onValueChange={(value) => {
-            if (channelsOnly) return;
+            if (channelsOnly || provisioningOnly) return;
             if (!BOT_CONTROL_TABS.includes(value as BotControlTab)) return;
             const nextTab = value as BotControlTab;
             setActiveTab(nextTab);
@@ -980,7 +990,7 @@ export function BotControlPage({ channelsOnly = false }: { channelsOnly?: boolea
           }}
           className="bot-control-tabs space-y-5"
         >
-          {!channelsOnly && (
+          {!channelsOnly && !provisioningOnly && (
             <TabsList className="bot-control-tab-list grid h-auto w-full grid-cols-2 gap-1 rounded-xl border border-border/80 p-1 sm:grid-cols-4 bg-background/50 shadow-inner">
               <TabsTrigger value="roles" data-testid="tab-roles" className="mod-tab-trigger gap-2 py-2.5"><Users className="h-4 w-4" /> Roluri</TabsTrigger>
               <TabsTrigger value="tickets" data-testid="tab-tickets" className="mod-tab-trigger gap-2 py-2.5"><Ticket className="h-4 w-4" /> Tichete</TabsTrigger>
@@ -1050,7 +1060,7 @@ export function BotControlPage({ channelsOnly = false }: { channelsOnly?: boolea
           </TabsContent>
 
          <TabsContent value="channels" className="mod-tab-content mt-0">
-<div className="content-grid">
+ <div className={`content-grid ${channelsOnly ? "content-grid--full" : ""}`}>
             <div className="left-stack">
               <section className="surface channel-list">
                 <div className="section-head">
@@ -1142,12 +1152,12 @@ export function BotControlPage({ channelsOnly = false }: { channelsOnly?: boolea
                 <div className="permission-summary">
                   <span>Manage Channels {metadata?.botCapabilities?.canManageChannels ? <em>✓ Disponibilă</em> : <b>⚠ Necesară</b>}</span>
                   <span>Suprascrieri de acces {metadata?.botCapabilities?.canManageChannels ? <em>✓ Se aplică automat</em> : <b>⚠ Necesită Manage Channels</b>}</span>
-                  <span>Mesaje și istoric <em>Configurabile pe categorie</em></span>
+                   <span>Mesaje și istoric <em>Configurabile în Provisioning</em></span>
                 </div>
                 <p className="help">
                   <CircleHelp size={13} />
                   <span>
-                    <strong>Manage Permissions</strong> nu este o permisiune Discord separată. Botul folosește <strong>Manage Channels</strong> pentru a crea canalele și a aplica accesul; <strong>Mesaje și istoric</strong> se aleg mai jos pentru fiecare categorie și rol.
+                     <strong>Manage Permissions</strong> nu este o permisiune Discord separată. Botul folosește <strong>Manage Channels</strong> pentru a crea canalele și a aplica accesul; <strong>Mesaje și istoric</strong> se configurează în pagina Provisioning pentru fiecare categorie și rol.
                   </span>
                 </p>
               </section>

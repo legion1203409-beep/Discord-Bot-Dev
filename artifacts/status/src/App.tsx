@@ -120,6 +120,7 @@ function ModerationApp() {
           <Route path="/config/escaladare" component={() => <CategorySettingsPage section="escalation" />} />
           <Route path="/config/embeduri" component={() => <CategorySettingsPage section="embeds" />} />
           <Route path="/canale" component={() => <BotControlPage channelsOnly />} />
+          <Route path="/provisioning" component={() => <BotControlPage provisioningOnly />} />
           <Route path="/bot" component={() => <BotControlPage />} />
           <Route path="/verificare" component={VerificationAdminPage} />
           <Route component={() => <div className="text-muted-foreground p-8 text-center border border-dashed border-border rounded-xl">Această secțiune este în lucru.</div>} />
