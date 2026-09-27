@@ -346,7 +346,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
           </div>
 
           <div>
-            <div className="mod-tools-heading">
+            <div className="mb-1 px-2.5 text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
               Instrumente
             </div>
             <nav aria-label="Categorii de moderare" className="mod-sidebar-nav space-y-1">

@@ -13,19 +13,10 @@ import { BotControlPartialApplyError, useActiveGuild, useBotControl, useInviteSt
 import { clearBotControlDestinations, DESTINATION_CLEAR_CATEGORIES, type DestinationClearScope } from "../../lib/bot-control-destinations";
 import { rebaseDraftChanges } from "../../lib/utils";
 import { useToast } from "../../hooks/use-toast";
-import { Link, useLocation, useSearch } from "wouter";
+import { useLocation, useSearch } from "wouter";
 
 type BotControlTab = "channels" | "roles" | "tickets" | "messages" | "statistics";
 const BOT_CONTROL_TABS: BotControlTab[] = ["channels", "roles", "tickets", "messages", "statistics"];
-const BOT_CONTROL_QUICK_LINKS = [
-  { href: "/bot?tab=roles", label: "Roluri", icon: Users, tab: "roles" },
-  { href: "/canale", label: "Canale", icon: Radio },
-  { href: "/bot?tab=tickets", label: "Tichete", icon: Ticket, tab: "tickets" },
-  { href: "/verificare", label: "Verificare", icon: ShieldCheck },
-  { href: "/bot?tab=messages", label: "Mesaje", icon: Megaphone, tab: "messages" },
-  { href: "/bot?tab=statistics", label: "Statistici", icon: Activity, tab: "statistics" },
-  { href: "/provisioning", label: "Provisioning", icon: Wrench },
-] as const;
 
 const CHANNELS = [
   ["main", "Cufere"],
@@ -987,33 +978,8 @@ export function BotControlPage({
           )}
         </div>
       )}
-      <div className="bot-control-toolbar">
-        <div className="bot-control-toolbar-main">
-          <nav className="bot-control-quick-nav" aria-label="Acces rapid la setările botului">
-            {BOT_CONTROL_QUICK_LINKS.map((item) => {
-              const active = "tab" in item
-                ? location.split("?")[0] === "/bot" && activeTab === item.tab
-                : location.split("?")[0] === item.href;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className="bot-control-toolbar-link"
-                  data-active={active}
-                  aria-current={active ? "page" : undefined}
-                >
-                  <item.icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-                  <span>{item.label}</span>
-                </Link>
-              );
-            })}
-          </nav>
-          <div className="bot-control-toolbar-status" data-state={draft.discordLive === true ? "online" : "offline"}>
-            <span className="bot-control-status-dot" />
-            <span>{draft.discordLive === true ? "Bot conectat" : "Bot deconectat"}</span>
-          </div>
-        </div>
-        {(hasUnsavedChanges || (!channelsOnly && !provisioningOnly && activeTab === "statistics")) && (
+      {(hasUnsavedChanges || (!channelsOnly && !provisioningOnly && activeTab === "statistics")) && (
+        <div className="bot-control-toolbar">
           <div className="bot-control-toolbar-actions">
             {!channelsOnly && !provisioningOnly && activeTab === "statistics" && (
               <div className="bot-control-toolbar-stat-actions">
@@ -1065,8 +1031,8 @@ export function BotControlPage({
               </div>
             )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
       <div className="animate-stagger-4">
         <Tabs
           value={channelsOnly || provisioningOnly ? "channels" : activeTab}
