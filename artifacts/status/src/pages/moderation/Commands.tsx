@@ -7,9 +7,14 @@ import { useManualAction, useActiveGuild, useModerationMetadata } from "../../ho
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "../../components/ui/form";
 import { Input } from "../../components/ui/input";
 import { Button } from "../../components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { useToast } from "../../hooks/use-toast";
 import { Textarea } from "../../components/ui/textarea";
+import {
+  getManualCommandDefinition,
+  MANUAL_COMMAND_GROUPS_WITH_COMMANDS,
+  MANUAL_COMMAND_KEYS,
+} from "../../lib/manual-command-catalog";
 
 const optionalText = (max: number) => z.preprocess(
   (value) => typeof value === "string" && !value.trim() ? undefined : value,
@@ -21,7 +26,7 @@ const optionalNumber = z.preprocess(
 );
 
 const actionSchema = z.object({
-  type: z.enum(["warn", "mute", "kick", "ban", "unmute", "purge", "slowmode", "lock", "unlock", "nick", "role"]),
+  type: z.enum(MANUAL_COMMAND_KEYS),
   targetId: optionalText(25),
   reason: optionalText(500),
   durationMinutes: optionalNumber.pipe(z.number().int().min(1).max(40320).optional()),
@@ -30,26 +35,39 @@ const actionSchema = z.object({
   nickname: optionalText(32),
   amount: optionalNumber.pipe(z.number().int().min(0).max(21600).optional()),
 }).superRefine((value, ctx) => {
-  if (["warn", "mute", "kick", "ban", "unmute", "nick", "role"].includes(value.type) && !value.targetId) {
+  const command = getManualCommandDefinition(value.type);
+  if (command.target === "user" && !value.targetId) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: "ID-ul țintei este necesar", path: ["targetId"] });
   }
-  if (value.type === "mute" && !value.durationMinutes) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Durata este necesară", path: ["durationMinutes"] });
-  }
-  if (["purge", "lock", "unlock", "slowmode"].includes(value.type) && !value.channelId) {
+  if (command.target === "channel" && !value.channelId) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: "ID-ul canalului este necesar", path: ["channelId"] });
   }
-  if (value.type === "role" && !value.roleId) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "ID-ul rolului este necesar", path: ["roleId"] });
-  }
-  if (value.type === "nick" && !value.nickname) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Numele nou este necesar", path: ["nickname"] });
-  }
-  if (value.type === "purge" && (value.amount === undefined || value.amount < 1 || value.amount > 100)) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Numărul de mesaje este necesar", path: ["amount"] });
-  }
-  if (value.type === "slowmode" && value.amount === undefined) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Numărul de secunde este necesar (0 oprește slowmode)", path: ["amount"] });
+  switch (command.extraField) {
+    case "durationMinutes":
+      if (!value.durationMinutes) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Durata este necesară", path: ["durationMinutes"] });
+      }
+      break;
+    case "roleId":
+      if (!value.roleId) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "ID-ul rolului este necesar", path: ["roleId"] });
+      }
+      break;
+    case "nickname":
+      if (!value.nickname) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Numele nou este necesar", path: ["nickname"] });
+      }
+      break;
+    case "purgeAmount":
+      if (value.amount === undefined || value.amount < 1 || value.amount > 100) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Numărul de mesaje este necesar", path: ["amount"] });
+      }
+      break;
+    case "slowmodeAmount":
+      if (value.amount === undefined) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Numărul de secunde este necesar (0 oprește slowmode)", path: ["amount"] });
+      }
+      break;
   }
 });
 
@@ -111,6 +129,7 @@ export function CommandsPage() {
   });
 
   const actionType = form.watch("type");
+  const selectedCommand = getManualCommandDefinition(actionType);
 
   async function submitAction(values: ActionValues, isRetry = false) {
     if (!confirm(`Ești sigur că vrei să execuți acțiunea ${values.type.toUpperCase()}? Această operațiune va afecta direct serverul de Discord.`)) {
@@ -194,17 +213,14 @@ export function CommandsPage() {
                         <SelectTrigger className="bg-background"><SelectValue placeholder="Alege comanda" /></SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="warn">Avertisment (Warn)</SelectItem>
-                        <SelectItem value="mute">Mute</SelectItem>
-                        <SelectItem value="unmute">Unmute</SelectItem>
-                        <SelectItem value="kick">Kick</SelectItem>
-                        <SelectItem value="ban">Ban</SelectItem>
-                        <SelectItem value="purge">Șterge Mesaje (Purge)</SelectItem>
-                        <SelectItem value="lock">Închide Canal (Lock)</SelectItem>
-                        <SelectItem value="unlock">Deschide Canal (Unlock)</SelectItem>
-                        <SelectItem value="nick">Schimbă Nickname</SelectItem>
-                        <SelectItem value="role">Acordă Rol</SelectItem>
-                        <SelectItem value="slowmode">Setează Slowmode</SelectItem>
+                        {MANUAL_COMMAND_GROUPS_WITH_COMMANDS.map((group) => (
+                          <SelectGroup key={group.key}>
+                            <SelectLabel>{group.label}</SelectLabel>
+                            {group.commands.map((command) => (
+                              <SelectItem key={command.key} value={command.key}>{command.label}</SelectItem>
+                            ))}
+                          </SelectGroup>
+                        ))}
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -212,7 +228,7 @@ export function CommandsPage() {
                 )}
               />
 
-              {["warn", "mute", "kick", "ban", "unmute", "nick", "role"].includes(actionType) && (
+              {selectedCommand.target === "user" && (
                 <FormField
                   control={form.control}
                   name="targetId"
@@ -228,7 +244,7 @@ export function CommandsPage() {
                 />
               )}
 
-              {["purge", "lock", "unlock", "slowmode"].includes(actionType) && (
+              {selectedCommand.target === "channel" && (
                 <FormField
                   control={form.control}
                   name="channelId"
@@ -246,7 +262,7 @@ export function CommandsPage() {
                 />
               )}
 
-              {actionType === "mute" && (
+              {selectedCommand.extraField === "durationMinutes" && (
                 <FormField
                   control={form.control}
                   name="durationMinutes"
@@ -263,7 +279,7 @@ export function CommandsPage() {
               )}
 
 
-              {actionType === "nick" && (
+              {selectedCommand.extraField === "nickname" && (
                 <FormField
                   control={form.control}
                   name="nickname"
@@ -279,7 +295,7 @@ export function CommandsPage() {
                 />
               )}
 
-              {actionType === "role" && (
+              {selectedCommand.extraField === "roleId" && (
                 <FormField
                   control={form.control}
                   name="roleId"
@@ -297,7 +313,7 @@ export function CommandsPage() {
                 />
               )}
 
-              {actionType === "slowmode" && (
+              {selectedCommand.extraField === "slowmodeAmount" && (
                 <FormField
                   control={form.control}
                   name="amount"
@@ -313,7 +329,7 @@ export function CommandsPage() {
                 />
               )}
 
-              {actionType === "purge" && (
+              {selectedCommand.extraField === "purgeAmount" && (
                 <FormField
                   control={form.control}
                   name="amount"

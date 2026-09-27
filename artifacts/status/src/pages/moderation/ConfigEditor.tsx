@@ -9,6 +9,7 @@ import { Textarea } from "../../components/ui/textarea";
 import { activityLogDraftError } from "../../lib/activity-log-validation";
 import { DELETE_SPAM, EDIT_SPAM, EMOJI_LIMIT, groupThresholdFields, MENTION_LIMIT, MESSAGE_SPAM, type Threshold } from "../../lib/anti-spam-validation";
 import { embedUrlDraftError, isPublicGifUrl, isPublicHttpsUrl } from "../../lib/embed-url-validation";
+import { MANUAL_COMMAND_GROUPS_WITH_COMMANDS } from "../../lib/manual-command-catalog";
 
 type Config = Record<string, any>;
 type Path = Array<string | number>;
@@ -559,11 +560,24 @@ export function ConfigEditor({
       <Section value="tools" title="7. Unelte staff" description="Acordă separat rolurile care pot rula fiecare comandă de moderare.">
         <Toggle label="Activează uneltele manuale" checked={value.manualTools.enabled} onChange={(next) => set(["manualTools", "enabled"], next)} />
         <Toggle label="Jurnalizează acțiunile staff-ului" checked={value.manualTools.logActions} onChange={(next) => set(["manualTools", "logActions"], next)} />
-        <div className="grid gap-4 md:grid-cols-2">
-          {[
-            ["warn", "Avertisment"], ["mute", "Restricționare"], ["kick", "Eliminare"], ["ban", "Blocare"], ["unmute", "Ridicare restricție"],
-            ["purge", "Curățare mesaje"], ["slowmode", "Slowmode"], ["lock", "Blocare canal"], ["unlock", "Deblocare canal"], ["nick", "Poreclă"], ["role", "Rol"],
-          ].map(([command, label]) => <ListField key={command} ids label={`Roluri pentru /${command}`} help={`${label}: un ID de rol pe rând (max. 100).`} values={value.manualTools.commandGrants[command]} onChange={(next) => set(["manualTools", "commandGrants", command], next)} />)}
+        <div className="grid gap-6 lg:grid-cols-2">
+          {MANUAL_COMMAND_GROUPS_WITH_COMMANDS.map((group) => (
+            <section key={group.key} className="space-y-3">
+              <h4 className="text-sm font-semibold text-foreground">{group.label}</h4>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {group.commands.map((command) => (
+                  <ListField
+                    key={command.key}
+                    ids
+                    label={`Roluri pentru /${command.key}`}
+                    help={`${command.label}: un ID de rol pe rând (max. 100).`}
+                    values={value.manualTools.commandGrants[command.key]}
+                    onChange={(next) => set(["manualTools", "commandGrants", command.key], next)}
+                  />
+                ))}
+              </div>
+            </section>
+          ))}
         </div>
       </Section>
 
