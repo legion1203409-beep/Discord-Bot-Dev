@@ -1157,11 +1157,24 @@ export function BotControlPage({ channelsOnly = false }: { channelsOnly?: boolea
               <div className="panel-heading">
                 <div>
                   <span className="eyebrow">PROVISIONING</span>
-                  <h2>Ce se creează</h2>
+                  <h2>Alege ce pregătim</h2>
                 </div>
-                <span className="count-pill">{selectedProvisioningCategories.length}/{PROVISIONING_CATEGORIES.length}</span>
+                <span className="count-pill">
+                  <strong>{selectedProvisioningCategories.length}</strong>
+                  <span>/{PROVISIONING_CATEGORIES.length} selectate</span>
+                </span>
               </div>
-              <p>Selectează doar categoriile pe care botul are voie să le pregătească. Celelalte nu sunt atinse.</p>
+              <p>Doar categoriile selectate vor fi create. Celelalte setări rămân neschimbate.</p>
+              <div
+                className="provision-progress"
+                role="progressbar"
+                aria-label="Categorii selectate"
+                aria-valuemin={0}
+                aria-valuemax={PROVISIONING_CATEGORIES.length}
+                aria-valuenow={selectedProvisioningCategories.length}
+              >
+                <span style={{ width: `${(selectedProvisioningCategories.length / PROVISIONING_CATEGORIES.length) * 100}%` }} />
+              </div>
               <div className="category-list">
                 {PROVISIONING_CATEGORIES.map((category) => {
                   const isSelected = selectedProvisioningCategories.includes(category.key);
@@ -1173,6 +1186,7 @@ export function BotControlPage({ channelsOnly = false }: { channelsOnly?: boolea
                         <input
                           type="checkbox"
                           checked={isSelected}
+                          aria-label={`Selectează categoria ${category.label}`}
                           onChange={(e) => {
                             setSelectedProvisioningCategories(e.target.checked
                               ? [...selectedProvisioningCategories, category.key]
@@ -1180,14 +1194,31 @@ export function BotControlPage({ channelsOnly = false }: { channelsOnly?: boolea
                             if (e.target.checked) setExpandedCategory(category.key);
                           }}
                         />
-                        <button type="button" onClick={() => setExpandedCategory(open ? null : category.key)}>
-                          <Folder size={13} /> <strong>{category.label}</strong>
-                          <small>{category.items.length} destinații · {category.description}</small>
+                        <button
+                          type="button"
+                          className="category-main-button"
+                          aria-expanded={open && isSelected}
+                          onClick={() => setExpandedCategory(open ? null : category.key)}
+                        >
+                          <span className="category-icon"><Folder size={16} aria-hidden="true" /></span>
+                          <span className="category-copy">
+                            <strong>{category.label}</strong>
+                            <span className="category-meta">{category.items.length} destinații</span>
+                            <small>{category.description}</small>
+                          </span>
                         </button>
-                        <ChevronDown size={13} className={open ? 'rotate' : ''} />
+                        <button
+                          type="button"
+                          className={`category-expand ${open && isSelected ? "is-open" : ""}`}
+                          aria-label={`${open && isSelected ? "Restrânge" : "Extinde"} categoria ${category.label}`}
+                          aria-expanded={open && isSelected}
+                          onClick={() => setExpandedCategory(open ? null : category.key)}
+                        >
+                          <ChevronDown size={15} aria-hidden="true" />
+                        </button>
                       </div>
                       {open && isSelected && (
-                        <div className="category-details">
+                        <div className="category-details" id={`provision-category-${category.key}`}>
                           <div className="item-tags">
                             {category.items.map((item) => <span key={item}>{item}</span>)}
                           </div>

@@ -335,14 +335,17 @@ export function VerificationAdminPage() {
               </p>
             </div>
           </div>
-          <label className="flex items-center gap-2 text-sm font-medium cursor-pointer bg-secondary/40 px-3 py-2 rounded-lg border border-border/60 hover:bg-secondary transition-colors">
+          <label className={`verification-active-toggle ${draft.verification.enabled ? "is-enabled" : ""}`}>
             <input
               type="checkbox"
               checked={draft.verification.enabled}
+              aria-label="Activează sau dezactivează verificarea"
               onChange={(event) => setVerification("enabled", event.target.checked)}
-              className="accent-primary"
             />
-            Activ
+            <span className="verification-active-track" aria-hidden="true" />
+            <span className="verification-active-label">
+              {draft.verification.enabled ? "Activ" : "Oprit"}
+            </span>
           </label>
         </div>
 
