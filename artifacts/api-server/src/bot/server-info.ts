@@ -1,4 +1,11 @@
-import { ActivityType, EmbedBuilder, type PresenceData } from "discord.js";
+import {
+  ActionRowBuilder,
+  ActivityType,
+  ButtonBuilder,
+  ButtonStyle,
+  EmbedBuilder,
+  type PresenceData,
+} from "discord.js";
 
 export const SERVER_ACTIVITY_NAME = "Regatul Cenușii";
 
@@ -35,6 +42,20 @@ export function normalizeDiscordInviteUrl(value: string | null | undefined): str
   }
 }
 
+export function buildServerInfoComponents(
+  inviteUrl: string | null | undefined,
+): ActionRowBuilder<ButtonBuilder>[] {
+  const safeInviteUrl = normalizeDiscordInviteUrl(inviteUrl);
+  if (!safeInviteUrl) return [];
+
+  const button = new ButtonBuilder()
+    .setLabel("Intră pe server")
+    .setStyle(ButtonStyle.Link)
+    .setURL(safeInviteUrl);
+
+  return [new ActionRowBuilder<ButtonBuilder>().addComponents(button)];
+}
+
 export interface ServerInfoEmbedOptions {
   serverName: string;
   serverIconUrl: string | null;
@@ -54,7 +75,7 @@ export function buildServerInfoEmbed({
     .setTitle(`🏰 ${serverName}`)
     .setDescription(
       safeInviteUrl
-        ? `🔗 [Intră pe server](<${safeInviteUrl}>)`
+        ? "Apasă butonul de mai jos pentru a intra pe server."
         : "Linkul de invitație nu este configurat sau nu este valid.",
     );
 

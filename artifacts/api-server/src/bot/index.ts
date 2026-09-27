@@ -38,7 +38,11 @@ import {
   stopOracle,
   isOracleEnabled,
 } from "./oracle";
-import { buildServerActivityPresence, buildServerInfoEmbed } from "./server-info";
+import {
+  buildServerActivityPresence,
+  buildServerInfoComponents,
+  buildServerInfoEmbed,
+} from "./server-info";
 import { PUBLIC_DISCORD_INVITE } from "../lib/discord-invite";
 import {
   maybeReplyAsOracle,
@@ -693,13 +697,17 @@ async function handleServer(interaction: ChatInputCommandInteraction): Promise<v
   }
 
   await interaction.deferReply();
+  const inviteUrl = PUBLIC_DISCORD_INVITE || null;
   const embed = buildServerInfoEmbed({
     serverName: interaction.guild.name,
     serverIconUrl: interaction.guild.iconURL({ size: 256 }),
-    inviteUrl: PUBLIC_DISCORD_INVITE || null,
+    inviteUrl,
     sessionStartedAt: botSessionStartedAt,
   });
-  await interaction.editReply({ embeds: [embed] });
+  await interaction.editReply({
+    embeds: [embed],
+    components: buildServerInfoComponents(inviteUrl),
+  });
 }
 
 async function handleInventar(interaction: ChatInputCommandInteraction) {
