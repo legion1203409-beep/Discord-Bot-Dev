@@ -137,6 +137,89 @@ describe("guild channel provisioning", () => {
     ].includes(entry.key))).toBe(true);
   });
 
+  it("creates and reuses a dedicated daily statistics channel instead of using Cufere", async () => {
+    const channels = new Map<string, ReturnType<typeof channel>>([
+      ["cufere", channel("cufere", "statistici-zilnice", ChannelType.GuildText)],
+    ]);
+    const create = vi.fn(async ({ name, type, parent }: { name: string; type: ChannelType; parent?: string }) => {
+      const created = channel(`created-${channels.size}`, name, type);
+      created.parentId = parent ?? null;
+      channels.set(created.id, created);
+      return created;
+    });
+    const guild = {
+      id: "guild-daily-stats",
+      channels: { fetch: vi.fn(async () => channels), create },
+      roles: {
+        everyone: { id: "guild-daily-stats" },
+        cache: new Map([
+          ["guild-daily-stats", { id: "guild-daily-stats" }],
+          ["bot-role", { id: "bot-role" }],
+        ]),
+      },
+      members: { me: { roles: { highest: { id: "bot-role" } } } },
+    } as unknown as Guild;
+    const base = {
+      channelConfig: { main: "cufere" },
+      ticketConfig: structuredClone(DEFAULT_TICKET_CONFIG),
+      moderationConfig: structuredClone(defaultModerationConfig),
+      verification: structuredClone(DEFAULT_VERIFICATION_CONFIG),
+    };
+
+    const first = await provisionGuildChannels(guild, {
+      ...base,
+      categories: ["reports"],
+      dailyStats: { channelId: "cufere" },
+      permissions: {
+        reports: {
+          roleIds: ["guild-daily-stats"],
+          readMessageHistory: true,
+          sendMessages: false,
+          rolePermissions: {
+            "guild-daily-stats": { viewChannel: true, readMessageHistory: true, sendMessages: false },
+          },
+        },
+      },
+    });
+
+    expect(first.dailyStatsChannelId).toBeDefined();
+    expect(first.dailyStatsChannelId).not.toBe("cufere");
+    expect(first.created.map((entry) => entry.key)).toEqual(["category.reports", "dailyStats.channelId"]);
+    const reportChannel = channels.get(first.dailyStatsChannelId!);
+    expect(reportChannel?.name).toBe("statistici-zilnice");
+    expect(reportChannel?.parentId).toBe(first.created.find((entry) => entry.key === "category.reports")?.id);
+    expect(reportChannel?.permissionOverwrites.edit).toHaveBeenCalledWith("guild-daily-stats", {
+      ViewChannel: true,
+      ReadMessageHistory: true,
+      SendMessages: false,
+    }, expect.anything());
+    expect(reportChannel?.permissionOverwrites.edit).toHaveBeenCalledWith("bot-role", {
+      ViewChannel: true,
+      ReadMessageHistory: true,
+      SendMessages: true,
+    }, expect.anything());
+
+    const second = await provisionGuildChannels(guild, {
+      ...base,
+      categories: ["reports"],
+      dailyStats: { channelId: first.dailyStatsChannelId! },
+      permissions: {
+        reports: {
+          roleIds: ["guild-daily-stats"],
+          readMessageHistory: true,
+          sendMessages: false,
+          rolePermissions: {
+            "guild-daily-stats": { viewChannel: true, readMessageHistory: true, sendMessages: false },
+          },
+        },
+      },
+    });
+
+    expect(second.created).toEqual([]);
+    expect(second.dailyStatsChannelId).toBe(first.dailyStatsChannelId);
+    expect(create).toHaveBeenCalledTimes(2);
+  });
+
   it("applies selected role visibility, history, and write permissions", async () => {
     const channels = new Map<string, ReturnType<typeof channel>>();
     const create = vi.fn(async ({ name, type }: { name: string; type: ChannelType }) => {

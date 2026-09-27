@@ -15,6 +15,7 @@ export type ChannelProvisionResult = {
   ticketConfig: TicketConfig;
   moderationConfig: ModerationConfig;
   verification: VerificationConfig;
+  dailyStatsChannelId?: string;
   created: ProvisionedChannel[];
   reused: ProvisionedChannel[];
 };
@@ -35,12 +36,13 @@ type ChannelTypeName = "text" | "category";
 type ChannelTarget = {
   key: string;
   currentId?: string | null;
+  excludeIds?: string[];
   names: string[];
   type: ChannelTypeName;
   category: ProvisioningCategoryKey;
 };
 
-export type ProvisioningCategoryKey = "gameplay" | "admin" | "filtered" | "links" | "security" | "verification";
+export type ProvisioningCategoryKey = "gameplay" | "admin" | "filtered" | "links" | "security" | "verification" | "reports";
 export type ActivityLogProvisionResult = {
   activityLog: ModerationConfig["activityLog"];
   created: ProvisionedChannel[];
@@ -59,6 +61,7 @@ const CATEGORY_TARGETS: ProvisioningCategoryTarget[] = [
   { key: "links", names: ["🔗・LINKURI", "linkuri", "filtrare linkuri", "anti-link"] },
   { key: "security", names: ["🚨・SECURITATE", "securitate", "anti-raid", "alerte securitate"] },
   { key: "verification", names: ["✅・VERIFICARE", "verificare", "verification"] },
+  { key: "reports", names: ["📊・RAPOARTE", "rapoarte", "statistici"] },
 ];
 
 export const PROVISIONING_CATEGORY_KEYS: ProvisioningCategoryKey[] = [
@@ -68,6 +71,7 @@ export const PROVISIONING_CATEGORY_KEYS: ProvisioningCategoryKey[] = [
   "links",
   "security",
   "verification",
+  "reports",
 ];
 
 const GAMEPLAY_TARGETS: Array<Omit<ChannelTarget, "currentId"> & { key: keyof ChannelConfig }> = [
@@ -81,6 +85,13 @@ const GAMEPLAY_TARGETS: Array<Omit<ChannelTarget, "currentId"> & { key: keyof Ch
   { key: "council", type: "text", category: "admin", names: ["consiliul-umbrelor"] },
   { key: "fratia", type: "text", category: "admin", names: ["chivotul-fratiei", "fratia"] },
 ];
+
+const DAILY_STATS_TARGET: Omit<ChannelTarget, "currentId"> = {
+  key: "dailyStats.channelId",
+  type: "text",
+  category: "reports",
+  names: ["statistici-zilnice", "raport-zilnic", "statistici"],
+};
 
 const TICKET_TARGETS: Array<{ key: TicketCategoryKind; names: string[] }> = [
   { key: "staff", names: ["🎫・TICHETE • STAFF", "tichete-staff", "aplicare-staff", "staff"] },
@@ -222,6 +233,7 @@ async function provisionGuildChannelsUnlocked(
     ticketConfig: TicketConfig;
     moderationConfig: ModerationConfig;
     verification: VerificationConfig;
+    dailyStats?: { channelId: string };
     categories?: ProvisioningCategoryKey[];
     permissions?: Partial<Record<ProvisioningCategoryKey, ChannelPermissionConfig>>;
     previousPermissions?: Partial<Record<ProvisioningCategoryKey, ChannelPermissionConfig>>;
@@ -232,6 +244,7 @@ async function provisionGuildChannelsUnlocked(
   const reused: ProvisionedChannel[] = [];
   const categoryIds = new Map<ProvisioningCategoryKey, string>();
   const selectedCategories = new Set(input.categories ?? PROVISIONING_CATEGORY_KEYS);
+  if (!input.dailyStats) selectedCategories.delete("reports");
 
   for (const target of CATEGORY_TARGETS.filter((target) => selectedCategories.has(target.key))) {
     const existing = [...channels.values()].find((channel) =>
@@ -258,11 +271,15 @@ async function provisionGuildChannelsUnlocked(
   const resolve = async (target: ChannelTarget): Promise<string> => {
     const categoryId = categoryIds.get(target.category);
     if (!categoryId) throw new Error(`Categoria ${target.category} nu a putut fi pregătită.`);
-    const configured = target.currentId ? channels.get(target.currentId) : null;
+    const excludedIds = new Set(target.excludeIds ?? []);
+    const configured = target.currentId && !excludedIds.has(target.currentId)
+      ? channels.get(target.currentId)
+      : null;
     const existing = configured && isExpectedType(configured, target.type)
       ? configured
       : [...channels.values()].find((channel) =>
         channel !== null &&
+        !excludedIds.has(channel.id) &&
         isExpectedType(channel, target.type) &&
         target.names.some((name) => normalizeName(channel.name) === normalizeName(name)),
       );
@@ -337,7 +354,17 @@ async function provisionGuildChannelsUnlocked(
     });
   }
 
-  return { channelConfig, ticketConfig, moderationConfig, verification, created, reused };
+  const dailyStatsChannelId = input.dailyStats && selectedCategories.has("reports")
+    ? await resolve({
+      ...DAILY_STATS_TARGET,
+      currentId: input.dailyStats.channelId && input.dailyStats.channelId !== input.channelConfig.main
+        ? input.dailyStats.channelId
+        : null,
+      excludeIds: input.channelConfig.main ? [input.channelConfig.main] : [],
+    })
+    : undefined;
+
+  return { channelConfig, ticketConfig, moderationConfig, verification, dailyStatsChannelId, created, reused };
 }
 
 export function provisionGuildChannels(
@@ -347,6 +374,7 @@ export function provisionGuildChannels(
     ticketConfig: TicketConfig;
     moderationConfig: ModerationConfig;
     verification: VerificationConfig;
+    dailyStats?: { channelId: string };
     categories?: ProvisioningCategoryKey[];
     permissions?: Partial<Record<ProvisioningCategoryKey, ChannelPermissionConfig>>;
     previousPermissions?: Partial<Record<ProvisioningCategoryKey, ChannelPermissionConfig>>;

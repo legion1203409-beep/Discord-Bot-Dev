@@ -47,6 +47,12 @@ const PROVISIONING_CATEGORIES = [
     items: ["Cufere", "Ora Umbrelor", "Dragonul Stins", "Negustorul", "Clasamente"],
   },
   {
+    key: "reports",
+    label: "Rapoarte",
+    description: "Canal separat pentru raportul zilnic, vizibil tuturor și doar cu scrierea botului.",
+    items: ["Categorie Rapoarte", "#statistici-zilnice"],
+  },
+  {
     key: "admin",
     label: "Administrator",
     description: "Consiliu, Frăție, audit și categoriile de tichete.",
@@ -83,6 +89,20 @@ const DEFAULT_CHANNEL_PERMISSION: ChannelPermissionConfig = {
   readMessageHistory: true,
   sendMessages: true,
 };
+
+function defaultProvisioningPermission(categoryKey: string, guildId?: string): ChannelPermissionConfig {
+  if (categoryKey === "reports" && guildId) {
+    return {
+      roleIds: [guildId],
+      readMessageHistory: true,
+      sendMessages: false,
+      rolePermissions: {
+        [guildId]: { viewChannel: true, readMessageHistory: true, sendMessages: false },
+      },
+    };
+  }
+  return { ...DEFAULT_CHANNEL_PERMISSION, roleIds: [] };
+}
 const ROLE_PRESETS = [
   { key: "visitor", label: "Vizitator", match: /vizitator|visitor/i, history: true, send: false },
   { key: "member", label: "Membru", match: /membru|member/i, history: true, send: true },
@@ -291,12 +311,7 @@ export function BotControlPage({ channelsOnly = false }: { channelsOnly?: boolea
   const [selectedProvisioningCategories, setSelectedProvisioningCategories] = useState<string[]>(
     PROVISIONING_CATEGORIES.map((category) => category.key),
   );
-  const [provisioningPermissions, setProvisioningPermissions] = useState<Record<string, ChannelPermissionConfig>>(
-    () => Object.fromEntries(PROVISIONING_CATEGORIES.map((category) => [
-      category.key,
-      { ...DEFAULT_CHANNEL_PERMISSION, roleIds: [] },
-    ])),
-  );
+  const [provisioningPermissions, setProvisioningPermissions] = useState<Record<string, ChannelPermissionConfig>>({});
   const [activeFlowKind, setActiveFlowKind] = useState<keyof BotControlConfig["tickets"]["flows"]>("staff");
   const [testOpen, setTestOpen] = useState(false);
   const [testStarted, setTestStarted] = useState(false);
@@ -373,14 +388,14 @@ export function BotControlPage({ channelsOnly = false }: { channelsOnly?: boolea
     setProvisioningPermissions((current) => ({
       ...current,
       [categoryKey]: {
-        ...(current[categoryKey] ?? DEFAULT_CHANNEL_PERMISSION),
+        ...(current[categoryKey] ?? defaultProvisioningPermission(categoryKey, metadata?.guild.id)),
         ...change,
       },
     }));
   };
 
   const toggleProvisioningRole = (categoryKey: string, roleId: string, checked: boolean) => {
-    const current = provisioningPermissions[categoryKey] ?? DEFAULT_CHANNEL_PERMISSION;
+    const current = provisioningPermissions[categoryKey] ?? defaultProvisioningPermission(categoryKey, metadata?.guild.id);
     const roleIds = checked
       ? Array.from(new Set([...current.roleIds, roleId]))
       : current.roleIds.filter((id) => id !== roleId);
@@ -732,7 +747,10 @@ export function BotControlPage({ channelsOnly = false }: { channelsOnly?: boolea
     setProvisioning(true);
     try {
       const permissions = Object.fromEntries(
-        selectedProvisioningCategories.map((key) => [key, provisioningPermissions[key] ?? DEFAULT_CHANNEL_PERMISSION]),
+        selectedProvisioningCategories.map((key) => [
+          key,
+          provisioningPermissions[key] ?? defaultProvisioningPermission(key, metadata?.guild.id),
+        ]),
       );
       const saved = await provisionChannels(selectedProvisioningCategories, permissions);
       if (currentGuild.current !== submittedGuild) return;
@@ -756,7 +774,7 @@ export function BotControlPage({ channelsOnly = false }: { channelsOnly?: boolea
       toast({
         variant: panelStatus === "failed" || panelStatus === "published_not_saved" ? "destructive" : undefined,
         title: panelStatus === "failed" || panelStatus === "published_not_saved" ? "Canale create, panou incomplet" : "Canalele au fost sincronizate",
-        description: `${created} create, ${reused} reutilizate pentru ${selectedProvisioningCategories.length} categorii. Configurația a fost salvată pentru acest server.${panelNotice}${selectedProvisioningCategories.includes("gameplay") ? " Cuferele vor apărea la următorul interval programat în canalul de cufere." : ""}`,
+        description: `${created} create, ${reused} reutilizate pentru ${selectedProvisioningCategories.length} categorii. Configurația a fost salvată pentru acest server.${panelNotice}${selectedProvisioningCategories.includes("gameplay") ? " Cuferele vor apărea la următorul interval programat în canalul de cufere." : ""}${selectedProvisioningCategories.includes("reports") ? " Canalul raportului zilnic a fost creat sau reutilizat și salvat ca destinație separată." : ""}`,
       });
     } catch (provisionError: any) {
       if (currentGuild.current !== submittedGuild) return;
@@ -1101,7 +1119,7 @@ export function BotControlPage({ channelsOnly = false }: { channelsOnly?: boolea
                 {PROVISIONING_CATEGORIES.map((category) => {
                   const isSelected = selectedProvisioningCategories.includes(category.key);
                   const open = expandedCategory === category.key;
-                  const permission = provisioningPermissions[category.key] ?? DEFAULT_CHANNEL_PERMISSION;
+                  const permission = provisioningPermissions[category.key] ?? defaultProvisioningPermission(category.key, metadata?.guild.id);
                   return (
                     <div className={`category-row ${isSelected ? 'selected' : ''}`} key={category.key}>
                       <div className="category-top">
@@ -2198,7 +2216,7 @@ export function BotControlPage({ channelsOnly = false }: { channelsOnly?: boolea
             {PROVISIONING_CATEGORIES
               .filter((category) => selectedProvisioningCategories.includes(category.key))
               .map((category) => {
-                const permission = provisioningPermissions[category.key] ?? DEFAULT_CHANNEL_PERMISSION;
+                const permission = provisioningPermissions[category.key] ?? defaultProvisioningPermission(category.key, metadata?.guild.id);
                 const allowedRoles = permission.roleIds
                   .map((roleId) => metadata?.roles.find((role) => role.id === roleId))
                   .filter((role): role is NonNullable<typeof role> => Boolean(role));

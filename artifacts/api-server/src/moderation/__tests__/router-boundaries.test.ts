@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   initGameplayConfig: vi.fn(), getGameplayConfig: vi.fn(), saveGuildGameplayConfig: vi.fn(),
   initChannelConfig: vi.fn(),
   loadVerificationConfig: vi.fn(), saveVerificationConfig: vi.fn(),
+  saveDailyStatsEmbedConfig: vi.fn(),
   publishVerificationPanel: vi.fn(),
   loadInviteTrackingConfig: vi.fn(), saveInviteTrackingConfig: vi.fn(),
   defaultInviteTrackingConfig: {
@@ -72,6 +73,7 @@ vi.mock("../../bot/db", () => ({
   saveTicketConfig: mocks.saveTicketConfig,
   loadVerificationConfig: mocks.loadVerificationConfig,
   saveVerificationConfig: mocks.saveVerificationConfig,
+  saveDailyStatsEmbedConfig: mocks.saveDailyStatsEmbedConfig,
   loadInviteTrackingConfig: mocks.loadInviteTrackingConfig,
   saveInviteTrackingConfig: mocks.saveInviteTrackingConfig,
   DEFAULT_INVITE_TRACKING_CONFIG: mocks.defaultInviteTrackingConfig,
@@ -218,6 +220,7 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     mocks.initChannelConfig.mockResolvedValue(undefined);
     mocks.loadVerificationConfig.mockResolvedValue(null);
     mocks.saveVerificationConfig.mockResolvedValue(undefined);
+    mocks.saveDailyStatsEmbedConfig.mockResolvedValue(undefined);
     mocks.publishVerificationPanel.mockImplementation(async (_client, _guildId, config) => ({
       ...config,
       panelMessageId: "888888888",
@@ -769,6 +772,34 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
       verification: { channelId: "777777777", panelMessageId: "888888888" },
       provisioning: { verificationPanel: "published" },
     });
+  });
+
+  it("saves the dedicated daily statistics channel provisioned for reports", async () => {
+    const verification = {
+      enabled: false, channelId: "777777777", roleId: "", title: "Verificare", message: "Mesaj",
+      buttonLabel: "Verifică", buttonEmoji: "✅", successMessage: "Gata", alreadyVerifiedMessage: "Deja", panelMessageId: "",
+    };
+    mocks.provisionGuildChannels.mockResolvedValueOnce({
+      channelConfig: { main: "111111111" },
+      ticketConfig: structuredClone(DEFAULT_TICKET_CONFIG),
+      moderationConfig: structuredClone(defaultModerationConfig),
+      verification,
+      dailyStatsChannelId: "222222222",
+      created: [{ key: "dailyStats.channelId", id: "222222222", name: "statistici-zilnice", type: "text" }],
+      reused: [],
+    });
+
+    const response = await fetch(`${base}/bot-control/provision-channels`, post({ categories: ["reports"] }));
+
+    expect(response.status).toBe(200);
+    expect(mocks.provisionGuildChannels).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      dailyStats: expect.objectContaining({ channelId: expect.any(String) }),
+    }));
+    expect(mocks.saveDailyStatsEmbedConfig).toHaveBeenCalledWith(
+      guildId,
+      expect.objectContaining({ channelId: "222222222" }),
+    );
+    expect(await response.json()).toMatchObject({ dailyStats: { channelId: "222222222" } });
   });
 
   it("does not publish on unrelated provisioning or when verification is disabled", async () => {

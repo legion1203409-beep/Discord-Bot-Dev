@@ -377,6 +377,7 @@ const provisionChannelsSchema = z.object(
     "links",
     "security",
     "verification",
+    "reports",
   ])).min(1).optional(),
   permissions: z.record(z.string(), provisioningPermissionSchema).optional(),
 }
@@ -2354,10 +2355,20 @@ router.post("/guilds/:guildId/bot-control/provision-channels", asyncRoute(async 
     ticketConfig: normalizeTicketConfig(ticketConfig),
     moderationConfig: moderationSnapshot.config,
     verification: normalizeVerificationConfig(verification),
+    dailyStats: { channelId: dailyStats.channelId },
     categories,
     permissions: permissions as Parameters<typeof provisionGuildChannels>[1]["permissions"],
     previousPermissions,
   });
+  let savedDailyStats = dailyStats;
+  if (provisioned.dailyStatsChannelId && provisioned.dailyStatsChannelId !== dailyStats.channelId) {
+    const saveDailyStats = optionalExport(() => saveDailyStatsEmbedConfig);
+    if (!saveDailyStats) {
+      throw new ModerationAuthError(503, "Setările raportului zilnic nu pot fi salvate momentan.");
+    }
+    savedDailyStats = { ...dailyStats, channelId: provisioned.dailyStatsChannelId };
+    await saveDailyStats(guildId, savedDailyStats);
+  }
   const savedPermissions = {
     ...previousPermissions,
     ...(permissions ?? {}),
@@ -2401,7 +2412,7 @@ router.post("/guilds/:guildId/bot-control/provision-channels", asyncRoute(async 
     gameplayConfig: getGameplayConfig(guildId),
     verification: savedVerification,
     provisioningPermissions: savedPermissions,
-    dailyStats,
+    dailyStats: savedDailyStats,
     inviteTracking,
     discordLive: true,
     provisioning: {
