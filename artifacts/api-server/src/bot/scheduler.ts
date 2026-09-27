@@ -274,6 +274,18 @@ export function stopGuildScheduler(
   logger.info({ guildId }, "Guild scheduler stopped — bot left guild");
 }
 
+function clearTrackedChestState(gs: GuildSchedulerState, messageId: string): void {
+  if (gs.lastChestMessageId !== messageId) return;
+  if (gs.lastChestTimeout) clearTimeout(gs.lastChestTimeout);
+  gs.lastChestTimeout = null;
+  gs.lastChestMessageId = null;
+}
+
+export function clearGuildChestTracking(guildId: string, messageId: string): void {
+  const gs = guildStates.get(guildId);
+  if (gs) clearTrackedChestState(gs, messageId);
+}
+
 /** Get the claimedChests set for a guild (creates state if missing). */
 export function getGuildClaimedChests(guildId: string): Set<string> {
   return getOrCreateGuildState(guildId).claimedChests;
@@ -779,11 +791,16 @@ export async function fireChestForced(
     }
     gs.lastChestMessageId = msg.id;
      void persistActiveChest(guildId, { messageId: msg.id, channelId: channel.id, chestId, gold, rarityKey: rarity.key, mult, variant, expiresAt: expireAt }).catch(() => null);
+    const discardStartedChest = async () => {
+      await msg.delete().catch(() => null);
+      clearTrackedChestState(gs, msg.id);
+      void clearActiveChest(guildId).catch(() => null);
+      return null;
+    };
 
     await sleep(5000);
     if (gs.stopped) {
-      await msg.delete().catch(() => null);
-      return null;
+      return await discardStartedChest();
     }
     if (!gs.claimedChests.has(chestId)) {
        await msg.edit({ embeds: [bce(gold, rarity, mult, variant, expireAt)], components: [row] }).catch(() => null);
@@ -792,10 +809,12 @@ export async function fireChestForced(
     logger.info({ chestId, gold, rarity: rarity.key, mult, guildId }, "Chest spawned (forced)");
 
     const timeout = setTimeout(async () => {
-      if (gs.claimedChests.has(chestId)) return;
-      gs.claimedChests.add(chestId);
-      await deleteChestMessage(msg, { chestId, guildId, phase: "expire-forced" });
-      logger.info({ chestId, guildId }, "Chest expired unclaimed (forced)");
+      if (!gs.claimedChests.has(chestId)) {
+        gs.claimedChests.add(chestId);
+        await deleteChestMessage(msg, { chestId, guildId, phase: "expire-forced" });
+        logger.info({ chestId, guildId }, "Chest expired unclaimed (forced)");
+      }
+      clearTrackedChestState(gs, msg.id);
       void clearActiveChest(guildId).catch(() => null);
     }, chestExpireMs(guildId));
 
@@ -887,32 +906,34 @@ export async function fireChest(client: Client, guildId: string, bypassGate = fa
     }
     gs.lastChestMessageId = msg.id;
     void persistActiveChest(guildId, { messageId: msg.id, channelId: channel.id, chestId, gold, rarityKey: rarity.key, variant, expiresAt: expireAt }).catch(() => null);
+    const discardStartedChest = async () => {
+      await msg.delete().catch(() => null);
+      clearTrackedChestState(gs, msg.id);
+      void clearActiveChest(guildId).catch(() => null);
+      return null;
+    };
 
     for (let i = 1; i < frames.length; i++) {
       await sleep(frames[i - 1]!.delay);
       if (gs.stopped) {
-        await msg.delete().catch(() => null);
-        return null;
+        return await discardStartedChest();
       }
       await msg.edit({ content: frames[i]!.content }).catch(() => null);
     }
     await sleep(frames[frames.length - 1]!.delay);
     if (gs.stopped) {
-      await msg.delete().catch(() => null);
-      return null;
+      return await discardStartedChest();
     }
     await msg.edit({ content: `${rarity.emoji}✨`, embeds: [buildChestEmbed(gold, rarity, undefined, variant, expireAt)], components: [lockedRow] }).catch(() => null);
     await sleep(500);
     if (gs.stopped) {
-      await msg.delete().catch(() => null);
-      return null;
+      return await discardStartedChest();
     }
     await msg.edit({ content: "", embeds: [buildChestEmbed(gold, rarity, undefined, variant, expireAt)], components: [lockedRow] }).catch(() => null);
 
     await sleep(5000);
     if (gs.stopped) {
-      await msg.delete().catch(() => null);
-      return null;
+      return await discardStartedChest();
     }
     if (!gs.claimedChests.has(chestId)) {
       await msg.edit({ embeds: [buildChestEmbed(gold, rarity, undefined, variant, expireAt)], components: [row] }).catch(() => null);
@@ -921,10 +942,12 @@ export async function fireChest(client: Client, guildId: string, bypassGate = fa
     logger.info({ chestId, gold, rarity: rarity.key, guildId }, "Chest spawned");
 
     const timeout = setTimeout(async () => {
-      if (gs.claimedChests.has(chestId)) return;
-      gs.claimedChests.add(chestId);
-      await deleteChestMessage(msg, { chestId, guildId, phase: "expire-scheduled" });
-      logger.info({ chestId, guildId }, "Chest expired unclaimed");
+      if (!gs.claimedChests.has(chestId)) {
+        gs.claimedChests.add(chestId);
+        await deleteChestMessage(msg, { chestId, guildId, phase: "expire-scheduled" });
+        logger.info({ chestId, guildId }, "Chest expired unclaimed");
+      }
+      clearTrackedChestState(gs, msg.id);
       void clearActiveChest(guildId).catch(() => null);
     }, chestExpireMs(guildId));
 
@@ -1317,6 +1340,7 @@ export async function rehydrateActiveChest(client: Client, guildId: string): Pro
     const ch = await client.channels.fetch(record.channelId).catch(() => null);
     if (!(ch instanceof TextChannel) || ch.guildId !== guildId) {
       await clearActiveChest(guildId).catch(() => null);
+      clearTrackedChestState(gs, record.messageId);
       logger.warn({ chestId: record.chestId, guildId }, "Chest channel not found on rehydration — row cleared");
       return;
     }
@@ -1329,12 +1353,14 @@ export async function rehydrateActiveChest(client: Client, guildId: string): Pro
         await deleteChestMessage(msg, { chestId: record.chestId, guildId, phase: "rehydrate-stale" });
       }
       gs.claimedChests.add(record.chestId);
-      gs.lastChestMessageId = null;
+      clearTrackedChestState(gs, record.messageId);
       await clearActiveChest(guildId).catch(() => null);
       logger.info({ chestId: record.chestId, hadMessage: !!msg, guildId }, "Stale chest expired on bot restart");
       return;
     }
 
+    if (gs.lastChestTimeout) clearTimeout(gs.lastChestTimeout);
+    gs.lastChestTimeout = null;
     gs.lastChestMessageId = record.messageId;
     const remaining = record.expiresAt - now;
     // Re-enable the full Cufere 2.0 choice row after a restart. The active
@@ -1350,7 +1376,7 @@ export async function rehydrateActiveChest(client: Client, guildId: string): Pro
         await deleteChestMessage(msg, { chestId: record.chestId, guildId, phase: "rehydrate-expire" });
         logger.info({ chestId: record.chestId, guildId }, "Rehydrated chest expired unclaimed");
       }
-      gs.lastChestMessageId = null;
+      clearTrackedChestState(gs, record.messageId);
       await clearActiveChest(guildId).catch(() => null);
     }, remaining);
 
@@ -1638,7 +1664,47 @@ async function fireBattleEvent(client: Client, guildId: string) {
 
 // ─── Per-guild scheduler startup ──────────────────────────────────────────────
 
-export function startGuildScheduler(client: Client, guildId: string) {
+async function runImmediateGameplayStartCycle(
+  client: Client,
+  guildId: string,
+  isStopped: () => boolean,
+): Promise<void> {
+  const gs = getOrCreateGuildState(guildId);
+  const runSafely = async (activity: string, run: () => Promise<unknown>) => {
+    if (isStopped()) return;
+    try {
+      await run();
+    } catch (err) {
+      logger.error({ err, guildId, activity }, "Immediate gameplay activity failed");
+    }
+  };
+
+  await Promise.all([
+    runSafely("event", async () => {
+      let activeEvent = await getLatestActiveEvent(guildId);
+      if (!activeEvent) await fireEvent(client, guildId);
+      if (isStopped()) return;
+      activeEvent = await getLatestActiveEvent(guildId);
+      if (activeEvent) await fireBattleEvent(client, guildId);
+    }),
+    runSafely("ordinary-chest", async () => {
+      if (!LEGACY_CHEST_SPAWNS_ENABLED || gs.lastChestMessageId) return;
+      await fireChest(client, guildId, true);
+    }),
+    runSafely("standalone-boss", async () => {
+      // Rehydration completes before this cycle, so any active boss (including
+      // an event-derived final boss) prevents an overlapping solo boss.
+      if (gs.activeBossMap.size > 0) return;
+      await fireStandaloneBoss(client, guildId);
+    }),
+  ]);
+}
+
+export function startGuildScheduler(
+  client: Client,
+  guildId: string,
+  options: { immediateActivities?: boolean } = {},
+): Promise<void> {
   const gs = getOrCreateGuildState(guildId);
   // Daily statistics are observational and should continue even when gameplay
   // is paused; they are not part of the gameplay scheduler below.
@@ -1648,11 +1714,11 @@ export function startGuildScheduler(client: Client, guildId: string) {
     gs.started = false;
     setTributeGamePaused(guildId, true);
     logger.info({ guildId }, "Guild scheduler remains paused by configuration");
-    return;
+    return Promise.resolve();
   }
   if (gs.started) {
     logger.info({ guildId }, "Guild scheduler already running — skipping re-init");
-    return;
+    return Promise.resolve();
   }
   gs.stopped = false; // reset in case the bot had previously left and rejoined this guild
   gs.started = true;
@@ -1664,14 +1730,21 @@ export function startGuildScheduler(client: Client, guildId: string) {
     logger.warn({ err, guildId }, "Council decree could not be rehydrated"),
   );
   void rehydrateEventMessageDeletions(client, guildId);
-  void expireOldEvents(client, guildId).catch((err) =>
+  const expiredEventsReady = expireOldEvents(client, guildId).catch((err) =>
     logger.warn({ err, guildId }, "Failed to expire events after scheduler start"),
   );
-  void rehydrateActiveBosses(client, guildId);
+  const activeBossesReady = rehydrateActiveBosses(client, guildId).catch((err) => {
+    logger.warn({ err, guildId }, "Failed to restore active bosses before scheduler start");
+  });
+  let activeChestsReady: Promise<unknown> = Promise.resolve();
   if (LEGACY_CHEST_SPAWNS_ENABLED) {
-    void rehydrateActiveChest(client, guildId);
-    void rehydrateSimpleChest(client, guildId, KEYCHEST_DBKEY);
-    void rehydrateSimpleChest(client, guildId, LOCKCHEST_DBKEY);
+    activeChestsReady = Promise.all([
+      rehydrateActiveChest(client, guildId),
+      rehydrateSimpleChest(client, guildId, KEYCHEST_DBKEY),
+      rehydrateSimpleChest(client, guildId, LOCKCHEST_DBKEY),
+    ]).catch((err) => {
+      logger.warn({ err, guildId }, "Failed to restore active chests before scheduler start");
+    });
   }
   void rehydrateSeasonalChest(client, guildId).catch((err) =>
     logger.warn({ err, guildId }, "Failed to rehydrate seasonal chest"),
@@ -1707,8 +1780,12 @@ export function startGuildScheduler(client: Client, guildId: string) {
     setTimeout(async () => { if (!isStopped()) { await fireEvent(client, guildId); scheduleNext(); } }, cooldown);
   };
 
-  setTimeout(async () => { if (!isStopped()) { await fireEvent(client, guildId); scheduleNext(); } }, 5 * 60 * 1000);
-  logger.info({ guildId }, "First Ora Umbrelor in 5 minutes");
+  if (options.immediateActivities) {
+    logger.info({ guildId }, "Immediate gameplay start cycle requested");
+  } else {
+    setTimeout(async () => { if (!isStopped()) { await fireEvent(client, guildId); scheduleNext(); } }, 5 * 60 * 1000);
+    logger.info({ guildId }, "First Ora Umbrelor in 5 minutes");
+  }
 
   if (LEGACY_CHEST_SPAWNS_ENABLED) {
      const scheduleChest = () => {
@@ -1771,6 +1848,24 @@ export function startGuildScheduler(client: Client, guildId: string) {
   if (councilChannelId) {
     startOracleCouncilScheduler(client, guildId, councilChannelId);
   }
+
+  if (!options.immediateActivities) {
+    return Promise.resolve();
+  }
+
+  return Promise.all([expiredEventsReady, activeBossesReady, activeChestsReady])
+    .then(async () => {
+      if (!isStopped()) {
+        await runImmediateGameplayStartCycle(client, guildId, isStopped);
+      }
+      // The five-minute first-event timer is omitted on resume; after the
+      // immediate cycle, continue with the configured random event cooldown.
+      if (!isStopped()) scheduleNext();
+    })
+    .catch((err) => {
+      logger.error({ err, guildId }, "Immediate gameplay start cycle could not be completed");
+      if (!isStopped()) scheduleNext();
+    });
 }
 
 export { APPLICATION_ID };

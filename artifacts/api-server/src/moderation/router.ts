@@ -2214,13 +2214,16 @@ router.put("/guilds/:guildId/gameplay-state", asyncRoute(async (req, res) => {
   await sessionAndGuild(req, guildId, "config", true);
   const { paused } = z.object({ paused: z.boolean() }).parse(req.body);
   await initGameplayConfig(guildId);
+  const wasPaused = isGameplayPaused(guildId);
   await setGameplayPaused(guildId, paused);
 
   if (paused) {
     stopGuildScheduler(guildId);
   } else {
     const client = getModerationClient();
-    if (client) startGuildScheduler(client, guildId);
+    if (client) {
+      await startGuildScheduler(client, guildId, { immediateActivities: wasPaused });
+    }
   }
 
   res.set("Cache-Control", "no-store").json({ paused });

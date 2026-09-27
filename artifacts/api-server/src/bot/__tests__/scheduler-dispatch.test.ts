@@ -117,6 +117,7 @@ vi.mock("../survival", () => ({
 // ── 4. Mock DB ────────────────────────────────────────────────────────────────
 const mockCreateEvent          = vi.fn();
 const mockGetActiveEvent       = vi.fn();
+const mockGetLatestActiveEvent = vi.fn();
 const mockGetEventParticipants = vi.fn();
 const mockGetAllEvents         = vi.fn();
 
@@ -128,7 +129,7 @@ vi.mock("../db", () => ({
   getAllEvents:                    (...a: unknown[]) => mockGetAllEvents(...a),
   setEventDecreeMessage:          vi.fn().mockResolvedValue(undefined),
   deleteEvent:                    vi.fn().mockResolvedValue(undefined),
-  getLatestActiveEvent:           vi.fn().mockResolvedValue(null),
+  getLatestActiveEvent:           (...a: unknown[]) => mockGetLatestActiveEvent(...a),
   getActiveEvent:                 (...a: unknown[]) => mockGetActiveEvent(...a),
   setHonorTitle:                  vi.fn().mockResolvedValue(undefined),
   addPlayerReputation:            vi.fn().mockResolvedValue(undefined),
@@ -138,6 +139,7 @@ vi.mock("../db", () => ({
   // Boss persistence
   persistActiveBoss:              vi.fn().mockResolvedValue(undefined),
   loadAllActiveBossRows:          vi.fn().mockResolvedValue([]),
+  loadActiveBossRowsByGuild:      vi.fn().mockResolvedValue([]),
   deleteActiveBoss:               vi.fn().mockResolvedValue(undefined),
   createActiveBossesTableIfNotExists: vi.fn().mockResolvedValue(undefined),
   // Chest persistence
@@ -146,21 +148,68 @@ vi.mock("../db", () => ({
   clearActiveChest:               vi.fn().mockResolvedValue(undefined),
   getFinalBossKills:              vi.fn().mockResolvedValue(0),
   incrementFinalBossKills:        vi.fn().mockResolvedValue(undefined),
+  KEYCHEST_DBKEY:                  "active_keychest",
+  LOCKCHEST_DBKEY:                 "active_lockchest",
 }));
 
 // ── 5. Mock oracle & combat-events ────────────────────────────────────────────
 vi.mock("../oracle",        () => ({ startOracle: vi.fn(), setOracleExtatic: vi.fn() }));
-vi.mock("../combat-events", () => ({ triggerRandomBattleEvent: vi.fn() }));
+const mockTriggerRandomBattleEvent = vi.fn();
+vi.mock("../combat-events", () => ({
+  triggerRandomBattleEvent: (...a: unknown[]) => mockTriggerRandomBattleEvent(...a),
+}));
 
 // ── 6. Mock channel-config — return a dummy channel ID for every guild/type ──
+const mockGetChannel = vi.fn((type: unknown) => `mock-${String(type)}-channel-id`);
 vi.mock("../channel-config", () => ({
-  getChannel:       vi.fn(() => "mock-channel-id"),
+  getChannel:       (type: unknown) => mockGetChannel(type),
   initChannelConfig: vi.fn(),
   getAllChannels:    vi.fn(() => ({})),
+  hasAnyChannelConfigured: vi.fn(() => true),
   setChannel:       vi.fn(),
   resetChannel:     vi.fn(),
   resetAllChannels: vi.fn(),
 }));
+
+vi.mock("../daily-stats", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../daily-stats")>();
+  return {
+    ...actual,
+    startDailyStatsScheduler: vi.fn(),
+    stopDailyStatsScheduler: vi.fn(),
+  };
+});
+
+vi.mock("../tribute", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../tribute")>();
+  return {
+    ...actual,
+    setTributeGamePaused: vi.fn(),
+    startTributeScheduler: vi.fn().mockResolvedValue(undefined),
+    stopTributeScheduler: vi.fn(),
+  };
+});
+
+vi.mock("../oracle-council", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../oracle-council")>();
+  return {
+    ...actual,
+    rehydrateCouncilDecree: vi.fn().mockResolvedValue(undefined),
+    startOracleCouncilScheduler: vi.fn(),
+    stopOracleCouncilScheduler: vi.fn(),
+  };
+});
+
+vi.mock("../chest-expansions", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../chest-expansions")>();
+  return {
+    ...actual,
+    rehydrateSeasonalChest: vi.fn().mockResolvedValue(undefined),
+    rehydrateHiddenChest: vi.fn().mockResolvedValue(undefined),
+    rehydrateOracleClue: vi.fn().mockResolvedValue(undefined),
+    rehydrateFratiaVote: vi.fn().mockResolvedValue(undefined),
+  };
+});
 
 // ── Import scheduler after all mocks are registered ──────────────────────────
 import {
@@ -170,6 +219,10 @@ import {
   fireLockedChest,
   getGuildActiveBossMap,
   getGuildClaimedChests,
+  clearGuildChestTracking,
+  guildStates,
+  startGuildScheduler,
+  stopGuildScheduler,
   BOSS_RARITY_WEIGHTS,
   EVENT_DURATION_MS,
 } from "../scheduler";
@@ -201,6 +254,16 @@ function makeMockClient(overrideChannel?: unknown): {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockGetLatestActiveEvent.mockReset();
+  mockGetLatestActiveEvent.mockResolvedValue(null);
+  mockTriggerRandomBattleEvent.mockReset();
+  mockTriggerRandomBattleEvent.mockReturnValue({
+    announce: "A battle event begins.",
+    expiresAt: Date.now() + 60_000,
+    key: "test-battle",
+  });
+  mockGetChannel.mockImplementation((type: unknown) => `mock-${String(type)}-channel-id`);
+  guildStates.delete(TEST_GUILD_ID);
   getGuildActiveBossMap(TEST_GUILD_ID).clear();
   getGuildClaimedChests(TEST_GUILD_ID).clear();
 
@@ -568,5 +631,108 @@ describe("fireLockedChest", () => {
   it("resolves without throwing for a valid rarity", async () => {
     const { client } = makeMockClient();
     await expect(fireLockedChest(client, TEST_GUILD_ID, "argint")).resolves.toBeUndefined();
+  });
+});
+
+describe("startGuildScheduler immediate resume cycle", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    stopGuildScheduler(TEST_GUILD_ID);
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  it("clears only the matching ordinary chest tracking when claimed", () => {
+    const gs = guildStates.get(TEST_GUILD_ID)!;
+    gs.lastChestMessageId = "active-chest";
+    gs.lastChestTimeout = setTimeout(() => undefined, 60_000);
+
+    clearGuildChestTracking(TEST_GUILD_ID, "different-chest");
+    expect(gs.lastChestMessageId).toBe("active-chest");
+
+    clearGuildChestTracking(TEST_GUILD_ID, "active-chest");
+    expect(gs.lastChestMessageId).toBeNull();
+    expect(gs.lastChestTimeout).toBeNull();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("posts one immediate event, ordinary chest, boss, and conditional battle event", async () => {
+    const message = (id: string) => ({
+      id,
+      edit: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn().mockResolvedValue(undefined),
+    });
+    const eventChannel = new MockTextChannel();
+    const chestChannel = new MockTextChannel();
+    const bossChannel = new MockTextChannel();
+    eventChannel.send
+      .mockResolvedValueOnce(message("event-start"))
+      .mockResolvedValueOnce(message("battle-event"));
+    chestChannel.send.mockResolvedValue(message("ordinary-chest"));
+    bossChannel.send.mockResolvedValue(message("standalone-boss"));
+
+    const channels: Record<string, unknown> = {
+      "mock-event-channel-id": eventChannel,
+      "mock-main-channel-id": chestChannel,
+      "mock-boss-channel-id": bossChannel,
+    };
+    const fetch = vi.fn(async (channelId: string) => channels[channelId] ?? null);
+    const client = { channels: { fetch } } as unknown as import("discord.js").Client;
+
+    mockGetLatestActiveEvent.mockResolvedValueOnce(null);
+    mockGetLatestActiveEvent.mockResolvedValue({ id: 42 });
+    mockTriggerRandomBattleEvent.mockReturnValue({
+      announce: "A battle event begins.",
+      expiresAt: Date.now() + 60_000,
+      key: "test-battle",
+    });
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+
+    const startup = startGuildScheduler(client, TEST_GUILD_ID, { immediateActivities: true });
+    for (let second = 0; second < 10; second++) {
+      await vi.advanceTimersByTimeAsync(1_000);
+    }
+    await startup;
+
+    expect(eventChannel.send).toHaveBeenCalledTimes(2);
+    expect(chestChannel.send).toHaveBeenCalledOnce();
+    expect(bossChannel.send).toHaveBeenCalledOnce();
+    expect(mockCreateEvent).toHaveBeenCalledOnce();
+    expect(setTimeoutSpy.mock.calls.some(([, delay]) => delay === 5 * 60 * 1_000)).toBe(false);
+
+    const fetchCountAfterStart = fetch.mock.calls.length;
+    await startGuildScheduler(client, TEST_GUILD_ID, { immediateActivities: true });
+    expect(fetch).toHaveBeenCalledTimes(fetchCountAfterStart);
+  });
+
+  it("keeps an active event, chest, and boss instead of creating duplicates", async () => {
+    const eventChannel = new MockTextChannel();
+    eventChannel.send.mockResolvedValue({
+      id: "battle-event",
+      delete: vi.fn().mockResolvedValue(undefined),
+    });
+    const fetch = vi.fn(async (channelId: string) =>
+      channelId === "mock-event-channel-id" ? eventChannel : null,
+    );
+    const client = { channels: { fetch: fetch } } as unknown as import("discord.js").Client;
+
+    mockGetLatestActiveEvent.mockResolvedValue({ id: 77 });
+    mockTriggerRandomBattleEvent.mockReturnValue({
+      announce: "A battle event begins.",
+      expiresAt: Date.now() + 60_000,
+      key: "test-battle",
+    });
+    const gs = guildStates.get(TEST_GUILD_ID)!;
+    gs.lastChestMessageId = "existing-chest";
+    getGuildActiveBossMap(TEST_GUILD_ID).set(88, {} as never);
+
+    await startGuildScheduler(client, TEST_GUILD_ID, { immediateActivities: true });
+
+    expect(mockCreateEvent).not.toHaveBeenCalled();
+    expect(eventChannel.send).toHaveBeenCalledOnce();
+    expect(fetch.mock.calls.map(([channelId]) => channelId)).toEqual(["mock-event-channel-id"]);
   });
 });

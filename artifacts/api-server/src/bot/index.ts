@@ -27,9 +27,9 @@ import {
 import { randomUUID } from "node:crypto";
 import { logger } from "../lib/logger";
 import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./alert";
-import { startGuildScheduler, stopGuildScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, recordGuildActivity, getGuildClaimedChests, getGuildActiveBossMap, isGuildGameStopped, checkBossEligibility, checkBossHitCooldown, BOSS_HIT_COOLDOWN_MS, persistBossState, publishLeaderboardResult, guildStates, isGuildActive, ACTIVITY_WINDOW_MINUTES, CHEST_MSG_MILESTONE, type BossState, type BossPlayerStats } from "./scheduler";
+import { startGuildScheduler, stopGuildScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, recordGuildActivity, getGuildClaimedChests, getGuildActiveBossMap, clearGuildChestTracking, isGuildGameStopped, checkBossEligibility, checkBossHitCooldown, BOSS_HIT_COOLDOWN_MS, persistBossState, publishLeaderboardResult, guildStates, isGuildActive, ACTIVITY_WINDOW_MINUTES, CHEST_MSG_MILESTONE, type BossState, type BossPlayerStats } from "./scheduler";
 import { getChannel, getAllChannels, setChannel, initChannelConfig, hasAnyChannelConfigured, EVENT_LABELS, type EventType } from "./channel-config";
-import { getGameplayConfig, initGameplayConfig, setGameplayPaused } from "./gameplay-store";
+import { getGameplayConfig, initGameplayConfig, isGameplayPaused, setGameplayPaused } from "./gameplay-store";
 import { sendAiMemberMessage } from "./member-messages";
 import { messageWithImage } from "./message-media";
 import {
@@ -1535,14 +1535,18 @@ async function handleStartGame(interaction: ChatInputCommandInteraction): Promis
     await interaction.editReply({ content: "❌ Botul Discord nu este disponibil momentan." });
     return;
   }
-  await setGameplayPaused(interaction.guildId!, false);
-  startGuildScheduler(botClient, interaction.guildId!);
+  const guildId = interaction.guildId!;
+  await initGameplayConfig(guildId);
+  const wasPaused = isGameplayPaused(guildId);
+  await setGameplayPaused(guildId, false);
+  await startGuildScheduler(botClient, guildId, { immediateActivities: wasPaused });
   await announceGameState(
     interaction,
     "▶️ **Jocul a fost repornit.** Activitățile automate ale Regatului sunt din nou active.",
   );
   await interaction.editReply({
-    content: "▶️ **Jocul a fost repornit pe acest server.** Activitățile automate vor continua.",
+    content:
+      "▶️ **Jocul a fost repornit pe acest server.** Postările de start au fost lansate unde nu exista deja o activitate activă; programul normal continuă.",
   });
 }
 
@@ -1857,6 +1861,7 @@ async function handleChestClaim(
     return;
   }
   claimedChests.add(chestId);
+  clearGuildChestTracking(guildId, interaction.message.id);
   void clearActiveChest(guildId).catch(() => null);
 
   const validChoices = new Set(["gold", "xp", "blessing", "relic"]);
