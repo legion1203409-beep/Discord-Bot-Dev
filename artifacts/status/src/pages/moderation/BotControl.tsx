@@ -6,7 +6,7 @@ import { Textarea } from "../../components/ui/textarea";
 import { Switch } from "../../components/ui/switch";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
+import { Tabs, TabsContent } from "../../components/ui/tabs";
 import { ImageField } from "../../components/moderation/ImageField";
 import { DiscordEmojiText, EmojiField } from "../../components/moderation/EmojiField";
 import { BotControlPartialApplyError, useActiveGuild, useBotControl, useInviteStats, useModerationMetadata, useSession, type BotControlConfig, type ChannelPermissionConfig, type InviteStatsRange, type TicketFlowConfig } from "../../hooks/use-moderation-api";
@@ -981,24 +981,8 @@ export function BotControlPage({
       <div className="animate-stagger-4">
         <Tabs
           value={channelsOnly || provisioningOnly ? "channels" : activeTab}
-          onValueChange={(value) => {
-            if (channelsOnly || provisioningOnly) return;
-            if (!BOT_CONTROL_TABS.includes(value as BotControlTab)) return;
-            const nextTab = value as BotControlTab;
-            setActiveTab(nextTab);
-            setLocation(`/bot?tab=${nextTab}`);
-          }}
           className="bot-control-tabs space-y-5"
         >
-          {!channelsOnly && !provisioningOnly && (
-            <TabsList className="bot-control-tab-list grid h-auto w-full grid-cols-2 gap-1 rounded-xl border border-border/80 p-1 sm:grid-cols-4 bg-background/50 shadow-inner">
-              <TabsTrigger value="roles" data-testid="tab-roles" className="mod-tab-trigger gap-2 py-2.5"><Users className="h-4 w-4" /> Roluri</TabsTrigger>
-              <TabsTrigger value="tickets" data-testid="tab-tickets" className="mod-tab-trigger gap-2 py-2.5"><Ticket className="h-4 w-4" /> Tichete</TabsTrigger>
-              <TabsTrigger value="messages" data-testid="tab-messages" className="mod-tab-trigger gap-2 py-2.5"><Megaphone className="h-4 w-4" /> Mesaje</TabsTrigger>
-              <TabsTrigger value="statistics" data-testid="tab-statistics" className="mod-tab-trigger gap-2 py-2.5"><Activity className="h-4 w-4" /> Statistici</TabsTrigger>
-            </TabsList>
-          )}
-
           <TabsContent value="roles" className="mod-tab-content mt-0">
             <section className="surface role-presets-surface space-y-4">
               <div className="section-head">
