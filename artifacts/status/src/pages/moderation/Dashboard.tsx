@@ -259,7 +259,49 @@ export function DashboardOverview() {
       </header>
 
       <section
-        className={`animate-stagger-3 flex flex-col gap-5 rounded-2xl border p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6 ${
+        aria-label="Protecție globală"
+        className={`animate-stagger-3 flex flex-col gap-5 rounded-2xl border p-5 shadow-lg sm:flex-row sm:items-center sm:justify-between sm:p-6 ${
+          protectionEnabled
+            ? "border-primary/30 bg-gradient-to-r from-primary/10 via-card/90 to-background/80 shadow-primary/5"
+            : "border-amber-500/40 bg-gradient-to-r from-amber-500/10 via-card/90 to-background/80 shadow-amber-950/10"
+        }`}
+      >
+        <div className="flex items-start gap-4">
+          <span className={`mt-0.5 rounded-xl p-3 ${protectionEnabled ? "bg-primary/10 text-primary" : "bg-amber-500/10 text-amber-600"}`}>
+            <Shield className="h-5 w-5" aria-hidden="true" />
+          </span>
+          <div>
+            <p className="mod-eyebrow">Protecție globală · serverul selectat</p>
+            <h2 className="mt-1 font-display text-2xl text-foreground">
+              Protecția automată este {protectionEnabled ? "pornită" : "oprită"}
+            </h2>
+            <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+              {protectionEnabled
+                ? "Modulele automate activate pot procesa evenimentele acestui server."
+                : "Modulele își păstrează setările, dar nu procesează evenimente până când pornești din nou protecția."}
+            </p>
+          </div>
+        </div>
+        <Button
+          type="button"
+          variant={protectionEnabled ? "destructive" : "default"}
+          className="min-h-11 shrink-0 gap-2 font-semibold sm:min-w-52"
+          onClick={() => toggleProtection(!protectionEnabled)}
+          disabled={savingModule !== null}
+          aria-pressed={protectionEnabled}
+          data-testid="button-global-protection-toggle"
+        >
+          {protectionEnabled
+            ? <PauseCircle className="h-4 w-4" aria-hidden="true" />
+            : <PlayCircle className="h-4 w-4" aria-hidden="true" />}
+          {savingModule === "protection"
+            ? "Se actualizează..."
+            : protectionEnabled ? "Oprește protecția" : "Pornește protecția"}
+        </Button>
+      </section>
+
+      <section
+        className={`animate-stagger-4 flex flex-col gap-5 rounded-2xl border p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6 ${
           gamePaused === true
             ? "border-destructive/40 bg-destructive/5"
             : gamePaused === false
@@ -336,7 +378,7 @@ export function DashboardOverview() {
         </Button>
       </section>
 
-      <section aria-label="Indicatori principali" className="grid gap-4 md:grid-cols-3 animate-stagger-4">
+      <section aria-label="Indicatori principali" className="grid gap-4 md:grid-cols-3 animate-stagger-5">
         <div className="mod-card group rounded-2xl p-5 sm:p-6">
           <div className="flex items-start justify-between">
             <span className="mod-eyebrow text-muted-foreground">Cazuri deschise</span>
@@ -376,23 +418,11 @@ export function DashboardOverview() {
         </div>
       </section>
 
-      <div data-testid="dashboard-columns" className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] animate-stagger-5">
+      <div data-testid="dashboard-columns" className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
         <section className="min-w-0 space-y-4">
           <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border/60 pb-3">
             <div><p className="mod-eyebrow">Sisteme</p><h2 className="mod-heading mt-1 text-2xl">Module de Protecție</h2></div>
-            <div className="flex items-center gap-3">
-              <label className="flex items-center gap-2 text-xs font-medium text-muted-foreground cursor-pointer group">
-                <span className="group-hover:text-foreground transition-colors">{protectionEnabled ? "ACTIVĂ" : "OPRITĂ"}</span>
-                <Switch
-                  checked={protectionEnabled}
-                  onCheckedChange={toggleProtection}
-                  className={deactivatingKey === "protection" ? "protection-deactivating" : undefined}
-                  disabled={savingModule !== null}
-                  aria-label="Activează sau oprește toată protecția"
-                />
-              </label>
-              <Link href="/protectie" data-testid="link-dashboard-protection" className="inline-flex items-center gap-1 text-xs font-mono tracking-widest text-primary hover:text-primary/80 transition-colors">GESTIONEAZĂ <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" /></Link>
-            </div>
+            <Link href="/protectie" data-testid="link-dashboard-protection" className="inline-flex items-center gap-1 text-xs font-mono tracking-widest text-primary hover:text-primary/80 transition-colors">GESTIONEAZĂ <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" /></Link>
           </div>
           <div className="grid gap-3 2xl:grid-cols-2">
             {modules.map((mod) => (
