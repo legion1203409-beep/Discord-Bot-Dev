@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/ta
 import { ImageField } from "../../components/moderation/ImageField";
 import { DiscordEmojiText, EmojiField } from "../../components/moderation/EmojiField";
 import { BotControlPartialApplyError, useActiveGuild, useBotControl, useInviteStats, useModerationMetadata, useSession, type BotControlConfig, type ChannelPermissionConfig, type InviteStatsRange, type TicketFlowConfig } from "../../hooks/use-moderation-api";
+import { clearBotControlDestinations, DESTINATION_CLEAR_CATEGORIES, type DestinationClearScope } from "../../lib/bot-control-destinations";
 import { rebaseDraftChanges } from "../../lib/utils";
 import { useToast } from "../../hooks/use-toast";
 import { useLocation, useSearch } from "wouter";
@@ -308,6 +309,7 @@ export function BotControlPage({ channelsOnly = false }: { channelsOnly?: boolea
   const [partialApplyError, setPartialApplyError] = useState<{ guildId: string; message: string } | null>(null);
   const [provisioning, setProvisioning] = useState(false);
   const [provisionConfirmOpen, setProvisionConfirmOpen] = useState(false);
+  const [clearCategoryDialogOpen, setClearCategoryDialogOpen] = useState(false);
   const [selectedProvisioningCategories, setSelectedProvisioningCategories] = useState<string[]>(
     PROVISIONING_CATEGORIES.map((category) => category.key),
   );
@@ -504,42 +506,26 @@ export function BotControlPage({ channelsOnly = false }: { channelsOnly?: boolea
     } : current);
   };
 
-  const clearAllDestinations = () => {
-    if (!currentDraft || !window.confirm(
-      "Golești toate destinațiile din Control bot? Verificarea, mesajele de bun venit/plecare și urmărirea invitațiilor vor fi dezactivate până configurezi din nou destinații. Canalele și mesajele Discord nu vor fi șterse.",
-    )) return;
-    setDraft((current) => current ? {
-      ...current,
-      channels: Object.fromEntries(CHANNELS.map(([key]) => [key, ""])),
-      verification: { ...current.verification, enabled: false, channelId: "" },
-      tickets: {
-        ...current.tickets,
-        categories: { staff: "", partnership: "", help_report: "" },
-        alliancePublicChannelId: "",
-      },
-      gameplayConfig: {
-        ...current.gameplayConfig,
-        memberMessages: {
-          ...current.gameplayConfig.memberMessages,
-          welcomeEnabled: false,
-          leaveEnabled: false,
-          channelId: "",
-        },
-      },
-      dailyStats: { ...current.dailyStats, channelId: "" },
-      inviteTracking: {
-        ...current.inviteTracking,
-        enabled: false,
-        joinLogChannelId: "",
-        reportChannelId: "",
-        reportEnabled: false,
-      },
-    } : current);
+  const clearDestinations = (scope: DestinationClearScope) => {
+    if (!currentDraft) return;
+    const category = DESTINATION_CLEAR_CATEGORIES.find((entry) => entry.key === scope);
+    const categoryLabel = category?.label ?? "toate destinațiile";
+    const confirmationMessage = scope === "all"
+      ? "Golești toate destinațiile din Control bot? Verificarea, mesajele de bun venit/plecare și urmărirea invitațiilor vor fi dezactivate până configurezi din nou destinații. Canalele și mesajele Discord nu vor fi șterse."
+      : `Golești destinațiile din categoria „${categoryLabel}”? ${category?.confirmationDetails ?? ""} Canalele și mesajele Discord nu vor fi șterse.`;
+    if (!window.confirm(confirmationMessage)) return;
+
+    setDraft((current) => current ? clearBotControlDestinations(current, scope) : current);
+    setClearCategoryDialogOpen(false);
     toast({
-      title: "Destinațiile au fost golite",
+      title: scope === "all"
+        ? "Destinațiile au fost golite"
+        : `Destinațiile din „${categoryLabel}” au fost golite`,
       description: "Setările sunt în draft. Apasă Salvează pentru a le aplica; canalele Discord rămân neschimbate.",
     });
   };
+
+  const clearAllDestinations = () => clearDestinations("all");
 
   const resetGameplayMessages = () => {
     setDraft((current) => current ? {
@@ -1075,6 +1061,14 @@ export function BotControlPage({ channelsOnly = false }: { channelsOnly?: boolea
                     </p>
                   </div>
                   <div className="flex shrink-0 flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="gap-2 h-8 text-xs"
+                      onClick={() => setClearCategoryDialogOpen(true)}
+                    >
+                      <Folder className="h-3 w-3" /> Golește pe categorii
+                    </Button>
                     <Button
                       type="button"
                       variant="destructive"
@@ -2280,6 +2274,43 @@ export function BotControlPage({ channelsOnly = false }: { channelsOnly?: boolea
           </div>
         </div>
       )}
+
+      <Dialog open={clearCategoryDialogOpen} onOpenChange={setClearCategoryDialogOpen}>
+        <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Golește destinațiile pe categorie</DialogTitle>
+            <DialogDescription>
+              Alege grupul de destinații de golit. Modificările rămân în draft până apeși Salvează; canalele și mesajele Discord nu sunt șterse.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            {DESTINATION_CLEAR_CATEGORIES.map((category) => (
+              <article
+                key={category.key}
+                className="flex items-center justify-between gap-4 rounded-lg border border-border bg-muted/20 p-3"
+              >
+                <div className="min-w-0">
+                  <h3 className="text-sm font-medium">{category.label}</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">{category.description}</p>
+                </div>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  className="h-8 shrink-0 text-xs"
+                  onClick={() => clearDestinations(category.key)}
+                >
+                  Golește
+                </Button>
+              </article>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setClearCategoryDialogOpen(false)}>
+              Închide
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={provisionConfirmOpen} onOpenChange={setProvisionConfirmOpen}>
         <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
