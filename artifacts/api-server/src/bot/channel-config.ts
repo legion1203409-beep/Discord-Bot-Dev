@@ -27,16 +27,21 @@ export async function initChannelConfig(guildId: string): Promise<void> {
 
 /**
  * Get the configured channel ID for a type.
- * Returns null for guilds that have not configured this channel yet.
- * Callers must guard on null and skip the action rather than falling through
- * to the original guild's channel IDs.
+ * A missing value may use the original guild's legacy defaults; an explicit
+ * empty string means the owner has disabled this destination. Callers should
+ * use a truthy guard before sending so both null and an explicit clear skip.
  */
 export function getChannel(type: keyof ChannelConfig, guildId: string): string | null {
   const cached = cachedByGuild.get(guildId);
-  const override = cached?.[type];
-  if (override) return override;
-  // Optional community-event channels follow the configured main channel
-  // until an administrator explicitly separates them.
+  if (cached && Object.prototype.hasOwnProperty.call(cached, type)) {
+    return cached[type] ?? "";
+  }
+  // These channels follow main only while no explicit main setting exists.
+  // A saved empty main value must suppress both inherited and legacy targets.
+  if ((type === "council" || type === "fratia") && cached &&
+    Object.prototype.hasOwnProperty.call(cached, "main")) {
+    return cached.main ?? "";
+  }
   if ((type === "council" || type === "fratia") && cached?.main) {
     return cached.main;
   }
@@ -59,13 +64,12 @@ export function getAllChannels(guildId: string): Required<ChannelConfig> {
 }
 
 /**
- * Returns true if the guild has at least one explicitly configured channel.
- * The original guild is always considered configured (uses hardcoded defaults).
+ * Returns true when at least one effective destination is available. The
+ * original guild's legacy defaults count only when they were not explicitly cleared.
  */
 export function hasAnyChannelConfigured(guildId: string): boolean {
-  if (guildId === ORIGINAL_GUILD_ID) return true;
-  const cfg = cachedByGuild.get(guildId);
-  return cfg !== null && cfg !== undefined && Object.keys(cfg).length > 0;
+  return (Object.keys(DEFAULT_CHANNELS) as Array<keyof ChannelConfig>)
+    .some((type) => Boolean(getChannel(type, guildId)));
 }
 
 /** Reset one channel back to its default for a guild. */

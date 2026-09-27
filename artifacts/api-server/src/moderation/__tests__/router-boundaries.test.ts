@@ -124,6 +124,7 @@ import { DEFAULT_TICKET_CONFIG } from "../../bot/ticket-config";
 import { VerificationPanelPersistenceError } from "../../bot/verification";
 
 type BotControlResponse = {
+  channels: Record<string, string>;
   provisioningPermissions: Record<string, {
     roleIds: string[];
     readMessageHistory: boolean;
@@ -131,6 +132,7 @@ type BotControlResponse = {
     rolePermissions?: Record<string, { viewChannel: boolean; readMessageHistory: boolean; sendMessages: boolean }>;
   }>;
   tickets: {
+    categories: { staff: string; partnership: string; help_report: string };
     staffReviewRoleId: string;
     alliancePublicChannelId: string;
     flows: {
@@ -900,6 +902,47 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     expect(response.status).toBe(200);
     expect(mocks.saveAllianceRecruitmentText).toHaveBeenCalledWith(guildId, "");
     expect(mocks.initChannelConfig).toHaveBeenCalledWith(guildId);
+  });
+
+  it("saves empty bot and ticket channel destinations without restoring defaults", async () => {
+    const payload = botControlPayload();
+    const channels = {
+      main: "",
+      event: "",
+      boss: "",
+      trader: "",
+      eventTop: "",
+      bossTop: "",
+      council: "",
+      fratia: "",
+    };
+    const categories = { staff: "", partnership: "", help_report: "" };
+    const requestPayload = {
+      ...payload,
+      channels,
+      tickets: {
+        ...payload.tickets,
+        categories,
+        alliancePublicChannelId: "",
+      },
+    };
+
+    const response = await fetch(`${base}/bot-control`, {
+      ...post(requestPayload),
+      method: "PUT",
+      headers: { "content-type": "application/json", "x-csrf-token": "csrf" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.saveChannelConfig).toHaveBeenCalledWith(guildId, channels);
+    expect(mocks.saveTicketConfig).toHaveBeenCalledWith(guildId, expect.objectContaining({
+      categories: { staff: "", partnership: "", help_report: "" },
+      alliancePublicChannelId: "",
+    }));
+    const result = await response.json() as BotControlResponse;
+    expect(result.channels).toEqual(channels);
+    expect(result.tickets.categories).toEqual(categories);
+    expect(result.tickets.alliancePublicChannelId).toBe("");
   });
 
   it("rejects configured channels that are missing from the target guild before persisting", async () => {

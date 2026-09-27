@@ -328,14 +328,14 @@ const botChannelConfigSchema = z.object(
 {
 
 
-  main: snowflake.nullable().optional(),
-  event: snowflake.nullable().optional(),
-  boss: snowflake.nullable().optional(),
-  trader: snowflake.nullable().optional(),
-  eventTop: snowflake.nullable().optional(),
-  bossTop: snowflake.nullable().optional(),
-  council: snowflake.nullable().optional(),
-  fratia: snowflake.nullable().optional(),
+  main: snowflake.or(z.literal("")).nullable().optional(),
+  event: snowflake.or(z.literal("")).nullable().optional(),
+  boss: snowflake.or(z.literal("")).nullable().optional(),
+  trader: snowflake.or(z.literal("")).nullable().optional(),
+  eventTop: snowflake.or(z.literal("")).nullable().optional(),
+  bossTop: snowflake.or(z.literal("")).nullable().optional(),
+  council: snowflake.or(z.literal("")).nullable().optional(),
+  fratia: snowflake.or(z.literal("")).nullable().optional(),
 }
 
 ).strict()
@@ -644,15 +644,15 @@ export const botControlSchema = z.object(
 {
 
 
-      staff: snowflake,
-      partnership: snowflake,
-      help_report: snowflake,
+      staff: snowflake.or(z.literal("")),
+      partnership: snowflake.or(z.literal("")),
+      help_report: snowflake.or(z.literal("")),
     
 }
 
 ).strict(),
     staffReviewRoleId: snowflake,
-    alliancePublicChannelId: snowflake,
+    alliancePublicChannelId: snowflake.or(z.literal("")),
     allianceOwnerGuildId: snowflake,
     allianceAnnouncementTemplate: z.string().trim().max(2_000).optional(),
     allianceAnnouncementMode: z.enum(["text", "embed"]).optional(),

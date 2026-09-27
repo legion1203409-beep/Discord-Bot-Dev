@@ -504,6 +504,43 @@ export function BotControlPage({ channelsOnly = false }: { channelsOnly?: boolea
     } : current);
   };
 
+  const clearAllDestinations = () => {
+    if (!currentDraft || !window.confirm(
+      "Golești toate destinațiile din Control bot? Verificarea, mesajele de bun venit/plecare și urmărirea invitațiilor vor fi dezactivate până configurezi din nou destinații. Canalele și mesajele Discord nu vor fi șterse.",
+    )) return;
+    setDraft((current) => current ? {
+      ...current,
+      channels: Object.fromEntries(CHANNELS.map(([key]) => [key, ""])),
+      verification: { ...current.verification, enabled: false, channelId: "" },
+      tickets: {
+        ...current.tickets,
+        categories: { staff: "", partnership: "", help_report: "" },
+        alliancePublicChannelId: "",
+      },
+      gameplayConfig: {
+        ...current.gameplayConfig,
+        memberMessages: {
+          ...current.gameplayConfig.memberMessages,
+          welcomeEnabled: false,
+          leaveEnabled: false,
+          channelId: "",
+        },
+      },
+      dailyStats: { ...current.dailyStats, channelId: "" },
+      inviteTracking: {
+        ...current.inviteTracking,
+        enabled: false,
+        joinLogChannelId: "",
+        reportChannelId: "",
+        reportEnabled: false,
+      },
+    } : current);
+    toast({
+      title: "Destinațiile au fost golite",
+      description: "Setările sunt în draft. Apasă Salvează pentru a le aplica; canalele Discord rămân neschimbate.",
+    });
+  };
+
   const resetGameplayMessages = () => {
     setDraft((current) => current ? {
       ...current,
@@ -682,7 +719,9 @@ export function BotControlPage({ channelsOnly = false }: { channelsOnly?: boolea
       const saved = await update({
         ...submittedDraft,
         provisioningPermissions: submittedPermissions,
-        channels: Object.fromEntries(Object.entries(submittedDraft.channels).filter(([, value]) => value)),
+        channels: Object.fromEntries(
+          Object.entries(submittedDraft.channels).filter(([, value]) => typeof value === "string"),
+        ),
         tickets: { ...submittedDraft.tickets, flows },
       });
       if (currentGuild.current !== submittedGuild || initializedGuild.current !== submittedGuild) return;
@@ -812,9 +851,11 @@ export function BotControlPage({ channelsOnly = false }: { channelsOnly?: boolea
   const activeFlow = draft.tickets.flows[activeFlowKind];
   const duplicateQuestionKeys = getDuplicateQuestionKeys(activeFlow);
   const activeCategory = draft.tickets.categories[activeFlowKind];
-  const selectedActiveCategory = categories.some((category) => category.id === activeCategory)
-    ? activeCategory
-    : "__manual__";
+  const selectedActiveCategory = !activeCategory
+    ? "__none__"
+    : categories.some((category) => category.id === activeCategory)
+      ? activeCategory
+      : "__manual__";
   const postedQuestionKeys = new Set(
     activeFlow.postedQuestionKeys ?? activeFlow.questions.map((question) => question.key),
   );
@@ -1029,16 +1070,28 @@ export function BotControlPage({ channelsOnly = false }: { channelsOnly?: boolea
                 <div className="section-head">
                   <div>
                     <h2 className="font-medium text-foreground">Identifică destinațiile pe Discord</h2>
-                    <p className="text-xs text-muted-foreground">Selectează canale din server pentru fiecare funcție a botului.</p>
+                    <p className="text-xs text-muted-foreground">
+                      Selectează canale din server pentru fiecare funcție a botului. „Neconfigurat” oprește rutarea botului; canalul Discord nu este șters.
+                    </p>
                   </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="shrink-0 gap-2 h-8 text-xs"
-                    onClick={() => void refetchMetadata()}
-                  >
-                    <Radio className="h-3 w-3" /> Reîmprospătează
-                  </Button>
+                  <div className="flex shrink-0 flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      className="h-8 text-xs"
+                      onClick={clearAllDestinations}
+                    >
+                      Golește toate destinațiile
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="gap-2 h-8 text-xs"
+                      onClick={() => void refetchMetadata()}
+                    >
+                      <Radio className="h-3 w-3" /> Reîmprospătează
+                    </Button>
+                  </div>
                 </div>
                 <div className="channel-grid">
                   {channelFields.map(({ key, label, description, icon: Icon }) => {
@@ -1294,10 +1347,14 @@ export function BotControlPage({ channelsOnly = false }: { channelsOnly?: boolea
                   <label className="text-sm font-medium">Categoria Discord</label>
                   <Select
                     value={selectedActiveCategory}
-                    onValueChange={(value) => setTicket(["categories", activeFlowKind], value === "__manual__" ? activeCategory : value)}
+                    onValueChange={(value) => setTicket(
+                      ["categories", activeFlowKind],
+                      value === "__none__" ? "" : value === "__manual__" ? activeCategory : value,
+                    )}
                   >
                     <SelectTrigger className="mod-select-trigger"><SelectValue placeholder="Alege categoria" /></SelectTrigger>
                     <SelectContent className="max-h-[min(70vh,32rem)] overscroll-contain">
+                      <SelectItem value="__none__">Neconfigurat</SelectItem>
                       <SelectItem value="__manual__">Introduc manual ID-ul</SelectItem>
                       {categories.map((category) => <SelectItem key={category.id} value={category.id}>▰ {category.name}</SelectItem>)}
                     </SelectContent>
@@ -1520,13 +1577,22 @@ export function BotControlPage({ channelsOnly = false }: { channelsOnly?: boolea
             <div className="grid gap-4 md:grid-cols-3">
               {TICKET_CATEGORIES.map(([key, label]) => {
                 const current = draft.tickets.categories[key];
-                const selected = categories.some((channel) => channel.id === current) ? current : "__manual__";
+                const selected = !current
+                  ? "__none__"
+                  : categories.some((channel) => channel.id === current) ? current : "__manual__";
                 return (
                   <div key={key} className="space-y-2">
                     <label className="text-sm font-medium">{label}</label>
-                    <Select value={selected} onValueChange={(value) => setTicket(["categories", key], value === "__manual__" ? current : value)}>
+                    <Select
+                      value={selected}
+                      onValueChange={(value) => setTicket(
+                        ["categories", key],
+                        value === "__none__" ? "" : value === "__manual__" ? current : value,
+                      )}
+                    >
                        <SelectTrigger className="mod-select-trigger"><SelectValue placeholder="Alege categorie" /></SelectTrigger>
                       <SelectContent className="max-h-[min(70vh,32rem)] overscroll-contain">
+                        <SelectItem value="__none__">Neconfigurat</SelectItem>
                         <SelectItem value="__manual__">ID introdus manual</SelectItem>
                         {categories.map((category) => <SelectItem key={category.id} value={category.id}>▰ {category.name}</SelectItem>)}
                       </SelectContent>
@@ -1561,9 +1627,20 @@ export function BotControlPage({ channelsOnly = false }: { channelsOnly?: boolea
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium">Canal public alianțe</label>
-                <Select value={textChannels.some((channel) => channel.id === draft.tickets.alliancePublicChannelId) ? draft.tickets.alliancePublicChannelId : "__manual__"} onValueChange={(value) => setTicket(["alliancePublicChannelId"], value === "__manual__" ? draft.tickets.alliancePublicChannelId : value)}>
+                <Select
+                  value={!draft.tickets.alliancePublicChannelId
+                    ? "__none__"
+                    : textChannels.some((channel) => channel.id === draft.tickets.alliancePublicChannelId)
+                      ? draft.tickets.alliancePublicChannelId
+                      : "__manual__"}
+                  onValueChange={(value) => setTicket(
+                    ["alliancePublicChannelId"],
+                    value === "__none__" ? "" : value === "__manual__" ? draft.tickets.alliancePublicChannelId : value,
+                  )}
+                >
                    <SelectTrigger className="mod-select-trigger"><SelectValue placeholder="Alege canal" /></SelectTrigger>
                   <SelectContent className="max-h-[min(70vh,32rem)] overscroll-contain">
+                    <SelectItem value="__none__">Neconfigurat</SelectItem>
                     <SelectItem value="__manual__">ID introdus manual</SelectItem>
                     {textChannels.map((channel) => <SelectItem key={channel.id} value={channel.id}>#{channel.name}</SelectItem>)}
                   </SelectContent>

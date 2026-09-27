@@ -37,6 +37,20 @@ function flow(kind: TicketCategoryKind, overrides: Partial<TicketFlowConfig> = {
 }
 
 describe("custom ticket flow configuration", () => {
+  it("preserves explicitly empty ticket destinations while keeping legacy defaults for missing values", () => {
+    const cleared = normalizeTicketConfig({
+      categories: { staff: "", partnership: "", help_report: "" },
+      alliancePublicChannelId: "",
+    });
+
+    expect(cleared.categories).toEqual({ staff: "", partnership: "", help_report: "" });
+    expect(cleared.alliancePublicChannelId).toBe("");
+
+    const legacy = normalizeTicketConfig({});
+    expect(legacy.categories).toEqual(DEFAULT_TICKET_CONFIG.categories);
+    expect(legacy.alliancePublicChannelId).toBe(DEFAULT_TICKET_CONFIG.alliancePublicChannelId);
+  });
+
   it("validates and normalizes independent custom flows for all three ticket types", () => {
     const rawFlows = Object.fromEntries(
       KINDS.map((kind) => [kind, flow(kind)]),

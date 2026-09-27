@@ -1829,6 +1829,13 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
       });
       return true;
     }
+    if (!ticketConfig.alliancePublicChannelId) {
+      await interaction.reply({
+        content: "❌ Canalul public al alianțelor nu este configurat. Adaugă o destinație în setările tichetelor.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
     const publicChannel = await interaction.client.channels
       .fetch(ticketConfig.alliancePublicChannelId)
       .catch(() => null);

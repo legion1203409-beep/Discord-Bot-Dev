@@ -154,6 +154,11 @@ function validSnowflake(value: unknown): value is string {
   return typeof value === "string" && /^\d{5,25}$/.test(value);
 }
 
+function destinationOrDefault(value: unknown, fallback: string): string {
+  if (typeof value === "string" && value.trim() === "") return "";
+  return validSnowflake(value) ? value : fallback;
+}
+
 function textOrDefault(value: unknown, fallback: string, maxLength: number): string {
   return typeof value === "string" && value.trim() !== ""
     ? value.trim().slice(0, maxLength)
@@ -241,12 +246,15 @@ export function normalizeTicketConfig(value: unknown): TicketConfig {
 
   return {
     categories: {
-      staff: validSnowflake(categories.staff) ? categories.staff : DEFAULT_TICKET_CONFIG.categories.staff,
-      partnership: validSnowflake(categories.partnership) ? categories.partnership : DEFAULT_TICKET_CONFIG.categories.partnership,
-      help_report: validSnowflake(categories.help_report) ? categories.help_report : DEFAULT_TICKET_CONFIG.categories.help_report,
+      staff: destinationOrDefault(categories.staff, DEFAULT_TICKET_CONFIG.categories.staff),
+      partnership: destinationOrDefault(categories.partnership, DEFAULT_TICKET_CONFIG.categories.partnership),
+      help_report: destinationOrDefault(categories.help_report, DEFAULT_TICKET_CONFIG.categories.help_report),
     },
     staffReviewRoleId: validSnowflake(raw.staffReviewRoleId) ? raw.staffReviewRoleId : DEFAULT_TICKET_CONFIG.staffReviewRoleId,
-    alliancePublicChannelId: validSnowflake(raw.alliancePublicChannelId) ? raw.alliancePublicChannelId : DEFAULT_TICKET_CONFIG.alliancePublicChannelId,
+    alliancePublicChannelId: destinationOrDefault(
+      raw.alliancePublicChannelId,
+      DEFAULT_TICKET_CONFIG.alliancePublicChannelId,
+    ),
     allianceOwnerGuildId: validSnowflake(raw.allianceOwnerGuildId) ? raw.allianceOwnerGuildId : DEFAULT_TICKET_CONFIG.allianceOwnerGuildId,
     allianceAnnouncementTemplate: textOrDefault(
       raw.allianceAnnouncementTemplate,

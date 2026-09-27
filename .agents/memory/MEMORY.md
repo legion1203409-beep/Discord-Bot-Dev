@@ -29,7 +29,7 @@
 - [Discord live countdown](discord-live-countdown.md) — `<t:UNIX:R>` countdown must use a stored absolute expiresAt that ALSO schedules the expiry setTimeout (delay = expiresAt - Date.now()); footers can't render it.
 - [bot_state table self-heal](bot-state-table-self-heal.md) — guard EVERY bot_state helper with singleton ensureBotStateTable() (idempotent CREATE TABLE); ShardReady/ClientReady race a one-shot startup create.
 - [Permanent trader repost guard](permanent-trader-repost-guard.md) — re-post the single persistent trader only on Discord 10008; treating any fetch/edit error as deleted duplicates it on transient blips.
-- [Multi-guild channel routing](multi-guild-channel-routing.md) — getChannel() returns null for unconfigured guilds; scheduler uses fetchChannel(); tests must vi.mock channel-config or actions silently no-op.
+- [Multi-guild channel routing](multi-guild-channel-routing.md) — missing settings may fall back to legacy routes; explicit `""` disables routing and must survive saves and nullish fallbacks.
 - [Boss fights by rarity](boss-by-rarity.md) — boss check must use stored monsterRarity==="boss" (ambush bosses exist at any level); stat fns need the rarity arg or HP desyncs.
 - [Ephemeral anti-spam pattern](ephemeral-anti-spam.md) — repeated feedback must use ephemeralNote/sendOrEditEphemeral (60s edit window + delete-old); public announcements replace their predecessor under a per-key lock.
 - [DB pool & interaction latency](db-pool-interaction-latency.md) — default pg Pool (max 10) congests the event loop under concurrent clicks, delaying even deferUpdate past 3s → 10062; size pool + timeouts.
