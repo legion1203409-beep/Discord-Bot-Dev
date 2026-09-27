@@ -70,7 +70,10 @@ export function clearBotControlDestinations(
 
   const channels = scope === "all"
     ? Object.fromEntries(
-        Array.from(new Set([...ALL_CHANNEL_KEYS, ...Object.keys(config.channels)]), (key) => [key, ""]),
+        Array.from(
+          new Set([...ALL_CHANNEL_KEYS, ...Object.keys(config.channels)]),
+          (key): [string, string] => [key, ""],
+        ),
       )
     : { ...config.channels, ...channelUpdates };
 
