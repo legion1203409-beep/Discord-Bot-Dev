@@ -857,6 +857,67 @@ export interface HiddenChest {
 }
 
 export const HIDDEN_CHEST_MESSAGE_RETENTION_MS = 20 * 60 * 1000;
+export const ORACLE_CLUE_DURATION_MS = 10 * 60 * 1000;
+
+interface OracleClueState {
+  status: "active" | "solved" | "expired";
+  guildId: string;
+  channelId: string;
+  messageId: string;
+  answer: string;
+  createdAt: number;
+  expiresAt: number;
+  hiddenChestId?: string;
+}
+
+const oracleClueTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+async function expireOracleClue(client: Client, clue: OracleClueState): Promise<void> {
+  const key = stateKey(clue.guildId, "oracle_clue");
+  await ensureBotStateTable();
+  const result = await pool.query<{ value: string }>(
+    `UPDATE bot_state
+     SET value = jsonb_set(value::jsonb, '{status}', '"expired"'::jsonb, true)::text,
+         updated_at = now()
+     WHERE key = $1 AND value::jsonb->>'messageId' = $2
+       AND (value::jsonb->>'expiresAt')::bigint <= $3
+       AND value::jsonb->>'status' IN ('active', 'solved', 'expired')
+     RETURNING value`,
+    [key, clue.messageId, Date.now()],
+  );
+  const saved = result.rows[0] ? JSON.parse(result.rows[0].value) as OracleClueState : null;
+  if (!saved) return;
+
+  const channel = await client.channels.fetch(saved.channelId || clue.channelId).catch(() => null);
+  if (!(channel instanceof TextChannel)) return;
+  const message = await channel.messages.fetch(saved.messageId || clue.messageId).catch(() => null);
+  await message?.delete().catch(() => null);
+}
+
+export function scheduleOracleClueExpiration(client: Client, clue: OracleClueState): void {
+  const timerKey = `${clue.guildId}:${clue.messageId}`;
+  const previous = oracleClueTimers.get(timerKey);
+  if (previous) clearTimeout(previous);
+
+  const timer = setTimeout(() => {
+    if (oracleClueTimers.get(timerKey) === timer) oracleClueTimers.delete(timerKey);
+    void expireOracleClue(client, clue).catch(() => null);
+  }, Math.max(0, clue.expiresAt - Date.now()));
+  timer.unref?.();
+  oracleClueTimers.set(timerKey, timer);
+}
+
+export async function rehydrateOracleClue(client: Client, guildId: string): Promise<void> {
+  const clue = await loadState<OracleClueState>(stateKey(guildId, "oracle_clue"));
+  if (!clue?.messageId || !clue.channelId) return;
+  if (!["active", "solved", "expired"].includes(clue.status)) return;
+
+  if (clue.status === "expired" || clue.expiresAt <= Date.now()) {
+    await expireOracleClue(client, clue);
+    return;
+  }
+  scheduleOracleClueExpiration(client, clue);
+}
 
 export function buildOracleClueEmbed(answer: string, expiresAt?: number): EmbedBuilder {
   const clues: Record<string, string> = {
@@ -925,9 +986,12 @@ export async function maybeHandleOracleClue(
 ): Promise<void> {
   if (!message.guildId || message.author.bot) return;
   const guildId = message.guildId;
-  const current = await loadState<{ status: string; messageId: string; answer: string; expiresAt: number }>(
+  const current = await loadState<OracleClueState>(
     stateKey(guildId, "oracle_clue"),
   );
+  if (current && current.expiresAt <= Date.now() && current.status !== "expired") {
+    await expireOracleClue(client, current);
+  }
   if (
     current?.status === "active" &&
     current.expiresAt > Date.now() &&
@@ -965,14 +1029,14 @@ export async function maybeHandleOracleClue(
     return;
   }
 
-  if (current?.status === "active" && current.expiresAt > Date.now()) return;
+  if (current && current.expiresAt > Date.now() && current.status !== "expired") return;
   if (Math.random() > 0.012) return;
   if (!(message.channel instanceof TextChannel)) return;
   const answers = ["cenusa", "ecou", "luna", "umbra"];
   const answer = answers[Math.floor(Math.random() * answers.length)]!;
-  const clueExpiresAt = Date.now() + 10 * 60 * 1000;
+  const clueExpiresAt = Date.now() + ORACLE_CLUE_DURATION_MS;
   const clueMessage = await message.channel.send({ embeds: [buildOracleClueEmbed(answer, clueExpiresAt)] });
-  await saveState(stateKey(guildId, "oracle_clue"), {
+  const clue: OracleClueState = {
     status: "active",
     guildId,
     messageId: clueMessage.id,
@@ -980,7 +1044,9 @@ export async function maybeHandleOracleClue(
     answer,
     createdAt: Date.now(),
     expiresAt: clueExpiresAt,
-  });
+  };
+  await saveState(stateKey(guildId, "oracle_clue"), clue);
+  scheduleOracleClueExpiration(client, clue);
 }
 
 function normalizeAnswer(value: string): string {

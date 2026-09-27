@@ -14,6 +14,7 @@ import {
   spawnSeasonalChest,
   rehydrateSeasonalChest,
   rehydrateHiddenChest,
+  rehydrateOracleClue,
   settleExpiredAuction,
 } from "./chest-expansions";
 import { setTributeGamePaused, startTributeScheduler, stopTributeScheduler } from "./tribute";
@@ -1677,6 +1678,9 @@ export function startGuildScheduler(client: Client, guildId: string) {
   );
   void (rehydrateHiddenChest?.(client, guildId) ?? Promise.resolve()).catch((err) =>
     logger.warn({ err, guildId }, "Failed to rehydrate hidden chest"),
+  );
+  void rehydrateOracleClue(client, guildId).catch((err) =>
+    logger.warn({ err, guildId }, "Failed to rehydrate Oracle clue"),
   );
   void rehydrateFratiaVote(client, guildId).catch((err) =>
     logger.warn({ err, guildId }, "Failed to rehydrate Frăția vote"),

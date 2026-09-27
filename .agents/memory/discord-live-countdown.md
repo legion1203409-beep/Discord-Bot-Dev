@@ -28,3 +28,9 @@ Rules learned:
 
 - Timestamps render in the embed **description/field values**, NOT in the footer — Discord footers
   show `<t:...>` as literal text. Hide the countdown line entirely once the entity is defeated/expired.
+
+- A relative timestamp is only presentation. If the message says an item disappears or closes,
+  expiry must also update eligibility and delete/edit the Discord message; rehydrate persisted
+  cleanup on startup.
+  **Why:** a stored Oracle clue remained visible for hours after the handler stopped accepting answers.
+  **How to apply:** use one persisted absolute `expiresAt` for the embed, claim checks, timer, and restart recovery.

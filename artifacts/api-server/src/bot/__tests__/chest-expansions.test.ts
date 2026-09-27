@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 
 vi.mock("discord.js", () => {
   class EmbedBuilder {
@@ -57,6 +57,7 @@ vi.mock("../channel-config", () => ({
   getChannel: vi.fn(() => null),
 }));
 
+import { TextChannel } from "discord.js";
 import {
   claimPersonalChest,
   claimSeasonalChest,
@@ -71,7 +72,14 @@ import {
   HIDDEN_CHEST_MESSAGE_RETENTION_MS,
   isSeasonalChestOnCooldown,
   seasonalForBucket,
+  ORACLE_CLUE_DURATION_MS,
+  rehydrateOracleClue,
+  scheduleOracleClueExpiration,
 } from "../chest-expansions";
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("chest expansion pure mechanics", () => {
   it("converts daily activity into capped score and five reward tiers", () => {
@@ -148,6 +156,75 @@ describe("chest expansion pure mechanics", () => {
     expect(query.mock.calls[1]?.[1]).toContain("Doru");
     expect(query.mock.calls[1]?.[0]).toContain("cleanupAt");
     expect(query.mock.calls[1]?.[1]).toHaveLength(5);
+  });
+});
+
+describe("Oracle clue expiry", () => {
+  it("deletes the clue when its persisted expiry time is reached", async () => {
+    query.mockReset();
+    vi.useFakeTimers();
+    const now = 1_790_000_000_000;
+    vi.setSystemTime(now);
+    const clue = {
+      status: "active" as const,
+      guildId: "guild-1",
+      channelId: "channel-1",
+      messageId: "clue-1",
+      answer: "umbra",
+      createdAt: now,
+      expiresAt: now + 1_000,
+    };
+    query.mockResolvedValueOnce({
+      rows: [{ value: JSON.stringify({ ...clue, status: "expired" }) }],
+    });
+    const deleteMessage = vi.fn().mockResolvedValue(undefined);
+    const channel = Object.assign(Object.create(TextChannel.prototype), {
+      messages: { fetch: vi.fn().mockResolvedValue({ delete: deleteMessage }) },
+    });
+    const client = {
+      channels: { fetch: vi.fn().mockResolvedValue(channel) },
+    } as never;
+
+    scheduleOracleClueExpiration(client, clue);
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining("UPDATE bot_state"),
+      ["guild-1:chest_world:oracle_clue", "clue-1", now + 1_000],
+    );
+    expect(deleteMessage).toHaveBeenCalledOnce();
+    expect(ORACLE_CLUE_DURATION_MS).toBe(10 * 60 * 1000);
+  });
+
+  it("removes an already-expired clue immediately after a bot restart", async () => {
+    query.mockReset();
+    const now = Date.now();
+    const clue = {
+      status: "active" as const,
+      guildId: "guild-1",
+      channelId: "channel-1",
+      messageId: "old-clue",
+      answer: "umbra",
+      createdAt: now - 2 * 60 * 60 * 1000,
+      expiresAt: now - 2 * 60 * 60 * 1000 + ORACLE_CLUE_DURATION_MS,
+    };
+    query
+      .mockResolvedValueOnce({ rows: [{ value: JSON.stringify(clue) }] })
+      .mockResolvedValueOnce({
+        rows: [{ value: JSON.stringify({ ...clue, status: "expired" }) }],
+      });
+    const deleteMessage = vi.fn().mockResolvedValue(undefined);
+    const channel = Object.assign(Object.create(TextChannel.prototype), {
+      messages: { fetch: vi.fn().mockResolvedValue({ delete: deleteMessage }) },
+    });
+    const client = {
+      channels: { fetch: vi.fn().mockResolvedValue(channel) },
+    } as never;
+
+    await rehydrateOracleClue(client, "guild-1");
+
+    expect(query).toHaveBeenCalledTimes(2);
+    expect(deleteMessage).toHaveBeenCalledOnce();
   });
 });
 
