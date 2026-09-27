@@ -1,15 +1,15 @@
 export const MANUAL_COMMAND_CATALOG = [
-  { key: "warn", label: "Avertisment (Warn)", group: "sanctions", target: "user" },
+  { key: "warn", label: "Avertisment (Warn)", group: "sanctions", target: "user", extraField: null },
   { key: "mute", label: "Restricționare (Mute)", group: "sanctions", target: "user", extraField: "durationMinutes" },
-  { key: "unmute", label: "Ridicare restricție (Unmute)", group: "sanctions", target: "user" },
-  { key: "kick", label: "Eliminare (Kick)", group: "sanctions", target: "user" },
-  { key: "ban", label: "Blocare (Ban)", group: "sanctions", target: "user" },
+  { key: "unmute", label: "Ridicare restricție (Unmute)", group: "sanctions", target: "user", extraField: null },
+  { key: "kick", label: "Eliminare (Kick)", group: "sanctions", target: "user", extraField: null },
+  { key: "ban", label: "Blocare (Ban)", group: "sanctions", target: "user", extraField: null },
   { key: "nick", label: "Schimbă porecla", group: "members", target: "user", extraField: "nickname" },
   { key: "role", label: "Acordă rol", group: "members", target: "user", extraField: "roleId" },
   { key: "purge", label: "Șterge mesaje (Purge)", group: "channels", target: "channel", extraField: "purgeAmount" },
   { key: "slowmode", label: "Setează Slowmode", group: "channels", target: "channel", extraField: "slowmodeAmount" },
-  { key: "lock", label: "Închide canal (Lock)", group: "channels", target: "channel" },
-  { key: "unlock", label: "Deschide canal (Unlock)", group: "channels", target: "channel" },
+  { key: "lock", label: "Închide canal (Lock)", group: "channels", target: "channel", extraField: null },
+  { key: "unlock", label: "Deschide canal (Unlock)", group: "channels", target: "channel", extraField: null },
 ] as const;
 
 export const MANUAL_COMMAND_GROUPS = [
