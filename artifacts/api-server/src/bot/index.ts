@@ -7,7 +7,6 @@ import {
   Routes,
   Events,
   MessageFlags,
-  ActivityType,
   ButtonInteraction,
   type Message,
   StringSelectMenuBuilder,
@@ -34,12 +33,13 @@ import { sendAiMemberMessage } from "./member-messages";
 import { messageWithImage } from "./message-media";
 import {
   recordMessage,
-  refreshOraclePresence,
   getCurrentMood,
   resumeOracle,
   stopOracle,
   isOracleEnabled,
 } from "./oracle";
+import { buildServerActivityPresence, buildServerInfoEmbed } from "./server-info";
+import { PUBLIC_DISCORD_INVITE } from "../lib/discord-invite";
 import {
   maybeReplyAsOracle,
   logOracleChatStatus,
@@ -358,7 +358,16 @@ export async function destroyBotClientForShutdown(): Promise<void> {
 let disconnectAlertTimer: ReturnType<typeof setTimeout> | null = null;
 let disconnectStartedAt: Date | null = null;
 let botReadyAt: Date | null = null;
+let botSessionStartedAt: Date | null = null;
 let shardStatus: string = "disconnected";
+
+function applyServerActivity(client: Client): void {
+  try {
+    client.user?.setPresence(buildServerActivityPresence());
+  } catch (err) {
+    logger.warn({ err }, "Could not set the Regatul Cenușii activity");
+  }
+}
 
 // ── Per-guild trader state ───────────────────────────────────────────────────
 const TRADER_SUCCESS_CHANCE  = 0.30;
@@ -525,6 +534,9 @@ const slashCommands = [
     .setName("profetie")
     .setDescription("🔮 Primește o profeție personalizată de la Oracolul Cenușii."),
   new SlashCommandBuilder()
+    .setName("server")
+    .setDescription("🏰 Vezi invitația și starea serverului Regatul Cenușii."),
+  new SlashCommandBuilder()
     .setName("clasament")
     .setDescription("👑 Clasamentele Regatelor Cenușii.")
     .addSubcommand((sub) =>
@@ -661,6 +673,33 @@ async function handleProfil(interaction: ChatInputCommandInteraction) {
   await interaction.editReply({
     embeds: [buildProfileEmbed(p, undefined, interaction.user.displayAvatarURL({ size: 256 }), items)],
   });
+}
+
+async function handleServer(interaction: ChatInputCommandInteraction): Promise<void> {
+  if (interaction.guildId !== DEFAULT_GUILD_ID) {
+    await interaction.reply({
+      content: "Comanda `/server` este disponibilă pe serverul Regatul Cenușii.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  if (!interaction.guild) {
+    await interaction.reply({
+      content: "Nu pot citi informațiile serverului în acest moment.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  await interaction.deferReply();
+  const embed = buildServerInfoEmbed({
+    serverName: interaction.guild.name,
+    serverIconUrl: interaction.guild.iconURL({ size: 256 }),
+    inviteUrl: PUBLIC_DISCORD_INVITE || null,
+    sessionStartedAt: botSessionStartedAt,
+  });
+  await interaction.editReply({ embeds: [embed] });
 }
 
 async function handleInventar(interaction: ChatInputCommandInteraction) {
@@ -893,7 +932,7 @@ function buildHelpEmbed(category: HelpCategory) {
           name: "Jucător",
           value:
             "**/ajutor** · **/profil** · **/clasament** · **/profetie** · **/clasa** · **/companion**\n" +
-            "**/magazin** · **/misiuni** · **/cufarpersonal** · **/chei**",
+            "**/magazin** · **/misiuni** · **/cufarpersonal** · **/chei** · **/server**",
         },
         {
           name: "Cufere și economie",
@@ -4587,7 +4626,10 @@ export async function startBot(onReady?: () => void): Promise<void> {
     botClient = client;
     setModerationClient(client);
     attachModeration(client);
-    botReadyAt = new Date();
+    const readyAt = new Date();
+    botReadyAt = readyAt;
+    botSessionStartedAt ??= readyAt;
+    applyServerActivity(client);
     shardStatus = "ready";
 
     try {
@@ -4770,7 +4812,6 @@ export async function startBot(onReady?: () => void): Promise<void> {
         message.id,
         message.reference?.messageId,
       );
-      refreshOraclePresence(client, message.guildId);
     } catch (err) {
       logger.error({ err }, "Oracle messageCreate handler failed");
     }
@@ -4936,6 +4977,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
     clearDisconnectAlert("ShardResume");
     shardStatus = "ready";
     botReadyAt = new Date();
+    applyServerActivity(client);
     logger.info({ shardId, replayedEvents }, "Discord shard resumed");
   });
 
@@ -4943,6 +4985,8 @@ export async function startBot(onReady?: () => void): Promise<void> {
     clearDisconnectAlert("ShardReady");
     shardStatus = "ready";
     botReadyAt = new Date();
+    botSessionStartedAt ??= botReadyAt;
+    applyServerActivity(client);
     // Re-setup trader for all known guilds on reconnect
     for (const [guildId] of client.guilds.cache) {
       void setupTrader(client, guildId);
@@ -5003,6 +5047,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
       let allowedWhileStopped = false;
       if (interaction.isChatInputCommand()) {
         allowedWhileStopped = [
+          "server",
           "stopjoc",
           "startjoc",
           "stopai",
@@ -5058,6 +5103,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
     if (interaction.isChatInputCommand()) {
       if (await handleModerationCommand(interaction as ChatInputCommandInteraction)) return;
       if (interaction.commandName === "profil") dispatch(handleProfil(interaction));
+      if (interaction.commandName === "server") dispatch(handleServer(interaction));
       if (interaction.commandName === "inventar") dispatch(handleInventar(interaction));
       if (interaction.commandName === "profetie") dispatch(handleProfetie(interaction));
       if (interaction.commandName === "clasament") dispatch(handleClasament(interaction));
