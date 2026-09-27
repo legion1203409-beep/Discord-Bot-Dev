@@ -3,10 +3,12 @@ type ModuleMap = Record<string, () => Promise<Record<string, unknown>>>;
 export const modules: ModuleMap = {
   "./components/mockups/bot-control-channels/Current.tsx": () => import("../components/mockups/bot-control-channels/Current.tsx"),
   "./components/mockups/bot-control-channels/Redesign.tsx": () => import("../components/mockups/bot-control-channels/Redesign.tsx"),
+  "./components/mockups/site-a/VariantA.tsx": () => import("../components/mockups/site-a/VariantA.tsx"),
   "./components/mockups/provisioning-redesign/Current.tsx": () => import("../components/mockups/provisioning-redesign/Current.tsx"),
   "./components/mockups/provisioning-redesign/Refined.tsx": () => import("../components/mockups/provisioning-redesign/Refined.tsx"),
-  "./components/mockups/site-a/VariantA.tsx": () => import("../components/mockups/site-a/VariantA.tsx"),
   "./components/mockups/site-b/VariantB.tsx": () => import("../components/mockups/site-b/VariantB.tsx"),
+  "./components/mockups/status-site-redesign/Current.tsx": () => import("../components/mockups/status-site-redesign/Current.tsx"),
+  "./components/mockups/status-site-redesign/Redesign.tsx": () => import("../components/mockups/status-site-redesign/Redesign.tsx"),
   "./components/mockups/video-oracolul/VideoTemplate.tsx": () => import("../components/mockups/video-oracolul/VideoTemplate.tsx"),
   "./components/mockups/video-oracolul/index.tsx": () => import("../components/mockups/video-oracolul/index.tsx"),
   "./components/mockups/video-oracolul/scenes/Scene1.tsx": () => import("../components/mockups/video-oracolul/scenes/Scene1.tsx"),
