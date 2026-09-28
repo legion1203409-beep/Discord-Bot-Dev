@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   beginDiscordOAuth,
+  beginVerificationOAuth,
   consumeDiscordOAuthState,
   resetDiscordOAuthStateForTests,
 } from "../oauth";
@@ -29,13 +30,13 @@ describe("Discord OAuth browser nonce", () => {
     return { response, request, state, url };
   }
 
-  it("creates a Discord authorization URL with identify and guilds", () => {
+  it("requests profile, guild list, email, and own membership for moderation", () => {
     const { url, response, state } = setup();
     const parsed = new URL(url);
     expect(parsed.origin + parsed.pathname).toBe("https://discord.com/oauth2/authorize");
     expect(parsed.searchParams.get("response_type")).toBe("code");
     expect(parsed.searchParams.get("client_id")).toBe("123456789");
-    expect(parsed.searchParams.get("scope")).toBe("identify guilds");
+    expect(parsed.searchParams.get("scope")).toBe("identify guilds email guilds.members.read");
     expect(parsed.searchParams.get("redirect_uri")).toBe("https://portal.example/api/moderation/oauth/discord/callback");
     expect(parsed.searchParams.get("state")).toBe(state);
     expect(response.cookie).toHaveBeenCalledWith(
@@ -43,6 +44,16 @@ describe("Discord OAuth browser nonce", () => {
       state,
       expect.objectContaining({ httpOnly: true, sameSite: "lax", path: "/api/moderation/oauth/discord" }),
     );
+  });
+
+  it("keeps public verification on the minimum OAuth scopes", () => {
+    process.env.DISCORD_CLIENT_ID = "123456789";
+    process.env.DISCORD_CLIENT_SECRET = "server-secret";
+    process.env.DISCORD_OAUTH_REDIRECT_URI = "https://portal.example/api/moderation/oauth/discord/callback";
+    const response = { cookie: vi.fn() };
+    const url = beginVerificationOAuth(response as never, "987654321");
+    const parsed = new URL(url);
+    expect(parsed.searchParams.get("scope")).toBe("identify guilds");
   });
 
   it("rejects a state mismatch in constant-time comparison and clears the nonce cookie", () => {

@@ -8,6 +8,15 @@ const OAUTH_STATE_COOKIE = "moderation_oauth_state";
 const OAUTH_STATE_TTL_MS = 10 * 60_000;
 const MAX_PENDING_STATES = 10_000;
 const SNOWFLAKE = /^\d{5,25}$/;
+const BOT_INVITE_PERMISSIONS =
+  (1n << 5n) // ManageGuild
+  | (1n << 4n) // ManageChannels
+  | (1n << 13n) // ManageMessages
+  | (1n << 28n) // ManageRoles
+  | (1n << 10n) // ViewChannel
+  | (1n << 11n) // SendMessages
+  | (1n << 14n) // EmbedLinks
+  | (1n << 16n); // ReadMessageHistory
 
 export interface PendingOAuthState {
   expiresAt: number;
@@ -192,7 +201,10 @@ function beginOAuth(res: Response, pendingState: Omit<PendingOAuthState, "expire
   const url = new URL(OAUTH_AUTHORIZE_URL);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("client_id", config.clientId);
-  url.searchParams.set("scope", "identify guilds");
+  const scopes = pendingState.purpose === "moderation"
+    ? ["identify", "guilds", "email", "guilds.members.read"]
+    : ["identify", "guilds"];
+  url.searchParams.set("scope", scopes.join(" "));
   url.searchParams.set("state", state);
   url.searchParams.set("redirect_uri", config.redirectUri);
   return url.toString();
@@ -366,8 +378,7 @@ export function getDiscordBotInviteUrl(guildId?: string): string | null {
   const url = new URL(OAUTH_AUTHORIZE_URL);
   url.searchParams.set("client_id", clientId);
   url.searchParams.set("scope", "bot applications.commands");
-  // View channel, send messages, embed links, read history, and manage roles.
-  url.searchParams.set("permissions", "268504064");
+  url.searchParams.set("permissions", BOT_INVITE_PERMISSIONS.toString());
   if (guildId) {
     url.searchParams.set("guild_id", guildId);
     url.searchParams.set("disable_guild_select", "true");

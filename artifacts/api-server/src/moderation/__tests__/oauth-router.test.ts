@@ -106,7 +106,7 @@ describe("Discord OAuth moderation routes", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     mocks.configured.mockReturnValue(true);
-    mocks.invite.mockReturnValue("https://discord.com/oauth2/authorize?client_id=123456789&scope=bot+applications.commands&permissions=268504064");
+    mocks.invite.mockReturnValue("https://discord.com/oauth2/authorize?client_id=123456789&scope=bot+applications.commands&permissions=268528688");
     mocks.consumeRequest.mockReturnValue({ purpose: "moderation", expiresAt: Date.now() + 60_000 });
     mocks.consumeState.mockReturnValue(true);
     mocks.exchange.mockResolvedValue("server-only-oauth-token");
@@ -135,7 +135,7 @@ describe("Discord OAuth moderation routes", () => {
     expect(await response.json()).toEqual({
       discordOAuthConfigured: true,
       authorizationUrl: "/api/moderation/oauth/discord",
-      botInviteUrl: "https://discord.com/oauth2/authorize?client_id=123456789&scope=bot+applications.commands&permissions=268504064",
+      botInviteUrl: "https://discord.com/oauth2/authorize?client_id=123456789&scope=bot+applications.commands&permissions=268528688",
       bot: null,
     });
     expect(mocks.invite).toHaveBeenCalledWith();

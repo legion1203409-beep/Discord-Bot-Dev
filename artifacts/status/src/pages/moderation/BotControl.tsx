@@ -1191,13 +1191,14 @@ export function BotControlPage({
                 </div>
                 <div className="permission-summary">
                   <span>Manage Channels {metadata?.botCapabilities?.canManageChannels ? <em>✓ Disponibilă</em> : <b>⚠ Necesară</b>}</span>
+                  <span>Manage Messages {metadata?.botCapabilities?.canManageMessages ? <em>✓ Disponibilă</em> : <b>⚠ Necesară pentru ștergerea mesajelor</b>}</span>
                   <span>Suprascrieri de acces {metadata?.botCapabilities?.canManageChannels ? <em>✓ Se aplică automat</em> : <b>⚠ Necesită Manage Channels</b>}</span>
                    <span>Mesaje și istoric <em>Configurabile în Provisioning</em></span>
                 </div>
                 <p className="help">
                   <CircleHelp size={13} />
                   <span>
-                     <strong>Manage Permissions</strong> nu este o permisiune Discord separată. Botul folosește <strong>Manage Channels</strong> pentru a crea canalele și a aplica accesul; <strong>Mesaje și istoric</strong> se configurează în pagina Provisioning pentru fiecare categorie și rol.
+                      <strong>Manage Permissions</strong> nu este o permisiune Discord separată. Botul folosește <strong>Manage Channels</strong> pentru a crea canalele și a aplica accesul, iar <strong>Manage Messages</strong> pentru a șterge mesajele. Vizibilitatea, trimiterea și istoricul se configurează în pagina Provisioning pentru fiecare categorie și rol.
                   </span>
                 </p>
               </section>

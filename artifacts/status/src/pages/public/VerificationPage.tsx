@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, ExternalLink, Loader2, ShieldCheck, TriangleAlert } from "lucide-react";
 import { PublicLayout } from "../../components/public/PublicLayout";
+import { DiscordEmojiText } from "../../components/moderation/DiscordEmojiText";
 
 type VerificationConfig = {
   guildId: string;
@@ -108,7 +109,10 @@ export function VerificationPage() {
                   className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#D94A2B] px-4 py-3 font-semibold text-white transition-colors hover:bg-[#B33C24] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#D94A2B]"
                   href={`/api/moderation/oauth/discord?verification=1&guildId=${encodeURIComponent(guildId)}`}
                 >
-                  {config.buttonEmoji} {config.buttonLabel} <ExternalLink className="h-4 w-4" />
+                  <DiscordEmojiText>
+                    {[config.buttonEmoji, config.buttonLabel].filter(Boolean).join(" ")}
+                  </DiscordEmojiText>
+                  <ExternalLink className="h-4 w-4" />
                 </a>
               )}
               <p className="text-xs leading-relaxed text-[#B0B0B0]">

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { PermissionFlagsBits } from "discord.js";
 import { getDiscordBotInviteUrl } from "../oauth";
 
 afterEach(() => vi.unstubAllEnvs());
@@ -11,7 +12,21 @@ describe("bot invitation URL", () => {
     expect(url.pathname).toBe("/oauth2/authorize");
     expect(url.searchParams.get("client_id")).toBe("123456789012345678");
     expect(url.searchParams.get("scope")?.split(" ")).toEqual(["bot", "applications.commands"]);
-    expect(url.searchParams.get("permissions")).toBe("268504064");
+    const permissions = BigInt(url.searchParams.get("permissions") ?? "0");
+    for (const permission of [
+      PermissionFlagsBits.ManageGuild,
+      PermissionFlagsBits.ManageChannels,
+      PermissionFlagsBits.ManageMessages,
+      PermissionFlagsBits.ManageRoles,
+      PermissionFlagsBits.ViewChannel,
+      PermissionFlagsBits.SendMessages,
+      PermissionFlagsBits.EmbedLinks,
+      PermissionFlagsBits.ReadMessageHistory,
+    ]) {
+      const flag = BigInt(permission);
+      expect(permissions & flag).toBe(flag);
+    }
+    expect(permissions & BigInt(PermissionFlagsBits.Administrator)).toBe(0n);
     expect(url.searchParams.has("guild_id")).toBe(false);
     expect(url.searchParams.has("disable_guild_select")).toBe(false);
   });
