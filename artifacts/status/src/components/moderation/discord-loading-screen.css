@@ -1,11 +1,11 @@
 .discord-auth-loading {
-  --loading-bg: #121212;
-  --loading-card: #1E1E1E;
-  --loading-border: rgba(255, 255, 255, .14);
-  --loading-fg: #FFFFFF;
-  --loading-muted: #B0B0B0;
-  --loading-accent: #D94A2B;
-  --loading-accent-dark: #B33C24;
+  --loading-bg: var(--void, #101114);
+  --loading-card: var(--panel, #1b1e23);
+  --loading-border: var(--line, rgba(243, 238, 230, .16));
+  --loading-fg: var(--paper, #f3eee6);
+  --loading-muted: var(--ash, #9d9b9a);
+  --loading-accent: var(--ember-light, #d66a4d);
+  --loading-accent-dark: var(--ember, #a94431);
 
   display: flex;
   min-height: 100vh;
@@ -24,7 +24,7 @@
     radial-gradient(circle at 80% 10%, rgba(217, 74, 43, .08), transparent 40%),
     var(--loading-bg);
   color: var(--loading-fg);
-  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-family: var(--body, "DM Sans", sans-serif);
 }
 
 .discord-auth-loading__card {

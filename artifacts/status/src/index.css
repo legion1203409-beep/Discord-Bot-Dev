@@ -24,28 +24,53 @@
 }
 
 :root {
-  --void: #121212;
-  --night: #121212;
-  --panel: #1e1e1e;
-  --panel-light: #242424;
-  --paper: #ffffff;
-  --paper-soft: #b0b0b0;
-  --ash: #b0b0b0;
-  --faint: #b0b0b0;
-  --footer: #7e7e7e;
-  --line: rgba(255, 255, 255, .14);
-  --line-soft: rgba(255, 255, 255, .07);
-  --ember: #b33c24;
-  --ember-light: #d94a2b;
-  --gold: #d94a2b;
-  --gold-light: #d94a2b;
-  --violet: #d94a2b;
-  --blue: #b0b0b0;
-  --green: #6ab985;
-  --primary-hover: #b33c24;
+  /* Shared ash-and-ember palette: one visual language for public lore and
+     the operator console. Status tones stay deliberately separate. */
+  --void: #101114;
+  --night: #15171b;
+  --panel: #1b1e23;
+  --panel-light: #24282e;
+  --paper: #f3eee6;
+  --paper-soft: #c9c2b8;
+  --ash: #9d9b9a;
+  --faint: #6f7274;
+  --footer: #747576;
+  --line: rgba(243, 238, 230, .16);
+  --line-soft: rgba(243, 238, 230, .08);
+  --ember: #a94431;
+  --ember-light: #d66a4d;
+  --gold: #b8945f;
+  --gold-light: #e0bc7f;
+  --violet: #9b89ae;
+  --blue: #83a8b7;
+  --green: #78bb8e;
+  --warning: #d2a15d;
+  --danger: #d66a5f;
+  --info: #83a8b7;
+  --primary-hover: #e07c60;
   --mono: "DM Mono", monospace;
   --body: "DM Sans", sans-serif;
   --display: "Cormorant Garamond", Georgia, serif;
+
+  --background: 225 10% 7%;
+  --foreground: 35 27% 93%;
+  --card: 216 11% 12%;
+  --card-foreground: 35 27% 93%;
+  --popover: 216 12% 15%;
+  --popover-foreground: 35 27% 93%;
+  --primary: 13 61% 56%;
+  --primary-foreground: 28 32% 9%;
+  --secondary: 218 10% 16%;
+  --secondary-foreground: 35 27% 93%;
+  --muted: 218 10% 16%;
+  --muted-foreground: 30 8% 64%;
+  --accent: 36 45% 63%;
+  --accent-foreground: 28 32% 9%;
+  --destructive: 5 59% 61%;
+  --destructive-foreground: 35 27% 93%;
+  --border: 220 9% 23%;
+  --input: 220 9% 21%;
+  --ring: 13 61% 56%;
 }
 
 @layer base {
@@ -450,6 +475,51 @@ h1 em, h2 em, blockquote em { color: var(--ember-light); }
 .community-invite-link { display: inline-flex; align-items: center; gap: .7rem; margin-top: 1.25rem; padding-bottom: .35rem; color: var(--gold-light); border-bottom: 1px solid var(--gold); font-family: var(--mono); font-size: .75rem; overflow-wrap: anywhere; }
 .community-invite-link:hover { color: var(--paper); }
 .nav-actions { display: flex; align-items: center; gap: 1rem; }
+.nav-refresh-action {
+  display: inline-flex;
+  min-height: 45px;
+  align-items: center;
+  justify-content: center;
+  gap: .55rem;
+  padding: .7rem .85rem;
+  border: 1px solid rgba(238, 231, 223, .32);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--paper);
+  cursor: pointer;
+  font: inherit;
+  font-size: .67rem;
+  font-weight: 800;
+  letter-spacing: .04em;
+  transition: transform 180ms ease, background 180ms ease, border-color 180ms ease, color 180ms ease;
+}
+.nav-refresh-action:hover:not(:disabled) {
+  border-color: var(--gold-light);
+  background: rgba(210, 162, 126, .14);
+  transform: translateY(-2px);
+}
+.nav-refresh-action:disabled { cursor: wait; opacity: .65; }
+.nav-refresh-action svg { color: var(--gold-light); }
+@media (max-width: 900px) {
+  .nav-refresh-action { width: 44px; min-width: 44px; padding: 0; }
+  .nav-refresh-action__label { display: none; }
+}
+@media (max-width: 768px) {
+  .nav-actions { gap: .55rem; }
+  .nav-refresh-action { width: auto; min-width: 0; padding: .58rem .72rem; }
+  .nav-refresh-action__label { display: inline; }
+}
+@media (max-width: 380px) {
+  .nav-refresh-action { width: 40px; min-width: 40px; padding: 0; }
+  .nav-refresh-action__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
 .mobile-menu-toggle { display: none; background: none; border: none; color: var(--paper); cursor: pointer; padding: 0.5rem; z-index: 100; }
 .nav-cta--mobile { display: none; margin-top: 2rem; width: 100%; justify-content: center; }
 .nav-links a.active { color: var(--gold); }
@@ -752,25 +822,25 @@ h1 em, h2 em, blockquote em { color: var(--ember-light); }
 
 @layer base {
   :root, .dark {
-    --background: 0 0% 7%;
-    --foreground: 0 0% 100%;
-    --card: 0 0% 12%;
-    --card-foreground: 0 0% 100%;
-    --popover: 0 0% 14%;
-    --popover-foreground: 0 0% 100%;
-    --primary: 10.69 69.6% 50.98%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 0 0% 15%;
-    --secondary-foreground: 0 0% 100%;
-    --muted: 0 0% 15%;
-    --muted-foreground: 0 0% 69%;
-    --accent: 10.07 66.51% 42.16%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 10.69 69.6% 50.98%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 0 0% 20%;
-    --input: 0 0% 18%;
-    --ring: 10.69 69.6% 50.98%;
+    --background: 225 10% 7%;
+    --foreground: 35 27% 93%;
+    --card: 216 11% 12%;
+    --card-foreground: 35 27% 93%;
+    --popover: 216 12% 15%;
+    --popover-foreground: 35 27% 93%;
+    --primary: 13 61% 56%;
+    --primary-foreground: 28 32% 9%;
+    --secondary: 218 10% 16%;
+    --secondary-foreground: 35 27% 93%;
+    --muted: 218 10% 16%;
+    --muted-foreground: 30 8% 64%;
+    --accent: 36 45% 63%;
+    --accent-foreground: 28 32% 9%;
+    --destructive: 5 59% 61%;
+    --destructive-foreground: 35 27% 93%;
+    --border: 220 9% 23%;
+    --input: 220 9% 21%;
+    --ring: 13 61% 56%;
     --radius: 0.4rem;
   }
 }
@@ -829,14 +899,14 @@ h1 em, h2 em, blockquote em { color: var(--ember-light); }
 }
 
 .button--primary {
-  color: #ffffff;
-  background: #d94a2b;
-  box-shadow: 0 10px 34px rgba(217, 74, 43, .16);
+  color: #211814;
+  background: var(--ember-light);
+  box-shadow: 0 10px 34px color-mix(in srgb, var(--ember) 18%, transparent);
 }
 
 .button--primary:hover {
-  background: #b33c24;
-  box-shadow: 0 14px 42px rgba(217, 74, 43, .24);
+  background: var(--primary-hover);
+  box-shadow: 0 14px 42px color-mix(in srgb, var(--ember) 27%, transparent);
 }
 
 .button-seal {
@@ -891,87 +961,304 @@ h1 em, h2 em, blockquote em { color: var(--ember-light); }
   color: #b33c24;
 }
 
-/* Active /joc guide palette. Keep the guide's structure and assets intact. */
+/* Shared surface language -------------------------------------------------
+   The public routes keep their editorial layouts, but all of them now draw
+   from the same ash, ember and brass semantic tokens as the operator console. */
+.public-verification-page,
+.public-statistics-page {
+  color: var(--paper);
+}
+
+.public-verification-card,
+.public-statistics-surface,
+.public-statistics-metric {
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--panel-light) 72%, transparent), color-mix(in srgb, var(--panel) 94%, transparent));
+  box-shadow: inset 0 1px rgba(243, 238, 230, .045), 0 22px 54px rgba(4, 5, 7, .3);
+}
+
+.public-verification-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.public-verification-card::before {
+  position: absolute;
+  top: -10rem;
+  right: -8rem;
+  width: 23rem;
+  height: 23rem;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--ember-light) 18%, transparent), transparent 68%);
+  content: "";
+  pointer-events: none;
+}
+
+.public-verification-card > * {
+  position: relative;
+}
+
+.public-verification-icon {
+  border: 1px solid color-mix(in srgb, var(--ember-light) 48%, transparent);
+  color: var(--ember-light);
+  background: color-mix(in srgb, var(--ember) 18%, transparent);
+  box-shadow: 0 0 28px color-mix(in srgb, var(--ember) 16%, transparent);
+}
+
+.public-verification-kicker,
+.public-statistics-kicker {
+  color: var(--gold-light);
+}
+
+.public-verification-muted,
+.public-statistics-muted {
+  color: var(--paper-soft);
+}
+
+.public-verification-error {
+  border: 1px solid color-mix(in srgb, var(--danger) 42%, transparent);
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+
+.public-verification-success {
+  border: 1px solid color-mix(in srgb, var(--green) 40%, transparent);
+  color: #b5dcbc;
+  background: color-mix(in srgb, var(--green) 12%, transparent);
+}
+
+.public-verification-cta,
+.public-statistics-cta {
+  color: #211814;
+  background: var(--ember-light);
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--ember) 20%, transparent);
+}
+
+.public-verification-cta:hover,
+.public-statistics-cta:hover {
+  background: var(--primary-hover);
+  transform: translateY(-1px);
+}
+
+.public-statistics-header {
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.public-statistics-button {
+  border: 1px solid var(--line);
+  color: var(--paper);
+  background: var(--panel);
+}
+
+.public-statistics-button:hover {
+  border-color: color-mix(in srgb, var(--ember-light) 62%, transparent);
+  background: color-mix(in srgb, var(--ember) 14%, var(--panel));
+}
+
+.public-statistics-error {
+  border: 1px solid color-mix(in srgb, var(--danger) 38%, transparent);
+  background: color-mix(in srgb, var(--danger) 8%, var(--panel));
+}
+
+.public-statistics-date {
+  border: 1px solid var(--line-soft);
+  background: color-mix(in srgb, var(--void) 58%, transparent);
+}
+
+.public-statistics-metric:hover {
+  border-color: color-mix(in srgb, var(--ember-light) 45%, transparent);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--panel-light) 86%, transparent), var(--panel));
+}
+
+.public-statistics-badge {
+  border: 1px solid color-mix(in srgb, var(--ember-light) 35%, transparent);
+  color: var(--ember-light);
+  background: color-mix(in srgb, var(--ember) 13%, transparent);
+}
+
+.public-statistics-rank {
+  color: var(--ember-light);
+}
+
+.public-statistics-bar {
+  background: color-mix(in srgb, var(--paper) 11%, transparent);
+}
+
+.public-statistics-bar__fill {
+  background: linear-gradient(90deg, var(--ember), var(--ember-light));
+  box-shadow: 0 0 14px color-mix(in srgb, var(--ember-light) 28%, transparent);
+}
+
+.public-statistics-empty {
+  border: 1px dashed var(--line);
+  color: var(--paper-soft);
+}
+
+.public-statistics-footer {
+  border-top: 1px solid var(--line-soft);
+  color: var(--faint);
+}
+
+/* Bring the guide's older red-violet accents into the shared identity without
+   changing its navigation or section rhythm. */
 .game-guide-page::before {
-  background: radial-gradient(ellipse, rgba(217, 74, 43, .18), rgba(176, 176, 176, .06) 38%, transparent 72%);
-  filter: blur(8px);
+  background: radial-gradient(ellipse, color-mix(in srgb, var(--ember) 23%, transparent), color-mix(in srgb, var(--gold) 8%, transparent) 38%, transparent 72%);
 }
 
 .game-guide-header::after {
-  background: linear-gradient(90deg, transparent, rgba(217, 74, 43, .58), transparent);
-  box-shadow: 0 0 22px rgba(217, 74, 43, .24);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--gold-light) 70%, transparent), transparent);
+  box-shadow: 0 0 22px color-mix(in srgb, var(--gold) 30%, transparent);
 }
 
 .game-guide-header h1 {
-  background-image: linear-gradient(110deg, #FFFFFF 15%, #D94A2B 48%, #D94A2B 82%);
-  background-clip: text;
-  -webkit-background-clip: text;
-  color: transparent;
-  filter: drop-shadow(0 0 26px rgba(217, 74, 43, .18));
+  background: linear-gradient(110deg, var(--paper) 15%, var(--gold-light) 52%, var(--ember-light) 86%);
+}
+
+.guide-sidebar,
+.guide-server-details-card,
+.guide-card {
+  border-color: var(--line);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--panel-light) 72%, transparent), color-mix(in srgb, var(--panel) 88%, transparent));
 }
 
 .guide-sidebar {
-  border-color: rgba(255, 255, 255, .1);
-  background: linear-gradient(145deg, rgba(30, 30, 30, .76), rgba(18, 18, 18, .82));
+  box-shadow: 0 18px 42px rgba(4, 5, 7, .18);
+}
+
+.guide-nav-link {
+  color: var(--paper-soft);
 }
 
 .guide-nav-link:hover,
 .guide-nav-link.active {
-  border-color: rgba(217, 74, 43, .2);
-  border-left-color: #D94A2B;
-  color: #D94A2B;
-  background: linear-gradient(90deg, rgba(217, 74, 43, .18), rgba(217, 74, 43, .035));
-  box-shadow: inset 0 0 18px rgba(217, 74, 43, .08), 0 7px 18px rgba(0, 0, 0, .12);
+  color: var(--paper);
+  border-color: color-mix(in srgb, var(--ember-light) 45%, transparent);
+  background: color-mix(in srgb, var(--ember) 12%, transparent);
+}
+
+.guide-server-details-card {
+  background:
+    radial-gradient(circle at 10% 20%, color-mix(in srgb, var(--ember-light) 16%, transparent), transparent 30%),
+    linear-gradient(135deg, color-mix(in srgb, var(--ember) 22%, transparent), color-mix(in srgb, var(--panel) 84%, transparent));
+}
+
+.guide-card::before {
+  background: color-mix(in srgb, var(--ember-light) 25%, transparent);
+}
+
+.guide-card:hover {
+  border-color: color-mix(in srgb, var(--gold-light) 50%, transparent);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--panel-light) 92%, transparent), var(--panel));
+  box-shadow: inset 0 1px rgba(243, 238, 230, .06), 0 20px 42px rgba(4, 5, 7, .28);
+}
+
+.guide-command {
+  border-color: var(--line);
+  color: var(--gold-light);
+  background: var(--night);
+}
+
+.public-not-found {
+  background:
+    radial-gradient(circle at 50% 34%, color-mix(in srgb, var(--ember) 16%, transparent), transparent 30rem),
+    var(--void);
+  color: var(--paper);
+}
+
+.public-not-found__card {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: 0 24px 70px rgba(4, 5, 7, .42);
+}
+
+@media (max-width: 640px) {
+  .public-verification-page { padding-top: 6rem; padding-bottom: 4rem; }
+  .public-statistics-page { padding-top: 7rem; }
+  .public-statistics-footer { align-items: flex-start; flex-direction: column; }
+}
+
+/* Active /joc guide palette. Keep the guide's structure and assets intact. */
+.game-guide-page::before {
+  background: radial-gradient(ellipse, color-mix(in srgb, var(--ember) 23%, transparent), color-mix(in srgb, var(--gold) 8%, transparent) 38%, transparent 72%);
+  filter: blur(8px);
+}
+
+.game-guide-header::after {
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--ember-light) 72%, transparent), transparent);
+  box-shadow: 0 0 22px color-mix(in srgb, var(--ember) 30%, transparent);
+}
+
+.game-guide-header h1 {
+  background-image: linear-gradient(110deg, var(--paper) 15%, var(--gold-light) 48%, var(--ember-light) 82%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 26px color-mix(in srgb, var(--ember) 24%, transparent));
+}
+
+.guide-sidebar {
+  border-color: var(--line);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--panel-light) 72%, transparent), color-mix(in srgb, var(--panel) 88%, transparent));
+}
+
+.guide-nav-link:hover,
+.guide-nav-link.active {
+  border-color: color-mix(in srgb, var(--ember-light) 42%, transparent);
+  border-left-color: var(--ember-light);
+  color: var(--ember-light);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--ember) 16%, transparent), color-mix(in srgb, var(--ember) 4%, transparent));
+  box-shadow: inset 0 0 18px color-mix(in srgb, var(--ember) 8%, transparent), 0 7px 18px rgba(0, 0, 0, .12);
 }
 
 .guide-server-card {
-  border-color: rgba(217, 74, 43, .24);
-  background: linear-gradient(135deg, rgba(217, 74, 43, .22), rgba(30, 30, 30, .7));
+  border-color: color-mix(in srgb, var(--ember-light) 38%, transparent);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--ember) 20%, transparent), color-mix(in srgb, var(--panel) 88%, transparent));
 }
 
 .guide-server-card:hover {
-  border-color: #D94A2B;
-  background: linear-gradient(135deg, rgba(217, 74, 43, .34), rgba(30, 30, 30, .85));
+  border-color: var(--ember-light);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--ember) 30%, transparent), color-mix(in srgb, var(--panel) 94%, transparent));
 }
 
 .guide-server-card__logo,
 .guide-server-details-card__logo {
-  border-color: rgba(217, 74, 43, .42);
-  background: rgba(18, 18, 18, .72);
+  border-color: color-mix(in srgb, var(--ember-light) 52%, transparent);
+  background: color-mix(in srgb, var(--void) 82%, transparent);
 }
 
 .guide-server-details-card {
-  border-color: rgba(217, 74, 43, .28);
+  border-color: color-mix(in srgb, var(--ember-light) 38%, transparent);
   background:
-    radial-gradient(circle at 10% 20%, rgba(217, 74, 43, .16), transparent 30%),
-    linear-gradient(135deg, rgba(217, 74, 43, .25), rgba(30, 30, 30, .78));
+    radial-gradient(circle at 10% 20%, color-mix(in srgb, var(--ember-light) 16%, transparent), transparent 30%),
+    linear-gradient(135deg, color-mix(in srgb, var(--ember) 22%, transparent), color-mix(in srgb, var(--panel) 88%, transparent));
 }
 
 .guide-server-details-card__meta {
-  border-left-color: rgba(255, 255, 255, .14);
+  border-left-color: var(--line);
 }
 
 .guide-section h2 .icon {
-  filter: drop-shadow(0 0 10px rgba(217, 74, 43, .28));
+  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--ember-light) 30%, transparent));
 }
 
 .guide-card {
-  border-color: rgba(255, 255, 255, .11);
-  background: linear-gradient(145deg, rgba(30, 30, 30, .82), rgba(18, 18, 18, .78));
+  border-color: var(--line);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--panel-light) 78%, transparent), color-mix(in srgb, var(--panel) 90%, transparent));
 }
 
 .guide-card::before {
-  background: rgba(217, 74, 43, .2);
+  background: color-mix(in srgb, var(--ember-light) 25%, transparent);
 }
 
 .guide-card:hover {
-  border-color: rgba(217, 74, 43, .38);
-  background: linear-gradient(145deg, rgba(30, 30, 30, .92), rgba(18, 18, 18, .9));
-  box-shadow: inset 0 1px rgba(255, 255, 255, .06), 0 20px 42px rgba(0, 0, 0, .26), 0 0 24px rgba(217, 74, 43, .08);
+  border-color: color-mix(in srgb, var(--ember-light) 50%, transparent);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--panel-light) 92%, transparent), color-mix(in srgb, var(--panel) 96%, transparent));
+  box-shadow: inset 0 1px rgba(243, 238, 230, .06), 0 20px 42px rgba(0, 0, 0, .26), 0 0 24px color-mix(in srgb, var(--ember) 10%, transparent);
 }
 
 .site-footer .footer-top > a .icon {
-  color: #d94a2b;
+  color: var(--ember-light);
 }
 
 /* Final palette normalization for the active public routes and operator

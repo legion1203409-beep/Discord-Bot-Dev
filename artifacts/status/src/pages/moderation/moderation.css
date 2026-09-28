@@ -1,31 +1,31 @@
 .mod-shell, .mod-shell.dark {
-  --background: 0 0% 7%;
-  --foreground: 0 0% 100%;
+  --background: 225 10% 7%;
+  --foreground: 35 27% 93%;
 
-  --card: 0 0% 12%;
-  --card-foreground: 0 0% 100%;
+  --card: 216 11% 12%;
+  --card-foreground: 35 27% 93%;
 
-  --popover: 0 0% 14%;
-  --popover-foreground: 0 0% 100%;
+  --popover: 216 12% 15%;
+  --popover-foreground: 35 27% 93%;
 
-  --primary: 10 69% 51%;
-  --primary-foreground: 0 0% 100%;
+  --primary: 13 61% 56%;
+  --primary-foreground: 28 32% 9%;
 
-  --secondary: 0 0% 15%;
-  --secondary-foreground: 0 0% 100%;
+  --secondary: 218 10% 16%;
+  --secondary-foreground: 35 27% 93%;
 
-  --muted: 0 0% 15%;
-  --muted-foreground: 0 0% 69%;
+  --muted: 218 10% 16%;
+  --muted-foreground: 30 8% 64%;
 
-  --accent: 10 67% 42%;
-  --accent-foreground: 0 0% 100%;
+  --accent: 36 45% 63%;
+  --accent-foreground: 28 32% 9%;
 
-  --destructive: 10 69% 51%;
-  --destructive-foreground: 0 0% 100%;
+  --destructive: 5 59% 61%;
+  --destructive-foreground: 35 27% 93%;
 
-  --border: 0 0% 20%;
-  --input: 0 0% 18%;
-  --ring: 10 69% 51%;
+  --border: 220 9% 23%;
+  --input: 220 9% 21%;
+  --ring: 13 61% 56%;
 
   --display: "Cormorant Garamond", Georgia, serif;
   --mono: "DM Mono", monospace;
@@ -1659,7 +1659,7 @@
   background:
     radial-gradient(circle at 92% 4%, rgba(217, 74, 43, .15), transparent 35rem),
     radial-gradient(circle at 5% 95%, hsl(4 57% 28% / .1), transparent 30rem),
-    linear-gradient(135deg, hsl(var(--background)) 0%, transparent 100%) !important;
+    linear-gradient(135deg, hsl(var(--background)) 0%, transparent 100%);
 }
 
 .mod-shell::after {
@@ -1889,24 +1889,24 @@
 /* Keep the shared console palette consistent across all protected routes. */
 .mod-shell,
 .mod-shell.dark {
-  --primary: 10 69% 51%;
-  --accent: 10 67% 42%;
-  --ring: 10 69% 51%;
+  --primary: 13 61% 56%;
+  --accent: 36 45% 63%;
+  --ring: 13 61% 56%;
 }
 
 /* Protected shell surfaces use the product palette; status colors below remain
    reserved for success, warning, and destructive feedback. */
 .mod-shell,
 .mod-shell.dark {
-  background-color: #121212;
-  color: #FFFFFF;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
 }
 
 .mod-shell::before {
   background:
-    radial-gradient(ellipse at 88% 0%, rgba(217, 74, 43, .16), transparent 34rem),
-    radial-gradient(ellipse at 8% 92%, rgba(179, 60, 36, .08), transparent 30rem),
-    linear-gradient(135deg, hsl(var(--background)) 0%, transparent 100%) !important;
+    radial-gradient(ellipse at 88% 0%, color-mix(in srgb, var(--ember-light) 16%, transparent), transparent 34rem),
+    radial-gradient(ellipse at 8% 92%, color-mix(in srgb, var(--gold) 8%, transparent), transparent 30rem),
+    linear-gradient(135deg, hsl(var(--background)) 0%, transparent 100%);
 }
 
 .mod-sidebar {
@@ -1988,7 +1988,7 @@
   background: linear-gradient(135deg, rgba(217, 74, 43, .15), rgba(18, 18, 18, .9));
   box-shadow:
     inset 0 1px rgba(255, 255, 255, .1),
-    0 4px 12px rgba(217, 74, 43, .15) !important;
+    0 4px 12px rgba(217, 74, 43, .15);
 }
 
 .mod-card,
@@ -2104,4 +2104,135 @@
 .bot-control-page details > summary:focus-visible {
   outline: 2px solid #D94A2B;
   outline-offset: -2px;
+}
+
+/* Final shared shell pass --------------------------------------------------
+   This is intentionally scoped to the console so existing module-specific
+   layouts and controls keep their contracts while inheriting the public site's
+   ash-and-ember material language. */
+.mod-shell {
+  background:
+    radial-gradient(circle at 92% 2%, color-mix(in srgb, var(--ember-light) 12%, transparent), transparent 30rem),
+    hsl(var(--background));
+}
+
+.mod-shell::before {
+  background:
+    linear-gradient(118deg, transparent 0 42%, color-mix(in srgb, var(--ember) 5%, transparent) 42.1%, transparent 42.3%),
+    radial-gradient(circle at 8% 90%, color-mix(in srgb, var(--gold) 7%, transparent), transparent 27rem);
+}
+
+.mod-sidebar {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--panel) 98%, transparent), color-mix(in srgb, var(--void) 98%, transparent));
+  border-color: hsl(var(--border));
+  box-shadow: 20px 0 60px color-mix(in srgb, var(--void) 70%, transparent);
+}
+
+.mod-topbar,
+.mod-mobile-nav {
+  background: color-mix(in srgb, var(--void) 91%, transparent);
+  border-color: hsl(var(--border) / .8);
+}
+
+.mod-page {
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--ember) 4%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--ember) 4%, transparent) 1px, transparent 1px);
+  background-size: 36px 36px;
+}
+
+.mod-brand-mark {
+  border-color: color-mix(in srgb, var(--ember-light) 62%, transparent);
+  color: var(--ember-light);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--ember) 60%, transparent), color-mix(in srgb, var(--void) 88%, transparent));
+  box-shadow: inset 0 1px rgba(243, 238, 230, .12), 0 8px 24px color-mix(in srgb, var(--ember) 20%, transparent);
+}
+
+.mod-eyebrow,
+.mod-sidebar-item[data-active="true"],
+.mod-brand-mark {
+  color: hsl(var(--primary));
+}
+
+.mod-sidebar-item[data-active="true"] {
+  background: linear-gradient(90deg, hsl(var(--primary) / .15), transparent 92%);
+}
+
+.mod-sidebar-item:hover {
+  background: linear-gradient(90deg, hsl(var(--primary) / .1), transparent 88%);
+}
+
+.mod-card,
+.mod-save-bar,
+.mod-login-card,
+.bot-control-page .mod-tab-content > section {
+  border-color: hsl(var(--border));
+  background: linear-gradient(145deg, color-mix(in srgb, var(--panel-light) 72%, transparent), color-mix(in srgb, var(--panel) 94%, transparent));
+  box-shadow: inset 0 1px rgba(243, 238, 230, .045), 0 16px 42px color-mix(in srgb, var(--void) 55%, transparent);
+}
+
+.mod-card:hover {
+  border-color: hsl(var(--primary) / .46);
+}
+
+.mod-shell [data-slot="select-trigger"],
+.mod-shell input,
+.mod-shell textarea,
+.mod-shell [role="combobox"] {
+  border-color: hsl(var(--input));
+  background: color-mix(in srgb, var(--void) 58%, transparent);
+  color: hsl(var(--foreground));
+}
+
+.mod-shell [data-slot="select-trigger"]:enabled:hover,
+.mod-shell input:focus,
+.mod-shell textarea:focus,
+.mod-shell [role="combobox"]:focus {
+  border-color: hsl(var(--primary) / .72);
+  box-shadow: 0 0 0 3px hsl(var(--primary) / .1);
+}
+
+.mod-tab-trigger[data-state="active"] {
+  color: hsl(var(--foreground));
+  background: hsl(var(--primary) / .12);
+}
+
+.mod-status-line {
+  color: var(--ember-light);
+}
+
+.mod-status-line[data-state="off"] {
+  color: var(--faint);
+}
+
+.mod-login-bg,
+.mod-login-stage {
+  background:
+    radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--ember) 20%, transparent), transparent 27rem),
+    linear-gradient(135deg, var(--void) 0 52%, var(--panel) 100%);
+}
+
+.mod-login-card [data-testid="discord-login-button"] {
+  border-color: var(--ember-light);
+  background: var(--ember-light);
+  color: #211814;
+}
+
+.mod-login-card [data-testid="discord-login-button"]:hover {
+  background: var(--primary-hover);
+}
+
+.mod-shell button[data-state="checked"],
+.mod-shell input[type="checkbox"]:checked {
+  accent-color: var(--ember-light);
+}
+
+@media (max-width: 767px) {
+  .mod-page {
+    background-size: 28px 28px;
+  }
+  .mod-card,
+  .mod-save-bar {
+    box-shadow: inset 0 1px rgba(243, 238, 230, .045), 0 12px 28px color-mix(in srgb, var(--void) 48%, transparent);
+  }
 }

@@ -132,11 +132,11 @@ function ModerationApp() {
 
 function NotFound() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#121212] text-[#FFFFFF]">
-      <div className="text-center">
-        <h1 className="mb-4 text-4xl font-display text-[#D94A2B]">404</h1>
+    <div className="public-not-found flex min-h-[100dvh] items-center justify-center p-6">
+      <div className="public-not-found__card w-full max-w-md rounded-2xl p-8 text-center">
+        <h1 className="mb-4 font-display text-5xl text-[var(--ember-light)]">404</h1>
         <p>Poarta a fost închisă.</p>
-        <a href="/" className="mt-6 inline-block text-[#D94A2B] underline">Întoarce-te în regat</a>
+        <a href="/" className="mt-6 inline-block text-[var(--gold-light)] underline underline-offset-4">Întoarce-te în regat</a>
       </div>
     </div>
   );

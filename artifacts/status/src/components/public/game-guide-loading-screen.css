@@ -1,11 +1,11 @@
 .game-guide-loading {
-  --guide-loading-bg: #121212;
-  --guide-loading-card: #1e1e1e;
-  --guide-loading-border: rgba(255, 255, 255, 0.14);
-  --guide-loading-fg: #ffffff;
-  --guide-loading-muted: #b0b0b0;
-  --guide-loading-accent: #d94a2b;
-  --guide-loading-accent-dark: #b33c24;
+  --guide-loading-bg: var(--void, #101114);
+  --guide-loading-card: var(--panel, #1b1e23);
+  --guide-loading-border: var(--line, rgba(243, 238, 230, .16));
+  --guide-loading-fg: var(--paper, #f3eee6);
+  --guide-loading-muted: var(--ash, #9d9b9a);
+  --guide-loading-accent: var(--ember-light, #d66a4d);
+  --guide-loading-accent-dark: var(--ember, #a94431);
 
   display: flex;
   min-height: 100vh;
@@ -24,7 +24,7 @@
     radial-gradient(circle at 80% 10%, rgba(217, 74, 43, 0.08), transparent 40%),
     var(--guide-loading-bg);
   color: var(--guide-loading-fg);
-  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-family: var(--body, "DM Sans", sans-serif);
 }
 
 .game-guide-loading__card {
@@ -81,7 +81,7 @@
 .game-guide-loading__title {
   margin: 0;
   color: var(--guide-loading-fg);
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: var(--display, Georgia, serif);
   font-size: 24px;
   font-weight: 600;
 }

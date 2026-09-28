@@ -1,12 +1,14 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useContext } from "react";
 import { Link, useLocation } from "wouter";
 import { trackEvent } from "../../lib/analytics";
 import { DISCORD_INVITE } from "../../lib/public-constants";
 import { Brand, Icon } from "./UiElements";
+import { PublicToolbarActionContext } from "./PublicToolbarActionContext";
 
 export function Navigation() {
   const [isOpen, setIsOpen] = useState(false);
   const [location] = useLocation();
+  const toolbarAction = useContext(PublicToolbarActionContext)?.action;
 
   // Close mobile menu on route change
   useEffect(() => {
@@ -54,6 +56,7 @@ export function Navigation() {
       </nav>
 
       <div data-aos="flip-left" className="nav-actions">
+        {toolbarAction}
         <a className="nav-cta" href={DISCORD_INVITE} target="_blank" rel="noopener noreferrer" onClick={() => trackEvent("discord_cta_click", { location: "nav" })} data-testid="link-nav-discord">
           Intră pe Discord <Icon name="arrow" size={15} />
         </a>

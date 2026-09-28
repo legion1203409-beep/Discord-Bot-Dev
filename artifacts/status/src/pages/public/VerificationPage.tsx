@@ -67,46 +67,46 @@ export function VerificationPage() {
 
   return (
     <PublicLayout>
-      <main className="page-width flex min-h-[70vh] items-center justify-center py-16">
-        <section className="w-full max-w-xl rounded-2xl border border-white/10 bg-[#1E1E1E] p-6 shadow-2xl shadow-black/40 sm:p-10">
+      <main className="public-verification-page page-width flex min-h-[70vh] items-center justify-center py-16">
+        <section className="public-verification-card w-full max-w-xl rounded-2xl p-6 sm:p-10">
           <div className="mb-8 flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#D94A2B]/15 text-[#D94A2B]">
+            <div className="public-verification-icon flex h-12 w-12 items-center justify-center rounded-xl">
               <ShieldCheck className="h-6 w-6" />
             </div>
             <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-[#D94A2B]">Verificare Discord</p>
-              <h1 className="mt-1 text-2xl font-semibold text-white">{config?.guildName ?? "Acces în comunitate"}</h1>
+              <p className="public-verification-kicker text-xs uppercase tracking-[0.2em]">Verificare Discord</p>
+              <h1 className="mt-1 text-2xl font-semibold text-[var(--paper)]">{config?.guildName ?? "Acces în comunitate"}</h1>
             </div>
           </div>
 
           {loading ? (
-            <div className="flex items-center gap-3 text-sm text-[#B0B0B0]"><Loader2 className="h-5 w-5 animate-spin text-[#D94A2B]" /> Se încarcă panoul…</div>
+            <div className="public-verification-muted flex items-center gap-3 text-sm"><Loader2 className="h-5 w-5 animate-spin text-[var(--ember-light)]" /> Se încarcă panoul…</div>
           ) : !guildId ? (
-            <div className="space-y-3 text-sm text-[#B0B0B0]">
-              <TriangleAlert className="h-6 w-6 text-[#D94A2B]" />
+            <div className="public-verification-muted space-y-3 text-sm">
+              <TriangleAlert className="h-6 w-6 text-[var(--warning)]" />
               <p>Deschide acest link din butonul de verificare din serverul Discord.</p>
             </div>
           ) : !config?.enabled ? (
-            <div className="space-y-3 text-sm text-[#B0B0B0]">
-              <TriangleAlert className="h-6 w-6 text-[#D94A2B]" />
+            <div className="public-verification-muted space-y-3 text-sm">
+              <TriangleAlert className="h-6 w-6 text-[var(--warning)]" />
               <p>Verificarea nu este activată pentru acest server.</p>
             </div>
           ) : (
             <div className="space-y-6">
-              <p className="whitespace-pre-wrap leading-relaxed text-[#B0B0B0]">{config.message}</p>
+              <p className="public-verification-muted whitespace-pre-wrap leading-relaxed">{config.message}</p>
               {errorMessage && (
-                <p className="flex gap-2 rounded-lg border border-[#D94A2B]/35 bg-[#D94A2B]/10 p-3 text-sm text-[#D94A2B]">
+                <p className="public-verification-error flex gap-2 rounded-lg p-3 text-sm">
                   <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" /> {errorMessage}
                 </p>
               )}
               {successText && (
-                <p className="flex gap-2 rounded-lg border border-emerald-400/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">
+                <p className="public-verification-success flex gap-2 rounded-lg p-3 text-sm">
                   <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> {successText}
                 </p>
               )}
               {!successText && (
                 <a
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#D94A2B] px-4 py-3 font-semibold text-white transition-colors hover:bg-[#B33C24] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#D94A2B]"
+                  className="public-verification-cta inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-3 font-semibold transition-colors"
                   href={`/api/moderation/oauth/discord?verification=1&guildId=${encodeURIComponent(guildId)}`}
                 >
                   <DiscordEmojiText>
@@ -115,7 +115,7 @@ export function VerificationPage() {
                   <ExternalLink className="h-4 w-4" />
                 </a>
               )}
-              <p className="text-xs leading-relaxed text-[#B0B0B0]">
+              <p className="public-verification-muted text-xs leading-relaxed">
                 Vei autoriza Discord să confirme identitatea contului. Site-ul nu primește parola și nu cere permisiuni de administrare.
               </p>
             </div>
