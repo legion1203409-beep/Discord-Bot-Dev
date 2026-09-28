@@ -109,7 +109,7 @@ const moderationNavGroups: Array<{ id: string; label: string; items: ModerationN
     label: "Control bot",
     items: [
       { href: "/canale", icon: Radio, label: "Canale" },
-      { href: "/provisioning", icon: Wrench, label: "Provisioning" },
+      { href: "/provisioning", icon: Wrench, label: "Canale și permisiuni" },
       { href: "/bot?tab=roles", icon: Users, label: "Roluri" },
       { href: "/bot?tab=tickets", icon: SlidersHorizontal, label: "Tichete" },
       { href: "/verificare", icon: ShieldCheck, label: "Verificare" },

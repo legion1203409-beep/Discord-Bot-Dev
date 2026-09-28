@@ -762,7 +762,7 @@ export function BotControlPage({
       toast({
         variant: "destructive",
         title: "Salvează sau renunță mai întâi la draft",
-        description: "Provisioningul reîncarcă setările persistente și nu trebuie să suprascrie modificările nesalvate.",
+        description: "Configurarea canalelor reîncarcă setările persistente și nu trebuie să suprascrie modificările nesalvate.",
       });
       return;
     }
@@ -812,7 +812,7 @@ export function BotControlPage({
       if (currentGuild.current !== submittedGuild) return;
       toast({
         variant: "destructive",
-        title: "Provisioningul a eșuat",
+        title: "Configurarea canalelor a eșuat",
         description: provisionError?.message ?? "Verifică permisiunea Manage Channels și încearcă din nou.",
       });
     } finally {
@@ -901,7 +901,7 @@ export function BotControlPage({
             <p className="mod-eyebrow">CONTROL OWNER-ONLY</p>
           </div>
           <h1 className="mod-heading text-4xl">
-            {provisioningOnly ? "Provisioning" : channelsOnly ? "Canale Discord" : "Control bot"}
+            {provisioningOnly ? "Canale și permisiuni" : channelsOnly ? "Canale Discord" : "Control bot"}
           </h1>
           <p>
             {provisioningOnly
@@ -1186,19 +1186,19 @@ export function BotControlPage({
                   <span className="icon-box amber"><ShieldCheck size={16} /></span>
                   <div>
                     <h2>Permisiuni necesare</h2>
-                    <p>Verifică accesul botului înainte de provisioning pentru a evita categorii create incomplet.</p>
+                    <p>Verifică accesul botului înainte de configurarea canalelor pentru a evita categorii create incomplet.</p>
                   </div>
                 </div>
                 <div className="permission-summary">
                   <span>Manage Channels {metadata?.botCapabilities?.canManageChannels ? <em>✓ Disponibilă</em> : <b>⚠ Necesară</b>}</span>
                   <span>Manage Messages {metadata?.botCapabilities?.canManageMessages ? <em>✓ Disponibilă</em> : <b>⚠ Necesară pentru ștergerea mesajelor</b>}</span>
                   <span>Suprascrieri de acces {metadata?.botCapabilities?.canManageChannels ? <em>✓ Se aplică automat</em> : <b>⚠ Necesită Manage Channels</b>}</span>
-                   <span>Mesaje și istoric <em>Configurabile în Provisioning</em></span>
+                   <span>Mesaje și istoric <em>Configurabile în Canale și permisiuni</em></span>
                 </div>
                 <p className="help">
                   <CircleHelp size={13} />
                   <span>
-                      <strong>Manage Permissions</strong> nu este o permisiune Discord separată. Botul folosește <strong>Manage Channels</strong> pentru a crea canalele și a aplica accesul, iar <strong>Manage Messages</strong> pentru a șterge mesajele. Vizibilitatea, trimiterea și istoricul se configurează în pagina Provisioning pentru fiecare categorie și rol.
+                      <strong>Manage Permissions</strong> nu este o permisiune Discord separată. Botul folosește <strong>Manage Channels</strong> pentru a crea canalele și a aplica accesul, iar <strong>Manage Messages</strong> pentru a șterge mesajele. Vizibilitatea, trimiterea și istoricul se configurează în pagina Canale și permisiuni pentru fiecare categorie și rol.
                   </span>
                 </p>
               </section>
@@ -1207,7 +1207,7 @@ export function BotControlPage({
             <aside className="provision-panel">
               <div className="panel-heading">
                 <div>
-                  <span className="eyebrow">PROVISIONING</span>
+                  <span className="eyebrow">CONFIGURARE CANALE</span>
                   <h2>Alege ce pregătim</h2>
                 </div>
                 <span className="count-pill">
