@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Activity, AlertTriangle, Bot, CircleHelp, Loader2, Save, Radio, Megaphone, Ticket, ShieldCheck, PlayCircle, RotateCcw, CheckCircle2, ChevronDown, Clock3, Folder, Hash, LockKeyhole, Settings2, Users, Wrench, Link2, RefreshCw } from "lucide-react";
 import { Button } from "../../components/ui/button";
+import { Checkbox } from "../../components/ui/checkbox";
 import { Input } from "../../components/ui/input";
 import { Textarea } from "../../components/ui/textarea";
 import { Switch } from "../../components/ui/switch";
@@ -1151,7 +1152,7 @@ export function BotControlPage({
                         </div>
                         <div className="channel-input">
                           <Select value={selected} onValueChange={(value) => setChannel(key, value)}>
-                            <SelectTrigger className="border-0 h-auto p-0 bg-transparent focus:ring-0 shadow-none text-xs w-auto">
+                            <SelectTrigger className="mod-select-trigger h-8 w-auto text-xs">
                               <SelectValue placeholder="Alege canal" />
                             </SelectTrigger>
                             <SelectContent className="max-h-[min(70vh,32rem)] overscroll-contain">
@@ -1232,15 +1233,15 @@ export function BotControlPage({
                   return (
                     <div className={`category-row ${isSelected ? 'selected' : ''}`} key={category.key}>
                       <div className="category-top">
-                        <input
-                          type="checkbox"
+                        <Checkbox
                           checked={isSelected}
                           aria-label={`Selectează categoria ${category.label}`}
-                          onChange={(e) => {
-                            setSelectedProvisioningCategories(e.target.checked
+                          onCheckedChange={(checked) => {
+                            const isChecked = checked === true;
+                            setSelectedProvisioningCategories(isChecked
                               ? [...selectedProvisioningCategories, category.key]
                               : selectedProvisioningCategories.filter((k) => k !== category.key));
-                            if (e.target.checked) setExpandedCategory(category.key);
+                            if (isChecked) setExpandedCategory(category.key);
                           }}
                         />
                         <button
@@ -1290,18 +1291,18 @@ export function BotControlPage({
                                 return (
                                 <div className="permission-role-row" key={role.id}>
                                   <label className="permission-check">
-                                    <input
-                                      type="checkbox"
+                                    <Checkbox
                                       checked={permission.roleIds.includes(role.id)}
-                                      onChange={(event) => toggleProvisioningRole(category.key, role.id, event.target.checked)}
+                                      aria-label={`Acordă acces rolului ${role.name} la ${category.label}`}
+                                      onCheckedChange={(checked) => toggleProvisioningRole(category.key, role.id, checked === true)}
                                     />
                                     <Users size={12} /> <span className="truncate">{role.id === metadata?.guild.id ? "@everyone · implicit" : `@${role.name}`}</span>
                                   </label>
                                   {permission.roleIds.includes(role.id) && (
                                     <div className="permission-role-options">
-                                      <label><input type="checkbox" aria-label={`${role.name}: poate vedea`} checked={roleAccess.viewChannel} onChange={(event) => setProvisioningPermission(category.key, { rolePermissions: { ...(permission.rolePermissions ?? {}), [role.id]: { ...roleAccess, viewChannel: event.target.checked } } })} /> Vede</label>
-                                      <label><input type="checkbox" aria-label={`${role.name}: poate vedea istoricul`} checked={roleAccess.readMessageHistory} onChange={(event) => setProvisioningPermission(category.key, { rolePermissions: { ...(permission.rolePermissions ?? {}), [role.id]: { ...roleAccess, readMessageHistory: event.target.checked } } })} /> Istoric</label>
-                                      <label><input type="checkbox" aria-label={`${role.name}: poate scrie`} checked={roleAccess.sendMessages} onChange={(event) => setProvisioningPermission(category.key, { rolePermissions: { ...(permission.rolePermissions ?? {}), [role.id]: { ...roleAccess, sendMessages: event.target.checked } } })} /> Scrie</label>
+                                      <label><Checkbox aria-label={`${role.name}: poate vedea`} checked={roleAccess.viewChannel} onCheckedChange={(checked) => setProvisioningPermission(category.key, { rolePermissions: { ...(permission.rolePermissions ?? {}), [role.id]: { ...roleAccess, viewChannel: checked === true } } })} /> Vede</label>
+                                      <label><Checkbox aria-label={`${role.name}: poate vedea istoricul`} checked={roleAccess.readMessageHistory} onCheckedChange={(checked) => setProvisioningPermission(category.key, { rolePermissions: { ...(permission.rolePermissions ?? {}), [role.id]: { ...roleAccess, readMessageHistory: checked === true } } })} /> Istoric</label>
+                                      <label><Checkbox aria-label={`${role.name}: poate scrie`} checked={roleAccess.sendMessages} onCheckedChange={(checked) => setProvisioningPermission(category.key, { rolePermissions: { ...(permission.rolePermissions ?? {}), [role.id]: { ...roleAccess, sendMessages: checked === true } } })} /> Scrie</label>
                                     </div>
                                   )}
                                 </div>
@@ -1327,18 +1328,16 @@ export function BotControlPage({
                             </div>
                             <div className="permission-options">
                               <label>
-                                <input
-                                  type="checkbox"
+                                <Checkbox
                                   checked={permission.readMessageHistory}
-                                  onChange={(event) => setProvisioningPermission(category.key, { readMessageHistory: event.target.checked })}
+                                  onCheckedChange={(checked) => setProvisioningPermission(category.key, { readMessageHistory: checked === true })}
                                 />
                                 Pot vedea istoricul
                               </label>
                               <label>
-                                <input
-                                  type="checkbox"
+                                <Checkbox
                                   checked={permission.sendMessages}
-                                  onChange={(event) => setProvisioningPermission(category.key, { sendMessages: event.target.checked })}
+                                  onCheckedChange={(checked) => setProvisioningPermission(category.key, { sendMessages: checked === true })}
                                 />
                                 Pot scrie mesaje
                               </label>
@@ -1516,11 +1515,10 @@ export function BotControlPage({
                        <div className="flex items-center gap-3">
                          <p className="text-sm font-semibold">Întrebarea {index + 1}</p>
                          <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                           <input
-                             type="checkbox"
-                             checked={postedQuestionKeys.has(question.key)}
-                             onChange={(event) => setPostedQuestion(activeFlowKind, question.key, event.target.checked)}
-                           />
+                            <Checkbox
+                              checked={postedQuestionKeys.has(question.key)}
+                              onCheckedChange={(checked) => setPostedQuestion(activeFlowKind, question.key, checked === true)}
+                            />
                            Postează în mesajul final
                          </label>
                        </div>
@@ -1563,11 +1561,11 @@ export function BotControlPage({
                       />
                       <div className="flex items-center gap-5 pt-6 text-sm">
                         <label className="flex items-center gap-2">
-                          <input type="checkbox" checked={question.multiline} onChange={(event) => updateQuestion(activeFlowKind, index, "multiline", event.target.checked)} />
+                          <Checkbox checked={question.multiline} onCheckedChange={(checked) => updateQuestion(activeFlowKind, index, "multiline", checked === true)} />
                           Răspuns lung
                         </label>
                         <label className="flex items-center gap-2">
-                          <input type="checkbox" checked={question.required} onChange={(event) => updateQuestion(activeFlowKind, index, "required", event.target.checked)} />
+                          <Checkbox checked={question.required} onCheckedChange={(checked) => updateQuestion(activeFlowKind, index, "required", checked === true)} />
                           Obligatoriu
                         </label>
                       </div>

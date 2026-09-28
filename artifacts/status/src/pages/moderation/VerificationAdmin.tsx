@@ -5,6 +5,7 @@ import { ImageField } from "../../components/moderation/ImageField";
 import { DiscordEmojiText, EmojiField } from "../../components/moderation/EmojiField";
 import { Input } from "../../components/ui/input";
 import { Textarea } from "../../components/ui/textarea";
+import { Switch } from "../../components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import {
   useActiveGuild,
@@ -335,18 +336,16 @@ export function VerificationAdminPage() {
               </p>
             </div>
           </div>
-          <label className={`verification-active-toggle ${draft.verification.enabled ? "is-enabled" : ""}`}>
-            <input
-              type="checkbox"
+          <div className="flex flex-none items-center gap-2">
+            <Switch
               checked={draft.verification.enabled}
               aria-label="Activează sau dezactivează verificarea"
-              onChange={(event) => setVerification("enabled", event.target.checked)}
+              onCheckedChange={(enabled) => setVerification("enabled", enabled)}
             />
-            <span className="verification-active-track" aria-hidden="true" />
-            <span className="verification-active-label">
+            <span className="min-w-10 text-xs font-medium text-muted-foreground">
               {draft.verification.enabled ? "Activ" : "Oprit"}
             </span>
-          </label>
+          </div>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">

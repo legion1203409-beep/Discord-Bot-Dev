@@ -186,7 +186,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
           Oracolul nu poate fi contactat momentan ({error.message}). <br/>
           Piatra de suflete necesită o reconectare.
           </p>
-          <Button onClick={() => retry()} className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 font-medium tracking-wide" data-testid="button-retry-session">
+          <Button onClick={() => retry()} className="gap-2 font-medium tracking-wide" data-testid="button-retry-session">
             <Monitor className="w-4 h-4" /> REÎNCEARCĂ CONEXIUNEA
           </Button>
         </div>

@@ -78,7 +78,7 @@ function ReconcileDialog({ actionId, open, onOpenChange, onReconciled }: { actio
             {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
             Marchează Eșuată
           </Button>
-          <Button onClick={() => handleReconcile("applied")} disabled={loading} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+          <Button onClick={() => handleReconcile("applied")} disabled={loading}>
             {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
             Confirmă Aplicarea
           </Button>
