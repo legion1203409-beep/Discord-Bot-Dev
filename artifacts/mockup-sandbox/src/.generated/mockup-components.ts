@@ -5,6 +5,7 @@ export const modules: ModuleMap = {
   "./components/mockups/anti-spam-settings/Guided.tsx": () => import("../components/mockups/anti-spam-settings/Guided.tsx"),
   "./components/mockups/bot-control-channels/Current.tsx": () => import("../components/mockups/bot-control-channels/Current.tsx"),
   "./components/mockups/bot-control-channels/Redesign.tsx": () => import("../components/mockups/bot-control-channels/Redesign.tsx"),
+  "./components/mockups/moderation-module-config/Current.tsx": () => import("../components/mockups/moderation-module-config/Current.tsx"),
   "./components/mockups/provisioning-redesign/Current.tsx": () => import("../components/mockups/provisioning-redesign/Current.tsx"),
   "./components/mockups/provisioning-redesign/Refined.tsx": () => import("../components/mockups/provisioning-redesign/Refined.tsx"),
   "./components/mockups/site-a/VariantA.tsx": () => import("../components/mockups/site-a/VariantA.tsx"),
