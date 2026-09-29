@@ -17,7 +17,8 @@ import { logger } from "../../lib/logger";
 import { shouldDeleteAutoModMessage } from "./automod-policy";
 import type { AutoModerationActionExecution } from "discord.js";
 import { NATIVE_AUTOMOD_KEYWORD_RULE_NAME } from "../native-automod";
-import { detectContent, detectScamContent, SlidingRateLimiter, SlidingUniqueMessageRateLimiter, type ContentThresholds, type Detection } from "./detectors";
+import { detectContent, detectScamContent, detectScamImageText, SlidingRateLimiter, SlidingUniqueMessageRateLimiter, type ContentThresholds, type Detection } from "./detectors";
+import { readScamImageTexts } from "./image-scam-ocr";
 import {
   assertRoleGrantSafe,
   assertTargetHierarchy,
@@ -683,6 +684,7 @@ export async function handleModerationMessage(client: Client, message: Message):
       ruleThreshold(config.antiSpam.message, ["windowMs", "window", "seconds"], 5) * 1_000,
     )
     : null;
+  let scamMessageText = "";
   if (config.autoMod.enabled && auto.scamFilter.enabled) {
     const embedContent = message.embeds.flatMap((embed) => [
       embed.title,
@@ -692,10 +694,8 @@ export async function handleModerationMessage(client: Client, message: Message):
       embed.footer?.text,
       ...embed.fields.flatMap((field) => [field.name, field.value]),
     ]);
-    const scamFinding = detectScamContent(
-      [content, ...embedContent].filter((part): part is string => Boolean(part)).join("\n"),
-      auto.scamPhrases,
-    );
+    scamMessageText = [content, ...embedContent].filter((part): part is string => Boolean(part)).join("\n");
+    const scamFinding = detectScamContent(scamMessageText, auto.scamPhrases);
     if (scamFinding && await applyAutomatic(message.guild, config, message, scamFinding, auto.scamFilter)) return true;
   }
   const threshold = (value: number, base: "soft" | "normal" | "hard") => {
@@ -744,6 +744,13 @@ export async function handleModerationMessage(client: Client, message: Message):
   for (const finding of findings.filter((item) => item.kind !== "word" && item.kind !== "link")) {
     const rule = ruleFor(finding.kind);
     if (rule?.enabled && await applyAutomatic(message.guild, config, message, finding, rule)) return true;
+  }
+  if (config.autoMod.enabled && auto.scamFilter.enabled && message.attachments.size) {
+    const imageTexts = await readScamImageTexts(message.attachments.values());
+    for (const imageText of imageTexts) {
+      const scamFinding = detectScamImageText(imageText, auto.scamPhrases);
+      if (scamFinding && await applyAutomatic(message.guild, config, message, scamFinding, auto.scamFilter)) return true;
+    }
   }
   const aiFinding = await detectWithAi(config, message);
   if (aiFinding) {

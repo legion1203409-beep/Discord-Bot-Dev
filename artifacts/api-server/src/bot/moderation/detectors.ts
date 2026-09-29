@@ -88,6 +88,24 @@ export function detectScamContent(content: string, configuredPhrases: readonly s
   return null;
 }
 
+/** A stricter combination for noisy OCR from image-only crypto giveaway ads. */
+export function detectScamImageText(content: string, configuredPhrases: readonly string[] = []): Detection | null {
+  const lines = content.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const directFinding = detectScamContent(`${lines[i]} ${lines[i + 1] ?? ""}`, configuredPhrases);
+    if (directFinding) return directFinding;
+  }
+  const normalized = normalizeScamText(content);
+  const promotional = /\b(?:bonus(?:es)?|promo(?:tional)?|giveaway|reward)\b/u.test(normalized);
+  const claimedPayout = lines.some((line) => /\bwithdraw(?:al|ial)?\b.{0,80}\bsuccess(?:ful(?:ly)?)?\b/u.test(normalizeScamText(line)));
+  const valueOrImpersonation = /(?:[$€£]\s*\d[\d.,]*|\b\d[\d.,]*\s*(?:usd|eur|usdt|btc|eth)\b|\bmr\s*beast\b)/u.test(normalized);
+  const callToAction = /\b(?:activate|claim|redeem|use\s+(?:the\s+)?code|enter\s+(?:the\s+)?code)\b/u.test(normalized);
+  if (promotional && claimedPayout && valueOrImpersonation && callToAction) {
+    return { kind: "scam", detail: "Imagine cu promoție și dovadă suspectă de retragere" };
+  }
+  return null;
+}
+
 export type ForbiddenLinkCategories = Partial<Record<"discordInvite" | "social" | "video" | "shortener" | "all", boolean>>;
 
 const socialHosts = ["facebook.com", "fb.com", "instagram.com", "tiktok.com", "x.com", "twitter.com", "threads.net", "reddit.com", "bsky.app"];

@@ -381,7 +381,7 @@ export function ConfigEditor({
           <div>
             <h3 className="font-semibold">Anti-Scam</h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              Detectează afirmații clare despre câștiguri în bani sau crypto și mesaje suspecte de tip „claim reward” ori verificare de portofel.
+              Detectează afirmații clare despre câștiguri în bani sau crypto, inclusiv textul din imaginile atașate (OCR local).
             </p>
           </div>
           <div className="grid gap-3 md:grid-cols-2">
@@ -412,6 +412,7 @@ export function ConfigEditor({
             Rulează numai când Protecția serverului și AutoMod general sunt pornite. Mesajele și sancțiunile apar în Cazuri/Audit.
             Timeout-ul este de 10 minute. Botul are nevoie de Message Content și Manage Messages; mute cere Moderate Members,
             iar kick cere Kick Members și un rol bot suficient de sus. Kick-ul elimină membrul, fără ban.
+            OCR verifică local maximum două imagini PNG/JPG/GIF/WebP de până la 6 MB per mesaj; textul ilizibil poate scăpa.
           </p>
         </div>
         <RuleEditor title="Filtru cuvinte" help="Lista de mai jos determină potrivirile; regula nu are un prag numeric efectiv." rule={value.autoMod.wordFilter} thresholds={[]} onChange={rule(["autoMod", "wordFilter"])} />

@@ -7,6 +7,7 @@ import {
   countEmoji,
   detectContent,
   detectScamContent,
+  detectScamImageText,
   findBlockedLink,
   longestRepeatedRun,
 } from "../detectors";
@@ -25,6 +26,16 @@ describe("moderation detectors", () => {
     expect(detectScamContent("Verify your wallet to receive the free crypto")).toMatchObject({ kind: "scam" });
     expect(detectScamContent("Ai câștigat campionatul anul trecut.")).toBeNull();
     expect(detectScamContent("un mesaj cu zero-width cl\u200Baim bonus", ["claim bonus"])).toMatchObject({ kind: "scam" });
+  });
+
+  it("requires multiple payout-promotion signals for noisy scam-image OCR", () => {
+    expect(detectScamImageText("@everyone MrBeast BONUSES Activate Withdrawial Success 5600")).toMatchObject({ kind: "scam" });
+    expect(detectScamImageText("You just won $200!")).toMatchObject({ kind: "scam" });
+    expect(detectScamImageText("MrBeast BONUSES and games for fans")).toBeNull();
+    expect(detectScamImageText("Withdrawal Success! Paid $5600")).toBeNull();
+    expect(detectScamImageText("BONUSES Withdrawal Success! MrBeast")).toBeNull();
+    expect(detectScamImageText("BONUSES\nWithdrawal Success! MrBeast\nActivate")).toMatchObject({ kind: "scam" });
+    expect(detectScamImageText("You won\nMrBeast bonus\n$200")).toBeNull();
   });
 
   it("matches exact and subdomain blocked link hosts", () => {
