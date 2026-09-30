@@ -5,6 +5,11 @@ const idList = z.array(snowflake).max(100);
 const textList = z.array(z.string().trim().min(1).max(200)).max(500);
 const action = z.enum(["none", "warn", "mute", "kick", "ban", "delete"]);
 const severity = z.enum(["soft", "normal", "hard"]);
+const aiSensitivity = z.enum(["low", "medium", "high"]);
+const aiCategory = z.enum([
+  "toxicity", "profanity", "attacks", "bullying", "intelligentSpam", "trolling",
+  "scams", "threats", "deceptiveLinks",
+]);
 const safeHttpsUrl = z.string().url().refine((value) => {
   const url = new URL(value);
   const host = url.hostname.toLowerCase();
@@ -251,11 +256,18 @@ export const ModerationConfigSchema = z.object({
   // 12. AI moderation
   ai: z.object({
     enabled: z.boolean().default(false),
-    sensitivity: z.enum(["low", "medium", "high"]).default("medium"),
+    sensitivity: aiSensitivity.default("medium"),
     tone: z.enum(["serious", "calm", "strict"]).default("calm"),
     action: action.default("none"),
     deleteMessage: z.boolean().optional(),
     logChannelId: snowflake.nullable().default(null),
+    excludedChannelIds: idList.default([]),
+    excludedRoleIds: idList.default([]),
+    // Missing overrides inherit the general AI settings on existing guilds.
+    categorySettings: z.record(aiCategory, z.object({
+      sensitivity: aiSensitivity.optional(),
+      action: action.optional(),
+    }).strict()).default({}),
     categories: z.object({
       toxicity: z.boolean().default(false),
       profanity: z.boolean().default(false),
@@ -263,6 +275,9 @@ export const ModerationConfigSchema = z.object({
       bullying: z.boolean().default(false),
       intelligentSpam: z.boolean().default(false),
       trolling: z.boolean().default(false),
+      scams: z.boolean().default(false),
+      threats: z.boolean().default(false),
+      deceptiveLinks: z.boolean().default(false),
     }).default({}),
   }).default({}),
   // 13. Multi-server isolation

@@ -22,6 +22,38 @@ describe("moderation configuration defaults", () => {
     expect(config.protection.enabled).toBe(false);
   });
 
+  it("keeps legacy AI settings and adds opt-in categories and empty exception lists", () => {
+    const config = ModerationConfigSchema.parse({
+      ai: { enabled: true, action: "warn", sensitivity: "low", categories: { attacks: true } },
+    });
+    expect(config.ai.action).toBe("warn");
+    expect(config.ai.sensitivity).toBe("low");
+    expect(config.ai.categories).toMatchObject({
+      attacks: true, scams: false, threats: false, deceptiveLinks: false,
+    });
+    expect(config.ai.categorySettings).toEqual({});
+    expect(config.ai.excludedChannelIds).toEqual([]);
+    expect(config.ai.excludedRoleIds).toEqual([]);
+  });
+
+  it("validates AI category overrides and channel/role exceptions", () => {
+    const config = ModerationConfigSchema.parse({
+      ai: {
+        categories: { scams: true, threats: true, deceptiveLinks: true },
+        categorySettings: { scams: { action: "ban", sensitivity: "high" }, threats: { action: "none" } },
+        excludedChannelIds: ["123456789012345678"],
+        excludedRoleIds: ["987654321098765432"],
+      },
+    });
+    expect(config.ai.categorySettings.scams).toEqual({ action: "ban", sensitivity: "high" });
+    expect(config.ai.categorySettings.threats?.action).toBe("none");
+    expect(config.ai.excludedChannelIds).toEqual(["123456789012345678"]);
+    expect(config.ai.excludedRoleIds).toEqual(["987654321098765432"]);
+    expect(() => ModerationConfigSchema.parse({ ai: { categorySettings: { invented: { action: "ban" } } } })).toThrow();
+    expect(() => ModerationConfigSchema.parse({ ai: { categorySettings: { scams: { sensitivity: "extreme" } } } })).toThrow();
+    expect(() => ModerationConfigSchema.parse({ ai: { excludedChannelIds: ["bad-id"] } })).toThrow();
+  });
+
   it("keeps automatic activity logs disabled by default and requires private-channel access when enabled", () => {
     expect(defaultModerationConfig.activityLog.enabled).toBe(false);
     expect(defaultModerationConfig.activityLog.channelIds.messages).toBeNull();

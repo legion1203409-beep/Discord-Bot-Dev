@@ -11,7 +11,7 @@ import {
   findBlockedLink,
   longestRepeatedRun,
 } from "../detectors";
-import { contentThresholdsForConfig, escalationActionForCount, parseAiModerationFinding, repeatedMessageCount, reserveAutomaticAction } from "../engine";
+import { aiActionForCategory, aiModerationPrompt, contentThresholdsForConfig, escalationActionForCount, isAiExcluded, parseAiModerationFinding, repeatedMessageCount, reserveAutomaticAction } from "../engine";
 import { ModerationConfigSchema } from "../../../moderation/config";
 
 describe("moderation detectors", () => {
@@ -167,11 +167,52 @@ describe("moderation detectors", () => {
     expect(parseAiModerationFinding(
       '{"violation":true,"category":"attacks","confidence":0.82}',
       "stop", ["attacks"], "medium",
-    )).toEqual({ kind: "ai", detail: "Moderare AI: attacks", count: 82 });
+    )).toEqual({ kind: "ai", category: "attacks", detail: "Moderare AI: attacks", count: 82 });
     expect(parseAiModerationFinding(
       '{"violation":true,"category":"attacks","confidence":0.65}',
       "stop", ["attacks"], "high",
     )).toMatchObject({ kind: "ai" });
+  });
+
+  it("understands all scripts in its instructions and only offers enabled categories", () => {
+    const prompt = aiModerationPrompt("calm", ["scams", "deceptiveLinks"]);
+    expect(prompt).toContain("ANY language or script");
+    expect(prompt).toContain("mixed languages");
+    expect(prompt).toContain("scams:");
+    expect(prompt).toContain("deceptiveLinks:");
+    expect(prompt).not.toContain("threats:");
+    expect(prompt).toContain("bare or unfamiliar URL alone is not proof");
+  });
+
+  it("uses category-specific sensitivity and action, falling back to global defaults", () => {
+    const ai = ModerationConfigSchema.parse({
+      ai: {
+        sensitivity: "low", action: "warn",
+        categorySettings: {
+          scams: { sensitivity: "high", action: "ban" },
+          threats: { action: "none" },
+        },
+      },
+    }).ai;
+    const finding = '{"violation":true,"category":"scams","confidence":0.7}';
+    expect(parseAiModerationFinding(finding, "stop", ["scams"], ai.sensitivity, ai.categorySettings)?.category).toBe("scams");
+    expect(parseAiModerationFinding('{"violation":true,"category":"threats","confidence":0.7}', "stop", ["threats"], ai.sensitivity, ai.categorySettings)).toBeNull();
+    expect(parseAiModerationFinding(finding, "stop", ["scams"], "low")).toBeNull();
+    expect(aiActionForCategory(ai, "scams")).toBe("ban");
+    expect(aiActionForCategory(ai, "threats")).toBe("none");
+    expect(aiActionForCategory(ai, "attacks")).toBe("warn");
+  });
+
+  it("excludes only configured AI channels or member roles", () => {
+    const ai = ModerationConfigSchema.parse({
+      ai: {
+        excludedChannelIds: ["123456789012345678"],
+        excludedRoleIds: ["987654321098765432"],
+      },
+    }).ai;
+    expect(isAiExcluded(ai, "123456789012345678", [])).toBe(true);
+    expect(isAiExcluded(ai, "222222222222222222", ["987654321098765432"])).toBe(true);
+    expect(isAiExcluded(ai, "222222222222222222", ["333333333333333333"])).toBe(false);
   });
 
   it("fails closed on truncated, malformed, disabled, and low-confidence AI responses", () => {

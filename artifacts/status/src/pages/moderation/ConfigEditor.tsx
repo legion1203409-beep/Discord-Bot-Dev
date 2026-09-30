@@ -38,6 +38,17 @@ const SCAM_ACTIONS = [
 ] as const;
 const SEVERITIES = [["soft", "Blândă"], ["normal", "Normală"], ["hard", "Strictă"]] as const;
 const SENSITIVITIES = [["low", "Scăzută"], ["medium", "Medie"], ["high", "Ridicată"]] as const;
+const AI_CATEGORIES = [
+  ["toxicity", "Toxicitate", "Limbaj ostil sau abuziv"],
+  ["profanity", "Limbaj vulgar", "Înjurături îndreptate către alte persoane"],
+  ["attacks", "Atacuri", "Insulte și atacuri personale"],
+  ["bullying", "Hărțuire", "Umilirea sau hărțuirea țintită"],
+  ["intelligentSpam", "Spam inteligent", "Promovare nedorită mascată în conversație"],
+  ["trolling", "Trolling", "Provocări intenționate și dăunătoare"],
+  ["scams", "Fraude", "Oferte înșelătoare și furt de bani sau conturi"],
+  ["threats", "Amenințări", "Amenințări credibile îndreptate către persoane"],
+  ["deceptiveLinks", "Linkuri înșelătoare", "Phishing și linkuri care imită servicii legitime"],
+] as const;
 const LINK_CATEGORIES = [
   ["discordInvite", "Invitații Discord", "discord.gg și discord.com/invite"],
   ["social", "Rețele sociale", "Facebook, Instagram, TikTok, X, Reddit"],
@@ -536,25 +547,46 @@ export function ConfigEditor({
           onChange={rule(["suspiciousBehavior", key])} />)}
       </Section>
 
-      <Section value="ai" title="6. Moderare AI" description="Categorii de analiză, tonul răspunsului și jurnalizarea deciziilor AI.">
+      <Section value="ai" title="6. Moderare AI" description="Analiză multilingvă, categorii, acțiuni și excepții pentru fiecare server.">
+        <p className="text-sm text-muted-foreground">Mesajele sunt analizate automat în limba în care au fost scrise, inclusiv dacă amestecă limbi. Limba folosită nu este o abatere.</p>
         <div className="grid gap-3 md:grid-cols-3">
           <Toggle label="Activează AI" checked={value.ai.enabled} onChange={(next) => set(["ai", "enabled"], next)} />
-          <Choice label="Sensibilitate AI" value={value.ai.sensitivity} options={SENSITIVITIES} onChange={(next) => set(["ai", "sensitivity"], next)} />
-          <Choice label="Acțiune AI" value={value.ai.action} options={ACTIONS} onChange={(next) => set(["ai", "action"], next)} />
+          <Choice label="Sensibilitate generală AI" value={value.ai.sensitivity} options={SENSITIVITIES} onChange={(next) => set(["ai", "sensitivity"], next)} />
+          <Choice label="Acțiune generală AI" value={value.ai.action} options={ACTIONS} onChange={(next) => set(["ai", "action"], next)} />
           <Choice label="Ton" value={value.ai.tone} options={[["serious", "Serios"], ["calm", "Calm"], ["strict", "Strict"]]} onChange={(next) => set(["ai", "tone"], next)} />
         </div>
+        <Toggle label="Șterge mesajul semnalat de AI"
+          help="Se aplică tuturor categoriilor active, inclusiv când acțiunea categoriei este „Nicio acțiune”."
+          checked={Boolean(value.ai.deleteMessage)} onChange={(next) => set(["ai", "deleteMessage"], next)} />
         <IdField label="Canal jurnal AI" value={value.ai.logChannelId} onChange={(next) => set(["ai", "logChannelId"], next)} />
-        <div className="grid gap-3 md:grid-cols-2">
-          {[
-            ["toxicity", "Toxicitate"], ["profanity", "Limbaj vulgar"], ["attacks", "Atacuri"], ["bullying", "Hărțuire"],
-            ["intelligentSpam", "Spam inteligent"], ["trolling", "Trolling"],
-          ].map(([key, label]) => <Toggle key={key} label={label} checked={value.ai.categories[key]} onChange={(next) => set(["ai", "categories", key], next)} />)}
+        <div className="space-y-3">
+          <p className="text-sm font-medium">Categorii urmărite</p>
+          {AI_CATEGORIES.map(([key, label, help]) => (
+            <div key={key} className="space-y-3 rounded-xl border border-border p-3">
+              <Toggle label={label} help={help} checked={Boolean(value.ai.categories[key])} onChange={(next) => set(["ai", "categories", key], next)} />
+              {value.ai.categories[key] && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Choice label={`Sensibilitate — ${label}`} value={value.ai.categorySettings?.[key]?.sensitivity ?? "inherit"}
+                    options={[["inherit", "Folosește setarea generală"], ...SENSITIVITIES]}
+                    onChange={(next) => set(["ai", "categorySettings", key, "sensitivity"], next === "inherit" ? undefined : next)} />
+                  <Choice label={`Acțiune — ${label}`} value={value.ai.categorySettings?.[key]?.action ?? "inherit"}
+                    options={[["inherit", "Folosește setarea generală"], ...ACTIONS]}
+                    onChange={(next) => set(["ai", "categorySettings", key, "action"], next === "inherit" ? undefined : next)} />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <ListField ids label="Canale exceptate de la AI" help="Un ID de canal pe rând (max. 100). Alte protecții rămân active." values={value.ai.excludedChannelIds} onChange={(next) => set(["ai", "excludedChannelIds"], next)} />
+          <ListField ids label="Roluri exceptate de la AI" help="Un ID de rol pe rând (max. 100). Alte protecții rămân active." values={value.ai.excludedRoleIds} onChange={(next) => set(["ai", "excludedRoleIds"], next)} />
         </div>
         {value.ai.enabled && !Object.values(value.ai.categories).some(Boolean) && (
           <p className="text-sm text-amber-600">Selectează cel puțin o categorie; fără categorii, analiza AI nu rulează.</p>
         )}
-        {value.ai.enabled && value.ai.action === "none" && (
-          <p className="text-sm text-muted-foreground">Acțiunea „Nimic” doar semnalează rezultatele; alege o acțiune pentru sancțiuni automate.</p>
+        {value.ai.enabled && value.ai.action === "none" && !value.ai.deleteMessage &&
+          !AI_CATEGORIES.some(([key]) => value.ai.categories[key] && value.ai.categorySettings?.[key]?.action !== undefined && value.ai.categorySettings[key].action !== "none") && (
+          <p className="text-sm text-muted-foreground">Acțiunea „Nicio acțiune” doar semnalează rezultatele; alege o acțiune generală sau specifică unei categorii pentru sancțiuni automate.</p>
         )}
       </Section>
 
