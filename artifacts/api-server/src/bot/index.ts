@@ -438,7 +438,7 @@ async function consumeOracleFellBackMarker(): Promise<boolean> {
 async function sendOnboardingMessage(guild: Guild): Promise<void> {
   const message =
     "👋 **Bun venit în Regatul Cenușii!**\n\n" +
-    "Botul a fost adăugat pe serverul tău, dar **nu are canalele configurate** încă.\n" +
+    "Botul a fost adăugat pe acest server, dar **nu are canalele configurate** încă.\n" +
     "Folosește comanda `/setcanal` pentru a configura canalele unde botul va posta:\n\n" +
     "📺 **Cufere** — cufere, recompense și chei\n" +
     "🔥 **Ora Umbrelor** — evenimentele principale de luptă\n" +
@@ -447,17 +447,6 @@ async function sendOnboardingMessage(guild: Guild): Promise<void> {
     "🏆 **Top Ora Umbrelor** — clasamentul evenimentelor\n" +
     "🏆 **Top Dragonul Stins** — clasamentul boss-urilor\n\n" +
     "Folosește din nou `/setcanal` pentru a schimba canalul unei categorii.";
-
-  try {
-    const ownerMember = await guild.fetchOwner().catch(() => null);
-    if (ownerMember) {
-      await ownerMember.user.send({ content: message });
-      logger.info({ guildId: guild.id }, "Sent onboarding DM to guild owner");
-      return;
-    }
-  } catch (err) {
-    logger.warn({ err, guildId: guild.id }, "Could not DM guild owner — trying system channel");
-  }
 
   const systemChannel = guild.systemChannel;
   if (systemChannel) {
@@ -470,7 +459,7 @@ async function sendOnboardingMessage(guild: Guild): Promise<void> {
     }
   }
 
-  logger.warn({ guildId: guild.id }, "No DM or system channel available — onboarding message not delivered");
+  logger.warn({ guildId: guild.id }, "No system channel available — onboarding message not delivered");
 }
 
 export async function maybeAlertOracleRecovery(
@@ -1129,29 +1118,6 @@ async function handleHelpQuestion(interaction: ModalSubmitInteraction) {
       components: [],
     }).catch(() => null);
   }
-}
-
-const gameHelpNudgeAt = new Map<string, number>();
-
-function isGameHelpQuestionText(text: string): boolean {
-  if (!text.includes("?")) return false;
-  const normalized = text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  return /\b(cheie|chei|cufar|cufere|lupt|boss|dragon|misiun|magazin|clasa|companion|relicv|fragment|obol|xp|mana|oracol|profet|licitat|fratie|cavaler|umbrolog|strajer|alchimist|ratacitor)\b/.test(normalized);
-}
-
-function maybeNudgeGameHelp(message: Message): void {
-  if (!message.guildId || !isGameHelpQuestionText(message.content ?? "")) return;
-  if (message.reference?.messageId || message.mentions.users.has(botClient?.user?.id ?? "")) return;
-  const now = Date.now();
-  const previous = gameHelpNudgeAt.get(message.guildId) ?? 0;
-  if (now - previous < 30_000) return;
-  gameHelpNudgeAt.set(message.guildId, now);
-  void message.author.send({
-    content:
-      "🔮 Oracolul te îndrumă: întrebarea ta ține de mecanicile Regatului. " +
-      "Deschide **/ajutor** în server pentru ghidul interactiv, alege categoria potrivită " +
-      "și poți întreba Oracolul direct de acolo.",
-  }).catch((err) => logger.debug({ err, guildId: message.guildId }, "Could not DM game help nudge"));
 }
 
 async function handleMisiune(interaction: ChatInputCommandInteraction) {
@@ -4836,7 +4802,6 @@ export async function startBot(onReady?: () => void): Promise<void> {
     void maybeHandleOracleClue(client, message).catch((err) =>
       logger.warn({ err, guildId: message.guildId }, "Oracle clue handler failed"),
     );
-    maybeNudgeGameHelp(message);
     void handleModerationMessage(client, message).then((moderationHandled) => {
       // When AutoMod actually performed an action, do not also invoke the
       // Oracle's legacy toxicity timeout for this same message.
@@ -5488,7 +5453,6 @@ export async function startBot(onReady?: () => void): Promise<void> {
     void maybeHandleOracleClue(client, message).catch((err) =>
       logger.warn({ err, guildId: message.guildId }, "Oracle clue handler failed"),
     );
-    maybeNudgeGameHelp(message);
     void handleModerationMessage(client, message).then((moderationHandled) => {
       // When AutoMod actually performed an action, do not also invoke the
       // Oracle's legacy toxicity timeout for this same message.

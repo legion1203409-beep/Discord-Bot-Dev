@@ -15,6 +15,7 @@ import { moderationStore } from "../../moderation/store";
 import type { ModerationConfig, ModerationAction as ConfiguredAction } from "../../moderation/config";
 import { logger } from "../../lib/logger";
 import { shouldDeleteAutoModMessage } from "./automod-policy";
+import { deliverWarningInGuild } from "./warning-delivery";
 import type { AutoModerationActionExecution } from "discord.js";
 import { NATIVE_AUTOMOD_KEYWORD_RULE_NAME } from "../native-automod";
 import { detectContent, detectScamContent, detectScamImageText, SlidingRateLimiter, SlidingUniqueMessageRateLimiter, type ContentThresholds, type Detection } from "./detectors";
@@ -458,22 +459,10 @@ export async function executeModerationAction(input: ModerationActionInput): Pro
       break;
     }
     case "warn": {
-      summary = `Avertisment înregistrat pentru <@${target!.id}>.`;
-      let warningDelivered = false;
-      await target!.send({
-        content: `⚠️ Ai primit un avertisment pe **${guild.name}**.\nMotiv: ${reason(input)}`,
-        allowedMentions: { parse: [] },
-      }).then(() => { warningDelivered = true; }).catch(() => undefined);
-      if (!warningDelivered && input.channelId) {
-        const channel = await guild.channels.fetch(input.channelId).catch(() => null);
-        if (channel?.isTextBased() && "send" in channel) {
-          await channel.send({
-            content: `⚠️ <@${target!.id}>, ai primit un avertisment.\nMotiv: ${reason(input)}`,
-            allowedMentions: { users: [target!.id], parse: [] },
-          }).then(() => { warningDelivered = true; }).catch(() => undefined);
-        }
-      }
-      if (!warningDelivered) throw new Error("Avertismentul nu a putut fi livrat prin DM sau într-un canal sigur.");
+      const delivered = await deliverWarningInGuild(guild, input.channelId, target!.id, reason(input));
+      summary = delivered
+        ? `Avertisment comunicat în canal pentru <@${target!.id}>.`
+        : `Avertisment înregistrat pentru <@${target!.id}>, fără notificare în canal.`;
       break;
     }
     case "mute": {
