@@ -11,7 +11,7 @@ import {
   findBlockedLink,
   longestRepeatedRun,
 } from "../detectors";
-import { aiActionForCategory, aiModerationPrompt, contentThresholdsForConfig, escalationActionForCount, isAiExcluded, parseAiModerationFinding, repeatedMessageCount, reserveAutomaticAction } from "../engine";
+import { aiActionForCategory, aiDeleteMessageForCategory, aiModerationPrompt, contentThresholdsForConfig, escalationActionForCount, isAiExcluded, parseAiModerationFinding, repeatedMessageCount, reserveAutomaticAction } from "../engine";
 import { ModerationConfigSchema } from "../../../moderation/config";
 
 describe("moderation detectors", () => {
@@ -213,6 +213,31 @@ describe("moderation detectors", () => {
     expect(isAiExcluded(ai, "123456789012345678", [])).toBe(true);
     expect(isAiExcluded(ai, "222222222222222222", ["987654321098765432"])).toBe(true);
     expect(isAiExcluded(ai, "222222222222222222", ["333333333333333333"])).toBe(false);
+  });
+
+  it("applies per-category deletion choices alongside sanctions and preserves inheritance", () => {
+    const ai = ModerationConfigSchema.parse({
+      ai: {
+        action: "warn", deleteMessage: true,
+        categorySettings: {
+          toxicity: { action: "mute", deleteMessage: true },
+          threats: { action: "warn", deleteMessage: false },
+          scams: { action: "none", deleteMessage: true },
+          attacks: { action: "kick" },
+        },
+      },
+    }).ai;
+    expect(aiActionForCategory(ai, "toxicity")).toBe("mute");
+    expect(aiDeleteMessageForCategory(ai, "toxicity")).toBe(true);
+    expect(aiDeleteMessageForCategory(ai, "threats")).toBe(false);
+    expect(aiActionForCategory(ai, "scams")).toBe("none");
+    expect(aiDeleteMessageForCategory(ai, "scams")).toBe(true);
+    expect(aiActionForCategory(ai, "attacks")).toBe("kick");
+    expect(aiDeleteMessageForCategory(ai, "attacks")).toBe(true);
+    expect(aiDeleteMessageForCategory(ai, "bullying")).toBe(true);
+    ai.deleteMessage = false;
+    expect(aiDeleteMessageForCategory(ai, "attacks")).toBe(false);
+    expect(aiDeleteMessageForCategory(ai, "toxicity")).toBe(true);
   });
 
   it("fails closed on truncated, malformed, disabled, and low-confidence AI responses", () => {

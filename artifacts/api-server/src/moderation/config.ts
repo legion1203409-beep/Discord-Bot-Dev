@@ -267,6 +267,7 @@ export const ModerationConfigSchema = z.object({
     categorySettings: z.record(aiCategory, z.object({
       sensitivity: aiSensitivity.optional(),
       action: action.optional(),
+      deleteMessage: z.boolean().optional(),
     }).strict()).default({}),
     categories: z.object({
       toxicity: z.boolean().default(false),

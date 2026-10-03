@@ -54,6 +54,26 @@ describe("moderation configuration defaults", () => {
     expect(() => ModerationConfigSchema.parse({ ai: { excludedChannelIds: ["bad-id"] } })).toThrow();
   });
 
+  it("round-trips two selected actions for AI categories, including an explicit deletion opt-out", () => {
+    const config = ModerationConfigSchema.parse({
+      ai: {
+        action: "warn", deleteMessage: true,
+        categorySettings: {
+          toxicity: { action: "mute", deleteMessage: true },
+          bullying: { action: "warn", deleteMessage: true },
+          threats: { action: "warn", deleteMessage: false },
+        },
+      },
+    });
+    const loaded = ModerationConfigSchema.parse(JSON.parse(JSON.stringify(config)));
+    expect(loaded.ai.categorySettings).toEqual(config.ai.categorySettings);
+    expect(loaded.ai.categorySettings.threats?.deleteMessage).toBe(false);
+    expect(loaded.ai.categorySettings.attacks).toBeUndefined();
+    expect(() => ModerationConfigSchema.parse({
+      ai: { categorySettings: { toxicity: { action: "mute", deleteMessage: "yes" } } },
+    })).toThrow();
+  });
+
   it("keeps automatic activity logs disabled by default and requires private-channel access when enabled", () => {
     expect(defaultModerationConfig.activityLog.enabled).toBe(false);
     expect(defaultModerationConfig.activityLog.channelIds.messages).toBeNull();

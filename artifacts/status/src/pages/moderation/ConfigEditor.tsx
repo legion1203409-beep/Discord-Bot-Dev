@@ -10,7 +10,8 @@ import { activityLogDraftError } from "../../lib/activity-log-validation";
 import { DELETE_SPAM, EDIT_SPAM, EMOJI_LIMIT, groupThresholdFields, MENTION_LIMIT, MESSAGE_SPAM, type Threshold } from "../../lib/anti-spam-validation";
 import { embedUrlDraftError, isPublicGifUrl, isPublicHttpsUrl } from "../../lib/embed-url-validation";
 import { MANUAL_COMMAND_GROUPS_WITH_COMMANDS } from "../../lib/manual-command-catalog";
-import { autoModActionSelection, selectAutoModDeletion, selectAutoModSanction } from "../../lib/automod-actions";
+import { aiCategoryActions, inheritsAiCategoryActions, setAiCategoryActions } from "../../lib/automod-actions";
+import { ModerationActionPicker } from "../../components/moderation/ModerationActionPicker";
 
 type Config = Record<string, any>;
 type Path = Array<string | number>;
@@ -32,8 +33,6 @@ const ACTIONS = [
   ["delete", "Șterge mesajul"],
 ] as const;
 const SUSPICIOUS_ACTIONS = ACTIONS.filter(([action]) => action !== "delete");
-const MEMBER_SANCTIONS = ACTIONS.filter(([action]) => action !== "delete")
-  .map(([action, label]) => [action, action === "none" ? "Nicio sancțiune" : label] as const);
 const SCAM_ACTIONS = [
   ["delete", "Șterge doar mesajul"],
   ["mute", "Șterge + timeout 10 minute"],
@@ -192,16 +191,11 @@ type RuleProps = { title: string; help?: string; rule: any; thresholds: Threshol
 
 function RuleEditor({ title, help, rule, thresholds, actions = ACTIONS, showAction = true, combineDeletion = false, collapsible = false, onChange }: RuleProps) {
   const thresholdFields = groupThresholdFields(thresholds);
-  const selection = autoModActionSelection(rule);
   const controls = (
     <>
-      <div className={`grid gap-3 ${showAction ? "md:grid-cols-3" : "md:grid-cols-2"}`}>
+      <div className={`grid gap-3 ${showAction && !combineDeletion ? "md:grid-cols-3" : "md:grid-cols-2"}`}>
         <Toggle label="Regulă activă" checked={rule.enabled} onChange={(value) => onChange(["enabled"], value)} />
-        {showAction && combineDeletion ? (
-          <Choice label="Sancțiune asupra membrului" value={selection.sanction} options={MEMBER_SANCTIONS}
-            help="Poți combina sancțiunea cu ștergerea mesajului."
-            onChange={(next) => onChange([], selectAutoModSanction(rule, next))} />
-        ) : showAction && (
+        {showAction && !combineDeletion && (
           <Choice label="Acțiune" value={rule.action} options={rule.action === "delete" && !actions.some(([key]) => key === "delete")
             ? [...actions, ["delete", "Șterge mesajul (indisponibil)"] as const] : actions}
             onChange={(value) => onChange(["action"], value)} />
@@ -209,11 +203,9 @@ function RuleEditor({ title, help, rule, thresholds, actions = ACTIONS, showActi
         <Choice label="Severitate" value={rule.severity} options={SEVERITIES} onChange={(value) => onChange(["severity"], value)} />
       </div>
       {combineDeletion && (
-        <Toggle label="Șterge mesajul"
-          help="Activează și această opțiune pentru ștergere + avertisment, mute, kick sau ban. Fără sancțiune, se șterge doar mesajul."
-          checked={selection.deleteMessage}
-          testId={`delete-message-${title}`}
-          onChange={(next) => onChange([], selectAutoModDeletion(rule, next))} />
+        <ModerationActionPicker label={`Acțiuni — ${title}`} value={rule}
+          testId={`actions-${title}`}
+          onChange={(next) => onChange([], { ...rule, ...next })} />
       )}
       {thresholds.length > 0 && (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -567,12 +559,11 @@ export function ConfigEditor({
         <div className="grid gap-3 md:grid-cols-3">
           <Toggle label="Activează AI" checked={value.ai.enabled} onChange={(next) => set(["ai", "enabled"], next)} />
           <Choice label="Sensibilitate generală AI" value={value.ai.sensitivity} options={SENSITIVITIES} onChange={(next) => set(["ai", "sensitivity"], next)} />
-          <Choice label="Acțiune generală AI" value={value.ai.action} options={ACTIONS} onChange={(next) => set(["ai", "action"], next)} />
           <Choice label="Ton" value={value.ai.tone} options={[["serious", "Serios"], ["calm", "Calm"], ["strict", "Strict"]]} onChange={(next) => set(["ai", "tone"], next)} />
         </div>
-        <Toggle label="Șterge mesajul semnalat de AI"
-          help="Se aplică tuturor categoriilor active, inclusiv când acțiunea categoriei este „Nicio acțiune”."
-          checked={Boolean(value.ai.deleteMessage)} onChange={(next) => set(["ai", "deleteMessage"], next)} />
+        <ModerationActionPicker label="Acțiuni generale AI" value={value.ai}
+          testId="actions-ai-general"
+          onChange={(next) => set(["ai"], { ...value.ai, ...next })} />
         <IdField label="Canal jurnal AI" value={value.ai.logChannelId} onChange={(next) => set(["ai", "logChannelId"], next)} />
         <div className="space-y-3">
           <p className="text-sm font-medium">Categorii urmărite</p>
@@ -580,13 +571,19 @@ export function ConfigEditor({
             <div key={key} className="space-y-3 rounded-xl border border-border p-3">
               <Toggle label={label} help={help} checked={Boolean(value.ai.categories[key])} onChange={(next) => set(["ai", "categories", key], next)} />
               {value.ai.categories[key] && (
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-3">
                   <Choice label={`Sensibilitate — ${label}`} value={value.ai.categorySettings?.[key]?.sensitivity ?? "inherit"}
                     options={[["inherit", "Folosește setarea generală"], ...SENSITIVITIES]}
                     onChange={(next) => set(["ai", "categorySettings", key, "sensitivity"], next === "inherit" ? undefined : next)} />
-                  <Choice label={`Acțiune — ${label}`} value={value.ai.categorySettings?.[key]?.action ?? "inherit"}
-                    options={[["inherit", "Folosește setarea generală"], ...ACTIONS]}
-                    onChange={(next) => set(["ai", "categorySettings", key, "action"], next === "inherit" ? undefined : next)} />
+                  <Toggle label={`Folosește acțiunile generale — ${label}`}
+                    help="Bifarea unei acțiuni mai jos personalizează doar această categorie."
+                    checked={inheritsAiCategoryActions(value.ai, key)}
+                    onChange={(next) => set(["ai"], setAiCategoryActions(value.ai, key,
+                      next ? undefined : aiCategoryActions(value.ai, key)))} />
+                  <ModerationActionPicker label={`Acțiuni — ${label}`}
+                    testId={`actions-ai-${key}`}
+                    value={aiCategoryActions(value.ai, key)}
+                    onChange={(next) => set(["ai"], setAiCategoryActions(value.ai, key, next))} />
                 </div>
               )}
             </div>
@@ -599,9 +596,11 @@ export function ConfigEditor({
         {value.ai.enabled && !Object.values(value.ai.categories).some(Boolean) && (
           <p className="text-sm text-amber-600">Selectează cel puțin o categorie; fără categorii, analiza AI nu rulează.</p>
         )}
-        {value.ai.enabled && value.ai.action === "none" && !value.ai.deleteMessage &&
-          !AI_CATEGORIES.some(([key]) => value.ai.categories[key] && value.ai.categorySettings?.[key]?.action !== undefined && value.ai.categorySettings[key].action !== "none") && (
-          <p className="text-sm text-muted-foreground">Acțiunea „Nicio acțiune” doar semnalează rezultatele; alege o acțiune generală sau specifică unei categorii pentru sancțiuni automate.</p>
+        {value.ai.enabled && !AI_CATEGORIES.some(([key]) => {
+          const selected = aiCategoryActions(value.ai, key);
+          return value.ai.categories[key] && (selected.action !== "none" || selected.deleteMessage);
+        }) && (
+          <p className="text-sm text-muted-foreground">Nu sunt bifate acțiuni pentru categoriile active; rezultatele sunt doar jurnalizate.</p>
         )}
       </Section>
 

@@ -178,6 +178,10 @@ export function aiActionForCategory(config: ModerationConfig["ai"], category: Ai
   return config.categorySettings[category]?.action ?? config.action;
 }
 
+export function aiDeleteMessageForCategory(config: ModerationConfig["ai"], category: AiCategory): boolean {
+  return config.categorySettings[category]?.deleteMessage ?? config.deleteMessage ?? false;
+}
+
 const aiCategoryDescriptions: Record<AiCategory, string> = {
   toxicity: "hostile or abusive language",
   profanity: "profanity directed at others",
@@ -781,10 +785,11 @@ export async function handleModerationMessage(client: Client, message: Message):
   if (aiFinding) {
     await notify(config, message.guild, "Semnalare AI", aiFinding.detail, config.ai.logChannelId);
     const selectedAction = aiActionForCategory(config.ai, aiFinding.category);
-    if (selectedAction !== "none" || config.ai.deleteMessage) {
+    const deleteMessage = aiDeleteMessageForCategory(config.ai, aiFinding.category);
+    if (selectedAction !== "none" || deleteMessage) {
       return applyAutomatic(message.guild, config, message, aiFinding, {
         action: selectedAction,
-        deleteMessage: config.ai.deleteMessage,
+        deleteMessage,
       });
     }
     await audit({ guildId: message.guildId, actorId: client.user?.id ?? "system", type: "warn", source: "automod" }, "ai.flagged", "message", message.id, { category: aiFinding.detail });
