@@ -10,6 +10,7 @@ import { activityLogDraftError } from "../../lib/activity-log-validation";
 import { DELETE_SPAM, EDIT_SPAM, EMOJI_LIMIT, groupThresholdFields, MENTION_LIMIT, MESSAGE_SPAM, type Threshold } from "../../lib/anti-spam-validation";
 import { embedUrlDraftError, isPublicGifUrl, isPublicHttpsUrl } from "../../lib/embed-url-validation";
 import { MANUAL_COMMAND_GROUPS_WITH_COMMANDS } from "../../lib/manual-command-catalog";
+import { autoModActionSelection, selectAutoModDeletion, selectAutoModSanction } from "../../lib/automod-actions";
 
 type Config = Record<string, any>;
 type Path = Array<string | number>;
@@ -31,6 +32,8 @@ const ACTIONS = [
   ["delete", "Șterge mesajul"],
 ] as const;
 const SUSPICIOUS_ACTIONS = ACTIONS.filter(([action]) => action !== "delete");
+const MEMBER_SANCTIONS = ACTIONS.filter(([action]) => action !== "delete")
+  .map(([action, label]) => [action, action === "none" ? "Nicio sancțiune" : label] as const);
 const SCAM_ACTIONS = [
   ["delete", "Șterge doar mesajul"],
   ["mute", "Șterge + timeout 10 minute"],
@@ -185,21 +188,33 @@ function ListField({ label, help, values, onChange, ids = false, testId }: {
   );
 }
 
-type RuleProps = { title: string; help?: string; rule: any; thresholds: Threshold[]; actions?: readonly (readonly [string, string])[]; showAction?: boolean; collapsible?: boolean; onChange: (path: string[], value: any) => void };
+type RuleProps = { title: string; help?: string; rule: any; thresholds: Threshold[]; actions?: readonly (readonly [string, string])[]; showAction?: boolean; combineDeletion?: boolean; collapsible?: boolean; onChange: (path: string[], value: any) => void };
 
-function RuleEditor({ title, help, rule, thresholds, actions = ACTIONS, showAction = true, collapsible = false, onChange }: RuleProps) {
+function RuleEditor({ title, help, rule, thresholds, actions = ACTIONS, showAction = true, combineDeletion = false, collapsible = false, onChange }: RuleProps) {
   const thresholdFields = groupThresholdFields(thresholds);
+  const selection = autoModActionSelection(rule);
   const controls = (
     <>
       <div className={`grid gap-3 ${showAction ? "md:grid-cols-3" : "md:grid-cols-2"}`}>
         <Toggle label="Regulă activă" checked={rule.enabled} onChange={(value) => onChange(["enabled"], value)} />
-        {showAction && (
+        {showAction && combineDeletion ? (
+          <Choice label="Sancțiune asupra membrului" value={selection.sanction} options={MEMBER_SANCTIONS}
+            help="Poți combina sancțiunea cu ștergerea mesajului."
+            onChange={(next) => onChange([], selectAutoModSanction(rule, next))} />
+        ) : showAction && (
           <Choice label="Acțiune" value={rule.action} options={rule.action === "delete" && !actions.some(([key]) => key === "delete")
             ? [...actions, ["delete", "Șterge mesajul (indisponibil)"] as const] : actions}
             onChange={(value) => onChange(["action"], value)} />
         )}
         <Choice label="Severitate" value={rule.severity} options={SEVERITIES} onChange={(value) => onChange(["severity"], value)} />
       </div>
+      {combineDeletion && (
+        <Toggle label="Șterge mesajul"
+          help="Activează și această opțiune pentru ștergere + avertisment, mute, kick sau ban. Fără sancțiune, se șterge doar mesajul."
+          checked={selection.deleteMessage}
+          testId={`delete-message-${title}`}
+          onChange={(next) => onChange([], selectAutoModDeletion(rule, next))} />
+      )}
       {thresholds.length > 0 && (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {thresholdFields.map((threshold) => (
@@ -426,9 +441,9 @@ export function ConfigEditor({
             OCR verifică local maximum două imagini PNG/JPG/GIF/WebP de până la 6 MB per mesaj; textul ilizibil poate scăpa.
           </p>
         </div>
-        <RuleEditor title="Filtru cuvinte" help="Lista de mai jos determină potrivirile; regula nu are un prag numeric efectiv." rule={value.autoMod.wordFilter} thresholds={[]} onChange={rule(["autoMod", "wordFilter"])} />
+        <RuleEditor combineDeletion title="Filtru cuvinte" help="Lista de mai jos determină potrivirile; regula nu are un prag numeric efectiv." rule={value.autoMod.wordFilter} thresholds={[]} onChange={rule(["autoMod", "wordFilter"])} />
         <ListField label="Cuvinte interzise" help="Un cuvânt sau o expresie pe rând; maximum 500." values={value.autoMod.forbiddenWords} onChange={(next) => set(["autoMod", "forbiddenWords"], next)} />
-        <RuleEditor title="Blocare linkuri" help="Categoriile și lista de mai jos determină potrivirile; regula nu are un prag numeric efectiv." rule={value.autoMod.linkBlock} thresholds={[]} onChange={rule(["autoMod", "linkBlock"])} />
+        <RuleEditor combineDeletion title="Blocare linkuri" help="Categoriile și lista de mai jos determină potrivirile; regula nu are un prag numeric efectiv." rule={value.autoMod.linkBlock} thresholds={[]} onChange={rule(["autoMod", "linkBlock"])} />
         <div className="space-y-2">
           <p className="text-sm font-medium">Categorii de linkuri interzise</p>
           <p className="text-xs text-muted-foreground">Bifează tipurile de blocat. Necesită Protecția serverului, AutoMod și Blocare linkuri active.</p>
@@ -442,9 +457,9 @@ export function ConfigEditor({
           </div>
         </div>
         <ListField label="Linkuri interzise" help="Un domeniu sau link pe rând; maximum 500." values={value.autoMod.forbiddenLinks} onChange={(next) => set(["autoMod", "forbiddenLinks"], next)} />
-        <RuleEditor title="Limită emoji" rule={value.autoMod.emojiLimit} thresholds={EMOJI_LIMIT} onChange={rule(["autoMod", "emojiLimit"])} />
-        <RuleEditor title="Limită majuscule" rule={value.autoMod.capsLimit} thresholds={CAPS_LIMIT} onChange={rule(["autoMod", "capsLimit"])} />
-        <RuleEditor title="Repetări de caractere și mesaje" rule={value.autoMod.repeatBlock} thresholds={REPEAT_LIMIT} onChange={rule(["autoMod", "repeatBlock"])} />
+        <RuleEditor combineDeletion title="Limită emoji" rule={value.autoMod.emojiLimit} thresholds={EMOJI_LIMIT} onChange={rule(["autoMod", "emojiLimit"])} />
+        <RuleEditor combineDeletion title="Limită majuscule" rule={value.autoMod.capsLimit} thresholds={CAPS_LIMIT} onChange={rule(["autoMod", "capsLimit"])} />
+        <RuleEditor combineDeletion title="Repetări de caractere și mesaje" rule={value.autoMod.repeatBlock} thresholds={REPEAT_LIMIT} onChange={rule(["autoMod", "repeatBlock"])} />
       </Section>
 
       <Section value="anti-raid" title="2. Anti-raid" description="Detectează intrările rapide și conturile prea noi.">
