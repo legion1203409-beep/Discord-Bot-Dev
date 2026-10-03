@@ -13,9 +13,69 @@
     <meta name="twitter:title" content="Regatul Cenușii — Panou de moderare" />
     <meta name="twitter:description" content="Comenzile, moderarea și setările botului Discord, într-un singur panou." />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <style>
+      html, body { margin: 0; background: #101114; }
+      .boot-loading {
+        box-sizing: border-box; min-height: 100vh; min-height: 100dvh;
+        display: grid; place-items: center; padding: 24px;
+        background: radial-gradient(circle at 20% 15%, #d94a2b1a, transparent 45%), #101114;
+        color: #f3eee6; font-family: Arial, sans-serif;
+      }
+      .boot-loading-card {
+        box-sizing: border-box; width: min(100%, 340px); padding: 36px 28px;
+        text-align: center; border: 1px solid #f3eee629; border-radius: 20px; background: #1b1e23;
+      }
+      .boot-loading-ring {
+        width: 64px; height: 64px; margin: 0 auto 24px; border: 3px solid #f3eee619;
+        border-top-color: #d66a4d; border-right-color: #a94431; border-radius: 50%;
+        animation: boot-loading-spin 1.3s linear infinite;
+      }
+      .boot-loading-brand { color: #d66a4d; font-size: 11px; letter-spacing: 2px; text-transform: uppercase; }
+      .boot-loading h1 { font: 600 24px Georgia, serif; }
+      .boot-loading p { line-height: 1.6; }
+      .boot-loading-message { color: #9d9b9a; font-size: 13px; }
+      .boot-loading button {
+        border: 1px solid #d66a4d; border-radius: 8px; background: #a94431; color: white;
+        padding: 12px 16px; cursor: pointer; font: inherit;
+      }
+      .boot-loading button[hidden] { display: none; }
+      @keyframes boot-loading-spin { to { transform: rotate(360deg); } }
+      @media (prefers-reduced-motion: reduce) { .boot-loading-ring { animation: none; } }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <main id="boot-loading" class="boot-loading" role="status" aria-live="polite" aria-busy="true">
+        <section class="boot-loading-card">
+          <div class="boot-loading-ring" aria-hidden="true"></div>
+          <p class="boot-loading-brand">Oracolul Cenușii</p>
+          <h1 id="boot-loading-title">Se încarcă panoul</h1>
+          <p id="boot-loading-message" class="boot-loading-message">Se pregătește consola de moderare...</p>
+          <button id="boot-loading-retry" type="button" hidden>Reîncarcă pagina</button>
+        </section>
+      </main>
+    </div>
+    <script>
+      (() => {
+        const loader = document.getElementById("boot-loading");
+        const title = document.getElementById("boot-loading-title");
+        const message = document.getElementById("boot-loading-message");
+        const retry = document.getElementById("boot-loading-retry");
+        if (/\/joc(?:\/|$)/.test(window.location.pathname)) {
+          title.textContent = "Se încarcă ghidul";
+          message.textContent = "Se pregătește ghidul jocului...";
+        }
+        retry.addEventListener("click", () => window.location.reload());
+        window.setTimeout(() => {
+          if (!loader.isConnected) return;
+          loader.setAttribute("aria-busy", "false");
+          message.setAttribute("role", "alert");
+          message.textContent = "Încărcarea durează prea mult. Verifică internetul și reîncearcă.";
+          retry.hidden = false;
+        }, 15000);
+      })();
+    </script>
+    <noscript>Activează JavaScript pentru a deschide panoul sau ghidul jocului.</noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

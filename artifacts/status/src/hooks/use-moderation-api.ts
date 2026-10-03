@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { withAuthRequestTimeout } from "../lib/auth-request";
 import {
   AUDIT_PAGE_SIZE,
   auditDateRangeError,
@@ -456,7 +457,7 @@ export function useModerationAuthConfig() {
     setError(null);
 
     try {
-      const data = await apiFetch<ModerationAuthConfig>("/auth-config");
+      const data = await withAuthRequestTimeout((signal) => apiFetch<ModerationAuthConfig>("/auth-config", { signal }));
       if (
         typeof data?.discordOAuthConfigured !== "boolean" ||
         typeof data?.authorizationUrl !== "string" ||
@@ -468,7 +469,7 @@ export function useModerationAuthConfig() {
       setAuthConfig(data);
       return data;
     } catch (e: any) {
-      const apiError = e instanceof ApiError ? e : new ApiError(0, "Nu am putut încărca configurația autentificării.");
+      const apiError = e instanceof ApiError ? e : new ApiError(0, e instanceof Error ? e.message : "Nu am putut încărca configurația autentificării.");
       if (thisRequest === requestId.current) {
         setAuthConfig(null);
         setError(apiError);
@@ -499,7 +500,7 @@ export function useSession() {
       try {
         setLoading(true);
         setError(null);
-        const response = await apiFetchWithMeta<ModerationSession>("/session");
+        const response = await withAuthRequestTimeout((signal) => apiFetchWithMeta<ModerationSession>("/session", { signal }));
         const data = response.data;
         if (requestEpoch !== sessionEpoch) return cachedSession ?? { authenticated: false };
         cachedSession = data;
@@ -520,7 +521,7 @@ export function useSession() {
           return unauth;
         }
         // Don't auto-logout on 502/network errors.
-        const apiError = e instanceof ApiError ? e : new ApiError(0, "Unknown error");
+        const apiError = e instanceof ApiError ? e : new ApiError(0, e instanceof Error ? e.message : "Nu am putut verifica sesiunea.");
         setError(apiError);
         throw apiError;
       } finally {
