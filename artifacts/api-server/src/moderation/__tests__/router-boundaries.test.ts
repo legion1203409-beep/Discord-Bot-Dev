@@ -489,7 +489,7 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     });
     expect(mocks.provisionActivityLogChannels).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       activityLog: expect.objectContaining({
-        roleIds: ["888888888888888888"],
+        roleIds: [],
         categories: expect.objectContaining({ messages: true }),
       }),
       onlyCategories: ["messages"],
@@ -503,19 +503,10 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     );
   });
 
-  it("creates a moderation-system destination and persists its new channel ID", async () => {
+  it("creates a private moderation-system destination without requiring configured staff roles", async () => {
     const config = structuredClone(defaultModerationConfig);
-    config.permissions.staffRoleIds = ["444444444444444444"];
+    config.permissions.staffRoleIds = [];
     mocks.getConfig.mockResolvedValue({ config, version: 3 });
-    const previousPermission = {
-      roleIds: ["333333333333333333"],
-      readMessageHistory: false,
-      sendMessages: false,
-      rolePermissions: {
-        "333333333333333333": { viewChannel: true, readMessageHistory: false, sendMessages: false },
-      },
-    };
-    mocks.loadProvisioningPermissions.mockResolvedValueOnce({ filtered: previousPermission });
     config.autoMod.logChannelId = "777777777777777777";
     mocks.provisionModerationDestination.mockResolvedValue({
       moderationConfig: config,
@@ -538,34 +529,9 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     expect(mocks.provisionModerationDestination).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       destination: "autoMod.logChannelId",
       moderationConfig: expect.any(Object),
-      permission: {
-        roleIds: ["444444444444444444"],
-        readMessageHistory: false,
-        sendMessages: false,
-        rolePermissions: {
-          "444444444444444444": { viewChannel: true, readMessageHistory: false, sendMessages: false },
-        },
-      },
-      previousPermission,
     }));
+    expect(mocks.loadProvisioningPermissions).not.toHaveBeenCalled();
     expect(mocks.provisionActivityLogChannels).not.toHaveBeenCalled();
-  });
-
-  it("rejects private moderation-channel creation when no staff roles are configured", async () => {
-    const config = structuredClone(defaultModerationConfig);
-    config.permissions.staffRoleIds = [];
-    config.activityLog.roleIds = [];
-    mocks.getConfig.mockResolvedValue({ config, version: 3 });
-
-    const response = await fetch(`${base}/config/channels`, {
-      ...post({ destination: "autoMod.logChannelId" }, { "if-match": '"3"', "x-csrf-token": "csrf" }),
-    });
-    const result = await response.json();
-
-    expect(response.status).toBe(400);
-    expect(result).toMatchObject({ error: expect.stringContaining("Configurează cel puțin un rol staff") });
-    expect(mocks.provisionModerationDestination).not.toHaveBeenCalled();
-    expect(mocks.putConfig).not.toHaveBeenCalled();
   });
 
   it("rejects a stale channel-creation revision before provisioning anything", async () => {

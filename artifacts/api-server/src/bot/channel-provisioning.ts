@@ -153,7 +153,7 @@ const ACTIVITY_LOG_CATEGORIES: Array<{ key: ActivityLogCategory; name: string }>
   { key: "security", name: "jurnal-securitate" },
 ];
 
-function activityLogPermissionOverwrites(guild: Guild, roleIds: string[]) {
+function activityLogPermissionOverwrites(guild: Guild) {
   const access = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory];
   const botAccess = [...access, PermissionFlagsBits.SendMessages];
   const botRoleId = guild.members.me?.roles.highest?.id;
@@ -162,21 +162,15 @@ function activityLogPermissionOverwrites(guild: Guild, roleIds: string[]) {
       id: guild.roles.everyone.id,
       deny: [...access, PermissionFlagsBits.SendMessages],
     },
-    ...roleIds
-      .filter((id) => id !== guild.roles.everyone.id && id !== botRoleId)
-      .map((id) => ({ id, allow: access, deny: [PermissionFlagsBits.SendMessages] })),
     ...(botRoleId ? [{ id: botRoleId, allow: botAccess }] : []),
   ];
 }
 
-function privateChannelViewOverwrites(guild: Guild, roleIds: string[]) {
+function privateChannelViewOverwrites(guild: Guild) {
   const everyoneId = guild.roles.everyone.id;
   const botRoleId = guild.members.me?.roles.highest?.id;
   return [
     { id: everyoneId, deny: [PermissionFlagsBits.ViewChannel] },
-    ...[...new Set(roleIds)]
-      .filter((id) => id !== everyoneId && id !== botRoleId)
-      .map((id) => ({ id, allow: [PermissionFlagsBits.ViewChannel] })),
     ...(botRoleId ? [{ id: botRoleId, allow: [PermissionFlagsBits.ViewChannel] }] : []),
   ];
 }
@@ -466,24 +460,17 @@ async function provisionActivityLogChannelsUnlocked(
   guild: Guild,
   input: {
     activityLog: ModerationConfig["activityLog"];
-    previousRoleIds?: string[];
     onlyCategories?: ActivityLogCategory[];
   },
 ): Promise<ActivityLogProvisionResult> {
   const channels = await guild.channels.fetch();
   const created: ProvisionedChannel[] = [];
   const reused: ProvisionedChannel[] = [];
-  if (input.activityLog.roleIds.includes(guild.roles.everyone.id)) {
-    throw new Error("@everyone nu poate fi selectat pentru canalele private de jurnal.");
-  }
-  const missingRole = input.activityLog.roleIds.find((roleId) => !guild.roles.cache.has(roleId));
-  if (missingRole) throw new Error(`Rolul ${missingRole} nu a fost găsit pe server.`);
   const permission: ChannelPermissionConfig = {
-    roleIds: input.activityLog.roleIds,
+    roleIds: [],
     readMessageHistory: true,
     sendMessages: false,
   };
-  const previousRoleIds = input.previousRoleIds ?? [];
   const categoryNames = ["📋・JURNAL SERVER", "jurnal server", "server logs"];
   const configuredCategory = input.activityLog.categoryId
     ? channels.get(input.activityLog.categoryId)
@@ -504,12 +491,11 @@ async function provisionActivityLogChannelsUnlocked(
     category = await guild.channels.create({
       name: categoryNames[0],
       type: ChannelType.GuildCategory,
-      permissionOverwrites: activityLogPermissionOverwrites(guild, input.activityLog.roleIds),
+      permissionOverwrites: activityLogPermissionOverwrites(guild),
     });
     created.push({ key: "activityLog.category", id: category.id, name: category.name, type: "category" });
   }
-  await applyPermissions(guild, category, permission, previousRoleIds);
-  await denyUnapprovedViewAccess(guild, category, input.activityLog.roleIds);
+  await applyPermissions(guild, category, permission);
 
   const channelIds = { ...input.activityLog.channelIds };
   for (const target of ACTIVITY_LOG_CATEGORIES) {
@@ -517,10 +503,9 @@ async function provisionActivityLogChannelsUnlocked(
     if (!input.activityLog.categories[target.key]) {
       const existingLogChannel = channelIds[target.key] ? channels.get(channelIds[target.key]!) : null;
       if (existingLogChannel && isExpectedType(existingLogChannel, "text")) {
-        // Keep inactive destinations and their history, but still remove access
-        // from roles that were just de-selected for the private log system.
-        await applyPermissions(guild, existingLogChannel, permission, previousRoleIds);
-        await denyUnapprovedViewAccess(guild, existingLogChannel, input.activityLog.roleIds);
+        // Keep inactive destinations and their history. Preserve role access
+        // managed directly in Discord while keeping @everyone blocked.
+        await applyPermissions(guild, existingLogChannel, permission);
         reused.push({
           key: `activityLog.${target.key}`,
           id: existingLogChannel.id,
@@ -548,12 +533,11 @@ async function provisionActivityLogChannelsUnlocked(
         name: target.name,
         type: ChannelType.GuildText,
         parent: category.id,
-        permissionOverwrites: activityLogPermissionOverwrites(guild, input.activityLog.roleIds),
+        permissionOverwrites: activityLogPermissionOverwrites(guild),
       });
       created.push({ key: `activityLog.${target.key}`, id: logChannel.id, name: logChannel.name, type: "text" });
     }
-    await applyPermissions(guild, logChannel, permission, previousRoleIds);
-    await denyUnapprovedViewAccess(guild, logChannel, input.activityLog.roleIds);
+    await applyPermissions(guild, logChannel, permission);
     if (existing) await moveToCategory(logChannel, category.id);
     channelIds[target.key] = logChannel.id;
   }
@@ -561,7 +545,7 @@ async function provisionActivityLogChannelsUnlocked(
   // Preserve destinations for categories that were switched off. Disabling
   // never deletes their channels or historical messages.
   return {
-    activityLog: { ...input.activityLog, categoryId: category.id, channelIds },
+    activityLog: { ...input.activityLog, roleIds: [], categoryId: category.id, channelIds },
     created,
     reused,
   };
@@ -584,8 +568,6 @@ async function provisionModerationDestinationUnlocked(
   input: {
     moderationConfig: ModerationConfig;
     destination: ModerationDestinationKey;
-    permission?: ChannelPermissionConfig;
-    previousPermission?: ChannelPermissionConfig;
   },
 ): Promise<ModerationDestinationProvisionResult> {
   const target = CONFIG_MODERATION_TARGETS.find(({ key }) => key === input.destination);
@@ -594,31 +576,11 @@ async function provisionModerationDestinationUnlocked(
   const categoryTarget = CATEGORY_TARGETS.find(({ key }) => key === target.category);
   if (!categoryTarget) throw new Error(`Categoria ${target.category} nu este configurată.`);
 
-  const defaultRoleIds = input.moderationConfig.permissions.staffRoleIds.length
-    ? input.moderationConfig.permissions.staffRoleIds
-    : input.permission?.roleIds ?? [];
-  if (defaultRoleIds.length === 0) {
-    throw new Error("Configurează cel puțin un rol staff înainte de a crea canalele private de moderare.");
-  }
-  const missingStaffRole = defaultRoleIds.find((roleId) => !guild.roles.cache.has(roleId));
-  if (missingStaffRole) throw new Error(`Rolul staff ${missingStaffRole} nu a fost găsit pe server.`);
   const permission: ChannelPermissionConfig = {
-    roleIds: [...new Set(defaultRoleIds)],
-    readMessageHistory: input.permission?.readMessageHistory ?? true,
-    sendMessages: input.permission?.sendMessages ?? true,
-    rolePermissions: Object.fromEntries([...new Set(defaultRoleIds)].map((roleId) => {
-      const saved = input.permission?.rolePermissions?.[roleId];
-      return [roleId, {
-        viewChannel: true,
-        readMessageHistory: saved?.readMessageHistory ?? input.permission?.readMessageHistory ?? true,
-        sendMessages: saved?.sendMessages ?? input.permission?.sendMessages ?? true,
-      }];
-    })),
+    roleIds: [],
+    readMessageHistory: true,
+    sendMessages: false,
   };
-  const everyoneId = guild.roles.everyone.id;
-  if (permission.roleIds.includes(everyoneId) || Object.hasOwn(permission.rolePermissions ?? {}, everyoneId)) {
-    throw new Error("@everyone nu poate fi selectat pentru un canal de moderare.");
-  }
 
   let category = [...channels.values()].find((channel) =>
     channel !== null &&
@@ -629,16 +591,11 @@ async function provisionModerationDestinationUnlocked(
     category = await guild.channels.create({
       name: categoryTarget.names[0],
       type: ChannelType.GuildCategory,
-      permissionOverwrites: privateChannelViewOverwrites(guild, permission.roleIds),
+      permissionOverwrites: privateChannelViewOverwrites(guild),
     });
   }
   const categoryId = category.id;
-  const previousRoleIds = [...new Set([
-    ...(input.previousPermission?.roleIds ?? []),
-    ...Object.keys(input.previousPermission?.rolePermissions ?? {}),
-  ])];
-  await applyPermissions(guild, category, permission, previousRoleIds);
-  await denyUnapprovedViewAccess(guild, category, permission.roleIds);
+  await applyPermissions(guild, category, permission);
 
   const configuredId = getModerationDestinationId(input.moderationConfig, target.key);
   const configuredChannel = configuredId ? channels.get(configuredId) : null;
@@ -659,17 +616,11 @@ async function provisionModerationDestinationUnlocked(
       name: target.names[0],
       type: ChannelType.GuildText,
       parent: categoryId,
-      permissionOverwrites: privateChannelViewOverwrites(guild, permission.roleIds),
+      permissionOverwrites: privateChannelViewOverwrites(guild),
     });
     created = true;
   }
-  await applyPermissions(
-    guild,
-    channel,
-    permission,
-    previousRoleIds,
-  );
-  await denyUnapprovedViewAccess(guild, channel, permission.roleIds);
+  await applyPermissions(guild, channel, permission);
   if (existing) await moveToCategory(channel, categoryId);
 
   const moderationConfig = structuredClone(input.moderationConfig);
@@ -686,8 +637,6 @@ export function provisionModerationDestination(
   input: {
     moderationConfig: ModerationConfig;
     destination: ModerationDestinationKey;
-    permission?: ChannelPermissionConfig;
-    previousPermission?: ChannelPermissionConfig;
   },
 ): Promise<ModerationDestinationProvisionResult> {
   const previous = moderationDestinationLocks.get(guild.id);
@@ -704,7 +653,6 @@ export function provisionActivityLogChannels(
   guild: Guild,
   input: {
     activityLog: ModerationConfig["activityLog"];
-    previousRoleIds?: string[];
     onlyCategories?: ActivityLogCategory[];
   },
 ): Promise<ActivityLogProvisionResult> {

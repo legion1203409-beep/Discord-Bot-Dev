@@ -72,5 +72,5 @@
 - [Local scam image OCR](local-scam-image-ocr.md) — member image OCR is local-only by user choice; uncertain extraction must never by itself trigger a sanction.
 - [Discord no-DM policy](discord-no-dm-policy.md) — do not send bot messages to Discord DMs; keep warnings logged and use guild channels when appropriate.
 - [Moderation action selection](moderation-action-selection.md) — show combined action choices in both AutoMod and each AI category; a separate deletion toggle did not meet the user's request.
-- [Per-target channel provisioning](per-target-channel-provisioning.md) — create/reuse a private group category plus one requested channel; deny @everyone and require staff-role access.
+- [Per-target channel provisioning](per-target-channel-provisioning.md) — create only the selected target, block @everyone, preserve manual Discord role ACLs, and retain unrelated draft edits.
 - [Guide loading animation](guide-loading-animation.md) — use the medieval gate on `/joc` and while entering the moderation panel; wait until it opens fully.

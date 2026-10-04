@@ -232,7 +232,7 @@ export function AdvancedSettingsPage() {
         <div className="animate-stagger-4 space-y-4 rounded-xl border border-border bg-card p-5 mod-card">
           <div>
             <h2 className="font-semibold text-foreground">Ținte Discord din metadate live</h2>
-            <p className="text-xs text-muted-foreground mt-1">Alege canale și roluri reale din server. ID-urile pot fi completate manual ca fallback.</p>
+            <p className="text-xs text-muted-foreground mt-1">Alege canale și roluri reale din server. Rolul staff autorizează moderarea; accesul la canalele create se configurează manual în Discord. ID-urile pot fi completate manual ca fallback.</p>
           </div>
           <div className="grid gap-6 md:grid-cols-2 mt-4">
             {configuredChannels.map(({ label, path }) => {
@@ -253,7 +253,7 @@ export function AdvancedSettingsPage() {
               );
             })}
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground/90">Rol staff (primul ID)</label>
+              <label className="text-sm font-medium text-foreground/90">Rol staff pentru autorizarea moderării (primul ID)</label>
               <Select value={selectedStaffRole} onValueChange={(value) => setLocalData((current: any) => ({ ...current, permissions: { ...current.permissions, staffRoleIds: value === "__none__" ? [] : [value] } }))}>
                 <SelectTrigger className="bg-background/50"><SelectValue placeholder="Alege rol" /></SelectTrigger>
                 <SelectContent>
@@ -261,7 +261,7 @@ export function AdvancedSettingsPage() {
                   {metadata.roles.filter((role) => !role.managed).map((role) => <SelectItem key={role.id} value={role.id}>@{role.name} ({role.id})</SelectItem>)}
                 </SelectContent>
               </Select>
-              <Input aria-label="Rol staff ID fallback" value={staffRoleId} placeholder="ID rol Discord" onChange={(event) => setLocalData((current: any) => ({ ...current, permissions: { ...current.permissions, staffRoleIds: event.target.value.trim() ? [event.target.value.trim()] : [] } }))} className="bg-background/50 font-mono text-xs" />
+              <Input aria-label="Rol staff pentru autorizarea moderării ID fallback" value={staffRoleId} placeholder="ID rol Discord" onChange={(event) => setLocalData((current: any) => ({ ...current, permissions: { ...current.permissions, staffRoleIds: event.target.value.trim() ? [event.target.value.trim()] : [] } }))} className="bg-background/50 font-mono text-xs" />
             </div>
           </div>
         </div>
@@ -273,7 +273,6 @@ export function AdvancedSettingsPage() {
           onChange={setLocalData}
           discordRoles={metadata?.roles ?? []}
           discordChannels={metadata?.channels}
-          guildId={metadata?.guild.id}
           botCapabilities={capabilities ?? undefined}
           onCreateChannel={handleCreateChannel}
         />

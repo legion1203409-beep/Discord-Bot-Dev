@@ -434,7 +434,6 @@ export function ConfigEditor({
   sections,
   discordRoles = [],
   discordChannels,
-  guildId,
   botCapabilities,
   onCreateChannel,
 }: {
@@ -580,15 +579,14 @@ export function ConfigEditor({
     botCapabilities?.canManageChannels === false ? "Lipsește Manage Channels." : null,
     botCapabilities?.canManageRoles === false ? "Lipsește Manage Roles." : null,
   ].filter((entry): entry is string => Boolean(entry));
-  const availableLogRoles = discordRoles.filter((role) =>
-    role.id !== guildId && !role.managed,
-  );
-  const unlistedSelectedLogRoles = (value.activityLog.roleIds as string[]).filter((id: string) =>
-    !availableLogRoles.some((role) => role.id === id),
-  );
-
   return (
     <VisibleSections.Provider value={sections ? new Set(sections) : null}>
+    <div className="space-y-3">
+    {onCreateChannel && (
+      <p className="rounded-lg border border-border bg-card/70 px-4 py-3 text-xs leading-relaxed text-muted-foreground">
+        Canalele create rămân private implicit: @everyone este blocat, iar botul păstrează accesul. Configurează rolurile care trebuie să le vadă direct în Discord; rolurile staff din setări autorizează moderarea, nu accesul la canale.
+      </p>
+    )}
     <Accordion type="multiple" defaultValue={sections ?? ["automod", "anti-raid", "anti-spam", "anti-flood"]} className="space-y-3">
       <Section value="automod" title="1. AutoMod" description="Filtre de cuvinte, linkuri, anti-scam, emoji, majuscule și repetări.">
         <Toggle label="Activează AutoMod" help="Comutatorul principal pentru regulile de mai jos." checked={value.autoMod.enabled} onChange={(next) => set(["autoMod", "enabled"], next)} />
@@ -886,46 +884,8 @@ export function ConfigEditor({
           </div>
           {onCreateChannel && (
             <p className="text-xs text-muted-foreground">
-              Fiecare buton creează canalul în categoria jurnalului, creată o singură dată și reutilizată. Au acces rolurile staff configurate sau, dacă lipsesc, rolurile jurnalului; @everyone este blocat.
+              Fiecare buton creează canalul în categoria jurnalului, creată o singură dată și reutilizată. Categoria și canalele rămân private; configurează accesul rolurilor direct în Discord.
             </p>
-          )}
-          {availableLogRoles.length > 0 ? (
-            <div className="space-y-2">
-              <p className="text-sm font-medium">Roluri care pot vedea istoricul</p>
-              <p className="text-xs text-muted-foreground">Toate celelalte roluri, inclusiv @everyone, sunt blocate implicit. Membrii fără unul dintre rolurile alese nu văd canalele.</p>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {availableLogRoles.map((role) => (
-                  <Toggle
-                    key={role.id}
-                    label={`@${role.name}`}
-                    help={role.id}
-                    checked={(value.activityLog.roleIds as string[]).includes(role.id)}
-                    onChange={(checked) => {
-                      const roleIds = checked
-                        ? Array.from(new Set([...(value.activityLog.roleIds as string[]), role.id]))
-                        : (value.activityLog.roleIds as string[]).filter((id: string) => id !== role.id);
-                      set(["activityLog", "roleIds"], roleIds);
-                    }}
-                  />
-                ))}
-                {unlistedSelectedLogRoles.map((roleId: string) => (
-                  <Toggle
-                    key={roleId}
-                    label={`Rol care nu mai este disponibil (${roleId})`}
-                    checked
-                    onChange={() => set(["activityLog", "roleIds"], (value.activityLog.roleIds as string[]).filter((id: string) => id !== roleId))}
-                  />
-                ))}
-              </div>
-            </div>
-          ) : (
-            <ListField
-              ids
-              label="Roluri care pot vedea istoricul"
-              help="ID-uri de rol pe rând. @everyone nu este acceptat; rolurile nealese rămân fără acces."
-              values={value.activityLog.roleIds}
-              onChange={(next) => set(["activityLog", "roleIds"], next)}
-            />
           )}
           <div role="status" className="rounded-lg border border-border bg-background/70 p-3 text-sm">
             <p className="font-medium">
@@ -1028,6 +988,7 @@ export function ConfigEditor({
         <TextField label="Prefix bot" help="Comenzile de moderare sunt slash commands; prefixul este fix și nu poate fi schimbat." value="/" disabled onChange={() => undefined} />
       </Section>
     </Accordion>
+    </div>
     </VisibleSections.Provider>
   );
 }

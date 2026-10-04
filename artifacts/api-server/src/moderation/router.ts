@@ -2075,16 +2075,6 @@ const CONFIG_CHANNEL_DESTINATIONS = [
   ...MODERATION_DESTINATION_KEYS,
 ] as const;
 
-const moderationDestinationCategories: Record<ModerationDestinationKey, "admin" | "filtered" | "security"> = {
-  "autoMod.logChannelId": "filtered",
-  "antiFlood.logChannelId": "filtered",
-  "antiRaid.alertChannelId": "security",
-  "antiSpam.logChannelId": "filtered",
-  "suspiciousBehavior.alertChannelId": "security",
-  "ai.logChannelId": "filtered",
-  "audit.channelId": "admin",
-};
-
 router.post("/guilds/:guildId/config/channels", asyncRoute(async (req, res) => {
   const guildId = parse(snowflake, req.params.guildId);
   const session = await sessionAndGuild(req, guildId, "config", true);
@@ -2108,40 +2098,23 @@ router.post("/guilds/:guildId/config/channels", asyncRoute(async (req, res) => {
     throw new ModerationAuthError(403, `Botului îi lipsesc permisiunile necesare pentru canale private: ${missingPermissions.join(", ")}.`);
   }
 
-  await guild.roles.fetch();
   let config = structuredClone(previous.config);
   let channel: { key: string; id: string; name: string; type: "text" };
   let created = false;
   try {
     if (destination.startsWith("activityLog.")) {
       const category = ActivityLogCategorySchema.parse(destination.slice("activityLog.".length));
-      const activityLogRoleIds = previous.config.permissions.staffRoleIds.length
-        ? previous.config.permissions.staffRoleIds
-        : previous.config.activityLog.roleIds;
-      if (activityLogRoleIds.length === 0) {
-        throw new Error("Configurează rolurile staff înainte de a crea canale private de jurnal.");
-      }
       const provisioned = await provisionActivityLogChannels(guild, {
         activityLog: {
           ...previous.config.activityLog,
-          roleIds: activityLogRoleIds,
+          roleIds: [],
           categories: { ...previous.config.activityLog.categories, [category]: true },
         },
-        previousRoleIds: [
-          ...new Set([
-            ...previous.config.activityLog.roleIds,
-            ...previous.config.permissions.staffRoleIds,
-          ]),
-        ],
         onlyCategories: [category],
       });
       config = {
         ...previous.config,
-        activityLog: {
-          ...previous.config.activityLog,
-          categoryId: provisioned.activityLog.categoryId,
-          channelIds: provisioned.activityLog.channelIds,
-        },
+        activityLog: provisioned.activityLog,
       };
       const key = `activityLog.${category}`;
       const provisionedChannel = [...provisioned.created, ...provisioned.reused].find((item) => item.key === key);
@@ -2150,33 +2123,9 @@ router.post("/guilds/:guildId/config/channels", asyncRoute(async (req, res) => {
       created = provisioned.created.some((item) => item.key === key);
     } else {
       const moderationDestination = destination as ModerationDestinationKey;
-      const category = moderationDestinationCategories[moderationDestination];
-      const savedPermissions = provisioningPermissionsSchema.parse(await loadProvisioningPermissions(guildId));
-      const previousPermission = savedPermissions[category];
-      const staffRoleIds = previous.config.permissions.staffRoleIds.length
-        ? previous.config.permissions.staffRoleIds
-        : previousPermission?.roleIds ?? [];
-      if (staffRoleIds.length === 0) {
-        throw new Error("Configurează cel puțin un rol staff înainte de a crea canalele private de moderare.");
-      }
-      const permission = {
-        roleIds: [...new Set(staffRoleIds)],
-        readMessageHistory: previousPermission?.readMessageHistory ?? true,
-        sendMessages: previousPermission?.sendMessages ?? true,
-        rolePermissions: Object.fromEntries([...new Set(staffRoleIds)].map((roleId) => {
-          const savedRole = previousPermission?.rolePermissions?.[roleId];
-          return [roleId, {
-            viewChannel: true,
-            readMessageHistory: savedRole?.readMessageHistory ?? previousPermission?.readMessageHistory ?? true,
-            sendMessages: savedRole?.sendMessages ?? previousPermission?.sendMessages ?? true,
-          }];
-        })),
-      };
       const provisioned = await provisionModerationDestination(guild, {
         moderationConfig: config,
         destination: moderationDestination,
-        permission,
-        previousPermission,
       });
       config = provisioned.moderationConfig;
       channel = { ...provisioned.channel, type: "text" };
@@ -2185,7 +2134,7 @@ router.post("/guilds/:guildId/config/channels", asyncRoute(async (req, res) => {
   } catch (error) {
     const reason = error instanceof Error ? error.message : "eroare necunoscută";
     logger.warn({ error, guildId, destination }, "Moderation channel provisioning failed");
-    throw new ModerationAuthError(400, `Canalul nu a putut fi creat sau configurat. Verifică rolurile și permisiunile Discord. Detalii: ${reason}`);
+    throw new ModerationAuthError(400, `Canalul nu a putut fi creat sau configurat. Verifică permisiunile Discord. Detalii: ${reason}`);
   }
 
   const result = await moderationStore.putConfig(guildId, config, session.userId, revision);
@@ -2406,17 +2355,15 @@ router.put("/guilds/:guildId/config", asyncRoute(async (req, res) => {
       throw new ModerationAuthError(403, `Jurnalul Discord nu a fost activat. Botului îi lipsesc permisiunile: ${missing.join(", ")}.`);
     }
     try {
-      await guild.roles.fetch();
       const provisioned = await provisionActivityLogChannels(guild, {
-        activityLog: config.activityLog,
-        previousRoleIds: previous.config.activityLog.roleIds,
+        activityLog: { ...config.activityLog, roleIds: [] },
       });
       config = { ...config, activityLog: provisioned.activityLog };
       activityLogProvisioning = { created: provisioned.created, reused: provisioned.reused };
     } catch (error) {
       const reason = error instanceof Error ? error.message : "eroare necunoscută";
       logger.warn({ error, guildId }, "Discord activity log provisioning failed");
-      throw new ModerationAuthError(400, `Jurnalul Discord nu a fost activat. Verifică permisiunile botului, rolurile selectate și spațiul disponibil pe server. Detalii: ${reason}`);
+      throw new ModerationAuthError(400, `Jurnalul Discord nu a fost activat. Verifică permisiunile botului și spațiul disponibil pe server. Detalii: ${reason}`);
     }
   }
   const result = await moderationStore.putConfig(guildId, config, session.userId, revision);

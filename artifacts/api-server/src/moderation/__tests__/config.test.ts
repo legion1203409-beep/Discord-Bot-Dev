@@ -74,12 +74,18 @@ describe("moderation configuration defaults", () => {
     })).toThrow();
   });
 
-  it("keeps automatic activity logs disabled by default and requires private-channel access when enabled", () => {
+  it("keeps automatic activity logs disabled by default and allows Discord-managed channel access", () => {
     expect(defaultModerationConfig.activityLog.enabled).toBe(false);
     expect(defaultModerationConfig.activityLog.channelIds.messages).toBeNull();
-    expect(() => ModerationConfigSchema.parse({
-      activityLog: { enabled: true, roleIds: [] },
-    })).toThrow(/cel puțin un rol/i);
+    const enabled = ModerationConfigSchema.parse({
+      activityLog: {
+        enabled: true,
+        roleIds: [],
+        categories: { messages: true },
+      },
+    });
+    expect(enabled.activityLog.enabled).toBe(true);
+    expect(enabled.activityLog.roleIds).toEqual([]);
     expect(() => ModerationConfigSchema.parse({
       activityLog: { enabled: true, roleIds: ["123456789012345678"], categories: { messages: false, members: false, channels: false, roles: false, voice: false, moderation: false, security: false } },
     })).toThrow(/cel puțin o categorie/i);

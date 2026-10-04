@@ -195,6 +195,8 @@ export const ModerationConfigSchema = z.object({
   activityLog: z.object({
     enabled: z.boolean().default(false),
     categories: activityLogCategories,
+    // Retained for compatibility with saved configurations. Channel access is
+    // now managed directly in Discord after provisioning.
     roleIds: idList.default([]),
     categoryId: snowflake.nullable().default(null),
     channelIds: z.object({
@@ -212,13 +214,6 @@ export const ModerationConfigSchema = z.object({
         code: z.ZodIssueCode.custom,
         path: ["categories"],
         message: "Selectează cel puțin o categorie pentru jurnalul Discord.",
-      });
-    }
-    if (activityLog.enabled && activityLog.roleIds.length === 0) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["roleIds"],
-        message: "Selectează cel puțin un rol care poate vedea canalele private de jurnal.",
       });
     }
   }),
