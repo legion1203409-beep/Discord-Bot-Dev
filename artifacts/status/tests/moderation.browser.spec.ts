@@ -727,6 +727,42 @@ test.describe("authenticated moderation console", () => {
     expect(savedConfigs.get(guilds[0].id)?.autoMod.forbiddenWords).toEqual(["prima"]);
   });
 
+  test("AutoMod word and link rules combine deletion with a member sanction and persist", async ({ page }) => {
+    await page.goto("/moderare/automod");
+    await chooseFirstGuild(page);
+
+    const wordActions = page.getByTestId("actions-Filtru cuvinte");
+    await expect(wordActions).toBeVisible();
+    await wordActions.getByRole("checkbox", { name: "Șterge mesajul" }).click();
+    await wordActions.getByRole("checkbox", { name: "Avertisment" }).click();
+    await expect(wordActions.getByTestId("actions-Filtru cuvinte-summary"))
+      .toContainText("Șterge mesajul + Avertisment");
+
+    const linkActions = page.getByTestId("actions-Blocare linkuri");
+    await linkActions.getByRole("checkbox", { name: "Șterge mesajul" }).click();
+    await linkActions.getByRole("checkbox", { name: "Mute" }).click();
+    await expect(linkActions.getByTestId("actions-Blocare linkuri-summary"))
+      .toContainText("Șterge mesajul + Mute");
+
+    await page.getByRole("button", { name: "Salvează" }).click();
+    await expect(page.getByRole("button", { name: "Salvează" })).toHaveCount(0);
+    expect(savedConfigs.get(guilds[0].id)?.autoMod.wordFilter)
+      .toMatchObject({ action: "warn", deleteMessage: true });
+    expect(savedConfigs.get(guilds[0].id)?.autoMod.linkBlock)
+      .toMatchObject({ action: "mute", deleteMessage: true });
+
+    await page.reload();
+    await expect(page.getByTestId("actions-Filtru cuvinte")).toBeVisible();
+    await expect(page.getByTestId("actions-Filtru cuvinte")
+      .getByRole("checkbox", { name: "Șterge mesajul" })).toBeChecked();
+    await expect(page.getByTestId("actions-Filtru cuvinte")
+      .getByRole("checkbox", { name: "Avertisment" })).toBeChecked();
+    await expect(page.getByTestId("actions-Blocare linkuri")
+      .getByRole("checkbox", { name: "Șterge mesajul" })).toBeChecked();
+    await expect(page.getByTestId("actions-Blocare linkuri")
+      .getByRole("checkbox", { name: "Mute" })).toBeChecked();
+  });
+
   test("failed Discord log activation shows failure and does not claim a live log", async ({ page }) => {
     await page.route("**/api/moderation/guilds/111111111/config", async (route) => {
       if (route.request().method() !== "PUT") return route.fallback();
