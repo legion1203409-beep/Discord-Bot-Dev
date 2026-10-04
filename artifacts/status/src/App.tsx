@@ -23,7 +23,7 @@ import { GameGuideLoadingScreen } from "./components/public/GameGuideLoadingScre
 import { OperatorHealthPage } from "./pages/public/OperatorHealthPage";
 import { VerificationPage } from "./pages/public/VerificationPage";
 import { DailyStatsPage } from "./pages/public/DailyStatsPage";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 function ScrollAnimations() {
   useEffect(() => {
@@ -80,13 +80,9 @@ function HomeApp() {
 
 function GameApp() {
   const [isLoading, setIsLoading] = useState(true);
+  const handleGateOpen = useCallback(() => setIsLoading(false), []);
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => setIsLoading(false), 2_000);
-    return () => window.clearTimeout(timer);
-  }, []);
-
-  if (isLoading) return <GameGuideLoadingScreen />;
+  if (isLoading) return <GameGuideLoadingScreen onOpenComplete={handleGateOpen} />;
 
   return (
     <PublicLayout>

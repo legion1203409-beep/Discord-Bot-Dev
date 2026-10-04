@@ -18,7 +18,13 @@ const embers = Array.from({ length: 22 }, (_, index) => ({
   drift: (((index * 53) % 100) / 100 - 0.5) * 50,
 }));
 
-export function GameGuideLoadingScreen() {
+export function GameGuideLoadingScreen({
+  onOpenComplete,
+  ariaLabel = "Se încarcă ghidul jocului",
+}: {
+  onOpenComplete: () => void;
+  ariaLabel?: string;
+}) {
   const rootRef = useRef<HTMLElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const portcullisRef = useRef<SVGGElement>(null);
@@ -33,9 +39,7 @@ export function GameGuideLoadingScreen() {
 
     const liftDuration = 7000;
     const holdDuration = 1300;
-    const dropDuration = 500;
-    const gapDuration = 700;
-    const cycleDuration = liftDuration + holdDuration + dropDuration + gapDuration;
+    const openingDuration = liftDuration + holdDuration;
     const startedAt = performance.now();
     let animationFrame = 0;
     let lastProgress = -1;
@@ -51,19 +55,8 @@ export function GameGuideLoadingScreen() {
     const easeInOut = (value: number) => 0.5 - 0.5 * Math.cos(Math.PI * value);
 
     const animate = (now: number) => {
-      const elapsed = (now - startedAt) % cycleDuration;
-      let progress: number;
-
-      if (elapsed < liftDuration) {
-        progress = easeInOut(elapsed / liftDuration);
-      } else if (elapsed < liftDuration + holdDuration) {
-        progress = 1;
-      } else if (elapsed < liftDuration + holdDuration + dropDuration) {
-        const dropProgress = (elapsed - liftDuration - holdDuration) / dropDuration;
-        progress = 1 - dropProgress ** 3;
-      } else {
-        progress = 0;
-      }
+      const elapsed = now - startedAt;
+      const progress = Math.min(1, easeInOut(elapsed / liftDuration));
 
       portcullisRef.current?.setAttribute("transform", `translate(0 ${-progress * 270})`);
       glowRef.current?.setAttribute("opacity", String(Math.min(1, progress * 1.6)));
@@ -78,6 +71,11 @@ export function GameGuideLoadingScreen() {
         });
       }
 
+      if (elapsed >= openingDuration) {
+        onOpenComplete();
+        return;
+      }
+
       animationFrame = window.requestAnimationFrame(animate);
     };
 
@@ -89,7 +87,7 @@ export function GameGuideLoadingScreen() {
       window.removeEventListener("resize", fitStage);
       window.cancelAnimationFrame(animationFrame);
     };
-  }, []);
+  }, [onOpenComplete]);
 
   return (
     <main
@@ -98,7 +96,7 @@ export function GameGuideLoadingScreen() {
       role="progressbar"
       aria-live="polite"
       aria-busy="true"
-      aria-label="Se încarcă ghidul jocului"
+      aria-label={ariaLabel}
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={0}
