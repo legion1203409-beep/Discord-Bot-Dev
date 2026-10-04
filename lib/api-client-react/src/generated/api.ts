@@ -36,7 +36,9 @@ import type {
   ModerationSession,
   ModerationStorageUploadRequest,
   ModerationStorageUploadResponse,
-  ProtectionToggleInput
+  ProtectionToggleInput,
+  VerificationPanelPublishInput,
+  VerificationPanelPublishResponse
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -968,6 +970,71 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getModerationPutBotControlMutationOptions(options));
+    }
+
+export const getModerationPublishVerificationPanelUrl = (guildId: string,) => {
+
+
+
+
+  return `/api/moderation/guilds/${guildId}/bot-control/verification-panel`
+}
+
+export const moderationPublishVerificationPanel = async (guildId: string,
+    verificationPanelPublishInput: VerificationPanelPublishInput, options?: RequestInit): Promise<VerificationPanelPublishResponse | BotControlPartialApplyResponse> => {
+
+  return customFetch<VerificationPanelPublishResponse | BotControlPartialApplyResponse>(getModerationPublishVerificationPanelUrl(guildId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(verificationPanelPublishInput)
+  }
+);}
+
+
+
+
+export const getModerationPublishVerificationPanelMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof moderationPublishVerificationPanel>>, TError,{guildId: string;data: BodyType<VerificationPanelPublishInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof moderationPublishVerificationPanel>>, TError,{guildId: string;data: BodyType<VerificationPanelPublishInput>}, TContext> => {
+
+const mutationKey = ['moderationPublishVerificationPanel'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof moderationPublishVerificationPanel>>, {guildId: string;data: BodyType<VerificationPanelPublishInput>}> = (props) => {
+          const {guildId,data} = props ?? {};
+
+          return  moderationPublishVerificationPanel(guildId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ModerationPublishVerificationPanelMutationResult = NonNullable<Awaited<ReturnType<typeof moderationPublishVerificationPanel>>>
+    export type ModerationPublishVerificationPanelMutationBody = BodyType<VerificationPanelPublishInput>
+    export type ModerationPublishVerificationPanelMutationError = ErrorType<void>
+
+    export const useModerationPublishVerificationPanel = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof moderationPublishVerificationPanel>>, TError,{guildId: string;data: BodyType<VerificationPanelPublishInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof moderationPublishVerificationPanel>>,
+        TError,
+        {guildId: string;data: BodyType<VerificationPanelPublishInput>},
+        TContext
+      > => {
+      return useMutation(getModerationPublishVerificationPanelMutationOptions(options));
     }
 
 export const getModerationProtectionToggleUrl = (guildId: string,) => {

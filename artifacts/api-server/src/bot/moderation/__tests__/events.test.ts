@@ -34,6 +34,20 @@ function member(theGuild: ReturnType<typeof guild>, id: string, createdTimestamp
   };
 }
 
+function roleCache(entries: Array<{ id: string; name: string }>) {
+  const values = new Map(entries.map((entry) => [entry.id, entry]));
+  return {
+    some: (predicate: (role: { id: string; name: string }) => boolean) =>
+      [...values.values()].some(predicate),
+    has: (id: string) => values.has(id),
+    get: (id: string) => values.get(id),
+    filter: (predicate: (role: { id: string; name: string }) => boolean) => {
+      const filtered = [...values.values()].filter(predicate);
+      return { map: <T>(mapper: (role: { id: string; name: string }) => T) => filtered.map(mapper) };
+    },
+  };
+}
+
 function message(theGuild: ReturnType<typeof guild>, authorId = "22222") {
   return {
     id: `message-${authorId}`,
@@ -64,6 +78,112 @@ function setup(config: ModerationConfig) {
 }
 
 describe("non-message moderation events", () => {
+  it("shows role names for member role changes instead of role IDs", async () => {
+    const config = structuredClone(defaultModerationConfig);
+    config.activityLog.enabled = true;
+    config.activityLog.categories.members = true;
+    config.activityLog.channelIds.members = "log-members";
+    const { emitter } = setup(config);
+    const targetGuild = guild("10017");
+    const send = vi.fn(async (_payload: unknown) => undefined);
+    targetGuild.channels.cache.set("log-members", {
+      guildId: targetGuild.id,
+      isTextBased: () => true,
+      send,
+    });
+    const oldMember = {
+      ...member(targetGuild, "70017"),
+      roles: { cache: roleCache([{ id: "1504480351987433613", name: "Scout" }]) },
+    };
+    const newMember = {
+      ...member(targetGuild, "70017"),
+      roles: { cache: roleCache([{ id: "1504480351987433614", name: "LEGION" }]) },
+    };
+
+    emitter.emit(Events.GuildMemberUpdate, oldMember, newMember);
+    await waitForHandlers();
+
+    const payload = send.mock.calls[0]![0] as {
+      embeds: Array<{ toJSON: () => { fields: Array<{ name: string; value: string }> } }>;
+    };
+    const details = payload.embeds[0]!.toJSON().fields.find((field) => field.name === "Detalii")?.value ?? "";
+    expect(details).toContain("**Roluri adăugate:** LEGION");
+    expect(details).toContain("**Roluri eliminate:** Scout");
+    expect(details).not.toContain("1504480351987433613");
+    expect(details).not.toContain("1504480351987433614");
+  });
+
+  it("shows channel category names and voice channel names in activity details", async () => {
+    const config = structuredClone(defaultModerationConfig);
+    config.activityLog.enabled = true;
+    config.activityLog.categories.channels = true;
+    config.activityLog.categories.voice = true;
+    config.activityLog.channelIds.channels = "log-channels";
+    config.activityLog.channelIds.voice = "log-voice";
+    const { emitter } = setup(config);
+    const targetGuild = guild("10018");
+    const channelSend = vi.fn(async (_payload: unknown) => undefined);
+    const voiceSend = vi.fn(async (_payload: unknown) => undefined);
+    targetGuild.channels.cache.set("log-channels", {
+      guildId: targetGuild.id,
+      isTextBased: () => true,
+      send: channelSend,
+    });
+    targetGuild.channels.cache.set("log-voice", {
+      guildId: targetGuild.id,
+      isTextBased: () => true,
+      send: voiceSend,
+    });
+    targetGuild.channels.cache.set("category-old", { id: "category-old", name: "Lobby" });
+    targetGuild.channels.cache.set("category-new", { id: "category-new", name: "Archive" });
+    targetGuild.channels.cache.set("voice-old", { id: "voice-old", name: "Waiting Room" });
+    targetGuild.channels.cache.set("voice-new", { id: "voice-new", name: "Raid Room" });
+    const beforeChannel = {
+      id: "text-target",
+      guild: targetGuild,
+      name: "general",
+      type: ChannelType.GuildText,
+      parentId: "category-old",
+      topic: null,
+      nsfw: false,
+      rateLimitPerUser: 0,
+      isDMBased: () => false,
+    };
+    const afterChannel = { ...beforeChannel, parentId: "category-new" };
+
+    emitter.emit(Events.ChannelUpdate, beforeChannel, afterChannel);
+    const voiceState = (channelId: string | null) => ({
+      id: "70018",
+      guild: targetGuild,
+      channelId,
+      selfMute: false,
+      serverMute: false,
+      selfDeaf: false,
+      serverDeaf: false,
+      streaming: false,
+      selfVideo: false,
+    });
+    emitter.emit(Events.VoiceStateUpdate, voiceState("voice-old"), voiceState("voice-new"));
+    await waitForHandlers();
+
+    const channelPayload = channelSend.mock.calls[0]![0] as {
+      embeds: Array<{ toJSON: () => { fields: Array<{ name: string; value: string }> } }>;
+    };
+    const channelDetails = channelPayload.embeds[0]!.toJSON().fields.find((field) => field.name === "Detalii")?.value ?? "";
+    expect(channelDetails).toContain("**Categorie:** #Lobby → #Archive");
+    expect(channelDetails).not.toContain("category-old");
+    expect(channelDetails).not.toContain("category-new");
+
+    const voicePayload = voiceSend.mock.calls[0]![0] as {
+      embeds: Array<{ toJSON: () => { fields: Array<{ name: string; value: string }> } }>;
+    };
+    const voiceDetails = voicePayload.embeds[0]!.toJSON().fields.find((field) => field.name === "Detalii")?.value ?? "";
+    expect(voiceDetails).toContain("**Canal vocal anterior:** #Waiting Room");
+    expect(voiceDetails).toContain("**Canal vocal nou:** #Raid Room");
+    expect(voiceDetails).not.toContain("voice-old");
+    expect(voiceDetails).not.toContain("voice-new");
+  });
+
   it("routes native AutoMod blocks to the managed-rule handler", async () => {
     const config = structuredClone(defaultModerationConfig);
     const { client, emitter, helpers } = setup(config);

@@ -192,6 +192,57 @@ export const ModerationPutBotControlBody = zod.record(zod.string(), zod.unknown(
 export const ModerationPutBotControlResponse = zod.record(zod.string(), zod.unknown()).describe('Bot-control settings returned by GET or after a successful PUT.')
 
 
+export const moderationPublishVerificationPanelPathGuildIdMin = 5;
+export const moderationPublishVerificationPanelPathGuildIdMax = 25;
+
+
+
+export const ModerationPublishVerificationPanelParams = zod.object({
+  "guildId": zod.coerce.string().min(moderationPublishVerificationPanelPathGuildIdMin).max(moderationPublishVerificationPanelPathGuildIdMax)
+})
+
+export const moderationPublishVerificationPanelBodyChannelIdRegExp = new RegExp('^\\d{5,25}$');
+export const moderationPublishVerificationPanelBodyRoleIdRegExp = new RegExp('^\\d{5,25}$');
+export const moderationPublishVerificationPanelBodyTitleMax = 256;
+
+export const moderationPublishVerificationPanelBodyMessageMax = 4000;
+
+export const moderationPublishVerificationPanelBodyButtonLabelMax = 80;
+
+export const moderationPublishVerificationPanelBodyButtonEmojiMax = 100;
+
+export const moderationPublishVerificationPanelBodySuccessMessageMax = 2000;
+
+export const moderationPublishVerificationPanelBodyAlreadyVerifiedMessageMax = 2000;
+
+export const moderationPublishVerificationPanelBodyImageUrlMax = 2000;
+
+export const moderationPublishVerificationPanelBodyThumbnailUrlDefault = ``;
+export const moderationPublishVerificationPanelBodyThumbnailUrlMax = 2000;
+
+export const moderationPublishVerificationPanelBodyPanelMessageIdRegExp = new RegExp('^(?:\\d{5,25})?$');
+
+
+export const ModerationPublishVerificationPanelBody = zod.object({
+  "enabled": zod.boolean(),
+  "channelId": zod.string().regex(moderationPublishVerificationPanelBodyChannelIdRegExp),
+  "roleId": zod.string().regex(moderationPublishVerificationPanelBodyRoleIdRegExp),
+  "title": zod.string().min(1).max(moderationPublishVerificationPanelBodyTitleMax),
+  "message": zod.string().min(1).max(moderationPublishVerificationPanelBodyMessageMax),
+  "buttonLabel": zod.string().min(1).max(moderationPublishVerificationPanelBodyButtonLabelMax),
+  "buttonEmoji": zod.string().max(moderationPublishVerificationPanelBodyButtonEmojiMax),
+  "successMessage": zod.string().min(1).max(moderationPublishVerificationPanelBodySuccessMessageMax),
+  "alreadyVerifiedMessage": zod.string().min(1).max(moderationPublishVerificationPanelBodyAlreadyVerifiedMessageMax),
+  "imageUrl": zod.string().max(moderationPublishVerificationPanelBodyImageUrlMax),
+  "thumbnailUrl": zod.string().max(moderationPublishVerificationPanelBodyThumbnailUrlMax).default(moderationPublishVerificationPanelBodyThumbnailUrlDefault),
+  "panelMessageId": zod.string().regex(moderationPublishVerificationPanelBodyPanelMessageIdRegExp)
+})
+
+export const ModerationPublishVerificationPanelResponse = zod.object({
+  "verification": zod.record(zod.string(), zod.unknown()).describe('Saved verification settings with the published Discord panel message ID.')
+})
+
+
 export const ModerationProtectionToggleParams = zod.object({
   "guildId": zod.coerce.string()
 })

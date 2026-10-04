@@ -39,3 +39,6 @@ export * from './moderationStorageUploadRequest';
 export * from './moderationStorageUploadResponse';
 export * from './protectionToggleInput';
 export * from './protectionToggleInputKey';
+export * from './verificationPanelPublishInput';
+export * from './verificationPanelPublishResponse';
+export * from './verificationPanelPublishResponseVerification';

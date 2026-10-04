@@ -61,7 +61,8 @@ describe("automatic Discord activity-log delivery", () => {
       if (targetType === "message") {
         expect(fields.find((field) => field.name === "Țintă")).toBeUndefined();
       } else {
-        expect(fields.find((field) => field.name === "Țintă")?.value).toContain("345678901234567890");
+        expect(fields.find((field) => field.name === "Țintă")?.value).toContain("nume indisponibil");
+        expect(fields.find((field) => field.name === "Țintă")?.value).not.toContain("345678901234567890");
       }
       expect(JSON.stringify(payload)).not.toContain("private message body");
     }
@@ -121,6 +122,30 @@ describe("automatic Discord activity-log delivery", () => {
     expect(fields.find((field) => field.name === "Țintă")).toBeUndefined();
     expect(fields.find((field) => field.name === "Detalii")?.value).toContain("**Nume:** chat → general");
     expect(fields.find((field) => field.name === "Detalii")?.value).toContain("**Conținut sensibil:** Nu → Da");
+  });
+
+  it("renders role changes as role names and redacts unclassified ID arrays", async () => {
+    const config = structuredClone(defaultModerationConfig);
+    config.activityLog.enabled = true;
+    config.activityLog.categories.members = true;
+    config.activityLog.channelIds.members = "log-members";
+    const { guild, sends } = testGuild();
+    await deliverActivityLog(guild, config, "discord.member_update", "member", "234567890123456789", {
+      actorVerified: false,
+      actorId: null,
+      addedRoles: ["LEGION"],
+      removedRoles: ["Scout"],
+      otherIds: ["987654321098765432"],
+    });
+
+    const payload = sends.get("members")!.mock.calls[0]![0] as {
+      embeds: Array<{ toJSON: () => { fields: Array<{ name: string; value: string }> } }>;
+    };
+    const details = payload.embeds[0]!.toJSON().fields.find((field) => field.name === "Detalii")?.value ?? "";
+    expect(details).toContain("**Roluri adăugate:** LEGION");
+    expect(details).toContain("**Roluri eliminate:** Scout");
+    expect(details).toContain("element Discord");
+    expect(details).not.toContain("987654321098765432");
   });
 
   it("shows the deleted message, author, and channel without raw message IDs", async () => {

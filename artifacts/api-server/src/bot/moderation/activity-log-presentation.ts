@@ -17,6 +17,7 @@ const detailLabels: Record<string, string> = {
   accountCreatedAt: "Cont creat la",
   action: "Acțiune",
   bulk: "Ștergere în masă",
+  channelName: "Canal vocal",
   changes: "Modificări",
   entityName: "Element",
   count: "Număr de evenimente",
@@ -27,9 +28,12 @@ const detailLabels: Record<string, string> = {
   name: "Nume",
   noSanction: "Sancțiune",
   nicknameChanged: "Poreclă schimbată",
+  newChannelName: "Canal vocal nou",
   nsfw: "Conținut sensibil",
   oldNickname: "Poreclă veche",
+  oldChannelName: "Canal vocal anterior",
   newNickname: "Poreclă nouă",
+  parentCategory: "Categorie",
   parentId: "Categorie",
   policyExcluded: "Exceptat de la moderare",
   rateLimitPerUser: "Slowmode (secunde)",
@@ -70,6 +74,14 @@ function humanize(value: string): string {
 
 function validSnowflake(value: unknown): value is string {
   return typeof value === "string" && snowflakePattern.test(value);
+}
+
+function safeObjectValue(value: Record<string, unknown>): string {
+  return JSON.stringify(value, (key, item) => {
+    if (key && /id$/i.test(key)) return undefined;
+    if (typeof item === "string" && validSnowflake(item)) return "ID ascuns";
+    return item;
+  });
 }
 
 function userMention(value: unknown): string | null {
@@ -119,15 +131,35 @@ function readableValue(value: unknown, changedKey?: string): string {
   if (changedKey && /id$/i.test(changedKey)) {
     return changedKey === "parentId" ? "categorie setată" : "actualizat";
   }
+  if (typeof value === "string" && validSnowflake(value)) return "ID ascuns";
   if (typeof value === "boolean") return value ? "Da" : "Nu";
-  if (Array.isArray(value)) return value.slice(0, 6).map(String).join(", ");
-  if (isRecord(value)) return JSON.stringify(value);
+  if (Array.isArray(value)) {
+    return value.slice(0, 6).map((item) => {
+      if (typeof item === "string" && validSnowflake(item)) {
+        if (changedKey && /roles?/i.test(changedKey)) return `<@&${item}>`;
+        if (changedKey && /channels?|category/i.test(changedKey)) return `<#${item}>`;
+        if (changedKey && /members?|users?|author/i.test(changedKey)) return `<@${item}>`;
+        return "element Discord";
+      }
+      return isRecord(item) ? safeObjectValue(item) : String(item);
+    }).join(", ");
+  }
+  if (isRecord(value)) return safeObjectValue(value);
   return String(value);
 }
 
 function readableDetails(detail: Record<string, unknown>, extraHidden: string[] = []): string {
   const omitted = new Set([...hiddenDetailKeys, ...extraHidden]);
-  return Object.entries(detail)
+  const priority = new Map([
+    "changes",
+    "addedRoles",
+    "removedRoles",
+    "parentCategory",
+    "oldChannelName",
+    "newChannelName",
+    "channelName",
+  ].map((key, index) => [key, index]));
+  const rankedDetails = Object.entries(detail)
     .filter(([key, value]) =>
       !omitted.has(key) &&
       !/(content|messagebody|message_text)/i.test(key) &&
@@ -136,7 +168,9 @@ function readableDetails(detail: Record<string, unknown>, extraHidden: string[] 
       value !== undefined &&
       value !== "",
     )
-    .slice(0, 8)
+    .sort(([left], [right]) => (priority.get(left) ?? priority.size) - (priority.get(right) ?? priority.size))
+    .slice(0, 8);
+  return rankedDetails
     .map(([key, value]) => {
       if (key === "changes" && isRecord(value)) {
         const changes = Object.entries(value)
@@ -159,7 +193,11 @@ function readableDetails(detail: Record<string, unknown>, extraHidden: string[] 
     .slice(0, 900);
 }
 
-function targetField(targetType: string, targetId: string): ActivityLogEmbedField | null {
+function targetField(
+  targetType: string,
+  targetId: string,
+  detail: Record<string, unknown>,
+): ActivityLogEmbedField | null {
   const normalizedType = targetType.toLocaleLowerCase();
   if (normalizedType === "message" || normalizedType === "guild") return null;
   if (normalizedType === "member" || normalizedType === "user") {
@@ -175,9 +213,13 @@ function targetField(targetType: string, targetId: string): ActivityLogEmbedFiel
       ? { name: "Rol vizat", value: `<@&${targetId}>`, inline: false }
       : null;
   }
+  const rawEntityName = typeof detail.entityName === "string" ? detail.entityName.trim() : "";
+  const entityName = rawEntityName && !validSnowflake(rawEntityName)
+    ? rawEntityName
+    : "nume indisponibil";
   return {
     name: "Țintă",
-    value: `${humanize(targetType)} · ${targetId}`.slice(0, 1_024),
+    value: `${humanize(targetType)} · ${entityName}`.slice(0, 1_024),
     inline: false,
   };
 }
@@ -281,7 +323,7 @@ export function buildActivityLogPresentation(
   }
 
   addField("Actor", actor);
-  const target = targetField(targetType, targetId);
+  const target = targetField(targetType, targetId, detail);
   if (
     target &&
     !(targetType.toLocaleLowerCase() === "channel" && detail.channelId === targetId)

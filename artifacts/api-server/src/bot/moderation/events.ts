@@ -450,6 +450,16 @@ function memberDiff(
   };
 }
 
+function readableRoleName(
+  roles: GuildMember["roles"]["cache"] | PartialGuildMember["roles"]["cache"],
+  roleId: string,
+): string {
+  const role = typeof roles.get === "function" ? roles.get(roleId) : undefined;
+  return typeof role?.name === "string"
+    ? role.name.replace(/@/g, "@\u200b")
+    : "rol cu nume indisponibil";
+}
+
 function resourceDiff(before: Record<string, unknown> | null, after: Record<string, unknown>, fields: string[]): Record<string, unknown> {
   const changed: Record<string, unknown> = {};
   for (const field of fields) {
@@ -748,7 +758,10 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
     const actor = await findAuditActor(member.guild, config, auditAction, member.id);
     await recordAudit(helpers, config, member.guild, "discord.member_update", "member", member.id,
       auditDetail(config, actor, { nicknameChanged: diff.nicknameChanged, rolesChanged: Boolean(diff.addedRoles.length || diff.removedRoles.length) },
-        { oldNickname: oldMember.nickname, newNickname: member.nickname, addedRoles: diff.addedRoles, removedRoles: diff.removedRoles }));
+        { oldNickname: oldMember.nickname, newNickname: member.nickname, addedRoles: diff.addedRoles, removedRoles: diff.removedRoles }), {
+        addedRoles: diff.addedRoles.map((roleId) => readableRoleName(member.roles.cache, roleId)),
+        removedRoles: diff.removedRoles.map((roleId) => readableRoleName(oldMember.roles.cache, roleId)),
+      });
     if (!config.protection.enabled) return;
     if (!config.suspiciousBehavior.enabled || isExcludedMember(config, member)) return;
 
@@ -795,13 +808,33 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
       : ["name", "color", "hoist", "mentionable", "permissions", "position"];
     const after = entity as unknown as Record<string, unknown>;
     const changes = resourceDiff(before, after, fields);
+    const displayChanges = { ...changes };
+    const parentChange = changes.parentId;
+    if (
+      targetType === "channel" &&
+      parentChange !== null &&
+      typeof parentChange === "object" &&
+      !Array.isArray(parentChange)
+    ) {
+      const parentValues = parentChange as Record<string, unknown>;
+      const parentName = (id: unknown) => {
+        if (typeof id !== "string" || !id) return "fără categorie";
+        const parent = entity.guild.channels.cache.get(id);
+        return parent ? `#${parent.name}` : "categorie indisponibilă";
+      };
+      delete displayChanges.parentId;
+      displayChanges.parentCategory = {
+        from: parentName(parentValues.from),
+        to: parentName(parentValues.to),
+      };
+    }
     await recordAudit(helpers, config, entity.guild, `discord.${event}`, targetType, entity.id,
       auditDetail(config, actor, {
         excludedByPolicy: excluded,
         changedFields: Object.keys(changes),
-        entityName: typeof after.name === "string" ? after.name : entity.id,
+        entityName: typeof after.name === "string" ? after.name : "nume indisponibil",
         channelId: targetType === "channel" ? entity.id : null,
-      }, { changes }));
+      }, { changes }), { changes: displayChanges });
     await unusualActivity(helpers, client, entity.guild, config, event, actor, excluded);
   }, entity.guild.id);
 
@@ -829,6 +862,19 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
         memberId,
       )
       : null;
+    const voiceChannelName = (channelId: string | null) => channelId
+      ? `#${guild.channels.cache.get(channelId)?.name ?? "canal indisponibil"}`
+      : "în afara unui canal vocal";
+    const voiceDisplayDetail = channelChanged
+      ? {
+          channelId: null,
+          oldChannelName: voiceChannelName(oldState.channelId),
+          newChannelName: voiceChannelName(newState.channelId),
+        }
+      : {
+          channelId: null,
+          channelName: voiceChannelName(newState.channelId),
+        };
     await recordAudit(helpers, config, guild, "discord.voice_state_update", "member", memberId,
       auditDetail(config, actor, {
         actorVerified: Boolean(actor?.verified),
@@ -842,6 +888,6 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
         serverDeaf: newState.serverDeaf,
         streaming: newState.streaming,
         video: newState.selfVideo,
-      }));
+      }), voiceDisplayDetail);
   }, newState.guild.id));
 }

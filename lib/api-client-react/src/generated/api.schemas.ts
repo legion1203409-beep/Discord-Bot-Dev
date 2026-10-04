@@ -176,6 +176,57 @@ export interface ProtectionToggleInput {
  */
 export interface BotControlSettings { [key: string]: unknown }
 
+export interface VerificationPanelPublishInput {
+  enabled: true;
+  /** @pattern ^\d{5,25}$ */
+  channelId: string;
+  /** @pattern ^\d{5,25}$ */
+  roleId: string;
+  /**
+     * @minLength 1
+     * @maxLength 256
+     */
+  title: string;
+  /**
+     * @minLength 1
+     * @maxLength 4000
+     */
+  message: string;
+  /**
+     * @minLength 1
+     * @maxLength 80
+     */
+  buttonLabel: string;
+  /** @maxLength 100 */
+  buttonEmoji: string;
+  /**
+     * @minLength 1
+     * @maxLength 2000
+     */
+  successMessage: string;
+  /**
+     * @minLength 1
+     * @maxLength 2000
+     */
+  alreadyVerifiedMessage: string;
+  /** @maxLength 2000 */
+  imageUrl: string;
+  /** @maxLength 2000 */
+  thumbnailUrl?: string;
+  /** @pattern ^(?:\d{5,25})?$ */
+  panelMessageId: string;
+}
+
+/**
+ * Saved verification settings with the published Discord panel message ID.
+ */
+export type VerificationPanelPublishResponseVerification = { [key: string]: unknown };
+
+export interface VerificationPanelPublishResponse {
+  /** Saved verification settings with the published Discord panel message ID. */
+  verification: VerificationPanelPublishResponseVerification;
+}
+
 /**
  * Bot-control settings returned by GET or after a successful PUT.
  */

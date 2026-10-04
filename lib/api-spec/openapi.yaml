@@ -161,6 +161,25 @@ paths:
         "401": { description: Moderation session is required }
         "403": { description: Guild configuration access is required or the bot cannot post to a configured channel }
         "503": { description: Required Discord service is unavailable }
+  /moderation/guilds/{guildId}/bot-control/verification-panel:
+    parameters: [{ name: guildId, in: path, required: true, schema: { type: string, minLength: 5, maxLength: 25 } }]
+    post:
+      operationId: moderationPublishVerificationPanel
+      tags: [moderation]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/VerificationPanelPublishInput" } } }
+      responses:
+        "200":
+          description: Verification panel published or updated and its configuration saved
+          content: { application/json: { schema: { $ref: "#/components/schemas/VerificationPanelPublishResponse" } } }
+        "207":
+          description: The panel was published but its configuration could not be persisted
+          content: { application/json: { schema: { $ref: "#/components/schemas/BotControlPartialApplyResponse" } } }
+        "400": { description: "Verification is disabled or its channel, role, or settings are invalid" }
+        "401": { description: Moderation session is required }
+        "403": { description: Guild configuration access is required }
+        "503": { description: Discord service is unavailable }
   /moderation/guilds/{guildId}/protection-toggle:
     parameters: [{ name: guildId, in: path, required: true, schema: { type: string } }]
     put:
@@ -319,6 +338,32 @@ components:
       type: object
       additionalProperties: true
       description: Bot-control write payload. Nested settings are validated by the API; use the GET response as the round-trip payload.
+    VerificationPanelPublishInput:
+      type: object
+      additionalProperties: false
+      required: [enabled, channelId, roleId, title, message, buttonLabel, buttonEmoji, successMessage, alreadyVerifiedMessage, imageUrl, panelMessageId]
+      properties:
+        enabled: { type: boolean, const: true }
+        channelId: { type: string, pattern: "^\\d{5,25}$" }
+        roleId: { type: string, pattern: "^\\d{5,25}$" }
+        title: { type: string, minLength: 1, maxLength: 256 }
+        message: { type: string, minLength: 1, maxLength: 4000 }
+        buttonLabel: { type: string, minLength: 1, maxLength: 80 }
+        buttonEmoji: { type: string, maxLength: 100 }
+        successMessage: { type: string, minLength: 1, maxLength: 2000 }
+        alreadyVerifiedMessage: { type: string, minLength: 1, maxLength: 2000 }
+        imageUrl: { type: string, maxLength: 2000 }
+        thumbnailUrl: { type: string, maxLength: 2000, default: "" }
+        panelMessageId: { type: string, pattern: "^(?:\\d{5,25})?$" }
+    VerificationPanelPublishResponse:
+      type: object
+      additionalProperties: false
+      required: [verification]
+      properties:
+        verification:
+          type: object
+          additionalProperties: true
+          description: Saved verification settings with the published Discord panel message ID.
     BotControlResponse:
       type: object
       additionalProperties: true

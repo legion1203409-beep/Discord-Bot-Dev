@@ -2505,6 +2505,38 @@ router.post("/guilds/:guildId/bot-control/provision-channels", asyncRoute(async 
   });
 }));
 
+router.post("/guilds/:guildId/bot-control/verification-panel", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  await sessionAndGuild(req, guildId, "config", true);
+  const verification = normalizeVerificationConfig(parse(verificationConfigSchema, req.body));
+  if (!verification.enabled) {
+    throw new ModerationAuthError(400, "Activează verificarea înainte de a publica panoul.");
+  }
+  if (!verification.channelId || !verification.roleId) {
+    throw new ModerationAuthError(400, "Configurează canalul și rolul pentru verificare.");
+  }
+  const client = getModerationClient();
+  if (!client?.isReady()) {
+    throw new ModerationAuthError(503, "Discord botul nu este conectat pentru publicarea panoului.");
+  }
+
+  try {
+    const savedVerification = await publishVerificationPanel(client, guildId, verification);
+    res.status(200).json({ verification: savedVerification });
+  } catch (error) {
+    if (error instanceof VerificationPanelPersistenceError) {
+      res.status(207).json({
+        partialApply: true,
+        verificationPanelPublished: true,
+        verification: error.publishedConfig,
+        message: "Panoul Discord a fost publicat, dar setările de verificare nu au putut fi salvate.",
+      });
+      return;
+    }
+    throw error;
+  }
+}));
+
 router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   const guildId = parse(snowflake, req.params.guildId);
   await sessionAndGuild(req, guildId, "config", true);

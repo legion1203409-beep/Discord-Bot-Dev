@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, CircleHelp, Loader2, RefreshCw, RotateCcw, Save, Search, ShieldCheck, Users } from "lucide-react";
+import { AlertTriangle, CircleHelp, Loader2, RefreshCw, RotateCcw, Save, Search, Send, ShieldCheck, Users } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { ImageField } from "../../components/moderation/ImageField";
 import { DiscordEmojiText, EmojiField } from "../../components/moderation/EmojiField";
@@ -42,6 +42,7 @@ export function VerificationAdminPage() {
     loading,
     error,
     update,
+    publishVerification,
     panelRecovery,
     confirmPanelReconciliation,
   } = useBotControl(guildId);
@@ -56,6 +57,7 @@ export function VerificationAdminPage() {
   const { session } = useSession();
   const [draft, setDraft] = useState<BotControlConfig | null>(null);
   const [saving, setSaving] = useState(false);
+  const [publishingPanel, setPublishingPanel] = useState(false);
   const [partialApplyError, setPartialApplyError] = useState<{ guildId: string; message: string } | null>(null);
   const [inviteLoading, setInviteLoading] = useState(false);
   const [verificationSearch, setVerificationSearch] = useState("");
@@ -121,7 +123,7 @@ export function VerificationAdminPage() {
   };
 
   const save = async () => {
-    if (!draft || !hasUnsavedChanges) return;
+    if (!draft || !hasUnsavedChanges || saving) return;
     if (panelRecovery?.requiresManualReconciliation) {
       toast({
         variant: "destructive",
@@ -191,6 +193,66 @@ export function VerificationAdminPage() {
       }
     } finally {
       setSaving(false);
+    }
+  };
+
+  const publishPanel = async () => {
+    if (!draft || saving || !guildId) return;
+    if (panelRecovery?.requiresManualReconciliation) {
+      toast({
+        variant: "destructive",
+        title: "Publicarea este blocată",
+        description: "Reconciliază manual în Discord panoul publicat fără ID înainte de a reîncerca.",
+      });
+      return;
+    }
+    const submittedVerification = { ...draft.verification };
+    const submittedGuild = guildId;
+    setSaving(true);
+    setPublishingPanel(true);
+    try {
+      const published = await publishVerification(submittedVerification);
+      if (currentGuild.current !== submittedGuild) return;
+      setDraft((current) => {
+        if (!current) return current;
+        const merged = { ...published };
+        for (const key of Object.keys(merged) as Array<keyof typeof merged>) {
+          if (current.verification[key] !== submittedVerification[key]) {
+            (merged as any)[key] = current.verification[key];
+          }
+        }
+        return { ...current, verification: merged };
+      });
+      setPartialApplyError((current) => current?.guildId === submittedGuild ? null : current);
+      toast({
+        title: "Panoul a fost publicat",
+        description: "Setările de verificare au fost salvate. Celelalte modificări rămân nesalvate.",
+      });
+    } catch (publishError) {
+      if (currentGuild.current !== submittedGuild) return;
+      if (publishError instanceof BotControlPartialApplyError) {
+        if (!publishError.verificationPanelPublished) {
+          setPartialApplyError({ guildId: submittedGuild, message: publishError.message });
+        } else {
+          setPartialApplyError((current) => current?.guildId === submittedGuild ? null : current);
+        }
+        toast({
+          variant: "destructive",
+          title: publishError.verificationPanelPublished
+            ? "Panoul a fost publicat; salvarea configurației a fost parțială"
+            : "Rezultat parțial; publicarea nu este confirmată",
+          description: publishError.message,
+        });
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Publicarea panoului a eșuat",
+          description: publishError instanceof Error ? publishError.message : "Încearcă din nou.",
+        });
+      }
+    } finally {
+      setSaving(false);
+      setPublishingPanel(false);
     }
   };
 
@@ -402,11 +464,31 @@ export function VerificationAdminPage() {
         <div className="flex items-start justify-between gap-3 border-t border-border pt-5">
           <div>
             <h3 className="font-medium">Panoul de verificare</h3>
-            <p className="text-xs text-muted-foreground">Editează mesajul publicat în canal. Salvarea republică panoul dacă botul este online.</p>
+            <p className="text-xs text-muted-foreground">Publică sau actualizează separat panoul. Această acțiune salvează doar setările de verificare.</p>
           </div>
-          <Button type="button" variant="ghost" size="sm" className="shrink-0 gap-1" onClick={resetVerificationText}>
-            <RotateCcw className="h-3.5 w-3.5" /> Implicit
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              className="shrink-0 gap-2"
+              onClick={() => void publishPanel()}
+              disabled={
+                saving ||
+                !draft.verification.enabled ||
+                !draft.verification.channelId ||
+                !draft.verification.roleId ||
+                data?.discordLive === false ||
+                Boolean(panelRecovery?.requiresManualReconciliation)
+              }
+              title="Publică panoul sau actualizează mesajul existent fără să salvezi alte setări."
+            >
+              {publishingPanel ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              {publishingPanel ? "Se publică…" : "Publică panoul"}
+            </Button>
+            <Button type="button" variant="ghost" size="sm" className="shrink-0 gap-1" onClick={resetVerificationText}>
+              <RotateCcw className="h-3.5 w-3.5" /> Implicit
+            </Button>
+          </div>
         </div>
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
           <div className="grid gap-4 md:grid-cols-2">
@@ -582,12 +664,12 @@ export function VerificationAdminPage() {
         <div className="mod-save-bar sticky bottom-3 z-20 flex w-full items-center justify-between gap-3">
           <div className="flex items-center gap-3 text-muted-foreground font-medium text-sm">
             <span className={`bot-control-save-dot ${saving ? "is-saving" : ""}`} />
-            <span>{saving ? "Se salvează verificarea…" : (panelRecovery || guildPartialApplyError) ? "Rezultatul aplicării este parțial; verifică valorile serverului." : "Ai modificări nesalvate."}</span>
+            <span>{saving ? publishingPanel ? "Se publică panoul…" : "Se salvează verificarea…" : (panelRecovery || guildPartialApplyError) ? "Rezultatul aplicării este parțial; verifică valorile serverului." : "Ai modificări nesalvate."}</span>
           </div>
           <div className="mod-save-actions ml-auto">
             <Button onClick={() => void save()} disabled={saving || Boolean(panelRecovery?.requiresManualReconciliation)} className="gap-2 px-8 font-semibold tracking-wide shadow-lg shadow-primary/20">
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              {saving ? "Se salvează…" : "Salvează verificarea"}
+              {publishingPanel ? <Send className="h-4 w-4 animate-pulse" /> : saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {publishingPanel ? "Se publică panoul…" : saving ? "Se salvează…" : "Salvează verificarea"}
             </Button>
           </div>
         </div>

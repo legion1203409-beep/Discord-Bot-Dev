@@ -1430,6 +1430,68 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     expect(mocks.saveProvisioningPermissions).not.toHaveBeenCalled();
   });
 
+  it("publishes only the verification panel and persists its returned message ID", async () => {
+    const verification = {
+      enabled: true,
+      channelId: "777777777",
+      roleId: "444444444",
+      title: "Verificare",
+      message: "Confirmă verificarea",
+      buttonLabel: "Verifică",
+      buttonEmoji: "✅",
+      successMessage: "Gata",
+      alreadyVerifiedMessage: "Deja verificat",
+      imageUrl: "",
+      thumbnailUrl: "",
+      panelMessageId: "",
+    };
+
+    const response = await fetch(`${base}/bot-control/verification-panel`, {
+      ...post(verification, { "x-csrf-token": "csrf" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      verification: { ...verification, panelMessageId: "888888888" },
+    });
+    expect(mocks.publishVerificationPanel).toHaveBeenCalledWith(expect.anything(), guildId, verification);
+    expect(mocks.saveChannelConfig).not.toHaveBeenCalled();
+    expect(mocks.saveTicketConfig).not.toHaveBeenCalled();
+    expect(mocks.saveGuildGameplayConfig).not.toHaveBeenCalled();
+  });
+
+  it("reports the published panel when its verification config cannot be persisted", async () => {
+    const verification = {
+      enabled: true,
+      channelId: "777777777",
+      roleId: "444444444",
+      title: "Verificare",
+      message: "Confirmă verificarea",
+      buttonLabel: "Verifică",
+      buttonEmoji: "✅",
+      successMessage: "Gata",
+      alreadyVerifiedMessage: "Deja verificat",
+      imageUrl: "",
+      thumbnailUrl: "",
+      panelMessageId: "",
+    };
+    mocks.publishVerificationPanel.mockRejectedValueOnce(
+      new VerificationPanelPersistenceError({ ...verification, panelMessageId: "888888888" }),
+    );
+
+    const response = await fetch(`${base}/bot-control/verification-panel`, {
+      ...post(verification, { "x-csrf-token": "csrf" }),
+    });
+
+    expect(response.status).toBe(207);
+    expect(await response.json()).toMatchObject({
+      partialApply: true,
+      verificationPanelPublished: true,
+      verification: { panelMessageId: "888888888" },
+    });
+    expect(mocks.saveChannelConfig).not.toHaveBeenCalled();
+  });
+
   it("does not let the bot-control page change the separate gameplay pause state", async () => {
     const payload = botControlPayload();
     mocks.getGameplayConfig.mockReturnValue({

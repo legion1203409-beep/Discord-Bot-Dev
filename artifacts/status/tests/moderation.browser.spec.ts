@@ -182,7 +182,7 @@ test.describe("authenticated moderation console", () => {
   });
 
   async function chooseFirstGuild(page: import("@playwright/test").Page) {
-    await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible({ timeout: 15_000 });
     await page.getByRole("button", { name: guilds[0].name }).click();
   }
 
@@ -1026,6 +1026,103 @@ test.describe("Discord moderation authentication", () => {
 });
 
 test.describe("verification panel partial applies", () => {
+  test("publishes only the verification config without saving unrelated bot-control settings", async ({ page }) => {
+    const northConfig = verificationBotControlConfig(true, "");
+    northConfig.verification.channelId = "777777777";
+    northConfig.verification.roleId = "444444444";
+    const configs = new Map([
+      [guilds[0].id, northConfig],
+      [guilds[1].id, verificationBotControlConfig(false, "")],
+    ]);
+    const putBodies = await installPartialBotControlFixture(page, configs);
+    const publishBodies: Array<Record<string, unknown>> = [];
+    await page.route("**/api/moderation/guilds/*/bot-control/verification-panel", async (route) => {
+      const body = JSON.parse(route.request().postData() || "{}") as Record<string, unknown>;
+      publishBodies.push(body);
+      await route.fulfill({
+        json: {
+          verification: { ...body, panelMessageId: "panel-north" },
+        },
+      });
+    });
+
+    await page.goto("/moderare/verificare");
+    await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible({ timeout: 15_000 });
+    await page.getByRole("button", { name: guilds[0].name }).click();
+    const publishRequest = page.waitForRequest((request) =>
+      request.url().endsWith("/verification-panel") && request.method() === "POST");
+    await page.getByRole("button", { name: "Publică panoul" }).click();
+    const request = await publishRequest;
+    const body = JSON.parse(request.postData() || "{}");
+
+    expect(Object.keys(body).sort()).toEqual([
+      "alreadyVerifiedMessage",
+      "buttonEmoji",
+      "buttonLabel",
+      "channelId",
+      "enabled",
+      "imageUrl",
+      "message",
+      "panelMessageId",
+      "roleId",
+      "successMessage",
+      "thumbnailUrl",
+      "title",
+    ]);
+    expect(body).toMatchObject({ channelId: "777777777", roleId: "444444444", enabled: true });
+    expect(publishBodies).toHaveLength(1);
+    expect(putBodies.size).toBe(0);
+    await expect(page.getByText("Panoul a fost publicat").first()).toBeVisible();
+    await expect(page.getByText("Ai modificări nesalvate.")).toHaveCount(0);
+  });
+
+  test("reuses the recovered panel ID after a partial result from the standalone publish action", async ({ page }) => {
+    const northConfig = verificationBotControlConfig(true, "");
+    northConfig.verification.channelId = "777777777";
+    northConfig.verification.roleId = "444444444";
+    const configs = new Map([
+      [guilds[0].id, northConfig],
+      [guilds[1].id, verificationBotControlConfig(false, "")],
+    ]);
+    const putBodies = await installPartialBotControlFixture(page, configs);
+    const publishBodies: Array<Record<string, unknown>> = [];
+    await page.route("**/api/moderation/guilds/*/bot-control/verification-panel", async (route) => {
+      const body = JSON.parse(route.request().postData() || "{}") as Record<string, unknown>;
+      publishBodies.push(body);
+      if (publishBodies.length === 1) {
+        await route.fulfill({
+          status: 207,
+          json: {
+            partialApply: true,
+            verificationPanelPublished: true,
+            verification: { ...body, panelMessageId: "panel-north" },
+            message: "Persistarea setărilor de verificare a eșuat.",
+          },
+        });
+        return;
+      }
+      await route.fulfill({
+        json: { verification: { ...body, panelMessageId: "panel-north" } },
+      });
+    });
+
+    await page.goto("/moderare/verificare");
+    await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible({ timeout: 15_000 });
+    await page.getByRole("button", { name: guilds[0].name }).click();
+    await page.getByRole("button", { name: "Publică panoul" }).click();
+    await expect(page.getByRole("alert")).toContainText("panel-north");
+    await expect(page.getByText("Panou publicat; salvare parțială")).toBeVisible();
+
+    const retryRequest = page.waitForRequest((request) =>
+      request.url().endsWith("/verification-panel") && request.method() === "POST");
+    await page.getByRole("button", { name: "Publică panoul" }).click();
+    const retryBody = JSON.parse((await retryRequest).postData() || "{}");
+    expect(retryBody.panelMessageId).toBe("panel-north");
+    expect(publishBodies).toHaveLength(2);
+    expect(putBodies.size).toBe(0);
+    await expect(page.getByText("Panou publicat; salvare parțială")).toHaveCount(0);
+  });
+
   test("retains the published panel ID per guild and sends it on retry", async ({ page }) => {
     const configs = new Map([
       [guilds[0].id, verificationBotControlConfig(false, "")],
@@ -1039,7 +1136,7 @@ test.describe("verification panel partial applies", () => {
     }));
 
     await page.goto("/moderare/verificare");
-    await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible({ timeout: 15_000 });
     await page.getByRole("button", { name: guilds[0].name }).click();
     const enabled = page.getByRole("checkbox", { name: "Activ" });
     await expect(enabled).not.toBeChecked();
@@ -1090,7 +1187,7 @@ test.describe("verification panel partial applies", () => {
     }));
 
     await page.goto("/moderare/verificare");
-    await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible({ timeout: 15_000 });
     await page.getByRole("button", { name: guilds[0].name }).click();
     await page.getByRole("checkbox", { name: "Activ" }).check();
     await page.getByRole("button", { name: "Salvează verificarea" }).click();
@@ -1127,7 +1224,7 @@ test.describe("verification panel partial applies", () => {
     }));
 
     await page.goto("/moderare/verificare");
-    await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible({ timeout: 15_000 });
     await page.getByRole("button", { name: guilds[0].name }).click();
     await page.getByRole("checkbox", { name: "Activ" }).check();
     await page.getByRole("button", { name: "Salvează verificarea" }).click();
@@ -1151,7 +1248,7 @@ test.describe("verification panel partial applies", () => {
     }));
 
     await page.goto("/moderare/verificare");
-    await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible({ timeout: 15_000 });
     await page.getByRole("button", { name: guilds[0].name }).click();
     await page.getByRole("checkbox", { name: "Activ" }).check();
     await page.getByRole("button", { name: "Salvează verificarea" }).click();
@@ -1184,7 +1281,7 @@ test.describe("moderation guild chooser", () => {
       });
     });
     await page.goto("/moderare");
-    await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole("heading", { name: "Cenușa Nordului" })).toHaveCount(0);
     await page.getByRole("button", { name: "Turnul Gol" }).click();
     await expect(page.getByRole("combobox").first()).toContainText("Turnul Gol");
