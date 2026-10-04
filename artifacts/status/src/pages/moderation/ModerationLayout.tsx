@@ -4,14 +4,14 @@ import {
   LogOut, Activity, Zap, Menu, X, Eye, Monitor, Radio, RefreshCw, Server,
   FileText, Sparkles, MessageSquareWarning, Gavel, Wrench, Users,
 } from "lucide-react";
-import { ReactNode, useState, useEffect } from "react";
+import { ReactNode, useState, useEffect, useCallback } from "react";
 import { FaDiscord } from "react-icons/fa";
 import { useSession, useActiveGuild, useModerationAuthConfig, type ModerationGuild } from "../../hooks/use-moderation-api";
 import { Button } from "../../components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { GuildSelection } from "./GuildSelection";
 import { BotInviteLink } from "../../components/moderation/BotInviteLink";
-import { DiscordLoadingScreen } from "../../components/moderation/DiscordLoadingScreen";
+import { GameGuideLoadingScreen } from "../../components/public/GameGuideLoadingScreen";
 import "./moderation.css";
 import { DISCORD_INVITE } from "../../lib/public-constants";
 
@@ -143,25 +143,24 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
   } = useModerationAuthConfig();
   const { guildId, setGuildId, guilds } = useActiveGuild();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [initialLoading, setInitialLoading] = useState(true);
+  const [gateOpened, setGateOpened] = useState(false);
   const activeGuild = guilds.find((guild) => guild.id === guildId);
   const activeGuildIcon = guildIconUrl(activeGuild);
   const botProfile = authConfig?.bot;
-
-  useEffect(() => {
-    // Keep the branded loader visible even for fast or cached session checks.
-    const timer = window.setTimeout(() => setInitialLoading(false), 600);
-    return () => window.clearTimeout(timer);
-  }, []);
+  const completeGateOpen = useCallback(() => setGateOpened(true), []);
 
   useEffect(() => {
     setMobileMenuOpen(false);
   }, [location]);
 
-  if (!error && (loading || initialLoading || (authConfigLoading && !session?.authenticated))) {
+  const keepGateVisible = !gateOpened || loading || (authConfigLoading && !session?.authenticated);
+  if (!error && keepGateVisible) {
     return (
       <div className="mod-shell dark">
-        <DiscordLoadingScreen />
+        <GameGuideLoadingScreen
+          onOpenComplete={completeGateOpen}
+          ariaLabel="Se deschide poarta către panoul de moderare"
+        />
       </div>
     );
   }
