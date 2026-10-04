@@ -194,7 +194,10 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
 
     return (
       <div className="mod-shell dark mod-login-bg mod-login-stage flex items-center justify-center p-4">
-        <div className="w-full max-w-md bg-card border border-border p-7 sm:p-9 rounded-2xl relative overflow-hidden mod-card mod-login-card shadow-2xl">
+        <div className="mod-login-animation" aria-hidden="true">
+          <img src={animatedDragonLogo} alt="" />
+        </div>
+        <div className="w-full max-w-md bg-card border border-border p-7 sm:p-9 rounded-2xl relative z-10 overflow-hidden mod-card mod-login-card shadow-2xl">
           <div className="mod-card-glow" />
           <div className="mod-login-card-line" aria-hidden="true" />
           <div className="relative">
