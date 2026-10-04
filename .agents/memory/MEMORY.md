@@ -73,4 +73,4 @@
 - [Discord no-DM policy](discord-no-dm-policy.md) — do not send bot messages to Discord DMs; keep warnings logged and use guild channels when appropriate.
 - [Moderation action selection](moderation-action-selection.md) — show combined action choices in both AutoMod and each AI category; a separate deletion toggle did not meet the user's request.
 - [Per-target channel provisioning](per-target-channel-provisioning.md) — create/reuse a private group category plus one requested channel; deny @everyone and require staff-role access.
-- [Guide loading animation](guide-loading-animation.md) — animate the guide loader independently; the supplied dragon GIF is server branding, not loading art.
+- [Guide loading animation](guide-loading-animation.md) — use the user's medieval-gate loader animation; do not substitute server branding or a generic card.

@@ -1,10 +1,10 @@
 ---
 name: Guide loading animation
-description: User-defined separation between server branding and the game-guide loader.
+description: The user's intended visual and motion for the public game-guide loader.
 ---
 
-The supplied dragon GIF is the server logo, not loading-screen artwork. The public game-guide loader should animate its own book icon, ring, and progress bar without showing that logo. The moderation login must not use the GIF either.
+The user supplied a medieval gate loading screen with animated torches, rising portcullis, floating embers, and a red progress bar. That is the intended public game-guide loader. Do not use the separate server-logo GIF as loading artwork or on moderation login.
 
-**Why:** The user clarified that server branding should not be substituted for a real loading animation.
+**Why:** The user explicitly supplied this loading-screen HTML after earlier iterations incorrectly used a logo or generic loader.
 
-**How to apply:** Keep the GIF out of both loading and authentication screens; use motion on the loader elements instead.
+**How to apply:** Treat the supplied gate, fire, ember, and progress animation as the source of truth for `/joc`; keep server branding separate.
