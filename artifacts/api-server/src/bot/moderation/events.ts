@@ -224,12 +224,9 @@ async function recordAudit(
   await helpers.auditExternal(guild.id, eventType, targetType, targetId, detail);
   // Message text is only sent to the configured Discord activity channel; it
   // is intentionally kept out of the persisted moderation audit record.
-  await deliverActivityLog(guild, config, eventType, targetType, targetId, {
-    ...detail,
-    ...activityDisplayDetail,
-  });
+  const displayDetail = { ...detail, ...activityDisplayDetail };
+  await deliverActivityLog(guild, config, eventType, targetType, targetId, displayDetail);
   if (config.audit.enabled && config.audit.channelId) {
-    const displayDetail = { ...detail, ...activityDisplayDetail };
     const actor = detail.actorVerified === true && typeof detail.actorId === "string"
       ? `<@${detail.actorId}>`
       : "Neverificat de Discord";
@@ -243,8 +240,7 @@ async function recordAudit(
       actor,
       channel,
     );
-    const eventTitle = ACTIVITY_EVENT_TITLES[normalizedEventType] ??
-      ACTIVITY_EVENT_TITLES[eventType] ??
+    const eventTitle = activityEventTitle(eventType, displayDetail) ??
       normalizedEventType.split(".").at(-1)?.replace(/_/g, " ") ??
       "Eveniment de moderare";
     const description = [
@@ -277,7 +273,7 @@ const ACTIVITY_EVENT_TITLES: Record<string, string> = {
   "discord.message_bulk_delete": "Mesaje șterse în masă",
   "discord.member_join": "Membru a intrat pe server",
   "discord.member_leave": "Membru a părăsit serverul",
-  "discord.member_update": "Membru sau roluri actualizate",
+  "discord.member_update": "Membru actualizat",
   "discord.voice_state_update": "Stare vocală schimbată",
   "discord.channel_create": "Canal creat",
   "discord.channel_update": "Canal actualizat",
@@ -301,9 +297,27 @@ const ACTIVITY_EVENT_TITLES: Record<string, string> = {
   "raid.lockdown_failed": "Blocare anti-raid eșuată",
 };
 
-function activityCategory(eventType: string): ActivityLogCategory | null {
+function isMemberRoleChange(eventType: string, detail: Record<string, unknown>): boolean {
+  const normalized = eventType.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLocaleLowerCase();
+  if (normalized !== "discord.member_update") return false;
+  return detail.rolesChanged === true ||
+    ["addedRoles", "removedRoles"].some((key) =>
+      Array.isArray(detail[key]) && detail[key].length > 0,
+    );
+}
+
+function activityEventTitle(eventType: string, detail: Record<string, unknown>): string | null {
+  if (isMemberRoleChange(eventType, detail)) return "Rolurile membrului au fost schimbate";
+  const normalized = eventType.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLocaleLowerCase();
+  return ACTIVITY_EVENT_TITLES[normalized] ??
+    ACTIVITY_EVENT_TITLES[eventType] ??
+    null;
+}
+
+function activityCategory(eventType: string, detail: Record<string, unknown>): ActivityLogCategory | null {
   const normalized = eventType.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLocaleLowerCase();
   if (normalized.startsWith("discord.message_")) return "messages";
+  if (isMemberRoleChange(eventType, detail)) return "roles";
   if (normalized.startsWith("discord.member_")) return "members";
   if (normalized.startsWith("discord.channel_")) return "channels";
   if (normalized.startsWith("discord.guild_role_")) return "roles";
@@ -322,7 +336,7 @@ export async function deliverActivityLog(
   targetId: string,
   detail: Record<string, unknown>,
 ): Promise<void> {
-  const category = activityCategory(eventType);
+  const category = activityCategory(eventType, detail);
   if (!config.activityLog.enabled || !category || !config.activityLog.categories[category]) return;
   const channelId = config.activityLog.channelIds[category];
   if (!channelId) return;
@@ -350,7 +364,7 @@ export async function deliverActivityLog(
           category === "moderation" ? 0xc38b3b :
             category === "messages" ? 0xd46a3c : 0x5865f2,
       )
-      .setTitle(ACTIVITY_EVENT_TITLES[normalizedEventType] ?? ACTIVITY_EVENT_TITLES[eventType] ?? eventType.replace(/[._-]+/g, " "))
+      .setTitle(activityEventTitle(eventType, detail) ?? eventType.replace(/[._-]+/g, " "))
       .setFooter({ text: `Jurnal de activitate · ${ACTIVITY_CATEGORY_LABELS[category]}` })
       .setTimestamp();
     if (presentation.description) embed.setDescription(presentation.description);

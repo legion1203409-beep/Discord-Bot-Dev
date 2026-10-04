@@ -177,6 +177,9 @@ export function AdvancedSettingsPage() {
     { label: "Canal comportament suspect", path: ["suspiciousBehavior", "alertChannelId"] },
     { label: "Canal jurnal AI", path: ["ai", "logChannelId"] },
   ];
+  const selectableTextChannels = (metadata?.channels ?? []).filter((channel) =>
+    [0, 5, "text", "announcement", "GuildText", "GuildAnnouncement", "GuildNews"].includes(channel.type),
+  );
   const staffRoleId = localData.permissions?.staffRoleIds?.[0] || "";
   const selectedStaffRole = metadata?.roles.some((role) => role.id === staffRoleId) ? staffRoleId : "__none__";
 
@@ -237,18 +240,28 @@ export function AdvancedSettingsPage() {
           <div className="grid gap-6 md:grid-cols-2 mt-4">
             {configuredChannels.map(({ label, path }) => {
               const current = path.reduce((value: any, key) => value?.[key], localData) || "";
-              const selected = metadata.channels.some((channel) => channel.id === current) ? current : "__none__";
+              const currentChannelAvailable = selectableTextChannels.some((channel) => channel.id === current);
+              const selected = current || "__none__";
               return (
                 <div key={path.join(".")} className="space-y-2">
                   <label className="text-sm font-medium text-foreground/90">{label}</label>
                   <Select value={selected} onValueChange={(value) => updateChannel(path, value === "__none__" ? null : value)}>
-                    <SelectTrigger className="bg-background/50"><SelectValue placeholder="Alege canal" /></SelectTrigger>
+                    <SelectTrigger aria-label={`Canal pentru ${label}`} className="bg-background/50"><SelectValue placeholder="Alege canal" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="__none__">Neconfigurat</SelectItem>
-                      {metadata.channels.map((channel) => <SelectItem key={channel.id} value={channel.id}>#{channel.name} ({channel.id})</SelectItem>)}
+                      {current && !currentChannelAvailable && (
+                        <SelectItem value={current}>Canal salvat, indisponibil ({current})</SelectItem>
+                      )}
+                      {selectableTextChannels.map((channel) => <SelectItem key={channel.id} value={channel.id}>#{channel.name} ({channel.id})</SelectItem>)}
                     </SelectContent>
                   </Select>
                   <Input aria-label={`${label} ID fallback`} value={current} placeholder="ID canal Discord" onChange={(event) => updateChannel(path, event.target.value.trim() || null)} className="bg-background/50 font-mono text-xs" />
+                  {current && !currentChannelAvailable && (
+                    <p role="alert" className="text-xs text-destructive">
+                      Canalul salvat nu este disponibil ca text în serverul selectat sau botul nu îl poate vedea.
+                      Alege un canal din listă ori șterge ID-ul.
+                    </p>
+                  )}
                 </div>
               );
             })}

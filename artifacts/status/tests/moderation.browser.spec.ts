@@ -602,6 +602,22 @@ test.describe("authenticated moderation console", () => {
     await expect(page.getByLabel("Canal audit ID fallback")).toHaveValue("444444444");
   });
 
+  test("shows when a saved moderation destination is unavailable and lets the operator replace it", async ({ page }) => {
+    savedConfigs.get(guilds[0].id)!.audit.channelId = "555555555";
+    await page.goto("/moderare/config/avansat");
+    await chooseFirstGuild(page);
+
+    const unavailableWarning = page.getByRole("alert").filter({
+      hasText: "Canalul salvat nu este disponibil ca text",
+    });
+    await expect(unavailableWarning).toBeVisible();
+    await page.getByRole("combobox", { name: "Canal pentru Canal audit" }).click();
+    await page.getByRole("option", { name: /audit \(444444444\)/ }).click();
+
+    await expect(page.getByLabel("Canal audit ID fallback")).toHaveValue("444444444");
+    await expect(unavailableWarning).toHaveCount(0);
+  });
+
   test("configuration cards navigate separately and toggles persist without navigation", async ({ page }) => {
     await page.goto("/moderare/config");
     await chooseFirstGuild(page);

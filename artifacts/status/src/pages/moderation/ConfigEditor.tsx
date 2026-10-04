@@ -491,33 +491,29 @@ export function ConfigEditor({
         : <><Plus className="mr-1 h-3.5 w-3.5" />Creează</>}
     </Button>
   ) : null;
-  const channelDestinationField = (destination: string, label: string, currentValue: string | null, path: Path) => (
-    <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-      <div className="min-w-0 flex-1">
-        <IdField label={label} value={currentValue} onChange={(next) => set(path, next)} />
-      </div>
-      {createChannelButton(destination, label, path)}
-    </div>
-  );
   const selectableTextChannels = (discordChannels ?? []).filter((channel) =>
-    [0, "text", "GuildText"].includes(channel.type),
+    [0, 5, "text", "announcement", "GuildText", "GuildAnnouncement", "GuildNews"].includes(channel.type),
   );
-  const activityChannelSelector = (key: string, label: string) => {
-    const currentValue = value.activityLog.channelIds[key] ?? "";
-    const selected = selectableTextChannels.some((channel) => channel.id === currentValue) ? currentValue : "__none__";
-    return selectableTextChannels.length > 0 ? (
+  const channelSelectorField = (currentValue: string | null, label: string, path: Path) => {
+    const channelId = currentValue ?? "";
+    const channelAvailable = selectableTextChannels.some((channel) => channel.id === channelId);
+    const savedChannelUnavailable = Boolean(channelId) &&
+      discordChannels !== undefined &&
+      !channelAvailable;
+
+    return (
       <div className="space-y-2">
         <Select
-          value={selected}
-          onValueChange={(next) => set(["activityLog", "channelIds", key], next === "__none__" ? null : next)}
+          value={channelId || "__none__"}
+          onValueChange={(next) => set(path, next === "__none__" ? null : next)}
         >
           <SelectTrigger aria-label={`Canal pentru ${label}`} className="bg-background/70">
             <SelectValue placeholder="Alege un canal existent" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="__none__">Neconfigurat</SelectItem>
-            {currentValue && selected === "__none__" && (
-              <SelectItem value={currentValue}>Canal configurat ({currentValue})</SelectItem>
+            {channelId && !channelAvailable && (
+              <SelectItem value={channelId}>Canal salvat, indisponibil ({channelId})</SelectItem>
             )}
             {selectableTextChannels.map((channel) => (
               <SelectItem key={channel.id} value={channel.id}>#{channel.name} ({channel.id})</SelectItem>
@@ -526,19 +522,31 @@ export function ConfigEditor({
         </Select>
         <Input
           aria-label={`Canal ${label} ID fallback`}
-          value={currentValue}
+          value={channelId}
           placeholder="ID canal Discord"
-          onChange={(event) => set(["activityLog", "channelIds", key], event.target.value.trim() || null)}
+          onChange={(event) => set(path, event.target.value.trim() || null)}
           className="bg-background/50 font-mono text-xs"
         />
+        {savedChannelUnavailable && (
+          <p role="alert" className="text-xs text-destructive">
+            Canalul salvat nu este disponibil ca text în serverul selectat sau botul nu îl poate vedea.
+            Alege un canal din listă ori șterge ID-ul.
+          </p>
+        )}
       </div>
-    ) : (
-      <IdField
-        label={`Canal ${label}`}
-        value={currentValue || null}
-        onChange={(next) => set(["activityLog", "channelIds", key], next)}
-      />
     );
+  };
+  const channelDestinationField = (destination: string, label: string, currentValue: string | null, path: Path) => (
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+      <div className="min-w-0 flex-1 space-y-2">
+        <p className="text-sm font-medium">{label}</p>
+        {channelSelectorField(currentValue, label, path)}
+      </div>
+      {createChannelButton(destination, label, path)}
+    </div>
+  );
+  const activityChannelSelector = (key: string, label: string) => {
+    return channelSelectorField(value.activityLog.channelIds[key] ?? null, label, ["activityLog", "channelIds", key]);
   };
   const rule = (base: string[]) => (path: string[], next: any) => set([...base, ...path], next);
   const floodRules = [
@@ -565,9 +573,9 @@ export function ConfigEditor({
   ];
   const activityLogCategories = [
     ["messages", "Mesaje editate sau șterse"],
-    ["members", "Intrări, ieșiri și schimbări de membri"],
+    ["members", "Intrări, ieșiri și modificări de profil"],
     ["channels", "Canale create, schimbate sau șterse"],
-    ["roles", "Roluri create, schimbate sau șterse"],
+    ["roles", "Roluri create, schimbate, acordate sau retrase"],
     ["voice", "Activitate vocală"],
     ["moderation", "Acțiuni de moderare"],
     ["security", "Alerte de securitate și AutoMod"],

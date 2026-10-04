@@ -82,11 +82,19 @@ describe("non-message moderation events", () => {
     const config = structuredClone(defaultModerationConfig);
     config.activityLog.enabled = true;
     config.activityLog.categories.members = true;
+    config.activityLog.categories.roles = true;
     config.activityLog.channelIds.members = "log-members";
+    config.activityLog.channelIds.roles = "log-roles";
     const { emitter } = setup(config);
     const targetGuild = guild("10017");
     const send = vi.fn(async (_payload: unknown) => undefined);
+    const memberSend = vi.fn(async (_payload: unknown) => undefined);
     targetGuild.channels.cache.set("log-members", {
+      guildId: targetGuild.id,
+      isTextBased: () => true,
+      send: memberSend,
+    });
+    targetGuild.channels.cache.set("log-roles", {
       guildId: targetGuild.id,
       isTextBased: () => true,
       send,
@@ -103,10 +111,14 @@ describe("non-message moderation events", () => {
     emitter.emit(Events.GuildMemberUpdate, oldMember, newMember);
     await waitForHandlers();
 
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(memberSend).not.toHaveBeenCalled();
     const payload = send.mock.calls[0]![0] as {
-      embeds: Array<{ toJSON: () => { fields: Array<{ name: string; value: string }> } }>;
+      embeds: Array<{ toJSON: () => { title: string; fields: Array<{ name: string; value: string }> } }>;
     };
-    const details = payload.embeds[0]!.toJSON().fields.find((field) => field.name === "Detalii")?.value ?? "";
+    const embed = payload.embeds[0]!.toJSON();
+    const details = embed.fields.find((field) => field.name === "Detalii")?.value ?? "";
+    expect(embed.title).toBe("Rolurile membrului au fost schimbate");
     expect(details).toContain("**Roluri adăugate:** LEGION");
     expect(details).toContain("**Roluri eliminate:** Scout");
     expect(details).not.toContain("1504480351987433613");

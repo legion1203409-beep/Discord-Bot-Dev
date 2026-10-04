@@ -124,28 +124,56 @@ describe("automatic Discord activity-log delivery", () => {
     expect(fields.find((field) => field.name === "Detalii")?.value).toContain("**Conținut sensibil:** Nu → Da");
   });
 
-  it("renders role changes as role names and redacts unclassified ID arrays", async () => {
+  it("routes member role changes to the roles channel and redacts unclassified ID arrays", async () => {
     const config = structuredClone(defaultModerationConfig);
     config.activityLog.enabled = true;
     config.activityLog.categories.members = true;
+    config.activityLog.categories.roles = true;
     config.activityLog.channelIds.members = "log-members";
+    config.activityLog.channelIds.roles = "log-roles";
     const { guild, sends } = testGuild();
     await deliverActivityLog(guild, config, "discord.member_update", "member", "234567890123456789", {
       actorVerified: false,
       actorId: null,
+      rolesChanged: true,
       addedRoles: ["LEGION"],
       removedRoles: ["Scout"],
       otherIds: ["987654321098765432"],
     });
 
-    const payload = sends.get("members")!.mock.calls[0]![0] as {
-      embeds: Array<{ toJSON: () => { fields: Array<{ name: string; value: string }> } }>;
+    expect(sends.get("roles")).toHaveBeenCalledTimes(1);
+    expect(sends.get("members")).not.toHaveBeenCalled();
+    const payload = sends.get("roles")!.mock.calls[0]![0] as {
+      embeds: Array<{ toJSON: () => { title: string; fields: Array<{ name: string; value: string }> } }>;
     };
-    const details = payload.embeds[0]!.toJSON().fields.find((field) => field.name === "Detalii")?.value ?? "";
+    const embed = payload.embeds[0]!.toJSON();
+    const details = embed.fields.find((field) => field.name === "Detalii")?.value ?? "";
+    expect(embed.title).toBe("Rolurile membrului au fost schimbate");
     expect(details).toContain("**Roluri adăugate:** LEGION");
     expect(details).toContain("**Roluri eliminate:** Scout");
     expect(details).toContain("element Discord");
     expect(details).not.toContain("987654321098765432");
+  });
+
+  it("keeps nickname-only member changes in the members channel", async () => {
+    const config = structuredClone(defaultModerationConfig);
+    config.activityLog.enabled = true;
+    config.activityLog.categories.members = true;
+    config.activityLog.categories.roles = true;
+    config.activityLog.channelIds.members = "log-members";
+    config.activityLog.channelIds.roles = "log-roles";
+    const { guild, sends } = testGuild();
+    await deliverActivityLog(guild, config, "discord.member_update", "member", "234567890123456789", {
+      nicknameChanged: true,
+      oldNickname: "Old name",
+      newNickname: "New name",
+      rolesChanged: false,
+      addedRoles: [],
+      removedRoles: [],
+    });
+
+    expect(sends.get("members")).toHaveBeenCalledTimes(1);
+    expect(sends.get("roles")).not.toHaveBeenCalled();
   });
 
   it("shows the deleted message, author, and channel without raw message IDs", async () => {
