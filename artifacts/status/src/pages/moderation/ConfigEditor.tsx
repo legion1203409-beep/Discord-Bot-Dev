@@ -445,7 +445,11 @@ export function ConfigEditor({
   discordChannels?: DiscordChannelOption[];
   guildId?: string;
   botCapabilities?: ActivityLogCapabilities;
-  onCreateChannel?: (destination: string) => Promise<{ channel: { id: string; name: string }; created: boolean }>;
+  onCreateChannel?: (destination: string) => Promise<{
+    channel: { id: string; name: string };
+    created: boolean;
+    config?: Config;
+  }>;
 }) {
   const [creatingDestination, setCreatingDestination] = React.useState<string | null>(null);
   const latestValue = React.useRef(value);
@@ -464,6 +468,9 @@ export function ConfigEditor({
     try {
       const result = await onCreateChannel(destination);
       set(path, result.channel.id);
+      if (destination.startsWith("activityLog.") && result.config?.activityLog?.categoryId) {
+        set(["activityLog", "categoryId"], result.config.activityLog.categoryId);
+      }
     } catch {
       // The page-level handler displays the API error and keeps the draft.
     } finally {
@@ -879,7 +886,7 @@ export function ConfigEditor({
           </div>
           {onCreateChannel && (
             <p className="text-xs text-muted-foreground">
-              Fiecare buton creează și salvează un singur canal privat, folosind rolurile salvate pe server. Modificările nesalvate ale rolurilor se aplică la următoarea salvare.
+              Fiecare buton creează canalul în categoria jurnalului, creată o singură dată și reutilizată. Au acces rolurile staff configurate sau, dacă lipsesc, rolurile jurnalului; @everyone este blocat.
             </p>
           )}
           {availableLogRoles.length > 0 ? (

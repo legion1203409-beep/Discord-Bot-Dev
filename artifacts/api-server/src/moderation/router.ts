@@ -2115,12 +2115,24 @@ router.post("/guilds/:guildId/config/channels", asyncRoute(async (req, res) => {
   try {
     if (destination.startsWith("activityLog.")) {
       const category = ActivityLogCategorySchema.parse(destination.slice("activityLog.".length));
+      const activityLogRoleIds = previous.config.permissions.staffRoleIds.length
+        ? previous.config.permissions.staffRoleIds
+        : previous.config.activityLog.roleIds;
+      if (activityLogRoleIds.length === 0) {
+        throw new Error("Configurează rolurile staff înainte de a crea canale private de jurnal.");
+      }
       const provisioned = await provisionActivityLogChannels(guild, {
         activityLog: {
           ...previous.config.activityLog,
+          roleIds: activityLogRoleIds,
           categories: { ...previous.config.activityLog.categories, [category]: true },
         },
-        previousRoleIds: previous.config.activityLog.roleIds,
+        previousRoleIds: [
+          ...new Set([
+            ...previous.config.activityLog.roleIds,
+            ...previous.config.permissions.staffRoleIds,
+          ]),
+        ],
         onlyCategories: [category],
       });
       config = {
@@ -2140,12 +2152,31 @@ router.post("/guilds/:guildId/config/channels", asyncRoute(async (req, res) => {
       const moderationDestination = destination as ModerationDestinationKey;
       const category = moderationDestinationCategories[moderationDestination];
       const savedPermissions = provisioningPermissionsSchema.parse(await loadProvisioningPermissions(guildId));
-      const permission = savedPermissions[category];
+      const previousPermission = savedPermissions[category];
+      const staffRoleIds = previous.config.permissions.staffRoleIds.length
+        ? previous.config.permissions.staffRoleIds
+        : previousPermission?.roleIds ?? [];
+      if (staffRoleIds.length === 0) {
+        throw new Error("Configurează cel puțin un rol staff înainte de a crea canalele private de moderare.");
+      }
+      const permission = {
+        roleIds: [...new Set(staffRoleIds)],
+        readMessageHistory: previousPermission?.readMessageHistory ?? true,
+        sendMessages: previousPermission?.sendMessages ?? true,
+        rolePermissions: Object.fromEntries([...new Set(staffRoleIds)].map((roleId) => {
+          const savedRole = previousPermission?.rolePermissions?.[roleId];
+          return [roleId, {
+            viewChannel: true,
+            readMessageHistory: savedRole?.readMessageHistory ?? previousPermission?.readMessageHistory ?? true,
+            sendMessages: savedRole?.sendMessages ?? previousPermission?.sendMessages ?? true,
+          }];
+        })),
+      };
       const provisioned = await provisionModerationDestination(guild, {
         moderationConfig: config,
         destination: moderationDestination,
         permission,
-        previousPermission: permission,
+        previousPermission,
       });
       config = provisioned.moderationConfig;
       channel = { ...provisioned.channel, type: "text" };

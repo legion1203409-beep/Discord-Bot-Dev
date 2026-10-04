@@ -16,6 +16,7 @@ function channel(id: string, name: string, type: ChannelType) {
       return value;
     }),
     permissionOverwrites: {
+      cache: new Map<string, { id: string; allow: { has: (permission: bigint) => boolean } }>(),
       edit: vi.fn(async (_roleId: string, _permissions: Record<string, boolean | null>, _options?: { reason?: string }) => value),
     },
   };
@@ -395,7 +396,7 @@ describe("guild channel provisioning", () => {
     expect(third.activityLog.channelIds.members).toBe(membersChannelId);
   });
 
-  it("creates only the requested activity-log text channel when provisioned from its button", async () => {
+  it("creates the requested activity-log channel in one private category and reuses it", async () => {
     const channels = new Map<string, ReturnType<typeof channel>>();
     const create = vi.fn(async ({ name, type, parent }: { name: string; type: ChannelType; parent?: string }) => {
       const created = channel(`activity-${channels.size}`, name, type);
@@ -422,14 +423,51 @@ describe("guild channel provisioning", () => {
       onlyCategories: ["messages"],
     });
 
-    expect(create).toHaveBeenCalledOnce();
-    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(create).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      name: "📋・JURNAL SERVER",
+      type: ChannelType.GuildCategory,
+    }));
+    expect(create).toHaveBeenNthCalledWith(2, expect.objectContaining({
       name: "jurnal-mesaje",
       type: ChannelType.GuildText,
+      parent: result.activityLog.categoryId,
     }));
-    expect(result.created).toHaveLength(1);
-    expect(result.created[0]).toMatchObject({ key: "activityLog.messages", type: "text" });
-    expect(result.activityLog.categoryId).toBeNull();
+    expect(result.created).toHaveLength(2);
+    expect(result.created).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: "activityLog.category", type: "category" }),
+      expect.objectContaining({ key: "activityLog.messages", type: "text" }),
+    ]));
+    expect(result.activityLog.categoryId).toBeTruthy();
+
+    const category = channels.get(result.activityLog.categoryId!)!;
+    const messagesChannel = channels.get(result.activityLog.channelIds.messages!)!;
+    for (const privateChannel of [category, messagesChannel]) {
+      expect(privateChannel.permissionOverwrites.edit).toHaveBeenCalledWith(
+        "everyone-role",
+        { ViewChannel: false, ReadMessageHistory: false, SendMessages: false },
+        expect.anything(),
+      );
+      expect(privateChannel.permissionOverwrites.edit).toHaveBeenCalledWith(
+        "role-staff",
+        { ViewChannel: true, ReadMessageHistory: true, SendMessages: false },
+        expect.anything(),
+      );
+    }
+
+    const second = await provisionActivityLogChannels(guild, {
+      activityLog: {
+        ...result.activityLog,
+        categories: { ...result.activityLog.categories, security: true },
+      },
+      previousRoleIds: ["role-staff"],
+      onlyCategories: ["security"],
+    });
+    expect(create).toHaveBeenCalledTimes(3);
+    expect(second.created).toHaveLength(1);
+    expect(second.created[0]).toMatchObject({ key: "activityLog.security", type: "text" });
+    expect(channels.get(second.activityLog.channelIds.security!)!.parentId).toBe(category.id);
+    expect([...channels.values()].filter((entry) => entry.type === ChannelType.GuildCategory)).toHaveLength(1);
   });
 
   it("rejects @everyone rather than making the private activity-log channels public", async () => {
@@ -451,7 +489,7 @@ describe("guild channel provisioning", () => {
     })).rejects.toThrow("@everyone");
   });
 
-  it("creates only the requested moderation destination and reuses its category", async () => {
+  it("creates the requested moderation destination in a staff-only category and reuses it", async () => {
     const channels = new Map<string, ReturnType<typeof channel>>([
       ["public-info", channel("public-info", "general", ChannelType.GuildText)],
     ]);
@@ -490,10 +528,18 @@ describe("guild channel provisioning", () => {
     expect(first.moderationConfig.autoMod.logChannelId).toBe(first.channel.id);
     expect(first.moderationConfig.antiFlood.logChannelId).toBeNull();
     expect(first.moderationConfig.antiSpam.logChannelId).toBeNull();
-    expect(create).toHaveBeenCalledOnce();
-    expect(create).toHaveBeenCalledWith({
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(create).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      name: "🧹・MESAJE FILTRATE",
+      type: ChannelType.GuildCategory,
+    }));
+    const categoryId = channels.get(first.channel.id)!.parentId;
+    expect(categoryId).toBeTruthy();
+    expect(create).toHaveBeenNthCalledWith(2, {
       name: "mod-automod",
       type: ChannelType.GuildText,
+      parent: categoryId,
+      permissionOverwrites: expect.any(Array),
     });
     expect(channels.get("public-info")!.permissionOverwrites.edit).not.toHaveBeenCalled();
     expect(channels.get(first.channel.id)!.permissionOverwrites.edit).toHaveBeenCalledWith(
@@ -502,6 +548,16 @@ describe("guild channel provisioning", () => {
       expect.anything(),
     );
     expect(channels.get(first.channel.id)!.permissionOverwrites.edit).toHaveBeenCalledWith(
+      "role-staff",
+      { ViewChannel: true, ReadMessageHistory: true, SendMessages: false },
+      expect.anything(),
+    );
+    expect(channels.get(categoryId!)!.permissionOverwrites.edit).toHaveBeenCalledWith(
+      "everyone-role",
+      { ViewChannel: false, ReadMessageHistory: false, SendMessages: false },
+      expect.anything(),
+    );
+    expect(channels.get(categoryId!)!.permissionOverwrites.edit).toHaveBeenCalledWith(
       "role-staff",
       { ViewChannel: true, ReadMessageHistory: true, SendMessages: false },
       expect.anything(),
@@ -515,6 +571,85 @@ describe("guild channel provisioning", () => {
     });
     expect(second.created).toBe(true);
     expect(second.channel.name).toBe("mod-anti-flood");
-    expect(create).toHaveBeenCalledTimes(2);
+    expect(create).toHaveBeenCalledTimes(3);
+    expect(channels.get(second.channel.id)!.parentId).toBe(categoryId);
+    expect([...channels.values()].filter((entry) => entry.type === ChannelType.GuildCategory)).toHaveLength(1);
+  });
+
+  it("does not create moderation channels when no staff role is configured", async () => {
+    const create = vi.fn();
+    const guild = {
+      id: "guild-moderation-no-staff",
+      channels: { fetch: vi.fn(async () => new Map()), create },
+      roles: { everyone: { id: "everyone-role" }, cache: new Map() },
+    } as unknown as Guild;
+
+    await expect(provisionModerationDestination(guild, {
+      moderationConfig: structuredClone(defaultModerationConfig),
+      destination: "autoMod.logChannelId",
+    })).rejects.toThrow("Configurează cel puțin un rol staff");
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("removes only view access from unconfigured roles on a reused moderation category and destination", async () => {
+    const category = channel("filtered-category", "🧹・MESAJE FILTRATE", ChannelType.GuildCategory);
+    const destination = channel("existing-automod", "mod-automod", ChannelType.GuildText);
+    const viewGrant = {
+      id: "role-outsider",
+      allow: { has: (permission: bigint) => permission === PermissionFlagsBits.ViewChannel },
+    };
+    const sendOnlyGrant = {
+      id: "role-unrelated",
+      allow: { has: (permission: bigint) => permission === PermissionFlagsBits.SendMessages },
+    };
+    category.permissionOverwrites.cache.set(viewGrant.id, viewGrant);
+    category.permissionOverwrites.cache.set(sendOnlyGrant.id, sendOnlyGrant);
+    destination.permissionOverwrites.cache.set(viewGrant.id, viewGrant);
+    destination.permissionOverwrites.cache.set(sendOnlyGrant.id, sendOnlyGrant);
+    const channels = new Map([
+      [category.id, category],
+      [destination.id, destination],
+    ]);
+    const create = vi.fn();
+    const guild = {
+      id: "guild-moderation-existing-category",
+      channels: { fetch: vi.fn(async () => channels), create },
+      roles: {
+        everyone: { id: "everyone-role" },
+        cache: new Map([
+          ["everyone-role", { id: "everyone-role" }],
+          ["role-staff", { id: "role-staff" }],
+          ["role-outsider", { id: "role-outsider" }],
+          ["role-unrelated", { id: "role-unrelated" }],
+          ["bot-role", { id: "bot-role" }],
+        ]),
+      },
+      members: { me: { id: "bot-user", roles: { highest: { id: "bot-role" } } } },
+    } as unknown as Guild;
+    const moderationConfig = structuredClone(defaultModerationConfig);
+    moderationConfig.permissions.staffRoleIds = ["role-staff"];
+    const permission = { roleIds: ["role-staff"], readMessageHistory: true, sendMessages: false };
+
+    const result = await provisionModerationDestination(guild, {
+      moderationConfig,
+      destination: "autoMod.logChannelId",
+      permission,
+      previousPermission: permission,
+    });
+
+    expect(result.created).toBe(false);
+    expect(create).not.toHaveBeenCalled();
+    for (const privateChannel of [category, destination]) {
+      expect(privateChannel.permissionOverwrites.edit).toHaveBeenCalledWith(
+        "role-outsider",
+        { ViewChannel: false },
+        expect.objectContaining({ reason: expect.stringContaining("doar rolurile staff") }),
+      );
+      expect(privateChannel.permissionOverwrites.edit).not.toHaveBeenCalledWith(
+        "role-unrelated",
+        expect.anything(),
+        expect.anything(),
+      );
+    }
   });
 });
