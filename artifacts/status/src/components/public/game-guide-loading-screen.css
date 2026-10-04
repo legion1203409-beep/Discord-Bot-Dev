@@ -32,8 +32,10 @@
   width: 420px;
   height: 420px;
   flex: none;
+  opacity: 0;
   transform: scale(var(--stage-scale, 1));
   transform-origin: center;
+  animation: game-guide-loading-stage-in 760ms cubic-bezier(.22, 1, .36, 1) both;
 }
 
 .game-guide-loading__gate {
@@ -145,6 +147,7 @@
   height: 12px;
   flex: none;
   margin: 14px 0 40px;
+  animation: game-guide-loading-track-in 560ms cubic-bezier(.22, 1, .36, 1) 120ms both;
 }
 
 .game-guide-loading__track {
@@ -243,7 +246,28 @@
   }
 }
 
+@keyframes game-guide-loading-stage-in {
+  from { opacity: 0; filter: blur(5px); }
+  to { opacity: 1; filter: blur(0); }
+}
+
+@keyframes game-guide-loading-track-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .game-guide-loading__stage,
+  .game-guide-loading__blood {
+    animation: none;
+    opacity: 1;
+    filter: none;
+  }
+
+  .game-guide-loading__blood {
+    transform: none;
+  }
+
   .game-guide-loading__flame {
     animation: none;
   }

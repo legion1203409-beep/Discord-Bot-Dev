@@ -23,7 +23,7 @@ test("home opens the moderation login instead of the retired landing page", asyn
 
 test("shows the guide loading screen for at least two seconds", async ({ page }) => {
   await page.goto("/joc");
-  const loadingScreen = page.getByRole("status", { name: "Se încarcă ghidul jocului" });
+  const loadingScreen = page.getByRole("progressbar", { name: "Se încarcă ghidul jocului" });
   await expect(loadingScreen).toBeVisible();
   await page.waitForTimeout(500);
   await expect(loadingScreen).toBeVisible();

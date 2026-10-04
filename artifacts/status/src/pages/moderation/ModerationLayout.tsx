@@ -154,7 +154,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
   const botProfile = authConfig?.bot;
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setInitialLoading(false), 600);
+    const timer = window.setTimeout(() => setInitialLoading(false), 1500);
     return () => window.clearTimeout(timer);
   }, []);
 
@@ -193,6 +193,8 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
 
     return (
       <div className="mod-shell dark mod-login-bg mod-login-stage flex items-center justify-center p-4">
+        <div className="mod-login-ambient mod-login-ambient--one" aria-hidden="true" />
+        <div className="mod-login-ambient mod-login-ambient--two" aria-hidden="true" />
         <div className="w-full max-w-md bg-card border border-border p-7 sm:p-9 rounded-2xl relative z-10 overflow-hidden mod-card mod-login-card shadow-2xl">
           <div className="mod-card-glow" />
           <div className="mod-login-card-line" aria-hidden="true" />

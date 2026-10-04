@@ -39,6 +39,7 @@
   background: linear-gradient(180deg, rgba(255, 255, 255, .02), transparent), var(--loading-card);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
   text-align: center;
+  animation: discord-auth-loading-card-enter 680ms cubic-bezier(.22, 1, .36, 1) both;
 }
 
 .discord-auth-loading__shield {
@@ -190,7 +191,48 @@
   }
 }
 
+@keyframes discord-auth-loading-card-enter {
+  from {
+    opacity: 0;
+    filter: blur(4px);
+    transform: translate3d(0, 16px, 0) scale(.97);
+  }
+
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@media (min-width: 900px) {
+  .discord-auth-loading__card {
+    width: min(100%, 390px);
+    gap: 23px;
+    padding: 42px 40px;
+  }
+
+  .discord-auth-loading__shield {
+    width: 84px;
+    height: 84px;
+  }
+
+  .discord-auth-loading__title {
+    font-size: 26px;
+  }
+}
+
+@media (max-width: 767px) {
+  .discord-auth-loading__card {
+    animation-duration: 560ms;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .discord-auth-loading__card {
+    animation: none;
+  }
+
   .discord-auth-loading__glow,
   .discord-auth-loading__ring,
   .discord-auth-loading__shield svg,

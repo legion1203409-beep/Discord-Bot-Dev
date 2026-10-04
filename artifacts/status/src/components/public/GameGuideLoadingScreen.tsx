@@ -37,15 +37,17 @@ export function GameGuideLoadingScreen({
     const stage = stageRef.current;
     if (!root || !stage) return;
 
-    const liftDuration = 7000;
-    const holdDuration = 1300;
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const liftDuration = prefersReducedMotion ? 0 : 2400;
+    const holdDuration = 420;
     const openingDuration = liftDuration + holdDuration;
     const startedAt = performance.now();
     let animationFrame = 0;
     let lastProgress = -1;
 
     const fitStage = () => {
-      const scale = Math.min(1, window.innerWidth / 460, window.innerHeight / 560);
+      const desktopScale = window.innerWidth >= 1024 ? 1.28 : 1;
+      const scale = Math.min(desktopScale, window.innerWidth / 460, window.innerHeight / 560);
       stage.style.setProperty("--stage-scale", String(scale));
       const verticalCompensation = `${(scale - 1) * 210}px`;
       stage.style.marginTop = verticalCompensation;
@@ -56,7 +58,7 @@ export function GameGuideLoadingScreen({
 
     const animate = (now: number) => {
       const elapsed = now - startedAt;
-      const progress = Math.min(1, easeInOut(elapsed / liftDuration));
+      const progress = prefersReducedMotion ? 1 : Math.min(1, easeInOut(elapsed / liftDuration));
 
       portcullisRef.current?.setAttribute("transform", `translate(0 ${-progress * 270})`);
       glowRef.current?.setAttribute("opacity", String(Math.min(1, progress * 1.6)));
