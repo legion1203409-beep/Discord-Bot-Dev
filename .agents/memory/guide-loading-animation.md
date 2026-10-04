@@ -3,8 +3,8 @@ name: Guide loading animation
 description: The user's intended gate animation and where it should appear.
 ---
 
-The user supplied a medieval gate loading screen with animated torches, rising portcullis, floating embers, and a red progress bar. Use it on `/joc` and whenever entering the moderation panel, including after Discord OAuth return; wait for the gate to open fully before showing page content. Never use the separate server-logo GIF as loading artwork or on moderation login.
+Keep the medieval gate loading screen with animated torches, rising portcullis, floating embers, and a red progress bar on `/joc` and when entering the moderation panel. The obsolete shield/checkmark `DiscordLoadingScreen` must not be restored.
 
-**Why:** The user requested the full opening before content appears and clarified that the old loader must not reappear when opening the moderation panel.
+**Why:** The user clarified that the gate is the newer screen to keep and asked to remove the older Discord shield/checkmark loading screen instead.
 
-**How to apply:** Treat the supplied gate, fire, ember, and progress animation as the source of truth on both routes; keep server branding separate.
+**How to apply:** Use the gate while the moderation session/auth configuration loads, then show the robot-branded login screen. Do not replace it with the old Discord loader.
