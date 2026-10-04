@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { ReactNode, useState, useEffect, useCallback } from "react";
 import { FaDiscord } from "react-icons/fa";
+import dragonLogo from "@assets/277cc950-a62b-11f1-aca9-6f5a63b2ac37_1788465450616.png";
 import { useSession, useActiveGuild, useModerationAuthConfig, type ModerationGuild } from "../../hooks/use-moderation-api";
 import { Button } from "../../components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
@@ -55,6 +56,16 @@ function inviteLabel(inviteUrl: string): string {
   } catch {
     return inviteUrl;
   }
+}
+
+function BotBrandImage({ avatarUrl }: { avatarUrl?: string | null }) {
+  return (
+    <img
+      src={avatarUrl || dragonLogo}
+      alt=""
+      className={`h-full w-full ${avatarUrl ? "object-cover" : "object-contain p-1"}`}
+    />
+  );
 }
 
 type ModerationNavItem = {
@@ -198,7 +209,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
           <div className="relative">
           <div className="mb-7 flex items-center gap-3">
             <div className="mod-brand-mark overflow-hidden">
-              <Eye className="h-4 w-4" aria-hidden="true" />
+              <BotBrandImage avatarUrl={botProfile?.avatarUrl} />
             </div>
             <div>
               <p className="mod-eyebrow">{botProfile?.name || "Oracolul Cenușii"}</p>
@@ -301,11 +312,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
         <div className="fire-toolbar mod-toolbar h-20 flex items-center justify-between px-5 border-b border-border/50 shrink-0">
           <div className="flex items-center gap-3 text-primary">
             <div className="mod-brand-mark overflow-hidden">
-              {botProfile?.avatarUrl ? (
-                <img src={botProfile.avatarUrl} alt="" className="h-full w-full object-cover" />
-              ) : (
-                <Eye className="w-5 h-5" aria-hidden="true" />
-              )}
+              <BotBrandImage avatarUrl={botProfile?.avatarUrl} />
             </div>
             <div className="flex flex-col">
               <span className="max-w-[155px] truncate font-display font-semibold text-xl leading-none tracking-wide text-foreground">{botProfile?.name || "ORACOLUL"}</span>
@@ -440,11 +447,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
         <header className="fire-toolbar mod-toolbar mod-topbar h-16 border-b border-border/50 backdrop-blur flex items-center justify-between px-4 sm:px-6 shrink-0 md:hidden sticky top-0 z-30">
           <div className="flex items-center gap-2 text-primary">
               <div className="mod-brand-mark h-8 w-8 overflow-hidden rounded-lg">
-                {botProfile?.avatarUrl ? (
-                  <img src={botProfile.avatarUrl} alt="" className="h-full w-full object-cover" />
-                ) : (
-                  <Eye className="w-4 h-4" aria-hidden="true" />
-                )}
+                <BotBrandImage avatarUrl={botProfile?.avatarUrl} />
               </div>
               <span className="max-w-[170px] truncate font-display font-semibold text-lg text-foreground">{botProfile?.name || "ORACOLUL"}</span>
           </div>
