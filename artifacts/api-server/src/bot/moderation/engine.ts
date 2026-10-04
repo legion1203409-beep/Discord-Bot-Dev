@@ -14,7 +14,7 @@ import { pool } from "@workspace/db";
 import { moderationStore } from "../../moderation/store";
 import type { ModerationConfig, ModerationAction as ConfiguredAction } from "../../moderation/config";
 import { logger } from "../../lib/logger";
-import { shouldDeleteAutoModMessage } from "./automod-policy";
+import { shouldApplyLinkBlockInChannel, shouldDeleteAutoModMessage } from "./automod-policy";
 import { deliverWarningInGuild } from "./warning-delivery";
 import type { AutoModerationActionExecution } from "discord.js";
 import { NATIVE_AUTOMOD_KEYWORD_RULE_NAME } from "../native-automod";
@@ -744,7 +744,14 @@ export async function handleModerationMessage(client: Client, message: Message):
     : 0;
   const ruleFor = (kind: Detection["kind"]) => {
     if (kind === "word") return config.autoMod.enabled ? auto.wordFilter : null;
-    if (kind === "link") return config.autoMod.enabled ? auto.linkBlock : null;
+    if (kind === "link") {
+      if (!shouldApplyLinkBlockInChannel(
+        auto.linkBlock.channelIds,
+        message.channelId,
+        message.channel.isThread() ? message.channel.parentId : null,
+      )) return null;
+      return config.autoMod.enabled ? auto.linkBlock : null;
+    }
     if (kind === "repeat") return config.autoMod.enabled ? auto.repeatBlock : null;
     if (kind === "emoji") return config.autoMod.enabled && auto.emojiLimit.enabled ? auto.emojiLimit : config.antiSpam.enabled ? config.antiSpam.emoji : null;
     if (kind === "caps") return config.autoMod.enabled && auto.capsLimit.enabled ? auto.capsLimit : config.antiFlood.enabled ? config.antiFlood.caps : null;

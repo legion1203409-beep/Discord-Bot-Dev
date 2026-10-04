@@ -18,6 +18,7 @@ type Path = Array<string | number>;
 export type ConfigSection = "automod" | "anti-raid" | "anti-spam" | "anti-flood" | "suspicious" | "ai" | "tools" | "cases-audit" | "roles-channels" | "time" | "escalation" | "embeds" | "permissions";
 const VisibleSections = React.createContext<ReadonlySet<string> | null>(null);
 type DiscordRoleOption = { id: string; name: string; managed?: boolean };
+type DiscordChannelOption = { id: string; name: string; type: number | string; parentId?: string | null };
 type ActivityLogCapabilities = {
   online?: boolean;
   canManageChannels?: boolean;
@@ -157,6 +158,77 @@ function Choice({ label, help, value, options, onChange, testId }: {
         <SelectContent>{options.map(([optionValue, optionLabel]) => <SelectItem key={optionValue} value={optionValue}>{optionLabel}</SelectItem>)}</SelectContent>
       </Select>
     </Field>
+  );
+}
+
+const MESSAGE_CHANNEL_TYPES = new Set([
+  "0", "5", "10", "11", "12", "15", "16",
+  "GuildText", "GuildAnnouncement", "AnnouncementThread", "PublicThread", "PrivateThread", "GuildForum", "GuildMedia",
+]);
+
+function ChannelScopeSelector({ channels, selectedChannelIds, onChange }: {
+  channels?: DiscordChannelOption[];
+  selectedChannelIds: string[];
+  onChange: (channelIds: string[]) => void;
+}) {
+  const messageChannels = (channels ?? [])
+    .filter((channel) => MESSAGE_CHANNEL_TYPES.has(String(channel.type)))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const selected = new Set(selectedChannelIds);
+  const unavailableSelections = selectedChannelIds.filter((id) =>
+    !messageChannels.some((channel) => channel.id === id),
+  );
+
+  return (
+    <fieldset className="space-y-3 rounded-lg border border-border p-3">
+      <legend className="px-1 text-sm font-medium">Canalele pentru blocarea linkurilor</legend>
+      <p className="text-xs text-muted-foreground">
+        Fără canale selectate, blocarea se aplică peste tot. Bifează unul sau mai multe canale pentru a o limita.
+      </p>
+      <button
+        type="button"
+        aria-pressed={selected.size === 0}
+        onClick={() => onChange([])}
+        className={`rounded-md border px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+          selected.size === 0
+            ? "border-primary/50 bg-primary/10 text-primary"
+            : "border-border bg-background text-foreground hover:bg-muted"
+        }`}
+      >
+        Toate canalele
+      </button>
+      {messageChannels.length > 0 ? (
+        <div className="grid max-h-64 gap-2 overflow-y-auto rounded-md border border-border/70 p-2 sm:grid-cols-2">
+          {messageChannels.map((channel) => (
+            <label key={channel.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm hover:bg-muted">
+              <input
+                type="checkbox"
+                checked={selected.has(channel.id)}
+                onChange={(event) => {
+                  const next = event.currentTarget.checked
+                    ? [...new Set([...selectedChannelIds, channel.id])]
+                    : selectedChannelIds.filter((id) => id !== channel.id);
+                  onChange(next);
+                }}
+                className="h-4 w-4 shrink-0 accent-primary"
+              />
+              <span className="truncate">#{channel.name}</span>
+            </label>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground" role="status">
+          {channels === undefined
+            ? "Lista canalelor Discord nu este disponibilă momentan."
+            : "Nu au fost găsite canale care acceptă mesaje."}
+        </p>
+      )}
+      {unavailableSelections.length > 0 && (
+        <p className="text-xs text-muted-foreground" role="status">
+          {unavailableSelections.length} canal(e) salvate nu apar în lista disponibilă; selecția se păstrează până o modifici.
+        </p>
+      )}
+    </fieldset>
   );
 }
 
@@ -330,6 +402,7 @@ export function ConfigEditor({
   onChange,
   sections,
   discordRoles = [],
+  discordChannels,
   guildId,
   botCapabilities,
 }: {
@@ -337,6 +410,7 @@ export function ConfigEditor({
   onChange: (config: Config) => void;
   sections?: ConfigSection[];
   discordRoles?: DiscordRoleOption[];
+  discordChannels?: DiscordChannelOption[];
   guildId?: string;
   botCapabilities?: ActivityLogCapabilities;
 }) {
@@ -436,6 +510,11 @@ export function ConfigEditor({
         <RuleEditor combineDeletion title="Filtru cuvinte" help="Lista de mai jos determină potrivirile; regula nu are un prag numeric efectiv." rule={value.autoMod.wordFilter} thresholds={[]} onChange={rule(["autoMod", "wordFilter"])} />
         <ListField label="Cuvinte interzise" help="Un cuvânt sau o expresie pe rând; maximum 500." values={value.autoMod.forbiddenWords} onChange={(next) => set(["autoMod", "forbiddenWords"], next)} />
         <RuleEditor combineDeletion title="Blocare linkuri" help="Categoriile și lista de mai jos determină potrivirile; regula nu are un prag numeric efectiv." rule={value.autoMod.linkBlock} thresholds={[]} onChange={rule(["autoMod", "linkBlock"])} />
+        <ChannelScopeSelector
+          channels={discordChannels}
+          selectedChannelIds={value.autoMod.linkBlock.channelIds ?? []}
+          onChange={(next) => set(["autoMod", "linkBlock", "channelIds"], next)}
+        />
         <div className="space-y-2">
           <p className="text-sm font-medium">Categorii de linkuri interzise</p>
           <p className="text-xs text-muted-foreground">Bifează tipurile de blocat. Necesită Protecția serverului, AutoMod și Blocare linkuri active.</p>

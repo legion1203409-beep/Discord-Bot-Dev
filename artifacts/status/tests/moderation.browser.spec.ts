@@ -301,6 +301,54 @@ test.describe("authenticated moderation console", () => {
     await expect(page.getByRole("switch").nth(1)).toBeChecked();
   });
 
+  test("link blocking can target multiple channels or all channels and persists after reload", async ({ page }) => {
+    await page.unroute("**/api/moderation/guilds/*/metadata");
+    await page.route("**/api/moderation/guilds/*/metadata", async (route) => {
+      await route.fulfill({
+        json: {
+          guild: { id: guilds[0].id, name: guilds[0].name, ownerId: "999999999" },
+          roles: [],
+          channels: [
+            { id: "444444444", name: "audit", type: 0, parentId: null },
+            { id: "555555555", name: "general", type: 0, parentId: null },
+            { id: "666666666", name: "voice", type: 2, parentId: null },
+          ],
+          emojis: [],
+          botCapabilities: { online: true, messageContent: true, guildMembers: true },
+        },
+      });
+    });
+    await page.goto("/moderare/automod");
+    await chooseFirstGuild(page);
+
+    const auditChannel = page.getByRole("checkbox", { name: "#audit" });
+    const generalChannel = page.getByRole("checkbox", { name: "#general" });
+    await expect(auditChannel).toBeVisible();
+    await expect(generalChannel).toBeVisible();
+    await expect(page.getByRole("checkbox", { name: "#voice" })).toHaveCount(0);
+
+    await auditChannel.check();
+    await generalChannel.check();
+    const saveSelection = page.waitForResponse((response) =>
+      response.url().includes("/api/moderation/guilds/111111111/config")
+      && response.request().method() === "PUT");
+    await page.getByRole("button", { name: "Salvează", exact: true }).click();
+    await expect((await saveSelection).ok()).toBeTruthy();
+    expect(savedConfigs.get(guilds[0].id)?.autoMod.linkBlock.channelIds).toEqual(["444444444", "555555555"]);
+
+    await page.reload();
+    await expect(page.getByRole("checkbox", { name: "#audit" })).toBeChecked();
+    await expect(page.getByRole("checkbox", { name: "#general" })).toBeChecked();
+
+    await page.getByRole("button", { name: "Toate canalele" }).click();
+    const saveAllChannels = page.waitForResponse((response) =>
+      response.url().includes("/api/moderation/guilds/111111111/config")
+      && response.request().method() === "PUT");
+    await page.getByRole("button", { name: "Salvează", exact: true }).click();
+    await expect((await saveAllChannels).ok()).toBeTruthy();
+    expect(savedConfigs.get(guilds[0].id)?.autoMod.linkBlock.channelIds).toEqual([]);
+  });
+
   test("renders every moderation destination instead of the work-in-progress fallback", async ({ page }) => {
     await page.goto("/");
     await expect(page).toHaveURL("/moderare");

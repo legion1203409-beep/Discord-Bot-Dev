@@ -253,6 +253,7 @@ export function AdvancedSettingsPage() {
           value={localData}
           onChange={setLocalData}
           discordRoles={metadata?.roles ?? []}
+          discordChannels={metadata?.channels}
           guildId={metadata?.guild.id}
           botCapabilities={capabilities ?? undefined}
         />

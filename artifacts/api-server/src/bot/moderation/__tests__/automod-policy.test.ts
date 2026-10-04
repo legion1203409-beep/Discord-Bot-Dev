@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { shouldDeleteAutoModMessage } from "../automod-policy";
+import { shouldApplyLinkBlockInChannel, shouldDeleteAutoModMessage } from "../automod-policy";
 import { ModerationConfigSchema } from "../../../moderation/config";
 
 describe("AutoMod message deletion policy", () => {
@@ -21,6 +21,25 @@ describe("AutoMod message deletion policy", () => {
 
   it("preserves the anti-scam always-delete behavior", () => {
     expect(shouldDeleteAutoModMessage("warn", false, true)).toBe(true);
+  });
+
+  it("defaults link blocking to every channel and persists multiple selected channels", () => {
+    const legacyConfig = ModerationConfigSchema.parse({});
+    expect(legacyConfig.autoMod.linkBlock.channelIds).toEqual([]);
+
+    const selectedConfig = ModerationConfigSchema.parse({
+      autoMod: { linkBlock: { channelIds: ["444444444", "555555555"] } },
+    });
+    expect(selectedConfig.autoMod.linkBlock.channelIds).toEqual(["444444444", "555555555"]);
+  });
+
+  it("scopes link blocking to selected channels, including their threads", () => {
+    const selected = ["444444444", "555555555"];
+    expect(shouldApplyLinkBlockInChannel(selected, "444444444")).toBe(true);
+    expect(shouldApplyLinkBlockInChannel(selected, "999999999", "555555555")).toBe(true);
+    expect(shouldApplyLinkBlockInChannel(selected, "777777777", "888888888")).toBe(false);
+    expect(shouldApplyLinkBlockInChannel([], "777777777")).toBe(true);
+    expect(shouldApplyLinkBlockInChannel(undefined, "777777777")).toBe(true);
   });
 
   it.each(["wordFilter", "linkBlock", "emojiLimit", "capsLimit", "repeatBlock"] as const)(

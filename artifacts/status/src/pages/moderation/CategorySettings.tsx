@@ -133,7 +133,8 @@ export function CategorySettingsPage({ section }: { section: ConfigSection }) {
 
       <div className="animate-stagger-4">
         <ConfigEditor value={currentDraft} onChange={editDraft} sections={[section]}
-          guildId={guildId ?? undefined} discordRoles={metadata?.roles} botCapabilities={metadata?.botCapabilities} />
+          guildId={guildId ?? undefined} discordRoles={metadata?.roles} discordChannels={metadata?.channels}
+          botCapabilities={metadata?.botCapabilities} />
       </div>
 
       {changed && (

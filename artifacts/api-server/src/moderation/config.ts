@@ -39,6 +39,11 @@ export const RuleSchema = z.object({
   thresholds: z.record(z.number().int().finite().min(1).max(100_000)).default({}),
 });
 
+const LinkBlockRuleSchema = RuleSchema.extend({
+  // An empty list preserves the legacy behavior: scan all channels.
+  channelIds: idList.default([]),
+});
+
 type RuleThresholdDefault = { key: string; value: number; aliases?: string[] };
 function ruleSchemaWithThresholdDefaults(...defaults: RuleThresholdDefault[]) {
   return RuleSchema.extend({
@@ -110,7 +115,7 @@ export const ModerationConfigSchema = z.object({
     }).default({}),
     scamPhrases: textList.default([]),
     wordFilter: RuleSchema.default({}),
-    linkBlock: RuleSchema.default({}),
+    linkBlock: LinkBlockRuleSchema.default({}),
     emojiLimit: ruleSchemaWithThresholdDefaults({ key: "emoji", value: 10, aliases: ["limit", "max"] }).default({}),
     capsLimit: ruleSchemaWithThresholdDefaults({ key: "capsPercent", value: 75, aliases: ["percent", "limit"] }).default({}),
     repeatBlock: ruleSchemaWithThresholdDefaults({ key: "repeat", value: 8, aliases: ["limit", "max"] }).default({}),
