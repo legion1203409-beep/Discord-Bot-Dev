@@ -38,6 +38,7 @@
 - [Chest channel ownership](chest-channel-ownership.md) — the main gameplay channel is only for chests; Oracle proactive and council posts must not fall back to it.
 - [Strict Vitest module mocks](strict-vitest-mocks.md) — new optional scheduler exports can break old partial mocks; use local compatibility code or lazy optional lookup.
 - [Discord class images](discord-class-images.md) — map stable internal class keys to sanitized API asset filenames; never use uploaded timestamped filenames directly.
+- [Moderation robot mascot](moderation-robot-mascot.md) — use the custom robot mark in panel headers, not the live bot avatar or dragon logo.
 - [Postgres JSON parameter casts](postgres-json-parameter-casts.md) — placeholders used only inside jsonb_build_object may need explicit ::text casts or pg cannot infer their type.
 - [Artifact production env scope](artifact-production-env-scope.md) — Vite production variables must be explicit in build and/or run env, not only the shared artifact env.
 - [Discord guild count fetch](discord-guild-count-fetch.md) — GuildManager.fetch returns the gateway cache unless force=true; cached guilds can have null approximate member/presence counts.
