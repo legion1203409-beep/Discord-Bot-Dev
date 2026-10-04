@@ -461,19 +461,26 @@ async function provisionActivityLogChannelsUnlocked(
       categoryNames.some((name) => normalizeName(channel.name) === normalizeName(name)),
     );
 
-  let category: NonThreadGuildBasedChannel;
+  let category: NonThreadGuildBasedChannel | null;
   if (existingCategory) {
     category = existingCategory;
     reused.push({ key: "activityLog.category", id: category.id, name: category.name, type: "category" });
-  } else {
+  } else if (!input.onlyCategories) {
     category = await guild.channels.create({
       name: categoryNames[0],
       type: ChannelType.GuildCategory,
       permissionOverwrites: activityLogPermissionOverwrites(guild, input.activityLog.roleIds),
     });
     created.push({ key: "activityLog.category", id: category.id, name: category.name, type: "category" });
+  } else {
+    // A per-destination button must create only its requested text channel.
+    // Reuse the journal category when it exists, but don't create a second
+    // Discord channel as a side effect of the click.
+    category = null;
   }
-  await applyPermissions(guild, category, permission, previousRoleIds);
+  if (category) {
+    await applyPermissions(guild, category, permission, previousRoleIds);
+  }
 
   const channelIds = { ...input.activityLog.channelIds };
   for (const target of ACTIVITY_LOG_CATEGORIES) {
@@ -505,13 +512,13 @@ async function provisionActivityLogChannelsUnlocked(
     let logChannel: NonThreadGuildBasedChannel;
     if (existing) {
       logChannel = existing;
-      await moveToCategory(logChannel, category.id);
+      if (category) await moveToCategory(logChannel, category.id);
       reused.push({ key: `activityLog.${target.key}`, id: logChannel.id, name: logChannel.name, type: "text" });
     } else {
       logChannel = await guild.channels.create({
         name: target.name,
         type: ChannelType.GuildText,
-        parent: category.id,
+        ...(category ? { parent: category.id } : {}),
         permissionOverwrites: activityLogPermissionOverwrites(guild, input.activityLog.roleIds),
       });
       created.push({ key: `activityLog.${target.key}`, id: logChannel.id, name: logChannel.name, type: "text" });
@@ -523,7 +530,7 @@ async function provisionActivityLogChannelsUnlocked(
   // Preserve destinations for categories that were switched off. Disabling
   // never deletes their channels or historical messages.
   return {
-    activityLog: { ...input.activityLog, categoryId: category.id, channelIds },
+    activityLog: { ...input.activityLog, categoryId: category?.id ?? null, channelIds },
     created,
     reused,
   };
@@ -575,14 +582,6 @@ async function provisionModerationDestinationUnlocked(
     categoryTarget.names.some((name) => normalizeName(channel.name) === normalizeName(name)),
   );
   let categoryId = category?.id;
-  if (!categoryId) {
-    const createdCategory = await guild.channels.create({
-      name: categoryTarget.names[0],
-      type: ChannelType.GuildCategory,
-    });
-    await applyPermissions(guild, createdCategory, permission);
-    categoryId = createdCategory.id;
-  }
 
   const configuredId = getModerationDestinationId(input.moderationConfig, target.key);
   const configuredChannel = configuredId ? channels.get(configuredId) : null;
@@ -598,12 +597,12 @@ async function provisionModerationDestinationUnlocked(
   let created = false;
   if (existing) {
     channel = existing;
-    await moveToCategory(channel, categoryId);
+    if (categoryId) await moveToCategory(channel, categoryId);
   } else {
     channel = await guild.channels.create({
       name: target.names[0],
       type: ChannelType.GuildText,
-      parent: categoryId,
+      ...(categoryId ? { parent: categoryId } : {}),
     });
     created = true;
   }

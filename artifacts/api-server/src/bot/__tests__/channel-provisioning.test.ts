@@ -395,6 +395,43 @@ describe("guild channel provisioning", () => {
     expect(third.activityLog.channelIds.members).toBe(membersChannelId);
   });
 
+  it("creates only the requested activity-log text channel when provisioned from its button", async () => {
+    const channels = new Map<string, ReturnType<typeof channel>>();
+    const create = vi.fn(async ({ name, type, parent }: { name: string; type: ChannelType; parent?: string }) => {
+      const created = channel(`activity-${channels.size}`, name, type);
+      created.parentId = parent ?? null;
+      channels.set(created.id, created);
+      return created;
+    });
+    const guild = {
+      id: "guild-activity-single-target",
+      channels: { fetch: vi.fn(async () => channels), create },
+      roles: {
+        everyone: { id: "everyone-role" },
+        cache: new Map([["everyone-role", { id: "everyone-role" }], ["role-staff", { id: "role-staff" }]]),
+      },
+      members: { me: { roles: { highest: { id: "bot-role" } } } },
+    } as unknown as Guild;
+
+    const result = await provisionActivityLogChannels(guild, {
+      activityLog: {
+        ...structuredClone(defaultModerationConfig.activityLog),
+        categories: { ...defaultModerationConfig.activityLog.categories, messages: true },
+        roleIds: ["role-staff"],
+      },
+      onlyCategories: ["messages"],
+    });
+
+    expect(create).toHaveBeenCalledOnce();
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      name: "jurnal-mesaje",
+      type: ChannelType.GuildText,
+    }));
+    expect(result.created).toHaveLength(1);
+    expect(result.created[0]).toMatchObject({ key: "activityLog.messages", type: "text" });
+    expect(result.activityLog.categoryId).toBeNull();
+  });
+
   it("rejects @everyone rather than making the private activity-log channels public", async () => {
     const channels = new Map<string, ReturnType<typeof channel>>();
     const guild = {
@@ -453,7 +490,11 @@ describe("guild channel provisioning", () => {
     expect(first.moderationConfig.autoMod.logChannelId).toBe(first.channel.id);
     expect(first.moderationConfig.antiFlood.logChannelId).toBeNull();
     expect(first.moderationConfig.antiSpam.logChannelId).toBeNull();
-    expect(create).toHaveBeenCalledTimes(2);
+    expect(create).toHaveBeenCalledOnce();
+    expect(create).toHaveBeenCalledWith({
+      name: "mod-automod",
+      type: ChannelType.GuildText,
+    });
     expect(channels.get("public-info")!.permissionOverwrites.edit).not.toHaveBeenCalled();
     expect(channels.get(first.channel.id)!.permissionOverwrites.edit).toHaveBeenCalledWith(
       "everyone-role",
@@ -474,6 +515,6 @@ describe("guild channel provisioning", () => {
     });
     expect(second.created).toBe(true);
     expect(second.channel.name).toBe("mod-anti-flood");
-    expect(create).toHaveBeenCalledTimes(3);
+    expect(create).toHaveBeenCalledTimes(2);
   });
 });
