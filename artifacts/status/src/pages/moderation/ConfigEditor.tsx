@@ -1,5 +1,5 @@
 import React from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Check, Globe, Plus, Trash2 } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "../../components/ui/accordion";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -175,46 +175,77 @@ function ChannelScopeSelector({ channels, selectedChannelIds, onChange }: {
     .filter((channel) => MESSAGE_CHANNEL_TYPES.has(String(channel.type)))
     .sort((a, b) => a.name.localeCompare(b.name));
   const selected = new Set(selectedChannelIds);
+  const allChannelsSelected = selected.size === 0;
   const unavailableSelections = selectedChannelIds.filter((id) =>
     !messageChannels.some((channel) => channel.id === id),
   );
 
   return (
-    <fieldset className="space-y-3 rounded-lg border border-border p-3">
-      <legend className="px-1 text-sm font-medium">Canalele pentru blocarea linkurilor</legend>
-      <p className="text-xs text-muted-foreground">
+    <fieldset className="space-y-3 rounded-2xl border border-border/80 bg-card/60 p-4 shadow-sm">
+      <legend className="px-1 text-sm font-semibold">Canalele pentru blocarea linkurilor</legend>
+      <p className="text-xs leading-relaxed text-muted-foreground">
         Fără canale selectate, blocarea se aplică peste tot. Bifează unul sau mai multe canale pentru a o limita.
       </p>
       <button
         type="button"
-        aria-pressed={selected.size === 0}
+        aria-pressed={allChannelsSelected}
         onClick={() => onChange([])}
-        className={`rounded-md border px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-          selected.size === 0
-            ? "border-primary/50 bg-primary/10 text-primary"
-            : "border-border bg-background text-foreground hover:bg-muted"
+        className={`group flex min-h-[68px] w-full items-center gap-3 rounded-xl border px-3.5 py-3 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-[0.99] ${
+          allChannelsSelected
+            ? "border-primary/45 bg-gradient-to-r from-primary/15 via-primary/10 to-background text-foreground shadow-md shadow-primary/10"
+            : "border-border/80 bg-background/75 text-foreground shadow-sm hover:-translate-y-0.5 hover:border-primary/45 hover:bg-primary/5 hover:shadow-md"
         }`}
       >
-        Toate canalele
+        <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl transition-all duration-200 ${
+          allChannelsSelected
+            ? "bg-primary text-primary-foreground shadow-md shadow-primary/25"
+            : "bg-muted text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary"
+        }`}>
+          <Globe className="h-5 w-5" aria-hidden="true" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold">Toate canalele</span>
+          <span className="mt-0.5 block text-xs text-muted-foreground">
+            {allChannelsSelected ? "Fără restricții de canal" : "Resetează selecția la întregul server"}
+          </span>
+        </span>
+        <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors ${
+          allChannelsSelected
+            ? "border-primary/25 bg-primary/10 text-primary"
+            : "border-border bg-background/80 text-muted-foreground group-hover:border-primary/25 group-hover:text-primary"
+        }`}>
+          {allChannelsSelected && <Check className="h-3.5 w-3.5" aria-hidden="true" />}
+          {allChannelsSelected ? "Implicit" : "Resetează"}
+        </span>
       </button>
       {messageChannels.length > 0 ? (
-        <div className="grid max-h-64 gap-2 overflow-y-auto rounded-md border border-border/70 p-2 sm:grid-cols-2">
-          {messageChannels.map((channel) => (
-            <label key={channel.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm hover:bg-muted">
+        <div className="grid max-h-64 gap-2 overflow-y-auto rounded-xl border border-border/70 bg-background/45 p-2 sm:grid-cols-2 lg:grid-cols-3">
+          {messageChannels.map((channel) => {
+            const channelSelected = selected.has(channel.id);
+            return (
+            <label
+              key={channel.id}
+              className={`group flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2.5 text-sm transition-all duration-150 ${
+                channelSelected
+                  ? "border-primary/35 bg-primary/8 text-foreground shadow-sm shadow-primary/5"
+                  : "border-transparent bg-card/65 text-muted-foreground hover:-translate-y-px hover:border-border hover:bg-card hover:text-foreground hover:shadow-sm"
+              }`}
+            >
               <input
                 type="checkbox"
-                checked={selected.has(channel.id)}
+                checked={channelSelected}
                 onChange={(event) => {
                   const next = event.currentTarget.checked
                     ? [...new Set([...selectedChannelIds, channel.id])]
                     : selectedChannelIds.filter((id) => id !== channel.id);
                   onChange(next);
                 }}
-                className="h-4 w-4 shrink-0 accent-primary"
+                className="h-4 w-4 shrink-0 cursor-pointer accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               />
-              <span className="truncate">#{channel.name}</span>
+              <span className="min-w-0 flex-1 truncate font-medium">#{channel.name}</span>
+              {channelSelected && <Check className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />}
             </label>
-          ))}
+          )})}
         </div>
       ) : (
         <p className="text-xs text-muted-foreground" role="status">
