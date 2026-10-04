@@ -100,6 +100,52 @@ export interface ModerationSession {
  */
 export interface ModerationConfig { [key: string]: unknown }
 
+export type ModerationChannelInputDestination = typeof ModerationChannelInputDestination[keyof typeof ModerationChannelInputDestination];
+
+
+export const ModerationChannelInputDestination = {
+  activityLogmessages: 'activityLog.messages',
+  activityLogmembers: 'activityLog.members',
+  activityLogchannels: 'activityLog.channels',
+  activityLogroles: 'activityLog.roles',
+  activityLogvoice: 'activityLog.voice',
+  activityLogmoderation: 'activityLog.moderation',
+  activityLogsecurity: 'activityLog.security',
+  autoModlogChannelId: 'autoMod.logChannelId',
+  antiFloodlogChannelId: 'antiFlood.logChannelId',
+  antiRaidalertChannelId: 'antiRaid.alertChannelId',
+  antiSpamlogChannelId: 'antiSpam.logChannelId',
+  suspiciousBehavioralertChannelId: 'suspiciousBehavior.alertChannelId',
+  ailogChannelId: 'ai.logChannelId',
+  auditchannelId: 'audit.channelId',
+} as const;
+
+export interface ModerationChannelInput {
+  destination: ModerationChannelInputDestination;
+}
+
+export type ModerationChannelResponseChannelType = typeof ModerationChannelResponseChannelType[keyof typeof ModerationChannelResponseChannelType];
+
+
+export const ModerationChannelResponseChannelType = {
+  text: 'text',
+} as const;
+
+export type ModerationChannelResponseChannel = {
+  key: string;
+  id: string;
+  name: string;
+  type: ModerationChannelResponseChannelType;
+};
+
+export interface ModerationChannelResponse {
+  config: ModerationConfig;
+  version: number;
+  destination: string;
+  channel: ModerationChannelResponseChannel;
+  created: boolean;
+}
+
 export type ProtectionToggleInputKey = typeof ProtectionToggleInputKey[keyof typeof ProtectionToggleInputKey];
 
 

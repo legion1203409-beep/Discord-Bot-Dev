@@ -601,11 +601,49 @@ async function applyAutomatic(guild: Guild, config: ModerationConfig, message: M
   );
 }
 
+export function automaticLogDestination(
+  config: ModerationConfig,
+  rule: { action: ConfiguredAction; severity?: "soft" | "normal" | "hard"; deleteMessage?: boolean },
+): { title: string; channelId: string | null } | null {
+  if (
+    rule === config.autoMod.scamFilter ||
+    rule === config.autoMod.wordFilter ||
+    rule === config.autoMod.linkBlock ||
+    rule === config.autoMod.emojiLimit ||
+    rule === config.autoMod.capsLimit ||
+    rule === config.autoMod.repeatBlock
+  ) return { title: "AutoMod", channelId: config.autoMod.logChannelId };
+  if (
+    rule === config.antiFlood.longMessage ||
+    rule === config.antiFlood.character ||
+    rule === config.antiFlood.caps ||
+    rule === config.antiFlood.symbol
+  ) return { title: "Anti-Flood", channelId: config.antiFlood.logChannelId };
+  if (
+    rule === config.antiSpam.message ||
+    rule === config.antiSpam.edit ||
+    rule === config.antiSpam.delete ||
+    rule === config.antiSpam.mention ||
+    rule === config.antiSpam.emoji
+  ) return { title: "Anti-Spam", channelId: config.antiSpam.logChannelId };
+  return null;
+}
+
 async function applyAutomaticSerialized(guild: Guild, config: ModerationConfig, message: Message, detection: Detection, rule: { action: ConfiguredAction; severity?: "soft" | "normal" | "hard"; deleteMessage?: boolean }): Promise<boolean> {
   const idempotencyKey = `${guild.id}:${message.id}:${detection.kind}:${rule.action}`;
   if (!reserveAutomaticAction(idempotencyKey)) return false;
   const incidentKey = `automod:${guild.id}:${message.author.id}:${detection.kind}:${Math.floor(Date.now() / 60_000)}`;
   const why = detection.detail;
+  const destination = automaticLogDestination(config, rule);
+  if (destination?.channelId) {
+    await notify(
+      config,
+      guild,
+      destination.title,
+      `${why} • Utilizator: <@${message.author.id}> • Canal: <#${message.channelId}>`,
+      destination.channelId,
+    );
+  }
   // Severity changes only detector thresholds. Escalation changes sanctions
   // solely when the owner explicitly enabled and configured its levels.
   const selectedAction = await actionAtEscalationLevel(config, guild.id, message.author.id, rule.action);
@@ -844,6 +882,15 @@ async function handleNativeAutoModerationExecution(
   const selectedAction = await actionAtEscalationLevel(config, execution.guild.id, target.id, rule.action);
   if (selectedAction === "none" || selectedAction === "delete") return;
   const matched = execution.matchedKeyword?.trim();
+  if (autoMod.logChannelId) {
+    await notify(
+      config,
+      execution.guild,
+      "AutoMod",
+      `Cuvânt interzis detectat${matched ? ` („${matched}”)` : ""} • Utilizator: <@${target.id}> • Canal: <#${channelId}>`,
+      autoMod.logChannelId,
+    );
+  }
   await executeModerationAction({
     guildId: execution.guild.id,
     actorId,

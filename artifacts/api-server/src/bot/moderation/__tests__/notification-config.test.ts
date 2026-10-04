@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Guild } from "discord.js";
 import { defaultModerationConfig } from "../../../moderation/config";
-import { notify } from "../engine";
+import { automaticLogDestination, notify } from "../engine";
 
 describe("saved moderation notification settings", () => {
   const guildId = "123456789012345678";
@@ -12,6 +12,21 @@ describe("saved moderation notification settings", () => {
     const guild = { id: guildId, channels: { cache: new Map(), fetch } } as unknown as Guild;
     return { guild, send, fetch };
   }
+
+  it("routes AutoMod and Anti-Flood rules to their dedicated log destinations", () => {
+    const config = structuredClone(defaultModerationConfig);
+    config.autoMod.logChannelId = "111111111111111111";
+    config.antiFlood.logChannelId = "222222222222222222";
+
+    expect(automaticLogDestination(config, config.autoMod.wordFilter)).toEqual({
+      title: "AutoMod",
+      channelId: "111111111111111111",
+    });
+    expect(automaticLogDestination(config, config.antiFlood.longMessage)).toEqual({
+      title: "Anti-Flood",
+      channelId: "222222222222222222",
+    });
+  });
 
   it("uses the configured GIF animation, icon, text templates and color", async () => {
     const config = structuredClone(defaultModerationConfig);

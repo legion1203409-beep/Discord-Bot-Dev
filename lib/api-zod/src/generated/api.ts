@@ -150,6 +150,32 @@ export const ModerationPutConfigResponse = zod.object({
 })
 
 
+export const ModerationProvisionConfigChannelParams = zod.object({
+  "guildId": zod.coerce.string()
+})
+
+export const ModerationProvisionConfigChannelHeader = zod.object({
+  "If-Match": zod.string()
+})
+
+export const ModerationProvisionConfigChannelBody = zod.object({
+  "destination": zod.enum(['activityLog.messages', 'activityLog.members', 'activityLog.channels', 'activityLog.roles', 'activityLog.voice', 'activityLog.moderation', 'activityLog.security', 'autoMod.logChannelId', 'antiFlood.logChannelId', 'antiRaid.alertChannelId', 'antiSpam.logChannelId', 'suspiciousBehavior.alertChannelId', 'ai.logChannelId', 'audit.channelId'])
+})
+
+export const ModerationProvisionConfigChannelResponse = zod.object({
+  "config": zod.record(zod.string(), zod.unknown()).describe('Validated by the server\'s ModerationConfigSchema; use GET response config as the write body.'),
+  "version": zod.number(),
+  "destination": zod.string(),
+  "channel": zod.object({
+  "key": zod.string(),
+  "id": zod.string(),
+  "name": zod.string(),
+  "type": zod.enum(['text'])
+}),
+  "created": zod.boolean()
+})
+
+
 export const ModerationGetBotControlParams = zod.object({
   "guildId": zod.coerce.string()
 })

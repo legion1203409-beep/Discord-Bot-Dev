@@ -109,6 +109,7 @@ export const ModerationConfigSchema = z.object({
   // 1. AutoMod
   autoMod: z.object({
     enabled: z.boolean().default(false),
+    logChannelId: snowflake.nullable().default(null),
     scamFilter: z.object({
       enabled: z.boolean().default(false),
       action: z.enum(["delete", "mute", "kick"]).default("delete"),
@@ -163,6 +164,7 @@ export const ModerationConfigSchema = z.object({
   // 4. Anti-flood
   antiFlood: z.object({
     enabled: z.boolean().default(false),
+    logChannelId: snowflake.nullable().default(null),
     longMessage: ruleSchemaWithThresholdDefaults({ key: "length", value: 1_500, aliases: ["maxLength", "limit"] }).default({}),
     character: ruleSchemaWithThresholdDefaults({ key: "run", value: 16, aliases: ["limit", "max"] }).default({}),
     caps: ruleSchemaWithThresholdDefaults({ key: "capsPercent", value: 75, aliases: ["percent", "limit"] }).default({}),

@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { defaultModerationConfig } from "../../moderation/config";
 import { DEFAULT_VERIFICATION_CONFIG } from "../verification";
 import { DEFAULT_TICKET_CONFIG } from "../ticket-config";
-import { provisionActivityLogChannels, provisionGuildChannels } from "../channel-provisioning";
+import { provisionActivityLogChannels, provisionGuildChannels, provisionModerationDestination } from "../channel-provisioning";
 
 function channel(id: string, name: string, type: ChannelType) {
   const value = {
@@ -412,5 +412,68 @@ describe("guild channel provisioning", () => {
         roleIds: ["guild-activity-everyone"],
       },
     })).rejects.toThrow("@everyone");
+  });
+
+  it("creates only the requested moderation destination and reuses its category", async () => {
+    const channels = new Map<string, ReturnType<typeof channel>>([
+      ["public-info", channel("public-info", "general", ChannelType.GuildText)],
+    ]);
+    const create = vi.fn(async ({ name, type, parent }: { name: string; type: ChannelType; parent?: string }) => {
+      const created = channel(`created-${channels.size}`, name, type);
+      created.parentId = parent ?? null;
+      channels.set(created.id, created);
+      return created;
+    });
+    const guild = {
+      id: "guild-moderation-target",
+      channels: { fetch: vi.fn(async () => channels), create },
+      roles: {
+        everyone: { id: "everyone-role" },
+        cache: new Map([
+          ["everyone-role", { id: "everyone-role" }],
+          ["role-staff", { id: "role-staff" }],
+          ["bot-role", { id: "bot-role" }],
+        ]),
+      },
+      members: { me: { roles: { highest: { id: "bot-role" } } } },
+    } as unknown as Guild;
+    const moderationConfig = structuredClone(defaultModerationConfig);
+    moderationConfig.permissions.staffRoleIds = ["role-staff"];
+    const permission = { roleIds: ["role-staff"], readMessageHistory: true, sendMessages: false };
+
+    const first = await provisionModerationDestination(guild, {
+      moderationConfig,
+      destination: "autoMod.logChannelId",
+      permission,
+      previousPermission: permission,
+    });
+
+    expect(first.created).toBe(true);
+    expect(first.channel).toMatchObject({ key: "autoMod.logChannelId", name: "mod-automod" });
+    expect(first.moderationConfig.autoMod.logChannelId).toBe(first.channel.id);
+    expect(first.moderationConfig.antiFlood.logChannelId).toBeNull();
+    expect(first.moderationConfig.antiSpam.logChannelId).toBeNull();
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(channels.get("public-info")!.permissionOverwrites.edit).not.toHaveBeenCalled();
+    expect(channels.get(first.channel.id)!.permissionOverwrites.edit).toHaveBeenCalledWith(
+      "everyone-role",
+      { ViewChannel: false, ReadMessageHistory: false, SendMessages: false },
+      expect.anything(),
+    );
+    expect(channels.get(first.channel.id)!.permissionOverwrites.edit).toHaveBeenCalledWith(
+      "role-staff",
+      { ViewChannel: true, ReadMessageHistory: true, SendMessages: false },
+      expect.anything(),
+    );
+
+    const second = await provisionModerationDestination(guild, {
+      moderationConfig: first.moderationConfig,
+      destination: "antiFlood.logChannelId",
+      permission,
+      previousPermission: permission,
+    });
+    expect(second.created).toBe(true);
+    expect(second.channel.name).toBe("mod-anti-flood");
+    expect(create).toHaveBeenCalledTimes(3);
   });
 });

@@ -48,6 +48,19 @@ export type ActivityLogProvisionResult = {
   created: ProvisionedChannel[];
   reused: ProvisionedChannel[];
 };
+export type ModerationDestinationKey =
+  | "autoMod.logChannelId"
+  | "antiFlood.logChannelId"
+  | "antiRaid.alertChannelId"
+  | "antiSpam.logChannelId"
+  | "suspiciousBehavior.alertChannelId"
+  | "ai.logChannelId"
+  | "audit.channelId";
+export type ModerationDestinationProvisionResult = {
+  moderationConfig: ModerationConfig;
+  channel: ProvisionedChannel;
+  created: boolean;
+};
 
 type ProvisioningCategoryTarget = {
   key: ProvisioningCategoryKey;
@@ -99,16 +112,36 @@ const TICKET_TARGETS: Array<{ key: TicketCategoryKind; names: string[] }> = [
   { key: "help_report", names: ["🎫・TICHETE • AJUTOR", "tichete-ajutor-raportare", "ajutor-raportare", "help-report"] },
 ];
 
-const MODERATION_TARGETS = [
+export const MODERATION_DESTINATION_KEYS = [
+  "autoMod.logChannelId",
+  "antiFlood.logChannelId",
+  "antiRaid.alertChannelId",
+  "antiSpam.logChannelId",
+  "suspiciousBehavior.alertChannelId",
+  "ai.logChannelId",
+  "audit.channelId",
+] as const satisfies readonly ModerationDestinationKey[];
+
+const MODERATION_TARGETS: Array<{
+  key: ModerationDestinationKey;
+  category: Extract<ProvisioningCategoryKey, "admin" | "filtered" | "security">;
+  names: string[];
+}> = [
   { key: "antiRaid.alertChannelId", category: "security", names: ["mod-anti-raid", "alerte-raid"] },
   { key: "antiSpam.logChannelId", category: "filtered", names: ["mod-anti-spam", "jurnal-anti-spam"] },
   { key: "suspiciousBehavior.alertChannelId", category: "security", names: ["mod-comportament-suspect", "alerte-comportament"] },
   { key: "ai.logChannelId", category: "filtered", names: ["mod-ai", "jurnal-ai"] },
   { key: "audit.channelId", category: "admin", names: ["mod-audit", "audit"] },
-] as const;
+];
+const CONFIG_MODERATION_TARGETS: typeof MODERATION_TARGETS = [
+  { key: "autoMod.logChannelId", category: "filtered", names: ["mod-automod", "jurnal-automod"] },
+  { key: "antiFlood.logChannelId", category: "filtered", names: ["mod-anti-flood", "jurnal-anti-flood"] },
+  ...MODERATION_TARGETS,
+];
 
 const provisionLocks = new Map<string, Promise<ChannelProvisionResult>>();
 const activityProvisionLocks = new Map<string, Promise<ActivityLogProvisionResult>>();
+const moderationDestinationLocks = new Map<string, Promise<ModerationDestinationProvisionResult>>();
 
 const ACTIVITY_LOG_CATEGORIES: Array<{ key: ActivityLogCategory; name: string }> = [
   { key: "messages", name: "jurnal-mesaje" },
@@ -203,6 +236,8 @@ function isExpectedType(channel: { type: ChannelType }, type: ChannelTypeName): 
 
 function setNestedChannelId(config: ModerationConfig, path: string, id: string): void {
   const [section, field] = path.split(".");
+  if (section === "autoMod" && field === "logChannelId") config.autoMod.logChannelId = id;
+  if (section === "antiFlood" && field === "logChannelId") config.antiFlood.logChannelId = id;
   if (section === "antiRaid" && field === "alertChannelId") config.antiRaid.alertChannelId = id;
   if (section === "antiSpam" && field === "logChannelId") config.antiSpam.logChannelId = id;
   if (section === "suspiciousBehavior" && field === "alertChannelId") config.suspiciousBehavior.alertChannelId = id;
@@ -397,6 +432,7 @@ async function provisionActivityLogChannelsUnlocked(
   input: {
     activityLog: ModerationConfig["activityLog"];
     previousRoleIds?: string[];
+    onlyCategories?: ActivityLogCategory[];
   },
 ): Promise<ActivityLogProvisionResult> {
   const channels = await guild.channels.fetch();
@@ -441,6 +477,7 @@ async function provisionActivityLogChannelsUnlocked(
 
   const channelIds = { ...input.activityLog.channelIds };
   for (const target of ACTIVITY_LOG_CATEGORIES) {
+    if (input.onlyCategories && !input.onlyCategories.includes(target.key)) continue;
     if (!input.activityLog.categories[target.key]) {
       const existingLogChannel = channelIds[target.key] ? channels.get(channelIds[target.key]!) : null;
       if (existingLogChannel && isExpectedType(existingLogChannel, "text")) {
@@ -492,11 +529,125 @@ async function provisionActivityLogChannelsUnlocked(
   };
 }
 
+function getModerationDestinationId(config: ModerationConfig, key: ModerationDestinationKey): string | null {
+  switch (key) {
+    case "autoMod.logChannelId": return config.autoMod.logChannelId;
+    case "antiFlood.logChannelId": return config.antiFlood.logChannelId;
+    case "antiRaid.alertChannelId": return config.antiRaid.alertChannelId;
+    case "antiSpam.logChannelId": return config.antiSpam.logChannelId;
+    case "suspiciousBehavior.alertChannelId": return config.suspiciousBehavior.alertChannelId;
+    case "ai.logChannelId": return config.ai.logChannelId;
+    case "audit.channelId": return config.audit.channelId;
+  }
+}
+
+async function provisionModerationDestinationUnlocked(
+  guild: Guild,
+  input: {
+    moderationConfig: ModerationConfig;
+    destination: ModerationDestinationKey;
+    permission?: ChannelPermissionConfig;
+    previousPermission?: ChannelPermissionConfig;
+  },
+): Promise<ModerationDestinationProvisionResult> {
+  const target = CONFIG_MODERATION_TARGETS.find(({ key }) => key === input.destination);
+  if (!target) throw new Error("Destinația de moderare nu este validă.");
+  const channels = await guild.channels.fetch();
+  const categoryTarget = CATEGORY_TARGETS.find(({ key }) => key === target.category);
+  if (!categoryTarget) throw new Error(`Categoria ${target.category} nu este configurată.`);
+
+  const defaultRoleIds = input.moderationConfig.permissions.staffRoleIds.length
+    ? input.moderationConfig.permissions.staffRoleIds
+    : input.moderationConfig.activityLog.roleIds;
+  const permission = input.permission ?? {
+    roleIds: defaultRoleIds,
+    readMessageHistory: true,
+    sendMessages: true,
+  };
+  const everyoneId = guild.roles.everyone.id;
+  if (permission.roleIds.includes(everyoneId) || Object.hasOwn(permission.rolePermissions ?? {}, everyoneId)) {
+    throw new Error("@everyone nu poate fi selectat pentru un canal de moderare.");
+  }
+
+  const category = [...channels.values()].find((channel) =>
+    channel !== null &&
+    isExpectedType(channel, "category") &&
+    categoryTarget.names.some((name) => normalizeName(channel.name) === normalizeName(name)),
+  );
+  let categoryId = category?.id;
+  if (!categoryId) {
+    const createdCategory = await guild.channels.create({
+      name: categoryTarget.names[0],
+      type: ChannelType.GuildCategory,
+    });
+    await applyPermissions(guild, createdCategory, permission);
+    categoryId = createdCategory.id;
+  }
+
+  const configuredId = getModerationDestinationId(input.moderationConfig, target.key);
+  const configuredChannel = configuredId ? channels.get(configuredId) : null;
+  const existing = configuredChannel && isExpectedType(configuredChannel, "text")
+    ? configuredChannel
+    : [...channels.values()].find((channel) =>
+      channel !== null &&
+      isExpectedType(channel, "text") &&
+      target.names.some((name) => normalizeName(channel.name) === normalizeName(name)),
+    );
+
+  let channel: NonThreadGuildBasedChannel;
+  let created = false;
+  if (existing) {
+    channel = existing;
+    await moveToCategory(channel, categoryId);
+  } else {
+    channel = await guild.channels.create({
+      name: target.names[0],
+      type: ChannelType.GuildText,
+      parent: categoryId,
+    });
+    created = true;
+  }
+  await applyPermissions(
+    guild,
+    channel,
+    permission,
+    input.previousPermission?.roleIds ?? [],
+  );
+
+  const moderationConfig = structuredClone(input.moderationConfig);
+  setNestedChannelId(moderationConfig, target.key, channel.id);
+  return {
+    moderationConfig,
+    channel: { key: target.key, id: channel.id, name: channel.name, type: "text" },
+    created,
+  };
+}
+
+export function provisionModerationDestination(
+  guild: Guild,
+  input: {
+    moderationConfig: ModerationConfig;
+    destination: ModerationDestinationKey;
+    permission?: ChannelPermissionConfig;
+    previousPermission?: ChannelPermissionConfig;
+  },
+): Promise<ModerationDestinationProvisionResult> {
+  const previous = moderationDestinationLocks.get(guild.id);
+  const next = (previous ?? Promise.resolve()).then(() => provisionModerationDestinationUnlocked(guild, input));
+  moderationDestinationLocks.set(guild.id, next);
+  const cleanup = () => {
+    if (moderationDestinationLocks.get(guild.id) === next) moderationDestinationLocks.delete(guild.id);
+  };
+  void next.then(cleanup, cleanup);
+  return next;
+}
+
 export function provisionActivityLogChannels(
   guild: Guild,
   input: {
     activityLog: ModerationConfig["activityLog"];
     previousRoleIds?: string[];
+    onlyCategories?: ActivityLogCategory[];
   },
 ): Promise<ActivityLogProvisionResult> {
   const previous = activityProvisionLocks.get(guild.id);

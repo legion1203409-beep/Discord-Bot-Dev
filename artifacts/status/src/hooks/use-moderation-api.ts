@@ -769,6 +769,71 @@ export function useModerationConfig(guildId: string | null) {
     return result;
   };
 
+  const createChannel = async (destination: string) => {
+    const requestedGuildId = guildId;
+    if (!requestedGuildId) throw new Error("Nu este selectat niciun server.");
+    if (!cachedSession?.authenticated || activeGuildId !== requestedGuildId) {
+      throw new Error("Sesiunea de moderare nu mai este activă.");
+    }
+    const currentVersion = versionRef.current ?? version;
+    const currentDataGuildId = dataGuildIdRef.current ?? dataGuildId;
+    if (!currentVersion || currentDataGuildId !== requestedGuildId) {
+      throw new Error("Reîncarcă configurația înainte de a crea un canal.");
+    }
+
+    const writeRequest = ++requestId.current;
+    controllerRef.current?.abort();
+    const isCurrentRequest = () =>
+      requestId.current === writeRequest &&
+      currentGuildId.current === requestedGuildId &&
+      activeGuildId === requestedGuildId &&
+      cachedSession?.authenticated;
+    const normalizeVersion = (value: unknown) => String(value ?? "").replace(/^W\//, "").replaceAll('"', "");
+    const createWithVersion = (revision: string) => apiFetchWithMeta<any>(
+      `/guilds/${requestedGuildId}/config/channels`,
+      {
+        method: "POST",
+        headers: { "If-Match": `"${normalizeVersion(revision)}"` },
+        body: JSON.stringify({ destination }),
+      },
+    );
+
+    let response;
+    try {
+      try {
+        response = await createWithVersion(currentVersion);
+      } catch (error) {
+        if (!(error instanceof ApiError) || error.status !== 409) throw error;
+        const latest = await apiFetchWithMeta<any>(`/guilds/${requestedGuildId}/config`);
+        if (!isCurrentRequest()) throw new Error("Serverul selectat s-a schimbat în timpul creării canalului.");
+        const latestVersion = latest.data.version
+          ?? latest.headers.get("etag")?.replace(/^W\//, "");
+        if (latestVersion == null) throw new Error("Configurația nu conține o versiune ETag.");
+        response = await createWithVersion(String(latestVersion));
+      }
+      if (!isCurrentRequest()) throw new Error("Serverul selectat s-a schimbat în timpul creării canalului.");
+      const result = response.data;
+      const nextVersion = result.version
+        ?? response.headers.get("etag")?.replace(/^W\//, "").replaceAll('"', "");
+      if (nextVersion == null) throw new Error("Răspunsul de creare nu conține versiunea configurației.");
+      setData(result.config);
+      setDataGuildId(requestedGuildId);
+      dataGuildIdRef.current = requestedGuildId;
+      setVersion(String(nextVersion));
+      versionRef.current = String(nextVersion);
+      setError(null);
+      return result;
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) {
+        throw new Error("Conflict de versiune: configurația s-a schimbat din nou. Reîncarcă și încearcă din nou.");
+      }
+      if (error instanceof ApiError && error.status === 428) {
+        throw new Error("Eroare de sistem: lipsește versiunea configurației (If-Match).");
+      }
+      throw error;
+    }
+  };
+
   const updateProtectionToggle = async (
     key: "protection" | "autoMod" | "wordFilter" | "linkBlock" | "antiRaid" | "antiSpam" | "antiFlood" | "suspiciousBehavior" | "ai" | "manualTools" | "cases" | "audit" | "escalation" | "embeds",
     enabled: boolean,
@@ -805,6 +870,7 @@ export function useModerationConfig(guildId: string | null) {
     error,
     update,
     updateSection,
+    createChannel,
     updateProtectionToggle,
     refetch: fetchConfig,
   };

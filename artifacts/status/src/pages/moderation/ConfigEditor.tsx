@@ -1,5 +1,5 @@
 import React from "react";
-import { Check, Globe, Plus, Trash2 } from "lucide-react";
+import { Check, Globe, Loader2, Plus, Trash2 } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "../../components/ui/accordion";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -436,6 +436,7 @@ export function ConfigEditor({
   discordChannels,
   guildId,
   botCapabilities,
+  onCreateChannel,
 }: {
   value: Config;
   onChange: (config: Config) => void;
@@ -444,10 +445,94 @@ export function ConfigEditor({
   discordChannels?: DiscordChannelOption[];
   guildId?: string;
   botCapabilities?: ActivityLogCapabilities;
+  onCreateChannel?: (destination: string) => Promise<{ channel: { id: string; name: string }; created: boolean }>;
 }) {
+  const [creatingDestination, setCreatingDestination] = React.useState<string | null>(null);
+  const latestValue = React.useRef(value);
+  latestValue.current = value;
   const set = (path: Path, next: any) => {
-    if (next === undefined && path.includes("thresholds")) onChange(removeConfigField(value, path));
-    else onChange(updateConfigField(value, path, next));
+    const current = latestValue.current;
+    const updated = next === undefined && path.includes("thresholds")
+      ? removeConfigField(current, path)
+      : updateConfigField(current, path, next);
+    latestValue.current = updated;
+    onChange(updated);
+  };
+  const createDestination = async (destination: string, path: Path) => {
+    if (!onCreateChannel || creatingDestination) return;
+    setCreatingDestination(destination);
+    try {
+      const result = await onCreateChannel(destination);
+      set(path, result.channel.id);
+    } catch {
+      // The page-level handler displays the API error and keeps the draft.
+    } finally {
+      setCreatingDestination(null);
+    }
+  };
+  const createChannelButton = (destination: string, label: string, path: Path) => onCreateChannel ? (
+    <Button
+      type="button"
+      size="sm"
+      variant="outline"
+      aria-label={`Creează canal pentru ${label}`}
+      disabled={creatingDestination !== null || botCapabilities?.online === false ||
+        botCapabilities?.canManageChannels === false || botCapabilities?.canManageRoles === false}
+      onClick={() => void createDestination(destination, path)}
+    >
+      {creatingDestination === destination
+        ? <><Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />Se creează</>
+        : <><Plus className="mr-1 h-3.5 w-3.5" />Creează</>}
+    </Button>
+  ) : null;
+  const channelDestinationField = (destination: string, label: string, currentValue: string | null, path: Path) => (
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+      <div className="min-w-0 flex-1">
+        <IdField label={label} value={currentValue} onChange={(next) => set(path, next)} />
+      </div>
+      {createChannelButton(destination, label, path)}
+    </div>
+  );
+  const selectableTextChannels = (discordChannels ?? []).filter((channel) =>
+    [0, "text", "GuildText"].includes(channel.type),
+  );
+  const activityChannelSelector = (key: string, label: string) => {
+    const currentValue = value.activityLog.channelIds[key] ?? "";
+    const selected = selectableTextChannels.some((channel) => channel.id === currentValue) ? currentValue : "__none__";
+    return selectableTextChannels.length > 0 ? (
+      <div className="space-y-2">
+        <Select
+          value={selected}
+          onValueChange={(next) => set(["activityLog", "channelIds", key], next === "__none__" ? null : next)}
+        >
+          <SelectTrigger aria-label={`Canal pentru ${label}`} className="bg-background/70">
+            <SelectValue placeholder="Alege un canal existent" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__none__">Neconfigurat</SelectItem>
+            {currentValue && selected === "__none__" && (
+              <SelectItem value={currentValue}>Canal configurat ({currentValue})</SelectItem>
+            )}
+            {selectableTextChannels.map((channel) => (
+              <SelectItem key={channel.id} value={channel.id}>#{channel.name} ({channel.id})</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Input
+          aria-label={`Canal ${label} ID fallback`}
+          value={currentValue}
+          placeholder="ID canal Discord"
+          onChange={(event) => set(["activityLog", "channelIds", key], event.target.value.trim() || null)}
+          className="bg-background/50 font-mono text-xs"
+        />
+      </div>
+    ) : (
+      <IdField
+        label={`Canal ${label}`}
+        value={currentValue || null}
+        onChange={(next) => set(["activityLog", "channelIds", key], next)}
+      />
+    );
   };
   const rule = (base: string[]) => (path: string[], next: any) => set([...base, ...path], next);
   const floodRules = [
@@ -500,6 +585,7 @@ export function ConfigEditor({
     <Accordion type="multiple" defaultValue={sections ?? ["automod", "anti-raid", "anti-spam", "anti-flood"]} className="space-y-3">
       <Section value="automod" title="1. AutoMod" description="Filtre de cuvinte, linkuri, anti-scam, emoji, majuscule și repetări.">
         <Toggle label="Activează AutoMod" help="Comutatorul principal pentru regulile de mai jos." checked={value.autoMod.enabled} onChange={(next) => set(["autoMod", "enabled"], next)} />
+        {channelDestinationField("autoMod.logChannelId", "Canal jurnal AutoMod", value.autoMod.logChannelId, ["autoMod", "logChannelId"])}
         <div className="space-y-4 rounded-xl border border-primary/30 bg-primary/5 p-4">
           <div>
             <h3 className="font-semibold">Anti-Scam</h3>
@@ -571,7 +657,7 @@ export function ConfigEditor({
           <NumberField label="Vârsta minimă a contului" help="În zile (0–3650). Conturile mai noi pot declanșa regula." value={value.antiRaid.accountAgeDays} min={0} max={3650} onChange={(next) => set(["antiRaid", "accountAgeDays"], next)} />
         </div>
         <Toggle label="Blochează serverul (lockdown)" help="Activează lockdown la detectarea unui raid." checked={value.antiRaid.lockdown} onChange={(next) => set(["antiRaid", "lockdown"], next)} />
-        <IdField label="Canal alerte raid" value={value.antiRaid.alertChannelId} onChange={(next) => set(["antiRaid", "alertChannelId"], next)} />
+        {channelDestinationField("antiRaid.alertChannelId", "Canal alerte raid", value.antiRaid.alertChannelId, ["antiRaid", "alertChannelId"])}
         <RuleEditor title="Regula de raid" rule={value.antiRaid.rule} thresholds={RAID_LIMIT} onChange={rule(["antiRaid", "rule"])} />
       </Section>
 
@@ -591,7 +677,7 @@ export function ConfigEditor({
             {activeAntiSpamRules} din 5 bifate
           </span>
         </div>
-        <IdField label="Canal jurnal anti-spam" value={value.antiSpam.logChannelId} onChange={(next) => set(["antiSpam", "logChannelId"], next)} />
+        {channelDestinationField("antiSpam.logChannelId", "Canal jurnal anti-spam", value.antiSpam.logChannelId, ["antiSpam", "logChannelId"])}
         <RuleEditor title="Spam de mesaje" help="Mesaje repetate într-o fereastră de timp." collapsible rule={value.antiSpam.message} thresholds={MESSAGE_SPAM} onChange={rule(["antiSpam", "message"])} />
         <RuleEditor title="Spam de editări" help="Editări repetate într-o fereastră de timp." collapsible rule={value.antiSpam.edit} thresholds={EDIT_SPAM} onChange={rule(["antiSpam", "edit"])} />
         {value.antiSpam.enabled && value.antiSpam.edit.enabled && value.antiSpam.edit.action === "none" && (
@@ -610,6 +696,7 @@ export function ConfigEditor({
 
       <Section value="anti-flood" title="4. Anti-flood" description="Controlează mesaje foarte lungi, șiruri, majuscule și simboluri.">
         <Toggle label="Activează anti-flood" checked={value.antiFlood.enabled} onChange={(next) => set(["antiFlood", "enabled"], next)} />
+        {channelDestinationField("antiFlood.logChannelId", "Canal jurnal Anti-Flood", value.antiFlood.logChannelId, ["antiFlood", "logChannelId"])}
         {!value.antiFlood.enabled && (
           <p className="text-sm text-amber-600">Anti-flood este oprit. Regulile de mai jos nu verifică mesajele până când activezi modulul.</p>
         )}
@@ -653,7 +740,7 @@ export function ConfigEditor({
           suspiciousRules.some((item) => item.enabled && item.action === "delete")) && (
           <p className="text-sm text-amber-600">„Șterge mesajul” nu este o acțiune disponibilă pentru comportament suspect. Alege o sancțiune permisă sau folosește alerte.</p>
         )}
-        <IdField label="Canal alerte comportament suspect" value={value.suspiciousBehavior.alertChannelId} onChange={(next) => set(["suspiciousBehavior", "alertChannelId"], next)} />
+        {channelDestinationField("suspiciousBehavior.alertChannelId", "Canal alerte comportament suspect", value.suspiciousBehavior.alertChannelId, ["suspiciousBehavior", "alertChannelId"])}
         {[
           ["nicknameChanges", "Schimbări nickname"], ["roleChanges", "Schimbări roluri"], ["massEdits", "Editări în masă"],
           ["massDeletes", "Ștergeri în masă"], ["joinLeaveFlood", "Flux intrări / ieșiri"], ["unusualActivity", "Activitate neobișnuită"],
@@ -674,7 +761,7 @@ export function ConfigEditor({
         <ModerationActionPicker label="Acțiuni generale AI" value={value.ai}
           testId="actions-ai-general"
           onChange={(next) => set(["ai"], { ...value.ai, ...next })} />
-        <IdField label="Canal jurnal AI" value={value.ai.logChannelId} onChange={(next) => set(["ai", "logChannelId"], next)} />
+        {channelDestinationField("ai.logChannelId", "Canal jurnal AI", value.ai.logChannelId, ["ai", "logChannelId"])}
         <div className="space-y-3">
           <p className="text-sm font-medium">Categorii urmărite</p>
           {AI_CATEGORIES.map(([key, label, help]) => (
@@ -750,7 +837,7 @@ export function ConfigEditor({
           <Toggle label="Activează auditul" checked={value.audit.enabled} onChange={(next) => set(["audit", "enabled"], next)} />
           <Choice label="Nivel detalii audit" value={value.audit.detailLevel} options={[["minimal", "Minimal"], ["standard", "Standard"], ["verbose", "Detaliat"]]} onChange={(next) => set(["audit", "detailLevel"], next)} />
         </div>
-        <IdField label="Canal audit" value={value.audit.channelId} onChange={(next) => set(["audit", "channelId"], next)} />
+        {channelDestinationField("audit.channelId", "Canal audit", value.audit.channelId, ["audit", "channelId"])}
 
         <div className="space-y-4 rounded-xl border border-primary/25 bg-primary/5 p-4">
           <div>
@@ -775,14 +862,26 @@ export function ConfigEditor({
           )}
           <div className="grid gap-3 md:grid-cols-2">
             {activityLogCategories.map(([key, label]) => (
-              <Toggle
-                key={key}
-                label={label}
-                checked={value.activityLog.categories[key]}
-                onChange={(next) => set(["activityLog", "categories", key], next)}
-              />
+              <div key={key} className="space-y-2 rounded-lg border border-border bg-background/60 p-3">
+                <div className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                  <Toggle
+                    label={label}
+                    checked={value.activityLog.categories[key]}
+                    onChange={(next) => set(["activityLog", "categories", key], next)}
+                  />
+                  </div>
+                  {createChannelButton(`activityLog.${key}`, label, ["activityLog", "channelIds", key])}
+                </div>
+                {activityChannelSelector(key, label)}
+              </div>
             ))}
           </div>
+          {onCreateChannel && (
+            <p className="text-xs text-muted-foreground">
+              Fiecare buton creează și salvează un singur canal privat, folosind rolurile salvate pe server. Modificările nesalvate ale rolurilor se aplică la următoarea salvare.
+            </p>
+          )}
           {availableLogRoles.length > 0 ? (
             <div className="space-y-2">
               <p className="text-sm font-medium">Roluri care pot vedea istoricul</p>

@@ -59,7 +59,7 @@ import
 import 
 {
 
- EvidenceSchema, ModerationConfigSchema, type ModerationConfig 
+ ActivityLogCategorySchema, EvidenceSchema, ModerationConfigSchema, type ModerationConfig
 }
 
  from "./config"
@@ -186,7 +186,8 @@ import
 
 import 
 {
- provisionActivityLogChannels, provisionGuildChannels 
+ MODERATION_DESTINATION_KEYS, provisionActivityLogChannels, provisionGuildChannels, provisionModerationDestination,
+ type ModerationDestinationKey
 }
  from "../bot/channel-provisioning"
 ;
@@ -1210,6 +1211,8 @@ async function validateConfigTargets(guildId: string, config: ModerationConfig, 
     ...config.channels.ignoredChannelIds, ...config.channels.protectedChannelIds,
     ...config.channels.autoSlowmodeChannelIds, ...config.channels.strictChannelIds,
     ...config.channels.softChannelIds,
+    ...Object.values(config.activityLog.channelIds),
+    config.autoMod.logChannelId, config.antiFlood.logChannelId,
     config.antiRaid.alertChannelId, config.antiSpam.logChannelId, config.audit.channelId,
     config.suspiciousBehavior.alertChannelId, config.ai.logChannelId,
   ].filter((id): id is string => Boolean(id));
@@ -1217,6 +1220,8 @@ async function validateConfigTargets(guildId: string, config: ModerationConfig, 
     ...previous.channels.ignoredChannelIds, ...previous.channels.protectedChannelIds,
     ...previous.channels.autoSlowmodeChannelIds, ...previous.channels.strictChannelIds,
     ...previous.channels.softChannelIds,
+    ...Object.values(previous.activityLog.channelIds),
+    previous.autoMod.logChannelId, previous.antiFlood.logChannelId,
     previous.antiRaid.alertChannelId, previous.antiSpam.logChannelId, previous.audit.channelId,
     previous.suspiciousBehavior.alertChannelId, previous.ai.logChannelId,
   ].filter((id): id is string => Boolean(id));
@@ -2057,6 +2062,105 @@ router.get("/guilds/:guildId/config", asyncRoute(async (req, res) => {
       missingPermissions,
     },
   });
+}));
+
+const CONFIG_CHANNEL_DESTINATIONS = [
+  "activityLog.messages",
+  "activityLog.members",
+  "activityLog.channels",
+  "activityLog.roles",
+  "activityLog.voice",
+  "activityLog.moderation",
+  "activityLog.security",
+  ...MODERATION_DESTINATION_KEYS,
+] as const;
+
+const moderationDestinationCategories: Record<ModerationDestinationKey, "admin" | "filtered" | "security"> = {
+  "autoMod.logChannelId": "filtered",
+  "antiFlood.logChannelId": "filtered",
+  "antiRaid.alertChannelId": "security",
+  "antiSpam.logChannelId": "filtered",
+  "suspiciousBehavior.alertChannelId": "security",
+  "ai.logChannelId": "filtered",
+  "audit.channelId": "admin",
+};
+
+router.post("/guilds/:guildId/config/channels", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  const session = await sessionAndGuild(req, guildId, "config", true);
+  const { destination } = z.object({
+    destination: z.enum(CONFIG_CHANNEL_DESTINATIONS),
+  }).strict().parse(req.body);
+  const revision = expectedRevision(req);
+  const previous = await moderationStore.getConfig(guildId);
+  if (previous.version !== revision) throw new ModerationRevisionConflictError();
+
+  const client = getModerationClient();
+  if (!client?.isReady()) throw new ModerationAuthError(503, "Botul Discord nu este conectat.");
+  const guild = client.guilds.cache.get(guildId) ?? await client.guilds.fetch(guildId).catch(() => null);
+  if (!guild) throw new ModerationAuthError(503, "Botul Discord nu poate accesa serverul.");
+  const botPermissions = guild.members.me?.permissions;
+  const missingPermissions = [
+    !botPermissions?.has(PermissionFlagsBits.ManageChannels) ? "Manage Channels" : null,
+    !botPermissions?.has(PermissionFlagsBits.ManageRoles) ? "Manage Roles" : null,
+  ].filter((permission): permission is string => Boolean(permission));
+  if (missingPermissions.length) {
+    throw new ModerationAuthError(403, `Botului îi lipsesc permisiunile necesare pentru canale private: ${missingPermissions.join(", ")}.`);
+  }
+
+  await guild.roles.fetch();
+  let config = structuredClone(previous.config);
+  let channel: { key: string; id: string; name: string; type: "text" };
+  let created = false;
+  try {
+    if (destination.startsWith("activityLog.")) {
+      const category = ActivityLogCategorySchema.parse(destination.slice("activityLog.".length));
+      const provisioned = await provisionActivityLogChannels(guild, {
+        activityLog: {
+          ...previous.config.activityLog,
+          categories: { ...previous.config.activityLog.categories, [category]: true },
+        },
+        previousRoleIds: previous.config.activityLog.roleIds,
+        onlyCategories: [category],
+      });
+      config = {
+        ...previous.config,
+        activityLog: {
+          ...previous.config.activityLog,
+          categoryId: provisioned.activityLog.categoryId,
+          channelIds: provisioned.activityLog.channelIds,
+        },
+      };
+      const key = `activityLog.${category}`;
+      const provisionedChannel = [...provisioned.created, ...provisioned.reused].find((item) => item.key === key);
+      if (!provisionedChannel) throw new Error("Canalul jurnalului nu a fost returnat după provisionare.");
+      channel = { ...provisionedChannel, type: "text" };
+      created = provisioned.created.some((item) => item.key === key);
+    } else {
+      const moderationDestination = destination as ModerationDestinationKey;
+      const category = moderationDestinationCategories[moderationDestination];
+      const savedPermissions = provisioningPermissionsSchema.parse(await loadProvisioningPermissions(guildId));
+      const permission = savedPermissions[category];
+      const provisioned = await provisionModerationDestination(guild, {
+        moderationConfig: config,
+        destination: moderationDestination,
+        permission,
+        previousPermission: permission,
+      });
+      config = provisioned.moderationConfig;
+      channel = { ...provisioned.channel, type: "text" };
+      created = provisioned.created;
+    }
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "eroare necunoscută";
+    logger.warn({ error, guildId, destination }, "Moderation channel provisioning failed");
+    throw new ModerationAuthError(400, `Canalul nu a putut fi creat sau configurat. Verifică rolurile și permisiunile Discord. Detalii: ${reason}`);
+  }
+
+  const result = await moderationStore.putConfig(guildId, config, session.userId, revision);
+  res.set("Cache-Control", "no-store").set("ETag", `"${result.version}"`)
+    .status(created ? 201 : 200)
+    .json({ config: result.config, version: result.version, destination, channel, created });
 }));
 
 type ProtectionToggleKey = Parameters<typeof moderationStore.putProtectionToggle>[1];

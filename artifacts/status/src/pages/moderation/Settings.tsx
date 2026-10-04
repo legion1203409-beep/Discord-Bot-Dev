@@ -37,7 +37,7 @@ function preserveEditsMadeDuringSave(before: any, current: any, canonical: any):
 
 export function AdvancedSettingsPage() {
   const { guildId } = useActiveGuild();
-  const { data, update, loading, error, refetch } = useModerationConfig(guildId);
+  const { data, update, createChannel, loading, error, refetch } = useModerationConfig(guildId);
   const { data: metadata, error: metadataError } = useModerationMetadata(guildId);
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
@@ -151,9 +151,28 @@ export function AdvancedSettingsPage() {
       return next;
     });
   };
+  const handleCreateChannel = async (destination: string) => {
+    try {
+      const result = await createChannel(destination);
+      toast({
+        title: result.created ? "Canal creat și salvat" : "Canal existent reutilizat",
+        description: `#${result.channel.name} este configurat pentru această destinație.`,
+      });
+      return result;
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Crearea canalului a eșuat",
+        description: error?.message || "Canalul nu a putut fi creat.",
+      });
+      throw error;
+    }
+  };
   const configuredChannels = [
+    { label: "Canal jurnal AutoMod", path: ["autoMod", "logChannelId"] },
     { label: "Canal alerte raid", path: ["antiRaid", "alertChannelId"] },
     { label: "Canal jurnal anti-spam", path: ["antiSpam", "logChannelId"] },
+    { label: "Canal jurnal Anti-Flood", path: ["antiFlood", "logChannelId"] },
     { label: "Canal audit", path: ["audit", "channelId"] },
     { label: "Canal comportament suspect", path: ["suspiciousBehavior", "alertChannelId"] },
     { label: "Canal jurnal AI", path: ["ai", "logChannelId"] },
@@ -256,6 +275,7 @@ export function AdvancedSettingsPage() {
           discordChannels={metadata?.channels}
           guildId={metadata?.guild.id}
           botCapabilities={capabilities ?? undefined}
+          onCreateChannel={handleCreateChannel}
         />
       </div>
 

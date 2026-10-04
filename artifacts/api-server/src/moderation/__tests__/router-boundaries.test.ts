@@ -30,7 +30,12 @@ const mocks = vi.hoisted(() => ({
     reportTimeZone: "Europe/Bucharest",
     reportTopLimit: 5,
   },
-  provisionGuildChannels: vi.fn(),
+  provisionGuildChannels: vi.fn(), provisionActivityLogChannels: vi.fn(),
+  provisionModerationDestination: vi.fn(),
+  moderationDestinationKeys: [
+    "autoMod.logChannelId", "antiFlood.logChannelId", "antiRaid.alertChannelId",
+    "antiSpam.logChannelId", "suspiciousBehavior.alertChannelId", "ai.logChannelId", "audit.channelId",
+  ],
   emojiCreate: vi.fn(), emojiFetch: vi.fn(),
 }));
 
@@ -85,7 +90,12 @@ vi.mock("../../bot/gameplay-store", () => ({
   saveGuildGameplayConfig: mocks.saveGuildGameplayConfig,
 }));
 vi.mock("../../bot/channel-config", () => ({ initChannelConfig: mocks.initChannelConfig }));
-vi.mock("../../bot/channel-provisioning", () => ({ provisionGuildChannels: mocks.provisionGuildChannels }));
+vi.mock("../../bot/channel-provisioning", () => ({
+  provisionGuildChannels: mocks.provisionGuildChannels,
+  provisionActivityLogChannels: mocks.provisionActivityLogChannels,
+  provisionModerationDestination: mocks.provisionModerationDestination,
+  MODERATION_DESTINATION_KEYS: mocks.moderationDestinationKeys,
+}));
 vi.mock("../../bot/verification", async (importOriginal) => ({
   ...await importOriginal<typeof import("../../bot/verification")>(),
   publishVerificationPanel: mocks.publishVerificationPanel,
@@ -174,7 +184,7 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     mocks.client.mockReturnValue({
       isReady: () => true,
       options: { intents: { has: () => true } },
-      guilds: { fetch: vi.fn().mockResolvedValue({
+       guilds: { cache: new Map(), fetch: vi.fn().mockResolvedValue({
         id: guildId,
         name: "Regatul test",
         ownerId: actorId,
@@ -444,6 +454,90 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     expect(response.status).toBe(200);
     expect(mocks.putConfig).toHaveBeenCalledWith(guildId, expect.any(Object), actorId, 3);
     expect(response.headers.get("etag")).toBe('"4"');
+  });
+
+  it("creates and connects one activity-log destination without changing unrelated config", async () => {
+    const config = structuredClone(defaultModerationConfig);
+    config.audit.enabled = true;
+    config.audit.channelId = "555555555555555555";
+    mocks.getConfig.mockResolvedValue({ config, version: 3 });
+    const nextActivityLog = {
+      ...config.activityLog,
+      categoryId: "666666666666666666",
+      categories: { ...config.activityLog.categories, messages: true },
+      channelIds: { ...config.activityLog.channelIds, messages: "777777777777777777" },
+    };
+    mocks.provisionActivityLogChannels.mockResolvedValue({
+      activityLog: nextActivityLog,
+      created: [{ key: "activityLog.messages", id: "777777777777777777", name: "jurnal-mesaje", type: "text" }],
+      reused: [{ key: "activityLog.category", id: "666666666666666666", name: "jurnal-server", type: "category" }],
+    });
+    mocks.putConfig.mockImplementation(async (_guildId, savedConfig) => ({ config: savedConfig, version: 4 }));
+
+    const response = await fetch(`${base}/config/channels`, {
+      ...post({ destination: "activityLog.messages" }, { "if-match": '"3"', "x-csrf-token": "csrf" }),
+    });
+    const result = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(result).toMatchObject({
+      destination: "activityLog.messages",
+      created: true,
+      channel: { id: "777777777777777777", type: "text" },
+      config: { audit: { enabled: true, channelId: "555555555555555555" } },
+    });
+    expect(mocks.provisionActivityLogChannels).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      activityLog: expect.objectContaining({ categories: expect.objectContaining({ messages: true }) }),
+      onlyCategories: ["messages"],
+    }));
+    expect(mocks.provisionModerationDestination).not.toHaveBeenCalled();
+    expect(mocks.putConfig).toHaveBeenCalledWith(
+      "123456789",
+      expect.objectContaining({ activityLog: expect.objectContaining({ channelIds: expect.objectContaining({ messages: "777777777777777777" }) }) }),
+      "987654321",
+      3,
+    );
+  });
+
+  it("creates a moderation-system destination and persists its new channel ID", async () => {
+    const config = structuredClone(defaultModerationConfig);
+    config.autoMod.logChannelId = "777777777777777777";
+    mocks.provisionModerationDestination.mockResolvedValue({
+      moderationConfig: config,
+      channel: { key: "autoMod.logChannelId", id: "777777777777777777", name: "mod-automod", type: "text" },
+      created: true,
+    });
+    mocks.putConfig.mockImplementation(async (_guildId, savedConfig) => ({ config: savedConfig, version: 4 }));
+
+    const response = await fetch(`${base}/config/channels`, {
+      ...post({ destination: "autoMod.logChannelId" }, { "if-match": '"3"', "x-csrf-token": "csrf" }),
+    });
+    const result = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(result).toMatchObject({
+      destination: "autoMod.logChannelId",
+      channel: { id: "777777777777777777" },
+      config: { autoMod: { logChannelId: "777777777777777777" } },
+    });
+    expect(mocks.provisionModerationDestination).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      destination: "autoMod.logChannelId",
+      moderationConfig: expect.any(Object),
+    }));
+    expect(mocks.provisionActivityLogChannels).not.toHaveBeenCalled();
+  });
+
+  it("rejects a stale channel-creation revision before provisioning anything", async () => {
+    mocks.getConfig.mockResolvedValue({ config: structuredClone(defaultModerationConfig), version: 4 });
+    const response = await fetch(`${base}/config/channels`, {
+      ...post({ destination: "activityLog.security" }, { "if-match": '"3"', "x-csrf-token": "csrf" }),
+    });
+
+    expect(response.status).toBe(409);
+    expect(mocks.client).not.toHaveBeenCalled();
+    expect(mocks.provisionActivityLogChannels).not.toHaveBeenCalled();
+    expect(mocks.provisionModerationDestination).not.toHaveBeenCalled();
+    expect(mocks.putConfig).not.toHaveBeenCalled();
   });
 
   it("rejects unknown sections and fields instead of silently reporting a successful save", async () => {

@@ -112,6 +112,27 @@ paths:
           description: Saved configuration
           content: { application/json: { schema: { $ref: "#/components/schemas/ModerationConfigResponse" } } }
         "409": { description: Stale configuration revision }
+  /moderation/guilds/{guildId}/config/channels:
+    parameters: [{ name: guildId, in: path, required: true, schema: { type: string } }]
+    post:
+      operationId: moderationProvisionConfigChannel
+      tags: [moderation]
+      parameters: [{ name: If-Match, in: header, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/ModerationChannelInput" } } }
+      responses:
+        "200":
+          description: Existing Discord channel reused and configuration saved
+          content: { application/json: { schema: { $ref: "#/components/schemas/ModerationChannelResponse" } } }
+        "201":
+          description: Discord channel created and configuration saved
+          content: { application/json: { schema: { $ref: "#/components/schemas/ModerationChannelResponse" } } }
+        "400": { description: "Invalid destination, role configuration, or Discord channel" }
+        "401": { description: Moderation session is required }
+        "403": { description: "Guild configuration access or required Discord permissions are missing" }
+        "409": { description: Stale configuration revision }
+        "428": { description: If-Match configuration revision is required }
   /moderation/guilds/{guildId}/bot-control:
     parameters: [{ name: guildId, in: path, required: true, schema: { type: string } }]
     get:
@@ -245,6 +266,46 @@ components:
       type: object
       additionalProperties: true
       description: Validated by the server's ModerationConfigSchema; use GET response config as the write body.
+    ModerationChannelInput:
+      type: object
+      additionalProperties: false
+      required: [destination]
+      properties:
+        destination:
+          type: string
+          enum:
+            - activityLog.messages
+            - activityLog.members
+            - activityLog.channels
+            - activityLog.roles
+            - activityLog.voice
+            - activityLog.moderation
+            - activityLog.security
+            - autoMod.logChannelId
+            - antiFlood.logChannelId
+            - antiRaid.alertChannelId
+            - antiSpam.logChannelId
+            - suspiciousBehavior.alertChannelId
+            - ai.logChannelId
+            - audit.channelId
+    ModerationChannelResponse:
+      type: object
+      additionalProperties: false
+      required: [config, version, destination, channel, created]
+      properties:
+        config: { $ref: "#/components/schemas/ModerationConfig" }
+        version: { type: integer }
+        destination: { type: string }
+        channel:
+          type: object
+          additionalProperties: false
+          required: [key, id, name, type]
+          properties:
+            key: { type: string }
+            id: { type: string }
+            name: { type: string }
+            type: { type: string, enum: [text] }
+        created: { type: boolean }
     ProtectionToggleInput:
       type: object
       additionalProperties: false

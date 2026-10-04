@@ -25,6 +25,8 @@ import type {
   BotControlSettings,
   HealthStatus,
   ModerationAuthConfig,
+  ModerationChannelInput,
+  ModerationChannelResponse,
   ModerationCommandInput,
   ModerationCommandResult,
   ModerationConfig,
@@ -765,6 +767,71 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getModerationPutConfigMutationOptions(options));
+    }
+
+export const getModerationProvisionConfigChannelUrl = (guildId: string,) => {
+
+
+
+
+  return `/api/moderation/guilds/${guildId}/config/channels`
+}
+
+export const moderationProvisionConfigChannel = async (guildId: string,
+    moderationChannelInput: ModerationChannelInput, options?: RequestInit): Promise<ModerationChannelResponse> => {
+
+  return customFetch<ModerationChannelResponse>(getModerationProvisionConfigChannelUrl(guildId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(moderationChannelInput)
+  }
+);}
+
+
+
+
+export const getModerationProvisionConfigChannelMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof moderationProvisionConfigChannel>>, TError,{guildId: string;data: BodyType<ModerationChannelInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof moderationProvisionConfigChannel>>, TError,{guildId: string;data: BodyType<ModerationChannelInput>}, TContext> => {
+
+const mutationKey = ['moderationProvisionConfigChannel'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof moderationProvisionConfigChannel>>, {guildId: string;data: BodyType<ModerationChannelInput>}> = (props) => {
+          const {guildId,data} = props ?? {};
+
+          return  moderationProvisionConfigChannel(guildId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ModerationProvisionConfigChannelMutationResult = NonNullable<Awaited<ReturnType<typeof moderationProvisionConfigChannel>>>
+    export type ModerationProvisionConfigChannelMutationBody = BodyType<ModerationChannelInput>
+    export type ModerationProvisionConfigChannelMutationError = ErrorType<void>
+
+    export const useModerationProvisionConfigChannel = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof moderationProvisionConfigChannel>>, TError,{guildId: string;data: BodyType<ModerationChannelInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof moderationProvisionConfigChannel>>,
+        TError,
+        {guildId: string;data: BodyType<ModerationChannelInput>},
+        TContext
+      > => {
+      return useMutation(getModerationProvisionConfigChannelMutationOptions(options));
     }
 
 export const getModerationGetBotControlUrl = (guildId: string,) => {

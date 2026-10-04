@@ -44,7 +44,7 @@ const SECTION_KEYS: Record<ConfigSection, string[]> = {
 
 export function CategorySettingsPage({ section }: { section: ConfigSection }) {
   const { guildId } = useActiveGuild();
-  const { data, updateSection, loading, error, refetch } = useModerationConfig(guildId);
+  const { data, updateSection, createChannel, loading, error, refetch } = useModerationConfig(guildId);
   const { data: metadata, error: metadataError } = useModerationMetadata(guildId);
   const { toast } = useToast();
   const [draft, setDraft] = useState<any>(null);
@@ -110,6 +110,23 @@ export function CategorySettingsPage({ section }: { section: ConfigSection }) {
       setSaving(false);
     }
   };
+  const handleCreateChannel = async (destination: string) => {
+    try {
+      const result = await createChannel(destination);
+      toast({
+        title: result.created ? "Canal creat și salvat" : "Canal existent reutilizat",
+        description: `#${result.channel.name} este configurat pentru această destinație.`,
+      });
+      return result;
+    } catch (createError: any) {
+      toast({
+        variant: "destructive",
+        title: "Crearea canalului a eșuat",
+        description: createError?.message || "Canalul nu a putut fi creat.",
+      });
+      throw createError;
+    }
+  };
 
   return (
     <div className={`max-w-5xl space-y-6 animate-stagger-1 ${changed ? "pb-28" : ""}`}>
@@ -134,7 +151,7 @@ export function CategorySettingsPage({ section }: { section: ConfigSection }) {
       <div className="animate-stagger-4">
         <ConfigEditor value={currentDraft} onChange={editDraft} sections={[section]}
           guildId={guildId ?? undefined} discordRoles={metadata?.roles} discordChannels={metadata?.channels}
-          botCapabilities={metadata?.botCapabilities} />
+          botCapabilities={metadata?.botCapabilities} onCreateChannel={handleCreateChannel} />
       </div>
 
       {changed && (
