@@ -3,8 +3,8 @@ name: Guide loading animation
 description: The user's intended gate animation and where it should appear.
 ---
 
-Keep the medieval gate loading screen with animated torches, rising portcullis, floating embers, and a red progress bar on `/joc` and when entering the moderation panel. The obsolete shield/checkmark `DiscordLoadingScreen` must not be restored.
+Keep the medieval gate loading screen with animated torches, rising portcullis, floating embers, and a red progress bar on `/joc`. Use the older shield/checkmark `DiscordLoadingScreen` while the moderation session and auth configuration load; do not show the gate on moderation entry.
 
-**Why:** The user clarified that the gate is the newer screen to keep and asked to remove the older Discord shield/checkmark loading screen instead.
+**Why:** The user reported two loading screens on mobile, preferred the older moderation loader, and asked to remove the new gate from that flow.
 
-**How to apply:** Use the gate while the moderation session/auth configuration loads, then show the robot-branded login screen. Do not replace it with the old Discord loader.
+**How to apply:** Keep `GameGuideLoadingScreen` on `/joc`; show `DiscordLoadingScreen` during moderation session/auth loading, then show the robot-branded login screen.
