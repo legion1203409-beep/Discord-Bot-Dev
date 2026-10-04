@@ -29,11 +29,11 @@
 
 .game-guide-loading__card {
   display: flex;
-  width: min(100%, 340px);
+  width: min(100%, 460px);
   flex-direction: column;
   align-items: center;
-  gap: 20px;
-  padding: 36px 32px;
+  gap: 18px;
+  padding: 18px 22px 24px;
   border: 1px solid var(--guide-loading-border);
   border-radius: 20px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent), var(--guide-loading-card);
@@ -41,41 +41,21 @@
   text-align: center;
 }
 
-.game-guide-loading__icon {
-  position: relative;
-  display: flex;
-  width: 76px;
-  height: 76px;
-  align-items: center;
-  justify-content: center;
+.game-guide-loading__art {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border: 1px solid rgba(243, 238, 230, 0.12);
+  border-radius: 12px;
+  background: #090a0c;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.38);
 }
 
-.game-guide-loading__glow {
-  position: absolute;
-  inset: -14px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(217, 74, 43, 0.35), transparent 70%);
-  filter: blur(3px);
-  animation: game-guide-loading-pulse 2s ease-in-out infinite;
-}
-
-.game-guide-loading__ring {
-  position: absolute;
-  inset: 0;
-  border: 3px solid transparent;
-  border-top-color: var(--guide-loading-accent);
-  border-right-color: var(--guide-loading-accent-dark);
-  border-radius: 50%;
-  animation: game-guide-loading-spin 1.3s linear infinite;
-}
-
-.game-guide-loading__icon svg {
-  position: relative;
-  z-index: 1;
-  width: 32px;
-  height: 32px;
-  filter: drop-shadow(0 0 6px rgba(217, 74, 43, 0.55));
-  animation: game-guide-loading-breathe 2s ease-in-out infinite;
+.game-guide-loading__art img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .game-guide-loading__title {
@@ -129,36 +109,6 @@
   animation-delay: 0.4s;
 }
 
-@keyframes game-guide-loading-pulse {
-  0%,
-  100% {
-    opacity: 0.5;
-    transform: scale(0.95);
-  }
-
-  50% {
-    opacity: 1;
-    transform: scale(1.05);
-  }
-}
-
-@keyframes game-guide-loading-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@keyframes game-guide-loading-breathe {
-  0%,
-  100% {
-    transform: scale(1);
-  }
-
-  50% {
-    transform: scale(1.08);
-  }
-}
-
 @keyframes game-guide-loading-blink {
   0%,
   80%,
@@ -182,9 +132,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .game-guide-loading__glow,
-  .game-guide-loading__ring,
-  .game-guide-loading__icon svg,
   .game-guide-loading__bar span,
   .game-guide-loading__dots span {
     animation: none;

@@ -1,4 +1,5 @@
 import "./game-guide-loading-screen.css";
+import animatedDragonLogo from "@assets/ezgif.com-video-to-gif-converter_1789791978054.gif";
 
 export function GameGuideLoadingScreen() {
   return (
@@ -10,37 +11,8 @@ export function GameGuideLoadingScreen() {
       aria-label="Se încarcă ghidul jocului"
     >
       <section className="game-guide-loading__card">
-        <div className="game-guide-loading__icon" aria-hidden="true">
-          <span className="game-guide-loading__glow" />
-          <span className="game-guide-loading__ring" />
-          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path
-              d="M4 5.5C4 4.67 4.67 4 5.5 4H11V20H5.5C4.67 20 4 19.33 4 18.5V5.5Z"
-              stroke="url(#game-guide-loading-gradient)"
-              strokeWidth="1.6"
-              strokeLinejoin="round"
-              fill="color-mix(in srgb, var(--ember) 14%, transparent)"
-            />
-            <path
-              d="M20 5.5C20 4.67 19.33 4 18.5 4H13V20H18.5C19.33 20 20 19.33 20 18.5V5.5Z"
-              stroke="url(#game-guide-loading-gradient)"
-              strokeWidth="1.6"
-              strokeLinejoin="round"
-              fill="color-mix(in srgb, var(--ember) 14%, transparent)"
-            />
-            <path
-              d="M11 4C11 4 12 5 12 7V20"
-              stroke="url(#game-guide-loading-gradient)"
-              strokeWidth="1.3"
-              strokeLinecap="round"
-            />
-            <defs>
-              <linearGradient id="game-guide-loading-gradient" x1="4" y1="4" x2="20" y2="20">
-                <stop offset="0" stopColor="var(--ember-light)" />
-                <stop offset="1" stopColor="var(--ember)" />
-              </linearGradient>
-            </defs>
-          </svg>
+        <div className="game-guide-loading__art" aria-hidden="true">
+          <img src={animatedDragonLogo} alt="" decoding="async" fetchPriority="high" />
         </div>
 
         <h1 className="game-guide-loading__title">Se încarcă ghidul</h1>

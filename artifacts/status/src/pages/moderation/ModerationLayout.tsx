@@ -13,7 +13,6 @@ import { GuildSelection } from "./GuildSelection";
 import { BotInviteLink } from "../../components/moderation/BotInviteLink";
 import { DiscordLoadingScreen } from "../../components/moderation/DiscordLoadingScreen";
 import "./moderation.css";
-import animatedDragonLogo from "@assets/ezgif.com-video-to-gif-converter_1789791978054.gif";
 import { DISCORD_INVITE } from "../../lib/public-constants";
 
 const DISCORD_OAUTH_START = "/api/moderation/oauth/discord";
@@ -194,16 +193,13 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
 
     return (
       <div className="mod-shell dark mod-login-bg mod-login-stage flex items-center justify-center p-4">
-        <div className="mod-login-animation" aria-hidden="true">
-          <img src={animatedDragonLogo} alt="" />
-        </div>
         <div className="w-full max-w-md bg-card border border-border p-7 sm:p-9 rounded-2xl relative z-10 overflow-hidden mod-card mod-login-card shadow-2xl">
           <div className="mod-card-glow" />
           <div className="mod-login-card-line" aria-hidden="true" />
           <div className="relative">
           <div className="mb-7 flex items-center gap-3">
             <div className="mod-brand-mark overflow-hidden">
-              <img src={animatedDragonLogo} alt="" className="mod-brand-logo" aria-hidden="true" />
+              <Eye className="h-4 w-4" aria-hidden="true" />
             </div>
             <div>
               <p className="mod-eyebrow">{botProfile?.name || "Oracolul Cenușii"}</p>

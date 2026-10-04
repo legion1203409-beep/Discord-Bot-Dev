@@ -182,44 +182,6 @@
   opacity: .025;
 }
 
-.mod-login-animation {
-  position: absolute;
-  z-index: 0;
-  inset: 0;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-.mod-login-animation::after {
-  position: absolute;
-  z-index: 1;
-  inset: 0;
-  background:
-    linear-gradient(90deg, rgba(12, 12, 14, .72), rgba(12, 12, 14, .2) 48%, rgba(12, 12, 14, .24)),
-    linear-gradient(0deg, rgba(12, 12, 14, .42), transparent 28%, transparent 72%, rgba(12, 12, 14, .2));
-  content: "";
-}
-
-.mod-login-animation img {
-  position: absolute;
-  top: 50%;
-  right: -8vw;
-  width: min(82vw, 1080px);
-  height: min(92vh, 760px);
-  object-fit: contain;
-  object-position: center;
-  opacity: .78;
-  mix-blend-mode: screen;
-  filter: saturate(1.12) contrast(1.08);
-  transform: translate3d(0, -50%, 0) scale(1);
-  animation: mod-login-art-drift 18s ease-in-out infinite alternate;
-}
-
-@keyframes mod-login-art-drift {
-  from { transform: translate3d(0, -50%, 0) scale(1); }
-  to { transform: translate3d(-1.5%, -50%, 0) scale(1.035); }
-}
-
 .mod-login-ambient {
   position: absolute;
   z-index: -1;
@@ -322,17 +284,6 @@
   box-shadow:
     0 0 0 5px hsl(10 69% 51% / .035),
     0 8px 30px hsl(10 69% 20% / .25);
-}
-
-.mod-login-card .mod-brand-logo {
-  width: 132%;
-  height: 132%;
-  border-radius: 50%;
-  object-fit: cover;
-  mix-blend-mode: screen;
-  filter: saturate(.7) contrast(1.12) brightness(.92);
-  -webkit-mask-image: radial-gradient(circle, #000 48%, transparent 76%);
-  mask-image: radial-gradient(circle, #000 48%, transparent 76%);
 }
 
 .mod-shell input[type="number"] {
@@ -2251,8 +2202,6 @@
 }
 
 .mod-login-card {
-  margin-right: auto;
-  margin-left: clamp(0rem, 6vw, 5.5rem);
   background: rgba(30, 30, 30, .9);
   backdrop-filter: blur(10px);
 }
@@ -2273,36 +2222,9 @@
 }
 
 @media (max-width: 767px) {
-  .mod-login-stage {
-    align-items: flex-end;
-    padding-top: clamp(10rem, 24vh, 13rem);
-    padding-bottom: max(1rem, env(safe-area-inset-bottom));
-  }
-
   .mod-login-card {
     margin-inline: auto;
     background: rgba(30, 30, 30, .88);
-  }
-
-  .mod-login-animation::after {
-    background: linear-gradient(180deg, rgba(12, 12, 14, .08), rgba(12, 12, 14, .14) 58%, rgba(12, 12, 14, .72));
-  }
-
-  .mod-login-animation img {
-    top: 0;
-    right: auto;
-    left: 50%;
-    width: min(118vw, 680px);
-    height: min(38vh, 340px);
-    object-position: center top;
-    opacity: .92;
-    transform: translate3d(-50%, 0, 0) scale(1);
-    animation-name: mod-login-art-drift-mobile;
-  }
-
-  @keyframes mod-login-art-drift-mobile {
-    from { transform: translate3d(-50%, 0, 0) scale(1); }
-    to { transform: translate3d(-49%, 0, 0) scale(1.035); }
   }
 
   .mod-page {
