@@ -14,3 +14,9 @@ For AutoMod logs, include the original text only after a normal bot deletion suc
 **Why:** The user wants logs to show what AutoMod removed without claiming a failed deletion succeeded or triggering mentions. Native blocked messages may never enter ordinary message handling.
 
 **How to apply:** Keep ignored/protected target checks. Use Message.content only after successful deletion, and execution.content only for the verified managed BlockMessage event.
+
+Configured Discord activity logs may display cached text for deleted messages and before/after text for edits, but those snippets are display-only and must not be written into persistent audit details. Bound and sanitize excerpts, disable allowed mentions, and state when Discord did not provide the text.
+
+**Why:** Operators need to identify which message was deleted or edited while the stored audit trail remains metadata-only.
+
+**How to apply:** Pass message snapshots separately from auditExternal details and use them only when sending to the configured activity or audit channel.

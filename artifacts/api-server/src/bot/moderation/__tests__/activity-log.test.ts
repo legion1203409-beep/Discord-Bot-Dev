@@ -119,8 +119,8 @@ describe("automatic Discord activity-log delivery", () => {
     const fields = payload.embeds[0]!.toJSON().fields;
     expect(fields.find((field) => field.name === "Canal")?.value).toBe("<#345678901234567890>");
     expect(fields.find((field) => field.name === "Țintă")).toBeUndefined();
-    expect(fields.find((field) => field.name === "Detalii")?.value).toContain("Nume: chat → general");
-    expect(fields.find((field) => field.name === "Detalii")?.value).toContain("Conținut sensibil: Nu → Da");
+    expect(fields.find((field) => field.name === "Detalii")?.value).toContain("**Nume:** chat → general");
+    expect(fields.find((field) => field.name === "Detalii")?.value).toContain("**Conținut sensibil:** Nu → Da");
   });
 
   it("shows the deleted message, author, and channel without raw message IDs", async () => {
@@ -153,7 +153,7 @@ describe("automatic Discord activity-log delivery", () => {
     expect(embed.fields.find((field) => field.name === "Autor mesaj")?.value).toBe("<@567890123456789012>");
     expect(embed.fields.find((field) => field.name === "Canal")?.value).toBe("<#456789012345678901>");
     expect(embed.fields.find((field) => field.name === "Conținut șters")?.value).toContain("Text șters @\u200beveryone");
-    expect(embed.fields.find((field) => field.name === "Detalii")?.value).toContain("Exceptat de la moderare: Nu");
+    expect(embed.fields.find((field) => field.name === "Detalii")?.value).toContain("**Exceptat de la moderare:** Nu");
     expect(JSON.stringify(payload)).not.toContain("@everyone");
     expect(JSON.stringify(payload)).not.toContain("message-id");
     expect(embed.fields.every((field) => field.inline === false)).toBe(true);
