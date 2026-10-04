@@ -89,7 +89,7 @@ export function GuildSelection({
                       type="button"
                       onClick={() => onSelect(guild.id)}
                       data-testid={`button-select-guild-${guild.id}`}
-                      className="group w-full flex items-center gap-4 rounded-xl border border-border/70 bg-background/60 px-4 py-4 text-left transition-all hover:-translate-y-0.5 hover:border-primary/60 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="ui-feedback group w-full flex items-center gap-4 rounded-xl border border-border/70 bg-background/60 px-4 py-4 text-left transition-all hover:-translate-y-0.5 hover:border-primary/60 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       <GuildIcon guild={guild} />
                       <span className="flex-1 min-w-0">

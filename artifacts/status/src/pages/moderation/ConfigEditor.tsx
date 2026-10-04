@@ -190,7 +190,7 @@ function ChannelScopeSelector({ channels, selectedChannelIds, onChange }: {
         type="button"
         aria-pressed={allChannelsSelected}
         onClick={() => onChange([])}
-        className={`group flex min-h-[68px] w-full items-center gap-3 rounded-xl border px-3.5 py-3 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-[0.99] ${
+        className={`ui-feedback group flex min-h-[68px] w-full items-center gap-3 rounded-xl border px-3.5 py-3 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-[0.99] ${
           allChannelsSelected
             ? "border-primary/45 bg-gradient-to-r from-primary/15 via-primary/10 to-background text-foreground shadow-md shadow-primary/10"
             : "border-border/80 bg-background/75 text-foreground shadow-sm hover:-translate-y-0.5 hover:border-primary/45 hover:bg-primary/5 hover:shadow-md"

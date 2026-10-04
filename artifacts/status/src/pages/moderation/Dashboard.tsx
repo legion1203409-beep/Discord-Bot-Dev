@@ -220,7 +220,7 @@ export function DashboardOverview() {
         href={DISCORD_INVITE}
         target="_blank"
         rel="noopener noreferrer"
-        className="group flex w-full max-w-sm items-center gap-3 rounded-xl border border-primary/30 bg-gradient-to-br from-primary/10 via-card/80 to-background/80 px-3 py-3 shadow-lg transition-all hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-[0_8px_20px_rgba(214,84,81,0.15)]"
+        className="ui-feedback group flex w-full max-w-sm items-center gap-3 rounded-xl border border-primary/30 bg-gradient-to-br from-primary/10 via-card/80 to-background/80 px-3 py-3 shadow-lg transition-all hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-[0_8px_20px_rgba(214,84,81,0.15)]"
         title={`Deschide invitația ${activeGuild?.name || "serverului"}`}
         data-testid="link-dashboard-server-invite"
       >
