@@ -14,6 +14,7 @@ import {
 import type { AutoModerationActionExecution } from "discord.js";
 import type { ActivityLogCategory, ModerationAction, ModerationConfig } from "../../moderation/config";
 import { logger } from "../../lib/logger";
+import { buildActivityLogPresentation } from "./activity-log-presentation";
 
 export type ModerationEventActionInput = {
   guildId: string;
@@ -218,11 +219,45 @@ async function recordAudit(
   targetType: string,
   targetId: string,
   detail: Record<string, unknown>,
+  activityDisplayDetail: Record<string, unknown> = {},
 ): Promise<void> {
   await helpers.auditExternal(guild.id, eventType, targetType, targetId, detail);
-  await deliverActivityLog(guild, config, eventType, targetType, targetId, detail);
+  // Message text is only sent to the configured Discord activity channel; it
+  // is intentionally kept out of the persisted moderation audit record.
+  await deliverActivityLog(guild, config, eventType, targetType, targetId, {
+    ...detail,
+    ...activityDisplayDetail,
+  });
   if (config.audit.enabled && config.audit.channelId) {
-    await helpers.notify(config, guild, "Audit moderare", `${eventType} • ${targetType} \`${targetId}\``, config.audit.channelId);
+    const displayDetail = { ...detail, ...activityDisplayDetail };
+    const actor = detail.actorVerified === true && typeof detail.actorId === "string"
+      ? `<@${detail.actorId}>`
+      : "Neverificat de Discord";
+    const channel = typeof detail.channelId === "string" ? `<#${detail.channelId}>` : "—";
+    const normalizedEventType = eventType.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLocaleLowerCase();
+    const presentation = buildActivityLogPresentation(
+      normalizedEventType,
+      targetType,
+      targetId,
+      displayDetail,
+      actor,
+      channel,
+    );
+    const eventTitle = ACTIVITY_EVENT_TITLES[normalizedEventType] ??
+      ACTIVITY_EVENT_TITLES[eventType] ??
+      normalizedEventType.split(".").at(-1)?.replace(/_/g, " ") ??
+      "Eveniment de moderare";
+    const description = [
+      presentation.description,
+      ...presentation.fields.map((field) => `**${field.name}:**\n${field.value}`),
+    ].filter(Boolean).join("\n\n").slice(0, 1_900);
+    await helpers.notify(
+      config,
+      guild,
+      eventTitle.charAt(0).toLocaleUpperCase() + eventTitle.slice(1),
+      description || "Evenimentul de moderare a fost înregistrat.",
+      config.audit.channelId,
+    );
   }
 }
 
@@ -252,7 +287,18 @@ const ACTIVITY_EVENT_TITLES: Record<string, string> = {
   "discord.guild_role_delete": "Rol șters",
   "action.applied": "Acțiune de moderare aplicată",
   "action.failed": "Acțiune de moderare eșuată",
+  "action.reconciled": "Acțiune de moderare verificată",
+  "action.finalized": "Rezultat de moderare confirmat",
+  "automod.message_delete_failed": "Ștergere AutoMod eșuată",
+  "ai.flagged": "Mesaj semnalat de moderarea AI",
+  "spam.edit_burst": "Editări repetate detectate",
+  "spam.bulk_delete": "Ștergere în masă detectată",
+  "spam.message_delete": "Ștergeri repetate detectate",
+  "suspicious.delete_alert_only": "Ștergeri fără sancțiune",
+  "suspicious.join_leave_alert_only": "Intrări și plecări suspecte",
+  "suspicious.unusual_alert_only": "Activitate neobișnuită",
   "raid.detected": "Activitate anti-raid detectată",
+  "raid.lockdown_failed": "Blocare anti-raid eșuată",
 };
 
 function activityCategory(eventType: string): ActivityLogCategory | null {
@@ -267,27 +313,7 @@ function activityCategory(eventType: string): ActivityLogCategory | null {
   return null;
 }
 
-function readableDetail(detail: Record<string, unknown>): string {
-  const ignored = new Set(["actorId", "actorBot", "actorStaff", "actorVerified"]);
-  return Object.entries(detail)
-    .filter(([key, value]) =>
-      !ignored.has(key) && !/content|messagebody|message_text/i.test(key) &&
-      value !== null && value !== undefined && value !== "",
-    )
-    .slice(0, 12)
-    .map(([key, value]) => {
-      const label = key.replace(/([A-Z])/g, " $1").replace(/[_-]+/g, " ").trim();
-      let rendered: string;
-      if (Array.isArray(value)) rendered = value.map(String).join(", ");
-      else if (typeof value === "object") rendered = JSON.stringify(value);
-      else rendered = String(value);
-      return `**${label}:** ${rendered}`;
-    })
-    .join("\n")
-    .slice(0, 3_800);
-}
-
-/** Delivers metadata-only activity events; message contents are never included. */
+/** Delivers a readable, mobile-first embed to the configured activity channel. */
 export async function deliverActivityLog(
   guild: Guild,
   config: ModerationConfig,
@@ -310,17 +336,25 @@ export async function deliverActivityLog(
     const actor = verified ? `<@${detail.actorId}>` : "Neverificat de Discord";
     const channelTarget = typeof detail.channelId === "string" ? `<#${detail.channelId}>` : "—";
     const normalizedEventType = eventType.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLocaleLowerCase();
+    const presentation = buildActivityLogPresentation(
+      normalizedEventType,
+      targetType,
+      targetId,
+      detail,
+      actor,
+      channelTarget,
+    );
     const embed = new EmbedBuilder()
-      .setColor(category === "security" ? 0xed4245 : category === "moderation" ? 0xf0b232 : 0x5865f2)
-      .setTitle(ACTIVITY_EVENT_TITLES[normalizedEventType] ?? ACTIVITY_EVENT_TITLES[eventType] ?? eventType.replace(/[._-]+/g, " "))
-      .addFields(
-        { name: "Categorie", value: ACTIVITY_CATEGORY_LABELS[category], inline: true },
-        { name: "Actor", value: actor, inline: true },
-        { name: "Țintă", value: `${targetType}: ${targetId}`.slice(0, 1_024), inline: true },
-        { name: "Canal", value: channelTarget, inline: true },
-        { name: "Detalii", value: readableDetail(detail) || "Nu sunt disponibile alte detalii.", inline: false },
+      .setColor(
+        category === "security" ? 0xd94a2b :
+          category === "moderation" ? 0xc38b3b :
+            category === "messages" ? 0xd46a3c : 0x5865f2,
       )
+      .setTitle(ACTIVITY_EVENT_TITLES[normalizedEventType] ?? ACTIVITY_EVENT_TITLES[eventType] ?? eventType.replace(/[._-]+/g, " "))
+      .setFooter({ text: `Jurnal de activitate · ${ACTIVITY_CATEGORY_LABELS[category]}` })
       .setTimestamp();
+    if (presentation.description) embed.setDescription(presentation.description);
+    embed.addFields(...presentation.fields);
     await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
   } catch (error) {
     // Logging must never block moderation/event processing. Setup failures are
@@ -560,7 +594,12 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
         targetAuthorId: message.author.id,
         channelId: message.channelId,
         contentChanged,
-      }));
+      }), {
+        displayMessageAuthorId: message.author.id,
+        displayBeforeContent: typeof oldMessage.content === "string" ? oldMessage.content : null,
+        displayAfterContent: typeof message.content === "string" ? message.content : null,
+        displayContentChanged: contentChanged,
+      });
     if (!config.protection.enabled) return;
     if (isExcludedChannel(config, message.channelId) || isExcludedMember(config, message.member)) return;
 
@@ -642,6 +681,14 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
           messageCount: messages.length,
           policyExcluded: isExcludedChannel(config, channelId),
         }),
+        {
+          displayMessageAuthorId: first?.author?.id ?? null,
+          displayDeletedMessages: messages.slice(0, 5).map((message) => ({
+            authorId: message.author?.id ?? null,
+            content: typeof message.content === "string" ? message.content : null,
+            attachmentCount: message.attachments?.size ?? 0,
+          })),
+        },
       );
       if (!config.protection.enabled) return;
       if ((!config.antiSpam.enabled || !rule.enabled) && (!config.suspiciousBehavior.enabled || !massDeletes.enabled)) return;
