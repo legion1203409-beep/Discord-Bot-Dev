@@ -1,4 +1,5 @@
 import {
+  AutoModerationActionType,
   ChannelType,
   EmbedBuilder,
   PermissionFlagsBits,
@@ -14,6 +15,7 @@ import { pool } from "@workspace/db";
 import { moderationStore } from "../../moderation/store";
 import type { ModerationConfig, ModerationAction as ConfiguredAction } from "../../moderation/config";
 import { logger } from "../../lib/logger";
+import { buildAutomaticModerationLogDescription } from "./automod-logging";
 import { shouldApplyLinkBlockInChannel, shouldDeleteAutoModMessage } from "./automod-policy";
 import { deliverWarningInGuild } from "./warning-delivery";
 import type { AutoModerationActionExecution } from "discord.js";
@@ -635,20 +637,12 @@ async function applyAutomaticSerialized(guild: Guild, config: ModerationConfig, 
   const incidentKey = `automod:${guild.id}:${message.author.id}:${detection.kind}:${Math.floor(Date.now() / 60_000)}`;
   const why = detection.detail;
   const destination = automaticLogDestination(config, rule);
-  if (destination?.channelId) {
-    await notify(
-      config,
-      guild,
-      destination.title,
-      `${why} • Utilizator: <@${message.author.id}> • Canal: <#${message.channelId}>`,
-      destination.channelId,
-    );
-  }
   // Severity changes only detector thresholds. Escalation changes sanctions
   // solely when the owner explicitly enabled and configured its levels.
   const selectedAction = await actionAtEscalationLevel(config, guild.id, message.author.id, rule.action);
   const isScamDetection = detection.kind === "scam";
   const deleteMessage = shouldDeleteAutoModMessage(selectedAction, rule.deleteMessage, isScamDetection);
+  let deletionSucceeded = false;
   if (deleteMessage) {
     try {
       await executeModerationAction({
@@ -657,6 +651,7 @@ async function applyAutomaticSerialized(guild: Guild, config: ModerationConfig, 
         idempotencyKey: `${incidentKey}:message:${message.id}`,
         evidence: [{ messageId: message.id, channelId: message.channelId, kind: detection.kind }],
       });
+      deletionSucceeded = true;
     } catch (error) {
       logger.warn({ error, guildId: guild.id, userId: message.author.id, messageId: message.id }, "AutoMod message deletion failed");
       await audit({ guildId: guild.id, actorId: moderationClient!.user!.id, type: "warn", source: "automod" }, "automod.message_delete_failed", "message", message.id, {
@@ -664,6 +659,27 @@ async function applyAutomaticSerialized(guild: Guild, config: ModerationConfig, 
         error: error instanceof Error ? error.message : "delete failed",
       }).catch(() => undefined);
     }
+  }
+  if (destination?.channelId) {
+    const deletionLogOptions = destination.title === "AutoMod"
+      ? {
+        deletedContent: deletionSucceeded ? message.content : undefined,
+        deletionFailed: deleteMessage && !deletionSucceeded,
+      }
+      : {};
+    await notify(
+      config,
+      guild,
+      destination.title,
+      buildAutomaticModerationLogDescription(
+        destination.title,
+        why,
+        message.author.id,
+        message.channelId,
+        deletionLogOptions,
+      ),
+      destination.channelId,
+    );
   }
   if (config.channels.autoSlowmodeChannelIds.includes(message.channelId)) {
     const channel = await guild.channels.fetch(message.channelId).catch(() => null);
@@ -862,7 +878,6 @@ async function handleNativeAutoModerationExecution(
     !autoMod.enabled ||
     !rule.enabled ||
     !channelId ||
-    rule.action === "delete" ||
     config.channels.ignoredChannelIds.includes(channelId) ||
     config.channels.protectedChannelIds.includes(channelId)
   ) return;
@@ -880,17 +895,25 @@ async function handleNativeAutoModerationExecution(
   const actorId = client.user?.id;
   if (!actorId) return;
   const selectedAction = await actionAtEscalationLevel(config, execution.guild.id, target.id, rule.action);
-  if (selectedAction === "none" || selectedAction === "delete") return;
   const matched = execution.matchedKeyword?.trim();
   if (autoMod.logChannelId) {
     await notify(
       config,
       execution.guild,
       "AutoMod",
-      `Cuvânt interzis detectat${matched ? ` („${matched}”)` : ""} • Utilizator: <@${target.id}> • Canal: <#${channelId}>`,
+      buildAutomaticModerationLogDescription(
+        "AutoMod",
+        `Cuvânt interzis detectat${matched ? ` („${matched}”)` : ""}`,
+        target.id,
+        channelId,
+        execution.action.type === AutoModerationActionType.BlockMessage
+          ? { deletedContent: execution.content }
+          : {},
+      ),
       autoMod.logChannelId,
     );
   }
+  if (selectedAction === "none" || selectedAction === "delete") return;
   await executeModerationAction({
     guildId: execution.guild.id,
     actorId,
