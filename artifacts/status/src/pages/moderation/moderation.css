@@ -2273,24 +2273,36 @@
 }
 
 @media (max-width: 767px) {
+  .mod-login-stage {
+    align-items: flex-end;
+    padding-top: clamp(10rem, 24vh, 13rem);
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+
   .mod-login-card {
     margin-inline: auto;
     background: rgba(30, 30, 30, .88);
   }
 
+  .mod-login-animation::after {
+    background: linear-gradient(180deg, rgba(12, 12, 14, .08), rgba(12, 12, 14, .14) 58%, rgba(12, 12, 14, .72));
+  }
+
   .mod-login-animation img {
+    top: 0;
     right: auto;
     left: 50%;
-    width: 160vw;
-    height: 74vh;
-    opacity: .58;
-    transform: translate3d(-50%, -50%, 0) scale(1);
+    width: min(118vw, 680px);
+    height: min(38vh, 340px);
+    object-position: center top;
+    opacity: .92;
+    transform: translate3d(-50%, 0, 0) scale(1);
     animation-name: mod-login-art-drift-mobile;
   }
 
   @keyframes mod-login-art-drift-mobile {
-    from { transform: translate3d(-50%, -50%, 0) scale(1); }
-    to { transform: translate3d(-49%, -50%, 0) scale(1.035); }
+    from { transform: translate3d(-50%, 0, 0) scale(1); }
+    to { transform: translate3d(-49%, 0, 0) scale(1.035); }
   }
 
   .mod-page {
