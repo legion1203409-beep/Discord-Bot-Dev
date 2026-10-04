@@ -16,7 +16,27 @@ const mocks = vi.hoisted(() => ({
   initGameplayConfig: vi.fn(), getGameplayConfig: vi.fn(), saveGuildGameplayConfig: vi.fn(),
   initChannelConfig: vi.fn(),
   loadVerificationConfig: vi.fn(), saveVerificationConfig: vi.fn(),
-  saveDailyStatsEmbedConfig: vi.fn(),
+  loadDailyStatsEmbedConfig: vi.fn(), saveDailyStatsEmbedConfig: vi.fn(),
+  defaultDailyStatsConfig: {
+    channelId: "",
+    title: "Statistici zilnice",
+    description: "Rezumat zilnic",
+    color: "#7c3aed",
+    footer: "Oracol",
+    activityTitle: "Activitate",
+    channelsTitle: "Canale",
+    emptyChannelsText: "Fără activitate",
+    imageUrl: "",
+    thumbnailUrl: "",
+    metricLabels: {
+      messages: "Mesaje",
+      uniqueUsers: "Utilizatori",
+      boosts: "Boost-uri",
+      joins: "Intrări",
+      leaves: "Ieșiri",
+      peakVoice: "Vârf vocal",
+    },
+  },
   publishVerificationPanel: vi.fn(),
   loadInviteTrackingConfig: vi.fn(), saveInviteTrackingConfig: vi.fn(),
   defaultInviteTrackingConfig: {
@@ -78,6 +98,7 @@ vi.mock("../../bot/db", () => ({
   saveTicketConfig: mocks.saveTicketConfig,
   loadVerificationConfig: mocks.loadVerificationConfig,
   saveVerificationConfig: mocks.saveVerificationConfig,
+  loadDailyStatsEmbedConfig: mocks.loadDailyStatsEmbedConfig,
   saveDailyStatsEmbedConfig: mocks.saveDailyStatsEmbedConfig,
   loadInviteTrackingConfig: mocks.loadInviteTrackingConfig,
   saveInviteTrackingConfig: mocks.saveInviteTrackingConfig,
@@ -232,6 +253,7 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     mocks.initChannelConfig.mockResolvedValue(undefined);
     mocks.loadVerificationConfig.mockResolvedValue(null);
     mocks.saveVerificationConfig.mockResolvedValue(undefined);
+    mocks.loadDailyStatsEmbedConfig.mockResolvedValue(structuredClone(mocks.defaultDailyStatsConfig));
     mocks.saveDailyStatsEmbedConfig.mockResolvedValue(undefined);
     mocks.publishVerificationPanel.mockImplementation(async (_client, _guildId, config) => ({
       ...config,
@@ -1044,6 +1066,74 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     expect(result.channels).toEqual(channels);
     expect(result.tickets.categories).toEqual(categories);
     expect(result.tickets.alliancePublicChannelId).toBe("");
+  });
+
+  it("allows unrelated bot-control saves when an unchanged daily-stats channel is no longer available", async () => {
+    const staleChannelId = "777777777";
+    const staleDailyStats = { ...mocks.defaultDailyStatsConfig, channelId: staleChannelId };
+    mocks.loadDailyStatsEmbedConfig.mockResolvedValue(staleDailyStats);
+    const fetchChannel = vi.fn(async () => null);
+    mocks.client.mockReturnValue({
+      isReady: () => true,
+      guilds: {
+        cache: new Map(),
+        fetch: vi.fn().mockResolvedValue({
+          id: guildId,
+          channels: { fetch: fetchChannel },
+        }),
+      },
+    });
+    const payload = {
+      ...botControlPayload(),
+      channels: { main: "" },
+      dailyStats: staleDailyStats,
+    };
+
+    const response = await fetch(`${base}/bot-control`, {
+      ...post(payload),
+      method: "PUT",
+      headers: { "content-type": "application/json", "x-csrf-token": "csrf" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(fetchChannel).not.toHaveBeenCalled();
+    expect(mocks.saveDailyStatsEmbedConfig).toHaveBeenCalledWith(
+      guildId,
+      expect.objectContaining({ channelId: staleChannelId }),
+    );
+  });
+
+  it("still rejects a newly selected daily-stats channel that is not in the server", async () => {
+    const selectedChannelId = "777777777";
+    const fetchChannel = vi.fn(async () => null);
+    mocks.client.mockReturnValue({
+      isReady: () => true,
+      guilds: {
+        cache: new Map(),
+        fetch: vi.fn().mockResolvedValue({
+          id: guildId,
+          channels: { fetch: fetchChannel },
+        }),
+      },
+    });
+    const payload = {
+      ...botControlPayload(),
+      channels: { main: "" },
+      dailyStats: { ...mocks.defaultDailyStatsConfig, channelId: selectedChannelId },
+    };
+
+    const response = await fetch(`${base}/bot-control`, {
+      ...post(payload),
+      method: "PUT",
+      headers: { "content-type": "application/json", "x-csrf-token": "csrf" },
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: "Alege un canal text valid din acest server pentru statisticile zilnice.",
+    });
+    expect(fetchChannel).toHaveBeenCalledWith(selectedChannelId);
+    expect(mocks.saveChannelConfig).not.toHaveBeenCalled();
   });
 
   it("rejects configured channels that are missing from the target guild before persisting", async () => {

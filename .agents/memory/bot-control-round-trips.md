@@ -26,3 +26,9 @@ An invalid settings draft should stay visible after a failed save, with an expli
 **Why:** Enabling private Discord activity logs without selecting a viewer role correctly fails validation; resetting the toggle on error made the UI appear disabled while the toast complained about an enabled log, obscuring the cause. Private log provisioning still must require a viewer role.
 
 **How to apply:** Validate prerequisites before submitting, explain them beside the affected control, and keep the draft after failures. Distinguish "enabled in the form" from "saved and active".
+
+When a full bot-control form resubmits an unchanged Discord destination that has since become invalid, do not let it block unrelated settings. Validate the destination when its ID changes, including when it is cleared or replaced.
+
+**Why:** A deleted legacy channel can otherwise make every save fail, even when the operator is editing a separate message or gameplay setting.
+
+**How to apply:** Compare submitted destination IDs with the persisted config before making live Discord checks; keep strict validation for newly selected targets.

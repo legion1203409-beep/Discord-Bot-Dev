@@ -313,7 +313,10 @@ function buildEmbed(config: ModerationConfig, title: string, description: string
   if (config.embeds.style === "compact") {
     embed.setFooter({ text: "Moderare" });
   } else if (config.embeds.style === "detailed") {
-    embed.addFields({ name: "Detalii", value: description.slice(0, 1_024) }).setTimestamp();
+    if (!config.embeds.descriptionTemplate.includes("{reason}")) {
+      embed.addFields({ name: "Detalii", value: description.slice(0, 1_024) });
+    }
+    embed.setTimestamp();
   }
   if (config.embeds.iconUrl) embed.setThumbnail(config.embeds.iconUrl);
   if (config.embeds.animations && config.embeds.animationUrl) embed.setImage(config.embeds.animationUrl);

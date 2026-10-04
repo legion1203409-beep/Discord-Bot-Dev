@@ -2511,9 +2511,15 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   const value = parse(botControlSchema, req.body);
   const inviteTracking = value.inviteTracking ?? DEFAULT_INVITE_TRACKING_CONFIG;
   const dailyStats = value.dailyStats ?? DEFAULT_DAILY_STATS_EMBED_CONFIG;
+  const loadDailyStats = optionalExport(() => loadDailyStatsEmbedConfig);
+  const currentDailyStats = await loadDailyStats?.(guildId) ?? DEFAULT_DAILY_STATS_EMBED_CONFIG;
   const client = getModerationClient();
   const inviteGuild = await validateInviteTrackingTargets(guildId, inviteTracking);
-  await validateDailyStatsChannelTarget(guildId, dailyStats.channelId);
+  // An invalid legacy destination must not block unrelated full-form saves.
+  // Continue validating whenever the user selects, changes, or clears it.
+  if (dailyStats.channelId !== currentDailyStats.channelId) {
+    await validateDailyStatsChannelTarget(guildId, dailyStats.channelId);
+  }
   const tickets = normalizeTicketConfig(value.tickets);
   const channels: ChannelConfig = Object.fromEntries(
     Object.entries(value.channels).filter((entry): entry is [string, string] => typeof entry[1] === "string"),

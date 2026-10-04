@@ -51,6 +51,42 @@ describe("saved moderation notification settings", () => {
     });
   });
 
+  it("does not repeat detailed content when the embed description already includes the reason", async () => {
+    const config = structuredClone(defaultModerationConfig);
+    config.embeds.enabled = true;
+    config.embeds.style = "detailed";
+    config.embeds.descriptionTemplate = "{action}: {reason}";
+    const description = "Un mesaj a fost șters.\n\n**Șters de:**\nNeverificat de Discord";
+    const { guild, send } = fixture();
+
+    await notify(config, guild, "Mesaj șters", description, "987654321098765432");
+
+    const payload = send.mock.calls[0]?.[0] as unknown as {
+      embeds: Array<{ toJSON(): { description: string; fields?: Array<{ name: string; value: string }> } }>;
+    };
+    const embed = payload.embeds[0]!.toJSON();
+    expect(embed.description).toBe(`Mesaj șters: ${description}`);
+    expect(embed.description.match(/Șters de:/g)).toHaveLength(1);
+    expect(embed.fields ?? []).toHaveLength(0);
+  });
+
+  it("keeps a detailed field when the embed description template omits the reason", async () => {
+    const config = structuredClone(defaultModerationConfig);
+    config.embeds.enabled = true;
+    config.embeds.style = "detailed";
+    config.embeds.descriptionTemplate = "{action}";
+    const { guild, send } = fixture();
+
+    await notify(config, guild, "Mesaj șters", "Un mesaj a fost șters.", "987654321098765432");
+
+    const payload = send.mock.calls[0]?.[0] as unknown as {
+      embeds: Array<{ toJSON(): { fields?: Array<{ name: string; value: string }> } }>;
+    };
+    expect(payload.embeds[0]!.toJSON().fields).toEqual([
+      { name: "Detalii", value: "Un mesaj a fost șters." },
+    ]);
+  });
+
   it("uses the audit channel for an unset module destination only while audit is enabled", async () => {
     const config = structuredClone(defaultModerationConfig);
     config.audit.channelId = "987654321098765432";
