@@ -529,3 +529,17 @@ mtime_ms = 1788365020573
 storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:c6624cc8-e264-47e4-8a83-82fc52f0aaa6/cb7651b0-577c-4143-81d1-127750eed61a/2a1f6c18-49c7-4cb0-9751-40e2f6a1f9f7"
 storage_version_token = "1788365083074069"
 content_type = "image/png"
+
+[[outputs]]
+id = "sQr_KIvh-Vui4oQNJAVpL"
+uri = "file://attached_assets/generated_images/oracolul-robot-mascot.png"
+type = "image"
+title = "Mascota robot Oracolul Cenușii"
+description = "Mascotă robot originală, cu armură întunecată și accente de jar, folosită în mărcile panoului de moderare."
+logical_id = "0b382072-a88b-4721-be62-e55a900a5c1c"
+content_hash = "sha256:61ba4f6c54d3e6429b6e35ef984f3ba9ca57b0dd0f7612b62e3a506cfbe9dd5d"
+size = 1703913
+mtime_ms = 1791133843250
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:c6624cc8-e264-47e4-8a83-82fc52f0aaa6/0b382072-a88b-4721-be62-e55a900a5c1c/55cc7e57-17a8-45b5-b1f7-2fbd073bd793"
+storage_version_token = "1791133942120362"
+content_type = "image/png"
