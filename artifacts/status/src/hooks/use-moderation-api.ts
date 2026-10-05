@@ -735,8 +735,18 @@ export function useModerationConfig(guildId: string | null) {
       const snapshotVersion = snapshot.data.version
         ?? snapshot.headers.get("etag")?.replace(/^W\//, "").replaceAll('"', "");
       if (snapshotVersion == null) throw new Error("Configurația nu conține o versiune ETag.");
-      const merged = { ...snapshot.data.config };
-      for (const key of keys) merged[key] = structuredClone(draft[key]);
+      const merged = structuredClone(snapshot.data.config);
+      for (const key of keys) {
+        const parts = key.split(".");
+        let target = merged;
+        let source = draft;
+        for (const part of parts.slice(0, -1)) {
+          target = target[part];
+          source = source[part];
+        }
+        const leaf = parts[parts.length - 1];
+        target[leaf] = structuredClone(source[leaf]);
+      }
       return apiFetchWithMeta<any>(`/guilds/${requestedGuildId}/config`, {
         method: "PUT",
         headers: { "If-Match": `"${snapshotVersion}"` },

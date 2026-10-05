@@ -19,7 +19,8 @@ type MessageCustomizationDialogProps<T> = {
   value: T;
   defaultValue: T;
   isDefault: (value: T) => boolean;
-  onApply: (value: T) => void;
+  onApply: (value: T) => void | Promise<unknown>;
+  saveOnApply?: boolean;
   renderEditor: (value: T, onChange: (value: T) => void) => ReactNode;
   defaultMessage: ReactNode;
 };
@@ -36,6 +37,7 @@ export function MessageCustomizationDialog<T>({
   defaultValue,
   isDefault,
   onApply,
+  saveOnApply = false,
   renderEditor,
   defaultMessage,
 }: MessageCustomizationDialogProps<T>) {
@@ -43,10 +45,13 @@ export function MessageCustomizationDialog<T>({
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<MessageMode>("default");
   const [draft, setDraft] = useState<T>(() => clone(value));
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const autoOpenHandled = useRef(false);
   const usesDefault = isDefault(value);
 
   const openDialog = () => {
+    setSaveError(null);
     setDraft(clone(value));
     setMode(usesDefault ? "default" : "custom");
     setOpen(true);
@@ -60,9 +65,18 @@ export function MessageCustomizationDialog<T>({
     setOpen(true);
   }, [triggerId, value, isDefault]);
 
-  const apply = () => {
-    onApply(mode === "default" ? clone(defaultValue) : draft);
-    setOpen(false);
+  const apply = async () => {
+    if (saving) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await onApply(mode === "default" ? clone(defaultValue) : draft);
+      setOpen(false);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Salvarea a eșuat. Mesajul rămâne în editor.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -82,7 +96,7 @@ export function MessageCustomizationDialog<T>({
         </span>
       </Button>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={(next) => { if (!saving) setOpen(next); }}>
         <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{title}</DialogTitle>
@@ -90,6 +104,7 @@ export function MessageCustomizationDialog<T>({
           </DialogHeader>
 
           <RadioGroup
+            disabled={saving}
             value={mode}
             onValueChange={(next) => setMode(next as MessageMode)}
             className="grid gap-3 sm:grid-cols-2"
@@ -130,19 +145,20 @@ export function MessageCustomizationDialog<T>({
               {defaultMessage}
             </div>
           ) : (
-            <div className="space-y-4">{renderEditor(draft, setDraft)}</div>
+            <fieldset disabled={saving} className="space-y-4">{renderEditor(draft, setDraft)}</fieldset>
           )}
+          {saveError && <p role="alert" className="text-sm text-destructive">{saveError}</p>}
 
           <DialogFooter className="gap-2 sm:justify-between">
             <p className="text-left text-xs text-muted-foreground">
-              Aplică modificarea în formular, apoi apasă „Salvează” pe pagină pentru a o trimite botului.
+              {saveOnApply ? "Salvează direct mesajul. Activarea și canalele rămân neschimbate." : "Aplică modificarea în formular, apoi apasă „Salvează” pe pagină pentru a o trimite botului."}
             </p>
             <div className="flex shrink-0 gap-2">
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              <Button type="button" variant="outline" disabled={saving} onClick={() => setOpen(false)}>
                 Anulează
               </Button>
-              <Button type="button" onClick={apply}>
-                Aplică
+              <Button type="button" disabled={saving} onClick={apply}>
+                {saving ? "Se salvează…" : saveOnApply ? "Salvează mesajul" : "Aplică"}
               </Button>
             </div>
           </DialogFooter>

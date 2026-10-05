@@ -34,11 +34,11 @@ const SECTION_KEYS: Record<ConfigSection, string[]> = {
   suspicious: ["suspiciousBehavior"],
   ai: ["ai"],
   tools: ["manualTools"],
-  "cases-audit": ["cases", "audit", "activityLog"],
+  "cases-audit": ["cases", "audit", "activityLog.enabled", "activityLog.categories", "activityLog.roleIds", "activityLog.categoryId", "activityLog.channelIds"],
   "roles-channels": ["roles", "channels"],
   time: ["timeProfiles"],
   escalation: ["escalation"],
-  embeds: ["embeds"],
+  embeds: ["embeds.enabled", "embeds.color", "embeds.iconUrl", "embeds.style", "embeds.animations", "embeds.animationUrl"],
   permissions: ["permissions", "multiServer"],
 };
 
@@ -97,9 +97,7 @@ export function CategorySettingsPage({ section }: { section: ConfigSection }) {
           if (draftRevision.current === savingRevision) return structuredClone(result.config);
           // Preserve controls changed while the request was in flight, but use
           // the server's provisioned channel IDs and other canonical fields.
-          const next = structuredClone(result.config);
-          for (const key of SECTION_KEYS[section]) next[key] = rebaseDraftChanges(next[key], currentDraft[key], current?.[key]);
-          return next;
+          return rebaseDraftChanges(structuredClone(result.config), currentDraft, current);
         });
       }
       toast({ title: `${detail.title} salvat`, description: "Setările trimise au fost actualizate. Verifică eventualele modificări rămase nesalvate." });

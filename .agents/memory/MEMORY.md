@@ -76,3 +76,4 @@
 - [Moderation action selection](moderation-action-selection.md) — show combined action choices in both AutoMod and each AI category; a separate deletion toggle did not meet the user's request.
 - [Per-target channel provisioning](per-target-channel-provisioning.md) — create only the selected target, block @everyone, preserve manual Discord role ACLs, and retain unrelated draft edits.
 - [Guide and moderation loading screens](guide-loading-animation.md) — keep the gate on `/joc`; use the older shield loader for moderation to avoid showing the gate there.
+- [Separate message editing](message-editing-separation.md) — message editing must have its own location, not live beside activation toggles or channel selection.
