@@ -34,3 +34,9 @@ the GIF was swapped, while the shop (fresh post) fixed itself with the same asse
 DELETE the old message and POST a fresh one (only after the delete succeeds — else
 you duplicate the permanent message); edit in place only when the image is
 unchanged so reconnects don't churn the channel.
+
+Deleted-message activity logs may use the attachment URL already present on the cached Discord message, but only after validating it as an image on Discord's attachment CDN. Do not fetch or persist deleted image bytes; when the delete event contains only a partial message, omit the preview.
+
+**Why:** A deleted message may no longer be fetchable, and copying its media into storage would turn a short-lived moderation log into additional content retention.
+
+**How to apply:** Keep deleted-image previews event-scoped, restricted to trusted Discord attachment URLs and supported image MIME types, and degrade to the existing text log when the attachment is unavailable.

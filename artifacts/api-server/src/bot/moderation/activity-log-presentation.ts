@@ -477,7 +477,7 @@ export function buildActivityLogPresentation(
       : detail.displayContentChanged === false
         ? "Mesajul a fost actualizat fără schimbarea textului."
         : "A fost înregistrată o editare de mesaj.";
-    return { description, fields, imageUrl: deletedMessageImageUrl(detail) };
+    return { description, fields };
   }
 
   if (normalized === "discord.message_delete" || normalized === "discord.message_bulk_delete") {
@@ -507,7 +507,7 @@ export function buildActivityLogPresentation(
     const description = normalized === "discord.message_bulk_delete"
       ? `${count} ${count === 1 ? "mesaj a fost șters" : "mesaje au fost șterse"}.`
       : "Un mesaj a fost șters.";
-    return { description, fields };
+    return { description, fields, imageUrl: deletedMessageImageUrl(detail) };
   }
 
   if (normalized === "discord.member_join" || normalized === "discord.member_leave") {
