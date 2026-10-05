@@ -833,6 +833,18 @@ test.describe("authenticated moderation console", () => {
     await page.getByRole("button", { name: "Anulează", exact: true }).click();
   });
 
+  test("message customization hub opens the member editor in view", async ({ page }) => {
+    await page.goto("/");
+    await chooseFirstGuild(page);
+    await page.goto("/moderare/config/mesaje");
+    await expect(page.getByRole("heading", { name: "Personalizare mesaje" })).toBeVisible();
+    await page.getByRole("link", { name: /Deschide editorul/ }).first().click();
+    await expect(page).toHaveURL(/\/moderare\/config\/cazuri-audit#member-join-template$/);
+    const joinEditor = page.getByRole("button", { name: /Mesaj la intrarea unui membru/ });
+    await expect(joinEditor).toBeVisible();
+    await expect(joinEditor).toBeInViewport();
+  });
+
   test("moderation embed messages are edited in a dialog and can be reset to default", async ({ page }) => {
     await page.goto("/moderare/config/embeduri");
     await chooseFirstGuild(page);

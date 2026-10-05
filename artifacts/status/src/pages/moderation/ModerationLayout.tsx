@@ -102,6 +102,7 @@ const moderationNavGroups: Array<{ id: string; label: string; items: ModerationN
     label: "Configurare",
     items: [
       { href: "/config", icon: Settings, label: "Configurare module" },
+      { href: "/config/mesaje", icon: FileText, label: "Personalizare mesaje" },
       { href: "/config/avansat", icon: SlidersHorizontal, label: "Setări avansate" },
       { href: "/config/unelte", icon: Zap, label: "Unelte staff" },
       { href: "/config/cazuri-audit", icon: FileText, label: "Setări cazuri și audit" },
@@ -155,6 +156,28 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     setMobileMenuOpen(false);
   }, [location]);
+
+  useEffect(() => {
+    const targetId = window.location.hash.slice(1);
+    if (!targetId) return;
+
+    let timer: number | undefined;
+    let attempts = 0;
+    const scrollToTarget = () => {
+      const target = document.getElementById(targetId);
+      if (target) {
+        target.scrollIntoView({ behavior: "smooth", block: "center" });
+        return;
+      }
+      if (attempts++ < 80) timer = window.setTimeout(scrollToTarget, 100);
+    };
+    const frame = window.requestAnimationFrame(scrollToTarget);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [location, search]);
 
   if (!error && (loading || (authConfigLoading && !session?.authenticated))) {
     return <DiscordLoadingScreen />;

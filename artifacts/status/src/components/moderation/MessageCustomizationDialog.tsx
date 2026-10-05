@@ -13,6 +13,7 @@ import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
 type MessageMode = "default" | "custom";
 
 type MessageCustomizationDialogProps<T> = {
+  triggerId?: string;
   title: string;
   description: string;
   value: T;
@@ -28,6 +29,7 @@ function clone<T>(value: T): T {
 }
 
 export function MessageCustomizationDialog<T>({
+  triggerId,
   title,
   description,
   value,
@@ -57,6 +59,7 @@ export function MessageCustomizationDialog<T>({
   return (
     <>
       <Button
+        id={triggerId}
         type="button"
         variant="outline"
         size="sm"

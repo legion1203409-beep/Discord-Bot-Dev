@@ -12,6 +12,7 @@ import { ProtectionPage } from "./pages/moderation/Protection";
 import { PoliciesPage } from "./pages/moderation/Policies";
 import { BotControlPage } from "./pages/moderation/BotControl";
 import { VerificationAdminPage } from "./pages/moderation/VerificationAdmin";
+import { MessageTemplatesPage } from "./pages/moderation/MessageTemplates";
 import { useActiveGuild } from "./hooks/use-moderation-api";
 import { Toaster } from "./components/ui/toaster";
 import { SwordCursor } from "./components/SwordCursor";
@@ -110,6 +111,7 @@ function ModerationApp() {
           <Route path="/cazuri" component={CasesPage} />
           <Route path="/audit" component={AuditPage} />
           <Route path="/config" component={ConfigOverviewPage} />
+          <Route path="/config/mesaje" component={MessageTemplatesPage} />
           <Route path="/config/avansat" component={AdvancedSettingsPage} />
           <Route path="/config/unelte" component={() => <CategorySettingsPage section="tools" />} />
           <Route path="/config/cazuri-audit" component={() => <CategorySettingsPage section="cases-audit" />} />

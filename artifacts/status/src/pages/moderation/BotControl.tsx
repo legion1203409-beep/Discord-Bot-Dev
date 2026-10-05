@@ -1711,6 +1711,7 @@ export function BotControlPage({
                 </p>
               </div>
               <MessageCustomizationDialog
+                triggerId="alliance-announcement-template"
                 title="Anunțul public al parteneriatului"
                 description="Alege anunțul standard sau personalizează textul publicat când stafful aprobă și publică pactul."
                 value={draft.tickets.allianceAnnouncementTemplate}
@@ -2245,6 +2246,7 @@ export function BotControlPage({
                 </div>
               </div>
               <MessageCustomizationDialog
+                triggerId="daily-stats-template"
                 title="Mesajul raportului zilnic"
                 description="Alege textul implicit sau personalizează toate câmpurile text din raport."
                 value={{

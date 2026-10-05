@@ -949,6 +949,7 @@ export function ConfigEditor({
                 {key === "members" && (
                   <div className="grid gap-2 sm:grid-cols-2">
                     <MessageCustomizationDialog
+                      triggerId="member-join-template"
                       title="Mesaj la intrarea unui membru"
                       description="Alege textul standard sau personalizează titlul și descrierea mesajului de intrare."
                       value={{
@@ -995,6 +996,7 @@ export function ConfigEditor({
                       )}
                     />
                     <MessageCustomizationDialog
+                      triggerId="member-leave-template"
                       title="Mesaj la plecarea unui membru"
                       description="Alege textul standard sau personalizează titlul și descrierea mesajului de plecare."
                       value={{
@@ -1145,6 +1147,7 @@ export function ConfigEditor({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Toggle label="Activează embed-uri" checked={value.embeds.enabled} onChange={(next) => set(["embeds", "enabled"], next)} />
           <MessageCustomizationDialog
+            triggerId="moderation-embed-template"
             title="Mesajele embed de moderare"
             description="Alege formatul standard sau personalizează titlul și descrierea folosite în mesajele de moderare."
             value={{
