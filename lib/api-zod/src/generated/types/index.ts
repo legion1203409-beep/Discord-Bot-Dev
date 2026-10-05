@@ -7,6 +7,7 @@
  */
 
 export * from './activityRankSettings';
+export * from './activityRankSettingsBarStyle';
 export * from './activityRankSettingsResponse';
 export * from './botControlPartialApplyResponse';
 export * from './botControlPartialApplyResponseVerification';

@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ActivityRankSettingsBarStyle } from './activityRankSettingsBarStyle';
 
 export interface ActivityRankSettings {
   enabled: boolean;
@@ -12,8 +13,12 @@ export interface ActivityRankSettings {
   notificationChannelId: string;
   /** @maxLength 1800 */
   rankUpMessage: string;
-  /** @maxLength 2000 */
+  /**
+     * Empty, an app-upload object path, or an HTTPS image URL from cdn.discordapp.com, media.discordapp.net, i.imgur.com or images.unsplash.com. External redirects are not followed.
+     * @maxLength 2000
+     */
   bannerImageUrl: string;
+  barStyle?: ActivityRankSettingsBarStyle;
   /** @pattern ^#[0-9a-fA-F]{6}$ */
   color: string;
 }

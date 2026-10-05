@@ -543,3 +543,17 @@ mtime_ms = 1791133843250
 storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:c6624cc8-e264-47e4-8a83-82fc52f0aaa6/0b382072-a88b-4721-be62-e55a900a5c1c/55cc7e57-17a8-45b5-b1f7-2fbd073bd793"
 storage_version_token = "1791133942120362"
 content_type = "image/png"
+
+[[outputs]]
+id = "wv-1Om_I2odglhrOA5sL7"
+uri = "file://attached_assets/activity-rank-default-example.gif"
+type = "image"
+title = "Previzualizare /rank — banner implicit"
+description = "Exemplu animat cu stilul Sabie, progres 68% și un membru demonstrativ sub bară. În Discord sunt folosite progresul, numele și avatarul membrului real."
+logical_id = "34947c1b-e851-4793-bfd6-058a9ff58a9a"
+content_hash = "sha256:67d077bb3886c76c9fe3f6f0cd7e7c2535b44923b40e09d557458700f673ab8d"
+size = 621834
+mtime_ms = 1791235770055
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:c6624cc8-e264-47e4-8a83-82fc52f0aaa6/34947c1b-e851-4793-bfd6-058a9ff58a9a/85825930-6187-4f44-87cf-cf8bc3188fc5"
+storage_version_token = "1791235956189668"
+content_type = "image/gif"

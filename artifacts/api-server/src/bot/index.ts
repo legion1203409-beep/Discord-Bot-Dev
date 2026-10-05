@@ -729,21 +729,28 @@ async function handleActivityRank(interaction: ChatInputCommandInteraction): Pro
   const filled = Math.floor(percentage / 10);
   const bar = `${"▰".repeat(filled)}${"▱".repeat(10 - filled)}`;
   const memberName = interaction.guild?.members.cache.get(target.id)?.displayName ?? target.globalName ?? target.username;
-  const bannerUrl = publicMessageImageUrl(config.bannerImageUrl);
   let cardImage: Buffer | null = null;
-  if (bannerUrl) {
-    try {
-      cardImage = renderActivityRankBanner(
-        await fetchActivityRankBanner(bannerUrl),
-        percentage,
-        config.color,
-      );
-    } catch (error) {
-      logger.warn(
-        { err: error, guildId, userId: target.id },
-        "Activity rank banner could not be rendered; using the configured banner without an overlay",
-      );
-    }
+  try {
+    const [banner, avatar] = await Promise.all([
+      config.bannerImageUrl ? fetchActivityRankBanner(config.bannerImageUrl) : Promise.resolve(null),
+      fetchActivityRankBanner(target.displayAvatarURL({ extension: "png", size: 128, forceStatic: true }))
+        .catch((error) => {
+          logger.warn({ err: error, userId: target.id }, "Activity rank avatar could not be fetched");
+          return null;
+        }),
+    ]);
+    cardImage = await renderActivityRankBanner(
+      banner,
+      percentage,
+      config.color,
+      config.barStyle,
+      { displayName: memberName, level: progress.level, avatar },
+    );
+  } catch (error) {
+    logger.warn(
+      { err: error, guildId, userId: target.id },
+      "Activity rank banner animation could not be rendered",
+    );
   }
   const embed = addActivityRankBanner(
     new EmbedBuilder()
@@ -753,7 +760,8 @@ async function handleActivityRank(interaction: ChatInputCommandInteraction): Pro
         `**${memberName}**\n\n` +
         `**XP permanent:** ${record.totalXp.toLocaleString("ro-RO")}\n` +
         `**Progres:** ${progress.progressXp} / ${progress.requiredXp} XP până la rangul ${progress.level + 1}\n` +
-        `${bar} ${percentage}%`,
+        `${bar} ${percentage}%` +
+        (cardImage ? "" : "\n\n*Animația barei nu a putut fi generată. Progresul numeric este disponibil mai sus.*"),
       )
       .setThumbnail(target.displayAvatarURL({ size: 256 }))
       .setFooter({ text: "Rang separat de nivelul RPG · Progres permanent pe acest server" })
@@ -761,10 +769,10 @@ async function handleActivityRank(interaction: ChatInputCommandInteraction): Pro
     cardImage ? "" : config.bannerImageUrl,
   );
   if (cardImage) {
-    embed.setImage("attachment://activity-rank.png");
+    embed.setImage("attachment://activity-rank.gif");
     await interaction.editReply({
       embeds: [embed],
-      files: [new AttachmentBuilder(cardImage, { name: "activity-rank.png" })],
+      files: [new AttachmentBuilder(cardImage, { name: "activity-rank.gif" })],
     });
     return;
   }

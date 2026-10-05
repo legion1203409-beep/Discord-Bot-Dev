@@ -1,4 +1,5 @@
 import { normalizeMessageImageUrl } from "./message-media";
+import { isSupportedActivityBannerSource } from "./activity-rank-banner-source";
 
 export const ACTIVITY_CHAT_XP = 10;
 export const ACTIVITY_VOICE_XP = 5;
@@ -6,12 +7,15 @@ export const ACTIVITY_CHAT_DAILY_CAP = 200;
 export const ACTIVITY_VOICE_DAILY_CAP = 240;
 export const ACTIVITY_DAILY_CAP = 300;
 export const ACTIVITY_ROLE_MILESTONES = [5, 10, 20] as const;
+export const ACTIVITY_BAR_STYLES = ["discord", "dungi", "gradient", "oblic", "pixel", "pro", "sword"] as const;
+export type ActivityBarStyle = typeof ACTIVITY_BAR_STYLES[number];
 
 export interface ActivityRankConfig {
   enabled: boolean;
   notificationChannelId: string;
   rankUpMessage: string;
   bannerImageUrl: string;
+  barStyle: ActivityBarStyle;
   color: string;
 }
 
@@ -20,6 +24,7 @@ export const DEFAULT_ACTIVITY_RANK_CONFIG: ActivityRankConfig = {
   notificationChannelId: "",
   rankUpMessage: "✨ {user} a ajuns la rangul de activitate **{level}** pe serverul **{guild}**!",
   bannerImageUrl: "",
+  barStyle: "discord",
   color: "#a34b2b",
 };
 
@@ -39,7 +44,13 @@ export function normalizeActivityRankConfig(value: unknown): ActivityRankConfig 
     enabled: typeof input.enabled === "boolean" ? input.enabled : DEFAULT_ACTIVITY_RANK_CONFIG.enabled,
     notificationChannelId: /^\d{5,25}$/.test(channel) ? channel : "",
     rankUpMessage: message || DEFAULT_ACTIVITY_RANK_CONFIG.rankUpMessage,
-    bannerImageUrl: normalizeMessageImageUrl(input.bannerImageUrl),
+    bannerImageUrl: (() => {
+      const url = normalizeMessageImageUrl(input.bannerImageUrl);
+      return isSupportedActivityBannerSource(url) ? url : "";
+    })(),
+    barStyle: ACTIVITY_BAR_STYLES.includes(input.barStyle as ActivityBarStyle)
+      ? input.barStyle as ActivityBarStyle
+      : DEFAULT_ACTIVITY_RANK_CONFIG.barStyle,
     color,
   };
 }

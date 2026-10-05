@@ -206,6 +206,7 @@ export const moderationGetActivityRanksResponseConfigRankUpMessageMax = 1800;
 
 export const moderationGetActivityRanksResponseConfigBannerImageUrlMax = 2000;
 
+export const moderationGetActivityRanksResponseConfigBarStyleDefault = `discord`;
 export const moderationGetActivityRanksResponseConfigColorRegExp = new RegExp('^#[0-9a-fA-F]{6}$');
 
 
@@ -214,7 +215,8 @@ export const ModerationGetActivityRanksResponse = zod.object({
   "enabled": zod.boolean(),
   "notificationChannelId": zod.string().regex(moderationGetActivityRanksResponseConfigNotificationChannelIdRegExp),
   "rankUpMessage": zod.string().max(moderationGetActivityRanksResponseConfigRankUpMessageMax),
-  "bannerImageUrl": zod.string().max(moderationGetActivityRanksResponseConfigBannerImageUrlMax),
+  "bannerImageUrl": zod.string().max(moderationGetActivityRanksResponseConfigBannerImageUrlMax).describe('Empty, an app-upload object path, or an HTTPS image URL from cdn.discordapp.com, media.discordapp.net, i.imgur.com or images.unsplash.com. External redirects are not followed.'),
+  "barStyle": zod.enum(['discord', 'dungi', 'gradient', 'oblic', 'pixel', 'pro', 'sword']).default(moderationGetActivityRanksResponseConfigBarStyleDefault),
   "color": zod.string().regex(moderationGetActivityRanksResponseConfigColorRegExp)
 })
 })
@@ -234,6 +236,7 @@ export const moderationPutActivityRanksBodyRankUpMessageMax = 1800;
 
 export const moderationPutActivityRanksBodyBannerImageUrlMax = 2000;
 
+export const moderationPutActivityRanksBodyBarStyleDefault = `discord`;
 export const moderationPutActivityRanksBodyColorRegExp = new RegExp('^#[0-9a-fA-F]{6}$');
 
 
@@ -241,7 +244,8 @@ export const ModerationPutActivityRanksBody = zod.object({
   "enabled": zod.boolean(),
   "notificationChannelId": zod.string().regex(moderationPutActivityRanksBodyNotificationChannelIdRegExp),
   "rankUpMessage": zod.string().max(moderationPutActivityRanksBodyRankUpMessageMax),
-  "bannerImageUrl": zod.string().max(moderationPutActivityRanksBodyBannerImageUrlMax),
+  "bannerImageUrl": zod.string().max(moderationPutActivityRanksBodyBannerImageUrlMax).describe('Empty, an app-upload object path, or an HTTPS image URL from cdn.discordapp.com, media.discordapp.net, i.imgur.com or images.unsplash.com. External redirects are not followed.'),
+  "barStyle": zod.enum(['discord', 'dungi', 'gradient', 'oblic', 'pixel', 'pro', 'sword']).default(moderationPutActivityRanksBodyBarStyleDefault),
   "color": zod.string().regex(moderationPutActivityRanksBodyColorRegExp)
 })
 
@@ -250,6 +254,7 @@ export const moderationPutActivityRanksResponseConfigRankUpMessageMax = 1800;
 
 export const moderationPutActivityRanksResponseConfigBannerImageUrlMax = 2000;
 
+export const moderationPutActivityRanksResponseConfigBarStyleDefault = `discord`;
 export const moderationPutActivityRanksResponseConfigColorRegExp = new RegExp('^#[0-9a-fA-F]{6}$');
 
 
@@ -258,7 +263,8 @@ export const ModerationPutActivityRanksResponse = zod.object({
   "enabled": zod.boolean(),
   "notificationChannelId": zod.string().regex(moderationPutActivityRanksResponseConfigNotificationChannelIdRegExp),
   "rankUpMessage": zod.string().max(moderationPutActivityRanksResponseConfigRankUpMessageMax),
-  "bannerImageUrl": zod.string().max(moderationPutActivityRanksResponseConfigBannerImageUrlMax),
+  "bannerImageUrl": zod.string().max(moderationPutActivityRanksResponseConfigBannerImageUrlMax).describe('Empty, an app-upload object path, or an HTTPS image URL from cdn.discordapp.com, media.discordapp.net, i.imgur.com or images.unsplash.com. External redirects are not followed.'),
+  "barStyle": zod.enum(['discord', 'dungi', 'gradient', 'oblic', 'pixel', 'pro', 'sword']).default(moderationPutActivityRanksResponseConfigBarStyleDefault),
   "color": zod.string().regex(moderationPutActivityRanksResponseConfigColorRegExp)
 })
 })

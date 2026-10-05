@@ -1,6 +1,7 @@
 import { PUBLIC_DISCORD_INVITE } from "../lib/discord-invite";
 import { getActivityRankConfig, saveActivityRankConfig } from "../bot/activity-ranks";
 import { normalizeActivityRankConfig } from "../bot/activity-ranks-core";
+import { isSupportedActivityBannerSource } from "../bot/activity-rank-banner-source";
 
 import 
 {
@@ -2421,7 +2422,11 @@ router.put("/guilds/:guildId/activity-ranks", asyncRoute(async (req, res) => {
     enabled: z.boolean(),
     notificationChannelId: snowflake.or(z.literal("")),
     rankUpMessage: z.string().max(1_800),
-    bannerImageUrl: z.string().max(2_000),
+    bannerImageUrl: z.string().max(2_000).refine(
+      (value) => !value.trim() || isSupportedActivityBannerSource(value.trim()),
+      "Încarcă bannerul sau folosește un URL de la Discord CDN, Imgur ori Unsplash.",
+    ),
+    barStyle: z.enum(["discord", "dungi", "gradient", "oblic", "pixel", "pro", "sword"]).optional(),
     color: z.string().regex(/^#[0-9a-f]{6}$/i),
   }).strict(), req.body));
 

@@ -52,7 +52,24 @@ describe("activity chat qualification and config normalization", () => {
       notificationChannelId: "",
       rankUpMessage: "New rank {level}",
       bannerImageUrl: "",
+      barStyle: "discord",
       color: "#a34b2b",
     });
+  });
+
+  it("accepts all supplied bar styles and defaults unknown styles safely", () => {
+    for (const style of ["discord", "dungi", "gradient", "oblic", "pixel", "pro", "sword"]) {
+      expect(normalizeActivityRankConfig({ barStyle: style }).barStyle).toBe(style);
+    }
+    expect(normalizeActivityRankConfig({ barStyle: "unknown" }).barStyle).toBe("discord");
+  });
+
+  it("allows uploaded and trusted-host banners, not arbitrary external hosts", () => {
+    expect(normalizeActivityRankConfig({ bannerImageUrl: "/api/storage/objects/uploads/banner-id" }).bannerImageUrl)
+      .toBe("/api/storage/objects/uploads/banner-id");
+    expect(normalizeActivityRankConfig({ bannerImageUrl: "https://i.imgur.com/banner.png" }).bannerImageUrl)
+      .toBe("https://i.imgur.com/banner.png");
+    expect(normalizeActivityRankConfig({ bannerImageUrl: "https://127.0.0.1.sslip.io/banner.png" }).bannerImageUrl)
+      .toBe("");
   });
 });

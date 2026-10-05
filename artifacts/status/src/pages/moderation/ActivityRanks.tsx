@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Activity, Loader2, Save, Trophy } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { ImageField } from "../../components/moderation/ImageField";
@@ -14,6 +14,7 @@ interface ActivityRankConfig {
   notificationChannelId: string;
   rankUpMessage: string;
   bannerImageUrl: string;
+  barStyle: "discord" | "dungi" | "gradient" | "oblic" | "pixel" | "pro" | "sword";
   color: string;
 }
 
@@ -22,6 +23,7 @@ const DEFAULT_CONFIG: ActivityRankConfig = {
   notificationChannelId: "",
   rankUpMessage: "✨ {user} a ajuns la rangul de activitate **{level}** pe serverul **{guild}**!",
   bannerImageUrl: "",
+  barStyle: "discord",
   color: "#a34b2b",
 };
 
@@ -34,6 +36,8 @@ export function ActivityRanksPage() {
   const { session } = useSession();
   const { data: metadata, loading: metadataLoading } = useModerationMetadata(guildId);
   const { toast } = useToast();
+  const activeGuildRef = useRef(guildId);
+  activeGuildRef.current = guildId;
   const [draft, setDraft] = useState<ActivityRankConfig>(DEFAULT_CONFIG);
   const [saved, setSaved] = useState<ActivityRankConfig>(DEFAULT_CONFIG);
   const [loading, setLoading] = useState(false);
@@ -79,20 +83,25 @@ export function ActivityRanksPage() {
 
   const save = async () => {
     if (!guildId || saving) return;
+    const savingGuildId = guildId;
     setSaving(true);
     setError("");
     try {
       const { data } = await apiFetchWithMeta<{ config: ActivityRankConfig }>(
-        `/guilds/${guildId}/activity-ranks`,
+        `/guilds/${savingGuildId}/activity-ranks`,
         { method: "PUT", body: JSON.stringify(draft) },
       );
-      setDraft(data.config);
-      setSaved(data.config);
-      toast({ title: "Setările rangurilor au fost salvate." });
+      if (activeGuildRef.current === savingGuildId) {
+        setDraft(data.config);
+        setSaved(data.config);
+        toast({ title: "Setările rangurilor au fost salvate." });
+      }
     } catch (saveError: unknown) {
       const message = saveError instanceof Error ? saveError.message : "Setările nu au putut fi salvate.";
-      setError(message);
-      toast({ variant: "destructive", title: "Salvarea a eșuat", description: message });
+      if (activeGuildRef.current === savingGuildId) {
+        setError(message);
+        toast({ variant: "destructive", title: "Salvarea a eșuat", description: message });
+      }
     } finally {
       setSaving(false);
     }
@@ -207,18 +216,54 @@ export function ActivityRanksPage() {
                 />
               </label>
             </div>
+            <p className="text-xs text-muted-foreground">Dacă lași bannerul gol, se folosește imaginea implicită Regatul Cenușii. În /rank, avatarul și numele membrului apar sub bara animată.</p>
+            <p className="text-xs text-muted-foreground">Poți încărca orice imagine acceptată. Pentru URL-uri externe sunt acceptate Discord CDN, Imgur (i.imgur.com) și Unsplash (images.unsplash.com).</p>
+            <label className="block space-y-2 text-sm">
+              <span className="font-medium">Stilul barei XP peste banner</span>
+              <Select value={draft.barStyle} onValueChange={(value) => update("barStyle", value as ActivityRankConfig["barStyle"])}>
+                <SelectTrigger aria-label="Stilul barei XP"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="discord">Clasică Discord</SelectItem>
+                  <SelectItem value="dungi">Dungi</SelectItem>
+                  <SelectItem value="gradient">Gradient</SelectItem>
+                  <SelectItem value="oblic">Oblică</SelectItem>
+                  <SelectItem value="pixel">Pixel</SelectItem>
+                  <SelectItem value="pro">Pro · glow și scântei</SelectItem>
+                  <SelectItem value="sword">Sabie · rune și forjă</SelectItem>
+                </SelectContent>
+              </Select>
+              <span className="block text-xs text-muted-foreground">Cele trei fișiere furnizate includ șapte stiluri animate. Bara se umple până la progresul real al membrului.</span>
+            </label>
             <p className="text-xs text-muted-foreground">La rangurile 5, 10 și 20, botul oferă roluri decorative și înlocuiește rolul de prag anterior. Are nevoie de Manage Roles, iar rolul lui trebuie să fie deasupra rolurilor create.</p>
           </section>
 
           <section className="space-y-3 rounded-xl border border-border bg-card p-5">
             <h2 className="font-semibold">Previzualizare</h2>
             <div className="max-w-xl overflow-hidden rounded-xl border border-border bg-background">
-              {draft.bannerImageUrl && <img src={draft.bannerImageUrl} alt="Previzualizarea bannerului de rang" className="max-h-52 w-full object-cover" />}
+              <div className="relative aspect-[800/534] w-full overflow-hidden bg-[#181e2b]">
+                  <img
+                    src={draft.bannerImageUrl || "/api/assets/activity-rank-default.png"}
+                    alt="Previzualizarea bannerului de rang"
+                    className="absolute inset-0 h-full w-full object-cover"
+                  />
+                <img
+                  src={`${import.meta.env.BASE_URL}activity-bars/${draft.barStyle}.gif`}
+                  alt="Previzualizarea barei animate la 62% progres"
+                  className="absolute top-[58%] left-[14%] w-[72%]"
+                />
+                <div className="absolute left-[13.5%] top-[84%] flex h-[13%] w-[73%] items-center gap-3 rounded-xl border border-amber-700/60 bg-[#0c0a0a]/90 px-3 text-amber-50">
+                  <span className="flex aspect-square h-[72%] shrink-0 items-center justify-center rounded-full border border-amber-600 bg-amber-950 text-sm font-semibold">M</span>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold sm:text-base">Membrul care folosește /rank</p>
+                    <p className="truncate text-[10px] text-amber-200/80 sm:text-xs">Rang 5 · XP de activitate</p>
+                  </div>
+                </div>
+              </div>
               <div className="space-y-2 p-4">
                 <p className="text-xs uppercase tracking-widest text-muted-foreground">Rang de activitate · {metadata?.guild.name ?? "Serverul meu"}</p>
                 <p className="font-semibold" style={{ color: draft.color }}>Rang 5</p>
                 <p className="text-sm">{previewMessage}</p>
-                <p className="text-xs text-muted-foreground">██████░░░░ · progresul până la următorul rang</p>
+                <p className="text-xs text-muted-foreground">Exemplu: 62% progres. În /rank, bara animată este compusă peste banner și arată XP-ul real.</p>
               </div>
             </div>
           </section>

@@ -414,7 +414,11 @@ components:
         enabled: { type: boolean }
         notificationChannelId: { type: string, pattern: "^(?:\\d{5,25})?$" }
         rankUpMessage: { type: string, maxLength: 1800 }
-        bannerImageUrl: { type: string, maxLength: 2000 }
+        bannerImageUrl:
+          type: string
+          maxLength: 2000
+          description: Empty, an app-upload object path, or an HTTPS image URL from cdn.discordapp.com, media.discordapp.net, i.imgur.com or images.unsplash.com. External redirects are not followed.
+        barStyle: { type: string, enum: [discord, dungi, gradient, oblic, pixel, pro, sword], default: discord }
         color: { type: string, pattern: "^#[0-9a-fA-F]{6}$" }
     ActivityRankSettingsResponse:
       type: object

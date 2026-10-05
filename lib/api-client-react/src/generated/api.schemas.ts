@@ -232,14 +232,31 @@ export interface VerificationPanelPublishResponse {
  */
 export interface BotControlResponse { [key: string]: unknown }
 
+export type ActivityRankSettingsBarStyle = typeof ActivityRankSettingsBarStyle[keyof typeof ActivityRankSettingsBarStyle];
+
+
+export const ActivityRankSettingsBarStyle = {
+  discord: 'discord',
+  dungi: 'dungi',
+  gradient: 'gradient',
+  oblic: 'oblic',
+  pixel: 'pixel',
+  pro: 'pro',
+  sword: 'sword',
+} as const;
+
 export interface ActivityRankSettings {
   enabled: boolean;
   /** @pattern ^(?:\d{5,25})?$ */
   notificationChannelId: string;
   /** @maxLength 1800 */
   rankUpMessage: string;
-  /** @maxLength 2000 */
+  /**
+     * Empty, an app-upload object path, or an HTTPS image URL from cdn.discordapp.com, media.discordapp.net, i.imgur.com or images.unsplash.com. External redirects are not followed.
+     * @maxLength 2000
+     */
   bannerImageUrl: string;
+  barStyle?: ActivityRankSettingsBarStyle;
   /** @pattern ^#[0-9a-fA-F]{6}$ */
   color: string;
 }

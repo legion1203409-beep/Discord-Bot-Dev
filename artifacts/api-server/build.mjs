@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build as esbuild } from "esbuild";
 import esbuildPluginPino from "esbuild-plugin-pino";
-import { rm } from "node:fs/promises";
+import { cp, mkdir, rm } from "node:fs/promises";
 
 // Plugins (e.g. 'esbuild-plugin-pino') may use `require` to resolve dependencies
 globalThis.require = createRequire(import.meta.url);
@@ -118,6 +118,20 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
     `,
     },
   });
+  const barDir = path.join(distDir, "activity-bars");
+  await mkdir(barDir, { recursive: true });
+  await cp(path.join(artifactDir, "src/bot/activity-bars/render.py"), path.join(barDir, "render.py"));
+  await cp(path.join(artifactDir, "assets/activity-rank-default.png"), path.join(barDir, "default-banner.png"));
+  await cp(path.join(artifactDir, "assets/activity-rank-font.ttf"), path.join(barDir, "member-font.ttf"));
+  await cp(path.join(artifactDir, "assets/activity-rank-font-license.txt"), path.join(barDir, "member-font-license.txt"));
+  const artwork = {
+    normal: "xp_bar_normale_1791233452457.py",
+    pro: "xp_bar_pro_1791233452441.py",
+    sword: "xp_bar_sword_1791233452379.py",
+  };
+  await Promise.all(Object.entries(artwork).map(([name, file]) =>
+    cp(path.resolve(artifactDir, "../../attached_assets", file), path.join(barDir, `${name}.py`))
+  ));
 }
 
 buildAll().catch((err) => {

@@ -1,7 +1,7 @@
 [project]
 name = "repl-nix-workspace"
 version = "0.1.0"
-description = "Add your description here"
+description = "Animated activity rank card artwork renderer"
 requires-python = ">=3.11"
 dependencies = [
     "pillow>=12.3.0",
