@@ -265,6 +265,7 @@ describe("non-message moderation events", () => {
     emitter.emit(Events.GuildMemberAdd, joined);
     await waitForHandlers();
     expect(helpers.recordMemberJoin).toHaveBeenCalledWith(targetGuild.id, userId, new Date(joinedAt));
+    expect(vi.mocked(helpers.auditExternal).mock.calls[0]?.[4]).not.toHaveProperty("memberAvatarUrl");
 
     vi.mocked(helpers.getMemberJoinAt).mockResolvedValueOnce(new Date(joinedAt));
     const departed = {
@@ -273,6 +274,7 @@ describe("non-message moderation events", () => {
     };
     emitter.emit(Events.GuildMemberRemove, departed);
     await waitForHandlers();
+    expect(vi.mocked(helpers.auditExternal).mock.calls[1]?.[4]).not.toHaveProperty("memberAvatarUrl");
 
     expect(helpers.clearMemberJoinAt).toHaveBeenCalledWith(targetGuild.id, userId, new Date(joinedAt));
     const payloads = send.mock.calls.map((call) => call[0] as {

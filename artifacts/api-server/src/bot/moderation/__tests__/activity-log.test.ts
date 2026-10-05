@@ -182,6 +182,25 @@ describe("automatic Discord activity-log delivery", () => {
     expect(sends.get("roles")).not.toHaveBeenCalled();
   });
 
+  it("only uses profile thumbnails from the official Discord CDN", async () => {
+    const config = structuredClone(defaultModerationConfig);
+    config.activityLog.enabled = true;
+    config.activityLog.categories.members = true;
+    config.activityLog.channelIds.members = "log-members";
+    const { guild, sends } = testGuild();
+
+    await deliverActivityLog(guild, config, "discord.member_join", "member", "234567890123456789", {
+      memberAvatarUrl: "https://cdn.discordapp.com.attacker.example/avatar.png",
+      serverJoinedAt: "2026-10-05T10:00:00.000Z",
+      accountCreatedAt: "2020-01-01T00:00:00.000Z",
+    });
+
+    const payload = sends.get("members")!.mock.calls[0]![0] as {
+      embeds: Array<{ toJSON: () => { thumbnail?: { url: string } } }>;
+    };
+    expect(payload.embeds[0]!.toJSON().thumbnail).toBeUndefined();
+  });
+
   it("shows the deleted message, author, and channel without raw message IDs", async () => {
     const config = structuredClone(defaultModerationConfig);
     config.activityLog.enabled = true;
