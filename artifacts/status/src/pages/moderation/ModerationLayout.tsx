@@ -148,21 +148,15 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
   } = useModerationAuthConfig();
   const { guildId, setGuildId, guilds } = useActiveGuild();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [initialLoading, setInitialLoading] = useState(true);
   const activeGuild = guilds.find((guild) => guild.id === guildId);
   const activeGuildIcon = guildIconUrl(activeGuild);
   const botProfile = authConfig?.bot;
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setInitialLoading(false), 1500);
-    return () => window.clearTimeout(timer);
-  }, []);
-
-  useEffect(() => {
     setMobileMenuOpen(false);
   }, [location]);
 
-  if (!error && (loading || initialLoading || (authConfigLoading && !session?.authenticated))) {
+  if (!error && (loading || (authConfigLoading && !session?.authenticated))) {
     return <DiscordLoadingScreen />;
   }
 
