@@ -400,6 +400,7 @@ export async function deliverActivityLog(
       .setFooter({ text: `Jurnal de activitate · ${ACTIVITY_CATEGORY_LABELS[category]}` })
       .setTimestamp();
     if (presentation.description) embed.setDescription(presentation.description);
+    if (presentation.thumbnailUrl) embed.setThumbnail(presentation.thumbnailUrl);
     embed.addFields(...presentation.fields);
     await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
   } catch (error) {
@@ -537,6 +538,9 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
     const config = await helpers.getConfig(member.guild.id);
     const joinedAt = joinedAtForMember(member);
     const identity = memberActivityIdentity(member);
+    const activityDisplayDetail = memberActivityLogSelected(config)
+      ? { memberAvatarUrl: member.displayAvatarURL({ size: 256 }) }
+      : {};
     if (memberActivityLogSelected(config)) {
       try {
         await helpers.recordMemberJoin(member.guild.id, member.id, joinedAt);
@@ -550,7 +554,9 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
         channelId: null,
         ...identity,
         serverJoinedAt: joinedAt.toISOString(),
-      }));
+      }),
+      activityDisplayDetail,
+    );
     if (!config.protection.enabled) return;
     const joinLeave = config.suspiciousBehavior.joinLeaveFlood;
     if (config.suspiciousBehavior.enabled && joinLeave.enabled) {
@@ -639,6 +645,9 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
     );
     const leftAt = new Date();
     const identity = memberActivityIdentity(member);
+    const activityDisplayDetail = memberActivityLogSelected(config)
+      ? { memberAvatarUrl: member.displayAvatarURL({ size: 256 }) }
+      : {};
     await recordAudit(helpers, config, member.guild, "discord.member_leave", "member", member.id,
       auditDetail(config, null, {
         actorVerified: false,
@@ -646,7 +655,9 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
         ...identity,
         serverJoinedAt: joinedAt?.toISOString() ?? null,
         serverLeftAt: leftAt.toISOString(),
-      }));
+      }),
+      activityDisplayDetail,
+    );
     if (recordedJoinedAt) {
       try {
         await helpers.clearMemberJoinAt(member.guild.id, member.id, recordedJoinedAt);

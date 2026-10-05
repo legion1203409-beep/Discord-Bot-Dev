@@ -7,6 +7,7 @@ export type ActivityLogEmbedField = {
 export type ActivityLogPresentation = {
   description: string | null;
   fields: ActivityLogEmbedField[];
+  thumbnailUrl?: string;
 };
 
 const snowflakePattern = /^\d{5,25}$/;
@@ -58,6 +59,7 @@ const hiddenDetailKeys = new Set([
   "displayDeletedMessages",
   "displayMessageAuthorId",
   "memberDisplayName",
+  "memberAvatarUrl",
   "memberUsername",
   "messageContent",
   "messageCount",
@@ -111,6 +113,18 @@ function timestampMillis(value: unknown): number | null {
 
 function discordTimestamp(timestamp: number, style: "F" | "R"): string {
   return `<t:${Math.floor(timestamp / 1_000)}:${style}>`;
+}
+
+function safeDiscordAvatarUrl(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.hostname === "cdn.discordapp.com"
+      ? url.toString()
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 function formatMemberDuration(startedAt: number, endedAt: number): string {
@@ -411,6 +425,7 @@ export function buildActivityLogPresentation(
         ? "Un membru nou s-a alăturat serverului."
         : "Membrul a părăsit serverul.",
       fields,
+      thumbnailUrl: safeDiscordAvatarUrl(detail.memberAvatarUrl) ?? undefined,
     };
   }
 

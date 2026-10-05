@@ -29,6 +29,8 @@ function member(theGuild: ReturnType<typeof guild>, id: string, createdTimestamp
     id,
     guild: theGuild,
     user: { id, bot: false, createdTimestamp },
+    displayAvatarURL: vi.fn((_options?: { size?: number }) =>
+      `https://cdn.discordapp.com/avatars/${id}/avatar.webp?size=256`),
     roles: { cache: roles },
     nickname: null,
   };
@@ -274,11 +276,16 @@ describe("non-message moderation events", () => {
 
     expect(helpers.clearMemberJoinAt).toHaveBeenCalledWith(targetGuild.id, userId, new Date(joinedAt));
     const payloads = send.mock.calls.map((call) => call[0] as {
-      embeds: Array<{ toJSON: () => { fields: Array<{ name: string; value: string }> } }>;
+      embeds: Array<{ toJSON: () => {
+        fields: Array<{ name: string; value: string }>;
+        thumbnail?: { url: string };
+      } }>;
     });
     expect(payloads).toHaveLength(2);
 
-    const joinFields = payloads[0]!.embeds[0]!.toJSON().fields;
+    const joinEmbed = payloads[0]!.embeds[0]!.toJSON();
+    const joinFields = joinEmbed.fields;
+    expect(joinEmbed.thumbnail?.url).toBe("https://cdn.discordapp.com/avatars/20042/avatar.webp?size=256");
     const memberField = joinFields.find((field) => field.name === "Membru")?.value ?? "";
     expect(memberField).toContain("<@20042>");
     expect(memberField).toContain("Adina pe server");
@@ -288,7 +295,9 @@ describe("non-message moderation events", () => {
     expect(joinFields.find((field) => field.name === "Cont Discord creat")?.value)
       .toContain(`<t:${Math.floor(accountCreatedAt / 1_000)}:F>`);
 
-    const leaveFields = payloads[1]!.embeds[0]!.toJSON().fields;
+    const leaveEmbed = payloads[1]!.embeds[0]!.toJSON();
+    const leaveFields = leaveEmbed.fields;
+    expect(leaveEmbed.thumbnail?.url).toBe("https://cdn.discordapp.com/avatars/20042/avatar.webp?size=256");
     expect(leaveFields.find((field) => field.name === "Activitate pe server")?.value)
       .toContain(`<t:${Math.floor(joinedAt / 1_000)}:F>`);
     expect(leaveFields.find((field) => field.name === "Durata pe server")?.value)
