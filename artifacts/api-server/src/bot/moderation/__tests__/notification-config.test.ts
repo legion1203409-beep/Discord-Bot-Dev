@@ -9,7 +9,7 @@ describe("saved moderation notification settings", () => {
     const send = vi.fn(async (_payload: unknown) => undefined);
     const channel = { guildId: destinationGuildId, isTextBased: () => true, send };
     const fetch = vi.fn(async () => channel);
-    const guild = { id: guildId, channels: { cache: new Map(), fetch } } as unknown as Guild;
+    const guild = { id: guildId, name: "Regatul Cenușii", channels: { cache: new Map(), fetch } } as unknown as Guild;
     return { guild, send, fetch };
   }
 
@@ -49,6 +49,23 @@ describe("saved moderation notification settings", () => {
       image: { url: config.embeds.animationUrl },
       thumbnail: { url: config.embeds.iconUrl },
     });
+  });
+
+  it("renders guild and Discord timestamp variables in moderation templates", async () => {
+    const config = structuredClone(defaultModerationConfig);
+    config.embeds.enabled = true;
+    config.embeds.titleTemplate = "{action} · {guild}";
+    config.embeds.descriptionTemplate = "{reason}\n{timestamp}\n{timestamp_relative}";
+    const { guild, send } = fixture();
+
+    await notify(config, guild, "Avertisment", "Motiv de test", "987654321098765432");
+
+    const payload = send.mock.calls[0]?.[0] as unknown as {
+      embeds: Array<{ toJSON(): { title: string; description: string } }>;
+    };
+    const embed = payload.embeds[0]!.toJSON();
+    expect(embed.title).toBe("Avertisment · Regatul Cenușii");
+    expect(embed.description).toMatch(/^Motiv de test\n<t:\d+:F>\n<t:\d+:R>$/);
   });
 
   it("does not repeat detailed content when the embed description already includes the reason", async () => {

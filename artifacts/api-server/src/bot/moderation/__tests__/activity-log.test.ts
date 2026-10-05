@@ -201,6 +201,41 @@ describe("automatic Discord activity-log delivery", () => {
     expect(payload.embeds[0]!.toJSON().thumbnail).toBeUndefined();
   });
 
+  it("renders member templates with names, account age, stay duration, and Discord timestamps", async () => {
+    const config = structuredClone(defaultModerationConfig);
+    config.activityLog.enabled = true;
+    config.activityLog.categories.members = true;
+    config.activityLog.channelIds.members = "log-members";
+    config.activityLog.memberLeaveTitleTemplate = "{member_name} · {account_age_years} ani";
+    config.activityLog.memberLeaveDescriptionTemplate =
+      "{member} (@{username}) · cont creat {account_created_at} ({account_created_at_relative}) · vechime {account_age} ({account_age_days} zile) · intrare {server_joined_at} ({server_joined_at_relative}) · ieșire {server_left_at} ({server_left_at_relative}) · ședere {server_duration} · eveniment {timestamp} ({timestamp_relative}) · {unknown_token}";
+    const { guild, sends } = testGuild();
+    const createdAt = Date.parse("2021-05-06T10:30:00.000Z");
+    const joinedAt = Date.parse("2026-09-24T11:00:00.000Z");
+    const leftAt = Date.parse("2026-10-05T14:00:00.000Z");
+
+    await deliverActivityLog(guild, config, "discord.member_leave", "member", "345678901234567890", {
+      memberDisplayName: "Adina pe server",
+      memberUsername: "adina",
+      accountCreatedAt: new Date(createdAt).toISOString(),
+      serverJoinedAt: new Date(joinedAt).toISOString(),
+      serverLeftAt: new Date(leftAt).toISOString(),
+    });
+
+    const payload = sends.get("members")!.mock.calls[0]![0] as {
+      embeds: Array<{ toJSON: () => { title: string; description?: string } }>;
+    };
+    const embed = payload.embeds[0]!.toJSON();
+    expect(embed.title).toBe("Adina pe server · 5 ani");
+    expect(embed.description).toContain("<@345678901234567890> (@adina)");
+    expect(embed.description).toContain(`<t:${Math.floor(createdAt / 1_000)}:F> (<t:${Math.floor(createdAt / 1_000)}:R>)`);
+    expect(embed.description).toContain("vechime 5 ani, 4 luni, 29 zile");
+    expect(embed.description).toContain(`<t:${Math.floor(joinedAt / 1_000)}:F> (<t:${Math.floor(joinedAt / 1_000)}:R>)`);
+    expect(embed.description).toContain(`<t:${Math.floor(leftAt / 1_000)}:F> (<t:${Math.floor(leftAt / 1_000)}:R>)`);
+    expect(embed.description).toContain("ședere 11 zile, 3 ore");
+    expect(embed.description).toContain(`<t:${Math.floor(leftAt / 1_000)}:F> (<t:${Math.floor(leftAt / 1_000)}:R>) · {unknown_token}`);
+  });
+
   it("shows the deleted message, author, and channel without raw message IDs", async () => {
     const config = structuredClone(defaultModerationConfig);
     config.activityLog.enabled = true;

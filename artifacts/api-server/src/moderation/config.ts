@@ -208,6 +208,10 @@ export const ModerationConfigSchema = z.object({
       moderation: snowflake.nullable().default(null),
       security: snowflake.nullable().default(null),
     }).default({}),
+    memberJoinTitleTemplate: z.string().max(256).default(""),
+    memberJoinDescriptionTemplate: z.string().max(2_000).default(""),
+    memberLeaveTitleTemplate: z.string().max(256).default(""),
+    memberLeaveDescriptionTemplate: z.string().max(2_000).default(""),
   }).default({}).superRefine((activityLog, ctx) => {
     if (activityLog.enabled && !Object.values(activityLog.categories).some(Boolean)) {
       ctx.addIssue({

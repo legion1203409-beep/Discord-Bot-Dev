@@ -1310,6 +1310,7 @@ export function allianceAnnouncementText(
     ? `<@${applicantId}>`
     : safeAnswer(applicantUsername, "Reprezentant");
   const manualStats = manualAllianceStats(answers.members);
+  const timestamp = Math.floor(Date.now() / 1_000);
   const values: Record<string, string> = {
     server_name: safeAnswer(answers.server_name, "Comunitatea parteneră", 200),
     representative: safeAnswer(answers.representative, "Reprezentant"),
@@ -1323,6 +1324,11 @@ export function allianceAnnouncementText(
     terms: safeAnswer(answers.terms),
     applicant: safeAnswer(applicantUsername, "Reprezentant"),
     applicant_mention: applicantMention,
+    timestamp: `<t:${timestamp}:F>`,
+    timestamp_relative: `<t:${timestamp}:R>`,
+    date: `<t:${timestamp}:D>`,
+    time: `<t:${timestamp}:t>`,
+    year: String(new Date().getUTCFullYear()),
   };
   return template
     .replace(/\{([a-z0-9_]+)\}/gi, (match, key: string) => values[key] ?? match)

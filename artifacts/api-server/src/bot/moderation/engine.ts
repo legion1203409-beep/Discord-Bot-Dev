@@ -301,15 +301,22 @@ async function audit(input: ModerationActionInput, eventType: string, targetType
   }
 }
 
-function buildEmbed(config: ModerationConfig, title: string, description: string): EmbedBuilder | null {
+function buildEmbed(config: ModerationConfig, guild: Guild, title: string, description: string): EmbedBuilder | null {
   if (!config.embeds.enabled) return null;
+  const timestamp = Date.now();
+  const templateValues: Record<string, string> = {
+    action: title,
+    reason: description,
+    guild: guild.name,
+    timestamp: `<t:${Math.floor(timestamp / 1_000)}:F>`,
+    timestamp_relative: `<t:${Math.floor(timestamp / 1_000)}:R>`,
+  };
+  const render = (template: string) =>
+    template.replace(/\{([a-z0-9_]+)\}/gi, (match, key: string) => templateValues[key.toLocaleLowerCase()] ?? match);
   const embed = new EmbedBuilder()
     .setColor(config.embeds.color as `#${string}`)
-    .setTitle(config.embeds.titleTemplate.replaceAll("{action}", title).slice(0, 256))
-    .setDescription(config.embeds.descriptionTemplate
-      .replaceAll("{action}", title)
-      .replaceAll("{reason}", description)
-      .slice(0, 4_096));
+    .setTitle(render(config.embeds.titleTemplate).slice(0, 256))
+    .setDescription(render(config.embeds.descriptionTemplate).slice(0, 4_096));
   if (config.embeds.style === "compact") {
     embed.setFooter({ text: "Moderare" });
   } else if (config.embeds.style === "detailed") {
@@ -331,7 +338,7 @@ export async function notify(config: ModerationConfig, guild: Guild, title: stri
     logger.warn({ guildId: guild.id, channelId: id }, "Moderation notification destination is unavailable or belongs to another server");
     return;
   }
-  const embed = buildEmbed(config, title, description);
+  const embed = buildEmbed(config, guild, title, description);
   await channel.send(embed
     ? { embeds: [embed], allowedMentions: { parse: [] } }
     : { content: `**${title}**\n${description}`.slice(0, 2_000), allowedMentions: { parse: [] } },

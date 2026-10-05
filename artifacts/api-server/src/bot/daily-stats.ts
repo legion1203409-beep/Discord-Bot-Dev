@@ -300,9 +300,22 @@ function renderDailyStatsText(
   guildName: string,
   report: DailyStatsReport,
 ): string {
+  const [year = "", month = "", day = ""] = report.day.split("-");
+  const reportTimestamp = Date.parse(`${report.day}T12:00:00.000Z`);
+  const discordTimestamp = Number.isFinite(reportTimestamp)
+    ? `<t:${Math.floor(reportTimestamp / 1_000)}:F>`
+    : report.day;
+  const discordTimestampRelative = Number.isFinite(reportTimestamp)
+    ? `<t:${Math.floor(reportTimestamp / 1_000)}:R>`
+    : report.day;
   const values: Record<string, string> = {
     guild: guildName,
     date: formatStatsDay(report.day),
+    year,
+    month,
+    day,
+    timestamp: discordTimestamp,
+    timestamp_relative: discordTimestampRelative,
     messages: report.metrics.messages.toLocaleString("ro-RO"),
     uniqueUsers: report.metrics.uniqueUsers.toLocaleString("ro-RO"),
     boosts: report.metrics.boosts.toLocaleString("ro-RO"),
@@ -339,19 +352,19 @@ export function buildDailyStatsEmbed(
     ? report.topChannels
       .map((item, index) => `${index + 1}. **#${item.channelName}** · ${item.messages.toLocaleString("ro-RO")} mesaje`)
       .join("\n")
-    : config.emptyChannelsText;
+    : renderDailyStatsText(config.emptyChannelsText, guildName, report).slice(0, 1_024);
   const metricLines = ([
     [
-      [config.metricLabels.messages, report.metrics.messages],
-      [config.metricLabels.uniqueUsers, report.metrics.uniqueUsers],
+      [renderDailyStatsText(config.metricLabels.messages, guildName, report).slice(0, 256), report.metrics.messages],
+      [renderDailyStatsText(config.metricLabels.uniqueUsers, guildName, report).slice(0, 256), report.metrics.uniqueUsers],
     ],
     [
-      [config.metricLabels.boosts, report.metrics.boosts],
-      [config.metricLabels.joins, report.metrics.joins],
+      [renderDailyStatsText(config.metricLabels.boosts, guildName, report).slice(0, 256), report.metrics.boosts],
+      [renderDailyStatsText(config.metricLabels.joins, guildName, report).slice(0, 256), report.metrics.joins],
     ],
     [
-      [config.metricLabels.leaves, report.metrics.leaves],
-      [config.metricLabels.peakVoice, report.metrics.peakVoice],
+      [renderDailyStatsText(config.metricLabels.leaves, guildName, report).slice(0, 256), report.metrics.leaves],
+      [renderDailyStatsText(config.metricLabels.peakVoice, guildName, report).slice(0, 256), report.metrics.peakVoice],
     ],
   ] as const).map((row) => row
     .map(([label, value]) => `${label.replace(/\s+/g, " ").trim()}: **${value.toLocaleString("ro-RO")}**`)
@@ -386,15 +399,15 @@ export function buildDailyStatsEmbed(
   const embed = new EmbedBuilder()
     .setColor(Number.parseInt(config.color.slice(1), 16))
     .setAuthor({ name: "ORACOLUL CENUȘII · COMMUNITY INSIGHTS" })
-    .setTitle(renderDailyStatsText(config.title, guildName, report))
-    .setDescription(renderDailyStatsText(config.description, guildName, report))
+    .setTitle(renderDailyStatsText(config.title, guildName, report).slice(0, 256))
+    .setDescription(renderDailyStatsText(config.description, guildName, report).slice(0, 4_096))
     .addFields(
       ...metricFields,
-      { name: config.activityTitle, value: activityText },
-      { name: config.channelsTitle, value: channelText },
+      { name: renderDailyStatsText(config.activityTitle, guildName, report).slice(0, 256), value: activityText },
+      { name: renderDailyStatsText(config.channelsTitle, guildName, report).slice(0, 256), value: channelText.slice(0, 1_024) },
       ...(coverageNotes.length > 0 ? [{ name: "Acoperirea datelor", value: coverageNotes.join("\n") }] : []),
     )
-    .setFooter({ text: config.footer })
+    .setFooter({ text: renderDailyStatsText(config.footer, guildName, report).slice(0, 2_048) })
     .setTimestamp(new Date(`${report.day}T12:00:00.000Z`));
   const imageUrl = publicMessageImageUrl(config.imageUrl);
   const thumbnailUrl = publicMessageImageUrl(config.thumbnailUrl);

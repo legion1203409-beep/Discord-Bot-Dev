@@ -28,6 +28,10 @@ const fullConfig = () => ({
     roleIds: [],
     categoryId: null,
     channelIds: { messages: null, members: null, channels: null, roles: null, voice: null, moderation: null, security: null },
+    memberJoinTitleTemplate: "",
+    memberJoinDescriptionTemplate: "",
+    memberLeaveTitleTemplate: "",
+    memberLeaveDescriptionTemplate: "",
   },
   roles: { sanctionableRoleIds: [], protectedRoleIds: [], ignoredAutoModRoleIds: [], specialPermissionRoleIds: [] },
   channels: { ignoredChannelIds: [], protectedChannelIds: [], autoSlowmodeChannelIds: [], strictChannelIds: [], softChannelIds: [] },
@@ -764,6 +768,52 @@ test.describe("authenticated moderation console", () => {
     await page.reload();
     await expect(logToggle).toBeChecked();
     await expect(page.getByRole("switch", { name: /@Moderatori/ })).toBeChecked();
+  });
+
+  test("member activity templates preview and persist separately for each guild", async ({ page }) => {
+    await page.goto("/");
+    await chooseFirstGuild(page);
+    await expectNavGroupExpanded(page, "configuration");
+    await page.locator('nav[aria-label="Categorii de moderare"] a[href="/moderare/config/cazuri-audit"]').click();
+    await expect(page).toHaveURL("/moderare/config/cazuri-audit");
+
+    const joinTitle = page.getByPlaceholder("👋 Membru nou · a intrat pe server");
+    const joinDescription = page.getByPlaceholder("A intrat {member} · cont creat {account_created_at_relative} · vechime {account_age}.");
+    await joinTitle.fill("Bun venit, {member_name}");
+    await joinDescription.fill("A intrat {member} · cont creat {account_created_at_relative} · vechime {account_age}.");
+    await expect(page.getByText("Bun venit, Adina pe server")).toBeVisible();
+    await expect(page.getByText("A intrat @Adina · cont creat acum 5 ani · vechime 5 ani, 4 luni.")).toBeVisible();
+
+    const firstSave = page.waitForResponse((response) =>
+      response.url().includes("/api/moderation/guilds/111111111/config") && response.request().method() === "PUT");
+    await page.getByRole("button", { name: "Salvează" }).click();
+    expect((await firstSave).ok()).toBe(true);
+    expect(savedConfigs.get(guilds[0].id)?.activityLog).toMatchObject({
+      memberJoinTitleTemplate: "Bun venit, {member_name}",
+      memberJoinDescriptionTemplate: "A intrat {member} · cont creat {account_created_at_relative} · vechime {account_age}.",
+      memberLeaveTitleTemplate: "",
+      memberLeaveDescriptionTemplate: "",
+    });
+
+    const guildSelector = page.getByRole("combobox").first();
+    await guildSelector.click();
+    await page.getByRole("option", { name: guilds[1].name }).click();
+    const leaveTitle = page.getByPlaceholder("🚪 Membru a părăsit serverul");
+    await expect(leaveTitle).toHaveValue("");
+    await leaveTitle.fill("Ne mai vedem, {member_name}");
+    const secondSave = page.waitForResponse((response) =>
+      response.url().includes("/api/moderation/guilds/222222222/config") && response.request().method() === "PUT");
+    await page.getByRole("button", { name: "Salvează" }).click();
+    expect((await secondSave).ok()).toBe(true);
+    expect(savedConfigs.get(guilds[1].id)?.activityLog).toMatchObject({
+      memberJoinTitleTemplate: "",
+      memberLeaveTitleTemplate: "Ne mai vedem, {member_name}",
+    });
+
+    await guildSelector.click();
+    await page.getByRole("option", { name: guilds[0].name }).click();
+    await expect(page.getByPlaceholder("👋 Membru nou · a intrat pe server")).toHaveValue("Bun venit, {member_name}");
+    await expect(page.getByPlaceholder("🚪 Membru a părăsit serverul")).toHaveValue("");
   });
 
   test("category draft edits during an in-flight save remain unsaved instead of being replaced", async ({ page }) => {

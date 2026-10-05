@@ -174,6 +174,11 @@ const DEFAULT_DAILY_STATS = {
 const DAILY_STATS_PREVIEW_VALUES: Record<string, string> = {
   guild: "Regatul Cenușii",
   date: "18 septembrie 2026",
+  year: "2026",
+  month: "09",
+  day: "18",
+  timestamp: "18 septembrie 2026 · 12:00",
+  timestamp_relative: "în ziua raportului",
   messages: "307",
   uniqueUsers: "13",
   boosts: "0",
@@ -278,6 +283,11 @@ function renderAnnouncementTemplate(
     applicant_mention: "@Membrul care testează",
     members_total: answers.members_total ?? "150",
     members_online: answers.members_online ?? "60",
+    timestamp: "5 octombrie 2026, 14:00",
+    timestamp_relative: "acum",
+    date: "5 octombrie 2026",
+    time: "14:00",
+    year: "2026",
   };
   return template.replace(/\{([a-z0-9_]+)\}/gi, (match, key: string) => values[key] ?? match);
 }
@@ -1757,9 +1767,9 @@ export function BotControlPage({
                  <div className="space-y-2 text-xs text-muted-foreground">
                    <p className="font-medium text-foreground">Variabile disponibile</p>
                    <p className="font-mono leading-relaxed">
-                     {"{server_name}"} · {"{description}"} · {"{invite}"} · {"{representative}"} · {"{members_total}"} · {"{members_online}"} · {"{members}"} · {"{motivation}"} · {"{offer}"} · {"{terms}"} · {"{applicant}"} · {"{applicant_mention}"}
+                      {"{server_name}"} · {"{description}"} · {"{invite}"} · {"{representative}"} · {"{members_total}"} · {"{members_online}"} · {"{members}"} · {"{motivation}"} · {"{offer}"} · {"{terms}"} · {"{applicant}"} · {"{applicant_mention}"} · {"{timestamp}"} · {"{timestamp_relative}"} · {"{date}"} · {"{time}"} · {"{year}"}
                    </p>
-                   <p>„Membri total” și „online” sunt citite din invitația Discord la publicare. Dacă Discord nu le poate oferi, se afișează „Nedisponibil”.</p>
+                    <p>Timestampurile Discord se afișează în fusul orar al fiecărui membru. „Membri total” și „online” sunt citite din invitația Discord la publicare; dacă Discord nu le poate oferi, se afișează „Nedisponibil”.</p>
                  </div>
                </div>
                 <ImageField
@@ -2187,7 +2197,9 @@ export function BotControlPage({
               <Megaphone className="mt-1 h-5 w-5 text-primary" />
               <div className="min-w-0 flex-1">
                 <h2 className="font-medium">Design statistici zilnice</h2>
-                  <p className="text-xs text-muted-foreground">Personalizează raportul publicat automat în Discord. Poți folosi {`{guild}`}, {`{date}`}, {`{messages}`}, {`{uniqueUsers}`}, {`{boosts}`}, {`{joins}`}, {`{leaves}`} și {`{peakVoice}`} în titlu sau descriere.</p>
+                  <p className="text-xs text-muted-foreground">
+                    Variabile disponibile în toate câmpurile text: {`{guild}`}, {`{date}`}, {`{year}`}, {`{month}`}, {`{day}`}, {`{timestamp}`}, {`{timestamp_relative}`}, {`{messages}`}, {`{uniqueUsers}`}, {`{boosts}`}, {`{joins}`}, {`{leaves}`} și {`{peakVoice}`}. Timestampurile Discord se afișează în fusul orar al fiecărui membru.
+                  </p>
               </div>
               <Button type="button" variant="ghost" size="sm" className="shrink-0 gap-1" onClick={resetDailyStats}>
                 <RotateCcw className="h-3.5 w-3.5" /> Implicit
@@ -2274,7 +2286,7 @@ export function BotControlPage({
                           {row.map(([key, value], index) => (
                             <span key={key}>
                               {index > 0 && <span className="mx-1 text-[#B0B0B0]">·</span>}
-                              <DiscordEmojiText emojis={metadata?.emojis}>{draft.dailyStats.metricLabels[key]}</DiscordEmojiText>{": "}
+                              <DiscordEmojiText emojis={metadata?.emojis}>{renderDailyStatsPreviewText(draft.dailyStats.metricLabels[key])}</DiscordEmojiText>{": "}
                               <strong>{value.toLocaleString("ro-RO")}</strong>
                             </span>
                           ))}
@@ -2283,13 +2295,13 @@ export function BotControlPage({
                     </div>
                   </div>
                   <div className="mt-3">
-                    <p className="mb-1 text-xs font-semibold"><DiscordEmojiText emojis={metadata?.emojis}>{draft.dailyStats.activityTitle}</DiscordEmojiText></p>
+                    <p className="mb-1 text-xs font-semibold"><DiscordEmojiText emojis={metadata?.emojis}>{renderDailyStatsPreviewText(draft.dailyStats.activityTitle)}</DiscordEmojiText></p>
                     <p className="break-words rounded bg-[#121212] p-2 text-xs leading-relaxed">
                       {DAILY_STATS_PREVIEW_ACTIVITY.map((item) => `${item.day.slice(8, 10)}/${item.day.slice(5, 7)}: ${item.messages.toLocaleString("ro-RO")}`).join(" · ")}
                     </p>
                   </div>
                   <div className="mt-3">
-                    <p className="mb-1 text-xs font-semibold"><DiscordEmojiText emojis={metadata?.emojis}>{draft.dailyStats.channelsTitle}</DiscordEmojiText></p>
+                    <p className="mb-1 text-xs font-semibold"><DiscordEmojiText emojis={metadata?.emojis}>{renderDailyStatsPreviewText(draft.dailyStats.channelsTitle)}</DiscordEmojiText></p>
                     <div className="space-y-1 text-xs">
                       {DAILY_STATS_PREVIEW_CHANNELS.map((channel, index) => (
                         <p key={channel.name}>
@@ -2298,9 +2310,15 @@ export function BotControlPage({
                       ))}
                     </div>
                   </div>
+                  <div className="mt-3 rounded bg-[#121212] p-2 text-xs">
+                    <p className="mb-1 font-semibold">Previzualizare fără canale active</p>
+                    <p className="whitespace-pre-wrap text-[#B0B0B0]">
+                      <DiscordEmojiText emojis={metadata?.emojis}>{renderDailyStatsPreviewText(draft.dailyStats.emptyChannelsText)}</DiscordEmojiText>
+                    </p>
+                  </div>
                   {draft.dailyStats.imageUrl && <img src={draft.dailyStats.imageUrl} alt="" className="mt-3 max-h-48 w-full rounded object-contain" />}
                   <p className="mt-4 border-t border-white/10 pt-3 text-[10px] text-[#B0B0B0]">
-                    <DiscordEmojiText emojis={metadata?.emojis}>{draft.dailyStats.footer}</DiscordEmojiText>
+                    <DiscordEmojiText emojis={metadata?.emojis}>{renderDailyStatsPreviewText(draft.dailyStats.footer)}</DiscordEmojiText>
                     <span className="ml-2 text-[#B0B0B0]">18 septembrie 2026</span>
                   </p>
                 </div>

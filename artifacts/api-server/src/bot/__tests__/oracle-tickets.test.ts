@@ -316,7 +316,7 @@ describe("Oracle ticket categories", () => {
       },
       "Andrei",
       "987654321",
-      "🎉 {server_name}\n👥 {members_total}/{members_online}\n🔗 {invite}\n{applicant_mention}",
+      "🎉 {server_name}\n👥 {members_total}/{members_online}\n🔗 {invite}\n{applicant_mention}\n{date} · {time} · {timestamp} · {timestamp_relative} · {year}",
       stats,
     );
 
@@ -324,9 +324,10 @@ describe("Oracle ticket categories", () => {
       "https://discord.gg/umbrelor",
       { withCounts: true },
     );
-    expect(announcement).toBe(
+    expect(announcement.split("\n").slice(0, 4).join("\n")).toBe(
       "🎉 Regatul Umbrelor\n👥 2345/187\n🔗 https://discord.gg/umbrelor\n<@987654321>",
     );
+    expect(announcement).toMatch(/\n<t:\d+:D> · <t:\d+:t> · <t:\d+:F> · <t:\d+:R> · \d{4}$/);
   });
 
   it("renders partnership image and thumbnail concurrently in embed and text modes", () => {

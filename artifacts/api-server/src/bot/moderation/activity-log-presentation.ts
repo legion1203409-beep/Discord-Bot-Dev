@@ -143,6 +143,88 @@ function formatMemberDuration(startedAt: number, endedAt: number): string {
   return `${readable} (${totalDays} zile în total)`;
 }
 
+function accountAgeParts(startedAt: number, endedAt: number): { years: number; months: number; days: number } {
+  const start = new Date(startedAt);
+  const end = new Date(Math.max(startedAt, endedAt));
+  const anchoredDate = (year: number, month: number) => {
+    const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+    return Date.UTC(
+      year,
+      month,
+      Math.min(start.getUTCDate(), lastDay),
+      start.getUTCHours(),
+      start.getUTCMinutes(),
+      start.getUTCSeconds(),
+      start.getUTCMilliseconds(),
+    );
+  };
+  let years = end.getUTCFullYear() - start.getUTCFullYear();
+  let cursor = anchoredDate(start.getUTCFullYear() + years, start.getUTCMonth());
+  if (cursor > end.getTime()) years -= 1;
+  years = Math.max(0, years);
+  cursor = anchoredDate(start.getUTCFullYear() + years, start.getUTCMonth());
+  let months = 0;
+  while (months < 11) {
+    const cursorDate = new Date(cursor);
+    const next = anchoredDate(cursorDate.getUTCFullYear(), cursorDate.getUTCMonth() + 1);
+    if (next > end.getTime()) break;
+    cursor = next;
+    months += 1;
+  }
+  const days = Math.max(0, Math.floor((end.getTime() - cursor) / 86_400_000));
+  return { years, months, days };
+}
+
+function readableAccountAge(years: number, months: number, days: number): string {
+  const parts: string[] = [];
+  if (years) parts.push(`${years} ${years === 1 ? "an" : "ani"}`);
+  if (months) parts.push(`${months} ${months === 1 ? "lună" : "luni"}`);
+  if (days) parts.push(`${days} ${days === 1 ? "zi" : "zile"}`);
+  return parts.join(", ") || "mai puțin de o lună";
+}
+
+/** Replaces the documented, event-specific tokens used by member log templates. */
+export function renderMemberActivityTemplate(
+  template: string,
+  eventType: string,
+  targetId: string,
+  detail: Record<string, unknown>,
+): string {
+  const normalized = normalizedEventType(eventType);
+  const isJoin = normalized === "discord.member_join";
+  const joinedAt = timestampMillis(detail.serverJoinedAt);
+  const leftAt = timestampMillis(detail.serverLeftAt);
+  const accountCreatedAt = timestampMillis(detail.accountCreatedAt);
+  const eventAt = (isJoin ? joinedAt : leftAt) ?? Date.now();
+  const accountAge = accountCreatedAt === null
+    ? null
+    : accountAgeParts(accountCreatedAt, eventAt);
+  const displayName = safeMemberName(detail.memberDisplayName) ?? "Necunoscut";
+  const username = safeMemberName(detail.memberUsername) ?? "Necunoscut";
+  const values: Record<string, string> = {
+    member: userMention(targetId) ?? displayName,
+    member_name: displayName,
+    username,
+    account_created_at: accountCreatedAt === null ? "indisponibilă" : discordTimestamp(accountCreatedAt, "F"),
+    account_created_at_relative: accountCreatedAt === null ? "indisponibilă" : discordTimestamp(accountCreatedAt, "R"),
+    account_age: accountAge ? readableAccountAge(accountAge.years, accountAge.months, accountAge.days) : "indisponibilă",
+    account_age_years: accountAge ? String(accountAge.years) : "indisponibil",
+    account_age_days: accountCreatedAt === null
+      ? "indisponibil"
+      : String(Math.max(0, Math.floor((eventAt - accountCreatedAt) / 86_400_000))),
+    server_joined_at: joinedAt === null ? "indisponibilă" : discordTimestamp(joinedAt, "F"),
+    server_joined_at_relative: joinedAt === null ? "indisponibilă" : discordTimestamp(joinedAt, "R"),
+    server_left_at: leftAt === null ? "încă pe server" : discordTimestamp(leftAt, "F"),
+    server_left_at_relative: leftAt === null ? "încă pe server" : discordTimestamp(leftAt, "R"),
+    server_duration: joinedAt === null
+      ? "indisponibilă"
+      : leftAt === null ? "în curs" : formatMemberDuration(joinedAt, leftAt),
+    timestamp: discordTimestamp(eventAt, "F"),
+    timestamp_relative: discordTimestamp(eventAt, "R"),
+  };
+  return template.replace(/\{([a-z0-9_]+)\}/gi, (match, key: string) => values[key.toLocaleLowerCase()] ?? match);
+}
+
 function memberAccountCreationValue(detail: Record<string, unknown>, eventAt: number): string {
   const createdAt = timestampMillis(detail.accountCreatedAt);
   if (createdAt === null) return "Data creării contului nu este disponibilă.";

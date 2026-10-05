@@ -59,6 +59,61 @@ const LINK_CATEGORIES = [
   ["shortener", "Linkuri scurtate", "bit.ly, tinyurl.com, t.co"],
   ["all", "Toate linkurile", "Orice URL http(s) sau www și invitații Discord"],
 ] as const;
+const MEMBER_LOG_PREVIEW_VALUES = {
+  join: {
+    member: "@Adina",
+    member_name: "Adina pe server",
+    username: "adina",
+    account_created_at: "18 mai 2021, 12:30",
+    account_created_at_relative: "acum 5 ani",
+    account_age: "5 ani, 4 luni",
+    account_age_years: "5",
+    account_age_days: "1.950",
+    server_joined_at: "5 octombrie 2026, 14:00",
+    server_joined_at_relative: "acum 2 ore",
+    server_left_at: "încă pe server",
+    server_left_at_relative: "încă pe server",
+    server_duration: "în curs",
+    timestamp: "5 octombrie 2026, 14:00",
+    timestamp_relative: "acum 2 ore",
+  },
+  leave: {
+    member: "@Adina",
+    member_name: "Adina pe server",
+    username: "adina",
+    account_created_at: "18 mai 2021, 12:30",
+    account_created_at_relative: "acum 5 ani",
+    account_age: "5 ani, 4 luni",
+    account_age_years: "5",
+    account_age_days: "1.950",
+    server_joined_at: "24 septembrie 2026, 11:00",
+    server_joined_at_relative: "acum 11 zile",
+    server_left_at: "5 octombrie 2026, 14:00",
+    server_left_at_relative: "acum 2 ore",
+    server_duration: "11 zile, 3 ore",
+    timestamp: "5 octombrie 2026, 14:00",
+    timestamp_relative: "acum 2 ore",
+  },
+} satisfies Record<"join" | "leave", Record<string, string>>;
+
+function renderMemberLogPreview(template: string, kind: "join" | "leave", fallback: string): string {
+  const source = template.trim() ? template : fallback;
+  const values: Record<string, string> = MEMBER_LOG_PREVIEW_VALUES[kind];
+  return source.replace(/\{([a-z0-9_]+)\}/gi, (match, key: string) =>
+    values[key.toLocaleLowerCase()] ?? match,
+  );
+}
+
+function renderModerationTemplatePreview(template: string, action: string, reason: string): string {
+  const values: Record<string, string> = {
+    action,
+    reason,
+    guild: "Regatul Cenușii",
+    timestamp: "5 octombrie 2026, 14:00",
+    timestamp_relative: "acum",
+  };
+  return template.replace(/\{([a-z0-9_]+)\}/gi, (match, key: string) => values[key.toLocaleLowerCase()] ?? match);
+}
 
 /** Immutable nested update used by every control, including numeric thresholds. */
 export function updateConfigField<T extends Config>(config: T, path: Path, value: unknown): T {
@@ -890,6 +945,78 @@ export function ConfigEditor({
               </div>
             ))}
           </div>
+          <div className="space-y-4 rounded-xl border border-border bg-background/60 p-4">
+            <div>
+              <h4 className="font-medium">Personalizează mesajele de intrare și ieșire</h4>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Lasă un câmp gol pentru textul standard. Textul personalizat înlocuiește titlul sau descrierea embedului; câmpurile automate cu detalii rămân vizibile.
+              </p>
+              <p className="mt-2 break-words font-mono text-[11px] leading-relaxed text-muted-foreground">
+                {`{member}`} · {`{member_name}`} · {`{username}`} · {`{account_created_at}`} · {`{account_created_at_relative}`} · {`{account_age}`} · {`{account_age_years}`} · {`{account_age_days}`} · {`{server_joined_at}`} · {`{server_joined_at_relative}`} · {`{server_left_at}`} · {`{server_left_at_relative}`} · {`{server_duration}`} · {`{timestamp}`} · {`{timestamp_relative}`}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Timestampurile se afișează automat în fusul orar al fiecărui membru. „Ani” și „zile” se calculează la momentul evenimentului.
+              </p>
+            </div>
+            <div className="grid gap-4 lg:grid-cols-2">
+              <div className="space-y-3 rounded-lg border border-border p-3">
+                <h5 className="text-sm font-medium">Membru nou</h5>
+                <label className="block space-y-1 text-sm">
+                  <span className="text-xs font-medium">Titlu</span>
+                  <Input
+                    maxLength={256}
+                    value={value.activityLog.memberJoinTitleTemplate}
+                    onChange={(event) => set(["activityLog", "memberJoinTitleTemplate"], event.target.value)}
+                    placeholder="👋 Membru nou · a intrat pe server"
+                  />
+                </label>
+                <label className="block space-y-1 text-sm">
+                  <span className="text-xs font-medium">Descriere</span>
+                  <Textarea
+                    rows={4}
+                    maxLength={2_000}
+                    value={value.activityLog.memberJoinDescriptionTemplate}
+                    onChange={(event) => set(["activityLog", "memberJoinDescriptionTemplate"], event.target.value)}
+                    placeholder="A intrat {member} · cont creat {account_created_at_relative} · vechime {account_age}."
+                  />
+                </label>
+                <div className="rounded-md bg-muted/50 p-3 text-xs">
+                  <p className="font-medium">{renderMemberLogPreview(value.activityLog.memberJoinTitleTemplate, "join", "👋 Membru nou · a intrat pe server")}</p>
+                  <p className="mt-1 whitespace-pre-wrap text-muted-foreground">
+                    {renderMemberLogPreview(value.activityLog.memberJoinDescriptionTemplate, "join", "Un membru nou s-a alăturat serverului.")}
+                  </p>
+                </div>
+              </div>
+              <div className="space-y-3 rounded-lg border border-border p-3">
+                <h5 className="text-sm font-medium">Membru plecat</h5>
+                <label className="block space-y-1 text-sm">
+                  <span className="text-xs font-medium">Titlu</span>
+                  <Input
+                    maxLength={256}
+                    value={value.activityLog.memberLeaveTitleTemplate}
+                    onChange={(event) => set(["activityLog", "memberLeaveTitleTemplate"], event.target.value)}
+                    placeholder="🚪 Membru a părăsit serverul"
+                  />
+                </label>
+                <label className="block space-y-1 text-sm">
+                  <span className="text-xs font-medium">Descriere</span>
+                  <Textarea
+                    rows={4}
+                    maxLength={2_000}
+                    value={value.activityLog.memberLeaveDescriptionTemplate}
+                    onChange={(event) => set(["activityLog", "memberLeaveDescriptionTemplate"], event.target.value)}
+                    placeholder="A plecat {member} · contul avea {account_age} · a stat {server_duration}."
+                  />
+                </label>
+                <div className="rounded-md bg-muted/50 p-3 text-xs">
+                  <p className="font-medium">{renderMemberLogPreview(value.activityLog.memberLeaveTitleTemplate, "leave", "🚪 Membru a părăsit serverul")}</p>
+                  <p className="mt-1 whitespace-pre-wrap text-muted-foreground">
+                    {renderMemberLogPreview(value.activityLog.memberLeaveDescriptionTemplate, "leave", "Membrul a părăsit serverul.")}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
           {onCreateChannel && (
             <p className="text-xs text-muted-foreground">
               Fiecare buton creează canalul în categoria jurnalului, creată o singură dată și reutilizată. Categoria și canalele rămân private; configurează accesul rolurilor direct în Discord.
@@ -977,10 +1104,13 @@ export function ConfigEditor({
         {embedUrlDraftError(value.embeds) && (
           <p role="alert" className="text-sm text-amber-600">Nu poți salva aceste setări: {embedUrlDraftError(value.embeds)}</p>
         )}
+        <p className="text-xs text-muted-foreground">
+          Variabile disponibile în titlu și descriere: {`{action}`} · {`{reason}`} · {`{guild}`} · {`{timestamp}`} · {`{timestamp_relative}`}. Timestampurile Discord se afișează în fusul orar al fiecărui membru.
+        </p>
         <Field label="Titlu mesaj" help="Maximum 200 caractere."><Input value={value.embeds.titleTemplate} maxLength={200} onChange={(event) => set(["embeds", "titleTemplate"], event.target.value)} /></Field>
-        <Field label="Descriere mesaj" help="Maximum 2000 caractere; poți folosi {`{action}`} și {`{reason}`} ."><Textarea value={value.embeds.descriptionTemplate} maxLength={2000} onChange={(event) => set(["embeds", "descriptionTemplate"], event.target.value)} /></Field>
+        <Field label="Descriere mesaj" help="Maximum 2000 caractere. Poți combina variabilele de mai sus cu textul tău."><Textarea value={value.embeds.descriptionTemplate} maxLength={2000} onChange={(event) => set(["embeds", "descriptionTemplate"], event.target.value)} /></Field>
         <div className="rounded-lg border border-border bg-background p-4" style={{ borderLeftWidth: 4, borderLeftColor: /^#[0-9a-fA-F]{6}$/.test(value.embeds.color) ? value.embeds.color : undefined }}>
-          <div className="flex gap-3">{value.embeds.iconUrl && isPublicHttpsUrl(value.embeds.iconUrl) && <img src={value.embeds.iconUrl} alt="" className="h-10 w-10 rounded-full object-cover" />}<div><p className="font-semibold">{value.embeds.titleTemplate.replace("{action}", "Avertisment")}</p><p className="whitespace-pre-wrap text-sm text-muted-foreground">{value.embeds.descriptionTemplate.replace("{action}", "Avertisment").replace("{reason}", "Exemplu de motiv")}</p></div></div>
+          <div className="flex gap-3">{value.embeds.iconUrl && isPublicHttpsUrl(value.embeds.iconUrl) && <img src={value.embeds.iconUrl} alt="" className="h-10 w-10 rounded-full object-cover" />}<div><p className="font-semibold">{renderModerationTemplatePreview(value.embeds.titleTemplate, "Avertisment", "Exemplu de motiv")}</p><p className="whitespace-pre-wrap text-sm text-muted-foreground">{renderModerationTemplatePreview(value.embeds.descriptionTemplate, "Avertisment", "Exemplu de motiv")}</p></div></div>
           {value.embeds.animations && value.embeds.animationUrl && isPublicGifUrl(value.embeds.animationUrl) && <img src={value.embeds.animationUrl} alt="Previzualizare animație" className="mt-3 max-h-40 rounded-md" />}
         </div>
       </Section>

@@ -91,6 +91,40 @@ describe("buildDailyStatsEmbed", () => {
     expect(embed.fields?.[2]?.value).not.toContain("░");
   });
 
+  it("renders date and metric variables in every configurable text field", () => {
+    const report: DailyStatsReport = {
+      guildId: "guild-1",
+      day: "2026-09-18",
+      metrics: { messages: 307, uniqueUsers: 13, boosts: 0, joins: 5, leaves: 5, peakVoice: 4 },
+      activity: [],
+      topChannels: [],
+    };
+    const config = {
+      ...DEFAULT_DAILY_STATS_EMBED_CONFIG,
+      title: "Raport {year}-{month}-{day}",
+      description: "Data {date} · {timestamp} · {timestamp_relative}",
+      footer: "Arhivă {guild} · {messages}",
+      activityTitle: "Activitate {year}",
+      channelsTitle: "Canale în luna {month}",
+      emptyChannelsText: "Fără canale în {date} ({day})",
+      metricLabels: {
+        ...DEFAULT_DAILY_STATS_EMBED_CONFIG.metricLabels,
+        messages: "Mesaje din {year}",
+      },
+    };
+
+    const embed = buildDailyStatsEmbed("Regatul Cenușii", report, config).toJSON();
+    const expectedTimestamp = Math.floor(Date.parse("2026-09-18T12:00:00.000Z") / 1_000);
+
+    expect(embed.title).toBe("Raport 2026-09-18");
+    expect(embed.description).toContain(`<t:${expectedTimestamp}:F>`);
+    expect(embed.description).toContain(`<t:${expectedTimestamp}:R>`);
+    expect(embed.footer?.text).toBe("Arhivă Regatul Cenușii · 307");
+    expect(embed.fields?.[0]?.value).toContain("Mesaje din 2026: **307**");
+    expect(embed.fields?.find((field) => field.name === "Activitate 2026")).toBeDefined();
+    expect(embed.fields?.find((field) => field.name === "Canale în luna 09")?.value).toBe("Fără canale în 18 septembrie 2026 (18)");
+  });
+
   it("splits unusually long custom metric labels without exceeding Discord field limits", () => {
     const report: DailyStatsReport = {
       guildId: "guild-1",

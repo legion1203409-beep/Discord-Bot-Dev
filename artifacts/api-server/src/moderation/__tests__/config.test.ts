@@ -77,6 +77,16 @@ describe("moderation configuration defaults", () => {
   it("keeps automatic activity logs disabled by default and allows Discord-managed channel access", () => {
     expect(defaultModerationConfig.activityLog.enabled).toBe(false);
     expect(defaultModerationConfig.activityLog.channelIds.messages).toBeNull();
+    expect(defaultModerationConfig.activityLog.memberJoinTitleTemplate).toBe("");
+    const customizedTemplates = ModerationConfigSchema.parse({
+      activityLog: {
+        memberJoinTitleTemplate: "Bun venit, {member_name}",
+        memberLeaveDescriptionTemplate: "A stat {server_duration}.",
+      },
+    });
+    const loadedTemplates = ModerationConfigSchema.parse(JSON.parse(JSON.stringify(customizedTemplates)));
+    expect(loadedTemplates.activityLog.memberJoinTitleTemplate).toBe("Bun venit, {member_name}");
+    expect(loadedTemplates.activityLog.memberLeaveDescriptionTemplate).toBe("A stat {server_duration}.");
     const enabled = ModerationConfigSchema.parse({
       activityLog: {
         enabled: true,

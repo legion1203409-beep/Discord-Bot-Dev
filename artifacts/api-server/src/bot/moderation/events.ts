@@ -14,7 +14,7 @@ import {
 import type { AutoModerationActionExecution } from "discord.js";
 import type { ActivityLogCategory, ModerationAction, ModerationConfig } from "../../moderation/config";
 import { logger } from "../../lib/logger";
-import { buildActivityLogPresentation } from "./activity-log-presentation";
+import { buildActivityLogPresentation, renderMemberActivityTemplate } from "./activity-log-presentation";
 
 export type ModerationEventActionInput = {
   guildId: string;
@@ -388,6 +388,24 @@ export async function deliverActivityLog(
       actor,
       channelTarget,
     );
+    const memberTemplates = normalizedEventType === "discord.member_join"
+      ? {
+        title: config.activityLog.memberJoinTitleTemplate,
+        description: config.activityLog.memberJoinDescriptionTemplate,
+      }
+      : normalizedEventType === "discord.member_leave"
+        ? {
+          title: config.activityLog.memberLeaveTitleTemplate,
+          description: config.activityLog.memberLeaveDescriptionTemplate,
+        }
+        : null;
+    const defaultTitle = activityEventTitle(eventType, detail) ?? eventType.replace(/[._-]+/g, " ");
+    const title = memberTemplates?.title.trim()
+      ? renderMemberActivityTemplate(memberTemplates.title, normalizedEventType, targetId, detail).slice(0, 256)
+      : defaultTitle;
+    const description = memberTemplates?.description.trim()
+      ? renderMemberActivityTemplate(memberTemplates.description, normalizedEventType, targetId, detail).slice(0, 2_000)
+      : presentation.description;
     const embed = new EmbedBuilder()
       .setColor(
         normalizedEventType === "discord.member_join" ? 0x36a878 :
@@ -396,10 +414,10 @@ export async function deliverActivityLog(
           category === "moderation" ? 0xc38b3b :
             category === "messages" ? 0xd46a3c : 0x5865f2,
       )
-      .setTitle(activityEventTitle(eventType, detail) ?? eventType.replace(/[._-]+/g, " "))
+      .setTitle(title)
       .setFooter({ text: `Jurnal de activitate · ${ACTIVITY_CATEGORY_LABELS[category]}` })
       .setTimestamp();
-    if (presentation.description) embed.setDescription(presentation.description);
+    if (description) embed.setDescription(description);
     if (presentation.thumbnailUrl) embed.setThumbnail(presentation.thumbnailUrl);
     embed.addFields(...presentation.fields);
     await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
