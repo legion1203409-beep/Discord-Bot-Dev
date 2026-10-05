@@ -121,6 +121,7 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
   const barDir = path.join(distDir, "activity-bars");
   await mkdir(barDir, { recursive: true });
   await cp(path.join(artifactDir, "src/bot/activity-bars/render.py"), path.join(barDir, "render.py"));
+  await cp(path.join(artifactDir, "src/bot/activity-bars/sprites.py"), path.join(barDir, "sprites.py"));
   await cp(path.join(artifactDir, "assets/activity-rank-default.png"), path.join(barDir, "default-banner.png"));
   await cp(path.join(artifactDir, "assets/activity-rank-font.ttf"), path.join(barDir, "member-font.ttf"));
   await cp(path.join(artifactDir, "assets/activity-rank-font-license.txt"), path.join(barDir, "member-font-license.txt"));

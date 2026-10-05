@@ -232,7 +232,7 @@ export function ActivityRanksPage() {
                   <SelectItem value="sword">Sabie · rune și forjă</SelectItem>
                 </SelectContent>
               </Select>
-              <span className="block text-xs text-muted-foreground">Cele trei fișiere furnizate includ șapte stiluri animate. Bara se umple până la progresul real al membrului.</span>
+              <span className="block text-xs text-muted-foreground">Șapte stiluri animate, toate cu bara subțire și fără fundal exterior. Emblema rotundă XP rămâne în bannerul implicit, iar bara se umple până la progresul real al membrului.</span>
             </label>
             <p className="text-xs text-muted-foreground">La rangurile 5, 10 și 20, botul oferă roluri decorative și înlocuiește rolul de prag anterior. Are nevoie de Manage Roles, iar rolul lui trebuie să fie deasupra rolurilor create.</p>
           </section>
@@ -240,22 +240,22 @@ export function ActivityRanksPage() {
           <section className="space-y-3 rounded-xl border border-border bg-card p-5">
             <h2 className="font-semibold">Previzualizare</h2>
             <div className="max-w-xl overflow-hidden rounded-xl border border-border bg-background">
-              <div className="relative aspect-[800/534] w-full overflow-hidden bg-[#181e2b]">
+              <div className="relative aspect-[800/534] w-full overflow-hidden bg-[#181e2b]" style={{ containerType: "inline-size" }}>
                   <img
-                    src={draft.bannerImageUrl || "/api/assets/activity-rank-default.png"}
+                    src={draft.bannerImageUrl || "/api/assets/activity-rank-default.png?v=thin-xp"}
                     alt="Previzualizarea bannerului de rang"
                     className="absolute inset-0 h-full w-full object-cover"
                   />
                 <img
-                  src={`${import.meta.env.BASE_URL}activity-bars/${draft.barStyle}.gif`}
+                  src={`${import.meta.env.BASE_URL}activity-bars/${draft.barStyle}.gif?v=thin-xp`}
                   alt="Previzualizarea barei animate la 62% progres"
-                  className="absolute top-[58%] left-[14%] w-[72%]"
+                  className={`absolute top-[52.62%] w-[70%] ${draft.bannerImageUrl ? "left-[15%]" : "left-[23%]"}`}
                 />
-                <div className="absolute left-[13.5%] top-[84%] flex h-[13%] w-[73%] items-center gap-3 rounded-xl border border-amber-700/60 bg-[#0c0a0a]/90 px-3 text-amber-50">
+                <div className={`absolute top-[65.54%] flex h-[12.36%] items-center gap-2 rounded-xl border border-amber-700/60 bg-[#0c0a0a]/90 px-2 text-amber-50 sm:gap-3 sm:px-3 ${draft.bannerImageUrl ? "left-[13.5%] w-[73%]" : "left-[25.5%] w-[67.5%]"}`}>
                   <span className="flex aspect-square h-[72%] shrink-0 items-center justify-center rounded-full border border-amber-600 bg-amber-950 text-sm font-semibold">M</span>
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold sm:text-base">Membrul care folosește /rank</p>
-                    <p className="truncate text-[10px] text-amber-200/80 sm:text-xs">Rang 5 · XP de activitate</p>
+                    <p className="truncate text-[clamp(9px,2.75cqw,16px)] font-semibold leading-tight">Membrul care folosește /rank</p>
+                    <p className="truncate text-[clamp(7px,1.75cqw,12px)] leading-tight text-amber-200/80">Rang 5 · XP de activitate</p>
                   </div>
                 </div>
               </div>

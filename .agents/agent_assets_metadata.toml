@@ -557,3 +557,17 @@ mtime_ms = 1791235770055
 storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:c6624cc8-e264-47e4-8a83-82fc52f0aaa6/34947c1b-e851-4793-bfd6-058a9ff58a9a/85825930-6187-4f44-87cf-cf8bc3188fc5"
 storage_version_token = "1791235956189668"
 content_type = "image/gif"
+
+[[outputs]]
+id = "465WZB_pcaI4A63bHlM3z"
+uri = "file://screenshots/activity-rank-thin.gif"
+type = "image"
+title = "Exemplu /rank — bară subțire și emblemă XP"
+description = "Exemplu animat la 62% progres, generat de același renderer folosit de bot; numele și avatarul apar sub bară."
+logical_id = "87ea3416-b2be-44e1-ba44-72ff83c67534"
+content_hash = "sha256:4bcb15a7a053c588798cfe87eaf8929a1ab2e9f668f9961bd46de4b02f6d8740"
+size = 416136
+mtime_ms = 1791238012661
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:c6624cc8-e264-47e4-8a83-82fc52f0aaa6/87ea3416-b2be-44e1-ba44-72ff83c67534/ecaddd4a-e5ee-422d-a547-c2195fa2295c"
+storage_version_token = "1791238034087313"
+content_type = "image/gif"

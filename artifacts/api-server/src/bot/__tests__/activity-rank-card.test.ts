@@ -22,7 +22,7 @@ afterEach(() => {
 });
 
 describe("animated activity rank cards", () => {
-  for (const style of ["discord", "pro", "sword"] as const) {
+  for (const style of ["discord", "dungi", "gradient", "oblic", "pixel", "pro", "sword"] as const) {
     it(`renders the supplied ${style} artwork as an animated banner-sized GIF`, async () => {
       const result = await renderActivityRankBanner(null, 62, "#a34b2b", style);
       expect(result.subarray(0, 6).toString("ascii")).toBe("GIF89a");

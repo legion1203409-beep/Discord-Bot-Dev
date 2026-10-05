@@ -1,29 +1,17 @@
 """Compose the supplied animated XP-bar artwork over a shared rank banner."""
 import base64
-import importlib.util
 import io
 import json
-from pathlib import Path
 import sys
 import warnings
 
-from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageSequence
+from PIL import Image, ImageDraw, ImageFont, ImageOps
+from sprites import asset_path, thin_bar_frames, write_preview_sprites
 
 Image.MAX_IMAGE_PIXELS = 20_000_000
 warnings.simplefilter("error", Image.DecompressionBombWarning)
 
-ARTWORK = {
-    "normal": "xp_bar_normale_1791233452457.py",
-    "pro": "xp_bar_pro_1791233452441.py",
-    "sword": "xp_bar_sword_1791233452379.py",
-}
-NORMAL_STYLES = {"discord", "dungi", "gradient", "oblic", "pixel"}
 CARD_SIZE = (800, 534)
-
-
-def asset_path(local_name, source_name):
-    local = Path(__file__).parent / local_name
-    return local if local.exists() else Path(__file__).resolve().parents[3] / "assets" / source_name
 
 
 def member_identity(payload):
@@ -32,11 +20,12 @@ def member_identity(payload):
         return None
     layer = Image.new("RGBA", CARD_SIZE, (0, 0, 0, 0))
     draw = ImageDraw.Draw(layer)
-    draw.rounded_rectangle((108, 449, 692, 517), radius=14, fill=(12, 10, 10, 220), outline=(156, 83, 35, 210))
+    left, right = (204, 744) if not payload.get("banner") else (108, 692)
+    draw.rounded_rectangle((left, 350, right, 416), radius=14, fill=(12, 10, 10, 220), outline=(156, 83, 35, 210))
     font_path = asset_path("member-font.ttf", "activity-rank-font.ttf")
     name_font = ImageFont.truetype(str(font_path), 22)
     detail_font = ImageFont.truetype(str(font_path), 14)
-    avatar_box = (120, 459, 168, 507)
+    avatar_box = (left + 12, 359, left + 60, 407)
     if member.get("avatar"):
         with Image.open(io.BytesIO(base64.b64decode(member["avatar"], validate=True))) as source:
             source.load()
@@ -47,35 +36,15 @@ def member_identity(payload):
     else:
         draw.ellipse(avatar_box, fill=(73, 43, 29, 255), outline=(224, 135, 60, 255))
         initial = str(member.get("name", "M")).strip()[:1] or "M"
-        draw.text((144, 482), initial, font=name_font, anchor="mm", fill=(255, 234, 212, 255))
+        draw.text((left + 36, 382), initial, font=name_font, anchor="mm", fill=(255, 234, 212, 255))
     name = str(member.get("name") or "Membru").replace("\n", " ").replace("\r", " ")[:200]
-    while draw.textlength(name, font=name_font) > 492 and len(name) > 1:
+    text_x = left + 74
+    while draw.textlength(name, font=name_font) > right - text_x - 18 and len(name) > 1:
         name = name[:-2] + "…"
-    draw.text((182, 460), name, font=name_font, fill=(255, 239, 222, 255))
-    draw.text((182, 489), f"Rang {max(1, int(member.get('level', 1)))} · XP de activitate",
+    draw.text((text_x, 360), name, font=name_font, fill=(255, 239, 222, 255))
+    draw.text((text_x, 389), f"Rang {max(1, int(member.get('level', 1)))} · XP de activitate",
               font=detail_font, fill=(227, 181, 140, 255))
     return layer
-
-
-def load_artwork(name):
-    local = Path(__file__).parent / f"{name}.py"
-    source = local if local.exists() else Path(__file__).resolve().parents[5] / "attached_assets" / ARTWORK[name]
-    spec = importlib.util.spec_from_file_location(f"activity_bar_{name}", source)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def make_bar(style, percentage):
-    pct = max(0.0, min(1.0, percentage / 100.0))
-    options = {"fill_frames": 24, "idle_frames": 6, "hold_ms": 2500}
-    if style in NORMAL_STYLES:
-        return load_artwork("normal").bar_gif_normal(pct, style, **options)
-    if style == "pro":
-        return load_artwork("pro").bar_gif_pro(pct, **options)
-    if style == "sword":
-        return load_artwork("sword").bar_gif_sword(pct, **options)
-    raise ValueError("Unknown activity XP bar style")
 
 
 def render(payload):
@@ -91,21 +60,19 @@ def render(payload):
         with Image.open(asset_path("default-banner.png", "activity-rank-default.png")) as source:
             base = ImageOps.fit(source.convert("RGB"), CARD_SIZE, Image.Resampling.LANCZOS)
 
-    animation = Image.open(make_bar(payload["style"], float(payload["percentage"])))
-    target_width = 576
-    target_height = round(animation.height * target_width / animation.width)
-    position = ((800 - target_width) // 2, round(CARD_SIZE[1] * 0.58))
+    sprites = thin_bar_frames(payload["style"], float(payload["percentage"]))
+    # The default has its own large XP medallion; custom art stays centered.
+    position = (184 if not payload.get("banner") else 120, 281)
     identity = member_identity(payload)
     frames = []
     durations = []
-    for frame in ImageSequence.Iterator(animation):
+    for artwork, duration in sprites:
         canvas = base.copy()
-        artwork = frame.convert("RGB").resize((target_width, target_height), Image.Resampling.LANCZOS)
-        canvas.paste(artwork, position)
+        canvas.paste(artwork, position, artwork)
         if identity:
             canvas.paste(identity, (0, 0), identity)
         frames.append(canvas)
-        durations.append(frame.info.get("duration", 40))
+        durations.append(duration)
 
     # A shared palette keeps the banner unchanged between frames, allowing the
     # GIF encoder to store only the changing bar region instead of full images.
@@ -126,4 +93,7 @@ def render(payload):
 
 
 if __name__ == "__main__":
-    sys.stdout.buffer.write(render(json.load(sys.stdin)))
+    if len(sys.argv) == 3 and sys.argv[1] == "--sprites-out":
+        write_preview_sprites(sys.argv[2])
+    else:
+        sys.stdout.buffer.write(render(json.load(sys.stdin)))
