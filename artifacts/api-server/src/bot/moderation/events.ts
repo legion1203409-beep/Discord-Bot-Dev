@@ -403,6 +403,9 @@ export async function deliverActivityLog(
       : memberTemplates?.description.trim()
       ? renderMemberActivityTemplate(memberTemplates.description, normalizedEventType, targetId, detail).slice(0, 2_000)
       : presentation.description;
+    const hasCustomDescription = Boolean(
+      customTemplate?.description.trim() || memberTemplates?.description.trim(),
+    );
     const embed = new EmbedBuilder()
       .setColor(
         normalizedEventType === "discord.member_join" ? 0x36a878 :
@@ -416,7 +419,7 @@ export async function deliverActivityLog(
       .setTimestamp();
     if (description) embed.setDescription(description);
     if (presentation.thumbnailUrl) embed.setThumbnail(presentation.thumbnailUrl);
-    embed.addFields(...presentation.fields);
+    if (!hasCustomDescription) embed.addFields(...presentation.fields);
     await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
   } catch (error) {
     // Logging must never block moderation/event processing. Setup failures are

@@ -36,7 +36,7 @@ describe("individual activity log templates", () => {
       const embed = (send.mock.calls[0][0] as any).embeds[0].toJSON();
       expect(embed.title).toBe(`Personalizat Test guild: ${entry.event}`);
       expect(embed.description).toBe("<@555555> · <@777777> · <#888888> · Motiv test");
-      expect(embed.fields.length).toBeGreaterThan(0);
+      expect(embed.fields).toEqual([]);
       expect((send.mock.calls[0][0] as any).allowedMentions).toEqual({ parse: [] });
       config.activityLog.templates[entry.key] = { title: "", description: "" };
       await deliverActivityLog(guild, config, entry.event, "member", "555555", detail);
@@ -46,6 +46,45 @@ describe("individual activity log templates", () => {
       expect(send).toHaveBeenCalledTimes(2);
     });
   }
+
+  it("includes event details in the custom description only when {details} is requested", async () => {
+    const config = structuredClone(defaultModerationConfig);
+    config.activityLog.enabled = true;
+    config.activityLog.categories.messages = true;
+    config.activityLog.channelIds.messages = "123456";
+    config.activityLog.templates.message_update = { title: "Editare", description: "Detalii:\n{details}" };
+    const send = vi.fn(async (_payload: unknown) => undefined);
+    const guild = { id: "999999", name: "Test guild", channels: { cache: new Map([["123456", { guildId: "999999", isTextBased: () => true, send }]]) } } as unknown as Guild;
+
+    await deliverActivityLog(guild, config, "discord.message_update", "message", "message-id", {
+      actorVerified: true, actorId: "777777", channelId: "888888",
+      displayBeforeContent: "Text inițial", displayAfterContent: "Text nou", displayContentChanged: true,
+    });
+
+    const embed = (send.mock.calls[0][0] as any).embeds[0].toJSON();
+    expect(embed.description).toContain("Textul inițial");
+    expect(embed.description).toContain("Text nou");
+    expect(embed.fields).toEqual([]);
+  });
+
+  it("keeps the standard event details when only the title is customized", async () => {
+    const config = structuredClone(defaultModerationConfig);
+    config.activityLog.enabled = true;
+    config.activityLog.categories.messages = true;
+    config.activityLog.channelIds.messages = "123456";
+    config.activityLog.templates.message_update = { title: "Titlu nou", description: "" };
+    const send = vi.fn(async (_payload: unknown) => undefined);
+    const guild = { id: "999999", name: "Test guild", channels: { cache: new Map([["123456", { guildId: "999999", isTextBased: () => true, send }]]) } } as unknown as Guild;
+
+    await deliverActivityLog(guild, config, "discord.message_update", "message", "message-id", {
+      actorVerified: true, actorId: "777777", channelId: "888888",
+      displayBeforeContent: "Text inițial", displayAfterContent: "Text nou", displayContentChanged: true,
+    });
+
+    const embed = (send.mock.calls[0][0] as any).embeds[0].toJSON();
+    expect(embed.title).toBe("Titlu nou");
+    expect(embed.fields.length).toBeGreaterThan(0);
+  });
 
   it("never presents an unverified actor as the moderator and does not recursively expand content", () => {
     const output = renderActivityLogTemplate("{moderator} | {after} | {timestamp_relative} | {unknown}", {
