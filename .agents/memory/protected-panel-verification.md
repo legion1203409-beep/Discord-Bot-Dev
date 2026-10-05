@@ -7,7 +7,7 @@ A screenshot of the login gate is not verification of the administration panel b
 
 **Why:** Login screenshots and shape-only tests passed while nested links led to unfinished-page fallbacks and individual forms retained a different guild from the visible selector.
 
-**How to apply:** Use two guilds in a test-only authenticated session and click the actual menu links. Check request guild IDs and persisted values after switching and reloading. Keep these fixtures in the test harness; never add a shipped authentication bypass or perform test sanctions on a live community.
+**How to apply:** Use two guilds in a test-only authenticated session and click the actual menu links. Check request guild IDs and persisted values after switching and reloading. Distinguish mocked test visibility from the user's live preview; never claim the editor is visible there unless an authenticated page was actually verified. Keep fixtures in the test harness; never add a shipped authentication bypass or perform test sanctions on a live community.
 
 Visual redesign checks must wait for the real page controls, not just navigation or network idle, before taking a fixture screenshot.
 

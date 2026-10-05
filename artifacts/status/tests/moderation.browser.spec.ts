@@ -777,6 +777,12 @@ test.describe("authenticated moderation console", () => {
     await page.locator('nav[aria-label="Categorii de moderare"] a[href="/moderare/config/cazuri-audit"]').click();
     await expect(page).toHaveURL("/moderare/config/cazuri-audit");
 
+    const memberCategory = page.getByRole("switch", { name: "Intrări, ieșiri și modificări de profil" });
+    await memberCategory.click();
+    await expect(page.getByRole("button", { name: /Mesaj la intrarea unui membru/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Mesaj la plecarea unui membru/ })).toBeVisible();
+    await memberCategory.click();
+
     await page.getByRole("button", { name: /Mesaj la intrarea unui membru/ }).click();
     await page.getByRole("radio", { name: /Mesaj personalizat/ }).click();
     const joinTitle = page.getByPlaceholder("👋 Membru nou · a intrat pe server");
@@ -830,6 +836,7 @@ test.describe("authenticated moderation console", () => {
   test("moderation embed messages are edited in a dialog and can be reset to default", async ({ page }) => {
     await page.goto("/moderare/config/embeduri");
     await chooseFirstGuild(page);
+    await expect(page.getByRole("button", { name: /Mesajele embed de moderare/ })).toBeVisible();
     await page.getByRole("switch", { name: "Activează embed-uri" }).click();
     await page.getByRole("button", { name: /Mesajele embed de moderare/ }).click();
     await page.getByRole("radio", { name: /Mesaj personalizat/ }).click();
@@ -925,6 +932,7 @@ test.describe("authenticated moderation console", () => {
 
     await page.goto("/moderare/bot?tab=tickets");
     await expect(page.getByRole("heading", { name: "Editor flux ticket" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Anunțul public al parteneriatului/ })).toBeVisible();
     await page.getByText("Tipul de ticket").locator("..").getByRole("combobox").click();
     await page.getByRole("option", { name: "Parteneriate" }).click();
     await page.getByRole("button", { name: /Anunțul public al parteneriatului/ }).click();

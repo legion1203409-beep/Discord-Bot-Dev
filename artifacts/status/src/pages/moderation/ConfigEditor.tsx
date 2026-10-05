@@ -946,7 +946,7 @@ export function ConfigEditor({
                   </div>
                   {createChannelButton(`activityLog.${key}`, label, ["activityLog", "channelIds", key])}
                 </div>
-                {key === "members" && value.activityLog.categories.members && (
+                {key === "members" && (
                   <div className="grid gap-2 sm:grid-cols-2">
                     <MessageCustomizationDialog
                       title="Mesaj la intrarea unui membru"
@@ -1144,49 +1144,47 @@ export function ConfigEditor({
       <Section value="embeds" title="12. Embed-uri și aspect" description="Previzualizează mesajul de moderare și configurează animațiile.">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Toggle label="Activează embed-uri" checked={value.embeds.enabled} onChange={(next) => set(["embeds", "enabled"], next)} />
-          {value.embeds.enabled && (
-            <MessageCustomizationDialog
-              title="Mesajele embed de moderare"
-              description="Alege formatul standard sau personalizează titlul și descrierea folosite în mesajele de moderare."
-              value={{
-                titleTemplate: value.embeds.titleTemplate,
-                descriptionTemplate: value.embeds.descriptionTemplate,
-              }}
-              defaultValue={DEFAULT_MODERATION_EMBED_TEMPLATE}
-              isDefault={(template) =>
-                template.titleTemplate === DEFAULT_MODERATION_EMBED_TEMPLATE.titleTemplate
-                && template.descriptionTemplate === DEFAULT_MODERATION_EMBED_TEMPLATE.descriptionTemplate
-              }
-              onApply={(template) => {
-                set(["embeds", "titleTemplate"], template.titleTemplate);
-                set(["embeds", "descriptionTemplate"], template.descriptionTemplate);
-              }}
-              defaultMessage="Botul va folosi titlul și descrierea standard pentru mesajele de moderare."
-              renderEditor={(template, onChange) => (
-                <>
-                  <p className="text-xs text-muted-foreground">
-                    Variabile disponibile: {`{action}`} · {`{reason}`} · {`{guild}`} · {`{timestamp}`} · {`{timestamp_relative}`}.
-                    Timestampurile Discord se afișează în fusul orar al fiecărui membru.
-                  </p>
-                  <Field label="Titlu mesaj" help="Maximum 200 caractere.">
-                    <Input
-                      value={template.titleTemplate}
-                      maxLength={200}
-                      onChange={(event) => onChange({ ...template, titleTemplate: event.target.value })}
-                    />
-                  </Field>
-                  <Field label="Descriere mesaj" help="Maximum 2000 caractere. Poți combina variabilele cu textul tău.">
-                    <Textarea
-                      value={template.descriptionTemplate}
-                      maxLength={2000}
-                      rows={5}
-                      onChange={(event) => onChange({ ...template, descriptionTemplate: event.target.value })}
-                    />
-                  </Field>
-                </>
-              )}
-            />
-          )}
+          <MessageCustomizationDialog
+            title="Mesajele embed de moderare"
+            description="Alege formatul standard sau personalizează titlul și descrierea folosite în mesajele de moderare."
+            value={{
+              titleTemplate: value.embeds.titleTemplate,
+              descriptionTemplate: value.embeds.descriptionTemplate,
+            }}
+            defaultValue={DEFAULT_MODERATION_EMBED_TEMPLATE}
+            isDefault={(template) =>
+              template.titleTemplate === DEFAULT_MODERATION_EMBED_TEMPLATE.titleTemplate
+              && template.descriptionTemplate === DEFAULT_MODERATION_EMBED_TEMPLATE.descriptionTemplate
+            }
+            onApply={(template) => {
+              set(["embeds", "titleTemplate"], template.titleTemplate);
+              set(["embeds", "descriptionTemplate"], template.descriptionTemplate);
+            }}
+            defaultMessage="Botul va folosi titlul și descrierea standard pentru mesajele de moderare."
+            renderEditor={(template, onChange) => (
+              <>
+                <p className="text-xs text-muted-foreground">
+                  Variabile disponibile: {`{action}`} · {`{reason}`} · {`{guild}`} · {`{timestamp}`} · {`{timestamp_relative}`}.
+                  Timestampurile Discord se afișează în fusul orar al fiecărui membru.
+                </p>
+                <Field label="Titlu mesaj" help="Maximum 200 caractere.">
+                  <Input
+                    value={template.titleTemplate}
+                    maxLength={200}
+                    onChange={(event) => onChange({ ...template, titleTemplate: event.target.value })}
+                  />
+                </Field>
+                <Field label="Descriere mesaj" help="Maximum 2000 caractere. Poți combina variabilele cu textul tău.">
+                  <Textarea
+                    value={template.descriptionTemplate}
+                    maxLength={2000}
+                    rows={5}
+                    onChange={(event) => onChange({ ...template, descriptionTemplate: event.target.value })}
+                  />
+                </Field>
+              </>
+            )}
+          />
         </div>
         <div className="grid gap-3 md:grid-cols-2">
           <TextField label="Culoare HEX" help="Format obligatoriu #RRGGBB." value={value.embeds.color} placeholder="#5865F2" onChange={(next) => set(["embeds", "color"], next)} />

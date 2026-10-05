@@ -1702,19 +1702,17 @@ export function BotControlPage({
             </div>
           </section>
 
-          {activeFlowKind === "partnership" && (
-          <section className="space-y-4 rounded-xl border border-border bg-card p-5">
+          <section className="space-y-4 rounded-xl border border-primary/25 bg-primary/[0.04] p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="flex items-start gap-3">
-                <ShieldCheck className="mt-1 h-5 w-5 text-primary" />
-                <div>
-                  <h2 className="font-medium">Staff și publicarea alianțelor</h2>
-                  <p className="text-xs text-muted-foreground">Rolul care poate confirma sau refuza parteneriatele și canalul public pentru alianțele aprobate.</p>
-                </div>
+              <div>
+                <h2 className="font-medium">Textul anunțului de parteneriat</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Poți pregăti mesajul aici indiferent de fluxul de ticket selectat. Modificarea intră în draftul paginii.
+                </p>
               </div>
               <MessageCustomizationDialog
                 title="Anunțul public al parteneriatului"
-                description="Alege anunțul standard sau scrie textul publicat când stafful aprobă și publică pactul."
+                description="Alege anunțul standard sau personalizează textul publicat când stafful aprobă și publică pactul."
                 value={draft.tickets.allianceAnnouncementTemplate}
                 defaultValue={DEFAULT_ALLIANCE_ANNOUNCEMENT_TEMPLATE}
                 isDefault={(template) => template === DEFAULT_ALLIANCE_ANNOUNCEMENT_TEMPLATE}
@@ -1746,6 +1744,19 @@ export function BotControlPage({
                   </>
                 )}
               />
+            </div>
+          </section>
+
+          {activeFlowKind === "partnership" && (
+          <section className="space-y-4 rounded-xl border border-border bg-card p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <ShieldCheck className="mt-1 h-5 w-5 text-primary" />
+                <div>
+                  <h2 className="font-medium">Staff și publicarea alianțelor</h2>
+                  <p className="text-xs text-muted-foreground">Rolul care poate confirma sau refuza parteneriatele și canalul public pentru alianțele aprobate.</p>
+                </div>
+              </div>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
