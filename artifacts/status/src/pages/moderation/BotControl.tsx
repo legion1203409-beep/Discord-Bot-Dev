@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Tabs, TabsContent } from "../../components/ui/tabs";
 import { ImageField } from "../../components/moderation/ImageField";
 import { DiscordEmojiText, EmojiField } from "../../components/moderation/EmojiField";
+import { MessageCustomizationDialog } from "../../components/moderation/MessageCustomizationDialog";
 import { BotControlPartialApplyError, useActiveGuild, useBotControl, useInviteStats, useModerationMetadata, useSession, type BotControlConfig, type ChannelPermissionConfig, type InviteStatsRange, type TicketFlowConfig } from "../../hooks/use-moderation-api";
 import { clearBotControlDestinations, DESTINATION_CLEAR_CATEGORIES, type DestinationClearScope } from "../../lib/bot-control-destinations";
 import { rebaseDraftChanges } from "../../lib/utils";
@@ -170,6 +171,43 @@ const DEFAULT_DAILY_STATS = {
     peakVoice: "🔊 Vârf vocal",
   },
 } as const;
+
+type DailyStatsMessageTemplate = {
+  title: string;
+  description: string;
+  footer: string;
+  activityTitle: string;
+  channelsTitle: string;
+  emptyChannelsText: string;
+  metricLabels: BotControlConfig["dailyStats"]["metricLabels"];
+};
+
+const DEFAULT_DAILY_STATS_MESSAGE: DailyStatsMessageTemplate = {
+  title: DEFAULT_DAILY_STATS.title,
+  description: DEFAULT_DAILY_STATS.description,
+  footer: DEFAULT_DAILY_STATS.footer,
+  activityTitle: DEFAULT_DAILY_STATS.activityTitle,
+  channelsTitle: DEFAULT_DAILY_STATS.channelsTitle,
+  emptyChannelsText: DEFAULT_DAILY_STATS.emptyChannelsText,
+  metricLabels: { ...DEFAULT_DAILY_STATS.metricLabels },
+};
+
+const DEFAULT_ALLIANCE_ANNOUNCEMENT_TEMPLATE = [
+  "🤝 PACTUL CELOR DOUĂ REGATE",
+  "══════════════════════════",
+  "",
+  "🏰 Comunitatea parteneră: {server_name}",
+  "",
+  "📝 Descrierea serverului:",
+  "{description}",
+  "",
+  "👥 Membri: {members_total} total · {members_online} online",
+  "🔗 Link: {invite}",
+  "",
+  "👤 Contract completat de: {applicant_mention}",
+  "",
+  "Pact pecetluit · Regatul Cenușii",
+].join("\n");
 
 const DAILY_STATS_PREVIEW_VALUES: Record<string, string> = {
   guild: "Regatul Cenușii",
@@ -500,19 +538,6 @@ export function BotControlPage({
     } : current);
   };
 
-  const setDailyStatsMetric = (
-    field: keyof BotControlConfig["dailyStats"]["metricLabels"],
-    value: string,
-  ) => {
-    setDraft((current) => current ? {
-      ...current,
-      dailyStats: {
-        ...current.dailyStats,
-        metricLabels: { ...current.dailyStats.metricLabels, [field]: value },
-      },
-    } : current);
-  };
-
   const setInviteTracking = <K extends keyof BotControlConfig["inviteTracking"]>(
     field: K,
     value: BotControlConfig["inviteTracking"][K],
@@ -560,16 +585,6 @@ export function BotControlPage({
       gameplayConfig: {
         ...current.gameplayConfig,
         memberMessages: { ...DEFAULT_MEMBER_MESSAGES },
-      },
-    } : current);
-  };
-
-  const resetDailyStats = () => {
-    setDraft((current) => current ? {
-      ...current,
-      dailyStats: {
-        ...DEFAULT_DAILY_STATS,
-        metricLabels: { ...DEFAULT_DAILY_STATS.metricLabels },
       },
     } : current);
   };
@@ -1689,12 +1704,48 @@ export function BotControlPage({
 
           {activeFlowKind === "partnership" && (
           <section className="space-y-4 rounded-xl border border-border bg-card p-5">
-            <div className="flex items-start gap-3">
-              <ShieldCheck className="mt-1 h-5 w-5 text-primary" />
-              <div>
-                <h2 className="font-medium">Staff și publicarea alianțelor</h2>
-                <p className="text-xs text-muted-foreground">Rolul care poate confirma sau refuza parteneriatele și canalul public pentru alianțele aprobate.</p>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <ShieldCheck className="mt-1 h-5 w-5 text-primary" />
+                <div>
+                  <h2 className="font-medium">Staff și publicarea alianțelor</h2>
+                  <p className="text-xs text-muted-foreground">Rolul care poate confirma sau refuza parteneriatele și canalul public pentru alianțele aprobate.</p>
+                </div>
               </div>
+              <MessageCustomizationDialog
+                title="Anunțul public al parteneriatului"
+                description="Alege anunțul standard sau scrie textul publicat când stafful aprobă și publică pactul."
+                value={draft.tickets.allianceAnnouncementTemplate}
+                defaultValue={DEFAULT_ALLIANCE_ANNOUNCEMENT_TEMPLATE}
+                isDefault={(template) => template === DEFAULT_ALLIANCE_ANNOUNCEMENT_TEMPLATE}
+                onApply={(template) => setTicket(["allianceAnnouncementTemplate"], template)}
+                defaultMessage="Se va publica anunțul standard al alianței, cu datele serverului, invitația și statisticile disponibile."
+                renderEditor={(template, onChange) => (
+                  <>
+                    <p className="text-xs text-muted-foreground">
+                      Variabile disponibile: {"{server_name}"} · {"{description}"} · {"{invite}"} · {"{representative}"} ·
+                      {"{members_total}"} · {"{members_online}"} · {"{members}"} · {"{motivation}"} · {"{offer}"} ·
+                      {"{terms}"} · {"{applicant}"} · {"{applicant_mention}"} · {"{timestamp}"} ·
+                      {"{timestamp_relative}"} · {"{date}"} · {"{time}"} · {"{year}"}
+                    </p>
+                    <EmojiField
+                      multiline
+                      rows={12}
+                      maxLength={2000}
+                      value={template}
+                      onChange={onChange}
+                      guildId={guildId}
+                      csrfToken={session?.csrfToken}
+                      emojis={metadata?.emojis}
+                      onEmojiCreated={refetchMetadata}
+                    />
+                    <p className="text-right text-xs text-muted-foreground">{template.length}/2000</p>
+                    <p className="text-xs text-muted-foreground">
+                      Timestampurile Discord se adaptează fusului orar al fiecărui membru. Numărul membrilor este citit la publicare.
+                    </p>
+                  </>
+                )}
+              />
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
@@ -1736,20 +1787,9 @@ export function BotControlPage({
                <div>
                  <label className="text-sm font-medium">Mesajul public al parteneriatului</label>
                  <p className="mt-1 text-xs text-muted-foreground">
-                   Acest șablon este folosit când stafful apasă „Publică pactul”. Poți decide exact ce apare și dacă este trimis ca text sau embed.
+                    Acest șablon este folosit când stafful apasă „Publică pactul”. Formatul și imaginile se configurează aici.
                  </p>
                </div>
-               <EmojiField
-                  multiline
-                 rows={12}
-                 maxLength={2000}
-                 value={draft.tickets.allianceAnnouncementTemplate}
-                  onChange={(value) => setTicket(["allianceAnnouncementTemplate"], value)}
-                  guildId={guildId}
-                  csrfToken={session?.csrfToken}
-                  emojis={metadata?.emojis}
-                  onEmojiCreated={refetchMetadata}
-               />
                <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                  <div className="space-y-2">
                    <label className="text-sm font-medium">Formatul publicării</label>
@@ -1763,13 +1803,6 @@ export function BotControlPage({
                        <SelectItem value="embed">Embed Discord</SelectItem>
                      </SelectContent>
                    </Select>
-                 </div>
-                 <div className="space-y-2 text-xs text-muted-foreground">
-                   <p className="font-medium text-foreground">Variabile disponibile</p>
-                   <p className="font-mono leading-relaxed">
-                      {"{server_name}"} · {"{description}"} · {"{invite}"} · {"{representative}"} · {"{members_total}"} · {"{members_online}"} · {"{members}"} · {"{motivation}"} · {"{offer}"} · {"{terms}"} · {"{applicant}"} · {"{applicant_mention}"} · {"{timestamp}"} · {"{timestamp_relative}"} · {"{date}"} · {"{time}"} · {"{year}"}
-                   </p>
-                    <p>Timestampurile Discord se afișează în fusul orar al fiecărui membru. „Membri total” și „online” sunt citite din invitația Discord la publicare; dacă Discord nu le poate oferi, se afișează „Nedisponibil”.</p>
                  </div>
                </div>
                 <ImageField
@@ -1809,9 +1842,6 @@ export function BotControlPage({
                       onEmojiCreated={refetchMetadata}
                    />
                  </div>
-               <p className="text-right text-xs text-muted-foreground">
-                 {draft.tickets.allianceAnnouncementTemplate.length}/2000
-               </p>
              </div>
           </section>
           )}
@@ -2193,25 +2223,100 @@ export function BotControlPage({
           </section>
 
           <section className="space-y-5 rounded-xl border border-border bg-card p-5">
-            <div className="flex items-start gap-3">
-              <Megaphone className="mt-1 h-5 w-5 text-primary" />
-              <div className="min-w-0 flex-1">
-                <h2 className="font-medium">Design statistici zilnice</h2>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <Megaphone className="mt-1 h-5 w-5 text-primary" />
+                <div className="min-w-0 flex-1">
+                  <h2 className="font-medium">Design statistici zilnice</h2>
                   <p className="text-xs text-muted-foreground">
-                    Variabile disponibile în toate câmpurile text: {`{guild}`}, {`{date}`}, {`{year}`}, {`{month}`}, {`{day}`}, {`{timestamp}`}, {`{timestamp_relative}`}, {`{messages}`}, {`{uniqueUsers}`}, {`{boosts}`}, {`{joins}`}, {`{leaves}`} și {`{peakVoice}`}. Timestampurile Discord se afișează în fusul orar al fiecărui membru.
+                    Canalul ales mai jos activează publicarea automată. Aspectul vizual și mesajul se personalizează separat.
                   </p>
+                </div>
               </div>
-              <Button type="button" variant="ghost" size="sm" className="shrink-0 gap-1" onClick={resetDailyStats}>
-                <RotateCcw className="h-3.5 w-3.5" /> Implicit
-              </Button>
+              <MessageCustomizationDialog
+                title="Mesajul raportului zilnic"
+                description="Alege textul implicit sau personalizează toate câmpurile text din raport."
+                value={{
+                  title: draft.dailyStats.title,
+                  description: draft.dailyStats.description,
+                  footer: draft.dailyStats.footer,
+                  activityTitle: draft.dailyStats.activityTitle,
+                  channelsTitle: draft.dailyStats.channelsTitle,
+                  emptyChannelsText: draft.dailyStats.emptyChannelsText,
+                  metricLabels: { ...draft.dailyStats.metricLabels },
+                }}
+                defaultValue={DEFAULT_DAILY_STATS_MESSAGE}
+                isDefault={(template) => JSON.stringify(template) === JSON.stringify(DEFAULT_DAILY_STATS_MESSAGE)}
+                onApply={(template) => setDraft((current) => current ? {
+                  ...current,
+                  dailyStats: {
+                    ...current.dailyStats,
+                    ...template,
+                    metricLabels: { ...template.metricLabels },
+                  },
+                } : current)}
+                defaultMessage="Se vor folosi textele standard ale raportului zilnic. Canalul, culoarea și imaginile configurate nu se modifică."
+                renderEditor={(template, onChange) => (
+                  <>
+                    <p className="text-xs text-muted-foreground">
+                      Variabile disponibile în câmpurile text: {`{guild}`} · {`{date}`} · {`{year}`} · {`{month}`} · {`{day}`} ·
+                      {`{timestamp}`} · {`{timestamp_relative}`} · {`{messages}`} · {`{uniqueUsers}`} · {`{boosts}`} ·
+                      {`{joins}`} · {`{leaves}`} · {`{peakVoice}`}. Timestampurile Discord se afișează în fusul orar al fiecărui membru.
+                    </p>
+                    <label className="block space-y-1 text-sm">
+                      <span className="text-xs font-medium">Titlu raport</span>
+                      <EmojiField maxLength={256} value={template.title} onChange={(title) => onChange({ ...template, title })} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
+                    </label>
+                    <label className="block space-y-1 text-sm">
+                      <span className="text-xs font-medium">Descriere raport</span>
+                      <EmojiField multiline rows={4} maxLength={4000} value={template.description} onChange={(description) => onChange({ ...template, description })} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
+                    </label>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <label className="block space-y-1 text-sm">
+                        <span className="text-xs font-medium">Titlu activitate</span>
+                        <EmojiField maxLength={256} value={template.activityTitle} onChange={(activityTitle) => onChange({ ...template, activityTitle })} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
+                      </label>
+                      <label className="block space-y-1 text-sm">
+                        <span className="text-xs font-medium">Titlu top canale</span>
+                        <EmojiField maxLength={256} value={template.channelsTitle} onChange={(channelsTitle) => onChange({ ...template, channelsTitle })} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
+                      </label>
+                    </div>
+                    <label className="block space-y-1 text-sm">
+                      <span className="text-xs font-medium">Subsol</span>
+                      <EmojiField maxLength={2048} value={template.footer} onChange={(footer) => onChange({ ...template, footer })} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
+                    </label>
+                    <div>
+                      <p className="mb-2 text-xs font-medium">Etichete indicatori</p>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {(Object.entries(template.metricLabels) as Array<[keyof BotControlConfig["dailyStats"]["metricLabels"], string]>).map(([key, value]) => (
+                          <EmojiField
+                            key={key}
+                            maxLength={256}
+                            value={value}
+                            aria-label={`Etichetă ${key}`}
+                            onChange={(next) => onChange({
+                              ...template,
+                              metricLabels: { ...template.metricLabels, [key]: next },
+                            })}
+                            guildId={guildId}
+                            csrfToken={session?.csrfToken}
+                            emojis={metadata?.emojis}
+                            onEmojiCreated={refetchMetadata}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                    <label className="block space-y-1 text-sm">
+                      <span className="text-xs font-medium">Text când nu există canale active</span>
+                      <EmojiField maxLength={1024} value={template.emptyChannelsText} onChange={(emptyChannelsText) => onChange({ ...template, emptyChannelsText })} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
+                    </label>
+                  </>
+                )}
+              />
             </div>
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
               <div className="space-y-4">
                 <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_9rem]">
-                  <label className="space-y-1 text-sm">
-                    <span className="text-xs font-medium">Titlu raport</span>
-                    <EmojiField maxLength={256} value={draft.dailyStats.title} onChange={(value) => setDailyStats("title", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
-                  </label>
                   <label className="space-y-1 text-sm">
                     <span className="text-xs font-medium">Culoare accent</span>
                     <div className="flex gap-2">
@@ -2220,10 +2325,6 @@ export function BotControlPage({
                     </div>
                   </label>
                 </div>
-                <label className="block space-y-1 text-sm">
-                  <span className="text-xs font-medium">Descriere raport</span>
-                  <EmojiField multiline rows={4} maxLength={4000} value={draft.dailyStats.description} onChange={(value) => setDailyStats("description", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
-                </label>
                 <label className="block space-y-1 text-sm">
                   <span className="text-xs font-medium">Canal raport zilnic</span>
                   <Select
@@ -2244,32 +2345,6 @@ export function BotControlPage({
                 </label>
                 <ImageField label="Imaginea raportului zilnic" value={draft.dailyStats.imageUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setDailyStats("imageUrl", value)} />
                 <ImageField label="Thumbnail-ul raportului zilnic" value={draft.dailyStats.thumbnailUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setDailyStats("thumbnailUrl", value)} />
-                <div className="grid gap-4 md:grid-cols-2">
-                  <label className="space-y-1 text-sm">
-                    <span className="text-xs font-medium">Titlu activitate</span>
-                    <EmojiField maxLength={256} value={draft.dailyStats.activityTitle} onChange={(value) => setDailyStats("activityTitle", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
-                  </label>
-                  <label className="space-y-1 text-sm">
-                    <span className="text-xs font-medium">Titlu top canale</span>
-                    <EmojiField maxLength={256} value={draft.dailyStats.channelsTitle} onChange={(value) => setDailyStats("channelsTitle", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
-                  </label>
-                </div>
-                <label className="block space-y-1 text-sm">
-                  <span className="text-xs font-medium">Subsol</span>
-                  <EmojiField maxLength={2048} value={draft.dailyStats.footer} onChange={(value) => setDailyStats("footer", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
-                </label>
-                <div>
-                  <p className="mb-2 text-xs font-medium">Etichete indicatori</p>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {(Object.entries(draft.dailyStats.metricLabels) as Array<[keyof BotControlConfig["dailyStats"]["metricLabels"], string]>).map(([key, value]) => (
-                      <EmojiField key={key} maxLength={256} value={value} aria-label={key} onChange={(next) => setDailyStatsMetric(key, next)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
-                    ))}
-                  </div>
-                </div>
-                <label className="block space-y-1 text-sm">
-                  <span className="text-xs font-medium">Text când nu există canale active</span>
-                  <EmojiField maxLength={1024} value={draft.dailyStats.emptyChannelsText} onChange={(value) => setDailyStats("emptyChannelsText", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
-                </label>
               </div>
               <div className="h-fit rounded-xl border bg-[#1E1E1E] p-3 text-[#FFFFFF] shadow-xl" style={{ borderLeftColor: draft.dailyStats.color, borderLeftWidth: 4 }}>
                 <p className="mb-3 text-[10px] font-semibold tracking-[0.18em] text-[#D94A2B]">PREVIZUALIZARE EMBED</p>

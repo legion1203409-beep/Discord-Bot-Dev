@@ -12,6 +12,7 @@ import { embedUrlDraftError, isPublicGifUrl, isPublicHttpsUrl } from "../../lib/
 import { MANUAL_COMMAND_GROUPS_WITH_COMMANDS } from "../../lib/manual-command-catalog";
 import { aiCategoryActions, inheritsAiCategoryActions, setAiCategoryActions } from "../../lib/automod-actions";
 import { ModerationActionPicker } from "../../components/moderation/ModerationActionPicker";
+import { MessageCustomizationDialog } from "../../components/moderation/MessageCustomizationDialog";
 
 type Config = Record<string, any>;
 type Path = Array<string | number>;
@@ -95,6 +96,10 @@ const MEMBER_LOG_PREVIEW_VALUES = {
     timestamp_relative: "acum 2 ore",
   },
 } satisfies Record<"join" | "leave", Record<string, string>>;
+const DEFAULT_MODERATION_EMBED_TEMPLATE = {
+  titleTemplate: "Moderation action",
+  descriptionTemplate: "{action}: {reason}",
+};
 
 function renderMemberLogPreview(template: string, kind: "join" | "leave", fallback: string): string {
   const source = template.trim() ? template : fallback;
@@ -941,81 +946,125 @@ export function ConfigEditor({
                   </div>
                   {createChannelButton(`activityLog.${key}`, label, ["activityLog", "channelIds", key])}
                 </div>
+                {key === "members" && value.activityLog.categories.members && (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <MessageCustomizationDialog
+                      title="Mesaj la intrarea unui membru"
+                      description="Alege textul standard sau personalizează titlul și descrierea mesajului de intrare."
+                      value={{
+                        title: value.activityLog.memberJoinTitleTemplate,
+                        description: value.activityLog.memberJoinDescriptionTemplate,
+                      }}
+                      defaultValue={{ title: "", description: "" }}
+                      isDefault={(template) => !template.title.trim() && !template.description.trim()}
+                      onApply={(template) => {
+                        set(["activityLog", "memberJoinTitleTemplate"], template.title);
+                        set(["activityLog", "memberJoinDescriptionTemplate"], template.description);
+                      }}
+                      defaultMessage="Botul va folosi titlul și descrierea standard pentru un membru nou."
+                      renderEditor={(template, onChange) => (
+                        <>
+                          <p className="break-words font-mono text-[11px] leading-relaxed text-muted-foreground">
+                            {`{member}`} · {`{member_name}`} · {`{username}`} · {`{account_created_at}`} · {`{account_created_at_relative}`} · {`{account_age}`} · {`{account_age_years}`} · {`{account_age_days}`} · {`{server_joined_at}`} · {`{server_joined_at_relative}`} · {`{timestamp}`} · {`{timestamp_relative}`}
+                          </p>
+                          <Field label="Titlu mesaj">
+                            <Input
+                              maxLength={256}
+                              value={template.title}
+                              onChange={(event) => onChange({ ...template, title: event.target.value })}
+                              placeholder="👋 Membru nou · a intrat pe server"
+                            />
+                          </Field>
+                          <Field label="Descriere mesaj">
+                            <Textarea
+                              rows={4}
+                              maxLength={2_000}
+                              value={template.description}
+                              onChange={(event) => onChange({ ...template, description: event.target.value })}
+                              placeholder="A intrat {member} · cont creat {account_created_at_relative} · vechime {account_age}."
+                            />
+                          </Field>
+                          <div className="rounded-md bg-muted/50 p-3 text-xs">
+                            <p className="font-medium">{renderMemberLogPreview(template.title, "join", "👋 Membru nou · a intrat pe server")}</p>
+                            <p className="mt-1 whitespace-pre-wrap text-muted-foreground">
+                              {renderMemberLogPreview(template.description, "join", "Un membru nou s-a alăturat serverului.")}
+                            </p>
+                          </div>
+                          <p className="text-xs text-muted-foreground">Timestampurile se afișează în fusul orar al fiecărui membru.</p>
+                        </>
+                      )}
+                    />
+                    <MessageCustomizationDialog
+                      title="Mesaj la plecarea unui membru"
+                      description="Alege textul standard sau personalizează titlul și descrierea mesajului de plecare."
+                      value={{
+                        title: value.activityLog.memberLeaveTitleTemplate,
+                        description: value.activityLog.memberLeaveDescriptionTemplate,
+                      }}
+                      defaultValue={{ title: "", description: "" }}
+                      isDefault={(template) => !template.title.trim() && !template.description.trim()}
+                      onApply={(template) => {
+                        set(["activityLog", "memberLeaveTitleTemplate"], template.title);
+                        set(["activityLog", "memberLeaveDescriptionTemplate"], template.description);
+                      }}
+                      defaultMessage="Botul va folosi titlul și descrierea standard pentru un membru care părăsește serverul."
+                      renderEditor={(template, onChange) => (
+                        <>
+                          <p className="break-words font-mono text-[11px] leading-relaxed text-muted-foreground">
+                            {`{member}`} · {`{member_name}`} · {`{username}`} · {`{account_created_at}`} · {`{account_created_at_relative}`} · {`{account_age}`} · {`{account_age_years}`} · {`{account_age_days}`} · {`{server_joined_at}`} · {`{server_joined_at_relative}`} · {`{server_left_at}`} · {`{server_left_at_relative}`} · {`{server_duration}`} · {`{timestamp}`} · {`{timestamp_relative}`}
+                          </p>
+                          <Field label="Titlu mesaj">
+                            <Input
+                              maxLength={256}
+                              value={template.title}
+                              onChange={(event) => onChange({ ...template, title: event.target.value })}
+                              placeholder="🚪 Membru a părăsit serverul"
+                            />
+                          </Field>
+                          <Field label="Descriere mesaj">
+                            <Textarea
+                              rows={4}
+                              maxLength={2_000}
+                              value={template.description}
+                              onChange={(event) => onChange({ ...template, description: event.target.value })}
+                              placeholder="A plecat {member} · contul avea {account_age} · a stat {server_duration}."
+                            />
+                          </Field>
+                          <div className="rounded-md bg-muted/50 p-3 text-xs">
+                            <p className="font-medium">{renderMemberLogPreview(template.title, "leave", "🚪 Membru a părăsit serverul")}</p>
+                            <p className="mt-1 whitespace-pre-wrap text-muted-foreground">
+                              {renderMemberLogPreview(template.description, "leave", "Membrul a părăsit serverul.")}
+                            </p>
+                          </div>
+                          <p className="text-xs text-muted-foreground">Timestampurile se afișează în fusul orar al fiecărui membru.</p>
+                        </>
+                      )}
+                    />
+                  </div>
+                )}
+                {key === "members" && value.activityLog.categories.members && (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <div className="rounded-md bg-muted/40 p-3 text-xs">
+                      <p className="font-medium">
+                        {renderMemberLogPreview(value.activityLog.memberJoinTitleTemplate, "join", "👋 Membru nou · a intrat pe server")}
+                      </p>
+                      <p className="mt-1 whitespace-pre-wrap text-muted-foreground">
+                        {renderMemberLogPreview(value.activityLog.memberJoinDescriptionTemplate, "join", "Un membru nou s-a alăturat serverului.")}
+                      </p>
+                    </div>
+                    <div className="rounded-md bg-muted/40 p-3 text-xs">
+                      <p className="font-medium">
+                        {renderMemberLogPreview(value.activityLog.memberLeaveTitleTemplate, "leave", "🚪 Membru a părăsit serverul")}
+                      </p>
+                      <p className="mt-1 whitespace-pre-wrap text-muted-foreground">
+                        {renderMemberLogPreview(value.activityLog.memberLeaveDescriptionTemplate, "leave", "Membrul a părăsit serverul.")}
+                      </p>
+                    </div>
+                  </div>
+                )}
                 {activityChannelSelector(key, label)}
               </div>
             ))}
-          </div>
-          <div className="space-y-4 rounded-xl border border-border bg-background/60 p-4">
-            <div>
-              <h4 className="font-medium">Personalizează mesajele de intrare și ieșire</h4>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Lasă un câmp gol pentru textul standard. Textul personalizat înlocuiește titlul sau descrierea embedului; câmpurile automate cu detalii rămân vizibile.
-              </p>
-              <p className="mt-2 break-words font-mono text-[11px] leading-relaxed text-muted-foreground">
-                {`{member}`} · {`{member_name}`} · {`{username}`} · {`{account_created_at}`} · {`{account_created_at_relative}`} · {`{account_age}`} · {`{account_age_years}`} · {`{account_age_days}`} · {`{server_joined_at}`} · {`{server_joined_at_relative}`} · {`{server_left_at}`} · {`{server_left_at_relative}`} · {`{server_duration}`} · {`{timestamp}`} · {`{timestamp_relative}`}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Timestampurile se afișează automat în fusul orar al fiecărui membru. „Ani” și „zile” se calculează la momentul evenimentului.
-              </p>
-            </div>
-            <div className="grid gap-4 lg:grid-cols-2">
-              <div className="space-y-3 rounded-lg border border-border p-3">
-                <h5 className="text-sm font-medium">Membru nou</h5>
-                <label className="block space-y-1 text-sm">
-                  <span className="text-xs font-medium">Titlu</span>
-                  <Input
-                    maxLength={256}
-                    value={value.activityLog.memberJoinTitleTemplate}
-                    onChange={(event) => set(["activityLog", "memberJoinTitleTemplate"], event.target.value)}
-                    placeholder="👋 Membru nou · a intrat pe server"
-                  />
-                </label>
-                <label className="block space-y-1 text-sm">
-                  <span className="text-xs font-medium">Descriere</span>
-                  <Textarea
-                    rows={4}
-                    maxLength={2_000}
-                    value={value.activityLog.memberJoinDescriptionTemplate}
-                    onChange={(event) => set(["activityLog", "memberJoinDescriptionTemplate"], event.target.value)}
-                    placeholder="A intrat {member} · cont creat {account_created_at_relative} · vechime {account_age}."
-                  />
-                </label>
-                <div className="rounded-md bg-muted/50 p-3 text-xs">
-                  <p className="font-medium">{renderMemberLogPreview(value.activityLog.memberJoinTitleTemplate, "join", "👋 Membru nou · a intrat pe server")}</p>
-                  <p className="mt-1 whitespace-pre-wrap text-muted-foreground">
-                    {renderMemberLogPreview(value.activityLog.memberJoinDescriptionTemplate, "join", "Un membru nou s-a alăturat serverului.")}
-                  </p>
-                </div>
-              </div>
-              <div className="space-y-3 rounded-lg border border-border p-3">
-                <h5 className="text-sm font-medium">Membru plecat</h5>
-                <label className="block space-y-1 text-sm">
-                  <span className="text-xs font-medium">Titlu</span>
-                  <Input
-                    maxLength={256}
-                    value={value.activityLog.memberLeaveTitleTemplate}
-                    onChange={(event) => set(["activityLog", "memberLeaveTitleTemplate"], event.target.value)}
-                    placeholder="🚪 Membru a părăsit serverul"
-                  />
-                </label>
-                <label className="block space-y-1 text-sm">
-                  <span className="text-xs font-medium">Descriere</span>
-                  <Textarea
-                    rows={4}
-                    maxLength={2_000}
-                    value={value.activityLog.memberLeaveDescriptionTemplate}
-                    onChange={(event) => set(["activityLog", "memberLeaveDescriptionTemplate"], event.target.value)}
-                    placeholder="A plecat {member} · contul avea {account_age} · a stat {server_duration}."
-                  />
-                </label>
-                <div className="rounded-md bg-muted/50 p-3 text-xs">
-                  <p className="font-medium">{renderMemberLogPreview(value.activityLog.memberLeaveTitleTemplate, "leave", "🚪 Membru a părăsit serverul")}</p>
-                  <p className="mt-1 whitespace-pre-wrap text-muted-foreground">
-                    {renderMemberLogPreview(value.activityLog.memberLeaveDescriptionTemplate, "leave", "Membrul a părăsit serverul.")}
-                  </p>
-                </div>
-              </div>
-            </div>
           </div>
           {onCreateChannel && (
             <p className="text-xs text-muted-foreground">
@@ -1093,7 +1142,52 @@ export function ConfigEditor({
       </Section>
 
       <Section value="embeds" title="12. Embed-uri și aspect" description="Previzualizează mesajul de moderare și configurează animațiile.">
-        <Toggle label="Activează embed-uri" checked={value.embeds.enabled} onChange={(next) => set(["embeds", "enabled"], next)} />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Toggle label="Activează embed-uri" checked={value.embeds.enabled} onChange={(next) => set(["embeds", "enabled"], next)} />
+          {value.embeds.enabled && (
+            <MessageCustomizationDialog
+              title="Mesajele embed de moderare"
+              description="Alege formatul standard sau personalizează titlul și descrierea folosite în mesajele de moderare."
+              value={{
+                titleTemplate: value.embeds.titleTemplate,
+                descriptionTemplate: value.embeds.descriptionTemplate,
+              }}
+              defaultValue={DEFAULT_MODERATION_EMBED_TEMPLATE}
+              isDefault={(template) =>
+                template.titleTemplate === DEFAULT_MODERATION_EMBED_TEMPLATE.titleTemplate
+                && template.descriptionTemplate === DEFAULT_MODERATION_EMBED_TEMPLATE.descriptionTemplate
+              }
+              onApply={(template) => {
+                set(["embeds", "titleTemplate"], template.titleTemplate);
+                set(["embeds", "descriptionTemplate"], template.descriptionTemplate);
+              }}
+              defaultMessage="Botul va folosi titlul și descrierea standard pentru mesajele de moderare."
+              renderEditor={(template, onChange) => (
+                <>
+                  <p className="text-xs text-muted-foreground">
+                    Variabile disponibile: {`{action}`} · {`{reason}`} · {`{guild}`} · {`{timestamp}`} · {`{timestamp_relative}`}.
+                    Timestampurile Discord se afișează în fusul orar al fiecărui membru.
+                  </p>
+                  <Field label="Titlu mesaj" help="Maximum 200 caractere.">
+                    <Input
+                      value={template.titleTemplate}
+                      maxLength={200}
+                      onChange={(event) => onChange({ ...template, titleTemplate: event.target.value })}
+                    />
+                  </Field>
+                  <Field label="Descriere mesaj" help="Maximum 2000 caractere. Poți combina variabilele cu textul tău.">
+                    <Textarea
+                      value={template.descriptionTemplate}
+                      maxLength={2000}
+                      rows={5}
+                      onChange={(event) => onChange({ ...template, descriptionTemplate: event.target.value })}
+                    />
+                  </Field>
+                </>
+              )}
+            />
+          )}
+        </div>
         <div className="grid gap-3 md:grid-cols-2">
           <TextField label="Culoare HEX" help="Format obligatoriu #RRGGBB." value={value.embeds.color} placeholder="#5865F2" onChange={(next) => set(["embeds", "color"], next)} />
           <Choice label="Stil" value={value.embeds.style} options={[["plain", "Simplu"], ["compact", "Compact"], ["detailed", "Detaliat"]]} onChange={(next) => set(["embeds", "style"], next)} />
@@ -1104,11 +1198,6 @@ export function ConfigEditor({
         {embedUrlDraftError(value.embeds) && (
           <p role="alert" className="text-sm text-amber-600">Nu poți salva aceste setări: {embedUrlDraftError(value.embeds)}</p>
         )}
-        <p className="text-xs text-muted-foreground">
-          Variabile disponibile în titlu și descriere: {`{action}`} · {`{reason}`} · {`{guild}`} · {`{timestamp}`} · {`{timestamp_relative}`}. Timestampurile Discord se afișează în fusul orar al fiecărui membru.
-        </p>
-        <Field label="Titlu mesaj" help="Maximum 200 caractere."><Input value={value.embeds.titleTemplate} maxLength={200} onChange={(event) => set(["embeds", "titleTemplate"], event.target.value)} /></Field>
-        <Field label="Descriere mesaj" help="Maximum 2000 caractere. Poți combina variabilele de mai sus cu textul tău."><Textarea value={value.embeds.descriptionTemplate} maxLength={2000} onChange={(event) => set(["embeds", "descriptionTemplate"], event.target.value)} /></Field>
         <div className="rounded-lg border border-border bg-background p-4" style={{ borderLeftWidth: 4, borderLeftColor: /^#[0-9a-fA-F]{6}$/.test(value.embeds.color) ? value.embeds.color : undefined }}>
           <div className="flex gap-3">{value.embeds.iconUrl && isPublicHttpsUrl(value.embeds.iconUrl) && <img src={value.embeds.iconUrl} alt="" className="h-10 w-10 rounded-full object-cover" />}<div><p className="font-semibold">{renderModerationTemplatePreview(value.embeds.titleTemplate, "Avertisment", "Exemplu de motiv")}</p><p className="whitespace-pre-wrap text-sm text-muted-foreground">{renderModerationTemplatePreview(value.embeds.descriptionTemplate, "Avertisment", "Exemplu de motiv")}</p></div></div>
           {value.embeds.animations && value.embeds.animationUrl && isPublicGifUrl(value.embeds.animationUrl) && <img src={value.embeds.animationUrl} alt="Previzualizare animație" className="mt-3 max-h-40 rounded-md" />}

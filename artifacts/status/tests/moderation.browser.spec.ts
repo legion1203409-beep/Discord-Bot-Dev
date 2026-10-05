@@ -777,12 +777,15 @@ test.describe("authenticated moderation console", () => {
     await page.locator('nav[aria-label="Categorii de moderare"] a[href="/moderare/config/cazuri-audit"]').click();
     await expect(page).toHaveURL("/moderare/config/cazuri-audit");
 
+    await page.getByRole("button", { name: /Mesaj la intrarea unui membru/ }).click();
+    await page.getByRole("radio", { name: /Mesaj personalizat/ }).click();
     const joinTitle = page.getByPlaceholder("👋 Membru nou · a intrat pe server");
     const joinDescription = page.getByPlaceholder("A intrat {member} · cont creat {account_created_at_relative} · vechime {account_age}.");
     await joinTitle.fill("Bun venit, {member_name}");
     await joinDescription.fill("A intrat {member} · cont creat {account_created_at_relative} · vechime {account_age}.");
     await expect(page.getByText("Bun venit, Adina pe server")).toBeVisible();
     await expect(page.getByText("A intrat @Adina · cont creat acum 5 ani · vechime 5 ani, 4 luni.")).toBeVisible();
+    await page.getByRole("button", { name: "Aplică", exact: true }).click();
 
     const firstSave = page.waitForResponse((response) =>
       response.url().includes("/api/moderation/guilds/111111111/config") && response.request().method() === "PUT");
@@ -798,9 +801,12 @@ test.describe("authenticated moderation console", () => {
     const guildSelector = page.getByRole("combobox").first();
     await guildSelector.click();
     await page.getByRole("option", { name: guilds[1].name }).click();
+    await page.getByRole("button", { name: /Mesaj la plecarea unui membru/ }).click();
+    await page.getByRole("radio", { name: /Mesaj personalizat/ }).click();
     const leaveTitle = page.getByPlaceholder("🚪 Membru a părăsit serverul");
     await expect(leaveTitle).toHaveValue("");
     await leaveTitle.fill("Ne mai vedem, {member_name}");
+    await page.getByRole("button", { name: "Aplică", exact: true }).click();
     const secondSave = page.waitForResponse((response) =>
       response.url().includes("/api/moderation/guilds/222222222/config") && response.request().method() === "PUT");
     await page.getByRole("button", { name: "Salvează" }).click();
@@ -812,8 +818,124 @@ test.describe("authenticated moderation console", () => {
 
     await guildSelector.click();
     await page.getByRole("option", { name: guilds[0].name }).click();
+    await page.getByRole("button", { name: /Mesaj la intrarea unui membru/ }).click();
     await expect(page.getByPlaceholder("👋 Membru nou · a intrat pe server")).toHaveValue("Bun venit, {member_name}");
-    await expect(page.getByPlaceholder("🚪 Membru a părăsit serverul")).toHaveValue("");
+    await page.getByRole("button", { name: "Anulează", exact: true }).click();
+    await page.getByRole("button", { name: /Mesaj la plecarea unui membru/ }).click();
+    await expect(page.getByRole("radio", { name: /Mesaj implicit/ })).toBeVisible();
+    await expect(page.getByPlaceholder("🚪 Membru a părăsit serverul")).toHaveCount(0);
+    await page.getByRole("button", { name: "Anulează", exact: true }).click();
+  });
+
+  test("moderation embed messages are edited in a dialog and can be reset to default", async ({ page }) => {
+    await page.goto("/moderare/config/embeduri");
+    await chooseFirstGuild(page);
+    await page.getByRole("switch", { name: "Activează embed-uri" }).click();
+    await page.getByRole("button", { name: /Mesajele embed de moderare/ }).click();
+    await page.getByRole("radio", { name: /Mesaj personalizat/ }).click();
+    await page.getByLabel("Titlu mesaj").fill("Acțiune: {action}");
+    await page.getByLabel("Descriere mesaj").fill("{reason} · {timestamp_relative}");
+    await page.getByRole("button", { name: "Aplică", exact: true }).click();
+
+    const customSave = page.waitForResponse((response) =>
+      response.url().includes("/api/moderation/guilds/111111111/config") && response.request().method() === "PUT");
+    await page.getByRole("button", { name: "Salvează" }).click();
+    expect((await customSave).ok()).toBe(true);
+    expect(savedConfigs.get(guilds[0].id)?.embeds).toMatchObject({
+      enabled: true,
+      titleTemplate: "Acțiune: {action}",
+      descriptionTemplate: "{reason} · {timestamp_relative}",
+    });
+
+    await page.getByRole("button", { name: /Mesajele embed de moderare/ }).click();
+    await page.getByRole("radio", { name: /Mesaj implicit/ }).click();
+    await page.getByRole("button", { name: "Aplică", exact: true }).click();
+    const defaultSave = page.waitForResponse((response) =>
+      response.url().includes("/api/moderation/guilds/111111111/config") && response.request().method() === "PUT");
+    await page.getByRole("button", { name: "Salvează" }).click();
+    expect((await defaultSave).ok()).toBe(true);
+    expect(savedConfigs.get(guilds[0].id)?.embeds).toMatchObject({
+      titleTemplate: "Moderation action",
+      descriptionTemplate: "{action}: {reason}",
+    });
+  });
+
+  test("daily reports and alliance announcements use the default/custom message dialog", async ({ page }) => {
+    let botConfig: any = {
+      channels: {},
+      provisioningPermissions: {},
+      discordLive: true,
+      verification: {
+        enabled: false, channelId: "", roleId: "", title: "", message: "", buttonLabel: "",
+        buttonEmoji: "", successMessage: "", alreadyVerifiedMessage: "", imageUrl: "", thumbnailUrl: "", panelMessageId: "",
+      },
+      gameplayConfig: {
+        memberMessages: { channelId: "", style: "normal", welcomeEnabled: false, leaveEnabled: false, customStyle: "" },
+        messages: { gamePaused: "", gamePausedImageUrl: "", gamePausedThumbnailUrl: "", oraclePaused: "", oraclePausedImageUrl: "", oraclePausedThumbnailUrl: "" },
+        events: {}, missions: {}, economy: {},
+      },
+      allianceRecruitmentText: "",
+      dailyStats: {
+        channelId: "", title: "Statistici {guild}", description: "Raport {date}", color: "#5865F2", footer: "",
+        activityTitle: "Activitate · ultimele 7 zile", channelsTitle: "Top 5 canale active",
+        emptyChannelsText: "Nu există canale active.", imageUrl: "https://example.com/report.png", thumbnailUrl: "",
+        metricLabels: { messages: "Mesaje", uniqueUsers: "Utilizatori unici", boosts: "Boost-uri", joins: "Intrări", leaves: "Ieșiri", peakVoice: "Vârf vocal" },
+      },
+      inviteTracking: { enabled: false, joinLogChannelId: "", reportEnabled: false, reportChannelId: "", reportFrequency: "daily", reportTime: "09:00", reportTimeZone: "UTC", reportTopLimit: 5, reportWeekday: 1 },
+      tickets: {
+        categories: { staff: "", partnership: "", help_report: "" },
+        allianceAnnouncementTemplate: "", allianceAnnouncementMode: "text",
+        staffReviewRoleId: "", alliancePublicChannelId: "", allianceOwnerGuildId: "",
+        flows: {
+          staff: { questions: [], title: "", panelDescription: "", startButtonLabel: "", requirementsText: "", completionMessage: "", completionAction: "none" },
+          partnership: { questions: [], title: "", panelDescription: "", startButtonLabel: "", requirementsText: "", completionMessage: "", completionAction: "none" },
+          help_report: { questions: [], title: "", panelDescription: "", startButtonLabel: "", requirementsText: "", completionMessage: "", completionAction: "none" },
+        },
+      },
+    };
+    await page.route("**/api/moderation/guilds/*/bot-control", async (route) => {
+      if (route.request().method() === "PUT") {
+        botConfig = { ...JSON.parse(route.request().postData() || "{}"), discordLive: true };
+        await route.fulfill({ json: botConfig });
+        return;
+      }
+      await route.fulfill({ json: structuredClone(botConfig) });
+    });
+    await page.route("**/api/moderation/guilds/*/invite-stats**", async (route) => {
+      await route.fulfill({ json: { range: "7", startDay: "2026-09-18", endDay: "2026-09-24", totals: { attributedJoins: 0, unknownJoins: 0 }, rows: [] } });
+    });
+
+    await page.goto("/");
+    await chooseFirstGuild(page);
+    await page.goto("/moderare/bot?tab=statistics");
+    await page.getByRole("button", { name: /Mesajul raportului zilnic/ }).click();
+    await expect(page.getByRole("radio", { name: /Mesaj personalizat/ })).toBeChecked();
+    await page.getByRole("radio", { name: /Mesaj implicit/ }).click();
+    await page.getByRole("button", { name: "Aplică", exact: true }).click();
+    const dailySave = page.waitForResponse((response) =>
+      response.url().includes("/api/moderation/guilds/111111111/bot-control") && response.request().method() === "PUT");
+    await page.getByRole("button", { name: "Salvează", exact: true }).click();
+    expect((await dailySave).ok()).toBe(true);
+    expect(botConfig.dailyStats).toMatchObject({
+      title: "📊 Statistici Zilnice · {guild}",
+      color: "#5865F2",
+      channelId: "",
+      imageUrl: "https://example.com/report.png",
+    });
+
+    await page.goto("/moderare/bot?tab=tickets");
+    await expect(page.getByRole("heading", { name: "Editor flux ticket" })).toBeVisible();
+    await page.getByText("Tipul de ticket").locator("..").getByRole("combobox").click();
+    await page.getByRole("option", { name: "Parteneriate" }).click();
+    await page.getByRole("button", { name: /Anunțul public al parteneriatului/ }).click();
+    await expect(page.getByRole("radio", { name: /Mesaj personalizat/ })).toBeChecked();
+    await page.getByRole("radio", { name: /Mesaj implicit/ }).click();
+    await page.getByRole("button", { name: "Aplică", exact: true }).click();
+    const allianceSave = page.waitForResponse((response) =>
+      response.url().includes("/api/moderation/guilds/111111111/bot-control") && response.request().method() === "PUT");
+    await page.getByRole("button", { name: "Salvează", exact: true }).click();
+    expect((await allianceSave).ok()).toBe(true);
+    expect(botConfig.tickets.allianceAnnouncementTemplate).toContain("PACTUL CELOR DOUĂ REGATE");
   });
 
   test("category draft edits during an in-flight save remain unsaved instead of being replaced", async ({ page }) => {
