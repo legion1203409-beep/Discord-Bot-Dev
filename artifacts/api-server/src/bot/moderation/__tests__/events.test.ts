@@ -231,6 +231,38 @@ describe("non-message moderation events", () => {
     expect(helpers.handleMessage).toHaveBeenCalledWith(client, edited);
   });
 
+  it("includes a deleted Discord image attachment in the activity-log details", async () => {
+    const config = structuredClone(defaultModerationConfig);
+    config.activityLog.enabled = true;
+    config.activityLog.categories.messages = true;
+    config.activityLog.channelIds.messages = "message-log";
+    const { emitter } = setup(config);
+    const targetGuild = guild("10043");
+    const send = vi.fn(async (_payload: unknown) => undefined);
+    targetGuild.channels.cache.set("message-log", {
+      guildId: targetGuild.id,
+      isTextBased: () => true,
+      send,
+    });
+    const deletedMessage = {
+      ...message(targetGuild, "20043"),
+      attachments: new Map([["attachment-1", {
+        url: "https://cdn.discordapp.com/attachments/30043/40043/photo.webp",
+        contentType: "image/webp",
+      }]]),
+    };
+
+    emitter.emit(Events.MessageDelete, deletedMessage);
+    await waitForHandlers();
+
+    expect(send).toHaveBeenCalledTimes(1);
+    const payload = send.mock.calls[0]![0] as {
+      embeds: Array<{ toJSON: () => { image?: { url: string } } }>;
+    };
+    expect(payload.embeds[0]!.toJSON().image?.url)
+      .toBe("https://cdn.discordapp.com/attachments/30043/40043/photo.webp");
+  });
+
   it("keeps the member entry time across a restart and uses it in the departure log", async () => {
     const config = structuredClone(defaultModerationConfig);
     config.activityLog.enabled = true;

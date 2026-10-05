@@ -254,11 +254,15 @@ describe("automatic Discord activity-log delivery", () => {
         authorId: "567890123456789012",
         content: "Text șters @everyone",
         attachmentCount: 0,
+        imageAttachments: [{
+          url: "https://cdn.discordapp.com/attachments/456789012345678901/567890123456789012/fotografie.png?ex=abcdef",
+          contentType: "image/png",
+        }],
       }],
     });
 
     const payload = sends.get("messages")!.mock.calls[0]![0] as {
-      embeds: Array<{ toJSON: () => { description?: string; fields: Array<{ name: string; value: string; inline?: boolean }> } }>;
+      embeds: Array<{ toJSON: () => { description?: string; image?: { url: string }; fields: Array<{ name: string; value: string; inline?: boolean }> } }>;
       allowedMentions: { parse: string[] };
     };
     const embed = payload.embeds[0]!.toJSON();
@@ -266,6 +270,7 @@ describe("automatic Discord activity-log delivery", () => {
     expect(embed.fields.find((field) => field.name === "Autor mesaj")?.value).toBe("<@567890123456789012>");
     expect(embed.fields.find((field) => field.name === "Canal")?.value).toBe("<#456789012345678901>");
     expect(embed.fields.find((field) => field.name === "Conținut șters")?.value).toContain("Text șters @\u200beveryone");
+    expect(embed.image?.url).toBe("https://cdn.discordapp.com/attachments/456789012345678901/567890123456789012/fotografie.png?ex=abcdef");
     expect(embed.fields.find((field) => field.name === "Detalii")?.value).toContain("**Exceptat de la moderare:** Nu");
     expect(JSON.stringify(payload)).not.toContain("@everyone");
     expect(JSON.stringify(payload)).not.toContain("message-id");

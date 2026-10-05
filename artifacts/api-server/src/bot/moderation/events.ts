@@ -419,6 +419,7 @@ export async function deliverActivityLog(
       .setTimestamp();
     if (description) embed.setDescription(description);
     if (presentation.thumbnailUrl) embed.setThumbnail(presentation.thumbnailUrl);
+    if (presentation.imageUrl) embed.setImage(presentation.imageUrl);
     if (!hasCustomDescription) embed.addFields(...presentation.fields);
     await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
   } catch (error) {
@@ -803,6 +804,12 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
             authorId: message.author?.id ?? null,
             content: typeof message.content === "string" ? message.content : null,
             attachmentCount: message.attachments?.size ?? 0,
+            imageAttachments: [...(message.attachments?.values() ?? [])]
+              .slice(0, 3)
+              .map((attachment) => ({
+                url: attachment.url,
+                contentType: attachment.contentType,
+              })),
           })),
         },
       );

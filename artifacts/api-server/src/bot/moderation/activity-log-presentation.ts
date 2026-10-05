@@ -8,6 +8,7 @@ export type ActivityLogPresentation = {
   description: string | null;
   fields: ActivityLogEmbedField[];
   thumbnailUrl?: string;
+  imageUrl?: string;
 };
 
 const snowflakePattern = /^\d{5,25}$/;
@@ -122,6 +123,29 @@ function safeDiscordAvatarUrl(value: unknown): string | null {
     return url.protocol === "https:" && url.hostname === "cdn.discordapp.com"
       ? url.toString()
       : null;
+  } catch {
+    return null;
+  }
+}
+
+function safeDiscordAttachmentImageUrl(value: unknown, contentType: unknown): string | null {
+  if (typeof value !== "string") return null;
+  try {
+    const url = new URL(value);
+    if (
+      url.protocol !== "https:" ||
+      url.hostname !== "cdn.discordapp.com" ||
+      !/^\/attachments\/\d{5,25}\/\d{5,25}\/[^/]+$/i.test(url.pathname)
+    ) return null;
+
+    const supportedTypes = new Set(["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif", "image/apng"]);
+    const hasSupportedExtension = /\.(?:png|jpe?g|gif|webp|avif|apng)$/i.test(url.pathname);
+    if (typeof contentType === "string" && contentType.trim()) {
+      if (!supportedTypes.has(contentType.split(";")[0]!.trim().toLowerCase())) return null;
+    } else if (!hasSupportedExtension) {
+      return null;
+    }
+    return url.toString();
   } catch {
     return null;
   }
@@ -382,6 +406,18 @@ function deletedMessages(detail: Record<string, unknown>): Record<string, unknow
     : [];
 }
 
+function deletedMessageImageUrl(detail: Record<string, unknown>): string | undefined {
+  for (const message of deletedMessages(detail)) {
+    if (!Array.isArray(message.imageAttachments)) continue;
+    for (const attachment of message.imageAttachments) {
+      if (!isRecord(attachment)) continue;
+      const imageUrl = safeDiscordAttachmentImageUrl(attachment.url, attachment.contentType);
+      if (imageUrl) return imageUrl;
+    }
+  }
+  return undefined;
+}
+
 function messageSamples(detail: Record<string, unknown>): string {
   const messages = deletedMessages(detail);
   if (!messages.length) return formatMessageExcerpt(null, 760);
@@ -441,7 +477,7 @@ export function buildActivityLogPresentation(
       : detail.displayContentChanged === false
         ? "Mesajul a fost actualizat fără schimbarea textului."
         : "A fost înregistrată o editare de mesaj.";
-    return { description, fields };
+    return { description, fields, imageUrl: deletedMessageImageUrl(detail) };
   }
 
   if (normalized === "discord.message_delete" || normalized === "discord.message_bulk_delete") {
