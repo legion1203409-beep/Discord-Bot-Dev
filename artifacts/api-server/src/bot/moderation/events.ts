@@ -44,7 +44,19 @@ export type ModerationEventHelpers = {
   executeModerationAction(input: ModerationEventActionInput): Promise<unknown>;
   handleMessage(client: Client, message: Message): Promise<boolean>;
   handleNativeAutoModerationExecution(client: Client, execution: AutoModerationActionExecution): Promise<void>;
-  notify(config: ModerationConfig, guild: Guild, title: string, description: string, preferredChannelId?: string | null): Promise<void>;
+  notify(
+    config: ModerationConfig,
+    guild: Guild,
+    title: string,
+    description: string,
+    preferredChannelId?: string | null,
+    templateContext?: {
+      memberId?: string | null;
+      moderatorId?: string | null;
+      channelId?: string | null;
+      durationMinutes?: number | null;
+    },
+  ): Promise<void>;
   auditExternal(guildId: string, eventType: string, targetType: string, targetId: string, detail: Record<string, unknown>): Promise<void>;
   recordMemberJoin(guildId: string, userId: string, joinedAt: Date): Promise<void>;
   getMemberJoinAt(guildId: string, userId: string): Promise<Date | null>;
@@ -256,6 +268,12 @@ async function recordAudit(
       eventTitle.charAt(0).toLocaleUpperCase() + eventTitle.slice(1),
       description || "Evenimentul de moderare a fost înregistrat.",
       config.audit.channelId,
+      {
+        memberId: targetType === "member" || targetType === "user" ? targetId : null,
+        moderatorId: detail.actorVerified === true && typeof detail.actorId === "string" ? detail.actorId : null,
+        channelId: typeof displayDetail.channelId === "string" ? displayDetail.channelId : null,
+        durationMinutes: typeof displayDetail.durationMinutes === "number" ? displayDetail.durationMinutes : null,
+      },
     );
   }
 }

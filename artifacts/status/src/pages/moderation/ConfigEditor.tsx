@@ -13,6 +13,7 @@ import { MANUAL_COMMAND_GROUPS_WITH_COMMANDS } from "../../lib/manual-command-ca
 import { aiCategoryActions, inheritsAiCategoryActions, setAiCategoryActions } from "../../lib/automod-actions";
 import { ModerationActionPicker } from "../../components/moderation/ModerationActionPicker";
 import { MessageCustomizationDialog } from "../../components/moderation/MessageCustomizationDialog";
+import { ModerationEmbedTemplateEditor } from "../../components/moderation/ModerationEmbedTemplateEditor";
 
 type Config = Record<string, any>;
 type Path = Array<string | number>;
@@ -116,6 +117,20 @@ function renderModerationTemplatePreview(template: string, action: string, reaso
     guild: "Regatul Cenușii",
     timestamp: "5 octombrie 2026, 14:00",
     timestamp_relative: "acum",
+    time: "5 octombrie 2026, 14:00",
+    time_relative: "acum",
+    member: "@Adina",
+    member_mention: "@Adina",
+    member_name: "Adina",
+    username: "adina",
+    member_id: "123456789012345678",
+    moderator: "@Moderator",
+    moderator_name: "Moderator",
+    moderator_id: "234567890123456789",
+    channel: "#general",
+    channel_name: "general",
+    channel_id: "345678901234567890",
+    duration: "10 minute",
   };
   return template.replace(/\{([a-z0-9_]+)\}/gi, (match, key: string) => values[key.toLocaleLowerCase()] ?? match);
 }
@@ -1165,27 +1180,7 @@ export function ConfigEditor({
             }}
             defaultMessage="Botul va folosi titlul și descrierea standard pentru mesajele de moderare."
             renderEditor={(template, onChange) => (
-              <>
-                <p className="text-xs text-muted-foreground">
-                  Variabile disponibile: {`{action}`} · {`{reason}`} · {`{guild}`} · {`{timestamp}`} · {`{timestamp_relative}`}.
-                  Timestampurile Discord se afișează în fusul orar al fiecărui membru.
-                </p>
-                <Field label="Titlu mesaj" help="Maximum 200 caractere.">
-                  <Input
-                    value={template.titleTemplate}
-                    maxLength={200}
-                    onChange={(event) => onChange({ ...template, titleTemplate: event.target.value })}
-                  />
-                </Field>
-                <Field label="Descriere mesaj" help="Maximum 2000 caractere. Poți combina variabilele cu textul tău.">
-                  <Textarea
-                    value={template.descriptionTemplate}
-                    maxLength={2000}
-                    rows={5}
-                    onChange={(event) => onChange({ ...template, descriptionTemplate: event.target.value })}
-                  />
-                </Field>
-              </>
+              <ModerationEmbedTemplateEditor template={template} onChange={onChange} />
             )}
           />
         </div>

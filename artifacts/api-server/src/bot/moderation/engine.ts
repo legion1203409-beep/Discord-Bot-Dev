@@ -301,15 +301,49 @@ async function audit(input: ModerationActionInput, eventType: string, targetType
   }
 }
 
-function buildEmbed(config: ModerationConfig, guild: Guild, title: string, description: string): EmbedBuilder | null {
+function buildEmbed(
+  config: ModerationConfig,
+  guild: Guild,
+  title: string,
+  description: string,
+  templateContext?: ModerationTemplateContext,
+): EmbedBuilder | null {
   if (!config.embeds.enabled) return null;
   const timestamp = Date.now();
+  const member = templateContext?.memberId ? guild.members.cache.get(templateContext.memberId) : undefined;
+  const moderator = templateContext?.moderatorId ? guild.members.cache.get(templateContext.moderatorId) : undefined;
+  const channel = templateContext?.channelId ? guild.channels.cache.get(templateContext.channelId) : undefined;
+  const memberId = templateContext?.memberId ?? "";
+  const moderatorId = templateContext?.moderatorId ?? "";
+  const channelId = templateContext?.channelId ?? "";
+  const durationMinutes = templateContext?.durationMinutes;
+  const duration = durationMinutes == null
+    ? "Nespecificată"
+    : `${durationMinutes} ${durationMinutes === 1 ? "minut" : "minute"}`;
+  const discordTime = `<t:${Math.floor(timestamp / 1_000)}:F>`;
+  const discordTimeRelative = `<t:${Math.floor(timestamp / 1_000)}:R>`;
   const templateValues: Record<string, string> = {
     action: title,
     reason: description,
     guild: guild.name,
-    timestamp: `<t:${Math.floor(timestamp / 1_000)}:F>`,
-    timestamp_relative: `<t:${Math.floor(timestamp / 1_000)}:R>`,
+    member: memberId ? `<@${memberId}>` : "—",
+    member_mention: memberId ? `<@${memberId}>` : "—",
+    member_name: member?.displayName ?? member?.user.username ?? (memberId ? "Membru" : "—"),
+    username: member?.user.username ?? (memberId ? "Membru" : "—"),
+    member_id: memberId || "—",
+    moderator: moderatorId ? `<@${moderatorId}>` : "—",
+    moderator_mention: moderatorId ? `<@${moderatorId}>` : "—",
+    moderator_name: moderator?.displayName ?? moderator?.user.username ?? (moderatorId ? "Moderator" : "—"),
+    moderator_username: moderator?.user.username ?? (moderatorId ? "Moderator" : "—"),
+    moderator_id: moderatorId || "—",
+    channel: channelId ? `<#${channelId}>` : "—",
+    channel_name: channel?.name ?? (channelId ? "Canal" : "—"),
+    channel_id: channelId || "—",
+    duration,
+    timestamp: discordTime,
+    timestamp_relative: discordTimeRelative,
+    time: discordTime,
+    time_relative: discordTimeRelative,
   };
   const render = (template: string) =>
     template.replace(/\{([a-z0-9_]+)\}/gi, (match, key: string) => templateValues[key.toLocaleLowerCase()] ?? match);
@@ -330,7 +364,21 @@ function buildEmbed(config: ModerationConfig, guild: Guild, title: string, descr
   return embed;
 }
 
-export async function notify(config: ModerationConfig, guild: Guild, title: string, description: string, preferredChannelId?: string | null): Promise<void> {
+export type ModerationTemplateContext = {
+  memberId?: string | null;
+  moderatorId?: string | null;
+  channelId?: string | null;
+  durationMinutes?: number | null;
+};
+
+export async function notify(
+  config: ModerationConfig,
+  guild: Guild,
+  title: string,
+  description: string,
+  preferredChannelId?: string | null,
+  templateContext?: ModerationTemplateContext,
+): Promise<void> {
   const id = preferredChannelId ?? (config.audit.enabled ? config.audit.channelId : null);
   if (!id) return;
   const channel = guild.channels.cache.get(id) ?? await guild.channels.fetch(id).catch(() => null);
@@ -338,7 +386,7 @@ export async function notify(config: ModerationConfig, guild: Guild, title: stri
     logger.warn({ guildId: guild.id, channelId: id }, "Moderation notification destination is unavailable or belongs to another server");
     return;
   }
-  const embed = buildEmbed(config, guild, title, description);
+  const embed = buildEmbed(config, guild, title, description, templateContext);
   await channel.send(embed
     ? { embeds: [embed], allowedMentions: { parse: [] } }
     : { content: `**${title}**\n${description}`.slice(0, 2_000), allowedMentions: { parse: [] } },
@@ -582,7 +630,14 @@ export async function executeModerationAction(input: ModerationActionInput): Pro
       finalizeError instanceof Error ? finalizeError.message : "Finalizare registru eșuată").catch(() => undefined);
     throw new ModerationActionUncertainError();
   }
-  await audit(input, "action.applied", targetType, targetId, { actionId, type: input.type, summary, source: input.source ?? "manual", caseId }).catch(() => undefined);
+  await audit(input, "action.applied", targetType, targetId, {
+    actionId,
+    type: input.type,
+    summary,
+    source: input.source ?? "manual",
+    caseId,
+    ...(input.durationMinutes !== undefined ? { durationMinutes: input.durationMinutes } : {}),
+  }).catch(() => undefined);
   return { caseId, actionId, summary };
   } catch (error) {
     if (discordEffectApplied || error instanceof ModerationActionUncertainError) throw error;
@@ -689,6 +744,11 @@ async function applyAutomaticSerialized(guild: Guild, config: ModerationConfig, 
         deletionLogOptions,
       ),
       destination.channelId,
+      {
+        memberId: message.author.id,
+        moderatorId: moderationClient?.user?.id,
+        channelId: message.channelId,
+      },
     );
   }
   if (config.channels.autoSlowmodeChannelIds.includes(message.channelId)) {
@@ -854,7 +914,11 @@ export async function handleModerationMessage(client: Client, message: Message):
   const aiFinding = isAiExcluded(config.ai, message.channelId, target.roles.cache.keys())
     ? null : await detectWithAi(config, message);
   if (aiFinding) {
-    await notify(config, message.guild, "Semnalare AI", aiFinding.detail, config.ai.logChannelId);
+    await notify(config, message.guild, "Semnalare AI", aiFinding.detail, config.ai.logChannelId, {
+      memberId: message.author.id,
+      moderatorId: client.user?.id,
+      channelId: message.channelId,
+    });
     const selectedAction = aiActionForCategory(config.ai, aiFinding.category);
     const deleteMessage = aiDeleteMessageForCategory(config.ai, aiFinding.category);
     if (selectedAction !== "none" || deleteMessage) {
@@ -921,6 +985,11 @@ async function handleNativeAutoModerationExecution(
           : {},
       ),
       autoMod.logChannelId,
+      {
+        memberId: target.id,
+        moderatorId: actorId,
+        channelId,
+      },
     );
   }
   if (selectedAction === "none" || selectedAction === "delete") return;

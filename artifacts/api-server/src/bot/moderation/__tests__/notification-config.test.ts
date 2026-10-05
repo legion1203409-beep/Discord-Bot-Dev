@@ -9,7 +9,20 @@ describe("saved moderation notification settings", () => {
     const send = vi.fn(async (_payload: unknown) => undefined);
     const channel = { guildId: destinationGuildId, isTextBased: () => true, send };
     const fetch = vi.fn(async () => channel);
-    const guild = { id: guildId, name: "Regatul Cenușii", channels: { cache: new Map(), fetch } } as unknown as Guild;
+    const guild = {
+      id: guildId,
+      name: "Regatul Cenușii",
+      channels: {
+        cache: new Map([["345678901234567890", { id: "345678901234567890", name: "general" }]]),
+        fetch,
+      },
+      members: {
+        cache: new Map([
+          ["123456789012345678", { id: "123456789012345678", displayName: "Adina", user: { username: "adina" } }],
+          ["234567890123456789", { id: "234567890123456789", displayName: "Moderator", user: { username: "mod" } }],
+        ]),
+      },
+    } as unknown as Guild;
     return { guild, send, fetch };
   }
 
@@ -66,6 +79,31 @@ describe("saved moderation notification settings", () => {
     const embed = payload.embeds[0]!.toJSON();
     expect(embed.title).toBe("Avertisment · Regatul Cenușii");
     expect(embed.description).toMatch(/^Motiv de test\n<t:\d+:F>\n<t:\d+:R>$/);
+  });
+
+  it("renders member, moderator, channel, duration and time variables in moderation templates", async () => {
+    const config = structuredClone(defaultModerationConfig);
+    config.embeds.enabled = true;
+    config.embeds.titleTemplate = "{member} · {moderator}";
+    config.embeds.descriptionTemplate =
+      "{member_name} (@{username}) · {member_id} · {action}: {reason} · {channel} · #{channel_name} · {duration} · {guild} · {time_relative}";
+    const { guild, send } = fixture();
+
+    await notify(config, guild, "Avertisment", "Motiv de test", "987654321098765432", {
+      memberId: "123456789012345678",
+      moderatorId: "234567890123456789",
+      channelId: "345678901234567890",
+      durationMinutes: 5,
+    });
+
+    const payload = send.mock.calls[0]?.[0] as unknown as {
+      embeds: Array<{ toJSON(): { title: string; description: string } }>;
+    };
+    const embed = payload.embeds[0]!.toJSON();
+    expect(embed.title).toBe("<@123456789012345678> · <@234567890123456789>");
+    expect(embed.description).toMatch(
+      /^Adina \(@adina\) · 123456789012345678 · Avertisment: Motiv de test · <#345678901234567890> · #general · 5 minute · Regatul Cenușii · <t:\d+:R>$/,
+    );
   });
 
   it("does not repeat detailed content when the embed description already includes the reason", async () => {

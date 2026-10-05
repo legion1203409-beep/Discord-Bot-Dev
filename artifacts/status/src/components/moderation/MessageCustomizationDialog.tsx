@@ -1,4 +1,4 @@
-import { useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -43,6 +43,7 @@ export function MessageCustomizationDialog<T>({
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<MessageMode>("default");
   const [draft, setDraft] = useState<T>(() => clone(value));
+  const autoOpenHandled = useRef(false);
   const usesDefault = isDefault(value);
 
   const openDialog = () => {
@@ -50,6 +51,14 @@ export function MessageCustomizationDialog<T>({
     setMode(usesDefault ? "default" : "custom");
     setOpen(true);
   };
+
+  useEffect(() => {
+    if (autoOpenHandled.current || !triggerId || window.location.hash.slice(1) !== triggerId) return;
+    autoOpenHandled.current = true;
+    setDraft(clone(value));
+    setMode("custom");
+    setOpen(true);
+  }, [triggerId, value, isDefault]);
 
   const apply = () => {
     onApply(mode === "default" ? clone(defaultValue) : draft);

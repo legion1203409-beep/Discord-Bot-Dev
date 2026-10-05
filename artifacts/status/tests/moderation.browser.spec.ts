@@ -841,9 +841,20 @@ test.describe("authenticated moderation console", () => {
     await expect(page.getByRole("heading", { name: "Personalizare mesaje" })).toBeVisible();
     await page.getByRole("link", { name: /Deschide editorul/ }).first().click();
     await expect(page).toHaveURL(/\/moderare\/config\/cazuri-audit#member-join-template$/);
-    const joinEditor = page.getByRole("button", { name: /Mesaj la intrarea unui membru/ });
-    await expect(joinEditor).toBeVisible();
-    await expect(joinEditor).toBeInViewport();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Mesaj la intrarea unui membru" })).toBeVisible();
+  });
+
+  test("moderation message hub opens its editor window directly", async ({ page }) => {
+    await page.goto("/moderare/config/mesaje");
+    await chooseFirstGuild(page);
+    await page.getByRole("link", { name: "Deschide editorul: Mesaje de moderare" }).click();
+    await expect(page).toHaveURL(/\/moderare\/config\/embeduri#moderation-embed-template$/);
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Mesajele embed de moderare" })).toBeVisible();
+    await page.getByRole("radio", { name: /Mesaj personalizat/ }).click();
+    await expect(page.getByTestId("button-template-token-member")).toBeVisible();
+    await expect(page.getByTestId("button-template-token-time_relative")).toBeVisible();
   });
 
   test("moderation embed messages are edited in a dialog and can be reset to default", async ({ page }) => {
@@ -853,7 +864,9 @@ test.describe("authenticated moderation console", () => {
     await page.getByRole("switch", { name: "Activează embed-uri" }).click();
     await page.getByRole("button", { name: /Mesajele embed de moderare/ }).click();
     await page.getByRole("radio", { name: /Mesaj personalizat/ }).click();
-    await page.getByLabel("Titlu mesaj").fill("Acțiune: {action}");
+    await page.getByLabel("Titlu mesaj").fill("Acțiune: ");
+    await page.getByTestId("button-template-token-member").click();
+    await expect(page.getByLabel("Titlu mesaj")).toHaveValue("Acțiune: {member}");
     await page.getByLabel("Descriere mesaj").fill("{reason} · {timestamp_relative}");
     await page.getByRole("button", { name: "Aplică", exact: true }).click();
 
@@ -863,7 +876,7 @@ test.describe("authenticated moderation console", () => {
     expect((await customSave).ok()).toBe(true);
     expect(savedConfigs.get(guilds[0].id)?.embeds).toMatchObject({
       enabled: true,
-      titleTemplate: "Acțiune: {action}",
+      titleTemplate: "Acțiune: {member}",
       descriptionTemplate: "{reason} · {timestamp_relative}",
     });
 

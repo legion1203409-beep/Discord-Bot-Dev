@@ -44,6 +44,7 @@ export function MessageTemplatesPage() {
             <Link
               href={editor.href}
               className="inline-flex w-fit items-center gap-2 rounded-md text-sm font-medium text-primary hover:underline"
+              aria-label={`Deschide editorul: ${editor.title}`}
             >
               Deschide editorul <ChevronRight className="h-4 w-4" />
             </Link>
