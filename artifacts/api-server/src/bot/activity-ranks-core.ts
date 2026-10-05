@@ -3,9 +3,6 @@ import { isSupportedActivityBannerSource } from "./activity-rank-banner-source";
 
 export const ACTIVITY_CHAT_XP = 10;
 export const ACTIVITY_VOICE_XP = 5;
-export const ACTIVITY_CHAT_DAILY_CAP = 200;
-export const ACTIVITY_VOICE_DAILY_CAP = 240;
-export const ACTIVITY_DAILY_CAP = 300;
 export const ACTIVITY_ROLE_MILESTONES = [5, 10, 20] as const;
 export const ACTIVITY_BAR_STYLES = ["discord", "dungi", "gradient", "oblic", "pixel", "pro", "sword"] as const;
 export type ActivityBarStyle = typeof ACTIVITY_BAR_STYLES[number];

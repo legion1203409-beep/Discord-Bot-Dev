@@ -146,9 +146,9 @@ export function ActivityRanksPage() {
             </div>
 
             <div className="grid gap-3 rounded-lg border border-border/70 bg-background/50 p-4 text-sm sm:grid-cols-3">
-              <p><strong>Chat:</strong> 10 XP pentru un mesaj valid, cu pauză de 60 de secunde și maximum 200 XP pe zi.</p>
-              <p><strong>Voce:</strong> 5 XP pe minut într-un canal cu cel puțin doi membri reali, maximum 240 XP pe zi.</p>
-              <p><strong>Limită comună:</strong> maximum 300 XP zilnic. Clasamentul lunar se resetează; rangul permanent rămâne.</p>
+              <p><strong>Chat:</strong> 10 XP pentru un mesaj valid, cu pauză de 30 de secunde și fără limită zilnică.</p>
+              <p><strong>Voce:</strong> 5 XP pe minut într-un canal cu cel puțin doi membri reali, fără limită zilnică.</p>
+              <p><strong>Progres:</strong> XP-ul cumulat din chat și voce nu are plafon zilnic. Clasamentul lunar se resetează; rangul permanent rămâne.</p>
             </div>
             <p className="text-xs text-muted-foreground">
               XP-ul din chat necesită „Message Content” activ atât în configurația botului, cât și în Discord Developer Portal. Fără el, progresul vocal continuă normal.

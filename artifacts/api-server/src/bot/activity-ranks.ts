@@ -3,11 +3,8 @@ import { pool } from "@workspace/db";
 import { ensureBotStateTable } from "./db";
 import { logger } from "../lib/logger";
 import {
-  ACTIVITY_CHAT_DAILY_CAP,
   ACTIVITY_CHAT_XP,
-  ACTIVITY_DAILY_CAP,
   ACTIVITY_ROLE_MILESTONES,
-  ACTIVITY_VOICE_DAILY_CAP,
   ACTIVITY_VOICE_XP,
   DEFAULT_ACTIVITY_RANK_CONFIG,
   getUtcActivityPeriods,
@@ -129,10 +126,8 @@ export async function awardActivityXp(
   await ensureActivityRanksTable();
   const { dayKey, monthKey } = getUtcActivityPeriods(now);
   const xp = source === "chat" ? ACTIVITY_CHAT_XP : ACTIVITY_VOICE_XP;
-  const sourceDailyCap = source === "chat" ? ACTIVITY_CHAT_DAILY_CAP : ACTIVITY_VOICE_DAILY_CAP;
   const lastAwardColumn = source === "chat" ? "last_chat_award_at" : "last_voice_award_at";
-  const dailySourceColumn = source === "chat" ? "daily_chat_xp" : "daily_voice_xp";
-  const cooldown = source === "chat" ? "60 seconds" : "50 seconds";
+  const cooldown = source === "chat" ? "30 seconds" : "50 seconds";
 
   const result = await pool.query<{ total_xp: number }>(
     `INSERT INTO activity_ranks (
@@ -145,9 +140,9 @@ export async function awardActivityXp(
        CASE WHEN $6 = 'chat' THEN $3 ELSE 0 END,
        CASE WHEN $6 = 'voice' THEN $3 ELSE 0 END,
        $5, $3,
-       CASE WHEN $6 = 'chat' THEN $9::timestamptz ELSE NULL END,
-       CASE WHEN $6 = 'voice' THEN $9::timestamptz ELSE NULL END,
-       $9
+        CASE WHEN $6 = 'chat' THEN $7::timestamptz ELSE NULL END,
+        CASE WHEN $6 = 'voice' THEN $7::timestamptz ELSE NULL END,
+        $7
      )
      ON CONFLICT (guild_id, discord_id) DO UPDATE
      SET total_xp = activity_ranks.total_xp + $3,
@@ -171,20 +166,12 @@ export async function awardActivityXp(
            WHEN activity_ranks.month_key = $5 THEN activity_ranks.monthly_xp + $3
            ELSE $3
          END,
-         last_chat_award_at = CASE WHEN $6 = 'chat' THEN $9 ELSE activity_ranks.last_chat_award_at END,
-         last_voice_award_at = CASE WHEN $6 = 'voice' THEN $9 ELSE activity_ranks.last_voice_award_at END,
+         last_chat_award_at = CASE WHEN $6 = 'chat' THEN $7 ELSE activity_ranks.last_chat_award_at END,
+         last_voice_award_at = CASE WHEN $6 = 'voice' THEN $7 ELSE activity_ranks.last_voice_award_at END,
          updated_at = now()
      WHERE (
          activity_ranks.${lastAwardColumn} IS NULL
-         OR activity_ranks.${lastAwardColumn} <= $9::timestamptz - interval '${cooldown}'
-       )
-       AND (
-         CASE WHEN activity_ranks.daily_key = $4 THEN activity_ranks.${dailySourceColumn} ELSE 0 END
-         + $3 <= $7
-       )
-       AND (
-         CASE WHEN activity_ranks.daily_key = $4 THEN activity_ranks.daily_xp ELSE 0 END
-         + $3 <= $8
+         OR activity_ranks.${lastAwardColumn} <= $7::timestamptz - interval '${cooldown}'
        )
      RETURNING total_xp`,
     [
@@ -194,8 +181,6 @@ export async function awardActivityXp(
       dayKey,
       monthKey,
       source,
-      sourceDailyCap,
-      ACTIVITY_DAILY_CAP,
       now,
     ],
   );

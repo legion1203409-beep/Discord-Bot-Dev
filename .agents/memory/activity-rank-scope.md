@@ -32,3 +32,9 @@ All seven supplied styles must have very thin progress lines and no opaque exter
 **Why:** The user explicitly asked for all bars to be “subțire de tot,” with “bila aia de xp” retained, after pointing out the unwanted black background.
 
 **How to apply:** Treat the circular XP emblem as separate from the thin progress line. Do not erase dark details globally or flatten the sword's hilt, runes and animation into a generic bar.
+
+Activity XP must have no daily cap, whether from chat, voice, or their combined total. Chat awards use a 30-second cooldown; other eligibility and anti-spam rules remain.
+
+**Why:** The user explicitly requested unlimited daily activity XP and a 30-second message cooldown.
+
+**How to apply:** Do not reintroduce daily caps as anti-farming defaults or replace them with artificially large limits. Keep voice cadence and RPG progression separate.
