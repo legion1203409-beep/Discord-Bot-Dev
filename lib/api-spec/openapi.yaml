@@ -161,6 +161,44 @@ paths:
         "401": { description: Moderation session is required }
         "403": { description: Guild configuration access is required or the bot cannot post to a configured channel }
         "503": { description: Required Discord service is unavailable }
+  /moderation/guilds/{guildId}/activity-ranks:
+    parameters: [{ name: guildId, in: path, required: true, schema: { type: string, minLength: 5, maxLength: 25 } }]
+    get:
+      operationId: moderationGetActivityRanks
+      tags: [moderation]
+      responses:
+        "200":
+          description: Guild-scoped activity rank settings
+          content: { application/json: { schema: { $ref: "#/components/schemas/ActivityRankSettingsResponse" } } }
+        "401": { description: Moderation session is required }
+        "403": { description: Guild configuration access is required }
+    put:
+      operationId: moderationPutActivityRanks
+      tags: [moderation]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/ActivityRankSettings" } } }
+      responses:
+        "200":
+          description: Activity rank settings saved
+          content: { application/json: { schema: { $ref: "#/components/schemas/ActivityRankSettingsResponse" } } }
+        "400": { description: Invalid settings or notification channel }
+        "401": { description: Moderation session is required }
+        "403": { description: Guild configuration access is required }
+  /moderation/storage/activity-ranks/uploads/request-url:
+    post:
+      operationId: requestActivityRankBannerUploadUrl
+      tags: [moderation]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/ModerationStorageUploadRequest" } } }
+      responses:
+        "200":
+          description: Guild-config-authorized temporary upload URL and object path
+          content: { application/json: { schema: { $ref: "#/components/schemas/ModerationStorageUploadResponse" } } }
+        "400": { description: Invalid image metadata }
+        "401": { description: Moderation session is required }
+        "403": { description: Guild configuration access is required }
   /moderation/guilds/{guildId}/bot-control/verification-panel:
     parameters: [{ name: guildId, in: path, required: true, schema: { type: string, minLength: 5, maxLength: 25 } }]
     post:
@@ -368,6 +406,22 @@ components:
       type: object
       additionalProperties: true
       description: Bot-control settings returned by GET or after a successful PUT.
+    ActivityRankSettings:
+      type: object
+      additionalProperties: false
+      required: [enabled, notificationChannelId, rankUpMessage, bannerImageUrl, color]
+      properties:
+        enabled: { type: boolean }
+        notificationChannelId: { type: string, pattern: "^(?:\\d{5,25})?$" }
+        rankUpMessage: { type: string, maxLength: 1800 }
+        bannerImageUrl: { type: string, maxLength: 2000 }
+        color: { type: string, pattern: "^#[0-9a-fA-F]{6}$" }
+    ActivityRankSettingsResponse:
+      type: object
+      additionalProperties: false
+      required: [config]
+      properties:
+        config: { $ref: "#/components/schemas/ActivityRankSettings" }
     BotControlPartialApplyResponse:
       type: object
       additionalProperties: false

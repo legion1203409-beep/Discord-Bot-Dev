@@ -7,12 +7,14 @@ export function ImageField({
   value,
   guildId,
   csrfToken,
+  uploadEndpoint = "/storage/uploads/request-url",
   onChange,
 }: {
   label: string;
   value?: string;
   guildId: string | null;
   csrfToken?: string;
+  uploadEndpoint?: string;
   onChange: (value: string) => void;
 }) {
   const [uploading, setUploading] = useState(false);
@@ -27,7 +29,7 @@ export function ImageField({
     setUploading(true);
     setError("");
     try {
-      const { data: payload } = await apiFetchWithMeta<{ uploadURL?: string; objectPath?: string }>("/storage/uploads/request-url", {
+      const { data: payload } = await apiFetchWithMeta<{ uploadURL?: string; objectPath?: string }>(uploadEndpoint, {
         method: "POST",
         headers: csrfToken ? { "x-csrf-token": csrfToken } : undefined,
         body: JSON.stringify({ guildId, name: file.name, size: file.size, contentType: file.type }),

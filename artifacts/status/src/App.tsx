@@ -13,6 +13,7 @@ import { PoliciesPage } from "./pages/moderation/Policies";
 import { BotControlPage } from "./pages/moderation/BotControl";
 import { VerificationAdminPage } from "./pages/moderation/VerificationAdmin";
 import { MessageTemplatesPage } from "./pages/moderation/MessageTemplates";
+import { ActivityRanksPage } from "./pages/moderation/ActivityRanks";
 import { useActiveGuild } from "./hooks/use-moderation-api";
 import { Toaster } from "./components/ui/toaster";
 import { SwordCursor } from "./components/SwordCursor";
@@ -121,6 +122,7 @@ function ModerationApp() {
           <Route path="/provisioning" component={() => <BotControlPage provisioningOnly />} />
           <Route path="/bot" component={() => <BotControlPage />} />
           <Route path="/verificare" component={VerificationAdminPage} />
+          <Route path="/ranguri-activitate" component={ActivityRanksPage} />
           <Route component={() => <div className="text-muted-foreground p-8 text-center border border-dashed border-border rounded-xl">Această secțiune este în lucru.</div>} />
         </Switch>
       </div>

@@ -6,6 +6,8 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './activityRankSettings';
+export * from './activityRankSettingsResponse';
 export * from './botControlPartialApplyResponse';
 export * from './botControlPartialApplyResponseVerification';
 export * from './botControlResponse';

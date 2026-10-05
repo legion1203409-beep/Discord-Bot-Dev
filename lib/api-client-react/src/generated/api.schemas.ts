@@ -232,6 +232,22 @@ export interface VerificationPanelPublishResponse {
  */
 export interface BotControlResponse { [key: string]: unknown }
 
+export interface ActivityRankSettings {
+  enabled: boolean;
+  /** @pattern ^(?:\d{5,25})?$ */
+  notificationChannelId: string;
+  /** @maxLength 1800 */
+  rankUpMessage: string;
+  /** @maxLength 2000 */
+  bannerImageUrl: string;
+  /** @pattern ^#[0-9a-fA-F]{6}$ */
+  color: string;
+}
+
+export interface ActivityRankSettingsResponse {
+  config: ActivityRankSettings;
+}
+
 /**
  * Published verification settings, included only when the verification panel was published; retains panelMessageId when available.
  */

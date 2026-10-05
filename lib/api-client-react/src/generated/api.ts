@@ -20,6 +20,8 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  ActivityRankSettings,
+  ActivityRankSettingsResponse,
   BotControlPartialApplyResponse,
   BotControlResponse,
   BotControlSettings,
@@ -970,6 +972,206 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getModerationPutBotControlMutationOptions(options));
+    }
+
+export const getModerationGetActivityRanksUrl = (guildId: string,) => {
+
+
+
+
+  return `/api/moderation/guilds/${guildId}/activity-ranks`
+}
+
+export const moderationGetActivityRanks = async (guildId: string, options?: RequestInit): Promise<ActivityRankSettingsResponse> => {
+
+  return customFetch<ActivityRankSettingsResponse>(getModerationGetActivityRanksUrl(guildId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getModerationGetActivityRanksQueryKey = (guildId: string,) => {
+    return [
+    `/api/moderation/guilds/${guildId}/activity-ranks`
+    ] as const;
+    }
+
+
+export const getModerationGetActivityRanksQueryOptions = <TData = Awaited<ReturnType<typeof moderationGetActivityRanks>>, TError = ErrorType<void>>(guildId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof moderationGetActivityRanks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getModerationGetActivityRanksQueryKey(guildId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof moderationGetActivityRanks>>> = ({ signal }) => moderationGetActivityRanks(guildId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: guildId !== null && guildId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof moderationGetActivityRanks>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ModerationGetActivityRanksQueryResult = NonNullable<Awaited<ReturnType<typeof moderationGetActivityRanks>>>
+export type ModerationGetActivityRanksQueryError = ErrorType<void>
+
+
+
+export function useModerationGetActivityRanks<TData = Awaited<ReturnType<typeof moderationGetActivityRanks>>, TError = ErrorType<void>>(
+ guildId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof moderationGetActivityRanks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getModerationGetActivityRanksQueryOptions(guildId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getModerationPutActivityRanksUrl = (guildId: string,) => {
+
+
+
+
+  return `/api/moderation/guilds/${guildId}/activity-ranks`
+}
+
+export const moderationPutActivityRanks = async (guildId: string,
+    activityRankSettings: ActivityRankSettings, options?: RequestInit): Promise<ActivityRankSettingsResponse> => {
+
+  return customFetch<ActivityRankSettingsResponse>(getModerationPutActivityRanksUrl(guildId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(activityRankSettings)
+  }
+);}
+
+
+
+
+export const getModerationPutActivityRanksMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof moderationPutActivityRanks>>, TError,{guildId: string;data: BodyType<ActivityRankSettings>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof moderationPutActivityRanks>>, TError,{guildId: string;data: BodyType<ActivityRankSettings>}, TContext> => {
+
+const mutationKey = ['moderationPutActivityRanks'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof moderationPutActivityRanks>>, {guildId: string;data: BodyType<ActivityRankSettings>}> = (props) => {
+          const {guildId,data} = props ?? {};
+
+          return  moderationPutActivityRanks(guildId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ModerationPutActivityRanksMutationResult = NonNullable<Awaited<ReturnType<typeof moderationPutActivityRanks>>>
+    export type ModerationPutActivityRanksMutationBody = BodyType<ActivityRankSettings>
+    export type ModerationPutActivityRanksMutationError = ErrorType<void>
+
+    export const useModerationPutActivityRanks = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof moderationPutActivityRanks>>, TError,{guildId: string;data: BodyType<ActivityRankSettings>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof moderationPutActivityRanks>>,
+        TError,
+        {guildId: string;data: BodyType<ActivityRankSettings>},
+        TContext
+      > => {
+      return useMutation(getModerationPutActivityRanksMutationOptions(options));
+    }
+
+export const getRequestActivityRankBannerUploadUrlUrl = () => {
+
+
+
+
+  return `/api/moderation/storage/activity-ranks/uploads/request-url`
+}
+
+export const requestActivityRankBannerUploadUrl = async (moderationStorageUploadRequest: ModerationStorageUploadRequest, options?: RequestInit): Promise<ModerationStorageUploadResponse> => {
+
+  return customFetch<ModerationStorageUploadResponse>(getRequestActivityRankBannerUploadUrlUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(moderationStorageUploadRequest)
+  }
+);}
+
+
+
+
+export const getRequestActivityRankBannerUploadUrlMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestActivityRankBannerUploadUrl>>, TError,{data: BodyType<ModerationStorageUploadRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof requestActivityRankBannerUploadUrl>>, TError,{data: BodyType<ModerationStorageUploadRequest>}, TContext> => {
+
+const mutationKey = ['requestActivityRankBannerUploadUrl'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof requestActivityRankBannerUploadUrl>>, {data: BodyType<ModerationStorageUploadRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  requestActivityRankBannerUploadUrl(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RequestActivityRankBannerUploadUrlMutationResult = NonNullable<Awaited<ReturnType<typeof requestActivityRankBannerUploadUrl>>>
+    export type RequestActivityRankBannerUploadUrlMutationBody = BodyType<ModerationStorageUploadRequest>
+    export type RequestActivityRankBannerUploadUrlMutationError = ErrorType<void>
+
+    export const useRequestActivityRankBannerUploadUrl = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestActivityRankBannerUploadUrl>>, TError,{data: BodyType<ModerationStorageUploadRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof requestActivityRankBannerUploadUrl>>,
+        TError,
+        {data: BodyType<ModerationStorageUploadRequest>},
+        TContext
+      > => {
+      return useMutation(getRequestActivityRankBannerUploadUrlMutationOptions(options));
     }
 
 export const getModerationPublishVerificationPanelUrl = (guildId: string,) => {

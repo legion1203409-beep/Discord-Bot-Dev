@@ -1,4 +1,6 @@
 import { PUBLIC_DISCORD_INVITE } from "../lib/discord-invite";
+import { getActivityRankConfig, saveActivityRankConfig } from "../bot/activity-ranks";
+import { normalizeActivityRankConfig } from "../bot/activity-ranks-core";
 
 import 
 {
@@ -2403,6 +2405,57 @@ router.get("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
     provisioningPermissions: provisioningPermissionsSchema.parse(provisioningPermissions),
     discordLive: Boolean(getModerationClient()?.isReady()),
   });
+}));
+
+router.get("/guilds/:guildId/activity-ranks", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  await sessionAndGuild(req, guildId, "config");
+  const config = await getActivityRankConfig(guildId);
+  res.set("Cache-Control", "no-store").json({ config });
+}));
+
+router.put("/guilds/:guildId/activity-ranks", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  await sessionAndGuild(req, guildId, "config", true);
+  const config = normalizeActivityRankConfig(parse(z.object({
+    enabled: z.boolean(),
+    notificationChannelId: snowflake.or(z.literal("")),
+    rankUpMessage: z.string().max(1_800),
+    bannerImageUrl: z.string().max(2_000),
+    color: z.string().regex(/^#[0-9a-f]{6}$/i),
+  }).strict(), req.body));
+
+  if (config.notificationChannelId) {
+    const client = getModerationClient();
+    if (client?.isReady()) {
+      const guild = await client.guilds.fetch(guildId).catch(() => null);
+      const channel = guild
+        ? await guild.channels.fetch(config.notificationChannelId).catch(() => null)
+        : null;
+      if (
+        !channel ||
+        !channel.isTextBased() ||
+        !("guildId" in channel) ||
+        channel.guildId !== guildId ||
+        !("send" in channel)
+      ) {
+        throw new ModerationAuthError(400, "Alege un canal text valid din serverul selectat.");
+      }
+      const botMember = guild?.members.me ?? (guild ? await guild.members.fetchMe().catch(() => null) : null);
+      if (botMember && "permissionsFor" in channel && typeof channel.permissionsFor === "function") {
+        const permissions = channel.permissionsFor(botMember);
+        if (
+          !permissions?.has(PermissionFlagsBits.ViewChannel) ||
+          !permissions.has(PermissionFlagsBits.SendMessages)
+        ) {
+          throw new ModerationAuthError(400, "Botul are nevoie de permisiunile View Channel și Send Messages în canalul de notificări.");
+        }
+      }
+    }
+  }
+
+  const saved = await saveActivityRankConfig(guildId, config);
+  res.set("Cache-Control", "no-store").json({ config: saved });
 }));
 
 router.post("/guilds/:guildId/bot-control/provision-channels", asyncRoute(async (req, res) => {

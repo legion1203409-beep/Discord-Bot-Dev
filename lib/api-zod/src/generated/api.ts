@@ -192,6 +192,117 @@ export const ModerationPutBotControlBody = zod.record(zod.string(), zod.unknown(
 export const ModerationPutBotControlResponse = zod.record(zod.string(), zod.unknown()).describe('Bot-control settings returned by GET or after a successful PUT.')
 
 
+export const moderationGetActivityRanksPathGuildIdMin = 5;
+export const moderationGetActivityRanksPathGuildIdMax = 25;
+
+
+
+export const ModerationGetActivityRanksParams = zod.object({
+  "guildId": zod.coerce.string().min(moderationGetActivityRanksPathGuildIdMin).max(moderationGetActivityRanksPathGuildIdMax)
+})
+
+export const moderationGetActivityRanksResponseConfigNotificationChannelIdRegExp = new RegExp('^(?:\\d{5,25})?$');
+export const moderationGetActivityRanksResponseConfigRankUpMessageMax = 1800;
+
+export const moderationGetActivityRanksResponseConfigBannerImageUrlMax = 2000;
+
+export const moderationGetActivityRanksResponseConfigColorRegExp = new RegExp('^#[0-9a-fA-F]{6}$');
+
+
+export const ModerationGetActivityRanksResponse = zod.object({
+  "config": zod.object({
+  "enabled": zod.boolean(),
+  "notificationChannelId": zod.string().regex(moderationGetActivityRanksResponseConfigNotificationChannelIdRegExp),
+  "rankUpMessage": zod.string().max(moderationGetActivityRanksResponseConfigRankUpMessageMax),
+  "bannerImageUrl": zod.string().max(moderationGetActivityRanksResponseConfigBannerImageUrlMax),
+  "color": zod.string().regex(moderationGetActivityRanksResponseConfigColorRegExp)
+})
+})
+
+
+export const moderationPutActivityRanksPathGuildIdMin = 5;
+export const moderationPutActivityRanksPathGuildIdMax = 25;
+
+
+
+export const ModerationPutActivityRanksParams = zod.object({
+  "guildId": zod.coerce.string().min(moderationPutActivityRanksPathGuildIdMin).max(moderationPutActivityRanksPathGuildIdMax)
+})
+
+export const moderationPutActivityRanksBodyNotificationChannelIdRegExp = new RegExp('^(?:\\d{5,25})?$');
+export const moderationPutActivityRanksBodyRankUpMessageMax = 1800;
+
+export const moderationPutActivityRanksBodyBannerImageUrlMax = 2000;
+
+export const moderationPutActivityRanksBodyColorRegExp = new RegExp('^#[0-9a-fA-F]{6}$');
+
+
+export const ModerationPutActivityRanksBody = zod.object({
+  "enabled": zod.boolean(),
+  "notificationChannelId": zod.string().regex(moderationPutActivityRanksBodyNotificationChannelIdRegExp),
+  "rankUpMessage": zod.string().max(moderationPutActivityRanksBodyRankUpMessageMax),
+  "bannerImageUrl": zod.string().max(moderationPutActivityRanksBodyBannerImageUrlMax),
+  "color": zod.string().regex(moderationPutActivityRanksBodyColorRegExp)
+})
+
+export const moderationPutActivityRanksResponseConfigNotificationChannelIdRegExp = new RegExp('^(?:\\d{5,25})?$');
+export const moderationPutActivityRanksResponseConfigRankUpMessageMax = 1800;
+
+export const moderationPutActivityRanksResponseConfigBannerImageUrlMax = 2000;
+
+export const moderationPutActivityRanksResponseConfigColorRegExp = new RegExp('^#[0-9a-fA-F]{6}$');
+
+
+export const ModerationPutActivityRanksResponse = zod.object({
+  "config": zod.object({
+  "enabled": zod.boolean(),
+  "notificationChannelId": zod.string().regex(moderationPutActivityRanksResponseConfigNotificationChannelIdRegExp),
+  "rankUpMessage": zod.string().max(moderationPutActivityRanksResponseConfigRankUpMessageMax),
+  "bannerImageUrl": zod.string().max(moderationPutActivityRanksResponseConfigBannerImageUrlMax),
+  "color": zod.string().regex(moderationPutActivityRanksResponseConfigColorRegExp)
+})
+})
+
+
+export const requestActivityRankBannerUploadUrlBodyGuildIdMin = 5;
+export const requestActivityRankBannerUploadUrlBodyGuildIdMax = 25;
+
+export const requestActivityRankBannerUploadUrlBodyNameMax = 200;
+
+export const requestActivityRankBannerUploadUrlBodySizeMax = 10485760;
+
+export const requestActivityRankBannerUploadUrlBodyContentTypeRegExp = new RegExp('^image/(jpeg|png|gif|webp)$');
+
+
+export const RequestActivityRankBannerUploadUrlBody = zod.object({
+  "guildId": zod.string().min(requestActivityRankBannerUploadUrlBodyGuildIdMin).max(requestActivityRankBannerUploadUrlBodyGuildIdMax),
+  "name": zod.string().min(1).max(requestActivityRankBannerUploadUrlBodyNameMax),
+  "size": zod.number().min(1).max(requestActivityRankBannerUploadUrlBodySizeMax),
+  "contentType": zod.string().regex(requestActivityRankBannerUploadUrlBodyContentTypeRegExp)
+})
+
+export const requestActivityRankBannerUploadUrlResponseMetadataGuildIdMin = 5;
+export const requestActivityRankBannerUploadUrlResponseMetadataGuildIdMax = 25;
+
+export const requestActivityRankBannerUploadUrlResponseMetadataNameMax = 200;
+
+export const requestActivityRankBannerUploadUrlResponseMetadataSizeMax = 10485760;
+
+export const requestActivityRankBannerUploadUrlResponseMetadataContentTypeRegExp = new RegExp('^image/(jpeg|png|gif|webp)$');
+
+
+export const RequestActivityRankBannerUploadUrlResponse = zod.object({
+  "uploadURL": zod.string().url(),
+  "objectPath": zod.string(),
+  "metadata": zod.object({
+  "guildId": zod.string().min(requestActivityRankBannerUploadUrlResponseMetadataGuildIdMin).max(requestActivityRankBannerUploadUrlResponseMetadataGuildIdMax),
+  "name": zod.string().min(1).max(requestActivityRankBannerUploadUrlResponseMetadataNameMax),
+  "size": zod.number().min(1).max(requestActivityRankBannerUploadUrlResponseMetadataSizeMax),
+  "contentType": zod.string().regex(requestActivityRankBannerUploadUrlResponseMetadataContentTypeRegExp)
+})
+})
+
+
 export const moderationPublishVerificationPanelPathGuildIdMin = 5;
 export const moderationPublishVerificationPanelPathGuildIdMax = 25;
 

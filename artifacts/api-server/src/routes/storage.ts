@@ -47,11 +47,27 @@ const requestUploadUrl = asyncRoute(async (req, res) => {
   res.json({ uploadURL, objectPath, metadata: parsed.data });
 });
 
+const requestActivityRankUploadUrl = asyncRoute(async (req, res) => {
+  const session = await requireSession(req);
+  assertCsrf(req, session);
+  assertMutationRateLimit(session);
+  const parsed = imageUploadSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Sunt acceptate imagini PNG, JPG, GIF sau WEBP de maximum 10 MB." });
+    return;
+  }
+  await assertGuildAccess(parsed.data.guildId, session.userId, "config");
+  const uploadURL = await storage.getObjectEntityUploadURL();
+  const objectPath = storage.normalizeObjectEntityPath(uploadURL);
+  res.json({ uploadURL, objectPath, metadata: parsed.data });
+});
+
 // The moderation session cookie is deliberately scoped to /api/moderation.
 // Keep the upload entry point under that path so authenticated panel requests
 // include the cookie; the legacy /api/storage path remains for compatible clients.
 router.post("/storage/uploads/request-url", requestUploadUrl);
 router.post("/moderation/storage/uploads/request-url", requestUploadUrl);
+router.post("/moderation/storage/activity-ranks/uploads/request-url", requestActivityRankUploadUrl);
 
 router.get("/storage/objects/*path", asyncRoute(async (req, res) => {
   try {

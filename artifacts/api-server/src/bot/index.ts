@@ -22,6 +22,7 @@ import {
   TextInputStyle,
   PermissionFlagsBits,
   EmbedBuilder,
+  type GuildMember,
 } from "discord.js";
 import { randomUUID } from "node:crypto";
 import { logger } from "../lib/logger";
@@ -96,6 +97,21 @@ import {
   recordDailyMessage,
   recordDailyVoicePeak,
 } from "./daily-stats";
+import {
+  awardActivityXp,
+  ensureActivityRanksTable,
+  getActivityLeaderboard,
+  getActivityRank,
+  getActivityRankConfig,
+  syncActivityMilestoneRole,
+} from "./activity-ranks";
+import {
+  activityLevelForXp,
+  getActivityLevelProgress,
+  getUtcActivityPeriods,
+  isEligibleActivityMessage,
+} from "./activity-ranks-core";
+import { publicMessageImageUrl } from "./message-media";
 import { loadInviteTrackingConfig } from "./db";
 import {
   applyInviteTrackingConfig,
@@ -349,6 +365,18 @@ import {
 const DEFAULT_GUILD_ID = "1382035307607883816";
 
 let botClient: Client | null = null;
+let activityVoiceTicker: ReturnType<typeof setInterval> | null = null;
+const voiceActivityAwardsInProgress = new Set<string>();
+const voiceActivityEligibleSince = new Map<string, number>();
+let lastVoiceActivityTickAt: number | null = null;
+
+function stopActivityVoiceTicker(): void {
+  if (activityVoiceTicker) clearInterval(activityVoiceTicker);
+  activityVoiceTicker = null;
+  voiceActivityAwardsInProgress.clear();
+  voiceActivityEligibleSince.clear();
+  lastVoiceActivityTickAt = null;
+}
 
 /** Disconnect the Discord client promptly — used by the SIGTERM/SIGINT handler
  *  so a redeploy never leaves a zombie gateway session behind. */
@@ -356,6 +384,7 @@ export async function destroyBotClientForShutdown(): Promise<void> {
   const c = botClient;
   botClient = null;
   setModerationClient(null);
+  stopActivityVoiceTicker();
   if (c) await c.destroy();
 }
 
@@ -524,6 +553,15 @@ const slashCommands = [
       opt.setName("jucator").setDescription("Vezi profilul altui luptător (opțional).").setRequired(false),
     ),
   new SlashCommandBuilder()
+    .setName("rank")
+    .setDescription("✨ Vezi rangul tău permanent de activitate pe server.")
+    .addUserOption((opt) =>
+      opt.setName("utilizator").setDescription("Vezi rangul de activitate al unui membru.").setRequired(false),
+    ),
+  new SlashCommandBuilder()
+    .setName("toplvl")
+    .setDescription("🏆 Clasamentul lunar al rangurilor de activitate."),
+  new SlashCommandBuilder()
     .setName("profetie")
     .setDescription("🔮 Primește o profeție personalizată de la Oracolul Cenușii."),
   new SlashCommandBuilder()
@@ -668,6 +706,187 @@ async function handleProfil(interaction: ChatInputCommandInteraction) {
   });
 }
 
+function addActivityRankBanner(embed: EmbedBuilder, bannerImageUrl: string): EmbedBuilder {
+  const banner = publicMessageImageUrl(bannerImageUrl);
+  if (banner) embed.setImage(banner);
+  return embed;
+}
+
+async function handleActivityRank(interaction: ChatInputCommandInteraction): Promise<void> {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const guildId = interaction.guildId!;
+  const target = interaction.options.getUser("utilizator") ?? interaction.user;
+  const [record, config] = await Promise.all([
+    getActivityRank(guildId, target.id),
+    getActivityRankConfig(guildId),
+  ]);
+  const progress = getActivityLevelProgress(record.totalXp);
+  const percentage = progress.requiredXp > 0
+    ? Math.min(100, Math.floor(progress.progressXp * 100 / progress.requiredXp))
+    : 100;
+  const filled = Math.floor(percentage / 10);
+  const bar = `${"▰".repeat(filled)}${"▱".repeat(10 - filled)}`;
+  const memberName = interaction.guild?.members.cache.get(target.id)?.displayName ?? target.globalName ?? target.username;
+  const embed = addActivityRankBanner(
+    new EmbedBuilder()
+      .setColor(Number.parseInt(config.color.slice(1), 16))
+      .setTitle(`✨ Rang de activitate ${progress.level}`)
+      .setDescription(
+        `**${memberName}**\n\n` +
+        `**XP permanent:** ${record.totalXp.toLocaleString("ro-RO")}\n` +
+        `**Progres:** ${progress.progressXp} / ${progress.requiredXp} XP până la rangul ${progress.level + 1}\n` +
+        `${bar} ${percentage}%`,
+      )
+      .setThumbnail(target.displayAvatarURL({ size: 256 }))
+      .setFooter({ text: "Rang separat de nivelul RPG · Progres permanent pe acest server" })
+      .setTimestamp(),
+    config.bannerImageUrl,
+  );
+  await interaction.editReply({ embeds: [embed] });
+}
+
+async function handleActivityLeaderboard(interaction: ChatInputCommandInteraction): Promise<void> {
+  await interaction.deferReply();
+  const guildId = interaction.guildId!;
+  const monthKey = getUtcActivityPeriods(new Date()).monthKey;
+  const [rows, config] = await Promise.all([
+    getActivityLeaderboard(guildId, monthKey, 10),
+    getActivityRankConfig(guildId),
+  ]);
+  const medals = ["🥇", "🥈", "🥉"];
+  const lines = rows.map((row, index) => {
+    const level = activityLevelForXp(row.totalXp);
+    return `${medals[index] ?? `**${index + 1}.**`} <@${row.discordId}> — Rang ${level} · ${row.monthlyXp.toLocaleString("ro-RO")} XP luna aceasta`;
+  }).join("\n");
+  const embed = addActivityRankBanner(
+    new EmbedBuilder()
+      .setColor(Number.parseInt(config.color.slice(1), 16))
+      .setTitle("🏆 Top ranguri de activitate · luna curentă")
+      .setDescription(lines || "*Clasamentul lunii este încă gol. Participă în chat sau în canalele vocale pentru a începe progresul.*")
+      .setFooter({ text: `${monthKey} UTC · Rangurile permanente nu se resetează` })
+      .setTimestamp(),
+    config.bannerImageUrl,
+  );
+  await interaction.editReply({ embeds: [embed] });
+}
+
+async function awardActivityToMember(
+  client: Client,
+  guildId: string,
+  userId: string,
+  source: "chat" | "voice",
+  member: GuildMember | null,
+): Promise<void> {
+  const config = await getActivityRankConfig(guildId);
+  if (!config.enabled) return;
+  const award = await awardActivityXp(guildId, userId, source);
+  if (!award) return;
+  const previousLevel = activityLevelForXp(award.previousXp);
+  const level = activityLevelForXp(award.totalXp);
+  if (level <= previousLevel) return;
+
+  let rankMember = member;
+  if (!rankMember) {
+    const guild = client.guilds.cache.get(guildId);
+    rankMember = guild ? await guild.members.fetch(userId).catch(() => null) : null;
+  }
+  if (rankMember) {
+    void syncActivityMilestoneRole(rankMember, level).catch((err) =>
+      logger.warn({ err, guildId, userId, level }, "Activity milestone role could not be synchronized"),
+    );
+  }
+
+  if (!config.notificationChannelId) return;
+  const channel = await client.channels.fetch(config.notificationChannelId).catch(() => null);
+  if (
+    !channel ||
+    !channel.isTextBased() ||
+    !("guildId" in channel) ||
+    channel.guildId !== guildId ||
+    !("send" in channel)
+  ) {
+    logger.warn(
+      { guildId, channelId: config.notificationChannelId, userId },
+      "Activity rank-up notification skipped: configured channel is missing or invalid",
+    );
+    return;
+  }
+
+  const guildName = client.guilds.cache.get(guildId)?.name ?? "server";
+  const username = rankMember?.displayName ?? member?.user.username ?? userId;
+  const content = config.rankUpMessage
+    .replaceAll("{user}", `<@${userId}>`)
+    .replaceAll("{level}", String(level))
+    .replaceAll("{guild}", guildName);
+  const embed = addActivityRankBanner(
+    new EmbedBuilder()
+      .setColor(Number.parseInt(config.color.slice(1), 16))
+      .setTitle(`✨ Rang de activitate nou: ${level}`)
+      .setDescription(`**${username}** a atins nivelul ${level} de activitate.`)
+      .setFooter({ text: "Progres separat de nivelurile și recompensele RPG" })
+      .setTimestamp(),
+    config.bannerImageUrl,
+  );
+  await channel.send({
+    content,
+    embeds: [embed],
+    allowedMentions: { parse: [], users: [userId], roles: [], repliedUser: false },
+  });
+}
+
+function startActivityVoiceTicker(client: Client): void {
+  stopActivityVoiceTicker();
+  const tick = () => {
+    if (!client.isReady()) {
+      voiceActivityEligibleSince.clear();
+      lastVoiceActivityTickAt = null;
+      return;
+    }
+
+    const now = Date.now();
+    if (lastVoiceActivityTickAt !== null && now - lastVoiceActivityTickAt > 90_000) {
+      voiceActivityEligibleSince.clear();
+    }
+    lastVoiceActivityTickAt = now;
+    const currentlyEligible = new Set<string>();
+
+    for (const guild of client.guilds.cache.values()) {
+      for (const channel of guild.channels.cache.values()) {
+        if (!channel.isVoiceBased() || channel.id === guild.afkChannelId) continue;
+        const members = [...channel.members.values()].filter((member) => !member.user.bot);
+        if (members.length < 2) continue;
+        for (const member of members) {
+          const key = `${guild.id}:${member.id}`;
+          currentlyEligible.add(key);
+          const eligibleSince = voiceActivityEligibleSince.get(key);
+          if (eligibleSince === undefined) {
+            voiceActivityEligibleSince.set(key, now);
+            continue;
+          }
+          if (now - eligibleSince < 60_000 || voiceActivityAwardsInProgress.has(key)) continue;
+          voiceActivityEligibleSince.set(key, now);
+          voiceActivityAwardsInProgress.add(key);
+          void awardActivityToMember(client, guild.id, member.id, "voice", member)
+            .catch((err) => logger.warn({ err, guildId: guild.id, userId: member.id }, "Voice activity XP update failed"))
+            .finally(() => voiceActivityAwardsInProgress.delete(key));
+        }
+      }
+    }
+
+    for (const key of voiceActivityEligibleSince.keys()) {
+      if (!currentlyEligible.has(key)) voiceActivityEligibleSince.delete(key);
+    }
+  };
+
+  // Seed eligible voice sessions now; the first award is only possible after
+  // a full minute in a qualifying channel.
+  tick();
+  activityVoiceTicker = setInterval(() => {
+    tick();
+  }, 60_000);
+  activityVoiceTicker.unref?.();
+}
+
 async function handleServer(interaction: ChatInputCommandInteraction): Promise<void> {
   if (interaction.guildId !== DEFAULT_GUILD_ID) {
     await interaction.reply({
@@ -781,6 +1000,7 @@ function buildHelpEmbed(category: HelpCategory) {
           value:
             "**/profil** — nivel, XP, Oboli, chei, clasă, companion și efecte.\n" +
             "**/clasament** — top server, top global și topul serverelor.\n" +
+            "**/rank** și **/toplvl** — rangul permanent și clasamentul lunar de activitate, separat de RPG.\n" +
             "**/clasa** — alegi o clasă RPG; resetarea se face din **/magazin**.\n" +
             "**/companion** — vezi companionul și evoluția lui.",
         },
@@ -928,7 +1148,7 @@ function buildHelpEmbed(category: HelpCategory) {
         {
           name: "Jucător",
           value:
-            "**/ajutor** · **/profil** · **/clasament** · **/profetie** · **/clasa** · **/companion**\n" +
+            "**/ajutor** · **/profil** · **/clasament** · **/rank** · **/toplvl** · **/profetie** · **/clasa** · **/companion**\n" +
             "**/magazin** · **/misiuni** · **/cufarpersonal** · **/chei** · **/server**",
         },
         {
@@ -4610,6 +4830,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
       await ensureBotStateTable();
       // Required schema must exist before any player profile or Oracle handler runs.
       await runMultiGuildMigrations();
+      await ensureActivityRanksTable();
       setOracleToxicityRelationshipHandler(maybeRecordOracleToxicityRelationship);
       setOracleTimeoutPersistence({
         save: saveOracleTimeoutLock,
@@ -4680,6 +4901,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
     try {
       await claimBotInstance(instanceId);
       logger.info({ instanceId }, "Claimed bot instance leadership");
+      startActivityVoiceTicker(client);
     } catch (err) {
       // Could not claim — skip the watchdog entirely so a stale marker from a
       // previous instance can never make THIS legitimate instance yield.
@@ -4700,6 +4922,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
           shardStatus = "yielded";
           botClient = null;
           setModerationClient(null);
+          stopActivityVoiceTicker();
           for (const [guildId] of client.guilds.cache) {
             stopGuildScheduler(guildId, { stopOracle: true });
             stopInviteTracking(guildId);
@@ -4770,6 +4993,15 @@ export async function startBot(onReady?: () => void): Promise<void> {
 
   client.on(Events.MessageCreate, (message) => {
     if (message.author.bot || !message.guildId) return;
+    if (
+      !message.webhookId &&
+      isEligibleActivityMessage(message.content ?? "")
+    ) {
+      void awardActivityToMember(client, message.guildId, message.author.id, "chat", message.member)
+        .catch((err) =>
+          logger.warn({ err, guildId: message.guildId, userId: message.author.id }, "Chat activity XP update failed"),
+        );
+    }
     const channelName = "name" in message.channel && typeof message.channel.name === "string"
       ? message.channel.name
       : message.channelId;
@@ -4853,6 +5085,17 @@ export async function startBot(onReady?: () => void): Promise<void> {
   client.on(Events.VoiceStateUpdate, (oldState, newState) => {
     if (oldState.channelId === newState.channelId) return;
     const guild = newState.guild;
+    if (!newState.member?.user.bot) {
+      for (const channelId of [oldState.channelId, newState.channelId]) {
+        if (!channelId) continue;
+        const channel = guild.channels.cache.get(channelId);
+        if (!channel?.isVoiceBased()) continue;
+        for (const member of channel.members.values()) {
+          if (!member.user.bot) voiceActivityEligibleSince.delete(`${guild.id}:${member.id}`);
+        }
+      }
+      if (newState.member) voiceActivityEligibleSince.delete(`${guild.id}:${newState.member.id}`);
+    }
     const connectedMembers = guild.channels.cache.reduce((total, channel) => (
       channel.isVoiceBased() ? total + channel.members.size : total
     ), 0);
@@ -4908,6 +5151,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
       void markOracleFellBack();
       botClient = null;
       setModerationClient(null);
+      stopActivityVoiceTicker();
       shardStatus = "fatal_disconnect";
       client.destroy();
       void sendAlert(
@@ -4924,6 +5168,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
       );
       botClient = null;
       setModerationClient(null);
+      stopActivityVoiceTicker();
       shardStatus = "fatal_disconnect";
       client.destroy();
       void sendAlert(
@@ -5020,6 +5265,8 @@ export async function startBot(onReady?: () => void): Promise<void> {
       let allowedWhileStopped = false;
       if (interaction.isChatInputCommand()) {
         allowedWhileStopped = [
+          "rank",
+          "toplvl",
           "server",
           "stopjoc",
           "startjoc",
@@ -5076,6 +5323,8 @@ export async function startBot(onReady?: () => void): Promise<void> {
     if (interaction.isChatInputCommand()) {
       if (await handleModerationCommand(interaction as ChatInputCommandInteraction)) return;
       if (interaction.commandName === "profil") dispatch(handleProfil(interaction));
+      if (interaction.commandName === "rank") dispatch(handleActivityRank(interaction));
+      if (interaction.commandName === "toplvl") dispatch(handleActivityLeaderboard(interaction));
       if (interaction.commandName === "server") dispatch(handleServer(interaction));
       if (interaction.commandName === "inventar") dispatch(handleInventar(interaction));
       if (interaction.commandName === "profetie") dispatch(handleProfetie(interaction));
