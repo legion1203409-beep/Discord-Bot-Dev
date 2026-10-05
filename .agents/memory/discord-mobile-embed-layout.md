@@ -14,3 +14,9 @@ Do not render the same full reason in both an embed's description and its detail
 **Why:** Detailed moderation notifications duplicated message-deletion context and made the embed unnecessarily tall.
 
 **How to apply:** Check whether the configured description template interpolates `{reason}` before adding a separate details field.
+
+For member entry and exit logs, use Discord timestamp tokens for localized full dates and relative times, and persist entry times while member logging is enabled so departure duration survives bot restarts.
+
+**Why:** Raw server timestamps do not adapt to each moderator's timezone, and process-only state loses the entry date on restart.
+
+**How to apply:** Show the member's display name, username, entry/exit times, account creation date, and calculated stay duration in compact, stacked fields.

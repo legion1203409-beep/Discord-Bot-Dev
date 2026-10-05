@@ -72,6 +72,9 @@ function setup(config: ModerationConfig) {
     handleNativeAutoModerationExecution: vi.fn(async () => undefined),
     notify: vi.fn(async () => undefined),
     auditExternal: vi.fn(async () => undefined),
+    recordMemberJoin: vi.fn(async () => undefined),
+    getMemberJoinAt: vi.fn(async () => null as Date | null),
+    clearMemberJoinAt: vi.fn(async () => undefined),
   };
   attachModerationEvents(client, helpers);
   return { client, emitter, helpers };
@@ -224,6 +227,72 @@ describe("non-message moderation events", () => {
     // Re-running content checks is harmless with defaults off, and prevents an
     // edit from bypassing a subsequently enabled content rule.
     expect(helpers.handleMessage).toHaveBeenCalledWith(client, edited);
+  });
+
+  it("keeps the member entry time across a restart and uses it in the departure log", async () => {
+    const config = structuredClone(defaultModerationConfig);
+    config.activityLog.enabled = true;
+    config.activityLog.categories.members = true;
+    config.activityLog.channelIds.members = "member-log";
+    const { emitter, helpers } = setup(config);
+    const targetGuild = guild("10042");
+    const send = vi.fn(async (_payload: unknown) => undefined);
+    targetGuild.channels.cache.set("member-log", {
+      guildId: targetGuild.id,
+      isTextBased: () => true,
+      send,
+    });
+
+    const userId = "20042";
+    const joinedAt = Date.now() - 11 * 86_400_000 - 3 * 3_600_000;
+    const accountCreatedAt = Date.UTC(2021, 4, 6, 10, 30);
+    const user = {
+      id: userId,
+      bot: false,
+      createdTimestamp: accountCreatedAt,
+      username: "adina",
+      globalName: "Adina",
+    };
+    const joined = {
+      ...member(targetGuild, userId, accountCreatedAt),
+      user,
+      displayName: "Adina pe server",
+      joinedTimestamp: joinedAt,
+    };
+
+    emitter.emit(Events.GuildMemberAdd, joined);
+    await waitForHandlers();
+    expect(helpers.recordMemberJoin).toHaveBeenCalledWith(targetGuild.id, userId, new Date(joinedAt));
+
+    vi.mocked(helpers.getMemberJoinAt).mockResolvedValueOnce(new Date(joinedAt));
+    const departed = {
+      ...joined,
+      joinedTimestamp: null,
+    };
+    emitter.emit(Events.GuildMemberRemove, departed);
+    await waitForHandlers();
+
+    expect(helpers.clearMemberJoinAt).toHaveBeenCalledWith(targetGuild.id, userId, new Date(joinedAt));
+    const payloads = send.mock.calls.map((call) => call[0] as {
+      embeds: Array<{ toJSON: () => { fields: Array<{ name: string; value: string }> } }>;
+    });
+    expect(payloads).toHaveLength(2);
+
+    const joinFields = payloads[0]!.embeds[0]!.toJSON().fields;
+    const memberField = joinFields.find((field) => field.name === "Membru")?.value ?? "";
+    expect(memberField).toContain("<@20042>");
+    expect(memberField).toContain("Adina pe server");
+    expect(memberField).toContain("@adina");
+    expect(joinFields.find((field) => field.name === "Activitate pe server")?.value)
+      .toContain(`<t:${Math.floor(joinedAt / 1_000)}:F>`);
+    expect(joinFields.find((field) => field.name === "Cont Discord creat")?.value)
+      .toContain(`<t:${Math.floor(accountCreatedAt / 1_000)}:F>`);
+
+    const leaveFields = payloads[1]!.embeds[0]!.toJSON().fields;
+    expect(leaveFields.find((field) => field.name === "Activitate pe server")?.value)
+      .toContain(`<t:${Math.floor(joinedAt / 1_000)}:F>`);
+    expect(leaveFields.find((field) => field.name === "Durata pe server")?.value)
+      .toMatch(/\d+ zile în total/);
   });
 
   it("rechecks edited content and applies the configured edit-spam action", async () => {

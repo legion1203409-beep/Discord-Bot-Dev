@@ -46,6 +46,9 @@ export type ModerationEventHelpers = {
   handleNativeAutoModerationExecution(client: Client, execution: AutoModerationActionExecution): Promise<void>;
   notify(config: ModerationConfig, guild: Guild, title: string, description: string, preferredChannelId?: string | null): Promise<void>;
   auditExternal(guildId: string, eventType: string, targetType: string, targetId: string, detail: Record<string, unknown>): Promise<void>;
+  recordMemberJoin(guildId: string, userId: string, joinedAt: Date): Promise<void>;
+  getMemberJoinAt(guildId: string, userId: string): Promise<Date | null>;
+  clearMemberJoinAt(guildId: string, userId: string, joinedAt: Date): Promise<void>;
 };
 
 type AuditActor = { id: string; bot: boolean; staff: boolean | null; verified: boolean };
@@ -271,8 +274,8 @@ const ACTIVITY_EVENT_TITLES: Record<string, string> = {
   "discord.message_update": "Mesaj editat",
   "discord.message_delete": "Mesaj șters",
   "discord.message_bulk_delete": "Mesaje șterse în masă",
-  "discord.member_join": "Membru a intrat pe server",
-  "discord.member_leave": "Membru a părăsit serverul",
+  "discord.member_join": "👋 Membru nou · a intrat pe server",
+  "discord.member_leave": "🚪 Membru a părăsit serverul",
   "discord.member_update": "Membru actualizat",
   "discord.voice_state_update": "Stare vocală schimbată",
   "discord.channel_create": "Canal creat",
@@ -327,6 +330,33 @@ function activityCategory(eventType: string, detail: Record<string, unknown>): A
   return null;
 }
 
+function memberActivityLogSelected(config: ModerationConfig): boolean {
+  return config.activityLog.enabled && config.activityLog.categories.members;
+}
+
+function joinedAtForMember(member: GuildMember): Date {
+  const timestamp = member.joinedTimestamp;
+  return typeof timestamp === "number" && Number.isFinite(timestamp) && timestamp > 0
+    ? new Date(timestamp)
+    : new Date();
+}
+
+function memberActivityIdentity(member: { displayName: string; user: GuildMember["user"] }): {
+  memberDisplayName: string;
+  memberUsername: string;
+  accountCreatedAt: string;
+  accountAgeDays: number;
+} {
+  const now = Date.now();
+  const createdAt = member.user.createdTimestamp;
+  return {
+    memberDisplayName: member.displayName || member.user.globalName || member.user.username,
+    memberUsername: member.user.username,
+    accountCreatedAt: new Date(createdAt).toISOString(),
+    accountAgeDays: Math.max(0, Math.floor((now - createdAt) / 86_400_000)),
+  };
+}
+
 /** Delivers a readable, mobile-first embed to the configured activity channel. */
 export async function deliverActivityLog(
   guild: Guild,
@@ -360,7 +390,9 @@ export async function deliverActivityLog(
     );
     const embed = new EmbedBuilder()
       .setColor(
-        category === "security" ? 0xd94a2b :
+        normalizedEventType === "discord.member_join" ? 0x36a878 :
+          normalizedEventType === "discord.member_leave" ? 0xd95050 :
+            category === "security" ? 0xd94a2b :
           category === "moderation" ? 0xc38b3b :
             category === "messages" ? 0xd46a3c : 0x5865f2,
       )
@@ -503,12 +535,21 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
 
   client.on(Events.GuildMemberAdd, (member) => safely(Events.GuildMemberAdd, async () => {
     const config = await helpers.getConfig(member.guild.id);
+    const joinedAt = joinedAtForMember(member);
+    const identity = memberActivityIdentity(member);
+    if (memberActivityLogSelected(config)) {
+      try {
+        await helpers.recordMemberJoin(member.guild.id, member.id, joinedAt);
+      } catch (error) {
+        logger.warn({ error, guildId: member.guild.id, memberId: member.id }, "Failed to persist member join time");
+      }
+    }
     await recordAudit(helpers, config, member.guild, "discord.member_join", "member", member.id,
       auditDetail(config, null, {
         actorVerified: false,
         channelId: null,
-        accountCreatedAt: new Date(member.user.createdTimestamp).toISOString(),
-        accountAgeDays: Math.floor((Date.now() - member.user.createdTimestamp) / 86_400_000),
+        ...identity,
+        serverJoinedAt: joinedAt.toISOString(),
       }));
     if (!config.protection.enabled) return;
     const joinLeave = config.suspiciousBehavior.joinLeaveFlood;
@@ -585,12 +626,34 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
 
   client.on(Events.GuildMemberRemove, (member) => safely(Events.GuildMemberRemove, async () => {
     const config = await helpers.getConfig(member.guild.id);
+    let recordedJoinedAt: Date | null = null;
+    try {
+      recordedJoinedAt = await helpers.getMemberJoinAt(member.guild.id, member.id);
+    } catch (error) {
+      logger.warn({ error, guildId: member.guild.id, memberId: member.id }, "Failed to read persisted member join time");
+    }
+    const joinedAt = recordedJoinedAt ?? (
+      typeof member.joinedTimestamp === "number" && Number.isFinite(member.joinedTimestamp) && member.joinedTimestamp > 0
+        ? new Date(member.joinedTimestamp)
+        : null
+    );
+    const leftAt = new Date();
+    const identity = memberActivityIdentity(member);
     await recordAudit(helpers, config, member.guild, "discord.member_leave", "member", member.id,
       auditDetail(config, null, {
         actorVerified: false,
         channelId: null,
-        accountCreatedAt: new Date(member.user.createdTimestamp).toISOString(),
+        ...identity,
+        serverJoinedAt: joinedAt?.toISOString() ?? null,
+        serverLeftAt: leftAt.toISOString(),
       }));
+    if (recordedJoinedAt) {
+      try {
+        await helpers.clearMemberJoinAt(member.guild.id, member.id, recordedJoinedAt);
+      } catch (error) {
+        logger.warn({ error, guildId: member.guild.id, memberId: member.id }, "Failed to clear persisted member join time");
+      }
+    }
     if (!config.protection.enabled) return;
     const rule = config.suspiciousBehavior.joinLeaveFlood;
     if (!config.suspiciousBehavior.enabled || !rule.enabled) return;

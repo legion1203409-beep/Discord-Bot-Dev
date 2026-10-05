@@ -114,6 +114,9 @@ export interface ModerationStore {
   listAudit(guildId: string, filters: ModerationAuditFilters): Promise<ModerationAuditPage>;
   listModerationLogs(guildId: string, limit: number, offset: number): Promise<ModerationAuditLog[]>;
   writeAudit(input: Omit<ModerationAuditLog, "id" | "createdAt">): Promise<void>;
+  recordMemberJoin(input: { guildId: string; userId: string; joinedAt: Date }): Promise<void>;
+  getMemberJoinAt(guildId: string, userId: string): Promise<Date | null>;
+  clearMemberJoinAt(guildId: string, userId: string, joinedAt: Date): Promise<void>;
   beginAction(input: { guildId: string; idempotencyKey: string; actorId: string; actionType: string; input: Record<string, unknown> }): Promise<{ created: boolean; action: ModerationActionLedger }>;
   getAction(guildId: string, idempotencyKey: string): Promise<ModerationActionLedger | null>;
   listActions(guildId: string, status: "pending" | "uncertain" | "applied" | "failed" | undefined, limit: number, offset: number): Promise<ModerationActionLedger[]>;
@@ -206,6 +209,10 @@ export class PostgresModerationStore implements ModerationStore {
           id uuid PRIMARY KEY, guild_id text NOT NULL, actor_id text, event_type text NOT NULL,
           target_type text, target_id text, detail jsonb NOT NULL DEFAULT '{}'::jsonb,
           created_at timestamptz NOT NULL DEFAULT now()
+        );
+        CREATE TABLE IF NOT EXISTS moderation_member_join_state (
+          guild_id text NOT NULL, user_id text NOT NULL, joined_at timestamptz NOT NULL,
+          updated_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY (guild_id, user_id)
         );
         CREATE TABLE IF NOT EXISTS moderation_lockdowns (
           guild_id text NOT NULL, channel_id text NOT NULL, overwrites jsonb NOT NULL,
@@ -653,6 +660,35 @@ export class PostgresModerationStore implements ModerationStore {
   async writeAudit(input: Omit<ModerationAuditLog, "id" | "createdAt">) {
     await this.ensureSchema();
     await this.insertAudit(pool, input);
+  }
+
+  async recordMemberJoin(input: { guildId: string; userId: string; joinedAt: Date }): Promise<void> {
+    await this.ensureSchema();
+    await pool.query(
+      `INSERT INTO moderation_member_join_state (guild_id, user_id, joined_at)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (guild_id, user_id) DO UPDATE
+       SET joined_at = EXCLUDED.joined_at, updated_at = now()`,
+      [input.guildId, input.userId, input.joinedAt],
+    );
+  }
+
+  async getMemberJoinAt(guildId: string, userId: string): Promise<Date | null> {
+    await this.ensureSchema();
+    const { rows } = await pool.query<{ joined_at: Date }>(
+      "SELECT joined_at FROM moderation_member_join_state WHERE guild_id = $1 AND user_id = $2",
+      [guildId, userId],
+    );
+    return rows[0]?.joined_at ? new Date(rows[0].joined_at) : null;
+  }
+
+  async clearMemberJoinAt(guildId: string, userId: string, joinedAt: Date): Promise<void> {
+    await this.ensureSchema();
+    await pool.query(
+      `DELETE FROM moderation_member_join_state
+       WHERE guild_id = $1 AND user_id = $2 AND joined_at = $3`,
+      [guildId, userId, joinedAt],
+    );
   }
 
   async beginAction(input: { guildId: string; idempotencyKey: string; actorId: string; actionType: string; input: Record<string, unknown> }) {

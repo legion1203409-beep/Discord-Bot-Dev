@@ -947,5 +947,11 @@ export function attachModeration(client: Client): void {
     handleNativeAutoModerationExecution,
     notify,
     auditExternal,
+    recordMemberJoin: (guildId, userId, joinedAt) =>
+      moderationStore.recordMemberJoin({ guildId, userId, joinedAt }),
+    getMemberJoinAt: (guildId, userId) =>
+      moderationStore.getMemberJoinAt(guildId, userId),
+    clearMemberJoinAt: (guildId, userId, joinedAt) =>
+      moderationStore.clearMemberJoinAt(guildId, userId, joinedAt),
   });
 }

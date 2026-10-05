@@ -44,7 +44,9 @@ describe("automatic Discord activity-log delivery", () => {
     const { guild, sends } = testGuild();
 
     for (const [eventType, category] of eventRoutes) {
-      const targetType = eventType.startsWith("discord.message_") ? "message" : "target";
+      const targetType = eventType.startsWith("discord.message_")
+        ? "message"
+        : eventType.startsWith("discord.member_") ? "member" : "target";
       await deliverActivityLog(guild, config, eventType, targetType, "345678901234567890", {
         actorVerified: false,
         actorId: null,
@@ -57,9 +59,13 @@ describe("automatic Discord activity-log delivery", () => {
         embeds: Array<{ toJSON: () => { fields: Array<{ name: string; value: string }> } }>;
       };
       const fields = payload.embeds[0]!.toJSON().fields;
-      expect(fields.find((field) => field.name === "Actor" || field.name === "Editor")?.value).toBe("Neverificat de Discord");
+      if (targetType !== "member") {
+        expect(fields.find((field) => field.name === "Actor" || field.name === "Editor")?.value).toBe("Neverificat de Discord");
+      }
       if (targetType === "message") {
         expect(fields.find((field) => field.name === "Țintă")).toBeUndefined();
+      } else if (targetType === "member") {
+        expect(fields.find((field) => field.name === "Membru")?.value).toBe("<@345678901234567890>");
       } else {
         expect(fields.find((field) => field.name === "Țintă")?.value).toContain("nume indisponibil");
         expect(fields.find((field) => field.name === "Țintă")?.value).not.toContain("345678901234567890");

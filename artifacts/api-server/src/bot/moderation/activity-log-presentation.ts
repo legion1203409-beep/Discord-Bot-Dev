@@ -57,9 +57,13 @@ const hiddenDetailKeys = new Set([
   "displayContentChanged",
   "displayDeletedMessages",
   "displayMessageAuthorId",
+  "memberDisplayName",
+  "memberUsername",
   "messageContent",
   "messageCount",
   "messageId",
+  "serverJoinedAt",
+  "serverLeftAt",
   "targetAuthorId",
 ]);
 
@@ -86,6 +90,53 @@ function safeObjectValue(value: Record<string, unknown>): string {
 
 function userMention(value: unknown): string | null {
   return validSnowflake(value) ? `<@${value}>` : null;
+}
+
+function safeMemberName(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const safe = value
+    .replace(/[\r\n\u0000-\u001f\u007f]+/g, " ")
+    .replace(/@/g, "@\u200b")
+    .replace(/`/g, "ˋ")
+    .trim()
+    .slice(0, 100);
+  return safe || null;
+}
+
+function timestampMillis(value: unknown): number | null {
+  if (typeof value !== "string" && typeof value !== "number" && !(value instanceof Date)) return null;
+  const timestamp = value instanceof Date ? value.getTime() : new Date(value).getTime();
+  return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : null;
+}
+
+function discordTimestamp(timestamp: number, style: "F" | "R"): string {
+  return `<t:${Math.floor(timestamp / 1_000)}:${style}>`;
+}
+
+function formatMemberDuration(startedAt: number, endedAt: number): string {
+  const durationMs = Math.max(0, endedAt - startedAt);
+  const totalMinutes = Math.floor(durationMs / 60_000);
+  const days = Math.floor(totalMinutes / 1_440);
+  const hours = Math.floor((totalMinutes % 1_440) / 60);
+  const minutes = totalMinutes % 60;
+  const parts: string[] = [];
+  if (days) parts.push(`${days} ${days === 1 ? "zi" : "zile"}`);
+  if (hours) parts.push(`${hours} ${hours === 1 ? "oră" : "ore"}`);
+  if (minutes) parts.push(`${minutes} ${minutes === 1 ? "minut" : "minute"}`);
+  const readable = parts.length ? parts.join(", ") : "mai puțin de un minut";
+  const totalDays = new Intl.NumberFormat("ro-RO", { maximumFractionDigits: 3 })
+    .format(durationMs / 86_400_000);
+  return `${readable} (${totalDays} zile în total)`;
+}
+
+function memberAccountCreationValue(detail: Record<string, unknown>, eventAt: number): string {
+  const createdAt = timestampMillis(detail.accountCreatedAt);
+  if (createdAt === null) return "Data creării contului nu este disponibilă.";
+  const ageDays = Math.max(0, Math.floor((eventAt - createdAt) / 86_400_000));
+  return [
+    discordTimestamp(createdAt, "F"),
+    `Creat ${discordTimestamp(createdAt, "R")} · vechime la eveniment: ${ageDays.toLocaleString("ro-RO")} zile`,
+  ].join("\n");
 }
 
 function truncateUtf16(value: string, maxLength: number): { text: string; truncated: boolean } {
@@ -201,7 +252,12 @@ function targetField(
   const normalizedType = targetType.toLocaleLowerCase();
   if (normalizedType === "message" || normalizedType === "guild") return null;
   if (normalizedType === "member" || normalizedType === "user") {
-    return { name: "Membru vizat", value: userMention(targetId) ?? "Necunoscut", inline: false };
+    const displayName = safeMemberName(detail.memberDisplayName);
+    const username = safeMemberName(detail.memberUsername);
+    const lines = [userMention(targetId) ?? displayName ?? "Necunoscut"];
+    if (displayName && displayName !== username) lines.push(`Nume pe server: ${displayName}`);
+    if (username) lines.push(`Utilizator: @${username}`);
+    return { name: "Membru", value: lines.join("\n").slice(0, 1_024), inline: false };
   }
   if (normalizedType === "channel") {
     return validSnowflake(targetId)
@@ -320,6 +376,42 @@ export function buildActivityLogPresentation(
       ? `${count} ${count === 1 ? "mesaj a fost șters" : "mesaje au fost șterse"}.`
       : "Un mesaj a fost șters.";
     return { description, fields };
+  }
+
+  if (normalized === "discord.member_join" || normalized === "discord.member_leave") {
+    const member = targetField("member", targetId, detail);
+    if (member) fields.push(member);
+
+    const joinedAt = timestampMillis(detail.serverJoinedAt);
+    const leftAt = timestampMillis(detail.serverLeftAt);
+    const isJoin = normalized === "discord.member_join";
+    const eventAt = isJoin ? joinedAt ?? Date.now() : leftAt ?? Date.now();
+    const activityLines = [
+      joinedAt
+        ? `Intrare: ${discordTimestamp(joinedAt, "F")} · ${discordTimestamp(joinedAt, "R")}`
+        : "Intrare: _data nu este disponibilă pentru această perioadă_",
+    ];
+    if (!isJoin) {
+      activityLines.push(
+        leftAt
+          ? `Ieșire: ${discordTimestamp(leftAt, "F")} · ${discordTimestamp(leftAt, "R")}`
+          : "Ieșire: _data nu este disponibilă_",
+      );
+    }
+    addField("Activitate pe server", activityLines.join("\n"));
+
+    if (!isJoin && joinedAt !== null && leftAt !== null) {
+      addField("Durata pe server", formatMemberDuration(joinedAt, leftAt));
+    } else if (!isJoin) {
+      addField("Durata pe server", "Nu poate fi calculată fără data intrării.");
+    }
+    addField("Cont Discord creat", memberAccountCreationValue(detail, eventAt));
+    return {
+      description: isJoin
+        ? "Un membru nou s-a alăturat serverului."
+        : "Membrul a părăsit serverul.",
+      fields,
+    };
   }
 
   addField("Actor", actor);
