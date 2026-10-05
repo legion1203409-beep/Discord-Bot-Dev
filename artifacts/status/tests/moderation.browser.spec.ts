@@ -836,7 +836,8 @@ test.describe("authenticated moderation console", () => {
   test("message customization hub opens the member editor in view", async ({ page }) => {
     await page.goto("/");
     await chooseFirstGuild(page);
-    await page.goto("/moderare/config/mesaje");
+    await expectNavGroupExpanded(page, "configuration");
+    await page.getByRole("link", { name: "Personalizare mesaje" }).click();
     await expect(page.getByRole("heading", { name: "Personalizare mesaje" })).toBeVisible();
     await page.getByRole("link", { name: /Deschide editorul/ }).first().click();
     await expect(page).toHaveURL(/\/moderare\/config\/cazuri-audit#member-join-template$/);
