@@ -14,3 +14,9 @@ The user also asked to customize the message “pentru fiecare mod log”, not j
 **Why:** The user wants individual log messages editable.
 
 **How to apply:** Keep independent text customization for each supported Discord log event, organized by its log category, in the same dedicated area.
+
+When a Discord activity-log description is customized, do not append the generated event-detail fields separately; include `{details}` in the custom description to opt into them. If only the title is customized, retain the standard description and details.
+
+**Why:** Appending standard fields after a custom description made the old text appear alongside the new text.
+
+**How to apply:** Preserve event evidence behind the `{details}` placeholder when customizing descriptions; make this behavior clear in the editor preview.

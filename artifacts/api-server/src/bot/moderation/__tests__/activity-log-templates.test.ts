@@ -36,7 +36,7 @@ describe("individual activity log templates", () => {
       const embed = (send.mock.calls[0][0] as any).embeds[0].toJSON();
       expect(embed.title).toBe(`Personalizat Test guild: ${entry.event}`);
       expect(embed.description).toBe("<@555555> · <@777777> · <#888888> · Motiv test");
-      expect(embed.fields).toEqual([]);
+      expect(embed.fields ?? []).toEqual([]);
       expect((send.mock.calls[0][0] as any).allowedMentions).toEqual({ parse: [] });
       config.activityLog.templates[entry.key] = { title: "", description: "" };
       await deliverActivityLog(guild, config, entry.event, "member", "555555", detail);
@@ -62,9 +62,9 @@ describe("individual activity log templates", () => {
     });
 
     const embed = (send.mock.calls[0][0] as any).embeds[0].toJSON();
-    expect(embed.description).toContain("Textul inițial");
+    expect(embed.description).toContain("Text inițial");
     expect(embed.description).toContain("Text nou");
-    expect(embed.fields).toEqual([]);
+    expect(embed.fields ?? []).toEqual([]);
   });
 
   it("keeps the standard event details when only the title is customized", async () => {
