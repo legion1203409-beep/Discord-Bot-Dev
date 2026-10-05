@@ -22,6 +22,7 @@ import {
   TextInputStyle,
   PermissionFlagsBits,
   EmbedBuilder,
+  AttachmentBuilder,
   type GuildMember,
 } from "discord.js";
 import { randomUUID } from "node:crypto";
@@ -112,6 +113,7 @@ import {
   isEligibleActivityMessage,
 } from "./activity-ranks-core";
 import { publicMessageImageUrl } from "./message-media";
+import { fetchActivityRankBanner, renderActivityRankBanner } from "./activity-rank-card";
 import { loadInviteTrackingConfig } from "./db";
 import {
   applyInviteTrackingConfig,
@@ -727,6 +729,22 @@ async function handleActivityRank(interaction: ChatInputCommandInteraction): Pro
   const filled = Math.floor(percentage / 10);
   const bar = `${"▰".repeat(filled)}${"▱".repeat(10 - filled)}`;
   const memberName = interaction.guild?.members.cache.get(target.id)?.displayName ?? target.globalName ?? target.username;
+  const bannerUrl = publicMessageImageUrl(config.bannerImageUrl);
+  let cardImage: Buffer | null = null;
+  if (bannerUrl) {
+    try {
+      cardImage = renderActivityRankBanner(
+        await fetchActivityRankBanner(bannerUrl),
+        percentage,
+        config.color,
+      );
+    } catch (error) {
+      logger.warn(
+        { err: error, guildId, userId: target.id },
+        "Activity rank banner could not be rendered; using the configured banner without an overlay",
+      );
+    }
+  }
   const embed = addActivityRankBanner(
     new EmbedBuilder()
       .setColor(Number.parseInt(config.color.slice(1), 16))
@@ -740,8 +758,16 @@ async function handleActivityRank(interaction: ChatInputCommandInteraction): Pro
       .setThumbnail(target.displayAvatarURL({ size: 256 }))
       .setFooter({ text: "Rang separat de nivelul RPG · Progres permanent pe acest server" })
       .setTimestamp(),
-    config.bannerImageUrl,
+    cardImage ? "" : config.bannerImageUrl,
   );
+  if (cardImage) {
+    embed.setImage("attachment://activity-rank.png");
+    await interaction.editReply({
+      embeds: [embed],
+      files: [new AttachmentBuilder(cardImage, { name: "activity-rank.png" })],
+    });
+    return;
+  }
   await interaction.editReply({ embeds: [embed] });
 }
 

@@ -57,7 +57,7 @@ timeoutMs = 20000
 
 [nix]
 channel = "stable-25_05"
-packages = ["tesseract", "util-linux"]
+packages = ["freetype", "imagemagick", "lcms2", "libimagequant", "libjpeg", "libtiff", "libwebp", "libxcrypt", "openjpeg", "tcl", "tesseract", "tk", "util-linux", "zlib"]
 
 [userenv]
 
