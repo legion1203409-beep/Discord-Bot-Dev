@@ -15,6 +15,8 @@ import type { AutoModerationActionExecution } from "discord.js";
 import type { ActivityLogCategory, ModerationAction, ModerationConfig } from "../../moderation/config";
 import { logger } from "../../lib/logger";
 import { buildActivityLogPresentation, renderMemberActivityTemplate } from "./activity-log-presentation";
+import { ACTIVITY_LOG_TEMPLATES, activityLogTemplateKey } from "../../moderation/activity-log-template-definitions";
+import { renderActivityLogTemplate } from "./activity-log-templates";
 
 export type ModerationEventActionInput = {
   guildId: string;
@@ -288,36 +290,6 @@ const ACTIVITY_CATEGORY_LABELS: Record<ActivityLogCategory, string> = {
   security: "Securitate",
 };
 
-const ACTIVITY_EVENT_TITLES: Record<string, string> = {
-  "discord.message_update": "Mesaj editat",
-  "discord.message_delete": "Mesaj șters",
-  "discord.message_bulk_delete": "Mesaje șterse în masă",
-  "discord.member_join": "👋 Membru nou · a intrat pe server",
-  "discord.member_leave": "🚪 Membru a părăsit serverul",
-  "discord.member_update": "Membru actualizat",
-  "discord.voice_state_update": "Stare vocală schimbată",
-  "discord.channel_create": "Canal creat",
-  "discord.channel_update": "Canal actualizat",
-  "discord.channel_delete": "Canal șters",
-  "discord.guild_role_create": "Rol creat",
-  "discord.guild_role_update": "Rol actualizat",
-  "discord.guild_role_delete": "Rol șters",
-  "action.applied": "Acțiune de moderare aplicată",
-  "action.failed": "Acțiune de moderare eșuată",
-  "action.reconciled": "Acțiune de moderare verificată",
-  "action.finalized": "Rezultat de moderare confirmat",
-  "automod.message_delete_failed": "Ștergere AutoMod eșuată",
-  "ai.flagged": "Mesaj semnalat de moderarea AI",
-  "spam.edit_burst": "Editări repetate detectate",
-  "spam.bulk_delete": "Ștergere în masă detectată",
-  "spam.message_delete": "Ștergeri repetate detectate",
-  "suspicious.delete_alert_only": "Ștergeri fără sancțiune",
-  "suspicious.join_leave_alert_only": "Intrări și plecări suspecte",
-  "suspicious.unusual_alert_only": "Activitate neobișnuită",
-  "raid.detected": "Activitate anti-raid detectată",
-  "raid.lockdown_failed": "Blocare anti-raid eșuată",
-};
-
 function isMemberRoleChange(eventType: string, detail: Record<string, unknown>): boolean {
   const normalized = eventType.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLocaleLowerCase();
   if (normalized !== "discord.member_update") return false;
@@ -328,11 +300,8 @@ function isMemberRoleChange(eventType: string, detail: Record<string, unknown>):
 }
 
 function activityEventTitle(eventType: string, detail: Record<string, unknown>): string | null {
-  if (isMemberRoleChange(eventType, detail)) return "Rolurile membrului au fost schimbate";
-  const normalized = eventType.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLocaleLowerCase();
-  return ACTIVITY_EVENT_TITLES[normalized] ??
-    ACTIVITY_EVENT_TITLES[eventType] ??
-    null;
+  const key = activityLogTemplateKey(eventType, detail);
+  return ACTIVITY_LOG_TEMPLATES.find((item) => item.key === key)?.title ?? null;
 }
 
 function activityCategory(eventType: string, detail: Record<string, unknown>): ActivityLogCategory | null {
@@ -418,10 +387,20 @@ export async function deliverActivityLog(
         }
         : null;
     const defaultTitle = activityEventTitle(eventType, detail) ?? eventType.replace(/[._-]+/g, " ");
-    const title = memberTemplates?.title.trim()
+    const templateKey = activityLogTemplateKey(eventType, detail);
+    const customTemplate = templateKey ? config.activityLog.templates?.[templateKey] : undefined;
+    const renderCustom = (template: string) => renderActivityLogTemplate(template, {
+      guildName: guild.name, category, eventType: normalizedEventType, defaultTitle,
+      targetType, targetId, detail, presentation,
+    });
+    const title = customTemplate?.title.trim()
+      ? renderCustom(customTemplate.title).trim().slice(0, 256) || defaultTitle
+      : memberTemplates?.title.trim()
       ? renderMemberActivityTemplate(memberTemplates.title, normalizedEventType, targetId, detail).slice(0, 256)
       : defaultTitle;
-    const description = memberTemplates?.description.trim()
+    const description = customTemplate?.description.trim()
+      ? renderCustom(customTemplate.description).slice(0, 2_000)
+      : memberTemplates?.description.trim()
       ? renderMemberActivityTemplate(memberTemplates.description, normalizedEventType, targetId, detail).slice(0, 2_000)
       : presentation.description;
     const embed = new EmbedBuilder()

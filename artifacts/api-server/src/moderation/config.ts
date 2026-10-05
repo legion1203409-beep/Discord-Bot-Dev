@@ -1,4 +1,15 @@
 import { z } from "zod";
+import { ACTIVITY_LOG_TEMPLATE_KEYS, type ActivityLogTextTemplate } from "./activity-log-template-definitions";
+
+// Keep this boundary structurally simple: the config schema is inferred by
+// many large schemas and routes throughout the bot.
+const activityLogTemplatesSchema: z.ZodType<
+  Record<string, ActivityLogTextTemplate>, z.ZodTypeDef,
+  Record<string, { title?: string; description?: string }>
+> = z.record(z.string().refine((key) => ACTIVITY_LOG_TEMPLATE_KEYS.includes(key as typeof ACTIVITY_LOG_TEMPLATE_KEYS[number]), "Unknown activity log template"), z.object({
+  title: z.string().max(256).default(""),
+  description: z.string().max(2_000).default(""),
+}).strict());
 
 const snowflake = z.string().regex(/^\d{5,25}$/, "Expected a Discord snowflake");
 const idList = z.array(snowflake).max(100);
@@ -212,6 +223,7 @@ export const ModerationConfigSchema = z.object({
     memberJoinDescriptionTemplate: z.string().max(2_000).default(""),
     memberLeaveTitleTemplate: z.string().max(256).default(""),
     memberLeaveDescriptionTemplate: z.string().max(2_000).default(""),
+    templates: activityLogTemplatesSchema.default({}),
   }).default({}).superRefine((activityLog, ctx) => {
     if (activityLog.enabled && !Object.values(activityLog.categories).some(Boolean)) {
       ctx.addIssue({

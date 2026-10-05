@@ -851,6 +851,61 @@ test.describe("authenticated moderation console", () => {
     await expect(page.getByTestId("button-template-token-time_relative")).toBeVisible();
   });
 
+  test("every log has its own editor and preserves other templates, guilds and channels", async ({ page }) => {
+    await page.goto("/moderare/config/mesaje");
+    await chooseFirstGuild(page);
+    await expect(page.locator("main").getByRole("switch")).toHaveCount(0);
+    const groups = [
+      ["Loguri de mesaje", "Mesaj editat"],
+      ["Loguri de membri", "Membru actualizat"],
+      ["Loguri de canale", "Canal creat"],
+      ["Loguri de roluri", "Rolurile membrului au fost schimbate"],
+      ["Loguri de voce", "Stare vocală schimbată"],
+      ["Loguri de moderare", "Acțiune de moderare aplicată"],
+      ["Loguri de securitate", "Activitate anti-raid detectată"],
+    ];
+    for (const [group, title] of groups) {
+      const section = page.locator("details").filter({ has: page.locator("summary").filter({ hasText: group }) });
+      if (!(await section.evaluate((element) => (element as HTMLDetailsElement).open))) await section.locator("summary").click();
+      await section.getByRole("button", { name: `${title}: mesaj implicit`, exact: true }).click();
+      await page.getByRole("radio", { name: /Mesaj personalizat/ }).click();
+      await expect(page.getByRole("dialog").getByLabel("Titlu mesaj", { exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "Anulează", exact: true }).click();
+    }
+    await page.getByRole("button", { name: "Mesaj editat: mesaj implicit", exact: true }).click();
+    await page.getByRole("radio", { name: /Mesaj personalizat/ }).click();
+    await page.getByRole("dialog").getByLabel("Titlu mesaj", { exact: true }).fill("Editare {guild}");
+    await page.getByRole("dialog").getByLabel("Descriere mesaj", { exact: true }).fill("Anterior: ");
+    await page.getByRole("button", { name: "Inserează {before}", exact: true }).click();
+    await expect(page.getByRole("dialog").getByLabel("Descriere mesaj", { exact: true })).toHaveValue("Anterior: {before}");
+    await expect(page.getByText("Editare Regatul Cenușii", { exact: true })).toBeVisible();
+    // Preserve both a concurrently saved template and channel changes.
+    (savedConfigs.get(guilds[0].id)!.activityLog as any).templates = {
+      channel_create: { title: "Canal nou", description: "" },
+    };
+    savedConfigs.get(guilds[0].id)!.activityLog.channelIds.messages = "777777777";
+    const save = page.waitForResponse((response) => response.url().includes("/guilds/111111111/config") && response.request().method() === "PUT");
+    await page.getByRole("button", { name: "Salvează mesajul", exact: true }).click();
+    expect((await save).ok()).toBe(true);
+    expect(savedConfigs.get(guilds[0].id)!.activityLog).toMatchObject({
+      enabled: false, channelIds: { messages: "777777777" },
+      templates: { message_update: { title: "Editare {guild}", description: "Anterior: {before}" }, channel_create: { title: "Canal nou" } },
+    });
+    await page.reload();
+    await page.getByRole("button", { name: "Mesaj editat: mesaj personalizat", exact: true }).click();
+    await expect(page.getByRole("dialog").getByLabel("Titlu mesaj", { exact: true })).toHaveValue("Editare {guild}");
+    await page.getByRole("radio", { name: /Mesaj implicit/ }).click();
+    const reset = page.waitForResponse((response) => response.url().includes("/guilds/111111111/config") && response.request().method() === "PUT");
+    await page.getByRole("button", { name: "Salvează mesajul", exact: true }).click();
+    await reset;
+    expect((savedConfigs.get(guilds[0].id)!.activityLog as any).templates.message_update).toEqual({ title: "", description: "" });
+    const selector = page.getByRole("combobox").first();
+    await selector.click();
+    await page.getByRole("option", { name: guilds[1].name }).click();
+    await expect(page.getByRole("button", { name: "Mesaj editat: mesaj implicit", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Canal creat: mesaj personalizat", exact: true })).toHaveCount(0);
+  });
+
   test("moderation embed messages are edited in a dialog and can be reset to default", async ({ page }) => {
     await page.goto("/moderare/config/embeduri");
     await chooseFirstGuild(page);

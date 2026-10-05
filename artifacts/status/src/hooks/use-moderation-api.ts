@@ -741,7 +741,7 @@ export function useModerationConfig(guildId: string | null) {
         let target = merged;
         let source = draft;
         for (const part of parts.slice(0, -1)) {
-          target = target[part];
+          target = target[part] ??= {};
           source = source[part];
         }
         const leaf = parts[parts.length - 1];

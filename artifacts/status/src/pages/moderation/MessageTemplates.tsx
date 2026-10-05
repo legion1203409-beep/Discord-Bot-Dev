@@ -4,7 +4,7 @@ import { MessageCustomizationDialog } from "../../components/moderation/MessageC
 import { ModerationEmbedTemplateEditor } from "../../components/moderation/ModerationEmbedTemplateEditor";
 import { EmojiField } from "../../components/moderation/EmojiField";
 import { useActiveGuild, useBotControl, useModerationConfig, useModerationMetadata, useSession, type BotControlConfig } from "../../hooks/use-moderation-api";
-import { renderMemberLogPreview } from "./ConfigEditor";
+import { ActivityLogTemplateEditors } from "../../components/moderation/ActivityLogTemplateEditors";
 
 const EmojiContext = createContext<Pick<ComponentProps<typeof EmojiField>, "guildId" | "csrfToken" | "emojis" | "onEmojiCreated">>({ guildId: null });
 
@@ -24,7 +24,6 @@ const ALLIANCE_DEFAULT = [
   "👥 Membri: {members_total} total · {members_online} online", "🔗 Link: {invite}", "",
   "👤 Contract completat de: {applicant_mention}", "", "Pact pecetluit · Regatul Cenușii",
 ].join("\n");
-const MEMBER_VARIABLES = "{member} · {member_name} · {username} · {account_created_at} · {account_created_at_relative} · {account_age} · {account_age_years} · {account_age_days} · {server_joined_at} · {server_joined_at_relative} · {timestamp} · {timestamp_relative}";
 
 function Card({ title, description, children }: { title: string; description: string; children: ReactNode }) {
   return <section className="space-y-4 rounded-xl border border-border bg-card p-5">
@@ -71,34 +70,6 @@ export function MessageTemplatesPage() {
       <p className="mt-2 max-w-2xl text-muted-foreground">Editează aici textele și variabilele mesajelor. Activarea funcțiilor și alegerea canalelor rămân în paginile lor de configurare.</p>
     </header>
     {!config ? <p role={moderation.error ? "alert" : undefined}>{moderation.error?.message || <Loader2 className="h-6 w-6 animate-spin" />}</p> : <div className="grid gap-4 md:grid-cols-2">
-      {(["join", "leave"] as const).map((kind) => {
-        const prefix = kind === "join" ? "memberJoin" : "memberLeave";
-        const title = kind === "join" ? "Mesaj la intrarea unui membru" : "Mesaj la plecarea unui membru";
-        return <Card key={kind} title={title} description="Textul publicat în jurnalul membrilor; poate fi pregătit și când jurnalizarea este oprită.">
-          <MessageCustomizationDialog
-            triggerId={`member-${kind}-template`} title={title}
-            description="Personalizează titlul și descrierea, apoi salvează direct mesajul."
-            value={{ title: config.activityLog[`${prefix}TitleTemplate`] || "", description: config.activityLog[`${prefix}DescriptionTemplate`] || "" }}
-            defaultValue={{ title: "", description: "" }}
-            isDefault={(value) => !value.title.trim() && !value.description.trim()}
-            saveOnApply
-            onApply={(value) => moderation.updateSection(
-              [`activityLog.${prefix}TitleTemplate`, `activityLog.${prefix}DescriptionTemplate`],
-              { activityLog: { [`${prefix}TitleTemplate`]: value.title, [`${prefix}DescriptionTemplate`]: value.description } },
-            )}
-            defaultMessage="Botul va folosi titlul și descrierea standard."
-            renderEditor={(value, change) => <>
-              <p className="break-words text-xs text-muted-foreground">{MEMBER_VARIABLES}{kind === "leave" && " · {server_left_at} · {server_left_at_relative} · {server_duration}"}</p>
-              <Field label="Titlu mesaj" value={value.title} onChange={(title) => change({ ...value, title })} />
-              <Field label="Descriere mesaj" multiline maxLength={2000} value={value.description} onChange={(description) => change({ ...value, description })} />
-              <div className="rounded-md bg-muted/50 p-3 text-xs">
-                <p className="font-medium">{renderMemberLogPreview(value.title, kind, kind === "join" ? "👋 Membru nou · a intrat pe server" : "🚪 Membru a părăsit serverul")}</p>
-                <p className="mt-1 whitespace-pre-wrap text-muted-foreground">{renderMemberLogPreview(value.description, kind, kind === "join" ? "Un membru nou s-a alăturat serverului." : "Membrul a părăsit serverul.")}</p>
-              </div>
-            </>}
-          />
-        </Card>;
-      })}
       <Card title="Mesaje de moderare" description="Titlul și descrierea notificărilor de moderare, cu variabile combinabile.">
         <MessageCustomizationDialog
           triggerId="moderation-embed-template" title="Mesajele embed de moderare"
@@ -113,6 +84,8 @@ export function MessageTemplatesPage() {
         />
       </Card>
     </div>}
+    {config && <ActivityLogTemplateEditors config={config} onSave={moderation.updateSection}
+      guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />}
     {!bot.data ? <p role={bot.error ? "alert" : undefined}>{bot.error?.message || <Loader2 className="h-6 w-6 animate-spin" />}</p> : <div className="grid gap-4 md:grid-cols-2">
       <Card title="Raport zilnic" description="Textele și etichetele raportului; canalul de publicare se configurează separat.">
         <MessageCustomizationDialog
