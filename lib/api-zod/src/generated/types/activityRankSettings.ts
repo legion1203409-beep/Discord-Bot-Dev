@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ActivityRankSettingsBarStyle } from './activityRankSettingsBarStyle';
+import type { ActivityRankSettingsRoleRewardsItem } from './activityRankSettingsRoleRewardsItem';
 
 export interface ActivityRankSettings {
   enabled: boolean;
@@ -21,4 +22,10 @@ export interface ActivityRankSettings {
   barStyle?: ActivityRankSettingsBarStyle;
   /** @pattern ^#[0-9a-fA-F]{6}$ */
   color: string;
+  /**
+     * Null uses automatic legacy roles. An explicit array uses only existing selected roles; an empty array disables role rewards. Levels and role IDs must each be unique.
+     * @maxItems 100
+     * @nullable
+     */
+  roleRewards?: ActivityRankSettingsRoleRewardsItem[] | null;
 }

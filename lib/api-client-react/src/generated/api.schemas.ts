@@ -245,6 +245,16 @@ export const ActivityRankSettingsBarStyle = {
   sword: 'sword',
 } as const;
 
+export type ActivityRankSettingsRoleRewardsItem = {
+  /**
+     * @minimum 1
+     * @maximum 100
+     */
+  level: number;
+  /** @pattern ^\d{5,25}$ */
+  roleId: string;
+};
+
 export interface ActivityRankSettings {
   enabled: boolean;
   /** @pattern ^(?:\d{5,25})?$ */
@@ -259,6 +269,12 @@ export interface ActivityRankSettings {
   barStyle?: ActivityRankSettingsBarStyle;
   /** @pattern ^#[0-9a-fA-F]{6}$ */
   color: string;
+  /**
+     * Null uses automatic legacy roles. An explicit array uses only existing selected roles; an empty array disables role rewards. Levels and role IDs must each be unique.
+     * @maxItems 100
+     * @nullable
+     */
+  roleRewards?: ActivityRankSettingsRoleRewardsItem[] | null;
 }
 
 export interface ActivityRankSettingsResponse {

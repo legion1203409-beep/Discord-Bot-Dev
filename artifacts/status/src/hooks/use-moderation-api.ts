@@ -39,6 +39,7 @@ export interface ModerationRole {
   name: string;
   position?: number;
   managed?: boolean;
+  activityRewardAssignable?: boolean;
 }
 
 export interface ModerationChannel {

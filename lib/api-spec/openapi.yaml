@@ -420,6 +420,17 @@ components:
           description: Empty, an app-upload object path, or an HTTPS image URL from cdn.discordapp.com, media.discordapp.net, i.imgur.com or images.unsplash.com. External redirects are not followed.
         barStyle: { type: string, enum: [discord, dungi, gradient, oblic, pixel, pro, sword], default: discord }
         color: { type: string, pattern: "^#[0-9a-fA-F]{6}$" }
+        roleRewards:
+          type: [array, "null"]
+          description: Null uses automatic legacy roles. An explicit array uses only existing selected roles; an empty array disables role rewards. Levels and role IDs must each be unique.
+          maxItems: 100
+          items:
+            type: object
+            additionalProperties: false
+            required: [level, roleId]
+            properties:
+              level: { type: integer, minimum: 1, maximum: 100 }
+              roleId: { type: string, pattern: "^\\d{5,25}$" }
     ActivityRankSettingsResponse:
       type: object
       additionalProperties: false

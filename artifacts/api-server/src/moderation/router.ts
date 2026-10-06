@@ -1,5 +1,5 @@
 import { PUBLIC_DISCORD_INVITE } from "../lib/discord-invite";
-import { getActivityRankConfig, saveActivityRankConfig } from "../bot/activity-ranks";
+import { getActivityRankConfig, saveActivityRankConfig, isSafeActivityRewardRole } from "../bot/activity-ranks";
 import { normalizeActivityRankConfig } from "../bot/activity-ranks-core";
 import { isSupportedActivityBannerSource } from "../bot/activity-rank-banner-source";
 
@@ -2418,7 +2418,7 @@ router.get("/guilds/:guildId/activity-ranks", asyncRoute(async (req, res) => {
 router.put("/guilds/:guildId/activity-ranks", asyncRoute(async (req, res) => {
   const guildId = parse(snowflake, req.params.guildId);
   await sessionAndGuild(req, guildId, "config", true);
-  const config = normalizeActivityRankConfig(parse(z.object({
+  const input = parse(z.object({
     enabled: z.boolean(),
     notificationChannelId: snowflake.or(z.literal("")),
     rankUpMessage: z.string().max(1_800),
@@ -2428,7 +2428,45 @@ router.put("/guilds/:guildId/activity-ranks", asyncRoute(async (req, res) => {
     ),
     barStyle: z.enum(["discord", "dungi", "gradient", "oblic", "pixel", "pro", "sword"]).optional(),
     color: z.string().regex(/^#[0-9a-f]{6}$/i),
-  }).strict(), req.body));
+    roleRewards: z.array(z.object({
+      level: z.number().int().min(1).max(100),
+      roleId: snowflake,
+    }).strict()).max(100).refine(
+      (rewards) => new Set(rewards.map((reward) => reward.level)).size === rewards.length &&
+        new Set(rewards.map((reward) => reward.roleId)).size === rewards.length,
+      "Nivelurile și rolurile trebuie să fie unice.",
+    ).nullable().optional(),
+  }).strict(), req.body);
+  // Older clients editing banners/channels must not reset manually configured rewards.
+  const config = normalizeActivityRankConfig({
+    ...input,
+    roleRewards: input.roleRewards === undefined
+      ? (await getActivityRankConfig(guildId)).roleRewards
+      : input.roleRewards,
+  });
+
+  if (config.roleRewards?.length) {
+    const client = getModerationClient();
+    if (!client?.isReady()) throw new ModerationAuthError(503, "Botul trebuie să fie conectat pentru a verifica rolurile alese.");
+    const guild = await client.guilds.fetch(guildId).catch(() => null);
+    if (!guild) throw new ModerationAuthError(400, "Serverul selectat nu este disponibil.");
+    const [roles, botMember] = await Promise.all([
+      guild.roles.fetch(),
+      guild.members.me ? Promise.resolve(guild.members.me) : guild.members.fetchMe(),
+    ]);
+    if (!botMember.permissions.has(PermissionFlagsBits.ManageRoles)) {
+      throw new ModerationAuthError(400, "Botul are nevoie de permisiunea Manage Roles.");
+    }
+    for (const reward of config.roleRewards) {
+      const role = roles.get(reward.roleId);
+      if (!role || role.id === guildId || !isSafeActivityRewardRole(role)) {
+        throw new ModerationAuthError(400, `Rolul de la nivelul ${reward.level} trebuie să existe în acest server și să nu fie gestionat sau administrativ.`);
+      }
+      if (role.position >= botMember.roles.highest.position) {
+        throw new ModerationAuthError(400, `Mută rolul botului deasupra rolului „${role.name}”, ales pentru nivelul ${reward.level}.`);
+      }
+    }
+  }
 
   if (config.notificationChannelId) {
     const client = getModerationClient();
@@ -2917,7 +2955,12 @@ router.get("/guilds/:guildId/metadata", asyncRoute(async (req, res) => {
   const [roles, channels, emojis] = await Promise.all([guild.roles.fetch(), guild.channels.fetch(), guild.emojis.fetch()]);
   res.json({
     guild: { id: guild.id, name: guild.name, ownerId: guild.ownerId },
-    roles: [...roles.values()].filter(Boolean).map((role) => ({ id: role.id, name: role.name, position: role.position, managed: role.managed })),
+    roles: [...roles.values()].filter(Boolean).map((role) => ({
+      id: role.id, name: role.name, position: role.position, managed: role.managed,
+      activityRewardAssignable: role.id !== guild.id && isSafeActivityRewardRole(role) &&
+        Boolean(guild.members.me?.permissions.has(PermissionFlagsBits.ManageRoles)) &&
+        role.position < (guild.members.me?.roles.highest.position ?? 0),
+    })),
     channels: [...channels.values()]
       .filter((channel): channel is NonNullable<typeof channel> => channel !== null)
       .map((channel) => ({ id: channel.id, name: channel.name, type: channel.type, parentId: channel.parentId })),

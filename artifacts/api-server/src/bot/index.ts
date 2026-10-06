@@ -729,10 +729,9 @@ async function handleActivityRank(interaction: ChatInputCommandInteraction): Pro
     ? Math.min(100, Math.floor(progress.progressXp * 100 / progress.requiredXp))
     : 100;
   const maxLevelMember = interaction.guild?.members.cache.get(target.id);
-  if (progress.level === ACTIVITY_MAX_LEVEL && maxLevelMember &&
-    !maxLevelMember.roles.cache.some((role) => role.name === ACTIVITY_MAX_LEVEL_ROLE)) {
+  if (config.enabled && maxLevelMember) {
     void syncActivityMilestoneRole(maxLevelMember, progress.level).catch((err) =>
-      logger.warn({ err, guildId, userId: target.id }, "Existing maximum activity level role could not be synchronized"),
+      logger.warn({ err, guildId, userId: target.id }, "Activity rank role could not be synchronized"),
     );
   }
   const filled = Math.floor(percentage / 10);
@@ -829,10 +828,9 @@ async function awardActivityToMember(
   const previousLevel = activityLevelForXp(award.previousXp);
   const level = activityLevelForXp(award.totalXp);
   if (level <= previousLevel) {
-    if (level === ACTIVITY_MAX_LEVEL && member &&
-      !member.roles.cache.some((role) => role.name === ACTIVITY_MAX_LEVEL_ROLE)) {
+    if (member && (level === ACTIVITY_MAX_LEVEL || award.previousXp === 0)) {
       void syncActivityMilestoneRole(member, level).catch((err) =>
-        logger.warn({ err, guildId, userId, level }, "Existing maximum activity level role could not be synchronized"),
+        logger.warn({ err, guildId, userId, level }, "Activity rank role could not be synchronized"),
       );
     }
     return;

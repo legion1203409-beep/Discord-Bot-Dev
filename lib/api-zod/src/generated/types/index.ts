@@ -9,6 +9,7 @@
 export * from './activityRankSettings';
 export * from './activityRankSettingsBarStyle';
 export * from './activityRankSettingsResponse';
+export * from './activityRankSettingsRoleRewardsItem';
 export * from './botControlPartialApplyResponse';
 export * from './botControlPartialApplyResponseVerification';
 export * from './botControlResponse';

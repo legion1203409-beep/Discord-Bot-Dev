@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   loadProvisioningPermissions: vi.fn(), saveProvisioningPermissions: vi.fn(),
   loadAllianceRecruitmentText: vi.fn(), saveAllianceRecruitmentText: vi.fn(),
   loadTicketConfig: vi.fn(), saveTicketConfig: vi.fn(),
+  getActivityRankConfig: vi.fn(), saveActivityRankConfig: vi.fn(),
   initGameplayConfig: vi.fn(), getGameplayConfig: vi.fn(), saveGuildGameplayConfig: vi.fn(),
   initChannelConfig: vi.fn(),
   loadVerificationConfig: vi.fn(), saveVerificationConfig: vi.fn(),
@@ -123,6 +124,13 @@ vi.mock("../../bot/verification", async (importOriginal) => ({
 }));
 
 import router, { provisioningPermissionSchema } from "../router";
+import { DEFAULT_ACTIVITY_RANK_CONFIG, type ActivityRankConfig } from "../../bot/activity-ranks-core";
+
+vi.mock("../../bot/activity-ranks", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../bot/activity-ranks")>(),
+  getActivityRankConfig: mocks.getActivityRankConfig,
+  saveActivityRankConfig: mocks.saveActivityRankConfig,
+}));
 
 describe("bot-control provisioning permission defaults", () => {
   it("fills missing fields while preserving explicitly saved permission values", () => {
@@ -180,6 +188,83 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
   const guildId = "123456789";
   const actorId = "987654321";
   let persistedTicketConfig = structuredClone(DEFAULT_TICKET_CONFIG);
+  describe("custom activity level rewards", () => {
+    let config: ActivityRankConfig;
+    beforeEach(() => {
+      config = structuredClone(DEFAULT_ACTIVITY_RANK_CONFIG);
+      mocks.getActivityRankConfig.mockImplementation(async () => structuredClone(config));
+      mocks.saveActivityRankConfig.mockImplementation(async (_guildId, value) => {
+        config = structuredClone(value);
+        return structuredClone(config);
+      });
+      const role = { id: "111111111", name: "Veteran", position: 2, managed: false, permissions: { has: () => false } };
+      mocks.client.mockReturnValue({
+        isReady: () => true,
+        guilds: { fetch: vi.fn().mockResolvedValue({
+          id: guildId,
+          roles: { fetch: vi.fn().mockResolvedValue(new Map([[role.id, role]])) },
+          members: { me: { permissions: { has: () => true }, roles: { highest: { position: 10 } } } },
+        }) },
+      });
+    });
+    const request = (body: unknown, csrf = "csrf") => fetch(`${base}/activity-ranks`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
+      body: JSON.stringify(body),
+    });
+    it("persists custom rewards and returns them on reload", async () => {
+      const roleRewards = [{ level: 37, roleId: "111111111" }];
+      expect((await request({ ...config, roleRewards })).status).toBe(200);
+      expect(mocks.saveActivityRankConfig).toHaveBeenCalledWith(guildId, expect.objectContaining({ roleRewards }));
+      expect(await (await fetch(`${base}/activity-ranks`)).json()).toMatchObject({ config: { roleRewards } });
+    });
+    it("preserves manual rewards for older clients and supports explicit removal and legacy mode", async () => {
+      config.roleRewards = [{ level: 37, roleId: "111111111" }];
+      const { roleRewards: _omit, ...oldClient } = config;
+      expect((await request(oldClient)).status).toBe(200);
+      expect(config.roleRewards).toEqual([{ level: 37, roleId: "111111111" }]);
+      expect((await request({ ...config, roleRewards: [] })).status).toBe(200);
+      expect(config.roleRewards).toEqual([]);
+      expect((await request({ ...config, roleRewards: null })).status).toBe(200);
+      expect(config.roleRewards).toBeNull();
+    });
+    it.each([
+      [{ level: 0, roleId: "111111111" }],
+      [{ level: 101, roleId: "111111111" }],
+      [{ level: 5, roleId: "111111111" }, { level: 5, roleId: "222222222" }],
+      [{ level: 5, roleId: "111111111" }, { level: 10, roleId: "111111111" }],
+      [{ level: 5, roleId: guildId }],
+      [{ level: 5, roleId: "999999999" }],
+    ])("rejects invalid/duplicate/foreign rewards without saving: %j", async (...rewards) => {
+      expect((await request({ ...config, roleRewards: rewards })).status).toBe(400);
+      expect(mocks.saveActivityRankConfig).not.toHaveBeenCalled();
+    });
+    it.each(["managed", "privileged", "higher", "permission"])("rejects a %s role or bot without permissions", async (kind) => {
+      const role = { id: "111111111", name: "Unsafe", position: kind === "higher" ? 20 : 2,
+        managed: kind === "managed", permissions: { has: () => kind === "privileged" } };
+      mocks.client.mockReturnValue({
+        isReady: () => true,
+        guilds: { fetch: vi.fn().mockResolvedValue({
+          id: guildId, roles: { fetch: vi.fn().mockResolvedValue(new Map([[role.id, role]])) },
+          members: { me: { permissions: { has: () => kind !== "permission" }, roles: { highest: { position: 10 } } } },
+        }) },
+      });
+      expect((await request({ ...config, roleRewards: [{ level: 5, roleId: role.id }] })).status).toBe(400);
+      expect(mocks.saveActivityRankConfig).not.toHaveBeenCalled();
+    });
+    it("requires a live bot for role validation and a valid CSRF token for writes", async () => {
+      mocks.client.mockReturnValue(null);
+      expect((await request({ ...config, roleRewards: [{ level: 5, roleId: "111111111" }] })).status).toBe(503);
+      mocks.csrf.mockImplementation(() => { throw new ModerationAuthError(403, "Invalid CSRF"); });
+      expect((await request(config, "invalid")).status).toBe(403);
+      expect(mocks.saveActivityRankConfig).not.toHaveBeenCalled();
+    });
+    it("rejects unauthorized guild configuration writes", async () => {
+      mocks.access.mockRejectedValue(new ModerationAuthError(403, "Owner only"));
+      expect((await request(config)).status).toBe(403);
+      expect(mocks.saveActivityRankConfig).not.toHaveBeenCalled();
+    });
+  });
   beforeAll(async () => {
     const app = express();
     app.use(express.json({ limit: "400kb" }));

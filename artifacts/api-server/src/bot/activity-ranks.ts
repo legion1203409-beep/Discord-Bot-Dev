@@ -222,12 +222,7 @@ export async function getActivityLeaderboard(
   }));
 }
 
-interface StoredActivityRoleIds {
-  "5"?: string;
-  "10"?: string;
-  "20"?: string;
-  "100"?: string;
-}
+type StoredActivityRoleIds = Record<string, string | undefined>;
 
 function activityRoleKey(guildId: string): string {
   return `${guildId}:${ACTIVITY_RANK_ROLES_KEY}`;
@@ -241,12 +236,9 @@ async function loadActivityRoleIds(guildId: string): Promise<StoredActivityRoleI
   );
   try {
     const value = JSON.parse(result.rows[0]?.value ?? "{}") as Record<string, unknown>;
-    return {
-      "5": typeof value["5"] === "string" ? value["5"] : undefined,
-      "10": typeof value["10"] === "string" ? value["10"] : undefined,
-      "20": typeof value["20"] === "string" ? value["20"] : undefined,
-      "100": typeof value["100"] === "string" ? value["100"] : undefined,
-    };
+    return Object.fromEntries(Object.entries(value).filter(([key, id]) =>
+      (/^(?:[1-9]\d?|100)$/.test(key) || /^history:(?:[1-9]\d?|100):[^:]+$/.test(key)) && typeof id === "string",
+    )) as StoredActivityRoleIds;
   } catch {
     return {};
   }
@@ -267,8 +259,22 @@ export async function syncActivityMilestoneRole(member: GuildMember, level: numb
   return serializeBotOperation(`activity-role:${member.guild.id}`, () => syncActivityMilestoneRoleLocked(member, level));
 }
 
+export function isSafeActivityRewardRole(role: Role): boolean {
+  return !role.managed && Boolean(role.permissions) && !role.permissions.has([
+    PermissionFlagsBits.Administrator, PermissionFlagsBits.ManageGuild,
+    PermissionFlagsBits.ManageRoles, PermissionFlagsBits.ManageChannels,
+    PermissionFlagsBits.KickMembers, PermissionFlagsBits.BanMembers,
+    PermissionFlagsBits.ModerateMembers, PermissionFlagsBits.ManageMessages,
+    PermissionFlagsBits.ManageWebhooks,
+  ], false);
+}
+
 async function syncActivityMilestoneRoleLocked(member: GuildMember, level: number): Promise<void> {
-  const milestone = [...ACTIVITY_ROLE_MILESTONES].reverse().find((candidate) => level >= candidate);
+  const config = await getActivityRankConfig(member.guild.id);
+  if (!config.enabled) return;
+  const rewards = config.roleRewards;
+  const thresholds = rewards === null ? [...ACTIVITY_ROLE_MILESTONES] : rewards.map((reward) => reward.level);
+  const milestone = thresholds.filter((candidate) => level >= candidate).sort((a, b) => b - a)[0];
   if (!milestone) return;
 
   const botMember = member.guild.members.me;
@@ -279,21 +285,27 @@ async function syncActivityMilestoneRoleLocked(member: GuildMember, level: numbe
 
   const roleIds = await loadActivityRoleIds(member.guild.id);
   // An older queued promotion must never replace a role from a higher milestone.
-  if (ACTIVITY_ROLE_MILESTONES.some((threshold) => threshold > milestone &&
-    roleIds[String(threshold) as keyof StoredActivityRoleIds] &&
-    member.roles.cache.has(roleIds[String(threshold) as keyof StoredActivityRoleIds]!))) return;
+  if (thresholds.some((threshold) => threshold > milestone &&
+    (Object.entries(roleIds).some(([key, id]) =>
+      (key === String(threshold) || key.startsWith(`history:${threshold}:`)) && id && member.roles.cache.has(id)) ||
+      member.roles.cache.has(rewards?.find((reward) => reward.level === threshold)?.roleId ?? "")))) return;
   const roleName = milestone === ACTIVITY_MAX_LEVEL
     ? ACTIVITY_MAX_LEVEL_ROLE
     : `Oracolul · Rang Activitate ${milestone}`;
   let role: Role | undefined;
-  const savedRoleId = roleIds[String(milestone) as keyof StoredActivityRoleIds];
+  const savedRoleId = rewards === null ? roleIds[String(milestone)] :
+    rewards.find((reward) => reward.level === milestone)?.roleId;
   if (savedRoleId) {
     role = member.guild.roles.cache.get(savedRoleId);
     if (!role) role = (await member.guild.roles.fetch(savedRoleId).catch(() => null)) ?? undefined;
   }
 
-  if (!role) {
+  if (!role && rewards === null) {
     role = member.guild.roles.cache.find((candidate) => candidate.name === roleName);
+  }
+  if (!role && rewards !== null) {
+    logger.warn({ guildId: member.guild.id, roleId: savedRoleId }, "Configured activity reward role is unavailable; no replacement created");
+    return;
   }
   if (!role) {
     const colors: Record<number, number> = {
@@ -311,7 +323,7 @@ async function syncActivityMilestoneRoleLocked(member: GuildMember, level: numbe
     });
   }
 
-  if (role.position >= botMember.roles.highest.position) {
+  if (role.id === member.guild.id || !isSafeActivityRewardRole(role) || role.position >= botMember.roles.highest.position) {
     logger.warn(
       { guildId: member.guild.id, roleId: role.id, userId: member.id },
       "Activity milestone role skipped: role is above the bot's highest role",
@@ -319,17 +331,27 @@ async function syncActivityMilestoneRoleLocked(member: GuildMember, level: numbe
     return;
   }
 
-  if (roleIds[String(milestone) as keyof StoredActivityRoleIds] !== role.id) {
-    roleIds[String(milestone) as keyof StoredActivityRoleIds] = role.id;
+  if (roleIds[String(milestone)] !== role.id) {
+    const previousId = roleIds[String(milestone)];
+    if (previousId) roleIds[`history:${milestone}:${previousId}`] = previousId;
+    roleIds[String(milestone)] = role.id;
+    // Persist ownership before Discord writes; keep previous IDs for inactive members too.
     await saveActivityRoleIds(member.guild.id, roleIds);
   }
-
-  const managedRoleIds = Object.values(roleIds).filter((id): id is string => Boolean(id));
-  const oldRoleIds = managedRoleIds.filter((id) => id !== role!.id && member.roles.cache.has(id));
-  if (oldRoleIds.length) {
-    await member.roles.remove(oldRoleIds, "Rol de rang de activitate înlocuit de un prag superior");
-  }
+  // Grant first: a failed assignment must not strip the previous level reward.
   if (!member.roles.cache.has(role.id)) {
     await member.roles.add(role, "Prag decorativ de rang de activitate atins");
+  }
+  const managedRoleIds = [...Object.values(roleIds), ...(rewards ?? []).map((reward) => reward.roleId)];
+  const oldRoleIds = [...new Set(managedRoleIds)].filter((id): id is string =>
+    Boolean(id) && id !== role!.id && member.roles.cache.has(id!));
+  // Do not remove a role that has since gained staff powers or become unmanageable.
+  const removableRoleIds = oldRoleIds.filter((id) => {
+    const previous = member.guild.roles.cache.get(id);
+    return previous && previous.id !== member.guild.id && isSafeActivityRewardRole(previous) &&
+      previous.position < botMember.roles.highest.position;
+  });
+  if (removableRoleIds.length) {
+    await member.roles.remove(removableRoleIds, "Rol de rang de activitate înlocuit de un prag superior");
   }
 }

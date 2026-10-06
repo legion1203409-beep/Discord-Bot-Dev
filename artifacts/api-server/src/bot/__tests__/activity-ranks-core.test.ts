@@ -54,6 +54,13 @@ describe("activity rank progression", () => {
 });
 
 describe("activity chat qualification and config normalization", () => {
+  it("keeps legacy role mode distinct from custom and empty rewards", () => {
+    expect(normalizeActivityRankConfig({}).roleRewards).toBeNull();
+    expect(normalizeActivityRankConfig({ roleRewards: [] }).roleRewards).toEqual([]);
+    expect(normalizeActivityRankConfig({ roleRewards: [
+      { level: 100, roleId: "222222" }, { level: 1, roleId: "111111" }, { level: 101, roleId: "333333" },
+    ] }).roleRewards).toEqual([{ level: 1, roleId: "111111" }, { level: 100, roleId: "222222" }]);
+  });
   it("rejects short messages, commands, and repetitive spam", () => {
     expect(isEligibleActivityMessage("hi")).toBe(false);
     expect(isEligibleActivityMessage("/profil")).toBe(false);
@@ -72,6 +79,7 @@ describe("activity chat qualification and config normalization", () => {
       enabled: false,
       notificationChannelId: "",
       rankUpMessage: "New rank {level}",
+      roleRewards: null,
       bannerImageUrl: "",
       barStyle: "discord",
       color: "#a34b2b",

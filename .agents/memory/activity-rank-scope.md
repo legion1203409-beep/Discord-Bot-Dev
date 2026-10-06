@@ -50,3 +50,15 @@ Activity `/rank` and its monthly top must be public in the guild channel.
 **Why:** The user asked for everyone to see `/rank` and the top.
 
 **How to apply:** Keep administrative and unrelated private responses unchanged; this visibility rule applies to activity ranking commands.
+
+Administrators choose their own activity reward levels between 1 and 100 and link them to existing Discord roles through the website, separately for each guild.
+
+**Why:** The user selected „Aleg eu nivelurile și rolurile, între 1 și 100” rather than the fixed milestone option.
+
+**How to apply:** Preserve legacy automatic rewards until custom mode is selected. In custom mode, honor only the chosen mappings; an explicitly empty list means no new role rewards, not a fallback to automatic roles. Never create substitute roles for deleted or inaccessible custom choices.
+
+Changing activity-rank settings must preserve all member-earned activity XP and levels; activity-rank configuration must not reset RPG XP either.
+
+**Why:** The user explicitly asked for XP to remain when making further changes.
+
+**How to apply:** Keep progression records independent from settings writes and data migrations; add a preservation test whenever configuration-save behavior changes.

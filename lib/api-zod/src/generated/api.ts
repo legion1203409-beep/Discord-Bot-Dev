@@ -208,6 +208,11 @@ export const moderationGetActivityRanksResponseConfigBannerImageUrlMax = 2000;
 
 export const moderationGetActivityRanksResponseConfigBarStyleDefault = `discord`;
 export const moderationGetActivityRanksResponseConfigColorRegExp = new RegExp('^#[0-9a-fA-F]{6}$');
+export const moderationGetActivityRanksResponseConfigRoleRewardsItemLevelMax = 100;
+
+export const moderationGetActivityRanksResponseConfigRoleRewardsItemRoleIdRegExp = new RegExp('^\\d{5,25}$');
+export const moderationGetActivityRanksResponseConfigRoleRewardsMax = 100;
+
 
 
 export const ModerationGetActivityRanksResponse = zod.object({
@@ -217,7 +222,11 @@ export const ModerationGetActivityRanksResponse = zod.object({
   "rankUpMessage": zod.string().max(moderationGetActivityRanksResponseConfigRankUpMessageMax),
   "bannerImageUrl": zod.string().max(moderationGetActivityRanksResponseConfigBannerImageUrlMax).describe('Empty, an app-upload object path, or an HTTPS image URL from cdn.discordapp.com, media.discordapp.net, i.imgur.com or images.unsplash.com. External redirects are not followed.'),
   "barStyle": zod.enum(['discord', 'dungi', 'gradient', 'oblic', 'pixel', 'pro', 'sword']).default(moderationGetActivityRanksResponseConfigBarStyleDefault),
-  "color": zod.string().regex(moderationGetActivityRanksResponseConfigColorRegExp)
+  "color": zod.string().regex(moderationGetActivityRanksResponseConfigColorRegExp),
+  "roleRewards": zod.array(zod.object({
+  "level": zod.number().min(1).max(moderationGetActivityRanksResponseConfigRoleRewardsItemLevelMax),
+  "roleId": zod.string().regex(moderationGetActivityRanksResponseConfigRoleRewardsItemRoleIdRegExp)
+})).max(moderationGetActivityRanksResponseConfigRoleRewardsMax).nullish().describe('Null uses automatic legacy roles. An explicit array uses only existing selected roles; an empty array disables role rewards. Levels and role IDs must each be unique.')
 })
 })
 
@@ -238,6 +247,11 @@ export const moderationPutActivityRanksBodyBannerImageUrlMax = 2000;
 
 export const moderationPutActivityRanksBodyBarStyleDefault = `discord`;
 export const moderationPutActivityRanksBodyColorRegExp = new RegExp('^#[0-9a-fA-F]{6}$');
+export const moderationPutActivityRanksBodyRoleRewardsItemLevelMax = 100;
+
+export const moderationPutActivityRanksBodyRoleRewardsItemRoleIdRegExp = new RegExp('^\\d{5,25}$');
+export const moderationPutActivityRanksBodyRoleRewardsMax = 100;
+
 
 
 export const ModerationPutActivityRanksBody = zod.object({
@@ -246,7 +260,11 @@ export const ModerationPutActivityRanksBody = zod.object({
   "rankUpMessage": zod.string().max(moderationPutActivityRanksBodyRankUpMessageMax),
   "bannerImageUrl": zod.string().max(moderationPutActivityRanksBodyBannerImageUrlMax).describe('Empty, an app-upload object path, or an HTTPS image URL from cdn.discordapp.com, media.discordapp.net, i.imgur.com or images.unsplash.com. External redirects are not followed.'),
   "barStyle": zod.enum(['discord', 'dungi', 'gradient', 'oblic', 'pixel', 'pro', 'sword']).default(moderationPutActivityRanksBodyBarStyleDefault),
-  "color": zod.string().regex(moderationPutActivityRanksBodyColorRegExp)
+  "color": zod.string().regex(moderationPutActivityRanksBodyColorRegExp),
+  "roleRewards": zod.array(zod.object({
+  "level": zod.number().min(1).max(moderationPutActivityRanksBodyRoleRewardsItemLevelMax),
+  "roleId": zod.string().regex(moderationPutActivityRanksBodyRoleRewardsItemRoleIdRegExp)
+})).max(moderationPutActivityRanksBodyRoleRewardsMax).nullish().describe('Null uses automatic legacy roles. An explicit array uses only existing selected roles; an empty array disables role rewards. Levels and role IDs must each be unique.')
 })
 
 export const moderationPutActivityRanksResponseConfigNotificationChannelIdRegExp = new RegExp('^(?:\\d{5,25})?$');
@@ -256,6 +274,11 @@ export const moderationPutActivityRanksResponseConfigBannerImageUrlMax = 2000;
 
 export const moderationPutActivityRanksResponseConfigBarStyleDefault = `discord`;
 export const moderationPutActivityRanksResponseConfigColorRegExp = new RegExp('^#[0-9a-fA-F]{6}$');
+export const moderationPutActivityRanksResponseConfigRoleRewardsItemLevelMax = 100;
+
+export const moderationPutActivityRanksResponseConfigRoleRewardsItemRoleIdRegExp = new RegExp('^\\d{5,25}$');
+export const moderationPutActivityRanksResponseConfigRoleRewardsMax = 100;
+
 
 
 export const ModerationPutActivityRanksResponse = zod.object({
@@ -265,7 +288,11 @@ export const ModerationPutActivityRanksResponse = zod.object({
   "rankUpMessage": zod.string().max(moderationPutActivityRanksResponseConfigRankUpMessageMax),
   "bannerImageUrl": zod.string().max(moderationPutActivityRanksResponseConfigBannerImageUrlMax).describe('Empty, an app-upload object path, or an HTTPS image URL from cdn.discordapp.com, media.discordapp.net, i.imgur.com or images.unsplash.com. External redirects are not followed.'),
   "barStyle": zod.enum(['discord', 'dungi', 'gradient', 'oblic', 'pixel', 'pro', 'sword']).default(moderationPutActivityRanksResponseConfigBarStyleDefault),
-  "color": zod.string().regex(moderationPutActivityRanksResponseConfigColorRegExp)
+  "color": zod.string().regex(moderationPutActivityRanksResponseConfigColorRegExp),
+  "roleRewards": zod.array(zod.object({
+  "level": zod.number().min(1).max(moderationPutActivityRanksResponseConfigRoleRewardsItemLevelMax),
+  "roleId": zod.string().regex(moderationPutActivityRanksResponseConfigRoleRewardsItemRoleIdRegExp)
+})).max(moderationPutActivityRanksResponseConfigRoleRewardsMax).nullish().describe('Null uses automatic legacy roles. An explicit array uses only existing selected roles; an empty array disables role rewards. Levels and role IDs must each be unique.')
 })
 })
 

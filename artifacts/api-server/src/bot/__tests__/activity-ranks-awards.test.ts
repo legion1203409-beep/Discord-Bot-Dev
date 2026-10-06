@@ -5,7 +5,9 @@ import {
   ensureActivityRanksTable,
   getActivityLeaderboard,
   getActivityRank,
+  saveActivityRankConfig,
 } from "../activity-ranks";
+import { DEFAULT_ACTIVITY_RANK_CONFIG } from "../activity-ranks-core";
 
 const queryMock = vi.hoisted(() => vi.fn());
 vi.mock("@workspace/db", () => ({ pool: { query: queryMock } }));
@@ -26,6 +28,11 @@ beforeAll(async () => {
   realPool = (await vi.importActual<typeof import("@workspace/db")>("@workspace/db")).pool;
   await realPool.query(`CREATE SCHEMA "${schema}"`);
   schemaCreated = true;
+  await realPool.query(`CREATE TABLE "${schema}".bot_state (
+    key text PRIMARY KEY,
+    value text NOT NULL,
+    updated_at timestamptz NOT NULL DEFAULT now()
+  )`);
   queryMock.mockImplementation(async (sql: string, values?: unknown[]) => {
     const client = await realPool.connect();
     try {
@@ -72,6 +79,27 @@ async function stored() {
 }
 
 describe("uncapped activity XP in isolated PostgreSQL fixtures", () => {
+  it("preserves earned activity XP when rank settings are changed", async () => {
+    await seed();
+    const before = await stored();
+
+    await saveActivityRankConfig("guild-a", {
+      ...DEFAULT_ACTIVITY_RANK_CONFIG,
+      barStyle: "pixel",
+      color: "#123456",
+      roleRewards: [{ level: 37, roleId: "123456789012345678" }],
+    });
+
+    expect(await stored()).toMatchObject({
+      total_xp: before.total_xp,
+      daily_xp: before.daily_xp,
+      daily_chat_xp: before.daily_chat_xp,
+      daily_voice_xp: before.daily_voice_xp,
+      month_key: before.month_key,
+      monthly_xp: before.monthly_xp,
+    });
+  });
+
   it("keeps 10 XP per chat award and 5 XP per voice award", async () => {
     expect(await awardActivityXp("guild-a", "member-a", "chat", now))
       .toEqual({ previousXp: 0, totalXp: 10 });

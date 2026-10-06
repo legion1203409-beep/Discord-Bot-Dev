@@ -9,6 +9,11 @@ export const ACTIVITY_ROLE_MILESTONES = [5, 10, 20, ACTIVITY_MAX_LEVEL] as const
 export const ACTIVITY_BAR_STYLES = ["discord", "dungi", "gradient", "oblic", "pixel", "pro", "sword"] as const;
 export type ActivityBarStyle = typeof ACTIVITY_BAR_STYLES[number];
 
+export interface ActivityRoleReward {
+  level: number;
+  roleId: string;
+}
+
 export interface ActivityRankConfig {
   enabled: boolean;
   notificationChannelId: string;
@@ -16,6 +21,8 @@ export interface ActivityRankConfig {
   bannerImageUrl: string;
   barStyle: ActivityBarStyle;
   color: string;
+  /** null preserves the legacy automatic roles; [] explicitly disables role rewards. */
+  roleRewards: ActivityRoleReward[] | null;
 }
 
 export const DEFAULT_ACTIVITY_RANK_CONFIG: ActivityRankConfig = {
@@ -25,6 +32,7 @@ export const DEFAULT_ACTIVITY_RANK_CONFIG: ActivityRankConfig = {
   bannerImageUrl: "",
   barStyle: "discord",
   color: "#a34b2b",
+  roleRewards: null,
 };
 
 export function normalizeActivityRankConfig(value: unknown): ActivityRankConfig {
@@ -51,6 +59,14 @@ export function normalizeActivityRankConfig(value: unknown): ActivityRankConfig 
       ? input.barStyle as ActivityBarStyle
       : DEFAULT_ACTIVITY_RANK_CONFIG.barStyle,
     color,
+    roleRewards: Array.isArray(input.roleRewards)
+      ? input.roleRewards.filter((item): item is ActivityRoleReward => {
+        if (!item || typeof item !== "object") return false;
+        const reward = item as Record<string, unknown>;
+        return Number.isInteger(reward.level) && Number(reward.level) >= 1 && Number(reward.level) <= 100 &&
+          typeof reward.roleId === "string" && /^\d{5,25}$/.test(reward.roleId);
+      }).map(({ level, roleId }) => ({ level, roleId })).sort((a, b) => a.level - b.level)
+      : null,
   };
 }
 

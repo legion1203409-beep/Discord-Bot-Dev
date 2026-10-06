@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Activity, Loader2, Save, Trophy } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { ImageField } from "../../components/moderation/ImageField";
+import { ActivityRoleRewardsEditor } from "../../components/moderation/ActivityRoleRewardsEditor";
+import { activityRoleRewardsError, type ActivityRoleReward } from "../../lib/activity-role-rewards";
 import { Input } from "../../components/ui/input";
 import { Switch } from "../../components/ui/switch";
 import { Textarea } from "../../components/ui/textarea";
@@ -16,6 +18,7 @@ interface ActivityRankConfig {
   bannerImageUrl: string;
   barStyle: "discord" | "dungi" | "gradient" | "oblic" | "pixel" | "pro" | "sword";
   color: string;
+  roleRewards: ActivityRoleReward[] | null;
 }
 
 const DEFAULT_CONFIG: ActivityRankConfig = {
@@ -25,6 +28,7 @@ const DEFAULT_CONFIG: ActivityRankConfig = {
   bannerImageUrl: "",
   barStyle: "discord",
   color: "#a34b2b",
+  roleRewards: null,
 };
 
 function isTextChannel(type: number | string): boolean {
@@ -59,8 +63,9 @@ export function ActivityRanksPage() {
       signal: controller.signal,
     }).then(({ data }) => {
       if (controller.signal.aborted) return;
-      setDraft(data.config);
-      setSaved(data.config);
+      const config = { ...data.config, roleRewards: data.config.roleRewards ?? null };
+      setDraft(config);
+      setSaved(config);
     }).catch((loadError: unknown) => {
       if (!controller.signal.aborted) {
         setError(loadError instanceof Error ? loadError.message : "Setările rangurilor nu au putut fi încărcate.");
@@ -76,13 +81,18 @@ export function ActivityRanksPage() {
     [metadata],
   );
   const hasChanges = JSON.stringify(draft) !== JSON.stringify(saved);
+  const rewardsError = activityRoleRewardsError(draft.roleRewards) ||
+    (draft.roleRewards?.some((reward) => {
+      const role = metadata?.roles.find((candidate) => candidate.id === reward.roleId);
+      return !role || role.id === guildId || role.managed || role.activityRewardAssignable === false;
+    }) ? "Înlocuiește sau șterge rolurile indisponibile înainte de salvare." : "");
 
   const update = <K extends keyof ActivityRankConfig>(key: K, value: ActivityRankConfig[K]) => {
     setDraft((current) => ({ ...current, [key]: value }));
   };
 
   const save = async () => {
-    if (!guildId || saving) return;
+    if (!guildId || saving || rewardsError || loading || metadataLoading) return;
     const savingGuildId = guildId;
     setSaving(true);
     setError("");
@@ -148,8 +158,11 @@ export function ActivityRanksPage() {
             <div className="grid gap-3 rounded-lg border border-border/70 bg-background/50 p-4 text-sm sm:grid-cols-3">
               <p><strong>Chat:</strong> 10 XP pentru un mesaj valid, cu pauză de 30 de secunde și fără limită zilnică.</p>
               <p><strong>Voce:</strong> 5 XP pe minut într-un canal cu cel puțin doi membri reali, fără limită zilnică.</p>
-              <p><strong>Nivel maxim:</strong> 100. La atingerea lui, se acordă rolul „Legenda Cenușii”; XP-ul permanent și cel lunar continuă să crească.</p>
+              <p><strong>Nivel maxim:</strong> 100. XP-ul permanent și cel lunar continuă să crească. În modul automat, rolul final este „Legenda Cenușii”; în modul personalizat, alegi tu recompensele.</p>
             </div>
+            <p className="text-xs text-muted-foreground">
+              Modificarea setărilor, inclusiv a pragurilor și rolurilor, nu șterge XP-ul sau nivelul de activitate acumulat. XP-ul RPG rămâne separat.
+            </p>
             <p className="text-xs text-muted-foreground">
               XP-ul din chat necesită „Message Content” activ atât în configurația botului, cât și în Discord Developer Portal. Fără el, progresul vocal continuă normal.
             </p>
@@ -159,7 +172,7 @@ export function ActivityRanksPage() {
             <div className="flex items-start gap-3">
               <span className="rounded-lg border border-primary/30 bg-primary/10 p-2 text-primary"><Trophy className="h-5 w-5" /></span>
               <div>
-                <h2 className="font-semibold">Anunțuri și roluri decorative</h2>
+                <h2 className="font-semibold">Anunțuri și aspect</h2>
                 <p className="mt-1 text-sm text-muted-foreground">Alege un canal dedicat; dacă îl golești sau devine invalid, rangurile nu trimit notificări în altă parte.</p>
               </div>
             </div>
@@ -234,7 +247,14 @@ export function ActivityRanksPage() {
               </Select>
               <span className="block text-xs text-muted-foreground">Șapte stiluri animate, toate cu bara subțire și fără fundal exterior. Emblema rotundă XP rămâne în bannerul implicit, iar bara se umple până la progresul real al membrului.</span>
             </label>
-            <p className="text-xs text-muted-foreground">La rangurile 5, 10 și 20, botul oferă roluri decorative și înlocuiește rolul de prag anterior. La rangul 100 acordă rolul final „Legenda Cenușii”. Are nevoie de Manage Roles, iar rolul lui trebuie să fie deasupra rolurilor create.</p>
+            <ActivityRoleRewardsEditor
+              value={draft.roleRewards}
+              onChange={(roleRewards) => update("roleRewards", roleRewards)}
+              roles={metadata?.roles ?? []}
+              guildId={guildId}
+              disabled={saving || metadataLoading}
+            />
+            {rewardsError && <p role="alert" className="text-sm text-destructive">{rewardsError}</p>}
           </section>
 
           <section className="space-y-3 rounded-xl border border-border bg-card p-5">
@@ -276,7 +296,7 @@ export function ActivityRanksPage() {
 
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
             <p className="text-xs text-muted-foreground">{hasChanges ? "Ai modificări nesalvate." : "Setările sunt salvate."}</p>
-            <Button onClick={() => void save()} disabled={saving || !hasChanges} className="gap-2">
+            <Button onClick={() => void save()} disabled={saving || !hasChanges || loading || metadataLoading || Boolean(rewardsError)} className="gap-2">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               {saving ? "Se salvează…" : "Salvează"}
             </Button>
