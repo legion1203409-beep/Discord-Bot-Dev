@@ -208,6 +208,24 @@ export const moderationGetActivityRanksResponseConfigBannerImageUrlMax = 2000;
 
 export const moderationGetActivityRanksResponseConfigBarStyleDefault = `discord`;
 export const moderationGetActivityRanksResponseConfigColorRegExp = new RegExp('^#[0-9a-fA-F]{6}$');
+export const moderationGetActivityRanksResponseConfigLayoutBarXMin = 0;
+export const moderationGetActivityRanksResponseConfigLayoutBarXMax = 100;
+
+export const moderationGetActivityRanksResponseConfigLayoutBarYMin = 0;
+export const moderationGetActivityRanksResponseConfigLayoutBarYMax = 100;
+
+export const moderationGetActivityRanksResponseConfigLayoutBarWidthMin = 30;
+export const moderationGetActivityRanksResponseConfigLayoutBarWidthMax = 100;
+
+export const moderationGetActivityRanksResponseConfigLayoutMemberXMin = 0;
+export const moderationGetActivityRanksResponseConfigLayoutMemberXMax = 100;
+
+export const moderationGetActivityRanksResponseConfigLayoutMemberYMin = 0;
+export const moderationGetActivityRanksResponseConfigLayoutMemberYMax = 100;
+
+export const moderationGetActivityRanksResponseConfigLayoutMemberWidthMin = 40;
+export const moderationGetActivityRanksResponseConfigLayoutMemberWidthMax = 100;
+
 export const moderationGetActivityRanksResponseConfigRoleRewardsItemLevelMax = 100;
 
 export const moderationGetActivityRanksResponseConfigRoleRewardsItemRoleIdRegExp = new RegExp('^\\d{5,25}$');
@@ -223,6 +241,18 @@ export const ModerationGetActivityRanksResponse = zod.object({
   "bannerImageUrl": zod.string().max(moderationGetActivityRanksResponseConfigBannerImageUrlMax).describe('Empty, an app-upload object path, or an HTTPS image URL from cdn.discordapp.com, media.discordapp.net, i.imgur.com or images.unsplash.com. External redirects are not followed.'),
   "barStyle": zod.enum(['discord', 'dungi', 'gradient', 'oblic', 'pixel', 'pro', 'sword']).default(moderationGetActivityRanksResponseConfigBarStyleDefault),
   "color": zod.string().regex(moderationGetActivityRanksResponseConfigColorRegExp),
+  "layout": zod.object({
+  "bar": zod.object({
+  "x": zod.number().min(moderationGetActivityRanksResponseConfigLayoutBarXMin).max(moderationGetActivityRanksResponseConfigLayoutBarXMax).describe('Left edge as a percentage of banner width.'),
+  "y": zod.number().min(moderationGetActivityRanksResponseConfigLayoutBarYMin).max(moderationGetActivityRanksResponseConfigLayoutBarYMax).describe('Top edge as a percentage of banner height.'),
+  "width": zod.number().min(moderationGetActivityRanksResponseConfigLayoutBarWidthMin).max(moderationGetActivityRanksResponseConfigLayoutBarWidthMax).describe('Width and proportional size as a percentage of banner width.')
+}),
+  "member": zod.object({
+  "x": zod.number().min(moderationGetActivityRanksResponseConfigLayoutMemberXMin).max(moderationGetActivityRanksResponseConfigLayoutMemberXMax).describe('Left edge as a percentage of banner width.'),
+  "y": zod.number().min(moderationGetActivityRanksResponseConfigLayoutMemberYMin).max(moderationGetActivityRanksResponseConfigLayoutMemberYMax).describe('Top edge as a percentage of banner height.'),
+  "width": zod.number().min(moderationGetActivityRanksResponseConfigLayoutMemberWidthMin).max(moderationGetActivityRanksResponseConfigLayoutMemberWidthMax).describe('Width and proportional size as a percentage of banner width.')
+})
+}).nullish().describe('Optional banner-relative placement and size overrides for the animated XP bar and member identity card. Null preserves automatic placement.'),
   "roleRewards": zod.array(zod.object({
   "level": zod.number().min(1).max(moderationGetActivityRanksResponseConfigRoleRewardsItemLevelMax),
   "roleId": zod.string().regex(moderationGetActivityRanksResponseConfigRoleRewardsItemRoleIdRegExp)
@@ -247,6 +277,24 @@ export const moderationPutActivityRanksBodyBannerImageUrlMax = 2000;
 
 export const moderationPutActivityRanksBodyBarStyleDefault = `discord`;
 export const moderationPutActivityRanksBodyColorRegExp = new RegExp('^#[0-9a-fA-F]{6}$');
+export const moderationPutActivityRanksBodyLayoutBarXMin = 0;
+export const moderationPutActivityRanksBodyLayoutBarXMax = 100;
+
+export const moderationPutActivityRanksBodyLayoutBarYMin = 0;
+export const moderationPutActivityRanksBodyLayoutBarYMax = 100;
+
+export const moderationPutActivityRanksBodyLayoutBarWidthMin = 30;
+export const moderationPutActivityRanksBodyLayoutBarWidthMax = 100;
+
+export const moderationPutActivityRanksBodyLayoutMemberXMin = 0;
+export const moderationPutActivityRanksBodyLayoutMemberXMax = 100;
+
+export const moderationPutActivityRanksBodyLayoutMemberYMin = 0;
+export const moderationPutActivityRanksBodyLayoutMemberYMax = 100;
+
+export const moderationPutActivityRanksBodyLayoutMemberWidthMin = 40;
+export const moderationPutActivityRanksBodyLayoutMemberWidthMax = 100;
+
 export const moderationPutActivityRanksBodyRoleRewardsItemLevelMax = 100;
 
 export const moderationPutActivityRanksBodyRoleRewardsItemRoleIdRegExp = new RegExp('^\\d{5,25}$');
@@ -261,6 +309,18 @@ export const ModerationPutActivityRanksBody = zod.object({
   "bannerImageUrl": zod.string().max(moderationPutActivityRanksBodyBannerImageUrlMax).describe('Empty, an app-upload object path, or an HTTPS image URL from cdn.discordapp.com, media.discordapp.net, i.imgur.com or images.unsplash.com. External redirects are not followed.'),
   "barStyle": zod.enum(['discord', 'dungi', 'gradient', 'oblic', 'pixel', 'pro', 'sword']).default(moderationPutActivityRanksBodyBarStyleDefault),
   "color": zod.string().regex(moderationPutActivityRanksBodyColorRegExp),
+  "layout": zod.object({
+  "bar": zod.object({
+  "x": zod.number().min(moderationPutActivityRanksBodyLayoutBarXMin).max(moderationPutActivityRanksBodyLayoutBarXMax).describe('Left edge as a percentage of banner width.'),
+  "y": zod.number().min(moderationPutActivityRanksBodyLayoutBarYMin).max(moderationPutActivityRanksBodyLayoutBarYMax).describe('Top edge as a percentage of banner height.'),
+  "width": zod.number().min(moderationPutActivityRanksBodyLayoutBarWidthMin).max(moderationPutActivityRanksBodyLayoutBarWidthMax).describe('Width and proportional size as a percentage of banner width.')
+}),
+  "member": zod.object({
+  "x": zod.number().min(moderationPutActivityRanksBodyLayoutMemberXMin).max(moderationPutActivityRanksBodyLayoutMemberXMax).describe('Left edge as a percentage of banner width.'),
+  "y": zod.number().min(moderationPutActivityRanksBodyLayoutMemberYMin).max(moderationPutActivityRanksBodyLayoutMemberYMax).describe('Top edge as a percentage of banner height.'),
+  "width": zod.number().min(moderationPutActivityRanksBodyLayoutMemberWidthMin).max(moderationPutActivityRanksBodyLayoutMemberWidthMax).describe('Width and proportional size as a percentage of banner width.')
+})
+}).nullish().describe('Optional banner-relative placement and size overrides for the animated XP bar and member identity card. Null preserves automatic placement.'),
   "roleRewards": zod.array(zod.object({
   "level": zod.number().min(1).max(moderationPutActivityRanksBodyRoleRewardsItemLevelMax),
   "roleId": zod.string().regex(moderationPutActivityRanksBodyRoleRewardsItemRoleIdRegExp)
@@ -274,6 +334,24 @@ export const moderationPutActivityRanksResponseConfigBannerImageUrlMax = 2000;
 
 export const moderationPutActivityRanksResponseConfigBarStyleDefault = `discord`;
 export const moderationPutActivityRanksResponseConfigColorRegExp = new RegExp('^#[0-9a-fA-F]{6}$');
+export const moderationPutActivityRanksResponseConfigLayoutBarXMin = 0;
+export const moderationPutActivityRanksResponseConfigLayoutBarXMax = 100;
+
+export const moderationPutActivityRanksResponseConfigLayoutBarYMin = 0;
+export const moderationPutActivityRanksResponseConfigLayoutBarYMax = 100;
+
+export const moderationPutActivityRanksResponseConfigLayoutBarWidthMin = 30;
+export const moderationPutActivityRanksResponseConfigLayoutBarWidthMax = 100;
+
+export const moderationPutActivityRanksResponseConfigLayoutMemberXMin = 0;
+export const moderationPutActivityRanksResponseConfigLayoutMemberXMax = 100;
+
+export const moderationPutActivityRanksResponseConfigLayoutMemberYMin = 0;
+export const moderationPutActivityRanksResponseConfigLayoutMemberYMax = 100;
+
+export const moderationPutActivityRanksResponseConfigLayoutMemberWidthMin = 40;
+export const moderationPutActivityRanksResponseConfigLayoutMemberWidthMax = 100;
+
 export const moderationPutActivityRanksResponseConfigRoleRewardsItemLevelMax = 100;
 
 export const moderationPutActivityRanksResponseConfigRoleRewardsItemRoleIdRegExp = new RegExp('^\\d{5,25}$');
@@ -289,6 +367,18 @@ export const ModerationPutActivityRanksResponse = zod.object({
   "bannerImageUrl": zod.string().max(moderationPutActivityRanksResponseConfigBannerImageUrlMax).describe('Empty, an app-upload object path, or an HTTPS image URL from cdn.discordapp.com, media.discordapp.net, i.imgur.com or images.unsplash.com. External redirects are not followed.'),
   "barStyle": zod.enum(['discord', 'dungi', 'gradient', 'oblic', 'pixel', 'pro', 'sword']).default(moderationPutActivityRanksResponseConfigBarStyleDefault),
   "color": zod.string().regex(moderationPutActivityRanksResponseConfigColorRegExp),
+  "layout": zod.object({
+  "bar": zod.object({
+  "x": zod.number().min(moderationPutActivityRanksResponseConfigLayoutBarXMin).max(moderationPutActivityRanksResponseConfigLayoutBarXMax).describe('Left edge as a percentage of banner width.'),
+  "y": zod.number().min(moderationPutActivityRanksResponseConfigLayoutBarYMin).max(moderationPutActivityRanksResponseConfigLayoutBarYMax).describe('Top edge as a percentage of banner height.'),
+  "width": zod.number().min(moderationPutActivityRanksResponseConfigLayoutBarWidthMin).max(moderationPutActivityRanksResponseConfigLayoutBarWidthMax).describe('Width and proportional size as a percentage of banner width.')
+}),
+  "member": zod.object({
+  "x": zod.number().min(moderationPutActivityRanksResponseConfigLayoutMemberXMin).max(moderationPutActivityRanksResponseConfigLayoutMemberXMax).describe('Left edge as a percentage of banner width.'),
+  "y": zod.number().min(moderationPutActivityRanksResponseConfigLayoutMemberYMin).max(moderationPutActivityRanksResponseConfigLayoutMemberYMax).describe('Top edge as a percentage of banner height.'),
+  "width": zod.number().min(moderationPutActivityRanksResponseConfigLayoutMemberWidthMin).max(moderationPutActivityRanksResponseConfigLayoutMemberWidthMax).describe('Width and proportional size as a percentage of banner width.')
+})
+}).nullish().describe('Optional banner-relative placement and size overrides for the animated XP bar and member identity card. Null preserves automatic placement.'),
   "roleRewards": zod.array(zod.object({
   "level": zod.number().min(1).max(moderationPutActivityRanksResponseConfigRoleRewardsItemLevelMax),
   "roleId": zod.string().regex(moderationPutActivityRanksResponseConfigRoleRewardsItemRoleIdRegExp)

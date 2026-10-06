@@ -116,8 +116,13 @@ export function ActivityRanksPage() {
         { method: "PUT", body: JSON.stringify(draft) },
       );
       if (activeGuildRef.current === savingGuildId) {
-        setDraft(data.config);
-        setSaved(data.config);
+        const savedConfig = {
+          ...data.config,
+          roleRewards: data.config.roleRewards ?? null,
+          layout: data.config.layout ?? null,
+        };
+        setDraft(savedConfig);
+        setSaved(savedConfig);
         toast({ title: "Setările rangurilor au fost salvate." });
       }
     } catch (saveError: unknown) {
@@ -307,18 +312,17 @@ export function ActivityRanksPage() {
                     top: `${previewLayout.member.y}%`,
                     width: `${previewLayout.member.width}%`,
                     height: `${activityRankMemberHeightPercent(previewLayout.member.width, customBanner)}%`,
-                    gap: `calc(1.75cqw * ${memberScale})`,
-                    paddingInline: `calc(1.5cqw * ${memberScale})`,
-                    containerType: "inline-size",
+                    gap: `${1.75 * memberScale}cqw`,
+                    paddingInline: `${1.5 * memberScale}cqw`,
                   }}
                 >
                   <span
                     className="flex aspect-square h-[68.3%] shrink-0 items-center justify-center rounded-full border border-amber-600 bg-amber-950 font-semibold"
-                    style={{ fontSize: `calc(3.75cqw * ${memberScale})` }}
+                    style={{ fontSize: `${3.75 * memberScale}cqw` }}
                   >M</span>
                   <div className="min-w-0">
-                    <p className="truncate font-semibold leading-tight" style={{ fontSize: `calc(3.75cqw * ${memberScale})` }}>Membrul care folosește /rank</p>
-                    <p className="truncate leading-tight text-amber-200/80" style={{ fontSize: `calc(2.5cqw * ${memberScale})` }}>Rang 5 · XP de activitate</p>
+                    <p className="truncate font-semibold leading-tight" style={{ fontSize: `${3.75 * memberScale}cqw` }}>Membrul care folosește /rank</p>
+                    <p className="truncate leading-tight text-amber-200/80" style={{ fontSize: `${2.5 * memberScale}cqw` }}>Rang 5 · XP de activitate</p>
                   </div>
                 </div>
               </div>

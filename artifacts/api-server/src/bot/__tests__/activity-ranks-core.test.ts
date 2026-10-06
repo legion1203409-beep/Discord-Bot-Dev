@@ -83,6 +83,7 @@ describe("activity chat qualification and config normalization", () => {
       bannerImageUrl: "",
       barStyle: "discord",
       color: "#a34b2b",
+      layout: null,
     });
   });
 
@@ -91,6 +92,18 @@ describe("activity chat qualification and config normalization", () => {
       expect(normalizeActivityRankConfig({ barStyle: style }).barStyle).toBe(style);
     }
     expect(normalizeActivityRankConfig({ barStyle: "unknown" }).barStyle).toBe("discord");
+  });
+
+  it("keeps banner-relative layout overrides and resets malformed geometry to automatic placement", () => {
+    const layout = {
+      bar: { x: 12.5, y: 30, width: 70 },
+      member: { x: 10, y: 70, width: 70 },
+    };
+    expect(normalizeActivityRankConfig({ layout }).layout).toEqual(layout);
+    expect(normalizeActivityRankConfig({
+      layout: { ...layout, bar: { x: 60, y: 30, width: 70 } },
+    }).layout).toBeNull();
+    expect(normalizeActivityRankConfig({}).layout).toBeNull();
   });
 
   it("allows uploaded and trusted-host banners, not arbitrary external hosts", () => {

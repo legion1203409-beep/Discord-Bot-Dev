@@ -420,6 +420,14 @@ components:
           description: Empty, an app-upload object path, or an HTTPS image URL from cdn.discordapp.com, media.discordapp.net, i.imgur.com or images.unsplash.com. External redirects are not followed.
         barStyle: { type: string, enum: [discord, dungi, gradient, oblic, pixel, pro, sword], default: discord }
         color: { type: string, pattern: "^#[0-9a-fA-F]{6}$" }
+        layout:
+          type: [object, "null"]
+          additionalProperties: false
+          required: [bar, member]
+          properties:
+            bar: { $ref: "#/components/schemas/ActivityRankBarLayout" }
+            member: { $ref: "#/components/schemas/ActivityRankMemberLayout" }
+          description: Optional banner-relative placement and size overrides for the animated XP bar and member identity card. Null preserves automatic placement.
         roleRewards:
           type: [array, "null"]
           description: Null uses automatic legacy roles. An explicit array uses only existing selected roles; an empty array disables role rewards. Levels and role IDs must each be unique.
@@ -431,6 +439,22 @@ components:
             properties:
               level: { type: integer, minimum: 1, maximum: 100 }
               roleId: { type: string, pattern: "^\\d{5,25}$" }
+    ActivityRankBarLayout:
+      type: object
+      additionalProperties: false
+      required: [x, y, width]
+      properties:
+        x: { type: number, minimum: 0, maximum: 100, description: Left edge as a percentage of banner width. }
+        y: { type: number, minimum: 0, maximum: 100, description: Top edge as a percentage of banner height. }
+        width: { type: number, minimum: 30, maximum: 100, description: Width and proportional size as a percentage of banner width. }
+    ActivityRankMemberLayout:
+      type: object
+      additionalProperties: false
+      required: [x, y, width]
+      properties:
+        x: { type: number, minimum: 0, maximum: 100, description: Left edge as a percentage of banner width. }
+        y: { type: number, minimum: 0, maximum: 100, description: Top edge as a percentage of banner height. }
+        width: { type: number, minimum: 40, maximum: 100, description: Width and proportional size as a percentage of banner width. }
     ActivityRankSettingsResponse:
       type: object
       additionalProperties: false

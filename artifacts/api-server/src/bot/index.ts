@@ -753,6 +753,7 @@ async function handleActivityRank(interaction: ChatInputCommandInteraction): Pro
       config.color,
       config.barStyle,
       { displayName: memberName, level: progress.level, avatar },
+      config.layout,
     );
   } catch (error) {
     logger.warn(

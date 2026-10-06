@@ -6,8 +6,11 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './activityRankBarLayout';
+export * from './activityRankMemberLayout';
 export * from './activityRankSettings';
 export * from './activityRankSettingsBarStyle';
+export * from './activityRankSettingsLayout';
 export * from './activityRankSettingsResponse';
 export * from './activityRankSettingsRoleRewardsItem';
 export * from './botControlPartialApplyResponse';

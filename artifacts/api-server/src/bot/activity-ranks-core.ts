@@ -14,6 +14,11 @@ export interface ActivityRoleReward {
   roleId: string;
 }
 
+export interface ActivityRankLayout {
+  bar: { x: number; y: number; width: number };
+  member: { x: number; y: number; width: number };
+}
+
 export interface ActivityRankConfig {
   enabled: boolean;
   notificationChannelId: string;
@@ -23,6 +28,8 @@ export interface ActivityRankConfig {
   color: string;
   /** null preserves the legacy automatic roles; [] explicitly disables role rewards. */
   roleRewards: ActivityRoleReward[] | null;
+  /** Null preserves banner-specific automatic placement. */
+  layout: ActivityRankLayout | null;
 }
 
 export const DEFAULT_ACTIVITY_RANK_CONFIG: ActivityRankConfig = {
@@ -33,7 +40,38 @@ export const DEFAULT_ACTIVITY_RANK_CONFIG: ActivityRankConfig = {
   barStyle: "discord",
   color: "#a34b2b",
   roleRewards: null,
+  layout: null,
 };
+
+function normalizeLayout(value: unknown, hasCustomBanner: boolean): ActivityRankLayout | null {
+  if (!value || typeof value !== "object") return null;
+  const input = value as Record<string, unknown>;
+  if (!input.bar || typeof input.bar !== "object" || !input.member || typeof input.member !== "object") return null;
+  const bar = input.bar as Record<string, unknown>;
+  const member = input.member as Record<string, unknown>;
+  const values = [bar.x, bar.y, bar.width, member.x, member.y, member.width];
+  if (!values.every((item) => typeof item === "number" && Number.isFinite(item))) return null;
+
+  const layout = {
+    bar: { x: bar.x as number, y: bar.y as number, width: bar.width as number },
+    member: { x: member.x as number, y: member.y as number, width: member.width as number },
+  };
+  const barHeight = layout.bar.width * (800 * 64 / (560 * 534));
+  const defaultMemberWidth = hasCustomBanner ? 73 : 67.5;
+  const memberHeight = 15.36 * (layout.member.width / defaultMemberWidth);
+  if (
+    layout.bar.width < 30 || layout.bar.width > 100 ||
+    layout.bar.x < 0 || layout.bar.y < 0 ||
+    layout.bar.x + layout.bar.width > 100 ||
+    layout.bar.y + barHeight > 100 ||
+    layout.member.width < 40 || layout.member.width > 100 ||
+    layout.member.x < 0 || layout.member.y < 0 ||
+    layout.member.x + layout.member.width > 100 ||
+    layout.member.y + memberHeight > 100
+  ) return null;
+
+  return layout;
+}
 
 export function normalizeActivityRankConfig(value: unknown): ActivityRankConfig {
   const input = value && typeof value === "object" ? value as Record<string, unknown> : {};
@@ -46,15 +84,16 @@ export function normalizeActivityRankConfig(value: unknown): ActivityRankConfig 
   const color = typeof input.color === "string" && /^#[0-9a-f]{6}$/i.test(input.color.trim())
     ? input.color.trim()
     : DEFAULT_ACTIVITY_RANK_CONFIG.color;
+  const bannerImageUrl = (() => {
+    const url = normalizeMessageImageUrl(input.bannerImageUrl);
+    return isSupportedActivityBannerSource(url) ? url : "";
+  })();
 
   return {
     enabled: typeof input.enabled === "boolean" ? input.enabled : DEFAULT_ACTIVITY_RANK_CONFIG.enabled,
     notificationChannelId: /^\d{5,25}$/.test(channel) ? channel : "",
     rankUpMessage: message || DEFAULT_ACTIVITY_RANK_CONFIG.rankUpMessage,
-    bannerImageUrl: (() => {
-      const url = normalizeMessageImageUrl(input.bannerImageUrl);
-      return isSupportedActivityBannerSource(url) ? url : "";
-    })(),
+    bannerImageUrl,
     barStyle: ACTIVITY_BAR_STYLES.includes(input.barStyle as ActivityBarStyle)
       ? input.barStyle as ActivityBarStyle
       : DEFAULT_ACTIVITY_RANK_CONFIG.barStyle,
@@ -67,6 +106,7 @@ export function normalizeActivityRankConfig(value: unknown): ActivityRankConfig 
           typeof reward.roleId === "string" && /^\d{5,25}$/.test(reward.roleId);
       }).map(({ level, roleId }) => ({ level, roleId })).sort((a, b) => a.level - b.level)
       : null,
+    layout: normalizeLayout(input.layout, Boolean(bannerImageUrl)),
   };
 }
 

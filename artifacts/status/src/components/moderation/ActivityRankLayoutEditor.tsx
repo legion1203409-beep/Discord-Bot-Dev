@@ -17,6 +17,7 @@ interface Props {
 
 interface RangeControlProps {
   label: string;
+  ariaLabel: string;
   value: number;
   max?: number;
   testId: string;
@@ -24,7 +25,7 @@ interface RangeControlProps {
   onChange: (value: number) => void;
 }
 
-function RangeControl({ label, value, max = 100, testId, disabled, onChange }: RangeControlProps) {
+function RangeControl({ label, ariaLabel, value, max = 100, testId, disabled, onChange }: RangeControlProps) {
   return (
     <label className="block space-y-2 text-sm">
       <span className="flex items-center justify-between gap-3">
@@ -32,7 +33,7 @@ function RangeControl({ label, value, max = 100, testId, disabled, onChange }: R
         <span className="tabular-nums text-muted-foreground">{value.toFixed(1)}%</span>
       </span>
       <Slider
-        aria-label={label}
+        aria-label={ariaLabel}
         value={[value]}
         min={0}
         max={max}
@@ -98,6 +99,7 @@ export function ActivityRankLayoutEditor({
           <h4 className="text-sm font-semibold">Bara XP</h4>
           <RangeControl
             label="De la stânga"
+            ariaLabel="Bara XP · poziție de la stânga"
             value={layout.bar.x}
             max={100 - layout.bar.width}
             testId="slider-layout-bar-x"
@@ -106,6 +108,7 @@ export function ActivityRankLayoutEditor({
           />
           <RangeControl
             label="De sus"
+            ariaLabel="Bara XP · poziție de sus"
             value={layout.bar.y}
             max={activityRankBarMaxY(layout.bar.width)}
             testId="slider-layout-bar-y"
@@ -114,6 +117,7 @@ export function ActivityRankLayoutEditor({
           />
           <RangeControl
             label="Lățime și mărime"
+            ariaLabel="Bara XP · lățime și mărime"
             value={layout.bar.width}
             max={100}
             testId="slider-layout-bar-width"
@@ -126,6 +130,7 @@ export function ActivityRankLayoutEditor({
           <h4 className="text-sm font-semibold">Avatar, nume și nivel</h4>
           <RangeControl
             label="De la stânga"
+            ariaLabel="Cardul membrului · poziție de la stânga"
             value={layout.member.x}
             max={100 - layout.member.width}
             testId="slider-layout-member-x"
@@ -134,6 +139,7 @@ export function ActivityRankLayoutEditor({
           />
           <RangeControl
             label="De sus"
+            ariaLabel="Cardul membrului · poziție de sus"
             value={layout.member.y}
             max={activityRankMemberMaxY(layout.member.width, hasCustomBanner)}
             testId="slider-layout-member-y"
@@ -142,6 +148,7 @@ export function ActivityRankLayoutEditor({
           />
           <RangeControl
             label="Lățime și mărime"
+            ariaLabel="Cardul membrului · lățime și mărime"
             value={layout.member.width}
             max={100}
             testId="slider-layout-member-width"

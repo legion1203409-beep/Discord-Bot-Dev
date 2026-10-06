@@ -2436,13 +2436,43 @@ router.put("/guilds/:guildId/activity-ranks", asyncRoute(async (req, res) => {
         new Set(rewards.map((reward) => reward.roleId)).size === rewards.length,
       "Nivelurile și rolurile trebuie să fie unice.",
     ).nullable().optional(),
-  }).strict(), req.body);
-  // Older clients editing banners/channels must not reset manually configured rewards.
+    layout: z.object({
+      bar: z.object({
+        x: z.number().finite().min(0).max(100),
+        y: z.number().finite().min(0).max(100),
+        width: z.number().finite().min(30).max(100),
+      }).strict(),
+      member: z.object({
+        x: z.number().finite().min(0).max(100),
+        y: z.number().finite().min(0).max(100),
+        width: z.number().finite().min(40).max(100),
+      }).strict(),
+    }).strict().nullable().optional(),
+  }).strict().superRefine((settings, context) => {
+    if (!settings.layout) return;
+    const { bar, member } = settings.layout;
+    const barHeight = bar.width * (800 * 64 / (560 * 534));
+    const defaultMemberWidth = settings.bannerImageUrl.trim() ? 73 : 67.5;
+    const memberHeight = 15.36 * (member.width / defaultMemberWidth);
+    if (bar.x + bar.width > 100 || bar.y + barHeight > 100) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["layout", "bar"], message: "Bara XP trebuie să rămână în interiorul bannerului." });
+    }
+    if (member.x + member.width > 100 || member.y + memberHeight > 100) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["layout", "member"], message: "Cardul membrului trebuie să rămână în interiorul bannerului." });
+    }
+  }), req.body);
+  // Older clients editing other settings must not reset saved rewards or layout.
+  const previousConfig = input.roleRewards === undefined || input.layout === undefined
+    ? await getActivityRankConfig(guildId)
+    : null;
   const config = normalizeActivityRankConfig({
     ...input,
     roleRewards: input.roleRewards === undefined
-      ? (await getActivityRankConfig(guildId)).roleRewards
+      ? previousConfig!.roleRewards
       : input.roleRewards,
+    layout: input.layout === undefined
+      ? previousConfig!.layout
+      : input.layout,
   });
 
   if (config.roleRewards?.length) {

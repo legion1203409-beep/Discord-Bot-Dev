@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ActivityRankSettingsBarStyle } from './activityRankSettingsBarStyle';
+import type { ActivityRankSettingsLayout } from './activityRankSettingsLayout';
 import type { ActivityRankSettingsRoleRewardsItem } from './activityRankSettingsRoleRewardsItem';
 
 export interface ActivityRankSettings {
@@ -22,6 +23,11 @@ export interface ActivityRankSettings {
   barStyle?: ActivityRankSettingsBarStyle;
   /** @pattern ^#[0-9a-fA-F]{6}$ */
   color: string;
+  /**
+     * Optional banner-relative placement and size overrides for the animated XP bar and member identity card. Null preserves automatic placement.
+     * @nullable
+     */
+  layout?: ActivityRankSettingsLayout;
   /**
      * Null uses automatic legacy roles. An explicit array uses only existing selected roles; an empty array disables role rewards. Levels and role IDs must each be unique.
      * @maxItems 100

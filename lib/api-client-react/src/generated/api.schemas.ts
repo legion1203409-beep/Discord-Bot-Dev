@@ -245,6 +245,57 @@ export const ActivityRankSettingsBarStyle = {
   sword: 'sword',
 } as const;
 
+export interface ActivityRankBarLayout {
+  /**
+     * Left edge as a percentage of banner width.
+     * @minimum 0
+     * @maximum 100
+     */
+  x: number;
+  /**
+     * Top edge as a percentage of banner height.
+     * @minimum 0
+     * @maximum 100
+     */
+  y: number;
+  /**
+     * Width and proportional size as a percentage of banner width.
+     * @minimum 30
+     * @maximum 100
+     */
+  width: number;
+}
+
+export interface ActivityRankMemberLayout {
+  /**
+     * Left edge as a percentage of banner width.
+     * @minimum 0
+     * @maximum 100
+     */
+  x: number;
+  /**
+     * Top edge as a percentage of banner height.
+     * @minimum 0
+     * @maximum 100
+     */
+  y: number;
+  /**
+     * Width and proportional size as a percentage of banner width.
+     * @minimum 40
+     * @maximum 100
+     */
+  width: number;
+}
+
+/**
+ * Optional banner-relative placement and size overrides for the animated XP bar and member identity card. Null preserves automatic placement.
+ * @nullable
+ */
+export type ActivityRankSettingsLayout = {
+  bar: ActivityRankBarLayout;
+  member: ActivityRankMemberLayout;
+} | null;
+
 export type ActivityRankSettingsRoleRewardsItem = {
   /**
      * @minimum 1
@@ -269,6 +320,11 @@ export interface ActivityRankSettings {
   barStyle?: ActivityRankSettingsBarStyle;
   /** @pattern ^#[0-9a-fA-F]{6}$ */
   color: string;
+  /**
+     * Optional banner-relative placement and size overrides for the animated XP bar and member identity card. Null preserves automatic placement.
+     * @nullable
+     */
+  layout?: ActivityRankSettingsLayout;
   /**
      * Null uses automatic legacy roles. An explicit array uses only existing selected roles; an empty array disables role rewards. Levels and role IDs must each be unique.
      * @maxItems 100

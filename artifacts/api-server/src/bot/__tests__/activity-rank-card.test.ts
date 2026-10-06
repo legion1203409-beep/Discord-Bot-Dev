@@ -122,4 +122,18 @@ describe("animated activity rank cards", () => {
     });
     expect(withAvatar.equals(named)).toBe(false);
   }, 20_000);
+
+  it("renders saved banner-relative positions and proportional sizes", async () => {
+    const member = { displayName: "Membru Ștefan", level: 5, avatar: null };
+    const automatic = await renderActivityRankBanner(null, 62, "#a34b2b", "discord", member);
+    const adjusted = await renderActivityRankBanner(null, 62, "#a34b2b", "discord", member, {
+      bar: { x: 8, y: 24, width: 48 },
+      member: { x: 12, y: 72, width: 60 },
+    });
+
+    expect(adjusted.equals(automatic)).toBe(false);
+    expect(adjusted.subarray(0, 6).toString("ascii")).toBe("GIF89a");
+    expect(adjusted.readUInt16LE(6)).toBe(800);
+    expect(adjusted.readUInt16LE(8)).toBe(534);
+  }, 20_000);
 });

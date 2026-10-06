@@ -214,19 +214,45 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     });
     it("persists custom rewards and returns them on reload", async () => {
       const roleRewards = [{ level: 37, roleId: "111111111" }];
-      expect((await request({ ...config, roleRewards })).status).toBe(200);
-      expect(mocks.saveActivityRankConfig).toHaveBeenCalledWith(guildId, expect.objectContaining({ roleRewards }));
-      expect(await (await fetch(`${base}/activity-ranks`)).json()).toMatchObject({ config: { roleRewards } });
+      const layout = {
+        bar: { x: 12, y: 35, width: 65 },
+        member: { x: 10, y: 68, width: 72 },
+      };
+      expect((await request({ ...config, roleRewards, layout })).status).toBe(200);
+      expect(mocks.saveActivityRankConfig).toHaveBeenCalledWith(
+        guildId,
+        expect.objectContaining({ roleRewards, layout }),
+      );
+      expect(await (await fetch(`${base}/activity-ranks`)).json()).toMatchObject({
+        config: { roleRewards, layout },
+      });
     });
-    it("preserves manual rewards for older clients and supports explicit removal and legacy mode", async () => {
+    it("preserves saved rewards and layout for older clients and supports explicit removal and legacy mode", async () => {
       config.roleRewards = [{ level: 37, roleId: "111111111" }];
-      const { roleRewards: _omit, ...oldClient } = config;
+      config.layout = {
+        bar: { x: 12, y: 35, width: 65 },
+        member: { x: 10, y: 68, width: 72 },
+      };
+      const { roleRewards: _omitRewards, layout: _omitLayout, ...oldClient } = config;
       expect((await request(oldClient)).status).toBe(200);
       expect(config.roleRewards).toEqual([{ level: 37, roleId: "111111111" }]);
+      expect(config.layout).toEqual({
+        bar: { x: 12, y: 35, width: 65 },
+        member: { x: 10, y: 68, width: 72 },
+      });
       expect((await request({ ...config, roleRewards: [] })).status).toBe(200);
       expect(config.roleRewards).toEqual([]);
       expect((await request({ ...config, roleRewards: null })).status).toBe(200);
       expect(config.roleRewards).toBeNull();
+    });
+    it("rejects layout positions or sizes that extend beyond the banner", async () => {
+      expect((await request({
+        ...config,
+        layout: {
+          bar: { x: 65, y: 20, width: 40 },
+          member: { x: 5, y: 60, width: 60 },
+        },
+      })).status).toBe(400);
     });
     it.each([
       [{ level: 0, roleId: "111111111" }],

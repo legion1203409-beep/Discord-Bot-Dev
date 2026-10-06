@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
-import type { ActivityBarStyle } from "./activity-ranks-core";
+import type { ActivityBarStyle, ActivityRankLayout } from "./activity-ranks-core";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { activityBannerStoragePath, isSupportedActivityBannerSource } from "./activity-rank-banner-source";
 
@@ -62,6 +62,7 @@ export function renderActivityRankBanner(
   color: string,
   barStyle: ActivityBarStyle,
   member?: { displayName: string; level: number; avatar: Buffer | null },
+  layout: ActivityRankLayout | null = null,
 ): Promise<Buffer> {
   if (!/^#[0-9a-f]{6}$/i.test(color)) throw new Error("Invalid activity rank color");
   if (activeRenders >= MAX_CONCURRENT_RENDERS) {
@@ -77,6 +78,7 @@ export function renderActivityRankBanner(
       level: member.level,
       avatar: member.avatar?.toString("base64") ?? null,
     } : null,
+    layout,
   }));
   activeRenders += 1;
   return runRenderer(input).finally(() => {
