@@ -3,7 +3,15 @@ import { Activity, Loader2, Save, Trophy } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { ImageField } from "../../components/moderation/ImageField";
 import { ActivityRoleRewardsEditor } from "../../components/moderation/ActivityRoleRewardsEditor";
+import { ActivityRankLayoutEditor } from "../../components/moderation/ActivityRankLayoutEditor";
 import { activityRoleRewardsError, type ActivityRoleReward } from "../../lib/activity-role-rewards";
+import {
+  activityRankBarMaxY,
+  activityRankLayoutForBanner,
+  activityRankMemberHeightPercent,
+  activityRankMemberScale,
+  type ActivityRankLayout,
+} from "../../lib/activity-rank-layout";
 import { Input } from "../../components/ui/input";
 import { Switch } from "../../components/ui/switch";
 import { Textarea } from "../../components/ui/textarea";
@@ -19,6 +27,7 @@ interface ActivityRankConfig {
   barStyle: "discord" | "dungi" | "gradient" | "oblic" | "pixel" | "pro" | "sword";
   color: string;
   roleRewards: ActivityRoleReward[] | null;
+  layout: ActivityRankLayout | null;
 }
 
 const DEFAULT_CONFIG: ActivityRankConfig = {
@@ -29,6 +38,7 @@ const DEFAULT_CONFIG: ActivityRankConfig = {
   barStyle: "discord",
   color: "#a34b2b",
   roleRewards: null,
+  layout: null,
 };
 
 function isTextChannel(type: number | string): boolean {
@@ -63,7 +73,11 @@ export function ActivityRanksPage() {
       signal: controller.signal,
     }).then(({ data }) => {
       if (controller.signal.aborted) return;
-      const config = { ...data.config, roleRewards: data.config.roleRewards ?? null };
+      const config = {
+        ...data.config,
+        roleRewards: data.config.roleRewards ?? null,
+        layout: data.config.layout ?? null,
+      };
       setDraft(config);
       setSaved(config);
     }).catch((loadError: unknown) => {
@@ -125,6 +139,10 @@ export function ActivityRanksPage() {
   if (!guildId) {
     return <p className="text-muted-foreground">Selectează un server pentru a configura rangurile de activitate.</p>;
   }
+
+  const customBanner = Boolean(draft.bannerImageUrl);
+  const previewLayout = activityRankLayoutForBanner(draft.layout, customBanner);
+  const memberScale = activityRankMemberScale(previewLayout.member.width, customBanner);
 
   return (
     <div className="max-w-5xl space-y-6 animate-stagger-1">
@@ -247,6 +265,12 @@ export function ActivityRanksPage() {
               </Select>
               <span className="block text-xs text-muted-foreground">Șapte stiluri animate, toate cu bara subțire și fără fundal exterior. Emblema rotundă XP rămâne în bannerul implicit, iar bara se umple până la progresul real al membrului.</span>
             </label>
+            <ActivityRankLayoutEditor
+              value={draft.layout}
+              hasCustomBanner={customBanner}
+              onChange={(layout) => update("layout", layout)}
+              disabled={saving}
+            />
             <ActivityRoleRewardsEditor
               value={draft.roleRewards}
               onChange={(roleRewards) => update("roleRewards", roleRewards)}
@@ -269,13 +293,32 @@ export function ActivityRanksPage() {
                 <img
                   src={`${import.meta.env.BASE_URL}activity-bars/${draft.barStyle}.gif?v=thin-xp`}
                   alt="Previzualizarea barei animate la 62% progres"
-                  className={`absolute top-[52.62%] w-[70%] ${draft.bannerImageUrl ? "left-[15%]" : "left-[23%]"}`}
+                  className="absolute"
+                  style={{
+                    left: `${previewLayout.bar.x}%`,
+                    top: `${previewLayout.bar.y}%`,
+                    width: `${previewLayout.bar.width}%`,
+                  }}
                 />
-                <div className={`absolute top-[65.54%] flex h-[15.36%] items-center gap-[1.75cqw] rounded-xl border border-amber-700/60 bg-[#0c0a0a]/90 px-[1.5cqw] text-amber-50 ${draft.bannerImageUrl ? "left-[13.5%] w-[73%]" : "left-[25.5%] w-[67.5%]"}`}>
-                  <span className="flex aspect-square h-[68.3%] shrink-0 items-center justify-center rounded-full border border-amber-600 bg-amber-950 text-[3.75cqw] font-semibold">M</span>
+                <div
+                  className="absolute flex items-center rounded-xl border border-amber-700/60 bg-[#0c0a0a]/90 text-amber-50"
+                  style={{
+                    left: `${previewLayout.member.x}%`,
+                    top: `${previewLayout.member.y}%`,
+                    width: `${previewLayout.member.width}%`,
+                    height: `${activityRankMemberHeightPercent(previewLayout.member.width, customBanner)}%`,
+                    gap: `calc(1.75cqw * ${memberScale})`,
+                    paddingInline: `calc(1.5cqw * ${memberScale})`,
+                    containerType: "inline-size",
+                  }}
+                >
+                  <span
+                    className="flex aspect-square h-[68.3%] shrink-0 items-center justify-center rounded-full border border-amber-600 bg-amber-950 font-semibold"
+                    style={{ fontSize: `calc(3.75cqw * ${memberScale})` }}
+                  >M</span>
                   <div className="min-w-0">
-                    <p className="truncate text-[3.75cqw] font-semibold leading-tight">Membrul care folosește /rank</p>
-                    <p className="truncate text-[2.5cqw] leading-tight text-amber-200/80">Rang 5 · XP de activitate</p>
+                    <p className="truncate font-semibold leading-tight" style={{ fontSize: `calc(3.75cqw * ${memberScale})` }}>Membrul care folosește /rank</p>
+                    <p className="truncate leading-tight text-amber-200/80" style={{ fontSize: `calc(2.5cqw * ${memberScale})` }}>Rang 5 · XP de activitate</p>
                   </div>
                 </div>
               </div>
