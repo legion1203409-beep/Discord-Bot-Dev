@@ -164,4 +164,13 @@ describe("uncapped activity XP in isolated PostgreSQL fixtures", () => {
       .toEqual([{ discordId: "member-a", totalXp: 2_010, monthlyXp: 10 }]);
     expect(await getActivityLeaderboard("guild-a", "2026-09")).toEqual([]);
   });
+
+  it("continues accumulating permanent and monthly XP after the member reaches level 100", async () => {
+    await seed("2026-10-06", "2026-10", 600_000);
+    expect(await awardActivityXp("guild-a", "member-a", "chat", now))
+      .toEqual({ previousXp: 600_000, totalXp: 600_010 });
+    expect(await getActivityRank("guild-a", "member-a")).toEqual({ totalXp: 600_010 });
+    expect(await getActivityLeaderboard("guild-a", "2026-10"))
+      .toEqual([{ discordId: "member-a", totalXp: 600_010, monthlyXp: 710 }]);
+  });
 });

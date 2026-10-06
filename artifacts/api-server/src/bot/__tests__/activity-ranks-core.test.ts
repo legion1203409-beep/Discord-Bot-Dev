@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  ACTIVITY_MAX_LEVEL,
+  ACTIVITY_MAX_LEVEL_ROLE,
+  ACTIVITY_ROLE_MILESTONES,
   activityLevelForXp,
   getActivityLevelProgress,
   getUtcActivityPeriods,
@@ -21,6 +24,24 @@ describe("activity rank progression", () => {
       nextLevelXp: 300,
       progressXp: 25,
       requiredXp: 200,
+    });
+  });
+
+  it("stops at level 100 while retaining accumulated XP and reports a complete max-level bar", () => {
+    expect(ACTIVITY_MAX_LEVEL).toBe(100);
+    expect(ACTIVITY_MAX_LEVEL_ROLE).toBe("Legenda Cenușii");
+    expect(ACTIVITY_ROLE_MILESTONES).toEqual([5, 10, 20, 100]);
+    const maximumLevelXp = xpForActivityLevel(ACTIVITY_MAX_LEVEL);
+    expect(maximumLevelXp).toBe(495_000);
+    expect(activityLevelForXp(maximumLevelXp - 1)).toBe(99);
+    expect(activityLevelForXp(maximumLevelXp)).toBe(100);
+    expect(activityLevelForXp(2_000_000)).toBe(100);
+    expect(getActivityLevelProgress(2_000_000)).toEqual({
+      level: 100,
+      currentLevelXp: maximumLevelXp,
+      nextLevelXp: maximumLevelXp,
+      progressXp: 0,
+      requiredXp: 0,
     });
   });
 

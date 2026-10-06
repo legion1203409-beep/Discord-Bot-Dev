@@ -3,7 +3,9 @@ import { isSupportedActivityBannerSource } from "./activity-rank-banner-source";
 
 export const ACTIVITY_CHAT_XP = 10;
 export const ACTIVITY_VOICE_XP = 5;
-export const ACTIVITY_ROLE_MILESTONES = [5, 10, 20] as const;
+export const ACTIVITY_MAX_LEVEL = 100;
+export const ACTIVITY_MAX_LEVEL_ROLE = "Legenda Cenușii";
+export const ACTIVITY_ROLE_MILESTONES = [5, 10, 20, ACTIVITY_MAX_LEVEL] as const;
 export const ACTIVITY_BAR_STYLES = ["discord", "dungi", "gradient", "oblic", "pixel", "pro", "sword"] as const;
 export type ActivityBarStyle = typeof ACTIVITY_BAR_STYLES[number];
 
@@ -70,7 +72,8 @@ export function xpForActivityLevel(level: number): number {
 
 export function activityLevelForXp(xp: number): number {
   const normalizedXp = Math.max(0, Math.floor(Number.isFinite(xp) ? xp : 0));
-  return Math.floor((Math.sqrt(1 + 8 * normalizedXp / 100) - 1) / 2) + 1;
+  const level = Math.floor((Math.sqrt(1 + 8 * normalizedXp / 100) - 1) / 2) + 1;
+  return Math.min(level, ACTIVITY_MAX_LEVEL);
 }
 
 export function getActivityLevelProgress(totalXp: number): {
@@ -82,12 +85,14 @@ export function getActivityLevelProgress(totalXp: number): {
 } {
   const level = activityLevelForXp(totalXp);
   const currentLevelXp = xpForActivityLevel(level);
-  const nextLevelXp = xpForActivityLevel(level + 1);
+  const nextLevelXp = level === ACTIVITY_MAX_LEVEL
+    ? currentLevelXp
+    : xpForActivityLevel(level + 1);
   return {
     level,
     currentLevelXp,
     nextLevelXp,
-    progressXp: Math.max(0, totalXp - currentLevelXp),
+    progressXp: level === ACTIVITY_MAX_LEVEL ? 0 : Math.max(0, totalXp - currentLevelXp),
     requiredXp: nextLevelXp - currentLevelXp,
   };
 }

@@ -148,7 +148,7 @@ export function ActivityRanksPage() {
             <div className="grid gap-3 rounded-lg border border-border/70 bg-background/50 p-4 text-sm sm:grid-cols-3">
               <p><strong>Chat:</strong> 10 XP pentru un mesaj valid, cu pauză de 30 de secunde și fără limită zilnică.</p>
               <p><strong>Voce:</strong> 5 XP pe minut într-un canal cu cel puțin doi membri reali, fără limită zilnică.</p>
-              <p><strong>Progres:</strong> XP-ul cumulat din chat și voce nu are plafon zilnic. Clasamentul lunar se resetează; rangul permanent rămâne.</p>
+              <p><strong>Nivel maxim:</strong> 100. La atingerea lui, se acordă rolul „Legenda Cenușii”; XP-ul permanent și cel lunar continuă să crească.</p>
             </div>
             <p className="text-xs text-muted-foreground">
               XP-ul din chat necesită „Message Content” activ atât în configurația botului, cât și în Discord Developer Portal. Fără el, progresul vocal continuă normal.
@@ -234,7 +234,7 @@ export function ActivityRanksPage() {
               </Select>
               <span className="block text-xs text-muted-foreground">Șapte stiluri animate, toate cu bara subțire și fără fundal exterior. Emblema rotundă XP rămâne în bannerul implicit, iar bara se umple până la progresul real al membrului.</span>
             </label>
-            <p className="text-xs text-muted-foreground">La rangurile 5, 10 și 20, botul oferă roluri decorative și înlocuiește rolul de prag anterior. Are nevoie de Manage Roles, iar rolul lui trebuie să fie deasupra rolurilor create.</p>
+            <p className="text-xs text-muted-foreground">La rangurile 5, 10 și 20, botul oferă roluri decorative și înlocuiește rolul de prag anterior. La rangul 100 acordă rolul final „Legenda Cenușii”. Are nevoie de Manage Roles, iar rolul lui trebuie să fie deasupra rolurilor create.</p>
           </section>
 
           <section className="space-y-3 rounded-xl border border-border bg-card p-5">

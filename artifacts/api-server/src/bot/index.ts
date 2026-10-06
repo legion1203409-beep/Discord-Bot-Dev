@@ -107,6 +107,7 @@ import {
   syncActivityMilestoneRole,
 } from "./activity-ranks";
 import {
+  ACTIVITY_MAX_LEVEL,
   activityLevelForXp,
   getActivityLevelProgress,
   getUtcActivityPeriods,
@@ -715,7 +716,7 @@ function addActivityRankBanner(embed: EmbedBuilder, bannerImageUrl: string): Emb
 }
 
 async function handleActivityRank(interaction: ChatInputCommandInteraction): Promise<void> {
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  await interaction.deferReply();
   const guildId = interaction.guildId!;
   const target = interaction.options.getUser("utilizator") ?? interaction.user;
   const [record, config] = await Promise.all([
@@ -759,7 +760,9 @@ async function handleActivityRank(interaction: ChatInputCommandInteraction): Pro
       .setDescription(
         `**${memberName}**\n\n` +
         `**XP permanent:** ${record.totalXp.toLocaleString("ro-RO")}\n` +
-        `**Progres:** ${progress.progressXp} / ${progress.requiredXp} XP până la rangul ${progress.level + 1}\n` +
+        (progress.level === ACTIVITY_MAX_LEVEL
+          ? `**Progres:** Rangul maxim ${ACTIVITY_MAX_LEVEL} a fost atins. XP-ul continuă să se acumuleze, fără să crească nivelul.\n`
+          : `**Progres:** ${progress.progressXp} / ${progress.requiredXp} XP până la rangul ${progress.level + 1}\n`) +
         `${bar} ${percentage}%` +
         (cardImage ? "" : "\n\n*Animația barei nu a putut fi generată. Progresul numeric este disponibil mai sus.*"),
       )

@@ -38,3 +38,15 @@ Activity XP must have no daily cap, whether from chat, voice, or their combined 
 **Why:** The user explicitly requested unlimited daily activity XP and a 30-second message cooldown.
 
 **How to apply:** Do not reintroduce daily caps as anti-farming defaults or replace them with artificially large limits. Keep voice cadence and RPG progression separate.
+
+The maximum activity level is 100, but permanent XP and monthly leaderboard XP must continue accumulating after it is reached.
+
+**Why:** The user requested level 100 as the maximum and explicitly chose to stop only level growth, not XP awards.
+
+**How to apply:** Preserve accumulated XP, show a completed maximum-level bar rather than progress toward level 101, and retain decorative role rewards.
+
+Activity `/rank` and its monthly top must be public in the guild channel.
+
+**Why:** The user asked for everyone to see `/rank` and the top.
+
+**How to apply:** Keep administrative and unrelated private responses unchanged; this visibility rule applies to activity ranking commands.

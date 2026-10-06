@@ -4,6 +4,8 @@ import { ensureBotStateTable } from "./db";
 import { logger } from "../lib/logger";
 import {
   ACTIVITY_CHAT_XP,
+  ACTIVITY_MAX_LEVEL,
+  ACTIVITY_MAX_LEVEL_ROLE,
   ACTIVITY_ROLE_MILESTONES,
   ACTIVITY_VOICE_XP,
   DEFAULT_ACTIVITY_RANK_CONFIG,
@@ -223,6 +225,7 @@ interface StoredActivityRoleIds {
   "5"?: string;
   "10"?: string;
   "20"?: string;
+  "100"?: string;
 }
 
 function activityRoleKey(guildId: string): string {
@@ -241,6 +244,7 @@ async function loadActivityRoleIds(guildId: string): Promise<StoredActivityRoleI
       "5": typeof value["5"] === "string" ? value["5"] : undefined,
       "10": typeof value["10"] === "string" ? value["10"] : undefined,
       "20": typeof value["20"] === "string" ? value["20"] : undefined,
+      "100": typeof value["100"] === "string" ? value["100"] : undefined,
     };
   } catch {
     return {};
@@ -269,7 +273,9 @@ export async function syncActivityMilestoneRole(member: GuildMember, level: numb
   }
 
   const roleIds = await loadActivityRoleIds(member.guild.id);
-  const roleName = `Oracolul · Rang Activitate ${milestone}`;
+  const roleName = milestone === ACTIVITY_MAX_LEVEL
+    ? ACTIVITY_MAX_LEVEL_ROLE
+    : `Oracolul · Rang Activitate ${milestone}`;
   let role: Role | undefined;
   const savedRoleId = roleIds[String(milestone) as keyof StoredActivityRoleIds];
   if (savedRoleId) {
@@ -281,7 +287,12 @@ export async function syncActivityMilestoneRole(member: GuildMember, level: numb
     role = member.guild.roles.cache.find((candidate) => candidate.name === roleName);
   }
   if (!role) {
-    const colors: Record<number, number> = { 5: 0xb87443, 10: 0x8b5cf6, 20: 0xd6a84f };
+    const colors: Record<number, number> = {
+      5: 0xb87443,
+      10: 0x8b5cf6,
+      20: 0xd6a84f,
+      [ACTIVITY_MAX_LEVEL]: 0xf0c75e,
+    };
     role = await member.guild.roles.create({
       name: roleName,
       color: colors[milestone],
