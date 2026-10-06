@@ -11,6 +11,7 @@ const {
   mockGrantCouncilVoterReputationOnce,
   mockGrantGuildBoost,
   mockRestoreGuildBoost,
+  mockGetConfiguredChannel,
 } = vi.hoisted(() => ({
   mockCastOracleCouncilVote: vi.fn(),
   mockCloseOracleCouncil: vi.fn(),
@@ -26,7 +27,9 @@ const {
     expiresAt: Date.now() + durationMs,
   })),
   mockRestoreGuildBoost: vi.fn(),
+  mockGetConfiguredChannel: vi.fn(),
 }));
+vi.mock("../channel-config", () => ({ getChannel: mockGetConfiguredChannel }));
 
 vi.mock("discord.js", () => {
   class EmbedBuilder {
@@ -192,22 +195,41 @@ describe("Oracle Council vote handler", () => {
 describe("Oracle Council closing", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetConfiguredChannel.mockReset().mockReturnValue("channel-1");
+  });
+
+  it.each(["missing", "another-guild"])("does not publish results to a %s destination or fall back to chests", async (destination) => {
+    mockCloseOracleCouncil.mockResolvedValue(makeCouncil({}, "closed"));
+    mockGetConfiguredChannel.mockReturnValue(destination === "missing" ? null : "channel-1");
+    const channel = Object.create(TextChannel.prototype) as TextChannel;
+    Object.defineProperty(channel, "guildId", { value: destination === "missing" ? "guild-1" : "different-guild" });
+    channel.messages = { fetch: vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) }) } as never;
+    channel.send = vi.fn();
+    const client = { channels: { fetch: vi.fn().mockResolvedValue(channel) } };
+    await expect(finalizeCouncil(client as never, "guild-1", "test-council")).rejects.toThrow("No valid channel");
+    expect(channel.send).not.toHaveBeenCalled();
+    expect(mockGetConfiguredChannel).not.toHaveBeenCalledWith("main", "guild-1");
   });
 
   it("applies the winning law while publishing the closed council", async () => {
     const closed = makeCouncil({ "voter-1": "aur", "voter-2": "aur" }, "closed");
     closed.closesAt = Date.now();
-    mockCloseOracleCouncil.mockResolvedValueOnce(closed);
+    mockCloseOracleCouncil.mockResolvedValue(closed);
     mockSaveOracleCouncil.mockResolvedValueOnce(undefined);
     mockSaveOracleCouncilDecreeEffect.mockResolvedValueOnce(undefined);
 
     const message = { edit: vi.fn().mockResolvedValue(undefined) };
     const channel = Object.create(TextChannel.prototype) as TextChannel;
+    Object.defineProperty(channel, "guildId", { value: "guild-1" });
     channel.messages = { fetch: vi.fn().mockResolvedValue(message) } as never;
     channel.send = vi.fn().mockResolvedValue({ id: "result-message-1" });
     const client = { channels: { fetch: vi.fn().mockResolvedValue(channel) } };
 
-    await finalizeCouncil(client as never, "guild-1", "test-council");
+    await Promise.all([
+      finalizeCouncil(client as never, "guild-1", "test-council"),
+      finalizeCouncil(client as never, "guild-1", "test-council"),
+    ]);
+    expect(channel.send).toHaveBeenCalledTimes(1);
 
     expect(mockGrantGuildBoost).toHaveBeenCalledWith(
       "guild-1",
@@ -224,7 +246,7 @@ describe("Oracle Council closing", () => {
       goldMult: 1.25,
       expiresAt: expect.any(Number),
     });
-    expect(message.edit).toHaveBeenCalledOnce();
+    expect(message.edit).toHaveBeenCalledTimes(2);
     expect(channel.send).toHaveBeenCalledWith(
       expect.objectContaining({ content: expect.stringContaining("Efectul legii") }),
     );

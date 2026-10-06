@@ -22,6 +22,7 @@ import {
 } from "./db";
 import { BRAND_FOOTER, ITEMS } from "./survival";
 import { getChannel } from "./channel-config";
+import { serializeBotOperation } from "./operation-lock";
 import { isTicketCategoryParentId } from "./ticket-categories";
 
 const WORLD_PREFIX = "chest_world:";
@@ -470,12 +471,16 @@ async function describeFratiaReward(vote: FratiaVote): Promise<{ recipientCount:
 }
 
 export async function openFratiaVote(client: Client, guildId: string): Promise<FratiaVote | null> {
+  return serializeBotOperation(`fratia-open:${guildId}`, () => openFratiaVoteLocked(client, guildId));
+}
+
+async function openFratiaVoteLocked(client: Client, guildId: string): Promise<FratiaVote | null> {
   const existing = await loadFratiaVote(guildId);
   if (existing?.status === "open" && existing.closesAt > Date.now()) return existing;
 
-  const channelId = getChannel("fratia", guildId) ?? getChannel("main", guildId);
+  const channelId = getChannel("fratia", guildId);
   const channel = channelId ? await client.channels.fetch(channelId).catch(() => null) : null;
-  if (!(channel instanceof TextChannel) || isTicketCategoryParentId(channel.parentId, channel.guildId)) return null;
+  if (!(channel instanceof TextChannel) || channel.guildId !== guildId || isTicketCategoryParentId(channel.parentId, channel.guildId)) return null;
 
   const vote: FratiaVote = {
     id: `fratia_${Date.now()}`,
@@ -517,6 +522,10 @@ export async function rehydrateFratiaVote(client: Client, guildId: string): Prom
 }
 
 export async function closeAndRewardFratiaVote(client: Client, guildId: string): Promise<FratiaVote | null> {
+  return serializeBotOperation(`fratia-close:${guildId}`, () => closeAndRewardFratiaVoteLocked(client, guildId));
+}
+
+async function closeAndRewardFratiaVoteLocked(client: Client, guildId: string): Promise<FratiaVote | null> {
   let closed = await closeFratiaVote(guildId);
   if (!closed) {
     const existing = await loadFratiaVote(guildId);
@@ -530,7 +539,7 @@ export async function closeAndRewardFratiaVote(client: Client, guildId: string):
     reward = await describeFratiaReward(closed);
   }
   const originalChannel = await client.channels.fetch(closed.channelId).catch(() => null);
-  if (originalChannel instanceof TextChannel && !isTicketCategoryParentId(originalChannel.parentId, originalChannel.guildId)) {
+  if (originalChannel instanceof TextChannel && originalChannel.guildId === guildId && !isTicketCategoryParentId(originalChannel.parentId, originalChannel.guildId)) {
     const message = await originalChannel.messages.fetch(closed.messageId).catch(() => null);
     await message?.edit({
       embeds: [buildFratiaVoteEmbed(closed)],
@@ -538,19 +547,15 @@ export async function closeAndRewardFratiaVote(client: Client, guildId: string):
     }).catch(() => null);
   }
   if (!closed.rewardMessageId) {
-    const configuredRewardChannelId = getChannel("fratia", guildId) ?? getChannel("main", guildId);
+    const configuredRewardChannelId = getChannel("fratia", guildId);
     const configuredChannel = configuredRewardChannelId
       ? await client.channels.fetch(configuredRewardChannelId).catch(() => null)
       : null;
     const validConfiguredChannel =
-      configuredChannel instanceof TextChannel && !isTicketCategoryParentId(configuredChannel.parentId, configuredChannel.guildId)
+      configuredChannel instanceof TextChannel && configuredChannel.guildId === guildId && !isTicketCategoryParentId(configuredChannel.parentId, configuredChannel.guildId)
         ? configuredChannel
         : null;
-    const validOriginalChannel =
-      originalChannel instanceof TextChannel && !isTicketCategoryParentId(originalChannel.parentId, originalChannel.guildId)
-        ? originalChannel
-        : null;
-    const rewardChannel = validConfiguredChannel ?? validOriginalChannel;
+    const rewardChannel = validConfiguredChannel;
     if (!rewardChannel) {
       throw new Error(`No valid channel available to publish Frăția vote for guild ${guildId}`);
     }

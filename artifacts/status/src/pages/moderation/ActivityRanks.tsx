@@ -251,18 +251,24 @@ export function ActivityRanksPage() {
                   alt="Previzualizarea barei animate la 62% progres"
                   className={`absolute top-[52.62%] w-[70%] ${draft.bannerImageUrl ? "left-[15%]" : "left-[23%]"}`}
                 />
-                <div className={`absolute top-[65.54%] flex h-[12.36%] items-center gap-2 rounded-xl border border-amber-700/60 bg-[#0c0a0a]/90 px-2 text-amber-50 sm:gap-3 sm:px-3 ${draft.bannerImageUrl ? "left-[13.5%] w-[73%]" : "left-[25.5%] w-[67.5%]"}`}>
-                  <span className="flex aspect-square h-[72%] shrink-0 items-center justify-center rounded-full border border-amber-600 bg-amber-950 text-sm font-semibold">M</span>
+                <div className={`absolute top-[65.54%] flex h-[15.36%] items-center gap-[1.75cqw] rounded-xl border border-amber-700/60 bg-[#0c0a0a]/90 px-[1.5cqw] text-amber-50 ${draft.bannerImageUrl ? "left-[13.5%] w-[73%]" : "left-[25.5%] w-[67.5%]"}`}>
+                  <span className="flex aspect-square h-[68.3%] shrink-0 items-center justify-center rounded-full border border-amber-600 bg-amber-950 text-[3.75cqw] font-semibold">M</span>
                   <div className="min-w-0">
-                    <p className="truncate text-[clamp(9px,2.75cqw,16px)] font-semibold leading-tight">Membrul care folosește /rank</p>
-                    <p className="truncate text-[clamp(7px,1.75cqw,12px)] leading-tight text-amber-200/80">Rang 5 · XP de activitate</p>
+                    <p className="truncate text-[3.75cqw] font-semibold leading-tight">Membrul care folosește /rank</p>
+                    <p className="truncate text-[2.5cqw] leading-tight text-amber-200/80">Rang 5 · XP de activitate</p>
                   </div>
                 </div>
               </div>
               <div className="space-y-2 p-4">
                 <p className="text-xs uppercase tracking-widest text-muted-foreground">Rang de activitate · {metadata?.guild.name ?? "Serverul meu"}</p>
                 <p className="font-semibold" style={{ color: draft.color }}>Rang 5</p>
-                <p className="text-sm">{previewMessage}</p>
+                <p className="whitespace-pre-wrap text-sm">
+                  {previewMessage.split(/(\*\*[^*]+\*\*)/g).map((part, index) =>
+                    part.startsWith("**") && part.endsWith("**") && part.length > 4
+                      ? <strong key={index}>{part.slice(2, -2)}</strong>
+                      : part,
+                  )}
+                </p>
                 <p className="text-xs text-muted-foreground">Exemplu: 62% progres. În /rank, bara animată este compusă peste banner și arată XP-ul real.</p>
               </div>
             </div>

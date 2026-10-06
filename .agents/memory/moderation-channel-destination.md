@@ -9,3 +9,9 @@ When a configured moderation destination is unavailable, keep its ID visible and
 **Why:** The user requires invalid destinations to be identified without guessing where logs should move; audit logging may intentionally use a separate destination from category activity logs.
 
 **How to apply:** Keep the configured destination unchanged until the operator chooses a replacement. Do not infer a production channel from available channels or route an audit log through a different activity-log category.
+
+The moderation notification channel is configured through the website, not by asking the user to choose a destination in chat.
+
+**Why:** The user clarified: „Păi o să se seteze pe site.”
+
+**How to apply:** Leave channel selection to the website's configuration controls; do not manually choose or change a destination as part of an audit.

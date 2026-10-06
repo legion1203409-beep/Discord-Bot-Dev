@@ -1174,14 +1174,17 @@ export async function publishLeaderboardResult(
 
       const savedId = await loadLeaderboardMessageId(guildId, type).catch((err) => {
         logger.warn({ err, guildId, type }, "Could not load persistent leaderboard message");
-        return null;
+        throw err;
       });
       let message = savedId
-        ? await channel.messages.fetch(savedId).catch(() => null)
+        ? await channel.messages.fetch(savedId).catch((err) => {
+          if (errorContext(err).code === "10008") return null;
+          throw err;
+        })
         : null;
 
       if (!message) {
-        const recent = await channel.messages.fetch({ limit: 100 }).catch(() => null);
+        const recent = await channel.messages.fetch({ limit: 100 });
         message = recent?.find((candidate) =>
           candidate.author.id === client.user?.id &&
           isManagedLeaderboardMessage(candidate, type),
@@ -1198,6 +1201,7 @@ export async function publishLeaderboardResult(
       if (message) {
         const edited = await message.edit(messagePayload).catch((err) => {
           logger.warn({ err, guildId, type, messageId: message?.id }, "Could not edit leaderboard message");
+          if (errorContext(err).code !== "10008") throw err;
           return null;
         });
         if (edited) {

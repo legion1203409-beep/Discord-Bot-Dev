@@ -79,3 +79,4 @@
 - [Separate message editing](message-editing-separation.md) — message editing must have its own location, not live beside activation toggles or channel selection.
 - [Activity rank scope](activity-rank-scope.md) — permanent per-guild activity progression stays separate from RPG; supplied animated bars overlay the selected banner.
 - [Image retouch dimensions](image-retouch-dimensions.md) — AI retouching may change aspect ratio; preserve the source composition with localized compositing.
+- [Discord publication consistency](discord-publication-consistency.md) — uncertainty must not trigger reposting; role-ID snapshots require guild-wide serialization.

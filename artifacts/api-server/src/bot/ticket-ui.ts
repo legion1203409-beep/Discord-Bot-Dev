@@ -582,7 +582,11 @@ export async function postTicketPanelIfMissing(
       return false;
     }
 
-    const recent = await channel.messages.fetch({ limit: 100 }).catch(() => null);
+    const recent = await channel.messages.fetch({ limit: 100 }).catch((err) => {
+      logger.warn({ err, channelId: channel.id, ticketKind: kind }, "Ticket panel history unavailable; publication skipped to avoid duplicates");
+      return null;
+    });
+    if (!recent) return false;
     const legacyPrompts = recent?.filter((entry) => isLegacyOracleTicketPrompt(entry, botId));
     if (legacyPrompts?.size) {
       await Promise.all(

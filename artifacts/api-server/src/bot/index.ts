@@ -108,6 +108,7 @@ import {
 } from "./activity-ranks";
 import {
   ACTIVITY_MAX_LEVEL,
+  ACTIVITY_MAX_LEVEL_ROLE,
   activityLevelForXp,
   getActivityLevelProgress,
   getUtcActivityPeriods,
@@ -727,6 +728,13 @@ async function handleActivityRank(interaction: ChatInputCommandInteraction): Pro
   const percentage = progress.requiredXp > 0
     ? Math.min(100, Math.floor(progress.progressXp * 100 / progress.requiredXp))
     : 100;
+  const maxLevelMember = interaction.guild?.members.cache.get(target.id);
+  if (progress.level === ACTIVITY_MAX_LEVEL && maxLevelMember &&
+    !maxLevelMember.roles.cache.some((role) => role.name === ACTIVITY_MAX_LEVEL_ROLE)) {
+    void syncActivityMilestoneRole(maxLevelMember, progress.level).catch((err) =>
+      logger.warn({ err, guildId, userId: target.id }, "Existing maximum activity level role could not be synchronized"),
+    );
+  }
   const filled = Math.floor(percentage / 10);
   const bar = `${"▰".repeat(filled)}${"▱".repeat(10 - filled)}`;
   const memberName = interaction.guild?.members.cache.get(target.id)?.displayName ?? target.globalName ?? target.username;
@@ -758,19 +766,19 @@ async function handleActivityRank(interaction: ChatInputCommandInteraction): Pro
       .setColor(Number.parseInt(config.color.slice(1), 16))
       .setTitle(`✨ Rang de activitate ${progress.level}`)
       .setDescription(
-        `**${memberName}**\n\n` +
+        (cardImage ? "" : `**${memberName}**\n\n`) +
         `**XP permanent:** ${record.totalXp.toLocaleString("ro-RO")}\n` +
         (progress.level === ACTIVITY_MAX_LEVEL
           ? `**Progres:** Rangul maxim ${ACTIVITY_MAX_LEVEL} a fost atins. XP-ul continuă să se acumuleze, fără să crească nivelul.\n`
           : `**Progres:** ${progress.progressXp} / ${progress.requiredXp} XP până la rangul ${progress.level + 1}\n`) +
-        `${bar} ${percentage}%` +
+        (cardImage ? "" : `${bar} ${percentage}%`) +
         (cardImage ? "" : "\n\n*Animația barei nu a putut fi generată. Progresul numeric este disponibil mai sus.*"),
       )
-      .setThumbnail(target.displayAvatarURL({ size: 256 }))
       .setFooter({ text: "Rang separat de nivelul RPG · Progres permanent pe acest server" })
       .setTimestamp(),
     cardImage ? "" : config.bannerImageUrl,
   );
+  if (!cardImage) embed.setThumbnail(target.displayAvatarURL({ size: 256 }));
   if (cardImage) {
     embed.setImage("attachment://activity-rank.gif");
     await interaction.editReply({
@@ -820,7 +828,15 @@ async function awardActivityToMember(
   if (!award) return;
   const previousLevel = activityLevelForXp(award.previousXp);
   const level = activityLevelForXp(award.totalXp);
-  if (level <= previousLevel) return;
+  if (level <= previousLevel) {
+    if (level === ACTIVITY_MAX_LEVEL && member &&
+      !member.roles.cache.some((role) => role.name === ACTIVITY_MAX_LEVEL_ROLE)) {
+      void syncActivityMilestoneRole(member, level).catch((err) =>
+        logger.warn({ err, guildId, userId, level }, "Existing maximum activity level role could not be synchronized"),
+      );
+    }
+    return;
+  }
 
   let rankMember = member;
   if (!rankMember) {

@@ -156,7 +156,21 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setMobileMenuOpen(false);
-  }, [location]);
+  }, [location, search]);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileMenuOpen(false);
+    };
+    const previous = document.body.style.overflow;
+    if (window.matchMedia("(max-width: 767px)").matches) document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = previous;
+    };
+  }, [mobileMenuOpen]);
 
   useEffect(() => {
     const targetId = window.location.hash.slice(1);
@@ -307,14 +321,15 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
     <div className="mod-shell dark flex h-[100dvh] min-h-[100dvh] overflow-hidden">
       {/* Mobile overlay */}
       {mobileMenuOpen && (
-        <div 
+        <div
+          aria-hidden="true"
           className="fixed inset-0 bg-background/80 backdrop-blur-sm z-40 md:hidden"
           onClick={() => setMobileMenuOpen(false)}
         />
       )}
 
       {/* Sidebar */}
-      <aside aria-label="Navigare moderare" className={`
+      <aside aria-label="Navigare moderare" id="mod-sidebar" {...(!mobileMenuOpen ? { "data-closed": "true" } : {})} className={`
         mod-sidebar fixed inset-y-0 left-0 z-50 w-72 border-r border-border flex flex-col
         transition-transform duration-300 ease-in-out md:sticky md:top-0 md:h-[100dvh] md:translate-x-0 md:shrink-0
         ${mobileMenuOpen ? "translate-x-0" : "-translate-x-full"}
@@ -329,7 +344,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
               <span className="text-[10px] font-mono tracking-widest leading-none mt-1 opacity-80">BOT / CONSOLĂ</span>
             </div>
           </div>
-          <button aria-label="Închide meniul" onClick={() => setMobileMenuOpen(false)} className="md:hidden text-muted-foreground hover:text-foreground p-2">
+          <button type="button" aria-label="Închide meniul" onClick={() => setMobileMenuOpen(false)} className="md:hidden rounded-md border border-transparent text-muted-foreground hover:border-border hover:text-foreground p-2 min-h-10 min-w-10 flex items-center justify-center">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -390,6 +405,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
                           <Link
                             key={item.href}
                             href={item.href}
+                            onClick={() => setMobileMenuOpen(false)}
                             data-testid={testId}
                             aria-current={active ? "page" : undefined}
                             className={`mod-sidebar-item flex min-h-8 items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium text-muted-foreground hover:bg-secondary/50 hover:text-foreground ${controlGroup ? "mod-control-nav-item" : ""}`}
@@ -439,11 +455,12 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
                 </span>
               </span>
             </a>
-            <button 
+            <button
+              type="button"
               onClick={() => logout()}
               aria-label="Deconectare"
               data-testid="button-logout"
-              className="flex items-center justify-center p-2 text-destructive hover:bg-destructive/10 rounded-md transition-colors border border-transparent hover:border-destructive/20"
+              className="flex min-h-10 min-w-10 items-center justify-center p-2 text-destructive hover:bg-destructive/10 rounded-md transition-colors border border-transparent hover:border-destructive/20"
               title="Deconectare"
             >
               <LogOut className="w-4 h-4" />
@@ -461,7 +478,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
               </div>
               <span className="max-w-[170px] truncate font-display font-semibold text-lg text-foreground">{botProfile?.name || "ORACOLUL"}</span>
           </div>
-          <button onClick={() => setMobileMenuOpen(true)} aria-label="Deschide meniul" aria-expanded={mobileMenuOpen} className="text-muted-foreground hover:text-foreground p-2 -mr-2">
+          <button type="button" onClick={() => setMobileMenuOpen(true)} aria-label="Deschide meniul" aria-expanded={mobileMenuOpen} aria-controls="mod-sidebar" className="rounded-md border border-transparent text-muted-foreground hover:border-border hover:text-foreground p-2 -mr-2 min-h-10 min-w-10 flex items-center justify-center">
              <Menu className="w-6 h-6" aria-hidden="true" />
           </button>
         </header>

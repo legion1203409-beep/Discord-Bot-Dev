@@ -2287,3 +2287,19 @@
     box-shadow: inset 0 1px rgba(243, 238, 230, .045), 0 12px 28px color-mix(in srgb, var(--void) 48%, transparent);
   }
 }
+
+/* Keyboard access and mobile drawer fixes */
+@media (max-width: 767px) {
+  .mod-sidebar[data-closed="true"] { visibility: hidden; transition: transform 300ms ease-in-out, visibility 0s linear 300ms; }
+  .mod-sidebar { max-width: 88vw; }
+}
+.mod-shell :is(a, button, [role="combobox"], [role="tab"]):focus-visible {
+  outline: 2px solid hsl(var(--primary));
+  outline-offset: 2px;
+}
+.mod-sidebar-item:focus-visible { outline-offset: -2px; }
+.mod-sidebar-scroll-area { scroll-behavior: smooth; }
+.mod-sidebar-item[aria-current="page"] { font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { .mod-sidebar-scroll-area { scroll-behavior: auto; } }
+.mod-page { overflow-wrap: anywhere; }
+.mod-page table { max-width: 100%; }

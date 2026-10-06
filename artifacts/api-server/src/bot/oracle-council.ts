@@ -10,6 +10,7 @@ import {
 } from "discord.js";
 import { randomUUID } from "node:crypto";
 import { logger } from "../lib/logger";
+import { serializeBotOperation } from "./operation-lock";
 import {
   castOracleCouncilVote,
   closeOracleCouncil,
@@ -209,16 +210,16 @@ function councilButtons(council: OracleCouncilRecord): ActionRowBuilder<ButtonBu
   );
 }
 
-async function getChannel(client: Client, channelId: string): Promise<TextChannel | null> {
+async function getChannel(client: Client, channelId: string, guildId: string): Promise<TextChannel | null> {
   const channel = await client.channels.fetch(channelId).catch(() => null);
-  if (!(channel instanceof TextChannel) || isTicketCategoryParentId(channel.parentId, channel.guildId)) return null;
+  if (!(channel instanceof TextChannel) || channel.guildId !== guildId || isTicketCategoryParentId(channel.parentId, channel.guildId)) return null;
   return channel;
 }
 
 async function deleteCouncilMessages(client: Client, council: OracleCouncilRecord): Promise<void> {
-  const originalChannel = await getChannel(client, council.channelId);
+  const originalChannel = await getChannel(client, council.channelId, council.guildId);
   const resultChannel = council.resultChannelId && council.resultChannelId !== council.channelId
-    ? await getChannel(client, council.resultChannelId)
+    ? await getChannel(client, council.resultChannelId, council.guildId)
     : originalChannel;
   await Promise.all(
     [
@@ -248,6 +249,15 @@ export async function finalizeCouncil(
   councilId: string,
   token?: symbol,
 ): Promise<void> {
+  return serializeBotOperation(`council-close:${guildId}:${councilId}`, () => finalizeCouncilLocked(client, guildId, councilId, token));
+}
+
+async function finalizeCouncilLocked(
+  client: Client,
+  guildId: string,
+  councilId: string,
+  token?: symbol,
+): Promise<void> {
   if (token && !isRuntimeActive(guildId, token)) return;
   let closed = await closeOracleCouncil(guildId, councilId);
   if (!closed) {
@@ -261,7 +271,7 @@ export async function finalizeCouncil(
     : councilWinner(closed);
   if (!closed.winnerId) closed.winnerId = winner?.id;
 
-  const channel = await getChannel(client, closed.channelId);
+  const channel = await getChannel(client, closed.channelId, guildId);
   if (channel) {
     const message = await channel.messages.fetch(closed.messageId).catch(() => null);
     await message?.edit({ embeds: [councilEmbed(closed)], components: [councilButtons(closed)] }).catch(() => null);
@@ -276,12 +286,11 @@ export async function finalizeCouncil(
   }
 
   if (!closed.resultMessageId) {
-    const configuredResultChannelId =
-      getConfiguredChannel("council", guildId) ?? getConfiguredChannel("main", guildId);
+    const configuredResultChannelId = getConfiguredChannel("council", guildId);
     const configuredChannel = configuredResultChannelId
-      ? await getChannel(client, configuredResultChannelId)
+      ? await getChannel(client, configuredResultChannelId, guildId)
       : null;
-    const resultChannel = configuredChannel ?? channel;
+    const resultChannel = configuredChannel;
     if (!resultChannel) {
       throw new Error(`No valid channel available to publish council ${councilId}`);
     }
@@ -339,7 +348,7 @@ async function openCouncil(client: Client, guildId: string, channelId: string, t
     closesAt: now + COUNCIL_VOTING_WINDOW_MS,
     status: "open",
   };
-  const channel = await getChannel(client, channelId);
+  const channel = await getChannel(client, channelId, guildId);
   if (!channel || !isRuntimeActive(guildId, token)) return;
 
   const sent = await channel.send({

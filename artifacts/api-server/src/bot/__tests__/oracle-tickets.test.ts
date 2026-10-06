@@ -558,6 +558,21 @@ describe("Oracle ticket categories", () => {
     }
   });
 
+  it("does not create a duplicate panel when history lookup fails, and permits recovery", async () => {
+    const fetch = vi.fn().mockRejectedValueOnce(new Error("temporary Discord failure")).mockResolvedValue([]);
+    const send = vi.fn().mockResolvedValue({ id: "recovered-panel" });
+    const channel = {
+      id: "history-failure-panel-channel",
+      isTextBased: () => true,
+      messages: { fetch },
+      send,
+    } as unknown as Message["channel"];
+    expect(await postTicketPanelIfMissing(channel, "help_report", "bot-1")).toBe(false);
+    expect(send).not.toHaveBeenCalled();
+    expect(await postTicketPanelIfMissing(channel, "help_report", "bot-1")).toBe(true);
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
   it("does not mistake ordinary ticket actions for a panel", () => {
     const actionMessage = {
       author: { id: "bot-1" },

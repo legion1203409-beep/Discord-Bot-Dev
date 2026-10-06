@@ -150,7 +150,9 @@ import {
   deleteEventMessages,
   EVENT_MESSAGE_RETENTION_MS,
   scheduleEventMessageDeletion,
+  publishLeaderboardResult,
 } from "../scheduler";
+import { loadLeaderboardMessageId, saveLeaderboardMessageId } from "../db";
 
 function discordError(code: number, message: string): Error & { code: number } {
   return Object.assign(new Error(message), { code });
@@ -167,6 +169,45 @@ function makeClient(channels: Record<string, InstanceType<typeof MockTextChannel
 function expiredAt(): Date {
   return new Date(Date.now() - EVENT_MESSAGE_RETENTION_MS - 1);
 }
+
+describe("persistent leaderboard publication", () => {
+  it.each(["fetch", "edit", "history", "database"])("does not repost after a temporary %s failure", async (phase) => {
+    const channel = new MockTextChannel("main-channel");
+    channel.guildId = `leaderboard-${phase}`;
+    const saved = vi.mocked(loadLeaderboardMessageId);
+    saved.mockReset();
+    saved.mockResolvedValue(phase === "history" ? null : "saved-top");
+    if (phase === "database") saved.mockRejectedValueOnce(new Error("database unavailable"));
+    const message = { id: "saved-top", edit: vi.fn().mockRejectedValue(new Error("network unavailable")) };
+    if (phase === "edit") channel.messages.fetch.mockResolvedValue(message);
+    else channel.messages.fetch.mockRejectedValue(new Error("network unavailable"));
+    await expect(publishLeaderboardResult(makeClient({ "main-channel": channel }), channel.guildId, "eventTop", { embeds: [] }))
+      .rejects.toThrow();
+    expect(channel.send).not.toHaveBeenCalled();
+    expect(saveLeaderboardMessageId).not.toHaveBeenCalled();
+  });
+
+  it("replaces a definitively deleted message once, even for concurrent publications", async () => {
+    const channel = new MockTextChannel("main-channel");
+    channel.guildId = "leaderboard-deleted";
+    const saved = vi.mocked(loadLeaderboardMessageId);
+    saved.mockReset();
+    saved.mockResolvedValueOnce("deleted-top").mockResolvedValue("new-top");
+    const message = { id: "new-top", edit: vi.fn().mockResolvedValue({ id: "new-top" }) };
+    channel.messages.fetch.mockImplementation(async (id: unknown) => {
+      if (id === "deleted-top") throw discordError(10008, "Unknown Message");
+      if (id === "new-top") return message;
+      return { find: () => undefined };
+    });
+    channel.send.mockResolvedValue(message);
+    const client = makeClient({ "main-channel": channel });
+    const results = await Promise.all(Array.from({ length: 3 }, () =>
+      publishLeaderboardResult(client, channel.guildId, "eventTop", { embeds: [] }),
+    ));
+    expect(results.map((entry) => entry?.id)).toEqual(Array(3).fill("new-top"));
+    expect(channel.send).toHaveBeenCalledTimes(1);
+  });
+});
 
 beforeEach(() => {
   vi.useFakeTimers();

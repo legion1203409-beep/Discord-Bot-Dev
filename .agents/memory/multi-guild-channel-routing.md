@@ -6,7 +6,7 @@ description: Legacy fallback, explicit destination clearing, and the fetchChanne
 ## Rule
 `getChannel(type, guildId)` returns `string | null`. Non-original guilds without `/setcanale` config get `null`. Scheduler MUST use `fetchChannel()` helper, which logs a warning and returns `null`. Every channel-dependent action must guard for a truthy ID and skip gracefully on null or empty.
 
-An omitted setting is different from an explicitly saved empty string: omitted values may use the original guild's legacy defaults or the `council`/`fratia` inheritance from `main`; an explicit `""` disables the destination and must survive UI/API serialization. `getChannel()` returns that explicit empty string so truthy guards skip it and `??` fallbacks cannot silently restore another route.
+An omitted setting is different from an explicitly saved empty string: omitted gameplay destinations may use the original guild's legacy defaults; an explicit `""` disables the destination and must survive UI/API serialization. Council and Frăția are exceptions: they require their own explicitly configured destination and never inherit the chest channel.
 
 **Why:** Without preserving the explicit clear, blank form values were omitted at save time and legacy destinations reactivated. A nullish fallback also reactivated `main` for an explicitly cleared `fratia`.
 

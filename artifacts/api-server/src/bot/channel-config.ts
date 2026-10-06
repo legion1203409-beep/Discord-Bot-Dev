@@ -10,8 +10,8 @@ const DEFAULT_CHANNELS: Required<ChannelConfig> = {
   trader:     "1521418965732036628",
   eventTop:   "1521185741961695434",
   bossTop:    "1521186981525327993",
-  council:    "1382042144717410385",
-  fratia:     "1382042144717410385",
+  council:    "",
+  fratia:     "",
 };
 
 const ORIGINAL_GUILD_ID = "1382035307607883816";
@@ -36,15 +36,7 @@ export function getChannel(type: keyof ChannelConfig, guildId: string): string |
   if (cached && Object.prototype.hasOwnProperty.call(cached, type)) {
     return cached[type] ?? "";
   }
-  // These channels follow main only while no explicit main setting exists.
-  // A saved empty main value must suppress both inherited and legacy targets.
-  if ((type === "council" || type === "fratia") && cached &&
-    Object.prototype.hasOwnProperty.call(cached, "main")) {
-    return cached.main ?? "";
-  }
-  if ((type === "council" || type === "fratia") && cached?.main) {
-    return cached.main;
-  }
+  // Community votes require their own explicitly configured destination.
   // Apply hardcoded defaults only for the original guild.
   if (guildId === ORIGINAL_GUILD_ID) return DEFAULT_CHANNELS[type];
   // Other guilds must configure channels via /setcanal before the bot acts.
@@ -60,7 +52,10 @@ export async function setChannel(guildId: string, type: keyof ChannelConfig, cha
 
 /** Return the full current configuration for a guild (defaults merged in). */
 export function getAllChannels(guildId: string): Required<ChannelConfig> {
-  return { ...DEFAULT_CHANNELS, ...(cachedByGuild.get(guildId) ?? {}) };
+  return Object.fromEntries(
+    (Object.keys(DEFAULT_CHANNELS) as Array<keyof ChannelConfig>)
+      .map((type) => [type, getChannel(type, guildId) ?? ""]),
+  ) as Required<ChannelConfig>;
 }
 
 /**

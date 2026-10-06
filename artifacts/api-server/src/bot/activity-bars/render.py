@@ -21,28 +21,28 @@ def member_identity(payload):
     layer = Image.new("RGBA", CARD_SIZE, (0, 0, 0, 0))
     draw = ImageDraw.Draw(layer)
     left, right = (204, 744) if not payload.get("banner") else (108, 692)
-    draw.rounded_rectangle((left, 350, right, 416), radius=14, fill=(12, 10, 10, 220), outline=(156, 83, 35, 210))
+    draw.rounded_rectangle((left, 350, right, 432), radius=14, fill=(12, 10, 10, 230), outline=(156, 83, 35, 210))
     font_path = asset_path("member-font.ttf", "activity-rank-font.ttf")
-    name_font = ImageFont.truetype(str(font_path), 22)
-    detail_font = ImageFont.truetype(str(font_path), 14)
-    avatar_box = (left + 12, 359, left + 60, 407)
+    name_font = ImageFont.truetype(str(font_path), 30)
+    detail_font = ImageFont.truetype(str(font_path), 20)
+    avatar_box = (left + 12, 363, left + 68, 419)
     if member.get("avatar"):
         with Image.open(io.BytesIO(base64.b64decode(member["avatar"], validate=True))) as source:
             source.load()
-            avatar = ImageOps.fit(source.convert("RGBA"), (48, 48), Image.Resampling.LANCZOS)
-        mask = Image.new("L", (48, 48), 0)
-        ImageDraw.Draw(mask).ellipse((0, 0, 47, 47), fill=255)
+            avatar = ImageOps.fit(source.convert("RGBA"), (56, 56), Image.Resampling.LANCZOS)
+        mask = Image.new("L", (56, 56), 0)
+        ImageDraw.Draw(mask).ellipse((0, 0, 55, 55), fill=255)
         layer.paste(avatar, avatar_box[:2], mask)
     else:
         draw.ellipse(avatar_box, fill=(73, 43, 29, 255), outline=(224, 135, 60, 255))
         initial = str(member.get("name", "M")).strip()[:1] or "M"
-        draw.text((left + 36, 382), initial, font=name_font, anchor="mm", fill=(255, 234, 212, 255))
+        draw.text((left + 40, 391), initial, font=name_font, anchor="mm", fill=(255, 234, 212, 255))
     name = str(member.get("name") or "Membru").replace("\n", " ").replace("\r", " ")[:200]
-    text_x = left + 74
+    text_x = left + 82
     while draw.textlength(name, font=name_font) > right - text_x - 18 and len(name) > 1:
         name = name[:-2] + "…"
     draw.text((text_x, 360), name, font=name_font, fill=(255, 239, 222, 255))
-    draw.text((text_x, 389), f"Rang {max(1, int(member.get('level', 1)))} · XP de activitate",
+    draw.text((text_x, 401), f"Rang {max(1, int(member.get('level', 1)))} · XP de activitate",
               font=detail_font, fill=(227, 181, 140, 255))
     return layer
 

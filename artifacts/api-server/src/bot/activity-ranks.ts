@@ -2,6 +2,7 @@ import { PermissionFlagsBits, type GuildMember, type Role } from "discord.js";
 import { pool } from "@workspace/db";
 import { ensureBotStateTable } from "./db";
 import { logger } from "../lib/logger";
+import { serializeBotOperation } from "./operation-lock";
 import {
   ACTIVITY_CHAT_XP,
   ACTIVITY_MAX_LEVEL,
@@ -263,6 +264,10 @@ async function saveActivityRoleIds(guildId: string, roleIds: StoredActivityRoleI
 }
 
 export async function syncActivityMilestoneRole(member: GuildMember, level: number): Promise<void> {
+  return serializeBotOperation(`activity-role:${member.guild.id}`, () => syncActivityMilestoneRoleLocked(member, level));
+}
+
+async function syncActivityMilestoneRoleLocked(member: GuildMember, level: number): Promise<void> {
   const milestone = [...ACTIVITY_ROLE_MILESTONES].reverse().find((candidate) => level >= candidate);
   if (!milestone) return;
 
@@ -273,6 +278,10 @@ export async function syncActivityMilestoneRole(member: GuildMember, level: numb
   }
 
   const roleIds = await loadActivityRoleIds(member.guild.id);
+  // An older queued promotion must never replace a role from a higher milestone.
+  if (ACTIVITY_ROLE_MILESTONES.some((threshold) => threshold > milestone &&
+    roleIds[String(threshold) as keyof StoredActivityRoleIds] &&
+    member.roles.cache.has(roleIds[String(threshold) as keyof StoredActivityRoleIds]!))) return;
   const roleName = milestone === ACTIVITY_MAX_LEVEL
     ? ACTIVITY_MAX_LEVEL_ROLE
     : `Oracolul · Rang Activitate ${milestone}`;
