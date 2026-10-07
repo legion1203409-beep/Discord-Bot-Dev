@@ -62,3 +62,9 @@ Changing activity-rank settings must preserve all member-earned activity XP and 
 **Why:** The user explicitly asked for XP to remain when making further changes.
 
 **How to apply:** Keep progression records independent from settings writes and data migrations; add a preservation test whenever configuration-save behavior changes.
+
+Rank-up notification `{user}` is a plain snapshot of the member's server display name, not a live Discord mention or numeric ID.
+
+**Why:** The user asked for the member's name to remain readable in the announcement instead of showing a long mention.
+
+**How to apply:** Use the member's current server display name when composing the notification; use global/username fallbacks, never the Discord ID.

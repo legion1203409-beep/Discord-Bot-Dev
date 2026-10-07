@@ -110,6 +110,25 @@ export function normalizeActivityRankConfig(value: unknown): ActivityRankConfig 
   };
 }
 
+export function formatActivityRankUpMessage(
+  template: string,
+  memberName: string | null | undefined,
+  level: number,
+  guildName: string,
+): string {
+  const readableName = (memberName ?? "")
+    .replace(/[\r\n\t\u0000-\u001f\u007f]+/g, " ")
+    .replace(/@/g, "@\u200b")
+    .replace(/([\\_*~|`>])/g, "\\$1")
+    .trim()
+    .slice(0, 100) || "Membru";
+
+  return template
+    .replaceAll("{user}", readableName)
+    .replaceAll("{level}", String(level))
+    .replaceAll("{guild}", guildName);
+}
+
 export function isEligibleActivityMessage(content: string): boolean {
   const text = content.trim();
   if (text.length < 8 || /^[!./?$]/.test(text)) return false;

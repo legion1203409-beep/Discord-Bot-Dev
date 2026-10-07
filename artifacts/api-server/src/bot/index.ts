@@ -110,6 +110,7 @@ import {
   ACTIVITY_MAX_LEVEL,
   ACTIVITY_MAX_LEVEL_ROLE,
   activityLevelForXp,
+  formatActivityRankUpMessage,
   getActivityLevelProgress,
   getUtcActivityPeriods,
   isEligibleActivityMessage,
@@ -865,11 +866,13 @@ async function awardActivityToMember(
   }
 
   const guildName = client.guilds.cache.get(guildId)?.name ?? "server";
-  const username = rankMember?.displayName ?? member?.user.username ?? userId;
-  const content = config.rankUpMessage
-    .replaceAll("{user}", `<@${userId}>`)
-    .replaceAll("{level}", String(level))
-    .replaceAll("{guild}", guildName);
+  const username = rankMember?.displayName ||
+    rankMember?.user.globalName ||
+    rankMember?.user.username ||
+    member?.user.globalName ||
+    member?.user.username ||
+    "Membru";
+  const content = formatActivityRankUpMessage(config.rankUpMessage, username, level, guildName);
   const embed = addActivityRankBanner(
     new EmbedBuilder()
       .setColor(Number.parseInt(config.color.slice(1), 16))

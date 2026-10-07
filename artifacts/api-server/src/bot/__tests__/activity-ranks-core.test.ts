@@ -4,6 +4,7 @@ import {
   ACTIVITY_MAX_LEVEL_ROLE,
   ACTIVITY_ROLE_MILESTONES,
   activityLevelForXp,
+  formatActivityRankUpMessage,
   getActivityLevelProgress,
   getUtcActivityPeriods,
   isEligibleActivityMessage,
@@ -54,6 +55,25 @@ describe("activity rank progression", () => {
 });
 
 describe("activity chat qualification and config normalization", () => {
+  it("uses a readable snapshot name in rank-up messages instead of a Discord ID mention", () => {
+    const message = formatActivityRankUpMessage(
+      "✨ {user} a ajuns la rangul {level} pe {guild}!",
+      "alvin",
+      5,
+      "Regatul Cenușii",
+    );
+
+    expect(message).toBe("✨ alvin a ajuns la rangul 5 pe Regatul Cenușii!");
+    expect(message).not.toContain("<@");
+    expect(message).not.toContain("86791849254146078");
+  });
+
+  it("sanitizes member names and uses a short fallback when the name is unavailable", () => {
+    expect(formatActivityRankUpMessage("{user}", "  alvin\n@everyone  ", 2, "server"))
+      .toBe("alvin @\u200beveryone");
+    expect(formatActivityRankUpMessage("{user}", null, 2, "server")).toBe("Membru");
+  });
+
   it("keeps legacy role mode distinct from custom and empty rewards", () => {
     expect(normalizeActivityRankConfig({}).roleRewards).toBeNull();
     expect(normalizeActivityRankConfig({ roleRewards: [] }).roleRewards).toEqual([]);
