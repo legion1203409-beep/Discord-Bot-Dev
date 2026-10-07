@@ -65,13 +65,37 @@ describe("automatic Discord activity-log delivery", () => {
       if (targetType === "message") {
         expect(fields.find((field) => field.name === "Țintă")).toBeUndefined();
       } else if (targetType === "member") {
-        expect(fields.find((field) => field.name === "Membru")?.value).toBe("<@345678901234567890>");
+        const memberField = fields.find((field) => field.name === "Membru");
+        expect(memberField?.value).toBe("Necunoscut");
+        expect(memberField?.value).not.toContain("345678901234567890");
       } else {
         expect(fields.find((field) => field.name === "Țintă")?.value).toContain("nume indisponibil");
         expect(fields.find((field) => field.name === "Țintă")?.value).not.toContain("345678901234567890");
       }
       expect(JSON.stringify(payload)).not.toContain("private message body");
     }
+  });
+
+  it("shows the saved server name instead of a raw member ID", async () => {
+    const config = structuredClone(defaultModerationConfig);
+    config.activityLog.enabled = true;
+    config.activityLog.categories.members = true;
+    config.activityLog.channelIds.members = "log-members";
+    const { guild, sends } = testGuild();
+
+    await deliverActivityLog(guild, config, "discord.member_join", "member", "345678901234567890", {
+      memberDisplayName: "alvin",
+      memberUsername: "ioanaaa._",
+      serverJoinedAt: "2026-10-05T10:00:00.000Z",
+    });
+
+    const payload = sends.get("members")!.mock.calls[0]![0] as {
+      embeds: Array<{ toJSON: () => { fields: Array<{ name: string; value: string }> } }>;
+    };
+    const memberField = payload.embeds[0]!.toJSON().fields.find((field) => field.name === "Membru");
+    expect(memberField?.value).toBe("alvin\nUtilizator: @ioanaaa._");
+    expect(memberField?.value).not.toContain("<@");
+    expect(memberField?.value).not.toContain("345678901234567890");
   });
 
   it("shows a safe before-and-after comparison for edited messages", async () => {

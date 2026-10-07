@@ -374,9 +374,10 @@ function targetField(
   if (normalizedType === "member" || normalizedType === "user") {
     const displayName = safeMemberName(detail.memberDisplayName);
     const username = safeMemberName(detail.memberUsername);
-    const lines = [userMention(targetId) ?? displayName ?? "Necunoscut"];
-    if (displayName && displayName !== username) lines.push(`Nume pe server: ${displayName}`);
-    if (username) lines.push(`Utilizator: @${username}`);
+    const lines = [displayName ?? (username ? `@${username}` : "Necunoscut")];
+    if (displayName && username && displayName !== username) {
+      lines.push(`Utilizator: @${username}`);
+    }
     return { name: "Membru", value: lines.join("\n").slice(0, 1_024), inline: false };
   }
   if (normalizedType === "channel") {

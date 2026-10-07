@@ -3,6 +3,7 @@ import base64
 import io
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 from PIL import Image, ImageChops, ImageSequence
 
@@ -11,6 +12,15 @@ from sprites import SPRITE_SIZE, STYLES, asset_path, thin_bar_frames
 
 
 class ThinArtworkTests(unittest.TestCase):
+    def test_supplied_animation_frames_skip_the_intermediate_gif_encode(self):
+        with patch.object(Image.Image, "save") as save:
+            for style in STYLES:
+                with self.subTest(style=style):
+                    frames = thin_bar_frames(style, 62)
+                    self.assertGreater(len(frames), 1)
+                    self.assertTrue(all(duration > 0 for _, duration in frames))
+            save.assert_not_called()
+
     def test_every_style_at_zero_partial_and_full_progress(self):
         for style in STYLES:
             for percentage in (0, 62, 100):

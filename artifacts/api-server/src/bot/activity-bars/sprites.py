@@ -30,6 +30,50 @@ def load_artwork(name):
     return module
 
 
+def generated_animation_frames(generator):
+    """Capture the supplied generator's GIF frames without encoding a temporary GIF."""
+    original_save = Image.Image.save
+    captured_frames = None
+    captured_durations = None
+
+    def capture_save(image, fp, format=None, **options):
+        nonlocal captured_frames, captured_durations
+        if (format or "").upper() == "GIF" and options.get("save_all"):
+            captured_frames = [image, *options.get("append_images", [])]
+            duration = options.get("duration", 40)
+            if isinstance(duration, (int, float)):
+                captured_durations = [int(duration)] * len(captured_frames)
+            else:
+                captured_durations = [int(value) for value in duration]
+            captured_durations = (
+                captured_durations + [40] * len(captured_frames)
+            )[:len(captured_frames)]
+            return None
+        return original_save(image, fp, format=format, **options)
+
+    # The renderer is a per-request Python process, so no other image work runs
+    # concurrently while the supplied generator is building its frames.
+    Image.Image.save = capture_save
+    try:
+        fallback = generator()
+    finally:
+        Image.Image.save = original_save
+
+    if captured_frames is not None and captured_durations is not None:
+        return list(zip(captured_frames, captured_durations))
+    if fallback is None:
+        raise RuntimeError("Activity bar generator did not produce GIF frames")
+
+    # Preserve compatibility if a future artwork generator stops using
+    # Pillow's multi-frame GIF save API.
+    fallback.seek(0)
+    with Image.open(fallback) as animation:
+        return [
+            (frame.copy(), int(frame.info.get("duration", 40)))
+            for frame in ImageSequence.Iterator(animation)
+        ]
+
+
 def thin_bar_frames(style, percentage):
     percentage = max(0.0, min(100.0, percentage))
     pct = percentage / 100.0
@@ -38,11 +82,11 @@ def thin_bar_frames(style, percentage):
         module = load_artwork("normal")
         # The readable percentage is added separately, not squeezed with the line.
         module._text = lambda *args, **kwargs: None
-        animation = Image.open(module.bar_gif_normal(pct, style, **options))
+        generated = lambda: module.bar_gif_normal(pct, style, **options)
         background = module.BG
     elif style == "pro":
         module = load_artwork("pro")
-        animation = Image.open(module.bar_gif_pro(pct, text=False, **options))
+        generated = lambda: module.bar_gif_pro(pct, text=False, **options)
         background = module.BG
     elif style == "sword":
         module = load_artwork("sword")
@@ -51,7 +95,7 @@ def thin_bar_frames(style, percentage):
         # runes, sparks and forge animation are still drawn by the supplied code.
         module._parchment = lambda: Image.new("RGB", (module.W, module.H), background)
         module.STATIC = module._build_static()
-        animation = Image.open(module.bar_gif_sword(pct, text=False, **options))
+        generated = lambda: module.bar_gif_sword(pct, text=False, **options)
     else:
         raise ValueError("Unknown activity XP bar style")
 
@@ -60,7 +104,7 @@ def thin_bar_frames(style, percentage):
     height = round(module.H * vertical_scale)
     offset_y = round(TRACK_CENTER - (module.Y0 + module.Y1) / 2 * vertical_scale)
     sprites = []
-    for frame in ImageSequence.Iterator(animation):
+    for frame, duration in generated_animation_frames(generated):
         rgb = frame.convert("RGB")
         difference = ImageChops.difference(rgb, Image.new("RGB", rgb.size, background))
         red, green, blue = difference.split()
@@ -81,7 +125,7 @@ def thin_bar_frames(style, percentage):
             (SPRITE_SIZE[0] - 2, 20), f"{int(percentage)}%", font=font,
             anchor="rs", fill=(255, 239, 222, 255),
         )
-        sprites.append((sprite, frame.info.get("duration", 40)))
+        sprites.append((sprite, duration))
     return sprites
 
 

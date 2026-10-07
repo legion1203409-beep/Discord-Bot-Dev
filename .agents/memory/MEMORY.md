@@ -80,3 +80,4 @@
 - [Activity rank scope](activity-rank-scope.md) — permanent per-guild activity progression stays separate from RPG; supplied animated bars overlay the selected banner.
 - [Image retouch dimensions](image-retouch-dimensions.md) — AI retouching may change aspect ratio; preserve the source composition with localized compositing.
 - [Discord publication consistency](discord-publication-consistency.md) — uncertainty must not trigger reposting; role-ID snapshots require guild-wide serialization.
+- [Rank GIF frame capture](activity-rank-rendering.md) — direct Pillow frame capture avoids a temporary GIF round-trip; its global save interception relies on one isolated Python process per render.

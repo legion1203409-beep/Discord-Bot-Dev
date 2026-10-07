@@ -7,7 +7,7 @@ import { activityBannerStoragePath, isSupportedActivityBannerSource } from "./ac
 const MAX_BANNER_BYTES = 10 * 1024 * 1024;
 const MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
 const BANNER_TIMEOUT_MS = 8_000;
-const RENDER_TIMEOUT_MS = 12_000;
+const RENDER_TIMEOUT_MS = 25_000;
 const MAX_CONCURRENT_RENDERS = 2;
 let activeRenders = 0;
 const storage = new ObjectStorageService();
