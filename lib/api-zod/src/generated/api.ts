@@ -387,6 +387,61 @@ export const ModerationPutActivityRanksResponse = zod.object({
 })
 
 
+export const moderationGetActivityRankChannelBotAccessPathGuildIdMin = 5;
+export const moderationGetActivityRankChannelBotAccessPathGuildIdMax = 25;
+
+export const moderationGetActivityRankChannelBotAccessPathChannelIdMin = 5;
+export const moderationGetActivityRankChannelBotAccessPathChannelIdMax = 25;
+
+
+
+export const ModerationGetActivityRankChannelBotAccessParams = zod.object({
+  "guildId": zod.coerce.string().min(moderationGetActivityRankChannelBotAccessPathGuildIdMin).max(moderationGetActivityRankChannelBotAccessPathGuildIdMax),
+  "channelId": zod.coerce.string().min(moderationGetActivityRankChannelBotAccessPathChannelIdMin).max(moderationGetActivityRankChannelBotAccessPathChannelIdMax)
+})
+
+export const moderationGetActivityRankChannelBotAccessResponseChannelIdRegExp = new RegExp('^\\d{5,25}$');
+
+
+export const ModerationGetActivityRankChannelBotAccessResponse = zod.object({
+  "channelId": zod.string().regex(moderationGetActivityRankChannelBotAccessResponseChannelIdRegExp),
+  "channelName": zod.string(),
+  "canManageChannels": zod.boolean(),
+  "viewChannel": zod.boolean(),
+  "sendMessages": zod.boolean()
+})
+
+
+export const moderationSetActivityRankChannelBotAccessPathGuildIdMin = 5;
+export const moderationSetActivityRankChannelBotAccessPathGuildIdMax = 25;
+
+export const moderationSetActivityRankChannelBotAccessPathChannelIdMin = 5;
+export const moderationSetActivityRankChannelBotAccessPathChannelIdMax = 25;
+
+
+
+export const ModerationSetActivityRankChannelBotAccessParams = zod.object({
+  "guildId": zod.coerce.string().min(moderationSetActivityRankChannelBotAccessPathGuildIdMin).max(moderationSetActivityRankChannelBotAccessPathGuildIdMax),
+  "channelId": zod.coerce.string().min(moderationSetActivityRankChannelBotAccessPathChannelIdMin).max(moderationSetActivityRankChannelBotAccessPathChannelIdMax)
+})
+
+export const ModerationSetActivityRankChannelBotAccessBody = zod.object({
+  "viewChannel": zod.boolean(),
+  "sendMessages": zod.boolean()
+})
+
+export const moderationSetActivityRankChannelBotAccessResponseChannelIdRegExp = new RegExp('^\\d{5,25}$');
+
+
+export const ModerationSetActivityRankChannelBotAccessResponse = zod.object({
+  "channelId": zod.string().regex(moderationSetActivityRankChannelBotAccessResponseChannelIdRegExp),
+  "channelName": zod.string(),
+  "canManageChannels": zod.boolean(),
+  "viewChannel": zod.boolean(),
+  "sendMessages": zod.boolean()
+})
+
+
 export const requestActivityRankBannerUploadUrlBodyGuildIdMin = 5;
 export const requestActivityRankBannerUploadUrlBodyGuildIdMax = 25;
 

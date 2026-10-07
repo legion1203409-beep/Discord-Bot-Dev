@@ -185,6 +185,36 @@ paths:
         "400": { description: Invalid settings or notification channel }
         "401": { description: Moderation session is required }
         "403": { description: Guild configuration access is required }
+  /moderation/guilds/{guildId}/channels/{channelId}/bot-access:
+    parameters:
+      - { name: guildId, in: path, required: true, schema: { type: string, minLength: 5, maxLength: 25 } }
+      - { name: channelId, in: path, required: true, schema: { type: string, minLength: 5, maxLength: 25 } }
+    get:
+      operationId: moderationGetActivityRankChannelBotAccess
+      tags: [moderation]
+      responses:
+        "200":
+          description: Current bot access to the selected activity-rank announcement channel
+          content: { application/json: { schema: { $ref: "#/components/schemas/ActivityRankChannelBotAccess" } } }
+        "401": { description: Moderation session is required }
+        "403": { description: Guild configuration access is required }
+        "404": { description: The selected text channel is unavailable in this guild }
+        "503": { description: Discord bot is unavailable }
+    put:
+      operationId: moderationSetActivityRankChannelBotAccess
+      tags: [moderation]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/ActivityRankChannelBotAccessInput" } } }
+      responses:
+        "200":
+          description: Bot access was updated for the selected channel
+          content: { application/json: { schema: { $ref: "#/components/schemas/ActivityRankChannelBotAccess" } } }
+        "400": { description: Invalid channel access settings or channel }
+        "401": { description: Moderation session is required }
+        "403": { description: Guild configuration access is required or the bot lacks Manage Channels }
+        "404": { description: The selected text channel is unavailable in this guild }
+        "503": { description: Discord bot is unavailable }
   /moderation/storage/activity-ranks/uploads/request-url:
     post:
       operationId: requestActivityRankBannerUploadUrl
@@ -461,6 +491,23 @@ components:
       required: [config]
       properties:
         config: { $ref: "#/components/schemas/ActivityRankSettings" }
+    ActivityRankChannelBotAccessInput:
+      type: object
+      additionalProperties: false
+      required: [viewChannel, sendMessages]
+      properties:
+        viewChannel: { type: boolean }
+        sendMessages: { type: boolean }
+    ActivityRankChannelBotAccess:
+      type: object
+      additionalProperties: false
+      required: [channelId, channelName, canManageChannels, viewChannel, sendMessages]
+      properties:
+        channelId: { type: string, pattern: "^\\d{5,25}$" }
+        channelName: { type: string }
+        canManageChannels: { type: boolean }
+        viewChannel: { type: boolean }
+        sendMessages: { type: boolean }
     BotControlPartialApplyResponse:
       type: object
       additionalProperties: false

@@ -337,6 +337,20 @@ export interface ActivityRankSettingsResponse {
   config: ActivityRankSettings;
 }
 
+export interface ActivityRankChannelBotAccessInput {
+  viewChannel: boolean;
+  sendMessages: boolean;
+}
+
+export interface ActivityRankChannelBotAccess {
+  /** @pattern ^\d{5,25}$ */
+  channelId: string;
+  channelName: string;
+  canManageChannels: boolean;
+  viewChannel: boolean;
+  sendMessages: boolean;
+}
+
 /**
  * Published verification settings, included only when the verification panel was published; retains panelMessageId when available.
  */

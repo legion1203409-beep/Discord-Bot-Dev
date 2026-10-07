@@ -7,6 +7,8 @@
  */
 
 export * from './activityRankBarLayout';
+export * from './activityRankChannelBotAccess';
+export * from './activityRankChannelBotAccessInput';
 export * from './activityRankMemberLayout';
 export * from './activityRankSettings';
 export * from './activityRankSettingsBarStyle';

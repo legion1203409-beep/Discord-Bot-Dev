@@ -20,6 +20,8 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  ActivityRankChannelBotAccess,
+  ActivityRankChannelBotAccessInput,
   ActivityRankSettings,
   ActivityRankSettingsResponse,
   BotControlPartialApplyResponse,
@@ -1108,6 +1110,149 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getModerationPutActivityRanksMutationOptions(options));
+    }
+
+export const getModerationGetActivityRankChannelBotAccessUrl = (guildId: string,
+    channelId: string,) => {
+
+
+
+
+  return `/api/moderation/guilds/${guildId}/channels/${channelId}/bot-access`
+}
+
+export const moderationGetActivityRankChannelBotAccess = async (guildId: string,
+    channelId: string, options?: RequestInit): Promise<ActivityRankChannelBotAccess> => {
+
+  return customFetch<ActivityRankChannelBotAccess>(getModerationGetActivityRankChannelBotAccessUrl(guildId,channelId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getModerationGetActivityRankChannelBotAccessQueryKey = (guildId: string,
+    channelId: string,) => {
+    return [
+    `/api/moderation/guilds/${guildId}/channels/${channelId}/bot-access`
+    ] as const;
+    }
+
+
+export const getModerationGetActivityRankChannelBotAccessQueryOptions = <TData = Awaited<ReturnType<typeof moderationGetActivityRankChannelBotAccess>>, TError = ErrorType<void>>(guildId: string,
+    channelId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof moderationGetActivityRankChannelBotAccess>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getModerationGetActivityRankChannelBotAccessQueryKey(guildId,channelId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof moderationGetActivityRankChannelBotAccess>>> = ({ signal }) => moderationGetActivityRankChannelBotAccess(guildId,channelId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: guildId !== null && guildId !== undefined && channelId !== null && channelId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof moderationGetActivityRankChannelBotAccess>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ModerationGetActivityRankChannelBotAccessQueryResult = NonNullable<Awaited<ReturnType<typeof moderationGetActivityRankChannelBotAccess>>>
+export type ModerationGetActivityRankChannelBotAccessQueryError = ErrorType<void>
+
+
+
+export function useModerationGetActivityRankChannelBotAccess<TData = Awaited<ReturnType<typeof moderationGetActivityRankChannelBotAccess>>, TError = ErrorType<void>>(
+ guildId: string,
+    channelId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof moderationGetActivityRankChannelBotAccess>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getModerationGetActivityRankChannelBotAccessQueryOptions(guildId,channelId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getModerationSetActivityRankChannelBotAccessUrl = (guildId: string,
+    channelId: string,) => {
+
+
+
+
+  return `/api/moderation/guilds/${guildId}/channels/${channelId}/bot-access`
+}
+
+export const moderationSetActivityRankChannelBotAccess = async (guildId: string,
+    channelId: string,
+    activityRankChannelBotAccessInput: ActivityRankChannelBotAccessInput, options?: RequestInit): Promise<ActivityRankChannelBotAccess> => {
+
+  return customFetch<ActivityRankChannelBotAccess>(getModerationSetActivityRankChannelBotAccessUrl(guildId,channelId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(activityRankChannelBotAccessInput)
+  }
+);}
+
+
+
+
+export const getModerationSetActivityRankChannelBotAccessMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof moderationSetActivityRankChannelBotAccess>>, TError,{guildId: string;channelId: string;data: BodyType<ActivityRankChannelBotAccessInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof moderationSetActivityRankChannelBotAccess>>, TError,{guildId: string;channelId: string;data: BodyType<ActivityRankChannelBotAccessInput>}, TContext> => {
+
+const mutationKey = ['moderationSetActivityRankChannelBotAccess'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof moderationSetActivityRankChannelBotAccess>>, {guildId: string;channelId: string;data: BodyType<ActivityRankChannelBotAccessInput>}> = (props) => {
+          const {guildId,channelId,data} = props ?? {};
+
+          return  moderationSetActivityRankChannelBotAccess(guildId,channelId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ModerationSetActivityRankChannelBotAccessMutationResult = NonNullable<Awaited<ReturnType<typeof moderationSetActivityRankChannelBotAccess>>>
+    export type ModerationSetActivityRankChannelBotAccessMutationBody = BodyType<ActivityRankChannelBotAccessInput>
+    export type ModerationSetActivityRankChannelBotAccessMutationError = ErrorType<void>
+
+    export const useModerationSetActivityRankChannelBotAccess = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof moderationSetActivityRankChannelBotAccess>>, TError,{guildId: string;channelId: string;data: BodyType<ActivityRankChannelBotAccessInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof moderationSetActivityRankChannelBotAccess>>,
+        TError,
+        {guildId: string;channelId: string;data: BodyType<ActivityRankChannelBotAccessInput>},
+        TContext
+      > => {
+      return useMutation(getModerationSetActivityRankChannelBotAccessMutationOptions(options));
     }
 
 export const getRequestActivityRankBannerUploadUrlUrl = () => {

@@ -2415,6 +2415,66 @@ router.get("/guilds/:guildId/activity-ranks", asyncRoute(async (req, res) => {
   res.set("Cache-Control", "no-store").json({ config });
 }));
 
+async function loadActivityRankChannelAccessTarget(guildId: string, channelId: string) {
+  const client = getModerationClient();
+  if (!client?.isReady()) throw new ModerationAuthError(503, "Botul Discord nu este conectat.");
+  const guild = await client.guilds.fetch(guildId).catch(() => null);
+  if (!guild) throw new ModerationAuthError(404, "Serverul selectat nu este disponibil.");
+  const channel = await guild.channels.fetch(channelId).catch(() => null);
+  if (
+    !channel ||
+    ![0, 5].includes(channel.type) ||
+    !("guildId" in channel) ||
+    channel.guildId !== guildId ||
+    !("permissionsFor" in channel) ||
+    typeof channel.permissionsFor !== "function" ||
+    !("permissionOverwrites" in channel)
+  ) {
+    throw new ModerationAuthError(404, "Canalul selectat nu este disponibil ca text în serverul ales.");
+  }
+  const botMember = guild.members.me ?? await guild.members.fetchMe().catch(() => null);
+  if (!botMember) throw new ModerationAuthError(503, "Nu am putut verifica accesul botului în server.");
+  return { channel, botMember };
+}
+
+function activityRankChannelAccessResponse(
+  channel: Awaited<ReturnType<typeof loadActivityRankChannelAccessTarget>>["channel"],
+  botMember: Awaited<ReturnType<typeof loadActivityRankChannelAccessTarget>>["botMember"],
+) {
+  const permissions = channel.permissionsFor(botMember);
+  return {
+    channelId: channel.id,
+    channelName: channel.name,
+    canManageChannels: botMember.permissions.has(PermissionFlagsBits.ManageChannels),
+    viewChannel: permissions?.has(PermissionFlagsBits.ViewChannel) ?? false,
+    sendMessages: permissions?.has(PermissionFlagsBits.SendMessages) ?? false,
+  };
+}
+
+router.get("/guilds/:guildId/channels/:channelId/bot-access", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  const channelId = parse(snowflake, req.params.channelId);
+  await sessionAndGuild(req, guildId, "config");
+  const { channel, botMember } = await loadActivityRankChannelAccessTarget(guildId, channelId);
+  res.set("Cache-Control", "no-store").json(activityRankChannelAccessResponse(channel, botMember));
+}));
+
+router.put("/guilds/:guildId/channels/:channelId/bot-access", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  const channelId = parse(snowflake, req.params.channelId);
+  await sessionAndGuild(req, guildId, "config", true);
+  const { viewChannel, sendMessages } = ActivityRankChannelBotAccessInput.parse(req.body);
+  const { channel, botMember } = await loadActivityRankChannelAccessTarget(guildId, channelId);
+  if (!botMember.permissions.has(PermissionFlagsBits.ManageChannels)) {
+    throw new ModerationAuthError(403, "Botul are nevoie de permisiunea Manage Channels pentru a modifica accesul la canal.");
+  }
+  await channel.permissionOverwrites.edit(botMember.user.id, {
+    ViewChannel: viewChannel,
+    SendMessages: sendMessages,
+  }, { reason: "Accesul botului configurat din setările rangurilor de activitate" });
+  res.set("Cache-Control", "no-store").json(activityRankChannelAccessResponse(channel, botMember));
+}));
+
 router.put("/guilds/:guildId/activity-ranks", asyncRoute(async (req, res) => {
   const guildId = parse(snowflake, req.params.guildId);
   await sessionAndGuild(req, guildId, "config", true);
