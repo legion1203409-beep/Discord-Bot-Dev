@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Activity, Loader2, Save, Trophy } from "lucide-react";
+import { Activity, Loader2, Save, Settings2, Trophy } from "lucide-react";
+import type { ActivityRankChannelBotAccess } from "@workspace/api-client-react";
 import { Button } from "../../components/ui/button";
 import { ImageField } from "../../components/moderation/ImageField";
 import { ActivityRoleRewardsEditor } from "../../components/moderation/ActivityRoleRewardsEditor";
 import { ActivityRankLayoutEditor } from "../../components/moderation/ActivityRankLayoutEditor";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
 import { activityRoleRewardsError, type ActivityRoleReward } from "../../lib/activity-role-rewards";
 import {
   activityRankBarMaxY,
@@ -57,8 +59,24 @@ export function ActivityRanksPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [accessDialogOpen, setAccessDialogOpen] = useState(false);
+  const [accessTargetId, setAccessTargetId] = useState("");
+  const [channelAccess, setChannelAccess] = useState<ActivityRankChannelBotAccess | null>(null);
+  const [channelAccessDraft, setChannelAccessDraft] = useState<{ viewChannel: boolean; sendMessages: boolean } | null>(null);
+  const [accessLoading, setAccessLoading] = useState(false);
+  const [accessSaving, setAccessSaving] = useState(false);
+  const [accessError, setAccessError] = useState("");
+  const accessRequestId = useRef(0);
 
   useEffect(() => {
+    accessRequestId.current += 1;
+    setAccessDialogOpen(false);
+    setAccessTargetId("");
+    setChannelAccess(null);
+    setChannelAccessDraft(null);
+    setAccessLoading(false);
+    setAccessSaving(false);
+    setAccessError("");
     if (!guildId) {
       setDraft(DEFAULT_CONFIG);
       setSaved(DEFAULT_CONFIG);
@@ -94,6 +112,7 @@ export function ActivityRanksPage() {
     () => metadata?.channels.filter((channel) => isTextChannel(channel.type)) ?? [],
     [metadata],
   );
+  const selectedTextChannel = textChannels.find((channel) => channel.id === draft.notificationChannelId) ?? null;
   const hasChanges = JSON.stringify(draft) !== JSON.stringify(saved);
   const rewardsError = activityRoleRewardsError(draft.roleRewards) ||
     (draft.roleRewards?.some((reward) => {
@@ -104,6 +123,76 @@ export function ActivityRanksPage() {
   const update = <K extends keyof ActivityRankConfig>(key: K, value: ActivityRankConfig[K]) => {
     setDraft((current) => ({ ...current, [key]: value }));
   };
+
+  const openChannelAccess = async (channelId: string) => {
+    if (!guildId || !channelId) return;
+    const requestedGuildId = guildId;
+    const requestId = ++accessRequestId.current;
+    setAccessTargetId(channelId);
+    setChannelAccess(null);
+    setChannelAccessDraft(null);
+    setAccessError("");
+    setAccessLoading(true);
+    setAccessDialogOpen(true);
+    try {
+      const { data } = await apiFetchWithMeta<ActivityRankChannelBotAccess>(
+        `/guilds/${requestedGuildId}/channels/${encodeURIComponent(channelId)}/bot-access`,
+      );
+      if (accessRequestId.current !== requestId || activeGuildRef.current !== requestedGuildId) return;
+      setChannelAccess(data);
+      setChannelAccessDraft({ viewChannel: data.viewChannel, sendMessages: data.sendMessages });
+    } catch (loadError) {
+      if (accessRequestId.current === requestId && activeGuildRef.current === requestedGuildId) {
+        setAccessError(loadError instanceof Error ? loadError.message : "Accesul botului nu a putut fi verificat.");
+      }
+    } finally {
+      if (accessRequestId.current === requestId) setAccessLoading(false);
+    }
+  };
+
+  const handleAccessDialogOpenChange = (open: boolean) => {
+    if (!open && accessSaving) return;
+    setAccessDialogOpen(open);
+    if (!open) {
+      accessRequestId.current += 1;
+      setChannelAccess(null);
+      setChannelAccessDraft(null);
+      setAccessLoading(false);
+      setAccessError("");
+    }
+  };
+
+  const saveChannelAccess = async () => {
+    if (!guildId || !accessTargetId || !channelAccess || !channelAccessDraft || accessSaving) return;
+    const requestedGuildId = guildId;
+    const requestId = ++accessRequestId.current;
+    setAccessSaving(true);
+    setAccessError("");
+    try {
+      const { data } = await apiFetchWithMeta<ActivityRankChannelBotAccess>(
+        `/guilds/${requestedGuildId}/channels/${encodeURIComponent(accessTargetId)}/bot-access`,
+        { method: "PUT", body: JSON.stringify(channelAccessDraft) },
+      );
+      if (accessRequestId.current !== requestId || activeGuildRef.current !== requestedGuildId) return;
+      setChannelAccess(data);
+      setChannelAccessDraft({ viewChannel: data.viewChannel, sendMessages: data.sendMessages });
+      toast({ title: "Accesul botului a fost actualizat." });
+    } catch (saveError) {
+      if (accessRequestId.current === requestId && activeGuildRef.current === requestedGuildId) {
+        const message = saveError instanceof Error ? saveError.message : "Accesul botului nu a putut fi actualizat.";
+        setAccessError(message);
+        toast({ variant: "destructive", title: "Actualizarea accesului a eșuat", description: message });
+      }
+    } finally {
+      if (accessRequestId.current === requestId) setAccessSaving(false);
+    }
+  };
+
+  const accessHasChanges = Boolean(
+    channelAccess && channelAccessDraft &&
+    (channelAccess.viewChannel !== channelAccessDraft.viewChannel ||
+      channelAccess.sendMessages !== channelAccessDraft.sendMessages),
+  );
 
   const save = async () => {
     if (!guildId || saving || rewardsError || loading || metadataLoading) return;
@@ -202,21 +291,36 @@ export function ActivityRanksPage() {
 
             <label className="block space-y-2 text-sm">
               <span className="font-medium">Canal pentru creșterea rangului</span>
-              <Select
-                value={draft.notificationChannelId || "none"}
-                onValueChange={(value) => update("notificationChannelId", value === "none" ? "" : value)}
-              >
-                <SelectTrigger aria-label="Canal pentru creșterea rangului"><SelectValue placeholder="Alege un canal" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Fără notificări</SelectItem>
-                  {draft.notificationChannelId && !textChannels.some((channel) => channel.id === draft.notificationChannelId) && (
-                    <SelectItem value={draft.notificationChannelId}>Canal indisponibil · {draft.notificationChannelId}</SelectItem>
-                  )}
-                  {textChannels.map((channel) => (
-                    <SelectItem key={channel.id} value={channel.id}>#{channel.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex min-w-0 gap-2">
+                <Select
+                  value={draft.notificationChannelId || "none"}
+                  onValueChange={(value) => update("notificationChannelId", value === "none" ? "" : value)}
+                >
+                  <SelectTrigger aria-label="Canal pentru creșterea rangului" className="min-w-0 flex-1">
+                    <SelectValue placeholder="Alege un canal" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Fără notificări</SelectItem>
+                    {draft.notificationChannelId && !textChannels.some((channel) => channel.id === draft.notificationChannelId) && (
+                      <SelectItem value={draft.notificationChannelId}>Canal indisponibil · {draft.notificationChannelId}</SelectItem>
+                    )}
+                    {textChannels.map((channel) => (
+                      <SelectItem key={channel.id} value={channel.id}>#{channel.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  aria-label="Configurează accesul botului la canal"
+                  title="Configurează accesul botului la canal"
+                  disabled={!selectedTextChannel || metadataLoading || loading}
+                  onClick={() => void openChannelAccess(selectedTextChannel!.id)}
+                >
+                  <Settings2 className="h-4 w-4" />
+                </Button>
+              </div>
               {metadataLoading && <span className="block text-xs text-muted-foreground">Se încarcă lista canalelor…</span>}
             </label>
 
@@ -350,6 +454,71 @@ export function ActivityRanksPage() {
           </div>
         </>
       )}
+      <Dialog open={accessDialogOpen} onOpenChange={handleAccessDialogOpenChange}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Accesul botului la #{channelAccess?.channelName ?? selectedTextChannel?.name ?? accessTargetId}</DialogTitle>
+            <DialogDescription>
+              Configurează dacă botul poate vedea canalul și trimite anunțurile de rang. Se modifică doar accesul botului; permisiunile celorlalte roluri rămân neschimbate.
+            </DialogDescription>
+          </DialogHeader>
+
+          {accessLoading ? (
+            <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Se verifică accesul botului…
+            </div>
+          ) : accessError ? (
+            <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{accessError}</p>
+          ) : channelAccess && channelAccessDraft ? (
+            <div className="space-y-4">
+              {!channelAccess.canManageChannels && (
+                <p role="alert" className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">
+                  Botul are nevoie de permisiunea Manage Channels în server pentru a modifica accesul.
+                </p>
+              )}
+              <label className="flex items-center justify-between gap-4 rounded-lg border border-border p-3">
+                <span className="space-y-1">
+                  <span className="block text-sm font-medium">Poate vedea canalul</span>
+                  <span className="block text-xs text-muted-foreground">Permisiunea Discord „View Channel”.</span>
+                </span>
+                <Switch
+                  aria-label="Permite botului să vadă canalul"
+                  checked={channelAccessDraft.viewChannel}
+                  disabled={!channelAccess.canManageChannels || accessSaving}
+                  onCheckedChange={(viewChannel) => setChannelAccessDraft((current) => current ? { ...current, viewChannel } : current)}
+                />
+              </label>
+              <label className="flex items-center justify-between gap-4 rounded-lg border border-border p-3">
+                <span className="space-y-1">
+                  <span className="block text-sm font-medium">Poate trimite mesaje</span>
+                  <span className="block text-xs text-muted-foreground">Permisiunea Discord „Send Messages”, necesară anunțurilor de rang.</span>
+                </span>
+                <Switch
+                  aria-label="Permite botului să trimită mesaje în canal"
+                  checked={channelAccessDraft.sendMessages}
+                  disabled={!channelAccess.canManageChannels || accessSaving}
+                  onCheckedChange={(sendMessages) => setChannelAccessDraft((current) => current ? { ...current, sendMessages } : current)}
+                />
+              </label>
+              <p className="text-xs text-muted-foreground">Acces curent: {channelAccess.viewChannel ? "poate vedea canalul" : "nu poate vedea canalul"} · {channelAccess.sendMessages ? "poate trimite mesaje" : "nu poate trimite mesaje"}.</p>
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => handleAccessDialogOpenChange(false)} disabled={accessSaving}>
+              Închide
+            </Button>
+            <Button
+              type="button"
+              onClick={() => void saveChannelAccess()}
+              disabled={!channelAccess?.canManageChannels || !accessHasChanges || accessSaving || accessLoading || Boolean(accessError)}
+            >
+              {accessSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {accessSaving ? "Se aplică…" : "Aplică accesul"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import express from "express";
 import type { Server } from "node:http";
-import { TextChannel } from "discord.js";
+import { PermissionFlagsBits, TextChannel } from "discord.js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -291,6 +291,77 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
       expect(mocks.saveActivityRankConfig).not.toHaveBeenCalled();
     });
   });
+
+  describe("activity rank announcement channel access", () => {
+    const channelId = "234567890";
+    const makeTarget = (canManageChannels: boolean) => {
+      const channel = Object.create(TextChannel.prototype) as TextChannel;
+      const permissionOverwriteEdit = vi.fn().mockResolvedValue(undefined);
+      const permissionSet = new Set([PermissionFlagsBits.ViewChannel]);
+      Object.assign(channel, {
+        id: channelId,
+        name: "ranguri",
+        type: 0,
+        guildId,
+        permissionsFor: () => ({ has: (permission: bigint) => permissionSet.has(permission) }),
+        permissionOverwrites: { edit: permissionOverwriteEdit },
+      });
+      const botMember = {
+        user: { id: "555555555" },
+        permissions: {
+          has: (permission: bigint) =>
+            permission === PermissionFlagsBits.ManageChannels && canManageChannels,
+        },
+      };
+      const guild = {
+        members: { me: botMember, fetchMe: vi.fn() },
+        channels: { fetch: vi.fn().mockResolvedValue(channel) },
+      };
+      mocks.client.mockReturnValue({
+        isReady: () => true,
+        guilds: { fetch: vi.fn().mockResolvedValue(guild) },
+      });
+      return { permissionOverwriteEdit };
+    };
+
+    it("returns the bot's effective permissions for the selected channel", async () => {
+      makeTarget(true);
+      const response = await fetch(`${base}/channels/${channelId}/bot-access`);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        channelId,
+        channelName: "ranguri",
+        canManageChannels: true,
+        viewChannel: true,
+        sendMessages: false,
+      });
+    });
+
+    it("edits only the bot member overwrite and requires Manage Channels", async () => {
+      const target = makeTarget(true);
+      const response = await fetch(`${base}/channels/${channelId}/bot-access`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": "csrf" },
+        body: JSON.stringify({ viewChannel: true, sendMessages: false }),
+      });
+      expect(response.status).toBe(200);
+      expect(target.permissionOverwriteEdit).toHaveBeenCalledWith(
+        "555555555",
+        { ViewChannel: true, SendMessages: false },
+        { reason: expect.stringContaining("rangurilor de activitate") },
+      );
+
+      const deniedTarget = makeTarget(false);
+      const denied = await fetch(`${base}/channels/${channelId}/bot-access`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": "csrf" },
+        body: JSON.stringify({ viewChannel: true, sendMessages: true }),
+      });
+      expect(denied.status).toBe(403);
+      expect(deniedTarget.permissionOverwriteEdit).not.toHaveBeenCalled();
+    });
+  });
+
   beforeAll(async () => {
     const app = express();
     app.use(express.json({ limit: "400kb" }));

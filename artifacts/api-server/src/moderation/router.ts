@@ -2,6 +2,11 @@ import { PUBLIC_DISCORD_INVITE } from "../lib/discord-invite";
 import { getActivityRankConfig, saveActivityRankConfig, isSafeActivityRewardRole } from "../bot/activity-ranks";
 import { normalizeActivityRankConfig } from "../bot/activity-ranks-core";
 import { isSupportedActivityBannerSource } from "../bot/activity-rank-banner-source";
+import {
+  ModerationGetActivityRankChannelBotAccessResponse,
+  ModerationSetActivityRankChannelBotAccessBody,
+  ModerationSetActivityRankChannelBotAccessResponse,
+} from "@workspace/api-zod";
 
 import 
 {
@@ -2456,14 +2461,16 @@ router.get("/guilds/:guildId/channels/:channelId/bot-access", asyncRoute(async (
   const channelId = parse(snowflake, req.params.channelId);
   await sessionAndGuild(req, guildId, "config");
   const { channel, botMember } = await loadActivityRankChannelAccessTarget(guildId, channelId);
-  res.set("Cache-Control", "no-store").json(activityRankChannelAccessResponse(channel, botMember));
+  res.set("Cache-Control", "no-store").json(
+    ModerationGetActivityRankChannelBotAccessResponse.parse(activityRankChannelAccessResponse(channel, botMember)),
+  );
 }));
 
 router.put("/guilds/:guildId/channels/:channelId/bot-access", asyncRoute(async (req, res) => {
   const guildId = parse(snowflake, req.params.guildId);
   const channelId = parse(snowflake, req.params.channelId);
   await sessionAndGuild(req, guildId, "config", true);
-  const { viewChannel, sendMessages } = ActivityRankChannelBotAccessInput.parse(req.body);
+  const { viewChannel, sendMessages } = parse(ModerationSetActivityRankChannelBotAccessBody, req.body);
   const { channel, botMember } = await loadActivityRankChannelAccessTarget(guildId, channelId);
   if (!botMember.permissions.has(PermissionFlagsBits.ManageChannels)) {
     throw new ModerationAuthError(403, "Botul are nevoie de permisiunea Manage Channels pentru a modifica accesul la canal.");
@@ -2472,7 +2479,9 @@ router.put("/guilds/:guildId/channels/:channelId/bot-access", asyncRoute(async (
     ViewChannel: viewChannel,
     SendMessages: sendMessages,
   }, { reason: "Accesul botului configurat din setările rangurilor de activitate" });
-  res.set("Cache-Control", "no-store").json(activityRankChannelAccessResponse(channel, botMember));
+  res.set("Cache-Control", "no-store").json(
+    ModerationSetActivityRankChannelBotAccessResponse.parse(activityRankChannelAccessResponse(channel, botMember)),
+  );
 }));
 
 router.put("/guilds/:guildId/activity-ranks", asyncRoute(async (req, res) => {
