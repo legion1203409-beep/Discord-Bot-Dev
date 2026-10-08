@@ -161,6 +161,118 @@ paths:
         "401": { description: Moderation session is required }
         "403": { description: Guild configuration access is required or the bot cannot post to a configured channel }
         "503": { description: Required Discord service is unavailable }
+  /moderation/guilds/{guildId}/server-setup:
+    parameters: [{ name: guildId, in: path, required: true, schema: { type: string } }]
+    get:
+      operationId: moderationGetServerSetup
+      tags: [moderation]
+      responses:
+        "200":
+          description: Editable template; no Discord changes
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [draft, aiAvailable]
+                properties:
+                  draft: { $ref: "#/components/schemas/ServerSetupDraft" }
+                  aiAvailable: { type: boolean }
+        "403": { description: Guild owner access required }
+  /moderation/guilds/{guildId}/server-setup/suggest:
+    parameters: [{ name: guildId, in: path, required: true, schema: { type: string } }]
+    post:
+      operationId: moderationSuggestServerSetup
+      tags: [moderation]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [communityType, goals]
+              properties:
+                communityType: { type: string, minLength: 1, maxLength: 300 }
+                goals: { type: string, minLength: 1, maxLength: 1500 }
+                refinement: { type: string, maxLength: 1500 }
+                draft: { $ref: "#/components/schemas/ServerSetupDraft" }
+      responses:
+        "200":
+          description: Validated AI suggestion only
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [draft]
+                properties:
+                  draft: { $ref: "#/components/schemas/ServerSetupDraft" }
+        "400": { description: Invalid input }
+        "403": { description: Owner access and CSRF token required }
+        "503": { description: AI unavailable or invalid model response }
+  /moderation/guilds/{guildId}/server-setup/preview:
+    parameters: [{ name: guildId, in: path, required: true, schema: { type: string } }]
+    post:
+      operationId: moderationPreviewServerSetup
+      tags: [moderation]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [draft]
+              properties:
+                draft: { $ref: "#/components/schemas/ServerSetupDraft" }
+      responses:
+        "200":
+          description: Fresh Discord checks and fingerprint for confirmation
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ready, issues, items, fingerprint]
+                properties:
+                  ready: { type: boolean }
+                  issues: { type: array, items: { type: string } }
+                  fingerprint: { type: string }
+                  items: { type: array, items: { $ref: "#/components/schemas/ServerSetupPreviewItem" } }
+        "400": { description: Invalid draft }
+        "403": { description: Owner access and CSRF token required }
+        "409": { description: Concurrent operation or unavailable checks }
+        "503": { description: Bot unavailable }
+  /moderation/guilds/{guildId}/server-setup/apply:
+    parameters: [{ name: guildId, in: path, required: true, schema: { type: string } }]
+    post:
+      operationId: moderationApplyServerSetup
+      tags: [moderation]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [draft, confirmed, fingerprint]
+              properties:
+                draft: { $ref: "#/components/schemas/ServerSetupDraft" }
+                confirmed: { type: boolean, enum: [true] }
+                fingerprint: { type: string, pattern: "^[a-f0-9]{64}$" }
+      responses:
+        "200":
+          description: Per-resource outcome, including partial failure
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [complete, items]
+                properties:
+                  complete: { type: boolean }
+                  items: { type: array, items: { $ref: "#/components/schemas/ServerSetupApplyItem" } }
+        "400": { description: Invalid draft or missing confirmation }
+        "403": { description: Owner access and CSRF token required }
+        "409": { description: "Stale preview, conflict, or concurrent operation" }
+        "503": { description: Bot unavailable }
   /moderation/guilds/{guildId}/activity-ranks:
     parameters: [{ name: guildId, in: path, required: true, schema: { type: string, minLength: 5, maxLength: 25 } }]
     get:
@@ -306,6 +418,61 @@ paths:
         "409": { description: Pending or uncertain command must not be repeated }
 components:
   schemas:
+    ServerSetupRole:
+      type: object
+      additionalProperties: false
+      required: [key, name]
+      properties:
+        key: { type: string, pattern: "^[a-z][a-z0-9_-]{0,39}$" }
+        name: { type: string, minLength: 1, maxLength: 100 }
+    ServerSetupChannel:
+      type: object
+      additionalProperties: false
+      required: [key, name, readers, writers, explanation]
+      properties:
+        key: { type: string, pattern: "^[a-z][a-z0-9_-]{0,39}$" }
+        name: { type: string, pattern: "^[a-z0-9][a-z0-9_-]{0,79}$" }
+        readers: { type: array, maxItems: 21, items: { type: string } }
+        writers: { type: array, maxItems: 21, items: { type: string } }
+        explanation: { type: string, maxLength: 400 }
+    ServerSetupDraft:
+      type: object
+      additionalProperties: false
+      required: [roles, categories]
+      properties:
+        roles: { type: array, maxItems: 20, items: { $ref: "#/components/schemas/ServerSetupRole" } }
+        categories:
+          type: array
+          maxItems: 10
+          items:
+            type: object
+            additionalProperties: false
+            required: [key, name, channels]
+            properties:
+              key: { type: string, pattern: "^[a-z][a-z0-9_-]{0,39}$" }
+              name: { type: string, minLength: 1, maxLength: 100 }
+              channels: { type: array, maxItems: 30, items: { $ref: "#/components/schemas/ServerSetupChannel" } }
+    ServerSetupPreviewItem:
+      type: object
+      required: [key, name, kind, status, detail]
+      properties:
+        key: { type: string }
+        name: { type: string }
+        kind: { type: string, enum: [role, category, channel] }
+        status: { type: string, enum: [create, reuse, conflict] }
+        detail: { type: string }
+        id: { type: string }
+        parentKey: { type: string }
+    ServerSetupApplyItem:
+      type: object
+      required: [key, name, kind, status, detail]
+      properties:
+        key: { type: string }
+        name: { type: string }
+        kind: { type: string, enum: [role, category, channel] }
+        status: { type: string, enum: [created, reused, failed] }
+        detail: { type: string }
+        parentKey: { type: string }
     ModerationAuthConfig:
       type: object
       required: [discordOAuthConfigured, authorizationUrl, botInviteUrl]

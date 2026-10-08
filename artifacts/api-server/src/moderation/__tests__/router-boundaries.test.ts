@@ -589,6 +589,31 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     expect(mocks.execute).not.toHaveBeenCalled();
   });
 
+  describe("server setup access boundaries", () => {
+    it("requires authentication and owner access before returning even a template", async () => {
+      mocks.session.mockRejectedValueOnce(new ModerationAuthError(401, "Authentication required"));
+      expect((await fetch(`${base}/server-setup`)).status).toBe(401);
+      mocks.access.mockRejectedValueOnce(new ModerationAuthError(403, "Owner only"));
+      expect((await fetch(`${base}/server-setup`)).status).toBe(403);
+      expect(mocks.access).toHaveBeenLastCalledWith(guildId, actorId, "config");
+    });
+    it.each(["suggest", "preview", "apply"])("enforces CSRF before %s", async action => {
+      mocks.csrf.mockImplementationOnce(() => { throw new ModerationAuthError(403, "CSRF required"); });
+      expect((await fetch(`${base}/server-setup/${action}`, post({}))).status).toBe(403);
+    });
+    it("rejects missing confirmation before Discord access", async () => {
+      const response = await fetch(`${base}/server-setup/apply`, post({ draft: { roles: [], categories: [] } }));
+      expect(response.status).toBe(400);
+      expect(mocks.client).not.toHaveBeenCalled();
+    });
+    it("returns a real template without creating Discord resources", async () => {
+      const response = await fetch(`${base}/server-setup`);
+      expect(response.status).toBe(200);
+      expect((await response.json() as { draft: { roles: unknown[] } }).draft.roles).toHaveLength(4);
+      expect(mocks.client).not.toHaveBeenCalled();
+    });
+  });
+
   describe("guild emoji upload", () => {
     const validPng = `data:image/png;base64,${Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0]).toString("base64")}`;
 

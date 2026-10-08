@@ -2,7 +2,7 @@ import { Link, useLocation, useSearch } from "wouter";
 import { 
   ShieldAlert, Settings, Shield, Bot, History, BookOpen, SlidersHorizontal, ShieldCheck,
   LogOut, Activity, Zap, Menu, X, Eye, Monitor, Radio, RefreshCw, Server,
-  FileText, Sparkles, MessageSquareWarning, Gavel, Wrench, Users, Trophy,
+  FileText, Sparkles, MessageSquareWarning, Gavel, Wrench, Users, Trophy, Hammer,
 } from "lucide-react";
 import { ReactNode, useState, useEffect } from "react";
 import { FaDiscord } from "react-icons/fa";
@@ -109,6 +109,11 @@ const moderationNavGroups: Array<{ id: string; label: string; items: ModerationN
       { href: "/config/escaladare", icon: Gavel, label: "Escaladare" },
       { href: "/config/embeduri", icon: Sparkles, label: "Embed-uri" },
     ],
+  },
+  {
+    id: "server-setup",
+    label: "Pornire server",
+    items: [{ href: "/pornire-server", icon: Hammer, label: "Pornire server" }],
   },
   {
     id: "bot-control",

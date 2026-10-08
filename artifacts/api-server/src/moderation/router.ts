@@ -1,4 +1,8 @@
 import { PUBLIC_DISCORD_INVITE } from "../lib/discord-invite";
+import { setupDraftSchema, setupTemplate } from "./server-setup-schema";
+import { setupSuggestionSchema, suggestSetup } from "./server-setup-ai";
+import { inspectSetup, applySetup } from "./server-setup";
+import { withSetupJournal } from "./server-setup-storage";
 import { getActivityRankConfig, saveActivityRankConfig, isSafeActivityRewardRole } from "../bot/activity-ranks";
 import { normalizeActivityRankConfig } from "../bot/activity-ranks-core";
 import { isSupportedActivityBannerSource } from "../bot/activity-rank-banner-source";
@@ -2599,6 +2603,41 @@ router.put("/guilds/:guildId/activity-ranks", asyncRoute(async (req, res) => {
   const saved = await saveActivityRankConfig(guildId, config);
   res.set("Cache-Control", "no-store").json({ config: saved });
 }));
+
+router.get("/guilds/:guildId/server-setup", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  await sessionAndGuild(req, guildId, "config");
+  res.json({ draft: setupTemplate, aiAvailable: Boolean(process.env.OPENAI_API_KEY) });
+}));
+
+router.post("/guilds/:guildId/server-setup/suggest", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  await sessionAndGuild(req, guildId, "config", true);
+  res.json({ draft: await suggestSetup(setupSuggestionSchema.parse(req.body)) });
+}));
+
+for (const action of ["preview", "apply"] as const) {
+  router.post(`/guilds/:guildId/server-setup/${action}`, asyncRoute(async (req, res) => {
+    const guildId = parse(snowflake, req.params.guildId);
+    await sessionAndGuild(req, guildId, "config", true);
+    const body = (action === "apply"
+      ? z.object({ draft: setupDraftSchema, confirmed: z.literal(true), fingerprint: z.string().regex(/^[a-f0-9]{64}$/) }).strict()
+      : z.object({ draft: setupDraftSchema }).strict()).parse(req.body);
+    const client = getModerationClient();
+    if (!client?.isReady()) throw new ModerationAuthError(503, "Botul Discord nu este conectat.");
+    const guild = await client.guilds.fetch({ guild: guildId, force: true });
+    try {
+      const result = await withSetupJournal(guildId, async (journal, save) => {
+        if (action === "preview") return await inspectSetup(guild, body.draft, journal);
+        const fingerprint = z.string().parse("fingerprint" in body ? body.fingerprint : undefined);
+        return await applySetup(guild, body.draft, fingerprint, journal, save);
+      });
+      res.json(result);
+    } catch (error) {
+      throw new ModerationAuthError(409, error instanceof Error ? error.message : "Configurarea nu a putut fi verificată.");
+    }
+  }));
+}
 
 router.post("/guilds/:guildId/bot-control/provision-channels", asyncRoute(async (req, res) => {
   const guildId = parse(snowflake, req.params.guildId);

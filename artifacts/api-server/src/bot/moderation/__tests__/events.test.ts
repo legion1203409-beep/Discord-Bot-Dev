@@ -321,7 +321,8 @@ describe("non-message moderation events", () => {
     const joinFields = joinEmbed.fields;
     expect(joinEmbed.thumbnail?.url).toBe("https://cdn.discordapp.com/avatars/20042/avatar.webp?size=256");
     const memberField = joinFields.find((field) => field.name === "Membru")?.value ?? "";
-    expect(memberField).toContain("<@20042>");
+    // Member log presentation uses readable identity, not a ping.
+    expect(memberField).not.toContain("<@20042>");
     expect(memberField).toContain("Adina pe server");
     expect(memberField).toContain("@adina");
     expect(joinFields.find((field) => field.name === "Activitate pe server")?.value)

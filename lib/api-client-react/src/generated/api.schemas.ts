@@ -5,6 +5,103 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+export interface ServerSetupRole {
+  /** @pattern ^[a-z][a-z0-9_-]{0,39}$ */
+  key: string;
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  name: string;
+}
+
+export interface ServerSetupChannel {
+  /** @pattern ^[a-z][a-z0-9_-]{0,39}$ */
+  key: string;
+  /** @pattern ^[a-z0-9][a-z0-9_-]{0,79}$ */
+  name: string;
+  /** @maxItems 21 */
+  readers: string[];
+  /** @maxItems 21 */
+  writers: string[];
+  /** @maxLength 400 */
+  explanation: string;
+}
+
+export type ServerSetupDraftCategoriesItem = {
+  /** @pattern ^[a-z][a-z0-9_-]{0,39}$ */
+  key: string;
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  name: string;
+  /** @maxItems 30 */
+  channels: ServerSetupChannel[];
+};
+
+export interface ServerSetupDraft {
+  /** @maxItems 20 */
+  roles: ServerSetupRole[];
+  /** @maxItems 10 */
+  categories: ServerSetupDraftCategoriesItem[];
+}
+
+export type ServerSetupPreviewItemKind = typeof ServerSetupPreviewItemKind[keyof typeof ServerSetupPreviewItemKind];
+
+
+export const ServerSetupPreviewItemKind = {
+  role: 'role',
+  category: 'category',
+  channel: 'channel',
+} as const;
+
+export type ServerSetupPreviewItemStatus = typeof ServerSetupPreviewItemStatus[keyof typeof ServerSetupPreviewItemStatus];
+
+
+export const ServerSetupPreviewItemStatus = {
+  create: 'create',
+  reuse: 'reuse',
+  conflict: 'conflict',
+} as const;
+
+export interface ServerSetupPreviewItem {
+  key: string;
+  name: string;
+  kind: ServerSetupPreviewItemKind;
+  status: ServerSetupPreviewItemStatus;
+  detail: string;
+  id?: string;
+  parentKey?: string;
+}
+
+export type ServerSetupApplyItemKind = typeof ServerSetupApplyItemKind[keyof typeof ServerSetupApplyItemKind];
+
+
+export const ServerSetupApplyItemKind = {
+  role: 'role',
+  category: 'category',
+  channel: 'channel',
+} as const;
+
+export type ServerSetupApplyItemStatus = typeof ServerSetupApplyItemStatus[keyof typeof ServerSetupApplyItemStatus];
+
+
+export const ServerSetupApplyItemStatus = {
+  created: 'created',
+  reused: 'reused',
+  failed: 'failed',
+} as const;
+
+export interface ServerSetupApplyItem {
+  key: string;
+  name: string;
+  kind: ServerSetupApplyItemKind;
+  status: ServerSetupApplyItemStatus;
+  detail: string;
+  parentKey?: string;
+}
+
 export interface ModerationAuthConfig {
   discordOAuthConfigured: boolean;
   authorizationUrl: string;
@@ -499,5 +596,53 @@ export type ModerationDiscordCallbackParams = {
 code?: string;
 state?: string;
 error?: string;
+};
+
+export type ModerationGetServerSetup200 = {
+  draft: ServerSetupDraft;
+  aiAvailable: boolean;
+};
+
+export type ModerationSuggestServerSetupBody = {
+  /**
+     * @minLength 1
+     * @maxLength 300
+     */
+  communityType: string;
+  /**
+     * @minLength 1
+     * @maxLength 1500
+     */
+  goals: string;
+  /** @maxLength 1500 */
+  refinement?: string;
+  draft?: ServerSetupDraft;
+};
+
+export type ModerationSuggestServerSetup200 = {
+  draft: ServerSetupDraft;
+};
+
+export type ModerationPreviewServerSetupBody = {
+  draft: ServerSetupDraft;
+};
+
+export type ModerationPreviewServerSetup200 = {
+  ready: boolean;
+  issues: string[];
+  fingerprint: string;
+  items: ServerSetupPreviewItem[];
+};
+
+export type ModerationApplyServerSetupBody = {
+  draft: ServerSetupDraft;
+  confirmed: true;
+  /** @pattern ^[a-f0-9]{64}$ */
+  fingerprint: string;
+};
+
+export type ModerationApplyServerSetup200 = {
+  complete: boolean;
+  items: ServerSetupApplyItem[];
 };
 

@@ -28,6 +28,8 @@ import type {
   BotControlResponse,
   BotControlSettings,
   HealthStatus,
+  ModerationApplyServerSetup200,
+  ModerationApplyServerSetupBody,
   ModerationAuthConfig,
   ModerationChannelInput,
   ModerationChannelResponse,
@@ -36,10 +38,15 @@ import type {
   ModerationConfig,
   ModerationConfigResponse,
   ModerationDiscordCallbackParams,
+  ModerationGetServerSetup200,
   ModerationLogPage,
+  ModerationPreviewServerSetup200,
+  ModerationPreviewServerSetupBody,
   ModerationSession,
   ModerationStorageUploadRequest,
   ModerationStorageUploadResponse,
+  ModerationSuggestServerSetup200,
+  ModerationSuggestServerSetupBody,
   ProtectionToggleInput,
   VerificationPanelPublishInput,
   VerificationPanelPublishResponse
@@ -974,6 +981,272 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getModerationPutBotControlMutationOptions(options));
+    }
+
+export const getModerationGetServerSetupUrl = (guildId: string,) => {
+
+
+
+
+  return `/api/moderation/guilds/${guildId}/server-setup`
+}
+
+export const moderationGetServerSetup = async (guildId: string, options?: RequestInit): Promise<ModerationGetServerSetup200> => {
+
+  return customFetch<ModerationGetServerSetup200>(getModerationGetServerSetupUrl(guildId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getModerationGetServerSetupQueryKey = (guildId: string,) => {
+    return [
+    `/api/moderation/guilds/${guildId}/server-setup`
+    ] as const;
+    }
+
+
+export const getModerationGetServerSetupQueryOptions = <TData = Awaited<ReturnType<typeof moderationGetServerSetup>>, TError = ErrorType<void>>(guildId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof moderationGetServerSetup>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getModerationGetServerSetupQueryKey(guildId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof moderationGetServerSetup>>> = ({ signal }) => moderationGetServerSetup(guildId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: guildId !== null && guildId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof moderationGetServerSetup>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ModerationGetServerSetupQueryResult = NonNullable<Awaited<ReturnType<typeof moderationGetServerSetup>>>
+export type ModerationGetServerSetupQueryError = ErrorType<void>
+
+
+
+export function useModerationGetServerSetup<TData = Awaited<ReturnType<typeof moderationGetServerSetup>>, TError = ErrorType<void>>(
+ guildId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof moderationGetServerSetup>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getModerationGetServerSetupQueryOptions(guildId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getModerationSuggestServerSetupUrl = (guildId: string,) => {
+
+
+
+
+  return `/api/moderation/guilds/${guildId}/server-setup/suggest`
+}
+
+export const moderationSuggestServerSetup = async (guildId: string,
+    moderationSuggestServerSetupBody: ModerationSuggestServerSetupBody, options?: RequestInit): Promise<ModerationSuggestServerSetup200> => {
+
+  return customFetch<ModerationSuggestServerSetup200>(getModerationSuggestServerSetupUrl(guildId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(moderationSuggestServerSetupBody)
+  }
+);}
+
+
+
+
+export const getModerationSuggestServerSetupMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof moderationSuggestServerSetup>>, TError,{guildId: string;data: BodyType<ModerationSuggestServerSetupBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof moderationSuggestServerSetup>>, TError,{guildId: string;data: BodyType<ModerationSuggestServerSetupBody>}, TContext> => {
+
+const mutationKey = ['moderationSuggestServerSetup'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof moderationSuggestServerSetup>>, {guildId: string;data: BodyType<ModerationSuggestServerSetupBody>}> = (props) => {
+          const {guildId,data} = props ?? {};
+
+          return  moderationSuggestServerSetup(guildId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ModerationSuggestServerSetupMutationResult = NonNullable<Awaited<ReturnType<typeof moderationSuggestServerSetup>>>
+    export type ModerationSuggestServerSetupMutationBody = BodyType<ModerationSuggestServerSetupBody>
+    export type ModerationSuggestServerSetupMutationError = ErrorType<void>
+
+    export const useModerationSuggestServerSetup = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof moderationSuggestServerSetup>>, TError,{guildId: string;data: BodyType<ModerationSuggestServerSetupBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof moderationSuggestServerSetup>>,
+        TError,
+        {guildId: string;data: BodyType<ModerationSuggestServerSetupBody>},
+        TContext
+      > => {
+      return useMutation(getModerationSuggestServerSetupMutationOptions(options));
+    }
+
+export const getModerationPreviewServerSetupUrl = (guildId: string,) => {
+
+
+
+
+  return `/api/moderation/guilds/${guildId}/server-setup/preview`
+}
+
+export const moderationPreviewServerSetup = async (guildId: string,
+    moderationPreviewServerSetupBody: ModerationPreviewServerSetupBody, options?: RequestInit): Promise<ModerationPreviewServerSetup200> => {
+
+  return customFetch<ModerationPreviewServerSetup200>(getModerationPreviewServerSetupUrl(guildId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(moderationPreviewServerSetupBody)
+  }
+);}
+
+
+
+
+export const getModerationPreviewServerSetupMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof moderationPreviewServerSetup>>, TError,{guildId: string;data: BodyType<ModerationPreviewServerSetupBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof moderationPreviewServerSetup>>, TError,{guildId: string;data: BodyType<ModerationPreviewServerSetupBody>}, TContext> => {
+
+const mutationKey = ['moderationPreviewServerSetup'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof moderationPreviewServerSetup>>, {guildId: string;data: BodyType<ModerationPreviewServerSetupBody>}> = (props) => {
+          const {guildId,data} = props ?? {};
+
+          return  moderationPreviewServerSetup(guildId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ModerationPreviewServerSetupMutationResult = NonNullable<Awaited<ReturnType<typeof moderationPreviewServerSetup>>>
+    export type ModerationPreviewServerSetupMutationBody = BodyType<ModerationPreviewServerSetupBody>
+    export type ModerationPreviewServerSetupMutationError = ErrorType<void>
+
+    export const useModerationPreviewServerSetup = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof moderationPreviewServerSetup>>, TError,{guildId: string;data: BodyType<ModerationPreviewServerSetupBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof moderationPreviewServerSetup>>,
+        TError,
+        {guildId: string;data: BodyType<ModerationPreviewServerSetupBody>},
+        TContext
+      > => {
+      return useMutation(getModerationPreviewServerSetupMutationOptions(options));
+    }
+
+export const getModerationApplyServerSetupUrl = (guildId: string,) => {
+
+
+
+
+  return `/api/moderation/guilds/${guildId}/server-setup/apply`
+}
+
+export const moderationApplyServerSetup = async (guildId: string,
+    moderationApplyServerSetupBody: ModerationApplyServerSetupBody, options?: RequestInit): Promise<ModerationApplyServerSetup200> => {
+
+  return customFetch<ModerationApplyServerSetup200>(getModerationApplyServerSetupUrl(guildId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(moderationApplyServerSetupBody)
+  }
+);}
+
+
+
+
+export const getModerationApplyServerSetupMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof moderationApplyServerSetup>>, TError,{guildId: string;data: BodyType<ModerationApplyServerSetupBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof moderationApplyServerSetup>>, TError,{guildId: string;data: BodyType<ModerationApplyServerSetupBody>}, TContext> => {
+
+const mutationKey = ['moderationApplyServerSetup'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof moderationApplyServerSetup>>, {guildId: string;data: BodyType<ModerationApplyServerSetupBody>}> = (props) => {
+          const {guildId,data} = props ?? {};
+
+          return  moderationApplyServerSetup(guildId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ModerationApplyServerSetupMutationResult = NonNullable<Awaited<ReturnType<typeof moderationApplyServerSetup>>>
+    export type ModerationApplyServerSetupMutationBody = BodyType<ModerationApplyServerSetupBody>
+    export type ModerationApplyServerSetupMutationError = ErrorType<void>
+
+    export const useModerationApplyServerSetup = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof moderationApplyServerSetup>>, TError,{guildId: string;data: BodyType<ModerationApplyServerSetupBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof moderationApplyServerSetup>>,
+        TError,
+        {guildId: string;data: BodyType<ModerationApplyServerSetupBody>},
+        TContext
+      > => {
+      return useMutation(getModerationApplyServerSetupMutationOptions(options));
     }
 
 export const getModerationGetActivityRanksUrl = (guildId: string,) => {
