@@ -75,3 +75,11 @@ DISCORD_OAUTH_REDIRECT_URI = "https://c6624cc8-e264-47e4-8a83-82fc52f0aaa6-00-3d
 
 [objectStorage]
 defaultBucketID = "replit-objstore-b2eda8b2-4ed0-4184-bc83-40a450034bb9"
+
+[[ports]]
+localPort = 8081
+externalPort = 8081
+
+[[ports]]
+localPort = 25104
+externalPort = 80

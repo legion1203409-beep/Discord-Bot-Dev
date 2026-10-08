@@ -299,7 +299,10 @@ export function ActivityRanksPage() {
                   <SelectTrigger aria-label="Canal pentru creșterea rangului" className="min-w-0 flex-1">
                     <SelectValue placeholder="Alege un canal" />
                   </SelectTrigger>
-                  <SelectContent className="max-h-[min(60vh,24rem)] overscroll-contain">
+                  <SelectContent
+                    className="max-h-[min(60vh,24rem)] overscroll-contain"
+                    style={{ maxHeight: "min(60vh, 24rem)", overflowY: "auto" }}
+                  >
                     <SelectItem value="none">Fără notificări</SelectItem>
                     {draft.notificationChannelId && !textChannels.some((channel) => channel.id === draft.notificationChannelId) && (
                       <SelectItem value={draft.notificationChannelId}>Canal indisponibil · {draft.notificationChannelId}</SelectItem>
