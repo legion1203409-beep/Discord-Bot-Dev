@@ -66,6 +66,7 @@
 - [Bot-control round trips](bot-control-round-trips.md) — GET→PUT must round-trip; live caches refresh, and partial Discord publication must never duplicate a verification panel on retry.
 - [Provisioning permission language](bot-provisioning-permission-copy.md) — Manage Permissions is not a standalone Discord permission; channel overwrites use Manage Channels and member access is configured per category.
 - [Discord overwrite preservation](discord-acl-preservation.md) — edit only managed permission bits; replacing an overwrite set destroys unrelated server access.
+- [Discord permission target IDs](discord-permission-target-ids.md) — role-overwrite ID lists must exclude category/channel IDs, including stale values in saved setup journals.
 - [Wouter query navigation](wouter-query-navigation.md) — components tracking query-only tabs need `useSearch`; `useLocation` alone won't refresh active navigation markers.
 - [Moderation threshold compatibility](moderation-threshold-defaults.md) — fill missing rule defaults only when no accepted legacy alias is saved; keep all aliases aligned in the editor.
 - [Discord mobile embed layout](discord-mobile-embed-layout.md) — inline fields stack on phones; avoid code-block/Unicode bars and keep previews mobile-first.

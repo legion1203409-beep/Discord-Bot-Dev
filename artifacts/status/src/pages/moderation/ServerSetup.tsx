@@ -786,7 +786,10 @@ export function ServerSetupPage() {
               {result.complete ? <ShieldCheck className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
               {result.complete ? "Configurarea a fost aplicată complet." : "Aplicare parțială. Verifică elementele eșuate, apoi rulează o nouă verificare."}</p>
             {result.items.map(it => (
-              <p key={`${it.kind}-${it.key}`} className="text-xs text-muted-foreground" data-testid={`row-apply-result-${it.key}`}><span className={it.status === "failed" ? "text-destructive" : "text-foreground"}>{it.status === "created" ? "creat" : it.status === "updated" ? "actualizat" : it.status === "reused" ? "reutilizat" : "eșuat"}</span> · {it.name} — {it.detail}</p>
+              <p key={`${it.kind}-${it.key}`} className="text-xs text-muted-foreground" data-testid={`row-apply-result-${it.key}`}>
+                <span className={it.status === "failed" ? "text-destructive" : "text-foreground"}>{it.status === "created" ? "creat" : it.status === "updated" ? "actualizat" : it.status === "reused" ? "reutilizat" : "eșuat"}</span>
+                {" · "}{it.name}{it.id && <span className="font-mono"> · ID {it.id}</span>} — {it.detail}
+              </p>
             ))}
           </div>
         )}

@@ -78,7 +78,7 @@ function fixture() {
   };
   const guild = {
     id: "88888", members: { me, fetchMe: vi.fn(async () => me) },
-    roles: { fetch: vi.fn(async () => roles), create: vi.fn(async (r: any) => role(r.name, r.permissions)) },
+    roles: { cache: roles, fetch: vi.fn(async () => roles), create: vi.fn(async (r: any) => role(r.name, r.permissions)) },
     channels: {
       cache: channels,
       fetch: vi.fn(async (id?: string) => id ? channels.get(id) ?? null : channels),
@@ -133,6 +133,9 @@ describe("safe Discord setup", () => {
     expect(pre.ready).toBe(true);
     const result = await applySetup(f.guild, draft, pre.fingerprint, f.journal, f.save);
     expect(result.complete).toBe(true);
+    const roleId = f.journal.member.id!;
+    expect(f.journal.community.managedRoleIds).toEqual([roleId]);
+    expect(f.journal.general.managedRoleIds).toEqual([roleId]);
     expect(f.raw.roles.create).toHaveBeenCalledWith(expect.objectContaining({ permissions: 0n }));
     const textCall = f.raw.channels.create.mock.calls[1][0];
     expect(textCall.permissionOverwrites.find((o: any) => o.id === f.raw.id).allow).toContain(P.SendMessages);
@@ -142,6 +145,51 @@ describe("safe Discord setup", () => {
     expect((await applySetup(f.guild, draft, second.fingerprint, f.journal, f.save)).items.map(i => i.status)).toEqual(["reused", "updated", "updated"]);
     expect(f.raw.roles.create).toHaveBeenCalledTimes(1);
     expect(f.raw.channels.create).toHaveBeenCalledTimes(2);
+  });
+  it("cleans channel IDs from legacy managed-role snapshots before retrying access updates", async () => {
+    const f = fixture(), draft = smallDraft();
+    const firstPreview = await inspectSetup(f.guild, draft);
+    await applySetup(f.guild, draft, firstPreview.fingerprint, f.journal, f.save);
+
+    const roleId = f.journal.member.id!;
+    const categoryId = f.journal.community.id!;
+    const channelId = f.journal.general.id!;
+    f.journal.community.managedRoleIds = [roleId, categoryId];
+    f.journal.general.managedRoleIds = [roleId, categoryId, channelId];
+    const channels = [...f.channels.values()].map(channel => ({
+      channel,
+      callStart: channel.permissionOverwrites.edit.mock.calls.length,
+    }));
+
+    const retryPreview = await inspectSetup(f.guild, draft, f.journal);
+    const result = await applySetup(f.guild, draft, retryPreview.fingerprint, f.journal, f.save);
+
+    expect(result.complete).toBe(true);
+    for (const { channel, callStart } of channels) {
+      const editedIds = channel.permissionOverwrites.edit.mock.calls
+        .slice(callStart).map(([id]: [string, unknown]) => id);
+      expect(editedIds).not.toContain(categoryId);
+      expect(editedIds).not.toContain(channelId);
+    }
+    expect(f.journal.community.managedRoleIds).toEqual([roleId]);
+    expect(f.journal.general.managedRoleIds).toEqual([roleId]);
+  });
+  it("returns the created resource ID when its access update fails", async () => {
+    const f = fixture(), draft = smallDraft();
+    f.raw.channels.create
+      .mockImplementationOnce(async c => f.channel(c))
+      .mockImplementationOnce(async c => {
+        const created = f.channel(c);
+        created.permissionOverwrites.edit.mockRejectedValueOnce(new Error("Access update failed"));
+        return created;
+      });
+
+    const preview = await inspectSetup(f.guild, draft);
+    const result = await applySetup(f.guild, draft, preview.fingerprint, f.journal, f.save);
+
+    expect(result.complete).toBe(false);
+    expect(result.items.find(item => item.key === "general"))
+      .toMatchObject({ status: "failed", id: f.journal.general.id });
   });
   it("retries a definite partial Discord rejection without duplicating the successful roles/category", async () => {
     const f = fixture(), draft = smallDraft();

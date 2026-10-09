@@ -390,11 +390,13 @@ function createOverwrites(
   ];
 }
 
-function managedRoleIds(ids: Map<string, string>) {
-  return [...ids.entries()].filter(([key]) => key !== "everyone").map(([, id]) => id);
+function managedRoleIds(ids: Map<string, string>, draft: SetupDraft) {
+  const roleKeys = new Set(draft.roles.map(role => role.key));
+  return [...ids.entries()].filter(([key]) => roleKeys.has(key)).map(([, id]) => id);
 }
 
 async function persistAndApplyAccess(
+  guild: Guild,
   channel: GuildBasedChannel,
   rule: SetupAccess,
   draft: SetupDraft,
@@ -408,8 +410,12 @@ async function persistAndApplyAccess(
 ) {
   if (!("permissionOverwrites" in channel)) throw new Error("Resursa nu acceptă permisiuni de canal.");
   const manageableChannel = channel as GuildChannel;
-  const wantedRoleIds = managedRoleIds(ids);
-  const previousRoleIds = journal[journalKey]?.managedRoleIds ?? [];
+  const wantedRoleIds = managedRoleIds(ids, draft);
+  // Older journal entries could contain category/channel IDs, because these
+  // resources share the same `ids` map as roles. Keep only IDs still known as
+  // guild roles before asking Discord to edit their channel overwrites.
+  const previousRoleIds = (journal[journalKey]?.managedRoleIds ?? [])
+    .filter(id => guild.roles.cache.has(id));
   const duringUpdate = [...new Set([...previousRoleIds, ...wantedRoleIds])];
   journal[journalKey] = {
     ...journal[journalKey],
@@ -490,16 +496,16 @@ export async function applySetup(
         })()
         : { readers: channelDraft!.readers, writers: channelDraft!.writers };
     const key = target.key;
+    let resourceId = target.id;
     try {
       if (target.parentKey && !ids.has(target.parentKey)) throw new Error("Categoria nu a putut fi creată sau reutilizată.");
       const parentId = target.parentKey ? ids.get(target.parentKey)! : undefined;
-      let resourceId = target.id;
       if (target.status === "create") {
         journal[key] = {
           name: target.name,
           kind: target.kind,
           ...(target.parentKey ? { parentKey: target.parentKey } : {}),
-          managedRoleIds: managedRoleIds(ids),
+          managedRoleIds: managedRoleIds(ids, draft),
           attemptedAt: new Date().toISOString(),
         };
         await saveJournal(journal);
@@ -528,7 +534,7 @@ export async function applySetup(
       ids.set(key, resourceId);
       const channel = await guild.channels.fetch(resourceId, { force: true });
       if (!channel) throw new Error("Resursa a dispărut înainte de actualizarea accesului.");
-      await persistAndApplyAccess(channel, rule, draft, ids, key, journal, saveJournal, target.name, target.kind, target.parentKey);
+      await persistAndApplyAccess(guild, channel, rule, draft, ids, key, journal, saveJournal, target.name, target.kind, target.parentKey);
       items.push({
         ...target,
         id: resourceId,
@@ -538,6 +544,7 @@ export async function applySetup(
     } catch (error) {
       items.push({
         ...target,
+        ...(resourceId ? { id: resourceId } : {}),
         status: "failed",
         detail: error instanceof Error ? error.message : "Operația Discord nu a fost confirmată. Verifică inventarul înainte de reîncercare.",
       });
