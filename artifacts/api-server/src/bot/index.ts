@@ -221,6 +221,7 @@ import {
   doCombat,
   buildCombatEmbed,
   buildResultText,
+  buildDailyQuestCompletionText,
   buildDeathEmbed,
   buildRetreatEmbed,
   prestigeGoldMult,
@@ -2892,14 +2893,6 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
     if (parts.length === 0) return "";
     return `\n🔷 Mană: ${parts.join(", ")} → **${plAfterMana?.mana ?? 0}/${manaMaxNow}**`;
   })();
-  const extra =
-    buildResultText(result, itemDrop, { baseXp: killBaseXp, baseOboli: killBaseOboli, cristaHeal }) +
-    manaFlowLine +
-    (materialDrop ? `\n${ITEMS[materialDrop].emoji} **${ITEMS[materialDrop].label}** a căzut din monstru — material de evoluție!` : "") +
-    (equipmentMaterialDrop ? `\n${ITEMS[equipmentMaterialDrop].emoji} **${ITEMS[equipmentMaterialDrop].label}** a căzut din monstru — material de echipament!` : "") +
-    (equipmentDrop ? `\n✨ ${ITEMS[equipmentDrop].emoji} **${ITEMS[equipmentDrop].label}** a căzut din monstru!` : "") +
-    (corruptedKeyDrop ? "\n☠️ **Cheia Pângărită** a ieșit din cenușă!" : "");
-
   if (result.playerDied) {
     const lost = Math.floor(p.oboli * 0.2);
     const deathBaseOboli = p.baseOboli;
@@ -2922,6 +2915,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
   }
 
   let questProgress: number | undefined;
+  let completedQuests: DailyQuestKey[] = [];
   if (result.oboliGained > 0) {
     // Daily quests: every kill counts; rare+ kills and mini-boss kills track extra quests
     const questKeys: DailyQuestKey[] = ["kill_10"];
@@ -2931,7 +2925,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
       questKeys.map((k) => incrementDailyQuest(p.discordId, guildId, k, dailyQuestDefinitions(gameplayConfig)[k].target)),
     );
     questProgress = questResults[0]!.newProgress;
-    const completedQuests = questKeys.filter((_, i) => questResults[i]!.justCompleted);
+    completedQuests = questKeys.filter((_, i) => questResults[i]!.justCompleted);
     void Promise.all([
       addPlayerGold(p.discordId, guildId, result.oboliGained),
       addPlayerXp(p.discordId, guildId, result.xpGained),
@@ -2949,18 +2943,10 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
       void recordPersonalActivity(p.discordId, guildId, "quests", completedQuests.length).catch((err) =>
         logger.warn({ err, discordId: p.discordId, guildId }, "Personal quest activity update failed"),
       );
-      const rewardLines = completedQuests.map((k) => {
+      for (const k of completedQuests) {
         const q = dailyQuestDefinitions(gameplayConfig)[k];
         itemsFarmed[q.reward.itemKey] = (itemsFarmed[q.reward.itemKey] ?? 0) + q.reward.qty;
-        return `${q.emoji} **${q.label}** — ai primit ${ITEMS[q.reward.itemKey].emoji} **${q.reward.qty}× ${ITEMS[q.reward.itemKey].label}**!`;
-      });
-      void interaction.followUp({
-        content:
-          `📜 **Misiune zilnică completată!**\n` +
-          rewardLines.join("\n") +
-          `\nFolosește \`/misiuni\` pentru detalii.`,
-        flags: MessageFlags.Ephemeral,
-      });
+      }
     }
   }
 
@@ -2986,6 +2972,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
       ...(itemDrop ? [`${ITEMS[itemDrop].emoji} **${ITEMS[itemDrop].label}** a căzut din monstru!`] : []),
       ...(materialDrop ? [`${ITEMS[materialDrop].emoji} **${ITEMS[materialDrop].label}** a căzut din monstru — material de evoluție!`] : []),
       ...(equipmentDrop ? [`✨ ${ITEMS[equipmentDrop].emoji} **${ITEMS[equipmentDrop].label}** a căzut din monstru!`] : []),
+      ...(completedQuests.length > 0 ? [buildDailyQuestCompletionText(completedQuests, gameplayConfig)] : []),
     ];
     const lvlDropLine = lvlDropParts.length > 0 ? lvlDropParts.join("\n") : undefined;
     await interaction.editReply({
@@ -3025,7 +3012,26 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
 
   await interaction.editReply({
     embeds: [
-      buildCombatEmbed(updated, extra, interaction.user.displayAvatarURL({ size: 256 }), plAfterMana, gameplayConfig, questProgress),
+      buildCombatEmbed(
+        updated,
+        buildResultText(
+          result,
+          itemDrop,
+          { baseXp: killBaseXp, baseOboli: killBaseOboli, cristaHeal },
+          completedQuests.length > 0,
+          completedQuests,
+          gameplayConfig,
+        ) +
+          manaFlowLine +
+          (materialDrop ? `\n${ITEMS[materialDrop].emoji} **${ITEMS[materialDrop].label}** a căzut din monstru — material de evoluție!` : "") +
+          (equipmentMaterialDrop ? `\n${ITEMS[equipmentMaterialDrop].emoji} **${ITEMS[equipmentMaterialDrop].label}** a căzut din monstru — material de echipament!` : "") +
+          (equipmentDrop ? `\n✨ ${ITEMS[equipmentDrop].emoji} **${ITEMS[equipmentDrop].label}** a căzut din monstru!` : "") +
+          (corruptedKeyDrop ? "\n☠️ **Cheia Pângărită** a ieșit din cenușă!" : ""),
+        interaction.user.displayAvatarURL({ size: 256 }),
+        plAfterMana,
+        gameplayConfig,
+        questProgress,
+      ),
       ...(equipmentDrop ? [buildEquipmentLootEmbed(equipmentDrop)] : []),
     ],
     components: [combatRow(eventId, updated)],

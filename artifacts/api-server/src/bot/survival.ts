@@ -1869,10 +1869,25 @@ export type RewardBreakdown = {
   cristaHeal?: number;
 };
 
+export function buildDailyQuestCompletionText(
+  completedQuests: DailyQuestKey[],
+  gameplayConfig?: GameplayConfig,
+): string {
+  const quests = dailyQuestDefinitions(gameplayConfig);
+  return completedQuests.map((key) => {
+    const { reward } = quests[key];
+    const item = ITEMS[reward.itemKey];
+    return `📜 Misiunea zilnică completată! +${reward.qty}× ${item.emoji} ${item.label}`;
+  }).join("\n");
+}
+
 export function buildResultText(
   r: CombatResult,
   itemDrop?: ItemKey | null,
   breakdown?: RewardBreakdown,
+  questCompleted = false,
+  completedQuests: DailyQuestKey[] = ["kill_10"],
+  gameplayConfig?: GameplayConfig,
 ): string {
   let txt = "";
   if (r.usedEmpower)
@@ -1946,6 +1961,9 @@ export function buildResultText(
       txt += `💀 **MONSTRUL RIPOSTEAZĂ!**\nCreatura îți aplică **${r.monsterDmg} daune**.\nUmbrele îți apasă umerii, iar sângele îți pulsează în tâmple.`;
   } else {
     txt += "💨 Monstrul a ratat atacul!";
+  }
+  if (questCompleted) {
+    txt += `\n${buildDailyQuestCompletionText(completedQuests, gameplayConfig)}`;
   }
   return txt;
 }

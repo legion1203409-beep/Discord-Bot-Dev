@@ -85,6 +85,8 @@ import {
   BOSSES,
   bossIndex,
   buildResultText,
+  buildDailyQuestCompletionText,
+  buildLevelupEmbed,
   buildCombatEmbed,
   RARITY_WEIGHTS,
   TALISMANS,
@@ -735,6 +737,51 @@ describe("buildResultText breakdown lines", () => {
     newBossCharge: 0, abilityFired: false, abilityDmg: 0, abilityHeal: 0, veteranMaxBonus: false,
     veteranRankMaxedNow: false,
   };
+
+  it("only shows the daily quest reward on the completing attack", () => {
+    const kill = { ...baseResult, monsterDefeated: true, xpGained: 10, oboliGained: 5 };
+    const line = "📜 Misiunea zilnică completată! +1× 🐉 Coamă de Dragon";
+    const completed = buildResultText(kill, null, undefined, true);
+    expect(completed).toContain(line);
+    expect(buildResultText(kill)).not.toContain("Misiunea zilnică completată");
+    expect(buildResultText(kill, null, undefined, false, ["kill_10"])).not.toContain(line);
+    expect(buildResultText(baseResult)).not.toContain(line);
+    const embed = buildCombatEmbed(makeParticipant(), completed);
+    expect(embed.data.description).toContain(line);
+  });
+
+  it("shows all completed quests with configured reward quantities alongside loot", () => {
+    const config = {
+      ...DEFAULT_GAMEPLAY_CONFIG,
+      missions: {
+        ...DEFAULT_GAMEPLAY_CONFIG.missions,
+        kill_10: { ...DEFAULT_GAMEPLAY_CONFIG.missions.kill_10, rewardQty: 3 },
+      },
+    };
+    const text = buildResultText(
+      { ...baseResult, monsterDefeated: true },
+      "coama_dragonului",
+      undefined,
+      true,
+      ["kill_10", "rare_3", "boss_1"],
+      config,
+    );
+    expect(text.match(/Misiunea zilnică completată!/g)).toHaveLength(3);
+    expect(text).toContain("+3× 🐉 Coamă de Dragon");
+    expect(text).toContain(`+2× ${ITEMS.solz_spectral.emoji} ${ITEMS.solz_spectral.label}`);
+    expect(text).toContain(`+1× ${ITEMS.cristal_abis.emoji} ${ITEMS.cristal_abis.label}`);
+    expect(text).toContain("a căzut din monstru!");
+  });
+
+  it("keeps the quest completion visible when the same kill grants a level-up", () => {
+    const notification = buildDailyQuestCompletionText(["kill_10"]);
+    const embed = buildLevelupEmbed(2, `Pradă nouă\n${notification}`);
+    expect(embed.data.description).toContain("Pradă nouă");
+    expect(embed.data.description).toContain("📜 Misiunea zilnică completată! +1× 🐉 Coamă de Dragon");
+    expect(embed.data.description).toContain("Alege un bonus special");
+    expect(buildDailyQuestCompletionText([])).toBe("");
+    expect(buildLevelupEmbed(2).data.description).not.toContain("Misiunea zilnică completată");
+  });
 
   it("shows no breakdown when damage is unmodified", () => {
     const txt = buildResultText(baseResult);
