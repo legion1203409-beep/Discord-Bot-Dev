@@ -31,6 +31,7 @@ import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./a
 import { startGuildScheduler, stopGuildScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, recordGuildActivity, getGuildClaimedChests, getGuildActiveBossMap, clearGuildChestTracking, isGuildGameStopped, checkBossEligibility, checkBossHitCooldown, BOSS_HIT_COOLDOWN_MS, persistBossState, publishLeaderboardResult, guildStates, isGuildActive, ACTIVITY_WINDOW_MINUTES, CHEST_MSG_MILESTONE, type BossState, type BossPlayerStats } from "./scheduler";
 import { getChannel, getAllChannels, setChannel, initChannelConfig, hasAnyChannelConfigured, EVENT_LABELS, type EventType } from "./channel-config";
 import { getGameplayConfig, initGameplayConfig, isGameplayPaused, setGameplayPaused } from "./gameplay-store";
+import { awardRareBossDailyQuest } from "./boss-daily-quest";
 import { sendAiMemberMessage } from "./member-messages";
 import { messageWithImage } from "./message-media";
 import {
@@ -589,7 +590,8 @@ const slashCommands = [
   new SlashCommandBuilder().setName("clasa").setDescription("🧬 Alege-ți clasa RPG (o poți reseta din /magazin)."),
   new SlashCommandBuilder().setName("companion").setDescription("🐾 Vezi companionul tău (cumpără și fă îmbunătățiri din /magazin)."),
   new SlashCommandBuilder().setName("ajutor").setDescription("❓ Ghidul comenzilor din Regatul Cenușii."),
-  new SlashCommandBuilder().setName("misiuni").setDescription("📜 Misiunea ta zilnică — progres și recompensă."),
+  new SlashCommandBuilder().setName("misiuni").setDescription("📜 Misiunile tale zilnice — progres și recompense."),
+  new SlashCommandBuilder().setName("misiune").setDescription("📜 Misiunile tale zilnice — progres și recompense."),
   new SlashCommandBuilder().setName("cufarpersonal").setDescription("🕯️ Vezi și revendică Cufărul Vegherii Zilnice."),
   new SlashCommandBuilder().setName("fratie").setDescription("🤝 Vezi votul curent al Chivotului Frăției."),
   new SlashCommandBuilder()
@@ -1111,7 +1113,7 @@ function buildHelpEmbed(category: HelpCategory) {
           name: "Comenzi",
           value:
             "**/magazin** — upgrade-uri, companioni, abilități, talismane și prestigiu.\n" +
-            "**/misiuni** — două misiuni zilnice cu progres și recompense.\n" +
+            "**/misiuni** — misiuni zilnice cu progres și recompense.\n" +
             "**/cufarpersonal** — recompensa pentru activitatea ta zilnică.\n" +
              "**/licitatie** — vezi licitația sau licitezi rapid cu o sumă.\n" +
              "**/posteazalicitatie** — [Admin] publică licitația într-un canal pentru toți jucătorii.",
@@ -4026,6 +4028,14 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
         logger.error({ err, guildId: activeBoss.guildId }, "Failed to increment final-boss veteran kills")
       ),
     ]);
+    const dailyQuestWinners = await awardRareBossDailyQuest(
+      activeBoss.guildId, activeBoss.rarity, activeBoss.damageBy,
+    );
+    void Promise.all(
+      dailyQuestWinners.map((discordId) =>
+        recordPersonalActivity(discordId, activeBoss.guildId, "quests"),
+      ),
+    ).catch((err) => logger.warn({ err, guildId }, "Personal boss quest activity update failed"));
     void Promise.all(
       [...eventKeyDrops.keys()].map((discordId) =>
         recordPersonalActivity(discordId, guildId, "keys"),
@@ -4054,6 +4064,12 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
             ([id, key]) => `✨ <@${id}> a primit **${EQUIPMENT[key].label}**!`,
           );
           lootSections.push(`⚒️ **Prada de echipament a Dragonului:**\n${lines.join("\n")}`);
+        }
+        if (dailyQuestWinners.length > 0) {
+          lootSections.push(
+            `📜 **Misiune zilnică completată:**\n` +
+            dailyQuestWinners.map((id) => `🌑 <@${id}> a primit **1× Inimă a Abisului** în plus!`).join("\n"),
+          );
         }
         await publishLeaderboardResult(interaction.client, guildId, "bossTop", {
           embeds: [leaderboard],
@@ -4086,6 +4102,7 @@ async function handleFinalBoss(interaction: ButtonInteraction, eventId: number) 
         finalBossVeteranCapLine(finalBossKillsBefore) +
         rewLine + "\n" +
         itemLine + "\n" + equipmentLine +
+        (dailyQuestWinners.includes(uid) ? "\n📜 **Misiune zilnică completată!** Ai primit 🌑 **1× Inimă a Abisului** în plus!" : "") +
         (myEquipmentDrop ? `\n✨ Ai primit **${EQUIPMENT[myEquipmentDrop].label}** — vezi imaginea și bonusurile mai jos.` : ""),
       embeds: myEquipmentDrop ? [buildEquipmentLootEmbed(myEquipmentDrop)] : [],
     });
@@ -5398,7 +5415,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
       if (interaction.commandName === "clasa") dispatch(handleClasa(interaction));
       if (interaction.commandName === "companion") dispatch(handleCompanion(interaction));
       if (interaction.commandName === "ajutor") dispatch(handleAjutor(interaction));
-      if (interaction.commandName === "misiuni") dispatch(handleMisiune(interaction));
+      if (interaction.commandName === "misiuni" || interaction.commandName === "misiune") dispatch(handleMisiune(interaction));
       if (interaction.commandName === "cufarpersonal") dispatch(handlePersonalChest(interaction));
       if (interaction.commandName === "fratie") dispatch(handleFratia(interaction));
       if (interaction.commandName === "licitatie") dispatch(handleLicitatie(interaction));
@@ -5997,7 +6014,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
       if (interaction.commandName === "clasa") dispatch(handleClasa(interaction));
       if (interaction.commandName === "companion") dispatch(handleCompanion(interaction));
       if (interaction.commandName === "ajutor") dispatch(handleAjutor(interaction));
-      if (interaction.commandName === "misiuni") dispatch(handleMisiune(interaction));
+      if (interaction.commandName === "misiuni" || interaction.commandName === "misiune") dispatch(handleMisiune(interaction));
       if (interaction.commandName === "cufarpersonal") dispatch(handlePersonalChest(interaction));
       if (interaction.commandName === "fratie") dispatch(handleFratia(interaction));
       if (interaction.commandName === "licitatie") dispatch(handleLicitatie(interaction));

@@ -33,6 +33,7 @@
 - [Multi-guild channel routing](multi-guild-channel-routing.md) — missing settings may fall back to legacy routes; explicit `""` disables routing and must survive saves and nullish fallbacks.
 - [Moderation destination safety](moderation-channel-destination.md) — preserve invalid configured log destinations and warn; never silently move logs to a guessed channel.
 - [Boss fights by rarity](boss-by-rarity.md) — boss check must use stored monsterRarity==="boss" (ambush bosses exist at any level); stat fns need the rarity arg or HP desyncs.
+- [Boss daily quest semantics](boss-daily-quest-semantics.md) — participation counts on victory for all damage contributors; the daily reward is extra loot, not a replacement.
 - [Ephemeral anti-spam pattern](ephemeral-anti-spam.md) — repeated feedback must use ephemeralNote/sendOrEditEphemeral (60s edit window + delete-old); public announcements replace their predecessor under a per-key lock.
 - [DB pool & interaction latency](db-pool-interaction-latency.md) — default pg Pool (max 10) congests the event loop under concurrent clicks, delaying even deferUpdate past 3s → 10062; size pool + timeouts.
 - [Oracle social mood per guild](oracle-social-mood.md) — mood stays guild-scoped; keep global Discord presence online without game or mood activity unless requested.

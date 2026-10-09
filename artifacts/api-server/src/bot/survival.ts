@@ -1201,6 +1201,13 @@ export const DAILY_QUESTS = {
     reward: { itemKey: "cristal_abis" as ItemKey, qty: 1 },
     emoji: "🐲",
   },
+  kill_boss_rare: {
+    label: "Participă la un boss epic sau legendar",
+    description: "Provoacă daune unui boss epic sau legendar pe care Regatul îl învinge.",
+    target: 1,
+    reward: { itemKey: "inima_abisului" as ItemKey, qty: 1 },
+    emoji: "🌑",
+  },
 } as const;
 
 export type DailyQuestKey = keyof typeof DAILY_QUESTS;
@@ -1219,6 +1226,7 @@ export function dailyQuestDefinitions(config?: GameplayConfig): Record<DailyQues
     kill_10: { ...DAILY_QUESTS.kill_10, target: missions?.kill_10.target ?? DAILY_QUESTS.kill_10.target, reward: { ...DAILY_QUESTS.kill_10.reward, qty: missions?.kill_10.rewardQty ?? DAILY_QUESTS.kill_10.reward.qty } },
     rare_3: { ...DAILY_QUESTS.rare_3, target: missions?.rare_3.target ?? DAILY_QUESTS.rare_3.target, reward: { ...DAILY_QUESTS.rare_3.reward, qty: missions?.rare_3.rewardQty ?? DAILY_QUESTS.rare_3.reward.qty } },
     boss_1: { ...DAILY_QUESTS.boss_1, target: missions?.boss_1.target ?? DAILY_QUESTS.boss_1.target, reward: { ...DAILY_QUESTS.boss_1.reward, qty: missions?.boss_1.rewardQty ?? DAILY_QUESTS.boss_1.reward.qty } },
+    kill_boss_rare: DAILY_QUESTS.kill_boss_rare,
   };
 }
 

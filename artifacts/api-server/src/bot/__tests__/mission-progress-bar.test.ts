@@ -160,4 +160,32 @@ describe("buildMissionEmbed progress bar", () => {
       expect(desc).toContain(`**0/${DAILY_QUESTS[key].target}**`);
     }
   });
+
+  it("shows the boss quest and its exact reward alongside the original quest", () => {
+    const desc = String(buildMissionEmbed({}, TODAY).data.description);
+    expect(desc).toContain(DAILY_QUESTS.kill_10.label);
+    expect(desc).toContain(DAILY_QUESTS.kill_boss_rare.label);
+    expect(desc).toContain("**1× Inimă a Abisului**");
+    expect(desc).toContain("**0/1**");
+  });
+
+  it("keeps boss completion separate from monster progress", () => {
+    const desc = String(buildMissionEmbed({
+      kill_10: { progress: 4, completed: false, rewardGiven: false, questDate: TODAY },
+      kill_boss_rare: { progress: 1, completed: true, rewardGiven: true, questDate: TODAY },
+    }, TODAY).data.description);
+    expect(desc).toContain("**4/10**");
+    const bossSection = desc.split(`**${DAILY_QUESTS.kill_boss_rare.label}**`)[1]!;
+    expect(bossSection).toContain("Completată!");
+    expect(bossSection).toContain("Recompensa a fost acordată.");
+  });
+
+  it("resets yesterday's boss completion independently", () => {
+    const desc = String(buildMissionEmbed({
+      kill_boss_rare: { progress: 1, completed: true, rewardGiven: true, questDate: "2026-07-18" },
+    }, TODAY).data.description);
+    const bossSection = desc.split(`**${DAILY_QUESTS.kill_boss_rare.label}**`)[1]!;
+    expect(bossSection).toContain("**0/1**");
+    expect(bossSection).not.toContain("Completată!");
+  });
 });

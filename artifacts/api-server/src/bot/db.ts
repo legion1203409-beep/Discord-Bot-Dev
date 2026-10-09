@@ -1613,11 +1613,42 @@ export async function getDailyQuestProgress(
  */
 export async function incrementDailyQuest(
   discordId: string, guildId: string, questKey: string, target: number,
+  reward?: { itemKey: string; qty: number },
+): Promise<{ newProgress: number; justCompleted: boolean }> {
+  if (!reward) return advanceDailyQuest(pool, discordId, guildId, questKey, target);
+
+  // The new boss quest claims and grants its item together: a failed inventory
+  // write must not leave reward_given=true without the promised reward.
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await advanceDailyQuest(client, discordId, guildId, questKey, target);
+    if (result.justCompleted) {
+      await client.query(`
+        INSERT INTO player_items (discord_id, guild_id, item_key, quantity)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (discord_id, guild_id, item_key) DO UPDATE
+        SET quantity = player_items.quantity + EXCLUDED.quantity
+      `, [discordId, guildId, reward.itemKey, reward.qty]);
+    }
+    await client.query("COMMIT");
+    return result;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+async function advanceDailyQuest(
+  connection: Pick<typeof pool, "query">,
+  discordId: string, guildId: string, questKey: string, target: number,
 ): Promise<{ newProgress: number; justCompleted: boolean }> {
   const today = todayDateUTC();
 
   // Step 1: Atomically upsert progress (handles reset on new day, completed guard)
-  const { rows } = await pool.query<{ progress: number; completed: boolean }>(`
+  const { rows } = await connection.query<{ progress: number; completed: boolean }>(`
     INSERT INTO player_daily_quests
       (discord_id, guild_id, quest_key, quest_date, progress, completed, reward_given)
     VALUES ($1, $2, $5, $3, 1, ($4 <= 1), false)
@@ -1644,7 +1675,7 @@ export async function incrementDailyQuest(
   if (!row.completed) return { newProgress: row.progress, justCompleted: false };
 
   // Step 2: Atomically claim reward — only the first call to reach completion wins
-  const { rowCount } = await pool.query(`
+  const { rowCount } = await connection.query(`
     UPDATE player_daily_quests
     SET reward_given = true
     WHERE discord_id = $1
