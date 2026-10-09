@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { Collection, PermissionFlagsBits as P, PermissionsBitField, type Guild } from "discord.js";
-import { applySetup, inspectSetup, type SetupJournal } from "../server-setup";
+import {
+  applySetup, inspectSetup, inspectUncertainSetup, reconcileUncertainSetup, type SetupJournal,
+} from "../server-setup";
 import { setupDraftSchema, setupTemplate } from "../server-setup-schema";
 
 vi.mock("../server-setup-discord", () => ({
@@ -95,6 +97,77 @@ describe("safe Discord setup", () => {
     f.role("Membru");
     expect((await inspectSetup(f.guild, draft, f.journal)).items[0].status).toBe("reuse");
     expect(f.raw.roles.create).not.toHaveBeenCalled();
+  });
+  it("does not let a different draft key bypass an uncertain creation", async () => {
+    const f = fixture(), draft = smallDraft();
+    f.journal.oldMemberKey = { name: "Membru", kind: "role" };
+    draft.roles[0].key = "new-member";
+    const preview = await inspectSetup(f.guild, draft, f.journal);
+    expect(preview.ready).toBe(false);
+    expect(preview.items[0]).toMatchObject({ status: "conflict" });
+    expect(preview.items[0].detail).toContain("oldMemberKey");
+  });
+  it("binds only a freshly inventoried same-name resource and leaves it unchanged", async () => {
+    const f = fixture(), existing = f.role("Membru");
+    f.journal.member = { name: "Membru", kind: "role" };
+    const inventory = await inspectUncertainSetup(f.guild, "member", f.journal);
+    expect(inventory.candidates).toEqual([{ id: existing.id, name: existing.name, kind: "role" }]);
+    const result = await reconcileUncertainSetup(f.guild, {
+      key: "member", action: "bind", inventoryFingerprint: inventory.inventoryFingerprint, resourceId: existing.id,
+    }, f.journal, f.save);
+    expect(result.action).toBe("bound");
+    expect(f.journal.member.id).toBe(existing.id);
+    expect(f.save).toHaveBeenCalledWith(expect.objectContaining({ member: expect.objectContaining({ id: existing.id }) }));
+    expect(f.raw.roles.create).not.toHaveBeenCalled();
+    expect((await inspectSetup(f.guild, smallDraft(), f.journal)).items[0].status).toBe("reuse");
+  });
+  it("rejects stale inventories, invalid resource IDs, and absence claims when the resource exists", async () => {
+    const f = fixture();
+    f.journal.member = { name: "Membru", kind: "role" };
+    const firstInventory = await inspectUncertainSetup(f.guild, "member", f.journal);
+    const existing = f.role("Membru");
+    const before = JSON.stringify(existing);
+    await expect(reconcileUncertainSetup(f.guild, {
+      key: "member", action: "confirm-absent", inventoryFingerprint: firstInventory.inventoryFingerprint,
+    }, f.journal, f.save)).rejects.toThrow("Inventarul Discord s-a schimbat");
+    const freshInventory = await inspectUncertainSetup(f.guild, "member", f.journal);
+    await expect(reconcileUncertainSetup(f.guild, {
+      key: "member", action: "bind", inventoryFingerprint: freshInventory.inventoryFingerprint, resourceId: "not-in-this-guild",
+    }, f.journal, f.save)).rejects.toThrow("nu mai este validă");
+    await expect(reconcileUncertainSetup(f.guild, {
+      key: "member", action: "confirm-absent", inventoryFingerprint: freshInventory.inventoryFingerprint,
+    }, f.journal, f.save)).rejects.toThrow("Leag-o explicit");
+    expect(f.journal.member.id).toBeUndefined();
+    expect(JSON.stringify(existing)).toBe(before);
+    expect(f.save).not.toHaveBeenCalled();
+  });
+  it("requires an absent fresh inventory before clearing uncertainty", async () => {
+    const f = fixture();
+    f.journal.member = { name: "Membru", kind: "role", attemptedAt: "2026-10-08T00:00:00.000Z" };
+    f.journal.other = { name: "Alt rol", kind: "role", id: "999" };
+    const inventory = await inspectUncertainSetup(f.guild, "member", f.journal);
+    expect(inventory.canConfirmAbsent).toBe(true);
+    const result = await reconcileUncertainSetup(f.guild, {
+      key: "member", action: "confirm-absent", inventoryFingerprint: inventory.inventoryFingerprint,
+    }, f.journal, f.save);
+    expect(result.action).toBe("confirmed-absent");
+    expect(f.journal.member).toBeUndefined();
+    expect(f.journal.other).toEqual({ name: "Alt rol", kind: "role", id: "999" });
+    expect(f.save).toHaveBeenCalledWith(expect.not.objectContaining({ member: expect.anything() }));
+    expect(f.raw.roles.create).not.toHaveBeenCalled();
+  });
+  it("does not offer a channel in the wrong category as a reconciliation candidate", async () => {
+    const f = fixture();
+    const actualParent = f.channel({ name: "Comunitate", type: 4 });
+    const differentParent = f.channel({ name: "Personalizat", type: 4 });
+    const wrong = f.channel({ name: "general", type: 0, parent: differentParent.id });
+    f.journal.community = { name: "Comunitate", kind: "category", id: actualParent.id };
+    f.journal.general = { name: "general", kind: "channel", parentKey: "community" };
+    const inventory = await inspectUncertainSetup(f.guild, "general", f.journal);
+    expect(inventory.nameMatches).toHaveLength(1);
+    expect(inventory.candidates).toEqual([]);
+    expect(inventory.canConfirmAbsent).toBe(false);
+    expect(inventory.nameMatches[0].id).toBe(wrong.id);
   });
   it("blocks wrong parent/type, ambiguous names, privileged roles and hierarchy conflicts", async () => {
     const f = fixture(), draft = smallDraft();

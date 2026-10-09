@@ -1,13 +1,16 @@
 import { createHash } from "node:crypto";
-import { ChannelType, PermissionFlagsBits as P, type Guild, type OverwriteData } from "discord.js";
+import { ChannelType, PermissionFlagsBits as P, type Guild, type GuildMember, type OverwriteData, type Role } from "discord.js";
 import { setupDraftSchema, type SetupDraft } from "./server-setup-schema";
 import { createSetupRole, createSetupChannel } from "./server-setup-discord";
 
 type Kind = "role" | "category" | "channel";
 type Target = { key: string; name: string; kind: Kind; parentKey?: string };
-export type SetupJournal = Record<string, { id?: string; name: string; kind: Kind }>;
+export type SetupJournalEntry = { id?: string; name: string; kind: Kind; parentKey?: string; attemptedAt?: string };
+export type SetupJournal = Record<string, SetupJournalEntry>;
 export type SetupItem = Target & { status: "create" | "reuse" | "conflict"; detail: string; id?: string };
 export type ApplyItem = Target & { status: "created" | "reused" | "failed"; detail: string };
+export type UncertainSetupItem = Target & { attemptedAt?: string };
+export type SetupResourceOption = { id: string; name: string; kind: Kind; parentId?: string };
 const normalize = (name: string) => name.trim().toLowerCase();
 const targets = (draft: SetupDraft): Target[] => [
   ...draft.roles.map(r => ({ ...r, kind: "role" as const })),
@@ -20,7 +23,9 @@ const targets = (draft: SetupDraft): Target[] => [
 export async function inspectSetup(guild: Guild, input: unknown, journal: SetupJournal = {}) {
   const draft = setupDraftSchema.parse(input);
   const [roles, channels, me] = await Promise.all([
-    guild.roles.fetch(), guild.channels.fetch(), guild.members.fetchMe(),
+    guild.roles.fetch(undefined, { force: true }),
+    guild.channels.fetch(undefined, { force: true }),
+    guild.members.fetchMe(),
   ]);
   const issues: string[] = [];
   for (const permission of ["ManageRoles", "ManageChannels", "ViewChannel", "SendMessages", "ReadMessageHistory"] as const)
@@ -38,6 +43,10 @@ export async function inspectSetup(guild: Guild, input: unknown, journal: SetupJ
     const resource = matches[0];
     const conflict = (message: string) => { status = "conflict"; detail = message; };
     if (matches.length > 1) conflict("Mai multe resurse au același nume. Redenumește draftul.");
+    const otherUncertain = Object.entries(journal).find(([key, pending]) =>
+      key !== target.key && !pending.id && pending.kind === target.kind && normalize(pending.name) === normalize(target.name));
+    if (otherUncertain)
+      conflict(`Există o creare neconfirmată pentru această resursă sub cheia „${otherUncertain[0]}”. Reconciliaz-o înainte de a continua.`);
     if (stored && (stored.name !== target.name || stored.kind !== target.kind))
       conflict("Această cheie a fost deja folosită pentru altă resursă. Păstrează numele inițial sau folosește o cheie nouă.");
     if (stored && !resource) conflict("Creare anterioară incertă sau resursă eliminată. Verifică în Discord; nu recreăm automat.");
@@ -75,6 +84,117 @@ export async function inspectSetup(guild: Guild, input: unknown, journal: SetupJ
   };
   return { ready: issues.length === 0 && !items.some(i => i.status === "conflict"), issues, items,
     fingerprint: createHash("sha256").update(JSON.stringify(snapshot)).digest("hex") };
+}
+
+export function listUncertainSetup(journal: SetupJournal): UncertainSetupItem[] {
+  return Object.entries(journal)
+    .filter(([, entry]) => !entry.id)
+    .map(([key, entry]) => ({
+      key,
+      name: entry.name,
+      kind: entry.kind,
+      ...(entry.parentKey ? { parentKey: entry.parentKey } : {}),
+      ...(entry.attemptedAt ? { attemptedAt: entry.attemptedAt } : {}),
+    }))
+    .sort((a, b) => a.key.localeCompare(b.key));
+}
+
+function isSafeRole(role: Role, guild: Guild, me: GuildMember) {
+  return role.id !== guild.id && !role.managed && role.position < me.roles.highest.position && !role.permissions.has(P.Administrator);
+}
+
+export async function inspectUncertainSetup(guild: Guild, key: string, journal: SetupJournal) {
+  const pending = journal[key];
+  if (!pending || pending.id) throw new Error("Această resursă nu mai are o creare neconfirmată.");
+  const [roles, channels, me] = await Promise.all([
+    guild.roles.fetch(undefined, { force: true }),
+    guild.channels.fetch(undefined, { force: true }),
+    guild.members.fetchMe(),
+  ]);
+  const parentId = pending.parentKey ? journal[pending.parentKey]?.id : undefined;
+  const roleList = [...roles.values()];
+  const channelList = [...channels.values()].filter(c => c !== null);
+  const sameName: SetupResourceOption[] = [];
+  if (pending.kind === "role") {
+    for (const role of roleList) if (normalize(role.name) === normalize(pending.name))
+      sameName.push({ id: role.id, name: role.name, kind: "role" });
+  } else {
+    for (const channel of channelList) {
+      const matchingType = pending.kind === "category"
+        ? channel.type === ChannelType.GuildCategory
+        : channel.type !== ChannelType.GuildCategory;
+      if (matchingType && normalize(channel.name) === normalize(pending.name))
+        sameName.push({ id: channel.id, name: channel.name, kind: pending.kind === "category" ? "category" : "channel",
+          ...(channel.parentId ? { parentId: channel.parentId } : {}) });
+    }
+  }
+  const candidates: SetupResourceOption[] = [];
+  for (const match of sameName) {
+    if (match.name !== pending.name) continue;
+    if (match.kind === "role") {
+      const role = roles.get(match.id);
+      if (role && isSafeRole(role, guild, me)) candidates.push(match);
+      continue;
+    }
+    const channel = channels.get(match.id);
+    if (!channel || channel.type !== (pending.kind === "category" ? ChannelType.GuildCategory : ChannelType.GuildText)) continue;
+    if (pending.kind === "channel" && parentId && channel.parentId !== parentId) continue;
+    if (pending.kind === "channel" && pending.parentKey && !parentId) continue;
+    candidates.push(match);
+  }
+  const inventory = {
+    guildId: guild.id,
+    key,
+    pending,
+    parentId: parentId ?? null,
+    roles: roleList.map(r => [r.id, r.name, r.position, r.managed, r.permissions.bitfield.toString()]).sort(),
+    channels: channelList.map(c => [c.id, c.name, c.type, c.parentId,
+      "permissionOverwrites" in c ? [...c.permissionOverwrites.cache.values()].map(o =>
+        [o.id, o.allow.bitfield.toString(), o.deny.bitfield.toString()]).sort() : []]).sort(),
+  };
+  return {
+    key,
+    pending: { key, name: pending.name, kind: pending.kind, ...(pending.parentKey ? { parentKey: pending.parentKey } : {}) },
+    nameMatches: sameName,
+    candidates,
+    canConfirmAbsent: sameName.length === 0,
+    ...(pending.kind === "channel" && pending.parentKey && !parentId
+      ? { blockedReason: "Leagă mai întâi categoria părinte; canalul trebuie să fie în categoria corectă." }
+      : {}),
+    inventoryFingerprint: createHash("sha256").update(JSON.stringify(inventory)).digest("hex"),
+  };
+}
+
+export async function reconcileUncertainSetup(
+  guild: Guild,
+  input: { key: string; action: "bind"; inventoryFingerprint: string; resourceId: string } |
+    { key: string; action: "confirm-absent"; inventoryFingerprint: string },
+  journal: SetupJournal,
+  saveJournal: (journal: SetupJournal) => Promise<void>,
+) {
+  const inspected = await inspectUncertainSetup(guild, input.key, journal);
+  if (inspected.inventoryFingerprint !== input.inventoryFingerprint)
+    throw new Error("Inventarul Discord s-a schimbat. Verifică din nou înainte de reconciliere.");
+  const pending = journal[input.key];
+  if (input.action === "bind") {
+    const resource = inspected.candidates.find(candidate => candidate.id === input.resourceId);
+    if (!resource) throw new Error("Resursa aleasă nu mai este validă pentru această încercare. Verifică din nou inventarul.");
+    const nextJournal = { ...journal, [input.key]: { ...pending, id: resource.id } };
+    await saveJournal(nextJournal);
+    Object.assign(journal, nextJournal);
+    return { action: "bound" as const, resource, uncertain: listUncertainSetup(journal) };
+  }
+  if (!inspected.canConfirmAbsent)
+    throw new Error("Există deja o resursă cu acest nume în inventarul proaspăt. Leag-o explicit în loc să confirmi absența.");
+  const nextJournal = { ...journal };
+  delete nextJournal[input.key];
+  await saveJournal(nextJournal);
+  delete journal[input.key];
+  return {
+    action: "confirmed-absent" as const,
+    pending: inspected.pending,
+    uncertain: listUncertainSetup(journal),
+  };
 }
 
 export async function applySetup(
@@ -122,7 +242,12 @@ export async function applySetup(
       }
       // Persist intent BEFORE Discord: a lost response or crash must not lead
       // to blind recreation on another process or after a restart.
-      journal[target.key] = { name: target.name, kind: target.kind };
+      journal[target.key] = {
+        name: target.name,
+        kind: target.kind,
+        ...(target.parentKey ? { parentKey: target.parentKey } : {}),
+        attemptedAt: new Date().toISOString(),
+      };
       await saveJournal(journal);
       let resource: { id: string };
       try {

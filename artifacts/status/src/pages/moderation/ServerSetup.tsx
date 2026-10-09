@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Plus, Trash2, Sparkles, Eye, Hammer, RefreshCw, AlertTriangle, Lock, ShieldCheck, Hash, FolderClosed, Users } from "lucide-react";
+import { Plus, Trash2, Sparkles, Eye, Hammer, RefreshCw, AlertTriangle, Lock, ShieldCheck, Hash, FolderClosed, Users, Link2 } from "lucide-react";
 import { apiFetchWithMeta, useActiveGuild } from "../../hooks/use-moderation-api";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -14,6 +14,18 @@ import {
 } from "../../lib/server-setup";
 
 const msg = (e: unknown) => (e instanceof Error ? e.message : "Eroare necunoscută.");
+type UncertainSetupItem = { key: string; name: string; kind: "role" | "category" | "channel"; parentKey?: string; attemptedAt?: string };
+type SetupResourceOption = { id: string; name: string; kind: "role" | "category" | "channel"; parentId?: string };
+type ReconciliationInventory = {
+  key: string;
+  pending: UncertainSetupItem;
+  nameMatches: SetupResourceOption[];
+  candidates: SetupResourceOption[];
+  canConfirmAbsent: boolean;
+  blockedReason?: string;
+  inventoryFingerprint: string;
+};
+type ReconciliationResult = { uncertain: UncertainSetupItem[]; action: "bound" | "confirmed-absent" };
 
 export function ServerSetupPage() {
   const { guildId, guilds } = useActiveGuild();
@@ -33,6 +45,14 @@ export function ServerSetupPage() {
   const [applyBusy, setApplyBusy] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
   const [result, setResult] = useState<ApplyResult | null>(null);
+  const [uncertain, setUncertain] = useState<UncertainSetupItem[]>([]);
+  const [inventories, setInventories] = useState<Record<string, ReconciliationInventory>>({});
+  const [selectedResources, setSelectedResources] = useState<Record<string, string>>({});
+  const [inventoryLoadingKey, setInventoryLoadingKey] = useState<string | null>(null);
+  const [reconcileBusyKey, setReconcileBusyKey] = useState<string | null>(null);
+  const [reconcileError, setReconcileError] = useState<string | null>(null);
+  const [reconcileNotice, setReconcileNotice] = useState<string | null>(null);
+  const [confirmAbsentKey, setConfirmAbsentKey] = useState<string | null>(null);
   const applying = useRef(false);
   const draftRevision = useRef(0);
 
@@ -40,16 +60,62 @@ export function ServerSetupPage() {
 
   const load = async () => {
     setLoading(true); setLoadError(null);
+    setUncertain([]); setInventories({}); setSelectedResources({});
+    setReconcileError(null); setReconcileNotice(null); setConfirmAbsentKey(null);
     try {
-      const { data } = await apiFetchWithMeta<{ draft: SetupDraft; aiAvailable: boolean }>(base);
-      setDraftState(data.draft); setAiAvailable(Boolean(data.aiAvailable));
+      const { data } = await apiFetchWithMeta<{ draft: SetupDraft; aiAvailable: boolean; uncertain?: UncertainSetupItem[] }>(base);
+      setDraftState(data.draft); setAiAvailable(Boolean(data.aiAvailable)); setUncertain(data.uncertain ?? []);
     } catch (e) { setLoadError(msg(e)); } finally { setLoading(false); }
   };
   useEffect(() => { if (guildId) void load(); }, [guildId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setDraft = (d: SetupDraft) => { if (applying.current) return; draftRevision.current++; setDraftState(d); setPreview(null); setConfirmOpen(false); setPreviewError(null); };
   const issues = draft ? validateDraft(draft) : [];
-  const busy = previewBusy || applyBusy;
+  const busy = previewBusy || applyBusy || Boolean(reconcileBusyKey) || Boolean(inventoryLoadingKey);
+
+  const refreshReconciliationInventory = async (item: UncertainSetupItem) => {
+    setInventoryLoadingKey(item.key); setReconcileError(null); setReconcileNotice(null);
+    try {
+      const { data } = await apiFetchWithMeta<ReconciliationInventory>(
+        `${base}/reconciliation/${encodeURIComponent(item.key)}/inventory`,
+      );
+      setInventories(current => ({ ...current, [item.key]: data }));
+      setSelectedResources(current => ({
+        ...current,
+        [item.key]: current[item.key] && data.candidates.some(candidate => candidate.id === current[item.key])
+          ? current[item.key]
+          : data.candidates[0]?.id ?? "",
+      }));
+    } catch (e) {
+      setInventories(current => { const next = { ...current }; delete next[item.key]; return next; });
+      setReconcileError(`${item.name}: ${msg(e)}`);
+    } finally { setInventoryLoadingKey(null); }
+  };
+
+  const reconcile = async (item: UncertainSetupItem, action: "bind" | "confirm-absent") => {
+    const inventory = inventories[item.key];
+    if (!inventory || reconcileBusyKey) return;
+    setReconcileBusyKey(item.key); setReconcileError(null); setReconcileNotice(null);
+    try {
+      const payload = action === "bind"
+        ? { action, inventoryFingerprint: inventory.inventoryFingerprint, resourceId: selectedResources[item.key] }
+        : { action: "confirm-absent", inventoryFingerprint: inventory.inventoryFingerprint, confirmed: true as const };
+      const { data } = await apiFetchWithMeta<ReconciliationResult>(
+        `${base}/reconciliation/${encodeURIComponent(item.key)}`,
+        { method: "POST", body: JSON.stringify(payload) },
+      );
+      setUncertain(data.uncertain);
+      setInventories(current => { const next = { ...current }; delete next[item.key]; return next; });
+      setSelectedResources(current => { const next = { ...current }; delete next[item.key]; return next; });
+      setPreview(null); setResult(null);
+      setReconcileNotice(data.action === "bound"
+        ? `Resursa existentă a fost legată de încercarea „${item.name}”. Nu i-am schimbat permisiunile.`
+        : `Absența pentru „${item.name}” a fost confirmată. Rulează o verificare nouă; orice creare va cere confirmarea obișnuită.`);
+    } catch (e) {
+      setReconcileError(`${item.name}: ${msg(e)} Verifică din nou inventarul înainte să încerci iar.`);
+      setInventories(current => { const next = { ...current }; delete next[item.key]; return next; });
+    } finally { setReconcileBusyKey(null); setConfirmAbsentKey(null); }
+  };
 
   const suggest = async () => {
     if (!draft || aiBusy) return;
@@ -104,6 +170,85 @@ export function ServerSetupPage() {
         </p>
         <p className="mt-2 text-xs text-muted-foreground">Serverul trebuie să existe deja în Discord, iar botul să fie invitat. Asistentul amenajează serverul selectat; nu creează un server Discord nou.</p>
       </header>
+
+      {reconcileError && <p role="alert" className="text-sm text-destructive" data-testid="text-reconciliation-error">{reconcileError}</p>}
+      {reconcileNotice && <p role="status" className="text-sm text-primary" data-testid="text-reconciliation-result">{reconcileNotice}</p>}
+      {uncertain.length > 0 && (
+        <section className="mod-card rounded-2xl border border-amber-500/40 p-5 sm:p-6" data-testid="panel-uncertain-resources">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-amber-400" />
+            <h2 className="font-display text-xl text-foreground">Creări Discord neconfirmate</h2>
+          </div>
+          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+            Discord poate să fi creat resursa chiar dacă răspunsul nu a ajuns. Până la reconciliere, configurarea nu o recreează. Verifică inventarul proaspăt, apoi leagă resursa găsită sau confirmă explicit că lipsește.
+          </p>
+          <div className="mt-4 space-y-3">
+            {uncertain.map(item => {
+              const inventory = inventories[item.key];
+              return (
+                <article key={item.key} className="rounded-xl border border-border/60 bg-background/40 p-4" data-testid={`card-uncertain-${item.key}`}>
+                  <div className="flex flex-wrap items-start gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-foreground">
+                        {item.kind === "channel" ? "#" : ""}{item.name}
+                        <span className="ml-2 text-xs font-normal text-muted-foreground">
+                          {item.kind === "role" ? "rol" : item.kind === "category" ? "categorie" : "canal"} · cheia {item.key}
+                        </span>
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">Încercarea de creare a rămas fără confirmare; nicio resursă nu va fi recreată automat.</p>
+                      {item.attemptedAt && <p className="mt-1 text-[11px] text-muted-foreground">Încercare: {new Date(item.attemptedAt).toLocaleString()}</p>}
+                    </div>
+                    <Button size="sm" variant="outline" className="gap-2" disabled={busy || inventoryLoadingKey !== null}
+                      onClick={() => void refreshReconciliationInventory(item)} data-testid={`button-check-uncertain-${item.key}`}>
+                      <RefreshCw className="h-3.5 w-3.5" />{inventoryLoadingKey === item.key ? "Se verifică..." : "Verifică inventarul Discord"}
+                    </Button>
+                  </div>
+                  {inventory && (
+                    <div className="mt-4 space-y-3 border-t border-border/50 pt-4" data-testid={`panel-reconciliation-inventory-${item.key}`}>
+                      {inventory.candidates.length > 0 ? (
+                        <>
+                          <p className="text-xs text-muted-foreground">Resurse existente, de tipul și din categoria așteptate. Alege ID-ul corect; legarea nu modifică permisiunile sau poziția.</p>
+                          <div className="flex flex-col gap-2 sm:flex-row">
+                            <select className="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm text-foreground"
+                              value={selectedResources[item.key] ?? ""} onChange={e => setSelectedResources(current => ({ ...current, [item.key]: e.target.value }))}
+                              data-testid={`select-reconciliation-resource-${item.key}`} aria-label={`Resursă existentă pentru ${item.name}`}>
+                              {inventory.candidates.map(candidate => (
+                                <option key={candidate.id} value={candidate.id}>
+                                  {candidate.kind === "channel" ? "#" : ""}{candidate.name} · ID {candidate.id}
+                                </option>
+                              ))}
+                            </select>
+                            <Button size="sm" className="gap-2" disabled={busy || !selectedResources[item.key]}
+                              onClick={() => void reconcile(item, "bind")} data-testid={`button-bind-resource-${item.key}`}>
+                              <Link2 className="h-4 w-4" />Leagă resursa
+                            </Button>
+                          </div>
+                        </>
+                      ) : inventory.nameMatches.length > 0 ? (
+                        <p className="text-xs text-amber-300" data-testid={`text-reconciliation-invalid-match-${item.key}`}>
+                          Inventarul conține resurse cu acest nume, dar niciuna nu trece validarea necesară pentru legare. Confirmarea absenței este blocată.
+                        </p>
+                      ) : (
+                        <p className="text-xs text-primary" data-testid={`text-reconciliation-absent-${item.key}`}>
+                          Verificarea proaspătă nu a găsit o resursă cu acest nume. {inventory.blockedReason ?? "Poți confirma absența; dacă inventarul se schimbă, confirmarea va fi respinsă."}
+                        </p>
+                      )}
+                      {inventory.blockedReason && inventory.candidates.length > 0 && <p className="text-xs text-amber-300">{inventory.blockedReason}</p>}
+                      {inventory.canConfirmAbsent && (
+                        <Button size="sm" variant="outline" className="gap-2 border-amber-500/40 text-amber-200 hover:bg-amber-500/10"
+                          disabled={busy || Boolean(inventory.blockedReason)} onClick={() => setConfirmAbsentKey(item.key)}
+                          data-testid={`button-confirm-absent-${item.key}`}>
+                          <AlertTriangle className="h-3.5 w-3.5" />Confirmă că lipsește
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* AI */}
       <section className="mod-card rounded-2xl p-5 sm:p-6">
@@ -252,6 +397,29 @@ export function ServerSetupPage() {
           <AlertDialogFooter>
             <AlertDialogCancel data-testid="button-cancel-apply">Anulează</AlertDialogCancel>
             <AlertDialogAction disabled={applyBusy} onClick={() => void apply()} data-testid="button-confirm-apply">Confirm și aplic</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={confirmAbsentKey !== null} onOpenChange={open => !reconcileBusyKey && !open && setConfirmAbsentKey(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-amber-400" /> Confirmi absența resursei?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {(() => {
+                const item = uncertain.find(entry => entry.key === confirmAbsentKey);
+                return item ? (
+                  <>Inventarul Discord tocmai a fost verificat și nu conține „{item.name}”. Confirmarea șterge doar înregistrarea locală a încercării neconfirmate, nu șterge și nu modifică nimic în Discord. Dacă resursa există dar nu a apărut în inventar, următoarea aplicare poate crea un duplicat. Verifică manual în Discord înainte să continui; o nouă creare va cere în continuare confirmarea normală.</>
+                ) : null;
+              })()}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-confirm-absent">Anulează</AlertDialogCancel>
+            <AlertDialogAction disabled={reconcileBusyKey !== null} onClick={() => {
+              const item = uncertain.find(entry => entry.key === confirmAbsentKey);
+              if (item) void reconcile(item, "confirm-absent");
+            }} data-testid="button-acknowledge-absent">Confirmă absența</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

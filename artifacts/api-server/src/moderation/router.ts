@@ -1,7 +1,9 @@
 import { PUBLIC_DISCORD_INVITE } from "../lib/discord-invite";
 import { setupDraftSchema, setupTemplate } from "./server-setup-schema";
 import { setupSuggestionSchema, suggestSetup } from "./server-setup-ai";
-import { inspectSetup, applySetup } from "./server-setup";
+import {
+  inspectSetup, applySetup, inspectUncertainSetup, listUncertainSetup, reconcileUncertainSetup,
+} from "./server-setup";
 import { withSetupJournal } from "./server-setup-storage";
 import { getActivityRankConfig, saveActivityRankConfig, isSafeActivityRewardRole } from "../bot/activity-ranks";
 import { normalizeActivityRankConfig } from "../bot/activity-ranks-core";
@@ -2607,7 +2609,16 @@ router.put("/guilds/:guildId/activity-ranks", asyncRoute(async (req, res) => {
 router.get("/guilds/:guildId/server-setup", asyncRoute(async (req, res) => {
   const guildId = parse(snowflake, req.params.guildId);
   await sessionAndGuild(req, guildId, "config");
-  res.json({ draft: setupTemplate, aiAvailable: Boolean(process.env.OPENAI_API_KEY) });
+  try {
+    const uncertain = await withSetupJournal(guildId, async journal => listUncertainSetup(journal));
+    res.set("Cache-Control", "no-store").json({
+      draft: setupTemplate,
+      aiAvailable: Boolean(process.env.OPENAI_API_KEY),
+      uncertain,
+    });
+  } catch (error) {
+    throw new ModerationAuthError(409, error instanceof Error ? error.message : "Starea configurării nu a putut fi încărcată.");
+  }
 }));
 
 router.post("/guilds/:guildId/server-setup/suggest", asyncRoute(async (req, res) => {
@@ -2638,6 +2649,80 @@ for (const action of ["preview", "apply"] as const) {
     }
   }));
 }
+
+const setupResourceKey = z.string().regex(/^[a-z][a-z0-9_-]{0,39}$/);
+router.get("/guilds/:guildId/server-setup/reconciliation/:key/inventory", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  const key = setupResourceKey.parse(req.params.key);
+  await sessionAndGuild(req, guildId, "config");
+  const client = getModerationClient();
+  if (!client?.isReady()) throw new ModerationAuthError(503, "Botul Discord nu este conectat.");
+  const guild = await client.guilds.fetch({ guild: guildId, force: true });
+  try {
+    const inventory = await withSetupJournal(guildId, async journal => inspectUncertainSetup(guild, key, journal));
+    res.set("Cache-Control", "no-store").json(inventory);
+  } catch (error) {
+    throw new ModerationAuthError(409, error instanceof Error ? error.message : "Inventarul Discord nu a putut fi verificat.");
+  }
+}));
+
+router.post("/guilds/:guildId/server-setup/reconciliation/:key", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  const key = setupResourceKey.parse(req.params.key);
+  const session = await sessionAndGuild(req, guildId, "config", true);
+  const body = z.discriminatedUnion("action", [
+    z.object({
+      action: z.literal("bind"),
+      inventoryFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+      resourceId: snowflake,
+    }).strict(),
+    z.object({
+      action: z.literal("confirm-absent"),
+      inventoryFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+      confirmed: z.literal(true),
+    }).strict(),
+  ]).parse(req.body);
+  const client = getModerationClient();
+  if (!client?.isReady()) throw new ModerationAuthError(503, "Botul Discord nu este conectat.");
+  const guild = await client.guilds.fetch({ guild: guildId, force: true });
+  try {
+    const result = await withSetupJournal(guildId, async (journal, save) => {
+      const previous = structuredClone(journal);
+      const reconciliation = await reconcileUncertainSetup(guild, { ...body, key } as
+        | { key: string; action: "bind"; inventoryFingerprint: string; resourceId: string }
+        | { key: string; action: "confirm-absent"; inventoryFingerprint: string }, journal, save);
+      const auditDetail = reconciliation.action === "bound"
+        ? {
+          action: body.action,
+          name: reconciliation.resource.name,
+          kind: reconciliation.resource.kind,
+          resourceId: reconciliation.resource.id,
+        }
+        : {
+          action: body.action,
+          name: reconciliation.pending.name,
+          kind: reconciliation.pending.kind,
+        };
+      try {
+        await moderationStore.writeAudit({
+          guildId,
+          actorId: session.userId,
+          eventType: reconciliation.action === "bound" ? "server_setup.reconciliation_bound" : "server_setup.reconciliation_absent",
+          targetType: "setup_resource",
+          targetId: key,
+          detail: auditDetail,
+        });
+      } catch (error) {
+        await save(previous);
+        throw error;
+      }
+      return reconciliation;
+    });
+    res.set("Cache-Control", "no-store").json(result);
+  } catch (error) {
+    throw new ModerationAuthError(409, error instanceof Error ? error.message : "Reconcilierea nu a putut fi finalizată.");
+  }
+}));
 
 router.post("/guilds/:guildId/bot-control/provision-channels", asyncRoute(async (req, res) => {
   const guildId = parse(snowflake, req.params.guildId);

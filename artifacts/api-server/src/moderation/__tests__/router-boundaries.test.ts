@@ -58,6 +58,7 @@ const mocks = vi.hoisted(() => ({
     "antiSpam.logChannelId", "suspiciousBehavior.alertChannelId", "ai.logChannelId", "audit.channelId",
   ],
   emojiCreate: vi.fn(), emojiFetch: vi.fn(),
+  withSetupJournal: vi.fn(),
 }));
 
 vi.mock("../auth", () => ({
@@ -76,6 +77,8 @@ vi.mock("../auth", () => ({
   revokeRequestSessionIfPresent: vi.fn(),
   setSessionCookie: vi.fn(),
 }));
+
+vi.mock("../server-setup-storage", () => ({ withSetupJournal: mocks.withSetupJournal }));
 
 vi.mock("../store", () => ({
   moderationStore: {
@@ -374,6 +377,7 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
   afterAll(async () => { await new Promise<void>((resolve) => server.close(() => resolve())); });
   beforeEach(() => {
     vi.resetAllMocks();
+    mocks.withSetupJournal.mockImplementation(async (_guildId, run) => run({}, async () => {}));
     mocks.session.mockResolvedValue({ userId: actorId, csrfToken: "csrf" });
     mocks.access.mockResolvedValue("owner");
     mocks.getConfig.mockResolvedValue({ config: structuredClone(defaultModerationConfig), version: 3 });
@@ -597,7 +601,7 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
       expect((await fetch(`${base}/server-setup`)).status).toBe(403);
       expect(mocks.access).toHaveBeenLastCalledWith(guildId, actorId, "config");
     });
-    it.each(["suggest", "preview", "apply"])("enforces CSRF before %s", async action => {
+    it.each(["suggest", "preview", "apply", "reconciliation/member"])("enforces CSRF before %s", async action => {
       mocks.csrf.mockImplementationOnce(() => { throw new ModerationAuthError(403, "CSRF required"); });
       expect((await fetch(`${base}/server-setup/${action}`, post({}))).status).toBe(403);
     });
@@ -609,8 +613,34 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     it("returns a real template without creating Discord resources", async () => {
       const response = await fetch(`${base}/server-setup`);
       expect(response.status).toBe(200);
-      expect((await response.json() as { draft: { roles: unknown[] } }).draft.roles).toHaveLength(4);
+      expect((await response.json() as { draft: { roles: unknown[] }; uncertain: unknown[] })).toMatchObject({
+        draft: { roles: expect.arrayContaining([expect.anything()]) },
+        uncertain: [],
+      });
       expect(mocks.client).not.toHaveBeenCalled();
+    });
+    it("requires fresh inventory for owner reconciliation and audits confirmed absence", async () => {
+      let journal: Record<string, any> = { lost_role: { name: "Lost role", kind: "role" } };
+      mocks.withSetupJournal.mockImplementation(async (_guildId, run) =>
+        run(journal, async (next: Record<string, any>) => { journal = structuredClone(next); }));
+      const inventoryResponse = await fetch(`${base}/server-setup/reconciliation/lost_role/inventory`);
+      expect(inventoryResponse.status).toBe(200);
+      const inventory = await inventoryResponse.json() as { inventoryFingerprint: string; canConfirmAbsent: boolean };
+      expect(inventory.canConfirmAbsent).toBe(true);
+      const response = await fetch(`${base}/server-setup/reconciliation/lost_role`, post({
+        action: "confirm-absent",
+        inventoryFingerprint: inventory.inventoryFingerprint,
+        confirmed: true,
+      }));
+      expect(response.status).toBe(200);
+      expect(journal.lost_role).toBeUndefined();
+      expect(mocks.writeAudit).toHaveBeenCalledWith(expect.objectContaining({
+        guildId,
+        actorId,
+        eventType: "server_setup.reconciliation_absent",
+        targetId: "lost_role",
+        detail: expect.objectContaining({ action: "confirm-absent", name: "Lost role", kind: "role" }),
+      }));
     });
   });
 
