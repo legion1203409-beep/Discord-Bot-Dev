@@ -2919,6 +2919,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
     finalPlayerHp = Math.min(p.maxHp, finalPlayerHp + result.hpRegen);
   }
 
+  let questProgress: number | undefined;
   if (result.oboliGained > 0) {
     // Daily quests: every kill counts; rare+ kills and mini-boss kills track extra quests
     const questKeys: DailyQuestKey[] = ["kill_10"];
@@ -2927,6 +2928,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
     const questResults = await Promise.all(
       questKeys.map((k) => incrementDailyQuest(p.discordId, guildId, k, dailyQuestDefinitions(gameplayConfig)[k].target)),
     );
+    questProgress = questResults[0]!.newProgress;
     const completedQuests = questKeys.filter((_, i) => questResults[i]!.justCompleted);
     void Promise.all([
       addPlayerGold(p.discordId, guildId, result.oboliGained),
@@ -2994,6 +2996,14 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
     return;
   }
 
+  // Non-lethal attacks keep today's progress visible without advancing it.
+  if (questProgress === undefined) {
+    const today = todayDateUTC();
+    const questRows = await getDailyQuestRows(p.discordId, guildId);
+    const quest = questRows.find((q) => q.questKey === "kill_10" && q.questDate === today);
+    questProgress = quest?.completed ? undefined : (quest?.progress ?? 0);
+  }
+
   const updated = await updateParticipant(p.id, {
     currentHp: finalPlayerHp,
     monsterLevel: result.newMonsterLevel,
@@ -3013,7 +3023,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
 
   await interaction.editReply({
     embeds: [
-      buildCombatEmbed(updated, extra, interaction.user.displayAvatarURL({ size: 256 }), plAfterMana, gameplayConfig),
+      buildCombatEmbed(updated, extra, interaction.user.displayAvatarURL({ size: 256 }), plAfterMana, gameplayConfig, questProgress),
       ...(equipmentDrop ? [buildEquipmentLootEmbed(equipmentDrop)] : []),
     ],
     components: [combatRow(eventId, updated)],

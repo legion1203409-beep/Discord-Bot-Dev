@@ -107,6 +107,7 @@ import {
 import { getActiveBattleEvent, consumeStormDrain } from "../combat-events";
 import { getCombatModifiers } from "../status-effects";
 import type { EventParticipant, Player } from "@workspace/db";
+import { DEFAULT_GAMEPLAY_CONFIG } from "../gameplay-config";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -813,6 +814,41 @@ describe("doCombat xpPerKill bonus", () => {
 });
 
 // ─── buildCombatEmbed permanent bonuses ───────────────────────────────────────
+
+describe("buildCombatEmbed daily quest progress", () => {
+  function footer(progress?: number) {
+    return buildCombatEmbed(makeParticipant(), "", null, null, undefined, progress)
+      .data.footer as { text: string };
+  }
+
+  it("preserves the existing footer when progress is omitted", () => {
+    expect(footer().text).not.toContain("Misiune");
+    expect(footer().text).toContain("⚔️ +0");
+  });
+
+  it.each([0, 1, 7, 9])("shows incomplete progress %i/10", (progress) => {
+    expect(footer(progress).text).toContain(`📜 Misiune: ${progress}/10`);
+    expect(footer(progress).text).toContain("❤️ +0");
+  });
+
+  it.each([10, 11])("hides progress at or above completion (%i)", (progress) => {
+    expect(footer(progress).text).not.toContain("Misiune");
+  });
+
+  it("uses the guild's configured target", () => {
+    const config = {
+      ...DEFAULT_GAMEPLAY_CONFIG,
+      missions: {
+        ...DEFAULT_GAMEPLAY_CONFIG.missions,
+        kill_10: { ...DEFAULT_GAMEPLAY_CONFIG.missions.kill_10, target: 20 },
+      },
+    };
+    const embed = buildCombatEmbed(makeParticipant(), "", null, null, config, 10);
+    expect((embed.data.footer as { text: string }).text).toContain("📜 Misiune: 10/20");
+    const completed = buildCombatEmbed(makeParticipant(), "", null, null, config, 20);
+    expect((completed.data.footer as { text: string }).text).not.toContain("Misiune");
+  });
+});
 
 describe("buildCombatEmbed permanent bonuses", () => {
   it("shows class, talisman and xpPerKill lines when present", () => {

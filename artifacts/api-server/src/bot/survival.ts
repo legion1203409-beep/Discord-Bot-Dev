@@ -1714,7 +1714,13 @@ export function buildCombatEmbed(
   avatarUrl?: string | null,
   player?: Player | null,
   gameplayConfig?: GameplayConfig,
+  questProgress?: number,
 ): EmbedBuilder {
+  const questTarget = dailyQuestDefinitions(gameplayConfig).kill_10.target;
+  const questFooter =
+    questProgress !== undefined && questProgress < questTarget
+      ? ` | 📜 Misiune: ${questProgress}/${questTarget}`
+      : "";
   const rarity = (p.monsterRarity as Rarity) ?? "comun";
   const [mn, mx] = monsterDmgRange(p.monsterLevel, rarity);
   const vetRank = veteranRankFor(p.monsterLevel, rarity, player?.bossKills);
@@ -1835,7 +1841,7 @@ export function buildCombatEmbed(
         IMG.monster,
     )
     .setFooter({
-      text: `⚔️ +${p.attackBonus} | 🛡️ +${p.defenseBonus} | 🌀 ${p.dodgeBonus}% | 💥 ${p.critBonus}% | ❤️ +${p.maxHp - 100}`,
+      text: `⚔️ +${p.attackBonus} | 🛡️ +${p.defenseBonus} | 🌀 ${p.dodgeBonus}% | 💥 ${p.critBonus}% | ❤️ +${p.maxHp - 100}${questFooter}`,
     });
   if (avatarUrl) embed.setThumbnail(avatarUrl);
   return embed;
