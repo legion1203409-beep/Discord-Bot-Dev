@@ -405,7 +405,7 @@ export function ActivityRanksPage() {
                     className="absolute inset-0 h-full w-full object-cover"
                   />
                 <img
-                  src={`${import.meta.env.BASE_URL}activity-bars/${draft.barStyle}.gif?v=thin-xp`}
+                  src={`${import.meta.env.BASE_URL}activity-bars/${draft.barStyle}.gif?v=${import.meta.env.VITE_ACTIVITY_BAR_PREVIEW_VERSION}`}
                   alt="Previzualizarea barei animate la 62% progres"
                   className="absolute"
                   style={{

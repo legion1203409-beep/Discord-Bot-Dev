@@ -82,4 +82,5 @@
 - [Image retouch dimensions](image-retouch-dimensions.md) — AI retouching may change aspect ratio; preserve the source composition with localized compositing.
 - [Discord publication consistency](discord-publication-consistency.md) — uncertainty must not trigger reposting; role-ID snapshots require guild-wide serialization.
 - [Rank GIF frame capture](activity-rank-rendering.md) — direct Pillow frame capture avoids a temporary GIF round-trip; its global save interception relies on one isolated Python process per render.
+- [Activity preview synchronization](activity-preview-sync.md) — regeneration must also invalidate browser image caches; generated files alone do not guarantee panel/Discord parity.
 - [Quest notification retries](quest-notification-recovery.md) — Discord recovery must not repeat combat or grant rewards; inventory atomicity and restart recovery are separate.

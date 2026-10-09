@@ -4,8 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --config vite.config.ts --host 0.0.0.0",
-    "build": "vite build --config vite.config.ts",
+    "dev": "pnpm run previews:generate && vite --config vite.config.ts --host 0.0.0.0",
+    "build": "pnpm run previews:generate && vite build --config vite.config.ts",
+    "previews:generate": "python3 ../api-server/src/bot/activity-bars/sync_previews.py",
+    "previews:check": "python3 ../api-server/src/bot/activity-bars/sync_previews.py --check",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --config vitest.config.ts",
