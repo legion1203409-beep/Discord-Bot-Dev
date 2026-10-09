@@ -9,8 +9,57 @@ const MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
 const BANNER_TIMEOUT_MS = 8_000;
 const RENDER_TIMEOUT_MS = 25_000;
 const MAX_CONCURRENT_RENDERS = 2;
+const MAX_QUEUED_RENDERS = 4;
+const QUEUE_TIMEOUT_MS = 10_000;
 let activeRenders = 0;
+type RenderWaiter = {
+  expiresAt: number;
+  timer: ReturnType<typeof setTimeout>;
+  resolve: () => void;
+  reject: (error: Error) => void;
+};
+const renderQueue: RenderWaiter[] = [];
 const storage = new ObjectStorageService();
+
+function acquireRenderSlot(): Promise<void> {
+  if (activeRenders < MAX_CONCURRENT_RENDERS) {
+    activeRenders += 1;
+    return Promise.resolve();
+  }
+  if (renderQueue.length >= MAX_QUEUED_RENDERS) {
+    return Promise.reject(new Error("Activity rank image renderer is busy; try the command again shortly"));
+  }
+  return new Promise((resolve, reject) => {
+    const waiter: RenderWaiter = {
+      expiresAt: Date.now() + QUEUE_TIMEOUT_MS,
+      resolve,
+      reject,
+      timer: setTimeout(() => {
+        const index = renderQueue.indexOf(waiter);
+        if (index < 0) return;
+        renderQueue.splice(index, 1);
+        reject(new Error("Activity rank image rendering queue wait timed out"));
+      }, QUEUE_TIMEOUT_MS),
+    };
+    renderQueue.push(waiter);
+  });
+}
+
+function releaseRenderSlot(): void {
+  activeRenders -= 1;
+  while (renderQueue.length > 0) {
+    const waiter = renderQueue.shift()!;
+    clearTimeout(waiter.timer);
+    // Timers may be delayed by a busy event loop; never start an expired request.
+    if (waiter.expiresAt <= Date.now()) {
+      waiter.reject(new Error("Activity rank image rendering queue wait timed out"));
+      continue;
+    }
+    activeRenders += 1;
+    waiter.resolve();
+    break;
+  }
+}
 
 export async function fetchActivityRankBanner(url: string): Promise<Buffer> {
   if (!isSupportedActivityBannerSource(url)) {
@@ -56,7 +105,7 @@ export async function fetchActivityRankBanner(url: string): Promise<Buffer> {
   return Buffer.concat(chunks, totalBytes);
 }
 
-export function renderActivityRankBanner(
+export async function renderActivityRankBanner(
   sourceImage: Buffer | null,
   percentage: number,
   color: string,
@@ -65,25 +114,31 @@ export function renderActivityRankBanner(
   layout: ActivityRankLayout | null = null,
 ): Promise<Buffer> {
   if (!/^#[0-9a-f]{6}$/i.test(color)) throw new Error("Invalid activity rank color");
-  if (activeRenders >= MAX_CONCURRENT_RENDERS) {
-    throw new Error("Activity rank image renderer is busy; try the command again shortly");
+  if (sourceImage && sourceImage.length > MAX_BANNER_BYTES) {
+    throw new Error("Activity rank banner exceeds the 10 MB size limit");
   }
-  const progress = Number.isFinite(percentage) ? Math.max(0, Math.min(100, percentage)) : 0;
-  const input = Buffer.from(JSON.stringify({
-    banner: sourceImage?.toString("base64") ?? null,
-    percentage: progress,
-    style: barStyle,
-    member: member ? {
-      name: member.displayName.replace(/[\r\n\t]/g, " ").slice(0, 200),
-      level: member.level,
-      avatar: member.avatar?.toString("base64") ?? null,
-    } : null,
-    layout,
-  }));
-  activeRenders += 1;
-  return runRenderer(input).finally(() => {
-    activeRenders -= 1;
-  });
+  if (member?.avatar && member.avatar.length > MAX_BANNER_BYTES) {
+    throw new Error("Activity rank avatar exceeds the 10 MB size limit");
+  }
+  await acquireRenderSlot();
+  try {
+    // Do not allocate base64/JSON copies while a request is waiting in the queue.
+    const progress = Number.isFinite(percentage) ? Math.max(0, Math.min(100, percentage)) : 0;
+    const input = Buffer.from(JSON.stringify({
+      banner: sourceImage?.toString("base64") ?? null,
+      percentage: progress,
+      style: barStyle,
+      member: member ? {
+        name: member.displayName.replace(/[\r\n\t]/g, " ").slice(0, 200),
+        level: member.level,
+        avatar: member.avatar?.toString("base64") ?? null,
+      } : null,
+      layout,
+    }));
+    return await runRenderer(input);
+  } finally {
+    releaseRenderSlot();
+  }
 }
 
 function runRenderer(input: Buffer): Promise<Buffer> {
@@ -96,13 +151,17 @@ function runRenderer(input: Buffer): Promise<Buffer> {
     let outputBytes = 0;
     let errorBytes = 0;
     let settled = false;
+    let failure: Error | null = null;
 
     const finishWithError = (error: Error) => {
-      if (settled) return;
-      settled = true;
+      if (settled || failure) return;
+      failure = error;
       clearTimeout(timeout);
+      output.length = 0;
+      errors.length = 0;
       process.kill("SIGKILL");
-      reject(error);
+      // Keep the slot until close confirms the child has exited, including
+      // after SIGKILL. Rejecting here could start a third live Python process.
     };
 
     const timeout = setTimeout(
@@ -110,13 +169,9 @@ function runRenderer(input: Buffer): Promise<Buffer> {
       RENDER_TIMEOUT_MS,
     );
 
-    process.on("error", (error) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      reject(error);
-    });
+    process.on("error", finishWithError);
     process.stdout.on("data", (chunk: Buffer) => {
+      if (settled || failure) return;
       outputBytes += chunk.length;
       if (outputBytes > MAX_OUTPUT_BYTES) {
         finishWithError(new Error("Rendered activity rank banner exceeded the output limit"));
@@ -125,6 +180,7 @@ function runRenderer(input: Buffer): Promise<Buffer> {
       output.push(chunk);
     });
     process.stderr.on("data", (chunk: Buffer) => {
+      if (settled || failure) return;
       if (errorBytes >= 8_192) return;
       const remaining = 8_192 - errorBytes;
       errors.push(chunk.subarray(0, remaining));
@@ -134,8 +190,12 @@ function runRenderer(input: Buffer): Promise<Buffer> {
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
+      if (failure) {
+        reject(failure);
+        return;
+      }
       if (code !== 0) {
-      reject(new Error(`Could not render activity rank banner: ${Buffer.concat(errors).toString("utf8")}`));
+        reject(new Error(`Could not render activity rank banner: ${Buffer.concat(errors).toString("utf8")}`));
         return;
       }
       resolve(Buffer.concat(output, outputBytes));
