@@ -77,7 +77,11 @@ vi.mock("../status-effects", () => ({
   getRewardMultipliers: vi.fn().mockReturnValue({ xpMult: 1, goldMult: 1 }),
 }));
 
-import { isGuildActive, recordGuildActivity, rollActivityRarityKey, rollActivityKeyType, guildStates, CHEST_MSG_MILESTONE, KEY_CHEST_MSG_MILESTONE, SEASONAL_CHEST_MSG_MILESTONE, ACTIVITY_WINDOW_MINUTES, CHEST_EXPIRE_MS, EVENT_MESSAGE_RETENTION_MS } from "../scheduler";
+import { isGuildActive, recordGuildActivity, fireKeyChest, rollActivityRarityKey, rollActivityKeyType, guildStates, CHEST_MSG_MILESTONE, KEY_CHEST_MSG_MILESTONE, SEASONAL_CHEST_MSG_MILESTONE, ACTIVITY_WINDOW_MINUTES, CHEST_EXPIRE_MS, EVENT_MESSAGE_RETENTION_MS } from "../scheduler";
+import { getChannel } from "../channel-config";
+import { persistActiveChest, clearActiveChest } from "../db";
+import { buildKeyChestEmbed, rollKeyChestType } from "../survival";
+import { logger } from "../../lib/logger";
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -322,6 +326,41 @@ describe("recordGuildActivity — key-chest milestone (keyMsgCount)", () => {
     gs.keyMsgCount = KEY_CHEST_MSG_MILESTONE - 1;
     recordGuildActivity(mockClient, GUILD);
     expect(gs.keyMsgCount).toBe(0);
+  });
+
+  it("returns null without spawn side effects when the key milestone is reached but main is unconfigured", async () => {
+    const send = vi.fn();
+    const fetch = vi.fn().mockResolvedValue({ send });
+    const client = { channels: { fetch } } as unknown as Parameters<typeof fireKeyChest>[0];
+    vi.mocked(getChannel).mockReturnValue(null);
+    for (const mock of [getChannel, persistActiveChest, clearActiveChest, buildKeyChestEmbed, rollKeyChestType, logger.error]) {
+      vi.mocked(mock).mockClear();
+    }
+
+    recordGuildActivity(client, GUILD);
+    const gs = guildStates.get(GUILD)!;
+    gs.keyMsgCount = KEY_CHEST_MSG_MILESTONE - 1;
+    recordGuildActivity(client, GUILD);
+    expect(gs.keyMsgCount).toBe(0);
+    expect(isGuildActive(gs.lastActivityAt, ACTIVITY_WINDOW_MINUTES * 60_000)).toBe(true);
+    const stateBefore = { ...gs, claimedChests: new Set(gs.claimedChests), activeBossMap: new Map(gs.activeBossMap) };
+    const timersBefore = vi.getTimerCount();
+
+    // Legacy milestones now only reset counters; exercise the real spawn path
+    // explicitly, without bypassing the recent-activity gate.
+    await expect(fireKeyChest(client, GUILD)).resolves.toBeNull();
+
+    expect(getChannel).toHaveBeenCalledWith("main", GUILD);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+    expect(rollKeyChestType).not.toHaveBeenCalled();
+    expect(buildKeyChestEmbed).not.toHaveBeenCalled();
+    expect(persistActiveChest).not.toHaveBeenCalled();
+    expect(clearActiveChest).not.toHaveBeenCalled();
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(gs).toEqual(stateBefore);
+    expect(gs.firingKeyChest).toBe(false);
+    expect(vi.getTimerCount()).toBe(timersBefore);
   });
 
   it("does NOT reset keyMsgCount when chest milestone fires but key milestone is not reached", () => {
