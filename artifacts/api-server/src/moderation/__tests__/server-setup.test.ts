@@ -1,17 +1,34 @@
 import { describe, expect, it, vi } from "vitest";
 import { Collection, PermissionFlagsBits as P, PermissionsBitField, type Guild } from "discord.js";
 import {
-  applySetup, inspectSetup, inspectUncertainSetup, reconcileUncertainSetup, type SetupJournal,
+  applySetup, deleteSelectedSetupResources, inspectSetup, inspectSetupResources, inspectUncertainSetup, reconcileUncertainSetup, type SetupJournal,
 } from "../server-setup";
-import { setupDraftSchema, setupTemplate } from "../server-setup-schema";
+import { setupDraftSchema, setupTemplate, type SetupDraft } from "../server-setup-schema";
 
 vi.mock("../server-setup-discord", () => ({
   createSetupRole: (guild: Guild, name: string) => guild.roles.create({ name, permissions: 0n }),
   createSetupChannel: (guild: Guild, options: any) => guild.channels.create(options),
+  updateSetupAccess: async (overwrites: any, roleAccess: Map<string, { view: boolean; history: boolean; send: boolean }>, previous: string[], botId: string) => {
+    const desired = new Map(roleAccess);
+    desired.set(botId, { view: true, history: true, send: true });
+    for (const id of new Set([...desired.keys(), ...previous, botId])) {
+      const access = desired.get(id);
+      await overwrites.edit(id, {
+        ViewChannel: access?.view ?? null,
+        ReadMessageHistory: access?.history ?? null,
+        SendMessages: access?.send ?? null,
+      }, {});
+    }
+  },
+  deleteSetupResource: async (guild: Guild, id: string) => {
+    const channel = await guild.channels.fetch(id);
+    if (!channel) throw new Error("Resursa a dispărut din Discord.");
+    await channel.delete();
+  },
 }));
 
 function fixture() {
-  let seq = 100;
+  let seq = 10_000;
   const roles = new Collection<string, any>();
   const channels = new Collection<string, any>();
   const me = { id: "bot", permissions: new PermissionsBitField(P.Administrator), roles: { highest: { position: 20 } } };
@@ -20,22 +37,59 @@ function fixture() {
     roles.set(value.id, value); return value;
   };
   const channel = (data: any) => {
-    const value = { id: String(++seq), parentId: data.parent ?? null, ...data,
-      permissionOverwrites: { cache: new Collection((data.permissionOverwrites ?? []).map((o: any) => [o.id, {
+    const overwriteCache = new Collection<string, any>((data.permissionOverwrites ?? []).map((o: any) => [o.id, {
         ...o, allow: new PermissionsBitField(o.allow ?? []), deny: new PermissionsBitField(o.deny ?? []),
-      }])) } };
+      }]));
+    const permissionOverwrites = {
+      cache: overwriteCache,
+      edit: vi.fn(async (id: string, access: Record<string, boolean | null>) => {
+        const overwrite = overwriteCache.get(id) ?? {
+          id, type: "role", allow: new PermissionsBitField(0n), deny: new PermissionsBitField(0n),
+        };
+        const flags: Record<string, bigint> = {
+          ViewChannel: P.ViewChannel,
+          ReadMessageHistory: P.ReadMessageHistory,
+          SendMessages: P.SendMessages,
+        };
+        for (const [permission, enabled] of Object.entries(access)) {
+          const bit = flags[permission];
+          if (enabled === null) {
+            overwrite.allow.remove(bit);
+            overwrite.deny.remove(bit);
+          } else if (enabled) {
+            overwrite.allow.add(bit);
+            overwrite.deny.remove(bit);
+          } else {
+            overwrite.allow.remove(bit);
+            overwrite.deny.add(bit);
+          }
+        }
+        overwriteCache.set(id, overwrite);
+        return value;
+      }),
+    };
+    const value: any = {
+      id: String(++seq), parentId: data.parent ?? data.parentId ?? null, ...data,
+      client: { user: { id: "99999" } },
+      permissionOverwrites,
+      delete: vi.fn(async () => { channels.delete(value.id); return value; }),
+    };
     channels.set(value.id, value); return value;
   };
   const guild = {
-    id: "guild", members: { me, fetchMe: vi.fn(async () => me) },
+    id: "88888", members: { me, fetchMe: vi.fn(async () => me) },
     roles: { fetch: vi.fn(async () => roles), create: vi.fn(async (r: any) => role(r.name, r.permissions)) },
-    channels: { fetch: vi.fn(async () => channels), create: vi.fn(async (c: any) => channel(c)) },
+    channels: {
+      cache: channels,
+      fetch: vi.fn(async (id?: string) => id ? channels.get(id) ?? null : channels),
+      create: vi.fn(async (c: any) => channel(c)),
+    },
   };
   const journal: SetupJournal = {};
   const save = vi.fn(async () => {});
   return { guild: guild as unknown as Guild, raw: guild, roles, channels, me, role, channel, journal, save };
 }
-const smallDraft = () => ({
+const smallDraft = (): SetupDraft => setupDraftSchema.parse({
   roles: [{ key: "member", name: "Membru" }],
   categories: [{ key: "community", name: "Comunitate", channels: [
     { key: "general", name: "general", readers: ["everyone"], writers: ["everyone"], explanation: "Public" },
@@ -55,7 +109,19 @@ describe("server setup validation", () => {
   it("rejects duplicate keys/names and reserved role keys", () => {
     const d = smallDraft(); d.roles.push({ ...d.roles[0] });
     expect(setupDraftSchema.safeParse(d).success).toBe(false);
-    d.roles = [{ key: "everyone", name: "Everyone" }];
+    d.roles = [{ key: "everyone", name: "Everyone", mode: "new" }];
+    expect(setupDraftSchema.safeParse(d).success).toBe(false);
+  });
+  it("requires unique explicit resource IDs and caps operator-selected deletions", () => {
+    const d = smallDraft();
+    d.roles[0] = { key: "member", name: "Membru", mode: "existing", discordId: "123456" };
+    d.roles.push({ key: "helper", name: "Ajutor", mode: "existing", discordId: "123456" });
+    d.categories[0].discordId = "123456";
+    expect(setupDraftSchema.safeParse(d).success).toBe(false);
+    d.categories[0].discordId = undefined;
+    d.deleteTargets = Array.from({ length: 21 }, (_, i) => ({ id: String(100_000 + i), kind: "channel" as const }));
+    expect(setupDraftSchema.safeParse(d).success).toBe(false);
+    d.deleteTargets = [{ id: "123456", kind: "channel" }, { id: "123456", kind: "channel" }];
     expect(setupDraftSchema.safeParse(d).success).toBe(false);
   });
 });
@@ -69,11 +135,11 @@ describe("safe Discord setup", () => {
     expect(result.complete).toBe(true);
     expect(f.raw.roles.create).toHaveBeenCalledWith(expect.objectContaining({ permissions: 0n }));
     const textCall = f.raw.channels.create.mock.calls[1][0];
-    expect(textCall.permissionOverwrites.find((o: any) => o.id === "guild").allow).toContain(P.SendMessages);
+    expect(textCall.permissionOverwrites.find((o: any) => o.id === f.raw.id).allow).toContain(P.SendMessages);
     expect(textCall.permissionOverwrites.find((o: any) => o.id !== "guild" && o.type === 0).allow).toContain(P.ViewChannel);
     const second = await inspectSetup(f.guild, draft, f.journal);
-    expect(second.items.every(i => i.status === "reuse")).toBe(true);
-    expect((await applySetup(f.guild, draft, second.fingerprint, f.journal, f.save)).items.every(i => i.status === "reused")).toBe(true);
+    expect(second.items.map(i => i.status)).toEqual(["reuse", "update", "update"]);
+    expect((await applySetup(f.guild, draft, second.fingerprint, f.journal, f.save)).items.map(i => i.status)).toEqual(["reused", "updated", "updated"]);
     expect(f.raw.roles.create).toHaveBeenCalledTimes(1);
     expect(f.raw.channels.create).toHaveBeenCalledTimes(2);
   });
@@ -191,13 +257,151 @@ describe("safe Discord setup", () => {
   });
   it("does not alter reused resource ACLs and keeps new staff channels private", async () => {
     const f = fixture();
-    const cat = f.channel({ name: "Staff", type: 4, permissionOverwrites: [{ id: "manual", allow: [P.ManageMessages] }] });
-    const before = JSON.stringify([...cat.permissionOverwrites.cache.keys()]);
-    const p = await inspectSetup(f.guild, setupTemplate);
-    expect((await applySetup(f.guild, setupTemplate, p.fingerprint, f.journal, f.save)).complete).toBe(true);
-    expect(JSON.stringify([...cat.permissionOverwrites.cache.keys()])).toBe(before);
+    const cat = f.channel({ name: "Staff category", type: 4, permissionOverwrites: [{ id: "manual", allow: [P.ManageMessages] }] });
+    const draft = structuredClone(setupTemplate);
+    draft.categories.find(category => category.key === "staff")!.discordId = cat.id;
+    const p = await inspectSetup(f.guild, draft);
+    expect(p.ready).toBe(true);
+    expect((await inspectSetup(f.guild, draft)).fingerprint).toBe(p.fingerprint);
+    expect((await applySetup(f.guild, draft, p.fingerprint, f.journal, f.save)).complete).toBe(true);
+    const manual = cat.permissionOverwrites.cache.get("manual");
+    expect(manual.allow.has(P.ManageMessages)).toBe(true);
+    expect(manual.deny.has(P.ViewChannel)).toBe(false);
     const staff = f.raw.channels.create.mock.calls.map(c => c[0]).find(c => c.name === "staff")!;
-    expect(staff.permissionOverwrites.find((o: any) => o.id === "guild").deny).toContain(P.ViewChannel);
+    expect(staff.permissionOverwrites.find((o: any) => o.id === f.raw.id).deny).toContain(P.ViewChannel);
+  });
+  it("lets the operator select an existing role without creating or changing it", async () => {
+    const f = fixture();
+    const existing = f.role("Curator");
+    const draft: SetupDraft = {
+      roles: [{ key: "curator", name: existing.name, mode: "existing", discordId: existing.id }],
+      categories: [],
+      deleteTargets: [],
+    };
+    const inventory = await inspectSetupResources(f.guild);
+    expect(inventory.roles).toContainEqual(expect.objectContaining({ id: existing.id, usable: true }));
+    const preview = await inspectSetup(f.guild, draft);
+    expect(preview.items).toMatchObject([{ key: "curator", id: existing.id, status: "reuse" }]);
+    const result = await applySetup(f.guild, draft, preview.fingerprint, f.journal, f.save);
+    expect(result.items).toMatchObject([{ id: existing.id, status: "reused" }]);
+    expect(f.raw.roles.create).not.toHaveBeenCalled();
+    expect(existing.permissions.bitfield).toBe(0n);
+  });
+  it("previews and applies inherited access to existing children while preserving unmanaged ACLs", async () => {
+    const f = fixture();
+    const existingRole = f.role("Membru");
+    const category = f.channel({ name: "Comunitate", type: 4 });
+    const child = f.channel({
+      name: "manual-chat",
+      type: 0,
+      parent: category.id,
+      permissionOverwrites: [
+        { id: existingRole.id, allow: [P.ManageMessages, P.ViewChannel], deny: [P.SendMessages] },
+        { id: "77777", allow: [P.ManageMessages], deny: [P.ViewChannel] },
+      ],
+    });
+    const draft: SetupDraft = {
+      roles: [{ key: "member", name: existingRole.name, mode: "existing", discordId: existingRole.id }],
+      categories: [{
+        key: "community", name: category.name, discordId: category.id,
+        readers: ["member"], writers: [],
+        channels: [],
+      }],
+      deleteTargets: [],
+    };
+    const preview = await inspectSetup(f.guild, draft);
+    expect(preview.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        key: `acl-channel-${child.id}`,
+        id: child.id,
+        inherited: true,
+        effectiveAccess: { readers: ["member"], writers: [] },
+      }),
+    ]));
+    const result = await applySetup(f.guild, draft, preview.fingerprint, f.journal, f.save);
+    expect(result.items).toEqual(expect.arrayContaining([expect.objectContaining({ id: child.id, status: "updated" })]));
+    const managed = child.permissionOverwrites.cache.get(existingRole.id);
+    const unmanaged = child.permissionOverwrites.cache.get("77777");
+    expect(managed.allow.has(P.ViewChannel)).toBe(true);
+    expect(managed.allow.has(P.ReadMessageHistory)).toBe(true);
+    expect(managed.allow.has(P.ManageMessages)).toBe(true);
+    expect(managed.deny.has(P.SendMessages)).toBe(true);
+    expect(unmanaged.allow.has(P.ManageMessages)).toBe(true);
+    expect(unmanaged.deny.has(P.ViewChannel)).toBe(true);
+
+    draft.roles = [];
+    draft.categories[0].readers = [];
+    const next = await inspectSetup(f.guild, draft, f.journal);
+    await applySetup(f.guild, draft, next.fingerprint, f.journal, f.save);
+    expect(managed.allow.has(P.ManageMessages)).toBe(true);
+    expect(managed.allow.has(P.ViewChannel)).toBe(false);
+    expect(managed.allow.has(P.ReadMessageHistory)).toBe(false);
+    expect(managed.deny.has(P.SendMessages)).toBe(false);
+    expect(unmanaged.deny.has(P.ViewChannel)).toBe(true);
+  });
+  it("rejects stale access previews when a selected child's ACL changes", async () => {
+    const f = fixture();
+    const category = f.channel({ name: "Comunitate", type: 4 });
+    f.channel({ name: "manual-chat", type: 0, parent: category.id });
+    const draft: SetupDraft = {
+      roles: [],
+      categories: [{ key: "community", name: category.name, discordId: category.id, readers: [], writers: [], channels: [] }],
+      deleteTargets: [],
+    };
+    const preview = await inspectSetup(f.guild, draft);
+    const child = [...f.channels.values()].find(channel => channel.name === "manual-chat")!;
+    child.permissionOverwrites.cache.set("77777", {
+      id: "77777",
+      allow: new PermissionsBitField([P.ManageMessages]),
+      deny: new PermissionsBitField([P.ViewChannel]),
+    });
+    await expect(applySetup(f.guild, draft, preview.fingerprint, f.journal, f.save)).rejects.toThrow("Verificarea");
+    expect(child.permissionOverwrites.edit).not.toHaveBeenCalled();
+  });
+  it("deletes only explicitly confirmed resources and leaves category children intact", async () => {
+    const f = fixture();
+    const category = f.channel({ name: "Arhivă", type: 4 });
+    const child = f.channel({ name: "manual", type: 0, parent: category.id });
+    const draft: SetupDraft = {
+      roles: [],
+      categories: [],
+      deleteTargets: [{ id: category.id, kind: "category" }],
+    };
+    const preview = await inspectSetup(f.guild, draft);
+    expect(preview.deletionItems).toMatchObject([{
+      id: category.id,
+      name: "Arhivă",
+      status: "delete",
+      children: [{ id: child.id, name: "manual" }],
+    }]);
+    const result = await deleteSelectedSetupResources(f.guild, draft, preview.fingerprint, f.journal, f.save);
+    expect(result.items).toMatchObject([{ id: category.id, status: "deleted" }]);
+    expect(category.delete).toHaveBeenCalledTimes(1);
+    expect(child.delete).not.toHaveBeenCalled();
+    expect(f.channels.has(child.id)).toBe(true);
+  });
+  it("rejects stale destructive previews and reports partial deletion failures individually", async () => {
+    const f = fixture();
+    const first = f.channel({ name: "first", type: 0 });
+    const second = f.channel({ name: "second", type: 0 });
+    const draft: SetupDraft = {
+      roles: [],
+      categories: [],
+      deleteTargets: [{ id: first.id, kind: "channel" }, { id: second.id, kind: "channel" }],
+    };
+    const stale = await inspectSetup(f.guild, draft);
+    first.name = "renamed";
+    await expect(deleteSelectedSetupResources(f.guild, draft, stale.fingerprint, f.journal, f.save))
+      .rejects.toThrow("Previzualizarea este învechită");
+    expect(first.delete).not.toHaveBeenCalled();
+
+    const fresh = await inspectSetup(f.guild, draft);
+    second.delete.mockRejectedValueOnce(new Error("Missing permissions"));
+    const partial = await deleteSelectedSetupResources(f.guild, draft, fresh.fingerprint, f.journal, f.save);
+    expect(partial.complete).toBe(false);
+    expect(partial.items.map(item => item.status)).toEqual(["deleted", "failed"]);
+    expect(first.delete).toHaveBeenCalledTimes(1);
+    expect(second.delete).toHaveBeenCalledTimes(1);
   });
   it("blocks journaled roles renamed before preview and after approval", async () => {
     const f = fixture(), draft = smallDraft();
@@ -231,6 +435,8 @@ describe("safe Discord setup", () => {
   it("includes live names in approval even when name matching remains equivalent", async () => {
     const f = fixture(), draft = smallDraft();
     const role = f.role("Membru");
+    draft.roles[0].mode = "existing";
+    draft.roles[0].discordId = role.id;
     const before = await inspectSetup(f.guild, draft);
     role.name = "MEMBRU";
     const after = await inspectSetup(f.guild, draft);

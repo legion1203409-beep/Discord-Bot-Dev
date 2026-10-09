@@ -2,7 +2,8 @@ import { PUBLIC_DISCORD_INVITE } from "../lib/discord-invite";
 import { setupDraftSchema, setupDraftSaveSchema, setupTemplate } from "./server-setup-schema";
 import { setupSuggestionSchema, suggestSetup } from "./server-setup-ai";
 import {
-  inspectSetup, applySetup, inspectUncertainSetup, listUncertainSetup, reconcileUncertainSetup,
+  inspectSetup, inspectSetupResources, applySetup, deleteSelectedSetupResources,
+  inspectUncertainSetup, listUncertainSetup, reconcileUncertainSetup,
 } from "./server-setup";
 import { withSetupJournal } from "./server-setup-storage";
 import { getSavedSetupDraft, saveSetupDraft, SetupDraftRevisionConflictError } from "./server-setup-drafts";
@@ -2650,11 +2651,25 @@ router.post("/guilds/:guildId/server-setup/suggest", asyncRoute(async (req, res)
   res.json({ draft: await suggestSetup(setupSuggestionSchema.parse(req.body)) });
 }));
 
-for (const action of ["preview", "apply"] as const) {
+router.get("/guilds/:guildId/server-setup/resources", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  await sessionAndGuild(req, guildId, "config");
+  const client = getModerationClient();
+  if (!client?.isReady()) throw new ModerationAuthError(503, "Botul Discord nu este conectat.");
+  const guild = await client.guilds.fetch({ guild: guildId, force: true });
+  try {
+    const resources = await inspectSetupResources(guild);
+    res.set("Cache-Control", "no-store").json(resources);
+  } catch (error) {
+    throw new ModerationAuthError(409, error instanceof Error ? error.message : "Inventarul Discord nu a putut fi încărcat.");
+  }
+}));
+
+for (const action of ["preview", "apply", "delete"] as const) {
   router.post(`/guilds/:guildId/server-setup/${action}`, asyncRoute(async (req, res) => {
     const guildId = parse(snowflake, req.params.guildId);
     await sessionAndGuild(req, guildId, "config", true);
-    const body = (action === "apply"
+    const body = (action === "apply" || action === "delete"
       ? z.object({ draft: setupDraftSchema, confirmed: z.literal(true), fingerprint: z.string().regex(/^[a-f0-9]{64}$/) }).strict()
       : z.object({ draft: setupDraftSchema }).strict()).parse(req.body);
     const client = getModerationClient();
@@ -2664,6 +2679,7 @@ for (const action of ["preview", "apply"] as const) {
       const result = await withSetupJournal(guildId, async (journal, save) => {
         if (action === "preview") return await inspectSetup(guild, body.draft, journal);
         const fingerprint = z.string().parse("fingerprint" in body ? body.fingerprint : undefined);
+        if (action === "delete") return await deleteSelectedSetupResources(guild, body.draft, fingerprint, journal, save);
         return await applySetup(guild, body.draft, fingerprint, journal, save);
       });
       res.json(result);

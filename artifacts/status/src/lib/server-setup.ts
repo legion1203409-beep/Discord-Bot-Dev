@@ -1,11 +1,37 @@
-export type SetupChannel = { key: string; name: string; readers: string[]; writers: string[]; explanation: string };
-export type SetupCategory = { key: string; name: string; channels: SetupChannel[] };
-export type SetupRole = { key: string; name: string };
-export type SetupDraft = { roles: SetupRole[]; categories: SetupCategory[] };
-export type PreviewItem = { key: string; name: string; kind: "role" | "category" | "channel"; status: "create" | "reuse" | "conflict"; detail: string };
-export type PreviewResult = { ready: boolean; issues: string[]; items: PreviewItem[]; fingerprint: string };
-export type ApplyItem = { key: string; name: string; kind: "role" | "category" | "channel"; status: "created" | "reused" | "failed"; detail: string };
+export type SetupAccess = { readers: string[]; writers: string[] };
+export type SetupChannel = SetupAccess & { key: string; name: string; discordId?: string; inheritsCategory: boolean; explanation: string };
+export type SetupCategory = SetupAccess & { key: string; name: string; discordId?: string; channels: SetupChannel[] };
+export type SetupRole = { key: string; name: string; mode: "new" | "existing"; discordId?: string };
+export type SetupDraft = { roles: SetupRole[]; categories: SetupCategory[]; deleteTargets: { id: string; kind: "category" | "channel" }[] };
+export type PreviewItem = { key: string; name: string; kind: "role" | "category" | "channel"; status: "create" | "reuse" | "update" | "conflict"; detail: string; id?: string; inherited?: boolean; effectiveAccess?: SetupAccess };
+export type PreviewDeletionItem = { id: string; name: string; kind: "category" | "channel"; status: "delete" | "conflict"; detail: string; children?: { id: string; name: string }[] };
+export type PreviewResult = { ready: boolean; issues: string[]; items: PreviewItem[]; deletionItems: PreviewDeletionItem[]; fingerprint: string };
+export type ApplyItem = { key: string; name: string; kind: "role" | "category" | "channel"; status: "created" | "updated" | "reused" | "failed" | "deleted"; detail: string; id?: string };
 export type ApplyResult = { items: ApplyItem[]; complete: boolean };
+export type SetupResources = {
+  roles: { id: string; name: string; position: number; usable: boolean; reason?: string }[];
+  categories: { id: string; name: string }[];
+  channels: { id: string; name: string; parentId?: string; type: number; textBased: boolean }[];
+  fingerprint: string;
+};
+
+export function normalizeSetupDraft(input: SetupDraft): SetupDraft {
+  return {
+    roles: (input.roles ?? []).map(role => ({ ...role, mode: role.mode ?? "new" })),
+    categories: (input.categories ?? []).map(category => ({
+      ...category,
+      readers: category.readers ?? [],
+      writers: category.writers ?? [],
+      channels: (category.channels ?? []).map(channel => ({
+        ...channel,
+        readers: channel.readers ?? [],
+        writers: channel.writers ?? [],
+        inheritsCategory: channel.inheritsCategory ?? true,
+      })),
+    })),
+    deleteTargets: input.deleteTargets ?? [],
+  };
+}
 
 export function newKey(prefix: string, draft: SetupDraft): string {
   const used = allKeys(draft);
@@ -34,7 +60,13 @@ export function toggleWriter(ch: SetupChannel, role: string): SetupChannel {
 export function removeRole(d: SetupDraft, key: string): SetupDraft {
   return {
     roles: d.roles.filter(r => r.key !== key),
-    categories: d.categories.map(c => ({ ...c, channels: c.channels.map(ch => ({ ...ch, readers: ch.readers.filter(r => r !== key), writers: ch.writers.filter(r => r !== key) })) })),
+    categories: d.categories.map(c => ({
+      ...c,
+      readers: c.readers.filter(r => r !== key),
+      writers: c.writers.filter(r => r !== key),
+      channels: c.channels.map(ch => ({ ...ch, readers: ch.readers.filter(r => r !== key), writers: ch.writers.filter(r => r !== key) })),
+    })),
+    deleteTargets: d.deleteTargets,
   };
 }
 
@@ -44,6 +76,8 @@ export function validateDraft(d: SetupDraft): string[] {
   const bad = (n: string) => !n.trim() || n.length > 100 || n.includes("@");
   if (d.roles.length > 20) out.push("Maximum 20 de roluri.");
   if (d.categories.length > 10) out.push("Maximum 10 categorii.");
+  if (d.deleteTargets.length > 20) out.push("Maximum 20 de resurse selectate pentru ștergere.");
+  if (d.roles.some(role => role.mode === "existing" && !role.discordId)) out.push("Alege explicit un ID Discord pentru fiecare rol existent.");
   if (d.roles.some(r => bad(r.name)) || d.categories.some(c => bad(c.name))) out.push("Numele nu pot fi goale, peste 100 de caractere sau conține @.");
   if (dup(d.roles.map(r => r.name))) out.push("Numele rolurilor trebuie să fie unice.");
   if (dup(d.categories.map(c => c.name))) out.push("Numele categoriilor trebuie să fie unice.");

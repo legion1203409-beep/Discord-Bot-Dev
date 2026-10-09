@@ -1,4 +1,4 @@
-import { REST, Routes, type Guild, type OverwriteData, PermissionsBitField } from "discord.js";
+import { REST, Routes, type Guild, type OverwriteData, type PermissionOverwriteManager, PermissionsBitField } from "discord.js";
 
 const clients = new WeakMap<object, REST>();
 function setupRest(guild: Guild): REST {
@@ -33,4 +33,34 @@ export async function createSetupChannel(guild: Guild, options: {
     },
     reason: "Pornire server: confirmare operator",
   }) as { id: string };
+}
+
+export async function updateSetupAccess(
+  overwrites: PermissionOverwriteManager,
+  roleAccess: Map<string, { view: boolean; history: boolean; send: boolean }>,
+  previouslyManagedRoleIds: string[],
+  botUserId: string,
+  reason: string,
+): Promise<void> {
+  const desired = new Map(roleAccess);
+  desired.set(botUserId, { view: true, history: true, send: true });
+  const targetIds = new Set([...desired.keys(), ...previouslyManagedRoleIds, botUserId]);
+  for (const id of targetIds) {
+    const access = desired.get(id);
+    await overwrites.edit(id, {
+      ViewChannel: access?.view ?? null,
+      ReadMessageHistory: access?.history ?? null,
+      SendMessages: access?.send ?? null,
+    }, { reason });
+  }
+}
+
+export async function deleteSetupResource(
+  guild: Guild,
+  id: string,
+  reason: string,
+): Promise<void> {
+  const channel = await guild.channels.fetch(id, { force: true });
+  if (!channel) throw new Error("Resursa a dispărut din Discord.");
+  await channel.delete(reason);
 }

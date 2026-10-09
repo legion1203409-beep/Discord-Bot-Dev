@@ -614,13 +614,18 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
       expect((await fetch(`${base}/server-setup`)).status).toBe(403);
       expect(mocks.access).toHaveBeenLastCalledWith(guildId, actorId, "config");
     });
-    it.each(["suggest", "preview", "apply", "reconciliation/member"])("enforces CSRF before %s", async action => {
+    it.each(["suggest", "preview", "apply", "delete", "reconciliation/member"])("enforces CSRF before %s", async action => {
       mocks.csrf.mockImplementationOnce(() => { throw new ModerationAuthError(403, "CSRF required"); });
       expect((await fetch(`${base}/server-setup/${action}`, post({}))).status).toBe(403);
     });
-    it("rejects missing confirmation before Discord access", async () => {
-      const response = await fetch(`${base}/server-setup/apply`, post({ draft: { roles: [], categories: [] } }));
+    it.each(["apply", "delete"])("rejects missing %s confirmation before Discord access", async action => {
+      const response = await fetch(`${base}/server-setup/${action}`, post({ draft: { roles: [], categories: [] } }));
       expect(response.status).toBe(400);
+      expect(mocks.client).not.toHaveBeenCalled();
+    });
+    it("checks owner access before reading the live resource inventory", async () => {
+      mocks.access.mockRejectedValueOnce(new ModerationAuthError(403, "Owner only"));
+      expect((await fetch(`${base}/server-setup/resources`)).status).toBe(403);
       expect(mocks.client).not.toHaveBeenCalled();
     });
     it("returns a real template without creating Discord resources", async () => {
@@ -650,7 +655,10 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
       });
       expect(response.status).toBe(200);
       expect(await response.json()).toMatchObject({ savedDraft: { draft, revision: 1 } });
-      expect(mocks.saveSetupDraft).toHaveBeenCalledWith(guildId, actorId, { draft, expectedRevision: 0 });
+      expect(mocks.saveSetupDraft).toHaveBeenCalledWith(guildId, actorId, {
+        draft: { ...draft, deleteTargets: [] },
+        expectedRevision: 0,
+      });
       expect(mocks.client).not.toHaveBeenCalled();
     });
     it("requires CSRF and rejects stale saved-draft revisions without replacing the local draft", async () => {
@@ -670,7 +678,10 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
       });
       expect(conflict.status).toBe(409);
       expect(await conflict.json()).toMatchObject({ error: expect.stringContaining("modificat în altă sesiune") });
-      expect(mocks.saveSetupDraft).toHaveBeenCalledWith(guildId, actorId, { draft, expectedRevision: 1 });
+      expect(mocks.saveSetupDraft).toHaveBeenCalledWith(guildId, actorId, {
+        draft: { ...draft, deleteTargets: [] },
+        expectedRevision: 1,
+      });
       expect(mocks.client).not.toHaveBeenCalled();
     });
     it("requires fresh inventory for owner reconciliation and audits confirmed absence", async () => {

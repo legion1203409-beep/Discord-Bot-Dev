@@ -31,4 +31,18 @@ describe("suggestions are untrusted data, never Discord actions", () => {
     expect(mocks.create.mock.calls[0][0]).not.toHaveProperty("tools");
     expect(setupSuggestionSchema.safeParse({ ...input, goals: "" }).success).toBe(false);
   });
+  it("strips resource selections and deletion targets from generated suggestions", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "test-placeholder");
+    const generated = structuredClone(setupTemplate);
+    generated.roles[0] = { ...generated.roles[0], mode: "existing", discordId: "1234567" };
+    generated.categories[0].discordId = "1234568";
+    generated.categories[0].channels[0].discordId = "1234569";
+    generated.deleteTargets = [{ id: "1234570", kind: "category" }];
+    mocks.create.mockResolvedValue({ choices: [{ message: { content: JSON.stringify(generated) } }] });
+    const result = await suggestSetup(input);
+    expect(result.roles.every(role => role.mode === "new" && !Object.hasOwn(role, "discordId"))).toBe(true);
+    expect(result.categories.every(category =>
+      !Object.hasOwn(category, "discordId") && category.channels.every(channel => !Object.hasOwn(channel, "discordId")))).toBe(true);
+    expect(result.deleteTargets).toEqual([]);
+  });
 });
