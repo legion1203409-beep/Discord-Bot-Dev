@@ -174,7 +174,7 @@ describe("recordGuildActivity — per-guild counter and gate", () => {
     spy.mockRestore();
   });
 
-  it("triggers one seasonal chest after exactly ten main-channel messages", async () => {
+  it("does not trigger automatic seasonal chests after a message milestone", async () => {
     const gs = guildStates.get(GUILD) ?? (() => {
       recordGuildActivity(mockClient, GUILD);
       return guildStates.get(GUILD)!;
@@ -184,9 +184,8 @@ describe("recordGuildActivity — per-guild counter and gate", () => {
     recordGuildActivity(mockClient, GUILD);
     await Promise.resolve();
 
-    expect(gs.seasonalMsgCount).toBe(0);
-    expect(mockSpawnSeasonalChest).toHaveBeenCalledOnce();
-    expect(mockSpawnSeasonalChest).toHaveBeenCalledWith(mockClient, GUILD);
+    expect(gs.seasonalMsgCount).toBe(SEASONAL_CHEST_MSG_MILESTONE - 1);
+    expect(mockSpawnSeasonalChest).not.toHaveBeenCalled();
   });
 
   it("does NOT trigger a chest when guild scheduler is stopped", () => {

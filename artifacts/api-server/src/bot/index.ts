@@ -1,6 +1,5 @@
 import {
   Client,
-  Guild,
   TextChannel,
   GatewayIntentBits,
   REST,
@@ -29,7 +28,7 @@ import { randomUUID } from "node:crypto";
 import { logger } from "../lib/logger";
 import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./alert";
 import { startGuildScheduler, stopGuildScheduler, APPLICATION_ID, fireEvent, fireChest, fireChestForced, fireFinalBoss, fireLockedChest, fireKeyChest, recordGuildActivity, getGuildClaimedChests, getGuildActiveBossMap, clearGuildChestTracking, isGuildGameStopped, checkBossEligibility, checkBossHitCooldown, BOSS_HIT_COOLDOWN_MS, persistBossState, publishLeaderboardResult, guildStates, isGuildActive, ACTIVITY_WINDOW_MINUTES, CHEST_MSG_MILESTONE, type BossState, type BossPlayerStats } from "./scheduler";
-import { getChannel, getAllChannels, setChannel, initChannelConfig, hasAnyChannelConfigured, EVENT_LABELS, type EventType } from "./channel-config";
+import { getChannel, getAllChannels, setChannel, initChannelConfig, EVENT_LABELS, type EventType } from "./channel-config";
 import { getGameplayConfig, initGameplayConfig, isGameplayPaused, setGameplayPaused } from "./gameplay-store";
 import { awardRareBossDailyQuest } from "./boss-daily-quest";
 import { questNotifications } from "./quest-notifications";
@@ -470,33 +469,6 @@ async function consumeOracleFellBackMarker(): Promise<boolean> {
     logger.warn({ err }, "Could not read/clear the Oracle fallback marker after recovery");
     return false;
   }
-}
-
-async function sendOnboardingMessage(guild: Guild): Promise<void> {
-  const message =
-    "👋 **Bun venit în Regatul Cenușii!**\n\n" +
-    "Botul a fost adăugat pe acest server, dar **nu are canalele configurate** încă.\n" +
-    "Folosește comanda `/setcanal` pentru a configura canalele unde botul va posta:\n\n" +
-    "📺 **Cufere** — cufere, recompense și chei\n" +
-    "🔥 **Ora Umbrelor** — evenimentele principale de luptă\n" +
-    "🐉 **Dragonul Stins** — boss final\n" +
-    "🏺 **Negustorul** — magazinul permanent\n" +
-    "🏆 **Top Ora Umbrelor** — clasamentul evenimentelor\n" +
-    "🏆 **Top Dragonul Stins** — clasamentul boss-urilor\n\n" +
-    "Folosește din nou `/setcanal` pentru a schimba canalul unei categorii.";
-
-  const systemChannel = guild.systemChannel;
-  if (systemChannel) {
-    try {
-      await systemChannel.send({ content: message });
-      logger.info({ guildId: guild.id }, "Sent onboarding message to system channel");
-      return;
-    } catch (err) {
-      logger.warn({ err, guildId: guild.id }, "Could not post onboarding message in system channel");
-    }
-  }
-
-  logger.warn({ guildId: guild.id }, "No system channel available — onboarding message not delivered");
 }
 
 export async function maybeAlertOracleRecovery(
@@ -4967,11 +4939,6 @@ export async function startBot(onReady?: () => void): Promise<void> {
       await syncNativeAutoMod(client, guildId, await getModerationConfig(guildId)).catch((err) =>
         logger.warn({ err, guildId }, "Native Discord AutoMod synchronization failed"),
       );
-      if (!hasAnyChannelConfigured(guildId)) {
-        void sendOnboardingMessage(guild).catch((err) =>
-          logger.warn({ err, guildId }, "Failed to send onboarding message"),
-        );
-      }
       startGuildScheduler(client, guildId);
       void setupTrader(client, guildId);
       for (const channel of guild.channels.cache.values()) {
@@ -5061,11 +5028,6 @@ export async function startBot(onReady?: () => void): Promise<void> {
     await syncNativeAutoMod(client, guild.id, await getModerationConfig(guild.id)).catch((err) =>
       logger.warn({ err, guildId: guild.id }, "Native Discord AutoMod synchronization failed"),
     );
-    if (!hasAnyChannelConfigured(guild.id)) {
-      void sendOnboardingMessage(guild).catch((err) =>
-        logger.warn({ err, guildId: guild.id }, "Failed to send onboarding message"),
-      );
-    }
     startGuildScheduler(client, guild.id);
     void setupTrader(client, guild.id);
   });
@@ -5665,11 +5627,6 @@ export async function startBot(onReady?: () => void): Promise<void> {
       await syncNativeAutoMod(client, guildId, await getModerationConfig(guildId)).catch((err) =>
         logger.warn({ err, guildId }, "Native Discord AutoMod synchronization failed"),
       );
-      if (!hasAnyChannelConfigured(guildId)) {
-        void sendOnboardingMessage(guild).catch((err) =>
-          logger.warn({ err, guildId }, "Failed to send onboarding message"),
-        );
-      }
       startGuildScheduler(client, guildId);
       void setupTrader(client, guildId);
       for (const channel of guild.channels.cache.values()) {
@@ -5744,11 +5701,6 @@ export async function startBot(onReady?: () => void): Promise<void> {
     await syncNativeAutoMod(client, guild.id, await getModerationConfig(guild.id)).catch((err) =>
       logger.warn({ err, guildId: guild.id }, "Native Discord AutoMod synchronization failed"),
     );
-    if (!hasAnyChannelConfigured(guild.id)) {
-      void sendOnboardingMessage(guild).catch((err) =>
-        logger.warn({ err, guildId: guild.id }, "Failed to send onboarding message"),
-      );
-    }
     startGuildScheduler(client, guild.id);
     void setupTrader(client, guild.id);
   });

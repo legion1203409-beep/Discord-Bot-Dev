@@ -20,6 +20,7 @@ import {
 import { setTributeGamePaused, startTributeScheduler, stopTributeScheduler } from "./tribute";
 import { getGameplayConfig, isGameplayPaused } from "./gameplay-store";
 import { startDailyStatsScheduler, stopDailyStatsScheduler } from "./daily-stats";
+import { AUTOMATIC_CHEST_POSTS_ENABLED } from "./chest-automation";
 
 const APPLICATION_ID = "1472675543777280071";
 export const EVENT_DURATION_MS = 60 * 60 * 1000;
@@ -32,8 +33,8 @@ const CHEST_INTERVAL_MS = 60 * 60 * 1000;
 export const CHEST_EXPIRE_MS = 20 * 60 * 1000;
 /** How long an ended Ora Umbrelor message remains visible for its recap. */
 export const EVENT_MESSAGE_RETENTION_MS = 20 * 60 * 1000;
-/** The classic ordinary chest is intentionally scheduled once per hour. */
-export const LEGACY_CHEST_SPAWNS_ENABLED = true;
+/** Kept as an export for existing scheduler integrations and tests. */
+export const LEGACY_CHEST_SPAWNS_ENABLED = AUTOMATIC_CHEST_POSTS_ENABLED;
 
 const ORACLE_INTERVAL_MS = 25 * 60 * 1000;
 const BATTLE_EVENT_INTERVAL_MS = 7 * 60 * 1000;
@@ -204,9 +205,8 @@ export function rollActivityKeyType(): "rar" | "epic" {
  *  1. Updates the guild's last-activity timestamp — used as the gate in
  *     `fireChest` / `fireKeyChest` to suppress spawns on silent servers.
  *  2. Retains the older in-memory counters for compatibility.
- *  3. Increments `seasonalMsgCount`; every 10 main-channel messages it
- *     triggers one seasonal chest. `spawnSeasonalChest` suppresses a duplicate
- *     while the previous seasonal chest is still active.
+ *  3. Seasonal chest milestones remain dormant while automatic chest posts
+ *     are disabled globally.
  */
 export function recordGuildActivity(client: Client, guildId: string): void {
   const gs = getOrCreateGuildState(guildId);
@@ -223,12 +223,14 @@ export function recordGuildActivity(client: Client, guildId: string): void {
     gs.keyMsgCount = 0;
   }
 
-  gs.seasonalMsgCount += 1;
-  if (gs.seasonalMsgCount >= SEASONAL_CHEST_MSG_MILESTONE) {
-    gs.seasonalMsgCount = 0;
-    void spawnSeasonalChest(client, guildId).catch((err) =>
-      logger.warn({ err, guildId }, "Failed to spawn seasonal chest from message milestone"),
-    );
+  if (AUTOMATIC_CHEST_POSTS_ENABLED) {
+    gs.seasonalMsgCount += 1;
+    if (gs.seasonalMsgCount >= SEASONAL_CHEST_MSG_MILESTONE) {
+      gs.seasonalMsgCount = 0;
+      void spawnSeasonalChest(client, guildId).catch((err) =>
+        logger.warn({ err, guildId }, "Failed to spawn seasonal chest from message milestone"),
+      );
+    }
   }
 
   // The Frăția meter is durable and shared by the whole guild. It deliberately
@@ -1740,16 +1742,13 @@ export function startGuildScheduler(
   const activeBossesReady = rehydrateActiveBosses(client, guildId).catch((err) => {
     logger.warn({ err, guildId }, "Failed to restore active bosses before scheduler start");
   });
-  let activeChestsReady: Promise<unknown> = Promise.resolve();
-  if (LEGACY_CHEST_SPAWNS_ENABLED) {
-    activeChestsReady = Promise.all([
-      rehydrateActiveChest(client, guildId),
-      rehydrateSimpleChest(client, guildId, KEYCHEST_DBKEY),
-      rehydrateSimpleChest(client, guildId, LOCKCHEST_DBKEY),
-    ]).catch((err) => {
-      logger.warn({ err, guildId }, "Failed to restore active chests before scheduler start");
-    });
-  }
+  const activeChestsReady = Promise.all([
+    rehydrateActiveChest(client, guildId),
+    rehydrateSimpleChest(client, guildId, KEYCHEST_DBKEY),
+    rehydrateSimpleChest(client, guildId, LOCKCHEST_DBKEY),
+  ]).catch((err) => {
+    logger.warn({ err, guildId }, "Failed to restore active chests before scheduler start");
+  });
   void rehydrateSeasonalChest(client, guildId).catch((err) =>
     logger.warn({ err, guildId }, "Failed to rehydrate seasonal chest"),
   );
@@ -1804,7 +1803,9 @@ export function startGuildScheduler(
      scheduleChest();
      logger.info({ guildId }, "Classic chest scheduler started");
   }
-  logger.info({ everyMessages: SEASONAL_CHEST_MSG_MILESTONE, guildId }, "Seasonal chest scheduler started — message milestone");
+   if (!AUTOMATIC_CHEST_POSTS_ENABLED) {
+     logger.info({ guildId }, "Automatic chest posts are disabled");
+   }
 
   // Oracle messages disabled — user requested only chest in chat
   // setInterval(() => { void fireOracle(client, guildId); }, ORACLE_INTERVAL_MS);

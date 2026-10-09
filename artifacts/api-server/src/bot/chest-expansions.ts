@@ -24,6 +24,7 @@ import { BRAND_FOOTER, ITEMS } from "./survival";
 import { getChannel } from "./channel-config";
 import { serializeBotOperation } from "./operation-lock";
 import { isTicketCategoryParentId } from "./ticket-categories";
+import { AUTOMATIC_CHEST_POSTS_ENABLED } from "./chest-automation";
 
 const WORLD_PREFIX = "chest_world:";
 const SEASONAL_ACTIVE_SUFFIX = "seasonal_active";
@@ -989,6 +990,7 @@ export async function maybeHandleOracleClue(
   client: Client,
   message: Message,
 ): Promise<void> {
+  if (!AUTOMATIC_CHEST_POSTS_ENABLED) return;
   if (!message.guildId || message.author.bot) return;
   const guildId = message.guildId;
   const current = await loadState<OracleClueState>(

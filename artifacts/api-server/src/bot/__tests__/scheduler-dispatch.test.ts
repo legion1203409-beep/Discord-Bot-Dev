@@ -659,7 +659,7 @@ describe("startGuildScheduler immediate resume cycle", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("posts one immediate event, ordinary chest, boss, and conditional battle event", async () => {
+  it("posts immediate events and bosses but does not post automatic chests", async () => {
     const message = (id: string) => ({
       id,
       edit: vi.fn().mockResolvedValue(undefined),
@@ -671,7 +671,6 @@ describe("startGuildScheduler immediate resume cycle", () => {
     eventChannel.send
       .mockResolvedValueOnce(message("event-start"))
       .mockResolvedValueOnce(message("battle-event"));
-    chestChannel.send.mockResolvedValue(message("ordinary-chest"));
     bossChannel.send.mockResolvedValue(message("standalone-boss"));
 
     const channels: Record<string, unknown> = {
@@ -698,7 +697,7 @@ describe("startGuildScheduler immediate resume cycle", () => {
     await startup;
 
     expect(eventChannel.send).toHaveBeenCalledTimes(2);
-    expect(chestChannel.send).toHaveBeenCalledOnce();
+    expect(chestChannel.send).not.toHaveBeenCalled();
     expect(bossChannel.send).toHaveBeenCalledOnce();
     expect(mockCreateEvent).toHaveBeenCalledOnce();
     expect(setTimeoutSpy.mock.calls.some(([, delay]) => delay === 5 * 60 * 1_000)).toBe(false);
