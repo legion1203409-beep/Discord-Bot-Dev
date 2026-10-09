@@ -32,6 +32,7 @@ import { startGuildScheduler, stopGuildScheduler, APPLICATION_ID, fireEvent, fir
 import { getChannel, getAllChannels, setChannel, initChannelConfig, hasAnyChannelConfigured, EVENT_LABELS, type EventType } from "./channel-config";
 import { getGameplayConfig, initGameplayConfig, isGameplayPaused, setGameplayPaused } from "./gameplay-store";
 import { awardRareBossDailyQuest } from "./boss-daily-quest";
+import { questNotifications } from "./quest-notifications";
 import { sendAiMemberMessage } from "./member-messages";
 import { messageWithImage } from "./message-media";
 import {
@@ -2774,6 +2775,9 @@ async function handleJoin(interaction: ButtonInteraction, eventId: number) {
 async function handleAttack(interaction: ButtonInteraction, eventId: number) {
   await interaction.deferUpdate();
   const guildId = interaction.guildId!;
+  const notificationKey = JSON.stringify([guildId, interaction.user.id, eventId, interaction.message.id]);
+  const editReply = (payload: Parameters<typeof interaction.editReply>[0]) => interaction.editReply(payload);
+  if (await questNotifications.recover(notificationKey, editReply)) return;
   const [p, pl] = await Promise.all([
     getParticipant(eventId, guildId, interaction.user.id),
     getPlayerById(interaction.user.id, guildId),
@@ -2975,13 +2979,13 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
       ...(completedQuests.length > 0 ? [buildDailyQuestCompletionText(completedQuests, gameplayConfig)] : []),
     ];
     const lvlDropLine = lvlDropParts.length > 0 ? lvlDropParts.join("\n") : undefined;
-    await interaction.editReply({
+    await questNotifications.deliver(notificationKey, {
       embeds: [
         buildLevelupEmbed(Math.floor(result.newMonsterLevel / LEVELUP_INTERVAL), lvlDropLine),
         ...(equipmentDrop ? [buildEquipmentLootEmbed(equipmentDrop)] : []),
       ],
       components: levelupRows(eventId),
-    });
+    }, completedQuests.length > 0, editReply);
     return;
   }
 
@@ -3010,7 +3014,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
     bossCharge: result.newBossCharge,
   });
 
-  await interaction.editReply({
+  await questNotifications.deliver(notificationKey, {
     embeds: [
       buildCombatEmbed(
         updated,
@@ -3035,7 +3039,7 @@ async function handleAttack(interaction: ButtonInteraction, eventId: number) {
       ...(equipmentDrop ? [buildEquipmentLootEmbed(equipmentDrop)] : []),
     ],
     components: [combatRow(eventId, updated)],
-  });
+  }, completedQuests.length > 0, editReply);
 }
 
 async function handleRetreat(interaction: ButtonInteraction, eventId: number) {

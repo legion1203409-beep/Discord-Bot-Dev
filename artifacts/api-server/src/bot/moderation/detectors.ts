@@ -153,7 +153,7 @@ export function countEmoji(content: string): number {
 }
 
 export function capsPercent(content: string): number {
-  const letters = content.match(/\p{L}/gu) ?? [];
+  const letters: string[] = content.match(/\p{L}/gu) ?? [];
   if (letters.length === 0) return 0;
   const upper = letters.filter((char) => char === char.toLocaleUpperCase("ro-RO")).length;
   return Math.round((upper / letters.length) * 100);
