@@ -178,6 +178,48 @@ paths:
                   draft: { $ref: "#/components/schemas/ServerSetupDraft" }
                   aiAvailable: { type: boolean }
         "403": { description: Guild owner access required }
+  /moderation/guilds/{guildId}/server-setup/draft:
+    parameters: [{ name: guildId, in: path, required: true, schema: { type: string } }]
+    get:
+      operationId: moderationGetSavedServerSetupDraft
+      tags: [moderation]
+      responses:
+        "200":
+          description: Draft saved by the authenticated operator for this server, or null
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [savedDraft]
+                properties:
+                  savedDraft:
+                    oneOf:
+                      - $ref: "#/components/schemas/ServerSetupDraftRecord"
+                      - type: "null"
+        "401": { description: Moderation session is required }
+        "403": { description: Guild configuration access is required }
+    put:
+      operationId: moderationSaveServerSetupDraft
+      tags: [moderation]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ServerSetupDraftSaveInput" }
+      responses:
+        "200":
+          description: Draft saved with the next revision
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [savedDraft]
+                properties:
+                  savedDraft: { $ref: "#/components/schemas/ServerSetupDraftRecord" }
+        "400": { description: Invalid draft or expected revision }
+        "401": { description: Moderation session is required }
+        "403": { description: Guild configuration access or CSRF token is required }
+        "409": { description: Another session saved a newer revision }
   /moderation/guilds/{guildId}/server-setup/suggest:
     parameters: [{ name: guildId, in: path, required: true, schema: { type: string } }]
     post:
@@ -452,6 +494,21 @@ components:
               key: { type: string, pattern: "^[a-z][a-z0-9_-]{0,39}$" }
               name: { type: string, minLength: 1, maxLength: 100 }
               channels: { type: array, maxItems: 30, items: { $ref: "#/components/schemas/ServerSetupChannel" } }
+    ServerSetupDraftSaveInput:
+      type: object
+      additionalProperties: false
+      required: [draft, expectedRevision]
+      properties:
+        draft: { $ref: "#/components/schemas/ServerSetupDraft" }
+        expectedRevision: { type: integer, minimum: 0 }
+    ServerSetupDraftRecord:
+      type: object
+      additionalProperties: false
+      required: [draft, revision, updatedAt]
+      properties:
+        draft: { $ref: "#/components/schemas/ServerSetupDraft" }
+        revision: { type: integer, minimum: 1 }
+        updatedAt: { type: string, format: date-time }
     ServerSetupPreviewItem:
       type: object
       required: [key, name, kind, status, detail]

@@ -38,16 +38,19 @@ import type {
   ModerationConfig,
   ModerationConfigResponse,
   ModerationDiscordCallbackParams,
+  ModerationGetSavedServerSetupDraft200,
   ModerationGetServerSetup200,
   ModerationLogPage,
   ModerationPreviewServerSetup200,
   ModerationPreviewServerSetupBody,
+  ModerationSaveServerSetupDraft200,
   ModerationSession,
   ModerationStorageUploadRequest,
   ModerationStorageUploadResponse,
   ModerationSuggestServerSetup200,
   ModerationSuggestServerSetupBody,
   ProtectionToggleInput,
+  ServerSetupDraftSaveInput,
   VerificationPanelPublishInput,
   VerificationPanelPublishResponse
 } from './api.schemas';
@@ -1053,6 +1056,142 @@ export function useModerationGetServerSetup<TData = Awaited<ReturnType<typeof mo
 
 
 
+
+export const getModerationGetSavedServerSetupDraftUrl = (guildId: string,) => {
+
+
+
+
+  return `/api/moderation/guilds/${guildId}/server-setup/draft`
+}
+
+export const moderationGetSavedServerSetupDraft = async (guildId: string, options?: RequestInit): Promise<ModerationGetSavedServerSetupDraft200> => {
+
+  return customFetch<ModerationGetSavedServerSetupDraft200>(getModerationGetSavedServerSetupDraftUrl(guildId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getModerationGetSavedServerSetupDraftQueryKey = (guildId: string,) => {
+    return [
+    `/api/moderation/guilds/${guildId}/server-setup/draft`
+    ] as const;
+    }
+
+
+export const getModerationGetSavedServerSetupDraftQueryOptions = <TData = Awaited<ReturnType<typeof moderationGetSavedServerSetupDraft>>, TError = ErrorType<void>>(guildId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof moderationGetSavedServerSetupDraft>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getModerationGetSavedServerSetupDraftQueryKey(guildId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof moderationGetSavedServerSetupDraft>>> = ({ signal }) => moderationGetSavedServerSetupDraft(guildId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: guildId !== null && guildId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof moderationGetSavedServerSetupDraft>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ModerationGetSavedServerSetupDraftQueryResult = NonNullable<Awaited<ReturnType<typeof moderationGetSavedServerSetupDraft>>>
+export type ModerationGetSavedServerSetupDraftQueryError = ErrorType<void>
+
+
+
+export function useModerationGetSavedServerSetupDraft<TData = Awaited<ReturnType<typeof moderationGetSavedServerSetupDraft>>, TError = ErrorType<void>>(
+ guildId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof moderationGetSavedServerSetupDraft>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getModerationGetSavedServerSetupDraftQueryOptions(guildId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getModerationSaveServerSetupDraftUrl = (guildId: string,) => {
+
+
+
+
+  return `/api/moderation/guilds/${guildId}/server-setup/draft`
+}
+
+export const moderationSaveServerSetupDraft = async (guildId: string,
+    serverSetupDraftSaveInput: ServerSetupDraftSaveInput, options?: RequestInit): Promise<ModerationSaveServerSetupDraft200> => {
+
+  return customFetch<ModerationSaveServerSetupDraft200>(getModerationSaveServerSetupDraftUrl(guildId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(serverSetupDraftSaveInput)
+  }
+);}
+
+
+
+
+export const getModerationSaveServerSetupDraftMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof moderationSaveServerSetupDraft>>, TError,{guildId: string;data: BodyType<ServerSetupDraftSaveInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof moderationSaveServerSetupDraft>>, TError,{guildId: string;data: BodyType<ServerSetupDraftSaveInput>}, TContext> => {
+
+const mutationKey = ['moderationSaveServerSetupDraft'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof moderationSaveServerSetupDraft>>, {guildId: string;data: BodyType<ServerSetupDraftSaveInput>}> = (props) => {
+          const {guildId,data} = props ?? {};
+
+          return  moderationSaveServerSetupDraft(guildId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ModerationSaveServerSetupDraftMutationResult = NonNullable<Awaited<ReturnType<typeof moderationSaveServerSetupDraft>>>
+    export type ModerationSaveServerSetupDraftMutationBody = BodyType<ServerSetupDraftSaveInput>
+    export type ModerationSaveServerSetupDraftMutationError = ErrorType<void>
+
+    export const useModerationSaveServerSetupDraft = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof moderationSaveServerSetupDraft>>, TError,{guildId: string;data: BodyType<ServerSetupDraftSaveInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof moderationSaveServerSetupDraft>>,
+        TError,
+        {guildId: string;data: BodyType<ServerSetupDraftSaveInput>},
+        TContext
+      > => {
+      return useMutation(getModerationSaveServerSetupDraftMutationOptions(options));
+    }
 
 export const getModerationSuggestServerSetupUrl = (guildId: string,) => {
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Plus, Trash2, Sparkles, Eye, Hammer, RefreshCw, AlertTriangle, Lock, ShieldCheck, Hash, FolderClosed, Users, Link2 } from "lucide-react";
+import { Plus, Trash2, Sparkles, Eye, Hammer, RefreshCw, AlertTriangle, Lock, ShieldCheck, Hash, FolderClosed, Users, Link2, Save, FolderOpen } from "lucide-react";
 import { apiFetchWithMeta, useActiveGuild } from "../../hooks/use-moderation-api";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -26,6 +26,11 @@ type ReconciliationInventory = {
   inventoryFingerprint: string;
 };
 type ReconciliationResult = { uncertain: UncertainSetupItem[]; action: "bound" | "confirmed-absent" };
+type SavedSetupDraft = { draft: SetupDraft; revision: number; updatedAt: string };
+type SavedSetupDraftResponse = { savedDraft: SavedSetupDraft | null };
+
+const isConflictError = (error: unknown) =>
+  typeof error === "object" && error !== null && "status" in error && error.status === 409;
 
 export function ServerSetupPage() {
   const { guildId, guilds } = useActiveGuild();
@@ -53,25 +58,127 @@ export function ServerSetupPage() {
   const [reconcileError, setReconcileError] = useState<string | null>(null);
   const [reconcileNotice, setReconcileNotice] = useState<string | null>(null);
   const [confirmAbsentKey, setConfirmAbsentKey] = useState<string | null>(null);
+  const [savedDraft, setSavedDraft] = useState<SavedSetupDraft | null>(null);
+  const [savedDraftLoaded, setSavedDraftLoaded] = useState(false);
+  const [draftPersistenceBusy, setDraftPersistenceBusy] = useState(false);
+  const [draftSaveError, setDraftSaveError] = useState<string | null>(null);
+  const [draftSaveNotice, setDraftSaveNotice] = useState<string | null>(null);
+  const [draftSaveConflict, setDraftSaveConflict] = useState(false);
+  const [restorePending, setRestorePending] = useState<SavedSetupDraft | null>(null);
+  const [restoredNeedsReview, setRestoredNeedsReview] = useState(false);
+  const [draftBaseRevision, setDraftBaseRevision] = useState(0);
+  const [overwriteConfirmOpen, setOverwriteConfirmOpen] = useState(false);
   const applying = useRef(false);
   const draftRevision = useRef(0);
+  const loadSequence = useRef(0);
 
   const base = `/guilds/${guildId}/server-setup`;
 
   const load = async () => {
+    const sequence = ++loadSequence.current;
     setLoading(true); setLoadError(null);
+    draftRevision.current++;
+    setPreview(null); setResult(null); setApplyError(null);
     setUncertain([]); setInventories({}); setSelectedResources({});
     setReconcileError(null); setReconcileNotice(null); setConfirmAbsentKey(null);
+    setSavedDraft(null); setSavedDraftLoaded(false); setDraftSaveError(null); setDraftSaveNotice(null);
+    setDraftSaveConflict(false); setRestorePending(null); setRestoredNeedsReview(false); setDraftPersistenceBusy(false);
+    setDraftBaseRevision(0); setOverwriteConfirmOpen(false);
     try {
-      const { data } = await apiFetchWithMeta<{ draft: SetupDraft; aiAvailable: boolean; uncertain?: UncertainSetupItem[] }>(base);
+      const [setupResult, savedResult] = await Promise.allSettled([
+        apiFetchWithMeta<{ draft: SetupDraft; aiAvailable: boolean; uncertain?: UncertainSetupItem[] }>(base),
+        apiFetchWithMeta<SavedSetupDraftResponse>(`${base}/draft`),
+      ]);
+      if (sequence !== loadSequence.current) return;
+      if (setupResult.status === "rejected") throw setupResult.reason;
+      const { data } = setupResult.value;
       setDraftState(data.draft); setAiAvailable(Boolean(data.aiAvailable)); setUncertain(data.uncertain ?? []);
-    } catch (e) { setLoadError(msg(e)); } finally { setLoading(false); }
+      if (savedResult.status === "fulfilled") {
+        setSavedDraft(savedResult.value.data.savedDraft);
+        setSavedDraftLoaded(true);
+        setDraftBaseRevision(savedResult.value.data.savedDraft?.revision ?? 0);
+      } else {
+        setDraftSaveError(`Drafturile salvate nu au putut fi încărcate: ${msg(savedResult.reason)}`);
+      }
+    } catch (e) {
+      if (sequence === loadSequence.current) setLoadError(msg(e));
+    } finally {
+      if (sequence === loadSequence.current) setLoading(false);
+    }
   };
   useEffect(() => { if (guildId) void load(); }, [guildId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const setDraft = (d: SetupDraft) => { if (applying.current) return; draftRevision.current++; setDraftState(d); setPreview(null); setConfirmOpen(false); setPreviewError(null); };
+  const setDraft = (d: SetupDraft) => {
+    if (applying.current) return;
+    draftRevision.current++; setDraftState(d); setPreview(null); setConfirmOpen(false); setPreviewError(null);
+    setDraftSaveNotice(null);
+  };
   const issues = draft ? validateDraft(draft) : [];
-  const busy = previewBusy || applyBusy || Boolean(reconcileBusyKey) || Boolean(inventoryLoadingKey);
+  const busy = previewBusy || applyBusy || draftPersistenceBusy || Boolean(reconcileBusyKey) || Boolean(inventoryLoadingKey);
+
+  const refreshSavedDraft = async (resume: boolean) => {
+    if (draftPersistenceBusy) return;
+    const targetGuildId = guildId;
+    const targetBase = base;
+    setDraftPersistenceBusy(true); setDraftSaveError(null);
+    try {
+      const { data } = await apiFetchWithMeta<SavedSetupDraftResponse>(`${targetBase}/draft`);
+      if (targetGuildId !== guildId) return;
+      setSavedDraft(data.savedDraft); setSavedDraftLoaded(true); setDraftSaveConflict(false);
+      if (resume && data.savedDraft) setRestorePending(data.savedDraft);
+      else if (!data.savedDraft) setDraftSaveError("Nu există un draft salvat pentru acest server și operator.");
+    } catch (e) {
+      if (targetGuildId === guildId) setDraftSaveError(`Starea draftului salvat nu a putut fi încărcată: ${msg(e)}`);
+    } finally { if (targetGuildId === guildId) setDraftPersistenceBusy(false); }
+  };
+
+  const saveDraft = async (overwriteConflict = false) => {
+    if (!draft || !savedDraftLoaded || draftPersistenceBusy || issues.length || (draftSaveConflict && !overwriteConflict)) return;
+    const targetGuildId = guildId;
+    const targetBase = base;
+    const snapshot = draft;
+    const revision = draftRevision.current;
+    const expectedRevision = overwriteConflict ? savedDraft?.revision ?? 0 : draftBaseRevision;
+    setDraftPersistenceBusy(true); setDraftSaveError(null); setDraftSaveNotice(null);
+    try {
+      const { data } = await apiFetchWithMeta<SavedSetupDraftResponse>(`${targetBase}/draft`, {
+        method: "PUT",
+        body: JSON.stringify({ draft: snapshot, expectedRevision }),
+      });
+      if (!data.savedDraft) throw new Error("Răspuns invalid la salvarea draftului.");
+      if (targetGuildId !== guildId) return;
+      setSavedDraft(data.savedDraft); setSavedDraftLoaded(true); setDraftSaveConflict(false);
+      setDraftBaseRevision(data.savedDraft.revision);
+      setOverwriteConfirmOpen(false);
+      setDraftSaveNotice(revision === draftRevision.current
+        ? "Draftul a fost salvat doar pentru contul tău și serverul selectat. Discord nu a fost modificat."
+        : "Versiunea trimisă a fost salvată; editările făcute în timpul salvării au rămas locale. Salvează din nou pentru a le păstra.");
+    } catch (e) {
+      if (targetGuildId !== guildId) return;
+      if (isConflictError(e)) {
+        setDraftSaveConflict(true);
+        setDraftSaveError("O altă sesiune a salvat o versiune mai nouă. Modificările tale locale au fost păstrate; încarcă versiunea salvată doar dacă vrei să o folosești.");
+        try {
+          const { data } = await apiFetchWithMeta<SavedSetupDraftResponse>(`${targetBase}/draft`);
+          if (targetGuildId !== guildId) return;
+          setSavedDraft(data.savedDraft); setSavedDraftLoaded(true);
+        } catch (refreshError) {
+          if (targetGuildId === guildId) setDraftSaveError(`O altă sesiune a salvat o versiune mai nouă, iar aceasta nu a putut fi încărcată: ${msg(refreshError)} Draftul local a fost păstrat.`);
+        }
+      } else {
+        setDraftSaveError(`Draftul nu a putut fi salvat. Modificările locale au fost păstrate: ${msg(e)}`);
+      }
+    } finally { if (targetGuildId === guildId) setDraftPersistenceBusy(false); }
+  };
+
+  const confirmRestoreDraft = () => {
+    if (!restorePending) return;
+    setDraft(restorePending.draft);
+    setPreview(null); setResult(null); setApplyError(null); setSuggestion(null);
+    setDraftBaseRevision(restorePending.revision);
+    setRestoredNeedsReview(true); setDraftSaveConflict(false); setDraftSaveNotice(null);
+    setRestorePending(null);
+  };
 
   const refreshReconciliationInventory = async (item: UncertainSetupItem) => {
     setInventoryLoadingKey(item.key); setReconcileError(null); setReconcileNotice(null);
@@ -134,7 +241,7 @@ export function ServerSetupPage() {
     const revision = draftRevision.current;
     try {
       const { data } = await apiFetchWithMeta<PreviewResult>(`${base}/preview`, { method: "POST", body: JSON.stringify({ draft: snapshot }) });
-      if (revision === draftRevision.current) setPreview(data);
+      if (revision === draftRevision.current) { setPreview(data); setRestoredNeedsReview(false); }
     } catch (e) { setPreviewError(msg(e)); } finally { setPreviewBusy(false); }
   };
 
@@ -166,10 +273,51 @@ export function ServerSetupPage() {
         <p className="mod-eyebrow">Instrumente / Pornire server</p>
         <h1 className="mt-2 font-display text-4xl font-semibold text-foreground">Arhitectura serverului</h1>
         <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-          Schițează rolurile, categoriile și canalele pentru <span className="text-foreground">{guildName}</span>. Nimic nu se schimbă pe Discord până nu rulezi verificarea și confirmi explicit. Draftul trăiește doar în această pagină; dacă o închizi, se pierde.
+          Schițează rolurile, categoriile și canalele pentru <span className="text-foreground">{guildName}</span>. Nimic nu se schimbă pe Discord până nu rulezi verificarea și confirmi explicit. Poți salva manual draftul ca să-l reiei mai târziu.
         </p>
         <p className="mt-2 text-xs text-muted-foreground">Serverul trebuie să existe deja în Discord, iar botul să fie invitat. Asistentul amenajează serverul selectat; nu creează un server Discord nou.</p>
       </header>
+
+      <section className="mod-card rounded-2xl p-5 sm:p-6" data-testid="panel-saved-setup-draft">
+        <div className="flex flex-wrap items-center gap-2">
+          <Save className="h-4 w-4 text-primary" />
+          <h2 className="font-display text-xl text-foreground">Draft salvat</h2>
+        </div>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Salvarea este opțională și privată pentru contul tău în acest server. Nu creează și nu modifică resurse Discord.
+        </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button variant="outline" className="gap-2" disabled={busy || !savedDraftLoaded || draftSaveConflict || issues.length > 0}
+            onClick={() => void saveDraft()} data-testid="button-save-setup-draft">
+            <Save className="h-4 w-4" />{draftPersistenceBusy ? "Se salvează..." : "Salvează draftul curent"}
+          </Button>
+          {draftSaveConflict && savedDraft && (
+            <Button variant="destructive" className="gap-2" disabled={busy}
+              onClick={() => setOverwriteConfirmOpen(true)} data-testid="button-overwrite-saved-setup-draft">
+              Suprascrie versiunea mai nouă...
+            </Button>
+          )}
+          {savedDraft && (
+            <Button variant="outline" className="gap-2" disabled={busy}
+              onClick={() => void refreshSavedDraft(true)} data-testid="button-resume-setup-draft">
+              <FolderOpen className="h-4 w-4" />{draftSaveConflict ? "Încarcă versiunea salvată" : "Reia draftul salvat"}
+            </Button>
+          )}
+          {!savedDraftLoaded && (
+            <Button variant="ghost" disabled={busy} onClick={() => void refreshSavedDraft(false)} data-testid="button-retry-saved-setup-draft">
+              Reîncarcă starea salvării
+            </Button>
+          )}
+        </div>
+        {savedDraft && <p className="mt-3 text-xs text-muted-foreground" data-testid="text-saved-setup-draft-meta">
+          Draft disponibil · versiunea {savedDraft.revision} · salvat {new Date(savedDraft.updatedAt).toLocaleString()}
+        </p>}
+        {restoredNeedsReview && <p className="mt-3 text-sm text-amber-300" role="status" data-testid="text-restored-draft-review">
+          Draftul a fost reluat, fără modificări pe Discord. Rulează o verificare nouă și confirmă separat orice aplicare.
+        </p>}
+        {draftSaveError && <p className="mt-3 text-sm text-destructive" role="alert" data-testid="text-setup-draft-save-error">{draftSaveError}</p>}
+        {draftSaveNotice && <p className="mt-3 text-sm text-primary" role="status" data-testid="text-setup-draft-save-notice">{draftSaveNotice}</p>}
+      </section>
 
       {reconcileError && <p role="alert" className="text-sm text-destructive" data-testid="text-reconciliation-error">{reconcileError}</p>}
       {reconcileNotice && <p role="status" className="text-sm text-primary" data-testid="text-reconciliation-result">{reconcileNotice}</p>}
@@ -397,6 +545,38 @@ export function ServerSetupPage() {
           <AlertDialogFooter>
             <AlertDialogCancel data-testid="button-cancel-apply">Anulează</AlertDialogCancel>
             <AlertDialogAction disabled={applyBusy} onClick={() => void apply()} data-testid="button-confirm-apply">Confirm și aplic</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={restorePending !== null} onOpenChange={open => !open && setRestorePending(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reiei draftul salvat?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Versiunea {restorePending?.revision} va înlocui draftul afișat acum. Această reluare nu schimbă nimic pe Discord și anulează orice verificare anterioară. Va trebui să verifici din nou și să confirmi separat aplicarea.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-resume-setup-draft">Păstrează draftul curent</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmRestoreDraft} data-testid="button-confirm-resume-setup-draft">Reia draftul</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={overwriteConfirmOpen} onOpenChange={open => !draftPersistenceBusy && setOverwriteConfirmOpen(open)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Înlocuiești versiunea salvată?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O altă sesiune a salvat versiunea {savedDraft?.revision}. Dacă continui, versiunea aceea va fi înlocuită cu draftul local din această pagină. Nimic nu se aplică pe Discord.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-overwrite-saved-draft">Păstrează draftul local</AlertDialogCancel>
+            <AlertDialogAction disabled={draftPersistenceBusy} onClick={() => void saveDraft(true)} data-testid="button-confirm-overwrite-saved-draft">
+              Confirmă înlocuirea
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

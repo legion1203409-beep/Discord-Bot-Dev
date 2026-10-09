@@ -32,6 +32,16 @@ export const setupDraftSchema = z.object({
   }
 });
 export type SetupDraft = z.infer<typeof setupDraftSchema>;
+export const setupDraftSaveSchema = z.object({
+  draft: setupDraftSchema,
+  expectedRevision: z.number().int().min(0),
+}).strict();
+export type SetupDraftSaveInput = z.infer<typeof setupDraftSaveSchema>;
+export type SavedSetupDraft = {
+  draft: SetupDraft;
+  revision: number;
+  updatedAt: string;
+};
 export const setupTemplate: SetupDraft = {
   roles: [
     { key: "admin", name: "Administrator" }, { key: "mod", name: "Moderator" },

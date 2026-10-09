@@ -59,6 +59,10 @@ const mocks = vi.hoisted(() => ({
   ],
   emojiCreate: vi.fn(), emojiFetch: vi.fn(),
   withSetupJournal: vi.fn(),
+  getSavedSetupDraft: vi.fn(), saveSetupDraft: vi.fn(),
+  SetupDraftRevisionConflictError: class extends Error {
+    constructor() { super("Draftul salvat a fost modificat în altă sesiune."); }
+  },
 }));
 
 vi.mock("../auth", () => ({
@@ -79,6 +83,11 @@ vi.mock("../auth", () => ({
 }));
 
 vi.mock("../server-setup-storage", () => ({ withSetupJournal: mocks.withSetupJournal }));
+vi.mock("../server-setup-drafts", () => ({
+  getSavedSetupDraft: mocks.getSavedSetupDraft,
+  saveSetupDraft: mocks.saveSetupDraft,
+  SetupDraftRevisionConflictError: mocks.SetupDraftRevisionConflictError,
+}));
 
 vi.mock("../store", () => ({
   moderationStore: {
@@ -378,6 +387,10 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     mocks.withSetupJournal.mockImplementation(async (_guildId, run) => run({}, async () => {}));
+    mocks.getSavedSetupDraft.mockResolvedValue(null);
+    mocks.saveSetupDraft.mockImplementation(async (_guildId: string, _userId: string, input: any) => ({
+      draft: input.draft, revision: input.expectedRevision + 1, updatedAt: "2026-10-09T12:00:00.000Z",
+    }));
     mocks.session.mockResolvedValue({ userId: actorId, csrfToken: "csrf" });
     mocks.access.mockResolvedValue("owner");
     mocks.getConfig.mockResolvedValue({ config: structuredClone(defaultModerationConfig), version: 3 });
@@ -617,6 +630,47 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
         draft: { roles: expect.arrayContaining([expect.anything()]) },
         uncertain: [],
       });
+      expect(mocks.client).not.toHaveBeenCalled();
+    });
+    it("loads saved drafts scoped to the authenticated operator and selected server", async () => {
+      const savedDraft = { draft: { roles: [], categories: [] }, revision: 3, updatedAt: "2026-10-09T12:00:00.000Z" };
+      mocks.getSavedSetupDraft.mockResolvedValueOnce(savedDraft);
+      const response = await fetch(`${base}/server-setup/draft`);
+      expect(response.status).toBe(200);
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      expect(await response.json()).toEqual({ savedDraft });
+      expect(mocks.getSavedSetupDraft).toHaveBeenCalledWith(guildId, actorId);
+      expect(mocks.client).not.toHaveBeenCalled();
+    });
+    it("saves an explicit draft with the authenticated operator and expected revision", async () => {
+      const draft = { roles: [], categories: [] };
+      const response = await fetch(`${base}/server-setup/draft`, {
+        ...post({ draft, expectedRevision: 0 }, { "x-csrf-token": "csrf" }),
+        method: "PUT",
+      });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ savedDraft: { draft, revision: 1 } });
+      expect(mocks.saveSetupDraft).toHaveBeenCalledWith(guildId, actorId, { draft, expectedRevision: 0 });
+      expect(mocks.client).not.toHaveBeenCalled();
+    });
+    it("requires CSRF and rejects stale saved-draft revisions without replacing the local draft", async () => {
+      mocks.csrf.mockImplementationOnce(() => { throw new ModerationAuthError(403, "CSRF required"); });
+      const draft = { roles: [], categories: [] };
+      const denied = await fetch(`${base}/server-setup/draft`, {
+        ...post({ draft, expectedRevision: 0 }),
+        method: "PUT",
+      });
+      expect(denied.status).toBe(403);
+      expect(mocks.saveSetupDraft).not.toHaveBeenCalled();
+
+      mocks.saveSetupDraft.mockRejectedValueOnce(new mocks.SetupDraftRevisionConflictError());
+      const conflict = await fetch(`${base}/server-setup/draft`, {
+        ...post({ draft, expectedRevision: 1 }, { "x-csrf-token": "csrf" }),
+        method: "PUT",
+      });
+      expect(conflict.status).toBe(409);
+      expect(await conflict.json()).toMatchObject({ error: expect.stringContaining("modificat în altă sesiune") });
+      expect(mocks.saveSetupDraft).toHaveBeenCalledWith(guildId, actorId, { draft, expectedRevision: 1 });
       expect(mocks.client).not.toHaveBeenCalled();
     });
     it("requires fresh inventory for owner reconciliation and audits confirmed absence", async () => {

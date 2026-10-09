@@ -240,6 +240,155 @@ export const ModerationGetServerSetupResponse = zod.object({
 })
 
 
+export const ModerationGetSavedServerSetupDraftParams = zod.object({
+  "guildId": zod.coerce.string()
+})
+
+export const moderationGetSavedServerSetupDraftResponseSavedDraftOneDraftRolesItemKeyRegExp = new RegExp('^[a-z][a-z0-9_-]{0,39}$');
+export const moderationGetSavedServerSetupDraftResponseSavedDraftOneDraftRolesItemNameMax = 100;
+
+export const moderationGetSavedServerSetupDraftResponseSavedDraftOneDraftRolesMax = 20;
+
+export const moderationGetSavedServerSetupDraftResponseSavedDraftOneDraftCategoriesItemKeyRegExp = new RegExp('^[a-z][a-z0-9_-]{0,39}$');
+export const moderationGetSavedServerSetupDraftResponseSavedDraftOneDraftCategoriesItemNameMax = 100;
+
+export const moderationGetSavedServerSetupDraftResponseSavedDraftOneDraftCategoriesItemChannelsItemKeyRegExp = new RegExp('^[a-z][a-z0-9_-]{0,39}$');
+export const moderationGetSavedServerSetupDraftResponseSavedDraftOneDraftCategoriesItemChannelsItemNameRegExp = new RegExp('^[a-z0-9][a-z0-9_-]{0,79}$');
+export const moderationGetSavedServerSetupDraftResponseSavedDraftOneDraftCategoriesItemChannelsItemReadersMax = 21;
+
+export const moderationGetSavedServerSetupDraftResponseSavedDraftOneDraftCategoriesItemChannelsItemWritersMax = 21;
+
+export const moderationGetSavedServerSetupDraftResponseSavedDraftOneDraftCategoriesItemChannelsItemExplanationMax = 400;
+
+export const moderationGetSavedServerSetupDraftResponseSavedDraftOneDraftCategoriesItemChannelsMax = 30;
+
+export const moderationGetSavedServerSetupDraftResponseSavedDraftOneDraftCategoriesMax = 10;
+
+
+
+
+export const ModerationGetSavedServerSetupDraftResponse = zod.object({
+  "savedDraft": zod.union([zod.object({
+  "draft": zod.object({
+  "roles": zod.array(zod.object({
+  "key": zod.string().regex(moderationGetSavedServerSetupDraftResponseSavedDraftOneDraftRolesItemKeyRegExp),
+  "name": zod.string().min(1).max(moderationGetSavedServerSetupDraftResponseSavedDraftOneDraftRolesItemNameMax)
+})).max(moderationGetSavedServerSetupDraftResponseSavedDraftOneDraftRolesMax),
+  "categories": zod.array(zod.object({
+  "key": zod.string().regex(moderationGetSavedServerSetupDraftResponseSavedDraftOneDraftCategoriesItemKeyRegExp),
+  "name": zod.string().min(1).max(moderationGetSavedServerSetupDraftResponseSavedDraftOneDraftCategoriesItemNameMax),
+  "channels": zod.array(zod.object({
+  "key": zod.string().regex(moderationGetSavedServerSetupDraftResponseSavedDraftOneDraftCategoriesItemChannelsItemKeyRegExp),
+  "name": zod.string().regex(moderationGetSavedServerSetupDraftResponseSavedDraftOneDraftCategoriesItemChannelsItemNameRegExp),
+  "readers": zod.array(zod.string()).max(moderationGetSavedServerSetupDraftResponseSavedDraftOneDraftCategoriesItemChannelsItemReadersMax),
+  "writers": zod.array(zod.string()).max(moderationGetSavedServerSetupDraftResponseSavedDraftOneDraftCategoriesItemChannelsItemWritersMax),
+  "explanation": zod.string().max(moderationGetSavedServerSetupDraftResponseSavedDraftOneDraftCategoriesItemChannelsItemExplanationMax)
+})).max(moderationGetSavedServerSetupDraftResponseSavedDraftOneDraftCategoriesItemChannelsMax)
+})).max(moderationGetSavedServerSetupDraftResponseSavedDraftOneDraftCategoriesMax)
+}),
+  "revision": zod.number().min(1),
+  "updatedAt": zod.coerce.date()
+}),zod.null()])
+})
+
+
+export const ModerationSaveServerSetupDraftParams = zod.object({
+  "guildId": zod.coerce.string()
+})
+
+export const moderationSaveServerSetupDraftBodyDraftRolesItemKeyRegExp = new RegExp('^[a-z][a-z0-9_-]{0,39}$');
+export const moderationSaveServerSetupDraftBodyDraftRolesItemNameMax = 100;
+
+export const moderationSaveServerSetupDraftBodyDraftRolesMax = 20;
+
+export const moderationSaveServerSetupDraftBodyDraftCategoriesItemKeyRegExp = new RegExp('^[a-z][a-z0-9_-]{0,39}$');
+export const moderationSaveServerSetupDraftBodyDraftCategoriesItemNameMax = 100;
+
+export const moderationSaveServerSetupDraftBodyDraftCategoriesItemChannelsItemKeyRegExp = new RegExp('^[a-z][a-z0-9_-]{0,39}$');
+export const moderationSaveServerSetupDraftBodyDraftCategoriesItemChannelsItemNameRegExp = new RegExp('^[a-z0-9][a-z0-9_-]{0,79}$');
+export const moderationSaveServerSetupDraftBodyDraftCategoriesItemChannelsItemReadersMax = 21;
+
+export const moderationSaveServerSetupDraftBodyDraftCategoriesItemChannelsItemWritersMax = 21;
+
+export const moderationSaveServerSetupDraftBodyDraftCategoriesItemChannelsItemExplanationMax = 400;
+
+export const moderationSaveServerSetupDraftBodyDraftCategoriesItemChannelsMax = 30;
+
+export const moderationSaveServerSetupDraftBodyDraftCategoriesMax = 10;
+
+export const moderationSaveServerSetupDraftBodyExpectedRevisionMin = 0;
+
+
+
+export const ModerationSaveServerSetupDraftBody = zod.object({
+  "draft": zod.object({
+  "roles": zod.array(zod.object({
+  "key": zod.string().regex(moderationSaveServerSetupDraftBodyDraftRolesItemKeyRegExp),
+  "name": zod.string().min(1).max(moderationSaveServerSetupDraftBodyDraftRolesItemNameMax)
+})).max(moderationSaveServerSetupDraftBodyDraftRolesMax),
+  "categories": zod.array(zod.object({
+  "key": zod.string().regex(moderationSaveServerSetupDraftBodyDraftCategoriesItemKeyRegExp),
+  "name": zod.string().min(1).max(moderationSaveServerSetupDraftBodyDraftCategoriesItemNameMax),
+  "channels": zod.array(zod.object({
+  "key": zod.string().regex(moderationSaveServerSetupDraftBodyDraftCategoriesItemChannelsItemKeyRegExp),
+  "name": zod.string().regex(moderationSaveServerSetupDraftBodyDraftCategoriesItemChannelsItemNameRegExp),
+  "readers": zod.array(zod.string()).max(moderationSaveServerSetupDraftBodyDraftCategoriesItemChannelsItemReadersMax),
+  "writers": zod.array(zod.string()).max(moderationSaveServerSetupDraftBodyDraftCategoriesItemChannelsItemWritersMax),
+  "explanation": zod.string().max(moderationSaveServerSetupDraftBodyDraftCategoriesItemChannelsItemExplanationMax)
+})).max(moderationSaveServerSetupDraftBodyDraftCategoriesItemChannelsMax)
+})).max(moderationSaveServerSetupDraftBodyDraftCategoriesMax)
+}),
+  "expectedRevision": zod.number().min(moderationSaveServerSetupDraftBodyExpectedRevisionMin)
+})
+
+export const moderationSaveServerSetupDraftResponseSavedDraftDraftRolesItemKeyRegExp = new RegExp('^[a-z][a-z0-9_-]{0,39}$');
+export const moderationSaveServerSetupDraftResponseSavedDraftDraftRolesItemNameMax = 100;
+
+export const moderationSaveServerSetupDraftResponseSavedDraftDraftRolesMax = 20;
+
+export const moderationSaveServerSetupDraftResponseSavedDraftDraftCategoriesItemKeyRegExp = new RegExp('^[a-z][a-z0-9_-]{0,39}$');
+export const moderationSaveServerSetupDraftResponseSavedDraftDraftCategoriesItemNameMax = 100;
+
+export const moderationSaveServerSetupDraftResponseSavedDraftDraftCategoriesItemChannelsItemKeyRegExp = new RegExp('^[a-z][a-z0-9_-]{0,39}$');
+export const moderationSaveServerSetupDraftResponseSavedDraftDraftCategoriesItemChannelsItemNameRegExp = new RegExp('^[a-z0-9][a-z0-9_-]{0,79}$');
+export const moderationSaveServerSetupDraftResponseSavedDraftDraftCategoriesItemChannelsItemReadersMax = 21;
+
+export const moderationSaveServerSetupDraftResponseSavedDraftDraftCategoriesItemChannelsItemWritersMax = 21;
+
+export const moderationSaveServerSetupDraftResponseSavedDraftDraftCategoriesItemChannelsItemExplanationMax = 400;
+
+export const moderationSaveServerSetupDraftResponseSavedDraftDraftCategoriesItemChannelsMax = 30;
+
+export const moderationSaveServerSetupDraftResponseSavedDraftDraftCategoriesMax = 10;
+
+
+
+
+export const ModerationSaveServerSetupDraftResponse = zod.object({
+  "savedDraft": zod.object({
+  "draft": zod.object({
+  "roles": zod.array(zod.object({
+  "key": zod.string().regex(moderationSaveServerSetupDraftResponseSavedDraftDraftRolesItemKeyRegExp),
+  "name": zod.string().min(1).max(moderationSaveServerSetupDraftResponseSavedDraftDraftRolesItemNameMax)
+})).max(moderationSaveServerSetupDraftResponseSavedDraftDraftRolesMax),
+  "categories": zod.array(zod.object({
+  "key": zod.string().regex(moderationSaveServerSetupDraftResponseSavedDraftDraftCategoriesItemKeyRegExp),
+  "name": zod.string().min(1).max(moderationSaveServerSetupDraftResponseSavedDraftDraftCategoriesItemNameMax),
+  "channels": zod.array(zod.object({
+  "key": zod.string().regex(moderationSaveServerSetupDraftResponseSavedDraftDraftCategoriesItemChannelsItemKeyRegExp),
+  "name": zod.string().regex(moderationSaveServerSetupDraftResponseSavedDraftDraftCategoriesItemChannelsItemNameRegExp),
+  "readers": zod.array(zod.string()).max(moderationSaveServerSetupDraftResponseSavedDraftDraftCategoriesItemChannelsItemReadersMax),
+  "writers": zod.array(zod.string()).max(moderationSaveServerSetupDraftResponseSavedDraftDraftCategoriesItemChannelsItemWritersMax),
+  "explanation": zod.string().max(moderationSaveServerSetupDraftResponseSavedDraftDraftCategoriesItemChannelsItemExplanationMax)
+})).max(moderationSaveServerSetupDraftResponseSavedDraftDraftCategoriesItemChannelsMax)
+})).max(moderationSaveServerSetupDraftResponseSavedDraftDraftCategoriesMax)
+}),
+  "revision": zod.number().min(1),
+  "updatedAt": zod.coerce.date()
+})
+})
+
+
 export const ModerationSuggestServerSetupParams = zod.object({
   "guildId": zod.coerce.string()
 })

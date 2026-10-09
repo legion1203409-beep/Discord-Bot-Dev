@@ -1,10 +1,11 @@
 import { PUBLIC_DISCORD_INVITE } from "../lib/discord-invite";
-import { setupDraftSchema, setupTemplate } from "./server-setup-schema";
+import { setupDraftSchema, setupDraftSaveSchema, setupTemplate } from "./server-setup-schema";
 import { setupSuggestionSchema, suggestSetup } from "./server-setup-ai";
 import {
   inspectSetup, applySetup, inspectUncertainSetup, listUncertainSetup, reconcileUncertainSetup,
 } from "./server-setup";
 import { withSetupJournal } from "./server-setup-storage";
+import { getSavedSetupDraft, saveSetupDraft, SetupDraftRevisionConflictError } from "./server-setup-drafts";
 import { getActivityRankConfig, saveActivityRankConfig, isSafeActivityRewardRole } from "../bot/activity-ranks";
 import { normalizeActivityRankConfig } from "../bot/activity-ranks-core";
 import { isSupportedActivityBannerSource } from "../bot/activity-rank-banner-source";
@@ -2618,6 +2619,28 @@ router.get("/guilds/:guildId/server-setup", asyncRoute(async (req, res) => {
     });
   } catch (error) {
     throw new ModerationAuthError(409, error instanceof Error ? error.message : "Starea configurării nu a putut fi încărcată.");
+  }
+}));
+
+router.get("/guilds/:guildId/server-setup/draft", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  const session = await sessionAndGuild(req, guildId, "config");
+  const savedDraft = await getSavedSetupDraft(guildId, session.userId);
+  res.set("Cache-Control", "no-store").json({ savedDraft });
+}));
+
+router.put("/guilds/:guildId/server-setup/draft", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  const session = await sessionAndGuild(req, guildId, "config", true);
+  const input = setupDraftSaveSchema.parse(req.body);
+  try {
+    const savedDraft = await saveSetupDraft(guildId, session.userId, input);
+    res.set("Cache-Control", "no-store").json({ savedDraft });
+  } catch (error) {
+    if (error instanceof SetupDraftRevisionConflictError) {
+      throw new ModerationAuthError(409, error.message);
+    }
+    throw error;
   }
 }));
 

@@ -47,6 +47,19 @@ export interface ServerSetupDraft {
   categories: ServerSetupDraftCategoriesItem[];
 }
 
+export interface ServerSetupDraftSaveInput {
+  draft: ServerSetupDraft;
+  /** @minimum 0 */
+  expectedRevision: number;
+}
+
+export interface ServerSetupDraftRecord {
+  draft: ServerSetupDraft;
+  /** @minimum 1 */
+  revision: number;
+  updatedAt: string;
+}
+
 export type ServerSetupPreviewItemKind = typeof ServerSetupPreviewItemKind[keyof typeof ServerSetupPreviewItemKind];
 
 
@@ -601,6 +614,14 @@ error?: string;
 export type ModerationGetServerSetup200 = {
   draft: ServerSetupDraft;
   aiAvailable: boolean;
+};
+
+export type ModerationGetSavedServerSetupDraft200 = {
+  savedDraft: ServerSetupDraftRecord | null;
+};
+
+export type ModerationSaveServerSetupDraft200 = {
+  savedDraft: ServerSetupDraftRecord;
 };
 
 export type ModerationSuggestServerSetupBody = {

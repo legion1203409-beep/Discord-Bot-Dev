@@ -197,6 +197,100 @@ test.describe("authenticated moderation console", () => {
     await expect(page.locator(`#nav-group-${groupId}`)).toBeVisible();
   }
 
+  test("saves setup drafts per guild, resumes only on request, and blocks silent session conflicts", async ({ page }) => {
+    const userId = "999999999";
+    const drafts = new Map<string, { draft: any; revision: number; updatedAt: string }>();
+    const keyFor = (guildId: string) => `${guildId}:${userId}`;
+    const template = {
+      roles: [{ key: "member", name: "Membru" }],
+      categories: [{
+        key: "community", name: "Comunitate", channels: [{
+          key: "general", name: "general", readers: ["everyone"], writers: ["everyone"], explanation: "",
+        }],
+      }],
+    };
+
+    await page.route("**/api/moderation/guilds/*/server-setup", async (route) => {
+      const guildId = route.request().url().match(/guilds\/(\d+)\/server-setup/)?.[1] ?? guilds[0].id;
+      await route.fulfill({ json: { draft: structuredClone(template), aiAvailable: false, uncertain: [] } });
+    });
+    await page.route("**/api/moderation/guilds/*/server-setup/draft", async (route) => {
+      const guildId = route.request().url().match(/guilds\/(\d+)\/server-setup\/draft/)?.[1] ?? guilds[0].id;
+      const key = keyFor(guildId);
+      if (route.request().method() === "GET") {
+        await route.fulfill({ json: { savedDraft: drafts.get(key) ?? null } });
+        return;
+      }
+      const body = JSON.parse(route.request().postData() || "{}") as { draft: any; expectedRevision: number };
+      const current = drafts.get(key);
+      if ((current?.revision ?? 0) !== body.expectedRevision) {
+        await route.fulfill({ status: 409, json: { error: "Draftul salvat a fost modificat în altă sesiune." } });
+        return;
+      }
+      const savedDraft = {
+        draft: structuredClone(body.draft),
+        revision: (current?.revision ?? 0) + 1,
+        updatedAt: "2026-10-09T12:00:00.000Z",
+      };
+      drafts.set(key, savedDraft);
+      await route.fulfill({ json: { savedDraft } });
+    });
+
+    await page.goto("/moderare/pornire-server");
+    await chooseFirstGuild(page);
+    await expect(page.getByRole("heading", { name: "Arhitectura serverului" })).toBeVisible();
+    await page.getByTestId("input-role-member").fill("Draft Nord");
+    const northSave = page.waitForResponse((response) =>
+      response.url().includes(`/guilds/${guilds[0].id}/server-setup/draft`) && response.request().method() === "PUT");
+    await page.getByTestId("button-save-setup-draft").click();
+    expect((await northSave).status()).toBe(200);
+    expect(drafts.get(keyFor(guilds[0].id))?.draft.roles[0].name).toBe("Draft Nord");
+
+    await page.getByRole("combobox").first().click();
+    await page.getByRole("option", { name: guilds[1].name }).click();
+    await expect(page.getByTestId("input-role-member")).toHaveValue("Membru");
+    await page.getByTestId("input-role-member").fill("Draft Sud");
+    const southSave = page.waitForResponse((response) =>
+      response.url().includes(`/guilds/${guilds[1].id}/server-setup/draft`) && response.request().method() === "PUT");
+    await page.getByTestId("button-save-setup-draft").click();
+    expect((await southSave).status()).toBe(200);
+    expect(drafts.get(keyFor(guilds[1].id))?.draft.roles[0].name).toBe("Draft Sud");
+    expect(drafts.get(keyFor(guilds[0].id))?.draft.roles[0].name).toBe("Draft Nord");
+
+    await page.getByRole("combobox").first().click();
+    await page.getByRole("option", { name: guilds[0].name }).click();
+    await page.getByTestId("button-resume-setup-draft").click();
+    await page.getByTestId("button-confirm-resume-setup-draft").click();
+    await expect(page.getByTestId("input-role-member")).toHaveValue("Draft Nord");
+    await expect(page.getByTestId("text-restored-draft-review")).toBeVisible();
+    await expect(page.getByTestId("button-open-apply")).toBeDisabled();
+
+    const localDraft = drafts.get(keyFor(guilds[0].id))!;
+    drafts.set(keyFor(guilds[0].id), {
+      ...localDraft,
+      draft: { ...localDraft.draft, roles: [{ key: "member", name: "Salvat din altă sesiune" }] },
+      revision: localDraft.revision + 1,
+    });
+    await page.getByTestId("input-role-member").fill("Modificare locală");
+    const conflictResponse = page.waitForResponse((response) =>
+      response.url().includes(`/guilds/${guilds[0].id}/server-setup/draft`) && response.request().method() === "PUT");
+    await page.getByTestId("button-save-setup-draft").click();
+    expect((await conflictResponse).status()).toBe(409);
+    await expect(page.getByTestId("text-setup-draft-save-error")).toContainText("O altă sesiune");
+    await expect(page.getByTestId("input-role-member")).toHaveValue("Modificare locală");
+    await expect(page.getByTestId("button-save-setup-draft")).toBeDisabled();
+
+    await page.getByTestId("button-overwrite-saved-setup-draft").click();
+    await expect(page.getByRole("alertdialog", { name: "Înlocuiești versiunea salvată?" })).toBeVisible();
+    await page.getByTestId("button-cancel-overwrite-saved-draft").click();
+    expect(drafts.get(keyFor(guilds[0].id))?.draft.roles[0].name).toBe("Salvat din altă sesiune");
+    await expect(page.getByTestId("input-role-member")).toHaveValue("Modificare locală");
+    await page.getByTestId("button-overwrite-saved-setup-draft").click();
+    await page.getByTestId("button-confirm-overwrite-saved-draft").click();
+    await expect(page.getByTestId("text-setup-draft-save-notice")).toContainText("Draftul a fost salvat");
+    expect(drafts.get(keyFor(guilds[0].id))?.draft.roles[0].name).toBe("Modificare locală");
+  });
+
   test("keeps gameplay status unknown after GET failure, retries, and preserves guild-specific toggles", async ({ page }) => {
     const gameplayGets = new Map<string, number>();
     const gameplayPuts: Array<{ guildId: string; paused: boolean }> = [];
