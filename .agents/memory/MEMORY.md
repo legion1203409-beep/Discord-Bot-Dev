@@ -31,6 +31,7 @@
 - [bot_state table self-heal](bot-state-table-self-heal.md) — guard EVERY bot_state helper with singleton ensureBotStateTable() (idempotent CREATE TABLE); ShardReady/ClientReady race a one-shot startup create.
 - [Permanent trader repost guard](permanent-trader-repost-guard.md) — re-post the single persistent trader only on Discord 10008; treating any fetch/edit error as deleted duplicates it on transient blips.
 - [Multi-guild channel routing](multi-guild-channel-routing.md) — missing settings may fall back to legacy routes; explicit `""` disables routing and must survive saves and nullish fallbacks.
+- [Guild-local settings](guild-local-settings.md) — each Discord server must retain its own settings and gameplay state; never let a per-server change affect other guilds.
 - [Moderation destination safety](moderation-channel-destination.md) — preserve invalid configured log destinations and warn; never silently move logs to a guessed channel.
 - [Boss fights by rarity](boss-by-rarity.md) — boss check must use stored monsterRarity==="boss" (ambush bosses exist at any level); stat fns need the rarity arg or HP desyncs.
 - [Boss daily quest semantics](boss-daily-quest-semantics.md) — participation counts on victory for all damage contributors; the daily reward is extra loot, not a replacement.
