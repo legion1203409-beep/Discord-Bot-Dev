@@ -88,4 +88,15 @@ describe("gameplay configuration persistence", () => {
     expect(store.getGameplayConfig("guild-a").economy.monsterGoldMultiplier).toBe(2);
     expect(store.getGameplayConfig("guild-b").economy.monsterGoldMultiplier).toBe(0.5);
   });
+
+  it("pauses gameplay only for the selected guild", async () => {
+    const store = await import("../gameplay-store");
+    await store.initGameplayConfig("guild-a");
+    await store.initGameplayConfig("guild-b");
+
+    await store.setGameplayPaused("guild-a", true);
+
+    expect(store.isGameplayPaused("guild-a")).toBe(true);
+    expect(store.isGameplayPaused("guild-b")).toBe(false);
+  });
 });
