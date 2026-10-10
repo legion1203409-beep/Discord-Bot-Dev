@@ -12,6 +12,7 @@ import {
   type SetupDraft, type SetupChannel, type SetupAccess, type PreviewResult, type ApplyResult,
   type SetupResources, normalizeSetupDraft, newKey, removeRole, validateDraft, roleLabel,
 } from "../../lib/server-setup";
+import { getSetupPreset, setupPresets, type SetupPresetKey } from "../../lib/server-setup-tools";
 
 const msg = (e: unknown) => (e instanceof Error ? e.message : "Eroare necunoscută.");
 type UncertainSetupItem = { key: string; name: string; kind: "role" | "category" | "channel"; parentKey?: string; attemptedAt?: string };
@@ -69,6 +70,15 @@ function AccessMatrix({ draft, value, onChange, testId }: {
 export function ServerSetupPage() {
   const { guildId, guilds } = useActiveGuild();
   const guildName = guilds.find(g => g.id === guildId)?.name ?? "serverul selectat";
+  const activeGuildId = useRef(guildId);
+  activeGuildId.current = guildId;
+  const [pendingPreset, setPendingPreset] = useState<SetupPresetKey | null>(null);
+  const [guideStep, setGuideStep] = useState(0);
+  const [guidePreset, setGuidePreset] = useState<SetupPresetKey>("community");
+  const [guideStartGame, setGuideStartGame] = useState(false);
+  const [guideBusy, setGuideBusy] = useState(false);
+  const [guideNotice, setGuideNotice] = useState<string | null>(null);
+  const [guideError, setGuideError] = useState<string | null>(null);
   const [draft, setDraftState] = useState<SetupDraft | null>(null);
   const [aiAvailable, setAiAvailable] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -155,7 +165,11 @@ export function ServerSetupPage() {
       if (sequence === loadSequence.current) setLoading(false);
     }
   };
-  useEffect(() => { if (guildId) void load(); }, [guildId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!guildId) return;
+    setGuideStep(0); setGuideNotice(null); setGuideError(null); setPendingPreset(null);
+    void load();
+  }, [guildId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setDraft = (d: SetupDraft) => {
     if (applying.current) return;
@@ -164,7 +178,7 @@ export function ServerSetupPage() {
     setDraftSaveNotice(null);
   };
   const issues = draft ? validateDraft(draft) : [];
-  const busy = previewBusy || applyBusy || deleteBusy || resourcesLoading || draftPersistenceBusy || Boolean(reconcileBusyKey) || Boolean(inventoryLoadingKey);
+  const busy = previewBusy || applyBusy || deleteBusy || resourcesLoading || draftPersistenceBusy || guideBusy || Boolean(reconcileBusyKey) || Boolean(inventoryLoadingKey);
 
   const refreshSavedDraft = async (resume: boolean) => {
     if (draftPersistenceBusy) return;
@@ -296,6 +310,43 @@ export function ServerSetupPage() {
     } catch (e) { setPreviewError(msg(e)); } finally { setPreviewBusy(false); }
   };
 
+  const confirmPreset = () => {
+    if (!pendingPreset) return;
+    setDraft(getSetupPreset(pendingPreset));
+    setPendingPreset(null);
+    setSuggestion(null);
+    setGuideNotice("Șablonul a fost încărcat în draft. Discord nu a fost modificat; rulează verificarea înainte de aplicare.");
+  };
+
+  const finishGuide = async () => {
+    if (guideBusy) return;
+    const targetGuildId = guildId;
+    const targetGuildName = guildName;
+    setGuideBusy(true);
+    setGuideError(null);
+    setGuideNotice(null);
+    try {
+      if (guideStartGame) {
+        await apiFetchWithMeta<{ paused: boolean }>(`/guilds/${targetGuildId}/gameplay-state`, {
+          method: "PUT",
+          body: JSON.stringify({ paused: false }),
+        });
+      }
+      if (activeGuildId.current !== targetGuildId) return;
+      setDraft(getSetupPreset(guidePreset));
+      setSuggestion(null);
+      setGuideStep(0);
+      setGuideNotice(guideStartGame
+        ? `Draftul a fost pregătit pentru ${targetGuildName}, iar jocul a fost pornit doar pe acest server. Resursele Discord încă nu au fost aplicate.`
+        : `Draftul a fost pregătit pentru ${targetGuildName}. Jocul nu a fost pornit, iar Discord nu a fost modificat.`);
+    } catch (e) {
+      if (activeGuildId.current === targetGuildId)
+        setGuideError(`Setarea jocului nu a putut fi salvată: ${msg(e)}. Draftul nu a fost înlocuit.`);
+    } finally {
+      setGuideBusy(false);
+    }
+  };
+
   const apply = async () => {
     if (!draft || !preview || applying.current) return;
     applying.current = true; setApplyBusy(true); setConfirmOpen(false); setApplyError(null);
@@ -366,6 +417,107 @@ export function ServerSetupPage() {
         </p>
         <p className="mt-2 text-xs text-muted-foreground">Serverul trebuie să existe deja în Discord, iar botul să fie invitat. Asistentul amenajează serverul selectat; nu creează un server Discord nou.</p>
       </header>
+
+      <section className="mod-card rounded-2xl p-5 sm:p-6" data-testid="panel-setup-tools">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-primary" />
+          <h2 className="font-display text-xl text-foreground">Unelte de configurare rapidă</h2>
+        </div>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Șabloanele și ghidul pregătesc un draft pentru <span className="text-foreground">{guildName}</span>. Nimic nu se creează în Discord până nu rulezi verificarea și confirmi aplicarea.
+        </p>
+        {guideNotice && <p className="mt-3 text-sm text-primary" role="status" data-testid="text-setup-tools-notice">{guideNotice}</p>}
+        {guideError && <p className="mt-3 text-sm text-destructive" role="alert" data-testid="text-setup-tools-error">{guideError}</p>}
+
+        <div className="mt-5 grid gap-5 xl:grid-cols-2">
+          <div className="rounded-xl border border-border/50 bg-background/30 p-4" data-testid="panel-setup-presets">
+            <h3 className="text-sm font-medium text-foreground">Șabloane rapide</h3>
+            <p className="mt-1 text-xs text-muted-foreground">Alege o structură gata pregătită; draftul curent va fi înlocuit numai după confirmare.</p>
+            <div className="mt-3 grid gap-2">
+              {setupPresets.map(preset => (
+                <div key={preset.key} className="flex flex-wrap items-center gap-3 rounded-lg border border-border/50 p-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-foreground">{preset.name}</p>
+                    <p className="text-xs text-muted-foreground">{preset.description}</p>
+                    <p className="mt-1 text-[11px] text-muted-foreground">{preset.draft.roles.length} roluri · {preset.draft.categories.length} categorii · {preset.draft.categories.reduce((sum, category) => sum + category.channels.length, 0)} canale</p>
+                  </div>
+                  <Button size="sm" variant="outline" disabled={busy || guideBusy} onClick={() => setPendingPreset(preset.key)} data-testid={`button-use-preset-${preset.key}`}>
+                    Folosește
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-border/50 bg-background/30 p-4" data-testid="panel-guided-setup">
+            <h3 className="text-sm font-medium text-foreground">Configurare ghidată · pasul {guideStep + 1} din 3</h3>
+            {guideStep === 0 && <>
+              <p className="mt-1 text-xs text-muted-foreground">1. Alege structura potrivită pentru comunitate.</p>
+              <div className="mt-3 grid gap-2">
+                {setupPresets.map(preset => (
+                  <label key={preset.key} className={`cursor-pointer rounded-lg border p-3 ${guidePreset === preset.key ? "border-primary/60 bg-primary/5" : "border-border/50"}`}>
+                    <span className="flex items-start gap-2">
+                      <input type="radio" name="guided-preset" checked={guidePreset === preset.key} onChange={() => setGuidePreset(preset.key)} data-testid={`radio-guided-preset-${preset.key}`} />
+                      <span><span className="block text-sm text-foreground">{preset.name}</span><span className="text-xs text-muted-foreground">{preset.description}</span></span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </>}
+            {guideStep === 1 && <>
+              <p className="mt-1 text-xs text-muted-foreground">2. Alege dacă jocul trebuie pornit acum pe serverul selectat.</p>
+              <label className="mt-4 flex items-start gap-2 rounded-lg border border-border/50 p-3 text-sm">
+                <input type="checkbox" checked={guideStartGame} onChange={event => setGuideStartGame(event.target.checked)} data-testid="check-guided-start-game" />
+                <span>Pornesc jocul pe {guildName}<span className="mt-1 block text-xs text-muted-foreground">Dacă nu bifezi, starea actuală rămâne neschimbată. Această alegere afectează doar serverul selectat.</span></span>
+              </label>
+            </>}
+            {guideStep === 2 && <>
+              <p className="mt-1 text-xs text-muted-foreground">3. Revizuiește ce va face ghidul înainte să pregătească draftul.</p>
+              <div className="mt-3 rounded-lg border border-border/50 p-3 text-sm">
+                <p className="text-foreground">{setupPresets.find(preset => preset.key === guidePreset)?.name}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {getSetupPreset(guidePreset).roles.length} roluri și {getSetupPreset(guidePreset).categories.length} categorii vor fi pregătite ca draft.
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">{guideStartGame ? "Jocul va fi pornit pe serverul selectat." : "Starea actuală a jocului va fi păstrată."} Aplicarea canalelor și rolurilor rămâne un pas separat.</p>
+              </div>
+            </>}
+            <div className="mt-4 flex flex-wrap gap-2">
+              {guideStep > 0 && <Button size="sm" variant="ghost" disabled={guideBusy} onClick={() => setGuideStep(step => step - 1)} data-testid="button-guided-back">Înapoi</Button>}
+              {guideStep < 2
+                ? <Button size="sm" disabled={guideBusy} onClick={() => setGuideStep(step => step + 1)} data-testid="button-guided-next">Continuă</Button>
+                : <Button size="sm" disabled={guideBusy || busy} onClick={() => void finishGuide()} data-testid="button-guided-finish">{guideBusy ? "Se pregătește..." : "Pregătește draftul"}</Button>}
+              {guideStep > 0 && <Button size="sm" variant="ghost" disabled={guideBusy} onClick={() => setGuideStep(0)} data-testid="button-guided-reset">Reia ghidul</Button>}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="mod-card rounded-2xl p-5 sm:p-6" data-testid="panel-setup-diagnostics">
+        <div className="flex flex-wrap items-center gap-2">
+          <Eye className="h-4 w-4 text-primary" />
+          <h2 className="font-display text-xl text-foreground">Verificare server</h2>
+          <Button size="sm" variant="outline" className="ml-auto gap-2" disabled={busy || issues.length > 0} onClick={() => void runPreview()} data-testid="button-run-setup-diagnostics">
+            <RefreshCw className="h-3.5 w-3.5" />{previewBusy ? "Se verifică..." : "Verifică draftul și accesul botului"}
+          </Button>
+        </div>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Verifică draftul curent față de inventarul Discord, permisiunile botului și conflictele de nume. Nu aplică nicio schimbare.
+        </p>
+        {resources && <p className="mt-3 text-xs text-muted-foreground" data-testid="text-diagnostic-inventory">
+          Inventar încărcat: {resources.roles.length} roluri ({resources.roles.filter(role => role.usable).length} gestionabile de bot), {resources.categories.length} categorii și {resources.channels.length} canale.
+        </p>}
+        {resources?.roles.some(role => !role.usable) && <p className="mt-2 text-xs text-amber-300" data-testid="text-diagnostic-unsafe-roles">
+          Unele roluri existente nu pot fi gestionate de bot. Poziția rolului botului, rolurile Administrator și rolurile de integrare pot bloca operațiile; detaliile apar în lista de roluri.
+        </p>}
+        {issues.length > 0 && <p className="mt-3 text-sm text-destructive" role="alert" data-testid="text-diagnostic-draft-errors">{issues.length} probleme în draft trebuie corectate înainte de verificarea Discord.</p>}
+        {preview && <div className="mt-3 rounded-lg border border-border/50 p-3" data-testid="panel-setup-diagnostics-result">
+          <p className={`text-sm ${preview.ready ? "text-primary" : "text-amber-300"}`}>
+            {preview.ready ? "Verificare trecută: draftul poate fi aplicat după confirmare." : "Verificarea a găsit blocaje; consultă detaliile din „Verificare și aplicare”."}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">{preview.items.length} resurse planificate · {preview.items.filter(item => item.status === "conflict").length} conflicte · {preview.issues.length} probleme de permisiuni/configurare</p>
+          {preview.issues.map(issue => <p key={issue} className="mt-1 text-xs text-destructive">{issue}</p>)}
+        </div>}
+      </section>
 
       <section className="mod-card rounded-2xl p-5 sm:p-6" data-testid="panel-saved-setup-draft">
         <div className="flex flex-wrap items-center gap-2">
@@ -804,6 +956,21 @@ export function ServerSetupPage() {
           </p>)}
         </div>}
       </section>
+
+      <AlertDialog open={Boolean(pendingPreset)} onOpenChange={open => !open && setPendingPreset(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Înlocuiești draftul curent?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Șablonul va înlocui rolurile și canalele din draftul local pentru „{guildName}”. Nicio resursă Discord nu se schimbă până la verificarea și confirmarea separată.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-preset">Păstrează draftul</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmPreset} data-testid="button-confirm-preset">Înlocuiește draftul</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={confirmOpen} onOpenChange={o => !applyBusy && setConfirmOpen(o)}>
         <AlertDialogContent>
