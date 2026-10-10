@@ -10,7 +10,7 @@ import {
 } from "../../components/ui/alert-dialog";
 import {
   type SetupDraft, type SetupChannel, type SetupAccess, type PreviewResult, type ApplyResult,
-  type SetupResources, normalizeSetupDraft, newKey, slugChannel, removeRole, validateDraft, roleLabel,
+  type SetupResources, normalizeSetupDraft, newKey, removeRole, validateDraft, roleLabel,
 } from "../../lib/server-setup";
 
 const msg = (e: unknown) => (e instanceof Error ? e.message : "Eroare necunoscută.");
@@ -673,16 +673,17 @@ export function ServerSetupPage() {
                 <div key={ch.key} className="rounded-xl border border-border/60 bg-background/40 p-4" data-testid={`card-setup-channel-${ch.key}`}>
                   <div className="flex items-center gap-2">
                     <Hash className="h-4 w-4 text-muted-foreground" />
-                    <Input value={ch.name} disabled={Boolean(ch.discordId)} onChange={e => updateChannel(ci, hi, { ...ch, name: slugChannel(e.target.value) })} data-testid={`input-channel-${ch.key}`} />
+                    <Input value={ch.name} maxLength={100} placeholder="ex. ╭─・👋・bun-venit" disabled={Boolean(ch.discordId)} onChange={e => updateChannel(ci, hi, { ...ch, name: e.target.value })} data-testid={`input-channel-${ch.key}`} />
                     <Button size="icon" variant="ghost" aria-label="Elimină canalul din draft" onClick={() => setDraft({ ...draft, categories: draft.categories.map((x, i) => i !== ci ? x : { ...x, channels: x.channels.filter((_, j) => j !== hi) }) })} data-testid={`button-remove-channel-${ch.key}`}><Trash2 className="h-4 w-4" /></Button>
                   </div>
+                  <p className="mt-1 text-[10px] text-muted-foreground">Sunt acceptate diacritice, simboluri și emoji; maximum 100 de caractere.</p>
                   <div className="mt-3 grid gap-3 md:grid-cols-2">
                     <label className="text-[11px] text-muted-foreground">Canal Discord existent (opțional)
                       <select className="mt-1 h-9 w-full rounded-md border border-input bg-background px-2 text-xs text-foreground"
                         value={ch.discordId ?? ""} onChange={e => {
                           const discordId = e.target.value || undefined;
                           const selectedChannel = resources?.channels.find(channel => channel.id === discordId);
-                          updateChannel(ci, hi, { ...ch, discordId, ...(selectedChannel ? { name: slugChannel(selectedChannel.name) } : {}) });
+                          updateChannel(ci, hi, { ...ch, discordId, ...(selectedChannel ? { name: selectedChannel.name } : {}) });
                         }}
                         data-testid={`select-existing-channel-${ch.key}`}>
                         <option value="">Creează canal nou</option>

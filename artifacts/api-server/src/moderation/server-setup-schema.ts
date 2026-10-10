@@ -3,6 +3,7 @@ import { z } from "zod";
 const key = z.string().regex(/^[a-z][a-z0-9_-]{0,39}$/);
 const snowflake = z.string().regex(/^\d{5,25}$/);
 const name = z.string().trim().min(1).max(100).refine(n => !n.includes("@"), "Mențiunile nu sunt permise.");
+const channelName = z.string().trim().min(1).max(100).refine(n => !n.includes("@"), "Mențiunile nu sunt permise.");
 export const setupDraftSchema = z.object({
   roles: z.array(z.object({
     key,
@@ -20,7 +21,7 @@ export const setupDraftSchema = z.object({
     writers: z.array(key).max(21).default([]),
     channels: z.array(z.object({
       key,
-      name: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,79}$/),
+      name: channelName,
       readers: z.array(key).max(21),
       writers: z.array(key).max(21),
       inheritsCategory: z.boolean().default(false),

@@ -44,10 +44,6 @@ export function allKeys(d: SetupDraft): Set<string> {
   return new Set([...d.roles.map(r => r.key), ...d.categories.map(c => c.key), ...d.categories.flatMap(c => c.channels.map(ch => ch.key))]);
 }
 
-export function slugChannel(v: string): string {
-  return v.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, "-").replace(/[^a-z0-9_-]/g, "").slice(0, 80);
-}
-
 export function toggleReader(ch: SetupChannel, role: string): SetupChannel {
   if (ch.readers.includes(role)) return { ...ch, readers: ch.readers.filter(r => r !== role), writers: ch.writers.filter(r => r !== role) };
   return { ...ch, readers: [...ch.readers, role] };
@@ -86,7 +82,9 @@ export function validateDraft(d: SetupDraft): string[] {
     if (c.channels.length > 30) out.push(`Categoria ${c.name}: maximum 30 de canale.`);
     if (dup(c.channels.map(ch => ch.name))) out.push(`Categoria ${c.name}: nume de canale duplicate.`);
     for (const ch of c.channels) {
-      if (!/^[a-z0-9][a-z0-9_-]{0,79}$/.test(ch.name)) out.push(`Canalul „${ch.name || "(gol)"}”: doar litere mici, cifre, - și _.`);
+      if (!ch.name.trim() || ch.name.length > 100 || ch.name.includes("@")) {
+        out.push(`Canalul „${ch.name || "(gol)"}”: numele trebuie să aibă maximum 100 de caractere și nu poate conține @.`);
+      }
       if (ch.explanation.length > 400) out.push(`Canalul ${ch.name}: explicația depășește 400 de caractere.`);
     }
   }

@@ -106,6 +106,18 @@ describe("server setup validation", () => {
     d.categories[0].channels[0].writers = ["member"];
     expect(setupDraftSchema.safeParse(d).success).toBe(false);
   });
+  it("accepts Unicode symbols and emoji in channel names", () => {
+    const draft = smallDraft();
+    draft.categories[0].channels[0].name = "╭─・👋・bun-venit";
+    expect(setupDraftSchema.safeParse(draft).success).toBe(true);
+  });
+  it("still rejects blank, overlong, and mention-like channel names", () => {
+    const draft = smallDraft();
+    for (const name of ["   ", "a".repeat(101), "staff @everyone"]) {
+      draft.categories[0].channels[0].name = name;
+      expect(setupDraftSchema.safeParse(draft).success).toBe(false);
+    }
+  });
   it("rejects duplicate keys/names and reserved role keys", () => {
     const d = smallDraft(); d.roles.push({ ...d.roles[0] });
     expect(setupDraftSchema.safeParse(d).success).toBe(false);
