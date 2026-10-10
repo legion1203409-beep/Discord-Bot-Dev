@@ -1077,7 +1077,10 @@ export function ConfigEditor({
         <ListField ids label="Roluri staff" help="Roluri autorizate pentru moderare; un ID pe rând." values={value.permissions.staffRoleIds} onChange={(next) => set(["permissions", "staffRoleIds"], next)} />
         <div className="grid gap-3 md:grid-cols-2">
           <Toggle label="Permite Manage Guild" help="Membrii cu Manage Server primesc acces la comenzile de moderare." checked={value.permissions.allowManageGuild} onChange={(next) => set(["permissions", "allowManageGuild"], next)} />
-          <Toggle label="Permite administratorilor setările" help="Permite administratorilor să gestioneze această configurație." checked={value.permissions.allowAdminsSettings} onChange={(next) => set(["permissions", "allowAdminsSettings"], next)} />
+          <div className="rounded-md border border-border bg-background p-3">
+            <p className="text-sm font-medium text-foreground">Acces la setări și audit</p>
+            <p className="mt-1 text-xs text-muted-foreground">Proprietarii serverului și membrii cu permisiunea Discord Administrator.</p>
+          </div>
           <Toggle label="Multi-server activ" help="Activează funcționarea în mai multe servere." checked={value.multiServer.enabled} onChange={(next) => set(["multiServer", "enabled"], next)} />
           <Toggle label="Date izolate per server" help="Este obligatoriu pentru confidențialitate și nu poate fi dezactivat." checked={true} disabled onChange={() => undefined} />
         </div>

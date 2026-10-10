@@ -340,6 +340,8 @@ export const ModerationConfigSchema = z.object({
   permissions: z.object({
     staffRoleIds: idList.default([]),
     allowManageGuild: z.boolean().default(true),
+    // Legacy persisted field. Settings and audit access now always follows
+    // Discord Administrator permissions, independently of a per-guild toggle.
     allowAdminsSettings: z.boolean().default(false),
   }).default({}),
 }).superRefine((config, ctx) => {

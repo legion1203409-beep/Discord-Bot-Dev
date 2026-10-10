@@ -5,13 +5,14 @@ vi.mock("discord.js", () => ({
   PermissionFlagsBits: { Administrator: 8n, ManageGuild: 32n },
 }));
 
-import { assertTrustedOrigin, clearSessionCookie, getGuildAccess, hashSecret, requireSession, setModerationClient, setSessionCookie } from "../auth";
+import { assertGuildAccess, assertTrustedOrigin, clearSessionCookie, getGuildAccess, hashSecret, requireSession, setModerationClient, setSessionCookie } from "../auth";
 
 describe("moderation web-session security", () => {
   const originalNodeEnv = process.env.NODE_ENV;
 
   afterEach(() => {
     process.env.NODE_ENV = originalNodeEnv;
+    setModerationClient(null);
   });
 
   it("hashes secrets deterministically without retaining plaintext", () => {
@@ -48,6 +49,23 @@ describe("moderation web-session security", () => {
     await expect(getGuildAccess("123456", "owner")).resolves.toBe("owner");
     expect(guildFetch).toHaveBeenCalledWith({ guild: "123456", force: true });
     expect(memberFetch).toHaveBeenCalledWith({ user: "owner", force: true });
+  });
+
+  it("allows Discord administrators to access settings and audit without a guild toggle", async () => {
+    const adminId = "discord-admin";
+    const memberFetch = vi.fn().mockResolvedValue({
+      permissions: { has: vi.fn((permission: bigint) => permission === 8n) },
+      roles: { cache: { has: vi.fn().mockReturnValue(false) } },
+    });
+    const guildFetch = vi.fn().mockResolvedValue({
+      id: "123456",
+      ownerId: "different-owner",
+      members: { fetch: memberFetch },
+    });
+    setModerationClient({ guilds: { fetch: guildFetch } } as never);
+
+    await expect(assertGuildAccess("123456", adminId, "config")).resolves.toBe("administrator");
+    await expect(assertGuildAccess("123456", adminId, "audit")).resolves.toBe("administrator");
   });
 
   it("treats malformed cookie encoding as unauthenticated", async () => {

@@ -133,10 +133,8 @@ export async function assertGuildAccess(guildId: string, userId: string, purpose
   const access = await getGuildAccess(guildId, userId);
   if (!access) throw new ModerationAuthError(403, "You no longer have moderation access in this guild");
   if (purpose === "operations") return access;
-  if (access === "owner") return access;
-  const config = await moderationStore.getConfig(guildId);
-  if (access === "administrator" && config.config.permissions.allowAdminsSettings) return access;
-  throw new ModerationAuthError(403, "Only the guild owner may access moderation settings and audit");
+  if (access === "owner" || access === "administrator") return access;
+  throw new ModerationAuthError(403, "Only the guild owner or a Discord administrator may access moderation settings and audit");
 }
 
 export class ModerationAuthError extends Error {
