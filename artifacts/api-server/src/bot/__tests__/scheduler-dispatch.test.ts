@@ -180,6 +180,14 @@ vi.mock("../daily-stats", async (importOriginal) => {
   };
 });
 
+vi.mock("../gameplay-store", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../gameplay-store")>();
+  return {
+    ...actual,
+    isGameplayPaused: vi.fn(() => false),
+  };
+});
+
 vi.mock("../tribute", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../tribute")>();
   return {

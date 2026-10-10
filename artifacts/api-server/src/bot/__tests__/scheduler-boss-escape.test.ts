@@ -142,6 +142,14 @@ vi.mock("../channel-config", () => ({
   resetAllChannels: vi.fn(),
 }));
 
+vi.mock("../gameplay-store", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../gameplay-store")>();
+  return {
+    ...actual,
+    isGameplayPaused: vi.fn(() => false),
+  };
+});
+
 // ── Import scheduler after all mocks are registered ──────────────────────────
 import { fireFinalBoss, getGuildActiveBossMap } from "../scheduler";
 

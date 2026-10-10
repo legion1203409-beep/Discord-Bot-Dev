@@ -45,7 +45,9 @@ export interface GameplayConfig {
 }
 
 export const DEFAULT_GAMEPLAY_CONFIG: GameplayConfig = {
-  paused: false,
+  // New/unconfigured guilds require explicit activation from the dashboard.
+  // Persisted legacy configs without this field remain active in normalization.
+  paused: true,
   messages: {
     gamePaused: "⏸️ Jocul este oprit momentan. Un administrator îl poate reporni cu `/startjoc`.",
     oraclePaused: "🛑 Oracle AI este oprit momentan. Un administrator îl poate reporni cu `/startai`.",
