@@ -442,6 +442,8 @@ describe("handleToxicity", () => {
     const result = await handleToxicity(makeClient(BOT_ID), msg as unknown as Message);
     expect(result).toBe(true);
     expect(msg._reply).toHaveBeenCalledOnce();
+    const replyContent: string = (msg._reply.mock.calls[0] as [{ content: string }])[0].content;
+    expect(replyContent).toContain("dracului");
   });
 
   it("mutes + warns on a plain insult (no hard profanity), e.g. 'prostule'", async () => {
@@ -458,6 +460,8 @@ describe("handleToxicity", () => {
     expect(result).toBe(true);
     expect(mockTimeout).toHaveBeenCalledOnce();
     expect(msg._reply).toHaveBeenCalledOnce();
+    const replyContent: string = (msg._reply.mock.calls[0] as [{ content: string }])[0].content;
+    expect(replyContent).toContain("dracului");
   });
 
   it("issues Discord timeout when bot has ModerateMembers + member is manageable", async () => {

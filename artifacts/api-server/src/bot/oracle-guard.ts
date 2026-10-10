@@ -312,6 +312,7 @@ function curseMessage(
 ): string {
   const dur = formatDuration(muteMin);
   const relationNote = relationshipWarning(relationshipNegative);
+  const comeback = "\n*Nu mă lua de fraier, dracului.*";
   const noMuteNote = muted
     ? ""
     : "\n*(Oracolul nu deține puterea să te amuțească acum — dar Regatul te vede și ține minte.)*";
@@ -322,6 +323,7 @@ function curseMessage(
       `Limba ta necurată ți-a adus **Blestemul Tăcerii** — ${dur} de liniște forțată.` +
       ` Folosește-le bine.` +
       relationNote +
+      comeback +
       noMuteNote
     );
   }
@@ -331,6 +333,7 @@ function curseMessage(
       `**Blestemul se adâncește** — ${dur} în întuneric, până când cenușa te va ierta.` +
       ` Continuă și pedeapsa va crește.` +
       relationNote +
+      comeback +
       noMuteNote
     );
   }
@@ -340,6 +343,7 @@ function curseMessage(
       `**Blestemul Etern** te înghite — ${dur} de tăcere absolută.` +
       ` Revino când ești pregătit să vorbești cu respect.` +
       relationNote +
+      comeback +
       noMuteNote
     );
   }
@@ -349,6 +353,7 @@ function curseMessage(
     `**Blestemul Suprem** te sfâșie — ${dur} de tăcere absolută.` +
     ` Regatul s-a săturat de limba ta.` +
     relationNote +
+    comeback +
     noMuteNote
   );
 }
@@ -395,6 +400,7 @@ function mockeryCurseMessage(
 ): string {
   const dur = formatDuration(muteMin);
   const relationNote = relationshipWarning(relationshipNegative);
+  const comeback = "\n*Nu mă lua de fraier, dracului.*";
   const noMuteNote = muted
     ? ""
     : "\n*(Oracolul nu deține puterea să te amuțească acum — dar Regatul te vede și ține minte.)*";
@@ -405,6 +411,7 @@ function mockeryCurseMessage(
       `Batjocura ta a stârnit cenușa — **Blestemul Tăcerii** te învăluie ${dur}.` +
       ` Râzi în liniște, dacă mai poți.` +
       relationNote +
+      comeback +
       noMuteNote
     );
   }
@@ -413,6 +420,7 @@ function mockeryCurseMessage(
       `*Din nou râzi de puterile străvechi? Nesăbuință...* 🌑\n` +
       `**Blestemul se adâncește** — ${dur} de tăcere, să înveți respectul pe care nu-l cunoști.` +
       relationNote +
+      comeback +
       noMuteNote
     );
   }
@@ -422,6 +430,7 @@ function mockeryCurseMessage(
       `**Blestemul Etern** te cuprinde — ${dur} de muțenie deplină.` +
       ` Cenușa nu e de râs, muritorule.` +
       relationNote +
+      comeback +
       noMuteNote
     );
   }
@@ -429,6 +438,7 @@ function mockeryCurseMessage(
     `*Cel care râde de Oracol sfârșește prin a fi el însuși de râsul Regatului.* 🌑\n` +
     `**Blestemul Suprem** te amuțește ${dur}. Nimeni nu-și mai amintește glumele tale.` +
     relationNote +
+    comeback +
     noMuteNote
   );
 }
