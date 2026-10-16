@@ -671,9 +671,16 @@ export async function executeModerationAction(input: ModerationActionInput): Pro
   }
 }
 
-async function applyAutomatic(guild: Guild, config: ModerationConfig, message: Message, detection: Detection, rule: { action: ConfiguredAction; severity?: "soft" | "normal" | "hard"; deleteMessage?: boolean }): Promise<boolean> {
+async function applyAutomatic(
+  guild: Guild,
+  config: ModerationConfig,
+  message: Message,
+  detection: Detection,
+  rule: { action: ConfiguredAction; severity?: "soft" | "normal" | "hard"; deleteMessage?: boolean },
+  extractedText?: string,
+): Promise<boolean> {
   return serializedEscalation(`${guild.id}:${message.author.id}`, () =>
-    applyAutomaticSerialized(guild, config, message, detection, rule),
+    applyAutomaticSerialized(guild, config, message, detection, rule, extractedText),
   );
 }
 
@@ -718,7 +725,43 @@ export function sharesActivityLogDestination(
   );
 }
 
-async function applyAutomaticSerialized(guild: Guild, config: ModerationConfig, message: Message, detection: Detection, rule: { action: ConfiguredAction; severity?: "soft" | "normal" | "hard"; deleteMessage?: boolean }): Promise<boolean> {
+function moderationMessageEvidence(message: Message): {
+  messageContent: string;
+  attachments: Array<{ name: string; url: string }>;
+} {
+  const embedText = message.embeds.flatMap((embed) => [
+    embed.title, embed.description, embed.url, embed.author?.name, embed.footer?.text,
+    ...embed.fields.flatMap((field) => [field.name, field.value]),
+  ]);
+  return {
+    messageContent: [message.content, ...embedText].filter((part): part is string => Boolean(part?.trim())).join("\n"),
+    attachments: [...message.attachments.values()].map((attachment) => ({
+      name: attachment.name || "Atașament",
+      url: attachment.url,
+    })),
+  };
+}
+
+function configuredActionLabel(action: ConfiguredAction): string {
+  const labels: Record<ConfiguredAction, string> = {
+    none: "doar înregistrare",
+    delete: "ștergere mesaj",
+    warn: "avertisment",
+    mute: "timeout",
+    kick: "eliminare",
+    ban: "ban",
+  };
+  return labels[action];
+}
+
+async function applyAutomaticSerialized(
+  guild: Guild,
+  config: ModerationConfig,
+  message: Message,
+  detection: Detection,
+  rule: { action: ConfiguredAction; severity?: "soft" | "normal" | "hard"; deleteMessage?: boolean },
+  extractedText?: string,
+): Promise<boolean> {
   const idempotencyKey = `${guild.id}:${message.id}:${detection.kind}:${rule.action}`;
   if (!reserveAutomaticAction(idempotencyKey)) return false;
   const incidentKey = `automod:${guild.id}:${message.author.id}:${detection.kind}:${Math.floor(Date.now() / 60_000)}`;
@@ -734,6 +777,7 @@ async function applyAutomaticSerialized(guild: Guild, config: ModerationConfig, 
   const selectedAction = await actionAtEscalationLevel(config, guild.id, message.author.id, rule.action);
   const isScamDetection = detection.kind === "scam";
   const deleteMessage = shouldDeleteAutoModMessage(selectedAction, rule.deleteMessage, isScamDetection);
+  const evidence = moderationMessageEvidence(message);
   let deletionSucceeded = false;
   if (deleteMessage) {
     try {
@@ -754,12 +798,9 @@ async function applyAutomaticSerialized(guild: Guild, config: ModerationConfig, 
     }
   }
   if (destination?.channelId) {
-    const deletionLogOptions = destination.title === "AutoMod"
-      ? {
-        deletedContent: deletionSucceeded ? message.content : undefined,
-        deletionFailed: deleteMessage && !deletionSucceeded,
-      }
-      : {};
+    const actionSummary = deleteMessage
+      ? deletionSucceeded ? "Mesaj șters automat" : "Ștergerea mesajului a eșuat"
+      : `Acțiune configurată: ${configuredActionLabel(selectedAction)}`;
     await notify(
       config,
       guild,
@@ -769,7 +810,16 @@ async function applyAutomaticSerialized(guild: Guild, config: ModerationConfig, 
         why,
         message.author.id,
         message.channelId,
-        deletionLogOptions,
+        {
+          detailed: true,
+          source: destination.title,
+          category: detection.kind === "scam" ? "Scam" : detection.kind,
+          messageContent: evidence.messageContent,
+          attachments: evidence.attachments,
+          extractedText,
+          deletionFailed: deleteMessage && !deletionSucceeded,
+          actionSummary,
+        },
       ),
       destination.channelId,
       {
@@ -936,19 +986,43 @@ export async function handleModerationMessage(client: Client, message: Message):
     const imageTexts = await readScamImageTexts(message.attachments.values());
     for (const imageText of imageTexts) {
       const scamFinding = detectScamImageText(imageText, auto.scamPhrases);
-      if (scamFinding && await applyAutomatic(message.guild, config, message, scamFinding, auto.scamFilter)) return true;
+      if (scamFinding && await applyAutomatic(message.guild, config, message, scamFinding, auto.scamFilter, imageText)) return true;
     }
   }
   const aiFinding = isAiExcluded(config.ai, message.channelId, target.roles.cache.keys())
     ? null : await detectWithAi(config, message);
   if (aiFinding) {
-    await notify(config, message.guild, "Semnalare AI", aiFinding.detail, config.ai.logChannelId, {
-      memberId: message.author.id,
-      moderatorId: client.user?.id,
-      channelId: message.channelId,
-    });
     const selectedAction = aiActionForCategory(config.ai, aiFinding.category);
     const deleteMessage = aiDeleteMessageForCategory(config.ai, aiFinding.category);
+    const evidence = moderationMessageEvidence(message);
+    const categoryLabel = aiFinding.category === "scams" ? "Scam / fraudă" : aiFinding.category;
+    await notify(
+      config,
+      message.guild,
+      "Semnalare AI",
+      buildAutomaticModerationLogDescription(
+        "Moderare AI",
+        aiFinding.detail,
+        message.author.id,
+        message.channelId,
+        {
+          detailed: true,
+          source: "Moderare AI",
+          category: `${categoryLabel} · încredere ${aiFinding.count ?? 0}%`,
+          messageContent: evidence.messageContent,
+          attachments: evidence.attachments,
+          actionSummary: deleteMessage
+            ? `Ștergere configurată; ${configuredActionLabel(selectedAction)}`
+            : `Acțiune configurată: ${configuredActionLabel(selectedAction)}`,
+        },
+      ),
+      config.ai.logChannelId,
+      {
+        memberId: message.author.id,
+        moderatorId: client.user?.id,
+        channelId: message.channelId,
+      },
+    );
     if (selectedAction !== "none" || deleteMessage) {
       return applyAutomatic(message.guild, config, message, aiFinding, {
         action: selectedAction,
@@ -1015,9 +1089,16 @@ async function handleNativeAutoModerationExecution(
         `Cuvânt interzis detectat${matched ? ` („${matched}”)` : ""}`,
         target.id,
         channelId,
-        execution.action.type === AutoModerationActionType.BlockMessage
-          ? { deletedContent: execution.content }
-          : {},
+        {
+          detailed: true,
+          source: "AutoMod Discord",
+          category: "Cuvânt interzis",
+          messageContent: execution.content ?? "",
+          deletedContent: execution.action.type === AutoModerationActionType.BlockMessage ? execution.content : undefined,
+          actionSummary: execution.action.type === AutoModerationActionType.BlockMessage
+            ? "Mesaj blocat de AutoMod Discord"
+            : `Acțiune configurată: ${configuredActionLabel(selectedAction)}`,
+        },
       ),
       autoMod.logChannelId,
       {
