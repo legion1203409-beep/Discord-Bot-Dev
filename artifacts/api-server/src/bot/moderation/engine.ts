@@ -44,6 +44,8 @@ export type ModerationActionInput = {
   amount?: number;
   /** Internal callers use this to distinguish bot enforcement from staff tools. */
   source?: "manual" | "automod" | "raid";
+  /** Avoid duplicate Discord posts when a module alert and activity log share a channel. */
+  skipActivityLog?: boolean;
   evidence?: unknown[];
   /** Required for externally initiated actions; incident keys are generated for internal events. */
   idempotencyKey?: string;
@@ -283,7 +285,14 @@ async function createCase(input: ModerationActionInput, outcome: "pending" | "ap
   return stored.id;
 }
 
-async function audit(input: ModerationActionInput, eventType: string, targetType: string | null, targetId: string | null, detail: Record<string, unknown>): Promise<void> {
+async function audit(
+  input: ModerationActionInput,
+  eventType: string,
+  targetType: string | null,
+  targetId: string | null,
+  detail: Record<string, unknown>,
+  skipActivityLog = false,
+): Promise<void> {
   const config = await getConfig(input.guildId);
   const auditDetail = {
     ...detail,
@@ -294,7 +303,7 @@ async function audit(input: ModerationActionInput, eventType: string, targetType
   if (config.audit.enabled || config.activityLog.enabled || (input.source === "manual" && config.manualTools.logActions)) {
     await moderationStore.writeAudit({ guildId: input.guildId, actorId: input.actorId, eventType, targetType, targetId, detail: auditDetail });
   }
-  if (config.activityLog.enabled && moderationClient) {
+  if (config.activityLog.enabled && moderationClient && !skipActivityLog) {
     const guild = moderationClient.guilds.cache.get(input.guildId) ??
       await moderationClient.guilds.fetch(input.guildId).catch(() => null);
     if (guild) await deliverActivityLog(guild, config, eventType, targetType ?? "target", targetId ?? input.guildId, auditDetail);
@@ -354,10 +363,10 @@ function buildEmbed(
   if (config.embeds.style === "compact") {
     embed.setFooter({ text: "Moderare" });
   } else if (config.embeds.style === "detailed") {
-    if (!config.embeds.descriptionTemplate.includes("{reason}")) {
-      embed.addFields({ name: "Detalii", value: description.slice(0, 1_024) });
-    }
     embed.setTimestamp();
+  }
+  if (!config.embeds.descriptionTemplate.includes("{reason}")) {
+    embed.addFields({ name: "Detalii", value: description.slice(0, 1_024) });
   }
   if (config.embeds.iconUrl) embed.setThumbnail(config.embeds.iconUrl);
   if (config.embeds.animations && config.embeds.animationUrl) embed.setImage(config.embeds.animationUrl);
@@ -637,7 +646,7 @@ export async function executeModerationAction(input: ModerationActionInput): Pro
     source: input.source ?? "manual",
     caseId,
     ...(input.durationMinutes !== undefined ? { durationMinutes: input.durationMinutes } : {}),
-  }).catch(() => undefined);
+  }, input.skipActivityLog).catch(() => undefined);
   return { caseId, actionId, summary };
   } catch (error) {
     if (discordEffectApplied || error instanceof ModerationActionUncertainError) throw error;
@@ -657,7 +666,7 @@ export async function executeModerationAction(input: ModerationActionInput): Pro
     await audit(input, "action.failed", targetType, targetId, {
       actionId, type: input.type, source: input.source ?? "manual",
       error: error instanceof Error ? error.message.slice(0, 500) : "Acțiune Discord eșuată", caseId,
-    }).catch(() => undefined);
+    }, input.skipActivityLog).catch(() => undefined);
     throw error;
   }
 }
@@ -696,12 +705,30 @@ export function automaticLogDestination(
   return null;
 }
 
+export function sharesActivityLogDestination(
+  config: ModerationConfig,
+  category: "moderation" | "security",
+  destinationId: string | null | undefined,
+): boolean {
+  return Boolean(
+    destinationId &&
+    config.activityLog.enabled &&
+    config.activityLog.categories[category] &&
+    config.activityLog.channelIds[category] === destinationId,
+  );
+}
+
 async function applyAutomaticSerialized(guild: Guild, config: ModerationConfig, message: Message, detection: Detection, rule: { action: ConfiguredAction; severity?: "soft" | "normal" | "hard"; deleteMessage?: boolean }): Promise<boolean> {
   const idempotencyKey = `${guild.id}:${message.id}:${detection.kind}:${rule.action}`;
   if (!reserveAutomaticAction(idempotencyKey)) return false;
   const incidentKey = `automod:${guild.id}:${message.author.id}:${detection.kind}:${Math.floor(Date.now() / 60_000)}`;
   const why = detection.detail;
   const destination = automaticLogDestination(config, rule);
+  const duplicateModerationActivityLog = sharesActivityLogDestination(
+    config,
+    "moderation",
+    destination?.channelId,
+  );
   // Severity changes only detector thresholds. Escalation changes sanctions
   // solely when the owner explicitly enabled and configured its levels.
   const selectedAction = await actionAtEscalationLevel(config, guild.id, message.author.id, rule.action);
@@ -713,6 +740,7 @@ async function applyAutomaticSerialized(guild: Guild, config: ModerationConfig, 
       await executeModerationAction({
         guildId: guild.id, actorId: moderationClient!.user!.id, targetId: message.author.id, channelId: message.channelId,
         type: "delete", reason: `AutoMod delete: ${why}`, source: "automod",
+        skipActivityLog: duplicateModerationActivityLog,
         idempotencyKey: `${incidentKey}:message:${message.id}`,
         evidence: [{ messageId: message.id, channelId: message.channelId, kind: detection.kind }],
       });
@@ -722,7 +750,7 @@ async function applyAutomaticSerialized(guild: Guild, config: ModerationConfig, 
       await audit({ guildId: guild.id, actorId: moderationClient!.user!.id, type: "warn", source: "automod" }, "automod.message_delete_failed", "message", message.id, {
         kind: detection.kind,
         error: error instanceof Error ? error.message : "delete failed",
-      }).catch(() => undefined);
+      }, duplicateModerationActivityLog).catch(() => undefined);
     }
   }
   if (destination?.channelId) {
@@ -927,7 +955,14 @@ export async function handleModerationMessage(client: Client, message: Message):
         deleteMessage,
       });
     }
-    await audit({ guildId: message.guildId, actorId: client.user?.id ?? "system", type: "warn", source: "automod" }, "ai.flagged", "message", message.id, { category: aiFinding.detail });
+    await audit(
+      { guildId: message.guildId, actorId: client.user?.id ?? "system", type: "warn", source: "automod" },
+      "ai.flagged",
+      "message",
+      message.id,
+      { category: aiFinding.detail },
+      sharesActivityLogDestination(config, "security", config.ai.logChannelId),
+    );
   }
   return false;
 }

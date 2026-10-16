@@ -22,6 +22,9 @@ export function renderActivityLogTemplate(template: string, context: {
   const memberId = memberTarget ? targetId : snowflake(authorId) ? authorId : null;
   const actor = detail.actorVerified === true && snowflake(detail.actorId) ? `<@${detail.actorId}>` : "Neverificat de Discord";
   const channel = snowflake(detail.channelId) ? `<#${detail.channelId}>` : targetType === "channel" && snowflake(targetId) ? `<#${targetId}>` : "—";
+  const messageContent = presentation.fields.find((field) =>
+    field.name === "Conținut șters" || field.name === "Mostre din mesajele șterse",
+  )?.value;
   const values: Record<string, string> = {
     guild: text(context.guildName), event: eventType, category: ACTIVITY_LOG_GROUPS[context.category],
     title: context.defaultTitle, member: memberId && snowflake(memberId) ? `<@${memberId}>` : "—",
@@ -31,7 +34,7 @@ export function renderActivityLogTemplate(template: string, context: {
     timestamp: `<t:${Math.floor(now / 1000)}:F>`, timestamp_relative: `<t:${Math.floor(now / 1000)}:R>`,
     details: [presentation.description, ...presentation.fields.map((field) => `**${field.name}:**\n${field.value}`)].filter(Boolean).join("\n\n"),
     before: text(detail.displayBeforeContent), after: text(detail.displayAfterContent),
-    content: text(detail.messageContent ?? detail.displayBeforeContent),
+    content: text(detail.messageContent ?? detail.displayAfterContent ?? detail.displayBeforeContent ?? messageContent),
     count: text(detail.messageCount ?? detail.count ?? detail.joins ?? detail.amount),
     name: text(detail.entityName ?? detail.name ?? detail.channelName),
     changes: presentation.fields.filter((field) => field.name === "Detalii" || field.name.includes("Modificări")).map((field) => field.value).join("\n") || "—",

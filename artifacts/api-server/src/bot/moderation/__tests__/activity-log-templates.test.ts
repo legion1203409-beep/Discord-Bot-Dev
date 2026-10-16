@@ -36,7 +36,11 @@ describe("individual activity log templates", () => {
       const embed = (send.mock.calls[0][0] as any).embeds[0].toJSON();
       expect(embed.title).toBe(`Personalizat Test guild: ${entry.event}`);
       expect(embed.description).toBe("<@555555> · <@777777> · <#888888> · Motiv test");
-      expect(embed.fields ?? []).toEqual([]);
+      if (["message_update", "message_delete", "message_bulk_delete"].includes(entry.key)) {
+        expect(embed.fields.length).toBeGreaterThan(0);
+      } else {
+        expect(embed.fields ?? []).toEqual([]);
+      }
       expect((send.mock.calls[0][0] as any).allowedMentions).toEqual({ parse: [] });
       config.activityLog.templates[entry.key] = { title: "", description: "" };
       await deliverActivityLog(guild, config, entry.event, "member", "555555", detail);
@@ -64,6 +68,49 @@ describe("individual activity log templates", () => {
     const embed = (send.mock.calls[0][0] as any).embeds[0].toJSON();
     expect(embed.description).toContain("Text inițial");
     expect(embed.description).toContain("Text nou");
+    expect(embed.fields ?? []).toEqual([]);
+  });
+
+  it("keeps message text visible when a custom description omits message-detail variables", async () => {
+    const config = structuredClone(defaultModerationConfig);
+    config.activityLog.enabled = true;
+    config.activityLog.categories.messages = true;
+    config.activityLog.channelIds.messages = "123456";
+    config.activityLog.templates.message_update = { title: "Editare", description: "Eveniment: {event}" };
+    const send = vi.fn(async (_payload: unknown) => undefined);
+    const guild = { id: "999999", name: "Test guild", channels: { cache: new Map([["123456", { guildId: "999999", isTextBased: () => true, send }]]) } } as unknown as Guild;
+
+    await deliverActivityLog(guild, config, "discord.message_update", "message", "message-id", {
+      actorVerified: true, actorId: "777777", channelId: "888888",
+      displayBeforeContent: "Text inițial", displayAfterContent: "Text nou", displayContentChanged: true,
+    });
+
+    const embed = (send.mock.calls[0]![0] as any).embeds[0].toJSON();
+    expect(embed.description).toBe("Eveniment: discord.message_update");
+    expect(embed.fields.some((field: { value: string }) => field.value.includes("Text inițial"))).toBe(true);
+    expect(embed.fields.some((field: { value: string }) => field.value.includes("Text nou"))).toBe(true);
+  });
+
+  it("renders deleted message text when a custom template uses {content}", async () => {
+    const config = structuredClone(defaultModerationConfig);
+    config.activityLog.enabled = true;
+    config.activityLog.categories.messages = true;
+    config.activityLog.channelIds.messages = "123456";
+    config.activityLog.templates.message_delete = { title: "Mesaj șters", description: "{content}" };
+    const send = vi.fn(async (_payload: unknown) => undefined);
+    const guild = { id: "999999", name: "Test guild", channels: { cache: new Map([["123456", { guildId: "999999", isTextBased: () => true, send }]]) } } as unknown as Guild;
+
+    await deliverActivityLog(guild, config, "discord.message_delete", "message", "message-id", {
+      displayDeletedMessages: [{
+        authorId: "555555",
+        content: "Textul mesajului șters",
+        attachmentCount: 0,
+        imageAttachments: [],
+      }],
+    });
+
+    const embed = (send.mock.calls[0]![0] as any).embeds[0].toJSON();
+    expect(embed.description).toContain("Textul mesajului șters");
     expect(embed.fields ?? []).toEqual([]);
   });
 

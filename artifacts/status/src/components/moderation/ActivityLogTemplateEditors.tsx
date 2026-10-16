@@ -43,7 +43,7 @@ function TextEditor({ value, onChange, variables, preview, emojiProps }: {
     <div className="rounded-md bg-muted/50 p-3 text-xs" aria-label="Previzualizare mesaj">
       <p className="font-medium">{preview(value.title, "title")}</p>
       <p className="mt-1 whitespace-pre-wrap break-words text-muted-foreground">{preview(value.description, "description")}</p>
-      <p className="mt-2 text-muted-foreground">Dacă personalizezi descrierea, detaliile standard nu se mai adaugă separat. Folosește {"{details}"} dacă vrei să le incluzi.</p>
+      <p className="mt-2 text-muted-foreground">La logurile de mesaje, textul original rămâne afișat separat dacă descrierea nu folosește {"{details}"}, {"{before}"}, {"{after}"} sau {"{content}"}. Folosește {"{details}"} pentru a muta toate detaliile în descriere.</p>
     </div>
   </>;
 }

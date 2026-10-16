@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Guild } from "discord.js";
 import { defaultModerationConfig } from "../../../moderation/config";
-import { automaticLogDestination, notify } from "../engine";
+import { automaticLogDestination, notify, sharesActivityLogDestination } from "../engine";
 
 describe("saved moderation notification settings", () => {
   const guildId = "123456789012345678";
@@ -39,6 +39,18 @@ describe("saved moderation notification settings", () => {
       title: "Anti-Flood",
       channelId: "222222222222222222",
     });
+  });
+
+  it("detects when an automatic moderation alert would duplicate the activity log in the same channel", () => {
+    const config = structuredClone(defaultModerationConfig);
+    config.activityLog.enabled = true;
+    config.activityLog.categories.moderation = true;
+    config.activityLog.channelIds.moderation = "111111111111111111";
+
+    expect(sharesActivityLogDestination(config, "moderation", "111111111111111111")).toBe(true);
+    expect(sharesActivityLogDestination(config, "moderation", "222222222222222222")).toBe(false);
+    config.activityLog.enabled = false;
+    expect(sharesActivityLogDestination(config, "moderation", "111111111111111111")).toBe(false);
   });
 
   it("uses the configured GIF animation, icon, text templates and color", async () => {
@@ -125,21 +137,29 @@ describe("saved moderation notification settings", () => {
     expect(embed.fields ?? []).toHaveLength(0);
   });
 
-  it("keeps a detailed field when the embed description template omits the reason", async () => {
+  it.each(["plain", "compact", "detailed"] as const)(
+    "keeps the event details visible when the %s embed template omits the reason",
+    async (style) => {
     const config = structuredClone(defaultModerationConfig);
     config.embeds.enabled = true;
-    config.embeds.style = "detailed";
+    config.embeds.style = style;
     config.embeds.descriptionTemplate = "{action}";
     const { guild, send } = fixture();
 
     await notify(config, guild, "Mesaj șters", "Un mesaj a fost șters.", "987654321098765432");
 
     const payload = send.mock.calls[0]?.[0] as unknown as {
-      embeds: Array<{ toJSON(): { fields?: Array<{ name: string; value: string }> } }>;
+      embeds: Array<{ toJSON(): { fields?: Array<{ name: string; value: string }>; timestamp?: string } }>;
     };
-    expect(payload.embeds[0]!.toJSON().fields).toEqual([
+    const embed = payload.embeds[0]!.toJSON();
+    expect(embed.fields).toEqual([
       { name: "Detalii", value: "Un mesaj a fost șters." },
     ]);
+    if (style === "detailed") {
+      expect(embed.timestamp).toEqual(expect.any(String));
+    } else {
+      expect(embed.timestamp).toBeUndefined();
+    }
   });
 
   it("uses the audit channel for an unset module destination only while audit is enabled", async () => {
