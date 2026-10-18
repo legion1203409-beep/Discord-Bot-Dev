@@ -1,4 +1,5 @@
 import { PUBLIC_DISCORD_INVITE } from "../lib/discord-invite";
+import { SUPER_ADMIN_ID } from "../bot/constants";
 import { setupDraftSchema, setupDraftSaveSchema, setupTemplate } from "./server-setup-schema";
 import { setupSuggestionSchema, suggestSetup } from "./server-setup-ai";
 import {
@@ -1577,10 +1578,10 @@ router.get("/session", asyncRoute(async (req, res) =>
 ;
 
 
-    res.json(
+  res.json(
 {
 
- authenticated: true, userId: session.userId, guilds, csrfToken: session.csrfToken, expiresAt: session.expiresAt.toISOString() 
+ authenticated: true, userId: session.userId, isBotOwner: session.userId === SUPER_ADMIN_ID, guilds, csrfToken: session.csrfToken, expiresAt: session.expiresAt.toISOString()
 }
 
 )
@@ -2419,6 +2420,34 @@ router.get("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
     provisioningPermissions: provisioningPermissionsSchema.parse(provisioningPermissions),
     discordLive: Boolean(getModerationClient()?.isReady()),
   });
+}));
+
+router.post("/guilds/:guildId/bot-control/leave", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  const session = await sessionAndGuild(req, guildId, "config", true);
+  if (session.userId !== SUPER_ADMIN_ID) {
+    throw new ModerationAuthError(403, "Doar proprietarul global al botului poate scoate botul de pe un server.");
+  }
+
+  const client = getModerationClient();
+  if (!client?.isReady()) throw new ModerationAuthError(503, "Botul Discord nu este conectat.");
+
+  let guild;
+  try {
+    guild = await client.guilds.fetch({ guild: guildId, force: true });
+  } catch {
+    throw new ModerationAuthError(404, "Botul nu mai este prezent pe serverul selectat.");
+  }
+  if (guild.id !== guildId) throw new ModerationAuthError(404, "Serverul returnat nu corespunde selecției.");
+
+  const guildName = guild.name;
+  try {
+    await guild.leave();
+  } catch (error) {
+    logger.error({ error, guildId }, "Owner requested bot departure but Discord rejected it");
+    throw new ModerationAuthError(502, "Discord nu a confirmat ieșirea botului de pe server.");
+  }
+  res.status(200).json({ left: true, guildId, guildName });
 }));
 
 router.get("/guilds/:guildId/activity-ranks", asyncRoute(async (req, res) => {

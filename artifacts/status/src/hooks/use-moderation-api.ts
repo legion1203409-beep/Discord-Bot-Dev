@@ -13,6 +13,7 @@ const ACTIVE_GUILD_STORAGE_KEY = "moderation.activeGuildId";
 export interface ModerationSession {
   authenticated: boolean;
   userId?: string;
+  isBotOwner?: boolean;
   guilds?: ModerationGuild[];
   csrfToken?: string;
   expiresAt?: string;
@@ -1361,6 +1362,21 @@ export function useBotControl(guildId: string | null) {
     return saved;
   };
 
+  const leaveServer = async (targetGuildId: string) => {
+    if (!targetGuildId) throw new Error("Nu este selectat niciun server.");
+    if (activeGuildId !== targetGuildId) {
+      throw new Error("Serverul selectat s-a schimbat. Reîncarcă pagina înainte de a continua.");
+    }
+    const result = await apiFetch<{ left: boolean; guildId: string; guildName: string }>(
+      `/guilds/${targetGuildId}/bot-control/leave`,
+      { method: "POST", body: "{}" },
+    );
+    if (result.left !== true || result.guildId !== targetGuildId) {
+      throw new Error("Serverul nu a confirmat ieșirea botului de pe serverul selectat.");
+    }
+    return result;
+  };
+
   return {
     data: dataGuildId === guildId ? data : null,
     loading: loading || Boolean(guildId && dataGuildId !== guildId),
@@ -1370,6 +1386,7 @@ export function useBotControl(guildId: string | null) {
     panelRecovery,
     confirmPanelReconciliation,
     provisionChannels,
+    leaveServer,
     refetch: fetchControl,
   };
 }

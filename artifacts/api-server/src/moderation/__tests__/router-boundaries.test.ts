@@ -1,6 +1,7 @@
 import express from "express";
 import type { Server } from "node:http";
 import { PermissionFlagsBits, TextChannel } from "discord.js";
+import { SUPER_ADMIN_ID } from "../../bot/constants";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -8,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   getConfig: vi.fn(), putConfig: vi.fn(), putProtectionToggle: vi.fn(), listCases: vi.fn(),
   listAudit: vi.fn(), listLogs: vi.fn(), beginAction: vi.fn(), getAction: vi.fn(),
   completeAction: vi.fn(), writeAudit: vi.fn(), execute: vi.fn(),
-  syncNativeAutoMod: vi.fn(),
+  syncNativeAutoMod: vi.fn(), listAccessibleGuilds: vi.fn(),
   loadChannelConfig: vi.fn(), saveChannelConfig: vi.fn(),
   loadProvisioningPermissions: vi.fn(), saveProvisioningPermissions: vi.fn(),
   loadAllianceRecruitmentText: vi.fn(), saveAllianceRecruitmentText: vi.fn(),
@@ -77,7 +78,7 @@ vi.mock("../auth", () => ({
   assertLoginRateLimit: vi.fn(),
   assertMutationRateLimit: vi.fn(),
   clearSessionCookie: vi.fn(),
-  listAccessibleGuilds: vi.fn(),
+  listAccessibleGuilds: mocks.listAccessibleGuilds,
   revokeRequestSessionIfPresent: vi.fn(),
   setSessionCookie: vi.fn(),
 }));
@@ -476,6 +477,80 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
   });
   const post = (body: unknown, headers: Record<string, string> = {}) => ({
     method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body),
+  });
+
+  describe("owner-only bot departure", () => {
+    it("leaves only the requested guild for the global bot owner", async () => {
+      mocks.session.mockResolvedValue({ userId: SUPER_ADMIN_ID, csrfToken: "csrf" });
+      const leave = vi.fn().mockResolvedValue(undefined);
+      const fetchGuild = vi.fn().mockResolvedValue({ id: guildId, name: "Regatul test", leave });
+      mocks.client.mockReturnValue({ isReady: () => true, guilds: { fetch: fetchGuild } });
+
+      const response = await fetch(`${base}/bot-control/leave`, post({}));
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ left: true, guildId, guildName: "Regatul test" });
+      expect(fetchGuild).toHaveBeenCalledWith({ guild: guildId, force: true });
+      expect(leave).toHaveBeenCalledTimes(1);
+      expect(mocks.csrf).toHaveBeenCalledTimes(1);
+    });
+
+    it("rejects another Discord account before contacting the bot client", async () => {
+      const response = await fetch(`${base}/bot-control/leave`, post({}));
+
+      expect(response.status).toBe(403);
+      expect(mocks.client).not.toHaveBeenCalled();
+    });
+
+    it("also requires the owner to retain access to the selected server", async () => {
+      mocks.session.mockResolvedValue({ userId: SUPER_ADMIN_ID, csrfToken: "csrf" });
+      mocks.access.mockRejectedValue(new ModerationAuthError(403, "No server access"));
+
+      const response = await fetch(`${base}/bot-control/leave`, post({}));
+
+      expect(response.status).toBe(403);
+      expect(mocks.client).not.toHaveBeenCalled();
+    });
+
+    it("requires CSRF validation and a connected bot", async () => {
+      mocks.session.mockResolvedValue({ userId: SUPER_ADMIN_ID, csrfToken: "csrf" });
+      mocks.csrf.mockImplementation(() => { throw new ModerationAuthError(403, "Invalid CSRF"); });
+      const rejectedCsrf = await fetch(`${base}/bot-control/leave`, post({}));
+      expect(rejectedCsrf.status).toBe(403);
+      expect(mocks.client).not.toHaveBeenCalled();
+
+      mocks.csrf.mockReset();
+      mocks.client.mockReturnValue({ isReady: () => false, guilds: { fetch: vi.fn() } });
+      const offline = await fetch(`${base}/bot-control/leave`, post({}));
+      expect(offline.status).toBe(503);
+      expect(mocks.client().guilds.fetch).not.toHaveBeenCalled();
+    });
+
+    it("refuses to leave when Discord returns a different guild", async () => {
+      mocks.session.mockResolvedValue({ userId: SUPER_ADMIN_ID, csrfToken: "csrf" });
+      const leave = vi.fn();
+      const fetchGuild = vi.fn().mockResolvedValue({ id: "987654321", name: "Other guild", leave });
+      mocks.client.mockReturnValue({ isReady: () => true, guilds: { fetch: fetchGuild } });
+
+      const response = await fetch(`${base}/bot-control/leave`, post({}));
+
+      expect(response.status).toBe(404);
+      expect(leave).not.toHaveBeenCalled();
+    });
+
+    it("marks the global bot owner in the authenticated session response", async () => {
+      mocks.session.mockResolvedValue({
+        userId: SUPER_ADMIN_ID,
+        csrfToken: "csrf",
+        expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+      });
+      mocks.listAccessibleGuilds.mockResolvedValue([]);
+
+      const response = await fetch(`${base.slice(0, base.indexOf("/guilds/"))}/session`);
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ authenticated: true, isBotOwner: true });
+    });
   });
 
   const putNativeAutoModRoute = (route: "config" | "protection-toggle") => {

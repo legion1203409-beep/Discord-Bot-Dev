@@ -301,13 +301,14 @@ export function BotControlPage({
   provisioningOnly?: boolean;
 }) {
   const [location, setLocation] = useLocation();
-  const { guildId } = useActiveGuild();
+  const { guildId, setGuildId } = useActiveGuild();
   const {
     data,
     loading,
     error,
     update,
     provisionChannels,
+    leaveServer,
     panelRecovery,
     confirmPanelReconciliation,
   } = useBotControl(guildId);
@@ -321,11 +322,13 @@ export function BotControlPage({
   } = useInviteStats(guildId, inviteRange);
   const { data: metadata, refetch: refetchMetadata } = useModerationMetadata(guildId);
   const { toast } = useToast();
-  const { session } = useSession();
+  const { session, retry: refreshSession } = useSession();
   const [draft, setDraft] = useState<BotControlConfig | null>(null);
   const [saving, setSaving] = useState(false);
   const [partialApplyError, setPartialApplyError] = useState<{ guildId: string; message: string } | null>(null);
   const [provisioning, setProvisioning] = useState(false);
+  const [leaveTarget, setLeaveTarget] = useState<{ id: string; name: string } | null>(null);
+  const [leavingServer, setLeavingServer] = useState(false);
   const [provisionConfirmOpen, setProvisionConfirmOpen] = useState(false);
   const [clearCategoryDialogOpen, setClearCategoryDialogOpen] = useState(false);
   const [selectedProvisioningCategories, setSelectedProvisioningCategories] = useState<string[]>(
@@ -879,6 +882,39 @@ export function BotControlPage({
       setTestStep((step) => step + 1);
     }
   };
+  const confirmLeaveServer = async () => {
+    const target = leaveTarget;
+    if (!target || !session?.isBotOwner || leavingServer) return;
+    setLeavingServer(true);
+    try {
+      const result = await leaveServer(target.id);
+      setLeaveTarget(null);
+      toast({
+        title: "Botul a părăsit serverul",
+        description: `Botul a ieșit de pe „${result.guildName}”. Configurația și datele salvate au fost păstrate.`,
+      });
+      if (currentGuild.current === target.id) {
+        setGuildId(null);
+        try {
+          await refreshSession();
+        } catch {
+          toast({
+            variant: "destructive",
+            title: "Lista serverelor nu s-a putut actualiza",
+            description: "Botul a părăsit serverul; reîncarcă pagina pentru a actualiza lista.",
+          });
+        }
+      }
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Botul nu a putut părăsi serverul",
+        description: error instanceof Error ? error.message : "Încearcă din nou.",
+      });
+    } finally {
+      setLeavingServer(false);
+    }
+  };
 
   return (
     <div className={`bot-control-page max-w-5xl space-y-6 animate-stagger-1 ${channelsOnly ? "channels-only-page" : ""} ${provisioningOnly ? "provisioning-only-page" : ""}`}>
@@ -906,7 +942,41 @@ export function BotControlPage({
             <small>{draft.discordLive === true ? "Setările pot fi sincronizate pe Discord" : "Salvarea rămâne disponibilă local"}</small>
           </div>
         </div>
+        {session?.isBotOwner && !channelsOnly && !provisioningOnly && guildId && (
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={!draft.discordLive || leavingServer}
+            onClick={() => setLeaveTarget({
+              id: guildId,
+              name: metadata?.guild.name ?? session.guilds?.find((guild) => guild.id === guildId)?.name ?? "serverul selectat",
+            })}
+          >
+            {leavingServer ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            Scoate botul din server
+          </Button>
+        )}
       </header>
+
+      <Dialog open={Boolean(leaveTarget)} onOpenChange={(open) => { if (!open && !leavingServer) setLeaveTarget(null); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Confirmă ieșirea botului</DialogTitle>
+            <DialogDescription>
+              Botul va părăsi serverul <strong>{leaveTarget?.name}</strong>. Moderarea, jocul și celelalte funcții ale botului se vor opri acolo.
+              Configurația și datele salvate pe site nu vor fi șterse.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" disabled={leavingServer} onClick={() => setLeaveTarget(null)}>
+              Anulează
+            </Button>
+            <Button type="button" variant="destructive" disabled={leavingServer} onClick={() => void confirmLeaveServer()}>
+              {leavingServer ? "Se procesează…" : "Da, scoate botul"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {draft.discordLive === false && (
         <div className="bot-control-banner animate-stagger-3" role="status">
