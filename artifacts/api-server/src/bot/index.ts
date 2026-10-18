@@ -48,6 +48,11 @@ import {
 } from "./server-info";
 import { PUBLIC_DISCORD_INVITE } from "../lib/discord-invite";
 import {
+  handleHauntedHouseCommand,
+  handleHauntedHouseDoorButton,
+  hauntedHouseCommand,
+} from "./haunted-house";
+import {
   maybeReplyAsOracle,
   logOracleChatStatus,
   generatePersonalProphecy,
@@ -645,6 +650,7 @@ const slashCommands = [
     .setName("startai")
     .setDescription("✨ [Admin] Repornește răspunsurile și activitatea automată a Oracolului.")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+  hauntedHouseCommand,
 ];
 
 async function avatarById(discordId: string): Promise<string | null> {
@@ -5313,6 +5319,17 @@ export async function startBot(onReady?: () => void): Promise<void> {
           }
         },
       );
+    }
+
+    // Casa Bântuită has its own lifecycle and remains usable while the regular
+    // RPG is paused. Its module rejects stale controls after the event is stopped.
+    if (interaction.isChatInputCommand() && interaction.commandName === "casabantuita") {
+      dispatch(handleHauntedHouseCommand(interaction));
+      return;
+    }
+    if (interaction.isButton() && interaction.customId.startsWith("hh:")) {
+      dispatch(handleHauntedHouseDoorButton(interaction));
+      return;
     }
 
     if (interaction.guildId && isGuildGameStopped(interaction.guildId)) {
