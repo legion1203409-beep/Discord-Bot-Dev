@@ -572,4 +572,45 @@ describe("non-message moderation events", () => {
     expect(helpers.executeModerationAction).toHaveBeenCalledTimes(1);
     expect(helpers.executeModerationAction).toHaveBeenLastCalledWith(expect.objectContaining({ guildId: "10005" }));
   });
+
+  it("explains unusual server activity, its threshold, target and unverified actor", async () => {
+    const config = structuredClone(defaultModerationConfig);
+    config.protection.enabled = true;
+    config.suspiciousBehavior.enabled = true;
+    config.suspiciousBehavior.alertChannelId = "44445";
+    config.suspiciousBehavior.unusualActivity = {
+      enabled: true, action: "none", severity: "normal", thresholds: { limit: 1, windowSeconds: 60 },
+    };
+    const { emitter, helpers } = setup(config);
+    const targetGuild = guild("10022");
+    const beforeChannel = {
+      id: "text-target",
+      guild: targetGuild,
+      name: "general",
+      type: ChannelType.GuildText,
+      parentId: null,
+      topic: null,
+      nsfw: false,
+      rateLimitPerUser: 0,
+      isDMBased: () => false,
+    };
+
+    emitter.emit(Events.ChannelUpdate, beforeChannel, { ...beforeChannel, topic: "First update" });
+    emitter.emit(Events.ChannelUpdate, beforeChannel, { ...beforeChannel, topic: "Second update" });
+    await waitForHandlers();
+
+    expect(helpers.notify).toHaveBeenCalledWith(
+      config,
+      targetGuild,
+      "Activitate suspectă",
+      expect.stringContaining("2 evenimente de securitate în fluxul comun al serverului, în 60 secunde. Limita configurată (1) a fost depășită."),
+      "44445",
+      { memberId: null, moderatorId: null, channelId: "text-target", durationMinutes: null },
+    );
+    const description = (helpers.notify as ReturnType<typeof vi.fn>).mock.calls[0]?.[3] as string;
+    expect(description).toContain("modificarea unui canal");
+    expect(description).toContain("#general (<#text-target>)");
+    expect(description).toContain("Actorul nu a putut fi identificat");
+    expect(description).toContain("nu se aplică sancțiune");
+  });
 });

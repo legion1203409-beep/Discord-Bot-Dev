@@ -442,8 +442,18 @@ async function alert(
   title: string,
   description: string,
   channelId: string | null,
+  templateContext?: {
+    memberId?: string | null;
+    moderatorId?: string | null;
+    channelId?: string | null;
+    durationMinutes?: number | null;
+  },
 ): Promise<void> {
-  await helpers.notify(config, guild, title, description, channelId);
+  if (templateContext) {
+    await helpers.notify(config, guild, title, description, channelId, templateContext);
+  } else {
+    await helpers.notify(config, guild, title, description, channelId);
+  }
 }
 
 async function sanction(
@@ -487,6 +497,7 @@ async function unusualActivity(
   event: string,
   actor: AuditActor | null,
   policyExcluded: boolean,
+  resource?: { channelId?: string; entityName?: string },
 ): Promise<void> {
   if (!config.protection.enabled) return;
   const rule = config.suspiciousBehavior.unusualActivity;
@@ -497,9 +508,55 @@ async function unusualActivity(
   if (!rate.exceeded) return;
   const idempotencyKey = `unusual:${guild.id}:${Math.floor(Date.now() / windowMs(rule))}`;
   if (!claimIncident(idempotencyKey, windowMs(rule))) return;
-  const description = `Activitate neobișnuită: ${rate.count} evenimente corelate în fereastra configurată (ultimul: ${event}).`;
-  await alert(helpers, config, guild, "Activitate suspectă", description, config.suspiciousBehavior.alertChannelId);
   const action = configuredAction(rule.action) ?? configuredAction(config.suspiciousBehavior.action);
+  const eventLabels: Record<string, string> = {
+    channelCreate: "crearea unui canal",
+    channelUpdate: "modificarea unui canal",
+    channelDelete: "ștergerea unui canal",
+    roleCreate: "crearea unui rol",
+    roleUpdate: "modificarea unui rol",
+    roleDelete: "ștergerea unui rol",
+    guildUpdate: "modificarea setărilor serverului",
+    mass_edits: "editări repetate de mesaje",
+    mass_deletes: "ștergeri repetate de mesaje",
+    member_join: "intrări de membri",
+    member_leave: "plecări de membri",
+    nickname_changes: "schimbări repetate de nickname",
+    role_changes: "schimbări repetate de roluri",
+    message_delete: "ștergerea unui mesaj",
+    bulk_delete: "ștergerea în masă a mesajelor",
+  };
+  const durationSeconds = Math.ceil(windowMs(rule) / 1_000);
+  const eventLabel = eventLabels[event] ?? event.replace(/([a-z])([A-Z])/g, "$1 $2").toLocaleLowerCase("ro-RO");
+  const actorDetail = actor?.verified
+    ? `Actor identificat în jurnalul Discord: <@${actor.id}>.`
+    : "Actorul nu a putut fi identificat în jurnalul Discord; nu se aplică sancțiune.";
+  const actionDetail = action
+    ? `Acțiune configurată: ${action} (se aplică numai unui actor verificat și eligibil).`
+    : "Doar alertă; nu este configurată o sancțiune.";
+  const resourceDetail = resource?.entityName
+    ? `Țintă: ${resource.channelId ? `#${resource.entityName}` : resource.entityName}${resource.channelId ? ` (<#${resource.channelId}>)` : ""}`
+    : "";
+  const description = [
+    `**De ce a apărut alerta:** ${rate.count} evenimente de securitate în fluxul comun al serverului, în ${durationSeconds} secunde. Limita configurată (${sensitivityThreshold(rule, config.suspiciousBehavior.sensitivity, 5)}) a fost depășită.`,
+    `**Ultimul eveniment:** ${eventLabel}${resourceDetail ? ` — ${resourceDetail}` : ""}.`,
+    `**Atribuire:** ${actorDetail}`,
+    `**Răspuns:** ${actionDetail}`,
+  ].join("\n");
+  await alert(
+    helpers,
+    config,
+    guild,
+    "Activitate suspectă",
+    description,
+    config.suspiciousBehavior.alertChannelId,
+    {
+      memberId: null,
+      moderatorId: actor?.verified ? actor.id : null,
+      channelId: resource?.channelId ?? null,
+      durationMinutes: null,
+    },
+  );
   if (await actorCanBeSanctioned(guild, config, actor)) {
     await sanction(helpers, client, guild, config, actor!.id, action, `Activitate suspectă: ${event}`, [{ description }], idempotencyKey);
   } else {
@@ -953,7 +1010,10 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
         entityName: typeof after.name === "string" ? after.name : "nume indisponibil",
         channelId: targetType === "channel" ? entity.id : null,
       }, { changes }), { changes: displayChanges });
-    await unusualActivity(helpers, client, entity.guild, config, event, actor, excluded);
+    await unusualActivity(helpers, client, entity.guild, config, event, actor, excluded, {
+      channelId: targetType === "channel" ? entity.id : undefined,
+      entityName: typeof after.name === "string" ? after.name : undefined,
+    });
   }, entity.guild.id);
 
   client.on(Events.ChannelCreate, (channel) => resource(Events.ChannelCreate, AuditLogEvent.ChannelCreate, "channel", null, channel));

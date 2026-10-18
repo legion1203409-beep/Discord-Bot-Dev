@@ -326,8 +326,9 @@ function buildEmbed(
   const moderatorId = templateContext?.moderatorId ?? "";
   const channelId = templateContext?.channelId ?? "";
   const durationMinutes = templateContext?.durationMinutes;
+  const contextualUnavailable = templateContext ? "Nu se aplică acestei alerte" : "—";
   const duration = durationMinutes == null
-    ? "Nespecificată"
+    ? (templateContext ? "Nu se aplică" : "Nespecificată")
     : `${durationMinutes} ${durationMinutes === 1 ? "minut" : "minute"}`;
   const discordTime = `<t:${Math.floor(timestamp / 1_000)}:F>`;
   const discordTimeRelative = `<t:${Math.floor(timestamp / 1_000)}:R>`;
@@ -335,19 +336,19 @@ function buildEmbed(
     action: title,
     reason: description,
     guild: guild.name,
-    member: memberId ? `<@${memberId}>` : "—",
-    member_mention: memberId ? `<@${memberId}>` : "—",
-    member_name: member?.displayName ?? member?.user.username ?? (memberId ? "Membru" : "—"),
-    username: member?.user.username ?? (memberId ? "Membru" : "—"),
-    member_id: memberId || "—",
-    moderator: moderatorId ? `<@${moderatorId}>` : "—",
-    moderator_mention: moderatorId ? `<@${moderatorId}>` : "—",
-    moderator_name: moderator?.displayName ?? moderator?.user.username ?? (moderatorId ? "Moderator" : "—"),
-    moderator_username: moderator?.user.username ?? (moderatorId ? "Moderator" : "—"),
-    moderator_id: moderatorId || "—",
-    channel: channelId ? `<#${channelId}>` : "—",
-    channel_name: channel?.name ?? (channelId ? "Canal" : "—"),
-    channel_id: channelId || "—",
+    member: memberId ? `<@${memberId}>` : contextualUnavailable,
+    member_mention: memberId ? `<@${memberId}>` : contextualUnavailable,
+    member_name: member?.displayName ?? member?.user.username ?? (memberId ? "Membru" : contextualUnavailable),
+    username: member?.user.username ?? (memberId ? "Membru" : contextualUnavailable),
+    member_id: memberId || contextualUnavailable,
+    moderator: moderatorId ? `<@${moderatorId}>` : (templateContext ? "Neidentificat în jurnal" : "—"),
+    moderator_mention: moderatorId ? `<@${moderatorId}>` : (templateContext ? "Neidentificat în jurnal" : "—"),
+    moderator_name: moderator?.displayName ?? moderator?.user.username ?? (moderatorId ? "Moderator" : (templateContext ? "Neidentificat în jurnal" : "—")),
+    moderator_username: moderator?.user.username ?? (moderatorId ? "Moderator" : (templateContext ? "Neidentificat în jurnal" : "—")),
+    moderator_id: moderatorId || (templateContext ? "Neidentificat în jurnal" : "—"),
+    channel: channelId ? `<#${channelId}>` : (templateContext ? "La nivel de server" : "—"),
+    channel_name: channel?.name ?? (channelId ? "Canal" : (templateContext ? "La nivel de server" : "—")),
+    channel_id: channelId || (templateContext ? "La nivel de server" : "—"),
     duration,
     timestamp: discordTime,
     timestamp_relative: discordTimeRelative,

@@ -118,6 +118,28 @@ describe("saved moderation notification settings", () => {
     );
   });
 
+  it("labels fields that do not apply to a server-wide alert instead of leaving them blank", async () => {
+    const config = structuredClone(defaultModerationConfig);
+    config.embeds.enabled = true;
+    config.embeds.descriptionTemplate =
+      "Membru: {member_name} · Moderator: {moderator_name} · Canal: {channel_name} · Durată: {duration}";
+    const { guild, send } = fixture();
+
+    await notify(config, guild, "Activitate suspectă", "Alertă la nivel de server", "987654321098765432", {
+      memberId: null,
+      moderatorId: null,
+      channelId: null,
+      durationMinutes: null,
+    });
+
+    const payload = send.mock.calls[0]?.[0] as unknown as {
+      embeds: Array<{ toJSON(): { description: string } }>;
+    };
+    expect(payload.embeds[0]!.toJSON().description).toBe(
+      "Membru: Nu se aplică acestei alerte · Moderator: Neidentificat în jurnal · Canal: La nivel de server · Durată: Nu se aplică",
+    );
+  });
+
   it("does not repeat detailed content when the embed description already includes the reason", async () => {
     const config = structuredClone(defaultModerationConfig);
     config.embeds.enabled = true;
