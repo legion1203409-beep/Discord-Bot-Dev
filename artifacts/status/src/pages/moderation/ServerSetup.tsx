@@ -29,6 +29,17 @@ type ReconciliationInventory = {
 type ReconciliationResult = { uncertain: UncertainSetupItem[]; action: "bound" | "confirmed-absent" };
 type SavedSetupDraft = { draft: SetupDraft; revision: number; updatedAt: string };
 type SavedSetupDraftResponse = { savedDraft: SavedSetupDraft | null };
+type SetupAuditFinding = {
+  id: string;
+  resourceId: string;
+  resourceName: string;
+  kind: "role" | "channel";
+  severity: "high" | "warning";
+  title: string;
+  detail: string;
+  fix?: { effect: string };
+};
+type SetupAudit = { guildId: string; findings: SetupAuditFinding[]; fingerprint: string };
 
 const isConflictError = (error: unknown) =>
   typeof error === "object" && error !== null && "status" in error && error.status === 409;
@@ -89,6 +100,12 @@ export function ServerSetupPage() {
   const [suggestion, setSuggestion] = useState<SetupDraft | null>(null);
   const [preview, setPreview] = useState<PreviewResult | null>(null);
   const [resources, setResources] = useState<SetupResources | null>(null);
+  const [serverAudit, setServerAudit] = useState<SetupAudit | null>(null);
+  const [serverAuditBusy, setServerAuditBusy] = useState(false);
+  const [serverAuditFixBusy, setServerAuditFixBusy] = useState(false);
+  const [serverAuditError, setServerAuditError] = useState<string | null>(null);
+  const [serverAuditNotice, setServerAuditNotice] = useState<string | null>(null);
+  const [pendingAuditFix, setPendingAuditFix] = useState<SetupAuditFinding | null>(null);
   const [resourcesLoading, setResourcesLoading] = useState(false);
   const [resourcesError, setResourcesError] = useState<string | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
@@ -130,6 +147,8 @@ export function ServerSetupPage() {
     setLoading(true); setLoadError(null);
     draftRevision.current++;
     setPreview(null); setResult(null); setApplyError(null);
+    setServerAudit(null); setServerAuditBusy(false); setServerAuditFixBusy(false);
+    setServerAuditError(null); setServerAuditNotice(null); setPendingAuditFix(null);
     setUncertain([]); setInventories({}); setSelectedResources({});
     setReconcileError(null); setReconcileNotice(null); setConfirmAbsentKey(null);
     setSavedDraft(null); setSavedDraftLoaded(false); setDraftSaveError(null); setDraftSaveNotice(null);
@@ -178,7 +197,8 @@ export function ServerSetupPage() {
     setDraftSaveNotice(null);
   };
   const issues = draft ? validateDraft(draft) : [];
-  const busy = previewBusy || applyBusy || deleteBusy || resourcesLoading || draftPersistenceBusy || guideBusy || Boolean(reconcileBusyKey) || Boolean(inventoryLoadingKey);
+  const busy = previewBusy || applyBusy || deleteBusy || resourcesLoading || draftPersistenceBusy || guideBusy ||
+    Boolean(reconcileBusyKey) || Boolean(inventoryLoadingKey) || serverAuditBusy || serverAuditFixBusy;
 
   const refreshSavedDraft = async (resume: boolean) => {
     if (draftPersistenceBusy) return;
@@ -308,6 +328,45 @@ export function ServerSetupPage() {
       const { data } = await apiFetchWithMeta<PreviewResult>(`${base}/preview`, { method: "POST", body: JSON.stringify({ draft: snapshot }) });
       if (revision === draftRevision.current) { setPreview(data); setRestoredNeedsReview(false); }
     } catch (e) { setPreviewError(msg(e)); } finally { setPreviewBusy(false); }
+  };
+
+  const runServerAudit = async () => {
+    if (serverAuditBusy || serverAuditFixBusy) return;
+    const targetGuildId = guildId;
+    const targetBase = base;
+    setServerAuditBusy(true); setServerAuditError(null); setServerAuditNotice(null);
+    try {
+      const { data } = await apiFetchWithMeta<SetupAudit>(`${targetBase}/audit`);
+      if (activeGuildId.current !== targetGuildId || data.guildId !== targetGuildId) return;
+      setServerAudit(data);
+    } catch (e) {
+      if (activeGuildId.current === targetGuildId) setServerAuditError(msg(e));
+    } finally {
+      if (activeGuildId.current === targetGuildId) setServerAuditBusy(false);
+    }
+  };
+
+  const applyServerAuditFix = async () => {
+    if (!pendingAuditFix || !serverAudit || serverAuditFixBusy) return;
+    const finding = pendingAuditFix;
+    const targetGuildId = guildId;
+    const targetBase = base;
+    setServerAuditFixBusy(true); setServerAuditError(null); setServerAuditNotice(null);
+    setPendingAuditFix(null);
+    try {
+      const { data } = await apiFetchWithMeta<SetupAudit>(`${targetBase}/audit/fix`, {
+        method: "POST",
+        body: JSON.stringify({ findingId: finding.id, fingerprint: serverAudit.fingerprint, confirmed: true }),
+      });
+      if (activeGuildId.current !== targetGuildId || data.guildId !== targetGuildId) return;
+      setServerAudit(data);
+      setServerAuditNotice(`Remedierea pentru „${finding.resourceName}” a fost aplicată. Auditul a fost actualizat.`);
+    } catch (e) {
+      if (activeGuildId.current === targetGuildId)
+        setServerAuditError(`${msg(e)} Rulează din nou auditul înainte de a încerca altă remediere.`);
+    } finally {
+      if (activeGuildId.current === targetGuildId) setServerAuditFixBusy(false);
+    }
   };
 
   const confirmPreset = () => {
@@ -496,13 +555,44 @@ export function ServerSetupPage() {
         <div className="flex flex-wrap items-center gap-2">
           <Eye className="h-4 w-4 text-primary" />
           <h2 className="font-display text-xl text-foreground">Verificare server</h2>
-          <Button size="sm" variant="outline" className="ml-auto gap-2" disabled={busy || issues.length > 0} onClick={() => void runPreview()} data-testid="button-run-setup-diagnostics">
+          <Button size="sm" variant="outline" className="ml-auto gap-2" disabled={busy} onClick={() => void runServerAudit()} data-testid="button-run-server-audit">
+            <ShieldCheck className="h-3.5 w-3.5" />{serverAuditBusy ? "Se verifică serverul..." : "Audit server"}
+          </Button>
+          <Button size="sm" variant="outline" className="gap-2" disabled={busy || issues.length > 0} onClick={() => void runPreview()} data-testid="button-run-setup-diagnostics">
             <RefreshCw className="h-3.5 w-3.5" />{previewBusy ? "Se verifică..." : "Verifică draftul și accesul botului"}
           </Button>
         </div>
         <p className="mt-2 text-sm text-muted-foreground">
-          Verifică draftul curent față de inventarul Discord, permisiunile botului și conflictele de nume. Nu aplică nicio schimbare.
+          Auditul serverului verifică permisiunile ridicate ale rolurilor și accesul botului în canalele text. Verificarea draftului verifică separat inventarul și conflictele. Ambele verificări sunt doar în citire.
         </p>
+        {serverAuditError && <p className="mt-3 text-sm text-destructive" role="alert" data-testid="text-server-audit-error">{serverAuditError}</p>}
+        {serverAuditNotice && <p className="mt-3 text-sm text-primary" role="status" data-testid="text-server-audit-notice">{serverAuditNotice}</p>}
+        {serverAudit && <div className="mt-4 space-y-3 rounded-lg border border-border/50 p-3" data-testid="panel-server-audit-result">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className={`text-sm ${serverAudit.findings.length ? "text-amber-300" : "text-primary"}`}>
+              {serverAudit.findings.length
+                ? `Audit pentru ${guildName}: ${serverAudit.findings.length} constatări. Nicio schimbare nu a fost făcută.`
+                : `Audit pentru ${guildName}: nu au fost găsite probleme în roluri sau canalele text.`}
+            </p>
+            <span className="text-[10px] text-muted-foreground">Amprentă {serverAudit.fingerprint.slice(0, 12)}</span>
+          </div>
+          {serverAudit.findings.map(finding => <article key={finding.id}
+            className={`rounded-lg border p-3 ${finding.severity === "high" ? "border-amber-500/30 bg-amber-500/5" : "border-border/50 bg-background/30"}`}
+            data-testid={`card-server-audit-${finding.id}`}>
+            <div className="flex flex-wrap items-start gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-foreground">{finding.title}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{finding.detail}</p>
+                {!finding.fix && <p className="mt-1 text-xs text-amber-300">Remedierea automată nu este disponibilă pentru acest element. Verifică-l direct în Discord.</p>}
+              </div>
+              {finding.fix && <Button size="sm" variant="outline" disabled={busy}
+                onClick={() => setPendingAuditFix(finding)} data-testid={`button-review-audit-fix-${finding.id}`}>
+                Revizuiește remedierea
+              </Button>}
+            </div>
+            {finding.fix && <p className="mt-2 text-xs text-muted-foreground">Efect: {finding.fix.effect}</p>}
+          </article>)}
+        </div>}
         {resources && <p className="mt-3 text-xs text-muted-foreground" data-testid="text-diagnostic-inventory">
           Inventar încărcat: {resources.roles.length} roluri ({resources.roles.filter(role => role.usable).length} gestionabile de bot), {resources.categories.length} categorii și {resources.channels.length} canale.
         </p>}
@@ -1066,6 +1156,27 @@ export function ServerSetupPage() {
               const item = uncertain.find(entry => entry.key === confirmAbsentKey);
               if (item) void reconcile(item, "confirm-absent");
             }} data-testid="button-acknowledge-absent">Confirmă absența</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={pendingAuditFix !== null} onOpenChange={open => !serverAuditFixBusy && !open && setPendingAuditFix(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-amber-400" />Confirmi această remediere?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingAuditFix && <>
+                <span className="block font-medium text-foreground">{pendingAuditFix.title}</span>
+                <span className="mt-2 block">{pendingAuditFix.fix?.effect}</span>
+                <span className="mt-2 block">Se va schimba doar serverul „{guildName}”. Confirmarea se aplică numai acestei constatări; celelalte remedieri cer confirmări separate.</span>
+              </>}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-server-audit-fix">Nu modifica</AlertDialogCancel>
+            <AlertDialogAction disabled={serverAuditFixBusy || !serverAudit || serverAudit.guildId !== guildId}
+              onClick={() => void applyServerAuditFix()} data-testid="button-confirm-server-audit-fix">
+              {serverAuditFixBusy ? "Se aplică..." : "Confirmă această remediere"}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

@@ -5,6 +5,7 @@ import { setupSuggestionSchema, suggestSetup } from "./server-setup-ai";
 import {
   inspectSetup, inspectSetupResources, applySetup, deleteSelectedSetupResources,
   inspectUncertainSetup, listUncertainSetup, reconcileUncertainSetup,
+  inspectServerSetupAudit, fixServerSetupAuditFinding,
 } from "./server-setup";
 import { withSetupJournal } from "./server-setup-storage";
 import { getSavedSetupDraft, saveSetupDraft, SetupDraftRevisionConflictError } from "./server-setup-drafts";
@@ -2691,6 +2692,37 @@ router.get("/guilds/:guildId/server-setup/resources", asyncRoute(async (req, res
     res.set("Cache-Control", "no-store").json(resources);
   } catch (error) {
     throw new ModerationAuthError(409, error instanceof Error ? error.message : "Inventarul Discord nu a putut fi încărcat.");
+  }
+}));
+
+router.get("/guilds/:guildId/server-setup/audit", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  await sessionAndGuild(req, guildId, "config");
+  const client = getModerationClient();
+  if (!client?.isReady()) throw new ModerationAuthError(503, "Botul Discord nu este conectat.");
+  const guild = await client.guilds.fetch({ guild: guildId, force: true });
+  try {
+    res.set("Cache-Control", "no-store").json(await inspectServerSetupAudit(guild));
+  } catch (error) {
+    throw new ModerationAuthError(409, error instanceof Error ? error.message : "Auditul serverului nu a putut fi rulat.");
+  }
+}));
+
+router.post("/guilds/:guildId/server-setup/audit/fix", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  await sessionAndGuild(req, guildId, "config", true);
+  const input = parse(z.object({
+    findingId: z.string().min(1).max(200),
+    fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+    confirmed: z.literal(true),
+  }).strict(), req.body);
+  const client = getModerationClient();
+  if (!client?.isReady()) throw new ModerationAuthError(503, "Botul Discord nu este conectat.");
+  const guild = await client.guilds.fetch({ guild: guildId, force: true });
+  try {
+    res.set("Cache-Control", "no-store").json(await fixServerSetupAuditFinding(guild, input));
+  } catch (error) {
+    throw new ModerationAuthError(409, error instanceof Error ? error.message : "Remedierea nu a putut fi aplicată.");
   }
 }));
 

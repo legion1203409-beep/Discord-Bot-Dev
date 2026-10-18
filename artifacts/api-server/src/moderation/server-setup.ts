@@ -24,7 +24,47 @@ export type SetupInventory = {
   channels: { id: string; name: string; parentId?: string; type: number; textBased: boolean }[];
   fingerprint: string;
 };
+export type SetupAuditPermission =
+  | "Administrator"
+  | "ManageGuild"
+  | "ManageRoles"
+  | "ManageChannels"
+  | "ManageWebhooks"
+  | "ManageMessages"
+  | "KickMembers"
+  | "BanMembers"
+  | "ModerateMembers"
+  | "MentionEveryone";
+export type SetupAuditFinding = {
+  id: string;
+  resourceId: string;
+  resourceName: string;
+  kind: "role" | "channel";
+  severity: "high" | "warning";
+  title: string;
+  detail: string;
+  fix?: {
+    kind: "remove-role-permission" | "grant-bot-channel-access";
+    effect: string;
+    permission?: SetupAuditPermission;
+    permissions?: ("ViewChannel" | "ReadMessageHistory" | "SendMessages")[];
+  };
+};
+export type SetupAudit = { guildId: string; findings: SetupAuditFinding[]; fingerprint: string };
 const normalize = (name: string) => name.trim().toLowerCase();
+const elevatedRolePermissions: { permission: SetupAuditPermission; label: string }[] = [
+  { permission: "Administrator", label: "Administrator" },
+  { permission: "ManageGuild", label: "Manage Server" },
+  { permission: "ManageRoles", label: "Manage Roles" },
+  { permission: "ManageChannels", label: "Manage Channels" },
+  { permission: "ManageWebhooks", label: "Manage Webhooks" },
+  { permission: "ManageMessages", label: "Manage Messages" },
+  { permission: "KickMembers", label: "Kick Members" },
+  { permission: "BanMembers", label: "Ban Members" },
+  { permission: "ModerateMembers", label: "Timeout Members" },
+  { permission: "MentionEveryone", label: "Mention @everyone/@here" },
+];
+const botTextPermissions = ["ViewChannel", "ReadMessageHistory", "SendMessages"] as const;
 const targets = (draft: SetupDraft): Target[] => [
   ...draft.roles.map(r => ({ ...r, kind: "role" as const, ...(r.discordId ? { discordId: r.discordId } : {}) })),
   ...draft.categories.flatMap(c => [
@@ -231,6 +271,145 @@ export async function inspectSetupResources(guild: Guild): Promise<SetupInventor
         [o.id, o.allow.bitfield.toString(), o.deny.bitfield.toString()]).sort() : []]).sort(),
   })).digest("hex");
   return { roles: rolesView, categories, channels: channelView, fingerprint };
+}
+
+export async function inspectServerSetupAudit(guild: Guild): Promise<SetupAudit> {
+  const [roles, channels, botMember] = await Promise.all([
+    guild.roles.fetch(undefined, { force: true }),
+    guild.channels.fetch(undefined, { force: true }),
+    guild.members.fetchMe(),
+  ]);
+  const findings: SetupAuditFinding[] = [];
+  for (const role of roles.values()) {
+    const permissions = elevatedRolePermissions.filter(entry => role.permissions.has(P[entry.permission]));
+    const effectivePermissions = permissions.some(entry => entry.permission === "Administrator")
+      ? permissions.filter(entry => entry.permission === "Administrator")
+      : permissions;
+    for (const entry of effectivePermissions) {
+      const canFix = role.id !== guild.id && !role.managed &&
+        botMember.permissions.has(P.ManageRoles) &&
+        role.position < botMember.roles.highest.position;
+      findings.push({
+        id: `role:${role.id}:${entry.permission}`,
+        resourceId: role.id,
+        resourceName: role.name,
+        kind: "role",
+        severity: "high",
+        title: `Rolul „${role.name}” are permisiunea ${entry.label}`,
+        detail: entry.permission === "Administrator"
+          ? "Această permisiune oferă acces complet la server și ocolește restricțiile normale de canal."
+          : `Această permisiune permite membrilor rolului să folosească ${entry.label.toLowerCase()} la nivelul serverului.`,
+        ...(canFix ? {
+          fix: {
+            kind: "remove-role-permission" as const,
+            permission: entry.permission,
+            effect: `Elimină doar ${entry.label} din rolul „${role.name}”. Toate celelalte permisiuni și membrii rolului rămân neschimbați.`,
+          },
+        } : {}),
+      });
+    }
+  }
+
+  for (const channel of channels.values()) {
+    if (!channel || channel.type === ChannelType.GuildCategory || !channel.isTextBased() ||
+        !("permissionOverwrites" in channel) || !("permissionsFor" in channel)) continue;
+    const effective = channel.permissionsFor(botMember);
+    const missing = botTextPermissions.filter(permission => !effective?.has(P[permission]));
+    if (!missing.length) continue;
+    const canFix = botMember.permissions.has(P.ManageChannels);
+    findings.push({
+      id: `channel:${channel.id}:bot-text-access`,
+      resourceId: channel.id,
+      resourceName: channel.name,
+      kind: "channel",
+      severity: "warning",
+      title: `Botul nu are acces complet la #${channel.name}`,
+      detail: `Lipsesc: ${missing.join(", ")}. Comenzile, logurile sau istoricul din acest canal pot să nu funcționeze.`,
+      ...(canFix ? {
+        fix: {
+          kind: "grant-bot-channel-access" as const,
+          permissions: missing,
+          effect: `Acordă botului doar ${missing.join(", ")} în #${channel.name}. Accesul membrilor, al rolurilor și celelalte reguli ale canalului rămân neschimbate.`,
+        },
+      } : {}),
+    });
+  }
+
+  const roleSnapshot = [...roles.values()]
+    .map(role => [role.id, role.name, role.position, role.managed, role.permissions.bitfield.toString()])
+    .sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+  const channelSnapshot = [...channels.values()].flatMap(channel => channel ? [[
+    channel.id,
+    channel.name,
+    channel.type,
+    channel.parentId,
+    "permissionsFor" in channel ? channel.permissionsFor(botMember)?.bitfield.toString() ?? null : null,
+    "permissionOverwrites" in channel
+      ? [...channel.permissionOverwrites.cache.values()]
+        .map(overwrite => [overwrite.id, overwrite.allow.bitfield.toString(), overwrite.deny.bitfield.toString()])
+        .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
+      : [],
+  ]] : [])
+    .sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+  findings.sort((a, b) =>
+    (a.severity === b.severity ? 0 : a.severity === "high" ? -1 : 1) ||
+    a.resourceName.localeCompare(b.resourceName) || a.id.localeCompare(b.id));
+  return {
+    guildId: guild.id,
+    findings,
+    fingerprint: createHash("sha256").update(JSON.stringify({
+      guildId: guild.id,
+      bot: {
+        permissions: botMember.permissions.bitfield.toString(),
+        roles: [...botMember.roles.cache.keys()].sort(),
+        highestRole: botMember.roles.highest.id,
+      },
+      roleSnapshot,
+      channelSnapshot,
+    })).digest("hex"),
+  };
+}
+
+export async function fixServerSetupAuditFinding(
+  guild: Guild,
+  input: { findingId: string; fingerprint: string; confirmed: true },
+) {
+  const audit = await inspectServerSetupAudit(guild);
+  if (audit.fingerprint !== input.fingerprint)
+    throw new Error("Serverul s-a schimbat de la verificare. Rulează din nou auditul înainte de remediere.");
+  const finding = audit.findings.find(item => item.id === input.findingId);
+  if (!finding?.fix) throw new Error("Problema nu mai există sau nu are o remediere sigură disponibilă.");
+
+  const botMember = await guild.members.fetchMe();
+  if (finding.fix.kind === "remove-role-permission") {
+    if (!finding.fix.permission || !botMember.permissions.has(P.ManageRoles))
+      throw new Error("Botul are nevoie de Manage Roles pentru a modifica rolul.");
+    const role = await guild.roles.fetch(finding.resourceId, { force: true });
+    if (!role || role.id === guild.id || role.managed || role.position >= botMember.roles.highest.position)
+      throw new Error("Rolul nu mai poate fi gestionat de bot. Verifică ierarhia rolurilor.");
+    if (!role.permissions.has(P[finding.fix.permission]))
+      throw new Error("Permisiunea a fost deja schimbată. Rulează din nou auditul.");
+    await role.setPermissions(
+      role.permissions.remove(P[finding.fix.permission]),
+      `Pornire server: remediere confirmată de operator (${finding.fix.permission})`,
+    );
+  } else {
+    if (!botMember.permissions.has(P.ManageChannels))
+      throw new Error("Botul are nevoie de Manage Channels pentru a modifica accesul.");
+    const channel = await guild.channels.fetch(finding.resourceId, { force: true });
+    if (!channel || !("permissionOverwrites" in channel) || !channel.isTextBased())
+      throw new Error("Canalul nu mai este disponibil pentru această remediere.");
+    const effective = channel.permissionsFor(botMember);
+    const missing = botTextPermissions.filter(permission => !effective?.has(P[permission]));
+    if (!missing.length) throw new Error("Botul are deja accesul necesar. Rulează din nou auditul.");
+    await channel.permissionOverwrites.edit(
+      botMember.user.id,
+      Object.fromEntries(missing.map(permission => [permission, true])),
+      { reason: "Pornire server: acces minim al botului confirmat de operator" },
+    );
+  }
+
+  return inspectServerSetupAudit(guild);
 }
 
 export function listUncertainSetup(journal: SetupJournal): UncertainSetupItem[] {

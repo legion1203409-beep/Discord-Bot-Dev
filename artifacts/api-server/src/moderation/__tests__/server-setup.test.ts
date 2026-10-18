@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { Collection, PermissionFlagsBits as P, PermissionsBitField, type Guild } from "discord.js";
 import {
-  applySetup, deleteSelectedSetupResources, inspectSetup, inspectSetupResources, inspectUncertainSetup, reconcileUncertainSetup, type SetupJournal,
+  applySetup, deleteSelectedSetupResources, inspectSetup, inspectSetupResources, inspectUncertainSetup, reconcileUncertainSetup,
+  inspectServerSetupAudit, fixServerSetupAuditFinding, type SetupJournal,
 } from "../server-setup";
 import { setupDraftSchema, setupTemplate, type SetupDraft } from "../server-setup-schema";
 
@@ -31,9 +32,21 @@ function fixture() {
   let seq = 10_000;
   const roles = new Collection<string, any>();
   const channels = new Collection<string, any>();
-  const me = { id: "bot", permissions: new PermissionsBitField(P.Administrator), roles: { highest: { position: 20 } } };
+  const me = {
+    id: "bot",
+    user: { id: "bot" },
+    permissions: new PermissionsBitField(P.Administrator),
+    roles: { cache: new Collection([["bot-role", { id: "bot-role" }]]), highest: { id: "bot-role", position: 20 } },
+  };
   const role = (name: string, permissions = 0n) => {
-    const value = { id: String(++seq), name, position: 1, managed: false, permissions: new PermissionsBitField(permissions) };
+    let value: any;
+    value = {
+      id: String(++seq), name, position: 1, managed: false, permissions: new PermissionsBitField(permissions),
+      setPermissions: vi.fn(async (next: any) => {
+        value.permissions = new PermissionsBitField(next);
+        return value;
+      }),
+    };
     roles.set(value.id, value); return value;
   };
   const channel = (data: any) => {
@@ -68,17 +81,32 @@ function fixture() {
         return value;
       }),
     };
+    const permissionsFor = vi.fn((member: any) => {
+      const effective = new PermissionsBitField(data.effectivePermissions ?? (P.ViewChannel | P.ReadMessageHistory | P.SendMessages));
+      const overwrite = overwriteCache.get(member.user?.id);
+      if (overwrite) {
+        effective.add(overwrite.allow.bitfield);
+        effective.remove(overwrite.deny.bitfield);
+      }
+      return effective;
+    });
     const value: any = {
       id: String(++seq), parentId: data.parent ?? data.parentId ?? null, ...data,
       client: { user: { id: "99999" } },
       permissionOverwrites,
+      permissionsFor,
+      isTextBased: () => true,
       delete: vi.fn(async () => { channels.delete(value.id); return value; }),
     };
     channels.set(value.id, value); return value;
   };
   const guild = {
     id: "88888", members: { me, fetchMe: vi.fn(async () => me) },
-    roles: { cache: roles, fetch: vi.fn(async () => roles), create: vi.fn(async (r: any) => role(r.name, r.permissions)) },
+    roles: {
+      cache: roles,
+      fetch: vi.fn(async (id?: string) => id ? roles.get(id) ?? null : roles),
+      create: vi.fn(async (r: any) => role(r.name, r.permissions)),
+    },
     channels: {
       cache: channels,
       fetch: vi.fn(async (id?: string) => id ? channels.get(id) ?? null : channels),
@@ -139,6 +167,80 @@ describe("server setup validation", () => {
 });
 
 describe("safe Discord setup", () => {
+  it("reports elevated roles and missing bot channel access without changing Discord", async () => {
+    const f = fixture();
+    f.me.permissions = new PermissionsBitField(P.ManageRoles | P.ManageChannels);
+    const adminRole = f.role("Administratori", P.Administrator);
+    const textChannel = f.channel({ name: "loguri", effectivePermissions: P.ViewChannel });
+
+    const audit = await inspectServerSetupAudit(f.guild);
+
+    expect(audit.guildId).toBe(f.raw.id);
+    expect(audit.findings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: `role:${adminRole.id}:Administrator`,
+        kind: "role",
+        fix: expect.objectContaining({ kind: "remove-role-permission", permission: "Administrator" }),
+      }),
+      expect.objectContaining({
+        id: `channel:${textChannel.id}:bot-text-access`,
+        kind: "channel",
+        fix: expect.objectContaining({ kind: "grant-bot-channel-access" }),
+      }),
+    ]));
+    expect(adminRole.setPermissions).not.toHaveBeenCalled();
+    expect(textChannel.permissionOverwrites.edit).not.toHaveBeenCalled();
+  });
+
+  it("removes only the confirmed elevated permission and rejects stale audit fingerprints", async () => {
+    const f = fixture();
+    f.me.permissions = new PermissionsBitField(P.ManageRoles);
+    const role = f.role("Moderatori", P.ManageRoles | P.SendMessages);
+    const audit = await inspectServerSetupAudit(f.guild);
+    const finding = audit.findings.find(item => item.id === `role:${role.id}:ManageRoles`)!;
+    expect(finding.fix?.effect).toContain("Toate celelalte permisiuni");
+
+    f.me.permissions = new PermissionsBitField(0n);
+    await expect(fixServerSetupAuditFinding(f.guild, {
+      findingId: finding.id,
+      fingerprint: audit.fingerprint,
+      confirmed: true,
+    })).rejects.toThrow("Serverul s-a schimbat de la verificare");
+    expect(role.setPermissions).not.toHaveBeenCalled();
+
+    f.me.permissions = new PermissionsBitField(P.ManageRoles);
+    const updated = await fixServerSetupAuditFinding(f.guild, {
+      findingId: finding.id,
+      fingerprint: audit.fingerprint,
+      confirmed: true,
+    });
+    expect(role.permissions.has(P.ManageRoles)).toBe(false);
+    expect(role.permissions.has(P.SendMessages)).toBe(true);
+    expect(updated.findings.some(item => item.id === finding.id)).toBe(false);
+  });
+
+  it("grants only the bot's missing channel permissions after explicit confirmation", async () => {
+    const f = fixture();
+    f.me.permissions = new PermissionsBitField(P.ManageChannels);
+    const channel = f.channel({ name: "anunturi", effectivePermissions: P.ViewChannel });
+    const audit = await inspectServerSetupAudit(f.guild);
+    const finding = audit.findings.find(item => item.id === `channel:${channel.id}:bot-text-access`)!;
+    expect(finding.fix?.permissions).toEqual(["ReadMessageHistory", "SendMessages"]);
+
+    const updated = await fixServerSetupAuditFinding(f.guild, {
+      findingId: finding.id,
+      fingerprint: audit.fingerprint,
+      confirmed: true,
+    });
+
+    expect(channel.permissionOverwrites.edit).toHaveBeenCalledWith(
+      f.me.user.id,
+      { ReadMessageHistory: true, SendMessages: true },
+      expect.objectContaining({ reason: expect.any(String) }),
+    );
+    expect(updated.findings.some(item => item.id === finding.id)).toBe(false);
+  });
+
   it("creates with ACLs atomically, grants no global role privileges and retry reuses without edits", async () => {
     const f = fixture(), draft = smallDraft();
     const pre = await inspectSetup(f.guild, draft);
