@@ -6,9 +6,11 @@ import {
   ButtonStyle,
   PermissionFlagsBits,
   SlashCommandBuilder,
+  TextChannel,
   type ButtonInteraction,
   type ChatInputCommandInteraction,
 } from "discord.js";
+import { loadHauntedHouseConfig } from "./db";
 
 const COMMAND_NAME = "casabantuita";
 const BUTTON_PREFIX = "hh";
@@ -56,6 +58,7 @@ interface HauntedGuildState {
 }
 
 const activeEvents = new Map<string, HauntedGuildState>();
+const closingEvents = new Set<string>();
 const ghostCallTimestamps: number[] = [];
 const ghostLastCallByUser = new Map<string, number>();
 let openAiClient: OpenAI | null = null;
@@ -70,6 +73,7 @@ export const hauntedHouseCommand = new SlashCommandBuilder()
 
 export function startHauntedHouse(guildId: string, now = Date.now()): boolean {
   if (activeEvents.has(guildId)) return false;
+  closingEvents.delete(guildId);
   activeEvents.set(guildId, {
     sessionId: randomUUID(),
     startedAt: now,
@@ -82,6 +86,7 @@ export function startHauntedHouse(guildId: string, now = Date.now()): boolean {
 
 export function stopHauntedHouse(guildId: string): void {
   activeEvents.delete(guildId);
+  closingEvents.delete(guildId);
 }
 
 export function isHauntedHouseActive(guildId: string): boolean {
@@ -90,6 +95,46 @@ export function isHauntedHouseActive(guildId: string): boolean {
 
 export function getHauntedHouseSessionId(guildId: string): string | null {
   return activeEvents.get(guildId)?.sessionId ?? null;
+}
+
+export function getHauntedHouseStatus(guildId: string): { active: boolean; startedAt: number | null } {
+  const state = activeEvents.get(guildId);
+  return { active: Boolean(state), startedAt: state?.startedAt ?? null };
+}
+
+export function formatHauntedHouseLeaderboard(
+  leaderboard: ReturnType<typeof getHauntedHouseLeaderboard>,
+  final = false,
+): string {
+  const title = final ? "🎃 **Clasamentul final al Casei Bântuite**" : "🎃 **Clasamentul Casei Bântuite**";
+  return leaderboard.length
+    ? [
+        title,
+        ...leaderboard.map((entry, index) =>
+          `**${index + 1}.** <@${entry.userId}> — **${entry.points}** puncte · 🍬 ${entry.candies} bomboane · ${entry.plays}/${HAUNTED_HOUSE_MAX_PLAYS} încercări`,
+        ),
+      ].join("\n")
+    : `${title}\nEvenimentul s-a încheiat fără participanți.`;
+}
+
+export function beginHauntedHouseStop(guildId: string): {
+  sessionId: string;
+  leaderboard: ReturnType<typeof getHauntedHouseLeaderboard>;
+} | null {
+  const state = activeEvents.get(guildId);
+  if (!state || closingEvents.has(guildId)) return null;
+  closingEvents.add(guildId);
+  return { sessionId: state.sessionId, leaderboard: getHauntedHouseLeaderboard(guildId) };
+}
+
+export function completeHauntedHouseStop(guildId: string, sessionId: string): boolean {
+  if (!closingEvents.has(guildId) || activeEvents.get(guildId)?.sessionId !== sessionId) return false;
+  stopHauntedHouse(guildId);
+  return true;
+}
+
+export function cancelHauntedHouseStop(guildId: string, sessionId: string): void {
+  if (activeEvents.get(guildId)?.sessionId === sessionId) closingEvents.delete(guildId);
 }
 
 export type IssueChoiceResult =
@@ -103,7 +148,7 @@ export function issueHauntedDoorChoice(
   now = Date.now(),
 ): IssueChoiceResult {
   const state = activeEvents.get(guildId);
-  if (!state) return { ok: false, reason: "inactive" };
+  if (!state || closingEvents.has(guildId)) return { ok: false, reason: "inactive" };
 
   const score = state.members.get(userId);
   if ((score?.plays ?? 0) >= HAUNTED_HOUSE_MAX_PLAYS) return { ok: false, reason: "limit" };
@@ -156,7 +201,7 @@ export function claimHauntedDoorChoice(
   roll = Math.random(),
 ): ClaimChoiceResult {
   const state = activeEvents.get(guildId);
-  if (!state) return { ok: false, reason: "inactive" };
+  if (!state || closingEvents.has(guildId)) return { ok: false, reason: "inactive" };
 
   const pending = state.pending.get(nonce);
   if (!pending || pending.userId !== userId || pending.expiresAt <= now) {
@@ -315,9 +360,35 @@ export async function handleHauntedHouseCommand(interaction: ChatInputCommandInt
         ephemeral: true,
       });
     } else {
-      stopHauntedHouse(guildId);
+      const closing = beginHauntedHouseStop(guildId);
+      const finalBoard = closing ? formatHauntedHouseLeaderboard(closing.leaderboard, true) : "";
+      let published = false;
+      try {
+        const config = await loadHauntedHouseConfig(guildId);
+        const guild = interaction.guild;
+        if (closing && config.leaderboardChannelId && guild) {
+          const channel = await guild.channels.fetch(config.leaderboardChannelId);
+          if (!(channel instanceof TextChannel)) throw new Error("Canalul clasamentului nu mai este disponibil.");
+          const botMember = guild.members.me ?? await guild.members.fetchMe();
+          if (!channel.permissionsFor(botMember)?.has(PermissionFlagsBits.ViewChannel | PermissionFlagsBits.SendMessages)) {
+            throw new Error("Botul nu mai are acces pentru a publica în canalul clasamentului.");
+          }
+          await channel.send({ content: finalBoard, allowedMentions: { parse: [] } });
+          published = true;
+        }
+      } catch (error) {
+        if (closing) cancelHauntedHouseStop(guildId, closing.sessionId);
+        await interaction.reply({
+          content: `❌ Clasamentul final nu a putut fi publicat; evenimentul rămâne activ. ${error instanceof Error ? error.message : ""}`,
+          ephemeral: true,
+        });
+        return;
+      }
+      if (closing) completeHauntedHouseStop(guildId, closing.sessionId);
       await interaction.reply({
-        content: "🕯️ **Casa Bântuită s-a închis.** Butoanele vechi sunt dezactivate, iar clasamentul temporar a fost șters.",
+        content: closing
+          ? `${published ? "🕯️ Casa Bântuită s-a închis, iar clasamentul final a fost publicat." : `🕯️ Casa Bântuită s-a închis.\n\n${finalBoard}`}`
+          : "🕯️ Casa Bântuită era deja închisă.",
         ephemeral: true,
       });
     }
@@ -399,6 +470,7 @@ export async function handleHauntedHouseDoorButton(interaction: ButtonInteractio
 
 export function resetHauntedHouseStateForTests(): void {
   activeEvents.clear();
+  closingEvents.clear();
   ghostCallTimestamps.length = 0;
   ghostLastCallByUser.clear();
 }

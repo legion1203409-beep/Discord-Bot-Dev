@@ -19,9 +19,10 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "wouter";
-import { useModerationConfig, useCases, useActiveGuild, useAuditLogs, useGameplayState } from "../../hooks/use-moderation-api";
+import { useModerationConfig, useCases, useActiveGuild, useAuditLogs, useGameplayState, useHauntedHouse, useModerationMetadata } from "../../hooks/use-moderation-api";
 import { Switch } from "../../components/ui/switch";
 import { Button } from "../../components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
 import { useToast } from "../../hooks/use-toast";
 import { DISCORD_INVITE } from "../../lib/public-constants";
 import { protectionToggleToastOptions } from "../../lib/protection-toggle-feedback";
@@ -41,11 +42,18 @@ export function DashboardOverview() {
     update: updateGameState,
     refetch: refetchGameState,
   } = useGameplayState(guildId);
+  const hauntedHouse = useHauntedHouse(guildId);
+  const { data: metadata } = useModerationMetadata(guildId);
   const { toast } = useToast();
   const [savingModule, setSavingModule] = useState<string | null>(null);
   const [savingGameState, setSavingGameState] = useState(false);
   const [optimisticConfig, setOptimisticConfig] = useState<any>(null);
   const [deactivatingKey, setDeactivatingKey] = useState<string | null>(null);
+  const [hauntedDialogOpen, setHauntedDialogOpen] = useState(false);
+  const [hauntedStartChannelId, setHauntedStartChannelId] = useState("");
+  const [hauntedLeaderboardChannelId, setHauntedLeaderboardChannelId] = useState("");
+  const [savingHaunted, setSavingHaunted] = useState(false);
+  const [savingHauntedConfig, setSavingHauntedConfig] = useState(false);
   const activeGuild = guilds.find((guild) => guild.id === guildId);
   const activeGuildIcon = activeGuild?.icon
     ? (/^https?:\/\//i.test(activeGuild.icon)
@@ -214,6 +222,38 @@ export function DashboardOverview() {
     }
   };
 
+  const saveHauntedConfig = async () => {
+    setSavingHauntedConfig(true);
+    try {
+      await hauntedHouse.saveConfig(hauntedStartChannelId, hauntedLeaderboardChannelId);
+      setHauntedDialogOpen(false);
+      toast({ title: "Setările Casei Bântuite au fost salvate." });
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Setările nu au putut fi salvate", description: error?.message ?? "Încearcă din nou." });
+    } finally {
+      setSavingHauntedConfig(false);
+    }
+  };
+
+  const toggleHauntedHouse = async () => {
+    const isActive = hauntedHouse.data?.active;
+    if (isActive && !window.confirm("Oprești Casa Bântuită? Clasamentul final va fi publicat în canalul configurat.")) return;
+    setSavingHaunted(true);
+    try {
+      if (isActive) await hauntedHouse.stop();
+      else await hauntedHouse.start();
+      toast({
+        title: isActive ? "Casa Bântuită s-a închis" : "Casa Bântuită a început",
+        description: isActive ? "Clasamentul final a fost publicat." : "Anunțul a fost trimis în canalul de start.",
+      });
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Starea evenimentului nu a putut fi schimbată", description: error?.message ?? "Încearcă din nou." });
+      void hauntedHouse.refetch().catch(() => undefined);
+    } finally {
+      setSavingHaunted(false);
+    }
+  };
+
   return (
     <div className="space-y-8 pb-10 animate-stagger-1">
       <a
@@ -377,6 +417,138 @@ export function DashboardOverview() {
               : gamePaused ? "Pornește jocul" : "Oprește jocul"}
         </Button>
       </section>
+
+      <section
+        aria-label="Control Casa Bântuită"
+        data-testid="card-haunted-house"
+        className={`animate-stagger-4 flex flex-col gap-5 rounded-2xl border p-5 shadow-lg sm:flex-row sm:items-center sm:justify-between sm:p-6 ${
+          hauntedHouse.data?.active
+            ? "border-primary/35 bg-gradient-to-r from-primary/10 via-card/90 to-background/80 shadow-primary/5"
+            : "border-border/70 bg-gradient-to-r from-card/90 to-background/80"
+        }`}
+      >
+        <div className="flex min-w-0 items-start gap-4">
+          <span className={`mt-0.5 rounded-xl p-3 ${hauntedHouse.data?.active ? "bg-primary/10 text-primary" : "bg-secondary text-muted-foreground"}`} aria-hidden="true">
+            <span className="text-xl">🎃</span>
+          </span>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="mod-eyebrow">Eveniment sezonier · serverul selectat</p>
+              <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[10px] tracking-wider ${
+                hauntedHouse.data?.active
+                  ? "border-primary/30 bg-primary/10 text-primary"
+                  : "border-border bg-secondary/70 text-muted-foreground"
+              }`}>
+                <span className={`h-1.5 w-1.5 rounded-full ${hauntedHouse.data?.active ? "animate-pulse bg-primary" : "bg-muted-foreground"}`} />
+                {hauntedHouse.data?.active ? "ACTIVĂ" : hauntedHouse.loading ? "SE VERIFICĂ" : "OFFLINE"}
+              </span>
+            </div>
+            <h2 className="mt-1 font-display text-2xl text-foreground">Casa Bântuită</h2>
+            <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+              {hauntedHouse.data?.active
+                ? `Evenimentul rulează${hauntedHouse.data.startedAt ? ` din ${new Date(hauntedHouse.data.startedAt).toLocaleString()}` : ""}. Starea se verifică automat.`
+                : "Evenimentul este închis. Configurează canalele pentru a-l porni din panou."}
+            </p>
+            {hauntedHouse.error && (
+              <div role="alert" className="mt-3 flex flex-wrap items-center gap-3 text-sm text-destructive">
+                <span>Nu am putut confirma starea evenimentului. {hauntedHouse.error.message}</span>
+                <Button type="button" size="sm" variant="outline" onClick={() => void hauntedHouse.refetch().catch(() => undefined)} disabled={hauntedHouse.loading}>
+                  Reîncearcă
+                </Button>
+              </div>
+            )}
+            {hauntedHouse.data && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Start: {metadata?.channels.find((channel) => channel.id === hauntedHouse.data?.startChannelId)?.name
+                  ? `#${metadata.channels.find((channel) => channel.id === hauntedHouse.data?.startChannelId)?.name}`
+                  : "neconfigurat"}
+                <span className="mx-2 text-border">·</span>
+                Clasament final: {metadata?.channels.find((channel) => channel.id === hauntedHouse.data?.leaderboardChannelId)?.name
+                  ? `#${metadata.channels.find((channel) => channel.id === hauntedHouse.data?.leaderboardChannelId)?.name}`
+                  : "neconfigurat"}
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+          <Button
+            type="button"
+            variant="outline"
+            className="gap-2"
+            onClick={() => {
+              setHauntedStartChannelId(hauntedHouse.data?.startChannelId ?? "");
+              setHauntedLeaderboardChannelId(hauntedHouse.data?.leaderboardChannelId ?? "");
+              setHauntedDialogOpen(true);
+            }}
+            disabled={!hauntedHouse.data || savingHauntedConfig}
+            data-testid="button-haunted-house-config"
+          >
+            <Settings className="h-4 w-4" aria-hidden="true" />
+            Configurează
+          </Button>
+          <Button
+            type="button"
+            variant={hauntedHouse.data?.active ? "destructive" : "default"}
+            className="gap-2"
+            onClick={() => void toggleHauntedHouse()}
+            disabled={
+              hauntedHouse.loading || !hauntedHouse.data || Boolean(hauntedHouse.error) || savingHaunted ||
+              (!hauntedHouse.data.active && (!hauntedHouse.data.startChannelId || !hauntedHouse.data.leaderboardChannelId))
+            }
+            data-testid="button-haunted-house-toggle"
+          >
+            {hauntedHouse.data?.active
+              ? <PauseCircle className="h-4 w-4" aria-hidden="true" />
+              : <PlayCircle className="h-4 w-4" aria-hidden="true" />}
+            {savingHaunted ? "Se actualizează..." : hauntedHouse.data?.active ? "Oprește evenimentul" : "Pornește evenimentul"}
+          </Button>
+        </div>
+      </section>
+
+      <Dialog open={hauntedDialogOpen} onOpenChange={setHauntedDialogOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto border-border bg-background text-foreground sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="font-display text-2xl">Configurează Casa Bântuită</DialogTitle>
+            <DialogDescription>Alege canalul de anunț și locul unde se publică clasamentul final pentru {activeGuild?.name ?? "serverul selectat"}.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-5 py-2">
+            {([
+              { key: "start" as const, label: "Canal de start", value: hauntedStartChannelId, onChange: setHauntedStartChannelId, hint: "Aici apare anunțul când pornești evenimentul." },
+              { key: "leaderboard" as const, label: "Canal pentru clasamentul final", value: hauntedLeaderboardChannelId, onChange: setHauntedLeaderboardChannelId, hint: "Clasamentul se publică aici înainte de închiderea evenimentului." },
+            ]).map((field) => (
+              <label key={field.key} className="block space-y-2 text-sm font-medium">
+                <span>{field.label}</span>
+                <select
+                  value={field.value}
+                  onChange={(event) => field.onChange(event.target.value)}
+                  className="h-11 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                  data-testid={`select-haunted-${field.key}-channel`}
+                >
+                  <option value="">Alege un canal text</option>
+                  {(metadata?.channels ?? [])
+                    .filter((channel) => channel.type === 0 || channel.type === 5 || channel.type === "GuildText" || channel.type === "GuildAnnouncement")
+                    .map((channel) => <option key={channel.id} value={channel.id}>#{channel.name}</option>)}
+                </select>
+                <span className="block text-xs font-normal text-muted-foreground">{field.hint}</span>
+              </label>
+            ))}
+            {metadata?.channels.length === 0 && (
+              <p role="alert" className="text-sm text-destructive">Nu am găsit canale text accesibile în serverul selectat.</p>
+            )}
+          </div>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button type="button" variant="outline" onClick={() => setHauntedDialogOpen(false)} disabled={savingHauntedConfig}>Anulează</Button>
+            <Button
+              type="button"
+              onClick={() => void saveHauntedConfig()}
+              disabled={savingHauntedConfig || !hauntedStartChannelId || !hauntedLeaderboardChannelId}
+              data-testid="button-haunted-config-save"
+            >
+              {savingHauntedConfig ? "Se salvează..." : "Salvează canalele"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <section aria-label="Indicatori principali" className="grid gap-4 md:grid-cols-3 animate-stagger-5">
         <div className="mod-card group rounded-2xl p-5 sm:p-6">

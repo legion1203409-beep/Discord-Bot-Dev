@@ -4,8 +4,12 @@ import {
   HAUNTED_HOUSE_MAX_AI_CALLS_PER_HOUR,
   HAUNTED_HOUSE_MAX_NARRATIVE_CHARS,
   HAUNTED_HOUSE_MAX_PLAYS,
+  beginHauntedHouseStop,
   buildGhostPrompt,
+  cancelHauntedHouseStop,
   claimHauntedDoorChoice,
+  completeHauntedHouseStop,
+  formatHauntedHouseLeaderboard,
   generateGhostNarrative,
   getHauntedHouseLeaderboard,
   getHauntedHouseSessionId,
@@ -86,6 +90,32 @@ describe("Casa Bântuită", () => {
       ok: false,
       reason: "inactive",
     });
+  });
+
+  it("reserves a stop once and keeps scores until the final leaderboard is published", () => {
+    startHauntedHouse(guildId);
+    issueHauntedDoorChoice(guildId, userId, "final-score", 100_000);
+    claimHauntedDoorChoice(guildId, userId, "final-score", "felinar", 100_000, 0.05);
+
+    const closing = beginHauntedHouseStop(guildId);
+    expect(closing?.leaderboard).toHaveLength(1);
+    expect(beginHauntedHouseStop(guildId)).toBeNull();
+    expect(issueHauntedDoorChoice(guildId, "member-2", "during-close", 100_001)).toMatchObject({ ok: false, reason: "inactive" });
+    expect(getHauntedHouseLeaderboard(guildId)).toHaveLength(1);
+    expect(formatHauntedHouseLeaderboard(closing!.leaderboard, true)).toContain("Clasamentul final");
+
+    expect(completeHauntedHouseStop(guildId, closing!.sessionId)).toBe(true);
+    expect(completeHauntedHouseStop(guildId, closing!.sessionId)).toBe(false);
+    expect(isHauntedHouseActive(guildId)).toBe(false);
+    expect(getHauntedHouseLeaderboard(guildId)).toEqual([]);
+  });
+
+  it("allows a stop retry after publishing fails", () => {
+    startHauntedHouse(guildId);
+    const firstAttempt = beginHauntedHouseStop(guildId)!;
+    cancelHauntedHouseStop(guildId, firstAttempt.sessionId);
+
+    expect(beginHauntedHouseStop(guildId)).not.toBeNull();
   });
 
   it("does not let a previous session's button act on a freshly restarted event", () => {

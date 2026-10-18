@@ -1870,6 +1870,41 @@ export async function saveLeaderboardMessageId(
   );
 }
 
+export interface HauntedHouseConfig {
+  startChannelId: string;
+  leaderboardChannelId: string;
+}
+
+const HAUNTED_HOUSE_CONFIG_KEY = "haunted_house_config";
+
+export async function loadHauntedHouseConfig(guildId: string): Promise<HauntedHouseConfig> {
+  await ensureBotStateTable();
+  const result = await pool.query<{ value: string }>(
+    "SELECT value FROM bot_state WHERE key = $1",
+    [guildKey(guildId, HAUNTED_HOUSE_CONFIG_KEY)],
+  );
+  try {
+    const parsed = JSON.parse(result.rows[0]?.value ?? "{}") as Partial<HauntedHouseConfig>;
+    return {
+      startChannelId: typeof parsed.startChannelId === "string" ? parsed.startChannelId : "",
+      leaderboardChannelId: typeof parsed.leaderboardChannelId === "string" ? parsed.leaderboardChannelId : "",
+    };
+  } catch {
+    return { startChannelId: "", leaderboardChannelId: "" };
+  }
+}
+
+export async function saveHauntedHouseConfig(guildId: string, config: HauntedHouseConfig): Promise<void> {
+  await ensureBotStateTable();
+  await pool.query(
+    `INSERT INTO bot_state (key, value, updated_at)
+     VALUES ($1, $2, now())
+     ON CONFLICT (key) DO UPDATE
+     SET value = EXCLUDED.value, updated_at = now()`,
+    [guildKey(guildId, HAUNTED_HOUSE_CONFIG_KEY), JSON.stringify(config)],
+  );
+}
+
 const ORACLE_COUNCIL_KEY = "oracle_council";
 const ORACLE_COUNCIL_DECREE_KEY = "oracle_council_decree";
 

@@ -168,7 +168,7 @@ import
 import 
 {
 
- DEFAULT_INVITE_TRACKING_CONFIG, INVITE_REPORT_TIME_ZONES, loadInviteTrackingConfig, saveInviteTrackingConfig, loadDailyStatsEmbedConfig, loadAllianceRecruitmentText, loadChannelConfig, loadTicketConfig, loadProvisioningPermissions, saveProvisioningPermissions, saveAllianceRecruitmentText, saveChannelConfig, saveDailyStatsEmbedConfig, saveTicketConfig, type ChannelConfig
+ DEFAULT_INVITE_TRACKING_CONFIG, INVITE_REPORT_TIME_ZONES, loadInviteTrackingConfig, saveInviteTrackingConfig, loadDailyStatsEmbedConfig, loadAllianceRecruitmentText, loadChannelConfig, loadTicketConfig, loadProvisioningPermissions, saveProvisioningPermissions, saveAllianceRecruitmentText, saveChannelConfig, saveDailyStatsEmbedConfig, saveTicketConfig, loadHauntedHouseConfig, saveHauntedHouseConfig, type ChannelConfig
 }
 
  from "../bot/db"
@@ -201,6 +201,17 @@ import
 }
  from "../bot/scheduler"
 ;
+
+import {
+  beginHauntedHouseStop,
+  cancelHauntedHouseStop,
+  completeHauntedHouseStop,
+  formatHauntedHouseLeaderboard,
+  getHauntedHouseLeaderboard,
+  getHauntedHouseStatus,
+  startHauntedHouse,
+  stopHauntedHouse,
+} from "../bot/haunted-house";
 
 import 
 {
@@ -2326,6 +2337,93 @@ router.put("/guilds/:guildId/gameplay-state", asyncRoute(async (req, res) => {
   }
 
   res.set("Cache-Control", "no-store").json({ paused });
+}));
+
+const hauntedHouseChannelConfigSchema = z.object({
+  startChannelId: z.string().regex(/^\d{5,25}$/).or(z.literal("")),
+  leaderboardChannelId: z.string().regex(/^\d{5,25}$/).or(z.literal("")),
+}).strict();
+
+async function getHauntedHouseTextChannel(guildId: string, channelId: string): Promise<TextChannel> {
+  const client = getModerationClient();
+  const guild = client?.guilds.cache.get(guildId);
+  if (!guild) throw new ModerationAuthError(503, "Botul nu este conectat la serverul selectat.");
+  const channel = await guild.channels.fetch(channelId).catch(() => null);
+  if (!(channel instanceof TextChannel) || channel.guildId !== guildId) {
+    throw new ModerationAuthError(400, "Alege un canal text valid din serverul selectat.");
+  }
+  const botMember = guild.members.me ?? await guild.members.fetchMe().catch(() => null);
+  if (!botMember || !channel.permissionsFor(botMember)?.has([
+    PermissionFlagsBits.ViewChannel,
+    PermissionFlagsBits.SendMessages,
+  ])) {
+    throw new ModerationAuthError(400, `Botul nu poate vedea sau trimite mesaje în #${channel.name}.`);
+  }
+  return channel;
+}
+
+router.get("/guilds/:guildId/haunted-house", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  await sessionAndGuild(req, guildId, "config");
+  const [status, config] = await Promise.all([
+    Promise.resolve(getHauntedHouseStatus(guildId)),
+    loadHauntedHouseConfig(guildId),
+  ]);
+  res.set("Cache-Control", "no-store").json({ name: "Casa Bântuită", ...status, ...config });
+}));
+
+router.put("/guilds/:guildId/haunted-house/config", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  await sessionAndGuild(req, guildId, "config", true);
+  const config = hauntedHouseChannelConfigSchema.parse(req.body);
+  if (config.startChannelId) await getHauntedHouseTextChannel(guildId, config.startChannelId);
+  if (config.leaderboardChannelId) await getHauntedHouseTextChannel(guildId, config.leaderboardChannelId);
+  await saveHauntedHouseConfig(guildId, config);
+  res.set("Cache-Control", "no-store").json({ ...getHauntedHouseStatus(guildId), ...config });
+}));
+
+router.post("/guilds/:guildId/haunted-house/start", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  await sessionAndGuild(req, guildId, "config", true);
+  const config = await loadHauntedHouseConfig(guildId);
+  if (!config.startChannelId || !config.leaderboardChannelId) {
+    throw new ModerationAuthError(400, "Configurează canalul de start și canalul clasamentului înainte de pornire.");
+  }
+  const channel = await getHauntedHouseTextChannel(guildId, config.startChannelId);
+  if (!startHauntedHouse(guildId)) throw new ModerationAuthError(409, "Casa Bântuită este deja activă pe acest server.");
+  try {
+    await channel.send({
+      content: "🎃 **Casa Bântuită s-a deschis!** Folosește `/casabantuita joaca` pentru a alege o ușă. Fiecare membru are trei încercări.",
+      allowedMentions: { parse: [] },
+    });
+  } catch (error) {
+    stopHauntedHouse(guildId);
+    throw new ModerationAuthError(502, "Evenimentul nu a putut fi anunțat în canalul de start.");
+  }
+  res.set("Cache-Control", "no-store").json({ name: "Casa Bântuită", ...getHauntedHouseStatus(guildId), ...config });
+}));
+
+router.post("/guilds/:guildId/haunted-house/stop", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  await sessionAndGuild(req, guildId, "config", true);
+  const config = await loadHauntedHouseConfig(guildId);
+  if (!config.leaderboardChannelId) throw new ModerationAuthError(400, "Configurează canalul clasamentului final înainte de oprire.");
+  const channel = await getHauntedHouseTextChannel(guildId, config.leaderboardChannelId);
+  const closing = beginHauntedHouseStop(guildId);
+  if (!closing) throw new ModerationAuthError(409, "Evenimentul este deja închis sau se oprește deja.");
+  try {
+    await channel.send({
+      content: formatHauntedHouseLeaderboard(closing.leaderboard, true),
+      allowedMentions: { parse: [] },
+    });
+  } catch {
+    cancelHauntedHouseStop(guildId, closing.sessionId);
+    throw new ModerationAuthError(502, "Clasamentul nu a putut fi publicat; evenimentul rămâne activ.");
+  }
+  if (!completeHauntedHouseStop(guildId, closing.sessionId)) {
+    throw new ModerationAuthError(409, "Sesiunea evenimentului s-a schimbat înainte de închidere.");
+  }
+  res.set("Cache-Control", "no-store").json({ name: "Casa Bântuită", ...getHauntedHouseStatus(guildId), ...config });
 }));
 
 // The persisted config parser fills defaults and intentionally tolerates older
