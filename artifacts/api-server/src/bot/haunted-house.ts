@@ -18,6 +18,7 @@ const COMMAND_NAME = "casabantuita";
 const BUTTON_PREFIX = "hh";
 const PENDING_TTL_MS = 3 * 60_000;
 const PLAY_COOLDOWN_MS = 30_000;
+export const HAUNTED_HOUSE_DURATION_MS = 10 * 60_000;
 export const HAUNTED_HOUSE_MAX_PLAYS = 3;
 export const HAUNTED_HOUSE_MAX_NARRATIVE_CHARS = 400;
 export const HAUNTED_HOUSE_MAX_AI_CALLS_PER_HOUR = 40;
@@ -54,6 +55,7 @@ interface PendingChoice {
 interface HauntedGuildState {
   sessionId: string;
   startedAt: number;
+  expiresAt: number;
   members: Map<string, HauntedMemberScore>;
   pending: Map<string, PendingChoice>;
   lastPlayedAt: Map<string, number>;
@@ -73,12 +75,13 @@ export const hauntedHouseCommand = new SlashCommandBuilder()
   .addSubcommand((sub) => sub.setName("joaca").setDescription("Alege una dintre cele trei uși ale Casei Bântuite."))
   .addSubcommand((sub) => sub.setName("clasament").setDescription("Vezi clasamentul temporar al Casei Bântuite."));
 
-export function startHauntedHouse(guildId: string, now = Date.now()): boolean {
+export function startHauntedHouse(guildId: string, now = Date.now(), durationMs = HAUNTED_HOUSE_DURATION_MS): boolean {
   if (activeEvents.has(guildId)) return false;
   closingEvents.delete(guildId);
   activeEvents.set(guildId, {
     sessionId: randomUUID(),
     startedAt: now,
+    expiresAt: now + durationMs,
     members: new Map(),
     pending: new Map(),
     lastPlayedAt: new Map(),
@@ -92,16 +95,18 @@ export function stopHauntedHouse(guildId: string): void {
 }
 
 export function isHauntedHouseActive(guildId: string): boolean {
-  return activeEvents.has(guildId);
+  const state = activeEvents.get(guildId);
+  return Boolean(state && state.expiresAt > Date.now());
 }
 
 export function getHauntedHouseSessionId(guildId: string): string | null {
   return activeEvents.get(guildId)?.sessionId ?? null;
 }
 
-export function getHauntedHouseStatus(guildId: string): { active: boolean; startedAt: number | null } {
+export function getHauntedHouseStatus(guildId: string): { active: boolean; startedAt: number | null; expiresAt: number | null } {
   const state = activeEvents.get(guildId);
-  return { active: Boolean(state), startedAt: state?.startedAt ?? null };
+  const active = Boolean(state && state.expiresAt > Date.now());
+  return { active, startedAt: active ? state!.startedAt : null, expiresAt: active ? state!.expiresAt : null };
 }
 
 export function formatHauntedHouseLeaderboard(
@@ -150,7 +155,7 @@ export function issueHauntedDoorChoice(
   now = Date.now(),
 ): IssueChoiceResult {
   const state = activeEvents.get(guildId);
-  if (!state || closingEvents.has(guildId)) return { ok: false, reason: "inactive" };
+  if (!state || state.expiresAt <= now || closingEvents.has(guildId)) return { ok: false, reason: "inactive" };
 
   const score = state.members.get(userId);
   if ((score?.plays ?? 0) >= HAUNTED_HOUSE_MAX_PLAYS) return { ok: false, reason: "limit" };
@@ -179,11 +184,15 @@ export function rollHauntedOutcome(door: HauntedDoor, roll = Math.random()): Hau
   const normalizedRoll = Math.max(0, Math.min(0.999_999, roll));
   const outcomes: HauntedOutcome[] = normalizedRoll < 0.1
     ? [{ title: "Cutia cu bomboane", detail: "Ai găsit o cutie ascunsă sub praful vechi.", candies: 8, points: 7 }]
-    : normalizedRoll < 0.4
+    : normalizedRoll < 0.3
       ? [{ title: "Umbra prietenoasă", detail: "O umbră îți lasă câteva bomboane pe prag.", candies: 5, points: 4 }]
-      : normalizedRoll < 0.8
-        ? [{ title: "Ecoul casei", detail: "Ecoul îți dă curaj, dar nicio bomboană.", candies: 0, points: 2 }]
-        : [{ title: "Păianjenul șugubăț", detail: "Un păianjen îți fură o bomboană și fuge râzând.", candies: 0, points: 1 }];
+      : normalizedRoll < 0.6
+        ? [{ title: "Dulciurile uitate", detail: "O bomboană strălucește pe podeaua prăfuită.", candies: 2, points: 3 }]
+        : normalizedRoll < 0.8
+          ? [{ title: "Ecoul casei", detail: "Ecoul îți dă curaj, dar nicio bomboană.", candies: 0, points: 2 }]
+          : normalizedRoll < 0.95
+            ? [{ title: "Păianjenul șugubăț", detail: "Un păianjen îți fură o bomboană și fuge râzând.", candies: -1, points: 1 }]
+            : [{ title: "Umbra lacomă", detail: "O umbră îți fură două bomboane înainte să dispară.", candies: -2, points: 1 }];
 
   const doorFlavor: Record<HauntedDoor, string> = {
     felinar: "Lumina felinarului dansează pe pereți.",
@@ -203,7 +212,7 @@ export function claimHauntedDoorChoice(
   roll = Math.random(),
 ): ClaimChoiceResult {
   const state = activeEvents.get(guildId);
-  if (!state || closingEvents.has(guildId)) return { ok: false, reason: "inactive" };
+  if (!state || state.expiresAt <= now || closingEvents.has(guildId)) return { ok: false, reason: "inactive" };
 
   const pending = state.pending.get(nonce);
   if (!pending || pending.userId !== userId || pending.expiresAt <= now) {
@@ -218,16 +227,22 @@ export function claimHauntedDoorChoice(
   if (lastPlayedAt !== undefined && now - lastPlayedAt < PLAY_COOLDOWN_MS) return { ok: false, reason: "cooldown" };
 
   const outcome = rollHauntedOutcome(door, roll);
+  const candies = Math.max(0, current.candies + outcome.candies);
+  const actualCandyDelta = candies - current.candies;
   const updated = {
     plays: current.plays + 1,
-    candies: current.candies + outcome.candies,
+    candies,
     points: current.points + outcome.points,
   };
   state.members.set(userId, updated);
   state.lastPlayedAt.set(userId, now);
   return {
     ok: true,
-    outcome,
+    outcome: actualCandyDelta === outcome.candies ? outcome : {
+      ...outcome,
+      candies: actualCandyDelta,
+      detail: "Umbra încearcă să-ți fure bomboane, dar nu poți avea mai puțin de zero.",
+    },
     plays: updated.plays,
     totalPoints: updated.points,
     totalCandies: updated.candies,
@@ -246,6 +261,10 @@ export function getHauntedHouseLeaderboard(guildId: string): Array<{
     .map(([userId, score]) => ({ userId, ...score }))
     .sort((left, right) => right.points - left.points || right.candies - left.candies || left.userId.localeCompare(right.userId))
     .slice(0, 10);
+}
+
+export function getHauntedHouseExpiry(guildId: string): number | null {
+  return activeEvents.get(guildId)?.expiresAt ?? null;
 }
 
 export function buildGhostPrompt(door: HauntedDoor): string {
@@ -314,6 +333,26 @@ export async function generateGhostNarrative(
   }
 }
 
+export async function generateScheduledGhostStory(
+  provider: GhostNarrativeProvider = openAiNarrativeProvider,
+): Promise<string> {
+  const fallback = "În #chat-joc, lumânările s-au stins toate deodată. Când s-au reaprins, pe oglindă apăruse un nume pe care nimeni nu-l rostise.";
+  if (!process.env.OPENAI_API_KEY) return fallback;
+  const now = Date.now();
+  while (ghostCallTimestamps.length && now - ghostCallTimestamps[0]! >= 60 * 60_000) ghostCallTimestamps.shift();
+  if (ghostCallTimestamps.length >= HAUNTED_HOUSE_MAX_AI_CALLS_PER_HOUR) return fallback;
+  ghostCallTimestamps.push(now);
+  try {
+    const generated = await provider([
+      "Scrie o singură șoaptă horror originală, în română, pentru chatul unui server Discord.",
+      "Maximum două propoziții și 400 de caractere. Fără mențiuni Discord, bomboane sau puncte.",
+    ].join("\n"));
+    return (generated ?? fallback).replace(/@/g, "＠").replace(/\s+/g, " ").trim().slice(0, HAUNTED_HOUSE_MAX_NARRATIVE_CHARS) || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 function formatIssueError(reason: Exclude<IssueChoiceResult, { ok: true }>["reason"] | "invalid"): string {
   switch (reason) {
     case "inactive": return "👻 Casa Bântuită nu este deschisă acum.";
@@ -365,7 +404,7 @@ export async function handleHauntedHouseCommand(interaction: ChatInputCommandInt
         return;
       }
       await interaction.reply({
-        content: "🎃 **Casa Bântuită s-a deschis!** Folosește `/casabantuita joaca` pentru a alege o ușă. Fiecare membru are trei încercări.",
+        content: "🎃 **Casa Bântuită s-a deschis pentru 10 minute!** Folosește `/casabantuita joaca` pentru a alege o ușă. Fiecare membru are trei încercări.",
         ephemeral: true,
       });
     } else {
@@ -469,7 +508,7 @@ export async function handleHauntedHouseDoorButton(interaction: ButtonInteractio
       `👻 **Fantoma șoptește:** ${narrative}`,
       "",
       `🚪 **${HAUNTED_DOORS[parsed.door].label}** — ${result.outcome.detail}`,
-      `🍬 Bomboane de eveniment: **+${result.outcome.candies}** · 🎃 Puncte: **+${result.outcome.points}**`,
+      `🍬 Bomboane de eveniment: **${result.outcome.candies >= 0 ? "+" : ""}${result.outcome.candies}** · 🎃 Puncte: **+${result.outcome.points}**`,
       `**Totalul tău în acest eveniment:** ${result.totalPoints} puncte · ${result.totalCandies} bomboane · încercarea ${result.plays}/${HAUNTED_HOUSE_MAX_PLAYS}.`,
     ].join("\n"),
     embeds: [buildDoorEmbed(parsed.door)],

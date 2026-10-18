@@ -52,6 +52,7 @@ export function DashboardOverview() {
   const [hauntedDialogOpen, setHauntedDialogOpen] = useState(false);
   const [hauntedStartChannelId, setHauntedStartChannelId] = useState("");
   const [hauntedLeaderboardChannelId, setHauntedLeaderboardChannelId] = useState("");
+  const [hauntedChatChannelId, setHauntedChatChannelId] = useState("");
   const [savingHaunted, setSavingHaunted] = useState(false);
   const [savingHauntedConfig, setSavingHauntedConfig] = useState(false);
   const activeGuild = guilds.find((guild) => guild.id === guildId);
@@ -225,7 +226,7 @@ export function DashboardOverview() {
   const saveHauntedConfig = async () => {
     setSavingHauntedConfig(true);
     try {
-      await hauntedHouse.saveConfig(hauntedStartChannelId, hauntedLeaderboardChannelId);
+      await hauntedHouse.saveConfig(hauntedStartChannelId, hauntedLeaderboardChannelId, hauntedChatChannelId);
       setHauntedDialogOpen(false);
       toast({ title: "Setările Casei Bântuite au fost salvate." });
     } catch (error: any) {
@@ -446,8 +447,8 @@ export function DashboardOverview() {
             <h2 className="mt-1 font-display text-2xl text-foreground">Casa Bântuită</h2>
             <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
               {hauntedHouse.data?.active
-                ? `Evenimentul rulează${hauntedHouse.data.startedAt ? ` din ${new Date(hauntedHouse.data.startedAt).toLocaleString()}` : ""}. Starea se verifică automat.`
-                : "Evenimentul este închis. Configurează canalele pentru a-l porni din panou."}
+                ? `Evenimentul rulează${hauntedHouse.data.startedAt ? ` din ${new Date(hauntedHouse.data.startedAt).toLocaleString()}` : ""} și se închide automat după 10 minute${hauntedHouse.data.expiresAt ? ` (la ${new Date(hauntedHouse.data.expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })})` : ""}. Revine aleatoriu după 2–4 ore.`
+                : "Evenimentul este închis. Revine automat după pauza de 2–4 ore; administratorii îl pot porni și din panou."}
             </p>
             {hauntedHouse.error && (
               <div role="alert" className="mt-3 flex flex-wrap items-center gap-3 text-sm text-destructive">
@@ -466,6 +467,10 @@ export function DashboardOverview() {
                 Clasament final: {metadata?.channels.find((channel) => channel.id === hauntedHouse.data?.leaderboardChannelId)?.name
                   ? `#${metadata.channels.find((channel) => channel.id === hauntedHouse.data?.leaderboardChannelId)?.name}`
                   : "neconfigurat"}
+                <span className="mx-2 text-border">·</span>
+                Șoapte AI: {metadata?.channels.find((channel) => channel.id === hauntedHouse.data?.chatChannelId)?.name
+                  ? `#${metadata.channels.find((channel) => channel.id === hauntedHouse.data?.chatChannelId)?.name}`
+                  : "neconfigurat"}
               </p>
             )}
           </div>
@@ -478,6 +483,7 @@ export function DashboardOverview() {
             onClick={() => {
               setHauntedStartChannelId(hauntedHouse.data?.startChannelId ?? "");
               setHauntedLeaderboardChannelId(hauntedHouse.data?.leaderboardChannelId ?? "");
+              setHauntedChatChannelId(hauntedHouse.data?.chatChannelId ?? "");
               setHauntedDialogOpen(true);
             }}
             disabled={!hauntedHouse.data || savingHauntedConfig}
@@ -493,7 +499,7 @@ export function DashboardOverview() {
             onClick={() => void toggleHauntedHouse()}
             disabled={
               hauntedHouse.loading || !hauntedHouse.data || Boolean(hauntedHouse.error) || savingHaunted ||
-              (!hauntedHouse.data.active && (!hauntedHouse.data.startChannelId || !hauntedHouse.data.leaderboardChannelId))
+              (!hauntedHouse.data.active && (!hauntedHouse.data.startChannelId || !hauntedHouse.data.leaderboardChannelId || !hauntedHouse.data.chatChannelId))
             }
             data-testid="button-haunted-house-toggle"
           >
@@ -515,6 +521,7 @@ export function DashboardOverview() {
             {([
               { key: "start" as const, label: "Canal de start", value: hauntedStartChannelId, onChange: setHauntedStartChannelId, hint: "Aici apare anunțul când pornești evenimentul." },
               { key: "leaderboard" as const, label: "Canal pentru clasamentul final", value: hauntedLeaderboardChannelId, onChange: setHauntedLeaderboardChannelId, hint: "Clasamentul se publică aici înainte de închiderea evenimentului." },
+              { key: "chat" as const, label: "Chat pentru șoaptele horror AI", value: hauntedChatChannelId, onChange: setHauntedChatChannelId, hint: "Poveștile AI apar aici la fiecare două ore, nu în canalul de anunțuri." },
             ]).map((field) => (
               <label key={field.key} className="block space-y-2 text-sm font-medium">
                 <span>{field.label}</span>
@@ -541,7 +548,7 @@ export function DashboardOverview() {
             <Button
               type="button"
               onClick={() => void saveHauntedConfig()}
-              disabled={savingHauntedConfig || !hauntedStartChannelId || !hauntedLeaderboardChannelId}
+              disabled={savingHauntedConfig || !hauntedStartChannelId || !hauntedLeaderboardChannelId || !hauntedChatChannelId}
               data-testid="button-haunted-config-save"
             >
               {savingHauntedConfig ? "Se salvează..." : "Salvează canalele"}

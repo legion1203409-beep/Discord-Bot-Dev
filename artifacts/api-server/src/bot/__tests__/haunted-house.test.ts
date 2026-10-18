@@ -54,6 +54,33 @@ describe("Casa Bântuită", () => {
     expect(getHauntedHouseLeaderboard("guild-other")).toEqual([]);
   });
 
+  it("can deduct random candies without allowing a negative balance", () => {
+    startHauntedHouse(guildId);
+    issueHauntedDoorChoice(guildId, userId, "loss-at-zero");
+    const atZero = claimHauntedDoorChoice(guildId, userId, "loss-at-zero", "paianjen", Date.now(), 0.99);
+    expect(atZero).toMatchObject({
+      ok: true,
+      outcome: { candies: 0, detail: expect.stringContaining("zero") },
+      totalCandies: 0,
+    });
+
+    issueHauntedDoorChoice(guildId, userId, "earn-candy", Date.now() + 30_001);
+    const earned = claimHauntedDoorChoice(guildId, userId, "earn-candy", "felinar", Date.now() + 30_001, 0.05);
+    expect(earned).toMatchObject({ ok: true, totalCandies: 8 });
+
+    issueHauntedDoorChoice(guildId, userId, "loss-after-earn", Date.now() + 60_002);
+    const afterLoss = claimHauntedDoorChoice(guildId, userId, "loss-after-earn", "craniu", Date.now() + 60_002, 0.99);
+    expect(afterLoss).toMatchObject({ ok: true, outcome: { candies: -2 }, totalCandies: 6 });
+  });
+
+  it("rejects choices once the ten-minute event window has expired", () => {
+    startHauntedHouse(guildId, 100_000, 10 * 60_000);
+    expect(issueHauntedDoorChoice(guildId, userId, "expired-choice", 710_001)).toMatchObject({
+      ok: false,
+      reason: "inactive",
+    });
+  });
+
   it("allows one pending choice at a time and enforces three plays per member", () => {
     startHauntedHouse(guildId);
     const now = 100_000;

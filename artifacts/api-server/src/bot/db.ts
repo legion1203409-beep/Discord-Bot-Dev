@@ -1873,6 +1873,7 @@ export async function saveLeaderboardMessageId(
 export interface HauntedHouseConfig {
   startChannelId: string;
   leaderboardChannelId: string;
+  chatChannelId: string;
 }
 
 const HAUNTED_HOUSE_CONFIG_KEY = "haunted_house_config";
@@ -1888,10 +1889,37 @@ export async function loadHauntedHouseConfig(guildId: string): Promise<HauntedHo
     return {
       startChannelId: typeof parsed.startChannelId === "string" ? parsed.startChannelId : "",
       leaderboardChannelId: typeof parsed.leaderboardChannelId === "string" ? parsed.leaderboardChannelId : "",
+      chatChannelId: typeof parsed.chatChannelId === "string" ? parsed.chatChannelId : "",
     };
   } catch {
-    return { startChannelId: "", leaderboardChannelId: "" };
+    return { startChannelId: "", leaderboardChannelId: "", chatChannelId: "" };
   }
+}
+
+export interface HauntedHouseScheduleState {
+  nextStartAt: number;
+  nextStoryAt: number;
+}
+
+export async function loadHauntedHouseSchedule(guildId: string): Promise<HauntedHouseScheduleState | null> {
+  await ensureBotStateTable();
+  const result = await pool.query<{ value: string }>("SELECT value FROM bot_state WHERE key = $1", [guildKey(guildId, "haunted_house_schedule")]);
+  try {
+    const parsed = JSON.parse(result.rows[0]?.value ?? "null") as Partial<HauntedHouseScheduleState> | null;
+    if (!parsed || !Number.isFinite(parsed.nextStartAt) || !Number.isFinite(parsed.nextStoryAt)) return null;
+    return { nextStartAt: Number(parsed.nextStartAt), nextStoryAt: Number(parsed.nextStoryAt) };
+  } catch {
+    return null;
+  }
+}
+
+export async function saveHauntedHouseSchedule(guildId: string, state: HauntedHouseScheduleState): Promise<void> {
+  await ensureBotStateTable();
+  await pool.query(
+    `INSERT INTO bot_state (key, value, updated_at) VALUES ($1, $2, now())
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+    [guildKey(guildId, "haunted_house_schedule"), JSON.stringify(state)],
+  );
 }
 
 export async function saveHauntedHouseConfig(guildId: string, config: HauntedHouseConfig): Promise<void> {

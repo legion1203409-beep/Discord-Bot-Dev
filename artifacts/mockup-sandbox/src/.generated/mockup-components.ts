@@ -2,9 +2,11 @@
 type ModuleMap = Record<string, () => Promise<Record<string, unknown>>>;
 export const modules: ModuleMap = {
   "./components/mockups/anti-spam-settings/Current.tsx": () => import("../components/mockups/anti-spam-settings/Current.tsx"),
+  "./components/mockups/anti-spam-settings/Examples.tsx": () => import("../components/mockups/anti-spam-settings/Examples.tsx"),
   "./components/mockups/anti-spam-settings/Guided.tsx": () => import("../components/mockups/anti-spam-settings/Guided.tsx"),
   "./components/mockups/bot-control-channels/Current.tsx": () => import("../components/mockups/bot-control-channels/Current.tsx"),
   "./components/mockups/bot-control-channels/Redesign.tsx": () => import("../components/mockups/bot-control-channels/Redesign.tsx"),
+  "./components/mockups/haunted-house/DiscordEvent.tsx": () => import("../components/mockups/haunted-house/DiscordEvent.tsx"),
   "./components/mockups/moderation-module-config/Current.tsx": () => import("../components/mockups/moderation-module-config/Current.tsx"),
   "./components/mockups/provisioning-redesign/Current.tsx": () => import("../components/mockups/provisioning-redesign/Current.tsx"),
   "./components/mockups/provisioning-redesign/Refined.tsx": () => import("../components/mockups/provisioning-redesign/Refined.tsx"),

@@ -2342,6 +2342,7 @@ router.put("/guilds/:guildId/gameplay-state", asyncRoute(async (req, res) => {
 const hauntedHouseChannelConfigSchema = z.object({
   startChannelId: z.string().regex(/^\d{5,25}$/).or(z.literal("")),
   leaderboardChannelId: z.string().regex(/^\d{5,25}$/).or(z.literal("")),
+  chatChannelId: z.string().regex(/^\d{5,25}$/).or(z.literal("")),
 }).strict();
 
 async function getHauntedHouseTextChannel(guildId: string, channelId: string): Promise<TextChannel> {
@@ -2378,6 +2379,7 @@ router.put("/guilds/:guildId/haunted-house/config", asyncRoute(async (req, res) 
   const config = hauntedHouseChannelConfigSchema.parse(req.body);
   if (config.startChannelId) await getHauntedHouseTextChannel(guildId, config.startChannelId);
   if (config.leaderboardChannelId) await getHauntedHouseTextChannel(guildId, config.leaderboardChannelId);
+  if (config.chatChannelId) await getHauntedHouseTextChannel(guildId, config.chatChannelId);
   await saveHauntedHouseConfig(guildId, config);
   res.set("Cache-Control", "no-store").json({ ...getHauntedHouseStatus(guildId), ...config });
 }));
@@ -2386,14 +2388,14 @@ router.post("/guilds/:guildId/haunted-house/start", asyncRoute(async (req, res) 
   const guildId = parse(snowflake, req.params.guildId);
   await sessionAndGuild(req, guildId, "config", true);
   const config = await loadHauntedHouseConfig(guildId);
-  if (!config.startChannelId || !config.leaderboardChannelId) {
-    throw new ModerationAuthError(400, "Configurează canalul de start și canalul clasamentului înainte de pornire.");
+  if (!config.startChannelId || !config.leaderboardChannelId || !config.chatChannelId) {
+    throw new ModerationAuthError(400, "Configurează canalele de start, clasament și chat pentru șoaptele AI înainte de pornire.");
   }
   const channel = await getHauntedHouseTextChannel(guildId, config.startChannelId);
   if (!startHauntedHouse(guildId)) throw new ModerationAuthError(409, "Casa Bântuită este deja activă pe acest server.");
   try {
     await channel.send({
-      content: "🎃 **Casa Bântuită s-a deschis!** Folosește `/casabantuita joaca` pentru a alege o ușă. Fiecare membru are trei încercări.",
+      content: "🎃 **Casa Bântuită s-a deschis pentru 10 minute!** Folosește `/casabantuita joaca` pentru a alege o ușă. Fiecare membru are trei încercări.",
       allowedMentions: { parse: [] },
     });
   } catch (error) {
