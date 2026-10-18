@@ -25,6 +25,12 @@ export const IMG = {
   ticketSeal: assetUrl("ticket_seal.png"),
 };
 
+export const HAUNTED_DOOR_IMG = {
+  felinar: assetUrl("haunted-door-lantern.jpg"),
+  craniu: assetUrl("haunted-door-skull.jpg"),
+  paianjen: assetUrl("haunted-door-spider.jpg"),
+} as const;
+
 /**
  * Per-monster art — index i matches MONSTERS[i] in survival.ts.
  * All rarities use the static v2 PNG portraits (user-provided art; the animated

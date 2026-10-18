@@ -4,14 +4,16 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  EmbedBuilder,
   PermissionFlagsBits,
   SlashCommandBuilder,
   TextChannel,
   type ButtonInteraction,
   type ChatInputCommandInteraction,
+  type Interaction,
 } from "discord.js";
+import { HAUNTED_DOOR_IMG } from "./assets";
 import { loadHauntedHouseConfig } from "./db";
-
 const COMMAND_NAME = "casabantuita";
 const BUTTON_PREFIX = "hh";
 const PENDING_TTL_MS = 3 * 60_000;
@@ -332,6 +334,13 @@ function buildDoorRow(guildId: string, userId: string, nonce: string): ActionRow
   );
 }
 
+function buildDoorEmbed(door: HauntedDoor): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(0x322b3b)
+    .setTitle(HAUNTED_DOORS[door].label)
+    .setDescription(HAUNTED_DOORS[door].hint)
+    .setImage(HAUNTED_DOOR_IMG[door]);
+}
 function parseDoorButton(customId: string): { guildId: string; userId: string; nonce: string; door: HauntedDoor } | null {
   const [prefix, guildId, userId, nonce, door, ...extra] = customId.split(":");
   if (
@@ -404,6 +413,7 @@ export async function handleHauntedHouseCommand(interaction: ChatInputCommandInt
     }
     await interaction.reply({
       content: "🚪 Trei uși se deschid spre întuneric. Alege una; fantoma îți va lăsa o narațiune și un indiciu.",
+      embeds: (Object.keys(HAUNTED_DOORS) as HauntedDoor[]).map(buildDoorEmbed),
       components: [buildDoorRow(guildId, interaction.user.id, issued.nonce)],
       ephemeral: true,
     });
@@ -462,12 +472,27 @@ export async function handleHauntedHouseDoorButton(interaction: ButtonInteractio
       `🍬 Bomboane de eveniment: **+${result.outcome.candies}** · 🎃 Puncte: **+${result.outcome.points}**`,
       `**Totalul tău în acest eveniment:** ${result.totalPoints} puncte · ${result.totalCandies} bomboane · încercarea ${result.plays}/${HAUNTED_HOUSE_MAX_PLAYS}.`,
     ].join("\n"),
+    embeds: [buildDoorEmbed(parsed.door)],
     components: [],
     allowedMentions: { parse: [] },
   });
   return true;
 }
 
+export function dispatchHauntedHouseInteraction(
+  interaction: Interaction,
+  dispatch: (promise: Promise<unknown>) => void,
+): boolean {
+  if (interaction.isChatInputCommand() && interaction.commandName === COMMAND_NAME) {
+    dispatch(handleHauntedHouseCommand(interaction));
+    return true;
+  }
+  if (interaction.isButton() && interaction.customId.startsWith(`${BUTTON_PREFIX}:`)) {
+    dispatch(handleHauntedHouseDoorButton(interaction));
+    return true;
+  }
+  return false;
+}
 export function resetHauntedHouseStateForTests(): void {
   activeEvents.clear();
   closingEvents.clear();

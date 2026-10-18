@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ButtonInteraction, ChatInputCommandInteraction } from "discord.js";
+import { Client, Events, type ButtonInteraction, type ChatInputCommandInteraction, type Interaction } from "discord.js";
+import { isGuildGameStopped, guildStates } from "../scheduler";
 import {
   HAUNTED_HOUSE_MAX_AI_CALLS_PER_HOUR,
   HAUNTED_HOUSE_MAX_NARRATIVE_CHARS,
@@ -9,6 +10,7 @@ import {
   cancelHauntedHouseStop,
   claimHauntedDoorChoice,
   completeHauntedHouseStop,
+  dispatchHauntedHouseInteraction,
   formatHauntedHouseLeaderboard,
   generateGhostNarrative,
   getHauntedHouseLeaderboard,
@@ -54,20 +56,20 @@ describe("Casa Bântuită", () => {
 
   it("allows one pending choice at a time and enforces three plays per member", () => {
     startHauntedHouse(guildId);
-    const start = 100_000;
+    const now = 100_000;
 
-    expect(issueHauntedDoorChoice(guildId, userId, "first", start).ok).toBe(true);
-    expect(issueHauntedDoorChoice(guildId, userId, "second", start)).toMatchObject({ ok: false, reason: "pending" });
-    expect(claimHauntedDoorChoice(guildId, userId, "wrong-nonce", "craniu", start)).toMatchObject({ ok: false, reason: "invalid" });
+    expect(issueHauntedDoorChoice(guildId, userId, "first", now).ok).toBe(true);
+    expect(issueHauntedDoorChoice(guildId, userId, "second", now)).toMatchObject({ ok: false, reason: "pending" });
+    expect(claimHauntedDoorChoice(guildId, userId, "wrong-nonce", "craniu", now)).toMatchObject({ ok: false, reason: "invalid" });
 
     for (let play = 1; play <= HAUNTED_HOUSE_MAX_PLAYS; play += 1) {
-      const now = start + (play - 1) * 30_001;
+      const playedAt = now + (play - 1) * 30_001;
       const nonce = play === 1 ? "first" : `play-${play}`;
-      if (play > 1) expect(issueHauntedDoorChoice(guildId, userId, nonce, now).ok).toBe(true);
-      expect(claimHauntedDoorChoice(guildId, userId, nonce, "paianjen", now, 0.2).ok).toBe(true);
+      if (play > 1) expect(issueHauntedDoorChoice(guildId, userId, nonce, playedAt).ok).toBe(true);
+      expect(claimHauntedDoorChoice(guildId, userId, nonce, "paianjen", playedAt, 0.2).ok).toBe(true);
     }
 
-    expect(issueHauntedDoorChoice(guildId, userId, "fourth", start + 4 * 30_001)).toEqual({
+    expect(issueHauntedDoorChoice(guildId, userId, "fourth", now + 4 * 30_001)).toEqual({
       ok: false,
       reason: "limit",
     });
@@ -189,9 +191,139 @@ describe("Casa Bântuită", () => {
     expect(editReply).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining("nu este deschisă") }));
   });
 
+  it("routes haunted-house commands and door buttons through InteractionCreate while the RPG is paused", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "");
+    const client = new Client({ intents: [] });
+    const dispatched: Promise<unknown>[] = [];
+    const pauseReplies = vi.fn();
+    const pausedBefore = isGuildGameStopped(guildId);
+    const rpgSchedulerState = guildStates.get(guildId)!;
+    const rpgStateBefore = {
+      stopped: rpgSchedulerState.stopped,
+      firingEvent: rpgSchedulerState.firingEvent,
+      activeBosses: rpgSchedulerState.activeBossMap.size,
+    };
+
+    client.on(Events.InteractionCreate, (interaction) => {
+      if (dispatchHauntedHouseInteraction(interaction, (promise) => dispatched.push(promise))) return;
+      if (interaction.guildId && isGuildGameStopped(interaction.guildId)) {
+        pauseReplies();
+        if (interaction.isRepliable()) void interaction.reply({ content: "Jocul este oprit." });
+      }
+    });
+
+    const emit = async (interaction: Interaction) => {
+      client.emit(Events.InteractionCreate, interaction);
+      await Promise.all(dispatched.splice(0));
+    };
+    const command = (subcommand: string, id: string) => ({
+      id,
+      guildId,
+      commandName: "casabantuita",
+      createdTimestamp: Date.now(),
+      user: { id: userId },
+      options: { getSubcommand: () => subcommand },
+      memberPermissions: { has: () => true },
+      isChatInputCommand: () => true,
+      isButton: () => false,
+      isRepliable: () => true,
+      reply: vi.fn().mockResolvedValue(undefined),
+    }) as unknown as Interaction & { reply: ReturnType<typeof vi.fn> };
+
+    try {
+      const start = command("start", "hh-start");
+      await emit(start);
+      expect(start.reply).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining("s-a deschis") }));
+      expect(isHauntedHouseActive(guildId)).toBe(true);
+
+      const play = command("joaca", "hh-play");
+      await emit(play);
+      expect(play.reply).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining("Trei uși") }));
+
+      const playReply = play.reply.mock.calls[0]?.[0] as {
+        components: Array<{ components: Array<{ data: { custom_id: string } }> }>;
+        embeds: Array<{ data: { image?: { url?: string } } }>;
+      };
+      expect(playReply.embeds).toHaveLength(3);
+      expect(playReply.embeds.map((embed) => embed.data.image?.url)).toEqual([
+        expect.stringMatching(/\/api\/assets\/haunted-door-lantern\.jpg$/),
+        expect.stringMatching(/\/api\/assets\/haunted-door-skull\.jpg$/),
+        expect.stringMatching(/\/api\/assets\/haunted-door-spider\.jpg$/),
+      ]);
+      const issuedButtonId = playReply.components[0]?.components[0]?.data.custom_id;
+      expect(issuedButtonId).toContain(`hh:${guildId}:${userId}:`);
+      const buttonDefer = vi.fn().mockResolvedValue(undefined);
+      const buttonEdit = vi.fn().mockResolvedValue(undefined);
+      const button = {
+        id: "hh-door-valid",
+        guildId,
+        customId: issuedButtonId!,
+        createdTimestamp: Date.now(),
+        user: { id: userId },
+        isChatInputCommand: () => false,
+        isButton: () => true,
+        isRepliable: () => true,
+        deferUpdate: buttonDefer,
+        editReply: buttonEdit,
+        reply: vi.fn(),
+      } as unknown as Interaction;
+      await emit(button);
+      expect(buttonDefer).toHaveBeenCalledOnce();
+      expect(buttonEdit).toHaveBeenCalledWith(expect.objectContaining({
+        content: expect.stringContaining("Fantoma șoptește"),
+        embeds: [expect.objectContaining({
+          data: expect.objectContaining({
+            image: expect.objectContaining({ url: expect.stringMatching(/\/api\/assets\/haunted-door-lantern\.jpg$/) }),
+          }),
+        })],
+      }));
+      expect(getHauntedHouseLeaderboard(guildId)).toHaveLength(1);
+
+      const leaderboard = command("clasament", "hh-leaderboard");
+      await emit(leaderboard);
+      expect(leaderboard.reply).toHaveBeenCalledWith(expect.objectContaining({
+        content: expect.stringContaining("Clasamentul Casei Bântuite"),
+      }));
+
+      issueHauntedDoorChoice(guildId, "member-with-stale-button", "closed-route", Date.now());
+      const stop = command("stop", "hh-stop");
+      await emit(stop);
+      expect(stop.reply).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining("s-a închis") }));
+      expect(isHauntedHouseActive(guildId)).toBe(false);
+
+      const staleEdit = vi.fn().mockResolvedValue(undefined);
+      const staleButton = {
+        id: "hh-door-closed",
+        guildId,
+        customId: `hh:${guildId}:member-with-stale-button:closed-route:craniu`,
+        createdTimestamp: Date.now(),
+        user: { id: "member-with-stale-button" },
+        isChatInputCommand: () => false,
+        isButton: () => true,
+        isRepliable: () => true,
+        deferUpdate: vi.fn().mockResolvedValue(undefined),
+        editReply: staleEdit,
+        reply: vi.fn(),
+      } as unknown as Interaction;
+      await emit(staleButton);
+      expect(staleEdit).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining("nu este deschisă") }));
+      expect(pauseReplies).not.toHaveBeenCalled();
+      expect(pausedBefore).toBe(true);
+      expect(isGuildGameStopped(guildId)).toBe(pausedBefore);
+      expect({
+        stopped: rpgSchedulerState.stopped,
+        firingEvent: rpgSchedulerState.firingEvent,
+        activeBosses: rpgSchedulerState.activeBossMap.size,
+      }).toEqual(rpgStateBefore);
+    } finally {
+      client.destroy();
+      guildStates.delete(guildId);
+    }
+  });
+
   it("uses a door-specific fallback without calling AI when no key is configured", async () => {
     vi.stubEnv("OPENAI_API_KEY", "");
-    const provider = vi.fn().mockResolvedValue("AI reply");
+    const provider = vi.fn().mockResolvedValue("O șoaptă scurtă.");
 
     const narrative = await generateGhostNarrative("craniu", userId, 100_000, provider);
 
@@ -207,7 +339,7 @@ describe("Casa Bântuită", () => {
     expect(claim.ok).toBe(true);
     if (!claim.ok) return;
 
-    const provider = vi.fn().mockResolvedValue("Fantoma spune ceva. ".repeat(100));
+    const provider = vi.fn().mockResolvedValue("O șoaptă scurtă.");
     const narrative = await generateGhostNarrative("felinar", userId, 100_001, provider);
 
     expect(narrative.length).toBeLessThanOrEqual(HAUNTED_HOUSE_MAX_NARRATIVE_CHARS);
