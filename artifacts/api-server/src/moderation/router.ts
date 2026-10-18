@@ -204,11 +204,12 @@ import
 
 import {
   beginHauntedHouseStop,
+  buildHauntedHouseOpenAnnouncement,
   cancelHauntedHouseStop,
   completeHauntedHouseStop,
-  formatHauntedHouseLeaderboard,
   getHauntedHouseLeaderboard,
   getHauntedHouseStatus,
+  publishHauntedHouseLeaderboard,
   startHauntedHouse,
   stopHauntedHouse,
 } from "../bot/haunted-house";
@@ -2370,7 +2371,7 @@ router.get("/guilds/:guildId/haunted-house", asyncRoute(async (req, res) => {
     Promise.resolve(getHauntedHouseStatus(guildId)),
     loadHauntedHouseConfig(guildId),
   ]);
-  res.set("Cache-Control", "no-store").json({ name: "Casa Bântuită", ...status, ...config });
+  res.set("Cache-Control", "no-store").json({ name: "Castelul Bântuit", ...status, ...config });
 }));
 
 router.put("/guilds/:guildId/haunted-house/config", asyncRoute(async (req, res) => {
@@ -2392,17 +2393,14 @@ router.post("/guilds/:guildId/haunted-house/start", asyncRoute(async (req, res) 
     throw new ModerationAuthError(400, "Configurează canalele de start, clasament și chat pentru șoaptele AI înainte de pornire.");
   }
   const channel = await getHauntedHouseTextChannel(guildId, config.startChannelId);
-  if (!startHauntedHouse(guildId)) throw new ModerationAuthError(409, "Casa Bântuită este deja activă pe acest server.");
+  if (!startHauntedHouse(guildId)) throw new ModerationAuthError(409, "Castelul Bântuit este deja activ pe acest server.");
   try {
-    await channel.send({
-      content: "🎃 **Casa Bântuită s-a deschis pentru 10 minute!** Folosește `/casabantuita joaca` pentru a alege o ușă. Fiecare membru are trei încercări.",
-      allowedMentions: { parse: [] },
-    });
+    await channel.send(buildHauntedHouseOpenAnnouncement(guildId));
   } catch (error) {
     stopHauntedHouse(guildId);
-    throw new ModerationAuthError(502, "Evenimentul nu a putut fi anunțat în canalul de start.");
+    throw new ModerationAuthError(502, "Castelul Bântuit nu a putut fi anunțat în canalul de start.");
   }
-  res.set("Cache-Control", "no-store").json({ name: "Casa Bântuită", ...getHauntedHouseStatus(guildId), ...config });
+  res.set("Cache-Control", "no-store").json({ name: "Castelul Bântuit", ...getHauntedHouseStatus(guildId), ...config });
 }));
 
 router.post("/guilds/:guildId/haunted-house/stop", asyncRoute(async (req, res) => {
@@ -2410,14 +2408,12 @@ router.post("/guilds/:guildId/haunted-house/stop", asyncRoute(async (req, res) =
   await sessionAndGuild(req, guildId, "config", true);
   const config = await loadHauntedHouseConfig(guildId);
   if (!config.leaderboardChannelId) throw new ModerationAuthError(400, "Configurează canalul clasamentului final înainte de oprire.");
-  const channel = await getHauntedHouseTextChannel(guildId, config.leaderboardChannelId);
+  const client = getModerationClient();
+  if (!client) throw new ModerationAuthError(503, "Botul nu este conectat.");
   const closing = beginHauntedHouseStop(guildId);
   if (!closing) throw new ModerationAuthError(409, "Evenimentul este deja închis sau se oprește deja.");
   try {
-    await channel.send({
-      content: formatHauntedHouseLeaderboard(closing.leaderboard, true),
-      allowedMentions: { parse: [] },
-    });
+    await publishHauntedHouseLeaderboard(client, guildId, closing.sessionId, true);
   } catch {
     cancelHauntedHouseStop(guildId, closing.sessionId);
     throw new ModerationAuthError(502, "Clasamentul nu a putut fi publicat; evenimentul rămâne activ.");
@@ -2425,7 +2421,7 @@ router.post("/guilds/:guildId/haunted-house/stop", asyncRoute(async (req, res) =
   if (!completeHauntedHouseStop(guildId, closing.sessionId)) {
     throw new ModerationAuthError(409, "Sesiunea evenimentului s-a schimbat înainte de închidere.");
   }
-  res.set("Cache-Control", "no-store").json({ name: "Casa Bântuită", ...getHauntedHouseStatus(guildId), ...config });
+  res.set("Cache-Control", "no-store").json({ name: "Castelul Bântuit", ...getHauntedHouseStatus(guildId), ...config });
 }));
 
 // The persisted config parser fills defaults and intentionally tolerates older

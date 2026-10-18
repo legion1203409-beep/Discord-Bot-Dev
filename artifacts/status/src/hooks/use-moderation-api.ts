@@ -992,7 +992,7 @@ export function useHauntedHouse(guildId: string | null) {
     try {
       const result = await apiFetch<HauntedHouseStatus>(`/guilds/${requestedGuild}/haunted-house`);
       if (typeof result?.active !== "boolean" || typeof result?.name !== "string") {
-        throw new Error("Răspunsul nu conține o stare validă pentru Casa Bântuită.");
+        throw new Error("Răspunsul nu conține o stare validă pentru Castelul Bântuit.");
       }
       if (requestId.current === request && currentGuildId.current === requestedGuild) {
         setData(result);

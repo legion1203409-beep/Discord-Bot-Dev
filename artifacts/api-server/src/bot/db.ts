@@ -1901,6 +1901,44 @@ export interface HauntedHouseScheduleState {
   nextStoryAt: number;
 }
 
+export interface HauntedHouseLeaderboardMessage {
+  sessionId: string;
+  channelId: string;
+  messageId: string;
+}
+
+export async function loadHauntedHouseLeaderboardMessage(guildId: string): Promise<HauntedHouseLeaderboardMessage | null> {
+  await ensureBotStateTable();
+  const result = await pool.query<{ value: string }>(
+    "SELECT value FROM bot_state WHERE key = $1",
+    [guildKey(guildId, "haunted_house_leaderboard_message")],
+  );
+  try {
+    const parsed = JSON.parse(result.rows[0]?.value ?? "null") as Partial<HauntedHouseLeaderboardMessage> | null;
+    if (
+      !parsed ||
+      typeof parsed.sessionId !== "string" ||
+      typeof parsed.channelId !== "string" ||
+      typeof parsed.messageId !== "string"
+    ) return null;
+    return { sessionId: parsed.sessionId, channelId: parsed.channelId, messageId: parsed.messageId };
+  } catch {
+    return null;
+  }
+}
+
+export async function saveHauntedHouseLeaderboardMessage(
+  guildId: string,
+  state: HauntedHouseLeaderboardMessage,
+): Promise<void> {
+  await ensureBotStateTable();
+  await pool.query(
+    `INSERT INTO bot_state (key, value, updated_at) VALUES ($1, $2, now())
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+    [guildKey(guildId, "haunted_house_leaderboard_message"), JSON.stringify(state)],
+  );
+}
+
 export async function loadHauntedHouseSchedule(guildId: string): Promise<HauntedHouseScheduleState | null> {
   await ensureBotStateTable();
   const result = await pool.query<{ value: string }>("SELECT value FROM bot_state WHERE key = $1", [guildKey(guildId, "haunted_house_schedule")]);

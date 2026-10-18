@@ -72,6 +72,23 @@ describe("AI-generated member messages", () => {
     expect(buildMemberMessagePrompt("welcome", "custom", "ton de basm")).toContain("ton de basm");
   });
 
+  it("adds Halloween and Christmas themes to both welcome and departure messages in season", () => {
+    const halloween = new Date("2026-10-31T12:00:00Z");
+    const christmas = new Date("2026-12-24T12:00:00Z");
+
+    for (const event of ["welcome", "leave"] as const) {
+      expect(buildMemberMessagePrompt(event, "normal", "", halloween)).toContain("atmosferă veselă de Halloween");
+      expect(buildMemberMessagePrompt(event, "normal", "", christmas)).toContain("atmosferă caldă de sărbătoare");
+    }
+  });
+
+  it("keeps the configured style outside Halloween and Christmas season", () => {
+    const prompt = buildMemberMessagePrompt("welcome", "fantasy", "", new Date("2026-03-15T12:00:00Z"));
+    expect(prompt).toContain("ton de poveste fantasy");
+    expect(prompt).not.toContain("Halloween");
+    expect(prompt).not.toContain("Crăciun");
+  });
+
   it("does not call AI or fetch a channel for a disabled event", async () => {
     const { member, fetch } = createMember();
     mocks.getGameplayConfig.mockReturnValue({

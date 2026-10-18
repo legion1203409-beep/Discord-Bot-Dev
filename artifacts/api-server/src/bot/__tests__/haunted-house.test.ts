@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Client, Events, type ButtonInteraction, type ChatInputCommandInteraction, type Interaction } from "discord.js";
+import { Client, Events, TextChannel, type ButtonInteraction, type ChatInputCommandInteraction, type Interaction } from "discord.js";
 import { isGuildGameStopped, guildStates } from "../scheduler";
 import {
   HAUNTED_HOUSE_MAX_AI_CALLS_PER_HOUR,
   HAUNTED_HOUSE_MAX_NARRATIVE_CHARS,
   HAUNTED_HOUSE_MAX_PLAYS,
   beginHauntedHouseStop,
+  buildHauntedHouseOpenAnnouncement,
   buildGhostPrompt,
   cancelHauntedHouseStop,
   claimHauntedDoorChoice,
@@ -16,16 +17,28 @@ import {
   getHauntedHouseLeaderboard,
   getHauntedHouseSessionId,
   handleHauntedHouseCommand,
+  handleHauntedHouseEnterButton,
   handleHauntedHouseDoorButton,
+  hauntedHouseCommand,
   issueHauntedDoorChoice,
   isHauntedHouseActive,
+  publishHauntedHouseLeaderboard,
   resetHauntedHouseStateForTests,
   startHauntedHouse,
   stopHauntedHouse,
 } from "../haunted-house";
+import * as botDb from "../db";
 
 const guildId = "guild-halloween";
 const userId = "member-1";
+
+function mockTextChannel(id: string, guildId: string) {
+  return Object.assign(Object.create(TextChannel.prototype), {
+    id,
+    guildId,
+    send: vi.fn().mockResolvedValue({ id: "announcement-message" }),
+  });
+}
 
 beforeEach(() => {
   resetHauntedHouseStateForTests();
@@ -34,9 +47,54 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllEnvs();
+  vi.restoreAllMocks();
 });
 
-describe("Casa Bântuită", () => {
+describe("Castelul Bântuit", () => {
+  it("posts an Enter button and opens private door choices for the clicking player", async () => {
+    startHauntedHouse(guildId);
+    const announcement = buildHauntedHouseOpenAnnouncement(guildId);
+    expect(announcement.content).toContain("Castelul Bântuit");
+    expect((announcement.components[0]?.components[0]?.data as { label?: string }).label).toBe("Intră în casă");
+
+    const reply = vi.fn().mockResolvedValue(undefined);
+    const interaction = {
+      customId: `hh_enter:${guildId}`,
+      guildId,
+      user: { id: userId },
+      isChatInputCommand: () => false,
+      isButton: () => true,
+      isRepliable: () => true,
+      reply,
+    } as unknown as Interaction;
+
+    const dispatched: Promise<unknown>[] = [];
+    expect(dispatchHauntedHouseInteraction(interaction, (promise) => dispatched.push(promise))).toBe(true);
+    await Promise.all(dispatched);
+    expect(reply).toHaveBeenCalledWith(expect.objectContaining({
+      ephemeral: true,
+      content: expect.stringContaining("Trei uși"),
+    }));
+    expect(reply.mock.calls[0]?.[0].components[0].components[0].data.custom_id).toContain(`:${userId}:`);
+  });
+
+  it("rejects an Enter button from a different server", async () => {
+    startHauntedHouse(guildId);
+    const reply = vi.fn().mockResolvedValue(undefined);
+    const interaction = {
+      customId: "hh_enter:other-server",
+      guildId,
+      user: { id: userId },
+      reply,
+    } as unknown as ButtonInteraction;
+
+    await handleHauntedHouseEnterButton(interaction);
+    expect(reply).toHaveBeenCalledWith(expect.objectContaining({
+      ephemeral: true,
+      content: expect.stringContaining("altui server"),
+    }));
+  });
+
   it("keeps event scoring and its leaderboard separate per server", () => {
     startHauntedHouse(guildId);
     startHauntedHouse("guild-other");
@@ -139,6 +197,49 @@ describe("Casa Bântuită", () => {
     expect(getHauntedHouseLeaderboard(guildId)).toEqual([]);
   });
 
+  it("edits one public leaderboard message as scores change and at event close", async () => {
+    startHauntedHouse(guildId);
+    const sessionId = getHauntedHouseSessionId(guildId)!;
+    let stored: { sessionId: string; channelId: string; messageId: string } | null = null;
+    const edit = vi.fn().mockResolvedValue(undefined);
+    const send = vi.fn().mockResolvedValue({ id: "board-message", edit });
+    const channel = Object.assign(Object.create(TextChannel.prototype), {
+      id: "board-channel",
+      guildId,
+      permissionsFor: () => ({ has: () => true }),
+      messages: { fetch: vi.fn().mockResolvedValue({ id: "board-message", edit }) },
+      send,
+    });
+    const guild = {
+      channels: { fetch: vi.fn().mockResolvedValue(channel) },
+      members: { me: { id: "bot" }, fetchMe: vi.fn() },
+    };
+    const client = { guilds: { cache: { get: (id: string) => id === guildId ? guild : undefined } } } as unknown as Client;
+    vi.spyOn(botDb, "loadHauntedHouseConfig").mockResolvedValue({
+      startChannelId: "start-channel",
+      leaderboardChannelId: "board-channel",
+      chatChannelId: "chat-channel",
+    });
+    vi.spyOn(botDb, "loadHauntedHouseLeaderboardMessage").mockImplementation(async () => stored);
+    vi.spyOn(botDb, "saveHauntedHouseLeaderboardMessage").mockImplementation(async (_guildId, value) => {
+      stored = value;
+    });
+
+    await publishHauntedHouseLeaderboard(client, guildId, sessionId);
+    issueHauntedDoorChoice(guildId, userId, "live-board", 100_000);
+    claimHauntedDoorChoice(guildId, userId, "live-board", "felinar", 100_000, 0.05);
+    await publishHauntedHouseLeaderboard(client, guildId, sessionId);
+
+    const closing = beginHauntedHouseStop(guildId)!;
+    await publishHauntedHouseLeaderboard(client, guildId, closing.sessionId, true);
+
+    expect(send).toHaveBeenCalledOnce();
+    expect(edit).toHaveBeenCalledTimes(2);
+    expect(edit.mock.calls[0]?.[0].content).toContain("7** puncte");
+    expect(edit.mock.calls[1]?.[0].content).toContain("Clasamentul final");
+    expect(hauntedHouseCommand.toJSON().options?.map((option) => option.name)).not.toContain("clasament");
+  });
+
   it("allows a stop retry after publishing fails", () => {
     startHauntedHouse(guildId);
     const firstAttempt = beginHauntedHouseStop(guildId)!;
@@ -176,8 +277,16 @@ describe("Casa Bântuită", () => {
     expect(deniedReply).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining("Doar administratorii") }));
     expect(isHauntedHouseActive(guildId)).toBe(false);
 
+    const startChannel = mockTextChannel("start-channel", guildId);
+    const startGuild = { channels: { fetch: vi.fn().mockResolvedValue(startChannel) } };
+    vi.spyOn(botDb, "loadHauntedHouseConfig").mockResolvedValue({
+      startChannelId: "start-channel",
+      leaderboardChannelId: "",
+      chatChannelId: "",
+    });
     const adminInteraction = (subcommand: string, reply = vi.fn()) => ({
       guildId,
+      guild: startGuild,
       user: { id: "admin-1" },
       options: { getSubcommand: () => subcommand },
       memberPermissions: { has: () => true },
@@ -190,11 +299,16 @@ describe("Casa Bântuită", () => {
 
     const repeatedStartReply = vi.fn();
     await handleHauntedHouseCommand(adminInteraction("start", repeatedStartReply));
-    expect(repeatedStartReply).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining("deja deschisă") }));
+    expect(repeatedStartReply).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining("deja deschis") }));
     expect(getHauntedHouseLeaderboard(guildId)).toHaveLength(1);
 
-    await handleHauntedHouseCommand(adminInteraction("stop"));
-    expect(isHauntedHouseActive(guildId)).toBe(false);
+    const stopReply = vi.fn();
+    await handleHauntedHouseCommand(adminInteraction("stop", stopReply));
+    expect(stopReply).toHaveBeenCalledWith(expect.objectContaining({
+      content: expect.stringContaining("Clasamentul final nu a putut fi actualizat"),
+    }));
+    expect(isHauntedHouseActive(guildId)).toBe(true);
+    stopHauntedHouse(guildId);
   });
 
   it("rejects a Discord door button after an administrator closes the event", async () => {
@@ -215,12 +329,14 @@ describe("Casa Bântuită", () => {
 
     await expect(handleHauntedHouseDoorButton(interaction)).resolves.toBe(true);
     expect(deferUpdate).toHaveBeenCalledOnce();
-    expect(editReply).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining("nu este deschisă") }));
+    expect(editReply).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining("nu este deschis acum") }));
   });
 
   it("routes haunted-house commands and door buttons through InteractionCreate while the RPG is paused", async () => {
     vi.stubEnv("OPENAI_API_KEY", "");
     const client = new Client({ intents: [] });
+    const startChannel = mockTextChannel("start-channel", guildId);
+    const startGuild = { channels: { fetch: vi.fn().mockResolvedValue(startChannel) } };
     const dispatched: Promise<unknown>[] = [];
     const pauseReplies = vi.fn();
     const pausedBefore = isGuildGameStopped(guildId);
@@ -246,6 +362,7 @@ describe("Casa Bântuită", () => {
     const command = (subcommand: string, id: string) => ({
       id,
       guildId,
+      guild: startGuild,
       commandName: "casabantuita",
       createdTimestamp: Date.now(),
       user: { id: userId },
@@ -258,6 +375,11 @@ describe("Casa Bântuită", () => {
     }) as unknown as Interaction & { reply: ReturnType<typeof vi.fn> };
 
     try {
+      vi.spyOn(botDb, "loadHauntedHouseConfig").mockResolvedValue({
+        startChannelId: "start-channel",
+        leaderboardChannelId: "",
+        chatChannelId: "",
+      });
       const start = command("start", "hh-start");
       await emit(start);
       expect(start.reply).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining("s-a deschis") }));
@@ -284,6 +406,7 @@ describe("Casa Bântuită", () => {
       const button = {
         id: "hh-door-valid",
         guildId,
+        client,
         customId: issuedButtonId!,
         createdTimestamp: Date.now(),
         user: { id: userId },
@@ -306,17 +429,14 @@ describe("Casa Bântuită", () => {
       }));
       expect(getHauntedHouseLeaderboard(guildId)).toHaveLength(1);
 
-      const leaderboard = command("clasament", "hh-leaderboard");
-      await emit(leaderboard);
-      expect(leaderboard.reply).toHaveBeenCalledWith(expect.objectContaining({
-        content: expect.stringContaining("Clasamentul Casei Bântuite"),
-      }));
-
       issueHauntedDoorChoice(guildId, "member-with-stale-button", "closed-route", Date.now());
       const stop = command("stop", "hh-stop");
       await emit(stop);
-      expect(stop.reply).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining("s-a închis") }));
-      expect(isHauntedHouseActive(guildId)).toBe(false);
+      expect(stop.reply).toHaveBeenCalledWith(expect.objectContaining({
+        content: expect.stringContaining("Clasamentul final nu a putut fi actualizat"),
+      }));
+      expect(isHauntedHouseActive(guildId)).toBe(true);
+      stopHauntedHouse(guildId);
 
       const staleEdit = vi.fn().mockResolvedValue(undefined);
       const staleButton = {
@@ -333,7 +453,7 @@ describe("Casa Bântuită", () => {
         reply: vi.fn(),
       } as unknown as Interaction;
       await emit(staleButton);
-      expect(staleEdit).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining("nu este deschisă") }));
+      expect(staleEdit).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining("nu este deschis acum") }));
       expect(pauseReplies).not.toHaveBeenCalled();
       expect(pausedBefore).toBe(true);
       expect(isGuildGameStopped(guildId)).toBe(pausedBefore);

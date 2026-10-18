@@ -238,13 +238,13 @@ export function DashboardOverview() {
 
   const toggleHauntedHouse = async () => {
     const isActive = hauntedHouse.data?.active;
-    if (isActive && !window.confirm("Oprești Casa Bântuită? Clasamentul final va fi publicat în canalul configurat.")) return;
+    if (isActive && !window.confirm("Oprești Castelul Bântuit? Clasamentul final va fi publicat în canalul configurat.")) return;
     setSavingHaunted(true);
     try {
       if (isActive) await hauntedHouse.stop();
       else await hauntedHouse.start();
       toast({
-        title: isActive ? "Casa Bântuită s-a închis" : "Casa Bântuită a început",
+        title: isActive ? "Castelul Bântuit s-a închis" : "Castelul Bântuit a început",
         description: isActive ? "Clasamentul final a fost publicat." : "Anunțul a fost trimis în canalul de start.",
       });
     } catch (error: any) {
@@ -420,7 +420,7 @@ export function DashboardOverview() {
       </section>
 
       <section
-        aria-label="Control Casa Bântuită"
+        aria-label="Control Castelul Bântuit"
         data-testid="card-haunted-house"
         className={`animate-stagger-4 flex flex-col gap-5 rounded-2xl border p-5 shadow-lg sm:flex-row sm:items-center sm:justify-between sm:p-6 ${
           hauntedHouse.data?.active
@@ -444,7 +444,7 @@ export function DashboardOverview() {
                 {hauntedHouse.data?.active ? "ACTIVĂ" : hauntedHouse.loading ? "SE VERIFICĂ" : "OFFLINE"}
               </span>
             </div>
-            <h2 className="mt-1 font-display text-2xl text-foreground">Casa Bântuită</h2>
+            <h2 className="mt-1 font-display text-2xl text-foreground">Castelul Bântuit</h2>
             <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
               {hauntedHouse.data?.active
                 ? `Evenimentul rulează${hauntedHouse.data.startedAt ? ` din ${new Date(hauntedHouse.data.startedAt).toLocaleString()}` : ""} și se închide automat după 10 minute${hauntedHouse.data.expiresAt ? ` (la ${new Date(hauntedHouse.data.expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })})` : ""}. Revine aleatoriu după 2–4 ore.`
@@ -514,7 +514,7 @@ export function DashboardOverview() {
       <Dialog open={hauntedDialogOpen} onOpenChange={setHauntedDialogOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto border-border bg-background text-foreground sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle className="font-display text-2xl">Configurează Casa Bântuită</DialogTitle>
+            <DialogTitle className="font-display text-2xl">Configurează Castelul Bântuit</DialogTitle>
             <DialogDescription>Alege canalul de anunț și locul unde se publică clasamentul final pentru {activeGuild?.name ?? "serverul selectat"}.</DialogDescription>
           </DialogHeader>
           <div className="space-y-5 py-2">

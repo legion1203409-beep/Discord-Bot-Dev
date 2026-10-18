@@ -63,6 +63,7 @@ function rollOutcome(): Outcome {
 export function DiscordEvent() {
   const [selectedDoor, setSelectedDoor] = useState<number | null>(null);
   const [attempt, setAttempt] = useState(1);
+  const [entered, setEntered] = useState(false);
   const [score, setScore] = useState({ points: 0, candies: 0 });
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [eventPhase, setEventPhase] = useState<"open" | "resting">("open");
@@ -89,6 +90,7 @@ export function DiscordEvent() {
     setOutcome(null);
     setScore({ points: 0, candies: 0 });
     setEventPhase("open");
+    setEntered(false);
   }
 
   function simulateClose() {
@@ -103,7 +105,7 @@ export function DiscordEvent() {
         <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.22em] text-[#c79a5d]">Previzualizare interactivă</p>
-            <h1 className="font-['DM_Sans'] text-2xl font-semibold tracking-tight text-[#f2eee7] sm:text-3xl">O noapte în Casa Bântuită</h1>
+            <h1 className="font-['DM_Sans'] text-2xl font-semibold tracking-tight text-[#f2eee7] sm:text-3xl">O noapte la Castelul Bântuit</h1>
             <p className="mt-1.5 max-w-2xl text-sm leading-6 text-[#9b9ca2]">Așa arată experiența unui jucător în Discord. Apasă o ușă ca să vezi un rezultat posibil.</p>
           </div>
           <button
@@ -120,8 +122,8 @@ export function DiscordEvent() {
             <header className="flex min-h-[62px] items-center gap-3 border-b border-[#35363b] px-4 sm:px-5">
               <span className="flex size-8 items-center justify-center rounded-lg bg-[#3b3025] text-sm font-bold text-[#d7ae76]" aria-hidden="true">#</span>
               <div className="min-w-0 flex-1">
-                 <h2 className="truncate text-sm font-bold text-[#f2eee7]">chat-joc</h2>
-                <p className="text-[11px] text-[#96979e]">Conversația jocului · Casa Bântuită</p>
+                  <h2 className="truncate text-sm font-bold text-[#f2eee7]">chat-joc</h2>
+                <p className="text-[11px] text-[#96979e]">Conversația jocului · Castelul Bântuit</p>
               </div>
               <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${eventPhase === "open" ? "border-[#475548] bg-[#27322a] text-[#a8c19f]" : "border-[#5a4934] bg-[#30291f] text-[#d0a76d]"}`}>
                 <span className={`size-1.5 rounded-full ${eventPhase === "open" ? "bg-[#9ab58d]" : "bg-[#d0a76d]"}`} />
@@ -130,6 +132,18 @@ export function DiscordEvent() {
             </header>
 
             <div className="flex min-h-[460px] flex-col justify-end gap-5 px-4 py-6 sm:px-7">
+              <article className="mx-auto w-full max-w-[510px] rounded-lg border border-[#514330] bg-[#30291f] px-4 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#d0a76d]">Castelul Bântuit · deschis 10 minute</p>
+                <p className="mt-1 text-sm leading-6 text-[#e4e1dc]">Intră în castel și alege una dintre cele trei uși.</p>
+                <button
+                  type="button"
+                  onClick={() => setEntered(true)}
+                  className="mt-2 rounded-md bg-[#5865f2] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#4752c4] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#d1a568]"
+                >
+                  Intră în casă
+                </button>
+              </article>
+
               <div className="self-center rounded-full bg-[#303136] px-3 py-1.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-[#aaaab0]">
                 Canal de chat · povestea AI este publică în conversație
               </div>
@@ -149,10 +163,11 @@ export function DiscordEvent() {
                 </div>
               </article>
 
-              <div className="self-center rounded-full bg-[#303136] px-3 py-1.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-[#aaaab0]">
+              {entered && <div className="self-center rounded-full bg-[#303136] px-3 py-1.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-[#aaaab0]">
                 Următoarea alegere · mesaj privat
-              </div>
+              </div>}
 
+              {entered && (
               <article className="flex gap-3">
                 <div className="flex size-10 shrink-0 items-center justify-center rounded-full border border-[#59442b] bg-[#392d21] text-sm font-bold text-[#dfbb82]" aria-hidden="true">OC</div>
                 <div className="min-w-0 flex-1">
@@ -164,7 +179,7 @@ export function DiscordEvent() {
 
                   {eventPhase === "resting" ? (
                     <div className="max-w-[510px] rounded-r-lg rounded-bl-lg border-l-[3px] border-[#82705b] bg-[#303136] px-4 py-4">
-                      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#c9ab80]">Casa s-a închis</p>
+                      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#c9ab80]">Castelul s-a închis</p>
                       <p className="mt-2 text-sm leading-6 text-[#e4e1dc]">🕯️ Cele 10 minute s-au încheiat. Scorurile rămân păstrate pentru clasamentul final.</p>
                       <div className="mt-3 rounded-md border border-[#49433a] bg-[#292a2f] px-3 py-2.5">
                         <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#aaaab0]">Următoarea apariție</p>
@@ -231,6 +246,7 @@ export function DiscordEvent() {
                   )}
                 </div>
               </article>
+              )}
             </div>
 
             <footer className="border-t border-[#35363b] px-4 py-3 text-center text-[10px] leading-5 text-[#888990] sm:px-5">
@@ -243,10 +259,10 @@ export function DiscordEvent() {
               <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#c79a5d]">Cum funcționează</p>
               <ol className="mt-4 space-y-4">
                 {[
-                  ["01", "Comanda", "Jucătorul folosește /casabantuita joaca în server."],
+                  ["01", "Intrarea", "Jucătorul apasă „Intră în casă” în anunțul public."],
                   ["02", "Alegerea", "Primește mesajul privat și alege una dintre cele 3 uși."],
                   ["03", "Rezultatul", "Fantoma spune o poveste; bomboanele și punctele intră în scor."],
-                  ["04", "Clasamentul", "Poate fi verificat oricând în timpul jocului cu /casabantuita clasament."],
+                  ["04", "Clasamentul", "O singură postare se actualizează automat după fiecare rezultat și devine finală la închidere."],
                 ].map(([number, title, description]) => (
                   <li key={number} className="flex gap-3">
                     <span className="mt-0.5 font-mono text-[10px] text-[#bc9565]">{number}</span>
@@ -263,8 +279,8 @@ export function DiscordEvent() {
               <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#c79a5d]">Când apare clasamentul?</p>
               <div className="mt-3 space-y-3">
                 <div className="rounded-md border border-[#45464c] bg-[#2d2e33] px-3 py-2.5">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-[#bda17b]">Oricând, cât timp e deschis</p>
-                  <p className="mt-1 text-xs leading-5 text-[#e1ded8]">Scrii <span className="font-mono text-[#f0d2a3]">/casabantuita clasament</span> și vezi scorurile curente. Răspunsul îl vede doar jucătorul care a cerut clasamentul.</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-[#bda17b]">Se actualizează automat</p>
+                  <p className="mt-1 text-xs leading-5 text-[#e1ded8]">Un singur mesaj în canalul configurat se editează după fiecare rezultat; nu trebuie folosită o comandă pentru clasament.</p>
                 </div>
                 <div className="rounded-md border border-[#514330] bg-[#30291f] px-3 py-2.5">
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-[#d0a76d]">La închiderea evenimentului</p>

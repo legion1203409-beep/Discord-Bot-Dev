@@ -1873,7 +1873,7 @@ export function BotControlPage({
               <div className="min-w-0 flex-1">
                 <h2 className="font-medium">Bun venit și rămas-bun generate de AI</h2>
                 <p className="text-xs text-muted-foreground">
-                  AI scrie un mesaj nou pentru fiecare intrare sau plecare. Botul adaugă automat mențiunea Discord a membrului.
+                  AI scrie un mesaj nou pentru fiecare intrare sau plecare. În octombrie adaugă o temă veselă de Halloween, iar în decembrie și până pe 6 ianuarie o temă de Crăciun. Botul adaugă automat mențiunea Discord a membrului.
                 </p>
               </div>
               <Button type="button" variant="ghost" size="sm" className="shrink-0 gap-1" onClick={resetMemberMessages}>

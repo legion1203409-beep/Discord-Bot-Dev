@@ -12,12 +12,13 @@ import {
 } from "./db";
 import {
   beginHauntedHouseStop,
+  buildHauntedHouseOpenAnnouncement,
   cancelHauntedHouseStop,
   completeHauntedHouseStop,
-  formatHauntedHouseLeaderboard,
   generateScheduledGhostStory,
   getHauntedHouseExpiry,
   isHauntedHouseActive,
+  publishHauntedHouseLeaderboard,
   startHauntedHouse,
   stopHauntedHouse,
 } from "./haunted-house";
@@ -68,16 +69,13 @@ async function tick(client: Client, guildId: string): Promise<void> {
     if (getHauntedHouseExpiry(guildId) !== null && (getHauntedHouseExpiry(guildId) ?? Infinity) <= now) {
       const closing = beginHauntedHouseStop(guildId);
       if (closing) {
-        const channel = config.leaderboardChannelId
-          ? await getTextChannel(client, guildId, config.leaderboardChannelId)
-          : null;
-        if (!channel) {
+        if (!config.leaderboardChannelId) {
           logger.warn({ guildId }, "Haunted House ended but final leaderboard channel is unavailable; scores retained");
           cancelHauntedHouseStop(guildId, closing.sessionId);
           return;
         }
         try {
-          await channel.send({ content: formatHauntedHouseLeaderboard(closing.leaderboard, true), allowedMentions: { parse: [] } });
+          await publishHauntedHouseLeaderboard(client, guildId, closing.sessionId, true);
           completeHauntedHouseStop(guildId, closing.sessionId);
           schedule.nextStartAt = nextBreak(now);
           schedules.set(guildId, schedule);
@@ -104,10 +102,7 @@ async function tick(client: Client, guildId: string): Promise<void> {
         await saveHauntedHouseSchedule(guildId, schedule);
         wasOpen.set(guildId, true);
         try {
-          await startChannel.send({
-            content: "🎃 **Casa Bântuită s-a deschis pentru 10 minute!** Folosește `/casabantuita joaca` pentru a alege o ușă. Fiecare membru are trei încercări.",
-            allowedMentions: { parse: [] },
-          });
+          await startChannel.send(buildHauntedHouseOpenAnnouncement(guildId));
         } catch (error) {
           stopHauntedHouse(guildId);
           wasOpen.set(guildId, false);
