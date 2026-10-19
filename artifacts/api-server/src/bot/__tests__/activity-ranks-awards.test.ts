@@ -107,6 +107,20 @@ describe("uncapped activity XP in isolated PostgreSQL fixtures", () => {
       .toEqual({ previousXp: 10, totalXp: 15 });
   });
 
+  it("adds event XP to permanent, daily, and monthly totals without mislabeling it as chat or voice", async () => {
+    expect(await awardActivityXp("guild-a", "member-a", "event", now))
+      .toEqual({ previousXp: 0, totalXp: 10 });
+    expect(await awardActivityXp("guild-a", "member-a", "event", now))
+      .toEqual({ previousXp: 10, totalXp: 20 });
+    expect(await stored()).toMatchObject({
+      total_xp: 20,
+      daily_xp: 20,
+      daily_chat_xp: 0,
+      daily_voice_xp: 0,
+      monthly_xp: 20,
+    });
+  });
+
   it("rejects chat before 30 seconds and accepts the exact boundary without moving rejected timestamps", async () => {
     await awardActivityXp("guild-a", "member-a", "chat", now);
     expect(await awardActivityXp("guild-a", "member-a", "chat", at(29_999))).toBeNull();

@@ -15,6 +15,7 @@ import { getPlayerById, loadOracleCouncil, recordOracleInteraction, type OracleC
 import { postTicketPanelIfMissing } from "./ticket-ui";
 import { ORACLE_TICKET_CATEGORY_IDS, type TicketCategoryKind } from "./ticket-categories";
 import { getTicketConfig } from "./ticket-config";
+import { getSeasonalAiThemeInstruction } from "./seasonal-themes";
 export { ORACLE_TICKET_CATEGORY_IDS } from "./ticket-categories";
 import type { Player } from "@workspace/db";
 
@@ -307,6 +308,15 @@ function buildAdminSystemPrompt(mood: MoodState): string {
 
 function buildSystemPrompt(mood: MoodState, isAdmin: boolean): string {
   return isAdmin ? buildAdminSystemPrompt(mood) : buildPlayerSystemPrompt(mood);
+}
+
+export function buildOracleSeasonalSystemInstruction(date = new Date()): string | null {
+  const seasonalInstruction = getSeasonalAiThemeInstruction(date);
+  if (!seasonalInstruction) return null;
+  return [
+    "Păstrează vocea medievală a Oracolului și răspunde direct la întrebarea.",
+    seasonalInstruction,
+  ].join(" ");
 }
 
 export function buildTicketSystemInstruction(kind: OracleTicketKind): string {
@@ -751,6 +761,10 @@ async function generateOracleReply(
   const messages: ChatMessage[] = [
     { role: "system", content: buildSystemPrompt(mood, isAdmin) },
   ];
+  const seasonalSystemInstruction = buildOracleSeasonalSystemInstruction();
+  if (seasonalSystemInstruction) {
+    messages.push({ role: "system", content: seasonalSystemInstruction });
+  }
   if (socialMode) messages.push({ role: "system", content: SOCIAL_MODE_INSTRUCTIONS });
   if (additionalSystemInstruction) {
     messages.push({ role: "system", content: additionalSystemInstruction });

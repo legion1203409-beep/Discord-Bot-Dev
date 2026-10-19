@@ -48,3 +48,9 @@ concurrent mentions overshoot the cap. Never log message content (length/mood on
 `max_completion_tokens` budget → empty content → fallback silence line. Fix: pass
 `reasoning_effort: "minimal"` (env-tunable `ORACLE_REASONING_EFFORT`), gated on
 /^gpt-5/ since other models reject the `minimal` tier.
+
+Seasonal flavor is added to conversational Oracle replies in October (Halloween) and December through January 6 (Christmas), while preserving the medieval dark-fantasy voice and direct answers.
+
+**Why:** the user asked for the Oracle to use the same seasonal themes when people ask it questions.
+
+**How to apply:** keep conversational replies aligned with the shared seasonal-theme helper; do not add holiday tone outside those calendar windows.

@@ -3,6 +3,7 @@ import { isSupportedActivityBannerSource } from "./activity-rank-banner-source";
 
 export const ACTIVITY_CHAT_XP = 10;
 export const ACTIVITY_VOICE_XP = 5;
+export const ACTIVITY_EVENT_XP = 10;
 export const ACTIVITY_MAX_LEVEL = 100;
 export const ACTIVITY_MAX_LEVEL_ROLE = "Legenda Cenușii";
 export const ACTIVITY_ROLE_MILESTONES = [5, 10, 20, ACTIVITY_MAX_LEVEL] as const;

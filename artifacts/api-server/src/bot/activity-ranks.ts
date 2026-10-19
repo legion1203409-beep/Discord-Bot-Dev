@@ -5,6 +5,7 @@ import { logger } from "../lib/logger";
 import { serializeBotOperation } from "./operation-lock";
 import {
   ACTIVITY_CHAT_XP,
+  ACTIVITY_EVENT_XP,
   ACTIVITY_MAX_LEVEL,
   ACTIVITY_MAX_LEVEL_ROLE,
   ACTIVITY_ROLE_MILESTONES,
@@ -123,14 +124,22 @@ export async function saveActivityRankConfig(guildId: string, value: unknown): P
 export async function awardActivityXp(
   guildId: string,
   discordId: string,
-  source: "chat" | "voice",
+  source: "chat" | "voice" | "event",
   now = new Date(),
 ): Promise<ActivityXpAward | null> {
   await ensureActivityRanksTable();
   const { dayKey, monthKey } = getUtcActivityPeriods(now);
-  const xp = source === "chat" ? ACTIVITY_CHAT_XP : ACTIVITY_VOICE_XP;
-  const lastAwardColumn = source === "chat" ? "last_chat_award_at" : "last_voice_award_at";
+  const xp = source === "chat"
+    ? ACTIVITY_CHAT_XP
+    : source === "voice" ? ACTIVITY_VOICE_XP : ACTIVITY_EVENT_XP;
+  const lastAwardColumn = source === "chat"
+    ? "last_chat_award_at"
+    : source === "voice" ? "last_voice_award_at" : null;
   const cooldown = source === "chat" ? "30 seconds" : "50 seconds";
+  const cooldownGuard = lastAwardColumn
+    ? `activity_ranks.${lastAwardColumn} IS NULL
+        OR activity_ranks.${lastAwardColumn} <= $7::timestamptz - interval '${cooldown}'`
+    : "TRUE";
 
   const result = await pool.query<{ total_xp: number }>(
     `INSERT INTO activity_ranks (
@@ -172,10 +181,7 @@ export async function awardActivityXp(
          last_chat_award_at = CASE WHEN $6 = 'chat' THEN $7 ELSE activity_ranks.last_chat_award_at END,
          last_voice_award_at = CASE WHEN $6 = 'voice' THEN $7 ELSE activity_ranks.last_voice_award_at END,
          updated_at = now()
-     WHERE (
-         activity_ranks.${lastAwardColumn} IS NULL
-         OR activity_ranks.${lastAwardColumn} <= $7::timestamptz - interval '${cooldown}'
-       )
+      WHERE (${cooldownGuard})
      RETURNING total_xp`,
     [
       guildId,

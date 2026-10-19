@@ -15,8 +15,17 @@ import {
 } from "discord.js";
 import { HAUNTED_DOOR_IMG } from "./assets";
 import {
+  awardActivityXp,
+  getActivityRankConfig,
+  syncActivityMilestoneRole,
+} from "./activity-ranks";
+import { ACTIVITY_EVENT_XP, activityLevelForXp } from "./activity-ranks-core";
+import {
+  clearHauntedHouseAnnouncementMessage,
+  loadHauntedHouseAnnouncementMessage,
   loadHauntedHouseConfig,
   loadHauntedHouseLeaderboardMessage,
+  saveHauntedHouseAnnouncementMessage,
   saveHauntedHouseLeaderboardMessage,
 } from "./db";
 import { logger } from "../lib/logger";
@@ -220,6 +229,52 @@ export function buildHauntedHouseOpenAnnouncement(guildId: string) {
     components: [new ActionRowBuilder<ButtonBuilder>().addComponents(enterButton)],
     allowedMentions: { parse: [] as const },
   };
+}
+
+export async function publishHauntedHouseOpeningAnnouncement(
+  channel: TextChannel,
+  guildId: string,
+  sessionId: string,
+): Promise<void> {
+  const message = await channel.send(buildHauntedHouseOpenAnnouncement(guildId));
+  try {
+    await saveHauntedHouseAnnouncementMessage(guildId, {
+      sessionId,
+      channelId: channel.id,
+      messageId: message.id,
+    });
+  } catch (error) {
+    await message.delete().catch(() => undefined);
+    throw error;
+  }
+}
+
+export async function deleteHauntedHouseOpeningAnnouncement(
+  client: Client,
+  guildId: string,
+  sessionId: string,
+): Promise<boolean> {
+  const stored = await loadHauntedHouseAnnouncementMessage(guildId);
+  if (!stored || stored.sessionId !== sessionId) return false;
+
+  const guild = client.guilds.cache.get(guildId);
+  if (!guild) throw new Error("Discord server is unavailable while deleting the Castle announcement.");
+  const channel = await guild.channels.fetch(stored.channelId);
+  if (!(channel instanceof TextChannel) || channel.guildId !== guildId) {
+    throw new Error("Castle announcement channel is unavailable.");
+  }
+
+  try {
+    const message = await channel.messages.fetch(stored.messageId);
+    await message.delete();
+  } catch (error) {
+    const code = typeof error === "object" && error !== null && "code" in error
+      ? String((error as { code?: unknown }).code)
+      : "";
+    if (code !== "10008") throw error;
+  }
+  await clearHauntedHouseAnnouncementMessage(guildId, stored);
+  return true;
 }
 
 export type IssueChoiceResult =
@@ -489,7 +544,9 @@ export async function handleHauntedHouseCommand(interaction: ChatInputCommandInt
         if (!(channel instanceof TextChannel) || channel.guildId !== guildId) {
           throw new Error("Canalul de anunțuri nu este configurat sau nu mai este disponibil.");
         }
-        await channel.send(buildHauntedHouseOpenAnnouncement(guildId));
+        const sessionId = getHauntedHouseSessionId(guildId);
+        if (!sessionId) throw new Error("Sesiunea Castelului Bântuit nu mai este activă.");
+        await publishHauntedHouseOpeningAnnouncement(channel, guildId, sessionId);
         await interaction.reply({ content: "🏰 Castelul Bântuit s-a deschis. Anunțul și butonul de intrare au fost publicate.", ephemeral: true });
       } catch (error) {
         stopHauntedHouse(guildId);
@@ -514,7 +571,11 @@ export async function handleHauntedHouseCommand(interaction: ChatInputCommandInt
         });
         return;
       }
-      if (closing) completeHauntedHouseStop(guildId, closing.sessionId);
+      if (closing && completeHauntedHouseStop(guildId, closing.sessionId)) {
+        await deleteHauntedHouseOpeningAnnouncement(interaction.client, guildId, closing.sessionId).catch((error) => {
+          logger.warn({ err: error, guildId }, "Failed to delete Haunted House opening announcement");
+        });
+      }
       await interaction.reply({
         content: closing
           ? `${published ? "🕯️ Castelul Bântuit s-a închis, iar clasamentul a fost actualizat." : "🕯️ Castelul Bântuit s-a închis."}`
@@ -584,6 +645,33 @@ export async function handleHauntedHouseDoorButton(interaction: ButtonInteractio
     return true;
   }
 
+  let activityXpText = "Rangul de activitate este dezactivat pe acest server.";
+  try {
+    const activityConfig = await getActivityRankConfig(parsed.guildId);
+    if (activityConfig.enabled) {
+      const award = await awardActivityXp(parsed.guildId, parsed.userId, "event");
+      if (award) {
+        activityXpText = `✨ Rang de activitate: **+${ACTIVITY_EVENT_XP} XP**.`;
+        const previousLevel = activityLevelForXp(award.previousXp);
+        const level = activityLevelForXp(award.totalXp);
+        if (level > previousLevel && interaction.guild) {
+          const member = interaction.guild.members.cache.get(parsed.userId) ??
+            await interaction.guild.members.fetch(parsed.userId).catch(() => null);
+          if (member) {
+            void syncActivityMilestoneRole(member, level).catch((error) =>
+              logger.warn({ err: error, guildId: parsed.guildId, userId: parsed.userId, level },
+                "Activity rank role could not be synchronized after Haunted House"),
+            );
+          }
+        }
+      }
+    }
+  } catch (error) {
+    activityXpText = "⚠️ XP-ul de rang de activitate nu a putut fi salvat.";
+    logger.warn({ err: error, guildId: parsed.guildId, userId: parsed.userId },
+      "Activity XP award for Haunted House could not be saved");
+  }
+
   if (sessionId && interaction.client?.guilds?.cache?.has(parsed.guildId)) {
     void publishHauntedHouseLeaderboard(interaction.client, parsed.guildId, sessionId).catch((error) =>
       logger.warn({ err: error, guildId: parsed.guildId }, "Failed to refresh Haunted House leaderboard"),
@@ -602,6 +690,7 @@ export async function handleHauntedHouseDoorButton(interaction: ButtonInteractio
       "",
       `🚪 **${HAUNTED_DOORS[parsed.door].label}** — ${result.outcome.detail}`,
       `🍬 Bomboane de eveniment: **${result.outcome.candies >= 0 ? "+" : ""}${result.outcome.candies}** · 🎃 Puncte: **+${result.outcome.points}**`,
+      activityXpText,
       `**Totalul tău în acest eveniment:** ${result.totalPoints} puncte · ${result.totalCandies} bomboane · încercarea ${result.plays}/${HAUNTED_HOUSE_MAX_PLAYS}.`,
     ].join("\n"),
     embeds: [buildDoorEmbed(parsed.door)],

@@ -5,6 +5,7 @@ import {
 } from "discord.js";
 import { logger } from "../lib/logger";
 import {
+  loadHauntedHouseAnnouncementMessage,
   loadHauntedHouseConfig,
   loadHauntedHouseSchedule,
   saveHauntedHouseSchedule,
@@ -12,13 +13,15 @@ import {
 } from "./db";
 import {
   beginHauntedHouseStop,
-  buildHauntedHouseOpenAnnouncement,
   cancelHauntedHouseStop,
   completeHauntedHouseStop,
+  deleteHauntedHouseOpeningAnnouncement,
   generateScheduledGhostStory,
   getHauntedHouseExpiry,
+  getHauntedHouseSessionId,
   isHauntedHouseActive,
   publishHauntedHouseLeaderboard,
+  publishHauntedHouseOpeningAnnouncement,
   startHauntedHouse,
   stopHauntedHouse,
 } from "./haunted-house";
@@ -76,7 +79,11 @@ async function tick(client: Client, guildId: string): Promise<void> {
         }
         try {
           await publishHauntedHouseLeaderboard(client, guildId, closing.sessionId, true);
-          completeHauntedHouseStop(guildId, closing.sessionId);
+          if (completeHauntedHouseStop(guildId, closing.sessionId)) {
+            await deleteHauntedHouseOpeningAnnouncement(client, guildId, closing.sessionId).catch((error) => {
+              logger.warn({ err: error, guildId }, "Failed to delete Haunted House opening announcement");
+            });
+          }
           schedule.nextStartAt = nextBreak(now);
           schedules.set(guildId, schedule);
           wasOpen.set(guildId, false);
@@ -102,7 +109,9 @@ async function tick(client: Client, guildId: string): Promise<void> {
         await saveHauntedHouseSchedule(guildId, schedule);
         wasOpen.set(guildId, true);
         try {
-          await startChannel.send(buildHauntedHouseOpenAnnouncement(guildId));
+          const sessionId = getHauntedHouseSessionId(guildId);
+          if (!sessionId) throw new Error("Haunted House session disappeared before announcement");
+          await publishHauntedHouseOpeningAnnouncement(startChannel, guildId, sessionId);
         } catch (error) {
           stopHauntedHouse(guildId);
           wasOpen.set(guildId, false);
@@ -112,6 +121,16 @@ async function tick(client: Client, guildId: string): Promise<void> {
           return;
         }
         logger.info({ guildId, expiresAt: now + EVENT_MS }, "Haunted House auto-started");
+      }
+    }
+
+    const sessionId = getHauntedHouseSessionId(guildId);
+    if (!sessionId) {
+      const storedAnnouncement = await loadHauntedHouseAnnouncementMessage(guildId);
+      if (storedAnnouncement) {
+        await deleteHauntedHouseOpeningAnnouncement(client, guildId, storedAnnouncement.sessionId).catch((error) => {
+          logger.warn({ err: error, guildId }, "Retry to delete Haunted House opening announcement failed");
+        });
       }
     }
 

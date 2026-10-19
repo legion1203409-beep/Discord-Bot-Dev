@@ -11,6 +11,7 @@ import {
   cancelHauntedHouseStop,
   claimHauntedDoorChoice,
   completeHauntedHouseStop,
+  deleteHauntedHouseOpeningAnnouncement,
   dispatchHauntedHouseInteraction,
   formatHauntedHouseLeaderboard,
   generateGhostNarrative,
@@ -23,11 +24,14 @@ import {
   issueHauntedDoorChoice,
   isHauntedHouseActive,
   publishHauntedHouseLeaderboard,
+  publishHauntedHouseOpeningAnnouncement,
   resetHauntedHouseStateForTests,
   startHauntedHouse,
   stopHauntedHouse,
 } from "../haunted-house";
+import * as activityRanks from "../activity-ranks";
 import * as botDb from "../db";
+import { DEFAULT_ACTIVITY_RANK_CONFIG } from "../activity-ranks-core";
 
 const guildId = "guild-halloween";
 const userId = "member-1";
@@ -76,6 +80,49 @@ describe("Castelul Bântuit", () => {
       content: expect.stringContaining("Trei uși"),
     }));
     expect(reply.mock.calls[0]?.[0].components[0].components[0].data.custom_id).toContain(`:${userId}:`);
+  });
+
+  it("deletes only the saved opening announcement for the closing session", async () => {
+    const deleteMessage = vi.fn().mockResolvedValue(undefined);
+    const channel = Object.assign(Object.create(TextChannel.prototype), {
+      id: "start-channel",
+      guildId,
+      messages: { fetch: vi.fn().mockResolvedValue({ delete: deleteMessage }) },
+    });
+    const guild = { channels: { fetch: vi.fn().mockResolvedValue(channel) } };
+    const client = { guilds: { cache: { get: (id: string) => id === guildId ? guild : undefined } } } as unknown as Client;
+    const announcement = { sessionId: "closing-session", channelId: "start-channel", messageId: "opening-message" };
+    const load = vi.spyOn(botDb, "loadHauntedHouseAnnouncementMessage").mockResolvedValue(announcement);
+    const clear = vi.spyOn(botDb, "clearHauntedHouseAnnouncementMessage").mockResolvedValue(undefined);
+
+    await expect(deleteHauntedHouseOpeningAnnouncement(client, guildId, "closing-session")).resolves.toBe(true);
+    expect(deleteMessage).toHaveBeenCalledOnce();
+    expect(clear).toHaveBeenCalledWith(guildId, announcement);
+
+    load.mockResolvedValue({ ...announcement, sessionId: "new-session" });
+    await expect(deleteHauntedHouseOpeningAnnouncement(client, guildId, "closing-session")).resolves.toBe(false);
+    expect(deleteMessage).toHaveBeenCalledOnce();
+  });
+
+  it("records the exact opening announcement after sending it", async () => {
+    const announcementMessage = { id: "opening-message", delete: vi.fn() };
+    const channel = Object.assign(Object.create(TextChannel.prototype), {
+      id: "start-channel",
+      guildId,
+      send: vi.fn().mockResolvedValue(announcementMessage),
+    });
+    const save = vi.spyOn(botDb, "saveHauntedHouseAnnouncementMessage").mockResolvedValue(undefined);
+
+    await publishHauntedHouseOpeningAnnouncement(channel, guildId, "opening-session");
+
+    expect(channel.send).toHaveBeenCalledWith(expect.objectContaining({
+      content: expect.stringContaining("Castelul Bântuit"),
+    }));
+    expect(save).toHaveBeenCalledWith(guildId, {
+      sessionId: "opening-session",
+      channelId: "start-channel",
+      messageId: "opening-message",
+    });
   });
 
   it("rejects an Enter button from a different server", async () => {
@@ -284,6 +331,8 @@ describe("Castelul Bântuit", () => {
       leaderboardChannelId: "",
       chatChannelId: "",
     });
+    vi.spyOn(botDb, "saveHauntedHouseAnnouncementMessage").mockResolvedValue(undefined);
+    vi.spyOn(botDb, "loadHauntedHouseAnnouncementMessage").mockResolvedValue(null);
     const adminInteraction = (subcommand: string, reply = vi.fn()) => ({
       guildId,
       guild: startGuild,
@@ -330,6 +379,35 @@ describe("Castelul Bântuit", () => {
     await expect(handleHauntedHouseDoorButton(interaction)).resolves.toBe(true);
     expect(deferUpdate).toHaveBeenCalledOnce();
     expect(editReply).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining("nu este deschis acum") }));
+  });
+
+  it("awards permanent activity XP once for each successfully opened door", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "");
+    startHauntedHouse(guildId);
+    issueHauntedDoorChoice(guildId, userId, "activity-xp-choice");
+    const config = vi.spyOn(activityRanks, "getActivityRankConfig")
+      .mockResolvedValue({ ...DEFAULT_ACTIVITY_RANK_CONFIG });
+    const award = vi.spyOn(activityRanks, "awardActivityXp")
+      .mockResolvedValue({ previousXp: 0, totalXp: 10 });
+    const deferUpdate = vi.fn().mockResolvedValue(undefined);
+    const editReply = vi.fn().mockResolvedValue(undefined);
+    const interaction = {
+      customId: `hh:${guildId}:${userId}:activity-xp-choice:felinar`,
+      guildId,
+      user: { id: userId },
+      guild: null,
+      client: { guilds: { cache: new Map() } },
+      deferUpdate,
+      editReply,
+    } as unknown as ButtonInteraction;
+
+    await expect(handleHauntedHouseDoorButton(interaction)).resolves.toBe(true);
+    await expect(handleHauntedHouseDoorButton(interaction)).resolves.toBe(true);
+
+    expect(config).toHaveBeenCalledOnce();
+    expect(award).toHaveBeenCalledOnce();
+    expect(award).toHaveBeenCalledWith(guildId, userId, "event");
+    expect(editReply.mock.calls[0]?.[0].content).toContain("+10 XP");
   });
 
   it("routes haunted-house commands and door buttons through InteractionCreate while the RPG is paused", async () => {
@@ -380,6 +458,8 @@ describe("Castelul Bântuit", () => {
         leaderboardChannelId: "",
         chatChannelId: "",
       });
+      vi.spyOn(botDb, "saveHauntedHouseAnnouncementMessage").mockResolvedValue(undefined);
+      vi.spyOn(botDb, "loadHauntedHouseAnnouncementMessage").mockResolvedValue(null);
       const start = command("start", "hh-start");
       await emit(start);
       expect(start.reply).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining("s-a deschis") }));

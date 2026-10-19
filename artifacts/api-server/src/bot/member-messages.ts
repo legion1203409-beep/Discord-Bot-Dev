@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import type { GuildMember, TextChannel } from "discord.js";
 import { getGameplayConfig } from "./gameplay-store";
 import type { MemberMessageStyle } from "./gameplay-config";
+import { getSeasonalAiThemeInstruction } from "./seasonal-themes";
 
 type MemberMessageEvent = "welcome" | "leave";
 type MemberMessageMember = Pick<GuildMember, "id" | "guild"> & {
@@ -14,21 +15,6 @@ const STYLE_INSTRUCTIONS: Record<Exclude<MemberMessageStyle, "custom">, string> 
   fantasy: "ton de poveste fantasy, cu magie și aventură, fără limbaj greu de înțeles",
   sci_fi: "ton futurist, de science-fiction, prietenos și ușor de înțeles",
   humorous: "ton amuzant și binevoitor, fără sarcasm răutăcios sau jigniri",
-};
-
-type MemberMessageHolidayTheme = "halloween" | "christmas" | null;
-
-export function getMemberMessageHolidayTheme(date = new Date()): MemberMessageHolidayTheme {
-  const month = date.getUTCMonth() + 1;
-  const day = date.getUTCDate();
-  if (month === 10) return "halloween";
-  if (month === 12 || (month === 1 && day <= 6)) return "christmas";
-  return null;
-}
-
-const HOLIDAY_INSTRUCTIONS: Record<Exclude<MemberMessageHolidayTheme, null>, string> = {
-  halloween: "Este luna octombrie: adaugă discret o atmosferă veselă de Halloween, cu elemente precum dovleci, frunze de toamnă sau fantome prietenoase. Păstrează mesajul cald și potrivit comunității; fără amenințări sau groază intensă.",
-  christmas: "Este perioada Crăciunului: adaugă discret o atmosferă caldă de sărbătoare, cu lumini, zăpadă sau urări de bine. Păstrează mesajul prietenos și potrivit comunității.",
 };
 
 let openAiClient: OpenAI | null = null;
@@ -52,13 +38,13 @@ export function buildMemberMessagePrompt(
   const styleInstruction = style === "custom"
     ? customStyle.trim() || STYLE_INSTRUCTIONS.normal
     : STYLE_INSTRUCTIONS[style];
-  const holidayTheme = getMemberMessageHolidayTheme(date);
+  const seasonalInstruction = getSeasonalAiThemeInstruction(date);
 
   return [
     "Ești autorul mesajelor unei comunități Discord.",
     occasion,
     `Scrie în limba română, într-un ton ${styleInstruction}.`,
-    ...(holidayTheme ? [HOLIDAY_INSTRUCTIONS[holidayTheme]] : []),
+    ...(seasonalInstruction ? [seasonalInstruction] : []),
     "Generează un text nou, natural, de una sau două propoziții scurte, maximum 240 de caractere.",
     "Nu scrie nume de utilizatori, mențiuni, ID-uri, @everyone sau @here; botul adaugă separat mențiunea persoanei.",
     "Nu include instrucțiuni, explicații, ghilimele sau text în afara mesajului.",

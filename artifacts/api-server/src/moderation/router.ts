@@ -204,12 +204,14 @@ import
 
 import {
   beginHauntedHouseStop,
-  buildHauntedHouseOpenAnnouncement,
   cancelHauntedHouseStop,
   completeHauntedHouseStop,
+  deleteHauntedHouseOpeningAnnouncement,
   getHauntedHouseLeaderboard,
+  getHauntedHouseSessionId,
   getHauntedHouseStatus,
   publishHauntedHouseLeaderboard,
+  publishHauntedHouseOpeningAnnouncement,
   startHauntedHouse,
   stopHauntedHouse,
 } from "../bot/haunted-house";
@@ -2395,7 +2397,9 @@ router.post("/guilds/:guildId/haunted-house/start", asyncRoute(async (req, res) 
   const channel = await getHauntedHouseTextChannel(guildId, config.startChannelId);
   if (!startHauntedHouse(guildId)) throw new ModerationAuthError(409, "Castelul Bântuit este deja activ pe acest server.");
   try {
-    await channel.send(buildHauntedHouseOpenAnnouncement(guildId));
+    const sessionId = getHauntedHouseSessionId(guildId);
+    if (!sessionId) throw new Error("Sesiunea Castelului Bântuit nu mai este activă.");
+    await publishHauntedHouseOpeningAnnouncement(channel, guildId, sessionId);
   } catch (error) {
     stopHauntedHouse(guildId);
     throw new ModerationAuthError(502, "Castelul Bântuit nu a putut fi anunțat în canalul de start.");
@@ -2421,6 +2425,9 @@ router.post("/guilds/:guildId/haunted-house/stop", asyncRoute(async (req, res) =
   if (!completeHauntedHouseStop(guildId, closing.sessionId)) {
     throw new ModerationAuthError(409, "Sesiunea evenimentului s-a schimbat înainte de închidere.");
   }
+  await deleteHauntedHouseOpeningAnnouncement(client, guildId, closing.sessionId).catch((error) => {
+    logger.warn({ error, guildId }, "Failed to delete Haunted House opening announcement");
+  });
   res.set("Cache-Control", "no-store").json({ name: "Castelul Bântuit", ...getHauntedHouseStatus(guildId), ...config });
 }));
 

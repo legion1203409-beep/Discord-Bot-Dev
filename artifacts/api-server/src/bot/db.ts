@@ -1939,6 +1939,57 @@ export async function saveHauntedHouseLeaderboardMessage(
   );
 }
 
+export interface HauntedHouseAnnouncementMessage {
+  sessionId: string;
+  channelId: string;
+  messageId: string;
+}
+
+const HAUNTED_HOUSE_ANNOUNCEMENT_MESSAGE_KEY = "haunted_house_announcement_message";
+
+export async function loadHauntedHouseAnnouncementMessage(guildId: string): Promise<HauntedHouseAnnouncementMessage | null> {
+  await ensureBotStateTable();
+  const result = await pool.query<{ value: string }>(
+    "SELECT value FROM bot_state WHERE key = $1",
+    [guildKey(guildId, HAUNTED_HOUSE_ANNOUNCEMENT_MESSAGE_KEY)],
+  );
+  try {
+    const parsed = JSON.parse(result.rows[0]?.value ?? "null") as Partial<HauntedHouseAnnouncementMessage> | null;
+    if (
+      !parsed ||
+      typeof parsed.sessionId !== "string" ||
+      typeof parsed.channelId !== "string" ||
+      typeof parsed.messageId !== "string"
+    ) return null;
+    return { sessionId: parsed.sessionId, channelId: parsed.channelId, messageId: parsed.messageId };
+  } catch {
+    return null;
+  }
+}
+
+export async function saveHauntedHouseAnnouncementMessage(
+  guildId: string,
+  state: HauntedHouseAnnouncementMessage,
+): Promise<void> {
+  await ensureBotStateTable();
+  await pool.query(
+    `INSERT INTO bot_state (key, value, updated_at) VALUES ($1, $2, now())
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+    [guildKey(guildId, HAUNTED_HOUSE_ANNOUNCEMENT_MESSAGE_KEY), JSON.stringify(state)],
+  );
+}
+
+export async function clearHauntedHouseAnnouncementMessage(
+  guildId: string,
+  expected: HauntedHouseAnnouncementMessage,
+): Promise<void> {
+  await ensureBotStateTable();
+  await pool.query(
+    "DELETE FROM bot_state WHERE key = $1 AND value = $2",
+    [guildKey(guildId, HAUNTED_HOUSE_ANNOUNCEMENT_MESSAGE_KEY), JSON.stringify(expected)],
+  );
+}
+
 export async function loadHauntedHouseSchedule(guildId: string): Promise<HauntedHouseScheduleState | null> {
   await ensureBotStateTable();
   const result = await pool.query<{ value: string }>("SELECT value FROM bot_state WHERE key = $1", [guildKey(guildId, "haunted_house_schedule")]);
