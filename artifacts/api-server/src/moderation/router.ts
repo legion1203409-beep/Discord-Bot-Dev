@@ -204,13 +204,10 @@ import
 
 import {
   beginHauntedHouseStop,
-  cancelHauntedHouseStop,
   completeHauntedHouseStop,
   deleteHauntedHouseOpeningAnnouncement,
-  getHauntedHouseLeaderboard,
   getHauntedHouseSessionId,
   getHauntedHouseStatus,
-  publishHauntedHouseLeaderboard,
   publishHauntedHouseOpeningAnnouncement,
   startHauntedHouse,
   stopHauntedHouse,
@@ -2344,8 +2341,8 @@ router.put("/guilds/:guildId/gameplay-state", asyncRoute(async (req, res) => {
 
 const hauntedHouseChannelConfigSchema = z.object({
   startChannelId: z.string().regex(/^\d{5,25}$/).or(z.literal("")),
-  leaderboardChannelId: z.string().regex(/^\d{5,25}$/).or(z.literal("")),
   chatChannelId: z.string().regex(/^\d{5,25}$/).or(z.literal("")),
+  leaderboardChannelId: z.string().regex(/^\d{5,25}$/).or(z.literal("")).optional(),
 }).strict();
 
 async function getHauntedHouseTextChannel(guildId: string, channelId: string): Promise<TextChannel> {
@@ -2381,18 +2378,18 @@ router.put("/guilds/:guildId/haunted-house/config", asyncRoute(async (req, res) 
   await sessionAndGuild(req, guildId, "config", true);
   const config = hauntedHouseChannelConfigSchema.parse(req.body);
   if (config.startChannelId) await getHauntedHouseTextChannel(guildId, config.startChannelId);
-  if (config.leaderboardChannelId) await getHauntedHouseTextChannel(guildId, config.leaderboardChannelId);
   if (config.chatChannelId) await getHauntedHouseTextChannel(guildId, config.chatChannelId);
-  await saveHauntedHouseConfig(guildId, config);
-  res.set("Cache-Control", "no-store").json({ ...getHauntedHouseStatus(guildId), ...config });
+  const savedConfig = { startChannelId: config.startChannelId, chatChannelId: config.chatChannelId };
+  await saveHauntedHouseConfig(guildId, savedConfig);
+  res.set("Cache-Control", "no-store").json({ ...getHauntedHouseStatus(guildId), ...savedConfig });
 }));
 
 router.post("/guilds/:guildId/haunted-house/start", asyncRoute(async (req, res) => {
   const guildId = parse(snowflake, req.params.guildId);
   await sessionAndGuild(req, guildId, "config", true);
   const config = await loadHauntedHouseConfig(guildId);
-  if (!config.startChannelId || !config.leaderboardChannelId || !config.chatChannelId) {
-    throw new ModerationAuthError(400, "Configurează canalele de start, clasament și chat pentru șoaptele AI înainte de pornire.");
+  if (!config.startChannelId || !config.chatChannelId) {
+    throw new ModerationAuthError(400, "Configurează canalele de start și chat pentru șoaptele AI înainte de pornire.");
   }
   const channel = await getHauntedHouseTextChannel(guildId, config.startChannelId);
   if (!startHauntedHouse(guildId)) throw new ModerationAuthError(409, "Castelul Bântuit este deja activ pe acest server.");
@@ -2411,17 +2408,10 @@ router.post("/guilds/:guildId/haunted-house/stop", asyncRoute(async (req, res) =
   const guildId = parse(snowflake, req.params.guildId);
   await sessionAndGuild(req, guildId, "config", true);
   const config = await loadHauntedHouseConfig(guildId);
-  if (!config.leaderboardChannelId) throw new ModerationAuthError(400, "Configurează canalul clasamentului final înainte de oprire.");
   const client = getModerationClient();
   if (!client) throw new ModerationAuthError(503, "Botul nu este conectat.");
   const closing = beginHauntedHouseStop(guildId);
   if (!closing) throw new ModerationAuthError(409, "Evenimentul este deja închis sau se oprește deja.");
-  try {
-    await publishHauntedHouseLeaderboard(client, guildId, closing.sessionId, true);
-  } catch {
-    cancelHauntedHouseStop(guildId, closing.sessionId);
-    throw new ModerationAuthError(502, "Clasamentul nu a putut fi publicat; evenimentul rămâne activ.");
-  }
   if (!completeHauntedHouseStop(guildId, closing.sessionId)) {
     throw new ModerationAuthError(409, "Sesiunea evenimentului s-a schimbat înainte de închidere.");
   }

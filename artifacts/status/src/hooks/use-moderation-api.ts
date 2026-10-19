@@ -969,7 +969,6 @@ export interface HauntedHouseStatus {
   startedAt: number | null;
   expiresAt: number | null;
   startChannelId: string;
-  leaderboardChannelId: string;
   chatChannelId: string;
 }
 
@@ -1038,8 +1037,8 @@ export function useHauntedHouse(guildId: string | null) {
     loading,
     error,
     refetch,
-    saveConfig: (startChannelId: string, leaderboardChannelId: string, chatChannelId: string) =>
-      mutate("/config", { method: "PUT", body: JSON.stringify({ startChannelId, leaderboardChannelId, chatChannelId }) }),
+    saveConfig: (startChannelId: string, chatChannelId: string) =>
+      mutate("/config", { method: "PUT", body: JSON.stringify({ startChannelId, chatChannelId }) }),
     start: () => mutate("/start", { method: "POST", body: JSON.stringify({}) }),
     stop: () => mutate("/stop", { method: "POST", body: JSON.stringify({}) }),
   };

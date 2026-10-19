@@ -1872,7 +1872,6 @@ export async function saveLeaderboardMessageId(
 
 export interface HauntedHouseConfig {
   startChannelId: string;
-  leaderboardChannelId: string;
   chatChannelId: string;
 }
 
@@ -1888,11 +1887,10 @@ export async function loadHauntedHouseConfig(guildId: string): Promise<HauntedHo
     const parsed = JSON.parse(result.rows[0]?.value ?? "{}") as Partial<HauntedHouseConfig>;
     return {
       startChannelId: typeof parsed.startChannelId === "string" ? parsed.startChannelId : "",
-      leaderboardChannelId: typeof parsed.leaderboardChannelId === "string" ? parsed.leaderboardChannelId : "",
       chatChannelId: typeof parsed.chatChannelId === "string" ? parsed.chatChannelId : "",
     };
   } catch {
-    return { startChannelId: "", leaderboardChannelId: "", chatChannelId: "" };
+    return { startChannelId: "", chatChannelId: "" };
   }
 }
 
