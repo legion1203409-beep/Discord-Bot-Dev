@@ -1,5 +1,6 @@
 import { PUBLIC_DISCORD_INVITE } from "../lib/discord-invite";
 import { SUPER_ADMIN_ID } from "../bot/constants";
+import { GUILD_ID } from "../bot/index";
 import { setupDraftSchema, setupDraftSaveSchema, setupTemplate } from "./server-setup-schema";
 import { setupSuggestionSchema, suggestSetup } from "./server-setup-ai";
 import {
@@ -233,6 +234,10 @@ import
  from "../bot/invite-stats"
 ;
 
+import {
+  completeRecruitmentReferral,
+  getRecruitmentDashboardData,
+} from "../bot/invite-recruitment";
 
 import 
 {
@@ -242,12 +247,26 @@ import
   normalizeVerificationConfig,
   publishVerificationPanel,
   verifyMember,
+  consumeVerificationLinkToken,
   createVerificationIdentityToken,
   parseVerificationIdentityToken,
   verificationCookieName,
 }
  from "../bot/verification"
 ;
+
+import {
+  CompleteWebsiteVerificationBody,
+  CompleteWebsiteVerificationResponse,
+  GetRecruitmentDashboardQueryParams,
+  GetRecruitmentDashboardResponse,
+  GetVerificationStatusQueryParams,
+  GetVerificationStatusResponse,
+  GetVerificationMembersParams,
+  GetVerificationMembersResponse,
+  ManuallyVerifyGuildMemberParams,
+  ManuallyVerifyGuildMemberResponse,
+} from "@workspace/api-zod";
 
 
 import 
@@ -688,9 +707,6 @@ export const botControlSchema = z.object(
     
 }
 
-  
-}
-
     if (config.recruitment.enabled && !config.recruitment.inviteChannelId) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -708,7 +724,7 @@ export const botControlSchema = z.object(
         message: "Pragurile de recrutare trebuie să fie în ordine crescătoare.",
       });
     }
-),
+}),
   tickets: z.object(
 {
 
@@ -1380,7 +1396,11 @@ async function validateInviteTrackingTargets(guildId: string, config: z.infer<ty
   const botMember = guild.members.me ?? await guild.members.fetchMe().catch(() => null)
 ;
 
-  if ((config.enabled || config.recruitment.enabled) && !botMember?.permissions.has(PermissionFlagsBits.ManageGuild))
+  if (!botMember) {
+    throw new ModerationAuthError(503, "Botul nu a putut încărca rolurile și permisiunile serverului.");
+  }
+
+  if ((config.enabled || config.recruitment.enabled) && !botMember.permissions.has(PermissionFlagsBits.ManageGuild))
 {
 
     throw new ModerationAuthError(403, "Botul are nevoie de permisiunea Manage Server pentru a urmări invitațiile.")
@@ -2016,6 +2036,12 @@ router.get("/oauth/discord/callback", asyncRoute(async (req, res) =>
 
       const result = await verifyMember(client, guildId, identity.id)
 ;
+
+      try {
+        await completeRecruitmentReferral(client, guildId, identity.id);
+      } catch (error) {
+        logger.warn({ error, guildId }, "OAuth-verified referral reward will need a later retry");
+      }
 
       res.cookie(verificationCookieName(), createVerificationIdentityToken(guildId, identity.id), 
 {
@@ -3332,16 +3358,18 @@ router.get("/public/server-profile", asyncRoute(async (_req, res) => {
   const inviteCode = inviteUrl.split("/").filter(Boolean).pop()?.split("?")[0] ?? "";
   let name = "Regatul Cenușii";
   let iconUrl: string | null = null;
+  let guildId: string | null = GUILD_ID;
 
   if (client && inviteCode) {
     const invite = await client.fetchInvite(inviteCode).catch(() => null);
     if (invite?.guild) {
       name = invite.guild.name;
       iconUrl = invite.guild.iconURL({ size: 128 });
+      guildId = invite.guild.id;
     }
   }
 
-  res.set("Cache-Control", "public, max-age=300").json({ name, iconUrl, inviteUrl });
+  res.set("Cache-Control", "no-store").json({ name, iconUrl, inviteUrl, guildId });
 }));
 
 router.get("/verification/:guildId/config", asyncRoute(async (req, res) => {
@@ -3391,6 +3419,8 @@ router.get("/guilds/:guildId/verification/members", asyncRoute(async (req, res) 
       roleId: config.roleId,
       roleName: null,
       total: 0,
+      verifiedTotal: 0,
+      unverifiedTotal: 0,
       members: [],
     });
     return;
@@ -3410,6 +3440,7 @@ router.get("/guilds/:guildId/verification/members", asyncRoute(async (req, res) 
   };
 
   const members: DiscordRestGuildMember[] = [];
+  let memberListComplete = false;
   try {
     let after: string | undefined;
     for (let page = 0; page < 100; page += 1) {
@@ -3421,17 +3452,22 @@ router.get("/guilds/:guildId/verification/members", asyncRoute(async (req, res) 
       ) as DiscordRestGuildMember[];
       if (!Array.isArray(pageMembers)) throw new Error("Discord returned an invalid member page");
       members.push(...pageMembers);
-      if (pageMembers.length < 1000) break;
+      if (pageMembers.length < 1000) {
+        memberListComplete = true;
+        break;
+      }
       const nextAfter = pageMembers.at(-1)?.user?.id;
-      if (!nextAfter || nextAfter === after) break;
+      if (!nextAfter || nextAfter === after) throw new Error("Discord member pagination did not advance");
+      if (page === 99) throw new Error("Guild exceeds the safe member-list scan limit");
       after = nextAfter;
     }
+    if (!memberListComplete) throw new Error("Discord member list was truncated");
   } catch (error) {
     logger.warn({ error, guildId }, "Verified members could not be fetched from Discord");
     throw new ModerationAuthError(503, "Discord nu a permis încărcarea membrilor verificați. Verifică permisiunile botului și încearcă din nou.");
   }
-  const verifiedMembers = [...members.values()]
-    .filter((member) => member.user?.id && !member.user.bot && Array.isArray(member.roles) && member.roles.includes(role.id))
+  const guildMembers = [...members.values()]
+    .filter((member) => member.user?.id && !member.user.bot)
     .map((member) => ({
       id: member.user!.id!,
       username: member.user!.username ?? member.user!.id!,
@@ -3440,39 +3476,197 @@ router.get("/guilds/:guildId/verification/members", asyncRoute(async (req, res) 
         ? `https://cdn.discordapp.com/avatars/${member.user!.id}/${member.user!.avatar}.${member.user!.avatar.startsWith("a_") ? "gif" : "png"}?size=64`
         : "https://cdn.discordapp.com/embed/avatars/0.png",
       joinedAt: member.joined_at ?? null,
+      verified: Array.isArray(member.roles) && member.roles.includes(role.id),
     }))
     .sort((left, right) => left.displayName.localeCompare(right.displayName, "ro", { sensitivity: "base" }));
+  const verifiedTotal = guildMembers.filter((member) => member.verified).length;
 
-  res.set("Cache-Control", "no-store").json({
+  res.set("Cache-Control", "no-store").json(GetVerificationMembersResponse.parse({
     guildId,
     roleId: role.id,
     roleName: role.name,
-    total: verifiedMembers.length,
-    members: verifiedMembers,
+    total: guildMembers.length,
+    verifiedTotal,
+    unverifiedTotal: guildMembers.length - verifiedTotal,
+    members: guildMembers,
+  }));
+}));
+
+router.post("/guilds/:guildId/verification/members/:userId/verify", asyncRoute(async (req, res) => {
+  const { guildId, userId } = ManuallyVerifyGuildMemberParams.parse({
+    guildId: req.params.guildId,
+    userId: req.params.userId,
   });
+  await sessionAndGuild(req, guildId, "config", true);
+  const client = getModerationClient();
+  if (!client?.isReady()) {
+    throw new ModerationAuthError(503, "Botul Discord nu este disponibil pentru verificarea membrului.");
+  }
+
+  let result: "verified" | "already_verified";
+  try {
+    result = await verifyMember(client, guildId, userId);
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error ? Number(error.code) : null;
+    if (code === 50013 || code === 50001) {
+      throw new ModerationAuthError(503, "Botului îi lipsește permisiunea de a acorda rolul de verificare.");
+    }
+    if (code === 10007 || (error instanceof Error && /nu mai există|nu este configurată|trebuie să fie sub/i.test(error.message))) {
+      throw new ModerationAuthError(400, "Membrul sau rolul de verificare nu mai este disponibil.");
+    }
+    logger.warn({ error, guildId }, "Moderator member verification failed");
+    throw new ModerationAuthError(503, "Discord nu a putut finaliza verificarea membrului.");
+  }
+
+  const guild = client.guilds.cache.get(guildId)
+    ?? await client.guilds.fetch({ guild: guildId, force: true });
+  const member = await guild.members.fetch(userId);
+  try {
+    await completeRecruitmentReferral(client, guildId, userId);
+  } catch (error) {
+    logger.warn({ error, guildId }, "Manually verified referral reward could not be completed");
+  }
+
+  res.set("Cache-Control", "no-store").json(ManuallyVerifyGuildMemberResponse.parse({
+    userId,
+    displayName: member.displayName,
+    result,
+  }));
 }));
 
 router.get("/verification/status", asyncRoute(async (req, res) => {
   const cookie = req.headers.cookie?.split(";").map((part) => part.trim()).find((part) => part.startsWith(`${verificationCookieName()}=`));
   const rawToken = cookie?.slice(verificationCookieName().length + 1);
   const identity = parseVerificationIdentityToken(rawToken);
-  const requestedGuildId = typeof req.query.guildId === "string" ? parse(snowflake, req.query.guildId) : null;
+  const { guildId: requestedGuildId } = GetVerificationStatusQueryParams.parse({ guildId: req.query.guildId });
   if (!identity || (requestedGuildId && requestedGuildId !== identity.guildId)) {
-    res.json({ verified: false });
+    res.set("Cache-Control", "no-store").json(GetVerificationStatusResponse.parse({ verified: false }));
     return;
   }
   const client = getModerationClient();
   if (!client) {
-    res.json({ verified: false, reason: "bot_offline" });
+    res.set("Cache-Control", "no-store").json(GetVerificationStatusResponse.parse({ verified: false, reason: "bot_offline" }));
     return;
   }
   const snapshot = await fetchBotGuildSnapshot(identity.guildId, identity.userId);
   const config = normalizeVerificationConfig(await loadVerificationConfig(identity.guildId));
-  res.json({
+  res.set("Cache-Control", "no-store").json(GetVerificationStatusResponse.parse({
     verified: Boolean(snapshot && config.enabled && config.roleId && snapshot.member.roleIds.includes(config.roleId)),
     guildId: identity.guildId,
-    userId: identity.userId,
+  }));
+}));
+
+router.get("/verification/recruitment", asyncRoute(async (req, res) => {
+  const { guildId } = GetRecruitmentDashboardQueryParams.parse({ guildId: req.query.guildId });
+  const tracking = await loadInviteTrackingConfig(guildId);
+  const recruitmentEnabled = tracking.recruitment.enabled;
+  const client = getModerationClient();
+  let guildName: string | null = null;
+  let viewer: Awaited<ReturnType<typeof getRecruitmentDashboardData>>["viewer"] | null = null;
+  let leaderboard: Awaited<ReturnType<typeof getRecruitmentDashboardData>>["leaderboard"] = [];
+
+  if (client?.isReady()) {
+    const guild = client.guilds.cache.get(guildId)
+      ?? await client.guilds.fetch({ guild: guildId, force: true }).catch(() => null);
+    guildName = guild?.name ?? null;
+  }
+
+  if (recruitmentEnabled) {
+    const dashboard = await getRecruitmentDashboardData(guildId, "", "");
+    leaderboard = dashboard.leaderboard;
+
+    const cookie = req.headers.cookie?.split(";")
+      .map((part) => part.trim())
+      .find((part) => part.startsWith(`${verificationCookieName()}=`));
+    const identity = parseVerificationIdentityToken(cookie?.slice(verificationCookieName().length + 1));
+    if (identity?.guildId === guildId && client?.isReady()) {
+      const verification = normalizeVerificationConfig(await loadVerificationConfig(guildId));
+      const guild = client.guilds.cache.get(guildId)
+        ?? await client.guilds.fetch({ guild: guildId, force: true }).catch(() => null);
+      const member = guild
+        ? await guild.members.fetch(identity.userId).catch(() => null)
+        : null;
+      if (member && verification.enabled && verification.roleId && member.roles.cache.has(verification.roleId)) {
+        const privateDashboard = await getRecruitmentDashboardData(guildId, identity.userId, member.displayName);
+        viewer = privateDashboard.viewer;
+        leaderboard = privateDashboard.leaderboard;
+      }
+    }
+  }
+
+  res.set("Cache-Control", "no-store").json(GetRecruitmentDashboardResponse.parse({
+    guildId,
+    guildName,
+    enabled: recruitmentEnabled,
+    viewer,
+    leaderboard,
+  }));
+}));
+
+router.post("/verification/complete", asyncRoute(async (req, res) => {
+  const parsed = CompleteWebsiteVerificationBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Linkul de verificare nu este valid." });
+    return;
+  }
+  if (!parsed.data.sliderCompleted) {
+    res.status(400).json({ error: "Finalizează provocarea cu flacăra pentru a continua." });
+    return;
+  }
+
+  const client = getModerationClient();
+  if (!client?.isReady()) {
+    res.status(503).json({ error: "Botul Discord nu este disponibil momentan." });
+    return;
+  }
+  const ticket = await consumeVerificationLinkToken(parsed.data.ticket);
+  if (!ticket) {
+    res.status(400).json({ error: "Linkul este expirat sau a fost deja folosit. Solicită unul nou din Discord." });
+    return;
+  }
+
+  const config = normalizeVerificationConfig(await loadVerificationConfig(ticket.guildId));
+  if (!config.enabled || !config.roleId) {
+    res.status(400).json({ error: "Verificarea nu este configurată pentru acest server." });
+    return;
+  }
+
+  let result: "verified" | "already_verified";
+  try {
+    result = await verifyMember(client, ticket.guildId, ticket.userId);
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error ? Number(error.code) : null;
+    if (code === 50013 || code === 50001) {
+      res.status(503).json({ error: "Botului îi lipsește permisiunea necesară pentru a acorda rolul." });
+      return;
+    }
+    if (code === 10007 || (error instanceof Error && /nu mai există|nu este configurată|trebuie să fie sub/i.test(error.message))) {
+      res.status(400).json({ error: "Membrul sau rolul de verificare nu mai este disponibil." });
+      return;
+    }
+    logger.warn({ error, guildId: ticket.guildId }, "Website member verification failed");
+    res.status(503).json({ error: "Discord nu a putut finaliza verificarea. Solicită un link nou și încearcă din nou." });
+    return;
+  }
+
+  res.cookie(verificationCookieName(), createVerificationIdentityToken(ticket.guildId, ticket.userId), {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 30 * 24 * 60 * 60 * 1_000,
   });
+  try {
+    await completeRecruitmentReferral(client, ticket.guildId, ticket.userId);
+  } catch (error) {
+    logger.warn({ error, guildId: ticket.guildId }, "Verified referral reward will be retried when the member opens recruitment stats");
+  }
+
+  res.set("Cache-Control", "no-store").json(CompleteWebsiteVerificationResponse.parse({
+    verified: true,
+    result,
+    guildId: ticket.guildId,
+  }));
 }));
 
 router.get("/guilds/:guildId/metadata", asyncRoute(async (req, res) => {

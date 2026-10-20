@@ -51,6 +51,20 @@ const mocks = vi.hoisted(() => ({
     reportWeekday: 1,
     reportTimeZone: "Europe/Bucharest",
     reportTopLimit: 5,
+    recruitment: {
+      enabled: false,
+      inviteChannelId: "",
+      maxUses: 10,
+      maxAgeDays: 7,
+      dailyInviteLimit: 3,
+      verificationHours: 24,
+      rewardPoints: 100,
+      milestones: [
+        { requiredInvites: 5, roleId: "" },
+        { requiredInvites: 10, roleId: "" },
+        { requiredInvites: 25, roleId: "" },
+      ],
+    },
   },
   provisionGuildChannels: vi.fn(), provisionActivityLogChannels: vi.fn(),
   provisionModerationDestination: vi.fn(),
@@ -117,6 +131,7 @@ vi.mock("../../bot/db", () => ({
   loadInviteTrackingConfig: mocks.loadInviteTrackingConfig,
   saveInviteTrackingConfig: mocks.saveInviteTrackingConfig,
   DEFAULT_INVITE_TRACKING_CONFIG: mocks.defaultInviteTrackingConfig,
+  DEFAULT_INVITE_RECRUITMENT_CONFIG: mocks.defaultInviteTrackingConfig.recruitment,
   INVITE_REPORT_TIME_ZONES: ["Europe/Bucharest", "Europe/Paris", "UTC"],
 }));
 vi.mock("../../bot/gameplay-store", () => ({
@@ -665,6 +680,16 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     mocks.session.mockRejectedValue(new ModerationAuthError(401, "Authentication required"));
     expect((await fetch(`${base}/config`)).status).toBe(401);
     expect(mocks.getConfig).not.toHaveBeenCalled();
+  });
+
+  it("returns the configured primary guild ID when public invite metadata is unavailable", async () => {
+    mocks.client.mockReturnValue(null);
+    const profileUrl = base.replace(/\/guilds\/[^/]+$/, "/public/server-profile");
+    const response = await fetch(profileUrl);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(expect.objectContaining({
+      guildId: "1382035307607883816",
+    }));
   });
 
   it("checks owner settings access with the URL guild and server session identity", async () => {

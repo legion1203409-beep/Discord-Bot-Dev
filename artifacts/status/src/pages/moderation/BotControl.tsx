@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Tabs, TabsContent } from "../../components/ui/tabs";
 import { ImageField } from "../../components/moderation/ImageField";
 import { DiscordEmojiText, EmojiField } from "../../components/moderation/EmojiField";
-import { BotControlPartialApplyError, useActiveGuild, useBotControl, useInviteStats, useModerationMetadata, useSession, type BotControlConfig, type ChannelPermissionConfig, type InviteStatsRange, type TicketFlowConfig } from "../../hooks/use-moderation-api";
+import { BotControlPartialApplyError, useActiveGuild, useBotControl, useInviteStats, useModerationMetadata, useSession, type BotControlConfig, type ChannelPermissionConfig, type InviteRecruitmentConfig, type InviteStatsRange, type TicketFlowConfig } from "../../hooks/use-moderation-api";
 import { clearBotControlDestinations, DESTINATION_CLEAR_CATEGORIES, type DestinationClearScope } from "../../lib/bot-control-destinations";
 import { rebaseDraftChanges } from "../../lib/utils";
 import { useToast } from "../../hooks/use-toast";
@@ -18,6 +18,34 @@ import { useLocation, useSearch } from "wouter";
 
 type BotControlTab = "channels" | "roles" | "tickets" | "messages" | "statistics";
 const BOT_CONTROL_TABS: BotControlTab[] = ["channels", "roles", "tickets", "messages", "statistics"];
+
+function recruitmentValidationErrors(config: InviteRecruitmentConfig): string[] {
+  const fields: Array<{ key: keyof InviteRecruitmentConfig; label: string; min: number; max: number }> = [
+    { key: "maxUses", label: "Utilizări maxime per invitație", min: 1, max: 100 },
+    { key: "maxAgeDays", label: "Valabilitate invitație", min: 1, max: 30 },
+    { key: "dailyInviteLimit", label: "Limită zilnică de invitații", min: 1, max: 20 },
+    { key: "verificationHours", label: "Fereastră de verificare", min: 1, max: 72 },
+    { key: "rewardPoints", label: "Puncte de recrutare", min: 1, max: 100_000 },
+  ];
+  const errors = fields.flatMap(({ key, label, min, max }) => {
+    const value = config[key];
+    return typeof value !== "number" || !Number.isInteger(value) || value < min || value > max
+      ? [`${label}: valoarea trebuie să fie un număr întreg între ${min} și ${max}.`]
+      : [];
+  });
+  if (config.enabled && !config.inviteChannelId) {
+    errors.unshift("Alege un canal text pentru invitațiile personale.");
+  }
+  config.milestones.forEach((milestone, index) => {
+    if (!Number.isInteger(milestone.requiredInvites) || milestone.requiredInvites < 1 || milestone.requiredInvites > 100_000) {
+      errors.push(`Pragul ${index + 1}: introdu un număr întreg între 1 și 100000.`);
+    }
+    if (index > 0 && milestone.requiredInvites <= config.milestones[index - 1]!.requiredInvites) {
+      errors.push("Pragurile trebuie să fie strict crescătoare, în ordinea afișată.");
+    }
+  });
+  return errors;
+}
 
 const CHANNELS = [
   ["main", "Cufere"],
@@ -398,6 +426,9 @@ export function BotControlPage({
       JSON.stringify(provisioningPermissions) !== JSON.stringify(data.provisioningPermissions ?? {})
     ),
   );
+  const recruitmentErrors = currentDraft
+    ? recruitmentValidationErrors(currentDraft.inviteTracking.recruitment)
+    : [];
 
   const setChannel = (key: string, value: string) => {
     setDraft((current) => current ? {
@@ -514,6 +545,47 @@ export function BotControlPage({
       ...current,
       inviteTracking: { ...current.inviteTracking, [field]: value },
     } : current);
+  };
+
+  const setInviteRecruitment = <K extends keyof InviteRecruitmentConfig>(
+    field: K,
+    value: InviteRecruitmentConfig[K],
+  ) => {
+    setDraft((current) => current ? {
+      ...current,
+      inviteTracking: {
+        ...current.inviteTracking,
+        recruitment: {
+          ...current.inviteTracking.recruitment,
+          [field]: value,
+        },
+      },
+    } : current);
+  };
+
+  const setRecruitmentMilestone = (
+    index: 0 | 1 | 2,
+    field: "requiredInvites" | "roleId",
+    value: number | string,
+  ) => {
+    setDraft((current) => {
+      if (!current) return current;
+      const milestones = [...current.inviteTracking.recruitment.milestones] as InviteRecruitmentConfig["milestones"];
+      milestones[index] = {
+        ...milestones[index],
+        [field]: value,
+      };
+      return {
+        ...current,
+        inviteTracking: {
+          ...current.inviteTracking,
+          recruitment: {
+            ...current.inviteTracking.recruitment,
+            milestones,
+          },
+        },
+      };
+    });
   };
 
   const clearDestinations = (scope: DestinationClearScope) => {
@@ -685,6 +757,15 @@ export function BotControlPage({
     const submittedGuild = guildId;
     const submittedDraft = currentDraft;
     const submittedPermissions = provisioningPermissions;
+    const recruitmentIssues = recruitmentValidationErrors(submittedDraft.inviteTracking.recruitment);
+    if (recruitmentIssues.length) {
+      toast({
+        variant: "destructive",
+        title: "Verifică setările recrutării",
+        description: recruitmentIssues[0],
+      });
+      return;
+    }
     const duplicateFlow = Object.entries(submittedDraft.tickets.flows)
       .map(([kind, flow]) => ({ kind, flow, duplicateKeys: getDuplicateQuestionKeys(flow) }))
       .find(({ duplicateKeys }) => duplicateKeys.length > 0);
@@ -833,6 +914,8 @@ export function BotControlPage({
   const permissionRoles = (metadata?.roles ?? [])
     .filter((role) => !role.managed || role.id === metadata?.guild.id)
     .sort((left, right) => (right.position ?? 0) - (left.position ?? 0));
+  const recruitment = draft.inviteTracking.recruitment;
+  const recruitmentRoles = permissionRoles.filter((role) => !role.managed && role.id !== metadata?.guild.id);
   const categoryNames = new Map(categories.map((category) => [category.id, category.name]));
   const activeFlow = draft.tickets.flows[activeFlowKind];
   const duplicateQuestionKeys = getDuplicateQuestionKeys(activeFlow);
@@ -2035,6 +2118,160 @@ export function BotControlPage({
                 <p className="mt-2 font-medium text-destructive">Intenția Server Members nu este activă; intrările nu vor fi captate.</p>
               )}
             </div>
+
+            <section className="space-y-5 rounded-lg border border-border/70 p-4" aria-labelledby="invite-recruitment-heading" data-testid="panel-invite-recruitment">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <Users className="mt-0.5 h-5 w-5 text-primary" aria-hidden="true" />
+                  <div>
+                    <h3 id="invite-recruitment-heading" className="text-sm font-medium">Program de recrutare</h3>
+                    <p className="mt-1 max-w-2xl text-xs leading-relaxed text-muted-foreground">
+                      Creează invitații personale și acordă puncte sau roluri la pragurile stabilite.
+                      Activarea recrutării este independentă de jurnalul intrărilor și de rapoartele obișnuite ale invitațiilor.
+                    </p>
+                  </div>
+                </div>
+                <label className="flex min-h-10 items-center gap-2 text-xs font-medium">
+                  <Switch
+                    checked={recruitment.enabled}
+                    onCheckedChange={(checked) => setInviteRecruitment("enabled", checked)}
+                    aria-label="Activează programul de recrutare"
+                    data-testid="switch-invite-recruitment-enabled"
+                  />
+                  <span>{recruitment.enabled ? "Activ" : "Oprit"}</span>
+                </label>
+              </div>
+
+              <div className="rounded-lg border border-primary/20 bg-primary/[0.04] p-3 text-xs leading-relaxed text-muted-foreground">
+                Recompensele sunt <strong className="text-foreground">puncte de recrutare</strong>, separate de moneda, XP-ul și progresul RPG.
+                Configurația este salvată împreună cu restul setărilor Control Bot; validarea serverului rămâne autoritară.
+              </div>
+
+              {recruitmentErrors.length > 0 && (
+                <div role="alert" className="rounded-lg border border-amber-500/30 bg-amber-500/[0.06] p-3 text-xs text-amber-200" data-testid="alert-recruitment-validation">
+                  <p className="font-semibold">Corectează valorile înainte de salvare:</p>
+                  <ul className="mt-2 list-inside list-disc space-y-1">
+                    {recruitmentErrors.map((message) => <li key={message}>{message}</li>)}
+                  </ul>
+                </div>
+              )}
+
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <label className="space-y-1 text-sm sm:col-span-2 lg:col-span-3">
+                  <span className="text-xs font-medium">Canal invitații personale</span>
+                  <Select
+                    value={recruitment.inviteChannelId || "__none__"}
+                    onValueChange={(value) => setInviteRecruitment("inviteChannelId", value === "__none__" ? "" : value)}
+                  >
+                    <SelectTrigger className="mod-select-trigger" aria-label="Canal pentru invitațiile personale" data-testid="select-recruitment-invite-channel">
+                      <SelectValue placeholder="Alege un canal text" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-[min(70vh,32rem)] overscroll-contain">
+                      <SelectItem value="__none__">Alege un canal</SelectItem>
+                      {textChannels.map((channel) => (
+                        <SelectItem key={channel.id} value={channel.id}>#{channel.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <span className="block text-xs text-muted-foreground">Invitațiile create de program vor folosi acest canal ca destinație.</span>
+                </label>
+
+                <label className="space-y-1 text-sm">
+                  <span className="text-xs font-medium">Utilizări maxime per invitație (1–100)</span>
+                  <Input
+                    type="number" min={1} max={100} step={1}
+                    value={Number.isFinite(recruitment.maxUses) ? recruitment.maxUses : ""}
+                    onChange={(event) => setInviteRecruitment("maxUses", event.target.value === "" ? Number.NaN : Number(event.target.value))}
+                    aria-label="Utilizări maxime per invitație"
+                    data-testid="input-recruitment-max-uses"
+                    aria-invalid={!Number.isInteger(recruitment.maxUses) || recruitment.maxUses < 1 || recruitment.maxUses > 100}
+                  />
+                </label>
+                <label className="space-y-1 text-sm">
+                  <span className="text-xs font-medium">Valabilitate invitație în zile (1–30)</span>
+                  <Input
+                    type="number" min={1} max={30} step={1}
+                    value={Number.isFinite(recruitment.maxAgeDays) ? recruitment.maxAgeDays : ""}
+                    onChange={(event) => setInviteRecruitment("maxAgeDays", event.target.value === "" ? Number.NaN : Number(event.target.value))}
+                    aria-label="Valabilitate invitație în zile"
+                    data-testid="input-recruitment-max-age-days"
+                    aria-invalid={!Number.isInteger(recruitment.maxAgeDays) || recruitment.maxAgeDays < 1 || recruitment.maxAgeDays > 30}
+                  />
+                </label>
+                <label className="space-y-1 text-sm">
+                  <span className="text-xs font-medium">Limită invitații zilnice (1–20)</span>
+                  <Input
+                    type="number" min={1} max={20} step={1}
+                    value={Number.isFinite(recruitment.dailyInviteLimit) ? recruitment.dailyInviteLimit : ""}
+                    onChange={(event) => setInviteRecruitment("dailyInviteLimit", event.target.value === "" ? Number.NaN : Number(event.target.value))}
+                    aria-label="Limită zilnică de invitații"
+                    data-testid="input-recruitment-daily-limit"
+                    aria-invalid={!Number.isInteger(recruitment.dailyInviteLimit) || recruitment.dailyInviteLimit < 1 || recruitment.dailyInviteLimit > 20}
+                  />
+                </label>
+                <label className="space-y-1 text-sm">
+                  <span className="text-xs font-medium">Fereastră verificare (ore, 1–72)</span>
+                  <Input
+                    type="number" min={1} max={72} step={1}
+                    value={Number.isFinite(recruitment.verificationHours) ? recruitment.verificationHours : ""}
+                    onChange={(event) => setInviteRecruitment("verificationHours", event.target.value === "" ? Number.NaN : Number(event.target.value))}
+                    aria-label="Fereastră de verificare în ore"
+                    data-testid="input-recruitment-verification-hours"
+                    aria-invalid={!Number.isInteger(recruitment.verificationHours) || recruitment.verificationHours < 1 || recruitment.verificationHours > 72}
+                  />
+                </label>
+                <label className="space-y-1 text-sm">
+                  <span className="text-xs font-medium">Puncte per recomandare confirmată (1–100000)</span>
+                  <Input
+                    type="number" min={1} max={100000} step={1}
+                    value={Number.isFinite(recruitment.rewardPoints) ? recruitment.rewardPoints : ""}
+                    onChange={(event) => setInviteRecruitment("rewardPoints", event.target.value === "" ? Number.NaN : Number(event.target.value))}
+                    aria-label="Puncte de recrutare per recomandare"
+                    data-testid="input-recruitment-reward-points"
+                    aria-invalid={!Number.isInteger(recruitment.rewardPoints) || recruitment.rewardPoints < 1 || recruitment.rewardPoints > 100000}
+                  />
+                </label>
+              </div>
+
+              <div className="space-y-3 border-t border-border/60 pt-4">
+                <div>
+                  <h4 className="text-sm font-medium">Praguri de recomandări</h4>
+                  <p className="mt-1 text-xs text-muted-foreground">Exact trei praguri, păstrate în ordinea de mai jos. Rolurile bonus sunt opționale.</p>
+                </div>
+                <div className="space-y-3">
+                  {recruitment.milestones.map((milestone, index) => (
+                    <div key={`recruitment-milestone-${index}`} className="grid gap-3 rounded-lg border border-border/60 p-3 sm:grid-cols-[minmax(9rem,.55fr)_minmax(12rem,1fr)]">
+                      <label className="space-y-1 text-sm">
+                        <span className="text-xs font-medium">Pragul {index + 1} — invitații confirmate</span>
+                        <Input
+                          type="number" min={1} max={100000} step={1}
+                          value={Number.isFinite(milestone.requiredInvites) ? milestone.requiredInvites : ""}
+                          onChange={(event) => setRecruitmentMilestone(index as 0 | 1 | 2, "requiredInvites", event.target.value === "" ? Number.NaN : Number(event.target.value))}
+                          aria-label={`Pragul ${index + 1} de invitații confirmate`}
+                          data-testid={`input-recruitment-milestone-${index + 1}`}
+                          aria-invalid={!Number.isInteger(milestone.requiredInvites) || milestone.requiredInvites < 1 || milestone.requiredInvites > 100000 || (index > 0 && milestone.requiredInvites <= recruitment.milestones[index - 1]!.requiredInvites)}
+                        />
+                      </label>
+                      <label className="space-y-1 text-sm">
+                        <span className="text-xs font-medium">Rol bonus (opțional)</span>
+                        <Select
+                          value={milestone.roleId || "__none__"}
+                          onValueChange={(value) => setRecruitmentMilestone(index as 0 | 1 | 2, "roleId", value === "__none__" ? "" : value)}
+                        >
+                          <SelectTrigger className="mod-select-trigger" aria-label={`Rol bonus pentru pragul ${index + 1}`} data-testid={`select-recruitment-milestone-role-${index + 1}`}>
+                            <SelectValue placeholder="Fără rol bonus" />
+                          </SelectTrigger>
+                          <SelectContent className="max-h-[min(70vh,32rem)] overscroll-contain">
+                            <SelectItem value="__none__">Fără rol bonus</SelectItem>
+                            {recruitmentRoles.map((role) => <SelectItem key={role.id} value={role.id}>@{role.name}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
 
             <div className="space-y-3 rounded-lg border border-border/70 p-4">
               <div>

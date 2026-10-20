@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, CircleHelp, Loader2, RefreshCw, RotateCcw, Save, Search, Send, ShieldCheck, Users } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  getGetVerificationMembersQueryKey,
+  useGetVerificationMembers,
+  useManuallyVerifyGuildMember,
+} from "@workspace/api-client-react";
 import { Button } from "../../components/ui/button";
 import { ImageField } from "../../components/moderation/ImageField";
 import { DiscordEmojiText, EmojiField } from "../../components/moderation/EmojiField";
@@ -13,7 +19,6 @@ import {
   useBotControl,
   useModerationMetadata,
   useSession,
-  useVerifiedMembers,
   type BotControlConfig,
 } from "../../hooks/use-moderation-api";
 import { useToast } from "../../hooks/use-toast";
@@ -47,12 +52,14 @@ export function VerificationAdminPage() {
     confirmPanelReconciliation,
   } = useBotControl(guildId);
   const { data: metadata, refetch: refetchMetadata } = useModerationMetadata(guildId);
-  const {
-    data: verifiedMembersData,
-    loading: verifiedMembersLoading,
-    error: verifiedMembersError,
-    refetch: refetchVerifiedMembers,
-  } = useVerifiedMembers(guildId);
+  const membersQuery = useGetVerificationMembers(guildId ?? "", {
+    query: {
+      enabled: Boolean(guildId),
+      queryKey: getGetVerificationMembersQueryKey(guildId ?? ""),
+    },
+  });
+  const manualVerification = useManuallyVerifyGuildMember();
+  const queryClient = useQueryClient();
   const { toast } = useToast();
   const { session } = useSession();
   const [draft, setDraft] = useState<BotControlConfig | null>(null);
@@ -270,12 +277,31 @@ export function VerificationAdminPage() {
 
   const textChannels = metadata?.channels.filter((channel) => isTextChannel(channel.type)) ?? [];
   const normalizedSearch = verificationSearch.trim().toLocaleLowerCase("ro");
-  const filteredVerifiedMembers = (verifiedMembersData?.members ?? []).filter((member) => {
+  const filteredVerifiedMembers = (membersQuery.data?.members ?? []).filter((member) => {
     if (!normalizedSearch) return true;
     return [member.displayName, member.username, member.id]
       .some((value) => value.toLocaleLowerCase("ro").includes(normalizedSearch));
   });
   const guildPartialApplyError = partialApplyError?.guildId === guildId ? partialApplyError : null;
+
+  const manuallyVerifyMember = async (userId: string, displayName: string) => {
+    if (!guildId || manualVerification.isPending) return;
+    const submittedGuildId = guildId;
+    try {
+      const result = await manualVerification.mutateAsync({ guildId: submittedGuildId, userId });
+      await queryClient.invalidateQueries({ queryKey: getGetVerificationMembersQueryKey(submittedGuildId) });
+      toast({
+        title: result.result === "already_verified" ? "Membrul era deja verificat" : "Membrul a fost verificat",
+        description: result.displayName || displayName,
+      });
+    } catch (verifyError) {
+      toast({
+        variant: "destructive",
+        title: "Verificarea manuală a eșuat",
+        description: verifyError instanceof Error ? verifyError.message : "Încearcă din nou.",
+      });
+    }
+  };
 
   return (
     <div className={`bot-control-page verification-admin-page max-w-5xl space-y-6 animate-stagger-1 ${hasUnsavedChanges ? "pb-28" : ""}`}>
@@ -577,23 +603,38 @@ export function VerificationAdminPage() {
             <Users className="mt-1 h-5 w-5 text-primary" />
             <div>
               <p className="mod-eyebrow">MEMBER DIRECTORY</p>
-              <h2 className="font-medium">Membri verificați</h2>
-              <p className="text-xs text-muted-foreground">Lista live a membrilor care au în prezent rolul de verificare configurat.</p>
+              <h2 className="font-medium">Membrii serverului</h2>
+              <p className="text-xs text-muted-foreground">Statusul verificării pentru membrii serverului și acțiuni manuale disponibile staff-ului.</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="rounded-full border border-primary/25 bg-primary/[0.06] px-3 py-1 text-xs font-medium">
-              {verifiedMembersData?.total ?? 0} membri
-            </span>
+          <div className="flex flex-wrap items-center gap-2">
+            {membersQuery.data ? (
+              <>
+                <span className="rounded-full border border-primary/25 bg-primary/[0.06] px-3 py-1 text-xs font-medium" data-testid="text-verification-total">
+                  {membersQuery.data.total.toLocaleString("ro-RO")} membri
+                </span>
+                <span className="rounded-full border border-emerald-500/25 bg-emerald-500/[0.06] px-3 py-1 text-xs font-medium text-emerald-400" data-testid="text-verification-verified-total">
+                  {membersQuery.data.verifiedTotal.toLocaleString("ro-RO")} verificați
+                </span>
+                <span className="rounded-full border border-amber-500/25 bg-amber-500/[0.06] px-3 py-1 text-xs font-medium text-amber-300" data-testid="text-verification-unverified-total">
+                  {membersQuery.data.unverifiedTotal.toLocaleString("ro-RO")} în așteptare
+                </span>
+              </>
+            ) : (
+              <span className="rounded-full border border-border bg-muted/20 px-3 py-1 text-xs text-muted-foreground" data-testid="text-verification-count-unavailable">
+                {membersQuery.isLoading ? "Se încarcă membrii" : "Total indisponibil"}
+              </span>
+            )}
             <Button
               type="button"
               size="sm"
               variant="outline"
-              onClick={() => void refetchVerifiedMembers()}
-              disabled={verifiedMembersLoading}
+              onClick={() => void membersQuery.refetch()}
+              disabled={membersQuery.isFetching}
               title="Reîncarcă lista"
+              data-testid="button-refresh-verification-members"
             >
-              <RefreshCw className={`mr-2 h-4 w-4 ${verifiedMembersLoading ? "animate-spin" : ""}`} />
+              <RefreshCw className={`mr-2 h-4 w-4 ${membersQuery.isFetching ? "animate-spin" : ""}`} />
               Reîncarcă
             </Button>
           </div>
@@ -605,19 +646,23 @@ export function VerificationAdminPage() {
             value={verificationSearch}
             onChange={(event) => setVerificationSearch(event.target.value)}
             placeholder="Caută după nume, username sau ID Discord"
-            aria-label="Caută membri verificați"
+            aria-label="Caută membri"
+            data-testid="input-verification-member-search"
             className="pl-9"
           />
         </div>
 
-        {verifiedMembersLoading && !verifiedMembersData ? (
+        {membersQuery.isLoading && !membersQuery.data ? (
           <div className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-border p-8 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
-            Se încarcă membrii verificați…
+            Se încarcă membrii serverului…
           </div>
-        ) : verifiedMembersError ? (
-          <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
-            {verifiedMembersError.message}
+        ) : membersQuery.isError ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive" role="alert">
+            <span>{membersQuery.error instanceof Error ? membersQuery.error.message : "Lista membrilor nu a putut fi încărcată."}</span>
+            <Button type="button" size="sm" variant="outline" onClick={() => void membersQuery.refetch()} data-testid="button-retry-verification-members">
+              Încearcă din nou
+            </Button>
           </div>
         ) : !data?.verification.roleId ? (
           <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
@@ -625,25 +670,27 @@ export function VerificationAdminPage() {
           </div>
         ) : filteredVerifiedMembers.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-            {verificationSearch.trim() ? "Nu există membri care corespund căutării." : "Nu există membri verificați în acest moment."}
+            {verificationSearch.trim() ? "Nu există membri care corespund căutării." : "Nu există membri raportați pentru acest server."}
           </div>
         ) : (
           <div className="verification-table-wrap overflow-x-auto rounded-lg border border-border">
-            <table className="w-full min-w-[620px] text-left text-sm">
+            <table className="w-full min-w-[790px] text-left text-sm">
               <thead className="border-b border-border bg-muted/30 text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
                   <th className="px-4 py-3 font-medium">Membru</th>
                   <th className="px-4 py-3 font-medium">Username</th>
                   <th className="px-4 py-3 font-medium">ID Discord</th>
                   <th className="px-4 py-3 font-medium">În server din</th>
+                  <th className="px-4 py-3 font-medium">Verificare</th>
+                  <th className="px-4 py-3 text-right font-medium">Acțiune</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {filteredVerifiedMembers.map((member) => (
-                  <tr key={member.id} className="transition-colors hover:bg-muted/20">
+                  <tr key={member.id} className="transition-colors hover:bg-muted/20" data-testid={`row-verification-member-${member.id}`}>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
-                        <img src={member.avatarUrl} alt="" className="h-8 w-8 rounded-full bg-muted object-cover" />
+                        <img src={member.avatarUrl} alt="" className="h-8 w-8 rounded-full bg-muted object-cover" onError={(event) => { event.currentTarget.style.visibility = "hidden"; }} />
                         <span className="font-medium">{member.displayName}</span>
                       </div>
                     </td>
@@ -651,6 +698,29 @@ export function VerificationAdminPage() {
                     <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{member.id}</td>
                     <td className="px-4 py-3 text-muted-foreground">
                       {member.joinedAt ? new Date(member.joinedAt).toLocaleDateString("ro-RO") : "—"}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs ${member.verified ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-400" : "border-amber-500/25 bg-amber-500/10 text-amber-300"}`} data-testid={`status-member-verification-${member.id}`}>
+                        {member.verified ? "Verificat" : "În așteptare"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {!member.verified && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void manuallyVerifyMember(member.id, member.displayName)}
+                          disabled={manualVerification.isPending}
+                          aria-label={`Verifică manual ${member.displayName}`}
+                          data-testid={`button-manual-verify-${member.id}`}
+                        >
+                          {manualVerification.isPending && manualVerification.variables?.userId === member.id
+                            ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+                            : <ShieldCheck className="mr-2 h-4 w-4" aria-hidden="true" />}
+                          Verifică manual
+                        </Button>
+                      )}
                     </td>
                   </tr>
                 ))}

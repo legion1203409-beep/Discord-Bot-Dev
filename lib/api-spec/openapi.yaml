@@ -77,6 +77,14 @@ paths:
       operationId: moderationLogout
       tags: [moderation]
       responses: { "204": { description: Session revoked } }
+  /moderation/public/server-profile:
+    get:
+      operationId: getPublicServerProfile
+      tags: [moderation]
+      responses:
+        "200":
+          description: Public Discord server identity and invitation
+          content: { application/json: { schema: { $ref: "#/components/schemas/PublicServerProfile" } } }
   /moderation/verification/recruitment:
     get:
       operationId: getRecruitmentDashboard
@@ -99,8 +107,18 @@ paths:
         "200":
           description: One-time Discord-issued link accepted and the member verified
           content: { application/json: { schema: { $ref: "#/components/schemas/VerificationLinkCompletionResponse" } } }
-        "400": { description: Invalid, expired, reused link or incomplete slider challenge }
+        "400": { description: "Invalid, expired, reused link or incomplete slider challenge" }
         "503": { description: Discord verification service is unavailable }
+  /moderation/verification/status:
+    get:
+      operationId: getVerificationStatus
+      tags: [moderation]
+      parameters:
+        - { name: guildId, in: query, required: false, schema: { type: string, pattern: "^\\d{5,25}$" } }
+      responses:
+        "200":
+          description: Whether the current browser's verification cookie is valid for the requested server
+          content: { application/json: { schema: { $ref: "#/components/schemas/VerificationStatusResponse" } } }
   /moderation/guilds/{guildId}/verification/members:
     parameters: [{ name: guildId, in: path, required: true, schema: { type: string, pattern: "^\\d{5,25}$" } }]
     get:
@@ -681,6 +699,13 @@ components:
       type: object
       additionalProperties: true
       description: Bot-control write payload. Nested settings are validated by the API; use the GET response as the round-trip payload.
+      properties:
+        inviteTracking:
+          type: object
+          additionalProperties: true
+          properties:
+            recruitment:
+              $ref: "#/components/schemas/InviteRecruitmentSettings"
     VerificationPanelPublishInput:
       type: object
       additionalProperties: false
@@ -718,6 +743,39 @@ components:
       properties:
         displayName: { type: string }
         verifiedAt: { type: string, format: date-time }
+    InviteRecruitmentMilestoneSettings:
+      type: object
+      additionalProperties: false
+      required: [requiredInvites, roleId]
+      properties:
+        requiredInvites: { type: integer, minimum: 1, maximum: 100000 }
+        roleId: { type: string, pattern: "^(?:\\d{5,25})?$" }
+    InviteRecruitmentSettings:
+      type: object
+      additionalProperties: false
+      required: [enabled, inviteChannelId, maxUses, maxAgeDays, dailyInviteLimit, verificationHours, rewardPoints, milestones]
+      properties:
+        enabled: { type: boolean }
+        inviteChannelId: { type: string, pattern: "^(?:\\d{5,25})?$" }
+        maxUses: { type: integer, minimum: 1, maximum: 100 }
+        maxAgeDays: { type: integer, minimum: 1, maximum: 30 }
+        dailyInviteLimit: { type: integer, minimum: 1, maximum: 20 }
+        verificationHours: { type: integer, minimum: 1, maximum: 72 }
+        rewardPoints: { type: integer, minimum: 1, maximum: 100000 }
+        milestones:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items: { $ref: "#/components/schemas/InviteRecruitmentMilestoneSettings" }
+    PublicServerProfile:
+      type: object
+      additionalProperties: false
+      required: [name, iconUrl, inviteUrl, guildId]
+      properties:
+        name: { type: string }
+        iconUrl: { type: ["string", "null"], format: uri }
+        inviteUrl: { type: string, format: uri }
+        guildId: { type: ["string", "null"], pattern: "^\\d{5,25}$" }
     RecruitmentLeaderboardEntry:
       type: object
       additionalProperties: false
@@ -769,6 +827,14 @@ components:
         verified: { type: boolean }
         result: { type: string, enum: [verified, already_verified] }
         guildId: { type: string }
+    VerificationStatusResponse:
+      type: object
+      additionalProperties: false
+      required: [verified]
+      properties:
+        verified: { type: boolean }
+        reason: { type: string, enum: [bot_offline] }
+        guildId: { type: string, pattern: "^\\d{5,25}$" }
     VerificationMember:
       type: object
       additionalProperties: false

@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { botControlSchema } from "../router";
 import { DEFAULT_GAMEPLAY_CONFIG } from "../../bot/gameplay-config";
+import { DEFAULT_INVITE_TRACKING_CONFIG } from "../../bot/db";
 
 const validPayload = () => ({
   channels: {},
   allianceRecruitmentText: "Mesaj",
   gameplayConfig: structuredClone(DEFAULT_GAMEPLAY_CONFIG),
+  inviteTracking: structuredClone(DEFAULT_INVITE_TRACKING_CONFIG),
 });
 
 describe("owner gameplay configuration limits", () => {
@@ -36,6 +38,18 @@ describe("owner gameplay configuration limits", () => {
     const payload = validPayload();
     payload.allianceRecruitmentText = "";
     expect(botControlSchema.parse(payload).allianceRecruitmentText).toBe("");
+  });
+
+  it("round-trips recruitment settings and rejects unordered milestones", () => {
+    const payload = validPayload();
+    payload.inviteTracking.recruitment.enabled = true;
+    payload.inviteTracking.recruitment.inviteChannelId = "123456789";
+    const parsed = botControlSchema.parse(payload);
+    expect(parsed.inviteTracking.recruitment).toEqual(payload.inviteTracking.recruitment);
+
+    payload.inviteTracking.recruitment.milestones[1]!.requiredInvites =
+      payload.inviteTracking.recruitment.milestones[0]!.requiredInvites;
+    expect(() => botControlSchema.parse(payload)).toThrow();
   });
 
   it("round-trips safe message image fields and rejects unsafe image URLs", () => {

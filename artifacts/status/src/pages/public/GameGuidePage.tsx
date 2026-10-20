@@ -1,38 +1,41 @@
-import { useEffect, useState } from "react";
-import { Activity, ArrowUpRight, CalendarDays, Hash, MessageSquare, RefreshCw, Users, UserPlus, UserMinus, Volume2, Zap } from "lucide-react";
+import { useEffect } from "react";
+import { Activity, ArrowUpRight, CalendarDays, Hash, MessageSquare, Users, UserPlus, UserMinus, Volume2, Zap, Award, UserRoundPlus } from "lucide-react";
 import { trackEvent } from "../../lib/analytics";
 import { DISCORD_INVITE } from "../../lib/public-constants";
 import { useSoulStoneStats } from "../../hooks/public/use-stats";
 import { useDailyStats } from "../../hooks/public/use-daily-stats";
-
-type PublicServerProfile = {
-  name: string;
-  iconUrl: string | null;
-  inviteUrl: string;
-};
+import {
+  getGetPublicServerProfileQueryKey,
+  getGetRecruitmentDashboardQueryKey,
+  useGetPublicServerProfile,
+  useGetRecruitmentDashboard,
+} from "@workspace/api-client-react";
 
 const count = (value: number | null | undefined) => value == null ? "Indisponibil" : value.toLocaleString("ro-RO");
 const formatDay = (day: string) => new Intl.DateTimeFormat("ro-RO", { dateStyle: "long" }).format(new Date(`${day}T12:00:00.000Z`));
+const formatTimestamp = (timestamp: string) => new Intl.DateTimeFormat("ro-RO", { dateStyle: "medium" }).format(new Date(timestamp));
 
 export function GameGuidePage() {
   const stats = useSoulStoneStats();
   const { data, loading, error, refresh } = useDailyStats();
-  const [serverProfile, setServerProfile] = useState<PublicServerProfile>({
-    name: "Oracolul Cenușii",
-    iconUrl: null,
-    inviteUrl: DISCORD_INVITE,
+  const profileQuery = useGetPublicServerProfile({
+    query: {
+      queryKey: getGetPublicServerProfileQueryKey(),
+      staleTime: 0,
+      refetchOnMount: "always",
+    },
+    request: { cache: "no-store" },
   });
-
-  useEffect(() => {
-    let mounted = true;
-    void fetch("/api/moderation/public/server-profile", { cache: "no-store" })
-      .then((response) => response.ok ? response.json() as Promise<PublicServerProfile> : null)
-      .then((profile) => {
-        if (mounted && profile?.name && profile.inviteUrl) setServerProfile(profile);
-      })
-      .catch(() => undefined);
-    return () => { mounted = false; };
-  }, []);
+  const serverProfile = profileQuery.data ?? { name: "Oracolul Cenușii", iconUrl: null, inviteUrl: DISCORD_INVITE, guildId: null };
+  const recruitmentQuery = useGetRecruitmentDashboard(
+    { guildId: serverProfile.guildId ?? "" },
+    {
+      query: {
+        enabled: Boolean(serverProfile.guildId),
+        queryKey: getGetRecruitmentDashboardQueryKey({ guildId: serverProfile.guildId ?? "" }),
+      },
+    },
+  );
 
   useEffect(() => {
     const title = document.title;
@@ -76,7 +79,7 @@ export function GameGuidePage() {
   ] as const;
 
   return (
-    <main className="server-guide page-width">
+    <div className="server-guide page-width">
       <header className="server-guide-hero">
         <div className="server-guide-orbit" aria-hidden="true"><span /><span /><span /></div>
         <div className="server-guide-intro">
@@ -191,6 +194,93 @@ export function GameGuidePage() {
         )}
       </section>
 
+      <section className="server-guide-recruitment" aria-labelledby="server-recruitment-heading" data-testid="section-recruitment">
+        <div className="server-guide-recruitment-heading">
+          <div>
+            <p className="server-guide-eyebrow"><span /> RECRUTARE COMUNITATE</p>
+            <h2 id="server-recruitment-heading">O invitație poate deschide<br /><em>un loc nou.</em></h2>
+          </div>
+          <p>Un rezumat transparent al programului de recomandări al serverului. Clasamentul arată numai numele publice și rezultatele raportate.</p>
+        </div>
+        {profileQuery.isLoading || (Boolean(serverProfile.guildId) && recruitmentQuery.isLoading) ? (
+          <div className="server-guide-recruitment-skeleton" aria-label="Se încarcă datele programului de recrutare">
+            <div /><div /><div />
+          </div>
+        ) : profileQuery.isError ? (
+          <div className="server-guide-recruitment-state" role="alert">
+            <strong>Programul de recrutare nu poate fi încărcat.</strong>
+            <button type="button" onClick={() => void profileQuery.refetch()} data-testid="button-retry-recruitment-profile">Încearcă din nou</button>
+          </div>
+        ) : !serverProfile.guildId ? (
+          <div className="server-guide-recruitment-state" role="status">
+            <strong>Programul de recrutare nu este disponibil pentru acest server.</strong>
+          </div>
+        ) : recruitmentQuery.isError ? (
+          <div className="server-guide-recruitment-state" role="alert">
+            <strong>Rezumatul recrutării nu este disponibil momentan.</strong>
+            <button type="button" onClick={() => void recruitmentQuery.refetch()} data-testid="button-retry-recruitment">Reîncarcă datele</button>
+          </div>
+        ) : recruitmentQuery.data && !recruitmentQuery.data.enabled ? (
+          <div className="server-guide-recruitment-state" role="status">
+            <strong>Programul de recrutare nu este activ momentan.</strong>
+          </div>
+        ) : recruitmentQuery.data ? (
+          <div className="server-guide-recruitment-grid">
+            <article className="server-guide-recruitment-personal" data-testid="data-recruitment-viewer">
+              <div className="server-guide-recruitment-card-head">
+                <span className="server-guide-recruitment-icon"><UserRoundPlus size={18} aria-hidden="true" /></span>
+                <div><p>REZUMATUL TĂU</p><h3>{recruitmentQuery.data.viewer?.displayName ?? "Invitații tale"}</h3></div>
+              </div>
+              {recruitmentQuery.data.viewer ? (
+                <>
+                  <div className="server-guide-recruitment-totals">
+                    <div><span>Invitații create</span><strong>{count(recruitmentQuery.data.viewer.createdInviteCount)}</strong></div>
+                    <div><span>Recomandări confirmate</span><strong>{count(recruitmentQuery.data.viewer.verifiedInviteCount)}</strong></div>
+                    <div><span>Puncte</span><strong>{count(recruitmentQuery.data.viewer.points)}</strong></div>
+                  </div>
+                  <div className="server-guide-invitees">
+                    <h4>Persoane recomandate</h4>
+                    {recruitmentQuery.data.viewer.invitees.length ? (
+                      <ul>
+                        {recruitmentQuery.data.viewer.invitees.map((invitee, index) => (
+                          <li key={`${invitee.displayName}-${invitee.verifiedAt}-${index}`} data-testid={`data-recruitment-invitee-${index}`}>
+                            <span>{invitee.displayName}</span><time dateTime={invitee.verifiedAt}>{formatTimestamp(invitee.verifiedAt)}</time>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : <p className="server-guide-recruitment-muted">Nicio recomandare confirmată încă.</p>}
+                  </div>
+                </>
+              ) : (
+                <p className="server-guide-recruitment-private">Conectează-te prin linkul de verificare primit în Discord pentru a vedea rezumatul personal.</p>
+              )}
+            </article>
+            <article className="server-guide-leaderboard" data-testid="data-recruitment-leaderboard">
+              <div className="server-guide-recruitment-card-head">
+                <span className="server-guide-recruitment-icon"><Award size={18} aria-hidden="true" /></span>
+                <div><p>CLASAMENT PUBLIC</p><h3>Recomandări confirmate</h3></div>
+              </div>
+              {recruitmentQuery.data.leaderboard.length ? (
+                <ol>
+                  {recruitmentQuery.data.leaderboard.map((entry) => (
+                    <li key={`${entry.rank}-${entry.displayName}`} data-testid={`data-recruitment-rank-${entry.rank}`}>
+                      <span className="server-guide-leaderboard-rank">{String(entry.rank).padStart(2, "0")}</span>
+                      <span className="server-guide-leaderboard-name">{entry.displayName}</span>
+                      <span className="server-guide-leaderboard-count">{count(entry.verifiedInviteCount)} <small>confirmate</small></span>
+                      <span className="server-guide-leaderboard-points">{count(entry.points)} <small>puncte</small></span>
+                    </li>
+                  ))}
+                </ol>
+              ) : <p className="server-guide-recruitment-muted">Clasamentul va apărea când sunt disponibile rezultate.</p>}
+            </article>
+          </div>
+        ) : (
+          <div className="server-guide-recruitment-state" role="status">
+            <strong>Nu există date de recrutare disponibile momentan.</strong>
+          </div>
+        )}
+      </section>
+
       <section className="server-guide-welcome">
         <div className="server-guide-welcome-index">01 / ÎNCEPUT</div>
         <h2>Intră fără grabă.<br /><em>Rămâi pentru oameni.</em></h2>
@@ -201,6 +291,6 @@ export function GameGuidePage() {
           Deschide invitația Discord <ArrowUpRight size={17} aria-hidden="true" />
         </a>
       </section>
-    </main>
+    </div>
   );
 }

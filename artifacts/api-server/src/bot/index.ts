@@ -130,6 +130,12 @@ import {
   recordDeletedInvite,
   stopInviteTracking,
 } from "./invite-stats";
+import {
+  failRecruitmentInviteCreation,
+  finishRecruitmentInviteCreation,
+  RecruitmentInviteLimitError,
+  reserveRecruitmentInviteCreation,
+} from "./invite-recruitment";
 import { SUPER_ADMIN_ID } from "./constants";
 import {
   ensureTributePlayer,
@@ -552,6 +558,9 @@ const slashCommands = [
     .setName("server")
     .setDescription("🏰 Vezi invitația și starea serverului Regatul Cenușii."),
   new SlashCommandBuilder()
+    .setName("invita")
+    .setDescription("🔗 Creează o invitație personală și urmărește recrutările verificate."),
+  new SlashCommandBuilder()
     .setName("clasament")
     .setDescription("👑 Clasamentele Regatelor Cenușii.")
     .addSubcommand((sub) =>
@@ -651,6 +660,90 @@ const slashCommands = [
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
   hauntedHouseCommand,
 ];
+
+async function handleRecruitmentInvite(interaction: ChatInputCommandInteraction): Promise<void> {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const guildId = interaction.guildId;
+  if (!guildId) {
+    await interaction.editReply("Folosește această comandă într-un server Discord.");
+    return;
+  }
+
+  let reservationId: number | null = null;
+  let createdInvite: Awaited<ReturnType<TextChannel["createInvite"]>> | null = null;
+  try {
+    const tracking = await loadInviteTrackingConfig(guildId);
+    const recruitment = tracking.recruitment;
+    if (!recruitment.enabled) {
+      await interaction.editReply("Invitațiile personale nu sunt activate pe acest server.");
+      return;
+    }
+
+    const guild = interaction.guild ?? await interaction.client.guilds.fetch({ guild: guildId, force: true });
+    const channel = await guild.channels.fetch(recruitment.inviteChannelId).catch(() => null);
+    if (!(channel instanceof TextChannel) || channel.guildId !== guildId) {
+      await interaction.editReply("Canalul invitațiilor personale nu mai este disponibil. Anunță un moderator.");
+      return;
+    }
+    const botMember = guild.members.me ?? await guild.members.fetchMe().catch(() => null);
+    if (!botMember || !channel.permissionsFor(botMember)?.has(PermissionFlagsBits.CreateInstantInvite)) {
+      await interaction.editReply("Botul nu poate crea invitații în canalul configurat. Anunță un moderator.");
+      return;
+    }
+
+    const inviterDisplayName =
+      interaction.member && "displayName" in interaction.member
+        ? interaction.member.displayName
+        : interaction.user.globalName ?? interaction.user.username;
+    const maxAgeSeconds = recruitment.maxAgeDays * 24 * 60 * 60;
+    const reservation = await reserveRecruitmentInviteCreation({
+      guildId,
+      recruiterId: interaction.user.id,
+      recruiterDisplayName: inviterDisplayName,
+      channelId: channel.id,
+      maxUses: recruitment.maxUses,
+      maxAgeSeconds,
+      dailyLimit: recruitment.dailyInviteLimit,
+    });
+    reservationId = reservation.id;
+
+    createdInvite = await channel.createInvite({
+      maxAge: maxAgeSeconds,
+      maxUses: recruitment.maxUses,
+      unique: true,
+      reason: `Invitație personală pentru ${interaction.user.username}`,
+    });
+    await finishRecruitmentInviteCreation({
+      id: reservation.id,
+      inviteCode: createdInvite.code,
+      expiresAt: createdInvite.expiresAt,
+    });
+
+    await interaction.editReply(
+      `Invitația ta personală:\n${createdInvite.url}\n\n` +
+      `Expiră în ${recruitment.maxAgeDays} zile sau după ${recruitment.maxUses} utilizări. ` +
+      `Poți crea cel mult ${recruitment.dailyInviteLimit} invitații în 24 de ore. ` +
+      `Primești ${recruitment.rewardPoints} puncte de recrutare când un membru invitat se verifică.`,
+    );
+  } catch (error) {
+    if (reservationId !== null) {
+      await failRecruitmentInviteCreation(reservationId).catch((cleanupError) =>
+        logger.warn({ cleanupError, guildId, reservationId }, "Could not close failed recruitment invite reservation"),
+      );
+    }
+    if (createdInvite) {
+      await createdInvite.delete("Recruitment invite could not be saved").catch((cleanupError) =>
+        logger.warn({ cleanupError, guildId, inviteCode: createdInvite?.code }, "Could not delete an untracked recruitment invite"),
+      );
+    }
+    if (error instanceof RecruitmentInviteLimitError) {
+      await interaction.editReply("Ai atins limita zilnică de invitații personale. Încearcă din nou după ce trec 24 de ore.");
+      return;
+    }
+    logger.warn({ error, guildId, userId: interaction.user.id }, "Recruitment invite could not be created");
+    await interaction.editReply("Invitația personală nu a putut fi creată. Încearcă din nou în câteva momente.");
+  }
+}
 
 async function avatarById(discordId: string): Promise<string | null> {
   if (!botClient) return null;
@@ -5331,6 +5424,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
           "rank",
           "toplvl",
           "server",
+          "invita",
           "stopjoc",
           "startjoc",
           "stopai",
@@ -5389,6 +5483,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
       if (interaction.commandName === "rank") dispatch(handleActivityRank(interaction));
       if (interaction.commandName === "toplvl") dispatch(handleActivityLeaderboard(interaction));
       if (interaction.commandName === "server") dispatch(handleServer(interaction));
+      if (interaction.commandName === "invita") dispatch(handleRecruitmentInvite(interaction));
       if (interaction.commandName === "inventar") dispatch(handleInventar(interaction));
       if (interaction.commandName === "profetie") dispatch(handleProfetie(interaction));
       if (interaction.commandName === "clasament") dispatch(handleClasament(interaction));
@@ -5929,6 +6024,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
           "startai",
           "ajutor",
            "profetie",
+          "invita",
           "setcanal",
           "setaliantatext",
           "moderare",
@@ -5978,6 +6074,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
     if (interaction.isChatInputCommand()) {
       if (await handleModerationCommand(interaction as ChatInputCommandInteraction)) return;
       if (interaction.commandName === "profil") dispatch(handleProfil(interaction));
+      if (interaction.commandName === "invita") dispatch(handleRecruitmentInvite(interaction));
       if (interaction.commandName === "inventar") dispatch(handleInventar(interaction));
       if (interaction.commandName === "profetie") dispatch(handleProfetie(interaction));
       if (interaction.commandName === "clasament") dispatch(handleClasament(interaction));
