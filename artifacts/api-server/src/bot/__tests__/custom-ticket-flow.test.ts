@@ -31,6 +31,10 @@ const persistence = vi.hoisted(() => ({
 const appealStore = vi.hoisted(() => ({
   getCase: vi.fn(),
   createAppeal: vi.fn(),
+  getPendingAppealClarification: vi.fn(),
+  requestAppealClarification: vi.fn(),
+  cancelAppealClarification: vi.fn(),
+  respondAppealClarification: vi.fn(),
   decideAppeal: vi.fn(),
 }));
 
@@ -387,6 +391,119 @@ describe("custom ticket flows in Discord", () => {
     }));
     expect(editReply).toHaveBeenCalledWith(expect.objectContaining({
       content: expect.stringContaining("Sancțiunea nu a fost modificată automat"),
+    }));
+  });
+
+  it("lets authorized staff ask a question and only the appellant can answer it in the ticket", async () => {
+    configureFlows({ appeal: DEFAULT_TICKET_CONFIG.flows.appeal });
+    const caseId = "123e4567-e89b-42d3-a456-426614174000";
+    const channelId = "private-appeal";
+    const staffId = "444444444444444444";
+    const askCustomId = `ticket_appeal_ask_${caseId}`;
+    const showStaffModal = vi.fn(async (_modal: unknown) => undefined);
+    const rejectUnauthorized = vi.fn(async () => undefined);
+
+    await handleTicketButton({
+      customId: askCustomId,
+      guildId: GUILD_ID,
+      channelId,
+      member: { roles: { cache: { has: () => false } } },
+      message: { components: [{ components: [{ customId: askCustomId }] }] },
+      reply: rejectUnauthorized,
+    } as unknown as ButtonInteraction);
+    expect(rejectUnauthorized).toHaveBeenCalledWith(expect.objectContaining({
+      content: expect.stringContaining("Doar rolul configurat"),
+    }));
+    expect(showStaffModal).not.toHaveBeenCalled();
+
+    await handleTicketButton({
+      customId: askCustomId,
+      guildId: GUILD_ID,
+      channelId,
+      member: { roles: { cache: { has: (roleId: string) => roleId === STAFF_ROLE_ID } } },
+      message: { components: [{ components: [{ customId: askCustomId }] }] },
+      showModal: showStaffModal,
+    } as unknown as ButtonInteraction);
+    const askModalId = (showStaffModal.mock.calls[0]?.[0] as { toJSON(): { custom_id: string } })
+      .toJSON().custom_id;
+    expect(askModalId).toBe(`ticket_form_appeal_ask_${caseId}`);
+
+    const sent: unknown[] = [];
+    const ephemeralEdit = vi.fn(async () => undefined);
+    const promptEdit = vi.fn(async () => undefined);
+    appealStore.requestAppealClarification.mockResolvedValue({ appellantId: USER_ID });
+    await handleTicketModal({
+      customId: askModalId,
+      guildId: GUILD_ID,
+      channelId,
+      user: { id: staffId },
+      member: { roles: { cache: { has: (roleId: string) => roleId === STAFF_ROLE_ID } } },
+      fields: { getTextInputValue: () => "Care sunt detaliile suplimentare?" },
+      channel: {
+        isTextBased: () => true,
+        send: vi.fn(async (payload: unknown) => { sent.push(payload); return { edit: promptEdit }; }),
+      },
+      deferReply: vi.fn(async () => undefined),
+      editReply: ephemeralEdit,
+    } as unknown as ModalSubmitInteraction);
+    const post = sent[0] as {
+      content: string;
+      allowedMentions: { users: string[] };
+      components: { toJSON(): { components: { custom_id: string }[] } }[];
+    };
+    expect(appealStore.requestAppealClarification).toHaveBeenCalledWith(expect.objectContaining({
+      guildId: GUILD_ID,
+      caseId,
+      channelId,
+      actorId: staffId,
+      question: "Care sunt detaliile suplimentare?",
+      clarificationId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+    }));
+    expect(post.content).toBe(`<@${USER_ID}>`);
+    expect(post.allowedMentions.users).toEqual([USER_ID]);
+    const answerCustomId = post.components[0]!.toJSON().components[0]!.custom_id;
+    expect(answerCustomId).toMatch(new RegExp(`^ticket_appeal_answer_${caseId}_`));
+    expect(ephemeralEdit).toHaveBeenCalledWith(expect.objectContaining({
+      content: expect.stringContaining("nu a fost modificată"),
+    }));
+
+    const showMemberModal = vi.fn(async (_modal: unknown) => undefined);
+    await handleTicketButton({
+      customId: answerCustomId,
+      guildId: GUILD_ID,
+      channelId,
+      user: { id: USER_ID },
+      message: { components: [{ components: [{ customId: answerCustomId }] }] },
+      showModal: showMemberModal,
+    } as unknown as ButtonInteraction);
+    const answerModalId = (showMemberModal.mock.calls[0]?.[0] as { toJSON(): { custom_id: string } })
+      .toJSON().custom_id;
+    expect(answerModalId).toMatch(new RegExp(`^ticket_form_appeal_answer_${caseId}_`));
+
+    appealStore.respondAppealClarification.mockResolvedValue({ staffId, question: "Care sunt detaliile suplimentare?" });
+    const memberEdit = vi.fn(async () => undefined);
+    const sentAnswer: unknown[] = [];
+    await handleTicketModal({
+      customId: answerModalId,
+      guildId: GUILD_ID,
+      channelId,
+      user: { id: USER_ID },
+      fields: { getTextInputValue: () => "Atașez o explicație completă." },
+      channel: {
+        isTextBased: () => true,
+        send: vi.fn(async (payload: unknown) => { sentAnswer.push(payload); }),
+      },
+      deferReply: vi.fn(async () => undefined),
+      editReply: memberEdit,
+    } as unknown as ModalSubmitInteraction);
+    expect(appealStore.respondAppealClarification).toHaveBeenCalledWith(expect.objectContaining({
+      guildId: GUILD_ID, caseId, channelId, appellantId: USER_ID,
+      answer: "Atașez o explicație completă.",
+    }));
+    expect(appealStore.decideAppeal).not.toHaveBeenCalled();
+    expect(sentAnswer).toHaveLength(1);
+    expect(memberEdit).toHaveBeenCalledWith(expect.objectContaining({
+      content: expect.stringContaining("nu schimbă automat sancțiunea"),
     }));
   });
 

@@ -110,6 +110,10 @@ export interface ModerationStore {
   updateCase(input: { guildId: string; caseId: string; status?: CaseStatus; reason?: string; evidence?: unknown[]; actorId: string }): Promise<ModerationCase | null>;
   addCaseNote(input: { guildId: string; caseId: string; authorId: string; body: string }): Promise<ModerationCaseNote | null>;
   createAppeal(input: { guildId: string; caseId: string; appellantId: string; channelId: string; reason: string }): Promise<boolean>;
+  getPendingAppealClarification(input: { guildId: string; caseId: string; channelId: string; clarificationId: string }): Promise<{ appellantId: string; question: string } | null>;
+  requestAppealClarification(input: { guildId: string; caseId: string; channelId: string; actorId: string; clarificationId: string; question: string }): Promise<{ appellantId: string } | null>;
+  cancelAppealClarification(input: { guildId: string; caseId: string; channelId: string; actorId: string; clarificationId: string }): Promise<void>;
+  respondAppealClarification(input: { guildId: string; caseId: string; channelId: string; appellantId: string; clarificationId: string; answer: string }): Promise<{ staffId: string; question: string } | null>;
   decideAppeal(input: { guildId: string; caseId: string; channelId: string; actorId: string; decision: "accepted" | "rejected"; note: string }): Promise<{ appellantId: string; channelId: string } | null>;
   listCaseNotes(guildId: string, caseId: string): Promise<ModerationCaseNote[]>;
   pruneCases(guildId: string, retentionDays: number): Promise<number>;
@@ -244,6 +248,12 @@ export class PostgresModerationStore implements ModerationStore {
         CREATE UNIQUE INDEX IF NOT EXISTS moderation_appeals_one_pending_idx ON moderation_appeals (guild_id, case_id) WHERE status = 'pending';
         CREATE INDEX IF NOT EXISTS moderation_audit_guild_created_idx ON moderation_audit_logs (guild_id, created_at DESC);
         CREATE INDEX IF NOT EXISTS moderation_action_ledger_guild_created_idx ON moderation_action_ledger (guild_id, created_at DESC);
+      `);
+      await pool.query(`
+        ALTER TABLE moderation_appeals
+          ADD COLUMN IF NOT EXISTS pending_clarification_id uuid,
+          ADD COLUMN IF NOT EXISTS pending_clarification_question text,
+          ADD COLUMN IF NOT EXISTS pending_clarification_by text;
       `);
     })();
     return schemaPromise;
@@ -593,6 +603,174 @@ export class PostgresModerationStore implements ModerationStore {
       });
       await client.query("COMMIT");
       return true;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async getPendingAppealClarification(input: {
+    guildId: string; caseId: string; channelId: string; clarificationId: string;
+  }) {
+    await this.ensureSchema();
+    const client = await pool.connect();
+    try {
+      const { rows } = await client.query<{ appellant_id: string; pending_clarification_question: string }>(
+        `SELECT appellant_id, pending_clarification_question
+         FROM moderation_appeals
+         WHERE guild_id = $1 AND case_id = $2 AND channel_id = $3
+           AND status = 'pending' AND pending_clarification_id = $4`,
+        [input.guildId, input.caseId, input.channelId, input.clarificationId],
+      );
+      const row = rows[0];
+      return row?.pending_clarification_question
+        ? { appellantId: row.appellant_id, question: row.pending_clarification_question }
+        : null;
+    } finally {
+      client.release();
+    }
+  }
+
+  async requestAppealClarification(input: {
+    guildId: string; caseId: string; channelId: string; actorId: string;
+    clarificationId: string; question: string;
+  }) {
+    await this.ensureSchema();
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const updated = await client.query<{ appellant_id: string }>(
+        `UPDATE moderation_appeals
+         SET pending_clarification_id = $4,
+             pending_clarification_question = $5,
+             pending_clarification_by = $6
+         WHERE guild_id = $1 AND case_id = $2 AND channel_id = $3
+           AND status = 'pending' AND pending_clarification_id IS NULL
+         RETURNING appellant_id`,
+        [input.guildId, input.caseId, input.channelId, input.clarificationId, input.question, input.actorId],
+      );
+      if (!updated.rowCount) {
+        await client.query("ROLLBACK");
+        return null;
+      }
+      await client.query(
+        `INSERT INTO moderation_case_notes (id, case_id, guild_id, author_id, body)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [
+          randomUUID(), input.caseId, input.guildId, input.actorId,
+          `Personalul <@${input.actorId}> a solicitat clarificări pentru contestația din ticketul <#${input.channelId}>:\n${input.question}`,
+        ],
+      );
+      await this.insertAudit(client, {
+        guildId: input.guildId, actorId: input.actorId,
+        eventType: "case.appeal_clarification_requested",
+        targetType: "case", targetId: input.caseId,
+        detail: { channelId: input.channelId, clarificationId: input.clarificationId },
+      });
+      await client.query("COMMIT");
+      return { appellantId: updated.rows[0]!.appellant_id };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async cancelAppealClarification(input: {
+    guildId: string; caseId: string; channelId: string; actorId: string; clarificationId: string;
+  }) {
+    await this.ensureSchema();
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const cancelled = await client.query(
+        `UPDATE moderation_appeals
+         SET pending_clarification_id = NULL,
+             pending_clarification_question = NULL,
+             pending_clarification_by = NULL
+         WHERE guild_id = $1 AND case_id = $2 AND channel_id = $3
+           AND pending_clarification_id = $4 AND status = 'pending'
+         RETURNING id`,
+        [input.guildId, input.caseId, input.channelId, input.clarificationId],
+      );
+      if (!cancelled.rowCount) {
+        await client.query("ROLLBACK");
+        return;
+      }
+      await client.query(
+        `INSERT INTO moderation_case_notes (id, case_id, guild_id, author_id, body)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [
+          randomUUID(), input.caseId, input.guildId, input.actorId,
+          `Solicitarea de clarificări nu a putut fi publicată în ticketul <#${input.channelId}> și a fost anulată.`,
+        ],
+      );
+      await this.insertAudit(client, {
+        guildId: input.guildId, actorId: input.actorId,
+        eventType: "case.appeal_clarification_delivery_failed",
+        targetType: "case", targetId: input.caseId,
+        detail: { channelId: input.channelId, clarificationId: input.clarificationId },
+      });
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async respondAppealClarification(input: {
+    guildId: string; caseId: string; channelId: string; appellantId: string;
+    clarificationId: string; answer: string;
+  }) {
+    await this.ensureSchema();
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const pending = await client.query<{
+        pending_clarification_question: string; pending_clarification_by: string;
+      }>(
+        `SELECT pending_clarification_question, pending_clarification_by
+         FROM moderation_appeals
+         WHERE guild_id = $1 AND case_id = $2 AND channel_id = $3
+           AND appellant_id = $4 AND pending_clarification_id = $5 AND status = 'pending'
+         FOR UPDATE`,
+        [input.guildId, input.caseId, input.channelId, input.appellantId, input.clarificationId],
+      );
+      const row = pending.rows[0];
+      if (!row) {
+        await client.query("ROLLBACK");
+        return null;
+      }
+      await client.query(
+        `UPDATE moderation_appeals
+         SET pending_clarification_id = NULL,
+             pending_clarification_question = NULL,
+             pending_clarification_by = NULL
+         WHERE guild_id = $1 AND case_id = $2 AND channel_id = $3
+           AND appellant_id = $4 AND pending_clarification_id = $5 AND status = 'pending'`,
+        [input.guildId, input.caseId, input.channelId, input.appellantId, input.clarificationId],
+      );
+      await client.query(
+        `INSERT INTO moderation_case_notes (id, case_id, guild_id, author_id, body)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [
+          randomUUID(), input.caseId, input.guildId, input.appellantId,
+          `Răspuns la solicitarea de clarificări a personalului <@${row.pending_clarification_by}>:\n${input.answer}`,
+        ],
+      );
+      await this.insertAudit(client, {
+        guildId: input.guildId, actorId: input.appellantId,
+        eventType: "case.appeal_clarification_answered",
+        targetType: "case", targetId: input.caseId,
+        detail: { channelId: input.channelId, clarificationId: input.clarificationId },
+      });
+      await client.query("COMMIT");
+      return { staffId: row.pending_clarification_by, question: row.pending_clarification_question };
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;

@@ -35,6 +35,7 @@ describe.skipIf(!process.env.DATABASE_URL)("moderation appeals PostgreSQL concur
         appellant_id text NOT NULL, channel_id text NOT NULL,
         status text NOT NULL DEFAULT 'pending', created_at timestamptz NOT NULL DEFAULT now(),
         decided_at timestamptz, decided_by text, decision_note text,
+        pending_clarification_id uuid, pending_clarification_question text, pending_clarification_by text,
         UNIQUE (guild_id, channel_id)
       )`);
       await setupClient.query(`CREATE UNIQUE INDEX moderation_appeals_one_pending_idx
@@ -53,10 +54,11 @@ describe.skipIf(!process.env.DATABASE_URL)("moderation appeals PostgreSQL concur
       const appellantId = "234567890123456789";
       const submitCaseId = randomUUID();
       const decideCaseId = randomUUID();
+      const clarificationCaseId = randomUUID();
       await setupClient.query(
         `INSERT INTO "${schema}".moderation_cases (id, guild_id, subject_id)
-         VALUES ($1, $2, $3), ($4, $2, $3)`,
-        [submitCaseId, guildId, appellantId, decideCaseId],
+         VALUES ($1, $2, $3), ($4, $2, $3), ($5, $2, $3)`,
+        [submitCaseId, guildId, appellantId, decideCaseId, clarificationCaseId],
       );
 
       const submissions = await Promise.all([
@@ -142,6 +144,75 @@ describe.skipIf(!process.env.DATABASE_URL)("moderation appeals PostgreSQL concur
         expect(decisionAudit.rows).toHaveLength(1);
         expect(decisionAudit.rows[0].actor_id).toBe(decided?.decided_by);
         expect(decisionAudit.rows[0].event_type).toBe(`case.appeal_${decided?.status}`);
+
+      expect(await store.createAppeal({
+        guildId, caseId: clarificationCaseId, appellantId,
+        channelId: "appeal-clarification", reason: "Please review this case",
+      })).toBe(true);
+      const clarificationIds = [randomUUID(), randomUUID()];
+      const requests = await Promise.all(clarificationIds.map((clarificationId, index) =>
+        store.requestAppealClarification({
+          guildId, caseId: clarificationCaseId, channelId: "appeal-clarification",
+          actorId: `staff-${index}`, clarificationId, question: `Question ${index}`,
+        }),
+      ));
+      expect(requests.filter(Boolean)).toHaveLength(1);
+      const winnerIndex = requests[0] ? 0 : 1;
+      const activeClarificationId = clarificationIds[winnerIndex]!;
+      expect(await store.getPendingAppealClarification({
+        guildId, caseId: clarificationCaseId, channelId: "appeal-clarification",
+        clarificationId: activeClarificationId,
+      })).toMatchObject({ appellantId, question: `Question ${requests[0] ? 0 : 1}` });
+      expect(await store.getPendingAppealClarification({
+        guildId: "different-guild", caseId: clarificationCaseId, channelId: "appeal-clarification",
+        clarificationId: activeClarificationId,
+      })).toBeNull();
+
+      expect(await store.respondAppealClarification({
+        guildId, caseId: clarificationCaseId, channelId: "appeal-clarification",
+        appellantId: "wrong-member", clarificationId: activeClarificationId, answer: "not allowed",
+      })).toBeNull();
+      const responses = await Promise.all([1, 2].map(() => store.respondAppealClarification({
+        guildId, caseId: clarificationCaseId, channelId: "appeal-clarification",
+        appellantId, clarificationId: activeClarificationId, answer: "Here is the detail.",
+      })));
+      expect(responses.filter(Boolean)).toHaveLength(1);
+      expect(await store.getPendingAppealClarification({
+        guildId, caseId: clarificationCaseId, channelId: "appeal-clarification",
+        clarificationId: activeClarificationId,
+      })).toBeNull();
+
+      const clarificationHistory = await setupClient.query(
+        `SELECT author_id, body FROM "${schema}".moderation_case_notes
+         WHERE guild_id = $1 AND case_id = $2 ORDER BY created_at`,
+        [guildId, clarificationCaseId],
+      );
+      expect(clarificationHistory.rows).toHaveLength(3);
+      expect(clarificationHistory.rows[1]?.body).toContain("a solicitat clarificări");
+      expect(clarificationHistory.rows[1]?.author_id).toBe(`staff-${winnerIndex}`);
+      expect(clarificationHistory.rows[1]?.body).toContain(`Question ${winnerIndex}`);
+      expect(clarificationHistory.rows[2]).toMatchObject({
+        author_id: appellantId, body: expect.stringContaining("Here is the detail."),
+      });
+      const clarificationAudit = await setupClient.query(
+        `SELECT actor_id, event_type FROM "${schema}".moderation_audit_logs
+         WHERE guild_id = $1 AND target_id = $2 ORDER BY created_at`,
+        [guildId, clarificationCaseId],
+      );
+      expect(clarificationAudit.rows.map((row) => row.event_type)).toEqual([
+        "case.appeal_submitted",
+        "case.appeal_clarification_requested",
+        "case.appeal_clarification_answered",
+      ]);
+      expect(clarificationAudit.rows.map((row) => row.actor_id)).toEqual([
+        appellantId, `staff-${winnerIndex}`, appellantId,
+      ]);
+      const unchanged = await setupClient.query(
+        `SELECT status, decided_by, decision_note FROM "${schema}".moderation_appeals
+         WHERE guild_id = $1 AND case_id = $2`,
+        [guildId, clarificationCaseId],
+      );
+      expect(unchanged.rows[0]).toEqual({ status: "pending", decided_by: null, decision_note: null });
       } finally {
         observer.release();
       }

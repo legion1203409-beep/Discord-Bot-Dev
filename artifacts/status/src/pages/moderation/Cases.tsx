@@ -121,7 +121,7 @@ function CaseDetailsDialog({ caseId, open, onOpenChange, onUpdated }: { caseId: 
             )}
 
             <div className="space-y-4">
-              <div className="text-sm font-medium border-b border-border pb-2">Notițe Staff</div>
+              <div className="text-sm font-medium border-b border-border pb-2">Istoric caz și contestație</div>
               
               <div className="space-y-3">
                 {details.notes?.length > 0 ? details.notes.map((note: any, i: number) => (
@@ -130,7 +130,7 @@ function CaseDetailsDialog({ caseId, open, onOpenChange, onUpdated }: { caseId: 
                       <span className="text-xs font-semibold">{note.authorId}</span>
                       <span className="text-xs text-muted-foreground">{new Date(note.createdAt).toLocaleString()}</span>
                     </div>
-                    <p className="text-sm text-foreground">{note.content}</p>
+                    <p className="text-sm text-foreground whitespace-pre-wrap">{note.body}</p>
                   </div>
                 )) : (
                   <p className="text-xs text-muted-foreground italic">Nicio notiță adăugată încă.</p>

@@ -13,6 +13,7 @@ import {
   TextInputStyle,
   type Message,
 } from "discord.js";
+import { randomUUID } from "node:crypto";
 import { logger } from "../lib/logger";
 import { loadAllianceRecruitmentText } from "./db";
 import { moderationStore } from "../moderation/store";
@@ -490,6 +491,16 @@ function appealDecisionRow(caseId: string): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(`ticket_appeal_decide_accept_${caseId}`).setLabel("Acceptă contestația").setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId(`ticket_appeal_decide_reject_${caseId}`).setLabel("Respinge contestația").setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`ticket_appeal_ask_${caseId}`).setLabel("Cere clarificări").setStyle(ButtonStyle.Primary),
+  );
+}
+
+function appealClarificationAnswerRow(caseId: string, clarificationId: string): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`ticket_appeal_answer_${caseId}_${clarificationId}`)
+      .setLabel("Răspunde clarificării")
+      .setStyle(ButtonStyle.Primary),
   );
 }
 
@@ -1722,6 +1733,42 @@ export async function handleTicketQuestionSelect(
 }
 
 export async function handleTicketButton(interaction: ButtonInteraction): Promise<boolean> {
+  const appealClarificationRequest = interaction.customId.match(/^ticket_appeal_ask_([0-9a-f-]{36})$/i);
+  if (appealClarificationRequest) {
+    if (!memberHasStaffReviewRole(interaction.member, getTicketConfig(interaction.guildId).staffReviewRoleId)) {
+      await interaction.reply({ content: "🛡️ Doar rolul configurat pentru analiza contestațiilor poate cere clarificări.", flags: MessageFlags.Ephemeral });
+      return true;
+    }
+    if (!interaction.guildId || !interaction.channelId || !messageHasButton(interaction.message, interaction.customId)) {
+      return rejectTicketAction(interaction, "❌ Acest ticket sau buton nu mai este disponibil.");
+    }
+    const modal = new ModalBuilder()
+      .setCustomId(`ticket_form_appeal_ask_${appealClarificationRequest[1]}`)
+      .setTitle("Cere clarificări")
+      .addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(
+        input("clarification_question", "Ce informații lipsesc?", "Formulează o întrebare clară pentru membru.", TextInputStyle.Paragraph),
+      ));
+    await interaction.showModal(modal);
+    return true;
+  }
+
+  const appealClarificationAnswer = interaction.customId.match(
+    /^ticket_appeal_answer_([0-9a-f-]{36})_([0-9a-f-]{36})$/i,
+  );
+  if (appealClarificationAnswer) {
+    if (!interaction.guildId || !interaction.channelId || !messageHasButton(interaction.message, interaction.customId)) {
+      return rejectTicketAction(interaction, "❌ Această solicitare de clarificare nu mai este disponibilă.");
+    }
+    const modal = new ModalBuilder()
+      .setCustomId(`ticket_form_appeal_answer_${appealClarificationAnswer[1]}_${appealClarificationAnswer[2]}`)
+      .setTitle("Răspunde clarificării")
+      .addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(
+        input("clarification_answer", "Răspunsul tău", "Răspunde la întrebarea personalului.", TextInputStyle.Paragraph),
+      ));
+    await interaction.showModal(modal);
+    return true;
+  }
+
   const appealDecision = interaction.customId.match(/^ticket_appeal_decide_(accept|reject)_([0-9a-f-]{36})$/i);
   if (appealDecision) {
     if (!memberHasStaffReviewRole(interaction.member, getTicketConfig(interaction.guildId).staffReviewRoleId)) {
@@ -2548,6 +2595,162 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
 }
 
 export async function handleTicketModal(interaction: ModalSubmitInteraction): Promise<boolean> {
+  const appealClarificationRequest = interaction.customId.match(
+    /^ticket_form_appeal_ask_([0-9a-f-]{36})$/i,
+  );
+  if (appealClarificationRequest) {
+    if (!memberHasStaffReviewRole(interaction.member, getTicketConfig(interaction.guildId).staffReviewRoleId)) {
+      await interaction.reply({ content: "🛡️ Nu ai rolul configurat pentru analiza contestațiilor.", flags: MessageFlags.Ephemeral });
+      return true;
+    }
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    if (!interaction.guildId || !interaction.channelId) {
+      await interaction.editReply({ content: "❌ Clarificările pot fi cerute doar în ticketul privat al contestației." });
+      return true;
+    }
+    const question = safeAnswer(
+      fieldValue(interaction, "clarification_question"), "", DISCORD_PARAGRAPH_INPUT_MAX_LENGTH,
+    ).trim();
+    if (!question) {
+      await interaction.editReply({ content: "❌ Scrie întrebarea pentru membru." });
+      return true;
+    }
+    const channel = interaction.channel;
+    if (!channel?.isTextBased() || !("send" in channel)) {
+      await interaction.editReply({ content: "❌ Canalul ticketului nu permite trimiterea mesajelor." });
+      return true;
+    }
+
+    const clarificationId = randomUUID();
+    let prompt: Message | undefined;
+    let clarificationRecorded = false;
+    try {
+      const requested = await moderationStore.requestAppealClarification({
+        guildId: interaction.guildId,
+        caseId: appealClarificationRequest[1]!,
+        channelId: interaction.channelId,
+        actorId: interaction.user.id,
+        clarificationId,
+        question,
+      });
+      if (!requested) {
+        await interaction.editReply({
+          content: "❌ Contestația nu mai este în analiză sau există deja o solicitare de clarificări fără răspuns.",
+        });
+        return true;
+      }
+      clarificationRecorded = true;
+      const appellantId = requested.appellantId;
+      prompt = await channel.send({
+        content: `<@${appellantId}>`,
+        embeds: [
+          new EmbedBuilder()
+            .setColor(TICKET_COLORS.appeal)
+            .setTitle("⚖️ Personalul solicită clarificări")
+            .setDescription(question)
+            .setFooter({ text: "Contestația rămâne în analiză până la o decizie ulterioară." })
+            .setTimestamp(),
+        ],
+        components: [appealClarificationAnswerRow(appealClarificationRequest[1]!, clarificationId)],
+        allowedMentions: { parse: [], users: [appellantId] },
+      });
+      await interaction.editReply({
+        content: "✅ Solicitarea a fost publicată în ticket și adăugată în istoricul cazului. Sancțiunea nu a fost modificată.",
+      });
+    } catch (error) {
+      logger.error(
+        { error, guildId: interaction.guildId, channelId: interaction.channelId, caseId: appealClarificationRequest[1] },
+        "Appeal clarification request could not be posted",
+      );
+      if (clarificationRecorded) {
+        await moderationStore.cancelAppealClarification({
+          guildId: interaction.guildId,
+          caseId: appealClarificationRequest[1]!,
+          channelId: interaction.channelId,
+          actorId: interaction.user.id,
+          clarificationId,
+        }).catch((cancelError) => {
+          logger.error(
+            { error: cancelError, guildId: interaction.guildId, channelId: interaction.channelId },
+            "Failed to cancel an undelivered appeal clarification",
+          );
+        });
+      }
+      if (prompt) {
+        await prompt.edit({
+          content: "Solicitarea nu a putut fi înregistrată. Personalul o poate trimite din nou.",
+          components: [],
+        }).catch(() => {});
+      }
+      await interaction.editReply({ content: "❌ Solicitarea de clarificări nu a putut fi publicată. Încearcă din nou." });
+    }
+    return true;
+  }
+
+  const appealClarificationAnswer = interaction.customId.match(
+    /^ticket_form_appeal_answer_([0-9a-f-]{36})_([0-9a-f-]{36})$/i,
+  );
+  if (appealClarificationAnswer) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    if (!interaction.guildId || !interaction.channelId) {
+      await interaction.editReply({ content: "❌ Răspunsurile pot fi trimise doar în ticketul contestației." });
+      return true;
+    }
+    const answer = safeAnswer(
+      fieldValue(interaction, "clarification_answer"), "", DISCORD_PARAGRAPH_INPUT_MAX_LENGTH,
+    ).trim();
+    if (!answer) {
+      await interaction.editReply({ content: "❌ Scrie răspunsul la solicitarea personalului." });
+      return true;
+    }
+    const recorded = await moderationStore.respondAppealClarification({
+      guildId: interaction.guildId,
+      caseId: appealClarificationAnswer[1]!,
+      channelId: interaction.channelId,
+      appellantId: interaction.user.id,
+      clarificationId: appealClarificationAnswer[2]!,
+      answer,
+    });
+    if (!recorded) {
+      await interaction.editReply({
+        content: "❌ Solicitarea nu mai este activă sau răspunsul nu aparține membrului care a depus contestația.",
+      });
+      return true;
+    }
+
+    const roleId = getTicketConfig(interaction.guildId).staffReviewRoleId;
+    const channel = interaction.channel;
+    let answerPosted = false;
+    if (channel?.isTextBased() && "send" in channel) {
+      try {
+        await channel.send({
+          content: `<@&${roleId}>`,
+          embeds: [
+            new EmbedBuilder()
+              .setColor(TICKET_COLORS.appeal)
+              .setTitle("⚖️ Răspuns la solicitarea de clarificări")
+              .setDescription(answer)
+              .setFooter({ text: `Răspuns de la <@${interaction.user.id}>` })
+              .setTimestamp(),
+          ],
+          allowedMentions: { parse: [], roles: roleId ? [roleId] : [] },
+        });
+        answerPosted = true;
+      } catch (error) {
+        logger.warn(
+          { error, guildId: interaction.guildId, channelId: interaction.channelId },
+          "Appeal clarification was recorded but could not be posted in its ticket",
+        );
+      }
+    }
+    await interaction.editReply({
+      content: answerPosted
+        ? "✅ Răspunsul a fost publicat în ticket și adăugat în istoricul cazului. Acesta nu schimbă automat sancțiunea."
+        : "✅ Răspunsul este în istoricul cazului, dar botul nu l-a putut publica în ticket. Personalul îl poate consulta în dosar.",
+    });
+    return true;
+  }
+
   const appealDecision = interaction.customId.match(/^ticket_form_appeal_decision_(accepted|rejected)_([0-9a-f-]{36})$/i);
   if (appealDecision) {
     if (!memberHasStaffReviewRole(interaction.member, getTicketConfig(interaction.guildId).staffReviewRoleId)) {
