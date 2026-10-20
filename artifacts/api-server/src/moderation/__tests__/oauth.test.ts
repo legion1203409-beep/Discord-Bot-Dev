@@ -4,6 +4,7 @@ import {
   beginDiscordOAuth,
   beginVerificationOAuth,
   consumeDiscordOAuthState,
+  getVerificationOAuthUrl,
   getVerificationWebsiteUrl,
   resetDiscordOAuthStateForTests,
 } from "../oauth";
@@ -63,6 +64,9 @@ describe("Discord OAuth browser nonce", () => {
 
     expect(getVerificationWebsiteUrl("987654321")).toBe(
       "https://codelinked.app/verificare?guildId=987654321",
+    );
+    expect(getVerificationOAuthUrl("987654321")).toBe(
+      "https://codelinked.app/api/moderation/oauth/discord?verification=1&guildId=987654321",
     );
   });
 

@@ -121,7 +121,7 @@ async function installPartialBotControlFixture(
   });
   await page.route("**/api/moderation/guilds/*/verification/members", async (route) => {
     const guildId = route.request().url().match(/guilds\/(\d+)\/verification\/members/)?.[1] ?? guilds[0].id;
-    await route.fulfill({ json: { guildId, roleId: "", roleName: null, total: 0, members: [] } });
+    await route.fulfill({ json: { guildId, roleId: "", roleName: null, total: 0, verifiedTotal: 0, unverifiedTotal: 0, members: [] } });
   });
   return putBodies;
 }
@@ -1539,6 +1539,55 @@ test.describe("Discord moderation authentication", () => {
 });
 
 test.describe("verification panel partial applies", () => {
+  test("sends the active moderation CSRF token when manually verifying a member", async ({ page }) => {
+    const memberId = "1556341963018477713";
+    const northConfig = verificationBotControlConfig(true, "panel-north");
+    northConfig.verification.channelId = "777777777";
+    northConfig.verification.roleId = "444444444";
+    await installPartialBotControlFixture(page, new Map([
+      [guilds[0].id, northConfig],
+      [guilds[1].id, verificationBotControlConfig(false, "")],
+    ]));
+    await page.route("**/api/moderation/guilds/*/verification/members", async (route) => {
+      const guildId = route.request().url().match(/guilds\/(\d+)\/verification\/members/)?.[1] ?? guilds[0].id;
+      await route.fulfill({
+        json: {
+          guildId,
+          roleId: "444444444",
+          roleName: "Verified",
+          total: 1,
+          verifiedTotal: 0,
+          unverifiedTotal: 1,
+          members: [{
+            id: memberId,
+            displayName: "Test member",
+            avatarUrl: "https://cdn.discordapp.com/embed/avatars/0.png",
+            joinedAt: null,
+            verified: false,
+          }],
+        },
+      });
+    });
+    let verificationStatus: number | undefined;
+    let verificationCsrfToken: string | undefined;
+    await page.route(`**/api/moderation/guilds/${guilds[0].id}/verification/members/${memberId}/verify`, async (route) => {
+      verificationStatus = route.request().method() === "POST" ? 200 : 405;
+      verificationCsrfToken = route.request().headers()["x-csrf-token"];
+      await route.fulfill({
+        json: { userId: memberId, displayName: "Test member", result: "verified" },
+      });
+    });
+
+    await page.goto("/moderare/verificare");
+    await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible({ timeout: 15_000 });
+    await page.getByRole("button", { name: guilds[0].name }).click();
+    await page.getByRole("button", { name: "Verifică manual Test member" }).click();
+
+    await expect.poll(() => verificationStatus).toBe(200);
+    expect(verificationCsrfToken).toBe("test-csrf");
+    await expect(page.getByText("Membrul a fost verificat")).toBeVisible();
+  });
+
   test("publishes only the verification config without saving unrelated bot-control settings", async ({ page }) => {
     const northConfig = verificationBotControlConfig(true, "");
     northConfig.verification.channelId = "777777777";
@@ -1562,6 +1611,7 @@ test.describe("verification panel partial applies", () => {
     await page.goto("/moderare/verificare");
     await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible({ timeout: 15_000 });
     await page.getByRole("button", { name: guilds[0].name }).click();
+    await expect(page.getByText("Butonul deschide autentificarea Discord, apoi pagina cu sliderul.")).toBeVisible();
     const publishRequest = page.waitForRequest((request) =>
       request.url().endsWith("/verification-panel") && request.method() === "POST");
     await page.getByRole("button", { name: "Publică panoul" }).click();

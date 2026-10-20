@@ -11,6 +11,7 @@ import {
   type Message,
 } from "discord.js";
 import { pool } from "@workspace/db";
+import { getVerificationOAuthUrl } from "../moderation/oauth";
 import { loadVerificationConfig, saveVerificationConfig, type VerificationConfig } from "./db";
 import { normalizeMessageImageUrl, publicMessageImageUrl } from "./message-media";
 
@@ -48,13 +49,13 @@ export function normalizeVerificationConfig(value: Partial<VerificationConfig> |
   };
 }
 
-export function verificationPanel(config: VerificationConfig) {
+export function verificationPanel(config: VerificationConfig, verificationUrl: string) {
   const labelCustomEmoji = /<(a?):([a-zA-Z0-9_]+):(\d+)>/.exec(config.buttonLabel);
   const cleanLabel = config.buttonLabel.replace(/<(?:a?):[a-zA-Z0-9_]+:\d+>/g, "").trim() || "Verifică-mă";
   const button = new ButtonBuilder()
-    .setCustomId("verification_start")
     .setLabel(cleanLabel.slice(0, 80))
-    .setStyle(ButtonStyle.Primary);
+    .setStyle(ButtonStyle.Link)
+    .setURL(verificationUrl);
   if (config.buttonEmoji || labelCustomEmoji) {
     const custom = /^<(a?):([a-zA-Z0-9_]+):(\d+)>$/.exec(config.buttonEmoji) || labelCustomEmoji;
     button.setEmoji(custom
@@ -105,8 +106,21 @@ async function withVerificationPanelLock<T>(key: string, operation: () => Promis
 function isVerificationPanelMessage(message: Message, botUserId: string): boolean {
   return message.author.id === botUserId
     && message.components.some((row) => "components" in row && row.components.some(
-      (component) => "customId" in component && component.customId === "verification_start",
+      (component) => (
+        ("customId" in component && component.customId === "verification_start")
+        || ("url" in component && typeof component.url === "string" && isVerificationOAuthUrl(component.url))
+      ),
     ));
+}
+
+function isVerificationOAuthUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.pathname === "/api/moderation/oauth/discord"
+      && url.searchParams.get("verification") === "1";
+  } catch {
+    return false;
+  }
 }
 
 function verificationPanelReconciliationError(reason: string): Error {
@@ -198,7 +212,7 @@ export async function publishVerificationPanel(client: Client, guildId: string, 
       throw new Error("Canalul de verificare nu este un canal text cu istoric de mesaje accesibil.");
     }
 
-    const payload = verificationPanel(config);
+    const payload = verificationPanel(config, getVerificationOAuthUrl(guildId));
     let existingPanel: Message | null = null;
     if (config.panelMessageId) {
       try {

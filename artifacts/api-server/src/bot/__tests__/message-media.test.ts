@@ -44,7 +44,7 @@ describe("editable Discord message images", () => {
       imageUrl: "https://cdn.example.test/verification.png",
       thumbnailUrl: "https://cdn.example.test/verification-thumb.png",
     });
-    const embed = verificationPanel(config).embeds[0]?.toJSON();
+    const embed = verificationPanel(config, "https://codelinked.app/api/moderation/oauth/discord?verification=1&guildId=123456789").embeds[0]?.toJSON();
     expect(embed.image?.url).toBe("https://cdn.example.test/verification.png");
     expect(embed.thumbnail?.url).toBe("https://cdn.example.test/verification-thumb.png");
   });
@@ -55,7 +55,7 @@ describe("editable Discord message images", () => {
       imageUrl: "",
       thumbnailUrl: "https://cdn.example.test/thumb.png",
     });
-    const embed = verificationPanel(config).embeds[0]?.toJSON();
+    const embed = verificationPanel(config, "https://codelinked.app/api/moderation/oauth/discord?verification=1&guildId=123456789").embeds[0]?.toJSON();
     expect(embed.image).toBeUndefined();
     expect(embed.thumbnail?.url).toBe("https://cdn.example.test/thumb.png");
   });

@@ -232,6 +232,7 @@ import
   publishVerificationPanel,
   verifyMember,
   consumeVerificationLinkToken,
+  createVerificationLinkToken,
   createVerificationIdentityToken,
   parseVerificationIdentityToken,
   verificationCookieName,
@@ -1788,11 +1789,13 @@ router.get("/auth-config", (_req, res) =>
 function verificationFailure(res: Response, guildId: string | undefined, code: string): void 
 {
 
-  const suffix = guildId ? `&guildId=${encodeURIComponent(guildId)}` : ""
-;
-
-  res.redirect(`/verificare?verification_error=${encodeURIComponent(code)}${suffix}`)
-;
+  if (guildId) {
+    const target = new URL(getVerificationWebsiteUrl(guildId));
+    target.searchParams.set("verification_error", code);
+    res.redirect(target.toString());
+    return;
+  }
+  res.redirect(`/verificare?verification_error=${encodeURIComponent(code)}`);
 
 }
 
@@ -2016,8 +2019,7 @@ router.get("/oauth/discord/callback", asyncRoute(async (req, res) =>
       if (!snapshot) 
 {
 
-        res.redirect(`/verificare?guildId=${encodeURIComponent(guildId)}&verification_error=not_member`)
-;
+        verificationFailure(res, guildId, "not_member");
 
         return
 ;
@@ -2031,8 +2033,7 @@ router.get("/oauth/discord/callback", asyncRoute(async (req, res) =>
       if (!client) 
 {
 
-        res.redirect(`/verificare?guildId=${encodeURIComponent(guildId)}&verification_error=bot_offline`)
-;
+        verificationFailure(res, guildId, "bot_offline");
 
         return
 ;
@@ -2040,30 +2041,10 @@ router.get("/oauth/discord/callback", asyncRoute(async (req, res) =>
       
 }
 
-      const result = await verifyMember(client, guildId, identity.id)
-;
-
-      try {
-        await completeRecruitmentReferral(client, guildId, identity.id);
-      } catch (error) {
-        logger.warn({ error, guildId }, "OAuth-verified referral reward will need a later retry");
-      }
-
-      res.cookie(verificationCookieName(), createVerificationIdentityToken(guildId, identity.id), 
-{
-
-        httpOnly: true,
-        sameSite: "lax",
-        secure: process.env.NODE_ENV === "production",
-        path: "/",
-        maxAge: 30 * 24 * 60 * 60 * 1_000,
-      
-}
-)
-;
-
-      res.redirect(`/verificare?guildId=${encodeURIComponent(guildId)}&verification=${result}`)
-;
+      const ticket = await createVerificationLinkToken(guildId, identity.id);
+      const destination = new URL(getVerificationWebsiteUrl(guildId));
+      destination.hash = new URLSearchParams({ ticket }).toString();
+      res.redirect(destination.toString());
 
       return
 ;
@@ -3545,6 +3526,14 @@ router.post("/verification/complete", asyncRoute(async (req, res) => {
   } catch (error) {
     logger.warn({ error, guildId: ticket.guildId }, "Verified referral reward will be retried when the member opens recruitment stats");
   }
+
+  res.cookie(verificationCookieName(), createVerificationIdentityToken(ticket.guildId, ticket.userId), {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 30 * 24 * 60 * 60 * 1_000,
+  });
 
   res.set("Cache-Control", "no-store").json(CompleteWebsiteVerificationResponse.parse({
     verified: true,

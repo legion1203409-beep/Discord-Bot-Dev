@@ -59,6 +59,7 @@
 - [Ticket media storage](ticket-media-storage.md) — issue owner-protected presigned uploads, then serve saved object paths publicly so Discord can fetch them.
 - [Alliance announcement templates](alliance-announcement-templates.md) — public partnership text supports placeholders and invite counts are snapshotted when staff publishes.
 - [Discord OAuth environments](discord-oauth-environments.md) — moderation login needs a separate development callback URI; production OAuth configuration does not automatically reach preview.
+- [Direct Discord verification links](discord-verification-link-flow.md) — Link buttons must OAuth-bind a one-time ticket before the existing slider can award roles.
 - [Moderation CSRF recovery](moderation-csrf-recovery.md) — Discord sign-in in another tab can rotate the cookie; retry only an exact pre-write CSRF rejection after a same-user, same-guild session refresh.
 - [Multi-artifact health probes](multi-artifact-deployment-startup.md) — startup 500s can be transient; recurring probes may also hit artifact base paths.
 - [Moderation config ETag retries](moderation-config-etag-retry.md) — protection saves must refetch and reapply the user's change after a stale-version conflict.

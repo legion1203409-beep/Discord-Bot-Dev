@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, CircleHelp, Loader2, RefreshCw, RotateCcw, Save, Search, Send, ShieldCheck, Users } from "lucide-react";
+import { AlertTriangle, CircleHelp, ExternalLink, Loader2, RefreshCw, RotateCcw, Save, Search, Send, ShieldCheck, Users } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   getGetVerificationMembersQueryKey,
   useGetVerificationMembers,
-  useManuallyVerifyGuildMember,
 } from "@workspace/api-client-react";
 import { Button } from "../../components/ui/button";
 import { ImageField } from "../../components/moderation/ImageField";
@@ -19,6 +18,7 @@ import {
   BotControlPartialApplyError,
   useBotControl,
   useModerationMetadata,
+  useManualVerification,
   useSession,
   type BotControlConfig,
 } from "../../hooks/use-moderation-api";
@@ -59,7 +59,7 @@ export function VerificationAdminPage() {
       queryKey: getGetVerificationMembersQueryKey(guildId ?? ""),
     },
   });
-  const manualVerification = useManuallyVerifyGuildMember();
+  const manualVerification = useManualVerification();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { session } = useSession();
@@ -578,9 +578,11 @@ export function VerificationAdminPage() {
                     className="mt-3 max-h-52 w-full rounded object-contain"
                   />
                 )}
-                <Button type="button" className="mt-4 bg-[#5865f2] text-white hover:bg-[#4752c4]">
+                <Button type="button" className="mt-4 bg-[#4e5058] text-white hover:bg-[#3f4147]">
                   <DiscordEmojiText emojis={metadata?.emojis}>{`${draft.verification.buttonEmoji} ${draft.verification.buttonLabel || "Verifică-mă"}`}</DiscordEmojiText>
+                  <ExternalLink className="ml-2 h-3.5 w-3.5" aria-hidden="true" />
                 </Button>
+                <p className="mt-2 text-xs text-muted-foreground">Butonul deschide autentificarea Discord, apoi pagina cu sliderul.</p>
               </div>
             </div>
           </div>

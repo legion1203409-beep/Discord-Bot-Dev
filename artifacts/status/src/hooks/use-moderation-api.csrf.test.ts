@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createElement } from "react";
 import { renderToString } from "react-dom/server";
-import { apiFetchWithMeta, useSession } from "./use-moderation-api";
+import { apiFetchWithMeta, manuallyVerifyGuildMember, useSession } from "./use-moderation-api";
 
 const endpoint = "/guilds/guild-1/bot-control";
 const csrfError = "A valid CSRF token is required";
@@ -57,6 +57,34 @@ describe("moderation CSRF recovery", () => {
     const response = await apiFetchWithMeta<{ saved: boolean }>(path, { method, body });
 
     expect(response.data.saved).toBe(true);
+    expect(sessionReads).toBe(2);
+    expect(sentTokens).toEqual(["old-token", "new-token"]);
+  });
+
+  it("sends and safely refreshes CSRF for manual member verification", async () => {
+    let sessionReads = 0;
+    const sentTokens: Array<string | null> = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/session")) {
+        sessionReads += 1;
+        return json({
+          authenticated: true,
+          userId: "operator-1",
+          guilds: [],
+          csrfToken: sessionReads === 1 ? "old-token" : "new-token",
+        });
+      }
+      expect(url).toBe("/api/moderation/guilds/guild-1/verification/members/member-1/verify");
+      sentTokens.push(new Headers(init?.headers).get("x-csrf-token"));
+      return sentTokens.length === 1
+        ? json({ error: csrfError }, 403)
+        : json({ userId: "member-1", displayName: "Member", result: "verified" });
+    }));
+
+    await seedSession();
+    await expect(manuallyVerifyGuildMember({ guildId: "guild-1", userId: "member-1" }))
+      .resolves.toMatchObject({ result: "verified" });
+
     expect(sessionReads).toBe(2);
     expect(sentTokens).toEqual(["old-token", "new-token"]);
   });

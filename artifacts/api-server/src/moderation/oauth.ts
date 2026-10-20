@@ -358,18 +358,34 @@ export async function fetchBotGuildSnapshot(guildId: string, userId: string): Pr
   };
 }
 
-export function getVerificationWebsiteUrl(guildId: string): string {
+function getVerificationWebOrigin(): string | null {
   const configuredOrigin = process.env.MODERATION_WEB_ORIGIN?.trim();
   const redirectUri = configuredOrigin || configuredRedirectUri(process.env.DISCORD_OAUTH_REDIRECT_URI);
   if (redirectUri) {
     try {
-      const origin = new URL(redirectUri).origin;
-      return new URL(`/verificare?guildId=${encodeURIComponent(guildId)}`, origin).toString();
+      return new URL(redirectUri).origin;
     } catch {
-      // Use the relative portal link below.
+      // Fall through to the relative URL for development environments.
     }
   }
-  return `/verificare?guildId=${encodeURIComponent(guildId)}`;
+  return null;
+}
+
+export function getVerificationWebsiteUrl(guildId: string): string {
+  const url = `/verificare?guildId=${encodeURIComponent(guildId)}`;
+  const origin = getVerificationWebOrigin();
+  return origin ? new URL(url, origin).toString() : url;
+}
+
+export function getVerificationOAuthUrl(guildId: string): string {
+  const origin = getVerificationWebOrigin();
+  if (!origin) {
+    throw new Error("Configure MODERATION_WEB_ORIGIN to publish a direct verification button.");
+  }
+  const url = new URL("/api/moderation/oauth/discord", origin);
+  url.searchParams.set("verification", "1");
+  url.searchParams.set("guildId", guildId);
+  return url.toString();
 }
 
 export function getDiscordBotInviteUrl(guildId?: string): string | null {

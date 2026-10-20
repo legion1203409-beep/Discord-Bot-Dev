@@ -15,6 +15,10 @@ const mocks = vi.hoisted(() => ({
   configured: vi.fn(),
   invite: vi.fn(),
   beginVerification: vi.fn(),
+  verificationWebsiteUrl: vi.fn(),
+  createTicket: vi.fn(),
+  consumeTicket: vi.fn(),
+  loadVerificationConfig: vi.fn(),
   snapshot: vi.fn(),
   verifyMember: vi.fn(),
   requireSession: vi.fn(),
@@ -57,16 +61,29 @@ vi.mock("../oauth", () => ({
   fetchBotGuildSnapshot: mocks.snapshot,
   isDiscordOAuthConfigured: mocks.configured,
   getDiscordBotInviteUrl: mocks.invite,
+  getVerificationWebsiteUrl: mocks.verificationWebsiteUrl,
 }));
 
 vi.mock("../../bot/verification", () => ({
+  createVerificationLinkToken: mocks.createTicket,
   createVerificationIdentityToken: vi.fn(() => "signed-verification-token"),
+  consumeVerificationLinkToken: mocks.consumeTicket,
   normalizeVerificationConfig: vi.fn((value) => value),
   parseVerificationIdentityToken: vi.fn(),
   publishVerificationPanel: vi.fn(),
   verificationCookieName: vi.fn(() => "verification_identity"),
   verifyMember: mocks.verifyMember,
   DEFAULT_VERIFICATION_CONFIG: {},
+}));
+
+vi.mock("../../bot/db", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../bot/db")>()),
+  loadVerificationConfig: mocks.loadVerificationConfig,
+}));
+
+vi.mock("../../bot/invite-recruitment", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../bot/invite-recruitment")>()),
+  completeRecruitmentReferral: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../store", () => ({
@@ -120,6 +137,10 @@ describe("Discord OAuth moderation routes", () => {
       session: { userId: "987654321", csrfToken: "csrf", expiresAt: new Date("2030-01-01T00:00:00.000Z") },
     });
     mocks.beginVerification.mockReturnValue("https://discord.com/oauth2/authorize?state=verification-state");
+    mocks.verificationWebsiteUrl.mockImplementation((guildId: string) => `https://codelinked.app/verificare?guildId=${encodeURIComponent(guildId)}`);
+    mocks.createTicket.mockResolvedValue("a".repeat(43));
+    mocks.consumeTicket.mockResolvedValue({ guildId: "123456789", userId: "987654321" });
+    mocks.loadVerificationConfig.mockResolvedValue({ enabled: true, roleId: "555555555" });
     mocks.snapshot.mockResolvedValue({
       guild: { id: "123456789", name: "Eligible guild", ownerId: "111111111" },
       member: { id: "987654321", roleIds: [] },
@@ -178,7 +199,7 @@ describe("Discord OAuth moderation routes", () => {
     expect((await response.text())).not.toContain("one-time-code");
   });
 
-  it("completes member verification with an HttpOnly identity cookie and a safe redirect", async () => {
+  it("issues a one-time slider ticket and returns to the public verification page", async () => {
     mocks.consumeRequest.mockReturnValue({ purpose: "verification", guildId: "123456789", expiresAt: Date.now() + 60_000 });
 
     const response = await fetch(`${base}/oauth/discord/callback?state=valid&code=one-time-code`, {
@@ -186,13 +207,10 @@ describe("Discord OAuth moderation routes", () => {
     });
 
     expect(response.status).toBe(302);
-    expect(response.headers.get("location")).toBe("/verificare?guildId=123456789&verification=verified");
-    expect(mocks.verifyMember).toHaveBeenCalledWith({}, "123456789", "987654321");
-    const cookie = response.headers.get("set-cookie") ?? "";
-    expect(cookie).toContain("verification_identity=signed-verification-token");
-    expect(cookie.toLowerCase()).toContain("httponly");
-    expect(cookie).not.toContain("server-only-oauth-token");
-    expect(cookie).not.toContain("one-time-code");
+    expect(response.headers.get("location")).toBe(`https://codelinked.app/verificare?guildId=123456789#ticket=${"a".repeat(43)}`);
+    expect(mocks.createTicket).toHaveBeenCalledWith("123456789", "987654321");
+    expect(mocks.verifyMember).not.toHaveBeenCalled();
+    expect(response.headers.get("set-cookie") ?? "").not.toContain("verification_identity=");
   });
 
   it("redirects a cancelled member verification to the verification page without exchanging a code", async () => {
@@ -203,7 +221,7 @@ describe("Discord OAuth moderation routes", () => {
     });
 
     expect(response.status).toBe(302);
-    expect(response.headers.get("location")).toBe("/verificare?verification_error=cancelled&guildId=123456789");
+    expect(response.headers.get("location")).toBe("https://codelinked.app/verificare?guildId=123456789&verification_error=cancelled");
     expect(mocks.exchange).not.toHaveBeenCalled();
   });
 
@@ -216,10 +234,28 @@ describe("Discord OAuth moderation routes", () => {
     });
 
     expect(response.status).toBe(302);
-    expect(response.headers.get("location")).toBe("/verificare?verification_error=oauth_failed&guildId=123456789");
+    expect(response.headers.get("location")).toBe("https://codelinked.app/verificare?guildId=123456789&verification_error=oauth_failed");
     const body = await response.text();
     expect(body).not.toContain("server-only-oauth-token");
     expect(body).not.toContain("one-time-code");
+  });
+
+  it("sets the verification identity cookie on the public site after the slider is completed", async () => {
+    const client = { isReady: () => true };
+    mocks.client.mockReturnValue(client);
+
+    const response = await fetch(`${base}/verification/complete`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ticket: "a".repeat(43), sliderCompleted: true }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.consumeTicket).toHaveBeenCalledWith("a".repeat(43));
+    expect(mocks.verifyMember).toHaveBeenCalledWith(client, "123456789", "987654321");
+    const cookie = response.headers.get("set-cookie") ?? "";
+    expect(cookie).toContain("verification_identity=signed-verification-token");
+    expect(cookie.toLowerCase()).toContain("httponly");
   });
 
   it("rejects a login with no bot-eligible guild", async () => {

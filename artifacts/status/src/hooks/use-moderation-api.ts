@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { withAuthRequestTimeout } from "../lib/auth-request";
 import {
   AUDIT_PAGE_SIZE,
@@ -17,6 +18,17 @@ export interface ModerationSession {
   guilds?: ModerationGuild[];
   csrfToken?: string;
   expiresAt?: string;
+}
+
+export interface ManualVerificationResult {
+  userId: string;
+  displayName: string;
+  result: "verified" | "already_verified";
+}
+
+export interface ManualVerificationInput {
+  guildId: string;
+  userId: string;
 }
 
 export interface ModerationGuild {
@@ -478,6 +490,17 @@ export async function apiFetchWithMeta<T>(
 
 async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   return (await apiFetchWithMeta<T>(endpoint, options)).data;
+}
+
+export function manuallyVerifyGuildMember({ guildId, userId }: ManualVerificationInput): Promise<ManualVerificationResult> {
+  return apiFetch<ManualVerificationResult>(
+    `/guilds/${encodeURIComponent(guildId)}/verification/members/${encodeURIComponent(userId)}/verify`,
+    { method: "POST" },
+  );
+}
+
+export function useManualVerification() {
+  return useMutation({ mutationFn: manuallyVerifyGuildMember });
 }
 
 export function useModerationAuthConfig() {

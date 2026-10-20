@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ButtonStyle } from "discord.js";
 
 const mocks = vi.hoisted(() => ({
   loadConfig: vi.fn(),
@@ -14,13 +15,16 @@ vi.mock("../db", () => ({
 import {
   publishVerificationPanel,
   VerificationPanelPersistenceError,
+  verificationPanel,
   verifyMember,
 } from "../verification";
+import { getVerificationOAuthUrl } from "../../moderation/oauth";
 
 describe("Discord member verification", () => {
   const guildId = "123456789";
   const userId = "987654321";
   const roleId = "555555555";
+  const originalVerificationOrigin = process.env.MODERATION_WEB_ORIGIN;
 
   function makeClient({
     role = { id: roleId, managed: false, position: 2 },
@@ -56,8 +60,14 @@ describe("Discord member verification", () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    process.env.MODERATION_WEB_ORIGIN = "https://codelinked.app";
     mocks.loadConfig.mockResolvedValue({ enabled: true, roleId });
     mocks.saveConfig.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    if (originalVerificationOrigin === undefined) delete process.env.MODERATION_WEB_ORIGIN;
+    else process.env.MODERATION_WEB_ORIGIN = originalVerificationOrigin;
   });
 
   it("awards the configured role to a member who is not verified yet", async () => {
@@ -93,6 +103,23 @@ describe("Discord member verification", () => {
     await expect(publishVerificationPanel(client as never, guildId, input)).resolves.toMatchObject({ enabled: false });
     expect(client.guilds.fetch).not.toHaveBeenCalled();
     expect(mocks.saveConfig).not.toHaveBeenCalled();
+  });
+
+  it("publishes a Link button that opens the public Discord authorization flow", () => {
+    const payload = verificationPanel(enabledVerificationConfig(), getVerificationOAuthUrl(guildId));
+    const button = payload.components[0]!.components[0]!.toJSON() as {
+      style: number;
+      url?: string;
+      custom_id?: string;
+    };
+    const buttonUrl = new URL(button.url!);
+
+    expect(button.style).toBe(ButtonStyle.Link);
+    expect(buttonUrl.origin).toBe("https://codelinked.app");
+    expect(buttonUrl.pathname).toBe("/api/moderation/oauth/discord");
+    expect(buttonUrl.searchParams.get("verification")).toBe("1");
+    expect(buttonUrl.searchParams.get("guildId")).toBe(guildId);
+    expect(button.custom_id).toBeUndefined();
   });
 
   it("reuses the bot's existing panel after its first persistence attempt failed", async () => {
@@ -188,6 +215,27 @@ describe("Discord member verification", () => {
     expect(send).toHaveBeenCalledOnce();
   });
 
+  it("recognizes and edits an existing direct-link panel in place", async () => {
+    const existingPanel = makePanelMessage(
+      "link-panel",
+      "bot",
+      getVerificationOAuthUrl(guildId),
+    );
+    const history = new Map([[existingPanel.id, existingPanel]]);
+    const send = vi.fn();
+    const channel = makePublishChannel(history, send, { savedIdMessage: existingPanel });
+    const client = makePublishClient(channel);
+
+    const result = await publishVerificationPanel(client as never, guildId, {
+      ...enabledVerificationConfig(),
+      panelMessageId: existingPanel.id,
+    });
+
+    expect(result.panelMessageId).toBe(existingPanel.id);
+    expect(existingPanel.edit).toHaveBeenCalledOnce();
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it("serializes concurrent first publications to avoid duplicate panels", async () => {
     const history = new Map<string, ReturnType<typeof makePanelMessage>>();
     const send = vi.fn(async () => {
@@ -227,11 +275,13 @@ function enabledVerificationConfig() {
   };
 }
 
-function makePanelMessage(id: string, authorId = "bot") {
+function makePanelMessage(id: string, authorId = "bot", buttonUrl?: string) {
   return {
     id,
     author: { id: authorId },
-    components: [{ components: [{ customId: "verification_start" }] }],
+    components: [{
+      components: [buttonUrl ? { url: buttonUrl } : { customId: "verification_start" }],
+    }],
     createdTimestamp: Number(id === "panel-message" ? 10 : 20),
     edit: vi.fn().mockResolvedValue(undefined),
   };
