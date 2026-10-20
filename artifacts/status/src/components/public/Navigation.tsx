@@ -9,6 +9,7 @@ export function Navigation() {
   const [isOpen, setIsOpen] = useState(false);
   const [location] = useLocation();
   const toolbarAction = useContext(PublicToolbarActionContext)?.action;
+  const closeMenu = () => setIsOpen(false);
 
   // Close mobile menu on route change
   useEffect(() => {
@@ -45,10 +46,10 @@ export function Navigation() {
 
       <nav id="public-navigation" data-aos="flip-left" className={`nav-links ${isOpen ? "is-open" : ""}`} aria-label="Navigație principală">
         <div className="nav-links-inner">
-          <Link href="/server" data-testid="link-nav-server-guide" aria-current={location === "/server" ? "page" : undefined} className={location === "/server" ? "active" : ""}>Ghid server</Link>
-          <Link href="/verificare" data-testid="link-nav-verification" aria-current={location === "/verificare" ? "page" : undefined} className={location === "/verificare" ? "active" : ""}>Verificare membru</Link>
-          <Link href="/statistici" data-testid="link-nav-stats" aria-current={location === "/statistici" ? "page" : undefined} className={location === "/statistici" ? "active" : ""}>Cronica live</Link>
-          <Link href="/moderare" data-testid="link-nav-home" className="nav-console-link">Consolă operator</Link>
+          <Link href="/server" onClick={closeMenu} data-testid="link-nav-server-guide" aria-current={location === "/server" ? "page" : undefined} className={location === "/server" ? "active" : ""}>Ghid server</Link>
+          <Link href="/verificare" onClick={closeMenu} data-testid="link-nav-verification" aria-current={location === "/verificare" ? "page" : undefined} className={location === "/verificare" ? "active" : ""}>Verificare membru</Link>
+          <Link href="/statistici" onClick={closeMenu} data-testid="link-nav-stats" aria-current={location === "/statistici" ? "page" : undefined} className={location === "/statistici" ? "active" : ""}>Cronica live</Link>
+          <Link href="/moderare" onClick={closeMenu} data-testid="link-nav-home" className="nav-console-link">Consolă operator</Link>
           
           <a className="nav-cta nav-cta--mobile" href={DISCORD_INVITE} target="_blank" rel="noopener noreferrer" onClick={() => trackEvent("discord_cta_click", { location: "nav_mobile" })} data-testid="link-nav-discord-mobile">
             Intră pe Discord <Icon name="arrow" size={15} />
