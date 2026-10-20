@@ -507,6 +507,80 @@ describe("custom ticket flows in Discord", () => {
     }));
   });
 
+  it("offers a staff recovery button when an undelivered question cannot be cancelled", async () => {
+    configureFlows({ appeal: DEFAULT_TICKET_CONFIG.flows.appeal });
+    const caseId = "123e4567-e89b-42d3-a456-426614174000";
+    const channelId = "private-appeal";
+    const staffId = "444444444444444444";
+    appealStore.requestAppealClarification.mockResolvedValue({ appellantId: USER_ID });
+    appealStore.cancelAppealClarification.mockRejectedValueOnce(new Error("database unavailable"));
+    const firstEditReply = vi.fn(async (_payload: unknown) => undefined);
+
+    await handleTicketModal({
+      customId: `ticket_form_appeal_ask_${caseId}`,
+      guildId: GUILD_ID,
+      channelId,
+      user: { id: staffId },
+      member: { roles: { cache: { has: (roleId: string) => roleId === STAFF_ROLE_ID } } },
+      fields: { getTextInputValue: () => "Ce informații lipsesc?" },
+      channel: {
+        isTextBased: () => true,
+        send: vi.fn(async () => { throw new Error("Discord rejected the message"); }),
+      },
+      deferReply: vi.fn(async () => undefined),
+      editReply: firstEditReply,
+    } as unknown as ModalSubmitInteraction);
+
+    const recoveryReply = firstEditReply.mock.calls[0]?.[0] as {
+      content: string;
+      components: { toJSON(): { components: { custom_id: string }[] } }[];
+    };
+    expect(recoveryReply.content).toContain("Poate bloca o altă clarificare");
+    expect(recoveryReply.content).toContain("contactează un administrator");
+    const cleanupCustomId = recoveryReply.components[0]!.toJSON().components[0]!.custom_id;
+    expect(cleanupCustomId).toMatch(new RegExp(`^ticket_appeal_cleanup_${caseId}_`));
+
+    const unauthorizedReply = vi.fn(async (_payload: unknown) => undefined);
+    await handleTicketButton({
+      customId: cleanupCustomId,
+      guildId: GUILD_ID,
+      channelId,
+      user: { id: USER_ID },
+      member: { roles: { cache: { has: () => false } } },
+      message: { components: [{ components: [{ customId: cleanupCustomId }] }] },
+      reply: unauthorizedReply,
+    } as unknown as ButtonInteraction);
+    expect(unauthorizedReply).toHaveBeenCalledWith(expect.objectContaining({
+      content: expect.stringContaining("Doar rolul configurat"),
+    }));
+    expect(appealStore.cancelAppealClarification).toHaveBeenCalledTimes(1);
+
+    const retryEditReply = vi.fn(async (_payload: unknown) => undefined);
+    const retryCancel = vi.fn(async () => true);
+    appealStore.cancelAppealClarification.mockImplementationOnce(retryCancel);
+    await handleTicketButton({
+      customId: cleanupCustomId,
+      guildId: GUILD_ID,
+      channelId,
+      user: { id: staffId },
+      member: { roles: { cache: { has: (roleId: string) => roleId === STAFF_ROLE_ID } } },
+      message: { components: [{ components: [{ customId: cleanupCustomId }] }] },
+      deferReply: vi.fn(async () => undefined),
+      editReply: retryEditReply,
+    } as unknown as ButtonInteraction);
+
+    expect(retryCancel).toHaveBeenCalledWith({
+      guildId: GUILD_ID,
+      caseId,
+      channelId,
+      actorId: staffId,
+      clarificationId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+    });
+    expect(retryEditReply).toHaveBeenCalledWith(expect.objectContaining({
+      content: expect.stringContaining("Poți cere din nou clarificări"),
+    }));
+  });
+
   it.each(["staff", "partnership", "help_report"] as const)(
     "opens the custom first question for the %s ticket type",
     async (kind) => {

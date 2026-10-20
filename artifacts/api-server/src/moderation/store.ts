@@ -112,7 +112,7 @@ export interface ModerationStore {
   createAppeal(input: { guildId: string; caseId: string; appellantId: string; channelId: string; reason: string }): Promise<boolean>;
   getPendingAppealClarification(input: { guildId: string; caseId: string; channelId: string; clarificationId: string }): Promise<{ appellantId: string; question: string } | null>;
   requestAppealClarification(input: { guildId: string; caseId: string; channelId: string; actorId: string; clarificationId: string; question: string }): Promise<{ appellantId: string } | null>;
-  cancelAppealClarification(input: { guildId: string; caseId: string; channelId: string; actorId: string; clarificationId: string }): Promise<void>;
+  cancelAppealClarification(input: { guildId: string; caseId: string; channelId: string; actorId: string; clarificationId: string }): Promise<boolean>;
   respondAppealClarification(input: { guildId: string; caseId: string; channelId: string; appellantId: string; clarificationId: string; answer: string }): Promise<{ staffId: string; question: string } | null>;
   decideAppeal(input: { guildId: string; caseId: string; channelId: string; actorId: string; decision: "accepted" | "rejected"; note: string }): Promise<{ appellantId: string; channelId: string } | null>;
   listCaseNotes(guildId: string, caseId: string): Promise<ModerationCaseNote[]>;
@@ -698,7 +698,7 @@ export class PostgresModerationStore implements ModerationStore {
       );
       if (!cancelled.rowCount) {
         await client.query("ROLLBACK");
-        return;
+        return false;
       }
       await client.query(
         `INSERT INTO moderation_case_notes (id, case_id, guild_id, author_id, body)
@@ -715,6 +715,7 @@ export class PostgresModerationStore implements ModerationStore {
         detail: { channelId: input.channelId, clarificationId: input.clarificationId },
       });
       await client.query("COMMIT");
+      return true;
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;

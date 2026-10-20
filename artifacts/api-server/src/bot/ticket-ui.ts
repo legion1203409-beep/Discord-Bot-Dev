@@ -504,6 +504,15 @@ function appealClarificationAnswerRow(caseId: string, clarificationId: string): 
   );
 }
 
+function appealClarificationCleanupRow(caseId: string, clarificationId: string): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`ticket_appeal_cleanup_${caseId}_${clarificationId}`)
+      .setLabel("Reîncearcă anularea")
+      .setStyle(ButtonStyle.Danger),
+  );
+}
+
 export function ticketPanelPayload(
   kind: OracleTicketKind,
   deadline = ticketDeadlineForChannel(undefined),
@@ -1733,6 +1742,54 @@ export async function handleTicketQuestionSelect(
 }
 
 export async function handleTicketButton(interaction: ButtonInteraction): Promise<boolean> {
+  const appealClarificationCleanup = interaction.customId.match(
+    /^ticket_appeal_cleanup_([0-9a-f-]{36})_([0-9a-f-]{36})$/i,
+  );
+  if (appealClarificationCleanup) {
+    if (!memberHasStaffReviewRole(interaction.member, getTicketConfig(interaction.guildId).staffReviewRoleId)) {
+      await interaction.reply({
+        content: "🛡️ Doar rolul configurat pentru analiza contestațiilor poate anula solicitarea.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return true;
+    }
+    if (!interaction.guildId || !interaction.channelId || !messageHasButton(interaction.message, interaction.customId)) {
+      return rejectTicketAction(interaction, "❌ Acest ticket sau buton de recuperare nu mai este disponibil.");
+    }
+
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    try {
+      const cancelled = await moderationStore.cancelAppealClarification({
+        guildId: interaction.guildId,
+        caseId: appealClarificationCleanup[1]!,
+        channelId: interaction.channelId,
+        actorId: interaction.user.id,
+        clarificationId: appealClarificationCleanup[2]!,
+      });
+      await interaction.editReply({
+        content: cancelled
+          ? "✅ Solicitarea nelivrată a fost anulată. Poți cere din nou clarificări din ticket."
+          : "ℹ️ Solicitarea nu mai este activă în ticket. Reîncarcă panoul; dacă blocajul persistă, contactează un administrator.",
+      });
+    } catch (error) {
+      logger.error(
+        {
+          error,
+          guildId: interaction.guildId,
+          channelId: interaction.channelId,
+          caseId: appealClarificationCleanup[1],
+          clarificationId: appealClarificationCleanup[2],
+        },
+        "Retrying cancellation of an undelivered appeal clarification failed",
+      );
+      await interaction.editReply({
+        content:
+          "❌ Anularea a eșuat din nou, iar solicitarea poate bloca alte întrebări. Încearcă mai târziu; dacă butonul expiră, contactează un administrator pentru curățarea solicitării vechi.",
+      });
+    }
+    return true;
+  }
+
   const appealClarificationRequest = interaction.customId.match(/^ticket_appeal_ask_([0-9a-f-]{36})$/i);
   if (appealClarificationRequest) {
     if (!memberHasStaffReviewRole(interaction.member, getTicketConfig(interaction.guildId).staffReviewRoleId)) {
@@ -2666,19 +2723,48 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
         { error, guildId: interaction.guildId, channelId: interaction.channelId, caseId: appealClarificationRequest[1] },
         "Appeal clarification request could not be posted",
       );
-      await moderationStore.cancelAppealClarification({
-        guildId: interaction.guildId,
-        caseId: appealClarificationRequest[1]!,
-        channelId: interaction.channelId,
-        actorId: interaction.user.id,
-        clarificationId,
-      }).catch((cancelError) => {
+      let cancelled = false;
+      try {
+        cancelled = await moderationStore.cancelAppealClarification({
+          guildId: interaction.guildId,
+          caseId: appealClarificationRequest[1]!,
+          channelId: interaction.channelId,
+          actorId: interaction.user.id,
+          clarificationId,
+        });
+      } catch (cancelError) {
         logger.error(
-          { error: cancelError, guildId: interaction.guildId, channelId: interaction.channelId },
+          {
+            error: cancelError,
+            guildId: interaction.guildId,
+            channelId: interaction.channelId,
+            caseId: appealClarificationRequest[1],
+            clarificationId,
+          },
           "Failed to cancel an undelivered appeal clarification",
         );
-      });
-      await interaction.editReply({ content: "❌ Solicitarea de clarificări nu a putut fi publicată. Încearcă din nou." });
+      }
+      if (cancelled) {
+        await interaction.editReply({
+          content: "❌ Solicitarea nu a putut fi publicată, dar a fost anulată. Poți cere din nou clarificări.",
+        });
+      } else {
+        logger.error(
+          {
+            error,
+            guildId: interaction.guildId,
+            channelId: interaction.channelId,
+            caseId: appealClarificationRequest[1],
+            clarificationId,
+          },
+          "Undelivered appeal clarification may still be pending",
+        );
+        await interaction.editReply({
+          content:
+            "❌ Discord nu a publicat întrebarea, iar solicitarea nu a putut fi anulată. Poate bloca o altă clarificare. Apasă „Reîncearcă anularea”; după confirmare, poți trimite din nou. Dacă recuperarea eșuează sau butonul expiră, contactează un administrator pentru curățarea solicitării vechi.",
+          components: [appealClarificationCleanupRow(appealClarificationRequest[1]!, clarificationId)],
+        });
+      }
       return true;
     }
     await interaction.editReply({

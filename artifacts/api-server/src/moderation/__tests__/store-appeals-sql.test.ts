@@ -223,27 +223,27 @@ describe.skipIf(!process.env.DATABASE_URL)("moderation appeals PostgreSQL concur
       })).toEqual({ appellantId });
 
       // A stale button from another ticket or request must not clear the active request.
-      await store.cancelAppealClarification({
+      expect(await store.cancelAppealClarification({
         guildId: "different-guild", caseId: clarificationCaseId, channelId: "appeal-clarification",
         actorId: "staff-delivery-failed", clarificationId: failedClarificationId,
-      });
-      await store.cancelAppealClarification({
+      })).toBe(false);
+      expect(await store.cancelAppealClarification({
         guildId, caseId: clarificationCaseId, channelId: "different-ticket",
         actorId: "staff-delivery-failed", clarificationId: failedClarificationId,
-      });
-      await store.cancelAppealClarification({
+      })).toBe(false);
+      expect(await store.cancelAppealClarification({
         guildId, caseId: clarificationCaseId, channelId: "appeal-clarification",
         actorId: "staff-delivery-failed", clarificationId: randomUUID(),
-      });
+      })).toBe(false);
       expect(await store.getPendingAppealClarification({
         guildId, caseId: clarificationCaseId, channelId: "appeal-clarification",
         clarificationId: failedClarificationId,
       })).toMatchObject({ appellantId, question: "Question whose delivery fails" });
 
-      await store.cancelAppealClarification({
+      expect(await store.cancelAppealClarification({
         guildId, caseId: clarificationCaseId, channelId: "appeal-clarification",
         actorId: "staff-delivery-failed", clarificationId: failedClarificationId,
-      });
+      })).toBe(true);
       expect(await store.getPendingAppealClarification({
         guildId, caseId: clarificationCaseId, channelId: "appeal-clarification",
         clarificationId: failedClarificationId,
