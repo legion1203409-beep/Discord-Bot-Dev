@@ -197,6 +197,93 @@ test.describe("authenticated moderation console", () => {
     await expect(page.locator(`#nav-group-${groupId}`)).toBeVisible();
   }
 
+  test("keeps staff questions and member answers visible after switching cases and reloading", async ({ page }) => {
+    const firstCaseId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const secondCaseId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const question = "Te rugăm să clarifici ora incidentului.";
+    const answer = "Incidentul s-a petrecut în jurul orei 18:30.";
+    const firstCase = {
+      id: firstCaseId,
+      guildId: guilds[0].id,
+      subjectId: "member-fixture",
+      actorId: "staff-fixture",
+      actionType: "warn",
+      reason: "Fixture de test; nicio sancțiune live.",
+      status: "open",
+      createdAt: "2026-10-01T12:00:00.000Z",
+      evidence: [],
+      notes: [
+        { authorId: "staff-fixture", body: question, createdAt: "2026-10-01T12:01:00.000Z" },
+        { authorId: "member-fixture", body: answer, createdAt: "2026-10-01T12:02:00.000Z" },
+      ],
+    };
+    const secondCase = {
+      ...firstCase,
+      id: secondCaseId,
+      subjectId: "another-member-fixture",
+      notes: [
+        { authorId: "another-staff-fixture", body: "Notiță izolată pentru al doilea dosar.", createdAt: "2026-10-02T12:00:00.000Z" },
+      ],
+    };
+    const caseFixtures = new Map([
+      [firstCaseId, firstCase],
+      [secondCaseId, secondCase],
+    ]);
+    const listFixtures = [secondCase, firstCase];
+
+    // The mocked authenticated session and API remain test-only; case data is
+    // served from this fixture after every detail request and page reload.
+    await page.unroute("**/api/moderation/guilds/*/cases**");
+    await page.route("**/api/moderation/guilds/*/cases**", async (route) => {
+      const url = new URL(route.request().url());
+      const detailCaseId = url.pathname.match(/\/cases\/([^/]+)$/)?.[1];
+      if (detailCaseId) {
+        const fixture = caseFixtures.get(detailCaseId);
+        await route.fulfill(fixture ? { json: fixture } : { status: 404, json: { error: "Case not found" } });
+        return;
+      }
+      await route.fulfill({ json: { items: listFixtures } });
+    });
+
+    const openCase = async (caseId: string) => {
+      const row = page.getByRole("row").filter({ hasText: caseId.slice(0, 8) });
+      await expect(row).toBeVisible();
+      await row.click();
+      const dialog = page.getByRole("dialog");
+      await expect(dialog).toBeVisible();
+      return dialog;
+    };
+    const expectFirstCaseHistory = async (dialog: import("@playwright/test").Locator) => {
+      await expect(dialog.locator("p.text-sm.text-foreground")).toHaveText([question, answer]);
+      await expect(dialog.locator("span.text-xs.font-semibold")).toHaveText(["staff-fixture", "member-fixture"]);
+    };
+
+    await page.goto("/moderare/cazuri");
+    await chooseFirstGuild(page);
+    await expect(page.getByRole("heading", { name: "Cazuri" })).toBeVisible();
+
+    let dialog = await openCase(firstCaseId);
+    await expectFirstCaseHistory(dialog);
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+
+    dialog = await openCase(secondCaseId);
+    await expect(dialog.locator("p.text-sm.text-foreground")).toHaveText(["Notiță izolată pentru al doilea dosar."]);
+    await expect(dialog.getByText(question, { exact: true })).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+
+    dialog = await openCase(firstCaseId);
+    await expectFirstCaseHistory(dialog);
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Cazuri" })).toBeVisible();
+    dialog = await openCase(firstCaseId);
+    await expectFirstCaseHistory(dialog);
+  });
+
   test("saves setup drafts per guild, resumes only on request, and blocks silent session conflicts", async ({ page }) => {
     const userId = "999999999";
     const drafts = new Map<string, { draft: any; revision: number; updatedAt: string }>();
