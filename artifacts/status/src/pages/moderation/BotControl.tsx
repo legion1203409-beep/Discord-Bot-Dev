@@ -116,12 +116,14 @@ const TICKET_CATEGORIES = [
   ["staff", "Aplicare staff"],
   ["partnership", "Parteneriate"],
   ["help_report", "Ajutor / raportare"],
+  ["appeal", "Contestații sancțiuni"],
 ] as const;
 
 const FLOW_KINDS = [
   ["staff", "Aplicare staff"],
   ["partnership", "Parteneriate"],
   ["help_report", "Ajutor / raportare"],
+  ["appeal", "Contestații sancțiuni"],
 ] as const;
 
 const DEFAULT_GAMEPLAY_MESSAGES = {
@@ -1702,7 +1704,7 @@ export function BotControlPage({
               <Ticket className="mt-1 h-5 w-5 text-primary" />
               <div>
                 <h2 className="font-medium">Rutarea tichetelor</h2>
-                <p className="text-xs text-muted-foreground">Alege categoriile Discord în care botul recunoaște și gestionează tichetele.</p>
+                <p className="text-xs text-muted-foreground">Alege categoriile Discord în care botul recunoaște și gestionează tichetele. Pentru contestații, pune un canal de intrare vizibil membrilor în această categorie; ticketul creat de buton este privat pentru autor și staff.</p>
               </div>
             </div>
             <div className="grid gap-4 md:grid-cols-3">

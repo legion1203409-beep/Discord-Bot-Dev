@@ -17,7 +17,7 @@ function makeConfig(): BotControlConfig {
     },
     verification: { enabled: true, channelId: "verification-channel" },
     tickets: {
-      categories: { staff: "staff-category", partnership: "partnership-category", help_report: "help-category" },
+      categories: { staff: "staff-category", partnership: "partnership-category", help_report: "help-category", appeal: "appeal-category" },
       alliancePublicChannelId: "alliance-channel",
     },
     gameplayConfig: {
@@ -61,7 +61,7 @@ describe("clearBotControlDestinations", () => {
 
     expect(cleared.channels.council).toBe("");
     expect(cleared.channels.fratia).toBe("");
-    expect(cleared.tickets.categories).toEqual({ staff: "", partnership: "", help_report: "" });
+    expect(cleared.tickets.categories).toEqual({ staff: "", partnership: "", help_report: "", appeal: "" });
     expect(cleared.tickets.alliancePublicChannelId).toBe("");
   });
 
@@ -98,7 +98,7 @@ describe("clearBotControlDestinations", () => {
 
     expect(Object.values(cleared.channels).every((channelId) => channelId === "")).toBe(true);
     expect(cleared.verification).toMatchObject({ enabled: false, channelId: "" });
-    expect(cleared.tickets.categories).toEqual({ staff: "", partnership: "", help_report: "" });
+    expect(cleared.tickets.categories).toEqual({ staff: "", partnership: "", help_report: "", appeal: "" });
     expect(cleared.tickets.alliancePublicChannelId).toBe("");
     expect(cleared.gameplayConfig.memberMessages).toMatchObject({
       welcomeEnabled: false,

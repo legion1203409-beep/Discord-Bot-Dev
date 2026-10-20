@@ -9,6 +9,7 @@ import {
 } from "../ticket-config";
 import {
   handleTicketButton,
+  handleTicketModal,
   handleTicketQuestionModal,
   scheduleIncompleteTicketDeletion,
   ticketPanelPayload,
@@ -26,6 +27,11 @@ type StoredProgress = {
 
 const persistence = vi.hoisted(() => ({
   records: new Map<string, StoredProgress>(),
+}));
+const appealStore = vi.hoisted(() => ({
+  getCase: vi.fn(),
+  createAppeal: vi.fn(),
+  decideAppeal: vi.fn(),
 }));
 
 vi.mock("../db", () => {
@@ -59,6 +65,8 @@ vi.mock("../db", () => {
     }),
   };
 });
+
+vi.mock("../../moderation/store", () => ({ moderationStore: appealStore }));
 
 const GUILD_ID = "211111111111111111";
 const STAFF_ROLE_ID = "222222222222222222";
@@ -220,6 +228,166 @@ describe("custom ticket flows in Discord", () => {
     expect(ticketQuestionModal("staff", "reordered_second", GUILD_ID)?.toJSON().custom_id).toBe(
       "ticket_answer_staff_reordered_second",
     );
+  });
+
+  it("rejects an appeal case ID that does not belong to the submitter", async () => {
+    configureFlows({ appeal: DEFAULT_TICKET_CONFIG.flows.appeal });
+    const channelId = "appeal-invalid-owner";
+    persistence.records.set(`${channelId}:${USER_ID}`, {
+      currentStep: 0,
+      panelMessageId: "appeal-panel",
+    });
+    appealStore.getCase.mockResolvedValue({ id: "case", subjectId: "another-member" });
+    const submission = makeAnswerInteraction(
+      "appeal",
+      "case_id",
+      "123e4567-e89b-42d3-a456-426614174000",
+      channelId,
+    );
+
+    await handleTicketQuestionModal(submission.interaction);
+
+    expect(appealStore.getCase).toHaveBeenCalledWith(
+      GUILD_ID,
+      "123e4567-e89b-42d3-a456-426614174000",
+    );
+    expect(persistence.records.get(`${channelId}:${USER_ID}`)?.answers).toBeUndefined();
+    expect(submission.editReply).toHaveBeenCalledWith({
+      content: expect.stringContaining("Nu am găsit"),
+    });
+  });
+
+  it("creates a private appeal channel under the configured category", async () => {
+    const categoryId = "444444444444444444";
+    setTicketConfig(GUILD_ID, {
+      ...DEFAULT_TICKET_CONFIG,
+      staffReviewRoleId: STAFF_ROLE_ID,
+      categories: { ...DEFAULT_TICKET_CONFIG.categories, appeal: categoryId },
+    });
+    const create = vi.fn(async () => ({ id: "private-appeal-channel" }));
+    const deferReply = vi.fn(async () => undefined);
+    const editReply = vi.fn(async () => undefined);
+    const interaction = {
+      customId: "ticket_start_appeal",
+      channelId: "appeal-intake",
+      guildId: GUILD_ID,
+      user: { id: USER_ID, username: "Applicant", globalName: "Applicant" },
+      message: panelMessage("appeal"),
+      channel: { topic: null },
+      guild: {
+        roles: { everyone: { id: GUILD_ID } },
+        channels: { create },
+      },
+      client: { user: { id: "555555555555555555" } },
+      deferReply,
+      editReply,
+    } as unknown as ButtonInteraction;
+
+    await handleTicketButton(interaction);
+
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      parent: categoryId,
+      topic: `moderation-appeal:v1:${USER_ID}`,
+      permissionOverwrites: expect.arrayContaining([
+        expect.objectContaining({ id: GUILD_ID, deny: expect.arrayContaining([expect.anything()]) }),
+        expect.objectContaining({ id: USER_ID, allow: expect.any(Array) }),
+        expect.objectContaining({ id: STAFF_ROLE_ID, allow: expect.any(Array) }),
+      ]),
+    }));
+    expect(deferReply).toHaveBeenCalledOnce();
+    expect(editReply).toHaveBeenCalledWith({
+      content: "🔒 Ticketul privat pentru contestație a fost creat: <#private-appeal-channel>",
+    });
+  });
+
+  it("does not publish a second open appeal for the same case", async () => {
+    configureFlows({ appeal: DEFAULT_TICKET_CONFIG.flows.appeal });
+    const channelId = "appeal-duplicate";
+    const caseId = "123e4567-e89b-42d3-a456-426614174000";
+    persistence.records.set(`${channelId}:${USER_ID}`, {
+      currentStep: 1,
+      panelMessageId: "appeal-panel",
+      answers: { case_id: caseId },
+    });
+    appealStore.getCase.mockResolvedValue({ id: caseId, subjectId: USER_ID });
+    appealStore.createAppeal.mockResolvedValue(false);
+    const submission = makeAnswerInteraction("appeal", "reason", "Revizuiți, vă rog.", channelId);
+
+    await handleTicketQuestionModal(submission.interaction);
+
+    expect(appealStore.createAppeal).toHaveBeenCalledWith({
+      guildId: GUILD_ID,
+      caseId,
+      appellantId: USER_ID,
+      channelId,
+      reason: "Revizuiți, vă rog.",
+    });
+    expect(submission.channel.send).not.toHaveBeenCalled();
+    expect(submission.editReply).toHaveBeenCalledWith({
+      content: expect.stringContaining("deja o contestație"),
+    });
+  });
+
+  it("requires the configured staff role and records decisions in the private ticket", async () => {
+    const caseId = "123e4567-e89b-42d3-a456-426614174000";
+    const customId = `ticket_appeal_decide_accept_${caseId}`;
+    const unauthorizedReply = vi.fn(async () => undefined);
+    await handleTicketButton({
+      customId,
+      guildId: GUILD_ID,
+      member: { roles: { cache: { has: () => false } } },
+      message: { components: [{ components: [{ customId }] }] },
+      reply: unauthorizedReply,
+    } as unknown as ButtonInteraction);
+    expect(unauthorizedReply).toHaveBeenCalledWith(expect.objectContaining({
+      flags: expect.anything(),
+      content: expect.stringContaining("Doar rolul"),
+    }));
+    expect(appealStore.decideAppeal).not.toHaveBeenCalled();
+
+    const channelId = "appeal-decision-channel";
+    const appellantId = USER_ID;
+    const responseEdit = vi.fn(async () => undefined);
+    persistence.records.set(`${channelId}:${appellantId}`, {
+      currentStep: 2,
+      panelMessageId: "appeal-panel",
+      responseMessageId: "appeal-summary",
+      status: "completed",
+      answers: { case_id: caseId, reason: "cerere" },
+    });
+    const responseMessage = { edit: responseEdit };
+    const editReply = vi.fn(async () => undefined);
+    appealStore.decideAppeal.mockResolvedValue({ appellantId, channelId });
+    await handleTicketModal({
+      customId: `ticket_form_appeal_decision_accepted_${caseId}`,
+      guildId: GUILD_ID,
+      channelId,
+      user: { id: "666666666666666666" },
+      member: { roles: { cache: { has: () => true } } },
+      fields: { getTextInputValue: () => "Decizia este justificată." },
+      channel: {
+        isTextBased: () => true,
+        messages: { fetch: vi.fn(async () => responseMessage) },
+      },
+      deferReply: vi.fn(async () => undefined),
+      editReply,
+    } as unknown as ModalSubmitInteraction);
+
+    expect(appealStore.decideAppeal).toHaveBeenCalledWith({
+      guildId: GUILD_ID,
+      caseId,
+      channelId,
+      actorId: "666666666666666666",
+      decision: "accepted",
+      note: "Decizia este justificată.",
+    });
+    expect(responseEdit).toHaveBeenCalledWith(expect.objectContaining({
+      content: expect.stringContaining("Contestația ta a fost **acceptată**"),
+      components: [],
+    }));
+    expect(editReply).toHaveBeenCalledWith(expect.objectContaining({
+      content: expect.stringContaining("Sancțiunea nu a fost modificată automat"),
+    }));
   });
 
   it.each(["staff", "partnership", "help_report"] as const)(

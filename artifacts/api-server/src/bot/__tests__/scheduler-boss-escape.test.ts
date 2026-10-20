@@ -32,6 +32,14 @@ const { MockTextChannel } = vi.hoisted(() => {
 
 // ── Mock discord.js (real classes — scheduler/survival use `new`) ─────────────
 vi.mock("discord.js", () => {
+  class MockSlashCommandBuilder {
+    setName(_name?: string) { return this; }
+    setDescription(_description?: string) { return this; }
+    addSubcommand(callback: (builder: MockSlashCommandBuilder) => unknown) {
+      callback(this);
+      return this;
+    }
+  }
   class MockEmbedBuilder {
     setColor()       { return this; }
     setTitle()       { return this; }
@@ -55,6 +63,7 @@ vi.mock("discord.js", () => {
   return {
     TextChannel:      MockTextChannel,
     Client:           class MockClient {},
+    SlashCommandBuilder: MockSlashCommandBuilder,
     EmbedBuilder:     MockEmbedBuilder,
     ActionRowBuilder: MockActionRowBuilder,
     ButtonBuilder:    MockButtonBuilder,

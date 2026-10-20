@@ -7,7 +7,7 @@ import {
 } from "../ticket-config";
 import { ticketFlowConfigSchema } from "../../moderation/router";
 
-const KINDS: TicketCategoryKind[] = ["staff", "partnership", "help_report"];
+const KINDS: TicketCategoryKind[] = ["staff", "partnership", "help_report", "appeal"];
 
 function question(key: string, overrides: Record<string, unknown> = {}) {
   return {
@@ -39,11 +39,11 @@ function flow(kind: TicketCategoryKind, overrides: Partial<TicketFlowConfig> = {
 describe("custom ticket flow configuration", () => {
   it("preserves explicitly empty ticket destinations while keeping legacy defaults for missing values", () => {
     const cleared = normalizeTicketConfig({
-      categories: { staff: "", partnership: "", help_report: "" },
+      categories: { staff: "", partnership: "", help_report: "", appeal: "" },
       alliancePublicChannelId: "",
     });
 
-    expect(cleared.categories).toEqual({ staff: "", partnership: "", help_report: "" });
+    expect(cleared.categories).toEqual({ staff: "", partnership: "", help_report: "", appeal: "" });
     expect(cleared.alliancePublicChannelId).toBe("");
 
     const legacy = normalizeTicketConfig({});
@@ -51,7 +51,7 @@ describe("custom ticket flow configuration", () => {
     expect(legacy.alliancePublicChannelId).toBe(DEFAULT_TICKET_CONFIG.alliancePublicChannelId);
   });
 
-  it("validates and normalizes independent custom flows for all three ticket types", () => {
+  it("validates and normalizes independent custom flows for all ticket types", () => {
     const rawFlows = Object.fromEntries(
       KINDS.map((kind) => [kind, flow(kind)]),
     );
@@ -69,11 +69,27 @@ describe("custom ticket flow configuration", () => {
         staffNotificationMessage: `Staff ${kind}`,
         completionAction: "keep_open",
       });
-      expect(normalized.flows[kind].questions.map(({ key }) => key)).toEqual([
-        `${kind}_first`,
-      ]);
+      expect(normalized.flows[kind].questions.map(({ key }) => key)).toEqual(
+        kind === "appeal" ? ["case_id", "appeal_first"] : [`${kind}_first`],
+      );
     }
     expect(normalized.staffReviewRoleId).toBe("211111111111111111");
+  });
+
+  it("always keeps the case ID as the first appeal question", () => {
+    const normalized = normalizeTicketConfig({
+      flows: {
+        appeal: flow("appeal", {
+          questions: [question("reason"), question("context")],
+        }),
+      },
+    });
+    expect(normalized.flows.appeal.questions[0]?.key).toBe("case_id");
+    expect(normalized.flows.appeal.questions.map(({ key }) => key)).toEqual([
+      "case_id",
+      "reason",
+      "context",
+    ]);
   });
 
   it("keeps valid custom values while falling back safely for invalid saved values", () => {

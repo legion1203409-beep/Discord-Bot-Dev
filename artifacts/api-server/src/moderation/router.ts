@@ -674,6 +674,7 @@ export const botControlSchema = z.object(
       staff: snowflake.or(z.literal("")),
       partnership: snowflake.or(z.literal("")),
       help_report: snowflake.or(z.literal("")),
+      appeal: snowflake.or(z.literal("")).optional(),
     
 }
 
@@ -696,6 +697,7 @@ export const botControlSchema = z.object(
       staff: ticketFlowConfigSchema,
       partnership: ticketFlowConfigSchema,
       help_report: ticketFlowConfigSchema,
+      appeal: ticketFlowConfigSchema.optional(),
     
 }
 

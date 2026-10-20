@@ -110,6 +110,7 @@ const TICKET_TARGETS: Array<{ key: TicketCategoryKind; names: string[] }> = [
   { key: "staff", names: ["🎫・TICHETE • STAFF", "tichete-staff", "aplicare-staff", "staff"] },
   { key: "partnership", names: ["🎫・TICHETE • PARTENERIATE", "tichete-parteneriate", "parteneriate", "partnership"] },
   { key: "help_report", names: ["🎫・TICHETE • AJUTOR", "tichete-ajutor-raportare", "ajutor-raportare", "help-report"] },
+  { key: "appeal", names: ["🎫・TICHETE • CONTESTAȚII", "tichete-contestații", "contestatii", "appeals"] },
 ];
 
 export const MODERATION_DESTINATION_KEYS = [

@@ -40,6 +40,14 @@ const {
 });
 
 vi.mock("discord.js", () => {
+  class MockSlashCommandBuilder {
+    setName(_name?: string) { return this; }
+    setDescription(_description?: string) { return this; }
+    addSubcommand(callback: (builder: MockSlashCommandBuilder) => unknown) {
+      callback(this);
+      return this;
+    }
+  }
   class Builder {
     addComponents() { return this; }
     setColor() { return this; }
@@ -56,6 +64,7 @@ vi.mock("discord.js", () => {
   }
   return {
     Client: class MockClient {},
+    SlashCommandBuilder: MockSlashCommandBuilder,
     TextChannel: MockTextChannel,
     ActionRowBuilder: Builder,
     ButtonBuilder: Builder,

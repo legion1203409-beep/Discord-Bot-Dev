@@ -86,7 +86,7 @@ export function clearBotControlDestinations(
     tickets: includes("admin")
       ? {
           ...config.tickets,
-          categories: { staff: "", partnership: "", help_report: "" },
+          categories: { staff: "", partnership: "", help_report: "", appeal: "" },
           alliancePublicChannelId: "",
         }
       : config.tickets,

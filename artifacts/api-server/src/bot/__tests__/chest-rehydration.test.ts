@@ -4,8 +4,18 @@ const TEST_GUILD_ID = "test-guild-1";
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
-vi.mock("discord.js", () => ({
+vi.mock("discord.js", () => {
+  class MockSlashCommandBuilder {
+    setName(_name?: string) { return this; }
+    setDescription(_description?: string) { return this; }
+    addSubcommand(callback: (builder: MockSlashCommandBuilder) => unknown) {
+      callback(this);
+      return this;
+    }
+  }
+  return ({
   Client: vi.fn(),
+  SlashCommandBuilder: MockSlashCommandBuilder,
   TextChannel: class TextChannel {},
   ActionRowBuilder: class {
     components: unknown[] = [];
@@ -20,7 +30,8 @@ vi.mock("discord.js", () => ({
     setDisabled(v: boolean) { this.data.disabled = v; return this; }
   },
   ButtonStyle: { Primary: 1, Secondary: 2, Success: 3, Danger: 4 },
-}));
+  });
+});
 
 vi.mock("../../lib/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },

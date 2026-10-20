@@ -109,6 +109,8 @@ export interface ModerationStore {
   }): Promise<ModerationCase>;
   updateCase(input: { guildId: string; caseId: string; status?: CaseStatus; reason?: string; evidence?: unknown[]; actorId: string }): Promise<ModerationCase | null>;
   addCaseNote(input: { guildId: string; caseId: string; authorId: string; body: string }): Promise<ModerationCaseNote | null>;
+  createAppeal(input: { guildId: string; caseId: string; appellantId: string; channelId: string; reason: string }): Promise<boolean>;
+  decideAppeal(input: { guildId: string; caseId: string; channelId: string; actorId: string; decision: "accepted" | "rejected"; note: string }): Promise<{ appellantId: string; channelId: string } | null>;
   listCaseNotes(guildId: string, caseId: string): Promise<ModerationCaseNote[]>;
   pruneCases(guildId: string, retentionDays: number): Promise<number>;
   listAudit(guildId: string, filters: ModerationAuditFilters): Promise<ModerationAuditPage>;
@@ -205,6 +207,12 @@ export class PostgresModerationStore implements ModerationStore {
           id uuid PRIMARY KEY, case_id uuid NOT NULL, guild_id text NOT NULL, author_id text NOT NULL,
           body text NOT NULL, created_at timestamptz NOT NULL DEFAULT now()
         );
+        CREATE TABLE IF NOT EXISTS moderation_appeals (
+          id uuid PRIMARY KEY, guild_id text NOT NULL, case_id uuid NOT NULL, appellant_id text NOT NULL,
+          channel_id text NOT NULL, status text NOT NULL DEFAULT 'pending', created_at timestamptz NOT NULL DEFAULT now(),
+          decided_at timestamptz, decided_by text, decision_note text,
+          UNIQUE (guild_id, channel_id)
+        );
         CREATE TABLE IF NOT EXISTS moderation_audit_logs (
           id uuid PRIMARY KEY, guild_id text NOT NULL, actor_id text, event_type text NOT NULL,
           target_type text, target_id text, detail jsonb NOT NULL DEFAULT '{}'::jsonb,
@@ -233,6 +241,7 @@ export class PostgresModerationStore implements ModerationStore {
         CREATE INDEX IF NOT EXISTS moderation_cases_guild_created_idx ON moderation_cases (guild_id, created_at DESC);
         CREATE INDEX IF NOT EXISTS moderation_cases_guild_subject_idx ON moderation_cases (guild_id, subject_id);
         CREATE INDEX IF NOT EXISTS moderation_case_notes_case_idx ON moderation_case_notes (case_id, created_at);
+        CREATE UNIQUE INDEX IF NOT EXISTS moderation_appeals_one_pending_idx ON moderation_appeals (guild_id, case_id) WHERE status = 'pending';
         CREATE INDEX IF NOT EXISTS moderation_audit_guild_created_idx ON moderation_audit_logs (guild_id, created_at DESC);
         CREATE INDEX IF NOT EXISTS moderation_action_ledger_guild_created_idx ON moderation_action_ledger (guild_id, created_at DESC);
       `);
@@ -551,6 +560,81 @@ export class PostgresModerationStore implements ModerationStore {
     return rows;
   }
 
+  async createAppeal(input: { guildId: string; caseId: string; appellantId: string; channelId: string; reason: string }) {
+    await this.ensureSchema();
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const caseResult = await client.query<{ subject_id: string }>(
+        "SELECT subject_id FROM moderation_cases WHERE guild_id = $1 AND id = $2 FOR UPDATE",
+        [input.guildId, input.caseId],
+      );
+      if (caseResult.rows[0]?.subject_id !== input.appellantId) {
+        await client.query("ROLLBACK");
+        return false;
+      }
+      const inserted = await client.query(
+        `INSERT INTO moderation_appeals (id, guild_id, case_id, appellant_id, channel_id)
+         VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING RETURNING id`,
+        [randomUUID(), input.guildId, input.caseId, input.appellantId, input.channelId],
+      );
+      if (!inserted.rowCount) {
+        await client.query("ROLLBACK");
+        return false;
+      }
+      await client.query(
+        `INSERT INTO moderation_case_notes (id, case_id, guild_id, author_id, body)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [randomUUID(), input.caseId, input.guildId, input.appellantId, `Contestație depusă în ticketul <#${input.channelId}>. Motiv: ${input.reason}`],
+      );
+      await this.insertAudit(client, {
+        guildId: input.guildId, actorId: input.appellantId, eventType: "case.appeal_submitted",
+        targetType: "case", targetId: input.caseId, detail: { channelId: input.channelId },
+      });
+      await client.query("COMMIT");
+      return true;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async decideAppeal(input: { guildId: string; caseId: string; channelId: string; actorId: string; decision: "accepted" | "rejected"; note: string }) {
+    await this.ensureSchema();
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const updated = await client.query<{ appellant_id: string; channel_id: string }>(
+        `UPDATE moderation_appeals SET status = $3, decided_at = now(), decided_by = $4, decision_note = $5
+         WHERE guild_id = $1 AND case_id = $2 AND channel_id = $6 AND status = 'pending' RETURNING appellant_id, channel_id`,
+        [input.guildId, input.caseId, input.decision, input.actorId, input.note, input.channelId],
+      );
+      if (!updated.rowCount) {
+        await client.query("ROLLBACK");
+        return null;
+      }
+      const label = input.decision === "accepted" ? "acceptată" : "respinsă";
+      await client.query(
+        `INSERT INTO moderation_case_notes (id, case_id, guild_id, author_id, body)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [randomUUID(), input.caseId, input.guildId, input.actorId, `Contestație ${label} de <@${input.actorId}>. Notă staff: ${input.note}`],
+      );
+      await this.insertAudit(client, {
+        guildId: input.guildId, actorId: input.actorId, eventType: `case.appeal_${input.decision}`,
+        targetType: "case", targetId: input.caseId, detail: { appellantId: updated.rows[0]!.appellant_id },
+      });
+      await client.query("COMMIT");
+      return { appellantId: updated.rows[0]!.appellant_id, channelId: updated.rows[0]!.channel_id };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   async pruneCases(guildId: string, retentionDays: number): Promise<number> {
     await this.ensureSchema();
     const client = await pool.connect();
@@ -563,6 +647,10 @@ export class PostgresModerationStore implements ModerationStore {
         [guildId, retentionDays],
       );
       if (rows.length) {
+        await client.query(
+          "DELETE FROM moderation_appeals WHERE guild_id = $1 AND case_id = ANY($2::uuid[])",
+          [guildId, rows.map((row) => row.id)],
+        );
         await client.query(
           "DELETE FROM moderation_case_notes WHERE guild_id = $1 AND case_id = ANY($2::uuid[])",
           [guildId, rows.map((row) => row.id)],

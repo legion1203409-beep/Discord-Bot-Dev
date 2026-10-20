@@ -114,6 +114,7 @@ export interface BotControlConfig {
       staff: string;
       partnership: string;
       help_report: string;
+      appeal: string;
     };
     staffReviewRoleId: string;
     alliancePublicChannelId: string;
@@ -130,6 +131,7 @@ export interface BotControlConfig {
       staff: TicketFlowConfig;
       partnership: TicketFlowConfig;
       help_report: TicketFlowConfig;
+      appeal: TicketFlowConfig;
     };
   };
 

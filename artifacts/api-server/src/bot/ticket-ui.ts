@@ -15,6 +15,7 @@ import {
 } from "discord.js";
 import { logger } from "../lib/logger";
 import { loadAllianceRecruitmentText } from "./db";
+import { moderationStore } from "../moderation/store";
 import { IMG } from "./assets";
 import {
   claimTicketAlliancePublication,
@@ -33,18 +34,21 @@ const TICKET_COLORS: Record<OracleTicketKind, number> = {
   staff: 0x9b4655,
   partnership: 0x7c8fbd,
   help_report: 0x9d6578,
+  appeal: 0x8d557b,
 };
 
 const TICKET_LABELS: Record<OracleTicketKind, string> = {
   staff: "Aplicare Staff",
   partnership: "Propunere de Parteneriat",
   help_report: "Ajutor / Raportare",
+  appeal: "Contestație sancțiune",
 };
 
 const TICKET_ICONS: Record<OracleTicketKind, string> = {
   staff: "🛡️",
   partnership: "🤝",
   help_report: "🕯️",
+  appeal: "⚖️",
 };
 
 const TICKET_SEAL = IMG.ticketSeal;
@@ -123,6 +127,7 @@ const TICKET_PANEL_TITLES: Record<OracleTicketKind, string> = {
   staff: "🛡️ Contract de Staff · Deschide aplicația",
   partnership: "🤝 Contract de Parteneriat · Deschide propunerea",
   help_report: "🕯️ Solicitare pentru Staff · Deschide sesizarea",
+  appeal: "⚖️ Contestație sancțiune · Deschide cererea",
 };
 
 const TICKET_STATUS_LABELS: Record<
@@ -291,6 +296,21 @@ const TICKET_QUESTIONS: Record<OracleTicketKind, TicketQuestion[]> = {
       multiline: true,
     },
   ],
+  appeal: [
+    {
+      key: "case_id",
+      label: "ID-ul cazului",
+      description: "Introdu ID-ul sancțiunii pe care o contești.",
+      placeholder: "UUID-ul cazului de moderare",
+    },
+    {
+      key: "reason",
+      label: "Motivul contestației",
+      description: "Explică de ce consideri că sancțiunea trebuie revizuită.",
+      placeholder: "Descrie situația și adaugă contextul relevant.",
+      multiline: true,
+    },
+  ],
 };
 
 function ticketFlow(guildId: string | null | undefined, kind: OracleTicketKind): TicketFlowConfig {
@@ -357,7 +377,7 @@ async function removePreviousContinuation(
     if (previous.id === previousMessageId &&
       previous.components.some((row) => "components" in row && row.components.some((component) =>
         "customId" in component && typeof component.customId === "string" &&
-        /^ticket_next_(staff|partnership|help_report)_\d+$/.test(component.customId),
+        /^ticket_next_(staff|partnership|help_report|appeal)_\d+$/.test(component.customId),
       ))) {
       await previous.edit({ components: [] });
     }
@@ -463,6 +483,13 @@ export function ticketStatusRow(
       .setLabel(TICKET_STATUS_LABELS[status])
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(true),
+  );
+}
+
+function appealDecisionRow(caseId: string): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(`ticket_appeal_decide_accept_${caseId}`).setLabel("Acceptă contestația").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`ticket_appeal_decide_reject_${caseId}`).setLabel("Respinge contestația").setStyle(ButtonStyle.Danger),
   );
 }
 
@@ -683,7 +710,7 @@ function hasFinishedTicketStatus(message: {
   return (message.components ?? []).some((row) =>
     (row.components ?? []).some((component) =>
       typeof component.customId === "string" &&
-      /^ticket_status_(staff|partnership|help_report)_(completed|rejected)$/.test(component.customId),
+      /^ticket_status_(staff|partnership|help_report|appeal)_(completed|rejected)$/.test(component.customId),
     ),
   );
 }
@@ -1590,7 +1617,7 @@ export function isTicketPanelMessage(
         : [],
     );
   });
-  const panelPattern = /^ticket_(?:start_(staff|partnership|help_report)|status_(staff|partnership|help_report)_(?:completed|rejected))$/;
+  const panelPattern = /^ticket_(?:start_(staff|partnership|help_report|appeal)|status_(staff|partnership|help_report|appeal)_(?:completed|rejected))$/;
   return message.components.some((row) => {
     if (!("components" in row)) return false;
     return row.components.some(
@@ -1658,7 +1685,7 @@ async function rejectTicketAction(
 export async function handleTicketQuestionSelect(
   interaction: StringSelectMenuInteraction,
 ): Promise<boolean> {
-  const match = interaction.customId.match(/^ticket_questions_(staff|partnership|help_report)$/);
+  const match = interaction.customId.match(/^ticket_questions_(staff|partnership|help_report|appeal)$/);
   if (!match) return false;
 
   const kind = match[1] as OracleTicketKind;
@@ -1695,6 +1722,26 @@ export async function handleTicketQuestionSelect(
 }
 
 export async function handleTicketButton(interaction: ButtonInteraction): Promise<boolean> {
+  const appealDecision = interaction.customId.match(/^ticket_appeal_decide_(accept|reject)_([0-9a-f-]{36})$/i);
+  if (appealDecision) {
+    if (!memberHasStaffReviewRole(interaction.member, getTicketConfig(interaction.guildId).staffReviewRoleId)) {
+      await interaction.reply({ content: "🛡️ Doar rolul configurat pentru analiza contestațiilor poate lua o decizie.", flags: MessageFlags.Ephemeral });
+      return true;
+    }
+    if (!messageHasButton(interaction.message, interaction.customId)) {
+      return rejectTicketAction(interaction, "❌ Acest buton de decizie nu mai este activ.");
+    }
+    const action = appealDecision[1] === "accept" ? "accepted" : "rejected";
+    const modal = new ModalBuilder()
+      .setCustomId(`ticket_form_appeal_decision_${action}_${appealDecision[2]}`)
+      .setTitle(action === "accepted" ? "Acceptă contestația" : "Respinge contestația")
+      .addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(
+        input("decision_note", "Notă pentru decizie", "Explică pe scurt motivul deciziei.", TextInputStyle.Paragraph),
+      ));
+    await interaction.showModal(modal);
+    return true;
+  }
+
   const rejectAllianceMatch = interaction.customId.match(/^ticket_alliance_reject_(\d+)$/);
   if (rejectAllianceMatch) {
     if (!memberHasStaffReviewRole(interaction.member, getTicketConfig(interaction.guildId).staffReviewRoleId)) {
@@ -2010,7 +2057,7 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
     return true;
   }
 
-  const startMatch = interaction.customId.match(/^ticket_start_(staff|partnership|help_report)$/);
+  const startMatch = interaction.customId.match(/^ticket_start_(staff|partnership|help_report|appeal)$/);
   if (startMatch) {
     const kind = startMatch[1] as OracleTicketKind;
     const flow = ticketFlow(interaction.guildId, kind);
@@ -2019,6 +2066,43 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
         interaction,
         "❌ Acest buton nu mai aparține panoului activ al ticketului.",
       );
+    }
+    if (kind === "appeal") {
+      const topic = interaction.channel && "topic" in interaction.channel
+        ? (interaction.channel as { topic?: string | null }).topic ?? ""
+        : "";
+      const ownerMatch = topic.match(/^moderation-appeal:v1:(\d+)$/);
+      if (ownerMatch && ownerMatch[1] !== interaction.user.id) {
+        return rejectTicketAction(interaction, "🔒 Acest ticket privat aparține altui membru.");
+      }
+      if (!ownerMatch) {
+        const guild = interaction.guild;
+        const parentId = getTicketConfig(interaction.guildId).categories.appeal;
+        if (!guild || !parentId) {
+          return rejectTicketAction(interaction, "❌ Contestațiile nu sunt configurate pentru acest server.");
+        }
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        try {
+          const ticket = await guild.channels.create({
+            name: `contestatie-${interaction.user.username.toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 18)}`,
+            type: 0,
+            parent: parentId,
+            topic: `moderation-appeal:v1:${interaction.user.id}`,
+            permissionOverwrites: [
+              { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
+              { id: interaction.client.user!.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+              { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+              { id: getTicketConfig(interaction.guildId).staffReviewRoleId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+            ],
+            reason: `Moderation appeal opened by ${interaction.user.id}`,
+          });
+          await interaction.editReply({ content: `🔒 Ticketul privat pentru contestație a fost creat: <#${ticket.id}>` });
+        } catch (error) {
+          logger.error({ error, guildId: interaction.guildId, userId: interaction.user.id }, "Could not create appeal ticket");
+          await interaction.editReply({ content: "❌ Ticketul privat nu a putut fi creat. Verifică permisiunile botului și configurația categoriei." });
+        }
+        return true;
+      }
     }
     const existingProgress = await getTicketProgress(interaction.channelId, interaction.user.id);
     if (existingProgress?.status) {
@@ -2066,7 +2150,7 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
     return true;
   }
 
-  const nextMatch = interaction.customId.match(/^ticket_next_(staff|partnership|help_report)_(\d+)$/);
+  const nextMatch = interaction.customId.match(/^ticket_next_(staff|partnership|help_report|appeal)_(\d+)$/);
   if (nextMatch) {
     const kind = nextMatch[1] as OracleTicketKind;
     const questionIndex = Number(nextMatch[2]);
@@ -2135,7 +2219,7 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
     return true;
   }
 
-  const match = interaction.customId.match(/^ticket_(start|requirements)_(staff|partnership|help_report)$/);
+  const match = interaction.customId.match(/^ticket_(start|requirements)_(staff|partnership|help_report|appeal)$/);
   if (!match) return false;
   const kind = match[2] as OracleTicketKind;
 
@@ -2152,7 +2236,7 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
 }
 
 export async function handleTicketQuestionModal(interaction: ModalSubmitInteraction): Promise<boolean> {
-  const match = interaction.customId.match(/^ticket_answer_(staff|partnership|help_report)_(.+)$/);
+  const match = interaction.customId.match(/^ticket_answer_(staff|partnership|help_report|appeal)_(.+)$/);
   if (!match) return false;
 
   const kind = match[1] as OracleTicketKind;
@@ -2167,6 +2251,19 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
       ? DISCORD_PARAGRAPH_INPUT_MAX_LENGTH
       : DISCORD_SHORT_INPUT_MAX_LENGTH,
   );
+  if (kind === "appeal" && question.key === "case_id") {
+    const caseId = answer.trim();
+    const validUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(caseId);
+    const moderationCase = validUuid && interaction.guildId
+      ? await moderationStore.getCase(interaction.guildId, caseId)
+      : null;
+    if (!moderationCase || moderationCase.subjectId !== interaction.user.id) {
+      await interaction.editReply({
+        content: "❌ Nu am găsit o sancțiune din acest server asociată contului tău. Verifică ID-ul cazului.",
+      });
+      return true;
+    }
+  }
   const questions = ticketQuestions(interaction.guildId, kind);
   const flow = ticketFlow(interaction.guildId, kind);
   const questionIndex = questions.findIndex((entry) => entry.key === question.key) + 1;
@@ -2203,6 +2300,29 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
       return true;
     }
     try {
+      let appealCaseId: string | undefined;
+      if (complete && kind === "appeal") {
+        appealCaseId = progressState.answers?.case_id?.trim();
+        const appealCase = appealCaseId && interaction.guildId
+          ? await moderationStore.getCase(interaction.guildId, appealCaseId)
+          : null;
+        if (!appealCase || appealCase.subjectId !== interaction.user.id) {
+          await interaction.editReply({ content: "❌ Formularul trebuie să includă un ID de caz valid, din acest server și asociat contului tău." });
+          return true;
+        }
+        const reason = progressState.answers?.reason?.trim() || answer;
+        const created = await moderationStore.createAppeal({
+          guildId: interaction.guildId!,
+          caseId: appealCaseId,
+          appellantId: interaction.user.id,
+          channelId: interaction.channelId!,
+          reason,
+        });
+        if (!created) {
+          await interaction.editReply({ content: "❌ Există deja o contestație în curs pentru acest caz." });
+          return true;
+        }
+      }
       if (complete && kind === "partnership") {
         const partnershipAnswers = partnershipAnswersForCustomFlow(
           flow,
@@ -2283,7 +2403,9 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
               .setLabel(`➡️ Continuă · ${questionIndex + 1}/${totalQuestions}`)
               .setStyle(ButtonStyle.Primary),
           )]
-        : [];
+        : complete && kind === "appeal" && appealCaseId
+          ? [appealDecisionRow(appealCaseId)]
+          : [];
       const responseMessage = await sendPrivateSummary(interaction.channel, summaryEmbeds, {
         content: notifyStaff ? `<@&${roleId}>\n${flow.staffNotificationMessage}` : undefined,
         components: nextComponents,
@@ -2426,6 +2548,55 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
 }
 
 export async function handleTicketModal(interaction: ModalSubmitInteraction): Promise<boolean> {
+  const appealDecision = interaction.customId.match(/^ticket_form_appeal_decision_(accepted|rejected)_([0-9a-f-]{36})$/i);
+  if (appealDecision) {
+    if (!memberHasStaffReviewRole(interaction.member, getTicketConfig(interaction.guildId).staffReviewRoleId)) {
+      await interaction.reply({ content: "🛡️ Nu ai rolul configurat pentru analiza contestațiilor.", flags: MessageFlags.Ephemeral });
+      return true;
+    }
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    if (!interaction.guildId) {
+      await interaction.editReply({ content: "❌ Deciziile pot fi înregistrate doar în serverul cazului." });
+      return true;
+    }
+    if (!interaction.channelId) {
+      await interaction.editReply({ content: "❌ Ticketul contestației nu mai este disponibil." });
+      return true;
+    }
+    const note = safeAnswer(fieldValue(interaction, "decision_note"), "", DISCORD_PARAGRAPH_INPUT_MAX_LENGTH).trim();
+    if (!note) {
+      await interaction.editReply({ content: "❌ Adaugă o notă pentru decizie." });
+      return true;
+    }
+    const decision = appealDecision[1] as "accepted" | "rejected";
+    const recorded = await moderationStore.decideAppeal({
+      guildId: interaction.guildId,
+      caseId: appealDecision[2]!,
+      channelId: interaction.channelId,
+      actorId: interaction.user.id,
+      decision,
+      note,
+    });
+    if (!recorded) {
+      await interaction.editReply({ content: "❌ Contestația a fost deja decisă sau nu mai este disponibilă." });
+      return true;
+    }
+    const statusText = decision === "accepted" ? "acceptată" : "respinsă";
+    const ticketState = await getTicketProgress(recorded.channelId, recorded.appellantId, true);
+    if (ticketState?.responseMessageId && interaction.channel?.isTextBased() && "messages" in interaction.channel) {
+      const response = await interaction.channel.messages.fetch(ticketState.responseMessageId).catch(() => null);
+      if (response) {
+        await response.edit({
+          content: `<@${recorded.appellantId}> ⚖️ Contestația ta a fost **${statusText}** de <@${interaction.user.id}>. Notă: ${note}`,
+          components: [],
+          allowedMentions: { parse: [], users: [recorded.appellantId] },
+        }).catch((error) => logger.warn({ error, channelId: recorded.channelId }, "Appeal decision was recorded but ticket message could not be updated"));
+      }
+    }
+    await interaction.editReply({ content: `✅ Decizia (${statusText}) și nota au fost înregistrate în dosarul de moderare. Sancțiunea nu a fost modificată automat.` });
+    return true;
+  }
+
   const editAllianceMatch = interaction.customId.match(/^ticket_form_alliance_edit_submit_(\d+)$/);
   if (editAllianceMatch) {
     if (!memberHasStaffReviewRole(interaction.member, getTicketConfig(interaction.guildId).staffReviewRoleId)) {
@@ -2741,7 +2912,7 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
     return true;
   }
 
-  const match = interaction.customId.match(/^ticket_form_(staff|partnership|help_report)$/);
+  const match = interaction.customId.match(/^ticket_form_(staff|partnership|help_report|appeal)$/);
   if (!match) return false;
   const kind = match[1] as OracleTicketKind;
 

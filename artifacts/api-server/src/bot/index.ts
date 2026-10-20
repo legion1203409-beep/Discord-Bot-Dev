@@ -5538,7 +5538,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
       isTextBased?: () => boolean;
     };
     if (!candidate.guildId || !candidate.parentId || !candidate.isTextBased?.()) return;
-    const kind = getOracleTicketKindFromParentId(candidate.parentId);
+    const kind = getOracleTicketKindFromParentId(candidate.parentId, candidate.guildId);
     const botId = client.user?.id;
     if (!kind || !botId) return;
 

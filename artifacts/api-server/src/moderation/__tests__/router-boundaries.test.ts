@@ -1416,7 +1416,7 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
       council: "",
       fratia: "",
     };
-    const categories = { staff: "", partnership: "", help_report: "" };
+    const categories = { staff: "", partnership: "", help_report: "", appeal: "" };
     const requestPayload = {
       ...payload,
       channels,
@@ -1436,7 +1436,7 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     expect(response.status).toBe(200);
     expect(mocks.saveChannelConfig).toHaveBeenCalledWith(guildId, channels);
     expect(mocks.saveTicketConfig).toHaveBeenCalledWith(guildId, expect.objectContaining({
-      categories: { staff: "", partnership: "", help_report: "" },
+      categories: { staff: "", partnership: "", help_report: "", appeal: "" },
       alliancePublicChannelId: "",
     }));
     const result = await response.json() as BotControlResponse;

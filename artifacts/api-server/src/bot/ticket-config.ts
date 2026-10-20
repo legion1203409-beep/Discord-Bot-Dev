@@ -1,6 +1,6 @@
 import { loadTicketConfig } from "./db";
 
-export type TicketCategoryKind = "staff" | "partnership" | "help_report";
+export type TicketCategoryKind = "staff" | "partnership" | "help_report" | "appeal";
 
 export type TicketCompletionAction = "lock" | "notify_staff" | "keep_open";
 export type AllianceAnnouncementMode = "text" | "embed";
@@ -63,6 +63,7 @@ export const DEFAULT_TICKET_CONFIG: TicketConfig = {
     staff: envString("ORACLE_STAFF_TICKET_CATEGORY_ID", "1545688369332228167"),
     partnership: envString("ORACLE_PARTNERSHIP_TICKET_CATEGORY_ID", "1545688531144413194"),
     help_report: envString("ORACLE_HELP_REPORT_TICKET_CATEGORY_ID", "1545688638438772796"),
+    appeal: envString("ORACLE_APPEAL_TICKET_CATEGORY_ID", ""),
   },
   staffReviewRoleId: envString("ORACLE_STAFF_REVIEW_ROLE_ID", "1472526137308745909"),
   alliancePublicChannelId: envString("ORACLE_ALLIANCE_PUBLIC_CHANNEL_ID", "1472997077373157602"),
@@ -145,6 +146,20 @@ export const DEFAULT_TICKET_CONFIG: TicketConfig = {
         { key: "description", label: "Ce s-a întâmplat?", description: "Descrie cazul cât mai clar.", placeholder: "Povestește ce s-a întâmplat.", multiline: true, required: true },
         { key: "when", label: "Când s-a întâmplat?", description: "Data sau momentul aproximativ.", placeholder: "Ex.: astăzi, în jurul orei 18:00", multiline: false, required: true },
         { key: "evidence", label: "Dovezi", description: "Linkuri, capturi sau mesaje relevante.", placeholder: "Adaugă linkuri sau explică ce dovezi ai.", multiline: true, required: false },
+      ],
+    },
+    appeal: {
+      mode: "custom",
+      title: "⚖️ Contestație sancțiune",
+      startButtonLabel: "Contestă sancțiunea",
+      panelDescription: "Solicită revizuirea unei sancțiuni din propriul dosar de moderare.",
+      requirementsText: "Poți contesta doar o sancțiune aplicată contului tău în acest server. Decizia staffului nu ridică automat sancțiunea.",
+      completionMessage: "Contestația a fost trimisă echipei pentru analiză. Decizia va fi comunicată aici, în ticket.",
+      staffNotificationMessage: "O nouă contestație așteaptă analiza staffului.",
+      completionAction: "notify_staff",
+      questions: [
+        { key: "case_id", label: "ID-ul cazului", description: "Introdu ID-ul sancțiunii pe care o contești.", placeholder: "UUID-ul cazului de moderare", multiline: false, required: true },
+        { key: "reason", label: "Motivul contestației", description: "Explică de ce consideri că sancțiunea trebuie revizuită.", placeholder: "Descrie situația și adaugă contextul relevant.", multiline: true, required: true },
       ],
     },
   },
@@ -243,12 +258,20 @@ export function normalizeTicketConfig(value: unknown): TicketConfig {
     "allianceAnnouncementThumbnailUrl",
   );
   const legacyAnnouncementImage = imageUrlOrEmpty(raw.allianceAnnouncementImageUrl);
+  const appealFlow = normalizeFlow(rawFlows.appeal, DEFAULT_TICKET_CONFIG.flows.appeal);
+  const mandatoryCaseIdQuestion = DEFAULT_TICKET_CONFIG.flows.appeal.questions[0]!;
+  appealFlow.questions = [
+    mandatoryCaseIdQuestion,
+    ...appealFlow.questions.filter((question) => question.key !== "case_id"),
+  ].slice(0, 20);
+  appealFlow.postedQuestionKeys = appealFlow.questions.map((question) => question.key);
 
   return {
     categories: {
       staff: destinationOrDefault(categories.staff, DEFAULT_TICKET_CONFIG.categories.staff),
       partnership: destinationOrDefault(categories.partnership, DEFAULT_TICKET_CONFIG.categories.partnership),
       help_report: destinationOrDefault(categories.help_report, DEFAULT_TICKET_CONFIG.categories.help_report),
+      appeal: destinationOrDefault(categories.appeal, DEFAULT_TICKET_CONFIG.categories.appeal),
     },
     staffReviewRoleId: validSnowflake(raw.staffReviewRoleId) ? raw.staffReviewRoleId : DEFAULT_TICKET_CONFIG.staffReviewRoleId,
     alliancePublicChannelId: destinationOrDefault(
@@ -283,6 +306,7 @@ export function normalizeTicketConfig(value: unknown): TicketConfig {
       staff: normalizeFlow(rawFlows.staff, DEFAULT_TICKET_CONFIG.flows.staff),
       partnership: normalizeFlow(rawFlows.partnership, DEFAULT_TICKET_CONFIG.flows.partnership),
       help_report: normalizeFlow(rawFlows.help_report, DEFAULT_TICKET_CONFIG.flows.help_report),
+      appeal: appealFlow,
     },
   };
 }

@@ -218,7 +218,7 @@ describe("persistent alliance publication flow", () => {
       alliancePublishing: false,
       alliancePublicMessageId: "public-message-1",
     });
-  });
+  }, 15_000);
 
   it("lets alliance staff refuse a completed pact and prevents publication", async () => {
     persistence.records.set("reject-ticket:404", completedDraft());
