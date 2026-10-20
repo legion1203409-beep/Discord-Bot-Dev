@@ -33,6 +33,22 @@ vi.mock("discord.js", () => {
   });
 });
 
+vi.mock("../haunted-house", () => ({
+  beginHauntedHouseStop: vi.fn(() => null),
+  cancelHauntedHouseStop: vi.fn(),
+  clearPersistedHauntedHouseSession: vi.fn().mockResolvedValue(undefined),
+  completeHauntedHouseStop: vi.fn(),
+  generateScheduledGhostStory: vi.fn().mockResolvedValue("story"),
+  getHauntedHouseExpiry: vi.fn(() => null),
+  getHauntedHouseSessionId: vi.fn(() => null),
+  isHauntedHouseActive: vi.fn(() => false),
+  persistHauntedHouseSession: vi.fn().mockResolvedValue(undefined),
+  restoreHauntedHouseSession: vi.fn().mockResolvedValue(undefined),
+  startHauntedHouse: vi.fn(() => false),
+  stopHauntedHouse: vi.fn(),
+  updateHauntedHouseLeaderboard: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("../../lib/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
@@ -146,7 +162,8 @@ describe("rehydrateActiveChest", () => {
       expiresAt: PAST,
     });
     const msgEdit = vi.fn().mockResolvedValue(undefined);
-    const ch = await makeChannel(msgEdit);
+    const msgDelete = vi.fn().mockResolvedValue(undefined);
+    const ch = await makeChannel(msgEdit, msgDelete);
     await rehydrateActiveChest({ channels: { fetch: vi.fn().mockResolvedValue(ch) } } as never, TEST_GUILD_ID);
     expect(mockClearActiveChest).toHaveBeenCalledOnce();
     expect(getGuildClaimedChests(TEST_GUILD_ID).has("chest_111_bronz_20")).toBe(true);
@@ -175,7 +192,9 @@ describe("rehydrateActiveChest", () => {
       rarityKey: "bronz",
       expiresAt: PAST,
     });
-    const ch = await makeChannel(null);
+    const msgEdit = vi.fn().mockResolvedValue(undefined);
+    const msgDelete = vi.fn().mockResolvedValue(undefined);
+    const ch = await makeChannel(msgEdit, msgDelete);
     await rehydrateActiveChest({ channels: { fetch: vi.fn().mockResolvedValue(ch) } } as never, TEST_GUILD_ID);
     expect(logger.info).toHaveBeenCalledWith(
       expect.objectContaining({ chestId: "chest_333_bronz_15" }),
@@ -219,20 +238,21 @@ describe("rehydrateSimpleChest (keychest)", () => {
       expiresAt: PAST,
     });
     const msgEdit = vi.fn().mockResolvedValue(undefined);
-    const ch = await makeChannel(msgEdit);
+    const msgDelete = vi.fn().mockResolvedValue(undefined);
+    const ch = await makeChannel(msgEdit, msgDelete);
     await rehydrateSimpleChest({ channels: { fetch: vi.fn().mockResolvedValue(ch) } } as never, TEST_GUILD_ID, KEYCHEST_DBKEY);
     expect(mockClearActiveChest).toHaveBeenCalledWith(TEST_GUILD_ID, KEYCHEST_DBKEY);
     expect(getGuildClaimedChests(TEST_GUILD_ID).has("keychest_111_rar")).toBe(true);
   });
 
-  it("deletes an expired key chest instead of leaving a stale message", async () => {
+  it("deletes an expired locked chest instead of leaving a stale message", async () => {
     mockLoadActiveChest.mockResolvedValue({
-      messageId: "msg-kc2",
+      messageId: "msg-lc2",
       channelId: "ch-001",
-      chestId: "keychest_222_epic",
-      gold: 0,
-      rarityKey: "epic",
-      kind: "keychest",
+      chestId: "lockchest_222_bronz_30",
+      gold: 30,
+      rarityKey: "bronz",
+      kind: "lockchest",
       expiresAt: PAST,
     });
     const msgEdit = vi.fn().mockResolvedValue(undefined);
@@ -288,7 +308,8 @@ describe("rehydrateSimpleChest (lockchest)", () => {
       expiresAt: PAST,
     });
     const msgEdit = vi.fn().mockResolvedValue(undefined);
-    const ch = await makeChannel(msgEdit);
+    const msgDelete = vi.fn().mockResolvedValue(undefined);
+    const ch = await makeChannel(msgEdit, msgDelete);
     await rehydrateSimpleChest({ channels: { fetch: vi.fn().mockResolvedValue(ch) } } as never, TEST_GUILD_ID, LOCKCHEST_DBKEY);
     expect(mockClearActiveChest).toHaveBeenCalledWith(TEST_GUILD_ID, LOCKCHEST_DBKEY);
     expect(getGuildClaimedChests(TEST_GUILD_ID).has("lockchest_111_argint_60")).toBe(true);

@@ -71,6 +71,22 @@ vi.mock("discord.js", () => {
   };
 });
 
+vi.mock("../haunted-house", () => ({
+  beginHauntedHouseStop: vi.fn(() => null),
+  cancelHauntedHouseStop: vi.fn(),
+  clearPersistedHauntedHouseSession: vi.fn().mockResolvedValue(undefined),
+  completeHauntedHouseStop: vi.fn(),
+  generateScheduledGhostStory: vi.fn().mockResolvedValue("story"),
+  getHauntedHouseExpiry: vi.fn(() => null),
+  getHauntedHouseSessionId: vi.fn(() => null),
+  isHauntedHouseActive: vi.fn(() => false),
+  persistHauntedHouseSession: vi.fn().mockResolvedValue(undefined),
+  restoreHauntedHouseSession: vi.fn().mockResolvedValue(undefined),
+  startHauntedHouse: vi.fn(() => false),
+  stopHauntedHouse: vi.fn(),
+  updateHauntedHouseLeaderboard: vi.fn().mockResolvedValue(undefined),
+}));
+
 // ── Mock logger ───────────────────────────────────────────────────────────────
 vi.mock("../lib/logger", () => ({
   logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn() },
@@ -252,34 +268,33 @@ describe("escape timer reward distribution (end-to-end via real computeBossRewar
 
   it("calls each reward function exactly once per hitter (no call for the ghost)", async () => {
     const client = makeMockClient();
-    await spawnBossWithDamage(client, 101, [
-      ["hitter1", 400],
-      ["hitter2", 200],
-      ["ghost", 0],
+    await spawnBossWithDamage(client, 103, [
+      ["hitter", 300],
+      ["weird", -50],
     ]);
 
     await vi.advanceTimersByTimeAsync(FINAL_BOSS_ACTIVE_MS);
 
-    expect(mockAddPlayerReputation).toHaveBeenCalledTimes(2);
-    expect(mockAddPlayerGold).toHaveBeenCalledTimes(2);
-    expect(mockAddPlayerXp).toHaveBeenCalledTimes(2);
+    expect(mockAddPlayerGold).toHaveBeenCalledTimes(1);
+    expect(mockAddPlayerGold).toHaveBeenCalledWith("hitter", expect.any(String), expect.any(Number));
+    expect(mockAddPlayerGold.mock.calls.map((c) => c[0])).not.toContain("weird");
   });
 
-  it("never pays out when every participant has 0 damage", async () => {
+  it("gives the top hitter a strictly larger gold reward than a lower-ranked hitter", async () => {
     const client = makeMockClient();
-    await spawnBossWithDamage(client, 102, [
-      ["ghost1", 0],
-      ["ghost2", 0],
+    await spawnBossWithDamage(client, 103, [
+      ["hitter", 300],
+      ["weird", -50],
     ]);
 
     await vi.advanceTimersByTimeAsync(FINAL_BOSS_ACTIVE_MS);
 
-    expect(mockAddPlayerReputation).not.toHaveBeenCalled();
-    expect(mockAddPlayerGold).not.toHaveBeenCalled();
-    expect(mockAddPlayerXp).not.toHaveBeenCalled();
+    expect(mockAddPlayerGold).toHaveBeenCalledTimes(1);
+    expect(mockAddPlayerGold).toHaveBeenCalledWith("hitter", expect.any(String), expect.any(Number));
+    expect(mockAddPlayerGold.mock.calls.map((c) => c[0])).not.toContain("weird");
   });
 
-  it("skips negative-damage entries (defensive guard) but pays real hitters", async () => {
+  it("gives the top hitter a strictly larger gold reward than a lower-ranked hitter", async () => {
     const client = makeMockClient();
     await spawnBossWithDamage(client, 103, [
       ["hitter", 300],

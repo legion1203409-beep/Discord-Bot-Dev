@@ -73,6 +73,22 @@ vi.mock("discord.js", () => {
   };
 });
 
+vi.mock("../haunted-house", () => ({
+  beginHauntedHouseStop: vi.fn(() => null),
+  cancelHauntedHouseStop: vi.fn(),
+  clearPersistedHauntedHouseSession: vi.fn().mockResolvedValue(undefined),
+  completeHauntedHouseStop: vi.fn(),
+  generateScheduledGhostStory: vi.fn().mockResolvedValue("story"),
+  getHauntedHouseExpiry: vi.fn(() => null),
+  getHauntedHouseSessionId: vi.fn(() => null),
+  isHauntedHouseActive: vi.fn(() => false),
+  persistHauntedHouseSession: vi.fn().mockResolvedValue(undefined),
+  restoreHauntedHouseSession: vi.fn().mockResolvedValue(undefined),
+  startHauntedHouse: vi.fn(() => false),
+  stopHauntedHouse: vi.fn(),
+  updateHauntedHouseLeaderboard: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("../../lib/logger", () => ({ logger: mockLogger }));
 vi.mock("../channel-config", () => ({
   getChannel: mockGetChannel,
@@ -182,14 +198,23 @@ function expiredAt(): Date {
 describe("persistent leaderboard publication", () => {
   it.each(["fetch", "edit", "history", "database"])("does not repost after a temporary %s failure", async (phase) => {
     const channel = new MockTextChannel("main-channel");
-    channel.guildId = `leaderboard-${phase}`;
+    channel.guildId = "leaderboard-deleted";
     const saved = vi.mocked(loadLeaderboardMessageId);
     saved.mockReset();
-    saved.mockResolvedValue(phase === "history" ? null : "saved-top");
     if (phase === "database") saved.mockRejectedValueOnce(new Error("database unavailable"));
-    const message = { id: "saved-top", edit: vi.fn().mockRejectedValue(new Error("network unavailable")) };
-    if (phase === "edit") channel.messages.fetch.mockResolvedValue(message);
-    else channel.messages.fetch.mockRejectedValue(new Error("network unavailable"));
+    else saved.mockResolvedValueOnce("deleted-top");
+    const message = { id: "new-top", edit: vi.fn().mockResolvedValue({ id: "new-top" }) };
+    if (phase === "edit") {
+      channel.messages.fetch.mockResolvedValue(message);
+      message.edit.mockRejectedValueOnce(new Error("edit unavailable"));
+    } else if (phase === "fetch") {
+      channel.messages.fetch.mockRejectedValue(new Error("network unavailable"));
+    } else if (phase === "history") {
+      channel.messages.fetch.mockImplementation(async (id: unknown) => {
+        if (id === "deleted-top") throw discordError(10008, "Unknown Message");
+        throw new Error("history unavailable");
+      });
+    }
     await expect(publishLeaderboardResult(makeClient({ "main-channel": channel }), channel.guildId, "eventTop", { embeds: [] }))
       .rejects.toThrow();
     expect(channel.send).not.toHaveBeenCalled();
@@ -234,45 +259,61 @@ afterEach(() => {
 describe("persisted event message cleanup", () => {
   it("treats Discord 10008 from message fetch as already deleted", async () => {
     const eventChannel = new MockTextChannel("event-channel");
-    eventChannel.guildId = "guild-fetch-10008";
+    eventChannel.guildId = "guild-delete-retry";
     eventChannel.messages.fetch.mockRejectedValue(discordError(10008, "Unknown Message"));
 
-    await expect(deleteEventMessages(
+    scheduleEventMessageDeletion(
       makeClient({ "event-channel": eventChannel }),
-      "guild-fetch-10008",
-      101,
-      "missing-message",
-    )).resolves.toBe(false);
-
-    expect(mockLogger.warn).not.toHaveBeenCalled();
-  });
-
-  it("removes the event DB record after timer cleanup succeeds", async () => {
-    const eventMessage = { delete: vi.fn().mockResolvedValue(undefined) };
-    const eventChannel = new MockTextChannel("event-channel");
-    eventChannel.guildId = "guild-success";
-    eventChannel.messages.fetch.mockResolvedValue(eventMessage);
-    const client = makeClient({ "event-channel": eventChannel });
-
-    scheduleEventMessageDeletion(client, "guild-success", 102, "event-message", expiredAt());
+      "guild-delete-retry",
+      104,
+      "event-message",
+      expiredAt(),
+    );
     await vi.advanceTimersByTimeAsync(0);
-
-    expect(eventMessage.delete).toHaveBeenCalledOnce();
-    expect(mockDeleteEvent).toHaveBeenCalledWith(102);
+    expect(mockDeleteEvent).toHaveBeenCalledWith(104);
+    expect(eventChannel.messages.fetch).toHaveBeenCalledWith("event-message");
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(mockDeleteEvent).toHaveBeenCalledOnce();
   });
 
-  it("retries a transient fetch failure without deleting its DB record", async () => {
+  it("keeps an unconfigured channel retryable with structured context", async () => {
+    mockGetChannel.mockReturnValue(null);
+
+    await expect(deleteEventMessages(
+      makeClient({}),
+      "guild-unconfigured",
+      107,
+      "event-message",
+    )).resolves.toBe(true);
+
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventId: 107,
+        failures: [expect.objectContaining({
+          phase: "channel-config",
+          code: "CHANNEL_UNCONFIGURED",
+          messageId: "event-message",
+        })],
+      }),
+      "Event message cleanup will retry",
+    );
+    expect(mockDeleteEvent).not.toHaveBeenCalled();
+  });
+
+  it("does not create duplicate timers for the same guild event", async () => {
     const eventMessage = { delete: vi.fn().mockResolvedValue(undefined) };
     const eventChannel = new MockTextChannel("event-channel");
     eventChannel.guildId = "guild-fetch-retry";
     eventChannel.messages.fetch
       .mockRejectedValueOnce(discordError(500, "temporary gateway failure"))
-      .mockResolvedValueOnce(eventMessage);
+      .mockResolvedValue(eventMessage);
     const client = makeClient({ "event-channel": eventChannel });
 
     scheduleEventMessageDeletion(client, "guild-fetch-retry", 103, "event-message", expiredAt());
+    scheduleEventMessageDeletion(client, "guild-fetch-retry", 103, "event-message", expiredAt());
     await vi.advanceTimersByTimeAsync(0);
 
+    expect(eventChannel.messages.fetch).toHaveBeenCalledOnce();
     expect(mockDeleteEvent).not.toHaveBeenCalled();
     expect(mockLogger.warn).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -289,16 +330,46 @@ describe("persisted event message cleanup", () => {
     );
 
     await vi.advanceTimersByTimeAsync(60_000);
+    expect(eventChannel.messages.fetch).toHaveBeenCalledTimes(2);
     expect(eventMessage.delete).toHaveBeenCalledOnce();
     expect(mockDeleteEvent).toHaveBeenCalledWith(103);
   });
 
-  it("retries a transient delete failure", async () => {
+  it("retries a transient message-delete failure", async () => {
     const eventMessage = {
-      delete: vi.fn()
-        .mockRejectedValueOnce(discordError(50013, "Missing Permissions"))
-        .mockResolvedValueOnce(undefined),
+      delete: vi.fn().mockRejectedValueOnce(discordError(500, "temporary delete failure"))
+        .mockResolvedValue(undefined),
     };
+    const eventChannel = new MockTextChannel("event-channel");
+    eventChannel.guildId = "guild-fetch-retry";
+    eventChannel.messages.fetch.mockResolvedValue(eventMessage);
+    const client = makeClient({ "event-channel": eventChannel });
+
+    scheduleEventMessageDeletion(client, "guild-fetch-retry", 103, "event-message", expiredAt());
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(mockDeleteEvent).not.toHaveBeenCalled();
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventId: 103,
+        failures: [expect.objectContaining({
+          target: "event",
+          phase: "message-delete",
+          code: "500",
+          message: "temporary delete failure",
+          messageId: "event-message",
+        })],
+      }),
+      "Event message cleanup will retry",
+    );
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(eventMessage.delete).toHaveBeenCalledTimes(2);
+    expect(mockDeleteEvent).toHaveBeenCalledWith(103);
+  });
+
+  it("deletes the event record after an expired message is removed", async () => {
+    const eventMessage = { delete: vi.fn().mockResolvedValue(undefined) };
     const eventChannel = new MockTextChannel("event-channel");
     eventChannel.guildId = "guild-delete-retry";
     eventChannel.messages.fetch.mockResolvedValue(eventMessage);
@@ -311,11 +382,10 @@ describe("persisted event message cleanup", () => {
       expiredAt(),
     );
     await vi.advanceTimersByTimeAsync(0);
-    expect(mockDeleteEvent).not.toHaveBeenCalled();
-
-    await vi.advanceTimersByTimeAsync(60_000);
-    expect(eventMessage.delete).toHaveBeenCalledTimes(2);
+    expect(eventMessage.delete).toHaveBeenCalledOnce();
     expect(mockDeleteEvent).toHaveBeenCalledWith(104);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(eventMessage.delete).toHaveBeenCalledOnce();
   });
 
   it("keeps an unconfigured channel retryable with structured context", async () => {

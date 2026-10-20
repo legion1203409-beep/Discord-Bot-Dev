@@ -1,6 +1,30 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Client, Events, TextChannel, type ButtonInteraction, type ChatInputCommandInteraction, type Interaction } from "discord.js";
 import { isGuildGameStopped, guildStates } from "../scheduler";
+import { publishHauntedHouseLeaderboard } from "../haunted-house-leaderboard";
+
+const dbMocks = vi.hoisted(() => ({
+  loadConfig: vi.fn(),
+  loadSession: vi.fn(),
+  saveSession: vi.fn(),
+  clearSession: vi.fn(),
+  loadLeaderboardMessage: vi.fn(),
+  saveLeaderboardMessage: vi.fn(),
+}));
+
+vi.mock("../db", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../db")>();
+  return {
+    ...actual,
+    loadHauntedHouseConfig: (...args: unknown[]) => dbMocks.loadConfig(...args),
+    loadHauntedHouseSession: (...args: unknown[]) => dbMocks.loadSession(...args),
+    saveHauntedHouseSession: (...args: unknown[]) => dbMocks.saveSession(...args),
+    clearHauntedHouseSession: (...args: unknown[]) => dbMocks.clearSession(...args),
+    loadHauntedHouseLeaderboardMessage: (...args: unknown[]) => dbMocks.loadLeaderboardMessage(...args),
+    saveHauntedHouseLeaderboardMessage: (...args: unknown[]) => dbMocks.saveLeaderboardMessage(...args),
+  };
+});
+
 import {
   HAUNTED_HOUSE_MAX_AI_CALLS_PER_HOUR,
   HAUNTED_HOUSE_MAX_NARRATIVE_CHARS,
@@ -21,9 +45,12 @@ import {
   issueHauntedDoorChoice,
   isHauntedHouseActive,
   publishHauntedHouseOpeningAnnouncement,
+  persistHauntedHouseSession,
+  restoreHauntedHouseSession,
   resetHauntedHouseStateForTests,
   startHauntedHouse,
   stopHauntedHouse,
+  updateHauntedHouseLeaderboard,
 } from "../haunted-house";
 import * as activityRanks from "../activity-ranks";
 import * as botDb from "../db";
@@ -42,6 +69,12 @@ function mockTextChannel(id: string, guildId: string) {
 
 beforeEach(() => {
   resetHauntedHouseStateForTests();
+  dbMocks.loadConfig.mockResolvedValue({ startChannelId: "", leaderboardChannelId: "", chatChannelId: "" });
+  dbMocks.loadSession.mockResolvedValue(null);
+  dbMocks.saveSession.mockResolvedValue(undefined);
+  dbMocks.clearSession.mockResolvedValue(undefined);
+  dbMocks.loadLeaderboardMessage.mockResolvedValue(null);
+  dbMocks.saveLeaderboardMessage.mockResolvedValue(undefined);
   vi.stubEnv("OPENAI_API_KEY", "test-key");
 });
 
@@ -155,6 +188,185 @@ describe("Castelul Bântuit", () => {
     expect(getHauntedHouseLeaderboard("guild-other")).toEqual([]);
   });
 
+  it("restores the active event and its scores from the guild-scoped persisted session", async () => {
+    startHauntedHouse(guildId, 1_000, 60_000);
+    issueHauntedDoorChoice(guildId, userId, "persist-score", 1_000);
+    claimHauntedDoorChoice(guildId, userId, "persist-score", "felinar", 1_000, 0.05);
+    await persistHauntedHouseSession(guildId);
+    const savedSession = dbMocks.saveSession.mock.calls[0]?.[1];
+    expect(savedSession).toMatchObject({ startedAt: 1_000, expiresAt: 61_000, members: [[userId, { plays: 1, candies: 8, points: 7 }]] });
+
+    resetHauntedHouseStateForTests();
+    dbMocks.loadSession.mockResolvedValue(savedSession);
+    await restoreHauntedHouseSession(guildId);
+    expect(getHauntedHouseSessionId(guildId)).toBe(savedSession.sessionId);
+    expect(getHauntedHouseLeaderboard(guildId)).toEqual([
+      { userId, plays: 1, candies: 8, points: 7 },
+    ]);
+    expect(getHauntedHouseLeaderboard("other-guild")).toEqual([]);
+  });
+
+  it("edits the saved leaderboard message after restart instead of sending a duplicate", async () => {
+    const message = {
+      id: "leaderboard-message",
+      guildId,
+      channelId: "leaderboard-channel",
+      author: { bot: true },
+      content: "",
+      edit: vi.fn().mockResolvedValue(undefined),
+    };
+    const history = { find: vi.fn(() => undefined) };
+    const messagesFetch = vi.fn(async (idOrOptions: unknown) => {
+      if (idOrOptions === message.id) return message;
+      return history;
+    });
+    const send = vi.fn().mockResolvedValue(message);
+    const channel = {
+      id: "leaderboard-channel",
+      guildId,
+      messages: { fetch: messagesFetch },
+      send,
+    } as unknown as TextChannel;
+    const savedRef = { sessionId: "session-1", channelId: "leaderboard-channel", messageId: message.id };
+    dbMocks.loadLeaderboardMessage.mockResolvedValue(savedRef);
+
+    resetHauntedHouseStateForTests();
+    await publishHauntedHouseLeaderboard(guildId, "session-1", channel, "Clasament actualizat");
+
+    expect(messagesFetch).toHaveBeenCalledWith(message.id);
+    expect(message.edit).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining("Clasament actualizat") }));
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("turns the active post into the final board and never lets a late update undo it", async () => {
+    startHauntedHouse(guildId);
+    const sessionId = getHauntedHouseSessionId(guildId)!;
+    issueHauntedDoorChoice(guildId, userId, "final-board-score");
+    claimHauntedDoorChoice(guildId, userId, "final-board-score", "felinar", Date.now(), 0.05);
+
+    const message = {
+      id: "same-board-message",
+      guildId,
+      channelId: "leaderboard-channel",
+      author: { bot: true },
+      content: "",
+      edit: vi.fn().mockResolvedValue(undefined),
+    };
+    const history = { find: vi.fn(() => undefined) };
+    const send = vi.fn();
+    const channel = {
+      id: "leaderboard-channel",
+      guildId,
+      messages: { fetch: vi.fn(async (id: unknown) => id === message.id ? message : history) },
+      send,
+    } as unknown as TextChannel;
+    dbMocks.loadLeaderboardMessage.mockResolvedValue({
+      sessionId,
+      channelId: "leaderboard-channel",
+      messageId: message.id,
+    });
+
+    await updateHauntedHouseLeaderboard(guildId, sessionId, channel, true);
+    await updateHauntedHouseLeaderboard(guildId, sessionId, channel);
+
+    expect(message.edit).toHaveBeenCalledOnce();
+    expect(message.edit).toHaveBeenCalledWith(expect.objectContaining({
+      content: expect.stringContaining("Clasamentul final"),
+    }));
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("reuses the accepted message when saving its ID fails temporarily", async () => {
+    const message = {
+      id: "accepted-message",
+      guildId,
+      channelId: "leaderboard-channel",
+      author: { bot: true },
+      content: "",
+      edit: vi.fn().mockResolvedValue(undefined),
+    };
+    const history = { find: vi.fn(() => undefined) };
+    const messagesFetch = vi.fn(async (id: unknown) => id === message.id ? message : history);
+    const send = vi.fn().mockResolvedValue(message);
+    const channel = {
+      id: "leaderboard-channel",
+      guildId,
+      messages: { fetch: messagesFetch },
+      send,
+    } as unknown as TextChannel;
+    dbMocks.saveLeaderboardMessage.mockRejectedValueOnce(new Error("database temporarily unavailable"));
+
+    await expect(publishHauntedHouseLeaderboard(guildId, "session-save-retry", channel, "board")).rejects.toThrow("database temporarily unavailable");
+    await publishHauntedHouseLeaderboard(guildId, "session-save-retry", channel, "updated board");
+
+    expect(send).toHaveBeenCalledOnce();
+    expect(message.edit).toHaveBeenCalledOnce();
+  });
+
+  it("recovers a send whose message ID was not saved before restart", async () => {
+    const sessionId = "session-after-crash";
+    const recoveredMessage = {
+      id: "accepted-before-crash",
+      guildId,
+      channelId: "leaderboard-channel",
+      author: { bot: true },
+      content: `old board\n\u2063hh-session:${sessionId}\u2063`,
+      edit: vi.fn().mockResolvedValue(undefined),
+    };
+    const history = { find: vi.fn((predicate: (message: typeof recoveredMessage) => boolean) => predicate(recoveredMessage) ? recoveredMessage : undefined) };
+    const send = vi.fn();
+    const channel = {
+      id: "leaderboard-channel",
+      guildId,
+      messages: { fetch: vi.fn().mockResolvedValue(history) },
+      send,
+    } as unknown as TextChannel;
+
+    resetHauntedHouseStateForTests();
+    await publishHauntedHouseLeaderboard(guildId, sessionId, channel, "new board");
+
+    expect(recoveredMessage.edit).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining("new board") }));
+    expect(dbMocks.saveLeaderboardMessage).toHaveBeenCalledWith(guildId, {
+      sessionId,
+      channelId: "leaderboard-channel",
+      messageId: recoveredMessage.id,
+    });
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("does not post again when fetching the known message fails temporarily", async () => {
+    const send = vi.fn();
+    const channel = {
+      id: "leaderboard-channel",
+      guildId,
+      messages: { fetch: vi.fn().mockRejectedValue({ code: 503 }) },
+      send,
+    } as unknown as TextChannel;
+    dbMocks.loadLeaderboardMessage.mockResolvedValue({
+      sessionId: "session-1",
+      channelId: "leaderboard-channel",
+      messageId: "known-message",
+    });
+
+    resetHauntedHouseStateForTests();
+    await expect(publishHauntedHouseLeaderboard(guildId, "session-1", channel, "new board")).rejects.toMatchObject({ code: 503 });
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("rejects a leaderboard channel from another server without sending", async () => {
+    const send = vi.fn();
+    const channel = {
+      id: "foreign-channel",
+      guildId: "another-guild",
+      messages: { fetch: vi.fn() },
+      send,
+    } as unknown as TextChannel;
+
+    resetHauntedHouseStateForTests();
+    await expect(publishHauntedHouseLeaderboard(guildId, "session-1", channel, "board")).rejects.toThrow("altui server");
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it("can deduct random candies without allowing a negative balance", () => {
     startHauntedHouse(guildId);
     issueHauntedDoorChoice(guildId, userId, "loss-at-zero");
@@ -260,7 +472,8 @@ describe("Castelul Bântuit", () => {
       user: { id: userId },
       options: { getSubcommand: () => "start" },
       memberPermissions: { has: () => false },
-      reply: deniedReply,
+      deferReply: vi.fn().mockResolvedValue(undefined),
+      editReply: deniedReply,
     } as unknown as ChatInputCommandInteraction;
 
     await handleHauntedHouseCommand(nonAdminInteraction);
@@ -271,6 +484,7 @@ describe("Castelul Bântuit", () => {
     const startGuild = { channels: { fetch: vi.fn().mockResolvedValue(startChannel) } };
     vi.spyOn(botDb, "loadHauntedHouseConfig").mockResolvedValue({
       startChannelId: "start-channel",
+      leaderboardChannelId: "",
       chatChannelId: "",
     });
     vi.spyOn(botDb, "saveHauntedHouseAnnouncementMessage").mockResolvedValue(undefined);
@@ -281,7 +495,8 @@ describe("Castelul Bântuit", () => {
       user: { id: "admin-1" },
       options: { getSubcommand: () => subcommand },
       memberPermissions: { has: () => true },
-      reply,
+      deferReply: vi.fn().mockResolvedValue(undefined),
+      editReply: reply,
     }) as unknown as ChatInputCommandInteraction;
 
     await handleHauntedHouseCommand(adminInteraction("start"));
@@ -391,26 +606,31 @@ describe("Castelul Bântuit", () => {
       isChatInputCommand: () => true,
       isButton: () => false,
       isRepliable: () => true,
-      reply: vi.fn().mockResolvedValue(undefined),
-    }) as unknown as Interaction & { reply: ReturnType<typeof vi.fn> };
+      deferReply: vi.fn().mockResolvedValue(undefined),
+      editReply: vi.fn().mockResolvedValue(undefined),
+    }) as unknown as Interaction & {
+      deferReply: ReturnType<typeof vi.fn>;
+      editReply: ReturnType<typeof vi.fn>;
+    };
 
     try {
       vi.spyOn(botDb, "loadHauntedHouseConfig").mockResolvedValue({
         startChannelId: "start-channel",
+        leaderboardChannelId: "",
         chatChannelId: "",
       });
       vi.spyOn(botDb, "saveHauntedHouseAnnouncementMessage").mockResolvedValue(undefined);
       vi.spyOn(botDb, "loadHauntedHouseAnnouncementMessage").mockResolvedValue(null);
       const start = command("start", "hh-start");
       await emit(start);
-      expect(start.reply).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining("s-a deschis") }));
+      expect(start.editReply).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining("s-a deschis") }));
       expect(isHauntedHouseActive(guildId)).toBe(true);
 
       const play = command("joaca", "hh-play");
       await emit(play);
-      expect(play.reply).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining("Trei uși") }));
+      expect(play.editReply).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining("Trei uși") }));
 
-      const playReply = play.reply.mock.calls[0]?.[0] as {
+      const playReply = play.editReply.mock.calls[0]?.[0] as {
         components: Array<{ components: Array<{ data: { custom_id: string } }> }>;
         embeds: Array<{ data: { image?: { url?: string } } }>;
       };
@@ -450,12 +670,17 @@ describe("Castelul Bântuit", () => {
       }));
       expect(getHauntedHouseLeaderboard(guildId)).toHaveLength(1);
 
+      const leaderboard = command("clasament", "hh-leaderboard");
+      await emit(leaderboard);
+      expect(leaderboard.editReply).toHaveBeenCalledWith(expect.objectContaining({
+        content: expect.stringContaining("Clasamentul Casei Bântuite"),
+      }));
+      expect(leaderboard.deferReply).toHaveBeenCalledWith({ ephemeral: true });
+
       issueHauntedDoorChoice(guildId, "member-with-stale-button", "closed-route", Date.now());
       const stop = command("stop", "hh-stop");
       await emit(stop);
-      expect(stop.reply).toHaveBeenCalledWith(expect.objectContaining({
-        content: expect.stringContaining("s-a închis"),
-      }));
+      expect(stop.editReply).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining("s-a închis") }));
       expect(startChannel.send).toHaveBeenCalledOnce();
       expect(isHauntedHouseActive(guildId)).toBe(false);
 

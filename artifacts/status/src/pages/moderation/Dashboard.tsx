@@ -44,6 +44,7 @@ export function DashboardOverview() {
   const [savingGameState, setSavingGameState] = useState(false);
   const [hauntedDialogOpen, setHauntedDialogOpen] = useState(false);
   const [hauntedStartChannelId, setHauntedStartChannelId] = useState("");
+  const [hauntedLeaderboardChannelId, setHauntedLeaderboardChannelId] = useState("");
   const [hauntedChatChannelId, setHauntedChatChannelId] = useState("");
   const [savingHaunted, setSavingHaunted] = useState(false);
   const [savingHauntedConfig, setSavingHauntedConfig] = useState(false);
@@ -124,7 +125,7 @@ export function DashboardOverview() {
   const saveHauntedConfig = async () => {
     setSavingHauntedConfig(true);
     try {
-      await hauntedHouse.saveConfig(hauntedStartChannelId, hauntedChatChannelId);
+      await hauntedHouse.saveConfig(hauntedStartChannelId, hauntedLeaderboardChannelId, hauntedChatChannelId);
       setHauntedDialogOpen(false);
       toast({ title: "Setările Casei Bântuite au fost salvate." });
     } catch (error: any) {
@@ -136,14 +137,14 @@ export function DashboardOverview() {
 
   const toggleHauntedHouse = async () => {
     const isActive = hauntedHouse.data?.active;
-    if (isActive && !window.confirm("Oprești Castelul Bântuit? Evenimentul se închide fără să publice un clasament.")) return;
+    if (isActive && !window.confirm("Oprești Castelul Bântuit? Același mesaj va deveni clasamentul final.")) return;
     setSavingHaunted(true);
     try {
       if (isActive) await hauntedHouse.stop();
       else await hauntedHouse.start();
       toast({
         title: isActive ? "Castelul Bântuit s-a închis" : "Castelul Bântuit a început",
-        description: isActive ? "Evenimentul s-a închis fără publicarea unui clasament." : "Anunțul a fost trimis în canalul de start.",
+        description: isActive ? "Mesajul existent a fost actualizat cu rezultatele finale." : "Anunțul de start și clasamentul public au fost publicate.",
       });
     } catch (error: any) {
       toast({ variant: "destructive", title: "Starea evenimentului nu a putut fi schimbată", description: error?.message ?? "Încearcă din nou." });
@@ -354,6 +355,10 @@ export function DashboardOverview() {
                   ? `#${metadata.channels.find((channel) => channel.id === hauntedHouse.data?.startChannelId)?.name}`
                   : "neconfigurat"}
                 <span className="mx-2 text-border">·</span>
+                Clasament: {metadata?.channels.find((channel) => channel.id === hauntedHouse.data?.leaderboardChannelId)?.name
+                  ? `#${metadata.channels.find((channel) => channel.id === hauntedHouse.data?.leaderboardChannelId)?.name}`
+                  : "neconfigurat"}
+                <span className="mx-2 text-border">·</span>
                 Șoapte AI: {metadata?.channels.find((channel) => channel.id === hauntedHouse.data?.chatChannelId)?.name
                   ? `#${metadata.channels.find((channel) => channel.id === hauntedHouse.data?.chatChannelId)?.name}`
                   : "neconfigurat"}
@@ -368,6 +373,7 @@ export function DashboardOverview() {
             className="gap-2"
             onClick={() => {
               setHauntedStartChannelId(hauntedHouse.data?.startChannelId ?? "");
+              setHauntedLeaderboardChannelId(hauntedHouse.data?.leaderboardChannelId ?? "");
               setHauntedChatChannelId(hauntedHouse.data?.chatChannelId ?? "");
               setHauntedDialogOpen(true);
             }}
@@ -384,7 +390,7 @@ export function DashboardOverview() {
             onClick={() => void toggleHauntedHouse()}
             disabled={
               hauntedHouse.loading || !hauntedHouse.data || Boolean(hauntedHouse.error) || savingHaunted ||
-              (!hauntedHouse.data.active && (!hauntedHouse.data.startChannelId || !hauntedHouse.data.chatChannelId))
+              (!hauntedHouse.data.active && (!hauntedHouse.data.startChannelId || !hauntedHouse.data.leaderboardChannelId || !hauntedHouse.data.chatChannelId))
             }
             data-testid="button-haunted-house-toggle"
           >
@@ -400,11 +406,12 @@ export function DashboardOverview() {
         <DialogContent className="max-h-[90vh] overflow-y-auto border-border bg-background text-foreground sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="font-display text-2xl">Configurează Castelul Bântuit</DialogTitle>
-            <DialogDescription>Alege canalul de anunț și canalul pentru șoaptele AI pentru {activeGuild?.name ?? "serverul selectat"}.</DialogDescription>
+            <DialogDescription>Alege canalele de anunț, clasament și șoaptele AI pentru {activeGuild?.name ?? "serverul selectat"}.</DialogDescription>
           </DialogHeader>
           <div className="space-y-5 py-2">
             {([
               { key: "start" as const, label: "Canal de start", value: hauntedStartChannelId, onChange: setHauntedStartChannelId, hint: "Aici apare anunțul când pornești evenimentul." },
+              { key: "leaderboard" as const, label: "Canalul clasamentului", value: hauntedLeaderboardChannelId, onChange: setHauntedLeaderboardChannelId, hint: "Un singur mesaj aici se actualizează după fiecare rundă și la închiderea evenimentului." },
               { key: "chat" as const, label: "Chat pentru șoaptele horror AI", value: hauntedChatChannelId, onChange: setHauntedChatChannelId, hint: "Poveștile AI apar aici la fiecare două ore, nu în canalul de anunțuri." },
             ]).map((field) => (
               <label key={field.key} className="block space-y-2 text-sm font-medium">
@@ -432,7 +439,7 @@ export function DashboardOverview() {
             <Button
               type="button"
               onClick={() => void saveHauntedConfig()}
-              disabled={savingHauntedConfig || !hauntedStartChannelId || !hauntedChatChannelId}
+              disabled={savingHauntedConfig || !hauntedStartChannelId || !hauntedLeaderboardChannelId || !hauntedChatChannelId}
               data-testid="button-haunted-config-save"
             >
               {savingHauntedConfig ? "Se salvează..." : "Salvează canalele"}

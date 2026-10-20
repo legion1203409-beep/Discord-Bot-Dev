@@ -1872,47 +1872,104 @@ export async function saveLeaderboardMessageId(
 
 export interface HauntedHouseConfig {
   startChannelId: string;
+  leaderboardChannelId: string;
   chatChannelId: string;
 }
 
 const HAUNTED_HOUSE_CONFIG_KEY = "haunted_house_config";
+const HAUNTED_HOUSE_SESSION_KEY = "haunted_house_session";
+const HAUNTED_HOUSE_LEADERBOARD_MESSAGE_KEY = "haunted_house_leaderboard_message";
 
-export async function loadHauntedHouseConfig(guildId: string): Promise<HauntedHouseConfig> {
-  await ensureBotStateTable();
-  const result = await pool.query<{ value: string }>(
-    "SELECT value FROM bot_state WHERE key = $1",
-    [guildKey(guildId, HAUNTED_HOUSE_CONFIG_KEY)],
-  );
-  try {
-    const parsed = JSON.parse(result.rows[0]?.value ?? "{}") as Partial<HauntedHouseConfig>;
-    return {
-      startChannelId: typeof parsed.startChannelId === "string" ? parsed.startChannelId : "",
-      chatChannelId: typeof parsed.chatChannelId === "string" ? parsed.chatChannelId : "",
-    };
-  } catch {
-    return { startChannelId: "", chatChannelId: "" };
-  }
+export interface HauntedHousePersistedMemberScore {
+  plays: number;
+  candies: number;
+  points: number;
 }
 
-export interface HauntedHouseScheduleState {
-  nextStartAt: number;
-  nextStoryAt: number;
+export interface HauntedHousePersistedSession {
+  sessionId: string;
+  startedAt: number;
+  expiresAt: number;
+  members: Array<[string, HauntedHousePersistedMemberScore]>;
+  lastPlayedAt: Array<[string, number]>;
 }
 
-export interface HauntedHouseLeaderboardMessage {
+export interface HauntedHouseLeaderboardMessageRef {
   sessionId: string;
   channelId: string;
   messageId: string;
 }
 
-export async function loadHauntedHouseLeaderboardMessage(guildId: string): Promise<HauntedHouseLeaderboardMessage | null> {
+function hauntedHouseStateKey(guildId: string, key: string): string {
+  return guildKey(guildId, key);
+}
+
+export async function loadHauntedHouseSession(guildId: string): Promise<HauntedHousePersistedSession | null> {
   await ensureBotStateTable();
   const result = await pool.query<{ value: string }>(
     "SELECT value FROM bot_state WHERE key = $1",
-    [guildKey(guildId, "haunted_house_leaderboard_message")],
+    [hauntedHouseStateKey(guildId, HAUNTED_HOUSE_SESSION_KEY)],
   );
   try {
-    const parsed = JSON.parse(result.rows[0]?.value ?? "null") as Partial<HauntedHouseLeaderboardMessage> | null;
+    const parsed = JSON.parse(result.rows[0]?.value ?? "null") as Partial<HauntedHousePersistedSession> | null;
+    if (
+      !parsed ||
+      typeof parsed.sessionId !== "string" ||
+      !Number.isFinite(parsed.startedAt) ||
+      !Number.isFinite(parsed.expiresAt) ||
+      !Array.isArray(parsed.members) ||
+      !Array.isArray(parsed.lastPlayedAt)
+    ) return null;
+
+    const members = parsed.members.filter((entry): entry is [string, HauntedHousePersistedMemberScore] =>
+      Array.isArray(entry) &&
+      typeof entry[0] === "string" &&
+      Boolean(entry[1]) &&
+      Number.isInteger(entry[1].plays) &&
+      Number.isInteger(entry[1].candies) &&
+      Number.isInteger(entry[1].points),
+    );
+    const lastPlayedAt = parsed.lastPlayedAt.filter((entry): entry is [string, number] =>
+      Array.isArray(entry) && typeof entry[0] === "string" && Number.isFinite(entry[1]),
+    );
+    return {
+      sessionId: parsed.sessionId,
+      startedAt: Number(parsed.startedAt),
+      expiresAt: Number(parsed.expiresAt),
+      members,
+      lastPlayedAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function saveHauntedHouseSession(guildId: string, session: HauntedHousePersistedSession): Promise<void> {
+  await ensureBotStateTable();
+  await pool.query(
+    `INSERT INTO bot_state (key, value, updated_at) VALUES ($1, $2, now())
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+    [hauntedHouseStateKey(guildId, HAUNTED_HOUSE_SESSION_KEY), JSON.stringify(session)],
+  );
+}
+
+export async function clearHauntedHouseSession(guildId: string): Promise<void> {
+  await ensureBotStateTable();
+  await pool.query("DELETE FROM bot_state WHERE key = $1", [
+    hauntedHouseStateKey(guildId, HAUNTED_HOUSE_SESSION_KEY),
+  ]);
+}
+
+export async function loadHauntedHouseLeaderboardMessage(
+  guildId: string,
+): Promise<HauntedHouseLeaderboardMessageRef | null> {
+  await ensureBotStateTable();
+  const result = await pool.query<{ value: string }>(
+    "SELECT value FROM bot_state WHERE key = $1",
+    [hauntedHouseStateKey(guildId, HAUNTED_HOUSE_LEADERBOARD_MESSAGE_KEY)],
+  );
+  try {
+    const parsed = JSON.parse(result.rows[0]?.value ?? "null") as Partial<HauntedHouseLeaderboardMessageRef> | null;
     if (
       !parsed ||
       typeof parsed.sessionId !== "string" ||
@@ -1927,14 +1984,37 @@ export async function loadHauntedHouseLeaderboardMessage(guildId: string): Promi
 
 export async function saveHauntedHouseLeaderboardMessage(
   guildId: string,
-  state: HauntedHouseLeaderboardMessage,
+  ref: HauntedHouseLeaderboardMessageRef,
 ): Promise<void> {
   await ensureBotStateTable();
   await pool.query(
     `INSERT INTO bot_state (key, value, updated_at) VALUES ($1, $2, now())
      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
-    [guildKey(guildId, "haunted_house_leaderboard_message"), JSON.stringify(state)],
+    [hauntedHouseStateKey(guildId, HAUNTED_HOUSE_LEADERBOARD_MESSAGE_KEY), JSON.stringify(ref)],
   );
+}
+
+export async function loadHauntedHouseConfig(guildId: string): Promise<HauntedHouseConfig> {
+  await ensureBotStateTable();
+  const result = await pool.query<{ value: string }>(
+    "SELECT value FROM bot_state WHERE key = $1",
+    [guildKey(guildId, HAUNTED_HOUSE_CONFIG_KEY)],
+  );
+  try {
+    const parsed = JSON.parse(result.rows[0]?.value ?? "{}") as Partial<HauntedHouseConfig>;
+    return {
+      startChannelId: typeof parsed.startChannelId === "string" ? parsed.startChannelId : "",
+      leaderboardChannelId: typeof parsed.leaderboardChannelId === "string" ? parsed.leaderboardChannelId : "",
+      chatChannelId: typeof parsed.chatChannelId === "string" ? parsed.chatChannelId : "",
+    };
+  } catch {
+    return { startChannelId: "", leaderboardChannelId: "", chatChannelId: "" };
+  }
+}
+
+export interface HauntedHouseScheduleState {
+  nextStartAt: number;
+  nextStoryAt: number;
 }
 
 export interface HauntedHouseAnnouncementMessage {

@@ -13,15 +13,20 @@ import {
 } from "./db";
 import {
   beginHauntedHouseStop,
+  cancelHauntedHouseStop,
+  clearPersistedHauntedHouseSession,
   completeHauntedHouseStop,
   deleteHauntedHouseOpeningAnnouncement,
   generateScheduledGhostStory,
   getHauntedHouseExpiry,
   getHauntedHouseSessionId,
   isHauntedHouseActive,
+  persistHauntedHouseSession,
   publishHauntedHouseOpeningAnnouncement,
+  restoreHauntedHouseSession,
   startHauntedHouse,
   stopHauntedHouse,
+  updateHauntedHouseLeaderboard,
 } from "./haunted-house";
 
 const TICK_MS = 30_000;
@@ -38,13 +43,23 @@ function nextBreak(now: number): number {
   return now + MIN_BREAK_MS + Math.floor(Math.random() * (MAX_BREAK_MS - MIN_BREAK_MS + 1));
 }
 
-async function getTextChannel(client: Client, guildId: string, channelId: string): Promise<TextChannel | null> {
+async function getTextChannel(
+  client: Client,
+  guildId: string,
+  channelId: string,
+  requireHistory = false,
+): Promise<TextChannel | null> {
   const guild = client.guilds.cache.get(guildId);
   if (!guild) return null;
   const channel = await guild.channels.fetch(channelId).catch(() => null);
   if (!(channel instanceof TextChannel) || channel.guildId !== guildId) return null;
   const member = guild.members.me ?? await guild.members.fetchMe().catch(() => null);
-  if (!member || !channel.permissionsFor(member)?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages])) return null;
+  const neededPermissions = [
+    PermissionFlagsBits.ViewChannel,
+    PermissionFlagsBits.SendMessages,
+    ...(requireHistory ? [PermissionFlagsBits.ReadMessageHistory] : []),
+  ];
+  if (!member || !channel.permissionsFor(member)?.has(neededPermissions)) return null;
   return channel;
 }
 
@@ -52,6 +67,7 @@ async function tick(client: Client, guildId: string): Promise<void> {
   if (busy.has(guildId)) return;
   busy.add(guildId);
   try {
+    await restoreHauntedHouseSession(guildId);
     const config = await loadHauntedHouseConfig(guildId);
     let schedule = schedules.get(guildId) ?? await loadHauntedHouseSchedule(guildId);
     const now = Date.now();
@@ -70,24 +86,40 @@ async function tick(client: Client, guildId: string): Promise<void> {
     if (getHauntedHouseExpiry(guildId) !== null && (getHauntedHouseExpiry(guildId) ?? Infinity) <= now) {
       const closing = beginHauntedHouseStop(guildId);
       if (closing) {
-        if (completeHauntedHouseStop(guildId, closing.sessionId)) {
-          await deleteHauntedHouseOpeningAnnouncement(client, guildId, closing.sessionId).catch((error) => {
-            logger.warn({ err: error, guildId }, "Failed to delete Haunted House opening announcement");
-          });
+        const channel = config.leaderboardChannelId
+          ? await getTextChannel(client, guildId, config.leaderboardChannelId, true)
+          : null;
+        if (!channel) {
+          logger.warn({ guildId }, "Haunted House ended but final leaderboard channel is unavailable; scores retained");
+          cancelHauntedHouseStop(guildId, closing.sessionId);
+          return;
         }
-        schedule.nextStartAt = nextBreak(now);
-        schedules.set(guildId, schedule);
-        wasOpen.set(guildId, false);
-        await saveHauntedHouseSchedule(guildId, schedule);
-        logger.info({ guildId, nextStartAt: schedule.nextStartAt }, "Haunted House closed; next opening scheduled");
+        try {
+          await updateHauntedHouseLeaderboard(guildId, closing.sessionId, channel, true);
+          await clearPersistedHauntedHouseSession(guildId);
+          if (completeHauntedHouseStop(guildId, closing.sessionId)) {
+            await deleteHauntedHouseOpeningAnnouncement(client, guildId, closing.sessionId).catch((error) => {
+              logger.warn({ err: error, guildId }, "Failed to delete Haunted House opening announcement");
+            });
+          }
+          schedule.nextStartAt = nextBreak(now);
+          schedules.set(guildId, schedule);
+          wasOpen.set(guildId, false);
+          await saveHauntedHouseSchedule(guildId, schedule);
+          logger.info({ guildId, nextStartAt: schedule.nextStartAt }, "Haunted House closed; next opening scheduled");
+        } catch (error) {
+          cancelHauntedHouseStop(guildId, closing.sessionId);
+          logger.warn({ err: error, guildId }, "Haunted House final leaderboard failed; event remains open for retry");
+        }
       }
     } else if (!isHauntedHouseActive(guildId) && schedule.nextStartAt <= now) {
-      const [startChannel, chatChannel] = await Promise.all([
+      const [startChannel, leaderboardChannel, chatChannel] = await Promise.all([
         config.startChannelId ? getTextChannel(client, guildId, config.startChannelId) : null,
+        config.leaderboardChannelId ? getTextChannel(client, guildId, config.leaderboardChannelId, true) : null,
         config.chatChannelId ? getTextChannel(client, guildId, config.chatChannelId) : null,
       ]);
-      if (!startChannel || !chatChannel) {
-        logger.warn({ guildId }, "Haunted House auto-start waiting for valid start and chat channels");
+      if (!startChannel || !leaderboardChannel || !chatChannel) {
+        logger.warn({ guildId }, "Haunted House auto-start waiting for valid start, leaderboard, and chat channels");
         schedule.nextStartAt = now + 5 * 60_000;
         await saveHauntedHouseSchedule(guildId, schedule);
       } else if (startHauntedHouse(guildId, now, EVENT_MS)) {
@@ -95,16 +127,36 @@ async function tick(client: Client, guildId: string): Promise<void> {
         await saveHauntedHouseSchedule(guildId, schedule);
         wasOpen.set(guildId, true);
         try {
+          await persistHauntedHouseSession(guildId);
+        } catch (error) {
+          stopHauntedHouse(guildId);
+          await clearPersistedHauntedHouseSession(guildId);
+          wasOpen.set(guildId, false);
+          schedule.nextStartAt = now + 5 * 60_000;
+          await saveHauntedHouseSchedule(guildId, schedule);
+          logger.error({ err: error, guildId }, "Haunted House session could not be persisted; opening cancelled");
+          return;
+        }
+        try {
           const sessionId = getHauntedHouseSessionId(guildId);
           if (!sessionId) throw new Error("Haunted House session disappeared before announcement");
           await publishHauntedHouseOpeningAnnouncement(startChannel, guildId, sessionId);
         } catch (error) {
           stopHauntedHouse(guildId);
+          await clearPersistedHauntedHouseSession(guildId).catch(() => undefined);
           wasOpen.set(guildId, false);
           schedule.nextStartAt = now + 5 * 60_000;
           await saveHauntedHouseSchedule(guildId, schedule);
           logger.error({ err: error, guildId }, "Haunted House opening announcement failed; retry scheduled");
           return;
+        }
+        const sessionId = getHauntedHouseSessionId(guildId);
+        if (sessionId) {
+          try {
+            await updateHauntedHouseLeaderboard(guildId, sessionId, leaderboardChannel);
+          } catch (error) {
+            logger.warn({ err: error, guildId }, "Haunted House opening leaderboard could not be published");
+          }
         }
         logger.info({ guildId, expiresAt: now + EVENT_MS }, "Haunted House auto-started");
       }

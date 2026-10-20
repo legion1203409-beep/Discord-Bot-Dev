@@ -22,10 +22,14 @@ import {
 import { ACTIVITY_EVENT_XP, activityLevelForXp } from "./activity-ranks-core";
 import {
   clearHauntedHouseAnnouncementMessage,
+  clearHauntedHouseSession,
   loadHauntedHouseAnnouncementMessage,
   loadHauntedHouseConfig,
+  loadHauntedHouseSession,
   saveHauntedHouseAnnouncementMessage,
+  saveHauntedHouseSession,
 } from "./db";
+import { publishHauntedHouseLeaderboard, resetHauntedHouseLeaderboardForTests } from "./haunted-house-leaderboard";
 import { logger } from "../lib/logger";
 const COMMAND_NAME = "casabantuita";
 const BUTTON_PREFIX = "hh";
@@ -77,6 +81,8 @@ interface HauntedGuildState {
 
 const activeEvents = new Map<string, HauntedGuildState>();
 const closingEvents = new Set<string>();
+const restorePromises = new Map<string, Promise<void>>();
+const sessionPersistenceQueues = new Map<string, Promise<void>>();
 const ghostCallTimestamps: number[] = [];
 const ghostLastCallByUser = new Map<string, number>();
 let openAiClient: OpenAI | null = null;
@@ -86,7 +92,8 @@ export const hauntedHouseCommand = new SlashCommandBuilder()
   .setDescription("🏰 Explorează Castelul Bântuit și află ce ascunde fiecare ușă.")
   .addSubcommand((sub) => sub.setName("start").setDescription("[Admin] Pornește un nou eveniment la Castelul Bântuit."))
   .addSubcommand((sub) => sub.setName("stop").setDescription("[Admin] Oprește și șterge starea temporară a evenimentului."))
-  .addSubcommand((sub) => sub.setName("joaca").setDescription("Alege una dintre cele trei uși ale Castelului Bântuit."));
+  .addSubcommand((sub) => sub.setName("joaca").setDescription("Alege una dintre cele trei uși ale Castelului Bântuit."))
+  .addSubcommand((sub) => sub.setName("clasament").setDescription("Vezi clasamentul privat al evenimentului curent."));
 
 export function startHauntedHouse(guildId: string, now = Date.now(), durationMs = HAUNTED_HOUSE_DURATION_MS): boolean {
   if (activeEvents.has(guildId)) return false;
@@ -107,6 +114,26 @@ export function stopHauntedHouse(guildId: string): void {
   closingEvents.delete(guildId);
 }
 
+export async function restoreHauntedHouseSession(guildId: string): Promise<void> {
+  if (activeEvents.has(guildId)) return;
+  const existing = restorePromises.get(guildId);
+  if (existing) return existing;
+  const restore = loadHauntedHouseSession(guildId).then((persisted) => {
+    if (!persisted || activeEvents.has(guildId)) return;
+    activeEvents.set(guildId, {
+      sessionId: persisted.sessionId,
+      startedAt: persisted.startedAt,
+      expiresAt: persisted.expiresAt,
+      members: new Map(persisted.members),
+      pending: new Map(),
+      lastPlayedAt: new Map(persisted.lastPlayedAt),
+    });
+  }).finally(() => {
+    if (restorePromises.get(guildId) === restore) restorePromises.delete(guildId);
+  });
+  restorePromises.set(guildId, restore);
+  return restore;
+}
 export function isHauntedHouseActive(guildId: string): boolean {
   const state = activeEvents.get(guildId);
   return Boolean(state && state.expiresAt > Date.now());
@@ -124,11 +151,18 @@ export function getHauntedHouseStatus(guildId: string): { active: boolean; start
 
 export function beginHauntedHouseStop(guildId: string): {
   sessionId: string;
+  leaderboard: ReturnType<typeof getHauntedHouseLeaderboard>;
 } | null {
   const state = activeEvents.get(guildId);
   if (!state || closingEvents.has(guildId)) return null;
   closingEvents.add(guildId);
-  return { sessionId: state.sessionId };
+  return { sessionId: state.sessionId, leaderboard: getHauntedHouseLeaderboard(guildId) };
+}
+
+export function cancelHauntedHouseStop(guildId: string, sessionId: string): boolean {
+  if (!closingEvents.has(guildId) || activeEvents.get(guildId)?.sessionId !== sessionId) return false;
+  closingEvents.delete(guildId);
+  return true;
 }
 
 export function completeHauntedHouseStop(guildId: string, sessionId: string): boolean {
@@ -440,18 +474,74 @@ function parseDoorButton(customId: string): { guildId: string; userId: string; n
   return { guildId, userId, nonce, door: door as HauntedDoor };
 }
 
+function formatHauntedHouseLeaderboard(
+  leaderboard: ReturnType<typeof getHauntedHouseLeaderboard>,
+  final = false,
+): string {
+  const title = final ? "🏆 Clasamentul final al Casei Bântuite" : "🎃 Clasamentul Casei Bântuite";
+  if (!leaderboard.length) return `${title}\n\nEvenimentul s-a încheiat fără participanți.`;
+  return [
+    title,
+    "",
+    ...leaderboard.map((entry, index) =>
+      `**${index + 1}.** <@${entry.userId}> — **${entry.points}** puncte · 🍬 ${entry.candies} bomboane · ${entry.plays}/${HAUNTED_HOUSE_MAX_PLAYS} încercări`,
+    ),
+  ].join("\n");
+}
+
+async function publishGuildLeaderboard(
+  guild: NonNullable<ChatInputCommandInteraction["guild"]>,
+  guildId: string,
+  sessionId: string,
+  final = false,
+): Promise<boolean> {
+  const config = await loadHauntedHouseConfig(guildId);
+  if (!config.leaderboardChannelId) return false;
+  const channel = await guild.channels.fetch(config.leaderboardChannelId);
+  if (!(channel instanceof TextChannel) || channel.guildId !== guildId) {
+    throw new Error("Canalul clasamentului nu mai este disponibil.");
+  }
+  const botMember = guild.members.me ?? await guild.members.fetchMe();
+  if (!channel.permissionsFor(botMember)?.has([
+    PermissionFlagsBits.ViewChannel,
+    PermissionFlagsBits.SendMessages,
+    PermissionFlagsBits.ReadMessageHistory,
+  ])) {
+    throw new Error("Botul trebuie să poată vedea canalul, trimite mesaje și citi istoricul pentru a actualiza clasamentul.");
+  }
+  await updateHauntedHouseLeaderboard(guildId, sessionId, channel, final);
+  return true;
+}
 export async function handleHauntedHouseCommand(interaction: ChatInputCommandInteraction): Promise<void> {
+  await interaction.deferReply({ ephemeral: true });
   const subcommand = interaction.options.getSubcommand();
   const guildId = interaction.guildId!;
+  try {
+    await restoreHauntedHouseSession(guildId);
+  } catch (error) {
+    logger.error({ err: error, guildId }, "Haunted House session could not be restored");
+    await interaction.editReply({ content: "❌ Starea Castelului Bântuit nu a putut fi încărcată. Încearcă din nou." });
+    return;
+  }
 
   if (subcommand === "start" || subcommand === "stop") {
     if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
-      await interaction.reply({ content: "❌ Doar administratorii pot porni sau opri Castelul Bântuit.", ephemeral: true });
+      await interaction.editReply({ content: "❌ Doar administratorii pot porni sau opri Castelul Bântuit." });
       return;
     }
     if (subcommand === "start") {
       if (!startHauntedHouse(guildId)) {
-        await interaction.reply({ content: "🎃 Castelul Bântuit este deja deschis pe acest server.", ephemeral: true });
+        await interaction.editReply({ content: "🎃 Castelul Bântuit este deja deschis pe acest server." });
+        return;
+      }
+      const sessionId = getHauntedHouseSessionId(guildId)!;
+      try {
+        await persistHauntedHouseSession(guildId);
+      } catch (error) {
+        logger.error({ err: error, guildId }, "Haunted House session could not be persisted");
+        stopHauntedHouse(guildId);
+        await clearPersistedHauntedHouseSession(guildId).catch(() => undefined);
+        await interaction.editReply({ content: "❌ Castelul Bântuit nu a putut fi salvat. Încearcă din nou." });
         return;
       }
       try {
@@ -462,40 +552,89 @@ export async function handleHauntedHouseCommand(interaction: ChatInputCommandInt
         if (!(channel instanceof TextChannel) || channel.guildId !== guildId) {
           throw new Error("Canalul de anunțuri nu este configurat sau nu mai este disponibil.");
         }
-        const sessionId = getHauntedHouseSessionId(guildId);
-        if (!sessionId) throw new Error("Sesiunea Castelului Bântuit nu mai este activă.");
         await publishHauntedHouseOpeningAnnouncement(channel, guildId, sessionId);
-        await interaction.reply({ content: "🏰 Castelul Bântuit s-a deschis. Anunțul și butonul de intrare au fost publicate.", ephemeral: true });
       } catch (error) {
         stopHauntedHouse(guildId);
-        await interaction.reply({
+        await clearPersistedHauntedHouseSession(guildId).catch(() => undefined);
+        await interaction.editReply({
           content: `❌ Castelul nu a putut fi deschis: ${error instanceof Error ? error.message : "eroare Discord."}`,
-          ephemeral: true,
         });
+        return;
       }
+      let boardNote = "";
+      if (interaction.guild) {
+        try {
+          await publishGuildLeaderboard(interaction.guild, guildId, sessionId);
+        } catch (error) {
+          logger.warn({ err: error, guildId }, "Haunted House opening leaderboard could not be published");
+          boardNote = "\nClasamentul public va fi reîncercat la prima rundă.";
+        }
+      }
+      await interaction.editReply({
+        content: `🏰 Castelul Bântuit s-a deschis. Anunțul și butonul de intrare au fost publicate.${boardNote}`,
+      });
     } else {
       const closing = beginHauntedHouseStop(guildId);
+      const finalBoard = closing ? formatHauntedHouseLeaderboard(closing.leaderboard, true) : "";
+      let published = false;
+      try {
+        const config = await loadHauntedHouseConfig(guildId);
+        const guild = interaction.guild;
+        if (closing && config.leaderboardChannelId && guild) {
+          await publishGuildLeaderboard(guild, guildId, closing.sessionId, true);
+          published = true;
+        }
+        if (closing) await clearPersistedHauntedHouseSession(guildId);
+      } catch (error) {
+        if (closing) cancelHauntedHouseStop(guildId, closing.sessionId);
+        await interaction.editReply({
+          content: `❌ Clasamentul final nu a putut fi publicat; evenimentul rămâne activ. ${error instanceof Error ? error.message : ""}`,
+        });
+        return;
+      }
       if (closing && completeHauntedHouseStop(guildId, closing.sessionId)) {
         await deleteHauntedHouseOpeningAnnouncement(interaction.client, guildId, closing.sessionId).catch((error) => {
           logger.warn({ err: error, guildId }, "Failed to delete Haunted House opening announcement");
         });
       }
-      await interaction.reply({
+      await interaction.editReply({
         content: closing
-          ? "🕯️ Castelul Bântuit s-a închis."
+          ? `${published ? "🕯️ Castelul Bântuit s-a închis, iar clasamentul final a fost publicat." : `🕯️ Castelul Bântuit s-a închis.\n\n${finalBoard}`}`
           : "🕯️ Castelul Bântuit era deja închis.",
-        ephemeral: true,
       });
     }
     return;
   }
 
   if (subcommand === "joaca") {
-    await sendDoorChoices(interaction, guildId);
+    const nonce = randomUUID();
+    const issued = issueHauntedDoorChoice(guildId, interaction.user.id, nonce);
+    if (!issued.ok) {
+      await interaction.editReply({ content: formatIssueError(issued.reason) });
+      return;
+    }
+    await interaction.editReply({
+      content: "🚪 Trei uși se deschid spre întuneric. Alege una; fantoma îți va lăsa o narațiune și un indiciu.",
+      embeds: (Object.keys(HAUNTED_DOORS) as HauntedDoor[]).map(buildDoorEmbed),
+      components: [buildDoorRow(guildId, interaction.user.id, issued.nonce)],
+    });
     return;
   }
 
-  await interaction.reply({ content: "Comanda nu mai este disponibilă.", ephemeral: true });
+  if (!isHauntedHouseActive(guildId)) {
+    await interaction.editReply({ content: "👻 Castelul Bântuit nu este deschis acum." });
+    return;
+  }
+  const leaderboard = getHauntedHouseLeaderboard(guildId);
+  const content = leaderboard.length
+    ? [
+        "🎃 **Clasamentul Casei Bântuite**",
+        ...leaderboard.map((entry, index) =>
+          `**${index + 1}.** <@${entry.userId}> — **${entry.points}** puncte · 🍬 ${entry.candies} bomboane · ${entry.plays}/${HAUNTED_HOUSE_MAX_PLAYS} încercări`,
+        ),
+      ].join("\n")
+    : "🎃 Clasamentul este încă gol. Fii primul care explorează!";
+  await interaction.editReply({ content, allowedMentions: { parse: [] } });
 }
 
 async function sendDoorChoices(
@@ -535,9 +674,16 @@ export async function handleHauntedHouseDoorButton(interaction: ButtonInteractio
     return true;
   }
 
-  const sessionId = getHauntedHouseSessionId(parsed.guildId);
   // Acknowledge before any AI/network work; the game state itself is committed synchronously below.
   await interaction.deferUpdate();
+  try {
+    await restoreHauntedHouseSession(parsed.guildId);
+  } catch (error) {
+    logger.error({ err: error, guildId: parsed.guildId }, "Haunted House session could not be restored");
+    await interaction.editReply({ content: "❌ Starea Casei Bântuite nu a putut fi încărcată. Încearcă din nou.", components: [] });
+    return true;
+  }
+  const sessionId = getHauntedHouseSessionId(parsed.guildId);
   const result = claimHauntedDoorChoice(
     parsed.guildId,
     parsed.userId,
@@ -547,6 +693,17 @@ export async function handleHauntedHouseDoorButton(interaction: ButtonInteractio
   if (!result.ok) {
     await interaction.editReply({ content: formatIssueError(result.reason), components: [] });
     return true;
+  }
+
+  try {
+    await persistHauntedHouseSession(parsed.guildId);
+  } catch (error) {
+    logger.error({ err: error, guildId: parsed.guildId }, "Haunted House score could not be persisted");
+  }
+  if (interaction.guild && sessionId) {
+    void publishGuildLeaderboard(interaction.guild, parsed.guildId, sessionId).catch((error) => {
+      logger.warn({ err: error, guildId: parsed.guildId }, "Haunted House live leaderboard update failed");
+    });
   }
 
   let activityXpText = "Rangul de activitate este dezactivat pe acest server.";
@@ -619,6 +776,55 @@ export function dispatchHauntedHouseInteraction(
 export function resetHauntedHouseStateForTests(): void {
   activeEvents.clear();
   closingEvents.clear();
+  restorePromises.clear();
+  sessionPersistenceQueues.clear();
   ghostCallTimestamps.length = 0;
   ghostLastCallByUser.clear();
+  resetHauntedHouseLeaderboardForTests();
+}
+
+function enqueueHauntedHouseSessionWrite(guildId: string, write: () => Promise<void>): Promise<void> {
+  const previous = sessionPersistenceQueues.get(guildId) ?? Promise.resolve();
+  const current = previous.catch(() => undefined).then(write);
+  sessionPersistenceQueues.set(guildId, current);
+  void current.finally(() => {
+    if (sessionPersistenceQueues.get(guildId) === current) sessionPersistenceQueues.delete(guildId);
+  }).catch(() => undefined);
+  return current;
+}
+
+export function clearPersistedHauntedHouseSession(guildId: string): Promise<void> {
+  return enqueueHauntedHouseSessionWrite(guildId, () => clearHauntedHouseSession(guildId));
+}
+
+export async function updateHauntedHouseLeaderboard(
+  guildId: string,
+  sessionId: string,
+  channel: TextChannel,
+  final = false,
+): Promise<void> {
+  await publishHauntedHouseLeaderboard(
+    guildId,
+    sessionId,
+    channel,
+    () => formatHauntedHouseLeaderboard(getHauntedHouseLeaderboard(guildId), final),
+    final,
+  );
+}
+
+export function persistHauntedHouseSession(guildId: string): Promise<void> {
+  return enqueueHauntedHouseSessionWrite(guildId, async () => {
+    const state = activeEvents.get(guildId);
+    if (!state) {
+      await clearHauntedHouseSession(guildId);
+      return;
+    }
+    await saveHauntedHouseSession(guildId, {
+      sessionId: state.sessionId,
+      startedAt: state.startedAt,
+      expiresAt: state.expiresAt,
+      members: [...state.members.entries()],
+      lastPlayedAt: [...state.lastPlayedAt.entries()],
+    });
+  });
 }
