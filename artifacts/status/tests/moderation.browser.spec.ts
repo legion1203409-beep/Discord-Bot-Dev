@@ -716,21 +716,30 @@ test.describe("authenticated moderation console", () => {
     await expect(unavailableWarning).toHaveCount(0);
   });
 
-  test("configuration cards navigate separately and toggles persist without navigation", async ({ page }) => {
+  test("configuration overview shows status and sends module changes to the dedicated editor", async ({ page }) => {
     await page.goto("/moderare/config");
     await chooseFirstGuild(page);
-    const autoModSwitch = page.getByRole("switch", { name: "Activează AutoMod" });
-    await expect(autoModSwitch).not.toBeChecked();
-    const toggleResponse = page.waitForResponse((response) => response.url().includes("/protection-toggle") && response.request().method() === "PUT");
-    await autoModSwitch.click();
-    await expect((await toggleResponse).ok()).toBeTruthy();
-    await expect(page).toHaveURL("/moderare/config");
-    await expect(autoModSwitch).toBeChecked();
-    await page.reload();
-    await expect(page.getByRole("switch", { name: "Dezactivează AutoMod" })).toBeChecked();
-    await page.getByRole("link", { name: /AutoMod/ }).first().click();
+    await expect(page.getByRole("switch")).toHaveCount(0);
+    await page.getByTestId("link-config-module-autoMod").click();
     await expect(page).toHaveURL("/moderare/automod");
+    await expect(page.getByRole("switch", { name: "Activează AutoMod" })).not.toBeChecked();
     await expect(page.getByText("Discord AutoMod nativ:")).toBeVisible();
+  });
+
+  test("global protection and role-channel policies each have one canonical editor", async ({ page }) => {
+    await page.goto("/moderare/protectie");
+    await chooseFirstGuild(page);
+    await expect(page.getByRole("switch", { name: "Activează sau oprește toate modulele de protecție" })).toHaveCount(1);
+    await expect(page.getByRole("switch")).toHaveCount(1);
+
+    await page.getByTestId("link-protection-module-settings").click();
+    await expect(page).toHaveURL("/moderare/config");
+    await expect(page.getByRole("switch")).toHaveCount(0);
+
+    await page.goto("/moderare/politici");
+    await expect(page.getByText("Roluri protejate")).toBeVisible();
+    await expect(page.getByText("Canale stricte")).toBeVisible();
+    await expect(page.getByText("Escaladare Automată")).toHaveCount(0);
   });
 
   test("category save reapplies only its fields to the latest server snapshot", async ({ page }) => {

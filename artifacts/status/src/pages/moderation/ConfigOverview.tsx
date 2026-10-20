@@ -1,18 +1,12 @@
-import { useState } from "react";
 import { Activity, Bot, ChevronRight, FileText, Gavel, Loader2, MessageSquareWarning, Settings, ShieldAlert, Sparkles, Wrench } from "lucide-react";
 import { Link } from "wouter";
 import { useActiveGuild, useModerationConfig } from "../../hooks/use-moderation-api";
-import { Switch } from "../../components/ui/switch";
-import { useToast } from "../../hooks/use-toast";
-import { protectionToggleToastOptions } from "../../lib/protection-toggle-feedback";
 
 type ToggleKey = "autoMod" | "antiRaid" | "antiSpam" | "antiFlood" | "suspiciousBehavior" | "ai" | "manualTools" | "cases" | "audit" | "escalation" | "embeds";
 
 export function ConfigOverviewPage() {
   const { guildId } = useActiveGuild();
-  const { data, loading, error, updateProtectionToggle } = useModerationConfig(guildId);
-  const { toast } = useToast();
-  const [saving, setSaving] = useState<ToggleKey | null>(null);
+  const { data, loading, error } = useModerationConfig(guildId);
   if (loading) return <div className="flex justify-center p-12"><Loader2 className="h-8 w-8 animate-spin" /></div>;
   if (!data) return <div role="alert" className="rounded-xl border border-destructive/40 p-6 text-destructive">{error?.message || "Configurația nu a putut fi încărcată."}</div>;
 
@@ -31,42 +25,25 @@ export function ConfigOverviewPage() {
     { key: "embeds", title: "Embed-uri", description: "Aspect, media și animații.", href: "/config/embeduri", enabled: Boolean(data.embeds?.enabled), dependent: false, icon: Settings },
   ];
 
-  const toggle = async (key: ToggleKey, enabled: boolean) => {
-    setSaving(key);
-    try {
-      const result = await updateProtectionToggle(key, enabled);
-      toast(protectionToggleToastOptions(enabled, result?.notification?.status, undefined, result?.nativeAutoMod?.status));
-    } catch (toggleError: any) {
-      toast({ variant: "destructive", title: "Modificarea nu a fost salvată", description: toggleError?.message });
-    } finally {
-      setSaving(null);
-    }
-  };
-
   return (
     <div className="max-w-6xl space-y-6 animate-stagger-1">
-      <header className="animate-stagger-2"><h1 className="flex items-center gap-3 text-3xl font-bold mod-heading"><Settings className="h-8 w-8 text-primary" />Configurare</h1><p className="mt-2 text-muted-foreground">Activează fiecare modul independent sau deschide setările sale. Protecția globală pentru modulele automate se gestionează din pagina principală.</p></header>
+      <header className="animate-stagger-2"><h1 className="flex items-center gap-3 text-3xl font-bold mod-heading"><Settings className="h-8 w-8 text-primary" />Module și configurare</h1><p className="mt-2 max-w-3xl text-muted-foreground">Alege un modul pentru a-i modifica setările. Fiecare comutator de activare se află o singură dată, în pagina modulului; aici vezi doar starea curentă.</p></header>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 animate-stagger-3">
         {modules.map((module) => {
           const effective = module.enabled && (!module.dependent || master);
           const Icon = module.icon;
           return (
             <article key={module.key} className="mod-card mod-card-interactive flex flex-col p-5">
-              <div className="flex items-start justify-between gap-4">
-                <Link href={module.href} className="min-w-0 flex-1 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50">
+                <Link href={module.href} data-testid={`link-config-module-${module.key}`} className="flex min-w-0 flex-1 flex-col rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50">
                   <div className={`mb-4 inline-flex rounded-lg border p-2.5 transition-colors ${module.enabled ? "border-primary/30 bg-primary/10 text-primary" : "border-transparent bg-secondary text-muted-foreground"}`}>
                     <Icon className="h-6 w-6" />
                   </div>
                   <h2 className="flex items-center gap-2 font-semibold text-foreground">{module.title}<ChevronRight className="h-4 w-4 text-primary/70" /></h2>
                   <p className="mt-1 text-sm text-muted-foreground">{module.description}</p>
+                  <p className={`mt-auto pt-4 text-xs font-medium font-mono tracking-wider uppercase ${effective ? "text-primary" : module.enabled ? "text-amber-500" : "text-muted-foreground"}`}>
+                    {effective ? "Activ" : module.enabled && module.dependent && !master ? "Activat, dar oprit de protecția globală" : "Inactiv"}
+                  </p>
                 </Link>
-                <div className="pt-2">
-                  <Switch aria-label={`${module.enabled ? "Dezactivează" : "Activează"} ${module.title}`} checked={module.enabled} disabled={saving !== null} onClick={(event) => event.stopPropagation()} onCheckedChange={(checked) => void toggle(module.key, checked)} />
-                </div>
-              </div>
-              <p className={`mt-auto pt-4 text-xs font-medium font-mono tracking-wider uppercase ${effective ? "text-primary" : module.enabled ? "text-amber-500" : "text-muted-foreground"}`}>
-                {effective ? "Activ" : module.enabled && module.dependent && !master ? "Activat, dar în pauză globală" : "Inactiv"}
-              </p>
             </article>
           );
         })}

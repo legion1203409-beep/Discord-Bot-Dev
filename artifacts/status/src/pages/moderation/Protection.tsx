@@ -2,21 +2,17 @@ import React, { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Save, Shield, MessageSquare, AlertOctagon, Loader2 } from "lucide-react";
+import { Save, Shield, Loader2 } from "lucide-react";
 import { useModerationConfig, useActiveGuild } from "../../hooks/use-moderation-api";
-import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "../../components/ui/form";
-import { Input } from "../../components/ui/input";
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel } from "../../components/ui/form";
 import { Switch } from "../../components/ui/switch";
 import { Button } from "../../components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
+import { Link } from "wouter";
 import { useToast } from "../../hooks/use-toast";
 import { configSaveToastOptions } from "../../lib/protection-toggle-feedback";
 
 const protectionFormSchema = z.object({
   protectionEnabled: z.boolean(),
-  antiSpamEnabled: z.boolean(),
-  antiFloodEnabled: z.boolean(),
-  suspiciousEnabled: z.boolean(),
 });
 
 export function ProtectionPage() {
@@ -29,21 +25,14 @@ export function ProtectionPage() {
     resolver: zodResolver(protectionFormSchema),
     defaultValues: {
       protectionEnabled: true,
-      antiSpamEnabled: false,
-      antiFloodEnabled: false,
-      suspiciousEnabled: false,
     },
   });
 
   const initializedForId = React.useRef<string | null>(null);
-  const protectionEnabled = form.watch("protectionEnabled");
   const acceptSavedConfig = (config: any, submittedValues: z.infer<typeof protectionFormSchema>) => {
     if (!config) throw new Error("Răspunsul de salvare nu conține configurația canonică.");
     const canonicalValues = {
       protectionEnabled: config.protection?.enabled ?? true,
-      antiSpamEnabled: config.antiSpam?.enabled ?? false,
-      antiFloodEnabled: config.antiFlood?.enabled ?? false,
-      suspiciousEnabled: config.suspiciousBehavior?.enabled ?? false,
     };
     const latestValues = form.getValues();
     form.reset(canonicalValues);
@@ -58,10 +47,7 @@ export function ProtectionPage() {
     if (data && initializedForId.current !== guildId) {
       initializedForId.current = guildId;
       form.reset({
-         protectionEnabled: data.protection?.enabled ?? true,
-        antiSpamEnabled: data.antiSpam?.enabled ?? false,
-        antiFloodEnabled: data.antiFlood?.enabled ?? false,
-        suspiciousEnabled: data.suspiciousBehavior?.enabled ?? false,
+        protectionEnabled: data.protection?.enabled ?? true,
       });
     }
   }, [data, form, guildId]);
@@ -75,9 +61,6 @@ export function ProtectionPage() {
         ...current.protection,
         enabled: values.protectionEnabled,
       },
-      antiSpam: { ...current.antiSpam, enabled: values.antiSpamEnabled },
-      antiFlood: { ...current.antiFlood, enabled: values.antiFloodEnabled },
-      suspiciousBehavior: { ...current.suspiciousBehavior, enabled: values.suspiciousEnabled },
     });
     try {
       const saved = await update(buildConfig(data));
@@ -155,72 +138,19 @@ export function ProtectionPage() {
             />
           </div>
           
-          <div className="grid grid-cols-1 gap-6">
-            {/* Spam & Flood */}
-            <div className="bg-card border border-border p-6 rounded-xl space-y-6">
-              <div className="flex items-center gap-3 mb-4 border-b border-border pb-4">
-                <MessageSquare className="w-5 h-5 text-primary" />
-                <h3 className="text-lg font-medium">Control Trafic</h3>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <FormField
-                  control={form.control}
-                  name="antiSpamEnabled"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-row items-center justify-between rounded-lg border border-border p-4">
-                      <div className="space-y-0.5">
-                        <FormLabel>Anti-Spam</FormLabel>
-                        <FormDescription>Prevenire mesaje repetitive rapide.</FormDescription>
-                      </div>
-                      <FormControl>
-                        <Switch checked={protectionEnabled && field.value} onCheckedChange={field.onChange} disabled={!protectionEnabled} />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="antiFloodEnabled"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-row items-center justify-between rounded-lg border border-border p-4">
-                      <div className="space-y-0.5">
-                        <FormLabel>Anti-Flood</FormLabel>
-                        <FormDescription>Blocare mesaje gigantice (ziduri de text).</FormDescription>
-                      </div>
-                      <FormControl>
-                      <Switch checked={protectionEnabled && field.value} onCheckedChange={field.onChange} disabled={!protectionEnabled} />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-              </div>
-            </div>
-
-            {/* Suspicious */}
-            <div className="bg-card border border-border p-6 rounded-xl space-y-6">
-              <div className="flex items-center gap-3 mb-4 border-b border-border pb-4">
-                <AlertOctagon className="w-5 h-5 text-primary" />
-                <h3 className="text-lg font-medium">Comportament Suspect</h3>
-              </div>
-              
-              <FormField
-                control={form.control}
-                name="suspiciousEnabled"
-                render={({ field }) => (
-                  <FormItem className="flex flex-row items-center justify-between rounded-lg border border-border p-4">
-                    <div className="space-y-0.5">
-                      <FormLabel>Detectare Anomalii</FormLabel>
-                      <FormDescription>Monitorizează schimbări rapide de nickname și roluri.</FormDescription>
-                    </div>
-                    <FormControl>
-                      <Switch checked={protectionEnabled && field.value} onCheckedChange={field.onChange} disabled={!protectionEnabled} />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
-            </div>
+          <div className="rounded-xl border border-border bg-card/50 p-5">
+            <h2 className="font-medium text-foreground">Setări pentru fiecare modul</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Activează și configurează Anti-Spam, Anti-Flood, Anti-Raid, AutoMod și moderarea AI din paginile lor. Fiecare modul are un singur comutator principal.
+            </p>
+            <Link
+              href="/config"
+              className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-lg border border-border px-4 text-sm font-medium text-foreground transition-colors hover:border-primary/40 hover:bg-primary/5"
+              data-testid="link-protection-module-settings"
+            >
+              Deschide modulele
+              <Shield className="h-4 w-4" aria-hidden="true" />
+            </Link>
           </div>
 
           {hasUnsavedChanges && (

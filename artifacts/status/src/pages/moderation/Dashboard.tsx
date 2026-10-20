@@ -20,19 +20,15 @@ import {
 import { useState } from "react";
 import { Link } from "wouter";
 import { useModerationConfig, useCases, useActiveGuild, useAuditLogs, useGameplayState, useHauntedHouse, useModerationMetadata } from "../../hooks/use-moderation-api";
-import { Switch } from "../../components/ui/switch";
 import { Button } from "../../components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
 import { useToast } from "../../hooks/use-toast";
 import { DISCORD_INVITE } from "../../lib/public-constants";
-import { protectionToggleToastOptions } from "../../lib/protection-toggle-feedback";
 import { presentAuditActor, presentAuditLog } from "../../lib/moderation-audit";
-
-type ProtectionModuleKey = "autoMod" | "wordFilter" | "linkBlock" | "antiRaid" | "antiSpam" | "antiFlood" | "suspiciousBehavior" | "ai";
 
 export function DashboardOverview() {
   const { guildId, guilds } = useActiveGuild();
-  const { data: config, loading: configLoading, update: updateModerationConfig, updateProtectionToggle, refetch: refetchModerationConfig } = useModerationConfig(guildId);
+  const { data: config, loading: configLoading } = useModerationConfig(guildId);
   const { data: casesData, loading: casesLoading } = useCases(guildId, { limit: 10 });
   const { data: auditLogs, loading: auditLoading } = useAuditLogs(guildId);
   const {
@@ -45,10 +41,7 @@ export function DashboardOverview() {
   const hauntedHouse = useHauntedHouse(guildId);
   const { data: metadata } = useModerationMetadata(guildId);
   const { toast } = useToast();
-  const [savingModule, setSavingModule] = useState<string | null>(null);
   const [savingGameState, setSavingGameState] = useState(false);
-  const [optimisticConfig, setOptimisticConfig] = useState<any>(null);
-  const [deactivatingKey, setDeactivatingKey] = useState<string | null>(null);
   const [hauntedDialogOpen, setHauntedDialogOpen] = useState(false);
   const [hauntedStartChannelId, setHauntedStartChannelId] = useState("");
   const [hauntedChatChannelId, setHauntedChatChannelId] = useState("");
@@ -95,7 +88,7 @@ export function DashboardOverview() {
 
   const openCases = (casesData || []).filter((item) => item.status === "open").length;
   const recentLogs = (auditLogs || []).slice(0, 7);
-  const visibleConfig = optimisticConfig ?? config;
+  const visibleConfig = config;
   const protectionEnabled = visibleConfig?.protection?.enabled ?? false;
   const modules = [
     { key: "autoMod" as const, name: "AutoMod", description: "Filtre clasice și sincronizare Discord AutoMod nativ.", href: "/automod", active: Boolean(protectionEnabled && visibleConfig?.autoMod?.enabled), enabled: Boolean(visibleConfig?.autoMod?.enabled), parentEnabled: true, icon: Bot },
@@ -107,100 +100,6 @@ export function DashboardOverview() {
     { key: "suspiciousBehavior" as const, name: "Comportament suspect", description: "Alerte pentru activitate și schimbări neobișnuite.", href: "/comportament-suspect", active: Boolean(protectionEnabled && visibleConfig?.suspiciousBehavior?.enabled), enabled: Boolean(visibleConfig?.suspiciousBehavior?.enabled), parentEnabled: true, icon: ShieldAlert },
     { key: "ai" as const, name: "Moderare AI", description: "Analiză inteligentă separată de AutoMod.", href: "/ai", active: Boolean(protectionEnabled && visibleConfig?.ai?.enabled), enabled: Boolean(visibleConfig?.ai?.enabled), parentEnabled: true, icon: Bot },
   ];
-
-  const saveProtectionChange = async (
-    change: (current: any) => any,
-    key: string,
-    description: string,
-    toggleKey?: "protection" | ProtectionModuleKey,
-    enabled?: boolean,
-  ) => {
-    if (!config || savingModule) return;
-    setSavingModule(key);
-    const nextConfig = change(config);
-    setOptimisticConfig(nextConfig);
-    try {
-      let toggleResult: any;
-      if (toggleKey && enabled !== undefined) {
-        toggleResult = await updateProtectionToggle(toggleKey, enabled);
-      } else {
-        await updateModerationConfig(nextConfig);
-      }
-      setOptimisticConfig(null);
-      toast(toggleKey && enabled !== undefined
-        ? protectionToggleToastOptions(enabled, toggleResult?.notification?.status, description, toggleResult?.nativeAutoMod?.status)
-        : { title: "Setare actualizată", description });
-    } catch (error: any) {
-      if (String(error?.message ?? "").includes("Conflict de versiune")) {
-        try {
-          const freshConfig = await refetchModerationConfig();
-          if (freshConfig) {
-            const retriedConfig = change(freshConfig);
-            setOptimisticConfig(retriedConfig);
-            let retryToggleResult: any;
-            if (toggleKey && enabled !== undefined) {
-              retryToggleResult = await updateProtectionToggle(toggleKey, enabled);
-            } else {
-              await updateModerationConfig(retriedConfig);
-            }
-            setOptimisticConfig(null);
-            toast(toggleKey && enabled !== undefined
-              ? protectionToggleToastOptions(enabled, retryToggleResult?.notification?.status, description, retryToggleResult?.nativeAutoMod?.status)
-              : { title: "Setare actualizată", description });
-            return;
-          }
-        } catch (retryError: any) {
-          error = retryError;
-        }
-      }
-      toast({
-        variant: "destructive",
-        title: "Setarea nu a putut fi salvată",
-        description: error?.message ?? "Încearcă din nou.",
-      });
-      setOptimisticConfig(null);
-    } finally {
-      setSavingModule(null);
-    }
-  };
-
-  const toggleProtection = (enabled: boolean) => {
-    if (!config) return;
-    if (!enabled) {
-      setDeactivatingKey("protection");
-      window.setTimeout(() => setDeactivatingKey((current) => current === "protection" ? null : current), 700);
-    }
-    void saveProtectionChange(
-      (current) => ({ ...current, protection: { ...current.protection, enabled } }),
-      "protection",
-      enabled ? "Toate modulele de protecție sunt disponibile." : "Toate modulele de protecție sunt oprite.",
-      "protection",
-      enabled,
-    );
-  };
-
-  const toggleModule = (key: ProtectionModuleKey, enabled: boolean) => {
-    if (!config) return;
-    if (!enabled) {
-      setDeactivatingKey(key);
-      window.setTimeout(() => setDeactivatingKey((current) => current === key ? null : current), 700);
-    }
-    void saveProtectionChange((current) => {
-      const nextConfig = { ...current };
-      if (key === "wordFilter" || key === "linkBlock") {
-        nextConfig.autoMod = {
-          ...current.autoMod,
-          enabled: enabled ? true : current.autoMod?.enabled,
-          [key]: { ...current.autoMod?.[key], enabled },
-        };
-      } else if (key === "autoMod") {
-        nextConfig.autoMod = { ...current.autoMod, enabled };
-      } else {
-        nextConfig[key] = { ...current[key], enabled };
-      }
-      return nextConfig;
-    }, key, `${key} este acum ${enabled ? "activ" : "oprit"}.`, key, enabled);
-  };
 
   const toggleGameState = async () => {
     if (gamePaused === null) return;
@@ -322,22 +221,14 @@ export function DashboardOverview() {
             </p>
           </div>
         </div>
-        <Button
-          type="button"
-          variant={protectionEnabled ? "destructive" : "default"}
-          className="min-h-11 shrink-0 gap-2 font-semibold sm:min-w-52"
-          onClick={() => toggleProtection(!protectionEnabled)}
-          disabled={savingModule !== null}
-          aria-pressed={protectionEnabled}
-          data-testid="button-global-protection-toggle"
+        <Link
+          href="/protectie"
+          className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold text-foreground transition-colors hover:border-primary/40 hover:bg-primary/5"
+          data-testid="link-dashboard-global-protection"
         >
-          {protectionEnabled
-            ? <PauseCircle className="h-4 w-4" aria-hidden="true" />
-            : <PlayCircle className="h-4 w-4" aria-hidden="true" />}
-          {savingModule === "protection"
-            ? "Se actualizează..."
-            : protectionEnabled ? "Oprește protecția" : "Pornește protecția"}
-        </Button>
+          Gestionează protecția
+          <ChevronRight className="h-4 w-4" aria-hidden="true" />
+        </Link>
       </section>
 
       <section
@@ -598,7 +489,7 @@ export function DashboardOverview() {
           </div>
           <div className="grid gap-3 2xl:grid-cols-2">
             {modules.map((mod) => (
-              <article key={mod.key} className={`mod-card mod-card-interactive flex min-w-0 items-start gap-3 p-4 ${deactivatingKey === mod.key ? "protection-deactivating" : ""}`} data-testid={`card-module-${mod.key}`}>
+              <article key={mod.key} className="mod-card mod-card-interactive flex min-w-0 items-start gap-3 p-4" data-testid={`card-module-${mod.key}`}>
                 <div className={`shrink-0 rounded-lg border p-2.5 transition-colors ${mod.active ? "border-primary/30 bg-primary/10 text-primary" : "border-transparent bg-secondary text-muted-foreground"}`}><mod.icon className="h-4 w-4" aria-hidden="true" /></div>
                 <Link href={mod.href} className="min-w-0 flex-1 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50" data-testid={`link-module-${mod.key}`}>
                   <h3 className="flex items-center gap-1 text-sm font-medium leading-snug text-foreground">{mod.name}<ChevronRight className="h-3.5 w-3.5 shrink-0 text-primary/70" aria-hidden="true" /></h3>
@@ -608,15 +499,6 @@ export function DashboardOverview() {
                     {mod.active ? "ACTIV" : mod.enabled && !protectionEnabled ? "CONFIGURAT · PROTECȚIA GLOBALĂ OPRITĂ" : mod.enabled && !mod.parentEnabled ? "CONFIGURAT · AUTOMOD OPRIT" : "INACTIV"}
                   </p>
                 </Link>
-                <div className="pt-1">
-                  <Switch
-                    checked={mod.enabled}
-                    onCheckedChange={(enabled) => toggleModule(mod.key, enabled)}
-                    className={deactivatingKey === mod.key ? "protection-deactivating" : undefined}
-                    disabled={savingModule !== null}
-                    aria-label={`${mod.enabled ? "Dezactivează" : "Activează"} ${mod.name}`}
-                  />
-                </div>
               </article>
             ))}
           </div>

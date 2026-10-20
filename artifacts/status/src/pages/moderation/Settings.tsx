@@ -180,18 +180,15 @@ export function AdvancedSettingsPage() {
   const selectableTextChannels = (metadata?.channels ?? []).filter((channel) =>
     [0, 5, "text", "announcement", "GuildText", "GuildAnnouncement", "GuildNews"].includes(channel.type),
   );
-  const staffRoleId = localData.permissions?.staffRoleIds?.[0] || "";
-  const selectedStaffRole = metadata?.roles.some((role) => role.id === staffRoleId) ? staffRoleId : "__none__";
-
   const hasUnsavedChanges = data && localData && JSON.stringify(data) !== JSON.stringify(localData);
 
   return (
     <div className={`max-w-5xl space-y-6 animate-stagger-1 ${hasUnsavedChanges ? "pb-28" : ""}`}>
       <header className="animate-stagger-2">
         <h1 className="mb-2 flex items-center gap-3 text-3xl font-bold tracking-tight mod-heading">
-          <Settings className="h-8 w-8 text-primary" /> Configurare completă
+          <Settings className="h-8 w-8 text-primary" /> Setări avansate
         </h1>
-        <p className="text-muted-foreground">Editează toate regulile de moderare ale serverului. Modificările rămân în draft până la salvare.</p>
+        <p className="text-muted-foreground">Configurează permisiunile și profilurile de timp. Setările fiecărui modul și politicile de roluri/canale au pagini dedicate.</p>
       </header>
 
       {capabilities && (!capabilities.messageContent || !capabilities.guildMembers) && (
@@ -265,17 +262,6 @@ export function AdvancedSettingsPage() {
                 </div>
               );
             })}
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground/90">Rol staff pentru autorizarea moderării (primul ID)</label>
-              <Select value={selectedStaffRole} onValueChange={(value) => setLocalData((current: any) => ({ ...current, permissions: { ...current.permissions, staffRoleIds: value === "__none__" ? [] : [value] } }))}>
-                <SelectTrigger className="bg-background/50"><SelectValue placeholder="Alege rol" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">Neconfigurat</SelectItem>
-                  {metadata.roles.filter((role) => !role.managed).map((role) => <SelectItem key={role.id} value={role.id}>@{role.name} ({role.id})</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <Input aria-label="Rol staff pentru autorizarea moderării ID fallback" value={staffRoleId} placeholder="ID rol Discord" onChange={(event) => setLocalData((current: any) => ({ ...current, permissions: { ...current.permissions, staffRoleIds: event.target.value.trim() ? [event.target.value.trim()] : [] } }))} className="bg-background/50 font-mono text-xs" />
-            </div>
           </div>
         </div>
       )}
@@ -284,6 +270,7 @@ export function AdvancedSettingsPage() {
         <ConfigEditor
           value={localData}
           onChange={setLocalData}
+          sections={["time", "permissions"]}
           discordRoles={metadata?.roles ?? []}
           discordChannels={metadata?.channels}
           botCapabilities={capabilities ?? undefined}

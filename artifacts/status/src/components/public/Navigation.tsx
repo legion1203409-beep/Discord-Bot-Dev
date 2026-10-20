@@ -45,9 +45,10 @@ export function Navigation() {
 
       <nav id="public-navigation" data-aos="flip-left" className={`nav-links ${isOpen ? "is-open" : ""}`} aria-label="Navigație principală">
         <div className="nav-links-inner">
-          <Link href="/" data-testid="link-nav-home">Panou de moderare</Link>
-          <Link href="/joc" data-testid="link-nav-game" className={location === "/joc" ? "active" : ""}>Joc</Link>
-          <Link href="/statistici" data-testid="link-nav-stats" className={location === "/statistici" ? "active" : ""}>Statistici</Link>
+          <Link href="/joc" data-testid="link-nav-game" aria-current={location === "/joc" ? "page" : undefined} className={location === "/joc" ? "active" : ""}>Lumea jocului</Link>
+          <Link href="/verificare" data-testid="link-nav-verification" aria-current={location === "/verificare" ? "page" : undefined} className={location === "/verificare" ? "active" : ""}>Verificare membru</Link>
+          <Link href="/statistici" data-testid="link-nav-stats" aria-current={location === "/statistici" ? "page" : undefined} className={location === "/statistici" ? "active" : ""}>Cronica live</Link>
+          <Link href="/moderare" data-testid="link-nav-home" className="nav-console-link">Consolă operator</Link>
           
           <a className="nav-cta nav-cta--mobile" href={DISCORD_INVITE} target="_blank" rel="noopener noreferrer" onClick={() => trackEvent("discord_cta_click", { location: "nav_mobile" })} data-testid="link-nav-discord-mobile">
             Intră pe Discord <Icon name="arrow" size={15} />

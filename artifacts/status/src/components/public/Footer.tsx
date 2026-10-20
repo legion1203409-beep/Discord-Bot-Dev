@@ -15,7 +15,12 @@ export function Footer({ health }: { health: any }) {
       </div>
       <div className="footer-bottom">
         <span>REGATUL CENUȘII · O CRONICĂ VIE</span>
-        <Link href="/moderare">Panou de moderare</Link>
+        <nav className="footer-navigation" aria-label="Navigare secundară">
+          <Link href="/joc" data-testid="link-footer-game">Ghidul jocului</Link>
+          <Link href="/verificare" data-testid="link-footer-verification">Verificare membru</Link>
+          <Link href="/statistici" data-testid="link-footer-stats">Statistici</Link>
+          <Link href="/moderare" data-testid="link-footer-moderation">Consolă operator</Link>
+        </nav>
         <a href="/#status" onClick={() => trackEvent("operator_status_open", { location: "footer" })} data-testid="link-footer-status">
           <StatusDot active={health?.botOnline ?? false} /> operator / stare live
         </a>

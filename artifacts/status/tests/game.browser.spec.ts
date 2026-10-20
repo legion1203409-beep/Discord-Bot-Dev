@@ -96,3 +96,28 @@ test("game category is usable on a narrow screen", async ({ page }) => {
   await expect(page.getByTestId("discord-login-button")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
+
+test("public navigation opens each distinct destination on a narrow screen", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/joc");
+  await expect(page.locator("h1")).toBeVisible();
+  const menuToggle = page.getByRole("button", { name: "Deschide meniul" });
+
+  await menuToggle.click();
+  await expect(page.getByTestId("link-nav-verification")).toBeVisible();
+  await page.getByTestId("link-nav-verification").click();
+  await expect(page).toHaveURL("/verificare");
+  await expect(page.getByRole("button", { name: "Deschide meniul" })).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByTestId("link-nav-verification")).toHaveAttribute("aria-current", "page");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+
+  await page.getByRole("button", { name: "Deschide meniul" }).click();
+  await page.getByTestId("link-nav-stats").click();
+  await expect(page).toHaveURL("/statistici");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+
+  await page.getByRole("button", { name: "Deschide meniul" }).click();
+  await page.getByTestId("link-nav-home").click();
+  await expect(page).toHaveURL("/moderare");
+  await expect(page.getByTestId("discord-login-button")).toBeVisible();
+});

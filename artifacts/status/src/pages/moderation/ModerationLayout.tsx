@@ -66,17 +66,18 @@ type ModerationNavItem = {
   href: string;
   icon: typeof Activity;
   label: string;
+  testId?: string;
 };
 
 const moderationNavGroups: Array<{ id: string; label: string; items: ModerationNavItem[] }> = [
   {
     id: "overview",
-    label: "Privire generală",
-    items: [{ href: "/", icon: Activity, label: "Ansamblu" }],
+    label: "Centru de comandă",
+    items: [{ href: "/", icon: Activity, label: "Privire generală" }],
   },
   {
     id: "protection",
-    label: "Protecție și detecție",
+    label: "Apărare",
     items: [
       { href: "/protectie", icon: Shield, label: "Protecție server" },
       { href: "/automod", icon: Bot, label: "AutoMod" },
@@ -89,44 +90,50 @@ const moderationNavGroups: Array<{ id: string; label: string; items: ModerationN
   },
   {
     id: "moderation",
-    label: "Moderare și evidențe",
+    label: "Intervenții și evidențe",
     items: [
-      { href: "/politici", icon: BookOpen, label: "Politici generale" },
+      { href: "/politici", icon: BookOpen, label: "Politici" },
       { href: "/comenzi", icon: Zap, label: "Acțiuni manuale" },
       { href: "/cazuri", icon: ShieldAlert, label: "Cazuri" },
-      { href: "/audit", icon: History, label: "Loguri și audit" },
+      { href: "/audit", icon: History, label: "Jurnal de audit" },
     ],
   },
   {
     id: "configuration",
-    label: "Configurare",
+    label: "Reguli și configurare",
     items: [
-      { href: "/config", icon: Settings, label: "Configurare module" },
-      { href: "/config/mesaje", icon: FileText, label: "Personalizare mesaje" },
+      { href: "/config", icon: Settings, label: "Module" },
+      { href: "/config/mesaje", icon: FileText, label: "Mesaje" },
       { href: "/config/avansat", icon: SlidersHorizontal, label: "Setări avansate" },
       { href: "/config/unelte", icon: Zap, label: "Unelte staff" },
-      { href: "/config/cazuri-audit", icon: FileText, label: "Setări cazuri și audit" },
+      { href: "/config/cazuri-audit", icon: FileText, label: "Cazuri și audit" },
       { href: "/config/escaladare", icon: Gavel, label: "Escaladare" },
       { href: "/config/embeduri", icon: Sparkles, label: "Embed-uri" },
     ],
   },
   {
     id: "server-setup",
-    label: "Pornire server",
-    items: [{ href: "/pornire-server", icon: Hammer, label: "Pornire server" }],
+    label: "Configurare server",
+    items: [{ href: "/pornire-server", icon: Hammer, label: "Ghid de pornire" }],
   },
   {
     id: "bot-control",
-    label: "Control bot",
+    label: "Servicii Discord",
     items: [
-      { href: "/canale", icon: Radio, label: "Canale" },
-      { href: "/provisioning", icon: Wrench, label: "Canale și permisiuni" },
-      { href: "/bot?tab=roles", icon: Users, label: "Roluri" },
-      { href: "/bot?tab=tickets", icon: SlidersHorizontal, label: "Tichete" },
-      { href: "/verificare", icon: ShieldCheck, label: "Verificare" },
-      { href: "/bot?tab=messages", icon: Activity, label: "Mesaje" },
-      { href: "/bot?tab=statistics", icon: Monitor, label: "Statistici" },
-      { href: "/ranguri-activitate", icon: Trophy, label: "Ranguri activitate" },
+      { href: "/canale", icon: Radio, label: "Panouri și destinații", testId: "link-nav-control-canale" },
+      { href: "/provisioning", icon: Wrench, label: "Canale și permisiuni", testId: "link-nav-control-provisioning" },
+      { href: "/bot?tab=roles", icon: Users, label: "Roluri", testId: "link-nav-control-roluri" },
+      { href: "/bot?tab=tickets", icon: SlidersHorizontal, label: "Tichete", testId: "link-nav-control-tichete" },
+      { href: "/bot?tab=messages", icon: Activity, label: "Mesaje bot", testId: "link-nav-control-mesaje" },
+      { href: "/bot?tab=statistics", icon: Monitor, label: "Statistici bot", testId: "link-nav-control-statistici" },
+    ],
+  },
+  {
+    id: "community",
+    label: "Membri și progres",
+    items: [
+      { href: "/verificare", icon: ShieldCheck, label: "Verificare membri · staff", testId: "link-nav-control-verificare" },
+      { href: "/ranguri-activitate", icon: Trophy, label: "Ranguri de activitate", testId: "link-nav-control-ranguri-activitate" },
     ],
   },
 ];
@@ -403,9 +410,9 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
                     >
                       {group.items.map((item) => {
                         const active = isNavItemActive(item.href, navLocation);
-                        const testId = controlGroup
+                        const testId = item.testId ?? (controlGroup
                           ? `link-nav-control-${item.label.toLowerCase()}`
-                          : `link-nav-${item.href === "/" ? "dashboard" : item.href.slice(1).replace(/\//g, "-")}`;
+                          : `link-nav-${item.href === "/" ? "dashboard" : item.href.slice(1).replace(/\//g, "-")}`);
                         return (
                           <Link
                             key={item.href}

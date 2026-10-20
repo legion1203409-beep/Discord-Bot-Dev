@@ -9,7 +9,6 @@ import { AdvancedSettingsPage } from "./pages/moderation/Settings";
 import { ConfigOverviewPage } from "./pages/moderation/ConfigOverview";
 import { CategorySettingsPage } from "./pages/moderation/CategorySettings";
 import { ProtectionPage } from "./pages/moderation/Protection";
-import { PoliciesPage } from "./pages/moderation/Policies";
 import { BotControlPage } from "./pages/moderation/BotControl";
 import { VerificationAdminPage } from "./pages/moderation/VerificationAdmin";
 import { MessageTemplatesPage } from "./pages/moderation/MessageTemplates";
@@ -108,7 +107,7 @@ function ModerationApp() {
           <Route path="/comportament-suspect" component={() => <CategorySettingsPage section="suspicious" />} />
           <Route path="/protectie" component={ProtectionPage} />
           <Route path="/anti-raid" component={() => <CategorySettingsPage section="anti-raid" />} />
-          <Route path="/politici" component={PoliciesPage} />
+          <Route path="/politici" component={() => <CategorySettingsPage section="roles-channels" />} />
           <Route path="/comenzi" component={CommandsPage} />
           <Route path="/cazuri" component={CasesPage} />
           <Route path="/audit" component={AuditPage} />
