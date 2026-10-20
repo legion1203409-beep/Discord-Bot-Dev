@@ -21,7 +21,6 @@ import { setTributeGamePaused, startTributeScheduler, stopTributeScheduler } fro
 import { getGameplayConfig, isGameplayPaused } from "./gameplay-store";
 import { startDailyStatsScheduler, stopDailyStatsScheduler } from "./daily-stats";
 import { AUTOMATIC_CHEST_POSTS_ENABLED } from "./chest-automation";
-import { startHauntedHouseScheduler, stopHauntedHouseScheduler } from "./haunted-house-scheduler";
 
 const APPLICATION_ID = "1472675543777280071";
 export const EVENT_DURATION_MS = 60 * 60 * 1000;
@@ -261,7 +260,6 @@ export function stopGuildScheduler(
   guildId: string,
   options: { stopOracle?: boolean } = {},
 ) {
-  if (options.stopOracle) stopHauntedHouseScheduler(guildId);
   if (options.stopOracle) stopOracleCouncilScheduler(guildId);
   stopTributeScheduler(guildId);
   stopDailyStatsScheduler(guildId);
@@ -1717,7 +1715,6 @@ export function startGuildScheduler(
   // Daily statistics are observational and should continue even when gameplay
   // is paused; they are not part of the gameplay scheduler below.
   startDailyStatsScheduler(client, guildId);
-  startHauntedHouseScheduler(client, guildId);
   if (isGameplayPaused(guildId)) {
     gs.stopped = true;
     gs.started = false;

@@ -88,7 +88,6 @@ function FunctionCard({ item }: { item: (typeof functions)[number][number] }) {
 
 export function CommandCenter() {
   const [gamePaused, setGamePaused] = useState(false);
-  const [hauntedActive, setHauntedActive] = useState(false);
   const [activeRoute, setActiveRoute] = useState("/");
   const goLocal = (event: React.MouseEvent<HTMLAnchorElement>, href: string) => {
     event.preventDefault();
@@ -138,7 +137,6 @@ export function CommandCenter() {
             <div className="cc-section-head"><span className="cc-section-mark"><Gamepad2 /></span><h2>Joc și evenimente</h2><span>2 controale · previzualizare locală</span></div>
             <div className="cc-section-grid game-grid">
               <div className="cc-game-control"><span className="cc-function-icon"><Gamepad2 /></span><span><strong>{gamePaused ? "Joc suspendat" : "Joc activ"}</strong><small>Evenimente, lupte, cufere și recompense</small></span><button type="button" className="cc-button" onClick={() => setGamePaused((paused) => !paused)}>{gamePaused ? <Play /> : <Pause />}{gamePaused ? "Pornește" : "Pauză"}</button></div>
-              <div className="cc-game-control"><span className="cc-function-icon"><Sparkles /></span><span><strong>Castelul Bântuit</strong><small>Start, clasament și șoapte AI</small></span><span className="cc-event-status">{hauntedActive ? "ACTIV" : "INACTIV"}</span><a href="/#" onClick={(event) => event.preventDefault()} className="cc-button">Configurează</a><button type="button" className="cc-button" onClick={() => setHauntedActive((active) => !active)}>{hauntedActive ? "Oprește" : "Pornește"}</button></div>
             </div>
           </section>
 

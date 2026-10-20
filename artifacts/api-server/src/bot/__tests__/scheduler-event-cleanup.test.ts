@@ -73,22 +73,6 @@ vi.mock("discord.js", () => {
   };
 });
 
-vi.mock("../haunted-house", () => ({
-  beginHauntedHouseStop: vi.fn(() => null),
-  cancelHauntedHouseStop: vi.fn(),
-  clearPersistedHauntedHouseSession: vi.fn().mockResolvedValue(undefined),
-  completeHauntedHouseStop: vi.fn(),
-  generateScheduledGhostStory: vi.fn().mockResolvedValue("story"),
-  getHauntedHouseExpiry: vi.fn(() => null),
-  getHauntedHouseSessionId: vi.fn(() => null),
-  isHauntedHouseActive: vi.fn(() => false),
-  persistHauntedHouseSession: vi.fn().mockResolvedValue(undefined),
-  restoreHauntedHouseSession: vi.fn().mockResolvedValue(undefined),
-  startHauntedHouse: vi.fn(() => false),
-  stopHauntedHouse: vi.fn(),
-  updateHauntedHouseLeaderboard: vi.fn().mockResolvedValue(undefined),
-}));
-
 vi.mock("../../lib/logger", () => ({ logger: mockLogger }));
 vi.mock("../channel-config", () => ({
   getChannel: mockGetChannel,

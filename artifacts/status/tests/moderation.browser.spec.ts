@@ -463,6 +463,7 @@ test.describe("authenticated moderation console", () => {
     await page.goto("/");
     await expect(page).toHaveURL("/moderare");
     await chooseFirstGuild(page);
+    await expect(page.getByTestId("card-haunted-house")).toHaveCount(0);
 
     const columns = page.getByTestId("dashboard-columns");
     await expect(columns).toBeVisible();

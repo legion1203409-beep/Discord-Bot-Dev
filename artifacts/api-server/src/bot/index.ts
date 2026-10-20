@@ -48,10 +48,6 @@ import {
 } from "./server-info";
 import { PUBLIC_DISCORD_INVITE } from "../lib/discord-invite";
 import {
-  dispatchHauntedHouseInteraction,
-  hauntedHouseCommand,
-} from "./haunted-house";
-import {
   maybeReplyAsOracle,
   logOracleChatStatus,
   generatePersonalProphecy,
@@ -658,7 +654,6 @@ const slashCommands = [
     .setName("startai")
     .setDescription("✨ [Admin] Repornește răspunsurile și activitatea automată a Oracolului.")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-  hauntedHouseCommand,
 ];
 
 async function handleRecruitmentInvite(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -5412,10 +5407,6 @@ export async function startBot(onReady?: () => void): Promise<void> {
         },
       );
     }
-
-    // Casa Bântuită has its own lifecycle and remains usable while the regular
-    // RPG is paused. Its module rejects stale controls after the event is stopped.
-    if (dispatchHauntedHouseInteraction(interaction, dispatch)) return;
 
     if (interaction.guildId && isGuildGameStopped(interaction.guildId)) {
       let allowedWhileStopped = false;

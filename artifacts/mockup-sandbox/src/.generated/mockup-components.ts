@@ -8,7 +8,6 @@ export const modules: ModuleMap = {
   "./components/mockups/bot-control-channels/Redesign.tsx": () => import("../components/mockups/bot-control-channels/Redesign.tsx"),
   "./components/mockups/command-center-reorg/CommandCenter.tsx": () => import("../components/mockups/command-center-reorg/CommandCenter.tsx"),
   "./components/mockups/command-center-reorg/StaffTools.tsx": () => import("../components/mockups/command-center-reorg/StaffTools.tsx"),
-  "./components/mockups/haunted-house/DiscordEvent.tsx": () => import("../components/mockups/haunted-house/DiscordEvent.tsx"),
   "./components/mockups/moderation-module-config/Current.tsx": () => import("../components/mockups/moderation-module-config/Current.tsx"),
   "./components/mockups/provisioning-redesign/Current.tsx": () => import("../components/mockups/provisioning-redesign/Current.tsx"),
   "./components/mockups/provisioning-redesign/Refined.tsx": () => import("../components/mockups/provisioning-redesign/Refined.tsx"),

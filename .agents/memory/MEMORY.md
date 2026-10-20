@@ -87,5 +87,5 @@
 - [Activity preview synchronization](activity-preview-sync.md) — regeneration must also invalidate browser image caches; generated files alone do not guarantee panel/Discord parity.
 - [Quest notification retries](quest-notification-recovery.md) — Discord recovery must not repeat combat or grant rewards; inventory atomicity and restart recovery are separate.
 - [Suspicious-alert clarity](suspicious-alert-clarity.md) — explain guild-wide thresholds, translate raw event keys, and label unknown or inapplicable fields instead of implying certainty.
-- [Castelul Bântuit scheduling](haunted-house-scheduling.md) — run the 10-minute event on a random 2–4h guild-local cycle; entry is via its announcement button, and AI whispers use a dedicated chat channel.
+- [Retired Haunted House](haunted-house-retired.md) — do not restore the unused feature; preserve its existing bot_state records.
 - [Seasonal member messages](member-message-holiday-themes.md) — AI welcome and leave messages retain the configured voice while adding Halloween in October and Christmas from December through Jan 6.
