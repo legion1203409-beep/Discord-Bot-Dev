@@ -698,7 +698,7 @@ function addActivityRankBanner(embed: EmbedBuilder, bannerImageUrl: string): Emb
   return embed;
 }
 
-async function handleActivityRank(interaction: ChatInputCommandInteraction): Promise<void> {
+export async function handleActivityRank(interaction: ChatInputCommandInteraction): Promise<void> {
   await interaction.deferReply();
   const guildId = interaction.guildId!;
   const target = interaction.options.getUser("utilizator") ?? interaction.user;
