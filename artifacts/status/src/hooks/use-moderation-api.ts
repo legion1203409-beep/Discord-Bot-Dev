@@ -215,6 +215,23 @@ export interface InviteTrackingConfig {
   reportWeekday: number;
   reportTimeZone: "Europe/Bucharest" | "Europe/Paris" | "UTC";
   reportTopLimit: number;
+  recruitment: InviteRecruitmentConfig;
+}
+
+export interface InviteRecruitmentMilestone {
+  requiredInvites: number;
+  roleId: string;
+}
+
+export interface InviteRecruitmentConfig {
+  enabled: boolean;
+  inviteChannelId: string;
+  maxUses: number;
+  maxAgeDays: number;
+  dailyInviteLimit: number;
+  verificationHours: number;
+  rewardPoints: number;
+  milestones: [InviteRecruitmentMilestone, InviteRecruitmentMilestone, InviteRecruitmentMilestone];
 }
 
 export type InviteStatsRange = "7" | "30" | "90" | "all";

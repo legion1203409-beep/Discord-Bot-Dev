@@ -882,23 +882,34 @@ export function ConfigEditor({
         )}
       </Section>
 
-      <Section value="tools" title="7. Unelte staff" description="Acordă separat rolurile care pot rula fiecare comandă de moderare.">
-        <Toggle label="Activează uneltele manuale" checked={value.manualTools.enabled} onChange={(next) => set(["manualTools", "enabled"], next)} />
-        <Toggle label="Jurnalizează acțiunile staff-ului" checked={value.manualTools.logActions} onChange={(next) => set(["manualTools", "logActions"], next)} />
-        <div className="grid gap-6 lg:grid-cols-2">
+      <Section value="tools" title="7. Unelte staff" description="Un singur comutator master controlează disponibilitatea comenzilor. Apoi acordă acces prin ID de rol, comandă cu comandă.">
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="rounded-xl border border-border/70 bg-background/35 p-3">
+            <Toggle label="Activează uneltele manuale" checked={value.manualTools.enabled} onChange={(next) => set(["manualTools", "enabled"], next)} />
+          </div>
+          <div className="rounded-xl border border-border/70 bg-background/35 p-3">
+            <Toggle label="Jurnalizează acțiunile staff-ului" checked={value.manualTools.logActions} onChange={(next) => set(["manualTools", "logActions"], next)} />
+          </div>
+        </div>
+        <div className="grid gap-4 xl:grid-cols-3" data-testid="manual-command-role-grants">
           {MANUAL_COMMAND_GROUPS_WITH_COMMANDS.map((group) => (
-            <section key={group.key} className="space-y-3">
-              <h4 className="text-sm font-semibold text-foreground">{group.label}</h4>
-              <div className="grid gap-4 sm:grid-cols-2">
+            <section key={group.key} className="min-w-0 space-y-3 rounded-xl border border-border/70 bg-background/30 p-3 sm:p-4" data-testid={`manual-grant-group-${group.key}`}>
+              <div className="flex items-center justify-between border-b border-border/60 pb-2">
+                <h4 className="text-sm font-semibold text-foreground">{group.label}</h4>
+                <span className="font-mono text-[10px] tracking-wider text-muted-foreground">{String(group.commands.length).padStart(2, "0")} COMENZI</span>
+              </div>
+              <div className="space-y-3">
                 {group.commands.map((command) => (
-                  <ListField
-                    key={command.key}
-                    ids
-                    label={`Roluri pentru /${command.key}`}
-                    help={`${command.label}: un ID de rol pe rând (max. 100).`}
-                    values={value.manualTools.commandGrants[command.key]}
-                    onChange={(next) => set(["manualTools", "commandGrants", command.key], next)}
-                  />
+                  <div key={command.key} className="rounded-lg border border-border/50 bg-card/55 p-3">
+                    <ListField
+                      ids
+                      testId={`manual-command-role-grants-${command.key}`}
+                      label={`Roluri pentru /${command.key}`}
+                      help={`${command.label}: un ID de rol pe rând (max. 100).`}
+                      values={value.manualTools.commandGrants[command.key]}
+                      onChange={(next) => set(["manualTools", "commandGrants", command.key], next)}
+                    />
+                  </div>
                 ))}
               </div>
             </section>
@@ -958,7 +969,7 @@ export function ConfigEditor({
                   <div className="grid gap-2 sm:grid-cols-2">
                     <div className="rounded-md bg-muted/40 p-3 text-xs">
                       <p className="font-medium">
-                        {renderMemberLogPreview(value.activityLog.memberJoinTitleTemplate, "join", "👋 Membru nou · a intrat pe server")}
+                        {renderMemberLogPreview(value.activityLog.memberJoinTitleTemplate, "join", "Membru nou · a intrat pe server")}
                       </p>
                       <p className="mt-1 whitespace-pre-wrap text-muted-foreground">
                         {renderMemberLogPreview(value.activityLog.memberJoinDescriptionTemplate, "join", "Un membru nou s-a alăturat serverului.")}
@@ -966,7 +977,7 @@ export function ConfigEditor({
                     </div>
                     <div className="rounded-md bg-muted/40 p-3 text-xs">
                       <p className="font-medium">
-                        {renderMemberLogPreview(value.activityLog.memberLeaveTitleTemplate, "leave", "🚪 Membru a părăsit serverul")}
+                        {renderMemberLogPreview(value.activityLog.memberLeaveTitleTemplate, "leave", "Membru a părăsit serverul")}
                       </p>
                       <p className="mt-1 whitespace-pre-wrap text-muted-foreground">
                         {renderMemberLogPreview(value.activityLog.memberLeaveDescriptionTemplate, "leave", "Membrul a părăsit serverul.")}

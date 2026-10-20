@@ -16,6 +16,7 @@ import {
   PlayCircle,
   XCircle,
   Zap,
+  House,
 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "wouter";
@@ -100,6 +101,80 @@ export function DashboardOverview() {
     { key: "antiFlood" as const, name: "Anti-Flood", description: "Mesaje lungi și șiruri excesive.", href: "/anti-flood", active: Boolean(protectionEnabled && visibleConfig?.antiFlood?.enabled), enabled: Boolean(visibleConfig?.antiFlood?.enabled), parentEnabled: true, icon: Activity },
     { key: "suspiciousBehavior" as const, name: "Comportament suspect", description: "Alerte pentru activitate și schimbări neobișnuite.", href: "/comportament-suspect", active: Boolean(protectionEnabled && visibleConfig?.suspiciousBehavior?.enabled), enabled: Boolean(visibleConfig?.suspiciousBehavior?.enabled), parentEnabled: true, icon: ShieldAlert },
     { key: "ai" as const, name: "Moderare AI", description: "Analiză inteligentă separată de AutoMod.", href: "/ai", active: Boolean(protectionEnabled && visibleConfig?.ai?.enabled), enabled: Boolean(visibleConfig?.ai?.enabled), parentEnabled: true, icon: Bot },
+  ];
+  const automatedModuleStatus = (enabled: boolean, parentEnabled = true) => {
+    if (!enabled) return { text: "Inactiv", tone: "inactive" as const };
+    if (!parentEnabled) return { text: "Configurat · AutoMod oprit", tone: "paused" as const };
+    if (!protectionEnabled) return { text: "Configurat · pauză globală", tone: "paused" as const };
+    return { text: "Activ", tone: "active" as const };
+  };
+  const standaloneModuleStatus = (enabled: boolean) => ({
+    text: enabled ? "Activ" : "Inactiv",
+    tone: enabled ? "active" as const : "inactive" as const,
+  });
+  const autoModStatus = automatedModuleStatus(Boolean(visibleConfig?.autoMod?.enabled));
+  const wordFilterStatus = automatedModuleStatus(
+    Boolean(visibleConfig?.autoMod?.wordFilter?.enabled),
+    Boolean(visibleConfig?.autoMod?.enabled),
+  );
+  const linkBlockStatus = automatedModuleStatus(
+    Boolean(visibleConfig?.autoMod?.linkBlock?.enabled),
+    Boolean(visibleConfig?.autoMod?.enabled),
+  );
+  const directoryGroups = [
+    {
+      title: "Protecție automată",
+      intro: "Apărări care procesează evenimentele serverului.",
+      links: [
+        { title: "Protecție globală", href: "/protectie", ...standaloneModuleStatus(protectionEnabled) },
+        { title: "AutoMod", href: "/automod", ...autoModStatus },
+        { title: "Filtru de cuvinte", href: "/automod", ...wordFilterStatus },
+        { title: "Blocare linkuri", href: "/automod", ...linkBlockStatus },
+        { title: "Moderare AI", href: "/ai", ...automatedModuleStatus(Boolean(visibleConfig?.ai?.enabled)) },
+        { title: "Anti-Raid", href: "/anti-raid", ...automatedModuleStatus(Boolean(visibleConfig?.antiRaid?.enabled)) },
+        { title: "Anti-Spam", href: "/anti-spam", ...automatedModuleStatus(Boolean(visibleConfig?.antiSpam?.enabled)) },
+        { title: "Anti-Flood", href: "/anti-flood", ...automatedModuleStatus(Boolean(visibleConfig?.antiFlood?.enabled)) },
+        { title: "Comportament suspect", href: "/comportament-suspect", ...automatedModuleStatus(Boolean(visibleConfig?.suspiciousBehavior?.enabled)) },
+      ],
+    },
+    {
+      title: "Moderare și evidențe",
+      intro: "Reguli, intervenții și urmărirea deciziilor staff-ului.",
+      links: [
+        { title: "Politici de moderare", href: "/politici", text: "Gestionare", tone: "info" as const },
+        { title: "Acțiuni manuale", href: "/comenzi", ...standaloneModuleStatus(Boolean(visibleConfig?.manualTools?.enabled)) },
+        { title: "Permisiuni unelte staff", href: "/config/unelte", text: "Configurare", tone: "info" as const },
+        { title: "Cazuri", href: "/cazuri", ...standaloneModuleStatus(Boolean(visibleConfig?.cases?.enabled)) },
+        { title: "Jurnal de audit", href: "/audit", ...standaloneModuleStatus(Boolean(visibleConfig?.audit?.enabled)) },
+        { title: "Escaladare", href: "/config/escaladare", ...standaloneModuleStatus(Boolean(visibleConfig?.escalation?.enabled)) },
+        { title: "Embed-uri", href: "/config/embeduri", ...standaloneModuleStatus(Boolean(visibleConfig?.embeds?.enabled)) },
+        { title: "Setări cazuri și audit", href: "/config/cazuri-audit", text: "Configurare", tone: "info" as const },
+        { title: "Mesaje de moderare", href: "/config/mesaje", text: "Configurare", tone: "info" as const },
+        { title: "Setări avansate", href: "/config/avansat", text: "Configurare", tone: "info" as const },
+        { title: "Toate modulele", href: "/config", text: "Configurare", tone: "info" as const },
+      ],
+    },
+    {
+      title: "Servicii Discord",
+      intro: "Panouri, automatizări și instrumente comunitare.",
+      links: [
+        { title: "Canale și destinații", href: "/canale", text: "Gestionare", tone: "info" as const },
+        { title: "Provisioning", href: "/provisioning", text: "Gestionare", tone: "info" as const },
+        { title: "Roluri", href: "/bot?tab=roles", text: "Gestionare", tone: "info" as const },
+        { title: "Tichete", href: "/bot?tab=tickets", text: "Gestionare", tone: "info" as const },
+        { title: "Mesaje bot", href: "/bot?tab=messages", text: "Gestionare", tone: "info" as const },
+        { title: "Statistici bot", href: "/bot?tab=statistics", text: "Vizualizare", tone: "info" as const },
+      ],
+    },
+    {
+      title: "Membri și activitate",
+      intro: "Experiența noilor membri și progresul comunității.",
+      links: [
+        { title: "Verificare membri", href: "/verificare", text: "Configurare", tone: "info" as const },
+        { title: "Ranguri de activitate", href: "/ranguri-activitate", text: "Configurare", tone: "info" as const },
+        { title: "Pornire server", href: "/pornire-server", text: "Ghid de configurare", tone: "info" as const },
+      ],
+    },
   ];
 
   const toggleGameState = async () => {
@@ -197,6 +272,43 @@ export function DashboardOverview() {
           <Settings className="h-4 w-4 text-primary" aria-hidden="true" /> Configurare <ArrowUpRight className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
         </Link>
       </header>
+
+      <section aria-label="Director capabilități" className="animate-stagger-3 space-y-4" data-testid="dashboard-capability-directory">
+        <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border/60 pb-3">
+          <div>
+            <p className="mod-eyebrow">Hartă operațională</p>
+            <h2 className="mod-heading mt-1 text-2xl">Toate capabilitățile Oracolului</h2>
+          </div>
+          <Link href="/config" data-testid="link-dashboard-module-settings" className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-border px-3 text-sm text-foreground hover:border-primary/50 hover:bg-primary/5">
+            Module și activare <ArrowUpRight className="h-4 w-4 text-primary" aria-hidden="true" />
+          </Link>
+        </div>
+        <div className="grid gap-4 xl:grid-cols-2">
+          {directoryGroups.map((group) => (
+            <section key={group.title} className="mod-card min-w-0 rounded-2xl p-4 sm:p-5" data-testid={`directory-group-${group.title.toLowerCase().replaceAll(" ", "-")}`}>
+              <div className="mb-4 border-b border-border/60 pb-3">
+                <h3 className="font-display text-lg font-semibold text-foreground">{group.title}</h3>
+                <p className="mt-1 text-xs text-muted-foreground">{group.intro}</p>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {group.links.map((item) => (
+                  <Link key={`${item.href}-${item.title}`} href={item.href} data-testid={`link-directory-${item.title.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-")}`} className="group flex min-h-12 min-w-0 items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/45 px-3 py-2.5 transition-colors hover:border-primary/40 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium text-foreground">{item.title}</span>
+                      <span className={`mt-1 block font-mono text-[9px] uppercase tracking-[0.12em] ${
+                        item.tone === "active" ? "text-primary" :
+                          item.tone === "paused" ? "text-amber-500" :
+                            item.tone === "inactive" ? "text-muted-foreground" : "text-primary/70"
+                      }`}>{item.text}</span>
+                    </span>
+                    <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary" aria-hidden="true" />
+                  </Link>
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      </section>
 
       <section
         aria-label="Protecție globală"
@@ -320,8 +432,8 @@ export function DashboardOverview() {
         }`}
       >
         <div className="flex min-w-0 items-start gap-4">
-          <span className={`mt-0.5 rounded-xl p-3 ${hauntedHouse.data?.active ? "bg-primary/10 text-primary" : "bg-secondary text-muted-foreground"}`} aria-hidden="true">
-            <span className="text-xl">🎃</span>
+            <span className={`mt-0.5 rounded-xl p-3 ${hauntedHouse.data?.active ? "bg-primary/10 text-primary" : "bg-secondary text-muted-foreground"}`} aria-hidden="true">
+             <House className="h-5 w-5" />
           </span>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">

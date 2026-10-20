@@ -2674,7 +2674,41 @@ export interface InviteTrackingConfig {
   reportWeekday: number;
   reportTimeZone: InviteReportTimeZone;
   reportTopLimit: number;
+  recruitment: InviteRecruitmentConfig;
 }
+
+export interface InviteRecruitmentMilestone {
+  requiredInvites: number;
+  roleId: string;
+}
+
+export interface InviteRecruitmentConfig {
+  enabled: boolean;
+  inviteChannelId: string;
+  maxUses: number;
+  maxAgeDays: number;
+  dailyInviteLimit: number;
+  verificationHours: number;
+  rewardPoints: number;
+  milestones: [InviteRecruitmentMilestone, InviteRecruitmentMilestone, InviteRecruitmentMilestone];
+}
+
+const DEFAULT_RECRUITMENT_MILESTONES: InviteRecruitmentConfig["milestones"] = [
+  { requiredInvites: 5, roleId: "" },
+  { requiredInvites: 10, roleId: "" },
+  { requiredInvites: 25, roleId: "" },
+];
+
+export const DEFAULT_INVITE_RECRUITMENT_CONFIG: InviteRecruitmentConfig = {
+  enabled: false,
+  inviteChannelId: "",
+  maxUses: 10,
+  maxAgeDays: 7,
+  dailyInviteLimit: 3,
+  verificationHours: 24,
+  rewardPoints: 100,
+  milestones: DEFAULT_RECRUITMENT_MILESTONES,
+};
 
 export const DEFAULT_INVITE_TRACKING_CONFIG: InviteTrackingConfig = {
   enabled: false,
@@ -2686,7 +2720,43 @@ export const DEFAULT_INVITE_TRACKING_CONFIG: InviteTrackingConfig = {
   reportWeekday: 1,
   reportTimeZone: "Europe/Bucharest",
   reportTopLimit: 5,
+  recruitment: DEFAULT_INVITE_RECRUITMENT_CONFIG,
 };
+
+export function normalizeInviteRecruitmentConfig(value: unknown): InviteRecruitmentConfig {
+  const input = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const rawChannelId = typeof input.inviteChannelId === "string" ? input.inviteChannelId.trim() : "";
+  const rawMilestones = Array.isArray(input.milestones) ? input.milestones : [];
+  const milestones = DEFAULT_RECRUITMENT_MILESTONES.map((fallback, index) => {
+    const raw = rawMilestones[index] && typeof rawMilestones[index] === "object"
+      ? rawMilestones[index] as Record<string, unknown>
+      : {};
+    const requiredInvites = typeof raw.requiredInvites === "number"
+      && Number.isInteger(raw.requiredInvites)
+      && raw.requiredInvites >= 1
+      && raw.requiredInvites <= 100_000
+      ? raw.requiredInvites
+      : fallback.requiredInvites;
+    const roleId = typeof raw.roleId === "string" && /^\d{5,25}$/.test(raw.roleId.trim())
+      ? raw.roleId.trim()
+      : "";
+    return { requiredInvites, roleId };
+  }) as InviteRecruitmentConfig["milestones"];
+
+  const normalizeBoundedInteger = (raw: unknown, min: number, max: number, fallback: number) =>
+    typeof raw === "number" && Number.isInteger(raw) && raw >= min && raw <= max ? raw : fallback;
+
+  return {
+    enabled: input.enabled === true,
+    inviteChannelId: /^\d{5,25}$/.test(rawChannelId) ? rawChannelId : "",
+    maxUses: normalizeBoundedInteger(input.maxUses, 1, 100, DEFAULT_INVITE_RECRUITMENT_CONFIG.maxUses),
+    maxAgeDays: normalizeBoundedInteger(input.maxAgeDays, 1, 30, DEFAULT_INVITE_RECRUITMENT_CONFIG.maxAgeDays),
+    dailyInviteLimit: normalizeBoundedInteger(input.dailyInviteLimit, 1, 20, DEFAULT_INVITE_RECRUITMENT_CONFIG.dailyInviteLimit),
+    verificationHours: normalizeBoundedInteger(input.verificationHours, 1, 72, DEFAULT_INVITE_RECRUITMENT_CONFIG.verificationHours),
+    rewardPoints: normalizeBoundedInteger(input.rewardPoints, 1, 100_000, DEFAULT_INVITE_RECRUITMENT_CONFIG.rewardPoints),
+    milestones,
+  };
+}
 
 export function normalizeInviteTrackingConfig(value: unknown): InviteTrackingConfig {
   const input = value && typeof value === "object" ? value as Record<string, unknown> : {};
@@ -2719,6 +2789,7 @@ export function normalizeInviteTrackingConfig(value: unknown): InviteTrackingCon
     reportWeekday,
     reportTimeZone,
     reportTopLimit,
+    recruitment: normalizeInviteRecruitmentConfig(input.recruitment),
   };
 }
 

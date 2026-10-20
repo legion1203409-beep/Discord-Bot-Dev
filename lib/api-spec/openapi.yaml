@@ -77,6 +77,57 @@ paths:
       operationId: moderationLogout
       tags: [moderation]
       responses: { "204": { description: Session revoked } }
+  /moderation/verification/recruitment:
+    get:
+      operationId: getRecruitmentDashboard
+      tags: [moderation]
+      parameters:
+        - { name: guildId, in: query, required: true, schema: { type: string, pattern: "^\\d{5,25}$" } }
+      responses:
+        "200":
+          description: Public recruiter leaderboard and the signed-in member's private referral summary, if verified
+          content: { application/json: { schema: { $ref: "#/components/schemas/RecruitmentDashboard" } } }
+        "400": { description: Invalid guild ID }
+  /moderation/verification/complete:
+    post:
+      operationId: completeWebsiteVerification
+      tags: [moderation]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/VerificationLinkCompletionInput" } } }
+      responses:
+        "200":
+          description: One-time Discord-issued link accepted and the member verified
+          content: { application/json: { schema: { $ref: "#/components/schemas/VerificationLinkCompletionResponse" } } }
+        "400": { description: Invalid, expired, reused link or incomplete slider challenge }
+        "503": { description: Discord verification service is unavailable }
+  /moderation/guilds/{guildId}/verification/members:
+    parameters: [{ name: guildId, in: path, required: true, schema: { type: string, pattern: "^\\d{5,25}$" } }]
+    get:
+      operationId: getVerificationMembers
+      tags: [moderation]
+      responses:
+        "200":
+          description: Guild member verification status for authorized moderators
+          content: { application/json: { schema: { $ref: "#/components/schemas/VerificationMembersResponse" } } }
+        "401": { description: Moderation session is required }
+        "403": { description: Guild configuration access is required }
+        "503": { description: Discord member list is unavailable }
+  /moderation/guilds/{guildId}/verification/members/{userId}/verify:
+    parameters:
+      - { name: guildId, in: path, required: true, schema: { type: string, pattern: "^\\d{5,25}$" } }
+      - { name: userId, in: path, required: true, schema: { type: string, pattern: "^\\d{5,25}$" } }
+    post:
+      operationId: manuallyVerifyGuildMember
+      tags: [moderation]
+      responses:
+        "200":
+          description: Member manually verified by an authorized moderator
+          content: { application/json: { schema: { $ref: "#/components/schemas/ManualVerificationResponse" } } }
+        "400": { description: Invalid verification setup or member }
+        "401": { description: Moderation session is required }
+        "403": { description: Guild configuration access is required }
+        "503": { description: Discord verification service is unavailable }
   /moderation/storage/uploads/request-url:
     post:
       operationId: requestModerationStorageUploadUrl
@@ -660,6 +711,97 @@ components:
       type: object
       additionalProperties: true
       description: Bot-control settings returned by GET or after a successful PUT.
+    RecruitmentInvitee:
+      type: object
+      additionalProperties: false
+      required: [displayName, verifiedAt]
+      properties:
+        displayName: { type: string }
+        verifiedAt: { type: string, format: date-time }
+    RecruitmentLeaderboardEntry:
+      type: object
+      additionalProperties: false
+      required: [rank, displayName, verifiedInviteCount, points]
+      properties:
+        rank: { type: integer, minimum: 1 }
+        displayName: { type: string }
+        verifiedInviteCount: { type: integer, minimum: 0 }
+        points: { type: integer, minimum: 0 }
+    RecruitmentViewer:
+      type: object
+      additionalProperties: false
+      required: [displayName, createdInviteCount, verifiedInviteCount, points, invitees]
+      properties:
+        displayName: { type: string }
+        createdInviteCount: { type: integer, minimum: 0 }
+        verifiedInviteCount: { type: integer, minimum: 0 }
+        points: { type: integer, minimum: 0 }
+        invitees:
+          type: array
+          items: { $ref: "#/components/schemas/RecruitmentInvitee" }
+    RecruitmentDashboard:
+      type: object
+      additionalProperties: false
+      required: [guildId, guildName, enabled, viewer, leaderboard]
+      properties:
+        guildId: { type: string }
+        guildName: { type: [string, "null"] }
+        enabled: { type: boolean }
+        viewer:
+          anyOf:
+            - $ref: "#/components/schemas/RecruitmentViewer"
+            - type: "null"
+        leaderboard:
+          type: array
+          items: { $ref: "#/components/schemas/RecruitmentLeaderboardEntry" }
+    VerificationLinkCompletionInput:
+      type: object
+      additionalProperties: false
+      required: [ticket, sliderCompleted]
+      properties:
+        ticket: { type: string, minLength: 40, maxLength: 128 }
+        sliderCompleted: { type: boolean }
+    VerificationLinkCompletionResponse:
+      type: object
+      additionalProperties: false
+      required: [verified, result, guildId]
+      properties:
+        verified: { type: boolean }
+        result: { type: string, enum: [verified, already_verified] }
+        guildId: { type: string }
+    VerificationMember:
+      type: object
+      additionalProperties: false
+      required: [id, username, displayName, avatarUrl, joinedAt, verified]
+      properties:
+        id: { type: string }
+        username: { type: string }
+        displayName: { type: string }
+        avatarUrl: { type: string }
+        joinedAt: { type: [string, "null"], format: date-time }
+        verified: { type: boolean }
+    VerificationMembersResponse:
+      type: object
+      additionalProperties: false
+      required: [guildId, roleId, roleName, total, verifiedTotal, unverifiedTotal, members]
+      properties:
+        guildId: { type: string }
+        roleId: { type: string }
+        roleName: { type: [string, "null"] }
+        total: { type: integer, minimum: 0 }
+        verifiedTotal: { type: integer, minimum: 0 }
+        unverifiedTotal: { type: integer, minimum: 0 }
+        members:
+          type: array
+          items: { $ref: "#/components/schemas/VerificationMember" }
+    ManualVerificationResponse:
+      type: object
+      additionalProperties: false
+      required: [userId, displayName, result]
+      properties:
+        userId: { type: string }
+        displayName: { type: string }
+        result: { type: string, enum: [verified, already_verified] }
     ActivityRankSettings:
       type: object
       additionalProperties: false

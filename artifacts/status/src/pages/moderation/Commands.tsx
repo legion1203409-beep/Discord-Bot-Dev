@@ -7,7 +7,7 @@ import { useManualAction, useActiveGuild, useModerationMetadata } from "../../ho
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "../../components/ui/form";
 import { Input } from "../../components/ui/input";
 import { Button } from "../../components/ui/button";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "../../components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { useToast } from "../../hooks/use-toast";
 import { Textarea } from "../../components/ui/textarea";
 import {
@@ -90,7 +90,7 @@ function MetadataSelectField({
       <FormLabel>{label}</FormLabel>
       <Select value={selected} onValueChange={field.onChange}>
         <FormControl>
-          <SelectTrigger className="bg-background">
+          <SelectTrigger className="bg-background" data-testid={`select-manual-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}>
             <SelectValue placeholder={`Alege ${label.toLowerCase()}`} />
           </SelectTrigger>
         </FormControl>
@@ -104,6 +104,7 @@ function MetadataSelectField({
       </Select>
       <Input
         aria-label={`${label} - ${fallbackLabel}`}
+        data-testid={`input-manual-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-id`}
         placeholder={`${fallbackLabel} (ID Discord)`}
         value={field.value || ""}
         onChange={(event) => field.onChange(event.target.value.trim())}
@@ -161,15 +162,15 @@ export function CommandsPage() {
   if (!guildId) return <div className="p-8 text-center text-muted-foreground">Selectează un server.</div>;
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6 pb-28">
+      <div className="mx-auto max-w-5xl space-y-6 pb-28">
       <div>
         <h1 className="text-3xl font-bold tracking-tight mb-2 text-foreground flex items-center gap-3">
           <Zap className="w-8 h-8 text-primary" /> Acțiuni Manuale
         </h1>
-        <p className="text-muted-foreground">Execută comenzi de moderare direct din consolă, ocolind Discord-ul.</p>
+        <p className="text-muted-foreground">Alege o intervenție, completează datele și confirmă execuția asupra serverului selectat.</p>
       </div>
 
-      <div className="bg-primary/10 border border-primary/30 text-primary p-4 rounded-xl flex gap-3">
+      <div className="bg-primary/10 border border-primary/30 text-primary p-4 rounded-xl flex gap-3" data-testid="notice-manual-action-warning">
         <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
         <div className="text-sm">
           <strong className="text-foreground">Atenție!</strong> Orice acțiune executată aici va fi aplicată instantaneu pe serverul Discord selectat.
@@ -185,7 +186,7 @@ export function CommandsPage() {
         <div role="alert" className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
           <p>{actionError}</p>
           {lastAttempt && (
-            <Button type="button" variant="outline" className="mt-3" disabled={loading} onClick={() => void submitAction(lastAttempt, true)}>
+              <Button type="button" variant="outline" className="mt-3" disabled={loading} onClick={() => void submitAction(lastAttempt, true)} data-testid="button-manual-action-retry">
               Reîncearcă aceeași acțiune
             </Button>
           )}
@@ -198,36 +199,56 @@ export function CommandsPage() {
         </div>
       )}
 
-      <div className="bg-card border border-border p-6 rounded-xl">
+      <div className="bg-card border border-border p-5 sm:p-6 rounded-xl">
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <FormField
-                control={form.control}
-                name="type"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Tipul Acțiunii</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger className="bg-background"><SelectValue placeholder="Alege comanda" /></SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {MANUAL_COMMAND_GROUPS_WITH_COMMANDS.map((group) => (
-                          <SelectGroup key={group.key}>
-                            <SelectLabel>{group.label}</SelectLabel>
-                            {group.commands.map((command) => (
-                              <SelectItem key={command.key} value={command.key}>{command.label}</SelectItem>
-                            ))}
-                          </SelectGroup>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+            <FormField
+              control={form.control}
+              name="type"
+              render={({ field }) => (
+                <FormItem>
+                  <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border/60 pb-3">
+                    <div>
+                      <FormLabel className="text-base">Alege acțiunea</FormLabel>
+                      <FormDescription>Comenzile sunt grupate după tipul intervenției.</FormDescription>
+                    </div>
+                    <span className="rounded-md border border-primary/30 bg-primary/5 px-2.5 py-1 font-mono text-[11px] text-primary" data-testid="status-selected-manual-command">/{selectedCommand.key}</span>
+                  </div>
+                  <FormControl>
+                    <div className="grid gap-4 lg:grid-cols-3" role="group" aria-label="Comenzi manuale" data-testid="manual-command-picker">
+                      {MANUAL_COMMAND_GROUPS_WITH_COMMANDS.map((group) => (
+                        <section key={group.key} className="rounded-xl border border-border/70 bg-background/35 p-3" aria-labelledby={`manual-command-group-${group.key}`}>
+                          <h3 id={`manual-command-group-${group.key}`} className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                            {group.label}<span className="font-mono text-[10px]">{String(group.commands.length).padStart(2, "0")}</span>
+                          </h3>
+                          <div className="grid gap-2">
+                            {group.commands.map((command) => {
+                              const selected = field.value === command.key;
+                              return (
+                                <button
+                                  key={command.key}
+                                  type="button"
+                                  onClick={() => form.setValue("type", command.key, { shouldDirty: true, shouldValidate: true })}
+                                  aria-pressed={selected}
+                                  data-testid={`button-pick-command-${command.key}`}
+                                  className={`flex min-h-11 items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${selected ? "border-primary/50 bg-primary/10 text-foreground" : "border-border/60 bg-card/70 text-muted-foreground hover:border-primary/35 hover:text-foreground"}`}
+                                >
+                                  <span className="min-w-0 truncate">{command.label}</span>
+                                  <span className={`shrink-0 font-mono text-[10px] ${selected ? "text-primary" : "text-muted-foreground/70"}`}>/{command.key}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </section>
+                      ))}
+                    </div>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
+            <div className="grid grid-cols-1 gap-6 border-t border-border/60 pt-5 md:grid-cols-2">
               {selectedCommand.target === "user" && (
                 <FormField
                   control={form.control}
@@ -236,7 +257,7 @@ export function CommandsPage() {
                     <FormItem>
                       <FormLabel>ID Utilizator (Țintă)</FormLabel>
                       <FormControl>
-                        <Input placeholder="Discord User ID (ex: 123456789...)" {...field} value={field.value || ""} />
+                        <Input data-testid="input-manual-target-user-id" placeholder="ID utilizator Discord" {...field} value={field.value || ""} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -270,7 +291,7 @@ export function CommandsPage() {
                     <FormItem>
                       <FormLabel>Durată (Minute)</FormLabel>
                       <FormControl>
-                        <Input type="number" placeholder="60" {...field} value={field.value || ""} />
+                         <Input data-testid="input-manual-duration-minutes" type="number" placeholder="60" {...field} value={field.value || ""} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -287,7 +308,7 @@ export function CommandsPage() {
                     <FormItem>
                       <FormLabel>Nou Nickname</FormLabel>
                       <FormControl>
-                        <Input placeholder="Nume nou (max 32 char)" {...field} value={field.value || ""} />
+                        <Input data-testid="input-manual-nickname" placeholder="Nume nou (maxim 32 caractere)" {...field} value={field.value || ""} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -321,7 +342,7 @@ export function CommandsPage() {
                     <FormItem>
                          <FormLabel>Slowmode (secunde, 0 = oprit)</FormLabel>
                       <FormControl>
-                           <Input type="number" min={0} max={21600} placeholder="5" {...field} value={field.value ?? ""} />
+                            <Input data-testid="input-manual-slowmode-seconds" type="number" min={0} max={21600} placeholder="5" {...field} value={field.value ?? ""} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -337,7 +358,7 @@ export function CommandsPage() {
                     <FormItem>
                       <FormLabel>Număr de mesaje de șters</FormLabel>
                       <FormControl>
-                        <Input type="number" min={1} max={100} placeholder="Ex: 50 (Max: 100)" {...field} value={field.value ?? ""} />
+                        <Input data-testid="input-manual-purge-amount" type="number" min={1} max={100} placeholder="De exemplu, 50 (maximum 100)" {...field} value={field.value ?? ""} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -356,6 +377,7 @@ export function CommandsPage() {
                     <Textarea 
                       placeholder="Motivul va fi înregistrat în loguri și trimis utilizatorului (după caz)..." 
                       className="resize-none h-24 bg-background"
+                      data-testid="input-manual-action-reason"
                       {...field} 
                     />
                   </FormControl>
@@ -366,7 +388,7 @@ export function CommandsPage() {
 
             <div className="mod-save-bar sticky bottom-3 z-20 flex w-full items-center justify-end gap-3">
               <div className="mod-save-actions ml-auto">
-                <Button type="submit" disabled={loading} className="gap-2 px-8">
+                <Button type="submit" disabled={loading} className="gap-2 px-8" data-testid="button-manual-action-submit">
                   {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                   Execută Comanda
                 </Button>

@@ -14,6 +14,11 @@ import {
   loadInviteTrackingConfig,
   type InviteTrackingConfig,
 } from "./db";
+import {
+  getRecruitmentInviteOwners,
+  markRecruitmentInviteDeleted,
+  recordRecruitmentAttributions,
+} from "./invite-recruitment";
 import { statsDay } from "./daily-stats";
 
 const INVITE_SYNC_TABLES_SQL = `
@@ -188,6 +193,24 @@ function toSnapshotRow(invite: Invite): InviteSnapshotRow | null {
   };
 }
 
+function inviteTrackingActive(config: InviteTrackingConfig | undefined): boolean {
+  return Boolean(config?.enabled || config?.recruitment.enabled);
+}
+
+async function applyRecruitmentOwners(
+  guildId: string,
+  rows: InviteSnapshotRow[],
+): Promise<InviteSnapshotRow[]> {
+  if (!activeConfigs.get(guildId)?.recruitment.enabled || rows.length === 0) return rows;
+  const owners = await getRecruitmentInviteOwners(guildId, rows.map((row) => row.code));
+  return rows.map((row) => {
+    const owner = owners.get(row.code);
+    return owner
+      ? { ...row, inviterId: owner.recruiterId, inviterName: owner.recruiterDisplayName }
+      : row;
+  });
+}
+
 async function persistInviteSnapshots(
   guildId: string,
   rows: InviteSnapshotRow[],
@@ -259,9 +282,9 @@ export async function syncGuildInviteSnapshot(guild: Guild): Promise<{ activeInv
   await flushQueuedInviteJoins(guild);
   return withGuildOperation(state, async () => {
     const invites = await fetchGuildInvites(guild);
-    const rows = invites
+    const rows = await applyRecruitmentOwners(guild.id, invites
       .map(toSnapshotRow)
-      .filter((row): row is InviteSnapshotRow => row !== null);
+      .filter((row): row is InviteSnapshotRow => row !== null));
     await persistInviteSnapshots(guild.id, rows);
 
     state.usesByCode = new Map(rows.map((row) => [row.code, row.uses]));
@@ -307,7 +330,7 @@ function scheduleJoinFlush(guild: Guild, state: GuildInviteState): void {
 }
 
 export function queueInviteJoin(guild: Guild, member: GuildMember): void {
-  if (!activeConfigs.get(guild.id)?.enabled) return;
+  if (!inviteTrackingActive(activeConfigs.get(guild.id))) return;
   const state = stateFor(guild.id);
   state.queuedMembers.push(member);
   scheduleJoinFlush(guild, state);
@@ -323,16 +346,17 @@ export async function flushQueuedInviteJoins(guild: Guild): Promise<void> {
   await withGuildOperation(state, async () => {
     const members = state.queuedMembers.splice(0);
     const joinCount = members.length;
-    if (joinCount <= 0 || !activeConfigs.get(guild.id)?.enabled) return;
+    const config = activeConfigs.get(guild.id);
+    if (joinCount <= 0 || !inviteTrackingActive(config)) return;
 
     const counts = new Map<string, number>();
     let rowsForLog: InviteSnapshotRow[] = [];
     const inviteUseDeltas = new Map<string, number>();
     try {
       const invites = await fetchGuildInvites(guild);
-      const rows = invites
+      const rows = await applyRecruitmentOwners(guild.id, invites
         .map(toSnapshotRow)
-        .filter((row): row is InviteSnapshotRow => row !== null);
+        .filter((row): row is InviteSnapshotRow => row !== null));
       rowsForLog = rows;
       await persistInviteSnapshots(guild.id, rows);
 
@@ -368,6 +392,19 @@ export async function flushQueuedInviteJoins(guild: Guild): Promise<void> {
       for (const [code, count] of allocateInviteUseCredits(joinCount, state.pendingUsesByCode)) {
         counts.set(code, count);
       }
+      if (config?.recruitment.enabled) {
+        const resolvedCodes = resolveInviteCodesForJoinBatch(joinCount, inviteUseDeltas);
+        await recordRecruitmentAttributions(
+          guild.id,
+          members.map((member, index) => ({
+            inviteeId: member.id,
+            inviteeDisplayName: member.displayName,
+            inviteCode: resolvedCodes[index] ?? null,
+            joinedAt: new Date(member.joinedTimestamp ?? Date.now()),
+          })),
+          config.recruitment.verificationHours,
+        );
+      }
       await persistDailyCounts(guild.id, counts);
       await publishInviteJoinLogs(guild, members, inviteUseDeltas, rowsForLog);
     } catch (error) {
@@ -386,8 +423,9 @@ export async function flushQueuedInviteJoins(guild: Guild): Promise<void> {
 
 export async function recordCreatedInvite(invite: Invite): Promise<void> {
   const row = toSnapshotRow(invite);
-  if (!row || !activeConfigs.get(row.guildId)?.enabled) return;
-  await persistInviteSnapshots(row.guildId, [row], false);
+  if (!row || !inviteTrackingActive(activeConfigs.get(row.guildId))) return;
+  const [decorated] = await applyRecruitmentOwners(row.guildId, [row]);
+  await persistInviteSnapshots(row.guildId, [decorated ?? row], false);
   const state = stateFor(row.guildId);
   state.usesByCode.set(row.code, row.uses);
 }
@@ -402,6 +440,7 @@ export async function recordDeletedInvite(invite: Invite): Promise<void> {
       WHERE guild_id = $1 AND invite_code = $2`,
     [row.guildId, row.code, row.uses],
   );
+  await markRecruitmentInviteDeleted(row.guildId, row.code);
   const state = inviteStates.get(row.guildId);
   state?.usesByCode.delete(row.code);
 }
@@ -759,7 +798,7 @@ export async function applyInviteTrackingConfig(
   if (!guildId) return;
   activeConfigs.set(guildId, config);
   const state = stateFor(guildId);
-  if (!config.enabled) {
+  if (!inviteTrackingActive(config)) {
     if (state.flushTimer) clearTimeout(state.flushTimer);
     state.flushTimer = null;
     state.queuedMembers = [];
@@ -777,7 +816,7 @@ export async function applyInviteTrackingConfig(
       logger.warn({ error, guildId }, "Could not initialize Discord invite snapshot");
     }
   }
-  if (client?.isReady() && config.reportEnabled) {
+  if (client?.isReady() && config.enabled && config.reportEnabled) {
     startInviteStatsReportScheduler(client, guildId);
   } else {
     stopInviteStatsReportScheduler(guildId);

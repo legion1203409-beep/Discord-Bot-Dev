@@ -73,7 +73,10 @@ const moderationNavGroups: Array<{ id: string; label: string; items: ModerationN
   {
     id: "overview",
     label: "Centru de comandă",
-    items: [{ href: "/", icon: Activity, label: "Privire generală" }],
+    items: [
+      { href: "/", icon: Activity, label: "Privire generală" },
+      { href: "/comenzi", icon: Zap, label: "Acțiuni manuale" },
+    ],
   },
   {
     id: "protection",
@@ -93,7 +96,6 @@ const moderationNavGroups: Array<{ id: string; label: string; items: ModerationN
     label: "Intervenții și evidențe",
     items: [
       { href: "/politici", icon: BookOpen, label: "Politici" },
-      { href: "/comenzi", icon: Zap, label: "Acțiuni manuale" },
       { href: "/cazuri", icon: ShieldAlert, label: "Cazuri" },
       { href: "/audit", icon: History, label: "Jurnal de audit" },
     ],

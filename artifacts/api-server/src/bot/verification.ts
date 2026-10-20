@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import {
   ActionRowBuilder,
   ButtonBuilder,
@@ -10,6 +10,7 @@ import {
   type ButtonInteraction,
   type Message,
 } from "discord.js";
+import { pool } from "@workspace/db";
 import { loadVerificationConfig, saveVerificationConfig, type VerificationConfig } from "./db";
 import { normalizeMessageImageUrl, publicMessageImageUrl } from "./message-media";
 
@@ -256,6 +257,71 @@ export async function verifyMember(client: Client, guildId: string, userId: stri
 
 const COOKIE_NAME = "verification_identity";
 const COOKIE_TTL_SECONDS = 60 * 60 * 24 * 30;
+const VERIFICATION_LINK_TTL_MS = 10 * 60 * 1_000;
+const VERIFICATION_LINKS_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS discord_verification_links (
+    token_hash text PRIMARY KEY,
+    guild_id text NOT NULL,
+    user_id text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    expires_at timestamptz NOT NULL,
+    used_at timestamptz
+  );
+  CREATE INDEX IF NOT EXISTS discord_verification_links_user_idx
+    ON discord_verification_links (guild_id, user_id, expires_at);
+`;
+
+let verificationLinksSchemaReady: Promise<void> | null = null;
+
+async function ensureVerificationLinksTable(): Promise<void> {
+  verificationLinksSchemaReady ??= pool.query(VERIFICATION_LINKS_TABLE_SQL).then(() => undefined).catch((error) => {
+    verificationLinksSchemaReady = null;
+    throw error;
+  });
+  await verificationLinksSchemaReady;
+}
+
+export async function createVerificationLinkToken(guildId: string, userId: string): Promise<string> {
+  await ensureVerificationLinksTable();
+  const token = randomBytes(32).toString("base64url");
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+  const expiresAt = new Date(Date.now() + VERIFICATION_LINK_TTL_MS);
+  await pool.query(
+    `UPDATE discord_verification_links
+        SET used_at = now()
+      WHERE guild_id = $1 AND user_id = $2 AND used_at IS NULL`,
+    [guildId, userId],
+  );
+  await pool.query(
+    `INSERT INTO discord_verification_links (token_hash, guild_id, user_id, expires_at)
+     VALUES ($1, $2, $3, $4)`,
+    [tokenHash, guildId, userId, expiresAt],
+  );
+  await pool.query(
+    `DELETE FROM discord_verification_links
+      WHERE expires_at < now() - interval '30 days'`,
+  );
+  return token;
+}
+
+export async function consumeVerificationLinkToken(
+  token: string,
+): Promise<{ guildId: string; userId: string } | null> {
+  if (!/^[A-Za-z0-9_-]{40,64}$/.test(token)) return null;
+  await ensureVerificationLinksTable();
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+  const result = await pool.query<{ guild_id: string; user_id: string }>(
+    `UPDATE discord_verification_links
+        SET used_at = now()
+      WHERE token_hash = $1
+        AND used_at IS NULL
+        AND expires_at > now()
+      RETURNING guild_id, user_id`,
+    [tokenHash],
+  );
+  const row = result.rows[0];
+  return row ? { guildId: row.guild_id, userId: row.user_id } : null;
+}
 
 function signingSecret(): string {
   return process.env.SESSION_SECRET?.trim() || "development-verification-secret";
@@ -290,8 +356,31 @@ export function verificationCookieName(): string {
 }
 
 export async function handleVerificationButton(interaction: ButtonInteraction, websiteUrl: string): Promise<void> {
-  await interaction.reply({
-    content: `Confirmă-ți identitatea pe site pentru a primi rolul:\n${websiteUrl}`,
-    flags: MessageFlags.Ephemeral,
-  });
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const guildId = interaction.guildId;
+  if (!guildId) {
+    await interaction.editReply("Deschide această verificare dintr-un server Discord.");
+    return;
+  }
+
+  try {
+    const config = normalizeVerificationConfig(await loadVerificationConfig(guildId));
+    if (!config.enabled || !config.roleId) {
+      await interaction.editReply("Verificarea nu este configurată momentan pe acest server.");
+      return;
+    }
+    const guild = interaction.guild ?? await interaction.client.guilds.fetch({ guild: guildId, force: true });
+    const member = await guild.members.fetch(interaction.user.id);
+    if (member.roles.cache.has(config.roleId)) {
+      await interaction.editReply(config.alreadyVerifiedMessage);
+      return;
+    }
+
+    const ticket = await createVerificationLinkToken(guildId, interaction.user.id);
+    const url = `${websiteUrl}#ticket=${encodeURIComponent(ticket)}`;
+    await interaction.editReply(`Aprinde flacăra pe site pentru a primi rolul de verificare:\n${url}`);
+  } catch (error) {
+    await interaction.editReply("Linkul de verificare nu a putut fi pregătit. Încearcă din nou în câteva momente.");
+    throw error;
+  }
 }
