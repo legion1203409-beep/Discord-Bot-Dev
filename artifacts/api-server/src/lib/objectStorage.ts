@@ -42,7 +42,8 @@ export class ObjectStorageService {
     return `/objects/${url.pathname.slice(privateObjectDir.length).replace(/^\/+/, "")}`;
   }
 
-  async getObjectEntityFile(objectPath: string): Promise<File> {
+  async getObjectEntityFile(objectPath: string, signal?: AbortSignal): Promise<File> {
+    signal?.throwIfAborted();
     if (!objectPath.startsWith("/objects/")) throw new ObjectNotFoundError();
     const privateObjectDir = process.env.PRIVATE_OBJECT_DIR;
     if (!privateObjectDir) throw new Error("PRIVATE_OBJECT_DIR is not configured");
@@ -50,12 +51,23 @@ export class ObjectStorageService {
       `${privateObjectDir}/${objectPath.slice("/objects/".length)}`,
     );
     const file = objectStorageClient.bucket(bucketName).file(objectName);
+    // The SDK's exists/getMetadata promises cannot be aborted. Cancellable
+    // callers validate existence through the signed GET instead.
+    if (signal) return file;
     const [exists] = await file.exists();
     if (!exists) throw new ObjectNotFoundError();
     return file;
   }
 
-  async downloadObject(file: File): Promise<Response> {
+  async downloadObject(file: File, signal?: AbortSignal): Promise<Response> {
+    if (signal) {
+      signal.throwIfAborted();
+      const url = await signObjectUrl({
+        bucketName: file.bucket.name, objectName: file.name, method: "GET", ttlSec: 60, signal,
+      });
+      signal.throwIfAborted();
+      return fetch(url, { signal, redirect: "error" });
+    }
     const [metadata] = await file.getMetadata();
     const stream = Readable.toWeb(file.createReadStream()) as ReadableStream<Uint8Array>;
     const headers = new Headers({
@@ -81,11 +93,13 @@ async function signObjectUrl({
   objectName,
   method,
   ttlSec,
+  signal,
 }: {
   bucketName: string;
   objectName: string;
   method: "PUT" | "GET";
   ttlSec: number;
+  signal?: AbortSignal;
 }): Promise<string> {
   const response = await fetch(`${REPLIT_SIDECAR_ENDPOINT}/object-storage/signed-object-url`, {
     method: "POST",
@@ -96,7 +110,9 @@ async function signObjectUrl({
       method,
       expires_at: new Date(Date.now() + ttlSec * 1000).toISOString(),
     }),
-    signal: AbortSignal.timeout(30_000),
+    signal: signal
+      ? AbortSignal.any([signal, AbortSignal.timeout(30_000)])
+      : AbortSignal.timeout(30_000),
   });
   if (!response.ok) throw new Error(`Failed to sign object URL: ${response.status}`);
   const payload = await response.json() as { signed_url?: unknown };

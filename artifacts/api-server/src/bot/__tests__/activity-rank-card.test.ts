@@ -15,8 +15,8 @@ const storageMock = vi.hoisted(() => ({
 }));
 vi.mock("../../lib/objectStorage", () => ({
   ObjectStorageService: class {
-    getObjectEntityFile(value: string) { return storageMock.getObjectEntityFile(value); }
-    downloadObject(file: unknown) { return storageMock.downloadObject(file); }
+    getObjectEntityFile(value: string, signal?: AbortSignal) { return storageMock.getObjectEntityFile(value, signal); }
+    downloadObject(file: unknown, signal?: AbortSignal) { return storageMock.downloadObject(file, signal); }
   },
 }));
 
@@ -271,9 +271,53 @@ describe("animated activity rank cards", () => {
       new Response(new Uint8Array([4, 5, 6]), { headers: { "Content-Type": "image/png" } }),
     );
     expect(await fetchActivityRankBanner("/api/storage/objects/uploads/banner-id")).toEqual(Buffer.from([4, 5, 6]));
-    expect(storageMock.getObjectEntityFile).toHaveBeenCalledWith("/objects/uploads/banner-id");
-    expect(storageMock.downloadObject).toHaveBeenCalledWith(file);
+    expect(storageMock.getObjectEntityFile).toHaveBeenCalledWith("/objects/uploads/banner-id", expect.any(AbortSignal));
+    expect(storageMock.downloadObject).toHaveBeenCalledWith(file, expect.any(AbortSignal));
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it.each(["lookup", "download"] as const)("bounds a stalled storage %s and aborts its operation", async (stage) => {
+    vi.useFakeTimers();
+    storageMock.getObjectEntityFile.mockResolvedValue({ id: "file" });
+    storageMock.downloadObject.mockImplementation(() => new Promise(() => {}));
+    if (stage === "lookup") {
+      storageMock.getObjectEntityFile.mockImplementationOnce(() => new Promise(() => {}));
+    }
+    const result = fetchActivityRankBanner("/api/storage/objects/uploads/stalled");
+    const rejected = expect(result).rejects.toThrow("timed out");
+    await vi.advanceTimersByTimeAsync(8_000);
+    await rejected;
+    expect(storageMock.getObjectEntityFile.mock.calls[0][1].aborted).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("cancels a partially read uploaded banner when its total download deadline expires", async () => {
+    vi.useFakeTimers();
+    const cancel = vi.fn();
+    storageMock.getObjectEntityFile.mockResolvedValue({ id: "file" });
+    storageMock.downloadObject.mockResolvedValue(new Response(new ReadableStream({
+      start(controller) { controller.enqueue(new Uint8Array([1, 2])); },
+      cancel,
+    }), { headers: { "Content-Type": "image/png" } }));
+    const result = fetchActivityRankBanner("/api/storage/objects/uploads/stalled-stream");
+    const rejected = expect(result).rejects.toThrow("timed out");
+    await vi.advanceTimersByTimeAsync(8_000);
+    await rejected;
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("does not start a download if a stalled lookup resolves after the deadline", async () => {
+    vi.useFakeTimers();
+    let resolveLookup!: (file: unknown) => void;
+    storageMock.getObjectEntityFile.mockImplementationOnce(() => new Promise((resolve) => { resolveLookup = resolve; }));
+    const result = fetchActivityRankBanner("/api/storage/objects/uploads/late");
+    const rejected = expect(result).rejects.toThrow("timed out");
+    await vi.advanceTimersByTimeAsync(8_000);
+    await rejected;
+    resolveLookup({ id: "late-file" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(storageMock.downloadObject).not.toHaveBeenCalled();
   });
 
   it("composes both trusted public and uploaded banner image bytes into the animated card", async () => {

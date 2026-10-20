@@ -66,43 +66,83 @@ export async function fetchActivityRankBanner(url: string): Promise<Buffer> {
     throw new Error("Activity rank banners must use app uploads or a trusted HTTPS image host");
   }
 
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      const error = new Error("Activity rank banner download timed out");
+      controller.abort(error);
+      reject(error);
+    }, BANNER_TIMEOUT_MS);
+  });
+  try {
+    return await Promise.race([downloadActivityRankBanner(url, controller.signal), timeout]);
+  } finally {
+    clearTimeout(timer!);
+    controller.abort();
+  }
+}
+
+async function downloadActivityRankBanner(url: string, signal: AbortSignal): Promise<Buffer> {
   const objectPath = activityBannerStoragePath(url);
   // Uploaded paths never go through the app's hostname or user-controlled DNS.
-  const response = objectPath
-    ? await storage.downloadObject(await storage.getObjectEntityFile(objectPath))
-    : await fetch(new URL(url), {
+  let response: Response;
+  if (objectPath) {
+    const file = await storage.getObjectEntityFile(objectPath, signal);
+    signal.throwIfAborted();
+    response = await storage.downloadObject(file, signal);
+  } else {
+    response = await fetch(new URL(url), {
         headers: { Accept: "image/png,image/jpeg,image/webp,image/gif" },
         redirect: "error",
-        signal: AbortSignal.timeout(BANNER_TIMEOUT_MS),
+        signal,
       });
-  if (!response.ok) throw new Error(`Activity rank banner returned HTTP ${response.status}`);
-
-  const contentType = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
-  if (!contentType || !["image/png", "image/jpeg", "image/webp", "image/gif"].includes(contentType)) {
-    throw new Error("Activity rank banner must be a PNG, JPEG, WebP, or GIF image");
   }
-
-  const contentLength = Number(response.headers.get("content-length"));
-  if (Number.isFinite(contentLength) && contentLength > MAX_BANNER_BYTES) {
-    throw new Error("Activity rank banner exceeds the 10 MB size limit");
+  if (signal.aborted) {
+    void response.body?.cancel(signal.reason).catch(() => {});
+    signal.throwIfAborted();
   }
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  const cancel = () => { void reader?.cancel(signal.reason).catch(() => {}); };
+  signal.addEventListener("abort", cancel, { once: true });
+  try {
+    if (!response.ok) throw new Error(`Activity rank banner returned HTTP ${response.status}`);
 
-  if (!response.body) throw new Error("Activity rank banner response has no image data");
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let totalBytes = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    totalBytes += value.byteLength;
-    if (totalBytes > MAX_BANNER_BYTES) {
-      await reader.cancel();
+    const contentType = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
+    if (!contentType || !["image/png", "image/jpeg", "image/webp", "image/gif"].includes(contentType)) {
+      throw new Error("Activity rank banner must be a PNG, JPEG, WebP, or GIF image");
+    }
+
+    const contentLength = Number(response.headers.get("content-length"));
+    if (Number.isFinite(contentLength) && contentLength > MAX_BANNER_BYTES) {
       throw new Error("Activity rank banner exceeds the 10 MB size limit");
     }
-    chunks.push(value);
+
+    if (!response.body) throw new Error("Activity rank banner response has no image data");
+    reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let totalBytes = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      signal.throwIfAborted();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > MAX_BANNER_BYTES) {
+        throw new Error("Activity rank banner exceeds the 10 MB size limit");
+      }
+      chunks.push(value);
+    }
+    if (totalBytes === 0) throw new Error("Activity rank banner is empty");
+    return Buffer.concat(chunks, totalBytes);
+  } finally {
+    signal.removeEventListener("abort", cancel);
+    if (reader) {
+      void reader.cancel().catch(() => {});
+      reader.releaseLock();
+    } else {
+      void response.body?.cancel().catch(() => {});
+    }
   }
-  if (totalBytes === 0) throw new Error("Activity rank banner is empty");
-  return Buffer.concat(chunks, totalBytes);
 }
 
 export async function renderActivityRankBanner(
