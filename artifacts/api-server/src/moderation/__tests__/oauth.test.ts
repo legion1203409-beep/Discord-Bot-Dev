@@ -4,6 +4,7 @@ import {
   beginDiscordOAuth,
   beginVerificationOAuth,
   consumeDiscordOAuthState,
+  getVerificationWebsiteUrl,
   resetDiscordOAuthStateForTests,
 } from "../oauth";
 
@@ -54,6 +55,15 @@ describe("Discord OAuth browser nonce", () => {
     const url = beginVerificationOAuth(response as never, "987654321");
     const parsed = new URL(url);
     expect(parsed.searchParams.get("scope")).toBe("identify guilds");
+  });
+
+  it("uses the configured public origin for bot and moderation verification links", () => {
+    process.env.MODERATION_WEB_ORIGIN = "https://codelinked.app";
+    process.env.DISCORD_OAUTH_REDIRECT_URI = "https://discord-bot-dev-alaandrei09.replit.app/api/moderation/oauth/discord/callback";
+
+    expect(getVerificationWebsiteUrl("987654321")).toBe(
+      "https://codelinked.app/verificare?guildId=987654321",
+    );
   });
 
   it("rejects a state mismatch in constant-time comparison and clears the nonce cookie", () => {
