@@ -3,15 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
-    <title>Regatul Cenușii — Panou de moderare</title>
-    <meta name="description" content="Panoul de administrare al botului Regatul Cenușii: comenzi, moderare, protecție și configurarea serverului Discord." />
+    <title>Oracolul Cenușii — Comunitate Discord</title>
+    <meta name="description" content="Descoperă comunitatea românească Oracolul Cenușii pe Discord și consultă datele reale despre prezență și activitatea zilnică." />
     <meta name="robots" content="index, follow" />
-    <meta property="og:title" content="Regatul Cenușii — Panou de moderare" />
-    <meta property="og:description" content="Comenzile, moderarea și setările botului Discord, într-un singur panou." />
+    <meta property="og:title" content="Oracolul Cenușii — Comunitate Discord" />
+    <meta property="og:description" content="Descoperă comunitatea românească Oracolul Cenușii pe Discord și consultă datele reale despre prezență și activitatea zilnică." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Regatul Cenușii — Panou de moderare" />
-    <meta name="twitter:description" content="Comenzile, moderarea și setările botului Discord, într-un singur panou." />
+    <meta name="twitter:title" content="Oracolul Cenușii — Comunitate Discord" />
+    <meta name="twitter:description" content="Descoperă comunitatea românească Oracolul Cenușii pe Discord și consultă datele reale despre prezență și activitatea zilnică." />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <style>
       html, body { margin: 0; background: #101114; }
@@ -61,9 +61,9 @@
         const title = document.getElementById("boot-loading-title");
         const message = document.getElementById("boot-loading-message");
         const retry = document.getElementById("boot-loading-retry");
-        if (/\/joc(?:\/|$)/.test(window.location.pathname)) {
+        if (/\/(?:server|joc)(?:\/|$)/.test(window.location.pathname)) {
           title.textContent = "Se încarcă ghidul";
-          message.textContent = "Se pregătește ghidul jocului...";
+          message.textContent = "Se pregătește ghidul serverului...";
         }
         retry.addEventListener("click", () => window.location.reload());
         window.setTimeout(() => {
@@ -75,7 +75,7 @@
         }, 15000);
       })();
     </script>
-    <noscript>Activează JavaScript pentru a deschide panoul sau ghidul jocului.</noscript>
+    <noscript>Activează JavaScript pentru a deschide site-ul Oracolul Cenușii.</noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -21,11 +21,10 @@ import { SwordCursor } from "./components/SwordCursor";
 // Public pages
 import { PublicLayout } from "./components/public/PublicLayout";
 import { GameGuidePage } from "./pages/public/GameGuidePage";
-import { GameGuideLoadingScreen } from "./components/public/GameGuideLoadingScreen";
 import { OperatorHealthPage } from "./pages/public/OperatorHealthPage";
 import { VerificationPage } from "./pages/public/VerificationPage";
 import { DailyStatsPage } from "./pages/public/DailyStatsPage";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 function ScrollAnimations() {
   useEffect(() => {
@@ -78,19 +77,6 @@ function HomeApp() {
   }
 
   return <Redirect to={`/moderare${window.location.search}`} replace />;
-}
-
-function GameApp() {
-  const [isLoading, setIsLoading] = useState(true);
-  const handleGateOpen = useCallback(() => setIsLoading(false), []);
-
-  if (isLoading) return <GameGuideLoadingScreen onOpenComplete={handleGateOpen} />;
-
-  return (
-    <PublicLayout>
-      <GameGuidePage />
-    </PublicLayout>
-  );
 }
 
 function ModerationApp() {
@@ -149,7 +135,8 @@ export default function App() {
       <ScrollAnimations />
       <Switch>
         <Route path="/" component={HomeApp} />
-        <Route path="/joc" component={GameApp} />
+        <Route path="/server" component={() => <PublicLayout><GameGuidePage /></PublicLayout>} />
+        <Route path="/joc" component={() => <Redirect to="/server" replace />} />
         <Route path="/verificare" component={VerificationPage} />
         <Route path="/statistici" component={() => <PublicLayout><DailyStatsPage /></PublicLayout>} />
         <Route path="/moderare" nest>

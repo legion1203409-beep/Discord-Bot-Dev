@@ -988,6 +988,120 @@ h1 em, h2 em, blockquote em { color: var(--ember-light); }
   color: #b33c24;
 }
 
+/* Public Discord server guide — ash-paper editorial with live signal accents. */
+.server-guide { position: relative; padding-top: 4.5rem; padding-bottom: 7rem; }
+.server-guide::before { position: absolute; z-index: -1; top: 1rem; right: -8rem; width: 36rem; height: 36rem; border: 1px solid rgba(197,164,107,.07); border-radius: 50%; content: ""; }
+.server-guide-hero { position: relative; display: grid; min-height: 565px; grid-template-columns: minmax(0, 1.15fr) minmax(280px, .75fr); align-items: center; gap: 5rem; padding: 5.5rem 0 5rem; border-bottom: 1px solid var(--line); }
+.server-guide-intro { position: relative; z-index: 1; max-width: 670px; }
+.server-guide-eyebrow { display: flex; align-items: center; gap: .65rem; color: var(--gold-light); font-family: var(--mono); font-size: .58rem; letter-spacing: .18em; }
+.server-guide-eyebrow > span { width: 28px; height: 1px; background: var(--gold); }
+.server-guide-intro h1, .server-guide-section-heading h2, .server-guide-report-heading h2, .server-guide-welcome h2 { margin-top: 1.25rem; color: var(--paper); font-family: var(--display); font-weight: 500; letter-spacing: -.065em; line-height: .97; }
+.server-guide-intro h1 { font-size: clamp(3.6rem, 8vw, 7.4rem); }
+.server-guide-intro h1 em, .server-guide-welcome h2 em { color: var(--ember-light); font-style: normal; }
+.server-guide-lead { max-width: 510px; margin-top: 1.5rem; color: var(--paper-soft); font-size: .88rem; line-height: 1.9; }
+.server-guide-join, .server-guide-welcome > a { display: inline-flex; min-height: 48px; align-items: center; gap: .75rem; margin-top: 2rem; padding: .8rem 1.05rem; border: 1px solid rgba(224,188,127,.65); background: rgba(184,148,95,.1); color: var(--gold-light); font-size: .67rem; font-weight: 700; letter-spacing: .07em; transition: transform 180ms ease, background 180ms ease; }
+.server-guide-join:hover, .server-guide-welcome > a:hover { transform: translateY(-2px); background: rgba(184,148,95,.19); }
+.server-guide-identity { position: relative; justify-self: end; width: min(100%, 350px); padding: 2rem; border: 1px solid rgba(243,238,230,.16); background: linear-gradient(145deg, rgba(34,37,42,.95), rgba(20,22,25,.94)); box-shadow: 24px 24px 0 rgba(169,68,49,.07); }
+.server-guide-identity::before { position: absolute; top: -1px; left: 2rem; width: 50px; height: 2px; background: var(--ember-light); content: ""; }
+.server-guide-mark { display: grid; width: 76px; height: 76px; place-items: center; overflow: hidden; border: 1px solid rgba(224,188,127,.55); border-radius: 50%; background: radial-gradient(circle at 35% 25%, rgba(214,106,77,.35), rgba(20,22,25,.9) 65%); color: var(--gold-light); font-family: var(--display); font-size: 1.45rem; }
+.server-guide-mark img { width: 100%; height: 100%; object-fit: cover; }
+.server-guide-identity-label { margin-top: 1.65rem; color: var(--ash); font-family: var(--mono); font-size: .53rem; letter-spacing: .17em; }
+.server-guide-identity h2 { margin-top: .35rem; color: var(--paper); font-family: var(--display); font-size: 1.65rem; font-weight: 500; letter-spacing: -.04em; }
+.server-guide-identity > a { display: inline-block; margin-top: .45rem; color: var(--gold-light); font-family: var(--mono); font-size: .63rem; overflow-wrap: anywhere; }
+.server-guide-presence { display: flex; align-items: center; gap: .55rem; margin-top: 1.7rem; padding-top: 1rem; border-top: 1px solid var(--line); color: var(--ash); font-family: var(--mono); font-size: .55rem; }
+.server-guide-presence-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
+.server-guide-presence-dot.is-live { background: var(--green); box-shadow: 0 0 0 4px rgba(120,187,142,.1); }
+.server-guide-orbit { position: absolute; top: 50%; right: 11%; width: 280px; height: 280px; border: 1px solid rgba(197,164,107,.08); border-radius: 50%; transform: translateY(-50%); pointer-events: none; }
+.server-guide-orbit::before, .server-guide-orbit::after { position: absolute; inset: 25px; border: 1px dashed rgba(197,164,107,.11); border-radius: 50%; content: ""; }
+.server-guide-orbit::after { inset: 70px; border-style: solid; opacity: .6; }
+.server-guide-orbit span { position: absolute; top: 20%; left: 13%; width: 4px; height: 4px; border-radius: 50%; background: var(--gold-light); }
+.server-guide-orbit span:nth-child(2) { top: 74%; left: 83%; width: 3px; height: 3px; background: var(--ember-light); }
+.server-guide-orbit span:nth-child(3) { top: 89%; left: 31%; width: 3px; height: 3px; }
+.server-guide-live { padding: 5.7rem 0 5rem; border-bottom: 1px solid var(--line); }
+.server-guide-section-heading, .server-guide-report-heading { display: flex; align-items: end; justify-content: space-between; gap: 3rem; }
+.server-guide-section-heading h2, .server-guide-report-heading h2 { font-size: clamp(2.5rem, 5vw, 4.35rem); }
+.server-guide-section-heading > p { max-width: 350px; color: var(--ash); font-size: .69rem; line-height: 1.8; }
+.server-guide-live-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(230px, .8fr) 120px; align-items: stretch; margin-top: 2.5rem; border: 1px solid var(--line); background: rgba(25,27,31,.65); }
+.server-guide-live-feature, .server-guide-live-total { display: flex; min-height: 190px; flex-direction: column; justify-content: center; padding: 1.7rem 2rem; }
+.server-guide-live-feature { border-right: 1px solid var(--line); background: linear-gradient(110deg, rgba(169,68,49,.13), transparent 80%); }
+.server-guide-live-total { border-right: 1px solid var(--line); }
+.server-guide-stat-label { display: flex; align-items: center; gap: .55rem; color: var(--ash); font-family: var(--mono); font-size: .53rem; letter-spacing: .08em; }
+.server-guide-stat-label svg { color: var(--ember-light); }
+.server-guide-live-feature strong, .server-guide-live-total strong { margin-top: .65rem; color: var(--paper); font-family: var(--display); font-size: clamp(2.5rem, 5vw, 4rem); font-weight: 500; letter-spacing: -.06em; line-height: 1; }
+.server-guide-stat-note { margin-top: .6rem; color: var(--ash); font-size: .62rem; }
+.server-guide-live-stamp { position: relative; display: grid; place-items: center; overflow: hidden; color: var(--gold-light); font-family: var(--mono); font-size: .55rem; letter-spacing: .14em; line-height: 1.7; text-align: center; }
+.server-guide-stamp-ring { position: absolute; width: 76px; height: 76px; border: 1px solid rgba(224,188,127,.28); border-radius: 50%; }
+.server-guide-stamp-ring::after { position: absolute; inset: 8px; border: 1px dashed rgba(224,188,127,.32); border-radius: 50%; content: ""; }
+.server-guide-report { padding: 5.7rem 0 4rem; }
+.server-guide-report-copy { max-width: 490px; margin-top: .8rem; color: var(--ash); font-size: .72rem; line-height: 1.75; }
+.server-guide-report-date { display: flex; align-items: center; gap: .65rem; padding: .75rem 1rem; border: 1px solid var(--line); color: var(--paper-soft); font-family: var(--mono); font-size: .58rem; }
+.server-guide-report-date svg { color: var(--gold); }
+.server-guide-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 2.5rem; border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
+.server-guide-metric { min-height: 132px; padding: 1.25rem 1.4rem; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: rgba(28,30,34,.45); }
+.server-guide-metric > div { display: flex; align-items: center; justify-content: space-between; color: var(--ash); font-size: .66rem; }
+.server-guide-metric svg { color: var(--gold); }
+.server-guide-metric strong { display: block; margin-top: 1.1rem; color: var(--paper); font-family: var(--display); font-size: 2rem; font-weight: 500; letter-spacing: -.05em; line-height: 1; }
+.server-guide-activity { margin-top: 1.4rem; padding: 1.6rem 1.7rem 1.2rem; border: 1px solid var(--line); background: rgba(27,30,35,.72); }
+.server-guide-activity-title, .server-guide-activity-title > div { display: flex; align-items: center; }
+.server-guide-activity-title { justify-content: space-between; gap: 1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--line); }
+.server-guide-activity-title > div { gap: .65rem; color: var(--gold-light); }
+.server-guide-activity-title h3 { color: var(--paper); font-family: var(--display); font-size: 1.25rem; font-weight: 500; }
+.server-guide-activity-title > span { color: var(--ash); font-family: var(--mono); font-size: .54rem; }
+.server-guide-channel-list { list-style: none; }
+.server-guide-channel-list li { display: grid; grid-template-columns: 42px 1fr auto; align-items: center; gap: .7rem; min-height: 49px; border-bottom: 1px solid var(--line-soft); }
+.server-guide-channel-rank { color: var(--ember-light); font-family: var(--mono); font-size: .58rem; }
+.server-guide-channel-name { color: var(--paper-soft); font-size: .72rem; }
+.server-guide-channel-count { color: var(--ash); font-family: var(--mono); font-size: .57rem; }
+.server-guide-timezone { margin-top: 1rem; color: var(--faint); font-family: var(--mono); font-size: .53rem; }
+.server-guide-no-channels { padding: 1.5rem 0; color: var(--ash); font-size: .7rem; }
+.server-guide-report-state { display: flex; flex-wrap: wrap; align-items: center; gap: .8rem 1rem; margin-top: 2rem; padding: 1.4rem; border: 1px solid rgba(214,106,95,.28); background: rgba(169,68,49,.08); color: var(--paper-soft); font-size: .7rem; }
+.server-guide-report-state > strong { color: var(--paper); }
+.server-guide-report-state > span { color: var(--ash); }
+.server-guide-report-state button { min-height: 38px; margin-left: auto; padding: .55rem .85rem; border: 1px solid var(--line); color: var(--gold-light); font-size: .65rem; cursor: pointer; }
+.server-guide-report-skeleton { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin-top: 2.5rem; border: 1px solid var(--line); background: var(--line); }
+.server-guide-report-skeleton > div { height: 132px; background: linear-gradient(100deg, var(--panel) 20%, var(--panel-light) 40%, var(--panel) 60%); background-size: 220% 100%; animation: server-guide-skeleton 1.4s ease infinite; }
+@keyframes server-guide-skeleton { to { background-position-x: -220%; } }
+.server-guide-welcome { position: relative; display: grid; grid-template-columns: 1fr 1fr; align-items: end; gap: 1rem 4rem; padding: 4.5rem 0 1rem; border-top: 1px solid var(--line); }
+.server-guide-welcome-index { grid-column: 1 / -1; color: var(--gold-light); font-family: var(--mono); font-size: .55rem; letter-spacing: .16em; }
+.server-guide-welcome h2 { margin-top: 0; font-size: clamp(2.5rem, 5.4vw, 4.5rem); }
+.server-guide-welcome p { max-width: 460px; justify-self: end; color: var(--ash); font-size: .75rem; line-height: 1.85; }
+.server-guide-welcome > a { grid-column: 2; justify-self: start; margin-top: .5rem; }
+@media (max-width: 800px) {
+  .server-guide { width: min(calc(100% - 2.5rem), 1240px); padding-top: 2rem; }
+  .server-guide-hero { min-height: auto; grid-template-columns: 1fr; gap: 2.5rem; padding: 4rem 0 3rem; }
+  .server-guide-intro h1 { font-size: clamp(3.5rem, 14vw, 6rem); }
+  .server-guide-identity { justify-self: start; width: min(100%, 440px); }
+  .server-guide-orbit { top: 15%; right: -5%; width: 210px; height: 210px; transform: none; }
+  .server-guide-section-heading, .server-guide-report-heading { align-items: flex-start; flex-direction: column; gap: 1rem; }
+  .server-guide-section-heading > p { max-width: 500px; }
+  .server-guide-live-grid { grid-template-columns: 1fr 1fr; }
+  .server-guide-live-stamp { display: none; }
+}
+@media (max-width: 560px) {
+  .server-guide { width: min(calc(100% - 2rem), 1240px); }
+  .server-guide-live, .server-guide-report { padding-top: 4rem; }
+  .server-guide-live-grid { grid-template-columns: 1fr; }
+  .server-guide-live-feature, .server-guide-live-total { min-height: 150px; padding: 1.35rem; border-right: 0; }
+  .server-guide-live-feature { border-bottom: 1px solid var(--line); }
+  .server-guide-metrics, .server-guide-report-skeleton { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .server-guide-metric { min-height: 115px; padding: 1rem; }
+  .server-guide-metric > div { font-size: .61rem; }
+  .server-guide-activity { padding: 1.1rem .9rem .9rem; }
+  .server-guide-activity-title { align-items: flex-start; flex-direction: column; }
+  .server-guide-activity-title h3 { font-size: 1.1rem; }
+  .server-guide-channel-list li { grid-template-columns: 28px 1fr auto; gap: .45rem; }
+  .server-guide-channel-count { font-size: .5rem; }
+  .server-guide-welcome { grid-template-columns: 1fr; padding-top: 3.5rem; }
+  .server-guide-welcome-index { grid-column: auto; }
+  .server-guide-welcome p { justify-self: start; }
+  .server-guide-welcome > a { grid-column: auto; }
+  .server-guide-report-state button { margin-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .server-guide-report-skeleton > div { animation: none; }
+  .server-guide-join, .server-guide-welcome > a { transition: none; }
+}
+
 /* Navigation system: distinguish the member-facing world from staff tools. */
 .nav-links-inner { gap: clamp(1rem, 2vw, 1.8rem); }
 .nav-links a[aria-current="page"] { color: var(--gold-light); }

@@ -20,7 +20,7 @@ const embers = Array.from({ length: 22 }, (_, index) => ({
 
 export function GameGuideLoadingScreen({
   onOpenComplete,
-  ariaLabel = "Se încarcă ghidul jocului",
+  ariaLabel = "Se încarcă ghidul serverului",
 }: {
   onOpenComplete: () => void;
   ariaLabel?: string;

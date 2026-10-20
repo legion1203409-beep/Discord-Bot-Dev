@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { PostgresModerationStore } from "../store";
 
 describe.skipIf(!process.env.DATABASE_URL)("moderation appeals PostgreSQL concurrency", () => {
-  it("serializes duplicate submissions and verdicts, and keeps both states in PostgreSQL", async () => {
+  it("serializes appeal updates and permits a retry after clarification delivery fails", async () => {
     const schema = `appeal_test_${randomUUID().replace(/-/g, "")}`;
     const setupClient = await pool.connect();
     const originalConnect = pool.connect.bind(pool);
@@ -28,7 +28,8 @@ describe.skipIf(!process.env.DATABASE_URL)("moderation appeals PostgreSQL concur
     try {
       await setupClient.query(`CREATE SCHEMA "${schema}"`);
       await setupClient.query(`CREATE TABLE "${schema}".moderation_cases (
-        id uuid PRIMARY KEY, guild_id text NOT NULL, subject_id text NOT NULL
+        id uuid PRIMARY KEY, guild_id text NOT NULL, subject_id text NOT NULL,
+        action_type text NOT NULL DEFAULT 'timeout', status text NOT NULL DEFAULT 'open'
       )`);
       await setupClient.query(`CREATE TABLE "${schema}".moderation_appeals (
         id uuid PRIMARY KEY, guild_id text NOT NULL, case_id uuid NOT NULL,
@@ -213,6 +214,95 @@ describe.skipIf(!process.env.DATABASE_URL)("moderation appeals PostgreSQL concur
         [guildId, clarificationCaseId],
       );
       expect(unchanged.rows[0]).toEqual({ status: "pending", decided_by: null, decision_note: null });
+
+      const failedClarificationId = randomUUID();
+      expect(await store.requestAppealClarification({
+        guildId, caseId: clarificationCaseId, channelId: "appeal-clarification",
+        actorId: "staff-delivery-failed", clarificationId: failedClarificationId,
+        question: "Question whose delivery fails",
+      })).toEqual({ appellantId });
+
+      // A stale button from another ticket or request must not clear the active request.
+      await store.cancelAppealClarification({
+        guildId: "different-guild", caseId: clarificationCaseId, channelId: "appeal-clarification",
+        actorId: "staff-delivery-failed", clarificationId: failedClarificationId,
+      });
+      await store.cancelAppealClarification({
+        guildId, caseId: clarificationCaseId, channelId: "different-ticket",
+        actorId: "staff-delivery-failed", clarificationId: failedClarificationId,
+      });
+      await store.cancelAppealClarification({
+        guildId, caseId: clarificationCaseId, channelId: "appeal-clarification",
+        actorId: "staff-delivery-failed", clarificationId: randomUUID(),
+      });
+      expect(await store.getPendingAppealClarification({
+        guildId, caseId: clarificationCaseId, channelId: "appeal-clarification",
+        clarificationId: failedClarificationId,
+      })).toMatchObject({ appellantId, question: "Question whose delivery fails" });
+
+      await store.cancelAppealClarification({
+        guildId, caseId: clarificationCaseId, channelId: "appeal-clarification",
+        actorId: "staff-delivery-failed", clarificationId: failedClarificationId,
+      });
+      expect(await store.getPendingAppealClarification({
+        guildId, caseId: clarificationCaseId, channelId: "appeal-clarification",
+        clarificationId: failedClarificationId,
+      })).toBeNull();
+
+      const retryClarificationId = randomUUID();
+      expect(await store.requestAppealClarification({
+        guildId, caseId: clarificationCaseId, channelId: "appeal-clarification",
+        actorId: "staff-retry", clarificationId: retryClarificationId,
+        question: "Question delivered on retry",
+      })).toEqual({ appellantId });
+      expect(await store.getPendingAppealClarification({
+        guildId, caseId: clarificationCaseId, channelId: "appeal-clarification",
+        clarificationId: retryClarificationId,
+      })).toMatchObject({ appellantId, question: "Question delivered on retry" });
+
+      const failedDeliveryHistory = await setupClient.query(
+        `SELECT author_id, body FROM "${schema}".moderation_case_notes
+         WHERE guild_id = $1 AND case_id = $2
+           AND body LIKE 'Solicitarea de clarificări nu a putut fi publicată%'`,
+        [guildId, clarificationCaseId],
+      );
+      expect(failedDeliveryHistory.rows).toEqual([{
+        author_id: "staff-delivery-failed",
+        body: expect.stringContaining("ticketul <#appeal-clarification>"),
+      }]);
+      const failedDeliveryAudit = await setupClient.query(
+        `SELECT actor_id, event_type, detail FROM "${schema}".moderation_audit_logs
+         WHERE guild_id = $1 AND target_id = $2
+           AND event_type = 'case.appeal_clarification_delivery_failed'`,
+        [guildId, clarificationCaseId],
+      );
+      expect(failedDeliveryAudit.rows).toEqual([{
+        actor_id: "staff-delivery-failed",
+        event_type: "case.appeal_clarification_delivery_failed",
+        detail: { channelId: "appeal-clarification", clarificationId: failedClarificationId },
+      }]);
+      const retryState = await setupClient.query(
+        `SELECT status, decided_at, decided_by, decision_note,
+                pending_clarification_id, pending_clarification_question, pending_clarification_by
+           FROM "${schema}".moderation_appeals
+          WHERE guild_id = $1 AND case_id = $2`,
+        [guildId, clarificationCaseId],
+      );
+      expect(retryState.rows[0]).toEqual({
+        status: "pending",
+        decided_at: null,
+        decided_by: null,
+        decision_note: null,
+        pending_clarification_id: retryClarificationId,
+        pending_clarification_question: "Question delivered on retry",
+        pending_clarification_by: "staff-retry",
+      });
+      const caseState = await setupClient.query(
+        `SELECT status, action_type FROM "${schema}".moderation_cases
+          WHERE guild_id = $1 AND id = $2`,
+        [guildId, clarificationCaseId],
+      );
+      expect(caseState.rows[0]).toEqual({ status: "open", action_type: "timeout" });
       } finally {
         observer.release();
       }

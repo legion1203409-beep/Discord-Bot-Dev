@@ -2622,10 +2622,9 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
     }
 
     const clarificationId = randomUUID();
-    let prompt: Message | undefined;
-    let clarificationRecorded = false;
+    let requested: { appellantId: string } | null;
     try {
-      const requested = await moderationStore.requestAppealClarification({
+      requested = await moderationStore.requestAppealClarification({
         guildId: interaction.guildId,
         caseId: appealClarificationRequest[1]!,
         channelId: interaction.channelId,
@@ -2639,10 +2638,18 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
         });
         return true;
       }
-      clarificationRecorded = true;
-      const appellantId = requested.appellantId;
-      prompt = await channel.send({
-        content: `<@${appellantId}>`,
+    } catch (error) {
+      logger.error(
+        { error, guildId: interaction.guildId, channelId: interaction.channelId, caseId: appealClarificationRequest[1] },
+        "Appeal clarification request could not be recorded",
+      );
+      await interaction.editReply({ content: "❌ Solicitarea de clarificări nu a putut fi înregistrată. Încearcă din nou." });
+      return true;
+    }
+
+    try {
+      await channel.send({
+        content: `<@${requested.appellantId}>`,
         embeds: [
           new EmbedBuilder()
             .setColor(TICKET_COLORS.appeal)
@@ -2652,38 +2659,36 @@ export async function handleTicketModal(interaction: ModalSubmitInteraction): Pr
             .setTimestamp(),
         ],
         components: [appealClarificationAnswerRow(appealClarificationRequest[1]!, clarificationId)],
-        allowedMentions: { parse: [], users: [appellantId] },
-      });
-      await interaction.editReply({
-        content: "✅ Solicitarea a fost publicată în ticket și adăugată în istoricul cazului. Sancțiunea nu a fost modificată.",
+        allowedMentions: { parse: [], users: [requested.appellantId] },
       });
     } catch (error) {
       logger.error(
         { error, guildId: interaction.guildId, channelId: interaction.channelId, caseId: appealClarificationRequest[1] },
         "Appeal clarification request could not be posted",
       );
-      if (clarificationRecorded) {
-        await moderationStore.cancelAppealClarification({
-          guildId: interaction.guildId,
-          caseId: appealClarificationRequest[1]!,
-          channelId: interaction.channelId,
-          actorId: interaction.user.id,
-          clarificationId,
-        }).catch((cancelError) => {
-          logger.error(
-            { error: cancelError, guildId: interaction.guildId, channelId: interaction.channelId },
-            "Failed to cancel an undelivered appeal clarification",
-          );
-        });
-      }
-      if (prompt) {
-        await prompt.edit({
-          content: "Solicitarea nu a putut fi înregistrată. Personalul o poate trimite din nou.",
-          components: [],
-        }).catch(() => {});
-      }
+      await moderationStore.cancelAppealClarification({
+        guildId: interaction.guildId,
+        caseId: appealClarificationRequest[1]!,
+        channelId: interaction.channelId,
+        actorId: interaction.user.id,
+        clarificationId,
+      }).catch((cancelError) => {
+        logger.error(
+          { error: cancelError, guildId: interaction.guildId, channelId: interaction.channelId },
+          "Failed to cancel an undelivered appeal clarification",
+        );
+      });
       await interaction.editReply({ content: "❌ Solicitarea de clarificări nu a putut fi publicată. Încearcă din nou." });
+      return true;
     }
+    await interaction.editReply({
+      content: "✅ Solicitarea a fost publicată în ticket și adăugată în istoricul cazului. Sancțiunea nu a fost modificată.",
+    }).catch((error) => {
+      logger.warn(
+        { error, guildId: interaction.guildId, channelId: interaction.channelId, caseId: appealClarificationRequest[1] },
+        "Appeal clarification was delivered but its ephemeral confirmation failed",
+      );
+    });
     return true;
   }
 

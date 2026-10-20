@@ -168,7 +168,7 @@ import
 import 
 {
 
- DEFAULT_INVITE_TRACKING_CONFIG, INVITE_REPORT_TIME_ZONES, loadInviteTrackingConfig, saveInviteTrackingConfig, loadDailyStatsEmbedConfig, loadAllianceRecruitmentText, loadChannelConfig, loadTicketConfig, loadProvisioningPermissions, saveProvisioningPermissions, saveAllianceRecruitmentText, saveChannelConfig, saveDailyStatsEmbedConfig, saveTicketConfig, loadHauntedHouseConfig, saveHauntedHouseConfig, type ChannelConfig
+  DEFAULT_INVITE_RECRUITMENT_CONFIG, DEFAULT_INVITE_TRACKING_CONFIG, INVITE_REPORT_TIME_ZONES, loadInviteTrackingConfig, saveInviteTrackingConfig, loadDailyStatsEmbedConfig, loadAllianceRecruitmentText, loadChannelConfig, loadTicketConfig, loadProvisioningPermissions, saveProvisioningPermissions, saveAllianceRecruitmentText, saveChannelConfig, saveDailyStatsEmbedConfig, saveTicketConfig, loadHauntedHouseConfig, saveHauntedHouseConfig, type ChannelConfig
 }
 
  from "../bot/db"
@@ -626,6 +626,29 @@ export const botControlSchema = z.object(
     reportWeekday: z.number().int().min(1).max(7),
     reportTimeZone: z.enum(INVITE_REPORT_TIME_ZONES),
     reportTopLimit: z.number().int().min(3).max(10),
+    recruitment: z.object({
+      enabled: z.boolean(),
+      inviteChannelId: snowflake.or(z.literal("")),
+      maxUses: z.number().int().min(1).max(100),
+      maxAgeDays: z.number().int().min(1).max(30),
+      dailyInviteLimit: z.number().int().min(1).max(20),
+      verificationHours: z.number().int().min(1).max(72),
+      rewardPoints: z.number().int().min(1).max(100_000),
+      milestones: z.tuple([
+        z.object({
+          requiredInvites: z.number().int().min(1).max(100_000),
+          roleId: snowflake.or(z.literal("")),
+        }).strict(),
+        z.object({
+          requiredInvites: z.number().int().min(1).max(100_000),
+          roleId: snowflake.or(z.literal("")),
+        }).strict(),
+        z.object({
+          requiredInvites: z.number().int().min(1).max(100_000),
+          roleId: snowflake.or(z.literal("")),
+        }).strict(),
+      ]),
+    }).strict().default(DEFAULT_INVITE_RECRUITMENT_CONFIG),
   
 }
 ).strict().default(DEFAULT_INVITE_TRACKING_CONFIG).superRefine((config, ctx) => 
@@ -667,6 +690,24 @@ export const botControlSchema = z.object(
 
   
 }
+
+    if (config.recruitment.enabled && !config.recruitment.inviteChannelId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["recruitment", "inviteChannelId"],
+        message: "Alege un canal pentru invitațiile personale.",
+      });
+    }
+
+    if (config.recruitment.milestones.some(
+      (milestone, index, milestones) => index > 0 && milestone.requiredInvites <= milestones[index - 1]!.requiredInvites,
+    )) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["recruitment", "milestones"],
+        message: "Pragurile de recrutare trebuie să fie în ordine crescătoare.",
+      });
+    }
 ),
   tickets: z.object(
 {
@@ -1318,7 +1359,7 @@ async function validateInviteTrackingTargets(guildId: string, config: z.infer<ty
   const cachedGuild = client.guilds.cache?.get(guildId)
 ;
 
-  if (!config.enabled) return cachedGuild ?? null
+  if (!config.enabled && !config.recruitment.enabled) return cachedGuild ?? null
 ;
 
   const guild = cachedGuild ?? await client.guilds.fetch(
@@ -1339,7 +1380,7 @@ async function validateInviteTrackingTargets(guildId: string, config: z.infer<ty
   const botMember = guild.members.me ?? await guild.members.fetchMe().catch(() => null)
 ;
 
-  if (!botMember?.permissions.has(PermissionFlagsBits.ManageGuild)) 
+  if ((config.enabled || config.recruitment.enabled) && !botMember?.permissions.has(PermissionFlagsBits.ManageGuild))
 {
 
     throw new ModerationAuthError(403, "Botul are nevoie de permisiunea Manage Server pentru a urmări invitațiile.")
@@ -1383,6 +1424,27 @@ async function validateInviteTrackingTargets(guildId: string, config: z.infer<ty
     }
     if (!channel.permissionsFor(botMember)?.has(PermissionFlagsBits.SendMessages)) {
       throw new ModerationAuthError(403, "Botul nu are permisiunea de a trimite mesaje în canalul jurnalului invitațiilor.");
+    }
+  }
+
+  if (config.recruitment.enabled) {
+    const inviteChannel = await guild.channels.fetch(config.recruitment.inviteChannelId).catch(() => null);
+    if (!(inviteChannel instanceof TextChannel) || inviteChannel.guildId !== guildId) {
+      throw new ModerationAuthError(400, "Alege un canal text valid din acest server pentru invitațiile personale.");
+    }
+    if (!inviteChannel.permissionsFor(botMember)?.has(PermissionFlagsBits.CreateInstantInvite)) {
+      throw new ModerationAuthError(403, "Botul nu poate crea invitații în canalul de recrutare.");
+    }
+
+    const roleIds = [...new Set(config.recruitment.milestones.map((milestone) => milestone.roleId).filter(Boolean))];
+    if (roleIds.length > 0 && !botMember.permissions.has(PermissionFlagsBits.ManageRoles)) {
+      throw new ModerationAuthError(403, "Botul are nevoie de Manage Roles pentru a acorda rolurile de recrutare.");
+    }
+    for (const roleId of roleIds) {
+      const role = await guild.roles.fetch(roleId).catch(() => null);
+      if (!role || role.id === guild.id || role.managed || role.position >= botMember.roles.highest.position) {
+        throw new ModerationAuthError(400, "Alege roluri de prag existente și aflate sub rolul botului.");
+      }
     }
   }
 
