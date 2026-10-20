@@ -143,12 +143,20 @@ export const ModerationCommandInputType = {
 } as const;
 
 /**
- * Member commands require targetId; channel commands require channelId. Mute requires durationMinutes, nick requires nickname, role requires roleId. Purge requires amount 1–100; slowmode requires amount 0–21600 seconds (0 disables).
+ * Member commands require targetId except role may use allMembers for the current human members of the selected guild and a fresh previewToken; channel commands require channelId. Mute requires durationMinutes, nick requires nickname, role requires roleId. Purge requires amount 1–100; slowmode requires amount 0–21600 seconds (0 disables).
  */
 export interface ModerationCommandInput {
   type: ModerationCommandInputType;
   /** @pattern ^\d{5,25}$ */
   targetId?: string;
+  /** For role only */
+  allMembers?: boolean;
+  /**
+     * Short-lived token returned by the role-preview endpoint.
+     * @minLength 16
+     * @maxLength 128
+     */
+  previewToken?: string;
   /** @pattern ^\d{5,25}$ */
   channelId?: string;
   /** @pattern ^\d{5,25}$ */
@@ -173,6 +181,37 @@ export interface ModerationCommandInput {
      * @maxLength 32
      */
   nickname?: string;
+}
+
+export interface ModerationRoleGrantPreviewInput {
+  /** @pattern ^\d{5,25}$ */
+  roleId: string;
+}
+
+export interface ModerationRoleGrantPreview {
+  /**
+     * @minLength 16
+     * @maxLength 128
+     */
+  previewToken: string;
+  /** @pattern ^\d{5,25}$ */
+  guildId: string;
+  guildName: string;
+  /** @pattern ^\d{5,25}$ */
+  roleId: string;
+  roleName: string;
+  /** @minimum 0 */
+  totalMembers: number;
+  /** @minimum 0 */
+  humanMemberCount: number;
+  /** @minimum 0 */
+  eligibleCount: number;
+  /** @minimum 0 */
+  alreadyAssignedCount: number;
+  /** @minimum 0 */
+  skippedCount: number;
+  /** @minimum 0 */
+  botCount: number;
 }
 
 export interface ModerationCommandResult {

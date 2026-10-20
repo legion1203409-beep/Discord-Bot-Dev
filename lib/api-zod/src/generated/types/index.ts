@@ -54,6 +54,8 @@ export * from './moderationLogDetail';
 export * from './moderationLogPage';
 export * from './moderationPreviewServerSetup200';
 export * from './moderationPreviewServerSetupBody';
+export * from './moderationRoleGrantPreview';
+export * from './moderationRoleGrantPreviewInput';
 export * from './moderationSaveServerSetupDraft200';
 export * from './moderationSession';
 export * from './moderationSessionGuildsItem';

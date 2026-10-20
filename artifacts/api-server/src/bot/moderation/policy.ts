@@ -11,6 +11,33 @@ export type PermissionSubject = Pick<GuildMember, "id" | "roles" | "permissions"
   moderatable?: boolean;
 };
 
+export function classifyBulkRoleTarget(input: {
+  memberId: string;
+  isBot: boolean;
+  memberRoleIds: readonly string[];
+  roleId: string;
+  ownerId: string;
+  actorId: string;
+  actorIsGuildOwner: boolean;
+  targetHighestPosition: number;
+  actorHighestPosition: number;
+  botHighestPosition: number;
+  protectedRoleIds: readonly string[];
+}): "eligible" | "already-assigned" | "skipped" {
+  if (input.isBot) return "skipped";
+  if (input.memberRoleIds.includes(input.roleId)) return "already-assigned";
+  if (
+    input.memberId === input.ownerId ||
+    input.memberId === input.actorId ||
+    input.memberRoleIds.some((roleId) => input.protectedRoleIds.includes(roleId)) ||
+    input.targetHighestPosition >= input.botHighestPosition ||
+    (!input.actorIsGuildOwner && input.targetHighestPosition >= input.actorHighestPosition)
+  ) {
+    return "skipped";
+  }
+  return "eligible";
+}
+
 export function requiredPermission(action: ModerationActionType): bigint {
   switch (action) {
     case "warn":

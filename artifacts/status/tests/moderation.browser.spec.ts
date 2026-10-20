@@ -129,9 +129,11 @@ async function installPartialBotControlFixture(
 test.describe("authenticated moderation console", () => {
   const savedConfigs = new Map(guilds.map(({ id }) => [id, fullConfig()]));
   let actionBodies: unknown[] = [];
+  let rolePreviewBodies: unknown[] = [];
 
   test.beforeEach(async ({ page }) => {
     actionBodies = [];
+    rolePreviewBodies = [];
     for (const guild of guilds) savedConfigs.set(guild.id, fullConfig());
     await page.route("**/api/moderation/auth-config", async (route) => {
       await route.fulfill({ json: { discordOAuthConfigured: true, authorizationUrl: "/api/moderation/oauth/discord" } });
@@ -174,6 +176,23 @@ test.describe("authenticated moderation console", () => {
     });
     await page.route("**/api/moderation/guilds/*/cases**", async (route) => await route.fulfill({ json: { items: [] } }));
     await page.route("**/api/moderation/guilds/*/logs/audit**", async (route) => await route.fulfill({ json: { items: [] } }));
+    await page.route("**/api/moderation/guilds/*/actions/role-preview", async (route) => {
+      rolePreviewBodies.push(JSON.parse(route.request().postData() || "{}"));
+      const guildId = route.request().url().match(/guilds\/(\d+)\/actions\/role-preview/)?.[1] ?? guilds[0].id;
+      await route.fulfill({ json: {
+        previewToken: "bulk-role-preview-token-123",
+        guildId,
+        guildName: guilds.find((guild) => guild.id === guildId)?.name ?? guilds[0].name,
+        roleId: "333333333",
+        roleName: "Moderatori",
+        totalMembers: 10,
+        humanMemberCount: 8,
+        eligibleCount: 5,
+        alreadyAssignedCount: 2,
+        skippedCount: 3,
+        botCount: 2,
+      } });
+    });
     await page.route("**/api/moderation/guilds/*/actions", async (route) => {
       if (route.request().method() === "POST") {
         expect(route.request().headers()["idempotency-key"]).toMatch(/^[A-Za-z0-9._:-]{16,128}$/);
@@ -1405,6 +1424,31 @@ test.describe("authenticated moderation console", () => {
     await page.getByRole("button", { name: "Execută Comanda" }).click();
     await expect(page.getByTestId("manual-action-result")).toContainText("Warn applied");
     expect(actionBodies).toEqual([{ type: "warn", targetId: "555555555" }]);
+  });
+
+  test("previews eligible members and requires confirmation before granting a role in bulk", async ({ page }) => {
+    await page.goto("/moderare/comenzi");
+    await chooseFirstGuild(page);
+    await page.getByTestId("button-pick-command-role").click();
+    await page.getByTestId("select-manual-rol").click();
+    await page.getByRole("option", { name: /@Moderatori/ }).click();
+    await page.getByTestId("checkbox-role-all-members").check();
+    await expect(page.getByTestId("input-manual-target-user-id")).toHaveCount(0);
+
+    page.once("dialog", async (dialog) => {
+      expect(dialog.message()).toContain("Server: Cenușa Nordului");
+      expect(dialog.message()).toContain("Vor primi rolul: 5 membri umani.");
+      await dialog.accept();
+    });
+    await page.getByRole("button", { name: "Adaugă rolul tuturor membrilor" }).click();
+    await expect(page.getByTestId("manual-action-result")).toContainText("Warn applied");
+    expect(rolePreviewBodies).toEqual([{ roleId: "333333333" }]);
+    expect(actionBodies).toEqual([{
+      type: "role",
+      allMembers: true,
+      previewToken: "bulk-role-preview-token-123",
+      roleId: "333333333",
+    }]);
   });
 
   for (const command of [

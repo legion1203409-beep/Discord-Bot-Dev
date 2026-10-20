@@ -969,6 +969,8 @@ const actionSchema = z.object(
 
   type: actionType,
   targetId: snowflake.optional(),
+  allMembers: z.boolean().optional(),
+  previewToken: z.string().trim().min(16).max(128).optional(),
   reason: z.string().trim().min(1).max(500).optional(),
   durationMinutes: z.number().int().min(1).max(40_320).optional(),
   channelId: snowflake.optional(),
@@ -981,7 +983,27 @@ const actionSchema = z.object(
 {
 
 
-  if (["warn", "mute", "kick", "ban", "unmute", "nick", "role"].includes(value.type) && !value.targetId) 
+  if (value.allMembers && value.type !== "role")
+{
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["allMembers"], message: "allMembers is only valid for role actions" });
+}
+
+  if (value.allMembers && value.targetId)
+{
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["targetId"], message: "targetId cannot be combined with allMembers" });
+}
+
+  if (value.allMembers && !value.previewToken)
+{
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["previewToken"], message: "A fresh member preview is required for bulk role grants" });
+}
+
+  if (value.previewToken && !value.allMembers)
+{
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["previewToken"], message: "previewToken is only valid for bulk role grants" });
+}
+
+  if (["warn", "mute", "kick", "ban", "unmute", "nick", "role"].includes(value.type) && !(value.type === "role" && value.allMembers) && !value.targetId)
 {
 
 
@@ -2146,6 +2168,10 @@ router.get("/oauth/discord/callback", asyncRoute(async (req, res) =>
 router.post("/login", (_req, res) => {
   res.status(410).json({ error: "Moderation login now uses Discord OAuth2" });
 });
+
+const bulkRolePreviewSchema = z.object({
+  roleId: snowflake,
+}).strict();
 
 router.post("/logout", asyncRoute(async (req, res) => {
   const session = await requireSession(req);
@@ -4072,6 +4098,15 @@ router.get("/guilds/:guildId/logs", asyncRoute(async (req, res) =>
 ))
 ;
 
+
+router.post("/guilds/:guildId/actions/role-preview", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  const session = await sessionAndGuild(req, guildId, "operations", true);
+  const { roleId } = parse(bulkRolePreviewSchema, req.body);
+  const { previewBulkRoleGrant } = await import("../bot/moderation/engine");
+  const preview = await previewBulkRoleGrant({ guildId, actorId: session.userId, roleId });
+  res.set("Cache-Control", "no-store").json(preview);
+}));
 
 router.post("/guilds/:guildId/actions", asyncRoute(async (req, res) => 
 {

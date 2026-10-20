@@ -527,6 +527,25 @@ paths:
         "400": { description: Missing or invalid command arguments }
         "403": { description: Discord permissions or server policy deny the command }
         "409": { description: Pending or uncertain command must not be repeated }
+  /moderation/guilds/{guildId}/actions/role-preview:
+    parameters: [{ name: guildId, in: path, required: true, schema: { type: string } }]
+    post:
+      operationId: moderationPreviewBulkRoleGrant
+      tags: [moderation]
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ModerationRoleGrantPreviewInput" }
+      responses:
+        "200":
+          description: Current eligible-member count and short-lived confirmation token
+          content: { application/json: { schema: { $ref: "#/components/schemas/ModerationRoleGrantPreview" } } }
+        "400": { description: Invalid role or member list }
+        "403": { description: Discord permissions or server policy deny the preview }
+        "503": { description: Discord member list is unavailable }
 components:
   schemas:
     ServerSetupRole:
@@ -609,16 +628,40 @@ components:
     ModerationCommandInput:
       type: object
       required: [type]
-      description: Member commands require targetId; channel commands require channelId. Mute requires durationMinutes, nick requires nickname, role requires roleId. Purge requires amount 1–100; slowmode requires amount 0–21600 seconds (0 disables).
+      description: Member commands require targetId except role may use allMembers for the current human members of the selected guild and a fresh previewToken; channel commands require channelId. Mute requires durationMinutes, nick requires nickname, role requires roleId. Purge requires amount 1–100; slowmode requires amount 0–21600 seconds (0 disables).
       properties:
         type: { type: string, enum: [warn, mute, kick, ban, unmute, purge, slowmode, lock, unlock, nick, role] }
         targetId: { type: string, pattern: "^\\d{5,25}$" }
+        allMembers: { type: boolean, description: For role only, apply to current eligible human members; bots and protected or higher-hierarchy members are skipped. }
+        previewToken: { type: string, minLength: 16, maxLength: 128, description: Short-lived token returned by the role-preview endpoint. }
         channelId: { type: string, pattern: "^\\d{5,25}$" }
         roleId: { type: string, pattern: "^\\d{5,25}$" }
         reason: { type: string, minLength: 1, maxLength: 500 }
         durationMinutes: { type: integer, minimum: 1, maximum: 40320 }
         amount: { type: integer, minimum: 0, maximum: 21600 }
         nickname: { type: string, minLength: 1, maxLength: 32 }
+    ModerationRoleGrantPreviewInput:
+      type: object
+      additionalProperties: false
+      required: [roleId]
+      properties:
+        roleId: { type: string, pattern: "^\\d{5,25}$" }
+    ModerationRoleGrantPreview:
+      type: object
+      additionalProperties: false
+      required: [previewToken, guildId, guildName, roleId, roleName, totalMembers, humanMemberCount, eligibleCount, alreadyAssignedCount, skippedCount, botCount]
+      properties:
+        previewToken: { type: string, minLength: 16, maxLength: 128 }
+        guildId: { type: string, pattern: "^\\d{5,25}$" }
+        guildName: { type: string }
+        roleId: { type: string, pattern: "^\\d{5,25}$" }
+        roleName: { type: string }
+        totalMembers: { type: integer, minimum: 0 }
+        humanMemberCount: { type: integer, minimum: 0 }
+        eligibleCount: { type: integer, minimum: 0 }
+        alreadyAssignedCount: { type: integer, minimum: 0 }
+        skippedCount: { type: integer, minimum: 0 }
+        botCount: { type: integer, minimum: 0 }
     ModerationCommandResult:
       type: object
       properties:

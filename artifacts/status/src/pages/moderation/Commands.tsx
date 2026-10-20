@@ -3,7 +3,7 @@ import { Zap, AlertTriangle, Send, Loader2 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useManualAction, useActiveGuild, useModerationMetadata } from "../../hooks/use-moderation-api";
+import { useManualAction, useActiveGuild, useModerationMetadata, type BulkRoleGrantPreview } from "../../hooks/use-moderation-api";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "../../components/ui/form";
 import { Input } from "../../components/ui/input";
 import { Button } from "../../components/ui/button";
@@ -28,6 +28,7 @@ const optionalNumber = z.preprocess(
 const actionSchema = z.object({
   type: z.enum(MANUAL_COMMAND_KEYS),
   targetId: optionalText(25),
+  allMembers: z.boolean().default(false),
   reason: optionalText(500),
   durationMinutes: optionalNumber.pipe(z.number().int().min(1).max(40320).optional()),
   channelId: optionalText(25),
@@ -36,7 +37,14 @@ const actionSchema = z.object({
   amount: optionalNumber.pipe(z.number().int().min(0).max(21600).optional()),
 }).superRefine((value, ctx) => {
   const command = getManualCommandDefinition(value.type);
-  if (command.target === "user" && !value.targetId) {
+  const bulkRole = value.type === "role" && value.allMembers;
+  if (value.allMembers && value.type !== "role") {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Opțiunea este disponibilă doar pentru acordarea rolurilor", path: ["allMembers"] });
+  }
+  if (bulkRole && value.targetId) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Elimină ținta individuală înainte de a alege toți membrii", path: ["targetId"] });
+  }
+  if (command.target === "user" && !value.targetId && !bulkRole) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: "ID-ul țintei este necesar", path: ["targetId"] });
   }
   if (command.target === "channel" && !value.channelId) {
@@ -72,6 +80,10 @@ const actionSchema = z.object({
 });
 
 type ActionValues = z.infer<typeof actionSchema>;
+type ActionAttempt = ActionValues & {
+  previewToken?: string;
+  previewSummary?: BulkRoleGrantPreview;
+};
 
 function MetadataSelectField({
   label,
@@ -116,33 +128,57 @@ function MetadataSelectField({
 
 export function CommandsPage() {
   const { guildId } = useActiveGuild();
-  const { execute: executeAction } = useManualAction(guildId);
+  const { execute: executeAction, previewBulkRoleGrant } = useManualAction(guildId);
   const { data: metadata, error: metadataError } = useModerationMetadata(guildId);
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<unknown>(null);
-  const [lastAttempt, setLastAttempt] = useState<ActionValues | null>(null);
+  const [lastAttempt, setLastAttempt] = useState<ActionAttempt | null>(null);
 
   const form = useForm<z.infer<typeof actionSchema>>({
     resolver: zodResolver(actionSchema),
-    defaultValues: { type: "warn", reason: "" },
+    defaultValues: { type: "warn", reason: "", allMembers: false },
   });
 
   const actionType = form.watch("type");
+  const applyRoleToAllMembers = form.watch("allMembers") === true;
   const selectedCommand = getManualCommandDefinition(actionType);
 
-  async function submitAction(values: ActionValues, isRetry = false) {
-    if (!confirm(`Ești sigur că vrei să execuți acțiunea ${values.type.toUpperCase()}? Această operațiune va afecta direct serverul de Discord.`)) {
-      return;
-    }
-    
-    setLastAttempt(values);
+  async function submitAction(values: ActionAttempt, isRetry = false) {
     setLastResult(null);
     setLoading(true);
     setActionError(null);
     try {
-      const res = await executeAction(values);
+      let attempt = values;
+      if (values.type === "role" && values.allMembers) {
+        if (!values.roleId) throw new Error("Alege rolul înainte de previzualizare.");
+        if (!(isRetry && values.previewToken && values.previewSummary)) {
+          const preview = await previewBulkRoleGrant(values.roleId);
+          attempt = { ...values, previewToken: preview.previewToken, previewSummary: preview };
+        }
+        const preview = attempt.previewSummary;
+        if (!preview) throw new Error("Previzualizarea membrilor nu este disponibilă. Încearcă din nou.");
+        if (preview.eligibleCount === 0) {
+          throw new Error(`Niciun membru nu poate primi rolul. ${preview.alreadyAssignedCount} îl au deja; ${preview.skippedCount} au fost omiși.`);
+        }
+        const confirmation = [
+          `Server: ${preview.guildName}`,
+          `Rol: @${preview.roleName}`,
+          `Vor primi rolul: ${preview.eligibleCount} membri umani.`,
+          `Au deja rolul: ${preview.alreadyAssignedCount}. Vor fi omiși: ${preview.skippedCount} (inclusiv ${preview.botCount} conturi bot).`,
+          "Se aplică numai membrilor existenți acum. Confirmi?",
+        ].join("\n");
+        if (!confirm(confirmation)) return;
+      } else {
+        if (!confirm(`Ești sigur că vrei să execuți acțiunea ${values.type.toUpperCase()}? Această operațiune va afecta direct serverul de Discord.`)) {
+          return;
+        }
+      }
+
+      setLastAttempt(attempt);
+      const { previewSummary: _previewSummary, ...payload } = attempt;
+      const res = await executeAction(payload);
       setLastResult(res);
       toast({ title: "Acțiune executată", description: "Comanda a fost trimisă cu succes către Oracol." });
     } catch (err: any) {
@@ -228,7 +264,10 @@ export function CommandsPage() {
                                 <button
                                   key={command.key}
                                   type="button"
-                                  onClick={() => form.setValue("type", command.key, { shouldDirty: true, shouldValidate: true })}
+                                  onClick={() => {
+                                    form.setValue("type", command.key, { shouldDirty: true, shouldValidate: true });
+                                    if (command.key !== "role") form.setValue("allMembers", false, { shouldDirty: true, shouldValidate: true });
+                                  }}
                                   aria-pressed={selected}
                                   data-testid={`button-pick-command-${command.key}`}
                                   className={`flex min-h-11 items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${selected ? "border-primary/50 bg-primary/10 text-foreground" : "border-border/60 bg-card/70 text-muted-foreground hover:border-primary/35 hover:text-foreground"}`}
@@ -249,7 +288,42 @@ export function CommandsPage() {
             />
 
             <div className="grid grid-cols-1 gap-6 border-t border-border/60 pt-5 md:grid-cols-2">
-              {selectedCommand.target === "user" && (
+              {selectedCommand.key === "role" && (
+                <FormField
+                  control={form.control}
+                  name="allMembers"
+                  render={({ field }) => (
+                    <FormItem className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 md:col-span-2">
+                      <div className="flex items-start gap-3">
+                        <FormControl>
+                          <input
+                            id="manual-role-all-members"
+                            type="checkbox"
+                            className="mt-1 h-4 w-4 accent-primary"
+                            data-testid="checkbox-role-all-members"
+                            checked={Boolean(field.value)}
+                            onChange={(event) => {
+                              field.onChange(event.target.checked);
+                              if (event.target.checked) {
+                                form.setValue("targetId", undefined, { shouldDirty: true, shouldValidate: true });
+                              }
+                            }}
+                          />
+                        </FormControl>
+                        <div>
+                          <FormLabel htmlFor="manual-role-all-members" className="cursor-pointer">Adaugă rolul tuturor membrilor actuali</FormLabel>
+                          <FormDescription>
+                            Se aplică membrilor umani eligibili din serverul selectat. Boții, membrii cu roluri protejate sau deasupra ierarhiei și cei care au deja rolul sunt omiși.
+                          </FormDescription>
+                        </div>
+                      </div>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+
+              {selectedCommand.target === "user" && !(selectedCommand.key === "role" && applyRoleToAllMembers) && (
                 <FormField
                   control={form.control}
                   name="targetId"
@@ -390,7 +464,7 @@ export function CommandsPage() {
               <div className="mod-save-actions ml-auto">
                 <Button type="submit" disabled={loading} className="gap-2 px-8" data-testid="button-manual-action-submit">
                   {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                  Execută Comanda
+                  {actionType === "role" && applyRoleToAllMembers ? "Adaugă rolul tuturor membrilor" : "Execută Comanda"}
                 </Button>
               </div>
             </div>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PermissionFlagsBits, PermissionsBitField } from "discord.js";
-import { assertRoleGrantSafe, assertTargetHierarchy, hasDiscordPermission } from "../policy";
+import { assertRoleGrantSafe, assertTargetHierarchy, classifyBulkRoleTarget, hasDiscordPermission } from "../policy";
 
 function member(id: string, position: number, permissions = 0n) {
   const role = { id: `${id}-role`, position };
@@ -20,6 +20,25 @@ function member(id: string, position: number, permissions = 0n) {
 }
 
 describe("manual moderation policy", () => {
+  it("limits bulk role grants to eligible human members", () => {
+    const base = {
+      roleId: "grant",
+      ownerId: "owner",
+      actorId: "staff",
+      actorIsGuildOwner: false,
+      targetHighestPosition: 2,
+      actorHighestPosition: 10,
+      botHighestPosition: 20,
+      protectedRoleIds: ["protected"],
+    };
+    expect(classifyBulkRoleTarget({ ...base, memberId: "member", isBot: false, memberRoleIds: [] })).toBe("eligible");
+    expect(classifyBulkRoleTarget({ ...base, memberId: "member", isBot: false, memberRoleIds: ["grant"] })).toBe("already-assigned");
+    expect(classifyBulkRoleTarget({ ...base, memberId: "bot", isBot: true, memberRoleIds: [] })).toBe("skipped");
+    expect(classifyBulkRoleTarget({ ...base, memberId: "member", isBot: false, memberRoleIds: ["protected"] })).toBe("skipped");
+    expect(classifyBulkRoleTarget({ ...base, memberId: "senior", isBot: false, memberRoleIds: [], targetHighestPosition: 10 })).toBe("skipped");
+    expect(classifyBulkRoleTarget({ ...base, memberId: "owner", isBot: false, memberRoleIds: [] })).toBe("skipped");
+  });
+
   it("requires the matching Discord permission", () => {
     expect(hasDiscordPermission(member("staff", 10, PermissionFlagsBits.BanMembers), "ban")).toBe(true);
     expect(hasDiscordPermission(member("staff", 10, PermissionFlagsBits.BanMembers), "kick")).toBe(false);

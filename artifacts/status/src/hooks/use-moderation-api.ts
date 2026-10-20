@@ -69,6 +69,20 @@ export interface ModerationMetadata {
   };
 }
 
+export interface BulkRoleGrantPreview {
+  previewToken: string;
+  guildId: string;
+  guildName: string;
+  roleId: string;
+  roleName: string;
+  totalMembers: number;
+  humanMemberCount: number;
+  eligibleCount: number;
+  alreadyAssignedCount: number;
+  skippedCount: number;
+  botCount: number;
+}
+
 export interface DiscordGuildEmoji {
   id: string;
   name: string;
@@ -1793,13 +1807,31 @@ export function useManualAction(guildId: string | null) {
     intentRef.current = null;
   }, []);
 
-  const execute = async (payload: { type: string, targetId?: string, reason?: string, durationMinutes?: number, channelId?: string, roleId?: string, nickname?: string, amount?: number }) => {
+  const previewBulkRoleGrant = async (roleId: string): Promise<BulkRoleGrantPreview> => {
     const requestedGuildId = guildId;
     if (!requestedGuildId) throw new Error("No guild selected");
     if (!cachedSession?.authenticated || activeGuildId !== requestedGuildId) {
       throw new Error("Sesiunea de moderare nu mai este activă.");
     }
-    const fingerprint = JSON.stringify(payload);
+    const preview = await apiFetch<BulkRoleGrantPreview>(`/guilds/${requestedGuildId}/actions/role-preview`, {
+      method: "POST",
+      body: JSON.stringify({ roleId }),
+    });
+    if (currentGuildId.current !== requestedGuildId || !cachedSession?.authenticated || activeGuildId !== requestedGuildId) {
+      throw new Error("Serverul selectat s-a schimbat în timpul previzualizării.");
+    }
+    return preview;
+  };
+
+  const execute = async (payload: { type: string, targetId?: string, allMembers?: boolean, previewToken?: string, reason?: string, durationMinutes?: number, channelId?: string, roleId?: string, nickname?: string, amount?: number }) => {
+    const requestedGuildId = guildId;
+    if (!requestedGuildId) throw new Error("No guild selected");
+    if (!cachedSession?.authenticated || activeGuildId !== requestedGuildId) {
+      throw new Error("Sesiunea de moderare nu mai este activă.");
+    }
+    const { allMembers, ...singleMemberPayload } = payload;
+    const requestPayload = allMembers ? { ...singleMemberPayload, allMembers: true } : singleMemberPayload;
+    const fingerprint = JSON.stringify(requestPayload);
     if (intentRef.current?.fingerprint !== fingerprint) {
       intentRef.current = { fingerprint, key: createIdempotencyKey() };
     }
@@ -1810,7 +1842,7 @@ export function useManualAction(guildId: string | null) {
         headers: {
           "Idempotency-Key": idempotencyKey,
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(requestPayload)
       });
       if (currentGuildId.current !== requestedGuildId || !cachedSession?.authenticated || activeGuildId !== requestedGuildId) {
         throw new Error("Serverul selectat s-a schimbat în timpul acțiunii.");
@@ -1825,7 +1857,7 @@ export function useManualAction(guildId: string | null) {
     }
   };
 
-  return { execute, resetKey };
+  return { execute, previewBulkRoleGrant, resetKey };
 }
 
 export function useCaseDetails(guildId: string | null, caseId: string | null) {

@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   session: vi.fn(), access: vi.fn(), csrf: vi.fn(), client: vi.fn(),
   getConfig: vi.fn(), putConfig: vi.fn(), putProtectionToggle: vi.fn(), listCases: vi.fn(),
   listAudit: vi.fn(), listLogs: vi.fn(), beginAction: vi.fn(), getAction: vi.fn(),
-  completeAction: vi.fn(), writeAudit: vi.fn(), execute: vi.fn(),
+  completeAction: vi.fn(), writeAudit: vi.fn(), execute: vi.fn(), previewBulkRoleGrant: vi.fn(),
   syncNativeAutoMod: vi.fn(), listAccessibleGuilds: vi.fn(),
   loadChannelConfig: vi.fn(), saveChannelConfig: vi.fn(),
   loadProvisioningPermissions: vi.fn(), saveProvisioningPermissions: vi.fn(),
@@ -113,7 +113,10 @@ vi.mock("../store", () => ({
     writeAudit: mocks.writeAudit,
   },
 }));
-vi.mock("../../bot/moderation/engine", () => ({ executeModerationAction: mocks.execute }));
+vi.mock("../../bot/moderation/engine", () => ({
+  executeModerationAction: mocks.execute,
+  previewBulkRoleGrant: mocks.previewBulkRoleGrant,
+}));
 vi.mock("../../bot/native-automod", () => ({ syncNativeAutoMod: mocks.syncNativeAutoMod }));
 vi.mock("../../bot/db", () => ({
   loadChannelConfig: mocks.loadChannelConfig,
@@ -2026,6 +2029,45 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     expect(input.source).not.toBe("automod");
   });
 
+  it("previews a bulk role grant using the route guild and authenticated actor", async () => {
+    const preview = {
+      previewToken: "preview-token-for-role-grant",
+      guildId,
+      guildName: "Guild",
+      roleId: "333333333",
+      roleName: "Members",
+      totalMembers: 15,
+      humanMemberCount: 12,
+      eligibleCount: 8,
+      alreadyAssignedCount: 2,
+      skippedCount: 5,
+      botCount: 3,
+    };
+    mocks.previewBulkRoleGrant.mockResolvedValueOnce(preview);
+    const response = await fetch(`${base}/actions/role-preview`, post({ roleId: "333333333" }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(preview);
+    expect(mocks.previewBulkRoleGrant).toHaveBeenCalledWith({ guildId, actorId, roleId: "333333333" });
+  });
+
+  it("accepts a bulk role action only with its fresh preview token", async () => {
+    const response = await fetch(`${base}/actions`, post({
+      type: "role",
+      roleId: "333333333",
+      allMembers: true,
+      previewToken: "preview-token-for-role-grant",
+    }, { "idempotency-key": "test-bulk-role-action-unique" }));
+    expect(response.status).toBe(201);
+    expect(mocks.execute).toHaveBeenCalledWith(expect.objectContaining({
+      guildId,
+      actorId,
+      type: "role",
+      roleId: "333333333",
+      allMembers: true,
+      previewToken: "preview-token-for-role-grant",
+    }));
+  });
+
   it("returns a completed action without repeating its Discord side effect", async () => {
     mocks.getAction.mockResolvedValue({
       id: "ledger", status: "applied", result: { summary: "Already applied" },
@@ -2066,6 +2108,7 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     { type: "unlock" },
     { type: "nick", targetId: "555555555" },
     { type: "role", targetId: "555555555" },
+    { type: "role", allMembers: true, roleId: "333333333" },
   ])("rejects incomplete command $type before calling Discord", async (payload) => {
     const response = await fetch(`${base}/actions`, post(payload, {
       "idempotency-key": "test-missing-argument-unique",

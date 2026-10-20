@@ -1197,6 +1197,9 @@ export const ModerationExecuteActionHeader = zod.object({
 })
 
 export const moderationExecuteActionBodyTargetIdRegExp = new RegExp('^\\d{5,25}$');
+export const moderationExecuteActionBodyPreviewTokenMin = 16;
+export const moderationExecuteActionBodyPreviewTokenMax = 128;
+
 export const moderationExecuteActionBodyChannelIdRegExp = new RegExp('^\\d{5,25}$');
 export const moderationExecuteActionBodyRoleIdRegExp = new RegExp('^\\d{5,25}$');
 export const moderationExecuteActionBodyReasonMax = 500;
@@ -1213,18 +1216,69 @@ export const moderationExecuteActionBodyNicknameMax = 32;
 export const ModerationExecuteActionBody = zod.object({
   "type": zod.enum(['warn', 'mute', 'kick', 'ban', 'unmute', 'purge', 'slowmode', 'lock', 'unlock', 'nick', 'role']),
   "targetId": zod.string().regex(moderationExecuteActionBodyTargetIdRegExp).optional(),
+  "allMembers": zod.boolean().optional().describe('For role only'),
+  "previewToken": zod.string().min(moderationExecuteActionBodyPreviewTokenMin).max(moderationExecuteActionBodyPreviewTokenMax).optional().describe('Short-lived token returned by the role-preview endpoint.'),
   "channelId": zod.string().regex(moderationExecuteActionBodyChannelIdRegExp).optional(),
   "roleId": zod.string().regex(moderationExecuteActionBodyRoleIdRegExp).optional(),
   "reason": zod.string().min(1).max(moderationExecuteActionBodyReasonMax).optional(),
   "durationMinutes": zod.number().min(1).max(moderationExecuteActionBodyDurationMinutesMax).optional(),
   "amount": zod.number().min(moderationExecuteActionBodyAmountMin).max(moderationExecuteActionBodyAmountMax).optional(),
   "nickname": zod.string().min(1).max(moderationExecuteActionBodyNicknameMax).optional()
-}).describe('Member commands require targetId; channel commands require channelId. Mute requires durationMinutes, nick requires nickname, role requires roleId. Purge requires amount 1–100; slowmode requires amount 0–21600 seconds (0 disables).')
+}).describe('Member commands require targetId except role may use allMembers for the current human members of the selected guild and a fresh previewToken; channel commands require channelId. Mute requires durationMinutes, nick requires nickname, role requires roleId. Purge requires amount 1–100; slowmode requires amount 0–21600 seconds (0 disables).')
 
 export const ModerationExecuteActionResponse = zod.object({
   "actionId": zod.string().optional(),
   "caseId": zod.string().optional(),
   "summary": zod.string().optional()
+})
+
+
+export const ModerationPreviewBulkRoleGrantParams = zod.object({
+  "guildId": zod.coerce.string()
+})
+
+export const ModerationPreviewBulkRoleGrantHeader = zod.object({
+  "X-CSRF-Token": zod.string()
+})
+
+export const moderationPreviewBulkRoleGrantBodyRoleIdRegExp = new RegExp('^\\d{5,25}$');
+
+
+export const ModerationPreviewBulkRoleGrantBody = zod.object({
+  "roleId": zod.string().regex(moderationPreviewBulkRoleGrantBodyRoleIdRegExp)
+})
+
+export const moderationPreviewBulkRoleGrantResponsePreviewTokenMin = 16;
+export const moderationPreviewBulkRoleGrantResponsePreviewTokenMax = 128;
+
+export const moderationPreviewBulkRoleGrantResponseGuildIdRegExp = new RegExp('^\\d{5,25}$');
+export const moderationPreviewBulkRoleGrantResponseRoleIdRegExp = new RegExp('^\\d{5,25}$');
+export const moderationPreviewBulkRoleGrantResponseTotalMembersMin = 0;
+
+export const moderationPreviewBulkRoleGrantResponseHumanMemberCountMin = 0;
+
+export const moderationPreviewBulkRoleGrantResponseEligibleCountMin = 0;
+
+export const moderationPreviewBulkRoleGrantResponseAlreadyAssignedCountMin = 0;
+
+export const moderationPreviewBulkRoleGrantResponseSkippedCountMin = 0;
+
+export const moderationPreviewBulkRoleGrantResponseBotCountMin = 0;
+
+
+
+export const ModerationPreviewBulkRoleGrantResponse = zod.object({
+  "previewToken": zod.string().min(moderationPreviewBulkRoleGrantResponsePreviewTokenMin).max(moderationPreviewBulkRoleGrantResponsePreviewTokenMax),
+  "guildId": zod.string().regex(moderationPreviewBulkRoleGrantResponseGuildIdRegExp),
+  "guildName": zod.string(),
+  "roleId": zod.string().regex(moderationPreviewBulkRoleGrantResponseRoleIdRegExp),
+  "roleName": zod.string(),
+  "totalMembers": zod.number().min(moderationPreviewBulkRoleGrantResponseTotalMembersMin),
+  "humanMemberCount": zod.number().min(moderationPreviewBulkRoleGrantResponseHumanMemberCountMin),
+  "eligibleCount": zod.number().min(moderationPreviewBulkRoleGrantResponseEligibleCountMin),
+  "alreadyAssignedCount": zod.number().min(moderationPreviewBulkRoleGrantResponseAlreadyAssignedCountMin),
+  "skippedCount": zod.number().min(moderationPreviewBulkRoleGrantResponseSkippedCountMin),
+  "botCount": zod.number().min(moderationPreviewBulkRoleGrantResponseBotCountMin)
 })
 
 

@@ -13,6 +13,7 @@ import { Input } from "../../components/ui/input";
 import { Textarea } from "../../components/ui/textarea";
 import { Switch } from "../../components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
+import { filterVerificationMembers, type VerificationMemberFilter } from "../../lib/verification-member-filter";
 import {
   useActiveGuild,
   BotControlPartialApplyError,
@@ -68,6 +69,7 @@ export function VerificationAdminPage() {
   const [partialApplyError, setPartialApplyError] = useState<{ guildId: string; message: string } | null>(null);
   const [inviteLoading, setInviteLoading] = useState(false);
   const [verificationSearch, setVerificationSearch] = useState("");
+  const [verificationMemberFilter, setVerificationMemberFilter] = useState<VerificationMemberFilter>("all");
 
   useEffect(() => {
     if (!data) {
@@ -276,12 +278,11 @@ export function VerificationAdminPage() {
   }
 
   const textChannels = metadata?.channels.filter((channel) => isTextChannel(channel.type)) ?? [];
-  const normalizedSearch = verificationSearch.trim().toLocaleLowerCase("ro");
-  const filteredVerifiedMembers = (membersQuery.data?.members ?? []).filter((member) => {
-    if (!normalizedSearch) return true;
-    return [member.displayName, member.username, member.id]
-      .some((value) => value.toLocaleLowerCase("ro").includes(normalizedSearch));
-  });
+  const filteredMembers = filterVerificationMembers(
+    membersQuery.data?.members ?? [],
+    verificationMemberFilter,
+    verificationSearch,
+  );
   const guildPartialApplyError = partialApplyError?.guildId === guildId ? partialApplyError : null;
 
   const manuallyVerifyMember = async (userId: string, displayName: string) => {
@@ -610,15 +611,38 @@ export function VerificationAdminPage() {
           <div className="flex flex-wrap items-center gap-2">
             {membersQuery.data ? (
               <>
-                <span className="rounded-full border border-primary/25 bg-primary/[0.06] px-3 py-1 text-xs font-medium" data-testid="text-verification-total">
-                  {membersQuery.data.total.toLocaleString("ro-RO")} membri
-                </span>
-                <span className="rounded-full border border-emerald-500/25 bg-emerald-500/[0.06] px-3 py-1 text-xs font-medium text-emerald-400" data-testid="text-verification-verified-total">
-                  {membersQuery.data.verifiedTotal.toLocaleString("ro-RO")} verificați
-                </span>
-                <span className="rounded-full border border-amber-500/25 bg-amber-500/[0.06] px-3 py-1 text-xs font-medium text-amber-300" data-testid="text-verification-unverified-total">
-                  {membersQuery.data.unverifiedTotal.toLocaleString("ro-RO")} în așteptare
-                </span>
+                <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filtrează membrii după starea verificării">
+                  <button
+                    type="button"
+                    aria-label={`Toți membrii, ${membersQuery.data.total}`}
+                    aria-pressed={verificationMemberFilter === "all"}
+                    onClick={() => setVerificationMemberFilter("all")}
+                    className={`cursor-pointer rounded-full border px-3 py-1 text-xs font-medium transition-colors hover:border-primary/50 hover:bg-primary/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 ${verificationMemberFilter === "all" ? "border-primary/50 bg-primary/15 text-foreground" : "border-primary/25 bg-primary/[0.06] text-foreground"}`}
+                    data-testid="text-verification-total"
+                  >
+                    {membersQuery.data.total.toLocaleString("ro-RO")} membri
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Membri verificați, ${membersQuery.data.verifiedTotal}`}
+                    aria-pressed={verificationMemberFilter === "verified"}
+                    onClick={() => setVerificationMemberFilter("verified")}
+                    className={`cursor-pointer rounded-full border px-3 py-1 text-xs font-medium transition-colors hover:border-emerald-500/50 hover:bg-emerald-500/15 hover:text-emerald-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60 ${verificationMemberFilter === "verified" ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-300" : "border-emerald-500/25 bg-emerald-500/[0.06] text-emerald-400"}`}
+                    data-testid="text-verification-verified-total"
+                  >
+                    {membersQuery.data.verifiedTotal.toLocaleString("ro-RO")} verificați
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Membri neverificați, ${membersQuery.data.unverifiedTotal}`}
+                    aria-pressed={verificationMemberFilter === "unverified"}
+                    onClick={() => setVerificationMemberFilter("unverified")}
+                    className={`cursor-pointer rounded-full border px-3 py-1 text-xs font-medium transition-colors hover:border-amber-500/50 hover:bg-amber-500/15 hover:text-amber-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60 ${verificationMemberFilter === "unverified" ? "border-amber-500/50 bg-amber-500/15 text-amber-200" : "border-amber-500/25 bg-amber-500/[0.06] text-amber-300"}`}
+                    data-testid="text-verification-unverified-total"
+                  >
+                    {membersQuery.data.unverifiedTotal.toLocaleString("ro-RO")} neverificați
+                  </button>
+                </div>
               </>
             ) : (
               <span className="rounded-full border border-border bg-muted/20 px-3 py-1 text-xs text-muted-foreground" data-testid="text-verification-count-unavailable">
@@ -668,9 +692,15 @@ export function VerificationAdminPage() {
           <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
             Configurează și salvează rolul de verificare pentru a vedea membrii.
           </div>
-        ) : filteredVerifiedMembers.length === 0 ? (
+        ) : filteredMembers.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-            {verificationSearch.trim() ? "Nu există membri care corespund căutării." : "Nu există membri raportați pentru acest server."}
+            {verificationSearch.trim()
+              ? "Nu există membri care corespund căutării."
+              : verificationMemberFilter === "verified"
+                ? "Nu există membri verificați pentru acest server."
+                : verificationMemberFilter === "unverified"
+                  ? "Nu există membri neverificați pentru acest server."
+                  : "Nu există membri raportați pentru acest server."}
           </div>
         ) : (
           <div className="verification-table-wrap overflow-x-auto rounded-lg border border-border">
@@ -686,7 +716,7 @@ export function VerificationAdminPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {filteredVerifiedMembers.map((member) => (
+                {filteredMembers.map((member) => (
                   <tr key={member.id} className="transition-colors hover:bg-muted/20" data-testid={`row-verification-member-${member.id}`}>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">

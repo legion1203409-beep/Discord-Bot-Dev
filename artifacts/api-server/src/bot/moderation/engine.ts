@@ -1,13 +1,16 @@
+import { createHash, randomUUID } from "node:crypto";
 import {
   AutoModerationActionType,
   ChannelType,
   EmbedBuilder,
   PermissionFlagsBits,
+  Routes,
   type Client,
   type Guild,
   type GuildBasedChannel,
   type GuildMember,
   type Message,
+  type Role,
   type TextChannel,
 } from "discord.js";
 import OpenAI from "openai";
@@ -25,6 +28,7 @@ import { readScamImageTexts } from "./image-scam-ocr";
 import {
   assertRoleGrantSafe,
   assertTargetHierarchy,
+  classifyBulkRoleTarget,
   hasDiscordPermission,
   hasManualGrant,
   type ModerationActionType,
@@ -36,6 +40,8 @@ export type ModerationActionInput = {
   actorId: string;
   type: ModerationActionType | "delete";
   targetId?: string;
+  allMembers?: boolean;
+  previewToken?: string;
   reason?: string;
   durationMinutes?: number;
   channelId?: string;
@@ -79,6 +85,14 @@ let aiClient: OpenAI | null = null;
 const automaticActions = new Map<string, number>();
 const repeatedMessages = new Map<string, { text: string; samples: Array<{ at: number; messageId?: string }> }>();
 const escalationQueues = new Map<string, Promise<void>>();
+const bulkRolePreviews = new Map<string, {
+  guildId: string;
+  actorId: string;
+  roleId: string;
+  fingerprint: string;
+  expiresAt: number;
+  used: boolean;
+}>();
 
 /** Reserves a message/action key before any external side-effect. */
 export function reserveAutomaticAction(key: string, now = Date.now(), ttlMs = 10 * 60_000): boolean {
@@ -261,6 +275,61 @@ async function getMember(guild: Guild, id: string): Promise<GuildMember> {
   return guild.members.fetch(id);
 }
 
+type GuildMemberSnapshot = { id: string; bot: boolean; roleIds: string[] };
+type BulkRolePlan = {
+  role: Role;
+  eligible: GuildMemberSnapshot[];
+  totalMembers: number;
+  humanMemberCount: number;
+  botCount: number;
+  alreadyAssignedCount: number;
+  skippedCount: number;
+  fingerprint: string;
+};
+
+async function fetchGuildMemberSnapshots(guildId: string): Promise<GuildMemberSnapshot[]> {
+  if (!moderationClient) throw new Error("Clientul Discord de moderare nu este disponibil.");
+  const members: GuildMemberSnapshot[] = [];
+  let complete = false;
+
+  // Keep the operation bounded and fetch a complete roster before making any
+  // changes. A partial scan must never be presented as "all members".
+  for (let page = 0; page < 6; page += 1) {
+    const query = new URLSearchParams({ limit: "1000" });
+    const after = members.at(-1)?.id;
+    if (after) query.set("after", after);
+    const response = await moderationClient.rest.get(Routes.guildMembers(guildId), { query }) as unknown;
+    if (!Array.isArray(response)) throw new Error("Discord returned an invalid member page.");
+    for (const entry of response) {
+      if (
+        !entry || typeof entry !== "object" ||
+        !("user" in entry) || !entry.user || typeof entry.user !== "object" ||
+        !("id" in entry.user) || typeof entry.user.id !== "string" ||
+        !("roles" in entry) || !Array.isArray(entry.roles) ||
+        entry.roles.some((roleId: unknown) => typeof roleId !== "string")
+      ) {
+        throw new Error("Discord returned an incomplete member record; no roles were changed.");
+      }
+      members.push({
+        id: entry.user.id,
+        bot: "bot" in entry.user && entry.user.bot === true,
+        roleIds: entry.roles,
+      });
+    }
+    if (members.length > 5_000) {
+      throw new Error("Acordarea în masă este limitată la 5.000 de membri pentru a evita o operațiune Discord prea lungă.");
+    }
+    if (response.length < 1_000) {
+      complete = true;
+      break;
+    }
+    if (page === 5) throw new Error("Serverul depășește limita sigură de scanare pentru acordarea în masă.");
+  }
+
+  if (!complete) throw new Error("Lista membrilor serverului nu a putut fi verificată complet.");
+  return members;
+}
+
 function validateManualPermission(config: ModerationConfig, actor: GuildMember, type: ModerationActionType): void {
   if (!config.manualTools.enabled) throw new Error("Instrumentele manuale de moderare sunt dezactivate pentru acest server.");
   const grant = config.manualTools.commandGrants[type];
@@ -268,6 +337,143 @@ function validateManualPermission(config: ModerationConfig, actor: GuildMember, 
   if (!hasDiscordPermission(actor, type) && !specialRole && !hasManualGrant(actor, type, { [type]: grant })) {
     throw new Error("Nu ai permisiunea necesară pentru această comandă de moderare.");
   }
+}
+
+function validateBulkRolePermissions(actor: GuildMember, bot: GuildMember): void {
+  if (!actor.permissions.has(PermissionFlagsBits.ManageRoles) && !actor.permissions.has(PermissionFlagsBits.Administrator)) {
+    throw new Error("Acordarea unui rol tuturor membrilor necesită permisiunea Manage Roles.");
+  }
+  if (!hasDiscordPermission(bot, "role")) {
+    throw new Error("Botului îi lipsește permisiunea Discord Manage Roles.");
+  }
+}
+
+async function prepareBulkRolePlan(
+  guild: Guild,
+  actor: GuildMember,
+  bot: GuildMember,
+  config: ModerationConfig,
+  roleId: string,
+): Promise<BulkRolePlan> {
+  await guild.roles.fetch();
+  const role = guild.roles.cache.get(roleId);
+  if (!role) throw new Error("Rolul nu există.");
+  assertRoleGrantSafe(actor, bot, role, config.roles.protectedRoleIds);
+  const snapshots = await fetchGuildMemberSnapshots(guild.id);
+  const eligible: GuildMemberSnapshot[] = [];
+  let alreadyAssignedCount = 0;
+  let skippedCount = 0;
+
+  for (const member of snapshots) {
+    let targetHighestPosition = 0;
+    for (const memberRoleId of member.roleIds) {
+      const memberRole = guild.roles.cache.get(memberRoleId);
+      if (!memberRole) throw new Error("Un rol din lista membrilor nu mai există; nicio modificare nu a fost făcută.");
+      targetHighestPosition = Math.max(targetHighestPosition, memberRole.position);
+    }
+    const classification = classifyBulkRoleTarget({
+      memberId: member.id,
+      isBot: member.bot,
+      memberRoleIds: member.roleIds,
+      roleId: role.id,
+      ownerId: guild.ownerId,
+      actorId: actor.id,
+      actorIsGuildOwner: actor.id === guild.ownerId,
+      targetHighestPosition,
+      actorHighestPosition: actor.roles.highest.position,
+      botHighestPosition: bot.roles.highest.position,
+      protectedRoleIds: config.roles.protectedRoleIds,
+    });
+    if (classification === "eligible") eligible.push(member);
+    else if (classification === "already-assigned") alreadyAssignedCount += 1;
+    else skippedCount += 1;
+  }
+
+  const fingerprintRows = snapshots
+    .map((member) => [member.id, member.bot, [...member.roleIds].sort()] as const)
+    .sort(([leftId], [rightId]) => leftId.localeCompare(rightId));
+  const roleState = [...guild.roles.cache.values()]
+    .map((memberRole) => [
+      memberRole.id,
+      memberRole.position,
+      memberRole.managed,
+      memberRole.permissions.bitfield.toString(),
+    ] as const)
+    .sort(([leftId], [rightId]) => leftId.localeCompare(rightId));
+  const fingerprint = createHash("sha256").update(JSON.stringify({
+    members: fingerprintRows,
+    roles: roleState,
+    roleId: role.id,
+    actorHighestPosition: actor.roles.highest.position,
+    botHighestPosition: bot.roles.highest.position,
+    protectedRoleIds: [...config.roles.protectedRoleIds].sort(),
+  })).digest("hex");
+  const botCount = snapshots.filter((member) => member.bot).length;
+  return {
+    role,
+    eligible,
+    totalMembers: snapshots.length,
+    humanMemberCount: snapshots.length - botCount,
+    botCount,
+    alreadyAssignedCount,
+    skippedCount,
+    fingerprint,
+  };
+}
+
+export type BulkRoleGrantPreview = {
+  previewToken: string;
+  guildId: string;
+  guildName: string;
+  roleId: string;
+  roleName: string;
+  totalMembers: number;
+  humanMemberCount: number;
+  eligibleCount: number;
+  alreadyAssignedCount: number;
+  skippedCount: number;
+  botCount: number;
+};
+
+export async function previewBulkRoleGrant(input: {
+  guildId: string;
+  actorId: string;
+  roleId: string;
+}): Promise<BulkRoleGrantPreview> {
+  const guild = await getGuild(input.guildId);
+  const config = await getConfig(input.guildId);
+  const bot = await getMember(guild, moderationClient!.user!.id);
+  const actor = await getMember(guild, input.actorId);
+  validateManualPermission(config, actor, "role");
+  validateBulkRolePermissions(actor, bot);
+  const plan = await prepareBulkRolePlan(guild, actor, bot, config, input.roleId);
+
+  const now = Date.now();
+  for (const [token, preview] of bulkRolePreviews) {
+    if (preview.expiresAt <= now) bulkRolePreviews.delete(token);
+  }
+  const previewToken = randomUUID();
+  bulkRolePreviews.set(previewToken, {
+    guildId: input.guildId,
+    actorId: input.actorId,
+    roleId: input.roleId,
+    fingerprint: plan.fingerprint,
+    expiresAt: now + 5 * 60_000,
+    used: false,
+  });
+  return {
+    previewToken,
+    guildId: input.guildId,
+    guildName: guild.name,
+    roleId: input.roleId,
+    roleName: plan.role.name,
+    totalMembers: plan.totalMembers,
+    humanMemberCount: plan.humanMemberCount,
+    eligibleCount: plan.eligible.length,
+    alreadyAssignedCount: plan.alreadyAssignedCount,
+    skippedCount: plan.skippedCount,
+    botCount: plan.botCount,
+  };
 }
 
 function assertChannelAllowed(config: ModerationConfig, channelId: string, type: ModerationActionType): void {
@@ -470,11 +676,13 @@ export async function executeModerationAction(input: ModerationActionInput): Pro
   const actor = isAutomatic ? bot : await getMember(guild, input.actorId);
   if (!isAutomatic && input.type === "delete") throw new Error("Ștergerea automată nu este o comandă manuală.");
   if (!isAutomatic) validateManualPermission(config, actor, input.type as ModerationActionType);
+  const bulkRoleAction = input.type === "role" && input.allMembers === true;
+  if (bulkRoleAction) validateBulkRolePermissions(actor, bot);
 
   let target: GuildMember | undefined;
   if (input.targetId) target = await getMember(guild, input.targetId);
   const targetAction = ["warn", "mute", "unmute", "kick", "ban", "nick", "role", "delete"] as const;
-  if ((targetAction as readonly string[]).includes(input.type)) {
+  if ((targetAction as readonly string[]).includes(input.type) && !bulkRoleAction) {
     if (!target) throw new Error("Această acțiune necesită un membru țintă.");
     if (input.type !== "role" && config.roles.sanctionableRoleIds.length > 0 &&
         !target.roles.cache.some((role) => config.roles.sanctionableRoleIds.includes(role.id))) {
@@ -491,12 +699,31 @@ export async function executeModerationAction(input: ModerationActionInput): Pro
       throw new Error("Botului îi lipsește permisiunea Discord necesară pentru această acțiune.");
     }
   }
+  let bulkRolePlan: BulkRolePlan | undefined;
+  if (bulkRoleAction) {
+    if (!input.roleId) throw new Error("Este necesar un rol.");
+    if (!input.previewToken) throw new Error("Previzualizează membrii înainte de a confirma acordarea în masă.");
+    bulkRolePlan = await prepareBulkRolePlan(guild, actor, bot, config, input.roleId);
+    const preview = bulkRolePreviews.get(input.previewToken);
+    if (
+      !preview ||
+      preview.used ||
+      preview.expiresAt <= Date.now() ||
+      preview.guildId !== input.guildId ||
+      preview.actorId !== input.actorId ||
+      preview.roleId !== input.roleId ||
+      preview.fingerprint !== bulkRolePlan.fingerprint
+    ) {
+      throw new Error("Lista membrilor sau permisiunile s-au schimbat de la previzualizare. Generează o previzualizare nouă.");
+    }
+    preview.used = true;
+  }
 
   const fallbackKey = `${input.source ?? "manual"}:${input.type}:${input.guildId}:${input.targetId ?? input.channelId ?? "guild"}:${Math.floor(Date.now() / 60_000)}`;
   const idempotencyKey = input.idempotencyKey ?? fallbackKey;
   const started = await moderationStore.beginAction({
     guildId: input.guildId, idempotencyKey, actorId: input.actorId, actionType: input.type,
-    input: { targetId: input.targetId, channelId: input.channelId, roleId: input.roleId, amount: input.amount, durationMinutes: input.durationMinutes, source: input.source },
+    input: { targetId: input.targetId, allMembers: input.allMembers === true, channelId: input.channelId, roleId: input.roleId, amount: input.amount, durationMinutes: input.durationMinutes, source: input.source },
   });
   if (!started.created) {
     if (started.action.status === "applied") return started.action.result as ModerationActionResult ?? { actionId: started.action.id, summary: "Acțiunea fusese deja aplicată." };
@@ -516,6 +743,7 @@ export async function executeModerationAction(input: ModerationActionInput): Pro
   let summary: string;
   let targetType: string | null = target ? "member" : null;
   let targetId: string | null = target?.id ?? null;
+  let actionAuditDetails: Record<string, unknown> = {};
   try {
   caseId = await createCase(input, "pending", { actionId });
   switch (input.type) {
@@ -564,11 +792,61 @@ export async function executeModerationAction(input: ModerationActionInput): Pro
       break;
     case "role": {
       if (!input.roleId) throw new Error("Este necesar un rol.");
-      const role = guild.roles.cache.get(input.roleId) ?? await guild.roles.fetch(input.roleId);
+      const role = bulkRoleAction
+        ? bulkRolePlan!.role
+        : guild.roles.cache.get(input.roleId) ?? await guild.roles.fetch(input.roleId);
       if (!role) throw new Error("Rolul nu există.");
-      assertRoleGrantSafe(actor, bot, role, config.roles.protectedRoleIds);
-      await target!.roles.add(role, reason(input));
-      summary = `Rolul **${role.name}** a fost adăugat lui <@${target!.id}>.`;
+      if (!bulkRoleAction) assertRoleGrantSafe(actor, bot, role, config.roles.protectedRoleIds);
+      if (bulkRoleAction) {
+        let added = 0;
+        let failed = 0;
+        const failedMemberIds: string[] = [];
+        let firstFailureMessage: string | undefined;
+        for (let index = 0; index < bulkRolePlan!.eligible.length; index += 5) {
+          const batch = bulkRolePlan!.eligible.slice(index, index + 5);
+          await Promise.all(batch.map(async (member) => {
+            try {
+              await moderationClient!.rest.put(
+                Routes.guildMemberRole(input.guildId, member.id, role.id),
+                { reason: reason(input) },
+              );
+              added += 1;
+            } catch (error) {
+              failed += 1;
+              if (failedMemberIds.length < 5) failedMemberIds.push(member.id);
+              if (!firstFailureMessage) {
+                firstFailureMessage = error instanceof Error ? error.message : "Discord role assignment failed";
+              }
+            }
+          }));
+        }
+        if (failed > 0) {
+          logger.warn({
+            guildId: input.guildId,
+            roleId: role.id,
+            failedCount: failed,
+            sampleMemberIds: failedMemberIds,
+            error: firstFailureMessage,
+          }, "Bulk role assignment had member-level failures");
+        }
+        if (bulkRolePlan!.eligible.length > 0 && added === 0 && failed > 0) {
+          throw new Error(`Rolul nu a putut fi adăugat niciunui membru. Eșecuri: ${failed}; exemple ID: ${failedMemberIds.join(", ")}.`);
+        }
+        summary = `Rolul **${role.name}** a fost adăugat la ${added} membri. ${bulkRolePlan!.alreadyAssignedCount} îl aveau deja; ${bulkRolePlan!.skippedCount} au fost omiși (boți, roluri protejate sau ierarhie); ${failed} au eșuat.${failedMemberIds.length ? ` Exemple ID nereușite: ${failedMemberIds.join(", ")}.` : ""}`;
+        actionAuditDetails = {
+          allMembers: true,
+          totalMembers: bulkRolePlan!.totalMembers,
+          eligibleCount: bulkRolePlan!.eligible.length,
+          addedCount: added,
+          alreadyAssignedCount: bulkRolePlan!.alreadyAssignedCount,
+          skippedCount: bulkRolePlan!.skippedCount,
+          failedCount: failed,
+        };
+      } else {
+        if (!target) throw new Error("Această acțiune necesită un membru țintă.");
+        await target.roles.add(role, reason(input));
+        summary = `Rolul **${role.name}** a fost adăugat lui <@${target.id}>.`;
+      }
       targetType = "role"; targetId = role.id;
       break;
     }
@@ -644,6 +922,7 @@ export async function executeModerationAction(input: ModerationActionInput): Pro
     actionId,
     type: input.type,
     summary,
+      ...actionAuditDetails,
     source: input.source ?? "manual",
     caseId,
     ...(input.durationMinutes !== undefined ? { durationMinutes: input.durationMinutes } : {}),

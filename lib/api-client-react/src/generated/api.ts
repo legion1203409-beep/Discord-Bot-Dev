@@ -46,6 +46,8 @@ import type {
   ModerationLogPage,
   ModerationPreviewServerSetup200,
   ModerationPreviewServerSetupBody,
+  ModerationRoleGrantPreview,
+  ModerationRoleGrantPreviewInput,
   ModerationSaveServerSetupDraft200,
   ModerationSession,
   ModerationStorageUploadRequest,
@@ -2503,5 +2505,70 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getModerationExecuteActionMutationOptions(options));
+    }
+
+export const getModerationPreviewBulkRoleGrantUrl = (guildId: string,) => {
+
+
+
+
+  return `/api/moderation/guilds/${guildId}/actions/role-preview`
+}
+
+export const moderationPreviewBulkRoleGrant = async (guildId: string,
+    moderationRoleGrantPreviewInput: ModerationRoleGrantPreviewInput, options?: RequestInit): Promise<ModerationRoleGrantPreview> => {
+
+  return customFetch<ModerationRoleGrantPreview>(getModerationPreviewBulkRoleGrantUrl(guildId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(moderationRoleGrantPreviewInput)
+  }
+);}
+
+
+
+
+export const getModerationPreviewBulkRoleGrantMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof moderationPreviewBulkRoleGrant>>, TError,{guildId: string;data: BodyType<ModerationRoleGrantPreviewInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof moderationPreviewBulkRoleGrant>>, TError,{guildId: string;data: BodyType<ModerationRoleGrantPreviewInput>}, TContext> => {
+
+const mutationKey = ['moderationPreviewBulkRoleGrant'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof moderationPreviewBulkRoleGrant>>, {guildId: string;data: BodyType<ModerationRoleGrantPreviewInput>}> = (props) => {
+          const {guildId,data} = props ?? {};
+
+          return  moderationPreviewBulkRoleGrant(guildId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ModerationPreviewBulkRoleGrantMutationResult = NonNullable<Awaited<ReturnType<typeof moderationPreviewBulkRoleGrant>>>
+    export type ModerationPreviewBulkRoleGrantMutationBody = BodyType<ModerationRoleGrantPreviewInput>
+    export type ModerationPreviewBulkRoleGrantMutationError = ErrorType<void>
+
+    export const useModerationPreviewBulkRoleGrant = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof moderationPreviewBulkRoleGrant>>, TError,{guildId: string;data: BodyType<ModerationRoleGrantPreviewInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof moderationPreviewBulkRoleGrant>>,
+        TError,
+        {guildId: string;data: BodyType<ModerationRoleGrantPreviewInput>},
+        TContext
+      > => {
+      return useMutation(getModerationPreviewBulkRoleGrantMutationOptions(options));
     }
 
