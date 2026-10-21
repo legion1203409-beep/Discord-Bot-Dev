@@ -1136,18 +1136,28 @@ h1 em, h2 em, blockquote em { color: var(--ember-light); }
 .server-guide-recruitment-skeleton > div { min-height: 245px; border: 1px solid var(--line); background: linear-gradient(100deg, var(--panel) 20%, var(--panel-light) 40%, var(--panel) 60%); background-size: 220% 100%; animation: server-guide-skeleton 1.4s ease infinite; }
 .public-ticket-card { position: relative; overflow: hidden; border: 1px solid var(--line); background: radial-gradient(ellipse at top right, rgba(184,148,95,.09), transparent 45%), var(--panel); box-shadow: 0 28px 85px rgba(0,0,0,.28); }
 .public-ticket-card::before { position: absolute; top: 0; left: 2rem; width: 70px; height: 2px; background: var(--ember-light); content: ""; }
-.public-ticket-slider { padding: 1.2rem 1.1rem 1rem; border: 1px solid var(--line); background: rgba(17,19,22,.58); }
-.public-ticket-slider__status { color: var(--ash); font-family: var(--mono); font-size: .52rem; letter-spacing: .08em; }
+.public-ticket-slider { padding: 1.2rem 1.1rem 1rem; border: 1px solid var(--line); background: rgba(17,19,22,.58); transition: border-color .35s ease, box-shadow .45s ease, background-color .35s ease; }
+.public-ticket-slider__status { display: inline-flex; align-items: center; gap: .35rem; color: var(--ash); font-family: var(--mono); font-size: .52rem; letter-spacing: .08em; transition: color .3s ease; }
+.public-ticket-slider__check { color: var(--green); animation: verification-check-arrive .45s cubic-bezier(.2,.8,.2,1) both; }
+.public-ticket-slider.is-complete { border-color: rgba(121,184,139,.42); background-color: rgba(17,24,20,.72); box-shadow: 0 0 28px rgba(121,184,139,.08), inset 0 0 24px rgba(121,184,139,.035); }
 .public-ticket-slider.is-complete .public-ticket-slider__status { color: var(--green); }
 .public-ticket-slider__control { height: 32px; }
-.public-ticket-slider__control [data-radix-slider-track] { height: 6px; background: rgba(243,238,230,.13); }
-.public-ticket-slider__control [data-radix-slider-range] { background: linear-gradient(90deg, var(--ember), var(--gold-light)); }
-.public-ticket-slider__control [data-radix-slider-thumb] { height: 28px; width: 28px; border: 1px solid var(--gold-light); background: radial-gradient(circle at 36% 28%, #f0d294, var(--ember-light) 55%, #542d2b); box-shadow: 0 0 0 5px rgba(214,106,77,.13), 0 4px 14px rgba(0,0,0,.45); cursor: grab; }
-.public-ticket-slider__control [data-radix-slider-thumb]:active { cursor: grabbing; }
+.public-ticket-slider__control [data-radix-slider-track] { height: 6px; background: rgba(243,238,230,.13); transition: height .2s ease, background-color .3s ease; }
+.public-ticket-slider__control [data-radix-slider-range] { background: linear-gradient(90deg, var(--ember), var(--gold-light) 72%, #fff0bd); box-shadow: 0 0 11px rgba(240,180,100,.48); transition: box-shadow .3s ease; }
+.public-ticket-slider__control [data-radix-slider-thumb] { position: relative; height: 28px; width: 28px; border: 1px solid var(--gold-light); background: radial-gradient(circle at 36% 28%, #f0d294, var(--ember-light) 55%, #542d2b); box-shadow: 0 0 0 5px rgba(214,106,77,.13), 0 4px 14px rgba(0,0,0,.45); cursor: grab; animation: verification-ember-breathe 2.4s ease-in-out infinite; transition: box-shadow .25s ease, transform .2s cubic-bezier(.2,.8,.2,1), border-color .3s ease, background .3s ease; }
+.public-ticket-slider__control [data-radix-slider-thumb]::after { position: absolute; inset: 8px; border-radius: 50%; background: radial-gradient(circle, #fff5d6 0 18%, rgba(255,222,150,.82) 42%, transparent 74%); content: ""; pointer-events: none; }
+.public-ticket-slider__control [data-radix-slider-thumb]:hover { transform: scale(1.1); }
+.public-ticket-slider__control [data-radix-slider-thumb]:active { cursor: grabbing; transform: scale(1.16); }
+.public-ticket-slider.is-complete .public-ticket-slider__control [data-radix-slider-track] { background: rgba(121,184,139,.16); }
+.public-ticket-slider.is-complete .public-ticket-slider__control [data-radix-slider-range] { background: linear-gradient(90deg, var(--ember), var(--gold-light) 70%, #d8f0bd); box-shadow: 0 0 14px rgba(121,184,139,.48); }
+.public-ticket-slider.is-complete .public-ticket-slider__control [data-radix-slider-thumb] { border-color: #d8f0bd; background: radial-gradient(circle at 36% 28%, #f3ffe5, #a9d9a8 55%, #46705a); box-shadow: 0 0 0 7px rgba(121,184,139,.16), 0 0 24px rgba(121,184,139,.55); animation: verification-ember-arrive .55s cubic-bezier(.2,.8,.2,1) both; }
 .public-ticket-slider .mt-3 span { color: var(--faint); font-family: var(--mono); font-size: .48rem; letter-spacing: .14em; }
 .public-verification-cta:disabled { filter: saturate(.45); }
 .public-ticket-progress { width: 16px; height: 16px; border: 2px solid rgba(243,238,230,.35); border-top-color: var(--paper); border-radius: 50%; animation: ticket-progress-spin .8s linear infinite; }
 @keyframes ticket-progress-spin { to { transform: rotate(360deg); } }
+@keyframes verification-ember-breathe { 0%,100% { box-shadow: 0 0 0 4px rgba(214,106,77,.1), 0 4px 14px rgba(0,0,0,.45); } 50% { box-shadow: 0 0 0 7px rgba(214,106,77,.2), 0 0 20px rgba(240,180,100,.28); } }
+@keyframes verification-ember-arrive { 0% { transform: scale(.82); } 55% { transform: scale(1.2); } 100% { transform: scale(1); } }
+@keyframes verification-check-arrive { 0% { opacity: 0; transform: scale(.5) rotate(-25deg); } 70% { opacity: 1; transform: scale(1.16) rotate(4deg); } 100% { opacity: 1; transform: scale(1) rotate(0); } }
 @media (max-width: 800px) {
   .server-guide-recruitment-heading { align-items: flex-start; flex-direction: column; gap: 1rem; }
   .server-guide-recruitment-heading > p { max-width: 540px; }
@@ -1163,7 +1173,8 @@ h1 em, h2 em, blockquote em { color: var(--ember-light); }
   .server-guide-recruitment-state { align-items: flex-start; flex-direction: column; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .server-guide-recruitment-skeleton > div, .public-ticket-progress { animation: none; }
+  .server-guide-recruitment-skeleton > div, .public-ticket-progress, .public-ticket-slider__control [data-radix-slider-thumb], .public-ticket-slider__check { animation: none; }
+  .public-ticket-slider, .public-ticket-slider__status, .public-ticket-slider__control [data-radix-slider-track], .public-ticket-slider__control [data-radix-slider-range], .public-ticket-slider__control [data-radix-slider-thumb] { transition: none; }
 }
 
 /* Navigation system: distinguish the member-facing world from staff tools. */

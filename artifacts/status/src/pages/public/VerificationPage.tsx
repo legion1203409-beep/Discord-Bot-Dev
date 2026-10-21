@@ -101,6 +101,7 @@ export function VerificationPage() {
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <label htmlFor="verification-slider" className="public-verification-kicker text-xs uppercase tracking-[0.15em]">Aprinde flacăra</label>
                   <span className="public-ticket-slider__status" aria-live="polite" data-testid="status-verification-slider">
+                    {sliderCompleted && <CheckCircle2 className="public-ticket-slider__check h-3.5 w-3.5" aria-hidden="true" />}
                     {sliderCompleted ? "Traseu complet" : "Glisează până la capăt"}
                   </span>
                 </div>
