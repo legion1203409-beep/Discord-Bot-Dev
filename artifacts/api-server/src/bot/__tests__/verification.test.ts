@@ -5,6 +5,11 @@ const mocks = vi.hoisted(() => ({
   loadConfig: vi.fn(),
   saveConfig: vi.fn(),
   addRole: vi.fn(),
+  dbQuery: vi.fn(),
+}));
+
+vi.mock("@workspace/db", () => ({
+  pool: { query: mocks.dbQuery },
 }));
 
 vi.mock("../db", () => ({
@@ -15,7 +20,9 @@ vi.mock("../db", () => ({
 import {
   publishVerificationPanel,
   VerificationPanelPersistenceError,
+  handleVerificationButton,
   verificationPanel,
+  verificationTicketResponse,
   verifyMember,
 } from "../verification";
 import { getVerificationOAuthUrl } from "../../moderation/oauth";
@@ -120,6 +127,45 @@ describe("Discord member verification", () => {
     expect(buttonUrl.searchParams.get("verification")).toBe("1");
     expect(buttonUrl.searchParams.get("guildId")).toBe(guildId);
     expect(button.custom_id).toBeUndefined();
+  });
+
+  it("returns a compact Link button instead of exposing the one-time ticket URL as message text", () => {
+    const url = "https://codelinked.app/verificare?guildId=123456789#ticket=private-ticket";
+    const response = verificationTicketResponse(url);
+    const button = response.components[0]!.components[0]!.toJSON() as {
+      style: number;
+      url?: string;
+      custom_id?: string;
+      label?: string;
+    };
+
+    expect(response.content).not.toContain(url);
+    expect(response.content).not.toContain("private-ticket");
+    expect(button.style).toBe(ButtonStyle.Link);
+    expect(button.label).toBe("Deschide verificarea");
+    expect(button.url).toBe(url);
+    expect(button.custom_id).toBeUndefined();
+  });
+
+  it("does not publish the generated verification ticket as visible reply text", async () => {
+    mocks.dbQuery.mockResolvedValue({ rows: [] });
+    const { client, guild, member } = makeClient();
+    const editReply = vi.fn().mockResolvedValue(undefined);
+    const interaction = {
+      deferReply: vi.fn().mockResolvedValue(undefined),
+      editReply,
+      guildId,
+      guild,
+      client,
+      user: { id: userId },
+    };
+
+    await handleVerificationButton(interaction as never, "https://codelinked.app/verificare?guildId=123456789");
+
+    const reply = editReply.mock.calls[0]?.[0] as ReturnType<typeof verificationTicketResponse>;
+    const button = reply.components[0]!.components[0]!.toJSON() as { url?: string };
+    expect(reply.content).not.toContain("ticket=");
+    expect(button.url).toMatch(/^https:\/\/codelinked\.app\/verificare\?guildId=123456789#ticket=/);
   });
 
   it("reuses the bot's existing panel after its first persistence attempt failed", async () => {

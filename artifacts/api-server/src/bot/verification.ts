@@ -369,6 +369,17 @@ export function verificationCookieName(): string {
   return COOKIE_NAME;
 }
 
+export function verificationTicketResponse(url: string) {
+  const button = new ButtonBuilder()
+    .setLabel("Deschide verificarea")
+    .setStyle(ButtonStyle.Link)
+    .setURL(url);
+  return {
+    content: "Continuă verificarea pe site folosind butonul de mai jos:",
+    components: [new ActionRowBuilder<ButtonBuilder>().addComponents(button)],
+  };
+}
+
 export async function handleVerificationButton(interaction: ButtonInteraction, websiteUrl: string): Promise<void> {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const guildId = interaction.guildId;
@@ -392,7 +403,7 @@ export async function handleVerificationButton(interaction: ButtonInteraction, w
 
     const ticket = await createVerificationLinkToken(guildId, interaction.user.id);
     const url = `${websiteUrl}#ticket=${encodeURIComponent(ticket)}`;
-    await interaction.editReply(`Aprinde flacăra pe site pentru a primi rolul de verificare:\n${url}`);
+    await interaction.editReply(verificationTicketResponse(url));
   } catch (error) {
     await interaction.editReply("Linkul de verificare nu a putut fi pregătit. Încearcă din nou în câteva momente.");
     throw error;
