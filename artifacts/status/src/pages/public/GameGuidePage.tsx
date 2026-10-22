@@ -28,25 +28,25 @@ const activityMetrics: { key: "messages" | "uniqueUsers" | "joins" | "leaves" | 
   { key: "boosts", label: "Boost-uri", icon: Zap },
   { key: "peakVoice", label: "Vârf vocal", icon: Volume2 },
 ];
-const EMBER_LAYOUT = Array.from({ length: 38 }, (_, index) => ({
+const EMBER_LAYOUT = Array.from({ length: 56 }, (_, index) => ({
   left: `${(index * 43 + 7) % 98}%`,
   delay: `${-((index * 1.37) % 19)}s`,
-  duration: `${8 + ((index * 7) % 10)}s`,
+  duration: `${6 + ((index * 7) % 8)}s`,
   drift: `${((index * 17) % 81) - 40}px`,
 }));
-const ASH_LAYOUT = Array.from({ length: 22 }, (_, index) => ({
+const ASH_LAYOUT = Array.from({ length: 32 }, (_, index) => ({
   left: `${(index * 61 + 13) % 99}%`,
   top: `${(index * 47 + 9) % 100}%`,
   delay: `${-((index * 2.11) % 30)}s`,
-  duration: `${16 + ((index * 11) % 18)}s`,
+  duration: `${11 + ((index * 11) % 13)}s`,
   drift: `${((index * 23) % 93) - 46}px`,
-  size: `${1.4 + ((index * 13) % 26) / 10}px`,
-  opacity: `${0.35 + ((index * 7) % 50) / 100}`,
+  size: `${2 + ((index * 13) % 26) / 10}px`,
+  opacity: `${0.55 + ((index * 7) % 40) / 100}`,
 }));
-const CTA_EMBER_LAYOUT = Array.from({ length: 14 }, (_, index) => ({
+const CTA_EMBER_LAYOUT = Array.from({ length: 20 }, (_, index) => ({
   left: `${(index * 73 + 11) % 96}%`,
   delay: `${-((index * 1.91) % 15)}s`,
-  duration: `${9 + ((index * 5) % 8)}s`,
+  duration: `${6 + ((index * 5) % 7)}s`,
   drift: `${((index * 19) % 65) - 32}px`,
 }));
 
