@@ -1,18 +1,28 @@
-import { useMemo, useState } from "react";
-import { CheckCircle2, Flame, ShieldCheck, TriangleAlert } from "lucide-react";
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
+import { Check, CheckCircle2, Flame, LoaderCircle, ShieldCheck, TriangleAlert } from "lucide-react";
 import {
   getGetVerificationStatusQueryKey,
   useCompleteWebsiteVerification,
   useGetVerificationStatus,
 } from "@workspace/api-client-react";
-import { PublicLayout } from "../../components/public/PublicLayout";
-import { Slider } from "../../components/ui/slider";
+import "./verification-page.css";
+
+const EMBERS = Array.from({ length: 24 }, (_, index) => ({
+  left: `${(index * 43 + 7) % 98}%`,
+  delay: `${-((index * 1.37) % 19)}s`,
+  duration: `${11 + ((index * 7) % 10)}s`,
+  drift: `${((index * 17) % 81) - 40}px`,
+  size: `${2 + ((index * 13) % 26) / 10}px`,
+}));
 
 export function VerificationPage() {
   const ticket = useMemo(() => new URLSearchParams(window.location.hash.slice(1)).get("ticket") ?? "", []);
   const legacyError = useMemo(() => new URLSearchParams(window.location.search).get("verification_error"), []);
   const guildId = useMemo(() => new URLSearchParams(window.location.search).get("guildId") ?? undefined, []);
   const [sliderValue, setSliderValue] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const [fuseWidth, setFuseWidth] = useState(0);
+  const fuseRef = useRef<HTMLDivElement>(null);
   const completion = useCompleteWebsiteVerification();
   const statusParams = guildId ? { guildId } : undefined;
   const status = useGetVerificationStatus(statusParams, {
@@ -21,7 +31,7 @@ export function VerificationPage() {
       queryKey: getGetVerificationStatusQueryKey(statusParams),
     },
   });
-  const sliderCompleted = sliderValue >= 100;
+  const sliderCompleted = sliderValue >= 1000;
   const legacyErrorText = legacyError === "not_member"
     ? "Contul asociat linkului nu este membru pe server."
     : legacyError === "bot_offline"
@@ -29,6 +39,23 @@ export function VerificationPage() {
       : legacyError
         ? "Acest link nu a putut fi confirmat. Cere un link nou în Discord."
         : null;
+
+  useEffect(() => {
+    const fuse = fuseRef.current;
+    if (!fuse) return;
+    const updateWidth = () => setFuseWidth(fuse.getBoundingClientRect().width);
+    const stopDragging = () => setIsDragging(false);
+    updateWidth();
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(fuse);
+    window.addEventListener("pointerup", stopDragging);
+    window.addEventListener("pointercancel", stopDragging);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("pointerup", stopDragging);
+      window.removeEventListener("pointercancel", stopDragging);
+    };
+  }, []);
 
   const completeVerification = async () => {
     if (!ticket || !sliderCompleted || completion.isPending) return;
@@ -43,88 +70,177 @@ export function VerificationPage() {
   const result = completion.data;
   const isSuccess = result?.verified === true || status.data?.verified === true;
   const statusError = status.isError || status.data?.reason === "bot_offline";
+  const progress = sliderValue / 1000;
+  const travel = Math.max(0, fuseWidth - 48);
+  const markerLeft = 24 + travel * progress;
+  const pageClassName = [
+    "vx-page",
+    sliderValue > 0 ? "is-burning" : "is-idle",
+    isDragging ? "is-drag" : "",
+    progress >= 0.78 ? "is-near" : "",
+    sliderCompleted ? "is-done" : "",
+    completion.isPending ? "is-busy" : "",
+    isSuccess ? "is-sent" : "",
+  ].filter(Boolean).join(" ");
+  const markerStyle: CSSProperties = { left: `${markerLeft}px` };
+  const ashStyle: CSSProperties = { width: `${Math.max(0, markerLeft - 24)}px` };
+  const successHeading = result?.result === "already_verified"
+    ? "Contul era deja verificat."
+    : result?.verified
+      ? "Verificarea a fost finalizată."
+      : "Contul este verificat.";
 
   return (
-    <PublicLayout>
-      <div className="public-verification-page page-width flex min-h-[70vh] items-center justify-center py-16">
-        <section className="public-verification-card public-ticket-card w-full max-w-xl rounded-2xl p-6 sm:p-10" aria-labelledby="verification-heading">
-          <div className="mb-8 flex items-center gap-3">
-            <div className="public-verification-icon flex h-12 w-12 items-center justify-center rounded-xl" aria-hidden="true">
-              <ShieldCheck className="h-6 w-6" />
+    <div className={pageClassName}>
+      <div className="vx-background" aria-hidden="true">
+        <div className="vx-background-glow" />
+        <div className="vx-background-ring" />
+        <div className="vx-embers">
+          {EMBERS.map((ember, index) => (
+            <i
+              key={index}
+              className="vx-ember"
+              style={{
+                "--ember-left": ember.left,
+                "--ember-delay": ember.delay,
+                "--ember-duration": ember.duration,
+                "--ember-drift": ember.drift,
+                "--ember-size": ember.size,
+              } as CSSProperties}
+            />
+          ))}
+        </div>
+      </div>
+
+      <header className="vx-top">
+        <span className="vx-sigil" aria-hidden="true"><i /></span>
+        <span className="vx-brand">Oracolul Cenușii</span>
+        <span className="vx-top-caption">VERIFICARE DISCORD</span>
+      </header>
+
+      <main className="vx-main">
+        <section className="vx-card" aria-labelledby="verification-heading">
+          <div className="vx-card-glow" aria-hidden="true" />
+          <div className="vx-card-head">
+            <div className="vx-tile" aria-hidden="true">
+              <ShieldCheck className="vx-shield" />
+              <span className="vx-tile-orbit" />
             </div>
             <div>
-              <p className="public-verification-kicker text-xs uppercase tracking-[0.2em]">Oracolul Cenușii · Discord</p>
-              <h1 id="verification-heading" className="mt-1 text-2xl font-semibold text-[var(--paper)]">Verifică-ți accesul</h1>
+              <p className="vx-eyebrow">ORACOLUL CENUȘII · DISCORD</p>
+              <h1 id="verification-heading" className="vx-title">Verifică-ți accesul</h1>
             </div>
           </div>
 
           {isSuccess ? (
-            <div className="public-verification-success flex gap-3 rounded-xl p-5" role="status" data-testid="status-verification-success">
-              <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+            <div className="vx-message vx-message--success" role="status" data-testid="status-verification-success">
+              <CheckCircle2 className="vx-message-icon" aria-hidden="true" />
               <div>
-                <strong className="block">{result?.result === "already_verified" ? "Contul era deja verificat." : result?.verified ? "Verificarea a fost finalizată." : "Contul este verificat."}</strong>
-                <span className="mt-1 block text-sm">Poți reveni acum în Discord.</span>
+                <strong>{successHeading}</strong>
+                <span>Poți reveni acum în Discord.</span>
               </div>
             </div>
           ) : legacyErrorText ? (
-            <div className="public-verification-error flex gap-3 rounded-xl p-5" role="alert" data-testid="status-verification-error">
-              <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+            <div className="vx-message vx-message--error" role="alert" data-testid="status-verification-error">
+              <TriangleAlert className="vx-message-icon" aria-hidden="true" />
               <p>{legacyErrorText}</p>
             </div>
           ) : !ticket && status.isLoading ? (
-            <div className="public-verification-muted flex items-center gap-3 rounded-xl border border-border/60 p-5 text-sm" role="status" data-testid="status-verification-status-loading">
-              <span className="public-ticket-progress" aria-hidden="true" />
-              Se verifică starea contului în Discord…
+            <div className="vx-message vx-message--muted" role="status" data-testid="status-verification-status-loading">
+              <LoaderCircle className="vx-message-icon vx-spin" aria-hidden="true" />
+              <p>Se verifică starea contului în Discord…</p>
             </div>
           ) : !ticket && statusError ? (
-            <div className="public-verification-error space-y-3 rounded-xl p-5" role="alert" data-testid="status-verification-status-error">
-              <div className="flex gap-3">
-                <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+            <div className="vx-message-wrap">
+              <div className="vx-message vx-message--error" role="alert" data-testid="status-verification-status-error">
+                <TriangleAlert className="vx-message-icon" aria-hidden="true" />
                 <p>{status.data?.reason === "bot_offline" ? "Botul Discord nu poate confirma starea acum." : "Starea verificării nu a putut fi încărcată."}</p>
               </div>
-              <button type="button" onClick={() => void status.refetch()} className="public-verification-cta rounded-lg px-4 py-2 text-sm" data-testid="button-retry-verification-status">
+              <button type="button" onClick={() => void status.refetch()} className="vx-secondary-button" data-testid="button-retry-verification-status">
                 Încearcă din nou
               </button>
             </div>
           ) : !ticket ? (
-            <div className="public-verification-muted flex gap-3 rounded-xl border border-dashed p-5 text-sm leading-relaxed" role="status" data-testid="status-verification-ticket-missing">
-              <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0 text-[var(--warning)]" aria-hidden="true" />
-              <p>Deschide linkul personal de verificare primit în Discord. Biletul de verificare este opac și nu poate fi înlocuit cu autentificarea pe site.</p>
+            <div className="vx-message vx-message--muted" role="status" data-testid="status-verification-ticket-missing">
+              <TriangleAlert className="vx-message-icon" aria-hidden="true" />
+              <p>Deschide butonul personal de verificare primit în Discord. Biletul este unic și nu poate fi înlocuit cu autentificarea pe site.</p>
             </div>
           ) : (
-            <div className="space-y-7">
-              <p className="public-verification-muted text-sm leading-relaxed">
+            <>
+              <p className="vx-lead">
                 Pentru a confirma verificarea, glisează marcajul până la capătul traseului. Biletul a fost emis de Discord și va fi folosit o singură dată pentru acest pas.
               </p>
 
-              <div className={`public-ticket-slider ${sliderCompleted ? "is-complete" : ""}`}>
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <label htmlFor="verification-slider" className="public-verification-kicker text-xs uppercase tracking-[0.15em]">Aprinde flacăra</label>
-                  <span className="public-ticket-slider__status" aria-live="polite" data-testid="status-verification-slider">
-                    {sliderCompleted && <CheckCircle2 className="public-ticket-slider__check h-3.5 w-3.5" aria-hidden="true" />}
-                    {sliderCompleted ? "Traseu complet" : "Glisează până la capăt"}
+              <div className="vx-rite">
+                <div className="vx-rite-top">
+                  <span className="vx-rite-label">{sliderCompleted ? "Flacără aprinsă" : "Aprinde flacăra"}</span>
+                  <span className="vx-rite-hint" id="verification-hint" aria-live="polite">
+                    {sliderCompleted ? "Poți finaliza verificarea" : "Glisează până la capăt"}
                   </span>
                 </div>
-                <Slider
-                  id="verification-slider"
-                  min={0}
-                  max={100}
-                  step={1}
-                  value={[sliderValue]}
-                  onValueChange={(value) => setSliderValue(value[0] ?? 0)}
-                  aria-label="Glisează pentru a finaliza verificarea"
-                  aria-valuetext={sliderCompleted ? "Traseu complet" : `${sliderValue} din 100`}
-                  data-testid="slider-verification-completion"
-                  className="public-ticket-slider__control"
-                />
-                <div className="mt-3 flex items-center justify-between text-xs" aria-hidden="true">
-                  <span>START</span><span>FINAL</span>
+
+                <div className={`vx-fuse ${sliderCompleted ? "is-complete" : ""}`} ref={fuseRef}>
+                  <span className="vx-cord" aria-hidden="true" />
+                  <span className="vx-ash" style={ashStyle} aria-hidden="true"><i /></span>
+                  <span className="vx-endpoint" aria-hidden="true">
+                    <span className="vx-endpoint-ring" />
+                    <Flame />
+                    <span className="vx-completion-ring vx-completion-ring--one" />
+                    <span className="vx-completion-ring vx-completion-ring--two" />
+                  </span>
+                  {Array.from({ length: 7 }, (_, index) => {
+                    const notchProgress = (index + 1) / 8;
+                    return (
+                      <i
+                        key={index}
+                        className={`vx-notch ${progress >= notchProgress ? "is-lit" : ""}`}
+                        style={{ left: `${24 + travel * notchProgress}px` }}
+                        aria-hidden="true"
+                      />
+                    );
+                  })}
+                  <span className="vx-head-glow" style={markerStyle} aria-hidden="true" />
+                  <span className="vx-marker" style={markerStyle} aria-hidden="true">
+                    <span className="vx-core" />
+                    <span className="vx-spark-trail"><i /><i /><i /><i /><i /></span>
+                  </span>
+                  <span className="vx-flame" style={markerStyle} aria-hidden="true">
+                    <i className="vx-flame-outer" />
+                    <i className="vx-flame-middle" />
+                    <i className="vx-flame-core" />
+                  </span>
+                  <span className="vx-fuse-hint" aria-hidden="true"><ChevronRightIcon /><ChevronRightIcon /><ChevronRightIcon /></span>
+                  <input
+                    id="verification-slider"
+                    className="vx-range"
+                    type="range"
+                    min={0}
+                    max={1000}
+                    step={1}
+                    value={sliderValue}
+                    onChange={(event) => setSliderValue(Number(event.currentTarget.value))}
+                    onPointerDown={() => setIsDragging(true)}
+                    onPointerUp={() => setIsDragging(false)}
+                    onPointerCancel={() => setIsDragging(false)}
+                    onBlur={() => setIsDragging(false)}
+                    aria-label="Glisează pentru a finaliza verificarea"
+                    aria-valuetext={sliderCompleted ? "Traseu complet" : `${Math.round(progress * 100)} din 100`}
+                    aria-describedby="verification-hint"
+                    data-testid="slider-verification-completion"
+                  />
+                  <span className="vx-marker-focus" style={markerStyle} aria-hidden="true"><span /></span>
+                </div>
+
+                <div className="vx-rite-foot" aria-hidden="true">
+                  <span>START</span>
+                  <span className="vx-percent">{Math.round(progress * 100)}%</span>
+                  <span>FINAL</span>
                 </div>
               </div>
 
               {completion.error && (
-                <div className="public-verification-error flex gap-3 rounded-lg p-4 text-sm" role="alert" data-testid="status-verification-completion-error">
-                  <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                <div className="vx-message vx-message--error vx-completion-error" role="alert" data-testid="status-verification-completion-error">
+                  <TriangleAlert className="vx-message-icon" aria-hidden="true" />
                   <span>{completion.error instanceof Error ? completion.error.message : "Verificarea nu a putut fi finalizată. Solicită un link nou în Discord."}</span>
                 </div>
               )}
@@ -133,23 +249,46 @@ export function VerificationPage() {
                 type="button"
                 onClick={() => void completeVerification()}
                 disabled={!sliderCompleted || completion.isPending}
-                className="public-verification-cta inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg px-4 py-3 font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                aria-busy={completion.isPending}
+                className="vx-cta"
                 data-testid="button-complete-verification"
               >
                 {completion.isPending ? (
-                  <span className="public-ticket-progress" aria-hidden="true" />
+                  <LoaderCircle className="vx-button-icon vx-spin" aria-hidden="true" />
+                ) : completion.isSuccess ? (
+                  <Check className="vx-button-icon" aria-hidden="true" />
                 ) : (
-                  <Flame className="h-4 w-4" aria-hidden="true" />
+                  <Flame className="vx-button-icon" aria-hidden="true" />
                 )}
-                {completion.isPending ? "Se finalizează verificarea" : "Finalizează verificarea"}
+                <span>
+                  {completion.isPending
+                    ? "Se confirmă…"
+                    : completion.isSuccess
+                      ? "Verificare confirmată"
+                      : "Finalizează verificarea"}
+                </span>
               </button>
-              <p className="public-verification-muted text-xs leading-relaxed">
+              {completion.isSuccess && (
+                <p className="vx-submit-note" role="status">Totul e gata. Te poți întoarce în Discord.</p>
+              )}
+              <p className="vx-fine">
                 Biletul nu dezvăluie identitatea ta pe această pagină. Verificarea este confirmată de serverul Discord.
               </p>
-            </div>
+              <span className="vx-sr-only" aria-live="polite">
+                {sliderCompleted ? "Flacără aprinsă. Poți finaliza verificarea." : ""}
+              </span>
+            </>
           )}
         </section>
-      </div>
-    </PublicLayout>
+      </main>
+    </div>
+  );
+}
+
+function ChevronRightIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path d="m7 4 6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }

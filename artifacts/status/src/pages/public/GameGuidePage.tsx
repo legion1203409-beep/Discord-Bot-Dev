@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import "./server-guide.css";
 import { Activity, ArrowUpRight, CalendarDays, Hash, MessageSquare, Users, UserPlus, UserMinus, Volume2, Zap, Award, UserRoundPlus } from "lucide-react";
 import { trackEvent } from "../../lib/analytics";
 import { DISCORD_INVITE } from "../../lib/public-constants";
