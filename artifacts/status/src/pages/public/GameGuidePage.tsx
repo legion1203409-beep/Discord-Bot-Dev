@@ -1,7 +1,7 @@
 import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 import {
-  Activity, ArrowDown, ArrowRight, ArrowUpRight, Award, CalendarDays,
+  ArrowDown, ArrowRight, ArrowUpRight, Award, CalendarDays,
   Hash, MessageSquare, Users, UserPlus, UserMinus, Volume2, Zap, UserRoundPlus,
   X, Menu, type LucideIcon,
 } from "lucide-react";
@@ -42,6 +42,12 @@ const ASH_LAYOUT = Array.from({ length: 22 }, (_, index) => ({
   drift: `${((index * 23) % 93) - 46}px`,
   size: `${1.4 + ((index * 13) % 26) / 10}px`,
   opacity: `${0.35 + ((index * 7) % 50) / 100}`,
+}));
+const CTA_EMBER_LAYOUT = Array.from({ length: 14 }, (_, index) => ({
+  left: `${(index * 73 + 11) % 96}%`,
+  delay: `${-((index * 1.91) % 15)}s`,
+  duration: `${9 + ((index * 5) % 8)}s`,
+  drift: `${((index * 19) % 65) - 32}px`,
 }));
 
 function AnimatedCount({ value }: { value: number | null | undefined }) {
@@ -241,13 +247,16 @@ export function GameGuidePage() {
 
       <section className="ag-hero" aria-labelledby="h-hero">
         <div className="ag-starfield" aria-hidden="true" />
-        <div className="ag-aurora" aria-hidden="true"><i /><i /><i /></div>
-        <div className="ag-fire-haze" aria-hidden="true" />
+        <div className="ag-aurora-parallax" aria-hidden="true">
+          <div className="ag-aurora"><i className="ag-aurora-one" /><i className="ag-aurora-two" /><i className="ag-aurora-three" /></div>
+        </div>
+        <div className="ag-hero-rays" aria-hidden="true" />
+        <div className="ag-fire-layer" aria-hidden="true"><div className="ag-fire-haze" /></div>
         <div className="ag-embers" aria-hidden="true">
           {EMBER_LAYOUT.map((ember, index) => (
             <i
               key={index}
-              className={`ag-ember ag-ember-${index % 4}`}
+              className={`ag-ember ag-ember-${index % 4} ag-ember-flight-${index % 3}`}
               style={{
                 left: ember.left,
                 animationDelay: ember.delay,
@@ -261,7 +270,7 @@ export function GameGuidePage() {
           {ASH_LAYOUT.map((ash, index) => (
             <i
               key={index}
-              className="ag-ash"
+              className={`ag-ash ag-ash-${index % 3}`}
               style={{
                 left: ash.left,
                 top: ash.top,
@@ -276,17 +285,17 @@ export function GameGuidePage() {
         </div>
         <div className="ag-hero-inner">
           <div className="ag-hero-copy">
-            <p className="ag-eyebrow"><span /> Comunitate românească · Discord</p>
+            <p className="ag-eyebrow"><span className="ag-eyebrow-line" /> Comunitate românească · Discord</p>
             <h1 id="h-hero"><span>Un loc pentru</span><em>oameni și povești.</em></h1>
             <p className="ag-hero-lead">Oracolul Cenușii este o comunitate românească pe Discord, construită în jurul conversațiilor, întâlnirilor și oamenilor care revin. Intră, fă cunoștință și găsește-ți locul în ritmul tău.</p>
             <div className="ag-hero-pills">
-              <span className={`ag-pill ag-pill-live ${stats?.live ? "is-live" : ""}`} data-testid="data-online-count">
+              <span className={`ag-pill ag-pill-pop ag-pill-live ${stats?.live ? "is-live" : ""}`} data-testid="data-online-count">
                 <i aria-hidden="true" /><strong><AnimatedCount value={online} /></strong> online acum
               </span>
-              <span className="ag-pill" data-testid="data-total-members"><Users size={16} aria-hidden="true" /><strong><AnimatedCount value={members} /></strong> membri</span>
+              <span className="ag-pill ag-pill-pop ag-pill-pop-late" data-testid="data-total-members"><Users size={16} aria-hidden="true" /><strong><AnimatedCount value={members} /></strong> membri</span>
             </div>
             <div className="ag-hero-actions">
-              <a className="ag-button-primary" href={serverProfile.inviteUrl} target="_blank" rel="noopener noreferrer" onClick={inviteClick("server_guide_hero")} data-testid="link-server-guide-invite">Alătură-te comunității <ArrowUpRight size={18} aria-hidden="true" /></a>
+              <a className="ag-button-primary" href={serverProfile.inviteUrl} target="_blank" rel="noopener noreferrer" onClick={inviteClick("server_guide_hero")} data-testid="link-server-guide-invite"><span className="ag-button-ping" aria-hidden="true" />Alătură-te comunității <ArrowUpRight size={18} aria-hidden="true" /></a>
               <a className="ag-text-link" href="#acum">Vezi comunitatea live <ArrowDown size={18} aria-hidden="true" /></a>
             </div>
           </div>
@@ -297,8 +306,16 @@ export function GameGuidePage() {
               <span className="ag-live-chip"><i /> LIVE</span>
             </div>
             <div className="ag-card-body">
-              <span className="ag-card-avatar">
-                {serverProfile.iconUrl ? <img src={serverProfile.iconUrl} alt="" /> : <span aria-hidden="true">OC</span>}
+              <span className="ag-card-avatar-wrap" aria-hidden="true">
+                <i className="ag-avatar-breathe" />
+                <i className="ag-avatar-halo" />
+                <i className="ag-avatar-sonar" />
+                <i className="ag-avatar-sonar ag-avatar-sonar-late" />
+                <i className="ag-avatar-rune" />
+                <i className="ag-avatar-rune ag-avatar-rune-inner" />
+                <span className="ag-card-avatar">
+                  {serverProfile.iconUrl ? <img src={serverProfile.iconUrl} alt="" /> : <span>OC</span>}
+                </span>
               </span>
               <p className="ag-card-kicker">Server Discord</p>
               <h2 data-testid="text-server-name">{serverProfile.name}</h2>
@@ -307,7 +324,7 @@ export function GameGuidePage() {
                 <span><i className="ag-dot-muted" /><strong><AnimatedCount value={members} /></strong> membri</span>
               </div>
               <a className="ag-invite-copy" href={serverProfile.inviteUrl} target="_blank" rel="noopener noreferrer" onClick={inviteClick("server_guide_identity")} data-testid="link-server-guide-identity-invite">
-                <span>{inviteLabel}</span><ArrowUpRight size={18} aria-hidden="true" />
+                <span className="ag-button-ping" aria-hidden="true" /><span>{inviteLabel}</span><ArrowUpRight size={18} aria-hidden="true" />
               </a>
               <div className="ag-card-status" data-testid="status-server-presence" aria-live="polite">
                 <i className={stats?.live ? "is-live" : ""} />
@@ -331,7 +348,7 @@ export function GameGuidePage() {
         <section className="ag-section ag-community" id="acum" aria-labelledby="h-acum">
           <div className="ag-section-heading" data-ag-reveal>
             <div>
-              <p className="ag-eyebrow"><span /> Snapshot live</p>
+              <p className="ag-eyebrow"><span className="ag-eyebrow-line" /> Snapshot live</p>
               <h2 id="h-acum">Comunitatea, acum.</h2>
             </div>
             <p>Numărul online este prezența aproximativă raportată de Discord. Se actualizează automat la fiecare 10 secunde.</p>
@@ -339,9 +356,15 @@ export function GameGuidePage() {
           <div className="ag-presence-grid">
             <article className="ag-presence-card ag-presence-card-hot" data-ag-reveal>
               <div className="ag-card-top">
-                <span className="ag-stat-icon ag-stat-icon-hot"><Activity size={22} aria-hidden="true" /></span>
+                <span className="ag-stat-icon ag-stat-icon-hot">
+                  <svg className="ag-ecg" viewBox="0 0 24 24" aria-hidden="true">
+                    <path className="ag-ecg-base" d="M3 12h4l2.5-6 4 12 2.5-6H21" />
+                    <path className="ag-ecg-trace" pathLength="100" d="M3 12h4l2.5-6 4 12 2.5-6H21" />
+                  </svg>
+                </span>
                 <span className="ag-live-chip"><i /> LIVE</span>
               </div>
+              <span className="ag-border-orbit" aria-hidden="true" />
               <p className="ag-stat-label">Online acum · Prezență Discord</p>
               <strong className="ag-giant-number"><AnimatedCount value={online} /></strong>
               <p className="ag-stat-desc">{stats?.live ? "Membri prezenți în acest moment" : "Valoare indisponibilă momentan"}</p>
@@ -350,6 +373,7 @@ export function GameGuidePage() {
             </article>
             <article className="ag-presence-card ag-presence-card-gold" data-ag-reveal>
               <div className="ag-card-top"><span className="ag-stat-icon ag-stat-icon-gold"><Users size={22} aria-hidden="true" /></span></div>
+              <span className="ag-border-orbit" aria-hidden="true" />
               <p className="ag-stat-label">Membri în server</p>
               <strong className="ag-giant-number"><AnimatedCount value={members} /></strong>
               <p className="ag-stat-desc">Total raportat de Discord</p>
@@ -357,12 +381,12 @@ export function GameGuidePage() {
             </article>
           </div>
         </section>
-        <div className="ag-divider" aria-hidden="true" data-ag-reveal><i /></div>
+        <div className="ag-divider" aria-hidden="true" data-ag-reveal><span className="ag-divider-line" /><i /><span className="ag-divider-line ag-divider-line-reverse" /></div>
 
         <section className="ag-section ag-report" id="raport" aria-labelledby="h-raport">
           <div className="ag-section-heading ag-report-heading" data-ag-reveal>
             <div>
-              <p className="ag-eyebrow"><span /> Activitate raportată</p>
+              <p className="ag-eyebrow"><span className="ag-eyebrow-line" /> Activitate raportată</p>
               <h2 id="h-raport">O zi din comunitate.</h2>
               <p className="ag-section-lead">Indicatorii de mai jos aparțin zilei raportate, nu sunt un numărător live.</p>
             </div>
@@ -388,12 +412,22 @@ export function GameGuidePage() {
                     style={{ "--ag-reveal-delay": `${(index % 3) * 75}ms` } as CSSProperties}
                     data-testid={`data-daily-${key}`}
                   >
-                    <div><span>{label}</span><Icon className={`ag-icon-motion ag-icon-${key}`} size={19} aria-hidden="true" /></div>
-                    <strong><AnimatedCount value={metrics[key]} /></strong>
+                    <div>
+                      <span className="ag-metric-label">{label}
+                        {key === "messages" && <span className="ag-typing" aria-hidden="true"><i /><i /><i /></span>}
+                      </span>
+                      <Icon className={`ag-icon-motion ag-icon-${key}`} size={19} aria-hidden="true" />
+                    </div>
+                    <strong>
+                      <AnimatedCount value={metrics[key]} />
+                      {key === "peakVoice" && <span className="ag-equalizer" aria-hidden="true"><i /><i /><i /><i /><i /></span>}
+                    </strong>
+                    <span className="ag-border-orbit" aria-hidden="true" />
                   </article>
                 ))}
               </div>
               <div className="ag-channel-card" data-ag-reveal>
+                <span className="ag-border-orbit" aria-hidden="true" />
                 <div className="ag-channel-heading">
                   <span className="ag-hash-icon"><Hash size={24} aria-hidden="true" /></span>
                   <div><h3>Canale active în ziua raportată</h3><p>{data.guildName}</p></div>
@@ -422,11 +456,11 @@ export function GameGuidePage() {
             </div>
           )}
         </section>
-        <div className="ag-divider" aria-hidden="true" data-ag-reveal><i /></div>
+        <div className="ag-divider" aria-hidden="true" data-ag-reveal><span className="ag-divider-line" /><i /><span className="ag-divider-line ag-divider-line-reverse" /></div>
 
         <section className="ag-section ag-recruitment" id="recrutare" aria-labelledby="h-recrutare" data-testid="section-recruitment">
           <div className="ag-recruit-copy" data-ag-reveal>
-            <p className="ag-eyebrow"><span /> Recrutare comunitate</p>
+              <p className="ag-eyebrow"><span className="ag-eyebrow-line" /> Recrutare comunitate</p>
             <h2 id="h-recrutare">O invitație poate deschide<br /><em>un loc nou.</em></h2>
             <p>Un rezumat transparent al programului de recomandări al serverului. Clasamentul arată numai numele publice și rezultatele raportate.</p>
           </div>
@@ -440,10 +474,17 @@ export function GameGuidePage() {
             ) : recruitmentQuery.isError ? (
               <div className="ag-state ag-state-error" role="alert"><strong>Rezumatul recrutării nu este disponibil momentan.</strong><button type="button" onClick={() => void recruitmentQuery.refetch()} data-testid="button-retry-recruitment">Reîncarcă datele</button></div>
             ) : recruitmentQuery.data && !recruitmentQuery.data.enabled ? (
-              <div className="ag-recruit-inactive" role="status"><span className="ag-lock-mark" aria-hidden="true" /><span className="ag-inactive-tag"><i /> Inactiv</span><strong>Programul de recrutare nu este activ momentan.</strong></div>
+              <div className="ag-recruit-inactive" role="status">
+                <span className="ag-recruit-hatch" aria-hidden="true" />
+                <span className="ag-border-orbit" aria-hidden="true" />
+                <span className="ag-lock-mark" aria-hidden="true" />
+                <span className="ag-inactive-tag"><i /> Inactiv</span>
+                <strong>Programul de recrutare nu este activ momentan.</strong>
+              </div>
             ) : recruitmentQuery.data ? (
               <div className="ag-recruit-data">
                 <article className="ag-recruit-personal" data-testid="data-recruitment-viewer">
+                  <span className="ag-border-orbit" aria-hidden="true" />
                   <div className="ag-recruit-card-head"><span className="ag-recruit-icon"><UserRoundPlus size={20} aria-hidden="true" /></span><div><p>Rezumatul tău</p><h3>{recruitmentQuery.data.viewer?.displayName ?? "Invitațiile tale"}</h3></div></div>
                   {recruitmentQuery.data.viewer ? (
                     <>
@@ -459,6 +500,7 @@ export function GameGuidePage() {
                   ) : <p className="ag-private-note">Conectează-te prin linkul de verificare primit în Discord pentru a vedea rezumatul personal.</p>}
                 </article>
                 <article className="ag-leaderboard" data-testid="data-recruitment-leaderboard">
+                  <span className="ag-border-orbit" aria-hidden="true" />
                   <div className="ag-recruit-card-head"><span className="ag-recruit-icon"><Award size={20} aria-hidden="true" /></span><div><p>Clasament public</p><h3>Recomandări confirmate</h3></div></div>
                   {recruitmentQuery.data.leaderboard.length ? <ol>{recruitmentQuery.data.leaderboard.map((entry) => <li key={`${entry.rank}-${entry.displayName}`} data-testid={`data-recruitment-rank-${entry.rank}`}><span className="ag-rank">{String(entry.rank).padStart(2, "0")}</span><strong>{entry.displayName}</strong><span>{count(entry.verifiedInviteCount)} <small>confirmate</small></span><span>{count(entry.points)} <small>puncte</small></span></li>)}</ol> : <p className="ag-empty">Clasamentul va apărea când sunt disponibile rezultate.</p>}
                 </article>
@@ -472,12 +514,28 @@ export function GameGuidePage() {
         <section className="ag-invitation" id="intra" aria-labelledby="h-intra">
           <div className="ag-invitation-inner" data-ag-reveal>
             <div className="ag-invitation-copy">
-              <p className="ag-eyebrow"><span /> Început</p>
+              <p className="ag-eyebrow"><span className="ag-eyebrow-line" /> Început</p>
               <h2 id="h-intra">Intră fără grabă.<br /><em>Rămâi pentru oameni.</em></h2>
               <p>Începe cu un salut și explorează conversațiile care te atrag. Comunitatea e aici să te întâmpine, iar datele de mai sus îți oferă o imagine transparentă a ritmului ei.</p>
-              <a className="ag-button-primary" href={serverProfile.inviteUrl} target="_blank" rel="noopener noreferrer" onClick={inviteClick("server_guide_footer")} data-testid="link-server-guide-join-bottom">Deschide invitația Discord <ArrowUpRight size={18} aria-hidden="true" /></a>
+              <a className="ag-button-primary" href={serverProfile.inviteUrl} target="_blank" rel="noopener noreferrer" onClick={inviteClick("server_guide_footer")} data-testid="link-server-guide-join-bottom"><span className="ag-button-ping" aria-hidden="true" />Deschide invitația Discord <ArrowUpRight size={18} aria-hidden="true" /></a>
             </div>
-            <div className="ag-seal" aria-hidden="true"><span /><i /><b>OC</b></div>
+            <div className="ag-seal" aria-hidden="true"><span /><i /><i className="ag-seal-sonar-late" /><b>OC</b></div>
+            <div className="ag-cta-embers" aria-hidden="true">
+              {CTA_EMBER_LAYOUT.map((ember, index) => (
+                <i
+                  key={index}
+                  className={`ag-cta-ember ag-ember-flight-${index % 3}`}
+                  style={{
+                    left: ember.left,
+                    animationDelay: ember.delay,
+                    animationDuration: ember.duration,
+                    "--ag-drift": ember.drift,
+                  } as CSSProperties}
+                />
+              ))}
+            </div>
+            <span className="ag-sunrays" aria-hidden="true" />
+            <span className="ag-border-orbit" aria-hidden="true" />
           </div>
         </section>
       </main>
