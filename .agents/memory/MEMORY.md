@@ -90,4 +90,4 @@
 - [Suspicious-alert clarity](suspicious-alert-clarity.md) — explain guild-wide thresholds, translate raw event keys, and label unknown or inapplicable fields instead of implying certainty.
 - [Retired Haunted House](haunted-house-retired.md) — do not restore the unused feature; preserve its existing bot_state records.
 - [Seasonal member messages](member-message-holiday-themes.md) — AI welcome and leave messages retain the configured voice while adding Halloween in October and Christmas from December through Jan 6.
-- [Guide HTML motion parity](guide-html-motion-parity.md) — port the supplied guide’s motion and interaction cues, while replacing demo data and runtime with the app’s real behavior.
+- [HTML reference motion parity](guide-html-motion-parity.md) — port supplied motion into live pages without copying demo state; verification progress stays user-controlled.
