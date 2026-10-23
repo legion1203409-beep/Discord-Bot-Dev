@@ -2220,4 +2220,57 @@ test.describe("moderation guild chooser", () => {
     await expect(page.getByRole("link", { name: "Invită botul pe server" })).toBeVisible();
     await expect(page.getByText("conectează-te din nou pentru a vedea noul server")).toBeVisible();
   });
+
+  const mockChooserSession = async (page: import("@playwright/test").Page) => {
+    await page.route("**/api/moderation/session", async (route) => {
+      await route.fulfill({
+        json: {
+          authenticated: true,
+          userId: "999999999",
+          guilds,
+          csrfToken: "test-csrf",
+          expiresAt: "2099-01-01T00:00:00.000Z",
+        },
+      });
+    });
+  };
+
+  test("marks the official server and lists it first", async ({ page }) => {
+    await page.route("**/api/moderation/public/server-profile", async (route) => {
+      await route.fulfill({
+        json: { name: "Turnul Gol", iconUrl: null, inviteUrl: "https://discord.gg/turnul", guildId: guilds[1].id },
+      });
+    });
+    await mockChooserSession(page);
+    await page.goto("/moderare");
+    await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible({ timeout: 15_000 });
+    const items = page.getByRole("list", { name: "Servere eligibile" }).getByRole("listitem");
+    await expect(items).toHaveCount(2);
+    await expect(items.first()).toContainText("Turnul Gol");
+    await expect(items.first()).toContainText("Oficial");
+    await expect(items.last()).toContainText("Cenușa Nordului");
+    await expect(items.last()).not.toContainText("Oficial");
+  });
+
+  test("chooses a server with the keyboard", async ({ page }) => {
+    await mockChooserSession(page);
+    await page.goto("/moderare");
+    await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible({ timeout: 15_000 });
+    await page.getByRole("button", { name: "Turnul Gol" }).focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("combobox").first()).toContainText("Turnul Gol");
+  });
+
+  test("signs out from the chooser and returns to the operator login", async ({ page }) => {
+    await mockChooserSession(page);
+    await page.route("**/api/moderation/logout", async (route) => {
+      await route.fulfill({ json: { ok: true } });
+    });
+    await page.goto("/moderare");
+    await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible({ timeout: 15_000 });
+    const logoutRequest = page.waitForRequest((request) => request.url().endsWith("/api/moderation/logout") && request.method() === "POST");
+    await page.getByTestId("button-guild-logout").click();
+    expect((await logoutRequest).headers()["x-csrf-token"]).toBe("test-csrf");
+    await expect(page.getByTestId("operator-gate")).toBeVisible();
+  });
 });

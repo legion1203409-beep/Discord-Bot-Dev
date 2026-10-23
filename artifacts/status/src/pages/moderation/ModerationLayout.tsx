@@ -3,12 +3,12 @@ import { Monitor, ShieldAlert } from "lucide-react";
 import { useEffect, type ReactNode } from "react";
 import { useSession, useActiveGuild, useModerationAuthConfig } from "../../hooks/use-moderation-api";
 import { Button } from "../../components/ui/button";
-import { GuildSelection } from "./GuildSelection";
 import { DiscordLoadingScreen } from "../../components/moderation/DiscordLoadingScreen";
 import "./moderation.css";
 import { ModerationChrome } from "./ModerationChrome";
 import { gateAuthState } from "./gate/authState";
 import { OperatorGate } from "./gate/OperatorGate";
+import { OperatorPicker } from "./picker/OperatorPicker";
 
 const DISCORD_OAUTH_START = "/api/moderation/oauth/discord";
 const AUTH_ERROR_FALLBACK = "Autentificarea Discord nu a putut fi finalizată. Încearcă din nou.";
@@ -124,7 +124,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
 
   if (!guildId) {
     return (
-      <GuildSelection
+      <OperatorPicker
         guilds={guilds}
         onSelect={setGuildId}
         onLogout={logout}
