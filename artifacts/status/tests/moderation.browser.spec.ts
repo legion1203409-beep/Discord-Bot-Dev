@@ -216,6 +216,127 @@ test.describe("authenticated moderation console", () => {
     await expect(page.locator(`#nav-group-${groupId}`)).toBeVisible();
   }
 
+  test("keeps all ten dock destinations reachable on mobile and desktop", async ({ page }) => {
+    const dockIds = [
+      "overview", "protection", "judge", "sanctions", "cases",
+      "verification", "rpg", "oracle", "settings", "assistant",
+    ] as const;
+
+    await page.setViewportSize({ width: 320, height: 780 });
+    await page.goto("/moderare");
+    await chooseFirstGuild(page);
+
+    const dock = page.getByRole("navigation", { name: "Navigare rapidă" });
+    const dockItems = dock.locator(".oracle-dock-items");
+    await expect(dock.locator("a.oracle-dock-item")).toHaveCount(10);
+    await expect(dock).toBeVisible();
+    const mobileMetrics = await dockItems.evaluate((element) => ({
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+      viewportWidth: window.innerWidth,
+      documentWidth: document.documentElement.scrollWidth,
+    }));
+    expect(mobileMetrics.scrollWidth).toBeGreaterThan(mobileMetrics.clientWidth);
+    expect(mobileMetrics.documentWidth).toBeLessThanOrEqual(mobileMetrics.viewportWidth);
+    await page.screenshot({ path: "/tmp/moderation-panel-mobile-320.png" });
+
+    for (const id of dockIds) {
+      const item = page.getByTestId(`dock-${id}`);
+      await item.scrollIntoViewIfNeeded();
+      await expect(item).toBeVisible();
+      await item.click();
+      await expect(item).toHaveAttribute("aria-current", "page");
+    }
+
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto("/moderare");
+    await expect(page.getByRole("navigation", { name: "Navigare rapidă" })).toBeVisible();
+    for (const id of dockIds) {
+      await expect(page.getByTestId(`dock-${id}`)).toBeVisible();
+    }
+    const desktopMetrics = await page.evaluate(() => ({
+      viewportWidth: window.innerWidth,
+      documentWidth: document.documentElement.scrollWidth,
+    }));
+    expect(desktopMetrics.documentWidth).toBeLessThanOrEqual(desktopMetrics.viewportWidth);
+    await page.screenshot({ path: "/tmp/moderation-panel-desktop-1440.png" });
+  });
+
+  test("keeps search results and bot tabs synchronized with query-only navigation", async ({ page }) => {
+    await page.goto("/moderare/bot?tab=roles");
+    await chooseFirstGuild(page);
+    await expect(page).toHaveURL(/tab=roles/);
+
+    await page.keyboard.press("Control+k");
+    const searchInput = page.getByTestId("input-settings-search");
+    await expect(searchInput).toBeVisible();
+    await searchInput.fill("roluri");
+    await expect(page.getByTestId("search-result-roles")).toHaveAttribute("aria-selected", "true");
+
+    await searchInput.fill("tichete");
+    const ticketsResult = page.getByTestId("search-result-tickets");
+    await expect(ticketsResult).toHaveAttribute("aria-selected", "false");
+    await ticketsResult.click();
+    await expect(page).toHaveURL(/tab=tickets/);
+
+    await page.keyboard.press("Meta+k");
+    await expect(searchInput).toBeVisible();
+    await searchInput.fill("statistici bot");
+    const statisticsResult = page.getByTestId("search-result-bot-statistics");
+    await expect(statisticsResult).toHaveAttribute("aria-selected", "false");
+    await statisticsResult.click();
+    await expect(page).toHaveURL(/tab=statistics/);
+
+    await page.keyboard.press("Control+k");
+    await expect(searchInput).toBeVisible();
+    await searchInput.fill("statistici bot");
+    await expect(page.getByTestId("search-result-bot-statistics")).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByTestId("dock-overview")).not.toHaveAttribute("aria-current", "page");
+  });
+
+  test("reduces motion without hiding controls and honors the system preference", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/moderare");
+    await chooseFirstGuild(page);
+
+    const dock = page.locator(".oracle-dock");
+    const animationMilliseconds = async () => dock.evaluate((element) => {
+      const duration = getComputedStyle(element).animationDuration.split(",")[0]!.trim();
+      return duration.endsWith("ms") ? Number.parseFloat(duration) : Number.parseFloat(duration) * 1000;
+    });
+    expect(await animationMilliseconds()).toBeGreaterThan(100);
+
+    await page.getByTestId("button-open-customization").click();
+    const motionSwitch = page.getByRole("switch", { name: "Mișcare și animații" });
+    await expect(motionSwitch).toBeChecked();
+    await motionSwitch.click();
+    await expect(motionSwitch).not.toBeChecked();
+    await expect.poll(() => page.locator("html").getAttribute("data-motion")).toBe("reduced");
+    expect(await animationMilliseconds()).toBeLessThanOrEqual(0.02);
+    await page.keyboard.press("Escape");
+    await expect(dock).toBeVisible();
+    await expect(dock.locator("a.oracle-dock-item")).toHaveCount(10);
+    await expect(page.locator(".oracle-page-view")).toBeVisible();
+    await page.screenshot({ path: "/tmp/moderation-panel-mobile-reduced-motion.png" });
+
+    const savedMotion = await page.evaluate(() => localStorage.getItem("oracol.panel.preferences.v1"));
+    expect(savedMotion).toContain('"motion":false');
+    await page.reload();
+    await expect(page.locator("html")).toHaveAttribute("data-motion", "reduced");
+    await expect(dock).toBeVisible();
+
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByTestId("button-open-customization").click();
+    const restoredMotionSwitch = page.getByRole("switch", { name: "Mișcare și animații" });
+    await expect(restoredMotionSwitch).not.toBeChecked();
+    await restoredMotionSwitch.click();
+    await expect(restoredMotionSwitch).toBeChecked();
+    await expect(page.locator("html")).toHaveAttribute("data-motion", "full");
+    expect(await animationMilliseconds()).toBeLessThanOrEqual(0.02);
+    await expect(dock).toBeVisible();
+    await expect(dock.locator("a.oracle-dock-item")).toHaveCount(10);
+  });
+
   test("keeps staff questions and member answers visible after switching cases and reloading", async ({ page }) => {
     const firstCaseId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
     const secondCaseId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
