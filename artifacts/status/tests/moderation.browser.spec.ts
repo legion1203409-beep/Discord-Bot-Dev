@@ -217,6 +217,7 @@ test.describe("authenticated moderation console", () => {
   }
 
   test("keeps all ten dock destinations reachable on mobile and desktop", async ({ page }) => {
+    test.setTimeout(45_000);
     const dockIds = [
       "overview", "protection", "judge", "sanctions", "cases",
       "verification", "rpg", "oracle", "settings", "assistant",
@@ -260,6 +261,22 @@ test.describe("authenticated moderation console", () => {
     }));
     expect(desktopMetrics.documentWidth).toBeLessThanOrEqual(desktopMetrics.viewportWidth);
     await page.screenshot({ path: "/tmp/moderation-panel-desktop-1440.png" });
+
+    await page.getByTestId("button-open-customization").click();
+    await page.getByTestId("switch-dock-position").click();
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".oracle-dock-items")).toHaveCSS("flex-direction", "column");
+    await page.setViewportSize({ width: 1280, height: 600 });
+    await expect(page.locator(".oracle-dock-items")).toHaveCSS("flex-direction", "row");
+    for (const id of dockIds) {
+      await expect(page.getByTestId(`dock-${id}`)).toBeInViewport();
+    }
+    await expect(page.getByTestId("button-open-customization")).toBeInViewport();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.locator(".oracle-dock-items")).toHaveCSS("flex-direction", "row");
+    await page.getByTestId("dock-assistant").scrollIntoViewIfNeeded();
+    await page.getByTestId("dock-assistant").click();
+    await expect(page.getByTestId("dock-assistant")).toHaveAttribute("aria-current", "page");
   });
 
   test("keeps search results and bot tabs synchronized with query-only navigation", async ({ page }) => {
