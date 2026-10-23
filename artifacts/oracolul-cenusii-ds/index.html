@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ro" style="height: 100%">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Oracolul Cenușii — Design System</title>
+    <meta
+      name="description"
+      content="Sistemul vizual Oracolul Cenușii, extras din aplicația Status."
+    />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&display=swap"
+    />
+    <style>
+      h1,
+      h2,
+      h3,
+      .font-serif {
+        font-family: "Cormorant Garamond", Georgia, serif;
+      }
+      .ui-feedback {
+        transition:
+          transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+          box-shadow 180ms ease,
+          background-color 180ms ease,
+          border-color 180ms ease,
+          color 180ms ease;
+      }
+      @media (hover: hover) and (pointer: fine) {
+        .ui-feedback:not(:disabled):hover {
+          transform: translateY(-2px);
+        }
+      }
+      .ui-feedback:not(:disabled):active {
+        transform: scale(0.985);
+        transition-duration: 100ms;
+      }
+    </style>
+  </head>
+  <body style="height: 100%; margin: 0">
+    <div id="root" style="height: 100%"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

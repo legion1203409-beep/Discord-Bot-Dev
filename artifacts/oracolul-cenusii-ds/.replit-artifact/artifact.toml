@@ -1,0 +1,19 @@
+kind = "design-system"
+previewPath = "/oracolul-cenusii-ds/"
+title = "Oracolul Cenușii — Design System"
+description = "A reusable design system extracted from Oracolul Cenușii — Status: ash-dark surfaces, ember and gold accents, editorial Romanian display type, and the Status component language."
+version = "1.0.0"
+id = "artifacts/oracolul-cenusii-ds"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/oracolul-cenusii-ds/" ]
+localPort = 23227
+
+[services.development]
+run = "pnpm --filter @workspace/oracolul-cenusii-ds run dev"
+
+[services.env]
+PORT = "23227"
+BASE_PATH = "/oracolul-cenusii-ds/"
