@@ -1756,7 +1756,7 @@ test.describe("Discord moderation authentication", () => {
   });
 
   test("shows the Discord login and maps callback errors in Romanian", async ({ page }) => {
-    await page.goto("/?auth_error=state_mismatch");
+    await page.goto("/moderare?auth_error=state_mismatch");
     await expect(page).toHaveURL("/moderare?auth_error=state_mismatch");
     await expect(page.getByTestId("discord-login-button")).toBeVisible();
     await expect(page.getByRole("alert")).toContainText("Sesiunea de autentificare a expirat");
