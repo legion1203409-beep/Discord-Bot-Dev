@@ -16,7 +16,8 @@ export interface ChatError {
 }
 
 const MAX_MESSAGES = 30;
-const MAX_QUESTION = 1500;
+/** Cât de lungă poate fi o întrebare; câmpul de text folosește aceeași limită. */
+export const MAX_QUESTION = 1500;
 const SOURCE = "Arhiva Oracolului";
 
 function reducedMotion(): boolean {

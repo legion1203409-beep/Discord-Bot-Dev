@@ -3,7 +3,7 @@ import { SERIF } from "../parts";
 import { GREETING, SUGGESTIONS } from "./archive";
 import { Avatar } from "./MiniEye";
 import { toBlocks, trimDangling, type Block } from "./text";
-import type { OracleChatState } from "./useOracleChat";
+import { MAX_QUESTION, type OracleChatState } from "./useOracleChat";
 
 function Bubble({ blocks }: { blocks: Block[] }) {
   return (
@@ -27,9 +27,9 @@ function Bubble({ blocks }: { blocks: Block[] }) {
   );
 }
 
-function OracleSays({ children, className = "oMsg o" }: { children: ReactNode; className?: string }) {
+function OracleSays({ children, className = "oMsg o", silent = false }: { children: ReactNode; className?: string; silent?: boolean }) {
   return (
-    <div className={className}>
+    <div className={className} aria-hidden={silent || undefined}>
       <Avatar size={28} />
       <div className="oCol">{children}</div>
     </div>
@@ -143,7 +143,7 @@ export function OracleChat({ chat }: { chat: OracleChatState }) {
         </button>
       </div>
 
-      <div className="orcLog" ref={log} onScroll={onScroll} role="log" aria-live="polite" aria-label="Conversația cu Oracolul">
+      <div className="orcLog" ref={log} onScroll={onScroll} role="log" aria-live="polite" aria-busy={busy} aria-label="Conversația cu Oracolul">
         <OracleSays>
           <div className="oBub">
             <Bubble blocks={toBlocks(GREETING)} />
@@ -183,7 +183,7 @@ export function OracleChat({ chat }: { chat: OracleChatState }) {
         ) : null}
 
         {streaming ? (
-          <OracleSays className="oMsg o oStream">
+          <OracleSays className="oMsg o oStream" silent>
             <div className="oBub">
               <Bubble blocks={toBlocks(trimDangling(stream))} />
             </div>
@@ -221,7 +221,7 @@ export function OracleChat({ chat }: { chat: OracleChatState }) {
             id="orcIn"
             ref={area}
             rows={1}
-            maxLength={1500}
+            maxLength={MAX_QUESTION}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={onKeyDown}

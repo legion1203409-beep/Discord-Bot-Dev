@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import type { DailyStatsResponse } from "../../../hooks/public/use-daily-stats";
-import { fmt, formatReportDay } from "./format";
+import { countLabel, formatReportDay } from "./format";
 import { Eyebrow, Lede, MONO, Odometer, SERIF, SectionTitle, StateCard, sectionBox } from "./parts";
 
 type MetricKey = "messages" | "uniqueUsers" | "joins" | "leaves" | "boosts" | "peakVoice";
@@ -287,7 +287,7 @@ export function ReportSection({ daily }: { daily: DailyState }) {
                         color: "#B7B3AD",
                       }}
                     >
-                      {fmt(channel.messages) + (channel.messages === 1 ? " mesaj" : " mesaje")}
+                      {countLabel(channel.messages, "mesaj", "mesaje")}
                     </span>
                   </div>
                   <div

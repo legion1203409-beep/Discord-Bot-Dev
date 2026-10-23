@@ -273,7 +273,7 @@ export function Hero({ ambience, online, members, live, invite, inviteLabel, ser
                   <span className="rune" aria-hidden="true" />
                   <img
                     src={crest}
-                    alt="Emblema serverului Regatul Cenușii"
+                    alt={`Emblema serverului ${serverName}`}
                     width="88"
                     height="88"
                     style={{

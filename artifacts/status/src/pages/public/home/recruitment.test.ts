@@ -33,6 +33,12 @@ describe("recruitmentView", () => {
     expect(refetch).toHaveBeenCalledTimes(1);
   });
 
+  it("nu ia datele bune când o reîmprospătare din fundal eșuează", () => {
+    expect(recruitmentView(q({ data: profile, isError: true }), profile.guildId, q({ data: dashboard(true) })).kind).toBe("active");
+    expect(recruitmentView(q({ data: profile }), profile.guildId, q({ data: dashboard(true), isError: true })).kind).toBe("active");
+    expect(recruitmentView(q({ data: profile }), profile.guildId, q({ data: dashboard(false), isError: true })).kind).toBe("inactive");
+  });
+
   it("deosebește programul inactiv de cel activ", () => {
     expect(recruitmentView(q({ data: profile }), profile.guildId, q({ data: dashboard(false) })).kind).toBe("inactive");
     const active = recruitmentView(q({ data: profile }), profile.guildId, q({ data: dashboard(true) }));

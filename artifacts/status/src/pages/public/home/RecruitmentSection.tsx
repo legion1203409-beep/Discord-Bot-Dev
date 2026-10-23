@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import type { RecruitmentDashboard } from "@workspace/api-client-react";
-import { fmt, formatTimestamp } from "./format";
+import { countLabel, formatTimestamp } from "./format";
 import { Eyebrow, Lede, MONO, Odometer, SERIF, SectionTitle, StateCard, sectionBox } from "./parts";
 import type { RecruitmentView } from "./recruitment";
 
@@ -111,9 +111,9 @@ function Leaderboard({ dashboard }: { dashboard: RecruitmentDashboard }) {
                 <span style={rowRank}>{String(entry.rank).padStart(2, "0")}</span>
                 <span style={rowName}>{entry.displayName}</span>
                 <span style={rowCount}>
-                  {fmt(entry.verifiedInviteCount)} confirmate
+                  {countLabel(entry.verifiedInviteCount, "recomandare", "recomandări")}
                   <br />
-                  {fmt(entry.points)} puncte
+                  {countLabel(entry.points, "punct", "puncte")}
                 </span>
               </div>
             </li>
