@@ -6,36 +6,9 @@ import { Button } from "../../components/ui/button";
 import { DiscordLoadingScreen } from "../../components/moderation/DiscordLoadingScreen";
 import "./moderation.css";
 import { ModerationChrome } from "./ModerationChrome";
-import { gateAuthState } from "./gate/authState";
+import { gateConnection, sameOriginDiscordUrl } from "./gate/authBridge";
 import { OperatorGate } from "./gate/OperatorGate";
 import { OperatorPicker } from "./picker/OperatorPicker";
-
-const DISCORD_OAUTH_START = "/api/moderation/oauth/discord";
-const AUTH_ERROR_FALLBACK = "Autentificarea Discord nu a putut fi finalizată. Încearcă din nou.";
-const AUTH_ERROR_MESSAGES: Record<string, string> = {
-  oauth_not_configured: "Autentificarea Discord nu este configurată pe server.",
-  state_mismatch: "Sesiunea de autentificare a expirat sau nu mai este validă. Încearcă din nou.",
-  cancelled: "Autentificarea a fost anulată. Poți încerca din nou când ești pregătit.",
-  oauth_failed: "Discord nu a putut finaliza autentificarea. Încearcă din nou.",
-  no_eligible_guild: "Nu ai un server eligibil pentru moderare. Verifică dacă botul este membru pe server și dacă ai rol de staff sau administrator, apoi încearcă din nou cu un alt cont Discord.",
-};
-
-function authErrorMessage(): string | null {
-  if (typeof window === "undefined") return null;
-  const code = new URLSearchParams(window.location.search).get("auth_error");
-  return code ? AUTH_ERROR_MESSAGES[code] || AUTH_ERROR_FALLBACK : null;
-}
-
-function sameOriginDiscordUrl(value: string | undefined): string | null {
-  if (!value || typeof window === "undefined") return null;
-  try {
-    const parsed = new URL(value, window.location.origin);
-    if (parsed.origin !== window.location.origin || parsed.pathname !== DISCORD_OAUTH_START) return null;
-    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
-  } catch {
-    return null;
-  }
-}
 
 export function ModerationLayout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
@@ -48,7 +21,6 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
     retry: retryAuthConfig,
   } = useModerationAuthConfig();
   const { guildId, setGuildId, guilds } = useActiveGuild();
-  const botProfile = authConfig?.bot;
 
   useEffect(() => {
     const targetId = window.location.hash.slice(1);
@@ -100,15 +72,13 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
   if (!session?.authenticated) {
     return (
       <OperatorGate
-        botName={botProfile?.name}
-        botInviteUrl={authConfig?.botInviteUrl}
-        authError={authErrorMessage()}
-        auth={gateAuthState({
+        {...gateConnection({
+          signedIn: false,
+          authConfig,
           loading: authConfigLoading,
           error: authConfigError,
-          retry: () => void retryAuthConfig().catch(() => undefined),
-          configured: Boolean(authConfig?.discordOAuthConfigured),
-          loginUrl: sameOriginDiscordUrl(authConfig?.authorizationUrl),
+          retry: retryAuthConfig,
+          search,
         })}
       />
     );

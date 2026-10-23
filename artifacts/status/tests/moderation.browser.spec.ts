@@ -1819,7 +1819,7 @@ test.describe("Discord moderation authentication", () => {
     await expect(page.getByRole("heading", { level: 2, name: "Regatul Cenușii" })).toBeVisible();
     await expect(page.getByRole("heading", { level: 2, name: "Panoul botului" })).toBeVisible();
     await expect(page.getByTestId("link-gate-brand")).toHaveAttribute("href", "/");
-    await expect(page.getByTestId("link-server-guide-login")).toHaveAttribute("href", "/");
+    await expect(page.getByTestId("link-server-guide-login")).toHaveAttribute("href", "/server");
     await expect(page.getByRole("link", { name: "Intră în regat" })).toBeVisible();
     await expect(page.getByTestId("button-open-panel")).toHaveAttribute("href", "/api/moderation/oauth/discord");
     await expect(page.getByTestId("discord-login-button")).toHaveAttribute("href", "/api/moderation/oauth/discord");
@@ -1839,8 +1839,17 @@ test.describe("Discord moderation authentication", () => {
   test("leads the server door to the community page", async ({ page }) => {
     await page.goto("/moderare");
     await page.getByTestId("link-server-guide-login").click();
-    await expect(page).toHaveURL("/");
+    await expect(page).toHaveURL("/server");
     await expect(page.getByTestId("operator-gate")).toHaveCount(0);
+    await expect(page.locator("h1")).toContainText("Un loc pentru oameni și povești.", { useInnerText: true });
+  });
+
+  test("the brand leads back to the start page", async ({ page }) => {
+    await page.goto("/moderare?auth_error=cancelled");
+    await page.getByTestId("link-gate-brand").click();
+    await expect(page).toHaveURL("/");
+    await expect(page.getByTestId("operator-gate")).toBeVisible();
+    await expect(page.getByRole("alert")).toHaveCount(0);
   });
 
   test("keeps the bot panel door disabled while Discord sign-in is unavailable", async ({ page }) => {
@@ -2259,6 +2268,25 @@ test.describe("moderation guild chooser", () => {
     await page.getByRole("button", { name: "Turnul Gol" }).focus();
     await page.keyboard.press("Enter");
     await expect(page.getByRole("combobox").first()).toContainText("Turnul Gol");
+  });
+
+  test("a signed-in operator opens the panel from the start page without a new sign-in", async ({ page }) => {
+    let oauthRequests = 0;
+    await page.route("**/api/moderation/oauth/discord", async (route) => {
+      oauthRequests += 1;
+      await route.fulfill({ status: 204 });
+    });
+    await mockChooserSession(page);
+    await page.goto("/");
+    await expect(page.getByTestId("operator-gate")).toBeVisible();
+    await expect(page.getByTestId("gate-signed-in")).toBeVisible();
+    await expect(page.getByTestId("discord-login-button")).toHaveCount(0);
+    await expect(page.getByTestId("button-open-panel")).toHaveAttribute("href", "/moderare");
+    await expect(page.getByTestId("link-server-guide-login")).toHaveAttribute("href", "/server");
+    await page.getByTestId("button-open-panel").click();
+    await expect(page).toHaveURL("/moderare");
+    await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible({ timeout: 15_000 });
+    expect(oauthRequests).toBe(0);
   });
 
   test("signs out from the chooser and returns to the operator login", async ({ page }) => {

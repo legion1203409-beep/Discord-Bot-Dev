@@ -1,10 +1,14 @@
 /**
- * Pagina „Autentificare operator”: intrarea în regat sau în panoul botului.
+ * Pagina „Autentificare operator”, cu cele două uși: Regatul Cenușii
+ * (comunitatea oficială) și panoul botului. Este pagina de start a site-ului
+ * („/”) și apare și pe „/moderare” cât timp nu există o sesiune.
  *
  * Aspectul vine din designul „Autentificare operator” (vezi `gate.css`).
- * Butoanele panoului și „Conectează-te cu Discord” pornesc autentificarea
- * Discord reală; cât timp aceasta nu e gata (se verifică, a dat eroare sau nu
- * e configurată), în locul lor apare starea respectivă.
+ * „Intră în regat” duce la pagina comunității. Butoanele panoului și
+ * „Conectează-te cu Discord” pornesc autentificarea Discord reală; cine e deja
+ * conectat intră direct în panou. Cât timp autentificarea nu e gata (se
+ * verifică, a dat eroare sau nu e configurată), în locul lor apare starea
+ * respectivă.
  */
 import { useEffect, useRef, type CSSProperties } from "react";
 import crest from "../../public/home/crest.webp";
@@ -14,6 +18,12 @@ import { useGateParallax } from "./useGateParallax";
 import "./gate.css";
 
 const TITLE = "Autentificare operator | Regatul Cenușii";
+
+/** Pagina comunității oficiale („Intră în regat”) și panoul botului, pentru cine e deja conectat. */
+const REALM_PATH = "/server";
+const PANEL_PATH = "/moderare";
+/** Pagina de start, adică această pagină. */
+const START_PATH = "/";
 
 /** Poziția scânteilor și a cenușii: aceeași la fiecare vizită, calculată o singură dată. */
 const AMBIENCE = buildGateAmbience();
@@ -94,7 +104,8 @@ export function OperatorGate({ botName, auth, authError, botInviteUrl }: Operato
   useDocumentTheme();
   useGateParallax(root);
 
-  const loginUrl = auth.kind === "ready" ? auth.loginUrl : null;
+  /** Unde duce „Deschide panoul botului”: direct în panou sau către autentificarea Discord. */
+  const panelHref = auth.kind === "signed-in" ? PANEL_PATH : auth.kind === "ready" ? auth.loginUrl : null;
 
   return (
     <div className="oc-gate" ref={root} data-testid="operator-gate">
@@ -140,7 +151,7 @@ export function OperatorGate({ botName, auth, authError, botInviteUrl }: Operato
         ))}
       </div>
 
-      <a className="gtBrand" href="/" aria-label="Regatul Cenușii, pagina comunității" data-testid="link-gate-brand">
+      <a className="gtBrand" href={START_PATH} aria-label="Regatul Cenușii, pagina de start" data-testid="link-gate-brand">
         <img className="crestG" src={crest} alt="" width="38" height="38" />
         <span className="bw">
           <span className="bw1">REGATUL</span>
@@ -287,7 +298,7 @@ export function OperatorGate({ botName, auth, authError, botInviteUrl }: Operato
                       </ul>
                       <div className="acts">
                         <span className="ping">
-                          <a className="btnP btnRealm" href="/" data-testid="link-server-guide-login">
+                          <a className="btnP btnRealm" href={REALM_PATH} data-testid="link-server-guide-login">
                             Intră în regat
                             <ArrowIcon />
                           </a>
@@ -326,8 +337,8 @@ export function OperatorGate({ botName, auth, authError, botInviteUrl }: Operato
                         <li>Statistici bot</li>
                       </ul>
                       <div className="acts">
-                        {loginUrl ? (
-                          <a className="btnGold" href={loginUrl} data-testid="button-open-panel">
+                        {panelHref ? (
+                          <a className="btnGold" href={panelHref} data-testid="button-open-panel">
                             Deschide panoul botului
                             <ArrowIcon />
                           </a>
@@ -355,7 +366,12 @@ export function OperatorGate({ botName, auth, authError, botInviteUrl }: Operato
 
           <div className="below">
             <div className="sep ln e8" aria-hidden="true" />
-            {auth.kind === "ready" ? (
+            {auth.kind === "signed-in" ? (
+              <p className="gateNote ok rs e9" role="status" data-testid="gate-signed-in">
+                <span className="dotOn" aria-hidden="true" />
+                Ești conectat cu Discord. Panoul se deschide direct, fără altă autentificare.
+              </p>
+            ) : auth.kind === "ready" ? (
               <a className="guide rs e9" href={auth.loginUrl} data-testid="discord-login-button">
                 <svg className="ico bk" aria-hidden="true" viewBox="0 0 24 24" width="17" height="17">
                   <path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l5-5-5-5M15 12H4" />

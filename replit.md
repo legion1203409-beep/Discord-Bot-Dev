@@ -6,6 +6,8 @@ _Replace the heading above with the project's name, and this line with one sente
 
 - Moderation operator guide: [docs/moderation.md](docs/moderation.md). The protected panel is `/moderare`; login uses Discord OAuth2, followed by selection of a permitted server containing the bot. `/moderare login` links to the website, not a code.
 
+- Website pages: `/` is the start page with two doors — "Regatul Cenușii" (the official community, opens `/server`) and "Panoul botului" (starts the Discord sign-in, or opens `/moderare` straight away when the operator is already signed in). `/server` is the community page; `/moderare` shows the same two-door page while there is no session. `/#status` keeps the operator health view.
+
 - `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages

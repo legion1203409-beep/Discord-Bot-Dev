@@ -37,4 +37,19 @@ describe("gateAuthState", () => {
   it("e indisponibilă dacă adresa de pornire a fost respinsă (alt site)", () => {
     expect(gateAuthState({ ...base, loginUrl: null })).toEqual({ kind: "unavailable" });
   });
+
+  it("cine e deja conectat intră direct în panou", () => {
+    expect(gateAuthState({ ...base, signedIn: true })).toEqual({ kind: "signed-in" });
+  });
+
+  it("sesiunea existentă are prioritate față de verificare, eroare și „indisponibil”", () => {
+    expect(gateAuthState({ ...base, signedIn: true, loading: true }).kind).toBe("signed-in");
+    expect(gateAuthState({ ...base, signedIn: true, error: { message: "x" } }).kind).toBe("signed-in");
+    expect(gateAuthState({ ...base, signedIn: true, configured: false, loginUrl: null }).kind).toBe("signed-in");
+  });
+
+  it("fără sesiune, „conectat” nu apare niciodată", () => {
+    expect(gateAuthState({ ...base, signedIn: false }).kind).toBe("ready");
+    expect(gateAuthState(base).kind).toBe("ready");
+  });
 });

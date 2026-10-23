@@ -1,12 +1,16 @@
-/** Ce arată pagina „Autentificare operator” în locul acțiunilor de conectare. */
+/** Ce arată pagina cu cele două uși în locul acțiunilor de conectare. */
 export type GateAuth =
+  /** Operatorul are deja o sesiune: panoul se deschide direct, fără altă autentificare. */
+  | { kind: "signed-in" }
   | { kind: "ready"; loginUrl: string }
   | { kind: "checking" }
   | { kind: "error"; message: string; retry: () => void }
   | { kind: "unavailable" };
 
 interface GateAuthInput {
-  /** Configurația autentificării se încarcă încă. */
+  /** Există o sesiune de operator. Are prioritate: nu mai contează configurația autentificării. */
+  signedIn?: boolean;
+  /** Configurația autentificării (sau sesiunea) se încarcă încă. */
   loading: boolean;
   /** Configurația nu a putut fi încărcată. */
   error: { message: string } | null | undefined;
@@ -17,8 +21,9 @@ interface GateAuthInput {
   loginUrl: string | null;
 }
 
-/** Aceeași ordine ca la vechiul ecran: verificare, eroare, indisponibil, gata. */
+/** Sesiunea existentă, apoi aceeași ordine ca la vechiul ecran: verificare, eroare, indisponibil, gata. */
 export function gateAuthState(input: GateAuthInput): GateAuth {
+  if (input.signedIn) return { kind: "signed-in" };
   if (input.loading) return { kind: "checking" };
   if (input.error) return { kind: "error", message: input.error.message, retry: input.retry };
   if (!input.configured || !input.loginUrl) return { kind: "unavailable" };
