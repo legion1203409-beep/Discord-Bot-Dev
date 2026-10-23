@@ -466,9 +466,12 @@ export function VerificationPage() {
                     onChange={(event) => setSliderValue(Number(event.currentTarget.value))}
                     onPointerDown={() => setIsDragging(true)}
                     onPointerUp={(event) => {
-                      // Native range inputs can round the final pointer pixel to 999/1000.
-                      // Treat that last reachable pointer step as the visual endpoint.
-                      if (Number(event.currentTarget.value) >= 999) setSliderValue(1000);
+                      // Native range inputs quantize pointer positions to whole pixels.
+                      // Snap values within one pixel of the endpoint to avoid a stuck 99.8% state.
+                      const pointerStep = travel > 0 ? Math.ceil(1000 / travel) : 0;
+                      if (pointerStep > 0 && Number(event.currentTarget.value) >= 1000 - pointerStep) {
+                        setSliderValue(1000);
+                      }
                       setIsDragging(false);
                     }}
                     onPointerCancel={() => setIsDragging(false)}
