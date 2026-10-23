@@ -91,3 +91,4 @@
 - [Retired Haunted House](haunted-house-retired.md) — do not restore the unused feature; preserve its existing bot_state records.
 - [Seasonal member messages](member-message-holiday-themes.md) — AI welcome and leave messages retain the configured voice while adding Halloween in October and Christmas from December through Jan 6.
 - [HTML reference motion parity](guide-html-motion-parity.md) — port supplied motion into live pages without copying demo state; verification progress stays user-controlled.
+- [Authenticated moderation panel](moderation-panel.md) — preserve the supplied panel’s appearance and motion while keeping operational settings on authorized, guild-scoped APIs.

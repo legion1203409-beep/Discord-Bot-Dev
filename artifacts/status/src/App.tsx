@@ -14,6 +14,7 @@ import { VerificationAdminPage } from "./pages/moderation/VerificationAdmin";
 import { MessageTemplatesPage } from "./pages/moderation/MessageTemplates";
 import { ServerSetupPage } from "./pages/moderation/ServerSetup";
 import { ActivityRanksPage } from "./pages/moderation/ActivityRanks";
+import { OfflineAssistant } from "./pages/moderation/OfflineAssistant";
 import { useActiveGuild } from "./hooks/use-moderation-api";
 import { Toaster } from "./components/ui/toaster";
 import { SwordCursor } from "./components/SwordCursor";
@@ -110,6 +111,7 @@ function ModerationApp() {
           <Route path="/verificare" component={VerificationAdminPage} />
           <Route path="/pornire-server" component={ServerSetupPage} />
           <Route path="/ranguri-activitate" component={ActivityRanksPage} />
+          <Route path="/asistent" component={OfflineAssistant} />
           <Route component={() => <div className="text-muted-foreground p-8 text-center border border-dashed border-border rounded-xl">Această secțiune este în lucru.</div>} />
         </Switch>
       </div>
