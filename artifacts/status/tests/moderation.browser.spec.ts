@@ -627,7 +627,7 @@ test.describe("authenticated moderation console", () => {
 
   test("dashboard sections stack cleanly at a 1024px viewport", async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 768 });
-    await page.goto("/");
+    await page.goto("/moderare");
     await expect(page).toHaveURL("/moderare");
     await chooseFirstGuild(page);
     await expect(page.getByTestId("card-haunted-house")).toHaveCount(0);
@@ -722,7 +722,7 @@ test.describe("authenticated moderation console", () => {
   });
 
   test("renders every moderation destination instead of the work-in-progress fallback", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/moderare");
     await expect(page).toHaveURL("/moderare");
     await expect(page.locator(".hero-section")).toHaveCount(0);
     await chooseFirstGuild(page);
@@ -1148,7 +1148,7 @@ test.describe("authenticated moderation console", () => {
   });
 
   test("member activity templates preview and persist separately for each guild", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/moderare");
     await chooseFirstGuild(page);
     await expectNavGroupExpanded(page, "configuration");
     await page.locator('nav[aria-label="Categorii de moderare"] a[href="/moderare/config/mesaje"]').click();
@@ -1205,7 +1205,7 @@ test.describe("authenticated moderation console", () => {
   });
 
   test("message customization hub opens the member editor in view", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/moderare");
     await chooseFirstGuild(page);
     await expectNavGroupExpanded(page, "configuration");
     await page.getByRole("link", { name: "Personalizare mesaje" }).click();
@@ -1475,7 +1475,7 @@ test.describe("authenticated moderation console", () => {
       await route.fulfill({ json: { range: "7", startDay: "2026-09-18", endDay: "2026-09-24", totals: { attributedJoins: 0, unknownJoins: 0 }, rows: [] } });
     });
 
-    await page.goto("/");
+    await page.goto("/moderare");
     await chooseFirstGuild(page);
     await page.goto("/moderare/bot?tab=statistics");
     await expect(page.getByRole("button", { name: /Mesajul raportului zilnic/ })).toHaveCount(0);
@@ -1756,7 +1756,7 @@ test.describe("Discord moderation authentication", () => {
   });
 
   test("shows the Discord login and maps callback errors in Romanian", async ({ page }) => {
-    await page.goto("/?auth_error=state_mismatch");
+    await page.goto("/moderare?auth_error=state_mismatch");
     await expect(page).toHaveURL("/moderare?auth_error=state_mismatch");
     await expect(page.getByTestId("discord-login-button")).toBeVisible();
     await expect(page.getByRole("alert")).toContainText("Sesiunea de autentificare a expirat");
@@ -1809,6 +1809,76 @@ test.describe("Discord moderation authentication", () => {
     await page.goto("/moderare");
     await expect(page.getByRole("status")).toContainText("Autentificarea Discord nu este disponibilă");
     await expect(page.getByTestId("discord-login-button")).toHaveCount(0);
+  });
+
+  test("shows the operator gate with the server door and the bot panel door", async ({ page }) => {
+    await page.goto("/moderare");
+    await expect(page).toHaveTitle("Autentificare operator | Regatul Cenușii");
+    await expect(page.getByTestId("operator-gate")).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Autentificare Operator" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 2, name: "Regatul Cenușii" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 2, name: "Panoul botului" })).toBeVisible();
+    await expect(page.getByTestId("link-gate-brand")).toHaveAttribute("href", "/");
+    await expect(page.getByTestId("link-server-guide-login")).toHaveAttribute("href", "/");
+    await expect(page.getByRole("link", { name: "Intră în regat" })).toBeVisible();
+    await expect(page.getByTestId("button-open-panel")).toHaveAttribute("href", "/api/moderation/oauth/discord");
+    await expect(page.getByTestId("discord-login-button")).toHaveAttribute("href", "/api/moderation/oauth/discord");
+    await expect(page.getByTestId("link-invite-bot")).toHaveCount(0);
+  });
+
+  test("starts the Discord login from the bot panel door", async ({ page }) => {
+    await page.route("**/api/moderation/oauth/discord", async (route) => {
+      await route.fulfill({ status: 204 });
+    });
+    await page.goto("/moderare");
+    const oauthRequest = page.waitForRequest("**/api/moderation/oauth/discord");
+    await page.getByTestId("button-open-panel").click();
+    expect((await oauthRequest).url()).toContain("/api/moderation/oauth/discord");
+  });
+
+  test("leads the server door to the community page", async ({ page }) => {
+    await page.goto("/moderare");
+    await page.getByTestId("link-server-guide-login").click();
+    await expect(page).toHaveURL("/");
+    await expect(page.getByTestId("operator-gate")).toHaveCount(0);
+  });
+
+  test("keeps the bot panel door disabled while Discord sign-in is unavailable", async ({ page }) => {
+    await page.unroute("**/api/moderation/auth-config");
+    await page.route("**/api/moderation/auth-config", async (route) => {
+      await route.fulfill({ json: { discordOAuthConfigured: false, authorizationUrl: "/api/moderation/oauth/discord" } });
+    });
+    let oauthRequests = 0;
+    await page.route("**/api/moderation/oauth/discord", async (route) => {
+      oauthRequests += 1;
+      await route.fulfill({ status: 204 });
+    });
+    await page.goto("/moderare");
+    const panelDoor = page.getByTestId("button-open-panel");
+    await expect(panelDoor).toBeDisabled();
+    await expect(panelDoor).not.toHaveAttribute("href", /.+/);
+    await panelDoor.click({ force: true });
+    await expect(page).toHaveURL(/\/moderare$/);
+    expect(oauthRequests).toBe(0);
+  });
+
+  test("offers a retry when the sign-in configuration cannot be loaded", async ({ page }) => {
+    let healthy = false;
+    await page.unroute("**/api/moderation/auth-config");
+    await page.route("**/api/moderation/auth-config", async (route) => {
+      await route.fulfill({
+        json: healthy ? { discordOAuthConfigured: true, authorizationUrl: "/api/moderation/oauth/discord" } : {},
+      });
+    });
+    await page.goto("/moderare");
+    await expect(page.getByRole("alert")).toContainText("Configurația autentificării Discord este invalidă");
+    await expect(page.getByTestId("button-open-panel")).toBeDisabled();
+    await expect(page.getByTestId("discord-login-button")).toHaveCount(0);
+    healthy = true;
+    await page.getByTestId("button-retry-auth-config").click();
+    await expect(page.getByTestId("discord-login-button")).toBeVisible();
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await expect(page.getByTestId("button-open-panel")).toBeEnabled();
   });
 });
 
@@ -2149,5 +2219,58 @@ test.describe("moderation guild chooser", () => {
     await expect(page.getByRole("button", { name: "Schimbă contul" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Invită botul pe server" })).toBeVisible();
     await expect(page.getByText("conectează-te din nou pentru a vedea noul server")).toBeVisible();
+  });
+
+  const mockChooserSession = async (page: import("@playwright/test").Page) => {
+    await page.route("**/api/moderation/session", async (route) => {
+      await route.fulfill({
+        json: {
+          authenticated: true,
+          userId: "999999999",
+          guilds,
+          csrfToken: "test-csrf",
+          expiresAt: "2099-01-01T00:00:00.000Z",
+        },
+      });
+    });
+  };
+
+  test("marks the official server and lists it first", async ({ page }) => {
+    await page.route("**/api/moderation/public/server-profile", async (route) => {
+      await route.fulfill({
+        json: { name: "Turnul Gol", iconUrl: null, inviteUrl: "https://discord.gg/turnul", guildId: guilds[1].id },
+      });
+    });
+    await mockChooserSession(page);
+    await page.goto("/moderare");
+    await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible({ timeout: 15_000 });
+    const items = page.getByRole("list", { name: "Servere eligibile" }).getByRole("listitem");
+    await expect(items).toHaveCount(2);
+    await expect(items.first()).toContainText("Turnul Gol");
+    await expect(items.first()).toContainText("Oficial");
+    await expect(items.last()).toContainText("Cenușa Nordului");
+    await expect(items.last()).not.toContainText("Oficial");
+  });
+
+  test("chooses a server with the keyboard", async ({ page }) => {
+    await mockChooserSession(page);
+    await page.goto("/moderare");
+    await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible({ timeout: 15_000 });
+    await page.getByRole("button", { name: "Turnul Gol" }).focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("combobox").first()).toContainText("Turnul Gol");
+  });
+
+  test("signs out from the chooser and returns to the operator login", async ({ page }) => {
+    await mockChooserSession(page);
+    await page.route("**/api/moderation/logout", async (route) => {
+      await route.fulfill({ json: { ok: true } });
+    });
+    await page.goto("/moderare");
+    await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible({ timeout: 15_000 });
+    const logoutRequest = page.waitForRequest((request) => request.url().endsWith("/api/moderation/logout") && request.method() === "POST");
+    await page.getByTestId("button-guild-logout").click();
+    expect((await logoutRequest).headers()["x-csrf-token"]).toBe("test-csrf");
+    await expect(page.getByTestId("operator-gate")).toBeVisible();
   });
 });
