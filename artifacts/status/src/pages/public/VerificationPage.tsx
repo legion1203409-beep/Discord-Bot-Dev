@@ -465,7 +465,12 @@ export function VerificationPage() {
                     value={sliderValue}
                     onChange={(event) => setSliderValue(Number(event.currentTarget.value))}
                     onPointerDown={() => setIsDragging(true)}
-                    onPointerUp={() => setIsDragging(false)}
+                    onPointerUp={(event) => {
+                      // Native range inputs can round the final pointer pixel to 999/1000.
+                      // Treat that last reachable pointer step as the visual endpoint.
+                      if (Number(event.currentTarget.value) >= 999) setSliderValue(1000);
+                      setIsDragging(false);
+                    }}
                     onPointerCancel={() => setIsDragging(false)}
                     onBlur={() => setIsDragging(false)}
                     aria-label="Glisează pentru a finaliza verificarea"
