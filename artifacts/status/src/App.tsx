@@ -21,7 +21,7 @@ import { SwordCursor } from "./components/SwordCursor";
 
 // Public pages
 import { PublicLayout } from "./components/public/PublicLayout";
-import { GameGuidePage } from "./pages/public/GameGuidePage";
+import { HomePage } from "./pages/public/home/HomePage";
 import { OperatorHealthPage } from "./pages/public/OperatorHealthPage";
 import { VerificationPage } from "./pages/public/VerificationPage";
 import { DailyStatsPage } from "./pages/public/DailyStatsPage";
@@ -63,7 +63,7 @@ function ScrollAnimations() {
   return null;
 }
 
-// The legacy operator/status logic uses hashes on root
+// Root: the public server page. The operator status view still lives behind #status / #ops.
 function HomeApp() {
   const [hash, setHash] = useState(window.location.hash);
   
@@ -77,7 +77,7 @@ function HomeApp() {
     return <OperatorHealthPage />;
   }
 
-  return <Redirect to={`/moderare${window.location.search}`} replace />;
+  return <HomePage />;
 }
 
 function ModerationApp() {
@@ -137,7 +137,7 @@ export default function App() {
       <ScrollAnimations />
       <Switch>
         <Route path="/" component={HomeApp} />
-        <Route path="/server" component={GameGuidePage} />
+        <Route path="/server" component={HomePage} />
         <Route path="/joc" component={() => <Redirect to="/server" replace />} />
         <Route path="/verificare" component={VerificationPage} />
         <Route path="/statistici" component={() => <PublicLayout><DailyStatsPage /></PublicLayout>} />
