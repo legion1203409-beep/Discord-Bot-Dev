@@ -373,7 +373,7 @@ export function VerificationPage() {
             </div>
           </div>
 
-          {isSuccess && !ticket ? (
+          {isSuccess ? (
             <div className="vx-message vx-message--success" role="status" data-testid="status-verification-success">
               <CheckCircle2 className="vx-message-icon" aria-hidden="true" />
               <div>
