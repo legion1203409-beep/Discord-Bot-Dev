@@ -1298,11 +1298,13 @@ async function validateConfigTargets(guildId: string, config: ModerationConfig, 
 
 
   const roleIds = [
+    ...config.activityLog.roleIds, ...config.ai.excludedRoleIds,
     ...config.permissions.staffRoleIds, ...config.roles.sanctionableRoleIds,
     ...config.roles.protectedRoleIds, ...config.roles.ignoredAutoModRoleIds,
     ...config.roles.specialPermissionRoleIds, ...Object.values(config.manualTools.commandGrants).flat(),
   ];
   const previousRoleIds = [
+    ...previous.activityLog.roleIds, ...previous.ai.excludedRoleIds,
     ...previous.permissions.staffRoleIds, ...previous.roles.sanctionableRoleIds,
     ...previous.roles.protectedRoleIds, ...previous.roles.ignoredAutoModRoleIds,
     ...previous.roles.specialPermissionRoleIds, ...Object.values(previous.manualTools.commandGrants).flat(),
@@ -1310,7 +1312,8 @@ async function validateConfigTargets(guildId: string, config: ModerationConfig, 
   const channelIds = [
     ...config.channels.ignoredChannelIds, ...config.channels.protectedChannelIds,
     ...config.channels.autoSlowmodeChannelIds, ...config.channels.strictChannelIds,
-    ...config.channels.softChannelIds,
+    ...config.channels.softChannelIds, ...config.autoMod.linkBlock.channelIds,
+    ...config.ai.excludedChannelIds,
     ...Object.values(config.activityLog.channelIds),
     config.autoMod.logChannelId, config.antiFlood.logChannelId,
     config.antiRaid.alertChannelId, config.antiSpam.logChannelId, config.audit.channelId,
@@ -1319,15 +1322,19 @@ async function validateConfigTargets(guildId: string, config: ModerationConfig, 
   const previousChannelIds = [
     ...previous.channels.ignoredChannelIds, ...previous.channels.protectedChannelIds,
     ...previous.channels.autoSlowmodeChannelIds, ...previous.channels.strictChannelIds,
-    ...previous.channels.softChannelIds,
+    ...previous.channels.softChannelIds, ...previous.autoMod.linkBlock.channelIds,
+    ...previous.ai.excludedChannelIds,
     ...Object.values(previous.activityLog.channelIds),
     previous.autoMod.logChannelId, previous.antiFlood.logChannelId,
     previous.antiRaid.alertChannelId, previous.antiSpam.logChannelId, previous.audit.channelId,
     previous.suspiciousBehavior.alertChannelId, previous.ai.logChannelId,
   ].filter((id): id is string => Boolean(id));
+  const categoryIds = [config.activityLog.categoryId].filter((id): id is string => Boolean(id));
+  const previousCategoryIds = [previous.activityLog.categoryId].filter((id): id is string => Boolean(id));
   const newRoleIds = roleIds.filter((id) => !previousRoleIds.includes(id));
   const newChannelIds = channelIds.filter((id) => !previousChannelIds.includes(id));
-  if (!newRoleIds.length && !newChannelIds.length) return;
+  const newCategoryIds = categoryIds.filter((id) => !previousCategoryIds.includes(id));
+  if (!newRoleIds.length && !newChannelIds.length && !newCategoryIds.length) return;
   const guild = await client.guilds.fetch(
 {
 
@@ -1355,6 +1362,14 @@ async function validateConfigTargets(guildId: string, config: ModerationConfig, 
 
 
   if (missingChannel) throw new ModerationAuthError(400, `Channel ${missingChannel} is not in this guild`)
+;
+
+
+  const missingCategory = newCategoryIds.find((id) => !channels.has(id))
+;
+
+
+  if (missingCategory) throw new ModerationAuthError(400, `Channel ${missingCategory} is not in this guild`)
 ;
 
 

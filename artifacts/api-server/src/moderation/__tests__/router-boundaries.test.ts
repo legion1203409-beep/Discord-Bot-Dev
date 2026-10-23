@@ -1000,6 +1000,25 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     expect(mocks.putConfig).not.toHaveBeenCalled();
   });
 
+  it("resets only the authorized guild configuration to defaults without touching case or audit history", async () => {
+    const previousConfig = structuredClone(defaultModerationConfig);
+    previousConfig.embeds.titleTemplate = "Server-specific title";
+    previousConfig.cases.retentionDays = 45;
+    mocks.getConfig.mockResolvedValue({ config: previousConfig, version: 3 });
+    mocks.putConfig.mockImplementation(async (_guildId, config) => ({ config, version: 4 }));
+
+    const response = await fetch(`${base}/config`, {
+      ...post({}, { "if-match": '"3"' }),
+      method: "PUT",
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ config: defaultModerationConfig });
+    expect(mocks.putConfig).toHaveBeenCalledWith(guildId, defaultModerationConfig, actorId, 3);
+    expect(mocks.listCases).not.toHaveBeenCalled();
+    expect(mocks.listAudit).not.toHaveBeenCalled();
+  });
+
   it("allows an embed-only save when an old configured channel was deleted from Discord", async () => {
     const config = structuredClone(defaultModerationConfig);
     config.audit.channelId = "555555555555555555";
@@ -1954,6 +1973,56 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
   it("does not accept configured roles belonging to another server", async () => {
     const config = structuredClone(defaultModerationConfig);
     config.permissions.staffRoleIds = ["444444444"];
+    const response = await fetch(`${base}/config`, { ...post(config, { "if-match": '"3"' }), method: "PUT" });
+    expect(response.status).toBe(400);
+    expect(mocks.putConfig).not.toHaveBeenCalled();
+  });
+
+  it("does not accept a channel reference that is not present in the authorized target guild", async () => {
+    const config = structuredClone(defaultModerationConfig);
+    config.audit.channelId = "444444444";
+    const response = await fetch(`${base}/config`, { ...post(config, { "if-match": '"3"' }), method: "PUT" });
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Channel 444444444 is not in this guild",
+    });
+    expect(mocks.access).toHaveBeenCalledWith(guildId, actorId, "config");
+    expect(mocks.putConfig).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      name: "activity-log role IDs",
+      assign: (config: any) => { config.activityLog.roleIds = ["444444444"]; },
+    },
+    {
+      name: "AI excluded role IDs",
+      assign: (config: any) => { config.ai.excludedRoleIds = ["444444444"]; },
+    },
+  ])("rejects foreign $name in the selected server config", async ({ assign }) => {
+    const config = structuredClone(defaultModerationConfig);
+    assign(config);
+    const response = await fetch(`${base}/config`, { ...post(config, { "if-match": '"3"' }), method: "PUT" });
+    expect(response.status).toBe(400);
+    expect(mocks.putConfig).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      name: "link-filter channel IDs",
+      assign: (config: any) => { config.autoMod.linkBlock.channelIds = ["444444444"]; },
+    },
+    {
+      name: "AI excluded channel IDs",
+      assign: (config: any) => { config.ai.excludedChannelIds = ["444444444"]; },
+    },
+    {
+      name: "activity-log category IDs",
+      assign: (config: any) => { config.activityLog.categoryId = "444444444"; },
+    },
+  ])("rejects foreign $name in the selected server config", async ({ assign }) => {
+    const config = structuredClone(defaultModerationConfig);
+    assign(config);
     const response = await fetch(`${base}/config`, { ...post(config, { "if-match": '"3"' }), method: "PUT" });
     expect(response.status).toBe(400);
     expect(mocks.putConfig).not.toHaveBeenCalled();

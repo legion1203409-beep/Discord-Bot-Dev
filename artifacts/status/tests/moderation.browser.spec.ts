@@ -128,13 +128,23 @@ async function installPartialBotControlFixture(
 
 test.describe("authenticated moderation console", () => {
   const savedConfigs = new Map(guilds.map(({ id }) => [id, fullConfig()]));
+  const configRequests: Array<{ guildId: string; method: string; body?: Record<string, unknown> }> = [];
+  const caseHistory = new Map<string, Array<{ id: string }>>();
+  const auditHistory = new Map<string, Array<{ id: string }>>();
+  const historyRequests: Array<{ guildId: string; resource: "cases" | "audit"; method: string }> = [];
   let actionBodies: unknown[] = [];
   let rolePreviewBodies: unknown[] = [];
 
   test.beforeEach(async ({ page }) => {
     actionBodies = [];
     rolePreviewBodies = [];
-    for (const guild of guilds) savedConfigs.set(guild.id, fullConfig());
+    configRequests.length = 0;
+    historyRequests.length = 0;
+    for (const guild of guilds) {
+      savedConfigs.set(guild.id, fullConfig());
+      caseHistory.set(guild.id, []);
+      auditHistory.set(guild.id, []);
+    }
     await page.route("**/api/moderation/auth-config", async (route) => {
       await route.fulfill({ json: { discordOAuthConfigured: true, authorizationUrl: "/api/moderation/oauth/discord" } });
     });
@@ -143,12 +153,17 @@ test.describe("authenticated moderation console", () => {
     });
     await page.route("**/api/moderation/guilds/*/config", async (route) => {
       const id = route.request().url().match(/guilds\/(\d+)\/config/)?.[1] || guilds[0].id;
+      const method = route.request().method();
       if (route.request().method() === "PUT") {
         expect(route.request().headers()["if-match"]).toBeTruthy();
-        savedConfigs.set(id, JSON.parse(route.request().postData() || "{}"));
+        const body = JSON.parse(route.request().postData() || "{}") as Record<string, unknown>;
+        configRequests.push({ guildId: id, method, body });
+        // The API parses an empty object into the schema's per-server defaults.
+        savedConfigs.set(id, Object.keys(body).length ? body as ReturnType<typeof fullConfig> : fullConfig());
         await route.fulfill({ json: { config: savedConfigs.get(id), version: 2 }, headers: { ETag: '"2"' } });
         return;
       }
+      configRequests.push({ guildId: id, method });
       await route.fulfill({ json: { config: savedConfigs.get(id), version: 1 }, headers: { ETag: '"1"' } });
     });
     await page.route("**/api/moderation/guilds/*/protection-toggle", async (route) => {
@@ -174,8 +189,16 @@ test.describe("authenticated moderation console", () => {
         },
       });
     });
-    await page.route("**/api/moderation/guilds/*/cases**", async (route) => await route.fulfill({ json: { items: [] } }));
-    await page.route("**/api/moderation/guilds/*/logs/audit**", async (route) => await route.fulfill({ json: { items: [] } }));
+    await page.route("**/api/moderation/guilds/*/cases**", async (route) => {
+      const id = route.request().url().match(/guilds\/(\d+)\/cases/)?.[1] ?? guilds[0].id;
+      historyRequests.push({ guildId: id, resource: "cases", method: route.request().method() });
+      await route.fulfill({ json: { items: caseHistory.get(id) ?? [] } });
+    });
+    await page.route("**/api/moderation/guilds/*/logs/audit**", async (route) => {
+      const id = route.request().url().match(/guilds\/(\d+)\/logs\/audit/)?.[1] ?? guilds[0].id;
+      historyRequests.push({ guildId: id, resource: "audit", method: route.request().method() });
+      await route.fulfill({ json: { items: auditHistory.get(id) ?? [] } });
+    });
     await page.route("**/api/moderation/guilds/*/actions/role-preview", async (route) => {
       rolePreviewBodies.push(JSON.parse(route.request().postData() || "{}"));
       const guildId = route.request().url().match(/guilds\/(\d+)\/actions\/role-preview/)?.[1] ?? guilds[0].id;
@@ -207,6 +230,12 @@ test.describe("authenticated moderation console", () => {
   async function chooseFirstGuild(page: import("@playwright/test").Page) {
     await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible({ timeout: 15_000 });
     await page.getByRole("button", { name: guilds[0].name }).click();
+  }
+
+  async function openConfigTools(page: import("@playwright/test").Page) {
+    await page.goto("/moderare/config");
+    await chooseFirstGuild(page);
+    await page.getByTestId("button-open-customization").click();
   }
 
   async function expectNavGroupExpanded(page: import("@playwright/test").Page, groupId: string) {
@@ -1292,6 +1321,113 @@ test.describe("authenticated moderation console", () => {
       titleTemplate: "Moderation action",
       descriptionTemplate: "{action}: {reason}",
     });
+  });
+
+  test("invalid JSON changes nothing and a valid import applies only the previewed section", async ({ page }) => {
+    const targetConfig = fullConfig();
+    targetConfig.cases.retentionDays = 42;
+    targetConfig.bot.prefix = "$";
+    savedConfigs.set(guilds[0].id, structuredClone(targetConfig));
+
+    await openConfigTools(page);
+    await page.getByTestId("button-import-config").click();
+    const editor = page.getByLabel("JSON de importat");
+    await editor.fill("{");
+    await page.getByTestId("button-preview-import").click();
+
+    await expect(page.getByTestId("text-action-status")).toHaveAttribute("role", "alert");
+    await expect(page.getByTestId("preview-changed-sections")).toHaveCount(0);
+    await expect(page.getByTestId("button-confirm-operation")).toHaveCount(0);
+    expect(configRequests.filter((request) => request.method === "PUT")).toHaveLength(0);
+    expect(savedConfigs.get(guilds[0].id)).toEqual(targetConfig);
+
+    const importedAutoMod = structuredClone(targetConfig.autoMod);
+    importedAutoMod.enabled = true;
+    await editor.fill(JSON.stringify({
+      format: "oracol-cenusii-config",
+      version: 1,
+      config: { autoMod: importedAutoMod },
+    }));
+    await page.getByTestId("button-preview-import").click();
+    const preview = page.getByTestId("preview-changed-sections");
+    await expect(preview).toBeVisible();
+    await expect(preview.locator("li")).toHaveCount(1);
+    await expect(preview).toContainText("AutoMod");
+    await page.getByTestId("button-confirm-operation").click();
+    await expect(page.getByTestId("text-action-status")).toContainText("aplicate cu succes");
+
+    const saved = savedConfigs.get(guilds[0].id)!;
+    expect(saved.autoMod).toEqual(importedAutoMod);
+    expect(saved.cases).toEqual(targetConfig.cases);
+    expect(saved.bot).toEqual(targetConfig.bot);
+    const writes = configRequests.filter((request) => request.method === "PUT");
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toMatchObject({ guildId: guilds[0].id, body: { autoMod: importedAutoMod } });
+  });
+
+  test("copy reads only the authorized source and writes only the selected target", async ({ page }) => {
+    const targetConfig = fullConfig();
+    const sourceConfig = fullConfig();
+    targetConfig.autoMod.enabled = false;
+    sourceConfig.autoMod.enabled = true;
+    targetConfig.cases.retentionDays = 77;
+    sourceConfig.cases.retentionDays = 77;
+    savedConfigs.set(guilds[0].id, structuredClone(targetConfig));
+    savedConfigs.set(guilds[1].id, structuredClone(sourceConfig));
+    caseHistory.set(guilds[0].id, [{ id: `case-${guilds[0].id}` }]);
+    auditHistory.set(guilds[0].id, [{ id: `audit-${guilds[0].id}` }]);
+    const sourceBefore = structuredClone(sourceConfig);
+
+    await openConfigTools(page);
+    await page.getByTestId("button-copy-server-config").click();
+    await expect(page.getByTestId("button-preview-copy")).toBeEnabled();
+    await expect(page.getByTestId("text-copy-guild-pair")).toContainText(`Sursă: ${guilds[1].name}`);
+    await expect(page.getByTestId("text-copy-guild-pair")).toContainText(`Țintă: ${guilds[0].name}`);
+    await page.getByTestId("button-preview-copy").click();
+    const preview = page.getByTestId("preview-changed-sections");
+    await expect(preview.locator("li")).toHaveCount(1);
+    await expect(preview).toContainText("AutoMod");
+    await page.getByTestId("button-confirm-operation").click();
+    await expect(page.getByTestId("text-action-status")).toContainText("aplicate cu succes");
+
+    expect(savedConfigs.get(guilds[1].id)).toEqual(sourceBefore);
+    expect(savedConfigs.get(guilds[0].id)?.autoMod).toEqual(sourceConfig.autoMod);
+    expect(savedConfigs.get(guilds[0].id)?.cases).toEqual(targetConfig.cases);
+    const sourceRequests = configRequests.filter((request) => request.guildId === guilds[1].id);
+    const targetRequests = configRequests.filter((request) => request.guildId === guilds[0].id);
+    expect(sourceRequests.length).toBeGreaterThan(0);
+    expect(sourceRequests.every((request) => request.method === "GET")).toBe(true);
+    expect(targetRequests.some((request) => request.method === "PUT")).toBe(true);
+    expect(configRequests.filter((request) => request.method === "PUT").map((request) => request.guildId)).toEqual([guilds[0].id]);
+  });
+
+  test("reset changes only the selected server config and leaves cases, audit, and the other server intact", async ({ page }) => {
+    const targetConfig = fullConfig();
+    const sourceConfig = fullConfig();
+    targetConfig.autoMod.enabled = true;
+    targetConfig.cases.retentionDays = 21;
+    sourceConfig.autoMod.enabled = true;
+    sourceConfig.bot.prefix = "?";
+    savedConfigs.set(guilds[0].id, structuredClone(targetConfig));
+    savedConfigs.set(guilds[1].id, structuredClone(sourceConfig));
+    const sourceBefore = structuredClone(sourceConfig);
+    const casesBefore = structuredClone([...caseHistory.entries()]);
+    const auditBefore = structuredClone([...auditHistory.entries()]);
+
+    await openConfigTools(page);
+    await page.getByTestId("button-reset-config").click();
+    await expect(page.getByRole("dialog")).toContainText("Istoricul cazurilor/auditului și celelalte servere nu vor fi șterse sau afectate.");
+    await page.getByTestId("button-confirm-reset").click();
+    await expect(page.getByTestId("text-action-status")).toContainText("resetată la valorile implicite");
+
+    expect(configRequests.filter((request) => request.method === "PUT")).toEqual([
+      { guildId: guilds[0].id, method: "PUT", body: {} },
+    ]);
+    expect(savedConfigs.get(guilds[0].id)).toEqual(fullConfig());
+    expect(savedConfigs.get(guilds[1].id)).toEqual(sourceBefore);
+    expect([...caseHistory.entries()]).toEqual(casesBefore);
+    expect([...auditHistory.entries()]).toEqual(auditBefore);
+    expect(historyRequests.every((request) => request.method === "GET")).toBe(true);
   });
 
   test("daily reports and alliance announcements use the default/custom message dialog", async ({ page }) => {
