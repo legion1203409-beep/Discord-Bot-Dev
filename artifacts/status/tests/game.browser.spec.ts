@@ -57,7 +57,7 @@ test("Intră în regat leads from the start page to the community page and back"
   await page.goto("/");
   await page.getByRole("link", { name: "Intră în regat" }).click();
   await expect(page).toHaveURL("/server");
-  await expect(page.locator("h1")).toContainText(heroTitle, { useInnerText: true });
+  await expect(page.locator("#h-hero")).toContainText(heroTitle, { useInnerText: true });
   await expect(page).toHaveTitle(/Regatul Cenușii/);
   await page.goBack();
   await expect(page).toHaveURL("/");
@@ -82,7 +82,7 @@ test("the community door stays open on the start page while sign-in is unavailab
   await expect(page.getByTestId("button-open-panel")).toBeDisabled();
   await page.getByRole("link", { name: "Intră în regat" }).click();
   await expect(page).toHaveURL("/server");
-  await expect(page.locator("h1")).toContainText(heroTitle, { useInnerText: true });
+  await expect(page.locator("#h-hero")).toContainText(heroTitle, { useInnerText: true });
 });
 
 test("the start page is usable on a narrow screen", async ({ page }) => {
@@ -98,12 +98,12 @@ test("/server shows the community page", async ({ page }) => {
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("/server");
   await expect(page).toHaveURL("/server");
-  await expect(page.locator("h1")).toContainText(heroTitle, { useInnerText: true });
+  await expect(page.locator("#h-hero")).toContainText(heroTitle, { useInnerText: true });
   await expect(page).toHaveTitle(/Regatul Cenușii/);
   await expect(page.getByTestId("discord-login-button")).toHaveCount(0);
   await expect(page.getByTestId("operator-gate")).toHaveCount(0);
   await page.reload();
-  await expect(page.locator("h1")).toContainText(heroTitle, { useInnerText: true });
+  await expect(page.locator("#h-hero")).toContainText(heroTitle, { useInnerText: true });
   expect(errors).toEqual([]);
 });
 
@@ -145,23 +145,19 @@ test("operator status stays reachable behind #status", async ({ page }) => {
 test("/joc still leads to the server page", async ({ page }) => {
   await page.goto("/joc");
   await expect(page).toHaveURL("/server");
-  await expect(page.locator("h1")).toContainText(heroTitle, { useInnerText: true });
+  await expect(page.locator("#h-hero")).toContainText(heroTitle, { useInnerText: true });
 });
 
-test("shows the Discord loading screen for at least two seconds", async ({ page }) => {
+test("the logged-out moderation route shows the Discord login gate", async ({ page }) => {
   await page.goto("/moderare");
-  const loadingScreen = page.getByRole("status", { name: "Se încarcă panoul de moderare" });
-  await expect(loadingScreen).toBeVisible();
-  await page.waitForTimeout(500);
-  await expect(loadingScreen).toBeVisible();
-  await expect(loadingScreen).toHaveCount(0, { timeout: 3_000 });
+  await expect(page.getByTestId("operator-gate")).toBeVisible();
   await expect(page.getByTestId("discord-login-button")).toBeVisible();
 });
 
 test("the community page is usable on a narrow screen", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/server");
-  await expect(page.locator("h1")).toBeVisible();
+  await expect(page.locator("#h-hero")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await expect(page.locator(`a[href="${communityInvite}"]:visible`).first()).toBeVisible();
 
@@ -190,7 +186,7 @@ test("the footer reaches the operator console and the public pages", async ({ pa
   await expect(page.getByTestId("discord-login-button")).toBeVisible();
   await page.goBack();
   await expect(page).toHaveURL("/server");
-  await expect(page.locator("h1")).toContainText(heroTitle, { useInnerText: true });
+  await expect(page.locator("#h-hero")).toContainText(heroTitle, { useInnerText: true });
   await page.getByTestId("link-footer-stats").click();
   await expect(page).toHaveURL("/statistici");
 });
