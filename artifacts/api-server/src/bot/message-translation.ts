@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import type { Message } from "discord.js";
+import { AttachmentBuilder, EmbedBuilder, type Message } from "discord.js";
 import { logger } from "../lib/logger";
 import {
   hasProcessedMessageTranslation,
@@ -13,7 +13,8 @@ const MODEL = "gpt-5-mini";
 const MAX_COMPLETION_TOKENS = 1_200;
 const NO_TRANSLATION_MARKER = "<<NO_TRANSLATION_REQUIRED>>";
 const TRANSLATION_PREFIX = "🇷🇴 **Traducere:**\n";
-const CONTINUATION_PREFIX = "🇷🇴 **Continuare:**\n";
+const MAX_DISCORD_CONTENT_LENGTH = 2_000;
+const MAX_EMBED_TEXT_LENGTH = 6_000;
 
 const configuredChannelByGuild = new Map<string, string | null>();
 const loadingChannelByGuild = new Map<string, Promise<string | null>>();
@@ -90,6 +91,33 @@ async function persistProcessedMessage(guildId: string, messageId: string): Prom
   rememberProcessedMessage(messageId);
 }
 
+async function replyWithTranslation(message: Message, translated: string): Promise<void> {
+  const allowedMentions = { parse: [] as never[], repliedUser: false };
+  const content = `${TRANSLATION_PREFIX}${translated}`;
+  if (content.length <= MAX_DISCORD_CONTENT_LENGTH) {
+    await message.reply({ content, allowedMentions });
+    return;
+  }
+
+  if (translated.length <= MAX_EMBED_TEXT_LENGTH) {
+    const embeds = splitTranslationText(translated, 4_000).map((chunk) =>
+      new EmbedBuilder().setDescription(chunk),
+    );
+    await message.reply({
+      content: TRANSLATION_PREFIX.trim(),
+      embeds,
+      allowedMentions,
+    });
+    return;
+  }
+
+  await message.reply({
+    content: `${TRANSLATION_PREFIX.trim()} Textul complet este atașat.`,
+    files: [new AttachmentBuilder(Buffer.from(translated, "utf8"), { name: "traducere.txt" })],
+    allowedMentions,
+  });
+}
+
 export type ExistingMessageTranslationResult =
   | "translated"
   | "already_romanian"
@@ -119,22 +147,7 @@ async function translateAndReplyOnce(
       return "already_romanian";
     }
 
-    const chunks = splitTranslationText(translated);
-    if (!chunks.length) {
-      await persistProcessedMessage(message.guildId!, message.id);
-      return "already_romanian";
-    }
-
-    await message.reply({
-      content: `${TRANSLATION_PREFIX}${chunks[0]}`,
-      allowedMentions: { parse: [], repliedUser: false },
-    });
-    for (const chunk of chunks.slice(1)) {
-      await message.reply({
-        content: `${CONTINUATION_PREFIX}${chunk}`,
-        allowedMentions: { parse: [], repliedUser: false },
-      });
-    }
+    await replyWithTranslation(message, translated);
     await persistProcessedMessage(message.guildId!, message.id);
     return "translated";
   } finally {

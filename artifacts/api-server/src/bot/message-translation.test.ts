@@ -188,6 +188,29 @@ describe("automatic message translation", () => {
     });
   });
 
+  it("posts a long translation as one Discord message instead of several replies", async () => {
+    mocks.loadConfig.mockResolvedValue({ channelId: "channel-translation-test" });
+    const longTranslation = "Propoziție lungă. ".repeat(150);
+    mocks.createCompletion.mockResolvedValue({
+      choices: [{ message: { content: longTranslation } }],
+    });
+    const message = makeMessage({
+      id: "long-translation-one-message",
+      guildId: "guild-long-translation",
+    });
+
+    await maybeTranslateMessage(message, true);
+
+    expect(message.reply).toHaveBeenCalledTimes(1);
+    const replyOptions = vi.mocked(message.reply).mock.calls[0]?.[0] as
+      | { content?: string; embeds?: unknown[] }
+      | undefined;
+    expect(replyOptions).toMatchObject({
+      content: "🇷🇴 **Traducere:**",
+    });
+    expect(replyOptions?.embeds).toHaveLength(1);
+  });
+
   it("only translates manually selected messages from the configured channel", async () => {
     mocks.loadConfig.mockResolvedValue({ channelId: "configured-channel" });
     const message = makeMessage({
