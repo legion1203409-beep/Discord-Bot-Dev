@@ -2389,6 +2389,8 @@ export async function loadChannelConfig(guildId: string): Promise<ChannelConfig 
 }
 
 const MESSAGE_TRANSLATION_CONFIG_KEY = "message_translation_config";
+const MESSAGE_TRANSLATION_PROCESSED_KEY = "message_translation_processed";
+const MAX_PROCESSED_TRANSLATION_IDS_PER_GUILD = 2_000;
 
 export async function saveMessageTranslationConfig(
   guildId: string,
@@ -2419,6 +2421,49 @@ export async function loadMessageTranslationConfig(guildId: string): Promise<Mes
   } catch {
     return null;
   }
+}
+
+function messageTranslationProcessedKey(guildId: string): string {
+  return guildKey(guildId, MESSAGE_TRANSLATION_PROCESSED_KEY);
+}
+
+export async function hasProcessedMessageTranslation(guildId: string, messageId: string): Promise<boolean> {
+  await ensureBotStateTable();
+  const result = await pool.query<{ value: string }>(
+    "SELECT value FROM bot_state WHERE key = $1",
+    [messageTranslationProcessedKey(guildId)],
+  );
+  const value = result.rows[0]?.value;
+  if (!value) return false;
+  try {
+    const ids: unknown = JSON.parse(value);
+    return Array.isArray(ids) && ids.includes(messageId);
+  } catch {
+    return false;
+  }
+}
+
+export async function markMessageTranslationProcessed(guildId: string, messageId: string): Promise<void> {
+  await ensureBotStateTable();
+  await pool.query(
+    `INSERT INTO bot_state (key, value, updated_at)
+     VALUES ($1, jsonb_build_array($2::text)::text, now())
+     ON CONFLICT (key) DO UPDATE
+     SET value = (
+       SELECT COALESCE(jsonb_agg(message_id ORDER BY last_seen ASC), '[]'::jsonb)::text
+       FROM (
+         SELECT message_id, max(ordinality) AS last_seen
+         FROM jsonb_array_elements_text(
+           COALESCE(bot_state.value::jsonb, '[]'::jsonb) || jsonb_build_array($2::text)
+         ) WITH ORDINALITY AS ids(message_id, ordinality)
+         GROUP BY message_id
+         ORDER BY max(ordinality) DESC
+         LIMIT $3::integer
+       ) AS recent
+     ),
+     updated_at = now()`,
+    [messageTranslationProcessedKey(guildId), messageId, MAX_PROCESSED_TRANSLATION_IDS_PER_GUILD],
+  );
 }
 
 export type SavedProvisioningPermission = {

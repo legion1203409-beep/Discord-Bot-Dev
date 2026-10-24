@@ -1,7 +1,12 @@
 import OpenAI from "openai";
 import type { Message } from "discord.js";
 import { logger } from "../lib/logger";
-import { loadMessageTranslationConfig, saveMessageTranslationConfig } from "./db";
+import {
+  hasProcessedMessageTranslation,
+  loadMessageTranslationConfig,
+  markMessageTranslationProcessed,
+  saveMessageTranslationConfig,
+} from "./db";
 import { shouldTranslateMessage, splitTranslationText } from "./message-translation-core";
 
 const MODEL = "gpt-5-mini";
@@ -80,6 +85,11 @@ function rememberProcessedMessage(messageId: string): void {
   }
 }
 
+async function persistProcessedMessage(guildId: string, messageId: string): Promise<void> {
+  await markMessageTranslationProcessed(guildId, messageId);
+  rememberProcessedMessage(messageId);
+}
+
 export async function maybeTranslateMessage(
   message: Message,
   hasMessageContentIntent: boolean,
@@ -102,17 +112,23 @@ export async function maybeTranslateMessage(
     return;
   }
 
+  if (await hasProcessedMessageTranslation(message.guildId, message.id)) {
+    rememberProcessedMessage(message.id);
+    return;
+  }
+  if (inFlightMessageIds.has(message.id) || processedMessageIds.has(message.id)) return;
+
   inFlightMessageIds.add(message.id);
   try {
     const translated = await translateToRomanian(message.content);
     if (!translated) {
-      rememberProcessedMessage(message.id);
+      await persistProcessedMessage(message.guildId, message.id);
       return;
     }
 
     const chunks = splitTranslationText(translated);
     if (!chunks.length) {
-      rememberProcessedMessage(message.id);
+      await persistProcessedMessage(message.guildId, message.id);
       return;
     }
 
@@ -126,7 +142,7 @@ export async function maybeTranslateMessage(
         allowedMentions: { parse: [], repliedUser: false },
       });
     }
-    rememberProcessedMessage(message.id);
+    await persistProcessedMessage(message.guildId, message.id);
   } finally {
     inFlightMessageIds.delete(message.id);
   }
