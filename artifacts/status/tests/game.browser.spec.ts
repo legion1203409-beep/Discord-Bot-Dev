@@ -74,6 +74,37 @@ test("the bot panel door on the start page starts the Discord login", async ({ p
   expect((await oauthRequest).url()).toContain("/api/moderation/oauth/discord");
 });
 
+test("an existing Discord session opens the server picker without starting OAuth", async ({ page }) => {
+  await page.unroute("**/api/moderation/session");
+  await page.route("**/api/moderation/session", route =>
+    route.fulfill({
+      json: {
+        authenticated: true,
+        userId: "operator-1",
+        guilds: [{ id: guildId, name: "Regatul Cenușii", icon: null }],
+        csrfToken: "test-csrf",
+        expiresAt: "2099-01-01T00:00:00.000Z",
+      },
+    }));
+
+  let oauthRequests = 0;
+  await page.route("**/api/moderation/oauth/discord", route => {
+    oauthRequests += 1;
+    return route.fulfill({ status: 204 });
+  });
+
+  await page.goto("/");
+  await expect(page.getByTestId("gate-signed-in")).toBeVisible();
+  const panelDoor = page.getByTestId("button-open-panel");
+  await expect(panelDoor).toHaveAttribute("href", "/moderare");
+  await panelDoor.click();
+
+  await expect(page).toHaveURL("/moderare");
+  await expect(page.getByTestId("operator-picker")).toBeVisible();
+  await expect(page.getByTestId(`button-select-guild-${guildId}`)).toBeVisible();
+  expect(oauthRequests).toBe(0);
+});
+
 test("the community door stays open on the start page while sign-in is unavailable", async ({ page }) => {
   await page.unroute("**/api/moderation/auth-config");
   await page.route("**/api/moderation/auth-config", route =>
