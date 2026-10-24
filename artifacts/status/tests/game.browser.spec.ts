@@ -39,32 +39,75 @@ test.beforeEach(async ({ page }) => {
   await mockPublicApi(page);
 });
 
-test("the root still opens the moderation login", async ({ page }) => {
+test("the root is the start page with both doors, not the server guide", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("/");
-  await expect(page).toHaveURL("/moderare");
-  await expect(page.getByTestId("discord-login-button")).toBeVisible();
-  await expect(page.locator(".hero-section")).toHaveCount(0);
+  await expect(page).toHaveURL("/");
+  await expect(page.getByTestId("operator-gate")).toBeVisible();
+  await expect(page.getByRole("heading", { level: 2, name: "Regatul Cenușii" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 2, name: "Panoul botului" })).toBeVisible();
+  await expect(page.getByText(heroTitle)).toHaveCount(0);
   await page.reload();
-  await expect(page.getByTestId("discord-login-button")).toBeVisible();
-  await page.goto("/#lumea");
-  await expect(page).toHaveURL("/moderare");
-  await expect(page.locator(".hero-section")).toHaveCount(0);
+  await expect(page.getByTestId("operator-gate")).toBeVisible();
+  expect(errors).toEqual([]);
 });
 
-test("the server page opens at /server", async ({ page }) => {
+test("Intră în regat leads from the start page to the community page and back", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("link", { name: "Intră în regat" }).click();
+  await expect(page).toHaveURL("/server");
+  await expect(page.locator("h1")).toContainText(heroTitle, { useInnerText: true });
+  await expect(page).toHaveTitle(/Regatul Cenușii/);
+  await page.goBack();
+  await expect(page).toHaveURL("/");
+  await expect(page.getByTestId("operator-gate")).toBeVisible();
+});
+
+test("the bot panel door on the start page starts the Discord login", async ({ page }) => {
+  await page.route("**/api/moderation/oauth/discord", route => route.fulfill({ status: 204 }));
+  await page.goto("/");
+  const panelDoor = page.getByTestId("button-open-panel");
+  await expect(panelDoor).toHaveAttribute("href", "/api/moderation/oauth/discord");
+  const oauthRequest = page.waitForRequest("**/api/moderation/oauth/discord");
+  await panelDoor.click();
+  expect((await oauthRequest).url()).toContain("/api/moderation/oauth/discord");
+});
+
+test("the community door stays open on the start page while sign-in is unavailable", async ({ page }) => {
+  await page.unroute("**/api/moderation/auth-config");
+  await page.route("**/api/moderation/auth-config", route =>
+    route.fulfill({ json: { discordOAuthConfigured: false, authorizationUrl: "/api/moderation/oauth/discord" } }));
+  await page.goto("/");
+  await expect(page.getByTestId("button-open-panel")).toBeDisabled();
+  await page.getByRole("link", { name: "Intră în regat" }).click();
+  await expect(page).toHaveURL("/server");
+  await expect(page.locator("h1")).toContainText(heroTitle, { useInnerText: true });
+});
+
+test("the start page is usable on a narrow screen", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await expect(page.getByTestId("operator-gate")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Intră în regat" })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test("/server shows the community page", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("/server");
   await expect(page).toHaveURL("/server");
-  await expect(page.locator("h1")).toContainText(heroTitle);
+  await expect(page.locator("h1")).toContainText(heroTitle, { useInnerText: true });
   await expect(page).toHaveTitle(/Regatul Cenușii/);
   await expect(page.getByTestId("discord-login-button")).toHaveCount(0);
+  await expect(page.getByTestId("operator-gate")).toHaveCount(0);
   await page.reload();
-  await expect(page.locator("h1")).toContainText(heroTitle);
+  await expect(page.locator("h1")).toContainText(heroTitle, { useInnerText: true });
   expect(errors).toEqual([]);
 });
 
-test("the server page shows the live numbers and the daily report", async ({ page }) => {
+test("the community page shows the live numbers and the daily report", async ({ page }) => {
   await page.goto("/server");
   await expect(page.getByTestId("data-online-count")).toContainText("85");
   await expect(page.getByTestId("data-total-members")).toContainText("1.014");
@@ -95,14 +138,14 @@ test("operator status stays reachable behind #status", async ({ page }) => {
   await page.goto("/#status");
   await expect(page.locator("h1.ops-title")).toContainText("Starea operatorului");
   await page.getByRole("link", { name: /Înapoi la pagina principală/ }).click();
-  await expect(page).toHaveURL("/moderare");
-  await expect(page.getByTestId("discord-login-button")).toBeVisible();
+  await expect(page).toHaveURL("/");
+  await expect(page.getByTestId("operator-gate")).toBeVisible();
 });
 
 test("/joc still leads to the server page", async ({ page }) => {
   await page.goto("/joc");
   await expect(page).toHaveURL("/server");
-  await expect(page.locator("h1")).toContainText(heroTitle);
+  await expect(page.locator("h1")).toContainText(heroTitle, { useInnerText: true });
 });
 
 test("shows the Discord loading screen for at least two seconds", async ({ page }) => {
@@ -115,7 +158,7 @@ test("shows the Discord loading screen for at least two seconds", async ({ page 
   await expect(page.getByTestId("discord-login-button")).toBeVisible();
 });
 
-test("the server page is usable on a narrow screen", async ({ page }) => {
+test("the community page is usable on a narrow screen", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/server");
   await expect(page.locator("h1")).toBeVisible();
@@ -147,7 +190,7 @@ test("the footer reaches the operator console and the public pages", async ({ pa
   await expect(page.getByTestId("discord-login-button")).toBeVisible();
   await page.goBack();
   await expect(page).toHaveURL("/server");
-  await expect(page.locator("h1")).toContainText(heroTitle);
+  await expect(page.locator("h1")).toContainText(heroTitle, { useInnerText: true });
   await page.getByTestId("link-footer-stats").click();
   await expect(page).toHaveURL("/statistici");
 });

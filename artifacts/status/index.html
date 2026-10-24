@@ -62,7 +62,10 @@
         const message = document.getElementById("boot-loading-message");
         const retry = document.getElementById("boot-loading-retry");
         const path = window.location.pathname.replace(/\/+$/, "");
-        if (/\/(?:server|joc)$/.test(path)) {
+        if (path === "") {
+          title.textContent = "Se încarcă Regatul Cenușii";
+          message.textContent = "Se pregătește pagina de start...";
+        } else if (/\/(?:server|joc)$/.test(path)) {
           title.textContent = "Se încarcă pagina serverului";
           message.textContent = "Se pregătește pagina serverului...";
         }

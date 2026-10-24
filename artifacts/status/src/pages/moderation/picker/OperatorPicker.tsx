@@ -183,7 +183,7 @@ export function OperatorPicker({ guilds, onSelect, onLogout, onSwitchAccount, bo
         ))}
       </div>
 
-      <a className="pkBrand" href="/" aria-label="Regatul Cenușii, pagina comunității" data-testid="link-picker-brand">
+      <a className="pkBrand" href="/" aria-label="Regatul Cenușii, pagina de start" data-testid="link-picker-brand">
         <img className="crestG" src={crest} alt="" width="38" height="38" />
         <span className="bw">
           <span className="bw1">REGATUL</span>

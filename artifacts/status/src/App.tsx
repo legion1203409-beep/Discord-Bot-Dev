@@ -22,6 +22,7 @@ import { SwordCursor } from "./components/SwordCursor";
 // Public pages
 import { PublicLayout } from "./components/public/PublicLayout";
 import { HomePage } from "./pages/public/home/HomePage";
+import { StartPage } from "./pages/public/StartPage";
 import { OperatorHealthPage } from "./pages/public/OperatorHealthPage";
 import { VerificationPage } from "./pages/public/VerificationPage";
 import { DailyStatsPage } from "./pages/public/DailyStatsPage";
@@ -63,7 +64,8 @@ function ScrollAnimations() {
   return null;
 }
 
-// The legacy operator/status logic uses hashes on root
+// Root: the start page with the two doors (the official community and the bot panel).
+// The community page itself is /server; the operator status view lives behind #status / #ops.
 function HomeApp() {
   const [hash, setHash] = useState(window.location.hash);
   
@@ -77,7 +79,7 @@ function HomeApp() {
     return <OperatorHealthPage />;
   }
 
-  return <Redirect to={`/moderare${window.location.search}`} replace />;
+  return <StartPage />;
 }
 
 function ModerationApp() {
