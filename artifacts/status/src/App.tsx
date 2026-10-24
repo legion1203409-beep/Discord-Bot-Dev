@@ -63,7 +63,7 @@ function ScrollAnimations() {
   return null;
 }
 
-// Root: the public server page. The operator status view still lives behind #status / #ops.
+// The legacy operator/status logic uses hashes on root
 function HomeApp() {
   const [hash, setHash] = useState(window.location.hash);
   
@@ -77,7 +77,7 @@ function HomeApp() {
     return <OperatorHealthPage />;
   }
 
-  return <HomePage />;
+  return <Redirect to={`/moderare${window.location.search}`} replace />;
 }
 
 function ModerationApp() {

@@ -4,7 +4,7 @@ const communityInvite = "https://discord.gg/regatulcenusii";
 const guildId = "123456789012345678";
 const heroTitle = "Un loc pentru oameni și povești.";
 
-/** Datele publice ale paginii principale, fixe, ca testele să nu depindă de serverul real. */
+/** Datele publice ale paginii serverului, fixe, ca testele să nu depindă de serverul real. */
 async function mockPublicApi(page: Page) {
   await page.route("**/api/discord/stats", route =>
     route.fulfill({ json: { live: true, onlineCount: 85, totalMembers: 1014, lastJoined: null } }));
@@ -39,11 +39,23 @@ test.beforeEach(async ({ page }) => {
   await mockPublicApi(page);
 });
 
-test("home shows the public server page instead of the moderation login", async ({ page }) => {
+test("the root still opens the moderation login", async ({ page }) => {
+  await page.goto("/");
+  await expect(page).toHaveURL("/moderare");
+  await expect(page.getByTestId("discord-login-button")).toBeVisible();
+  await expect(page.locator(".hero-section")).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByTestId("discord-login-button")).toBeVisible();
+  await page.goto("/#lumea");
+  await expect(page).toHaveURL("/moderare");
+  await expect(page.locator(".hero-section")).toHaveCount(0);
+});
+
+test("the server page opens at /server", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.goto("/");
-  await expect(page).toHaveURL("/");
+  await page.goto("/server");
+  await expect(page).toHaveURL("/server");
   await expect(page.locator("h1")).toContainText(heroTitle);
   await expect(page).toHaveTitle(/Regatul Cenușii/);
   await expect(page.getByTestId("discord-login-button")).toHaveCount(0);
@@ -52,8 +64,8 @@ test("home shows the public server page instead of the moderation login", async 
   expect(errors).toEqual([]);
 });
 
-test("home shows the live numbers and the daily report", async ({ page }) => {
-  await page.goto("/");
+test("the server page shows the live numbers and the daily report", async ({ page }) => {
+  await page.goto("/server");
   await expect(page.getByTestId("data-online-count")).toContainText("85");
   await expect(page.getByTestId("data-total-members")).toContainText("1.014");
   await expect(page.getByTestId("data-daily-metrics")).toContainText("395");
@@ -62,7 +74,7 @@ test("home shows the live numbers and the daily report", async ({ page }) => {
 });
 
 test("the Oracle answers from the archive using the live numbers", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/server");
   await page.getByTestId("section-oracle").scrollIntoViewIfNeeded();
   await page.getByTestId("button-oracle-suggestion-2").click();
   await expect(page.getByTestId("text-oracle-question")).toHaveText("Cât de activ e serverul?");
@@ -83,7 +95,8 @@ test("operator status stays reachable behind #status", async ({ page }) => {
   await page.goto("/#status");
   await expect(page.locator("h1.ops-title")).toContainText("Starea operatorului");
   await page.getByRole("link", { name: /Înapoi la pagina principală/ }).click();
-  await expect(page.locator("h1")).toContainText(heroTitle);
+  await expect(page).toHaveURL("/moderare");
+  await expect(page.getByTestId("discord-login-button")).toBeVisible();
 });
 
 test("/joc still leads to the server page", async ({ page }) => {
@@ -102,9 +115,9 @@ test("shows the Discord loading screen for at least two seconds", async ({ page 
   await expect(page.getByTestId("discord-login-button")).toBeVisible();
 });
 
-test("home is usable on a narrow screen", async ({ page }) => {
+test("the server page is usable on a narrow screen", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/");
+  await page.goto("/server");
   await expect(page.locator("h1")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await expect(page.locator(`a[href="${communityInvite}"]:visible`).first()).toBeVisible();
@@ -116,18 +129,30 @@ test("home is usable on a narrow screen", async ({ page }) => {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
+test("the mobile menu closes when tapping outside it", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/server");
+  const menu = page.locator("details.menuWrap");
+  await page.getByTestId("button-server-guide-menu").click();
+  await expect(menu).toHaveAttribute("open", "");
+  // Marginea din stânga a barei de sus: în afara meniului, dar fără link sau buton.
+  await page.mouse.click(5, 5);
+  await expect(menu).not.toHaveAttribute("open", "");
+});
+
 test("the footer reaches the operator console and the public pages", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/server");
   await page.getByTestId("link-footer-moderation").click();
   await expect(page).toHaveURL("/moderare");
   await expect(page.getByTestId("discord-login-button")).toBeVisible();
   await page.goBack();
+  await expect(page).toHaveURL("/server");
   await expect(page.locator("h1")).toContainText(heroTitle);
   await page.getByTestId("link-footer-stats").click();
   await expect(page).toHaveURL("/statistici");
 });
 
-for (const route of ["/", "/server"]) {
+for (const route of ["/server"]) {
   test(`community invitations on ${route} use the verified server link`, async ({ page }) => {
     await page.goto(route);
     const inviteLinks = page.locator('a[href^="https://discord.gg/"]');

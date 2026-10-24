@@ -1,4 +1,4 @@
-import { useRef, type CSSProperties, type KeyboardEvent } from "react";
+import { useEffect, useRef, type CSSProperties, type KeyboardEvent } from "react";
 import { trackEvent } from "../../../lib/analytics";
 import crest from "./crest.webp";
 
@@ -30,6 +30,17 @@ export function Header({ invite }: { invite: string }) {
   const closeMenu = () => {
     if (menu.current) menu.current.open = false;
   };
+
+  // Meniul de pe telefon se închide și când atingi altceva în pagină, nu doar la Escape sau la alegerea unui link.
+  useEffect(() => {
+    const onPointerDown = (event: PointerEvent) => {
+      const el = menu.current;
+      if (el?.open && event.target instanceof Node && !el.contains(event.target)) el.open = false;
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, []);
+
   const onMenuKey = (event: KeyboardEvent<HTMLDetailsElement>) => {
     if (event.key !== "Escape" || !menu.current?.open) return;
     closeMenu();

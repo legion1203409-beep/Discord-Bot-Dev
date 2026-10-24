@@ -24,9 +24,10 @@ export function recruitmentView(
   dashboard: QueryLike<RecruitmentDashboard>,
 ): RecruitmentView {
   if (profile.isLoading || (Boolean(guildId) && dashboard.isLoading)) return { kind: "loading" };
-  if (profile.isError) return { kind: "profile-error", retry: () => void profile.refetch() };
+  // O reîmprospătare picată (rețea întreruptă o clipă) nu înlocuiește ce se vede deja: eroarea apare doar dacă nu avem nimic de arătat.
+  if (profile.isError && !profile.data) return { kind: "profile-error", retry: () => void profile.refetch() };
   if (!guildId) return { kind: "no-guild" };
-  if (dashboard.isError) return { kind: "error", retry: () => void dashboard.refetch() };
+  if (dashboard.isError && !dashboard.data) return { kind: "error", retry: () => void dashboard.refetch() };
   if (dashboard.data && !dashboard.data.enabled) return { kind: "inactive" };
   if (dashboard.data) return { kind: "active", dashboard: dashboard.data };
   return { kind: "empty" };
