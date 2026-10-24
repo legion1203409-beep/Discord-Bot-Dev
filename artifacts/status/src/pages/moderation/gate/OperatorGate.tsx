@@ -20,7 +20,7 @@ import "./gate.css";
 const TITLE = "Autentificare operator | Regatul Cenușii";
 
 /** Pagina comunității oficiale („Intră în regat”) și panoul botului, pentru cine e deja conectat. */
-const REALM_PATH = "/server";
+const REALM_PATH = "/regatul-cenusii";
 const PANEL_PATH = "/moderare";
 /** Pagina de start, adică această pagină. */
 const START_PATH = "/";

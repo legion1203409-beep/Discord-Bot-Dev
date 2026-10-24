@@ -212,7 +212,7 @@ export function DailyStatsPage() {
 
           <div className="public-statistics-footer mt-8 flex items-center justify-between gap-4 pt-6 text-xs">
             <span>Actualizare manuală · fus orar {data.timezone}</span>
-            <Link href="/server" className="inline-flex items-center gap-1 text-[var(--ember-light)] hover:text-[var(--paper)]" data-testid="link-daily-stats-server-guide">
+            <Link href="/regatul-cenusii" className="inline-flex items-center gap-1 text-[var(--ember-light)] hover:text-[var(--paper)]" data-testid="link-daily-stats-server-guide">
               Ghidul serverului <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
             </Link>
           </div>

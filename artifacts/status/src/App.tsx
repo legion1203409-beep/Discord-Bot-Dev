@@ -65,7 +65,7 @@ function ScrollAnimations() {
 }
 
 // Root: the start page with the two doors (the official community and the bot panel).
-// The community page itself is /server; the operator status view lives behind #status / #ops.
+// The community page itself is /regatul-cenusii; the operator status view lives behind #status / #ops.
 function HomeApp() {
   const [hash, setHash] = useState(window.location.hash);
   
@@ -139,8 +139,9 @@ export default function App() {
       <ScrollAnimations />
       <Switch>
         <Route path="/" component={HomeApp} />
-        <Route path="/server" component={HomePage} />
-        <Route path="/joc" component={() => <Redirect to="/server" replace />} />
+        <Route path="/regatul-cenusii" component={HomePage} />
+        <Route path="/server" component={() => <Redirect to="/regatul-cenusii" replace />} />
+        <Route path="/joc" component={() => <Redirect to="/regatul-cenusii" replace />} />
         <Route path="/verificare" component={VerificationPage} />
         <Route path="/statistici" component={() => <PublicLayout><DailyStatsPage /></PublicLayout>} />
         <Route path="/moderare" nest>

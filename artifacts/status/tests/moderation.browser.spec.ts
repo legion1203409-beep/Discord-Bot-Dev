@@ -1819,7 +1819,7 @@ test.describe("Discord moderation authentication", () => {
     await expect(page.getByRole("heading", { level: 2, name: "Regatul Cenușii" })).toBeVisible();
     await expect(page.getByRole("heading", { level: 2, name: "Panoul botului" })).toBeVisible();
     await expect(page.getByTestId("link-gate-brand")).toHaveAttribute("href", "/");
-    await expect(page.getByTestId("link-server-guide-login")).toHaveAttribute("href", "/server");
+    await expect(page.getByTestId("link-server-guide-login")).toHaveAttribute("href", "/regatul-cenusii");
     await expect(page.getByRole("link", { name: "Intră în regat" })).toBeVisible();
     await expect(page.getByTestId("button-open-panel")).toHaveAttribute("href", "/api/moderation/oauth/discord");
     await expect(page.getByTestId("discord-login-button")).toHaveAttribute("href", "/api/moderation/oauth/discord");
@@ -1839,7 +1839,7 @@ test.describe("Discord moderation authentication", () => {
   test("leads the server door to the community page", async ({ page }) => {
     await page.goto("/moderare");
     await page.getByTestId("link-server-guide-login").click();
-    await expect(page).toHaveURL("/server");
+    await expect(page).toHaveURL("/regatul-cenusii");
     await expect(page.getByTestId("operator-gate")).toHaveCount(0);
     await expect(page.locator("h1")).toContainText("Un loc pentru oameni și povești.", { useInnerText: true });
   });
@@ -2282,7 +2282,7 @@ test.describe("moderation guild chooser", () => {
     await expect(page.getByTestId("gate-signed-in")).toBeVisible();
     await expect(page.getByTestId("discord-login-button")).toHaveCount(0);
     await expect(page.getByTestId("button-open-panel")).toHaveAttribute("href", "/moderare");
-    await expect(page.getByTestId("link-server-guide-login")).toHaveAttribute("href", "/server");
+    await expect(page.getByTestId("link-server-guide-login")).toHaveAttribute("href", "/regatul-cenusii");
     await page.getByTestId("button-open-panel").click();
     await expect(page).toHaveURL("/moderare");
     await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible({ timeout: 15_000 });

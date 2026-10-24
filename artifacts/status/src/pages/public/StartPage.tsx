@@ -2,9 +2,9 @@
  * Pagina de start a site-ului („/”): cele două uși.
  *
  * Arată pagina „Autentificare operator”: ușa către comunitatea oficială
- * („Regatul Cenușii”, pe /server) și ușa către panoul botului. Cine are deja o
+ * („Regatul Cenușii”, pe /regatul-cenusii) și ușa către panoul botului. Cine are deja o
  * sesiune de operator intră în panou fără altă autentificare; ceilalți pornesc
- * autentificarea Discord. Ghidul serverului este pagina /server.
+ * autentificarea Discord. Ghidul serverului este pagina /regatul-cenusii.
  */
 import { useSearch } from "wouter";
 import { useModerationAuthConfig, useSession } from "../../hooks/use-moderation-api";

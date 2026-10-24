@@ -16,7 +16,7 @@ export function Footer({ health }: { health: any }) {
       <div className="footer-bottom">
         <span>ORACOLUL CENUȘII · COMUNITATE DISCORD</span>
         <nav className="footer-navigation" aria-label="Navigare secundară">
-          <Link href="/server" data-testid="link-footer-server-guide">Ghidul serverului</Link>
+          <Link href="/regatul-cenusii" data-testid="link-footer-server-guide">Ghidul serverului</Link>
           <Link href="/verificare" data-testid="link-footer-verification">Verificare membru</Link>
           <Link href="/statistici" data-testid="link-footer-stats">Statistici</Link>
           <Link href="/moderare" data-testid="link-footer-moderation">Consolă operator</Link>

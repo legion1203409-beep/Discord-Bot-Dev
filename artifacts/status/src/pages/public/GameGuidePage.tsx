@@ -553,7 +553,7 @@ export function GameGuidePage() {
           <div className="ag-footer-links">
             <p>Oracolul Cenușii · Comunitate Discord</p>
             <nav aria-label="Legături utile">
-              <Link href="/server" data-testid="link-footer-server-guide">Ghidul serverului</Link>
+              <Link href="/regatul-cenusii" data-testid="link-footer-server-guide">Ghidul serverului</Link>
               <Link href="/verificare" data-testid="link-footer-verification">Verificare membri</Link>
               <Link href="/statistici" data-testid="link-footer-stats">Statistici</Link>
               <Link href="/moderare" data-testid="link-footer-moderation">Consolă operator</Link>
