@@ -154,6 +154,42 @@ test("the logged-out moderation route shows the Discord login gate", async ({ pa
   await expect(page.getByTestId("discord-login-button")).toBeVisible();
 });
 
+for (const route of ["/", "/moderare"]) {
+  test(`${route} explains a cancelled Discord login and lets the operator retry`, async ({ page }) => {
+    await page.route("**/api/moderation/oauth/discord", route =>
+      route.fulfill({ status: 204 }));
+    await page.goto(`${route}?auth_error=cancelled`);
+
+    const error = page.getByRole("alert");
+    await expect(error).toContainText("Autentificarea a fost anulată");
+    const retry = page.getByTestId("discord-login-button");
+    await expect(retry).toBeVisible();
+    await expect(retry).toHaveAttribute("href", "/api/moderation/oauth/discord");
+
+    const oauthRequest = page.waitForRequest("**/api/moderation/oauth/discord");
+    await retry.click();
+    expect((await oauthRequest).method()).toBe("GET");
+  });
+
+  test(`${route} hides an unknown Discord login error code`, async ({ page }) => {
+    const unknownCode = "discord_private_reason_907";
+    await page.goto(`${route}?auth_error=${unknownCode}`);
+
+    const error = page.getByRole("alert");
+    await expect(error).toContainText("Autentificarea Discord nu a putut fi finalizată");
+    await expect(error).not.toContainText(unknownCode);
+    await expect(page.getByTestId("discord-login-button")).toBeVisible();
+  });
+}
+
+test("the community door stays usable after a failed Discord login", async ({ page }) => {
+  await page.goto("/?auth_error=cancelled");
+  await expect(page.getByRole("alert")).toContainText("Autentificarea a fost anulată");
+  await page.getByRole("link", { name: "Intră în regat" }).click();
+  await expect(page).toHaveURL("/server");
+  await expect(page.locator("#h-hero")).toContainText(heroTitle, { useInnerText: true });
+});
+
 test("the community page is usable on a narrow screen", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/server");
