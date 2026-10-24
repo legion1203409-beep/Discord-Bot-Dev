@@ -22,7 +22,10 @@ import {
   PermissionFlagsBits,
   EmbedBuilder,
   AttachmentBuilder,
+  ApplicationCommandType,
+  ContextMenuCommandBuilder,
   type GuildMember,
+  type MessageContextMenuCommandInteraction,
 } from "discord.js";
 import { randomUUID } from "node:crypto";
 import { logger } from "../lib/logger";
@@ -38,6 +41,7 @@ import {
   getMessageTranslationChannel,
   maybeTranslateMessage,
   setMessageTranslationChannel,
+  translateExistingMessage,
 } from "./message-translation";
 import {
   recordMessage,
@@ -381,6 +385,7 @@ import {
 } from "./chest-expansions";
 
 const DEFAULT_GUILD_ID = "1382035307607883816";
+const TRANSLATE_EXISTING_MESSAGE_COMMAND = "Tradu în română";
 
 let botClient: Client | null = null;
 let activityVoiceTicker: ReturnType<typeof setInterval> | null = null;
@@ -680,6 +685,12 @@ const slashCommands = [
     .setName("startai")
     .setDescription("✨ [Admin] Repornește răspunsurile și activitatea automată a Oracolului.")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+];
+
+const contextMenuCommands = [
+  new ContextMenuCommandBuilder()
+    .setName(TRANSLATE_EXISTING_MESSAGE_COMMAND)
+    .setType(ApplicationCommandType.Message),
 ];
 
 async function handleRecruitmentInvite(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -1952,6 +1963,46 @@ async function handleMessageTranslation(interaction: ChatInputCommandInteraction
   } catch (err) {
     logger.error({ err, guildId, userId: interaction.user.id }, "Failed to configure automatic message translation");
     await interaction.editReply("❌ Nu am putut actualiza traducerea. Încearcă din nou.");
+  }
+}
+
+async function handleTranslateExistingMessage(
+  interaction: MessageContextMenuCommandInteraction,
+): Promise<void> {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!interaction.guildId) {
+    await interaction.editReply("Comanda poate fi folosită doar într-un server Discord.");
+    return;
+  }
+
+  try {
+    const result = await translateExistingMessage(
+      interaction.targetMessage,
+      botClient?.options.intents.has(GatewayIntentBits.MessageContent) ?? false,
+    );
+    const responseByResult = {
+      translated: "✅ Am publicat traducerea ca răspuns la mesajul selectat.",
+      already_romanian: "Mesajul pare să fie deja în română sau nu are text de tradus.",
+      already_processed: "Mesajul a fost deja procesat; nu voi publica încă o traducere.",
+      already_processing: "Traducerea acestui mesaj este deja în curs.",
+      channel_not_configured:
+        "Alege un mesaj din canalul configurat cu `/traducere activeaza`.",
+      message_content_unavailable:
+        "Botul nu poate citi conținutul. Activează Message Content Intent în Discord Developer Portal și repornește-l.",
+      not_translatable: "Mesajul nu conține text traductibil sau a fost trimis de un bot/webhook.",
+    } satisfies Record<Awaited<ReturnType<typeof translateExistingMessage>>, string>;
+    await interaction.editReply(responseByResult[result]);
+  } catch (err) {
+    logger.warn(
+      {
+        errorName: err instanceof Error ? err.name : "UnknownError",
+        guildId: interaction.guildId,
+        channelId: interaction.channelId,
+        messageId: interaction.targetMessage.id,
+      },
+      "Could not translate selected Discord message",
+    );
+    await interaction.editReply("❌ Nu am putut traduce mesajul. Încearcă din nou.");
   }
 }
 
@@ -5573,6 +5624,8 @@ export async function startBot(onReady?: () => void): Promise<void> {
         allowedWhileStopped =
           interaction.customId.startsWith("ticket_") ||
           interaction.customId.startsWith("help_question_");
+      } else if (interaction.isMessageContextMenuCommand()) {
+        allowedWhileStopped = interaction.commandName === TRANSLATE_EXISTING_MESSAGE_COMMAND;
       }
 
       if (!allowedWhileStopped) {
@@ -5621,6 +5674,11 @@ export async function startBot(onReady?: () => void): Promise<void> {
       if (interaction.commandName === "startjoc") dispatch(handleStartGame(interaction));
       if (interaction.commandName === "stopai") dispatch(handleStopAI(interaction));
       if (interaction.commandName === "startai") dispatch(handleStartAI(interaction));
+    } else if (
+      interaction.isMessageContextMenuCommand() &&
+      interaction.commandName === TRANSLATE_EXISTING_MESSAGE_COMMAND
+    ) {
+      dispatch(handleTranslateExistingMessage(interaction));
     } else if (interaction.isButton()) {
       dispatch(handleButton(interaction as ButtonInteraction));
     } else if (interaction.isStringSelectMenu()) {
@@ -5696,7 +5754,11 @@ export async function startBot(onReady?: () => void): Promise<void> {
 
   // Register commands globally so they appear on every server
   const rest = new REST().setToken(token);
-  const body = [...slashCommands.map((c) => c.toJSON()), ...moderationCommands];
+  const body = [
+    ...slashCommands.map((c) => c.toJSON()),
+    ...contextMenuCommands.map((c) => c.toJSON()),
+    ...moderationCommands,
+  ];
   await rest.put(Routes.applicationCommands(APPLICATION_ID), { body });
   logger.info("Commands registered globally");
 
@@ -6287,7 +6349,11 @@ export async function startBot(onReady?: () => void): Promise<void> {
 
   // Register commands globally so they appear on every server
   const rest = new REST().setToken(token);
-  const body = [...slashCommands.map((c) => c.toJSON()), ...moderationCommands];
+  const body = [
+    ...slashCommands.map((c) => c.toJSON()),
+    ...contextMenuCommands.map((c) => c.toJSON()),
+    ...moderationCommands,
+  ];
   await rest.put(Routes.applicationCommands(APPLICATION_ID), { body });
   logger.info("Commands registered globally");
 

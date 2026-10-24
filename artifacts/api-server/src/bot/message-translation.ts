@@ -90,6 +90,74 @@ async function persistProcessedMessage(guildId: string, messageId: string): Prom
   rememberProcessedMessage(messageId);
 }
 
+export type ExistingMessageTranslationResult =
+  | "translated"
+  | "already_romanian"
+  | "already_processed"
+  | "already_processing"
+  | "channel_not_configured"
+  | "message_content_unavailable"
+  | "not_translatable";
+
+async function translateAndReplyOnce(
+  message: Message,
+): Promise<"translated" | "already_romanian" | "already_processed" | "already_processing"> {
+  if (inFlightMessageIds.has(message.id)) return "already_processing";
+  if (processedMessageIds.has(message.id)) return "already_processed";
+  if (await hasProcessedMessageTranslation(message.guildId!, message.id)) {
+    rememberProcessedMessage(message.id);
+    return "already_processed";
+  }
+  if (inFlightMessageIds.has(message.id)) return "already_processing";
+  if (processedMessageIds.has(message.id)) return "already_processed";
+
+  inFlightMessageIds.add(message.id);
+  try {
+    const translated = await translateToRomanian(message.content);
+    if (!translated) {
+      await persistProcessedMessage(message.guildId!, message.id);
+      return "already_romanian";
+    }
+
+    const chunks = splitTranslationText(translated);
+    if (!chunks.length) {
+      await persistProcessedMessage(message.guildId!, message.id);
+      return "already_romanian";
+    }
+
+    await message.reply({
+      content: `${TRANSLATION_PREFIX}${chunks[0]}`,
+      allowedMentions: { parse: [], repliedUser: false },
+    });
+    for (const chunk of chunks.slice(1)) {
+      await message.reply({
+        content: `${CONTINUATION_PREFIX}${chunk}`,
+        allowedMentions: { parse: [], repliedUser: false },
+      });
+    }
+    await persistProcessedMessage(message.guildId!, message.id);
+    return "translated";
+  } finally {
+    inFlightMessageIds.delete(message.id);
+  }
+}
+
+export async function translateExistingMessage(
+  message: Message,
+  hasMessageContentIntent: boolean,
+): Promise<ExistingMessageTranslationResult> {
+  if (!hasMessageContentIntent) return "message_content_unavailable";
+  if (!message.guildId || !message.content.trim() || message.author.bot || message.webhookId) {
+    return "not_translatable";
+  }
+
+  const configuredChannelId = await getMessageTranslationChannel(message.guildId);
+  if (!configuredChannelId || configuredChannelId !== message.channelId) {
+    return "channel_not_configured";
+  }
+  return translateAndReplyOnce(message);
+}
+
 export async function maybeTranslateMessage(
   message: Message,
   hasMessageContentIntent: boolean,
@@ -111,39 +179,5 @@ export async function maybeTranslateMessage(
   ) {
     return;
   }
-
-  if (await hasProcessedMessageTranslation(message.guildId, message.id)) {
-    rememberProcessedMessage(message.id);
-    return;
-  }
-  if (inFlightMessageIds.has(message.id) || processedMessageIds.has(message.id)) return;
-
-  inFlightMessageIds.add(message.id);
-  try {
-    const translated = await translateToRomanian(message.content);
-    if (!translated) {
-      await persistProcessedMessage(message.guildId, message.id);
-      return;
-    }
-
-    const chunks = splitTranslationText(translated);
-    if (!chunks.length) {
-      await persistProcessedMessage(message.guildId, message.id);
-      return;
-    }
-
-    await message.reply({
-      content: `${TRANSLATION_PREFIX}${chunks[0]}`,
-      allowedMentions: { parse: [], repliedUser: false },
-    });
-    for (const chunk of chunks.slice(1)) {
-      await message.reply({
-        content: `${CONTINUATION_PREFIX}${chunk}`,
-        allowedMentions: { parse: [], repliedUser: false },
-      });
-    }
-    await persistProcessedMessage(message.guildId, message.id);
-  } finally {
-    inFlightMessageIds.delete(message.id);
-  }
+  await translateAndReplyOnce(message);
 }

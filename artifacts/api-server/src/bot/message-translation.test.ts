@@ -26,6 +26,7 @@ import {
   getMessageTranslationChannel,
   maybeTranslateMessage,
   setMessageTranslationChannel,
+  translateExistingMessage,
 } from "./message-translation";
 
 function makeMessage(overrides: Record<string, unknown> = {}): Message {
@@ -135,6 +136,60 @@ describe("automatic message translation", () => {
     });
 
     await maybeTranslateMessage(message, true);
+
+    expect(mocks.createCompletion).not.toHaveBeenCalled();
+    expect(message.reply).not.toHaveBeenCalled();
+  });
+
+  it("translates a selected older message in the configured channel as a reply", async () => {
+    mocks.loadConfig.mockResolvedValue({ channelId: "selected-channel" });
+    mocks.createCompletion.mockResolvedValue({
+      choices: [{ message: { content: "Traducere veche." } }],
+    });
+    const message = makeMessage({
+      id: "selected-old-message",
+      guildId: "guild-manual-translation",
+      channelId: "selected-channel",
+      content: "An older message.",
+    });
+
+    await expect(translateExistingMessage(message, true)).resolves.toBe("translated");
+
+    expect(mocks.createCompletion).toHaveBeenCalledTimes(1);
+    expect(message.reply).toHaveBeenCalledWith({
+      content: "🇷🇴 **Traducere:**\nTraducere veche.",
+      allowedMentions: { parse: [], repliedUser: false },
+    });
+    expect(mocks.markProcessed).toHaveBeenCalledWith(
+      "guild-manual-translation",
+      "selected-old-message",
+    );
+  });
+
+  it("only translates manually selected messages from the configured channel", async () => {
+    mocks.loadConfig.mockResolvedValue({ channelId: "configured-channel" });
+    const message = makeMessage({
+      id: "selected-message-outside-config",
+      guildId: "guild-manual-outside-channel",
+      channelId: "other-channel",
+    });
+
+    await expect(translateExistingMessage(message, true)).resolves.toBe("channel_not_configured");
+
+    expect(mocks.createCompletion).not.toHaveBeenCalled();
+    expect(message.reply).not.toHaveBeenCalled();
+  });
+
+  it("does not manually retranslate a message already handled before restart", async () => {
+    mocks.loadConfig.mockResolvedValue({ channelId: "selected-channel" });
+    mocks.hasProcessed.mockResolvedValue(true);
+    const message = makeMessage({
+      id: "manual-duplicate",
+      guildId: "guild-manual-duplicate",
+      channelId: "selected-channel",
+    });
+
+    await expect(translateExistingMessage(message, true)).resolves.toBe("already_processed");
 
     expect(mocks.createCompletion).not.toHaveBeenCalled();
     expect(message.reply).not.toHaveBeenCalled();
