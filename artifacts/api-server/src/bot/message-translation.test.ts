@@ -166,6 +166,28 @@ describe("automatic message translation", () => {
     );
   });
 
+  it("allows explicit manual translation of bot and webhook posts", async () => {
+    mocks.loadConfig.mockResolvedValue({ channelId: "selected-channel" });
+    mocks.createCompletion.mockResolvedValue({
+      choices: [{ message: { content: "Actualizare de echilibru." } }],
+    });
+    const message = makeMessage({
+      id: "selected-bot-announcement",
+      guildId: "guild-manual-bot-message",
+      channelId: "selected-channel",
+      content: "Balance Update: Targeting & Weapon Improvements",
+      author: { bot: true },
+      webhookId: "announcement-webhook",
+    });
+
+    await expect(translateExistingMessage(message, true)).resolves.toBe("translated");
+
+    expect(message.reply).toHaveBeenCalledWith({
+      content: "🇷🇴 **Traducere:**\nActualizare de echilibru.",
+      allowedMentions: { parse: [], repliedUser: false },
+    });
+  });
+
   it("only translates manually selected messages from the configured channel", async () => {
     mocks.loadConfig.mockResolvedValue({ channelId: "configured-channel" });
     const message = makeMessage({

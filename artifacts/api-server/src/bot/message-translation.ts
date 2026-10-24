@@ -147,7 +147,7 @@ export async function translateExistingMessage(
   hasMessageContentIntent: boolean,
 ): Promise<ExistingMessageTranslationResult> {
   if (!hasMessageContentIntent) return "message_content_unavailable";
-  if (!message.guildId || !message.content.trim() || message.author.bot || message.webhookId) {
+  if (!message.guildId || !message.content.trim()) {
     return "not_translatable";
   }
 
