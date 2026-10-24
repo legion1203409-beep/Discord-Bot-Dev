@@ -35,6 +35,11 @@ import { questNotifications } from "./quest-notifications";
 import { sendAiMemberMessage } from "./member-messages";
 import { messageWithImage } from "./message-media";
 import {
+  getMessageTranslationChannel,
+  maybeTranslateMessage,
+  setMessageTranslationChannel,
+} from "./message-translation";
+import {
   recordMessage,
   getCurrentMood,
   resumeOracle,
@@ -633,6 +638,27 @@ const slashCommands = [
       opt.setName("canal")
         .setDescription("Canalul text în care va fi publicată activitatea")
         .setRequired(true),
+    ),
+  new SlashCommandBuilder()
+    .setName("traducere")
+    .setDescription("🌐 [Admin] Configurează traducerea automată în română.")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("activeaza")
+        .setDescription("Traduce mesajele noi dintr-un canal în română, ca răspuns.")
+        .addChannelOption((option) =>
+          option
+            .setName("canal")
+            .setDescription("Canalul ale cărui mesaje vor fi traduse")
+            .setRequired(true),
+        ),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand.setName("opreste").setDescription("Oprește traducerea automată pe acest server."),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand.setName("status").setDescription("Arată canalul configurat și starea traducerii."),
     ),
   new SlashCommandBuilder()
     .setName("setaliantatext")
@@ -1843,6 +1869,89 @@ async function handleSetCanal(interaction: ChatInputCommandInteraction) {
     await interaction.editReply({
       content: "❌ Nu am putut salva canalul. Verifică permisiunile botului și încearcă din nou.",
     });
+  }
+}
+
+async function handleMessageTranslation(interaction: ChatInputCommandInteraction): Promise<void> {
+  if (!(await isOwner(interaction))) return;
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const guildId = interaction.guildId;
+  if (!guildId) {
+    await interaction.editReply("❌ Comanda poate fi folosită doar într-un server.");
+    return;
+  }
+
+  try {
+    const subcommand = interaction.options.getSubcommand();
+    if (subcommand === "activeaza") {
+      const channel = interaction.options.getChannel("canal", true);
+      if (!(channel instanceof TextChannel)) {
+        await interaction.editReply("❌ Alege un canal text obișnuit, nu un canal vocal sau un thread.");
+        return;
+      }
+
+      const botMember = interaction.guild?.members.me;
+      const permissions = botMember ? channel.permissionsFor(botMember) : null;
+      if (
+        !permissions ||
+        !permissions.has(PermissionFlagsBits.ViewChannel) ||
+        !permissions.has(PermissionFlagsBits.ReadMessageHistory) ||
+        !permissions.has(PermissionFlagsBits.SendMessages)
+      ) {
+        await interaction.editReply("❌ Botul trebuie să poată vedea canalul, citi istoricul și răspunde în el.");
+        return;
+      }
+
+      await setMessageTranslationChannel(guildId, channel.id);
+      const contentIntentEnabled =
+        botClient?.options.intents.has(GatewayIntentBits.MessageContent) ?? false;
+      const aiConfigured = Boolean(process.env.OPENAI_API_KEY);
+      const warnings = [
+        !contentIntentEnabled
+          ? "⚠️ Nu pot citi conținutul mesajelor încă. Activează **Message Content Intent** în Discord Developer Portal și repornește botul."
+          : "",
+        !aiConfigured ? "⚠️ Cheia OpenAI nu este configurată, deci traducerile nu pot fi generate." : "",
+      ].filter(Boolean);
+      await interaction.editReply(
+        `✅ Traducerea automată în română este configurată pentru <#${channel.id}>. ` +
+          "Mesajele originale rămân neschimbate, iar traducerea apare ca răspuns.\n" +
+          (warnings.length ? warnings.join("\n") : "Postările noi în engleză sau alte limbi vor fi traduse."),
+      );
+      logger.info(
+        { guildId, channelId: channel.id, userId: interaction.user.id },
+        "Automatic Romanian message translation configured",
+      );
+      return;
+    }
+
+    if (subcommand === "opreste") {
+      await setMessageTranslationChannel(guildId, null);
+      await interaction.editReply("✅ Traducerea automată a fost oprită pe acest server.");
+      logger.info({ guildId, userId: interaction.user.id }, "Automatic message translation disabled");
+      return;
+    }
+
+    const configuredChannelId = await getMessageTranslationChannel(guildId);
+    const contentIntentEnabled =
+      botClient?.options.intents.has(GatewayIntentBits.MessageContent) ?? false;
+    const aiConfigured = Boolean(process.env.OPENAI_API_KEY);
+    if (!configuredChannelId) {
+      await interaction.editReply("Traducerea automată nu este configurată. Folosește `/traducere activeaza` într-un canal ales.");
+      return;
+    }
+    const state = contentIntentEnabled && aiConfigured ? "este activă" : "este configurată, dar nu poate traduce încă";
+    const missing = [
+      !contentIntentEnabled ? "Message Content Intent nu este disponibil" : "",
+      !aiConfigured ? "cheia OpenAI lipsește" : "",
+    ].filter(Boolean);
+    await interaction.editReply(
+      `Traducerea automată ${state} în <#${configuredChannelId}>.` +
+        (missing.length ? `\n⚠️ ${missing.join("; ")}.` : ""),
+    );
+  } catch (err) {
+    logger.error({ err, guildId, userId: interaction.user.id }, "Failed to configure automatic message translation");
+    await interaction.editReply("❌ Nu am putut actualiza traducerea. Încearcă din nou.");
   }
 }
 
@@ -5140,6 +5249,20 @@ export async function startBot(onReady?: () => void): Promise<void> {
 
   client.on(Events.MessageCreate, (message) => {
     if (message.author.bot || !message.guildId) return;
+    void maybeTranslateMessage(
+      message,
+      client.options.intents.has(GatewayIntentBits.MessageContent),
+    ).catch((err) =>
+      logger.warn(
+        {
+          errorName: err instanceof Error ? err.name : "UnknownError",
+          guildId: message.guildId,
+          channelId: message.channelId,
+          messageId: message.id,
+        },
+        "Automatic message translation failed",
+      ),
+    );
     if (
       !message.webhookId &&
       isEligibleActivityMessage(message.content ?? "")
@@ -5423,6 +5546,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
           "ajutor",
            "profetie",
           "setcanal",
+          "traducere",
           "setaliantatext",
           "moderare",
           "warn",
@@ -5491,6 +5615,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
       if (interaction.commandName === "purificacheie") dispatch(handlePurificaCheie(interaction));
       if (interaction.commandName === "chei") dispatch(handleChei(interaction));
       if (interaction.commandName === "setcanal") dispatch(handleSetCanal(interaction));
+      if (interaction.commandName === "traducere") dispatch(handleMessageTranslation(interaction));
       if (interaction.commandName === "setaliantatext") dispatch(handleSetAliantaText(interaction));
       if (interaction.commandName === "stopjoc") dispatch(handleStopGame(interaction));
       if (interaction.commandName === "startjoc") dispatch(handleStartGame(interaction));

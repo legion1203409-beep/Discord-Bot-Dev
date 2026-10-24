@@ -2322,6 +2322,10 @@ export interface ChannelConfig {
   fratia?: string;
 }
 
+export interface MessageTranslationConfig {
+  channelId: string;
+}
+
 export interface VerificationConfig {
   enabled: boolean;
   channelId: string;
@@ -2379,6 +2383,39 @@ export async function loadChannelConfig(guildId: string): Promise<ChannelConfig 
   if (!row) return null;
   try {
     return JSON.parse(row.value) as ChannelConfig;
+  } catch {
+    return null;
+  }
+}
+
+const MESSAGE_TRANSLATION_CONFIG_KEY = "message_translation_config";
+
+export async function saveMessageTranslationConfig(
+  guildId: string,
+  config: MessageTranslationConfig,
+): Promise<void> {
+  await ensureBotStateTable();
+  const key = guildKey(guildId, MESSAGE_TRANSLATION_CONFIG_KEY);
+  const now = new Date();
+  await db.insert(botStateTable).values({ key, value: JSON.stringify(config) }).onConflictDoUpdate({
+    target: botStateTable.key,
+    set: { value: JSON.stringify(config), updatedAt: now },
+  });
+}
+
+export async function loadMessageTranslationConfig(guildId: string): Promise<MessageTranslationConfig | null> {
+  await ensureBotStateTable();
+  const [row] = await db
+    .select()
+    .from(botStateTable)
+    .where(eq(botStateTable.key, guildKey(guildId, MESSAGE_TRANSLATION_CONFIG_KEY)));
+  if (!row) return null;
+  try {
+    const parsed: unknown = JSON.parse(row.value);
+    if (!parsed || typeof parsed !== "object" || typeof (parsed as { channelId?: unknown }).channelId !== "string") {
+      return null;
+    }
+    return { channelId: (parsed as { channelId: string }).channelId };
   } catch {
     return null;
   }
