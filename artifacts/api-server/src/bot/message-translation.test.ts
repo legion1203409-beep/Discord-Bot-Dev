@@ -225,19 +225,40 @@ describe("automatic message translation", () => {
     expect(message.reply).not.toHaveBeenCalled();
   });
 
-  it("does not manually retranslate a message already handled before restart", async () => {
+  it("allows an explicit manual request to retranslate a message already handled before restart", async () => {
     mocks.loadConfig.mockResolvedValue({ channelId: "selected-channel" });
     mocks.hasProcessed.mockResolvedValue(true);
+    mocks.createCompletion.mockResolvedValue({
+      choices: [{ message: { content: "Traducere solicitată din nou." } }],
+    });
     const message = makeMessage({
       id: "manual-duplicate",
       guildId: "guild-manual-duplicate",
       channelId: "selected-channel",
     });
 
-    await expect(translateExistingMessage(message, true)).resolves.toBe("already_processed");
+    await expect(translateExistingMessage(message, true)).resolves.toBe("translated");
 
-    expect(mocks.createCompletion).not.toHaveBeenCalled();
-    expect(message.reply).not.toHaveBeenCalled();
+    expect(mocks.createCompletion).toHaveBeenCalledTimes(1);
+    expect(message.reply).toHaveBeenCalledTimes(1);
+  });
+
+  it("allows manual retranslation after automatic translation in the same process", async () => {
+    mocks.loadConfig.mockResolvedValue({ channelId: "selected-channel" });
+    mocks.createCompletion
+      .mockResolvedValueOnce({ choices: [{ message: { content: "Prima traducere." } }] })
+      .mockResolvedValueOnce({ choices: [{ message: { content: "Traducere repetată." } }] });
+    const message = makeMessage({
+      id: "manual-after-automatic",
+      guildId: "guild-manual-after-auto",
+      channelId: "selected-channel",
+    });
+
+    await maybeTranslateMessage(message, true);
+    await expect(translateExistingMessage(message, true)).resolves.toBe("translated");
+
+    expect(mocks.createCompletion).toHaveBeenCalledTimes(2);
+    expect(message.reply).toHaveBeenCalledTimes(2);
   });
 
   it("persists and caches the configured channel", async () => {

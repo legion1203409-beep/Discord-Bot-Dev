@@ -127,17 +127,20 @@ export type ExistingMessageTranslationResult =
   | "message_content_unavailable"
   | "not_translatable";
 
-async function translateAndReplyOnce(
+async function translateAndReply(
   message: Message,
+  allowRepeat = false,
 ): Promise<"translated" | "already_romanian" | "already_processed" | "already_processing"> {
   if (inFlightMessageIds.has(message.id)) return "already_processing";
-  if (processedMessageIds.has(message.id)) return "already_processed";
-  if (await hasProcessedMessageTranslation(message.guildId!, message.id)) {
-    rememberProcessedMessage(message.id);
-    return "already_processed";
+  if (!allowRepeat) {
+    if (processedMessageIds.has(message.id)) return "already_processed";
+    if (await hasProcessedMessageTranslation(message.guildId!, message.id)) {
+      rememberProcessedMessage(message.id);
+      return "already_processed";
+    }
+    if (inFlightMessageIds.has(message.id)) return "already_processing";
+    if (processedMessageIds.has(message.id)) return "already_processed";
   }
-  if (inFlightMessageIds.has(message.id)) return "already_processing";
-  if (processedMessageIds.has(message.id)) return "already_processed";
 
   inFlightMessageIds.add(message.id);
   try {
@@ -168,7 +171,7 @@ export async function translateExistingMessage(
   if (!configuredChannelId || configuredChannelId !== message.channelId) {
     return "channel_not_configured";
   }
-  return translateAndReplyOnce(message);
+  return translateAndReply(message, true);
 }
 
 export async function maybeTranslateMessage(
@@ -192,5 +195,5 @@ export async function maybeTranslateMessage(
   ) {
     return;
   }
-  await translateAndReplyOnce(message);
+  await translateAndReply(message);
 }
