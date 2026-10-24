@@ -40,10 +40,18 @@ export const EvidenceItemSchema = z.object({
 });
 export const EvidenceSchema = z.array(EvidenceItemSchema).max(25);
 
+// A timeout lasts from one minute to Discord's 28-day maximum.
+const muteMinutes = z.number().int().min(1).max(40_320);
+
 export const RuleSchema = z.object({
   enabled: z.boolean().default(false),
   action: action.default("none"),
   deleteMessage: z.boolean().optional(),
+  // Extra reactions the panel can tick next to `action`. Older configurations
+  // do not have them, so they stay optional and mean "off" / "default" when absent.
+  warnMember: z.boolean().optional(),
+  alertStaff: z.boolean().optional(),
+  muteMinutes: muteMinutes.optional(),
   severity: severity.default("normal"),
   // A zero threshold silently sanctions every event (or creates a zero-length
   // rate window), so thresholds are always positive integers.
@@ -124,6 +132,10 @@ export const ModerationConfigSchema = z.object({
     scamFilter: z.object({
       enabled: z.boolean().default(false),
       action: z.enum(["delete", "mute", "kick"]).default("delete"),
+      // The message is always deleted; these add to it.
+      warnMember: z.boolean().optional(),
+      alertStaff: z.boolean().optional(),
+      muteMinutes: muteMinutes.optional(),
     }).default({}),
     scamPhrases: textList.default([]),
     wordFilter: RuleSchema.default({}),
@@ -263,6 +275,10 @@ export const ModerationConfigSchema = z.object({
     enabled: z.boolean().default(false),
     sensitivity: z.enum(["low", "medium", "high"]).default("medium"),
     action: action.default("none"),
+    // Module-wide defaults for every rule below that does not choose its own.
+    warnMember: z.boolean().optional(),
+    alertStaff: z.boolean().optional(),
+    muteMinutes: muteMinutes.optional(),
     alertChannelId: snowflake.nullable().default(null),
     nicknameChanges: ruleSchemaWithThresholdDefaults({ key: "limit", value: 5, aliases: ["changes"] }).default({}),
     roleChanges: ruleSchemaWithThresholdDefaults({ key: "limit", value: 5, aliases: ["changes"] }).default({}),

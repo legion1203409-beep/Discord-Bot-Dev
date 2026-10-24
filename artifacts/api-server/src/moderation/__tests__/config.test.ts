@@ -74,6 +74,50 @@ describe("moderation configuration defaults", () => {
     })).toThrow();
   });
 
+  it("keeps rules saved before the warning, staff-alert and mute-length ticks existed exactly as they were", () => {
+    const config = ModerationConfigSchema.parse({
+      autoMod: { wordFilter: { enabled: true, action: "mute", deleteMessage: true } },
+      antiRaid: { rule: { enabled: true, action: "ban" } },
+      suspiciousBehavior: { enabled: true, action: "warn", massEdits: { enabled: true, action: "none" } },
+    });
+    for (const rule of [config.autoMod.wordFilter, config.antiRaid.rule, config.suspiciousBehavior.massEdits]) {
+      expect(rule).not.toHaveProperty("warnMember");
+      expect(rule).not.toHaveProperty("alertStaff");
+      expect(rule).not.toHaveProperty("muteMinutes");
+    }
+    expect(config.suspiciousBehavior).not.toHaveProperty("warnMember");
+    expect(config.autoMod.scamFilter).toEqual({ enabled: false, action: "delete" });
+  });
+
+  it("round-trips the extra ticks of a rule, the scam filter and the suspicious-behaviour module", () => {
+    const config = ModerationConfigSchema.parse({
+      autoMod: {
+        wordFilter: { enabled: true, action: "mute", deleteMessage: true, warnMember: true, alertStaff: true, muteMinutes: 90 },
+        scamFilter: { enabled: true, action: "mute", warnMember: true, alertStaff: false, muteMinutes: 1_440 },
+      },
+      antiSpam: { edit: { enabled: true, action: "none", warnMember: true, alertStaff: true } },
+      antiRaid: { rule: { enabled: true, action: "kick", warnMember: true, alertStaff: true } },
+      suspiciousBehavior: { enabled: true, action: "mute", warnMember: true, alertStaff: true, muteMinutes: 30 },
+    });
+    const loaded = ModerationConfigSchema.parse(JSON.parse(JSON.stringify(config)));
+    expect(loaded).toEqual(config);
+    expect(loaded.autoMod.wordFilter).toMatchObject({ warnMember: true, alertStaff: true, muteMinutes: 90 });
+    expect(loaded.autoMod.scamFilter).toMatchObject({ action: "mute", warnMember: true, alertStaff: false, muteMinutes: 1_440 });
+    expect(loaded.suspiciousBehavior).toMatchObject({ warnMember: true, alertStaff: true, muteMinutes: 30 });
+  });
+
+  it("keeps a configured mute inside what Discord accepts and does not widen the scam filter", () => {
+    const withMute = (muteMinutes: unknown) => ({ autoMod: { wordFilter: { enabled: true, action: "mute", muteMinutes } } });
+    expect(ModerationConfigSchema.parse(withMute(1)).autoMod.wordFilter.muteMinutes).toBe(1);
+    expect(ModerationConfigSchema.parse(withMute(40_320)).autoMod.wordFilter.muteMinutes).toBe(40_320);
+    for (const invalid of [0, -1, 40_321, 1.5, "30", null]) {
+      expect(() => ModerationConfigSchema.parse(withMute(invalid))).toThrow();
+    }
+    expect(() => ModerationConfigSchema.parse({ autoMod: { scamFilter: { action: "ban" } } })).toThrow();
+    expect(() => ModerationConfigSchema.parse({ autoMod: { wordFilter: { warnMember: "yes" } } })).toThrow();
+    expect(() => ModerationConfigSchema.parse({ autoMod: { wordFilter: { alertStaff: 1 } } })).toThrow();
+  });
+
   it("keeps automatic activity logs disabled by default and allows Discord-managed channel access", () => {
     expect(defaultModerationConfig.activityLog.enabled).toBe(false);
     expect(defaultModerationConfig.activityLog.channelIds.messages).toBeNull();

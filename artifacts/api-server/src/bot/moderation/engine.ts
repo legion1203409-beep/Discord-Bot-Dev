@@ -19,7 +19,8 @@ import { moderationStore } from "../../moderation/store";
 import type { ModerationConfig, ModerationAction as ConfiguredAction } from "../../moderation/config";
 import { logger } from "../../lib/logger";
 import { buildAutomaticModerationLogDescription } from "./automod-logging";
-import { shouldApplyLinkBlockInChannel, shouldDeleteAutoModMessage } from "./automod-policy";
+import { shouldApplyLinkBlockInChannel } from "./automod-policy";
+import { describeMemberActions, describeRulePlan, planRuleActions, type RuleActionPlan, type RuleActionSettings } from "./rule-actions";
 import { deliverWarningInGuild } from "./warning-delivery";
 import type { AutoModerationActionExecution } from "discord.js";
 import { NATIVE_AUTOMOD_KEYWORD_RULE_NAME } from "../native-automod";
@@ -52,6 +53,11 @@ export type ModerationActionInput = {
   source?: "manual" | "automod" | "raid";
   /** Avoid duplicate Discord posts when a module alert and activity log share a channel. */
   skipActivityLog?: boolean;
+  /**
+   * An extra warning that accompanies a stronger sanction for the same violation
+   * must not move the member up the escalation ladder a second time.
+   */
+  countsAsOffense?: boolean;
   evidence?: unknown[];
   /** Required for externally initiated actions; incident keys are generated for internal events. */
   idempotencyKey?: string;
@@ -130,10 +136,6 @@ async function serializedEscalation<T>(key: string, operation: () => Promise<T>)
 
 function reason(input: ModerationActionInput): string {
   return (input.reason ?? "Fără motiv specificat").replace(/[\r\n]+/g, " ").trim().slice(0, 500);
-}
-
-function eventAction(action: ConfiguredAction): ModerationActionType | null {
-  return action === "delete" || action === "none" ? null : action;
 }
 
 function activeSeverity(config: ModerationConfig, channelId: string, base: "soft" | "normal" | "hard"): "soft" | "normal" | "hard" {
@@ -587,6 +589,16 @@ export type ModerationTemplateContext = {
   durationMinutes?: number | null;
 };
 
+export type ModerationNotifyOptions = {
+  /** Mention the staff roles from the settings in this message. */
+  pingStaff?: boolean;
+};
+
+/** The staff roles that "Anunță staff-ul" mentions: the configured ones, no duplicates, a sane maximum. */
+export function staffPingRoleIds(config: ModerationConfig): string[] {
+  return [...new Set(config.permissions.staffRoleIds)].slice(0, 10);
+}
+
 export async function notify(
   config: ModerationConfig,
   guild: Guild,
@@ -594,6 +606,7 @@ export async function notify(
   description: string,
   preferredChannelId?: string | null,
   templateContext?: ModerationTemplateContext,
+  options?: ModerationNotifyOptions,
 ): Promise<void> {
   const id = preferredChannelId ?? (config.audit.enabled ? config.audit.channelId : null);
   if (!id) return;
@@ -603,9 +616,14 @@ export async function notify(
     return;
   }
   const embed = buildEmbed(config, guild, title, description, templateContext);
+  const pingRoles = options?.pingStaff ? staffPingRoleIds(config) : [];
+  // Only the roles chosen in the settings may be pinged, never @everyone or a
+  // member, whatever the description says.
+  const allowedMentions = pingRoles.length ? { parse: [] as never[], roles: pingRoles } : { parse: [] as never[] };
+  const mentions = pingRoles.map((roleId) => `<@&${roleId}>`).join(" ");
   await channel.send(embed
-    ? { embeds: [embed], allowedMentions: { parse: [] } }
-    : { content: `**${title}**\n${description}`.slice(0, 2_000), allowedMentions: { parse: [] } },
+    ? { ...(mentions ? { content: mentions } : {}), embeds: [embed], allowedMentions }
+    : { content: `${mentions ? `${mentions}\n` : ""}**${title}**\n${description}`.slice(0, 2_000), allowedMentions },
   ).catch((error) => logger.warn({ error, guildId: guild.id, channelId: id }, "Moderation notification could not be sent"));
 }
 
@@ -908,7 +926,8 @@ export async function executeModerationAction(input: ModerationActionInput): Pro
     await moderationStore.finalizeAction({
       guildId: input.guildId, actionId: started.action.id, actorId: input.actorId,
       status: "applied", caseId, outcome: "applied", result: { actionId, caseId, summary },
-      confirmedOffense: (input.source === "automod" || input.source === "raid") && config.escalation.enabled && input.targetId
+      confirmedOffense: (input.source === "automod" || input.source === "raid") && input.countsAsOffense !== false &&
+        config.escalation.enabled && input.targetId
         ? { userId: input.targetId, resetAfterDays: config.escalation.resetAfterDays } : undefined,
     });
   } catch (finalizeError) {
@@ -951,12 +970,15 @@ export async function executeModerationAction(input: ModerationActionInput): Pro
   }
 }
 
+/** Anything the engine can run for a message: a configured rule or an ad-hoc AI verdict. */
+type AutomaticRule = RuleActionSettings & { severity?: "soft" | "normal" | "hard" };
+
 async function applyAutomatic(
   guild: Guild,
   config: ModerationConfig,
   message: Message,
   detection: Detection,
-  rule: { action: ConfiguredAction; severity?: "soft" | "normal" | "hard"; deleteMessage?: boolean },
+  rule: AutomaticRule,
   extractedText?: string,
 ): Promise<boolean> {
   return serializedEscalation(`${guild.id}:${message.author.id}`, () =>
@@ -966,7 +988,7 @@ async function applyAutomatic(
 
 export function automaticLogDestination(
   config: ModerationConfig,
-  rule: { action: ConfiguredAction; severity?: "soft" | "normal" | "hard"; deleteMessage?: boolean },
+  rule: AutomaticRule,
 ): { title: string; channelId: string | null } | null {
   if (
     rule === config.autoMod.scamFilter ||
@@ -1039,7 +1061,7 @@ async function applyAutomaticSerialized(
   config: ModerationConfig,
   message: Message,
   detection: Detection,
-  rule: { action: ConfiguredAction; severity?: "soft" | "normal" | "hard"; deleteMessage?: boolean },
+  rule: AutomaticRule,
   extractedText?: string,
 ): Promise<boolean> {
   const idempotencyKey = `${guild.id}:${message.id}:${detection.kind}:${rule.action}`;
@@ -1056,8 +1078,11 @@ async function applyAutomaticSerialized(
   // solely when the owner explicitly enabled and configured its levels.
   const selectedAction = await actionAtEscalationLevel(config, guild.id, message.author.id, rule.action);
   const isScamDetection = detection.kind === "scam";
-  const deleteMessage = shouldDeleteAutoModMessage(selectedAction, rule.deleteMessage, isScamDetection);
+  // Everything the operator ticked for this rule, decided in one place.
+  const plan = planRuleActions(rule, { selectedAction, alwaysDelete: isScamDetection });
+  const deleteMessage = plan.deleteMessage;
   const evidence = moderationMessageEvidence(message);
+  const violationEvidence = [{ messageId: message.id, channelId: message.channelId, kind: detection.kind }];
   let deletionSucceeded = false;
   if (deleteMessage) {
     try {
@@ -1066,7 +1091,7 @@ async function applyAutomaticSerialized(
         type: "delete", reason: `AutoMod delete: ${why}`, source: "automod",
         skipActivityLog: duplicateModerationActivityLog,
         idempotencyKey: `${incidentKey}:message:${message.id}`,
-        evidence: [{ messageId: message.id, channelId: message.channelId, kind: detection.kind }],
+        evidence: violationEvidence,
       });
       deletionSucceeded = true;
     } catch (error) {
@@ -1077,10 +1102,9 @@ async function applyAutomaticSerialized(
       }, duplicateModerationActivityLog).catch(() => undefined);
     }
   }
-  if (destination?.channelId) {
-    const actionSummary = deleteMessage
-      ? deletionSucceeded ? "Mesaj șters automat" : "Ștergerea mesajului a eșuat"
-      : `Acțiune configurată: ${configuredActionLabel(selectedAction)}`;
+  // A module without a log channel stays silent, unless the operator asked to
+  // alert the staff: then the audit channel (when enabled) receives the ping.
+  if (destination && (destination.channelId || plan.alertStaff)) {
     await notify(
       config,
       guild,
@@ -1098,7 +1122,7 @@ async function applyAutomaticSerialized(
           attachments: evidence.attachments,
           extractedText,
           deletionFailed: deleteMessage && !deletionSucceeded,
-          actionSummary,
+          actionSummary: describeRulePlan(plan, { deletionSucceeded }),
         },
       ),
       destination.channelId,
@@ -1106,7 +1130,9 @@ async function applyAutomaticSerialized(
         memberId: message.author.id,
         moderatorId: moderationClient?.user?.id,
         channelId: message.channelId,
+        durationMinutes: plan.muteMinutes,
       },
+      plan.alertStaff ? { pingStaff: true } : undefined,
     );
   }
   if (config.channels.autoSlowmodeChannelIds.includes(message.channelId)) {
@@ -1117,26 +1143,52 @@ async function applyAutomaticSerialized(
       await channel.setRateLimitPerUser(seconds, `AutoMod: ${why}`).catch(() => undefined);
     }
   }
-  if (selectedAction === "delete") {
-    // Each message gets its own delete ledger key above. Do not try to delete
-    // it a second time when deletion is also the selected sanction.
-    return true;
+  // Deleting is its own ledger entry above, so "delete" never repeats here.
+  if (!plan.primary) return deleteMessage;
+  await applyMemberActions(guild, message.author.id, message.channelId, plan, `AutoMod: ${why}`, incidentKey, violationEvidence);
+  // An attempted action is terminal for this message even if Discord rejected
+  // it; falling through would cause a duplicate legacy punishment.
+  return true;
+}
+
+/**
+ * The member-facing half of a rule plan: an optional extra warning, then the
+ * main action. Neither failure is allowed to stop the other.
+ */
+async function applyMemberActions(
+  guild: Guild,
+  targetId: string,
+  channelId: string | undefined,
+  plan: RuleActionPlan,
+  reasonText: string,
+  incidentKey: string,
+  evidence: unknown[],
+): Promise<void> {
+  if (!plan.primary) return;
+  const actorId = moderationClient!.user!.id;
+  if (plan.extraWarning) {
+    try {
+      await executeModerationAction({
+        guildId: guild.id, actorId, targetId, channelId, type: "warn",
+        reason: reasonText, source: "automod", evidence,
+        // The warning rides along with the main action: one violation, one offense.
+        countsAsOffense: false,
+        idempotencyKey: `${incidentKey}:warn`,
+      });
+    } catch (error) {
+      logger.warn({ error, guildId: guild.id, userId: targetId }, "AutoMod extra warning rejected or failed");
+    }
   }
-  const action = eventAction(selectedAction);
-  if (!action) return deleteMessage;
   try {
     await executeModerationAction({
-      guildId: guild.id, actorId: moderationClient!.user!.id, targetId: message.author.id, channelId: message.channelId, type: action,
-      reason: `AutoMod: ${why}`, source: "automod",
+      guildId: guild.id, actorId, targetId, channelId, type: plan.primary,
+      ...(plan.muteMinutes !== null ? { durationMinutes: plan.muteMinutes } : {}),
+      reason: reasonText, source: "automod",
       idempotencyKey: incidentKey,
-      evidence: [{ messageId: message.id, channelId: message.channelId, kind: detection.kind }],
+      evidence,
     });
-    return true;
   } catch (error) {
-    logger.warn({ error, guildId: guild.id, userId: message.author.id, kind: detection.kind }, "AutoMod action rejected or failed");
-    // An attempted action is terminal for this message even if Discord rejected
-    // it; falling through would cause a duplicate legacy punishment.
-    return true;
+    logger.warn({ error, guildId: guild.id, userId: targetId, action: plan.primary }, "AutoMod action rejected or failed");
   }
 }
 
@@ -1358,8 +1410,10 @@ async function handleNativeAutoModerationExecution(
   const actorId = client.user?.id;
   if (!actorId) return;
   const selectedAction = await actionAtEscalationLevel(config, execution.guild.id, target.id, rule.action);
+  // Discord already blocked the message itself; only the member-facing ticks remain.
+  const plan = planRuleActions(rule, { selectedAction });
   const matched = execution.matchedKeyword?.trim();
-  if (autoMod.logChannelId) {
+  if (autoMod.logChannelId || plan.alertStaff) {
     await notify(
       config,
       execution.guild,
@@ -1376,8 +1430,8 @@ async function handleNativeAutoModerationExecution(
           messageContent: execution.content ?? "",
           deletedContent: execution.action.type === AutoModerationActionType.BlockMessage ? execution.content : undefined,
           actionSummary: execution.action.type === AutoModerationActionType.BlockMessage
-            ? "Mesaj blocat de AutoMod Discord"
-            : `Acțiune configurată: ${configuredActionLabel(selectedAction)}`,
+            ? ["Mesaj blocat de AutoMod Discord", ...describeMemberActions(plan)].join(" + ")
+            : describeRulePlan(plan),
         },
       ),
       autoMod.logChannelId,
@@ -1385,25 +1439,21 @@ async function handleNativeAutoModerationExecution(
         memberId: target.id,
         moderatorId: actorId,
         channelId,
+        durationMinutes: plan.muteMinutes,
       },
+      plan.alertStaff ? { pingStaff: true } : undefined,
     );
   }
-  if (selectedAction === "none" || selectedAction === "delete") return;
-  await executeModerationAction({
-    guildId: execution.guild.id,
-    actorId,
-    targetId: target.id,
+  if (!plan.primary) return;
+  await applyMemberActions(
+    execution.guild,
+    target.id,
     channelId,
-    type: selectedAction,
-    reason: `AutoMod: cuvânt interzis${matched ? ` „${matched}”` : ""}`,
-    source: "automod",
-    idempotencyKey: `automod:${execution.guild.id}:${target.id}:word:${Math.floor(Date.now() / 60_000)}`,
-    evidence: [{
-      messageId: execution.messageId ?? undefined,
-      channelId,
-      kind: "word",
-    }],
-  });
+    plan,
+    `AutoMod: cuvânt interzis${matched ? ` „${matched}”` : ""}`,
+    `automod:${execution.guild.id}:${target.id}:word:${Math.floor(Date.now() / 60_000)}`,
+    [{ messageId: execution.messageId ?? undefined, channelId, kind: "word" }],
+  );
 }
 
 /** Register the independently owned Discord-event adapter once per client. */

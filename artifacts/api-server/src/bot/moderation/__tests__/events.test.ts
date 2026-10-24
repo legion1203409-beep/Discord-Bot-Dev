@@ -613,4 +613,201 @@ describe("non-message moderation events", () => {
     expect(description).toContain("Actorul nu a putut fi identificat");
     expect(description).toContain("nu se aplică sancțiune");
   });
+
+  describe("the actions ticked for a rule", () => {
+    /** A guild whose audit log names a verified, non-staff member as the executor. */
+    function guildWithVerifiedActor(id: string, targetId: string, executorId: string) {
+      const entry = { createdTimestamp: Date.now(), targetId, executorId, executor: { bot: false }, extra: null };
+      const executor = { id: executorId, user: { bot: false }, roles: { cache: roles }, permissions: { has: () => false } };
+      return Object.assign(guild(id), {
+        fetchAuditLogs: vi.fn(async () => ({
+          entries: { find: (predicate: (candidate: typeof entry) => boolean) => [entry].find(predicate) },
+        })),
+        members: { fetch: vi.fn(async () => executor) },
+      });
+    }
+
+    it("warns, bans and pings the staff for one raid, counting the warning only once", async () => {
+      const config = structuredClone(defaultModerationConfig);
+      config.antiRaid.enabled = true;
+      config.antiRaid.alertChannelId = "44444";
+      config.antiRaid.rule = {
+        enabled: true, action: "ban", warnMember: true, alertStaff: true, severity: "normal",
+        thresholds: { joins: 1, windowSeconds: 60 },
+      };
+      const { emitter, helpers } = setup(config);
+      const targetGuild = guild("10101");
+
+      emitter.emit(Events.GuildMemberAdd, member(targetGuild, "20101"));
+      emitter.emit(Events.GuildMemberAdd, member(targetGuild, "20102"));
+      await waitForHandlers();
+
+      expect(helpers.notify).toHaveBeenCalledWith(
+        config, targetGuild, "Alertă anti-raid", expect.any(String), "44444", undefined, { pingStaff: true },
+      );
+      const calls = vi.mocked(helpers.executeModerationAction).mock.calls.map(([input]) => input);
+      expect(calls).toHaveLength(2);
+      expect(calls[0]).toMatchObject({
+        targetId: "20102", type: "warn", source: "raid", countsAsOffense: false,
+        idempotencyKey: expect.stringMatching(/^raid:10101:.*:member:20102:warn$/),
+      });
+      expect(calls[1]).toMatchObject({
+        targetId: "20102", type: "ban", source: "raid",
+        idempotencyKey: expect.stringMatching(/^raid:10101:.*:member:20102$/),
+      });
+      expect(calls[1]).not.toHaveProperty("countsAsOffense");
+    });
+
+    it("mutes for the configured length and warns with a ticked warning alone", async () => {
+      const config = structuredClone(defaultModerationConfig);
+      config.antiRaid.enabled = true;
+      config.antiRaid.rule = {
+        enabled: true, action: "mute", muteMinutes: 120, severity: "normal", thresholds: { joins: 1, windowSeconds: 60 },
+      };
+      const { emitter, helpers } = setup(config);
+      const targetGuild = guild("10102");
+      emitter.emit(Events.GuildMemberAdd, member(targetGuild, "20103"));
+      emitter.emit(Events.GuildMemberAdd, member(targetGuild, "20104"));
+      await waitForHandlers();
+      expect(helpers.executeModerationAction).toHaveBeenCalledTimes(1);
+      expect(helpers.executeModerationAction).toHaveBeenCalledWith(expect.objectContaining({
+        targetId: "20104", type: "mute", durationMinutes: 120, source: "raid",
+      }));
+
+      const warnOnly = structuredClone(defaultModerationConfig);
+      warnOnly.antiRaid.enabled = true;
+      warnOnly.antiRaid.rule = {
+        enabled: true, action: "none", warnMember: true, severity: "normal", thresholds: { joins: 1, windowSeconds: 60 },
+      };
+      const second = setup(warnOnly);
+      const otherGuild = guild("10103");
+      second.emitter.emit(Events.GuildMemberAdd, member(otherGuild, "20105"));
+      second.emitter.emit(Events.GuildMemberAdd, member(otherGuild, "20106"));
+      await waitForHandlers();
+      expect(second.helpers.executeModerationAction).toHaveBeenCalledTimes(1);
+      expect(second.helpers.executeModerationAction).toHaveBeenCalledWith(expect.objectContaining({
+        targetId: "20106", type: "warn", source: "raid",
+      }));
+    });
+
+    it("sends nothing extra for a rule saved before the new ticks existed", async () => {
+      const config = structuredClone(defaultModerationConfig);
+      config.antiRaid.enabled = true;
+      config.antiRaid.alertChannelId = "44444";
+      config.antiRaid.rule = { enabled: true, action: "mute", severity: "normal", thresholds: { joins: 1, windowSeconds: 60 } };
+      const { emitter, helpers } = setup(config);
+      const targetGuild = guild("10104");
+      emitter.emit(Events.GuildMemberAdd, member(targetGuild, "20107"));
+      emitter.emit(Events.GuildMemberAdd, member(targetGuild, "20108"));
+      await waitForHandlers();
+
+      expect(helpers.notify).toHaveBeenCalledWith(config, targetGuild, "Alertă anti-raid", expect.any(String), "44444");
+      const [input] = vi.mocked(helpers.executeModerationAction).mock.calls[0]!;
+      // Ten minutes is what a mute always lasted; nothing else is added to the request.
+      expect(input).toMatchObject({ type: "mute", durationMinutes: 10 });
+      expect(input).not.toHaveProperty("countsAsOffense");
+      expect(helpers.executeModerationAction).toHaveBeenCalledTimes(1);
+    });
+
+    it("deletes an edit-spam message, warns the author and pings the staff in the anti-spam log", async () => {
+      const config = structuredClone(defaultModerationConfig);
+      config.antiSpam.enabled = true;
+      config.antiSpam.logChannelId = "55555";
+      config.antiSpam.edit = {
+        enabled: true, action: "delete", warnMember: true, alertStaff: true, severity: "normal",
+        thresholds: { limit: 1, window: 60 },
+      };
+      const { emitter, helpers } = setup(config);
+      const targetGuild = guild("10105");
+      const first = message(targetGuild, "20109");
+      const second = message(targetGuild, "20109");
+
+      emitter.emit(Events.MessageUpdate, { content: "first" }, first);
+      emitter.emit(Events.MessageUpdate, { content: "second" }, second);
+      await waitForHandlers();
+
+      const calls = vi.mocked(helpers.executeModerationAction).mock.calls.map(([input]) => input);
+      expect(calls).toHaveLength(2);
+      expect(calls[0]).toMatchObject({
+        type: "delete", messageId: second.id, targetId: "20109",
+        idempotencyKey: expect.stringMatching(/^edit:10105:20109:.*:delete$/),
+      });
+      expect(calls[1]).toMatchObject({ type: "warn", targetId: "20109", source: "automod" });
+      expect(calls[1]).not.toHaveProperty("countsAsOffense");
+      expect(helpers.notify).toHaveBeenCalledTimes(1);
+      expect(helpers.notify).toHaveBeenCalledWith(
+        config, targetGuild, "Spam de editări", expect.any(String), "55555",
+        expect.objectContaining({ memberId: "20109", channelId: "33333" }), { pingStaff: true },
+      );
+    });
+
+    it("applies the module's ticks to a verified actor's mass deletion", async () => {
+      const config = structuredClone(defaultModerationConfig);
+      config.suspiciousBehavior.enabled = true;
+      config.suspiciousBehavior.alertChannelId = "44446";
+      config.suspiciousBehavior.action = "mute";
+      config.suspiciousBehavior.warnMember = true;
+      config.suspiciousBehavior.alertStaff = true;
+      config.suspiciousBehavior.muteMinutes = 180;
+      config.suspiciousBehavior.massDeletes = {
+        enabled: true, action: "none", severity: "normal", thresholds: { limit: 1, windowSeconds: 60 },
+      };
+      const { emitter, helpers } = setup(config);
+      const targetGuild = guildWithVerifiedActor("10106", "author-10106", "70106");
+
+      emitter.emit(Events.MessageDelete, message(targetGuild, "author-10106"));
+      emitter.emit(Events.MessageDelete, message(targetGuild, "author-10106"));
+      await waitForHandlers();
+
+      expect(helpers.notify).toHaveBeenCalledWith(
+        config, targetGuild, "Activitate suspectă", expect.any(String), "44446", undefined, { pingStaff: true },
+      );
+      const calls = vi.mocked(helpers.executeModerationAction).mock.calls.map(([input]) => input);
+      expect(calls).toHaveLength(2);
+      // The person who deleted the messages is sanctioned, never the author of the deleted ones.
+      expect(calls[0]).toMatchObject({ type: "warn", targetId: "70106", countsAsOffense: false });
+      expect(calls[1]).toMatchObject({ type: "mute", targetId: "70106", durationMinutes: 180 });
+    });
+
+    it("keeps a rule's own sanction instead of mixing in the module's one", async () => {
+      const config = structuredClone(defaultModerationConfig);
+      config.suspiciousBehavior.enabled = true;
+      config.suspiciousBehavior.alertChannelId = "44448";
+      config.suspiciousBehavior.action = "ban";
+      config.suspiciousBehavior.warnMember = true;
+      config.suspiciousBehavior.massDeletes = {
+        enabled: true, action: "kick", severity: "normal", thresholds: { limit: 1, windowSeconds: 60 },
+      };
+      const { emitter, helpers } = setup(config);
+      const targetGuild = guildWithVerifiedActor("10107", "author-10107", "70107");
+
+      emitter.emit(Events.MessageDelete, message(targetGuild, "author-10107"));
+      emitter.emit(Events.MessageDelete, message(targetGuild, "author-10107"));
+      await waitForHandlers();
+
+      expect(helpers.executeModerationAction).toHaveBeenCalledTimes(1);
+      expect(helpers.executeModerationAction).toHaveBeenCalledWith(expect.objectContaining({ type: "kick", targetId: "70107" }));
+      expect(helpers.notify).toHaveBeenCalledWith(config, targetGuild, "Activitate suspectă", expect.any(String), "44448");
+    });
+
+    it("pings the staff for a join/leave flood, which never sanctions anyone", async () => {
+      const config = structuredClone(defaultModerationConfig);
+      config.suspiciousBehavior.enabled = true;
+      config.suspiciousBehavior.alertChannelId = "44447";
+      config.suspiciousBehavior.joinLeaveFlood = {
+        enabled: true, action: "ban", alertStaff: true, severity: "normal", thresholds: { limit: 1, windowSeconds: 60 },
+      };
+      const { emitter, helpers } = setup(config);
+      const targetGuild = guild("10108");
+
+      emitter.emit(Events.GuildMemberAdd, member(targetGuild, "20110"));
+      emitter.emit(Events.GuildMemberAdd, member(targetGuild, "20111"));
+      await waitForHandlers();
+
+      expect(helpers.notify).toHaveBeenCalledWith(
+        config, targetGuild, "Activitate suspectă", expect.any(String), "44447", undefined, { pingStaff: true },
+      );
+      expect(helpers.executeModerationAction).not.toHaveBeenCalled();
+    });
+  });
 });

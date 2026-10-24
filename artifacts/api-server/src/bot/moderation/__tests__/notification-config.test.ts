@@ -214,4 +214,70 @@ describe("saved moderation notification settings", () => {
     await notify(config, guild, "AI", "Flag", "987654321098765432");
     expect(send).not.toHaveBeenCalled();
   });
+
+  describe("alerting the staff", () => {
+    const staffRoles = ["111111111111111111", "222222222222222222"];
+
+    it("mentions only the staff roles from the settings next to an embed", async () => {
+      const config = structuredClone(defaultModerationConfig);
+      config.embeds.enabled = true;
+      config.permissions.staffRoleIds = [...staffRoles, staffRoles[0]!];
+      const { guild, send } = fixture();
+
+      await notify(config, guild, "AutoMod", "@everyone a încălcat regula", "987654321098765432", undefined, { pingStaff: true });
+
+      const payload = send.mock.calls[0]?.[0] as unknown as {
+        content?: string; embeds: unknown[]; allowedMentions: { parse: string[]; roles?: string[] };
+      };
+      expect(payload.content).toBe("<@&111111111111111111> <@&222222222222222222>");
+      expect(payload.embeds).toHaveLength(1);
+      // The text of the alert can never ping anyone: only the chosen roles may be mentioned.
+      expect(payload.allowedMentions).toEqual({ parse: [], roles: staffRoles });
+    });
+
+    it("puts the mentions in front of a plain-text alert", async () => {
+      const config = structuredClone(defaultModerationConfig);
+      config.permissions.staffRoleIds = staffRoles;
+      const { guild, send } = fixture();
+
+      await notify(config, guild, "AutoMod", "Detalii", "987654321098765432", undefined, { pingStaff: true });
+
+      const payload = send.mock.calls[0]?.[0] as unknown as { content: string; allowedMentions: { parse: string[]; roles?: string[] } };
+      expect(payload.content).toBe("<@&111111111111111111> <@&222222222222222222>\n**AutoMod**\nDetalii");
+      expect(payload.allowedMentions).toEqual({ parse: [], roles: staffRoles });
+    });
+
+    it("mentions nobody when the tick is off, or when no staff role is configured", async () => {
+      const config = structuredClone(defaultModerationConfig);
+      config.embeds.enabled = true;
+      config.permissions.staffRoleIds = staffRoles;
+      const quiet = fixture();
+      await notify(config, quiet.guild, "AutoMod", "Detalii", "987654321098765432");
+      await notify(config, quiet.guild, "AutoMod", "Detalii", "987654321098765432", undefined, { pingStaff: false });
+      for (const call of quiet.send.mock.calls) {
+        const payload = call[0] as unknown as { content?: string; allowedMentions: unknown };
+        expect(payload.content).toBeUndefined();
+        expect(payload.allowedMentions).toEqual({ parse: [] });
+      }
+
+      config.permissions.staffRoleIds = [];
+      const noRoles = fixture();
+      await notify(config, noRoles.guild, "AutoMod", "Detalii", "987654321098765432", undefined, { pingStaff: true });
+      const payload = noRoles.send.mock.calls[0]?.[0] as unknown as { content?: string; allowedMentions: unknown };
+      expect(payload.content).toBeUndefined();
+      expect(payload.allowedMentions).toEqual({ parse: [] });
+    });
+
+    it("pings at most ten staff roles", async () => {
+      const config = structuredClone(defaultModerationConfig);
+      config.embeds.enabled = true;
+      config.permissions.staffRoleIds = Array.from({ length: 15 }, (_, index) => `1000000000000000${String(index).padStart(2, "0")}`);
+      const { guild, send } = fixture();
+
+      await notify(config, guild, "AutoMod", "Detalii", "987654321098765432", undefined, { pingStaff: true });
+
+      const payload = send.mock.calls[0]?.[0] as unknown as { allowedMentions: { roles: string[] } };
+      expect(payload.allowedMentions.roles).toHaveLength(10);
+    });
+  });
 });
