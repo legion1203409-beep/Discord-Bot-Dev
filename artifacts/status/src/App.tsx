@@ -8,7 +8,7 @@ import { AuditPage } from "./pages/moderation/Audit";
 import { AdvancedSettingsPage } from "./pages/moderation/Settings";
 import { ConfigOverviewPage } from "./pages/moderation/ConfigOverview";
 import { CategorySettingsPage } from "./pages/moderation/CategorySettings";
-import { ProtectionPage } from "./pages/moderation/Protection";
+import { ProtectionGroupPage } from "./pages/moderation/panel/ProtectionGroup";
 import { BotControlPage } from "./pages/moderation/BotControl";
 import { VerificationAdminPage } from "./pages/moderation/VerificationAdmin";
 import { MessageTemplatesPage } from "./pages/moderation/MessageTemplates";
@@ -89,13 +89,14 @@ function ModerationApp() {
       <div key={guildId ?? "no-guild"}>
         <Switch>
           <Route path="/" component={DashboardOverview} />
-          <Route path="/automod" component={() => <CategorySettingsPage section="automod" />} />
+          {/* The protection group is one page: the same component on all six routes keeps unsaved changes while moving between modules. */}
+          <Route path="/protectie" component={ProtectionGroupPage} />
+          <Route path="/automod" component={ProtectionGroupPage} />
+          <Route path="/anti-spam" component={ProtectionGroupPage} />
+          <Route path="/anti-flood" component={ProtectionGroupPage} />
+          <Route path="/anti-raid" component={ProtectionGroupPage} />
+          <Route path="/comportament-suspect" component={ProtectionGroupPage} />
           <Route path="/ai" component={() => <CategorySettingsPage section="ai" />} />
-          <Route path="/anti-spam" component={() => <CategorySettingsPage section="anti-spam" />} />
-          <Route path="/anti-flood" component={() => <CategorySettingsPage section="anti-flood" />} />
-          <Route path="/comportament-suspect" component={() => <CategorySettingsPage section="suspicious" />} />
-          <Route path="/protectie" component={ProtectionPage} />
-          <Route path="/anti-raid" component={() => <CategorySettingsPage section="anti-raid" />} />
           <Route path="/politici" component={() => <CategorySettingsPage section="roles-channels" />} />
           <Route path="/comenzi" component={CommandsPage} />
           <Route path="/cazuri" component={CasesPage} />

@@ -7,7 +7,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Switch } from "../../components/ui/switch";
 import { Textarea } from "../../components/ui/textarea";
 import { activityLogDraftError } from "../../lib/activity-log-validation";
-import { DELETE_SPAM, EDIT_SPAM, EMOJI_LIMIT, groupThresholdFields, MENTION_LIMIT, MESSAGE_SPAM, type Threshold } from "../../lib/anti-spam-validation";
+import {
+  CAPS_LIMIT, DELETE_SPAM, EDIT_SPAM, EMOJI_LIMIT, FLOOD_LENGTH, FLOOD_RUN, groupThresholdFields, MENTION_LIMIT, MESSAGE_SPAM,
+  RAID_LIMIT, REPEAT_LIMIT, SUSPICIOUS_LIMIT, type Threshold,
+} from "../../lib/anti-spam-validation";
 import { embedUrlDraftError, isPublicGifUrl, isPublicHttpsUrl } from "../../lib/embed-url-validation";
 import { MANUAL_COMMAND_GROUPS_WITH_COMMANDS } from "../../lib/manual-command-catalog";
 import { aiCategoryActions, inheritsAiCategoryActions, setAiCategoryActions } from "../../lib/automod-actions";
@@ -438,50 +441,6 @@ function RuleEditor({ title, help, rule, thresholds, actions = ACTIONS, showActi
     </div>
   );
 }
-
-const threshold = (
-  key: string,
-  label: string,
-  help: string,
-  min: number,
-  max: number,
-  groupKeys: string[] = [key],
-): Threshold => ({ key, label, help, min, max, groupKeys });
-const CAPS_KEYS = ["capsPercent", "percent", "limit"];
-const REPEAT_KEYS = ["repeat", "limit", "max"];
-const RUN_KEYS = ["run", "limit", "max"];
-const WINDOW_KEYS = ["windowMs", "window", "seconds"];
-const CAPS_LIMIT = [
-  threshold("capsPercent", "Procent majuscule", "Procent între 1 și 100.", 1, 100, CAPS_KEYS),
-  threshold("percent", "Procent (alias)", "Alias compatibil pentru procent.", 1, 100, CAPS_KEYS),
-  threshold("limit", "Limită (alias)", "Alias compatibil pentru procent.", 1, 100, CAPS_KEYS),
-];
-const REPEAT_LIMIT = [
-  threshold("repeat", "Caractere identice la rând", "Număr de caractere consecutive dintr-un mesaj.", 2, 200, REPEAT_KEYS),
-  threshold("limit", "Limită repetări (alias)", "Alias compatibil pentru repetări.", 2, 200, REPEAT_KEYS),
-  threshold("max", "Maxim repetări (alias)", "Alias compatibil pentru repetări.", 2, 200, REPEAT_KEYS),
-  threshold("messages", "Mesaje identice", "Număr de mesaje identice trimise consecutiv în același canal; implicit 3, minim 2.", 2, 100, ["messages", "count"]),
-  threshold("windowMs", "Interval (secunde)", "Timpul în care sunt numărate mesajele identice; implicit 10 secunde.", 1, 3600, WINDOW_KEYS),
-];
-const RAID_LIMIT = [
-  threshold("joins", "Intrări", "Intrări observate în fereastră.", 1, 10000, ["limit", "joins"]),
-  threshold("limit", "Limită intrări (alias)", "Alias compatibil pentru intrări.", 1, 10000, ["limit", "joins"]),
-  threshold("windowSeconds", "Fereastră (secunde)", "Intervalul de măsurare, în secunde.", 1, 3600, ["windowSeconds", "window"]),
-];
-const FLOOD_LENGTH = [
-  threshold("length", "Lungime mesaj", "Număr de caractere în mesaj.", 1, 10000, ["length", "maxLength", "limit"]),
-  threshold("maxLength", "Lungime maximă (alias)", "Alias compatibil pentru lungime.", 1, 10000, ["length", "maxLength", "limit"]),
-  threshold("limit", "Limită (alias)", "Alias compatibil pentru lungime.", 1, 10000, ["length", "maxLength", "limit"]),
-];
-const FLOOD_RUN = [
-  threshold("run", "Lungime șir", "Caractere identice consecutive.", 2, 2000, ["run", "limit", "max"]),
-  threshold("limit", "Limită șir (alias)", "Alias compatibil pentru lungime șir.", 2, 2000, ["run", "limit", "max"]),
-  threshold("max", "Maxim șir (alias)", "Alias compatibil pentru lungime șir.", 2, 2000, ["run", "limit", "max"]),
-];
-const SUSPICIOUS_LIMIT = [
-  threshold("changes", "Schimbări / evenimente", "Număr de evenimente până la alertă.", 1, 1000, ["changes", "limit"]),
-  threshold("limit", "Limită (alias)", "Alias compatibil pentru numărul de evenimente.", 1, 1000, ["changes", "limit"]),
-];
 
 function Section({ value, title, description, children }: { value: string; title: string; description: string; children: React.ReactNode }) {
   const visible = React.useContext(VisibleSections);

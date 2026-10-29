@@ -16,6 +16,7 @@ import {
 } from "../../components/ui/dialog";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "../../components/ui/sheet";
 import { useActiveGuild, useModerationConfig, useSession } from "../../hooks/use-moderation-api";
+import { isProtectionRoute, PROTECTION_ROUTE } from "./panel/model";
 
 type NavigationItem = { id: string; label: string; description: string; href: string; icon: typeof Home; tint: string; keywords?: string };
 
@@ -225,6 +226,12 @@ function routeIsActive(href: string, location: string) {
   return !query || new URLSearchParams(location.split("?")[1] || "").get("tab") === new URLSearchParams(query).get("tab");
 }
 
+/** A dock destination stays lit on its own pages: the five protection modules belong to "Protecție". */
+function primaryIsActive(href: string, location: string) {
+  if (href === PROTECTION_ROUTE && isProtectionRoute(location)) return true;
+  return routeIsActive(href, location);
+}
+
 export function ModerationChrome({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   const search = useSearch();
@@ -245,7 +252,7 @@ export function ModerationChrome({ children }: { children: ReactNode }) {
   const [actionBusy, setActionBusy] = useState(false);
   const { data: config, loading: configLoading, error: configError, refetch: reloadConfig, update, updateSection } = useModerationConfig(guildId);
   const { data: copySourceConfig, loading: copySourceLoading, error: copySourceError, refetch: reloadCopySource } = useModerationConfig(copySourceGuildId);
-  const activePrimary = primaryItems.find((item) => routeIsActive(item.href, navLocation)) || primaryItems[0]!;
+  const activePrimary = primaryItems.find((item) => primaryIsActive(item.href, navLocation)) || primaryItems[0]!;
   const orderedPrimary = useMemo(() => {
     const byId = new Map(primaryItems.map((item) => [item.id, item]));
     return [...preferences.order.map((id) => byId.get(id)).filter((item): item is NavigationItem => Boolean(item)),
@@ -462,8 +469,9 @@ export function ModerationChrome({ children }: { children: ReactNode }) {
       </header>
 
       <main className="oracle-main" id="main">
-        <div className="oracle-page-view mod-page" key={`${guildId}:${navLocation}`}>
-          <div className="max-w-5xl mx-auto w-full">{children}</div>
+        {/* Moving between protection modules keeps the same page (and its unsaved changes). */}
+        <div className="oracle-page-view mod-page" key={`${guildId}:${isProtectionRoute(navLocation) ? PROTECTION_ROUTE : navLocation}`}>
+          <div className={`${isProtectionRoute(navLocation) ? "max-w-none" : "max-w-5xl"} mx-auto w-full`}>{children}</div>
         </div>
         <footer className="oracle-footer"><span>CONSOLĂ DE MODERARE</span><span>{activePrimary.label} · {activeGuild?.name || "Server neselectat"}</span></footer>
       </main>
@@ -473,7 +481,7 @@ export function ModerationChrome({ children }: { children: ReactNode }) {
           <div className="oracle-dock-items">
             {orderedPrimary.map((item, index) => {
               const Icon = item.icon;
-              const active = routeIsActive(item.href, navLocation);
+              const active = primaryIsActive(item.href, navLocation);
               return <Link href={item.href} key={item.id} aria-current={active ? "page" : undefined} title={item.label} data-testid={`dock-${item.id}`} className={`oracle-dock-item tint-${item.tint}`} style={{ "--dock-index": index } as CSSProperties}>
                 <span className="oracle-dock-tile"><Icon aria-hidden="true" /></span><span className="oracle-dock-tooltip">{item.label}</span><span className="oracle-dock-label">{item.label}</span><i className="oracle-dock-dot" />
               </Link>;

@@ -692,6 +692,7 @@ test.describe("authenticated moderation console", () => {
     });
     await page.goto("/moderare/automod");
     await chooseFirstGuild(page);
+    await page.getByTestId("rule-automod-linkBlock-open").click();
 
     const auditChannel = page.getByRole("checkbox", { name: "#audit" });
     const generalChannel = page.getByRole("checkbox", { name: "#general" });
@@ -709,10 +710,11 @@ test.describe("authenticated moderation console", () => {
     expect(savedConfigs.get(guilds[0].id)?.autoMod.linkBlock.channelIds).toEqual(["444444444", "555555555"]);
 
     await page.reload();
+    await page.getByTestId("rule-automod-linkBlock-open").click();
     await expect(page.getByRole("checkbox", { name: "#audit" })).toBeChecked();
     await expect(page.getByRole("checkbox", { name: "#general" })).toBeChecked();
 
-    await page.getByRole("button", { name: "Toate canalele" }).click();
+    await page.getByRole("checkbox", { name: "Toate canalele" }).click();
     const saveAllChannels = page.waitForResponse((response) =>
       response.url().includes("/api/moderation/guilds/111111111/config")
       && response.request().method() === "PUT");
@@ -1003,12 +1005,22 @@ test.describe("authenticated moderation console", () => {
   test("global protection and role-channel policies each have one canonical editor", async ({ page }) => {
     await page.goto("/moderare/protectie");
     await chooseFirstGuild(page);
-    await expect(page.getByRole("switch", { name: "Activează sau oprește toate modulele de protecție" })).toHaveCount(1);
-    await expect(page.getByRole("switch")).toHaveCount(1);
+    const globalSwitch = page.getByRole("switch", { name: "Activează sau oprește toate modulele de protecție" });
+    await expect(globalSwitch).toHaveCount(1);
+    await expect(globalSwitch).toBeChecked();
+    // "/protectie" opens the first module of the group, with all five in its menu.
+    await expect(page.getByRole("heading", { name: "AutoMod pentru mesaje" })).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Modulele de protecție" }).getByRole("link")).toHaveCount(5);
+    await expect(page.getByTestId("nav-module-automod")).toHaveAttribute("aria-current", "page");
 
-    await page.getByTestId("link-protection-module-settings").click();
-    await expect(page).toHaveURL("/moderare/config");
-    await expect(page.getByRole("switch")).toHaveCount(0);
+    await globalSwitch.click();
+    const saveResponse = page.waitForResponse((response) =>
+      response.url().includes("/api/moderation/guilds/111111111/config")
+      && response.request().method() === "PUT");
+    await page.getByRole("button", { name: "Salvează", exact: true }).click();
+    expect((await saveResponse).ok()).toBe(true);
+    expect(savedConfigs.get(guilds[0].id)?.protection.enabled).toBe(false);
+    await expect(globalSwitch).not.toBeChecked();
 
     await page.goto("/moderare/politici");
     await expect(page.getByText("Roluri protejate")).toBeVisible();
@@ -1020,7 +1032,9 @@ test.describe("authenticated moderation console", () => {
     await page.goto("/moderare/automod");
     await chooseFirstGuild(page);
 
-    await page.getByLabel("Cuvinte interzise").fill("valoare-salvată");
+    await page.getByTestId("rule-automod-wordFilter-open").click();
+    await page.getByLabel("Cuvinte interzise", { exact: true }).fill("valoare-salvată");
+    await page.getByLabel("Cuvinte interzise", { exact: true }).press("Enter");
 
     // Simulate an independent dashboard writer after this editor loaded. A
     // category save must not put its older full snapshot over that change.
@@ -1041,7 +1055,8 @@ test.describe("authenticated moderation console", () => {
     expect(savedConfigs.get(guilds[1].id)?.autoMod.forbiddenWords).toEqual([]);
 
     await page.reload();
-    await expect(page.getByLabel("Cuvinte interzise")).toHaveValue("valoare-salvată");
+    await page.getByTestId("rule-automod-wordFilter-open").click();
+    await expect(page.getByRole("button", { name: "Șterge valoare-salvată" })).toBeVisible();
   });
 
   test("saves an enabled module and rule, then rehydrates both after reload", async ({ page }) => {
@@ -1049,7 +1064,7 @@ test.describe("authenticated moderation console", () => {
     await chooseFirstGuild(page);
 
     await page.getByRole("switch", { name: "Activează anti-raid" }).click();
-    await page.getByRole("switch", { name: "Regulă activă" }).click();
+    await page.getByRole("switch", { name: "Regula de raid" }).click();
     await page.getByLabel("Intrări pe minut").fill("24");
 
     const saveResponse = page.waitForResponse((response) =>
@@ -1065,7 +1080,7 @@ test.describe("authenticated moderation console", () => {
 
     await page.reload();
     await expect(page.getByRole("switch", { name: "Activează anti-raid" })).toBeChecked();
-    await expect(page.getByRole("switch", { name: "Regulă activă" })).toBeChecked();
+    await expect(page.getByRole("switch", { name: "Regula de raid" })).toBeChecked();
     await expect(page.getByLabel("Intrări pe minut")).toHaveValue("24");
   });
 
@@ -1524,22 +1539,28 @@ test.describe("authenticated moderation console", () => {
     });
     await page.goto("/moderare/automod");
     await chooseFirstGuild(page);
-    const words = page.getByLabel("Cuvinte interzise");
+    await page.getByTestId("rule-automod-wordFilter-open").click();
+    const words = page.getByLabel("Cuvinte interzise", { exact: true });
     await words.fill("prima");
+    await words.press("Enter");
     const request = page.waitForRequest((item) =>
       item.url().includes("/guilds/111111111/config") && item.method() === "PUT");
     await page.getByRole("button", { name: "Salvează" }).click();
     await request;
     await words.fill("a doua");
+    await words.press("Enter");
     releaseSave();
-    await expect(words).toHaveValue("a doua");
-    await expect(page.getByRole("button", { name: "Salvează" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Șterge prima" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Șterge a doua" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Salvează" })).toBeEnabled();
     expect(savedConfigs.get(guilds[0].id)?.autoMod.forbiddenWords).toEqual(["prima"]);
   });
 
   test("AutoMod word and link rules combine deletion with a member sanction and persist", async ({ page }) => {
     await page.goto("/moderare/automod");
     await chooseFirstGuild(page);
+    await page.getByTestId("rule-automod-wordFilter-open").click();
+    await page.getByTestId("rule-automod-linkBlock-open").click();
 
     const wordActions = page.getByTestId("actions-Filtru cuvinte");
     await expect(wordActions).toBeVisible();
@@ -1562,6 +1583,8 @@ test.describe("authenticated moderation console", () => {
       .toMatchObject({ action: "mute", deleteMessage: true });
 
     await page.reload();
+    await page.getByTestId("rule-automod-wordFilter-open").click();
+    await page.getByTestId("rule-automod-linkBlock-open").click();
     await expect(page.getByTestId("actions-Filtru cuvinte")).toBeVisible();
     await expect(page.getByTestId("actions-Filtru cuvinte")
       .getByRole("checkbox", { name: "Șterge mesajul" })).toBeChecked();
@@ -1571,6 +1594,104 @@ test.describe("authenticated moderation console", () => {
       .getByRole("checkbox", { name: "Șterge mesajul" })).toBeChecked();
     await expect(page.getByTestId("actions-Blocare linkuri")
       .getByRole("checkbox", { name: "Mute" })).toBeChecked();
+  });
+
+  test("protection ticks save a deletion, a warning, a sanction, a staff alert and the mute length", async ({ page }) => {
+    await page.goto("/moderare/anti-spam");
+    await chooseFirstGuild(page);
+    await page.getByRole("switch", { name: "Activează anti-spam" }).click();
+    await page.getByRole("switch", { name: "Spam de mesaje" }).click();
+    await page.getByTestId("rule-antispam-message-open").click();
+
+    const ticks = page.getByTestId("actions-Spam de mesaje");
+    await ticks.getByRole("checkbox", { name: "Șterge mesajul" }).click();
+    await ticks.getByRole("checkbox", { name: "Avertisment" }).click();
+    await ticks.getByRole("checkbox", { name: "Mute" }).click();
+    await ticks.getByLabel("Durata mute-ului (minute)").fill("45");
+    await ticks.getByRole("checkbox", { name: "Anunță staff-ul" }).click();
+    await expect(page.getByTestId("actions-Spam de mesaje-summary"))
+      .toContainText("Șterge mesajul + Avertisment + Mute 45 minute + Anunță staff-ul");
+
+    // Mute, kick and ban exclude each other; the warning stays next to the new sanction.
+    await ticks.getByRole("checkbox", { name: "Ban" }).click();
+    await expect(ticks.getByRole("checkbox", { name: "Mute" })).not.toBeChecked();
+    await ticks.getByRole("checkbox", { name: "Mute" }).click();
+    await expect(ticks.getByRole("checkbox", { name: "Ban" })).not.toBeChecked();
+    await expect(ticks.getByRole("checkbox", { name: "Avertisment" })).toBeChecked();
+
+    const saveResponse = page.waitForResponse((response) =>
+      response.url().includes("/api/moderation/guilds/111111111/config")
+      && response.request().method() === "PUT");
+    await page.getByRole("button", { name: "Salvează", exact: true }).click();
+    expect((await saveResponse).ok()).toBe(true);
+    expect(savedConfigs.get(guilds[0].id)?.antiSpam).toMatchObject({
+      enabled: true,
+      message: { enabled: true, action: "mute", deleteMessage: true, warnMember: true, alertStaff: true, muteMinutes: 45 },
+    });
+
+    await page.reload();
+    await page.getByTestId("rule-antispam-message-open").click();
+    for (const name of ["Șterge mesajul", "Avertisment", "Mute", "Anunță staff-ul"]) {
+      await expect(page.getByTestId("actions-Spam de mesaje").getByRole("checkbox", { name })).toBeChecked();
+    }
+    await expect(page.getByTestId("actions-Spam de mesaje").getByLabel("Durata mute-ului (minute)")).toHaveValue("45");
+  });
+
+  test("unsaved protection changes stay while moving between modules and are saved together", async ({ page }) => {
+    await page.goto("/moderare/automod");
+    await chooseFirstGuild(page);
+    await page.getByTestId("rule-automod-wordFilter-open").click();
+    await page.getByLabel("Cuvinte interzise", { exact: true }).fill("nord");
+    await page.getByLabel("Cuvinte interzise", { exact: true }).press("Enter");
+
+    await page.getByTestId("nav-module-antiraid").click();
+    await expect(page).toHaveURL("/moderare/anti-raid");
+    await expect(page.getByTestId("protection-save-bar")).toContainText("AutoMod");
+    await page.getByRole("switch", { name: "Activează anti-raid" }).click();
+    await expect(page.getByTestId("protection-save-bar")).toContainText("Anti-raid");
+
+    await page.getByTestId("nav-module-automod").click();
+    await page.getByTestId("rule-automod-wordFilter-open").click();
+    await expect(page.getByRole("button", { name: "Șterge nord" })).toBeVisible();
+
+    const saveResponse = page.waitForResponse((response) =>
+      response.url().includes("/api/moderation/guilds/111111111/config")
+      && response.request().method() === "PUT");
+    await page.getByRole("button", { name: "Salvează", exact: true }).click();
+    expect((await saveResponse).ok()).toBe(true);
+    expect(configRequests.filter((request) => request.method === "PUT")).toHaveLength(1);
+    expect(savedConfigs.get(guilds[0].id)?.autoMod.forbiddenWords).toEqual(["nord"]);
+    expect(savedConfigs.get(guilds[0].id)?.antiRaid.enabled).toBe(true);
+    await expect(page.getByTestId("protection-save-bar")).toHaveCount(0);
+  });
+
+  test("suspicious-behaviour rules follow the module's reaction until they pick their own", async ({ page }) => {
+    await page.goto("/moderare/comportament-suspect");
+    await chooseFirstGuild(page);
+    await page.getByTestId("actions-suspect-module").getByRole("checkbox", { name: "Kick" }).click();
+    await page.getByRole("switch", { name: "Schimbări nickname" }).click();
+    await expect(page.getByTestId("rule-suspect-nicknameChanges")).toContainText("Ca modulul: Kick");
+
+    await page.getByTestId("rule-suspect-nicknameChanges-open").click();
+    await page.getByTestId("actions-Schimbări nickname").getByRole("checkbox", { name: "Avertisment" }).click();
+    await expect(page.getByTestId("actions-Schimbări nickname-summary")).toContainText("Avertisment");
+    await expect(page.getByTestId("actions-Schimbări nickname-summary")).not.toContainText("Ca modulul");
+
+    // Joins and leaves have no author to punish: that rule can only alert the staff.
+    await page.getByTestId("rule-suspect-joinLeaveFlood-open").click();
+    const joinLeave = page.getByTestId("actions-Flux intrări / ieșiri");
+    await expect(joinLeave.getByRole("checkbox")).toHaveCount(1);
+    await expect(joinLeave.getByRole("checkbox", { name: "Anunță staff-ul" })).toBeVisible();
+
+    const saveResponse = page.waitForResponse((response) =>
+      response.url().includes("/api/moderation/guilds/111111111/config")
+      && response.request().method() === "PUT");
+    await page.getByRole("button", { name: "Salvează", exact: true }).click();
+    expect((await saveResponse).ok()).toBe(true);
+    expect(savedConfigs.get(guilds[0].id)?.suspiciousBehavior).toMatchObject({
+      action: "kick",
+      nicknameChanges: { enabled: true, action: "warn" },
+    });
   });
 
   test("failed Discord log activation shows failure and does not claim a live log", async ({ page }) => {
@@ -1596,7 +1717,8 @@ test.describe("authenticated moderation console", () => {
     savedConfigs.set(guilds[0].id, config);
     await page.goto("/moderare/anti-spam");
     await chooseFirstGuild(page);
-    await page.getByLabel("Fereastră (secunde)").first().fill("12");
+    await page.getByTestId("rule-antispam-message-open").click();
+    await page.getByTestId("rule-antispam-message").getByLabel("Fereastră (secunde)").fill("12");
     await page.getByRole("button", { name: "Salvează" }).click();
     await expect(page.getByRole("button", { name: "Salvează" })).toHaveCount(0);
     expect(savedConfigs.get(guilds[0].id)?.antiSpam.message.thresholds).toEqual({ windowMs: 12, limit: 3 });
@@ -1605,16 +1727,24 @@ test.describe("authenticated moderation console", () => {
   test("switching guilds discards the previous guild's unsaved category draft", async ({ page }) => {
     await page.goto("/moderare/automod");
     await chooseFirstGuild(page);
-    await page.getByLabel("Cuvinte interzise").fill("nesalvat nord");
+    const words = page.getByLabel("Cuvinte interzise", { exact: true });
+    const chips = page.getByTestId("rule-automod-wordFilter").locator(".pn-chip");
+    await page.getByTestId("rule-automod-wordFilter-open").click();
+    await words.fill("nesalvat nord");
+    await words.press("Enter");
+    await expect(chips).toHaveCount(1);
     await page.getByRole("combobox").first().click();
     await page.getByRole("option", { name: guilds[1].name }).click();
-    await expect(page.getByLabel("Cuvinte interzise")).toHaveValue("");
-    await page.getByLabel("Cuvinte interzise").fill("salvat sud");
+    await page.getByTestId("rule-automod-wordFilter-open").click();
+    await expect(chips).toHaveCount(0);
+    await words.fill("salvat sud");
+    await words.press("Enter");
     await page.getByRole("button", { name: "Salvează" }).click();
     await expect(page.getByRole("button", { name: "Salvează" })).toHaveCount(0);
     await page.getByRole("combobox").first().click();
     await page.getByRole("option", { name: guilds[0].name }).click();
-    await expect(page.getByLabel("Cuvinte interzise")).toHaveValue("");
+    await page.getByTestId("rule-automod-wordFilter-open").click();
+    await expect(chips).toHaveCount(0);
     expect(savedConfigs.get(guilds[0].id)?.autoMod.forbiddenWords).toEqual([]);
     expect(savedConfigs.get(guilds[1].id)?.autoMod.forbiddenWords).toEqual(["salvat sud"]);
   });
