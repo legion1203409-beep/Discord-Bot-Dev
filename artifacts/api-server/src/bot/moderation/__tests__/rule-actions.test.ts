@@ -10,6 +10,7 @@ import {
   normalizeMuteMinutes,
   planEventRuleActions,
   planRuleActions,
+  ruleHasEffect,
 } from "../rule-actions";
 
 describe("what the ticked actions of a message rule do", () => {
@@ -152,5 +153,21 @@ describe("how the log words what happened", () => {
       .toBe("Mesaj șters automat + timeout 10 minute + staff anunțat");
     expect(describeRulePlan(planRuleActions({ action: "delete" }), { deletionSucceeded: false }))
       .toBe("Ștergerea mesajului a eșuat");
+  });
+});
+
+describe("whether a rule does anything at all", () => {
+  it("is false only for a rule with nothing ticked", () => {
+    expect(ruleHasEffect({ action: "none" })).toBe(false);
+    expect(ruleHasEffect({ action: "none", deleteMessage: false, warnMember: false, alertStaff: false })).toBe(false);
+    expect(ruleHasEffect({ action: "none", muteMinutes: 60 })).toBe(false);
+  });
+
+  it("is true for a deletion, a warning, a sanction or a staff alert, alone or together", () => {
+    expect(ruleHasEffect({ action: "delete" })).toBe(true);
+    expect(ruleHasEffect({ action: "none", deleteMessage: true })).toBe(true);
+    expect(ruleHasEffect({ action: "none", alertStaff: true })).toBe(true);
+    expect(ruleHasEffect({ action: "none", warnMember: true })).toBe(true);
+    for (const action of ["warn", "mute", "kick", "ban"] as const) expect(ruleHasEffect({ action })).toBe(true);
   });
 });

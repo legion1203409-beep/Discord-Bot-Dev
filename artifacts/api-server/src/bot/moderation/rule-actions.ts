@@ -76,6 +76,16 @@ export function planRuleActions(
   };
 }
 
+/**
+ * True when a rule would do anything at all: delete the message, warn or
+ * sanction the member, or alert the staff. A rule left on "no action" with
+ * nothing ticked only records what happened.
+ */
+export function ruleHasEffect(rule: RuleActionSettings): boolean {
+  const plan = planRuleActions(rule);
+  return plan.deleteMessage || plan.primary !== null || plan.alertStaff;
+}
+
 /** True when the rule chose its own warning or sanction instead of inheriting one. */
 export function hasOwnSanction(rule: RuleActionSettings): boolean {
   return strongerSanction(rule.action) !== null || rule.action === "warn" || rule.warnMember === true;

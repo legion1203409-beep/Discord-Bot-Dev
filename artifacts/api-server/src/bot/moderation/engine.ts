@@ -20,7 +20,7 @@ import type { ModerationConfig, ModerationAction as ConfiguredAction } from "../
 import { logger } from "../../lib/logger";
 import { buildAutomaticModerationLogDescription } from "./automod-logging";
 import { shouldApplyLinkBlockInChannel } from "./automod-policy";
-import { describeMemberActions, describeRulePlan, planRuleActions, type RuleActionPlan, type RuleActionSettings } from "./rule-actions";
+import { describeMemberActions, describeRulePlan, planRuleActions, ruleHasEffect, type RuleActionPlan, type RuleActionSettings } from "./rule-actions";
 import { deliverWarningInGuild } from "./warning-delivery";
 import type { AutoModerationActionExecution } from "discord.js";
 import { NATIVE_AUTOMOD_KEYWORD_RULE_NAME } from "../native-automod";
@@ -1300,9 +1300,16 @@ export async function handleModerationMessage(client: Client, message: Message):
     const rule = ruleFor(finding.kind);
     if (rule?.enabled && await applyAutomatic(message.guild, config, message, finding, rule)) return true;
   }
-  if (messageRate?.reached && config.antiSpam.message.action !== "none") {
-    return applyAutomatic(message.guild, config, message,
-      { kind: "messageSpam", detail: `Spam mesaje (${messageRate.count})`, count: messageRate.count }, config.antiSpam.message);
+  // The rule acts when anything is ticked: a deletion or a staff alert alone
+  // counts, not only a warning or sanction in `action`.
+  const messageSpamRule = config.antiSpam.message;
+  if (messageRate?.reached && ruleHasEffect(messageSpamRule)) {
+    const handled = await applyAutomatic(message.guild, config, message,
+      { kind: "messageSpam", detail: `Spam mesaje (${messageRate.count})`, count: messageRate.count }, messageSpamRule);
+    // As before, a deletion, warning or sanction ends the checks for this message;
+    // a staff alert on its own still lets the other rules look at it.
+    const plan = planRuleActions(messageSpamRule);
+    if (handled || plan.deleteMessage || plan.primary) return handled;
   }
   if (repeatRule) {
     if (repeatedCount >= Math.max(2, threshold(ruleThreshold(repeatRule, ["messages", "count"], 3), repeatRule.severity))) {
