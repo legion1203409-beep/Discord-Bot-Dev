@@ -118,6 +118,28 @@ describe("moderation configuration defaults", () => {
     expect(() => ModerationConfigSchema.parse({ autoMod: { wordFilter: { alertStaff: 1 } } })).toThrow();
   });
 
+  it("round-trips the extra AI ticks for the general reaction and for a category, and keeps older AI settings unchanged", () => {
+    const legacy = ModerationConfigSchema.parse({ ai: { action: "warn", deleteMessage: true, categorySettings: { scams: { action: "ban" } } } });
+    expect(legacy.ai).not.toHaveProperty("warnMember");
+    expect(legacy.ai).not.toHaveProperty("alertStaff");
+    expect(legacy.ai).not.toHaveProperty("muteMinutes");
+    expect(legacy.ai.categorySettings.scams).toEqual({ action: "ban" });
+
+    const config = ModerationConfigSchema.parse({
+      ai: {
+        action: "mute", deleteMessage: true, warnMember: true, alertStaff: true, muteMinutes: 60,
+        categorySettings: { threats: { action: "ban", deleteMessage: true, alertStaff: true }, toxicity: { sensitivity: "high", action: "mute", deleteMessage: false, muteMinutes: 1_440 } },
+      },
+    });
+    const loaded = ModerationConfigSchema.parse(JSON.parse(JSON.stringify(config)));
+    expect(loaded.ai).toEqual(config.ai);
+    expect(loaded.ai).toMatchObject({ warnMember: true, alertStaff: true, muteMinutes: 60 });
+    expect(loaded.ai.categorySettings.toxicity).toEqual({ sensitivity: "high", action: "mute", deleteMessage: false, muteMinutes: 1_440 });
+    expect(() => ModerationConfigSchema.parse({ ai: { muteMinutes: 0 } })).toThrow();
+    expect(() => ModerationConfigSchema.parse({ ai: { categorySettings: { threats: { muteMinutes: 40_321 } } } })).toThrow();
+    expect(() => ModerationConfigSchema.parse({ ai: { categorySettings: { threats: { pingEveryone: true } } } })).toThrow();
+  });
+
   it("keeps automatic activity logs disabled by default and allows Discord-managed channel access", () => {
     expect(defaultModerationConfig.activityLog.enabled).toBe(false);
     expect(defaultModerationConfig.activityLog.channelIds.messages).toBeNull();

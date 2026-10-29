@@ -294,6 +294,11 @@ export const ModerationConfigSchema = z.object({
     tone: z.enum(["serious", "calm", "strict"]).default("calm"),
     action: action.default("none"),
     deleteMessage: z.boolean().optional(),
+    // Extra ticks of the general AI reaction; optional, so older guilds keep
+    // exactly what they had.
+    warnMember: z.boolean().optional(),
+    alertStaff: z.boolean().optional(),
+    muteMinutes: muteMinutes.optional(),
     logChannelId: snowflake.nullable().default(null),
     excludedChannelIds: idList.default([]),
     excludedRoleIds: idList.default([]),
@@ -302,6 +307,9 @@ export const ModerationConfigSchema = z.object({
       sensitivity: aiSensitivity.optional(),
       action: action.optional(),
       deleteMessage: z.boolean().optional(),
+      warnMember: z.boolean().optional(),
+      alertStaff: z.boolean().optional(),
+      muteMinutes: muteMinutes.optional(),
     }).strict()).default({}),
     categories: z.object({
       toxicity: z.boolean().default(false),

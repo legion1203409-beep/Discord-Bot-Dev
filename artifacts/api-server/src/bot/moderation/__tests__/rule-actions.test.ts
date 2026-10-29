@@ -11,6 +11,7 @@ import {
   planEventRuleActions,
   planRuleActions,
   ruleHasEffect,
+  describeConfiguredPlan,
 } from "../rule-actions";
 
 describe("what the ticked actions of a message rule do", () => {
@@ -169,5 +170,14 @@ describe("whether a rule does anything at all", () => {
     expect(ruleHasEffect({ action: "none", alertStaff: true })).toBe(true);
     expect(ruleHasEffect({ action: "none", warnMember: true })).toBe(true);
     for (const action of ["warn", "mute", "kick", "ban"] as const) expect(ruleHasEffect({ action })).toBe(true);
+  });
+});
+
+describe("how a configured reaction is announced before it runs", () => {
+  it("lists the deletion and the member actions, or says it only records", () => {
+    expect(describeConfiguredPlan(planRuleActions({ action: "none" }))).toBe("Acțiune configurată: doar înregistrare");
+    expect(describeConfiguredPlan(planRuleActions({ action: "mute", deleteMessage: true, warnMember: true, muteMinutes: 60, alertStaff: true })))
+      .toBe("Acțiune configurată: ștergere mesaj + avertisment + timeout 1 oră + staff anunțat");
+    expect(describeConfiguredPlan(planRuleActions({ action: "delete" }))).toBe("Acțiune configurată: ștergere mesaj");
   });
 });

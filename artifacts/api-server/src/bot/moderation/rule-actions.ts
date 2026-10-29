@@ -137,6 +137,12 @@ export function describeMemberActions(plan: RuleActionPlan): string[] {
   return parts;
 }
 
+/** What a rule is set to do, before it runs ("Acțiune configurată: ștergere mesaj + avertisment"). */
+export function describeConfiguredPlan(plan: RuleActionPlan): string {
+  const parts = [...(plan.deleteMessage ? ["ștergere mesaj"] : []), ...describeMemberActions(plan)];
+  return `Acțiune configurată: ${parts.length ? parts.join(" + ") : "doar înregistrare"}`;
+}
+
 /** One line for the module log: everything the rule did or tried to do. */
 export function describeRulePlan(
   plan: RuleActionPlan,

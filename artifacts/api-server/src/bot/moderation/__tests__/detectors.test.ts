@@ -11,7 +11,7 @@ import {
   findBlockedLink,
   longestRepeatedRun,
 } from "../detectors";
-import { aiActionForCategory, aiDeleteMessageForCategory, aiModerationPrompt, contentThresholdsForConfig, escalationActionForCount, isAiExcluded, parseAiModerationFinding, repeatedMessageCount, reserveAutomaticAction } from "../engine";
+import { aiActionForCategory, aiDeleteMessageForCategory, aiModerationPrompt, aiRuleForCategory, contentThresholdsForConfig, escalationActionForCount, isAiExcluded, parseAiModerationFinding, repeatedMessageCount, reserveAutomaticAction } from "../engine";
 import { ModerationConfigSchema } from "../../../moderation/config";
 
 describe("moderation detectors", () => {
@@ -201,6 +201,31 @@ describe("moderation detectors", () => {
     expect(aiActionForCategory(ai, "scams")).toBe("ban");
     expect(aiActionForCategory(ai, "threats")).toBe("none");
     expect(aiActionForCategory(ai, "attacks")).toBe("warn");
+  });
+
+  it("gives each AI category the general ticks until it chooses its own actions", () => {
+    const ai = ModerationConfigSchema.parse({
+      ai: {
+        action: "mute", deleteMessage: true, warnMember: true, alertStaff: true, muteMinutes: 120,
+        categorySettings: {
+          threats: { action: "ban", deleteMessage: true },
+          scams: { sensitivity: "high" },
+          toxicity: { action: "mute", deleteMessage: false, muteMinutes: 15, alertStaff: true },
+        },
+      },
+    }).ai;
+    // Only a sensitivity of its own: the category still follows every general tick.
+    expect(aiRuleForCategory(ai, "scams")).toEqual({ action: "mute", deleteMessage: true, warnMember: true, alertStaff: true, muteMinutes: 120 });
+    expect(aiRuleForCategory(ai, "bullying")).toEqual(aiRuleForCategory(ai, "scams"));
+    // Its own actions: what the category ticked is the whole story.
+    expect(aiRuleForCategory(ai, "threats")).toEqual({ action: "ban", deleteMessage: true, warnMember: false, alertStaff: false });
+    expect(aiRuleForCategory(ai, "toxicity")).toEqual({ action: "mute", deleteMessage: false, warnMember: false, alertStaff: true, muteMinutes: 15 });
+  });
+
+  it("reads AI settings saved before the extra ticks existed exactly as before", () => {
+    const ai = ModerationConfigSchema.parse({ ai: { action: "warn", deleteMessage: true, categorySettings: { attacks: { action: "kick" } } } }).ai;
+    expect(aiRuleForCategory(ai, "attacks")).toEqual({ action: "kick", deleteMessage: true, warnMember: false, alertStaff: false });
+    expect(aiRuleForCategory(ai, "toxicity")).toEqual({ action: "warn", deleteMessage: true, warnMember: false, alertStaff: false });
   });
 
   it("excludes only configured AI channels or member roles", () => {

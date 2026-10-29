@@ -20,7 +20,7 @@ import type { ModerationConfig, ModerationAction as ConfiguredAction } from "../
 import { logger } from "../../lib/logger";
 import { buildAutomaticModerationLogDescription } from "./automod-logging";
 import { shouldApplyLinkBlockInChannel } from "./automod-policy";
-import { describeMemberActions, describeRulePlan, planRuleActions, ruleHasEffect, type RuleActionPlan, type RuleActionSettings } from "./rule-actions";
+import { describeConfiguredPlan, describeMemberActions, describeRulePlan, planRuleActions, ruleHasEffect, type RuleActionPlan, type RuleActionSettings } from "./rule-actions";
 import { deliverWarningInGuild } from "./warning-delivery";
 import type { AutoModerationActionExecution } from "discord.js";
 import { NATIVE_AUTOMOD_KEYWORD_RULE_NAME } from "../native-automod";
@@ -200,6 +200,26 @@ export function aiActionForCategory(config: ModerationConfig["ai"], category: Ai
 
 export function aiDeleteMessageForCategory(config: ModerationConfig["ai"], category: AiCategory): boolean {
   return config.categorySettings[category]?.deleteMessage ?? config.deleteMessage ?? false;
+}
+
+/**
+ * Everything ticked for a category. The action and the deletion fall back to
+ * the general AI choice field by field, exactly as before. The extra ticks
+ * (warning, staff alert, mute length) come from the category once it chose its
+ * own actions (the panel always saves both `action` and `deleteMessage` then),
+ * otherwise from the general choice.
+ */
+export function aiRuleForCategory(config: ModerationConfig["ai"], category: AiCategory): RuleActionSettings {
+  const override = config.categorySettings[category];
+  const custom = override?.action !== undefined || override?.deleteMessage !== undefined;
+  const extras = custom ? override : config;
+  return {
+    action: aiActionForCategory(config, category),
+    deleteMessage: aiDeleteMessageForCategory(config, category),
+    warnMember: extras?.warnMember === true,
+    alertStaff: extras?.alertStaff === true,
+    ...(extras?.muteMinutes !== undefined ? { muteMinutes: extras.muteMinutes } : {}),
+  };
 }
 
 const aiCategoryDescriptions: Record<AiCategory, string> = {
@@ -1044,18 +1064,6 @@ function moderationMessageEvidence(message: Message): {
   };
 }
 
-function configuredActionLabel(action: ConfiguredAction): string {
-  const labels: Record<ConfiguredAction, string> = {
-    none: "doar înregistrare",
-    delete: "ștergere mesaj",
-    warn: "avertisment",
-    mute: "timeout",
-    kick: "eliminare",
-    ban: "ban",
-  };
-  return labels[action];
-}
-
 async function applyAutomaticSerialized(
   guild: Guild,
   config: ModerationConfig,
@@ -1331,8 +1339,8 @@ export async function handleModerationMessage(client: Client, message: Message):
   const aiFinding = isAiExcluded(config.ai, message.channelId, target.roles.cache.keys())
     ? null : await detectWithAi(config, message);
   if (aiFinding) {
-    const selectedAction = aiActionForCategory(config.ai, aiFinding.category);
-    const deleteMessage = aiDeleteMessageForCategory(config.ai, aiFinding.category);
+    const aiRule = aiRuleForCategory(config.ai, aiFinding.category);
+    const aiPlan = planRuleActions(aiRule);
     const evidence = moderationMessageEvidence(message);
     const categoryLabel = aiFinding.category === "scams" ? "Scam / fraudă" : aiFinding.category;
     await notify(
@@ -1350,9 +1358,7 @@ export async function handleModerationMessage(client: Client, message: Message):
           category: `${categoryLabel} · încredere ${aiFinding.count ?? 0}%`,
           messageContent: evidence.messageContent,
           attachments: evidence.attachments,
-          actionSummary: deleteMessage
-            ? `Ștergere configurată; ${configuredActionLabel(selectedAction)}`
-            : `Acțiune configurată: ${configuredActionLabel(selectedAction)}`,
+          actionSummary: describeConfiguredPlan(aiPlan),
         },
       ),
       config.ai.logChannelId,
@@ -1360,13 +1366,15 @@ export async function handleModerationMessage(client: Client, message: Message):
         memberId: message.author.id,
         moderatorId: client.user?.id,
         channelId: message.channelId,
+        durationMinutes: aiPlan.muteMinutes,
       },
+      // The AI log is the only notice for this finding, so the staff ping rides on it.
+      aiPlan.alertStaff ? { pingStaff: true } : undefined,
     );
-    if (selectedAction !== "none" || deleteMessage) {
-      return applyAutomatic(message.guild, config, message, aiFinding, {
-        action: selectedAction,
-        deleteMessage,
-      });
+    // A deletion, a warning or a sanction is applied like any other rule;
+    // a staff alert alone was already delivered above.
+    if (aiPlan.deleteMessage || aiPlan.primary) {
+      return applyAutomatic(message.guild, config, message, aiFinding, aiRule);
     }
     await audit(
       { guildId: message.guildId, actorId: client.user?.id ?? "system", type: "warn", source: "automod" },
