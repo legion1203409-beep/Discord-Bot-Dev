@@ -16,7 +16,7 @@ import {
 } from "../../components/ui/dialog";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "../../components/ui/sheet";
 import { useActiveGuild, useModerationConfig, useSession } from "../../hooks/use-moderation-api";
-import { isProtectionRoute, PROTECTION_ROUTE } from "./panel/model";
+import { isProtectionRoute, isWidePanelRoute, PROTECTION_ROUTE } from "./panel/model";
 
 type NavigationItem = { id: string; label: string; description: string; href: string; icon: typeof Home; tint: string; keywords?: string };
 
@@ -471,7 +471,7 @@ export function ModerationChrome({ children }: { children: ReactNode }) {
       <main className="oracle-main" id="main">
         {/* Moving between protection modules keeps the same page (and its unsaved changes). */}
         <div className="oracle-page-view mod-page" key={`${guildId}:${isProtectionRoute(navLocation) ? PROTECTION_ROUTE : navLocation}`}>
-          <div className={`${isProtectionRoute(navLocation) ? "max-w-none" : "max-w-5xl"} mx-auto w-full`}>{children}</div>
+          <div className={`${isWidePanelRoute(navLocation) ? "max-w-none" : "max-w-5xl"} mx-auto w-full`}>{children}</div>
         </div>
         <footer className="oracle-footer"><span>CONSOLĂ DE MODERARE</span><span>{activePrimary.label} · {activeGuild?.name || "Server neselectat"}</span></footer>
       </main>

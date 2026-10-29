@@ -673,6 +673,62 @@ test.describe("authenticated moderation console", () => {
     await expect(page.getByRole("switch").nth(1)).toBeChecked();
   });
 
+  test("AI categories follow the general ticks until they get their own, and the choice persists", async ({ page }) => {
+    await page.goto("/moderare/ai");
+    await chooseFirstGuild(page);
+    await page.getByTestId("actions-ai-general").getByRole("checkbox", { name: "Avertisment" }).click();
+
+    await page.getByRole("switch", { name: "Amenințări", exact: true }).click();
+    await page.getByTestId("ai-category-threats-open").click();
+    await expect(page.getByTestId("actions-ai-threats-inherited")).toContainText("Ca setările generale: Avertisment");
+    await page.getByRole("switch", { name: "Folosește acțiunile generale — Amenințări" }).click();
+    const threats = page.getByTestId("actions-ai-threats");
+    await expect(threats.getByRole("checkbox", { name: "Avertisment" })).toBeChecked();
+    await threats.getByRole("checkbox", { name: "Ban" }).click();
+    await threats.getByRole("checkbox", { name: "Anunță staff-ul" }).click();
+    await expect(page.getByTestId("actions-ai-threats-summary")).toContainText("Avertisment + Ban + Anunță staff-ul");
+
+    const saveResponse = page.waitForResponse((response) =>
+      response.url().includes("/api/moderation/guilds/111111111/config")
+      && response.request().method() === "PUT");
+    await page.getByRole("button", { name: "Salvează", exact: true }).click();
+    expect((await saveResponse).ok()).toBe(true);
+    const ai = savedConfigs.get(guilds[0].id)?.ai as any;
+    expect(ai).toMatchObject({ action: "warn", categories: { threats: true } });
+    expect(ai.categorySettings.threats).toEqual({ action: "ban", deleteMessage: false, warnMember: true, alertStaff: true });
+
+    await page.reload();
+    await page.getByTestId("ai-category-threats-open").click();
+    await expect(page.getByRole("switch", { name: "Folosește acțiunile generale — Amenințări" })).not.toBeChecked();
+    await expect(page.getByTestId("actions-ai-threats").getByRole("checkbox", { name: "Ban" })).toBeChecked();
+  });
+
+  test("AI exceptions are chosen from the server's channels and roles and persist", async ({ page }) => {
+    await page.goto("/moderare/ai");
+    await chooseFirstGuild(page);
+    await page.getByTestId("ai-excluded-channels").getByRole("checkbox", { name: "#audit" }).click();
+    await page.getByTestId("ai-excluded-roles").getByRole("checkbox", { name: "@Moderatori" }).click();
+    const manual = page.getByLabel("Adaugă după ID: Roluri exceptate de la AI");
+    await manual.fill("12ab");
+    await manual.press("Enter");
+    await expect(page.getByTestId("ai-excluded-roles").getByRole("alert")).toContainText("între 5 și 25 de cifre");
+    await manual.fill("987654321098765432");
+    await manual.press("Enter");
+
+    const saveResponse = page.waitForResponse((response) =>
+      response.url().includes("/api/moderation/guilds/111111111/config")
+      && response.request().method() === "PUT");
+    await page.getByRole("button", { name: "Salvează", exact: true }).click();
+    expect((await saveResponse).ok()).toBe(true);
+    const ai = savedConfigs.get(guilds[0].id)?.ai as any;
+    expect(ai.excludedChannelIds).toEqual(["444444444"]);
+    expect(ai.excludedRoleIds).toEqual(["333333333", "987654321098765432"]);
+
+    await page.reload();
+    await expect(page.getByTestId("ai-excluded-channels").getByRole("checkbox", { name: "#audit" })).toBeChecked();
+    await expect(page.getByTestId("ai-excluded-roles").getByRole("checkbox", { name: "ID 987654321098765432, nu apare în listă" })).toBeChecked();
+  });
+
   test("link blocking can target multiple channels or all channels and persists after reload", async ({ page }) => {
     await page.unroute("**/api/moderation/guilds/*/metadata");
     await page.route("**/api/moderation/guilds/*/metadata", async (route) => {

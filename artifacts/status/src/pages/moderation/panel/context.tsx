@@ -1,5 +1,5 @@
 import { createContext, useContext } from "react";
-import type { ChannelOption } from "./fields";
+import type { ChannelOption, RoleOption } from "./fields";
 import type { Path } from "./model";
 
 /** What every part of the protection page can read and change. */
@@ -12,6 +12,8 @@ export type PanelApi = {
   update: (path: Path, change: (current: any) => any) => void;
   /** Discord channels of the server, or undefined when the list could not be read. */
   channels: ChannelOption[] | undefined;
+  /** Discord roles of the server, or undefined when the list could not be read. */
+  roles: RoleOption[] | undefined;
   /** Creates a private channel for a destination and selects it. Missing when the page cannot create channels. */
   createChannel?: (destination: string, path: Path) => void;
   /** The destination whose channel is being created right now. */

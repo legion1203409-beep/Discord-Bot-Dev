@@ -296,6 +296,11 @@
 }
 @media (max-width: 640px) {
   .pn .pn-fld { grid-template-columns: minmax(0, 1fr); }
+  /* Segments become a small grid instead of running off the side of the screen. */
+  .pn .pn-seg { display: grid; grid-template-columns: repeat(var(--seg-cols, 2), minmax(0, 1fr)); gap: 4px; width: 100%; }
+  .pn .pn-seg::before { display: none; }
+  .pn .pn-seg button { height: auto; min-height: 34px; padding: 7px 8px; white-space: normal; line-height: 1.2; }
+  .pn .pn-seg button[aria-checked="true"] { background: rgba(255, 255, 255, .1); }
   .pn .pn-fc, .pn .pn-chan { justify-content: flex-start; }
   .pn .pn-card { padding: 4px 14px 6px; }
   .pn .pn-rule-b .pn-fields { padding: 0 12px 6px; }

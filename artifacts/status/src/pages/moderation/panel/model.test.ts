@@ -330,6 +330,9 @@ describe("notes next to the staff alert", () => {
     expect(staffAlertProblems({ permissions: { staffRoleIds: ["1"] } }, null)).toHaveLength(1);
     expect(staffAlertProblems({ permissions: { staffRoleIds: [] } }, "123")).toHaveLength(1);
     expect(staffAlertProblems({}, "")).toHaveLength(2);
+    // Without a module channel the bot posts in the audit channel, when the audit log is on.
+    expect(staffAlertProblems({ permissions: { staffRoleIds: ["1"] }, audit: { enabled: true, channelId: "9" } }, null)).toEqual([]);
+    expect(staffAlertProblems({ permissions: { staffRoleIds: ["1"] }, audit: { enabled: false, channelId: "9" } }, null)).toHaveLength(1);
   });
 
   it("keeps the order in which actions are always listed", () => {

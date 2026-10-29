@@ -9,7 +9,7 @@ import { usePanel } from "./context";
 import { ActionTicks, ChannelField, Fields, Fld, Ico, Note, NoteRow, NumField, SectionCard, Seg, Switch, cx, type IconName } from "./fields";
 import {
   actionsText, enabledRuleCount, getAt, isModuleEnabled, moduleStatus, readThreshold, readTicks, ruleSummary,
-  staffAlertProblems, thresholdFields, withTickFields, writeThreshold, type ModuleDef, type Path, type RuleDef, type RuleLike,
+  staffAlertProblems, thresholdFields, withTickFields, writeThreshold, type ModuleDef, type ModuleHeadDef, type Path, type RuleDef, type RuleLike,
 } from "./model";
 
 export const SEVERITIES = [["soft", "Blândă"], ["normal", "Normală"], ["hard", "Strictă"]] as const;
@@ -129,7 +129,7 @@ export function RulesCard({ module, children }: { module: ModuleDef; children: R
 }
 
 /** Header of a module (icon, title, main switch) and its body. */
-export function ModuleView({ module, icon, children }: { module: ModuleDef; icon: IconName; children: React.ReactNode }) {
+export function ModuleView({ module, icon, children }: { module: ModuleHeadDef; icon: IconName; children: React.ReactNode }) {
   const { config, set } = usePanel();
   const headingId = useId();
   const on = isModuleEnabled(config, module);

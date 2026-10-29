@@ -6,7 +6,7 @@
 import React, { useId, useLayoutEffect, useRef, useState } from "react";
 import {
   ACTION_HINT, ACTION_LABEL, MAX_MUTE_MINUTES, MIN_MUTE_MINUTES, MUTE_PRESETS, availableActions, describeMuteLength, describeTicks,
-  hasUnavailableDelete, isValidInteger, isValidMuteMinutes, lockedActions, readMuteMinutes, readTicks, setMuteMinutes, toggleTick,
+  hasUnavailableDelete, isDiscordId, isValidInteger, isValidMuteMinutes, lockedActions, readMuteMinutes, readTicks, setMuteMinutes, toggleTick,
   type ActionKey, type RuleKind, type RuleLike,
 } from "./model";
 
@@ -35,6 +35,7 @@ const ICON_PATHS = {
   msgx: "M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12zM9.8 9.8l4.4 4.4M14.2 9.8l-4.4 4.4",
   waves: "M3 8c2 0 2-1.6 4.5-1.6S9.5 8 12 8s2-1.6 4.5-1.6S18.5 8 21 8M3 13c2 0 2-1.6 4.5-1.6S9.5 13 12 13s2-1.6 4.5-1.6S18.5 13 21 13M3 18c2 0 2-1.6 4.5-1.6S9.5 18 12 18s2-1.6 4.5-1.6S18.5 18 21 18",
   raid: "M8.5 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 19.5v-.8A3.7 3.7 0 0 1 6.7 15h3.6a3.7 3.7 0 0 1 3.7 3.7v.8M18 20V9M15 12l3-3 3 3",
+  gavel: "M13 4l7 7-3 3-7-7zM13.5 10.5l-9 9M3 21h9",
   scan: "M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16M7 12s2-3.2 5-3.2 5 3.2 5 3.2-2 3.2-5 3.2S7 12 7 12zM12 13.2a1.2 1.2 0 1 0 0-2.4 1.2 1.2 0 0 0 0 2.4z",
 } as const;
 export type IconName = keyof typeof ICON_PATHS;
@@ -207,7 +208,10 @@ export function Seg({ label, hint, value, options, onChange, testId }: {
   };
   return (
     <Fld label={label} hint={hint} labelId={`${id}-l`}>
-      <div ref={ref} className={cx("pn-seg", ready && "is-ready")} role="radiogroup" aria-labelledby={`${id}-l`} data-testid={testId}>
+      <div
+        ref={ref} className={cx("pn-seg", ready && "is-ready")} role="radiogroup" aria-labelledby={`${id}-l`} data-testid={testId}
+        style={{ "--seg-cols": options.length > 3 ? 2 : options.length } as React.CSSProperties}
+      >
         {options.map(([key, text], index) => {
           const checked = key === value;
           return (
@@ -313,6 +317,7 @@ export function ChipsField({ label, hint, values, onChange, placeholder = "Scrie
 /* ------------------------------------------------------------------ */
 
 export type ChannelOption = { id: string; name: string; type: number | string; parentId?: string | null };
+export type RoleOption = { id: string; name: string; managed?: boolean; position?: number };
 
 const TEXT_CHANNEL_TYPES: ReadonlyArray<number | string> = [0, 5, "text", "announcement", "GuildText", "GuildAnnouncement", "GuildNews"];
 const MESSAGE_CHANNEL_TYPES = new Set([
@@ -390,6 +395,72 @@ export function ChannelScope({ channels, selected, onChange }: { channels: Chann
           </p>
         )}
         {missing.length > 0 ? <p className="pn-fh" role="status">{missing.length} canal(e) salvate nu apar în lista disponibilă; selecția se păstrează până o modifici.</p> : null}
+      </div>
+    </Fld>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Alegerea unor canale sau roluri (cu ID-uri scrise de mână)           */
+/* ------------------------------------------------------------------ */
+
+export function IdPicker({ label, hint, kind, options, selected, onChange, max = 100, testId }: {
+  label: string; hint?: string; kind: "channel" | "role"; options: Array<{ id: string; name: string }> | undefined;
+  selected: string[]; onChange: (next: string[]) => void; max?: number; testId: string;
+}) {
+  const id = useId();
+  const [manual, setManual] = useState("");
+  const [problem, setProblem] = useState<string | null>(null);
+  const chosen = new Set(selected);
+  const known = new Set((options ?? []).map((option) => option.id));
+  const unknown = selected.filter((value) => !known.has(value));
+  const prefix = kind === "channel" ? "#" : "@";
+  const what = kind === "channel" ? "canalelor" : "rolurilor";
+  const toggle = (value: string, on: boolean) => {
+    if (!on) { onChange(selected.filter((item) => item !== value)); setProblem(null); return; }
+    if (chosen.has(value)) return;
+    if (selected.length >= max) { setProblem(`Poți alege cel mult ${max}.`); return; }
+    onChange([...selected, value]);
+    setProblem(null);
+  };
+  const addManual = () => {
+    const value = manual.trim();
+    if (!value) return;
+    if (!isDiscordId(value)) { setProblem("Un ID Discord are între 5 și 25 de cifre."); return; }
+    toggle(value, true);
+    setManual("");
+  };
+  return (
+    <Fld label={label} labelId={`${id}-l`} wide hint={hint} testId={testId}>
+      <div className="pn-areaf" role="group" aria-labelledby={`${id}-l`}>
+        {options && options.length > 0 ? (
+          <div className="pn-multi pn-scroll">
+            {options.map((option) => (
+              <Pill key={option.id} checked={chosen.has(option.id)} onChange={(next) => toggle(option.id, next)}>{prefix}{option.name}</Pill>
+            ))}
+          </div>
+        ) : (
+          <p className="pn-fh" role="status">
+            {options === undefined ? `Lista ${what} Discord nu este disponibilă momentan; le poți adăuga după ID.` : `Nu am găsit ${kind === "channel" ? "canale" : "roluri"} pe server.`}
+          </p>
+        )}
+        {unknown.length > 0 ? (
+          <div className="pn-multi">
+            {unknown.map((value) => (
+              <Pill key={value} checked label={`ID ${value}, nu apare în listă`} onChange={() => toggle(value, false)}>ID {value}<small>nu apare în listă</small></Pill>
+            ))}
+          </div>
+        ) : null}
+        <div className="pn-chan">
+          <input
+            className="pn-inp pn-inp-mono" aria-label={`Adaugă după ID: ${label}`} value={manual} placeholder="ID Discord" inputMode="numeric" autoComplete="off"
+            onChange={(event) => setManual(event.target.value)}
+            onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addManual(); } }}
+          />
+          <button type="button" className="pn-btn-ghost pn-btn-sm" onClick={addManual}><Ico name="plus" />Adaugă</button>
+          <span className="pn-unit">{selected.length}/{max}</span>
+        </div>
+        {problem ? <p className="pn-err" role="alert">{problem}</p> : null}
       </div>
     </Fld>
   );

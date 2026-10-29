@@ -248,6 +248,11 @@ export function deepEqual(a: unknown, b: unknown): boolean {
   return keysA.length === keysB.length && keysA.every((key) => deepEqual((a as any)[key], (b as any)[key]));
 }
 
+/** A Discord ID (snowflake) has 5 to 25 digits. */
+export function isDiscordId(value: string): boolean {
+  return /^\d{5,25}$/.test(value);
+}
+
 export function isValidInteger(value: unknown, min: number, max: number): boolean {
   return typeof value === "number" && Number.isInteger(value) && value >= min && value <= max;
 }
@@ -420,7 +425,18 @@ export function isProtectionRoute(path: string): boolean {
   return clean === PROTECTION_ROUTE || MODULES.some((module) => module.route === clean);
 }
 
-export function isModuleEnabled(config: any, module: ModuleDef): boolean {
+/** The page of the AI judge. */
+export const JUDGE_ROUTE = "/ai";
+
+/** Pages built with the panel, which use the whole width of the console column. */
+export function isWidePanelRoute(path: string): boolean {
+  return isProtectionRoute(path) || cleanPath(path) === JUDGE_ROUTE;
+}
+
+/** What a module header needs: the module's key in the configuration and its texts. */
+export type ModuleHeadDef = { id: string; configKey: string; title: string; description: string; switchLabel: string };
+
+export function isModuleEnabled(config: any, module: { configKey: string }): boolean {
   return Boolean(config?.[module.configKey]?.enabled);
 }
 
@@ -429,7 +445,7 @@ export function enabledRuleCount(config: any, module: ModuleDef): number {
 }
 
 /** on: the module runs; paused: it is on but the whole protection is off; off: it is off. */
-export function moduleStatus(config: any, module: ModuleDef): "on" | "paused" | "off" {
+export function moduleStatus(config: any, module: { configKey: string }): "on" | "paused" | "off" {
   if (!isModuleEnabled(config, module)) return "off";
   return config?.protection?.enabled === false ? "paused" : "on";
 }
@@ -485,9 +501,17 @@ export const PROTECTION_SECTIONS = [
   { key: "suspiciousBehavior", label: "Comportament suspect" },
 ] as const;
 
-export function changedSections(saved: any, draft: any): Array<(typeof PROTECTION_SECTIONS)[number]> {
+/** A part of the configuration a page saves: a top-level key or a dotted path. */
+export type DraftSection = { readonly key: string; readonly label: string };
+
+/** The sections whose content differs between what is saved and the draft. */
+export function changedSectionsOf<T extends DraftSection>(sections: readonly T[], saved: any, draft: any): T[] {
   if (!saved || !draft) return [];
-  return PROTECTION_SECTIONS.filter((section) => !deepEqual(getAt(saved, section.key.split(".")), getAt(draft, section.key.split("."))));
+  return sections.filter((section) => !deepEqual(getAt(saved, section.key.split(".")), getAt(draft, section.key.split("."))));
+}
+
+export function changedSections(saved: any, draft: any): Array<(typeof PROTECTION_SECTIONS)[number]> {
+  return changedSectionsOf(PROTECTION_SECTIONS, saved, draft);
 }
 
 /** First problem that would make the server refuse the draft, worded for the person, or null. */
@@ -534,7 +558,11 @@ export function protectionDraftError(config: any, sections?: ReadonlyArray<strin
  */
 export function staffAlertProblems(config: any, channelId: string | null | undefined): string[] {
   const problems: string[] = [];
-  if (!channelId) problems.push("Alege un canal de jurnal sau de alerte pentru modul; fără el, anunțul nu are unde să apară.");
+  // Without a channel of its own, a module posts in the audit channel when the audit log is on.
+  const auditChannel = config?.audit?.enabled ? config?.audit?.channelId : null;
+  if (!channelId && !auditChannel) {
+    problems.push("Alege un canal de jurnal sau de alerte pentru modul (ori pornește jurnalul de audit); fără el, anunțul nu are unde să apară.");
+  }
   const staffRoles = config?.permissions?.staffRoleIds;
   if (!Array.isArray(staffRoles) || staffRoles.length === 0) {
     problems.push("Nu ai ales roluri de staff în setările de permisiuni, așa că anunțul nu menționează pe nimeni.");
@@ -543,7 +571,7 @@ export function staffAlertProblems(config: any, channelId: string | null | undef
 }
 
 /** Why a ticked action may not run, for rules whose module is off or whose global switch is off. */
-export function pausedReason(config: any, module: ModuleDef): string | null {
+export function pausedReason(config: any, module: { configKey: string }): string | null {
   if (!isModuleEnabled(config, module)) return null;
   if (config?.protection?.enabled === false) return "Protecția serverului este oprită, așa că modulul nu rulează.";
   return null;
