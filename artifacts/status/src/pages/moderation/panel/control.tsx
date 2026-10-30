@@ -15,7 +15,8 @@ import {
 } from "./fields";
 import { EmojiTextField, ImageUrlField } from "./message-fields";
 import {
-  CONTROL_MODULES, DAILY_METRICS, DAILY_PREVIEW_ACTIVITY, DAILY_PREVIEW_CHANNELS, DAILY_TEXTS, DAILY_TOKENS, PROVISION_CATEGORIES, RECRUITMENT_FIELDS,
+  CONTROL_MODULES, DAILY_METRICS, DAILY_PREVIEW_ACTIVITY, DAILY_PREVIEW_DAYS, DAILY_PREVIEW_MEMBERS, DAILY_TEXTS, DAILY_TOKENS, PROVISION_CATEGORIES,
+  RECRUITMENT_FIELDS, dailyCardDelta, dailyCardText, dailyChartOn, dailyDeltaText, dailyPreviewChannels, dailyPreviewWeek,
   REPORT_TIME_ZONES, ROLE_PRESETS, WEEKDAYS, accessSummary, dailyProblem, inviteReportSummary, isClockTime, permissionOf, presetRole,
   recruitmentProblem, renderDailyText, roleAccessOf, withRole, withRoleAccess, type ControlModuleId, type ProvisionKey, type RoleAccess,
 } from "./control-model";
@@ -315,6 +316,57 @@ function RecruitmentModule() {
 /* Raport zilnic                                                       */
 /* ------------------------------------------------------------------ */
 
+/** The day's card as the bot draws it, with the example numbers. */
+function DailyCardPreview({ color }: { color: string }) {
+  const { config } = usePanel();
+  const daily = config.dailyStats;
+  const values: readonly number[] = DAILY_PREVIEW_ACTIVITY;
+  const peak = Math.max(...values);
+  const average = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const label = (key: keyof typeof daily.metricLabels, fallback: string) => dailyCardText(renderDailyText(daily.metricLabels[key] ?? "")) || fallback;
+  return (
+    <div className="pn-ctl-cardbox" data-testid="control-daily-card">
+      <div className="pn-ctl-card" style={{ "--card": color } as React.CSSProperties} role="img"
+        aria-label="Graficul zilei: cele șase cifre cu schimbarea față de ieri, ultimele 7 zile și bilanțul membrilor">
+        <p className="pn-ctl-card-k">RAPORT ZILNIC</p>
+        <p className="pn-ctl-card-g">Regatul Cenușii</p>
+        <p className="pn-ctl-card-d">joi, 29 octombrie 2026</p>
+        <div className="pn-ctl-card-tiles">
+          {DAILY_METRICS.map(([key, fallback, value, delta]) => {
+            const better = key === "leaves" ? delta < 0 : delta > 0;
+            return (
+              <div key={key} className="pn-ctl-card-tile">
+                <span>{label(key, fallback)}</span>
+                <b>{value.toLocaleString("ro-RO")}</b>
+                <i data-tone={delta === 0 ? "same" : better ? "good" : "bad"}>{dailyCardDelta(delta)}</i>
+              </div>
+            );
+          })}
+        </div>
+        <div className="pn-ctl-card-chart">
+          <p className="pn-ctl-card-head">
+            <span>{dailyCardText(renderDailyText(daily.activityTitle)) || "Activitate · ultimele 7 zile"}</span>
+            <span>media {Math.round(average)}/zi</span>
+          </p>
+          <div className="pn-ctl-card-plot">
+            <span className="pn-ctl-card-avg" style={{ bottom: `${(average / peak) * 100}%` }} />
+            {values.map((value, index) => (
+              <div key={DAILY_PREVIEW_DAYS[index]} className="pn-ctl-card-col" data-current={index === values.length - 1 || undefined}>
+                <em>{value}</em>
+                <span style={{ height: `${(value / peak) * 100}%` }} />
+              </div>
+            ))}
+          </div>
+          <div className="pn-ctl-card-days">
+            {DAILY_PREVIEW_DAYS.map((day, index) => <span key={day} data-current={index === DAILY_PREVIEW_DAYS.length - 1 || undefined}>{day}</span>)}
+          </div>
+        </div>
+        <p className="pn-ctl-card-sum">Bilanț: +3 membri · {DAILY_PREVIEW_MEMBERS.toLocaleString("ro-RO")} pe server acum</p>
+      </div>
+    </div>
+  );
+}
+
 function DailyPreview() {
   const draft = useBotDraft();
   const { config } = usePanel();
@@ -325,9 +377,10 @@ function DailyPreview() {
     ? <b key={index}><DiscordEmojiText emojis={emojis}>{part.slice(2, -2)}</DiscordEmojiText></b>
     : <DiscordEmojiText key={index} emojis={emojis}>{part}</DiscordEmojiText>);
   const color = /^#[0-9a-f]{6}$/i.test(daily.color) ? daily.color : "#5865F2";
-  const image = isMessageImageUrl(daily.imageUrl.trim()) ? daily.imageUrl.trim() : "";
+  const chart = dailyChartOn(daily);
+  const image = !chart && isMessageImageUrl(daily.imageUrl.trim()) ? daily.imageUrl.trim() : "";
   const thumbnail = isMessageImageUrl(daily.thumbnailUrl.trim()) ? daily.thumbnailUrl.trim() : "";
-  const days = ["23", "24", "25", "26", "27", "28", "29"];
+  const week = dailyPreviewWeek(chart);
   return (
     <div className="pn-dc" data-testid="control-daily-preview">
       <p className="pn-dc-k">Așa apare în Discord</p>
@@ -339,19 +392,37 @@ function DailyPreview() {
             {thumbnail ? <img src={thumbnail} alt="" className="pn-dc-thumb" /> : null}
             <p className="pn-dc-title">{text(daily.title)}</p>
             <p className="pn-dc-text">{text(daily.description)}</p>
-            <p className="pn-dc-field"><b>📊 Rezumat</b>{DAILY_METRICS.map(([key, , value]) => (
-              <span key={key} className="pn-ctl-metric">{text(daily.metricLabels[key])}: <b>{value}</b></span>
-            ))}</p>
-            <p className="pn-dc-field"><b>{text(daily.activityTitle)}</b>{DAILY_PREVIEW_ACTIVITY.map((value, index) => `${days[index]}/10: ${value}`).join(" · ")}</p>
-            <p className="pn-dc-field"><b>{text(daily.channelsTitle)}</b>{DAILY_PREVIEW_CHANNELS.map(([name, value], index) => (
-              <span key={name} className="pn-ctl-metric">{index + 1}. #{name} · {value} mesaje</span>
-            ))}</p>
+            <div className="pn-dc-field" data-testid="control-daily-summary"><b>📊 Rezumat</b>
+              {DAILY_METRICS.map(([key, , value, delta]) => (
+                <span key={key} className="pn-ctl-metric">{text(daily.metricLabels[key])}: <b>{value.toLocaleString("ro-RO")}</b> · {dailyDeltaText(delta)}</span>
+              ))}
+              <span className="pn-ctl-metric">Bilanț: <b>+3</b> membri · <b>{DAILY_PREVIEW_MEMBERS.toLocaleString("ro-RO")}</b> pe server acum</span>
+              <span className="pn-ctl-metric"><i>▲ ▼ arată schimbarea față de ziua dinainte.</i></span>
+            </div>
+            <div className="pn-dc-field" data-testid="control-daily-week"><b>{text(daily.activityTitle)}</b>
+              {week.days ? (
+                <span className="pn-ctl-metric">
+                  {week.days.slice(0, -1).join(" · ")} · <b>{week.days.at(-1)}</b>
+                </span>
+              ) : null}
+              <span className="pn-ctl-metric">Media: <b>{week.average}</b> mesaje/zi · ziua raportului a fost cea mai activă</span>
+            </div>
+            <div className="pn-dc-field" data-testid="control-daily-channels"><b>{text(daily.channelsTitle)}</b>
+              {dailyPreviewChannels().map((channel) => (
+                <span key={channel.name} className="pn-ctl-metric">
+                  {channel.place} <span className="pn-dc-mention">#{channel.name}</span> · <b>{channel.messages}</b> mesaje · {channel.share}%
+                </span>
+              ))}
+            </div>
+            {chart ? <DailyCardPreview color={color} /> : null}
             {image ? <img src={image} alt="" className="pn-dc-image" /> : null}
             <p className="pn-set-foot">{text(daily.footer)} · 29 octombrie 2026</p>
           </div>
         </div>
       </div>
-      <p className="pn-orc-fine">Cifrele sunt inventate. Într-o zi fără mesaje, în locul canalelor active apare: „{renderDailyText(daily.emptyChannelsText)}”</p>
+      <p className="pn-orc-fine">
+        Cifrele sunt inventate. Săgețile apar doar când botul a urmărit toată ziua dinainte. Într-o zi fără mesaje, în locul canalelor active apare: „{renderDailyText(daily.emptyChannelsText)}”
+      </p>
     </div>
   );
 }
@@ -390,7 +461,17 @@ function DailyModule() {
                   <input id={`${id}-c`} className="pn-inp pn-inp-mono pn-set-hex" maxLength={7} value={daily.color} data-testid="control-daily-color" onChange={(event) => setDaily("color", event.target.value.trim())} />
                 </div>
               </Fld>
-              <ImageUrlField label="Imaginea mare" hint="Sub raport." value={daily.imageUrl} onChange={(next) => setDaily("imageUrl", next)} />
+              <SwitchField
+                label="Graficul zilei" testId="control-daily-chart" checked={dailyChartOn(daily)}
+                hint="O imagine cu cele șase cifre, schimbarea față de ieri, ultimele 7 zile și bilanțul membrilor. Botul o desenează la fiecare raport."
+                onChange={(next) => setDaily("chart", next)}
+              />
+              <ImageUrlField
+                label="Imaginea mare" value={daily.imageUrl} onChange={(next) => setDaily("imageUrl", next)}
+                hint={dailyChartOn(daily)
+                  ? "Cât graficul e pornit, locul ei îl ia graficul. O folosește doar dacă graficul nu poate fi desenat."
+                  : "Sub raport."}
+              />
               <ImageUrlField label="Imaginea mică" hint="În colțul din dreapta sus." value={daily.thumbnailUrl} onChange={(next) => setDaily("thumbnailUrl", next)} />
             </Fields>
           </SectionCard>

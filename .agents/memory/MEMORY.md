@@ -73,6 +73,7 @@
 - [Moderation threshold compatibility](moderation-threshold-defaults.md) — fill missing rule defaults only when no accepted legacy alias is saved; keep all aliases aligned in the editor.
 - [Discord mobile embed layout](discord-mobile-embed-layout.md) — inline fields stack on phones; avoid code-block/Unicode bars and keep previews mobile-first.
 - [Daily report coverage](daily-report-coverage.md) — absent observations do not prove zero activity; publishing itself can create an all-zero stats row.
+- [Daily report card](daily-report-card.md) — the post attaches a Pillow-drawn PNG (emoji stripped); off or failed → the old custom image, never a skipped post.
 - [GitHub bulk snapshot uploads](github-bulk-snapshot-upload.md) — with the GitHub connector, upload blobs first and create large trees in sequential batches if one tree request returns 502.
 - [Native AutoMod blocked messages](native-automod-blocked-messages.md) — native keyword blocks bypass normal message handling; process managed-rule execution events with strict rule checks and shared idempotency.
 - [Local scam image OCR](local-scam-image-ocr.md) — member image OCR is local-only by user choice; uncertain extraction must never by itself trigger a sanction.

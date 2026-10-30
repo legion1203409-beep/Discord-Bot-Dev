@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { isWidePanelRoute, panelGroupRoute } from "./model";
 import {
-  CONTROL_MODULES, accessSummary, changedControlParts, controlDraftError, controlModuleForRoute, controlModuleSummary, defaultPermission,
+  CONTROL_MODULES, accessSummary, changedControlParts, controlDraftError, controlModuleForRoute, controlModuleSummary, dailyCardDelta, dailyCardText,
+  dailyChartOn, dailyDeltaText, dailyPreviewChannels, dailyPreviewWeek, defaultPermission,
   inviteReportSummary, isControlRoute, permissionOf, presetRole, ROLE_PRESETS, recruitmentProblem, renderDailyText, roleAccessOf, withRole, withRoleAccess,
 } from "./control-model";
 
@@ -57,6 +58,8 @@ describe("the bot control group", () => {
     expect(inviteReportSummary({ reportEnabled: true, reportFrequency: "daily", reportTime: "21:30" })).toBe("zilnic la 21:30");
     expect(controlModuleSummary("recruitment", value)).toBe("oprit");
     expect(controlModuleSummary("daily", value)).toBe("nu se postează");
+    expect(controlModuleSummary("daily", { ...value, dailyStats: { ...value.dailyStats, channelId: "500000002" } })).toBe("zilnic, după miezul nopții, cu grafic");
+    expect(controlModuleSummary("daily", { ...value, dailyStats: { ...value.dailyStats, channelId: "500000002", chart: false } })).toBe("zilnic, după miezul nopții");
     expect(controlModuleSummary("channels", value)).toBe("acces implicit");
     expect(controlModuleSummary("server", { ...value, discordLive: false })).toBe("offline");
   });
@@ -71,6 +74,21 @@ describe("the bot control group", () => {
 
   it("fills the daily report's texts with example values", () => {
     expect(renderDailyText("📊 {guild} · {date} · {messages} · {unknown}")).toBe("📊 Regatul Cenușii · 29 octombrie 2026 · 307 · {unknown}");
+  });
+
+  it("shows the daily report the way the bot now writes it, with the day's card", () => {
+    expect(dailyChartOn({})).toBe(true);
+    expect(dailyChartOn({ chart: false })).toBe(false);
+    expect(dailyDeltaText(1131)).toBe("▲ +1.131");
+    expect(dailyDeltaText(-2)).toBe("▼ −2");
+    expect(dailyDeltaText(0)).toBe("la fel");
+    expect(dailyCardDelta(3)).toBe("▲ +3 față de ieri");
+    expect(dailyCardDelta(0)).toBe("= la fel ca ieri");
+    expect(dailyCardText("💬 **Mesaje** <:cenusa:123456789012345678>")).toBe("Mesaje");
+    expect(dailyPreviewWeek(true)).toEqual({ days: null, average: 127 });
+    expect(dailyPreviewWeek(false).days?.at(-1)).toBe("Jo 29: 307");
+    expect(dailyPreviewChannels()[0]).toEqual({ place: "🥇", name: "general", messages: 124, share: 40 });
+    expect(dailyPreviewChannels()[3].place).toBe("4.");
   });
 
   it("gives and takes roles' access to the channels the bot creates", () => {

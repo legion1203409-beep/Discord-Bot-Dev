@@ -224,6 +224,8 @@ export interface BotControlConfig {
     emptyChannelsText: string;
     imageUrl: string;
     thumbnailUrl: string;
+    /** The day's card as the report's image; missing means on. */
+    chart?: boolean;
     metricLabels: {
       messages: string;
       uniqueUsers: string;

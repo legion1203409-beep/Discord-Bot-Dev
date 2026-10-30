@@ -478,6 +478,7 @@ const DEFAULT_DAILY_STATS_EMBED_CONFIG =
   emptyChannelsText: "Încă nu există mesaje înregistrate pentru această zi.",
   imageUrl: "",
   thumbnailUrl: "",
+  chart: true,
   metricLabels: 
 {
 
@@ -507,6 +508,7 @@ const dailyStatsEmbedConfigSchema = z.object(
   emptyChannelsText: z.string().trim().min(1).max(1_024),
   imageUrl: z.string().trim().max(2_000).refine(isMessageImageUrl, "Imaginea trebuie să fie HTTPS sau încărcată în storage."),
   thumbnailUrl: z.string().trim().max(2_000).refine(isMessageImageUrl, "Thumbnail-ul trebuie să fie HTTPS sau încărcat în storage.").default(""),
+  chart: z.boolean().default(true),
   metricLabels: z.object(
 {
 

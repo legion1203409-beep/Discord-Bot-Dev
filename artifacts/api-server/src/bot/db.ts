@@ -2601,6 +2601,8 @@ export interface DailyStatsEmbedConfig {
   emptyChannelsText: string;
   imageUrl: string;
   thumbnailUrl: string;
+  /** Draw the day's card (numbers and the last 7 days) and post it as the report's image. */
+  chart: boolean;
   metricLabels: {
     messages: string;
     uniqueUsers: string;
@@ -2622,6 +2624,7 @@ export const DEFAULT_DAILY_STATS_EMBED_CONFIG: DailyStatsEmbedConfig = {
   emptyChannelsText: "Încă nu există mesaje înregistrate pentru această zi.",
   imageUrl: "",
   thumbnailUrl: "",
+  chart: true,
   metricLabels: {
     messages: "💬 Mesaje",
     uniqueUsers: "👥 Utilizatori unici",
@@ -2637,7 +2640,7 @@ export function normalizeDailyStatsEmbedConfig(value: unknown): DailyStatsEmbedC
   const labels = input.metricLabels && typeof input.metricLabels === "object"
     ? input.metricLabels as Record<string, unknown>
     : {};
-  const text = (key: keyof Omit<DailyStatsEmbedConfig, "metricLabels" | "color" | "imageUrl" | "thumbnailUrl" | "channelId">): string => {
+  const text = (key: keyof Omit<DailyStatsEmbedConfig, "metricLabels" | "color" | "imageUrl" | "thumbnailUrl" | "channelId" | "chart">): string => {
     const current = input[key];
     const fallback = DEFAULT_DAILY_STATS_EMBED_CONFIG[key];
     return typeof current === "string" && current.trim() ? current.trim() : fallback;
@@ -2666,6 +2669,7 @@ export function normalizeDailyStatsEmbedConfig(value: unknown): DailyStatsEmbedC
     emptyChannelsText: text("emptyChannelsText").slice(0, 1_024),
     imageUrl: normalizeMessageImageUrl(input.imageUrl),
     thumbnailUrl: normalizeMessageImageUrl(input.thumbnailUrl),
+    chart: input.chart !== false,
     metricLabels: {
       messages: label("messages").slice(0, 256),
       uniqueUsers: label("uniqueUsers").slice(0, 256),

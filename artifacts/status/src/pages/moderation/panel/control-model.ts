@@ -129,16 +129,17 @@ export const DAILY_TEXTS = [
   { key: "footer", label: "Subsolul", max: 2_048 },
 ] as const;
 
+/** Each number of the report: its key, its name here, and the example value with its change since the day before. */
 export const DAILY_METRICS = [
-  ["messages", "Mesaje", 307], ["uniqueUsers", "Utilizatori unici", 13], ["boosts", "Boost-uri", 0],
-  ["joins", "Intrări", 5], ["leaves", "Ieșiri", 5], ["peakVoice", "Vârf în voce", 4],
+  ["messages", "Mesaje", 307, 131], ["uniqueUsers", "Utilizatori unici", 13, -2], ["boosts", "Boost-uri", 0, 0],
+  ["joins", "Intrări", 5, 3], ["leaves", "Ieșiri", 2, 1], ["peakVoice", "Vârf în voce", 4, 1],
 ] as const;
 
 export const DAILY_TOKENS = ["guild", "date", "day", "month", "year", "messages", "uniqueUsers", "joins", "leaves", "boosts", "peakVoice"] as const;
 
 const DAILY_SAMPLE: Record<string, string> = {
   guild: "Regatul Cenușii", date: "29 octombrie 2026", year: "2026", month: "10", day: "29", timestamp: "29 octombrie 2026 · 00:01",
-  timestamp_relative: "acum un minut", messages: "307", uniqueUsers: "13", boosts: "0", joins: "5", leaves: "5", peakVoice: "4",
+  timestamp_relative: "acum un minut", messages: "307", uniqueUsers: "13", boosts: "0", joins: "5", leaves: "2", peakVoice: "4",
 };
 
 export function renderDailyText(template: string): string {
@@ -146,7 +147,58 @@ export function renderDailyText(template: string): string {
 }
 
 export const DAILY_PREVIEW_ACTIVITY = [48, 83, 61, 119, 94, 176, 307] as const;
+export const DAILY_PREVIEW_DAYS = ["Vi 23", "Sâ 24", "Du 25", "Lu 26", "Ma 27", "Mi 28", "Jo 29"] as const;
 export const DAILY_PREVIEW_CHANNELS = [["general", 124], ["strategii", 83], ["raiduri", 61], ["ajutor", 22], ["off-topic", 17]] as const;
+export const DAILY_PREVIEW_MEMBERS = 1234;
+
+/** The day's card is on unless it was turned off. */
+export function dailyChartOn(daily: any): boolean {
+  return daily?.chart !== false;
+}
+
+/** The change since the day before, as the report writes it after a number. */
+export function dailyDeltaText(delta: number): string {
+  if (delta > 0) return `▲ +${delta.toLocaleString("ro-RO")}`;
+  if (delta < 0) return `▼ −${(-delta).toLocaleString("ro-RO")}`;
+  return "la fel";
+}
+
+/** The example week as the report writes it: the days (listed only without the card; the last one is the report's) and their average. */
+export function dailyPreviewWeek(chart: boolean): { days: string[] | null; average: number } {
+  const values: readonly number[] = DAILY_PREVIEW_ACTIVITY;
+  return {
+    days: chart ? null : DAILY_PREVIEW_DAYS.map((day, index) => `${day}: ${values[index]}`),
+    average: Math.round(values.reduce((sum, value) => sum + value, 0) / values.length),
+  };
+}
+
+/** Text as the day's card draws it: its font has no emoji, so they go, with Discord's emoji and markdown marks. */
+export function dailyCardText(value: string): string {
+  return value
+    .replace(/<a?:\w+:\d+>/g, "")
+    .replace(/\p{Extended_Pictographic}/gu, "")
+    .replace(/[\u{10000}-\u{10FFFF}]/gu, "")
+    .replace(/[\uFE0E\uFE0F\u200D\u20E3]/g, "")
+    .replace(/[*_`~|]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** The change under a number on the card. */
+export function dailyCardDelta(delta: number): string {
+  return delta === 0 ? "= la fel ca ieri" : `${dailyDeltaText(delta)} față de ieri`;
+}
+
+/** The example channels with their share of the day's messages. */
+export function dailyPreviewChannels(): Array<{ place: string; name: string; messages: number; share: number }> {
+  const total = DAILY_METRICS[0][2];
+  return DAILY_PREVIEW_CHANNELS.map(([name, messages], index) => ({
+    place: ["🥇", "🥈", "🥉"][index] ?? `${index + 1}.`,
+    name,
+    messages,
+    share: Math.round((messages / total) * 100),
+  }));
+}
 
 /** First problem in the daily report, or null. */
 export function dailyProblem(daily: any): string | null {
@@ -259,7 +311,9 @@ export function controlModuleSummary(id: ControlModuleId, config: any): string {
   switch (id) {
     case "invites": return tracking.enabled ? `urmărite · ${inviteReportSummary(tracking)}` : "oprite";
     case "recruitment": return tracking.recruitment?.enabled ? `/invita · ${tracking.recruitment.rewardPoints} puncte` : "oprit";
-    case "daily": return config?.dailyStats?.channelId ? "zilnic, după miezul nopții" : "nu se postează";
+    case "daily": return config?.dailyStats?.channelId
+      ? `zilnic, după miezul nopții${dailyChartOn(config.dailyStats) ? ", cu grafic" : ""}`
+      : "nu se postează";
     case "channels": {
       const set = Object.keys(config?.provisioningPermissions ?? {}).length;
       return set ? `${countLabel(set, "categorie", "categorii")} cu acces ales` : "acces implicit";

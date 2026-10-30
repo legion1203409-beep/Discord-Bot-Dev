@@ -610,6 +610,36 @@
 .pn .pn-ctl-cat.is-sel { border-color: color-mix(in oklab, var(--tc) 45%, transparent); background: color-mix(in oklab, var(--tc) 6%, transparent); }
 .pn .pn-ctl-cat-h { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .pn .pn-ctl-cat-t { flex: 1 1 200px; min-width: 0; color: var(--pn-ink-3); font-size: 13px; }
+
+/* The day's card, as the bot draws it (800 px wide; 1cqw = 8 px of the picture). */
+.pn .pn-dc-mention { padding: 0 2px; border-radius: 3px; background: rgba(88, 101, 242, .3); color: #c9cdfb; font-weight: 500; }
+.pn .pn-ctl-cardbox { container-type: inline-size; max-width: 420px; margin-top: 12px; }
+.pn .pn-ctl-card { overflow: hidden; padding: 3.75cqw 5cqw 3.5cqw; border-radius: 4px; background: radial-gradient(60% 45% at 8% 0%, color-mix(in srgb, var(--card) 34%, transparent), transparent 72%), linear-gradient(#16181e, #0d0e12); color: #f6f1ea; font-family: "DejaVu Sans", Verdana, Geneva, sans-serif; line-height: 1.2; }
+.pn .pn-ctl-card p { margin: 0; }
+.pn .pn-ctl-card-k { color: var(--card); font-size: 2.5cqw; }
+.pn .pn-ctl-card-g { margin-top: .6cqw; overflow: hidden; font-size: 5cqw; font-weight: 700; white-space: nowrap; text-overflow: ellipsis; }
+.pn .pn-ctl-card-d { margin-top: .8cqw; color: #beb9b2; font-size: 3cqw; }
+.pn .pn-ctl-card-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.75cqw; margin-top: 3.5cqw; }
+.pn .pn-ctl-card-tile { display: grid; gap: .7cqw; min-width: 0; padding: 1.75cqw 2cqw 2cqw; border-radius: 2.25cqw; border: 1px solid rgba(255, 255, 255, .1); background: rgba(255, 255, 255, .047); }
+.pn .pn-ctl-card-tile span, .pn .pn-ctl-card-tile i { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.pn .pn-ctl-card-tile span { color: #96928c; font-size: 2.625cqw; }
+.pn .pn-ctl-card-tile b { font-size: 5.75cqw; font-weight: 700; line-height: 1.1; }
+.pn .pn-ctl-card-tile i { color: #96928c; font-size: 2.375cqw; font-style: normal; }
+.pn .pn-ctl-card-tile i[data-tone="good"] { color: #3ddc84; }
+.pn .pn-ctl-card-tile i[data-tone="bad"] { color: #ff7878; }
+.pn .pn-ctl-card-chart { margin-top: 3.25cqw; padding: 2cqw 2.25cqw 1.75cqw; border-radius: 2.25cqw; border: 1px solid rgba(255, 255, 255, .1); background: rgba(255, 255, 255, .047); }
+.pn .pn-ctl-card-head { display: flex; justify-content: space-between; gap: 2cqw; color: #beb9b2; font-size: 2.75cqw; }
+.pn .pn-ctl-card-head span:last-child { color: #96928c; font-size: 2.5cqw; white-space: nowrap; }
+.pn .pn-ctl-card-plot { position: relative; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); height: 14cqw; margin-top: 6cqw; }
+.pn .pn-ctl-card-col { position: relative; z-index: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: .6cqw; min-width: 0; height: 100%; }
+.pn .pn-ctl-card-col em { flex: none; padding: 0 .6cqw; border-radius: 1cqw; background: #1b1c21; color: #beb9b2; font-size: 2.5cqw; font-style: normal; }
+.pn .pn-ctl-card-col span { flex: none; width: min(7cqw, 60%); min-height: .75cqw; border-radius: 1.1cqw; background: color-mix(in srgb, var(--card) 45%, #0d0e12); }
+.pn .pn-ctl-card-col[data-current] em { color: #f6f1ea; }
+.pn .pn-ctl-card-col[data-current] span { background: var(--card); }
+.pn .pn-ctl-card-avg { position: absolute; left: 0; right: 0; height: 0; border-top: 2px dashed #96928c; }
+.pn .pn-ctl-card-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); margin-top: 1.5cqw; color: #96928c; font-size: 2.5cqw; text-align: center; white-space: nowrap; }
+.pn .pn-ctl-card-days [data-current] { color: #f6f1ea; }
+.pn .pn-ctl-card-sum { margin-top: 2.5cqw; overflow: hidden; color: #beb9b2; font-size: 2.75cqw; white-space: nowrap; text-overflow: ellipsis; }
 .pn .pn-ctl-items { margin-top: 8px; }
 .pn .pn-ctl-items span { padding: 2px 9px; border-radius: 999px; background: rgba(255, 255, 255, .05); color: var(--pn-ink-2); font: 500 12px var(--pn-mono); }
 .pn .pn-ctl-access { display: grid; gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--pn-line-2); }

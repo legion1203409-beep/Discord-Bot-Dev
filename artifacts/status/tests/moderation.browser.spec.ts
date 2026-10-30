@@ -2977,6 +2977,23 @@ test.describe("bot control page", () => {
     expect(body).not.toHaveProperty("oracle");
   });
 
+  test("shows the daily report with the day's card and can post it without the card", async ({ page }) => {
+    const { putBodies } = await openControl(page, "/moderare/control/raport");
+    await page.getByRole("combobox", { name: "Canalul raportului zilnic" }).selectOption("444444444");
+    await expect(page.getByTestId("control-daily-chart")).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByTestId("control-daily-card")).toBeVisible();
+    await expect(page.getByTestId("control-daily-summary")).toContainText("Mesaje: 307 · ▲ +131");
+    await expect(page.getByTestId("control-daily-summary")).toContainText("Bilanț: +3 membri");
+    await expect(page.getByTestId("control-daily-channels")).toContainText("🥇 #general · 124 mesaje · 40%");
+    await expect(page.getByTestId("control-daily-week")).not.toContainText("Vi 23");
+    await page.getByTestId("control-daily-chart").click();
+    await expect(page.getByTestId("control-daily-card")).toHaveCount(0);
+    await expect(page.getByTestId("control-daily-week")).toContainText("Vi 23: 48");
+    await page.getByTestId("button-save-control").click();
+    await expect.poll(() => putBodies.get(guilds[0].id)?.length).toBe(1);
+    expect(putBodies.get(guilds[0].id)![0].dailyStats).toMatchObject({ channelId: "444444444", chart: false });
+  });
+
   test("asks the recruitment program for its channel and warns while verification is off", async ({ page }) => {
     const { putBodies } = await openControl(page, "/moderare/control/recrutare");
     await page.getByTestId("control-recruitment-switch").click();
