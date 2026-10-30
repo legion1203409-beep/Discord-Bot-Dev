@@ -24,7 +24,7 @@ export function ConfigOverviewPage() {
     { key: "audit", title: "Audit", description: "Jurnalul acțiunilor de moderare.", href: "/jurnale/audit", enabled: Boolean(data.audit?.enabled), dependent: false, icon: FileText },
     { key: "activityLog", title: "Jurnale de activitate", description: "Canale private pe categorii, în Discord.", href: "/jurnale/activitate", enabled: Boolean(data.activityLog?.enabled), dependent: false, icon: FileText },
     { key: "escalation", title: "Escaladare", description: "Sancțiuni progresive.", href: "/sanctiuni/escaladare", enabled: Boolean(data.escalation?.enabled), dependent: false, icon: Gavel },
-    { key: "embeds", title: "Embed-uri", description: "Aspect, media și animații.", href: "/config/embeduri", enabled: Boolean(data.embeds?.enabled), dependent: false, icon: Settings },
+    { key: "embeds", title: "Notificări în embed", description: "Forma, culoarea și textul notificărilor.", href: "/setari/notificari", enabled: Boolean(data.embeds?.enabled), dependent: false, icon: Settings },
   ];
 
   return (
@@ -51,7 +51,7 @@ export function ConfigOverviewPage() {
         })}
       </div>
       <div className="animate-stagger-4 pt-4">
-        <Link href="/config/avansat" className="inline-flex items-center gap-2 text-sm text-primary hover:text-primary/80 transition-colors font-medium">Toate setările avansate <ChevronRight className="h-4 w-4" /></Link>
+        <Link href="/setari" className="inline-flex items-center gap-2 text-sm text-primary hover:text-primary/80 transition-colors font-medium">Setări bot: acces staff, notificări și mesaje către membri <ChevronRight className="h-4 w-4" /></Link>
       </div>
     </div>
   );

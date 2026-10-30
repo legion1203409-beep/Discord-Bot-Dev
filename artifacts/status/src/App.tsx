@@ -5,9 +5,7 @@ import { DashboardOverview } from "./pages/moderation/Dashboard";
 import { CasesPage } from "./pages/moderation/Cases";
 import { CommandsPage } from "./pages/moderation/Commands";
 import { AuditPage } from "./pages/moderation/Audit";
-import { AdvancedSettingsPage } from "./pages/moderation/Settings";
 import { ConfigOverviewPage } from "./pages/moderation/ConfigOverview";
-import { CategorySettingsPage } from "./pages/moderation/CategorySettings";
 import { ProtectionGroupPage } from "./pages/moderation/panel/ProtectionGroup";
 import { JudgePage } from "./pages/moderation/panel/JudgePage";
 import { SanctionsGroupPage } from "./pages/moderation/panel/SanctionsGroup";
@@ -16,6 +14,7 @@ import { BotControlPage } from "./pages/moderation/BotControl";
 import { VerificationGroupPage } from "./pages/moderation/panel/VerificationGroup";
 import { TicketsGroupPage } from "./pages/moderation/panel/TicketsGroup";
 import { OracleGroupPage } from "./pages/moderation/panel/OracleGroup";
+import { SettingsGroupPage } from "./pages/moderation/panel/SettingsGroup";
 import { MessageTemplatesPage } from "./pages/moderation/MessageTemplates";
 import { ServerSetupPage } from "./pages/moderation/ServerSetup";
 import { ActivityRanksPage } from "./pages/moderation/ActivityRanks";
@@ -123,8 +122,8 @@ function ModerationApp() {
           <Route path="/audit" component={AuditPage} />
           <Route path="/config" component={ConfigOverviewPage} />
           <Route path="/config/mesaje" component={MessageTemplatesPage} />
-          <Route path="/config/avansat" component={AdvancedSettingsPage} />
-          <Route path="/config/embeduri" component={() => <CategorySettingsPage section="embeds" />} />
+          <Route path="/config/avansat" component={() => <Redirect to="/setari/acces" replace />} />
+          <Route path="/config/embeduri" component={() => <Redirect to="/setari/notificari" replace />} />
           <Route path="/canale" component={() => <BotControlPage channelsOnly />} />
           <Route path="/provisioning" component={() => <BotControlPage provisioningOnly />} />
           <Route path="/bot" component={() => <BotControlPage />} />
@@ -143,6 +142,11 @@ function ModerationApp() {
           <Route path="/oracol/conversatie" component={OracleGroupPage} />
           <Route path="/oracol/ton" component={OracleGroupPage} />
           <Route path="/oracol/profetii" component={OracleGroupPage} />
+          <Route path="/setari" component={SettingsGroupPage} />
+          <Route path="/setari/acces" component={SettingsGroupPage} />
+          <Route path="/setari/notificari" component={SettingsGroupPage} />
+          <Route path="/setari/privat" component={SettingsGroupPage} />
+          <Route path="/setari/bun-venit" component={SettingsGroupPage} />
           <Route path="/pornire-server" component={ServerSetupPage} />
           <Route path="/ranguri-activitate" component={ActivityRanksPage} />
           <Route path="/asistent" component={OfflineAssistant} />

@@ -1,7 +1,10 @@
 import type { Guild } from "discord.js";
 import { logger } from "../../lib/logger";
 
-/** Warnings may be shown in their source guild channel, but never in a member's DMs. */
+/**
+ * Warnings are shown in their source guild channel. A private message comes
+ * only from sanction-dm.ts, when the server turned it on in the panel.
+ */
 export async function deliverWarningInGuild(
   guild: Guild,
   channelId: string | undefined,

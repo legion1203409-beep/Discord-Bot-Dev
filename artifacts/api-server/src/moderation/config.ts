@@ -27,6 +27,11 @@ const safeHttpsUrl = z.string().url().refine((value) => {
   const privateIpv4 = /^(10\.|127\.|0\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host);
   return url.protocol === "https:" && host !== "localhost" && host !== "::1" && !privateIpv4;
 }, "URL must use public HTTPS");
+const sanctionDmAction = z.enum(["warn", "mute", "kick", "ban"]);
+export const DEFAULT_SANCTION_DM_APPEAL_TEXT =
+  "Dacă vrei să contești, deschide pe {guild} un tichet de contestație și scrie ID-ul cazului de mai sus.";
+export const DEFAULT_SANCTION_DM_REMOVED_APPEAL_TEXT =
+  "Dacă vrei să contești, scrie-i unui administrator al serverului {guild} și dă-i ID-ul cazului de mai sus.";
 const safeGifUrl = safeHttpsUrl.refine((value) => new URL(value).pathname.toLowerCase().endsWith(".gif"), "Animation URL must point to a GIF");
 
 export const EvidenceItemSchema = z.object({
@@ -373,6 +378,24 @@ export const ModerationConfigSchema = z.object({
     // Legacy persisted field. Settings and audit access now always follows
     // Discord Administrator permissions, independently of a per-guild toggle.
     allowAdminsSettings: z.boolean().default(false),
+  }).default({}),
+  // A private message to a sanctioned member: what happened, the case ID and
+  // how to appeal. Off by default; the bot never wrote to members in private
+  // before. Anti-raid sanctions never send one.
+  sanctionDm: z.object({
+    enabled: z.boolean().default(false),
+    actions: z.array(sanctionDmAction).max(4).default(["warn", "mute", "kick", "ban"])
+      .refine((actions) => new Set(actions).size === actions.length, "Each sanction may appear once"),
+    /** Also for the sanctions the bot gives on its own (AutoMod, anti-spam, the AI judge). */
+    automatic: z.boolean().default(true),
+    showReason: z.boolean().default(true),
+    showModerator: z.boolean().default(false),
+    /** How to appeal while still on the server (warning, timeout). */
+    appealText: z.string().trim().max(1_000).default(DEFAULT_SANCTION_DM_APPEAL_TEXT),
+    /** How to appeal after a kick or a ban, when the server's tickets are out of reach. */
+    removedAppealText: z.string().trim().max(1_000).default(DEFAULT_SANCTION_DM_REMOVED_APPEAL_TEXT),
+    /** A link button under the message, e.g. an appeal form or an appeal server. */
+    appealUrl: safeHttpsUrl.nullable().default(null),
   }).default({}),
 }).superRefine((config, ctx) => {
   validateRuleThresholds(config.autoMod.wordFilter, ["autoMod", "wordFilter"], { matches: [1, 100] }, ctx);

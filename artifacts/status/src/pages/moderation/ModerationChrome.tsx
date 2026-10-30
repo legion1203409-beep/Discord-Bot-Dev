@@ -17,8 +17,8 @@ import {
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "../../components/ui/sheet";
 import { useActiveGuild, useModerationConfig, useSession } from "../../hooks/use-moderation-api";
 import {
-  cleanPath, isLogsRoute, isOracleRoute, isProtectionRoute, isSanctionsRoute, isTicketsRoute, isVerificationRoute, isWidePanelRoute, LOGS_ROUTE,
-  ORACLE_ROUTE, panelGroupRoute, PROTECTION_ROUTE, SANCTIONS_ROUTE, TICKETS_ROUTE, VERIFICATION_ROUTE,
+  cleanPath, isLogsRoute, isOracleRoute, isProtectionRoute, isSanctionsRoute, isSettingsRoute, isTicketsRoute, isVerificationRoute, isWidePanelRoute,
+  LOGS_ROUTE, ORACLE_ROUTE, panelGroupRoute, PROTECTION_ROUTE, SANCTIONS_ROUTE, SETTINGS_ROUTE, TICKETS_ROUTE, VERIFICATION_ROUTE,
 } from "./panel/model";
 
 type NavigationItem = { id: string; label: string; description: string; href: string; icon: typeof Home; tint: string; keywords?: string };
@@ -33,7 +33,7 @@ const primaryItems: NavigationItem[] = [
   { id: "tickets", label: "Tichete", description: "Aplicații, parteneriate, ajutor și contestații", href: "/tichete", icon: Ticket, tint: "violet", keywords: "tichete tickets aplicatii parteneriate ajutor raportari contestatii" },
   { id: "rpg", label: "RPG", description: "Ranguri și progresul comunității", href: "/ranguri-activitate", icon: Trophy, tint: "gold", keywords: "ranguri activitate joc" },
   { id: "oracle", label: "Oracol", description: "Conversația AI, tonul și profețiile", href: "/oracol", icon: MessageCircle, tint: "violet", keywords: "oracol oracle ai chat conversatie ton profetie startai stopai" },
-  { id: "settings", label: "Setări bot", description: "Module, configurare și canale", href: "/config", icon: Settings2, tint: "ember", keywords: "config settings" },
+  { id: "settings", label: "Setări bot", description: "Acces staff, notificări și mesajele către membri", href: "/setari", icon: Settings2, tint: "ember", keywords: "setari config settings acces staff notificari embed privat dm bun venit plecare" },
   { id: "assistant", label: "Asistent", description: "Ajutor offline și navigare în panou", href: "/asistent", icon: Bot, tint: "gold", keywords: "assistant help cauta" },
 ];
 
@@ -63,16 +63,19 @@ const allItems: Array<{ heading: string; items: NavigationItem[] }> = [
   ] },
   { heading: "Configurare", items: [
     primary("settings"),
-    { id: "config-messages", label: "Mesaje de moderare", description: "Șabloane și răspunsuri", href: "/config/mesaje", icon: MessageCircle, tint: "gold" },
-    { id: "config-advanced", label: "Setări avansate", description: "Permisiunile staff-ului", href: "/config/avansat", icon: SlidersHorizontal, tint: "gold" },
-    { id: "config-embeds", label: "Embed-uri", description: "Aspectul mesajelor", href: "/config/embeduri", icon: Sparkles, tint: "gold" },
+    { id: "settings-access", label: "Acces staff", description: "Rolurile staff și cine intră în panou", href: "/setari/acces", icon: Shield, tint: "gold", keywords: "roluri staff permisiuni manage server panou" },
+    { id: "settings-notices", label: "Notificările de moderare", description: "Embed, culoare, text și imagini", href: "/setari/notificari", icon: Sparkles, tint: "gold", keywords: "embed culoare icon animatie gif titlu text sablon" },
+    { id: "settings-dm", label: "Mesaje în privat", description: "Mesajul pentru membrul sancționat și contestația", href: "/setari/privat", icon: MessageCircle, tint: "gold", keywords: "dm privat sanctiune contestatie apel caz" },
+    { id: "settings-welcome", label: "Bun venit și plecare", description: "Mesajele AI la intrare și la plecare", href: "/setari/bun-venit", icon: Users, tint: "gold", keywords: "bun venit plecare intrare membri nou ai" },
+    { id: "config-overview", label: "Module și configurare", description: "Starea tuturor modulelor", href: "/config", icon: SlidersHorizontal, tint: "gold", keywords: "module config overview" },
+    { id: "config-messages", label: "Personalizare mesaje", description: "Șabloanele jurnalelor, raportul zilnic și anunțul alianței", href: "/config/mesaje", icon: MessageCircle, tint: "gold" },
     { id: "server-setup", label: "Pornire server", description: "Ghid de configurare", href: "/pornire-server", icon: BookOpen, tint: "gold" },
   ] },
   { heading: "Servicii Discord", items: [
     { id: "channels", label: "Canale și destinații", description: "Panouri și destinații bot", href: "/canale", icon: Server, tint: "violet" },
     { id: "provisioning", label: "Provisioning", description: "Canale și permisiuni", href: "/provisioning", icon: SlidersHorizontal, tint: "violet" },
     { id: "roles", label: "Roluri", description: "Roluri și acces", href: "/bot?tab=roles", icon: Shield, tint: "violet" },
-    { id: "bot-messages", label: "Mesajele botului", description: "Bun venit, plecare și jocul oprit", href: "/bot?tab=messages", icon: MessageCircle, tint: "violet", keywords: "bun venit plecare joc oprit" },
+    { id: "bot-messages", label: "Mesajele botului", description: "Mesajul pentru jocul oprit", href: "/bot?tab=messages", icon: MessageCircle, tint: "violet", keywords: "joc oprit" },
     { id: "bot-statistics", label: "Statistici bot", description: "Statistici și invitații", href: "/bot?tab=statistics", icon: Activity, tint: "violet" },
   ] },
   { heading: "Oracol", items: [
@@ -265,6 +268,7 @@ function primaryIsActive(href: string, location: string) {
   if (href === VERIFICATION_ROUTE && isVerificationRoute(location)) return true;
   if (href === TICKETS_ROUTE && isTicketsRoute(location)) return true;
   if (href === ORACLE_ROUTE && isOracleRoute(location)) return true;
+  if (href === SETTINGS_ROUTE && isSettingsRoute(location)) return true;
   return routeIsActive(href, location);
 }
 

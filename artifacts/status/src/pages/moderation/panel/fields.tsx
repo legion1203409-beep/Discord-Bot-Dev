@@ -385,11 +385,13 @@ export function roleOptions(roles: RoleOption[] | undefined): PickerOption[] | u
     .map((role) => ({ id: role.id, name: role.name, note: role.managed ? "integrare" : undefined }));
 }
 
-export function ChannelField({ label, hint, value, channels, onChange, onCreate, creating, createDisabled, selectLabel }: {
+export function ChannelField({ label, hint, value, channels, onChange, onCreate, creating, createDisabled, selectLabel, wide }: {
   label: string; hint?: React.ReactNode; value: string | null | undefined; channels: ChannelOption[] | undefined; onChange: (next: string | null) => void;
   onCreate?: () => void; creating?: boolean; createDisabled?: boolean;
   /** The list's own name, when "Canal pentru …" does not read well. */
   selectLabel?: string;
+  /** Label above the list, for narrow columns. */
+  wide?: boolean;
 }) {
   const id = useId();
   const selectable = (channels ?? []).filter((channel) => TEXT_CHANNEL_TYPES.includes(channel.type));
@@ -397,7 +399,7 @@ export function ChannelField({ label, hint, value, channels, onChange, onCreate,
   const available = selectable.some((channel) => channel.id === channelId);
   const unavailable = Boolean(channelId) && channels !== undefined && !available;
   return (
-    <Fld label={label} hint={hint} labelId={`${id}-l`}>
+    <Fld label={label} hint={hint} labelId={`${id}-l`} wide={wide}>
       <div className="pn-chan">
         <select className="pn-inp" aria-label={selectLabel ?? `Canal pentru ${label}`} value={channelId} onChange={(event) => onChange(event.target.value || null)}>
           <option value="">Neconfigurat</option>

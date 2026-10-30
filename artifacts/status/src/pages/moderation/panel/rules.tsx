@@ -27,7 +27,7 @@ export function StaffAlertNote({ channelId }: { channelId: string | null | undef
   return (
     <Note tone="warn">
       {problems.map((problem) => <p key={problem}>{problem}</p>)}
-      {rolesMissing ? <p><Link href="/config/avansat">Alege rolurile de staff în Setări avansate</Link></p> : null}
+      {rolesMissing ? <p><Link href="/setari/acces">Alege rolurile staff în Setări bot → Acces staff</Link></p> : null}
     </Note>
   );
 }
@@ -187,8 +187,8 @@ export function MessagesCard() {
       <Fields>
         <NoteRow tone="plain">
           <p>
-            Titlul și textul notificărilor de moderare se schimbă acum din{" "}
-            <Link href="/config/mesaje">Personalizare mesaje</Link>, pentru toate modulele deodată.
+            Forma, culoarea și textul notificărilor de moderare se schimbă din{" "}
+            <Link href="/setari/notificari">Setări bot → Notificări</Link>, pentru toate modulele deodată.
           </p>
           <p>Textele separate pentru fiecare modul vor veni într-o etapă următoare.</p>
         </NoteRow>

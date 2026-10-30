@@ -149,23 +149,6 @@ const DEFAULT_GAMEPLAY_MESSAGES = {
   oraclePausedThumbnailUrl: "",
 } as const;
 
-const DEFAULT_MEMBER_MESSAGES = {
-  welcomeEnabled: false,
-  leaveEnabled: false,
-  channelId: "",
-  style: "normal",
-  customStyle: "",
-} as const;
-
-const MEMBER_MESSAGE_STYLES = [
-  ["medieval", "Medieval"],
-  ["normal", "Normal"],
-  ["fantasy", "Fantasy"],
-  ["sci_fi", "Science-fiction"],
-  ["humorous", "Amuzant"],
-  ["custom", "Temă personalizată"],
-] as const;
-
 const DEFAULT_DAILY_STATS = {
   channelId: "",
   title: "📊 Statistici Zilnice · {guild}",
@@ -419,19 +402,6 @@ export function BotControlPage({
     } : current);
   };
 
-  function setMemberMessage<K extends keyof BotControlConfig["gameplayConfig"]["memberMessages"]>(
-    field: K,
-    value: BotControlConfig["gameplayConfig"]["memberMessages"][K],
-  ) {
-    setDraft((current) => current ? {
-      ...current,
-      gameplayConfig: {
-        ...current.gameplayConfig,
-        memberMessages: { ...current.gameplayConfig.memberMessages, [field]: value },
-      },
-    } : current);
-  }
-
   const setDailyStats = (field: keyof Omit<BotControlConfig["dailyStats"], "metricLabels">, value: string) => {
     setDraft((current) => current ? {
       ...current,
@@ -523,16 +493,6 @@ export function BotControlPage({
           gamePausedImageUrl: DEFAULT_GAMEPLAY_MESSAGES.gamePausedImageUrl,
           gamePausedThumbnailUrl: DEFAULT_GAMEPLAY_MESSAGES.gamePausedThumbnailUrl,
         },
-      },
-    } : current);
-  };
-
-  const resetMemberMessages = () => {
-    setDraft((current) => current ? {
-      ...current,
-      gameplayConfig: {
-        ...current.gameplayConfig,
-        memberMessages: { ...DEFAULT_MEMBER_MESSAGES },
       },
     } : current);
   };
@@ -684,10 +644,6 @@ export function BotControlPage({
   const dailyStatsTargetChannelId = draft.dailyStats.channelId === dailyStatsChestChannelId
     ? ""
     : draft.dailyStats.channelId;
-  const memberMessageChannelId = draft?.gameplayConfig.memberMessages.channelId ?? "";
-  const selectedMemberMessageChannel = textChannels.some((channel) => channel.id === memberMessageChannelId)
-    ? memberMessageChannelId
-    : memberMessageChannelId ? "__manual__" : "__none__";
   const permissionRoles = (metadata?.roles ?? [])
     .filter((role) => !role.managed || role.id === metadata?.guild.id)
     .sort((left, right) => (right.position ?? 0) - (left.position ?? 0));
@@ -1255,113 +1211,14 @@ export function BotControlPage({
           </TabsContent>
 
         <TabsContent value="messages" className="mt-0 space-y-5">
-          <section className="space-y-5 rounded-xl border border-border bg-card p-5">
+          <section className="rounded-xl border border-border bg-card p-5 text-sm">
             <div className="flex items-start gap-3">
               <Users className="mt-1 h-5 w-5 text-primary" />
-              <div className="min-w-0 flex-1">
-                <h2 className="font-medium">Bun venit și rămas-bun generate de AI</h2>
-                <p className="text-xs text-muted-foreground">
-                  AI scrie un mesaj nou pentru fiecare intrare sau plecare. În octombrie adaugă o temă veselă de Halloween, iar în decembrie și până pe 6 ianuarie o temă de Crăciun. Botul adaugă automat mențiunea Discord a membrului.
-                </p>
-              </div>
-              <Button type="button" variant="ghost" size="sm" className="shrink-0 gap-1" onClick={resetMemberMessages}>
-                <RotateCcw className="h-3.5 w-3.5" /> Implicit
-              </Button>
+              <p className="text-muted-foreground">
+                Mesajele de bun venit și plecare sunt acum în{" "}
+                <Link href="/setari/bun-venit" className="underline">Setări bot → Bun venit și plecare</Link>.
+              </p>
             </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="flex items-center justify-between gap-4 rounded-lg border border-border/70 p-3">
-                <span className="space-y-1">
-                  <span className="block text-sm font-medium">Mesaj de bun venit</span>
-                  <span className="block text-xs text-muted-foreground">Generează un mesaj când intră cineva.</span>
-                </span>
-                <Switch
-                  checked={draft.gameplayConfig.memberMessages.welcomeEnabled}
-                  onCheckedChange={(checked) => setMemberMessage("welcomeEnabled", checked)}
-                  aria-label="Activează mesajele de bun venit"
-                />
-              </div>
-              <div className="flex items-center justify-between gap-4 rounded-lg border border-border/70 p-3">
-                <span className="space-y-1">
-                  <span className="block text-sm font-medium">Mesaj la plecare</span>
-                  <span className="block text-xs text-muted-foreground">Generează un rămas-bun când pleacă cineva.</span>
-                </span>
-                <Switch
-                  checked={draft.gameplayConfig.memberMessages.leaveEnabled}
-                  onCheckedChange={(checked) => setMemberMessage("leaveEnabled", checked)}
-                  aria-label="Activează mesajele la plecare"
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="space-y-2 text-sm">
-                <span className="text-xs font-medium">Canalul pentru mesaje</span>
-                <Select
-                  value={selectedMemberMessageChannel}
-                  onValueChange={(value) => {
-                    if (value !== "__manual__") {
-                      setMemberMessage("channelId", value === "__none__" ? "" : value);
-                    }
-                  }}
-                >
-                  <SelectTrigger className="mod-select-trigger">
-                    <SelectValue placeholder="Alege canal" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-[min(70vh,32rem)] overscroll-contain">
-                    <SelectItem value="__none__">Neconfigurat</SelectItem>
-                    {selectedMemberMessageChannel === "__manual__" && (
-                      <SelectItem value="__manual__">Canal introdus manual ({memberMessageChannelId})</SelectItem>
-                    )}
-                    {textChannels.map((channel) => (
-                      <SelectItem key={channel.id} value={channel.id}>#{channel.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Input
-                  inputMode="numeric"
-                  value={memberMessageChannelId}
-                  onChange={(event) => setMemberMessage("channelId", event.target.value.trim())}
-                  placeholder="ID canal Discord"
-                  aria-label="ID canal bun venit și plecare"
-                />
-              </label>
-              <label className="space-y-2 text-sm">
-                <span className="text-xs font-medium">Stilul AI</span>
-                <Select
-                  value={draft.gameplayConfig.memberMessages.style}
-                  onValueChange={(value) => setMemberMessage("style", value as BotControlConfig["gameplayConfig"]["memberMessages"]["style"])}
-                >
-                  <SelectTrigger className="mod-select-trigger"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {MEMBER_MESSAGE_STYLES.map(([value, label]) => (
-                      <SelectItem key={value} value={value}>{label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </label>
-            </div>
-
-            {(draft.gameplayConfig.memberMessages.welcomeEnabled || draft.gameplayConfig.memberMessages.leaveEnabled)
-              && !memberMessageChannelId && (
-                <p role="alert" className="text-xs text-amber-300">
-                  Alege un canal înainte să salvezi mesajele de bun venit sau plecare.
-                </p>
-              )}
-
-            {draft.gameplayConfig.memberMessages.style === "custom" && (
-              <label className="block space-y-2 text-sm">
-                <span className="text-xs font-medium">Descrie tema personalizată</span>
-                <Textarea
-                  rows={3}
-                  maxLength={180}
-                  value={draft.gameplayConfig.memberMessages.customStyle}
-                  onChange={(event) => setMemberMessage("customStyle", event.target.value)}
-                  placeholder="Ex.: ton de basm românesc, cald și poetic"
-                />
-                <span className="text-xs text-muted-foreground">AI va păstra limba română și va genera fiecare mesaj separat.</span>
-              </label>
-            )}
           </section>
           <section className="space-y-4 rounded-xl border border-border bg-card p-5">
             <div className="flex items-start gap-3">

@@ -914,7 +914,7 @@ test.describe("authenticated moderation console", () => {
       },
       {
         group: "configuration",
-        routes: ["/config", "/config/avansat", "/jurnale", "/config/embeduri"],
+        routes: ["/config", "/setari", "/jurnale", "/setari/notificari"],
       },
     ];
     for (const destinationGroup of destinations) {
@@ -1132,36 +1132,36 @@ test.describe("authenticated moderation console", () => {
   });
 
   test("switches guilds without displaying stale config and persists a full save", async ({ page }) => {
+    // The old advanced settings address opens the bot settings.
     await page.goto("/moderare/config/avansat");
     await chooseFirstGuild(page);
+    await expect(page).toHaveURL("/moderare/setari/acces");
     await expect(page.getByRole("combobox").first()).toContainText("Cenușa Nordului");
     const guildSelector = page.getByRole("combobox").first();
     await guildSelector.click();
     await page.getByRole("option", { name: "Turnul Gol" }).click();
     await expect(page.getByRole("combobox").first()).toContainText("Turnul Gol");
 
-    await expect(page.getByLabel("Canal audit ID fallback")).toHaveValue("");
-    await page.getByLabel("Canal audit ID fallback").fill("444444444");
+    await expect(page.getByTestId("settings-manage-guild")).toHaveAttribute("aria-checked", "true");
+    await page.getByTestId("settings-manage-guild").click();
     const saveResponse = page.waitForResponse((response) => response.url().includes("/api/moderation/guilds/222222222/config") && response.request().method() === "PUT");
-    await page.getByRole("button", { name: "Salvează configurația" }).click();
+    await page.getByTestId("button-save-settings").click();
     await expect((await saveResponse).ok()).toBeTruthy();
     await page.reload();
-    await expect(page.getByLabel("Canal audit ID fallback")).toHaveValue("444444444");
+    await expect(page.getByTestId("settings-manage-guild")).toHaveAttribute("aria-checked", "false");
+    expect(savedConfigs.get("111111111")!.permissions.allowManageGuild).not.toBe(false);
   });
 
   test("shows when a saved moderation destination is unavailable and lets the operator replace it", async ({ page }) => {
     savedConfigs.get(guilds[0].id)!.audit.channelId = "555555555";
-    await page.goto("/moderare/config/avansat");
+    await page.goto("/moderare/jurnale/audit");
     await chooseFirstGuild(page);
 
     const unavailableWarning = page.getByRole("alert").filter({
       hasText: "Canalul salvat nu este disponibil ca text",
     });
     await expect(unavailableWarning).toBeVisible();
-    await page.getByRole("combobox", { name: "Canal pentru Canal audit" }).click();
-    await page.getByRole("option", { name: /audit \(444444444\)/ }).click();
-
-    await expect(page.getByLabel("Canal audit ID fallback")).toHaveValue("444444444");
+    await page.getByLabel(/ID fallback/).first().fill("444444444");
     await expect(unavailableWarning).toHaveCount(0);
   });
 
@@ -1288,20 +1288,22 @@ test.describe("authenticated moderation console", () => {
         configPuts.push(request.url());
       }
     });
+    // The old embeds address opens the notifications of the bot settings.
     await page.goto("/moderare/config/embeduri");
     await chooseFirstGuild(page);
-    const animationToggle = page.getByRole("switch", { name: "Activează animațiile" });
+    await expect(page).toHaveURL("/moderare/setari/notificari");
+    const animationToggle = page.getByTestId("settings-embed-animation");
     await animationToggle.click();
-    const animationUrl = page.getByLabel("URL animație GIF");
+    const animationUrl = page.getByTestId("settings-embed-gif");
     await animationUrl.fill("https://example.com/not-a-gif.png");
 
-    await expect(page.getByRole("alert")).toContainText("URL-ul animației trebuie să fie un link HTTPS public către un fișier .gif");
-    await page.getByRole("button", { name: "Salvează" }).click();
+    await expect(page.getByRole("alert").filter({ hasText: "Linkul trebuie să fie HTTPS public și să se termine în .gif." })).toBeVisible();
+    await page.getByTestId("button-save-settings").click();
 
     expect(configPuts).toEqual([]);
-    await expect(animationToggle).toBeChecked();
+    await expect(animationToggle).toHaveAttribute("aria-checked", "true");
     await expect(animationUrl).toHaveValue("https://example.com/not-a-gif.png");
-    await expect(page.getByRole("button", { name: "Salvează" })).toBeVisible();
+    await expect(page.getByTestId("button-save-settings")).toBeVisible();
   });
 
   test("keeps category edits visible after the server rejects the save", async ({ page }) => {
@@ -1481,10 +1483,10 @@ test.describe("authenticated moderation console", () => {
   });
 
   test("moderation embed messages are edited in a dialog and can be reset to default", async ({ page }) => {
-    await page.goto("/moderare/config/embeduri");
+    await page.goto("/moderare/setari/notificari");
     await chooseFirstGuild(page);
     await expect(page.getByRole("button", { name: /Mesajele embed de moderare/ })).toHaveCount(0);
-    await expect(page.getByRole("switch", { name: "Activează embed-uri" })).toBeVisible();
+    await expect(page.getByTestId("settings-embeds-switch")).toBeVisible();
     await page.goto("/moderare/config/mesaje");
     await expect(page.getByRole("button", { name: /Mesajele embed de moderare/ })).toBeVisible();
     await expect(page.locator("main").getByRole("switch")).toHaveCount(0);
@@ -2798,6 +2800,105 @@ test.describe("oracle page", () => {
     await page.getByTestId("button-save-verification").click();
     await expect.poll(() => putBodies.get(guilds[0].id)?.length).toBe(1);
     expect(putBodies.get(guilds[0].id)?.[0]).not.toHaveProperty("oracle");
+  });
+});
+
+test.describe("bot settings page", () => {
+  const moderationConfig = (withDm = true) => ({
+    protection: { enabled: true },
+    permissions: { staffRoleIds: [] as string[], allowManageGuild: true, allowAdminsSettings: false },
+    embeds: { enabled: false, color: "#5865F2", iconUrl: null, titleTemplate: "Moderation action", descriptionTemplate: "{action}: {reason}", style: "plain", animations: false, animationUrl: null },
+    ...(withDm ? { sanctionDm: {
+      enabled: false, actions: ["warn", "mute", "kick", "ban"], automatic: true, showReason: true, showModerator: false,
+      appealText: "Dacă vrei să contești, deschide pe {guild} un tichet de contestație și scrie ID-ul cazului de mai sus.",
+      removedAppealText: "Dacă vrei să contești, scrie-i unui administrator al serverului {guild} și dă-i ID-ul cazului de mai sus.", appealUrl: null,
+    } } : {}),
+  });
+  const botConfig = () => ({
+    ...verificationBotControlConfig(false, ""),
+    gameplayConfig: {
+      paused: false,
+      messages: { gamePaused: "Jocul e oprit.", oraclePaused: "Oracolul e oprit.", gamePausedImageUrl: "", gamePausedThumbnailUrl: "", oraclePausedImageUrl: "", oraclePausedThumbnailUrl: "" },
+      memberMessages: { welcomeEnabled: false, leaveEnabled: false, channelId: "", style: "normal", customStyle: "" },
+    },
+  });
+  async function openSettings(page: import("@playwright/test").Page, path = "/moderare/setari", withDm = true) {
+    const botPuts = await installPartialBotControlFixture(page, new Map([
+      [guilds[0].id, botConfig() as any], [guilds[1].id, botConfig() as any],
+    ]));
+    const configPuts: any[] = [];
+    let saved: any = moderationConfig(withDm);
+    let version = 1;
+    await page.route("**/api/moderation/guilds/*/config", async (route) => {
+      if (route.request().method() === "PUT") {
+        const body = JSON.parse(route.request().postData() || "{}");
+        configPuts.push(body);
+        saved = body;
+        version += 1;
+      }
+      await route.fulfill({ json: { config: saved, version }, headers: { ETag: `"${version}"` } });
+    });
+    await page.goto(path);
+    await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible({ timeout: 15_000 });
+    await page.getByRole("button", { name: guilds[0].name }).click();
+    await expect(page.getByTestId("settings-page")).toBeVisible();
+    return { botPuts, configPuts };
+  }
+
+  test("saves access, notifications and the private message to the moderation settings", async ({ page }) => {
+    const { botPuts, configPuts } = await openSettings(page);
+    await expect(page.getByRole("heading", { name: "Acces staff", exact: true })).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Modulele setărilor" }).getByRole("link")).toHaveCount(4);
+    await page.getByTestId("settings-staff-roles-picker").getByRole("checkbox", { name: "@Moderator" }).click();
+    await page.getByTestId("nav-settings-notices").click();
+    await page.getByTestId("settings-embeds-switch").click();
+    await page.getByRole("button", { name: "Jar" }).click();
+    await page.getByTestId("settings-template-recommended").click();
+    await expect(page.getByTestId("settings-notice-preview")).toContainText("🛡️ Timeout aplicat");
+    await page.getByTestId("nav-settings-dm").click();
+    await expect(page.getByTestId("settings-dm-off")).toBeVisible();
+    await page.getByTestId("settings-dm-switch").click();
+    await page.getByTestId("settings-dm-action-warn").click();
+    await page.getByTestId("settings-dm-url").fill("https://apel.example.com");
+    await page.getByTestId("settings-dm-preview-kick").click();
+    await expect(page.getByTestId("settings-dm-preview")).toContainText("Ai fost scos de pe server");
+    await expect(page.getByTestId("settings-dm-preview")).toContainText("administrator al serverului");
+    await expect(page.getByTestId("settings-save-bar")).toContainText("Acces staff, Notificări, Mesaje în privat");
+    await page.getByTestId("button-save-settings").click();
+    await expect.poll(() => configPuts.length).toBe(1);
+    expect(configPuts[0].permissions.staffRoleIds).toEqual(["666666666"]);
+    expect(configPuts[0].embeds).toMatchObject({ enabled: true, color: "#FF6B3D", titleTemplate: "🛡️ {action}" });
+    expect(configPuts[0].sanctionDm).toMatchObject({ enabled: true, actions: ["mute", "kick", "ban"], appealUrl: "https://apel.example.com" });
+    expect(botPuts.size).toBe(0);
+    await expect(page.getByTestId("settings-save-bar")).toHaveCount(0);
+  });
+
+  test("keeps the private message off on an older server and refuses it without a sanction", async ({ page }) => {
+    const { configPuts } = await openSettings(page, "/moderare/setari/privat", false);
+    await expect(page.getByTestId("settings-dm-off")).toBeVisible();
+    await expect(page.locator(".pn-nav-dirty")).toHaveCount(0);
+    await page.getByTestId("settings-dm-switch").click();
+    for (const kind of ["warn", "mute", "kick", "ban"]) await page.getByTestId(`settings-dm-action-${kind}`).click();
+    await expect(page.getByTestId("settings-dm-when")).toContainText("Alege cel puțin o sancțiune");
+    await page.getByTestId("button-save-settings").click();
+    expect(configPuts).toEqual([]);
+  });
+
+  test("saves the welcome messages to the bot settings and asks for their channel", async ({ page }) => {
+    const { botPuts, configPuts } = await openSettings(page, "/moderare/setari/bun-venit");
+    await page.getByTestId("settings-welcome-switch").click();
+    await expect(page.getByTestId("settings-welcome-when")).toContainText("Alege canalul");
+    await page.getByTestId("button-save-settings").click();
+    expect(botPuts.size).toBe(0);
+    await page.getByRole("combobox", { name: "Canalul mesajelor de bun venit și plecare" }).selectOption("777777777");
+    await page.getByTestId("settings-welcome-style-medieval").click();
+    await expect(page.getByTestId("settings-welcome-preview")).toContainText("porțile cetății");
+    await page.getByTestId("button-save-settings").click();
+    await expect.poll(() => botPuts.get(guilds[0].id)?.length).toBe(1);
+    const body = botPuts.get(guilds[0].id)![0];
+    expect(body.gameplayConfig.memberMessages).toEqual({ welcomeEnabled: true, leaveEnabled: false, channelId: "777777777", style: "medieval", customStyle: "" });
+    expect(body).not.toHaveProperty("oracle");
+    expect(configPuts).toEqual([]);
   });
 });
 

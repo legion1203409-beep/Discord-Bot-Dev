@@ -22,6 +22,7 @@ import { buildAutomaticModerationLogDescription } from "./automod-logging";
 import { shouldApplyLinkBlockInChannel } from "./automod-policy";
 import { describeConfiguredPlan, describeMemberActions, describeRulePlan, planRuleActions, ruleHasEffect, type RuleActionPlan, type RuleActionSettings } from "./rule-actions";
 import { deliverWarningInGuild } from "./warning-delivery";
+import { announceThenRemove, buildSanctionDm, sendSanctionDm, shouldSendSanctionDm } from "./sanction-dm";
 import type { AutoModerationActionExecution } from "discord.js";
 import { NATIVE_AUTOMOD_KEYWORD_RULE_NAME } from "../native-automod";
 import { detectContent, detectScamContent, detectScamImageText, SlidingRateLimiter, SlidingUniqueMessageRateLimiter, type ContentThresholds, type Detection } from "./detectors";
@@ -819,6 +820,22 @@ export async function executeModerationAction(input: ModerationActionInput): Pro
   let targetType: string | null = target ? "member" : null;
   let targetId: string | null = target?.id ?? null;
   let actionAuditDetails: Record<string, unknown> = {};
+  // The private message to the sanctioned member, when the server turned it on.
+  let dmDelivered: boolean | undefined;
+  const sanctionDm = target && shouldSendSanctionDm(config, input.type, input.source)
+    ? () => buildSanctionDm(config, {
+        type: input.type as "warn" | "mute" | "kick" | "ban",
+        guildName: guild.name,
+        reason: reason(input),
+        durationMinutes: input.type === "mute" ? Math.max(1, Math.min(40_320, Math.floor(input.durationMinutes ?? 10))) : undefined,
+        caseId,
+        moderator: isAutomatic ? "Moderarea automată" : actor.displayName || actor.user.username,
+      })
+    : null;
+  // A kick or a ban is announced first: afterwards the member cannot be reached.
+  const removeAfterDm = async (remove: () => Promise<unknown>) => {
+    dmDelivered = await announceThenRemove(target!.user, sanctionDm?.() ?? null, remove, guild.name, input.guildId);
+  };
   try {
   caseId = await createCase(input, "pending", { actionId });
   switch (input.type) {
@@ -853,11 +870,11 @@ export async function executeModerationAction(input: ModerationActionInput): Pro
       summary = `Timeout ridicat pentru <@${target!.id}>.`;
       break;
     case "kick":
-      await target!.kick(reason(input));
+      await removeAfterDm(() => target!.kick(reason(input)));
       summary = `<@${target!.id}> a fost eliminat.`;
       break;
     case "ban":
-      await target!.ban({ reason: reason(input), deleteMessageSeconds: 0 });
+      await removeAfterDm(() => target!.ban({ reason: reason(input), deleteMessageSeconds: 0 }));
       summary = `<@${target!.id}> a fost banat.`;
       break;
     case "nick":
@@ -979,6 +996,13 @@ export async function executeModerationAction(input: ModerationActionInput): Pro
   }
 
   discordEffectApplied = true;
+  if (sanctionDm && (input.type === "warn" || input.type === "mute")) {
+    dmDelivered = await sendSanctionDm(target!.user, sanctionDm(), input.guildId);
+  }
+  if (dmDelivered !== undefined) {
+    actionAuditDetails = { ...actionAuditDetails, privateMessage: dmDelivered ? "trimis" : "nu a ajuns (mesajele private închise)" };
+    summary += dmDelivered ? " Membrul a primit și un mesaj în privat." : " Mesajul în privat nu a ajuns: membrul are mesajele private închise.";
+  }
   try {
     await moderationStore.finalizeAction({
       guildId: input.guildId, actionId: started.action.id, actorId: input.actorId,
