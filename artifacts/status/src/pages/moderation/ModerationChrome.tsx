@@ -16,7 +16,9 @@ import {
 } from "../../components/ui/dialog";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "../../components/ui/sheet";
 import { useActiveGuild, useModerationConfig, useSession } from "../../hooks/use-moderation-api";
-import { isProtectionRoute, isSanctionsRoute, isWidePanelRoute, panelGroupRoute, PROTECTION_ROUTE, SANCTIONS_ROUTE } from "./panel/model";
+import {
+  cleanPath, isLogsRoute, isProtectionRoute, isSanctionsRoute, isWidePanelRoute, LOGS_ROUTE, panelGroupRoute, PROTECTION_ROUTE, SANCTIONS_ROUTE,
+} from "./panel/model";
 
 type NavigationItem = { id: string; label: string; description: string; href: string; icon: typeof Home; tint: string; keywords?: string };
 
@@ -25,7 +27,7 @@ const primaryItems: NavigationItem[] = [
   { id: "protection", label: "Protecție", description: "AutoMod, spam, raid și comportament", href: "/protectie", icon: Shield, tint: "blue", keywords: "automod anti spam flood raid" },
   { id: "judge", label: "Judecător AI", description: "Moderare AI și criteriile de analiză", href: "/ai", icon: Sparkles, tint: "violet", keywords: "ai judecator" },
   { id: "sanctions", label: "Sancțiuni", description: "Escaladare, comenzi, roluri și program", href: "/sanctiuni", icon: Gavel, tint: "gold", keywords: "sanctiuni comenzi staff escaladare politici roluri canale program" },
-  { id: "cases", label: "Cazuri și jurnale", description: "Dosare și jurnal de audit", href: "/cazuri", icon: History, tint: "blue", keywords: "cazuri logs audit" },
+  { id: "cases", label: "Cazuri și jurnale", description: "Cazuri, audit și jurnale de activitate", href: "/jurnale", icon: History, tint: "blue", keywords: "cazuri dosare logs audit jurnale activitate" },
   { id: "verification", label: "Verificare și tichete", description: "Membri noi și fluxuri de suport", href: "/verificare", icon: Ticket, tint: "green", keywords: "verification tickets" },
   { id: "rpg", label: "RPG", description: "Ranguri și progresul comunității", href: "/ranguri-activitate", icon: Trophy, tint: "gold", keywords: "ranguri activitate joc" },
   { id: "oracle", label: "Oracol", description: "Mesaje și servicii ale botului", href: "/bot?tab=messages", icon: MessageCircle, tint: "violet", keywords: "oracle mesaje bot" },
@@ -48,13 +50,17 @@ const allItems: Array<{ heading: string; items: NavigationItem[] }> = [
     { id: "staff-commands", label: "Comenzi staff", description: "Ce comenzi sunt pornite și cine le folosește", href: "/sanctiuni/comenzi", icon: Shield, tint: "gold", keywords: "unelte warn mute kick ban purge" },
     { id: "policies", label: "Roluri și canale", description: "Roluri protejate, canale ignorate sau stricte", href: "/sanctiuni/roluri-canale", icon: BookOpen, tint: "gold", keywords: "politici protejate ignorate slowmode" },
     { id: "schedule", label: "Program", description: "Severitate după oră, weekend și eveniment", href: "/sanctiuni/program", icon: SlidersHorizontal, tint: "gold", keywords: "profile timp noapte zi weekend fus orar" },
-    primaryItems[4]!, { id: "audit", label: "Jurnal de audit", description: "Evenimente și modificări", href: "/audit", icon: History, tint: "gold" },
+    primaryItems[4]!,
+    { id: "case-list", label: "Cazuri", description: "Lista cazurilor, cu note și închidere", href: "/cazuri", icon: History, tint: "gold", keywords: "dosare lista" },
+    { id: "audit", label: "Jurnal de audit", description: "Evenimente și modificări", href: "/audit", icon: History, tint: "gold" },
+    { id: "case-settings", label: "Setările cazurilor", description: "Păstrare și ce poate face staff-ul", href: "/jurnale/cazuri", icon: History, tint: "gold", keywords: "retentie export note" },
+    { id: "audit-settings", label: "Setările auditului", description: "Nivel de detaliu și canal de audit", href: "/jurnale/audit", icon: History, tint: "gold" },
+    { id: "activity-logs", label: "Jurnale de activitate", description: "Canale private pentru fiecare categorie", href: "/jurnale/activitate", icon: History, tint: "gold", keywords: "loguri mesaje membri voce" },
   ] },
   { heading: "Configurare", items: [
     primaryItems[8]!,
     { id: "config-messages", label: "Mesaje de moderare", description: "Șabloane și răspunsuri", href: "/config/mesaje", icon: MessageCircle, tint: "gold" },
     { id: "config-advanced", label: "Setări avansate", description: "Permisiunile staff-ului", href: "/config/avansat", icon: SlidersHorizontal, tint: "gold" },
-    { id: "config-cases", label: "Cazuri și audit", description: "Păstrare și jurnale", href: "/config/cazuri-audit", icon: History, tint: "gold" },
     { id: "config-embeds", label: "Embed-uri", description: "Aspectul mesajelor", href: "/config/embeduri", icon: Sparkles, tint: "gold" },
     { id: "server-setup", label: "Pornire server", description: "Ghid de configurare", href: "/pornire-server", icon: BookOpen, tint: "gold" },
   ] },
@@ -229,10 +235,12 @@ function routeIsActive(href: string, location: string) {
   return !query || new URLSearchParams(location.split("?")[1] || "").get("tab") === new URLSearchParams(query).get("tab");
 }
 
-/** A dock destination stays lit on its own pages: the protection modules belong to "Protecție", the sanctions modules to "Sancțiuni". */
+/** A dock destination stays lit on its own pages: the protection modules belong to "Protecție", the sanctions modules to "Sancțiuni", and so on. */
 function primaryIsActive(href: string, location: string) {
   if (href === PROTECTION_ROUTE && isProtectionRoute(location)) return true;
   if (href === SANCTIONS_ROUTE && isSanctionsRoute(location)) return true;
+  // The cases and logs settings, the case list and the audit log are one destination.
+  if (href === LOGS_ROUTE && (isLogsRoute(location) || ["/cazuri", "/audit"].includes(cleanPath(location)))) return true;
   return routeIsActive(href, location);
 }
 

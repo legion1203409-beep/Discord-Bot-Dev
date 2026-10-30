@@ -909,7 +909,7 @@ test.describe("authenticated moderation console", () => {
       },
       {
         group: "configuration",
-        routes: ["/config", "/config/avansat", "/config/cazuri-audit", "/config/embeduri"],
+        routes: ["/config", "/config/avansat", "/jurnale", "/config/embeduri"],
       },
     ];
     for (const destinationGroup of destinations) {
@@ -1252,24 +1252,28 @@ test.describe("authenticated moderation console", () => {
     await expect(page.getByLabel("Intrări pe minut")).toHaveValue("24");
   });
 
-  test("rejects an active activity log without a viewing role and preserves the draft", async ({ page }) => {
+  test("activity logs switched on without any category are not sent and the draft stays", async ({ page }) => {
     const configPuts: string[] = [];
     page.on("request", (request) => {
       if (request.url().includes("/api/moderation/guilds/111111111/config") && request.method() === "PUT") {
         configPuts.push(request.url());
       }
     });
-    await page.goto("/moderare/config/cazuri-audit");
+    await page.goto("/moderare/jurnale/activitate");
     await chooseFirstGuild(page);
-    const logToggle = page.getByRole("switch", { name: "Activează jurnalizarea serverului" });
+    const logToggle = page.getByRole("switch", { name: "Activează jurnalele de activitate" });
     await logToggle.click();
-
-    await expect(page.getByRole("alert")).toContainText("Selectează cel puțin un rol care poate vedea canalele private de jurnal.");
-    await page.getByRole("button", { name: "Salvează" }).click();
+    for (const name of ["Mesaje", "Membri", "Canale", "Roluri", "Voce", "Moderare", "Securitate"]) {
+      await page.getByRole("switch", { name, exact: true }).click();
+    }
+    await expect(page.getByTestId("module-activity")).toContainText("Alege cel puțin o categorie");
+    await page.getByRole("button", { name: "Salvează", exact: true }).click();
+    // The page refuses before sending anything (a notice says why).
+    await expect(page.getByTestId("logs-save-bar")).toBeVisible();
 
     expect(configPuts).toEqual([]);
     await expect(logToggle).toBeChecked();
-    await expect(page.getByRole("button", { name: "Salvează" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Salvează", exact: true })).toBeVisible();
   });
 
   test("rejects an invalid animation GIF URL and preserves the draft", async ({ page }) => {
@@ -1312,22 +1316,27 @@ test.describe("authenticated moderation console", () => {
     expect(savedConfigs.get(guilds[0].id)?.antiRaid.joinsPerMinute).toBe(10);
   });
 
-  test("automatic Discord log activation sends its category and keeps provisioned IDs after reload", async ({ page }) => {
-    await page.goto("/moderare/config/cazuri-audit");
+  test("switching the activity logs on sends the chosen categories and keeps them after reload", async ({ page }) => {
+    await page.goto("/moderare/jurnale/activitate");
     await chooseFirstGuild(page);
-    const logToggle = page.getByRole("switch", { name: "Activează jurnalizarea serverului" });
+    const logToggle = page.getByRole("switch", { name: "Activează jurnalele de activitate" });
     await logToggle.click();
-    await page.getByRole("switch", { name: /@Moderatori/ }).click();
+    await page.getByRole("switch", { name: "Voce", exact: true }).click();
+    await page.getByTestId("activity-messages-open").click();
+    await page.getByLabel("Canal pentru Mesaje", { exact: true }).selectOption("444444444");
+    await expect(page.getByTestId("activity-pending")).toContainText("Membri, Canale, Roluri, Moderare, Securitate");
     const saveResponse = page.waitForResponse((response) =>
       response.url().includes("/api/moderation/guilds/111111111/config") && response.request().method() === "PUT");
-    await page.getByRole("button", { name: "Salvează" }).click();
+    await page.getByRole("button", { name: "Salvează", exact: true }).click();
     expect((await saveResponse).ok()).toBe(true);
     expect(savedConfigs.get(guilds[0].id)?.activityLog).toMatchObject({
-      enabled: true, roleIds: ["333333333"],
+      enabled: true,
+      categories: { messages: true, members: true, voice: false },
+      channelIds: { messages: "444444444" },
     });
     await page.reload();
     await expect(logToggle).toBeChecked();
-    await expect(page.getByRole("switch", { name: /@Moderatori/ })).toBeChecked();
+    await expect(page.getByRole("switch", { name: "Voce", exact: true })).not.toBeChecked();
   });
 
   test("member activity templates preview and persist separately for each guild", async ({ page }) => {
@@ -1867,16 +1876,63 @@ test.describe("authenticated moderation console", () => {
       if (route.request().method() !== "PUT") return route.fallback();
       await route.fulfill({ status: 503, json: { error: "Botul nu poate crea canalele de jurnal." } });
     });
-    await page.goto("/moderare/config/cazuri-audit");
+    await page.goto("/moderare/jurnale/activitate");
     await chooseFirstGuild(page);
-    await page.getByRole("switch", { name: "Activează jurnalizarea serverului" }).click();
-    await page.getByRole("switch", { name: /@Moderatori/ }).click();
-    await page.getByRole("button", { name: "Salvează" }).click();
-    await expect(page.getByText("Salvarea a eșuat")).toBeVisible();
+    await page.getByRole("switch", { name: "Activează jurnalele de activitate" }).click();
+    const saveResponse = page.waitForResponse((response) =>
+      response.url().includes("/api/moderation/guilds/111111111/config") && response.request().method() === "PUT");
+    await page.getByRole("button", { name: "Salvează", exact: true }).click();
+    expect((await saveResponse).status()).toBe(503);
+    await expect(page.getByTestId("logs-save-bar")).toBeVisible();
     // The attempted activation is still an unsaved draft; only the persisted
     // fixture stays off after the server rejects the request.
-    await expect(page.getByRole("switch", { name: "Activează jurnalizarea serverului" })).toBeChecked();
+    await expect(page.getByRole("switch", { name: "Activează jurnalele de activitate" })).toBeChecked();
+    await expect(page.getByTestId("nav-logs-activity").getByRole("img", { name: "are modificări nesalvate" })).toBeVisible();
     expect(savedConfigs.get(guilds[0].id)?.activityLog.enabled).toBe(false);
+  });
+
+  test("case retention and staff rights are saved, with a warning before older cases are deleted", async ({ page }) => {
+    await page.goto("/moderare/jurnale");
+    await chooseFirstGuild(page);
+    await expect(page.getByRole("heading", { name: "Cazurile de moderare" })).toBeVisible();
+    await expect(page.getByTestId("quick-cases")).toHaveAttribute("href", "/moderare/cazuri");
+    await page.getByTestId("cases-retention-90").click();
+    await expect(page.getByTestId("cases-retention-warning")).toContainText("mai vechi de 90 de zile se șterg definitiv");
+    await page.getByRole("switch", { name: "Staff-ul poate închide cazuri" }).click();
+    await page.getByRole("switch", { name: "Staff-ul poate exporta cazurile (CSV)" }).click();
+    const saveResponse = page.waitForResponse((response) =>
+      response.url().includes("/api/moderation/guilds/111111111/config") && response.request().method() === "PUT");
+    await page.getByRole("button", { name: "Salvează", exact: true }).click();
+    expect((await saveResponse).ok()).toBe(true);
+    expect(savedConfigs.get(guilds[0].id)?.cases).toEqual({
+      enabled: false, allowStaffClose: false, allowStaffNotes: true, allowStaffExport: true, retentionDays: 90,
+    });
+    await expect(page.getByTestId("cases-retention-warning")).toHaveCount(0);
+  });
+
+  test("the audit level and channel are saved and every module shows where it writes", async ({ page }) => {
+    await page.goto("/moderare/jurnale/audit");
+    await chooseFirstGuild(page);
+    await page.getByRole("switch", { name: "Activează auditul" }).click();
+    await page.getByTestId("audit-detail-level").getByRole("radio", { name: "Detaliat" }).click();
+    await page.getByRole("combobox", { name: "Canal pentru Canal de audit" }).selectOption("444444444");
+    const destinations = page.getByTestId("module-log-destinations");
+    await expect(destinations).toContainText("canalul de audit");
+    await expect(destinations).not.toContainText("nicăieri");
+    const saveResponse = page.waitForResponse((response) =>
+      response.url().includes("/api/moderation/guilds/111111111/config") && response.request().method() === "PUT");
+    await page.getByRole("button", { name: "Salvează", exact: true }).click();
+    expect((await saveResponse).ok()).toBe(true);
+    expect(savedConfigs.get(guilds[0].id)?.audit).toEqual({ enabled: true, detailLevel: "verbose", channelId: "444444444" });
+    await page.getByRole("switch", { name: "Activează auditul" }).click();
+    await expect(destinations).toContainText("nicăieri");
+  });
+
+  test("the older address of case and audit settings opens the new page", async ({ page }) => {
+    await page.goto("/moderare/config/cazuri-audit");
+    await chooseFirstGuild(page);
+    await expect(page).toHaveURL("/moderare/jurnale/cazuri");
+    await expect(page.getByRole("heading", { name: "Cazurile de moderare" })).toBeVisible();
   });
 
   test("spam window edit replaces conflicting aliases with the engine's preferred key", async ({ page }) => {

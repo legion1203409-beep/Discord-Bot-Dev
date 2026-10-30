@@ -225,7 +225,7 @@ export function CommandsModule() {
         {COMMAND_GROUPS.map(([group, label]) => (
           <div key={group} className="pn-group" role="group" aria-label={label}>
             <h4 className="pn-sub" aria-hidden="true">{label}</h4>
-            <div className="pn-rules">
+            <div className="pn-rules pn-rules-grid">
               {STAFF_COMMANDS.filter((command) => command.group === group).map((command) => (
                 <CommandCard key={command.key} command={command} roles={serverRoles} />
               ))}

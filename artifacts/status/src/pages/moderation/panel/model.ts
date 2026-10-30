@@ -449,6 +449,20 @@ export function isSanctionsRoute(path: string): boolean {
   return clean === SANCTIONS_ROUTE || Object.values(SANCTIONS_MODULE_ROUTES).some((route) => route === clean);
 }
 
+/** The overview route of the cases and logs group and the routes of its three modules. */
+export const LOGS_ROUTE = "/jurnale";
+export const LOGS_MODULE_ROUTES = {
+  cases: "/jurnale/cazuri",
+  audit: "/jurnale/audit",
+  activity: "/jurnale/activitate",
+} as const;
+
+/** True for "/jurnale" and the routes of its modules. */
+export function isLogsRoute(path: string): boolean {
+  const clean = cleanPath(path);
+  return clean === LOGS_ROUTE || Object.values(LOGS_MODULE_ROUTES).some((route) => route === clean);
+}
+
 /**
  * The group a route belongs to, for pages whose modules share one draft: moving
  * between the modules of a group must not reload the page. Null elsewhere.
@@ -456,6 +470,7 @@ export function isSanctionsRoute(path: string): boolean {
 export function panelGroupRoute(path: string): string | null {
   if (isProtectionRoute(path)) return PROTECTION_ROUTE;
   if (isSanctionsRoute(path)) return SANCTIONS_ROUTE;
+  if (isLogsRoute(path)) return LOGS_ROUTE;
   return null;
 }
 

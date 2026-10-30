@@ -11,6 +11,7 @@ import { CategorySettingsPage } from "./pages/moderation/CategorySettings";
 import { ProtectionGroupPage } from "./pages/moderation/panel/ProtectionGroup";
 import { JudgePage } from "./pages/moderation/panel/JudgePage";
 import { SanctionsGroupPage } from "./pages/moderation/panel/SanctionsGroup";
+import { LogsGroupPage } from "./pages/moderation/panel/LogsGroup";
 import { BotControlPage } from "./pages/moderation/BotControl";
 import { VerificationAdminPage } from "./pages/moderation/VerificationAdmin";
 import { MessageTemplatesPage } from "./pages/moderation/MessageTemplates";
@@ -109,13 +110,18 @@ function ModerationApp() {
           <Route path="/politici" component={() => <Redirect to="/sanctiuni/roluri-canale" replace />} />
           <Route path="/config/escaladare" component={() => <Redirect to="/sanctiuni/escaladare" replace />} />
           <Route path="/config/unelte" component={() => <Redirect to="/sanctiuni/comenzi" replace />} />
+          {/* Cases and logs: the settings of cases, the audit and the activity logs, as one page. */}
+          <Route path="/jurnale" component={LogsGroupPage} />
+          <Route path="/jurnale/cazuri" component={LogsGroupPage} />
+          <Route path="/jurnale/audit" component={LogsGroupPage} />
+          <Route path="/jurnale/activitate" component={LogsGroupPage} />
+          <Route path="/config/cazuri-audit" component={() => <Redirect to="/jurnale/cazuri" replace />} />
           <Route path="/comenzi" component={CommandsPage} />
           <Route path="/cazuri" component={CasesPage} />
           <Route path="/audit" component={AuditPage} />
           <Route path="/config" component={ConfigOverviewPage} />
           <Route path="/config/mesaje" component={MessageTemplatesPage} />
           <Route path="/config/avansat" component={AdvancedSettingsPage} />
-          <Route path="/config/cazuri-audit" component={() => <CategorySettingsPage section="cases-audit" />} />
           <Route path="/config/embeduri" component={() => <CategorySettingsPage section="embeds" />} />
           <Route path="/canale" component={() => <BotControlPage channelsOnly />} />
           <Route path="/provisioning" component={() => <BotControlPage provisioningOnly />} />

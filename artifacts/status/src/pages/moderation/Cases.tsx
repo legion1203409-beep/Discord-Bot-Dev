@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "wouter";
 import { BookOpen, Search, Filter, ChevronRight, FileDown, Loader2, Save, Plus } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -183,7 +184,10 @@ export function CasesPage() {
           <h1 className="text-3xl font-bold tracking-tight mb-2 text-foreground flex items-center gap-3 mod-heading">
             <BookOpen className="w-8 h-8 text-primary" /> Cazuri
           </h1>
-          <p className="text-muted-foreground">Arhiva sancțiunilor și dosarelor utilizatorilor.</p>
+          <p className="text-muted-foreground">
+            Arhiva sancțiunilor și dosarelor utilizatorilor.{" "}
+            <Link href="/jurnale/cazuri" className="text-primary underline underline-offset-4" data-testid="link-case-settings">Setările cazurilor</Link>
+          </p>
         </div>
         <Button variant="outline" className="gap-2" onClick={() => window.open(`/api/moderation/guilds/${guildId}/cases/export`)}>
           <FileDown className="w-4 h-4" /> Exportă Arhiva

@@ -6,6 +6,8 @@ import type { Path } from "./model";
 export type PanelApi = {
   /** The draft being edited (all of the server's configuration). */
   config: any;
+  /** What the server has saved, to compare the draft with. */
+  saved?: any;
   /** Replaces one value of the draft. */
   set: (path: Path, value: unknown) => void;
   /** Changes one value of the draft starting from its newest state. */
@@ -20,6 +22,8 @@ export type PanelApi = {
   creating: string | null;
   /** True when the bot is offline or lacks the permissions to create channels. */
   createDisabled: boolean;
+  /** What the bot can do on the server, when known. */
+  capabilities?: { online?: boolean; canManageChannels?: boolean; canManageRoles?: boolean };
   /** Open or closed rule cards, kept while moving between modules. */
   isOpen: (key: string) => boolean;
   toggleOpen: (key: string) => void;

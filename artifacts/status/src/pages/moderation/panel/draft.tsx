@@ -79,6 +79,13 @@ export function useConfigDraft({ sections, validate }: {
     try {
       const result = await createChannel(destination);
       set(path, result.channel.id);
+      // A log channel also brings its private category and turns its category
+      // on; take both from what the server saved, so the draft does not undo them.
+      const category = destination.startsWith("activityLog.") ? destination.slice("activityLog.".length) : null;
+      if (category && result.config?.activityLog) {
+        update(["activityLog", "categoryId"], () => result.config.activityLog.categoryId ?? null);
+        update(["activityLog", "categories", category], () => result.config.activityLog.categories?.[category] ?? true);
+      }
       toast({
         title: result.created ? "Canal creat și salvat" : "Canal existent reutilizat",
         description: `#${result.channel.name} este configurat pentru această destinație.`,
@@ -88,10 +95,11 @@ export function useConfigDraft({ sections, validate }: {
     } finally {
       setCreating(null);
     }
-  }, [createChannel, set, toast]);
+  }, [createChannel, set, update, toast]);
 
   const api = useMemo<PanelApi | null>(() => current ? {
     config: current,
+    saved: data,
     set,
     update,
     channels: metadata?.channels,
@@ -99,9 +107,10 @@ export function useConfigDraft({ sections, validate }: {
     createChannel: (destination, path) => { if (!creating) void handleCreateChannel(destination, path); },
     creating,
     createDisabled,
+    capabilities,
     isOpen: (key) => openCards[key] === true,
     toggleOpen: (key) => setOpenCards((open) => ({ ...open, [key]: !open[key] })),
-  } : null, [current, set, update, metadata?.channels, roles, creating, createDisabled, handleCreateChannel, openCards]);
+  } : null, [current, data, set, update, metadata?.channels, roles, creating, createDisabled, capabilities, handleCreateChannel, openCards]);
 
   const changed = current && data ? changedSectionsOf(sections, data, current) : [];
 
@@ -162,8 +171,10 @@ export function useConfigDraft({ sections, validate }: {
 }
 
 /** What a page shows while its settings load, or when they cannot be read. */
-export function PanelState({ status, error, onRetry, loadingText }: {
+export function PanelState({ status, error, onRetry, loadingText, children }: {
   status: "loading" | "error"; error: Error | null; onRetry: () => void; loadingText: string;
+  /** Shown under the error (other places the person can still go). */
+  children?: React.ReactNode;
 }) {
   if (status === "loading") {
     return <div className="pn"><div className="pn-state" role="status"><Spinner /><span className="pn-sr">{loadingText}</span></div></div>;
@@ -174,6 +185,7 @@ export function PanelState({ status, error, onRetry, loadingText }: {
         <p>{error?.message || "Configurația nu a putut fi încărcată."}</p>
         <button type="button" className="pn-btn-ghost pn-btn-sm" onClick={onRetry}>Reîncearcă</button>
       </div>
+      {children}
     </div>
   );
 }

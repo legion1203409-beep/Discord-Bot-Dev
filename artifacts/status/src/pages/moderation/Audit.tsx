@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "wouter";
 import { History, Search, ShieldCheck, Loader2, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { Input } from "../../components/ui/input";
 import { useAuditLogs, useActiveGuild, useActionLedger, useReconcileAction } from "../../hooks/use-moderation-api";
@@ -170,7 +171,10 @@ export function AuditPage() {
         <h1 className="text-3xl font-bold tracking-tight mb-2 text-foreground flex items-center gap-3 mod-heading">
           <History className="w-8 h-8 text-primary" /> Jurnal de Audit & Loguri
         </h1>
-        <p className="text-muted-foreground">Monitorizare strictă pentru acțiunile staff-ului și evenimente AutoMod.</p>
+        <p className="text-muted-foreground">
+          Monitorizare strictă pentru acțiunile staff-ului și evenimente AutoMod.{" "}
+          <Link href="/jurnale/audit" className="text-primary underline underline-offset-4" data-testid="link-audit-settings">Setările auditului</Link>
+        </p>
       </div>
 
       <div className="mod-card flex flex-col animate-stagger-4">
