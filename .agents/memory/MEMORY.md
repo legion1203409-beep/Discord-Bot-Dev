@@ -77,7 +77,7 @@
 - [GitHub bulk snapshot uploads](github-bulk-snapshot-upload.md) — with the GitHub connector, upload blobs first and create large trees in sequential batches if one tree request returns 502.
 - [Native AutoMod blocked messages](native-automod-blocked-messages.md) — native keyword blocks bypass normal message handling; process managed-rule execution events with strict rule checks and shared idempotency.
 - [Local scam image OCR](local-scam-image-ocr.md) — member image OCR is local-only by user choice; uncertain extraction must never by itself trigger a sanction.
-- [Discord no-DM policy](discord-no-dm-policy.md) — do not send bot messages to Discord DMs; keep warnings logged and use guild channels when appropriate.
+- [Discord no-DM policy](discord-no-dm-policy.md) — no bot DMs, except the opt-in sanction DM (off by default); keep warnings logged and use guild channels when appropriate.
 - [Moderation action selection](moderation-action-selection.md) — show combined action choices in both AutoMod and each AI category; a separate deletion toggle did not meet the user's request.
 - [Per-target channel provisioning](per-target-channel-provisioning.md) — create only the selected target, block @everyone, preserve manual Discord role ACLs, and retain unrelated draft edits.
 - [Guide and moderation loading screens](guide-loading-animation.md) — keep the gate on `/joc`; use the older shield loader for moderation to avoid showing the gate there.
