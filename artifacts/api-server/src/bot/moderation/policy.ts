@@ -65,6 +65,20 @@ export function hasDiscordPermission(member: Pick<PermissionSubject, "permission
   return (member.permissions as PermissionsBitField).has(requiredPermission(action));
 }
 
+/**
+ * Why a staff command cannot be used at all on this server, or null. The
+ * switch for all commands comes first; then each command can be switched off
+ * on its own, for everyone, administrators included.
+ */
+export function manualCommandRefusal(
+  tools: { enabled: boolean; disabledCommands?: readonly string[] },
+  action: ModerationActionType,
+): string | null {
+  if (!tools.enabled) return "Instrumentele manuale de moderare sunt dezactivate pentru acest server.";
+  if (tools.disabledCommands?.includes(action)) return `Comanda /${action} este oprită pe acest server.`;
+  return null;
+}
+
 export function hasManualGrant(
   member: Pick<PermissionSubject, "roles" | "permissions">,
   action: ModerationActionType,

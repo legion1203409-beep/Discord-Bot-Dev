@@ -518,6 +518,7 @@ async function applyEventPlan(
   evidence: unknown[],
   idempotencyKey: string,
   source: "automod" | "raid" = "automod",
+  options: { countsAsOffense?: boolean } = {},
 ): Promise<boolean> {
   let warned = false;
   if (plan.extraWarning) {
@@ -528,7 +529,7 @@ async function applyEventPlan(
   }
   const primary = await sanction(
     helpers, client, guild, config, targetId, plan.primary, reason, evidence, idempotencyKey, source,
-    { durationMinutes: plan.muteMinutes },
+    { durationMinutes: plan.muteMinutes, ...(options.countsAsOffense === false ? { countsAsOffense: false } : {}) },
   );
   return warned || primary;
 }
@@ -850,6 +851,7 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
         const description = `Spam de editări: ${rate.count} editări în fereastra configurată.`;
         await recordAudit(helpers, config, message.guild, "spam.edit_burst", "member", message.author.id,
           auditDetail(config, { id: message.author.id, bot: false, staff: false, verified: true }, { count: rate.count, messageId: message.id }));
+        let deleted = false;
         if (plan.deleteMessage) {
           try {
             await helpers.executeModerationAction({
@@ -859,6 +861,7 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
               idempotencyKey: `${incidentKey}:delete`,
             });
             sanctioned = true;
+            deleted = true;
           } catch (error) {
             logger.warn({ error, guildId: message.guildId, messageId: message.id }, "Configured edit deletion action failed");
             await recordAudit(helpers, config, message.guild, "event.action_failed", "message", message.id, {
@@ -868,9 +871,11 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
           }
         }
         if (plan.primary) {
+          // One incident is one offense: a deletion that went through already counted it.
           const memberActionApplied = await applyEventPlan(
             helpers, client, message.guild, config, message.author.id, plan, description,
-            [{ messageId: message.id, channelId: message.channelId, kind: "edit-spam" }], incidentKey,
+            [{ messageId: message.id, channelId: message.channelId, kind: "edit-spam" }], incidentKey, "automod",
+            { countsAsOffense: !deleted },
           );
           sanctioned = sanctioned || memberActionApplied;
         }

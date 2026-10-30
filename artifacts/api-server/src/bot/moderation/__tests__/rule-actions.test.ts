@@ -79,6 +79,12 @@ describe("what the ticked actions of a message rule do", () => {
     expect(planRuleActions(rule, { selectedAction: "ban" })).toMatchObject({ primary: "ban", muteMinutes: null });
   });
 
+  it("keeps deleting for a rule saved with the old single delete action when escalation picks the sanction", () => {
+    expect(planRuleActions({ action: "delete" }, { selectedAction: "warn" })).toMatchObject({ deleteMessage: true, primary: "warn" });
+    expect(planRuleActions({ action: "none" }, { selectedAction: "warn" })).toMatchObject({ deleteMessage: false, primary: "warn" });
+    expect(planRuleActions({ action: "none", deleteMessage: true }, { selectedAction: "kick" })).toMatchObject({ deleteMessage: true, primary: "kick" });
+  });
+
   it("always deletes a scam message, whatever else was ticked", () => {
     expect(planRuleActions({ action: "mute" }, { alwaysDelete: true })).toMatchObject({ deleteMessage: true, primary: "mute" });
     expect(planRuleActions({ action: "none" }, { alwaysDelete: true })).toMatchObject({ deleteMessage: true, primary: null });

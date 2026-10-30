@@ -198,6 +198,9 @@ export const ModerationConfigSchema = z.object({
     enabled: z.boolean().default(false),
     commandGrants: z.record(commandName, idList).default({}),
     logActions: z.boolean().default(false),
+    // Commands the owner switched off for everyone. Older configurations have
+    // none, so every command keeps working exactly as before.
+    disabledCommands: z.array(commandName).max(11).default([]),
   }).default({}),
   // 6. Cases
   cases: z.object({
@@ -337,6 +340,9 @@ export const ModerationConfigSchema = z.object({
       level: z.number().int().min(1).max(4),
       violations: z.number().int().min(1).max(10_000),
       action,
+      // How long a mute at this step lasts. Without it, the mute length of the
+      // rule that caught the member applies, as it always did.
+      muteMinutes: muteMinutes.optional(),
     })).min(1).max(4).default([
       { level: 1, violations: 1, action: "warn" },
       { level: 2, violations: 2, action: "mute" },

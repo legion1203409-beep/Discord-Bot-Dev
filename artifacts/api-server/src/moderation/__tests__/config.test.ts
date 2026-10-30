@@ -140,6 +140,34 @@ describe("moderation configuration defaults", () => {
     expect(() => ModerationConfigSchema.parse({ ai: { categorySettings: { threats: { pingEveryone: true } } } })).toThrow();
   });
 
+  it("gives escalation steps their own mute length and keeps steps saved without one unchanged", () => {
+    const legacy = ModerationConfigSchema.parse({ escalation: { levels: [{ level: 1, violations: 2, action: "mute" }] } });
+    expect(legacy.escalation.levels[0]).toEqual({ level: 1, violations: 2, action: "mute" });
+    expect(defaultModerationConfig.escalation.levels.every((level) => !("muteMinutes" in level))).toBe(true);
+
+    const config = ModerationConfigSchema.parse({
+      escalation: { enabled: true, resetAfterDays: 14, levels: [
+        { level: 1, violations: 1, action: "warn" },
+        { level: 2, violations: 3, action: "mute", muteMinutes: 1_440 },
+      ] },
+    });
+    const loaded = ModerationConfigSchema.parse(JSON.parse(JSON.stringify(config)));
+    expect(loaded.escalation).toEqual(config.escalation);
+    expect(loaded.escalation.levels[1]).toEqual({ level: 2, violations: 3, action: "mute", muteMinutes: 1_440 });
+    expect(() => ModerationConfigSchema.parse({ escalation: { levels: [{ level: 1, violations: 1, action: "mute", muteMinutes: 0 }] } })).toThrow();
+    expect(() => ModerationConfigSchema.parse({ escalation: { levels: [{ level: 1, violations: 1, action: "mute", muteMinutes: 40_321 }] } })).toThrow();
+  });
+
+  it("lets single staff commands be switched off, with none switched off in older settings", () => {
+    expect(defaultModerationConfig.manualTools.disabledCommands).toEqual([]);
+    expect(ModerationConfigSchema.parse({ manualTools: { enabled: true, commandGrants: { warn: ["123456789012345678"] } } }).manualTools)
+      .toEqual({ enabled: true, commandGrants: { warn: ["123456789012345678"] }, logActions: false, disabledCommands: [] });
+    const config = ModerationConfigSchema.parse({ manualTools: { enabled: true, disabledCommands: ["purge", "role"] } });
+    expect(ModerationConfigSchema.parse(JSON.parse(JSON.stringify(config))).manualTools.disabledCommands).toEqual(["purge", "role"]);
+    expect(() => ModerationConfigSchema.parse({ manualTools: { disabledCommands: ["login"] } })).toThrow();
+    expect(() => ModerationConfigSchema.parse({ manualTools: { disabledCommands: ["delete"] } })).toThrow();
+  });
+
   it("keeps automatic activity logs disabled by default and allows Discord-managed channel access", () => {
     expect(defaultModerationConfig.activityLog.enabled).toBe(false);
     expect(defaultModerationConfig.activityLog.channelIds.messages).toBeNull();

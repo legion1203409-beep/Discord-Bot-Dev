@@ -1,10 +1,12 @@
 import {
   ChannelType,
+  DiscordAPIError,
   MessageFlags,
   PermissionFlagsBits,
   SlashCommandBuilder,
   type ChatInputCommandInteraction,
 } from "discord.js";
+import { logger } from "../../lib/logger";
 import { getModerationWebsiteUrl } from "../../moderation/oauth";
 import { executeModerationAction, type ModerationActionInput } from "./engine";
 
@@ -72,21 +74,47 @@ export async function handleModerationCommand(interaction: ChatInputCommandInter
   const target = interaction.options.getUser("user");
   const channel = interaction.options.getChannel("channel");
   const role = interaction.options.getRole("role");
-  const result = await executeModerationAction({
-    guildId: interaction.guildId!,
-    actorId: interaction.user.id,
-    type,
-    targetId: target?.id,
-    channelId: channel?.id ?? (["warn", "purge", "slowmode", "lock", "unlock"].includes(type) ? interaction.channelId : undefined),
-    roleId: role?.id,
-    nickname: interaction.options.getString("nickname") ?? undefined,
-    amount: interaction.options.getInteger("amount") ?? interaction.options.getInteger("seconds") ?? undefined,
-    durationMinutes: interaction.options.getInteger("minutes") ?? undefined,
-    reason: interaction.options.getString("reason") ?? undefined,
-    idempotencyKey: `discord:${interaction.id}`,
-  });
+  let result: Awaited<ReturnType<typeof executeModerationAction>>;
+  try {
+    result = await executeModerationAction({
+      guildId: interaction.guildId!,
+      actorId: interaction.user.id,
+      type,
+      targetId: target?.id,
+      channelId: channel?.id ?? (["warn", "purge", "slowmode", "lock", "unlock"].includes(type) ? interaction.channelId : undefined),
+      roleId: role?.id,
+      nickname: interaction.options.getString("nickname") ?? undefined,
+      amount: interaction.options.getInteger("amount") ?? interaction.options.getInteger("seconds") ?? undefined,
+      durationMinutes: interaction.options.getInteger("minutes") ?? undefined,
+      reason: interaction.options.getString("reason") ?? undefined,
+      idempotencyKey: `discord:${interaction.id}`,
+    });
+  } catch (error) {
+    // The reply was deferred: without an answer, the person would only see the
+    // bot "thinking" until Discord gives up. Say why the command was refused.
+    logger.warn({ error, guildId: interaction.guildId, command: type }, "Moderation slash command was refused or failed");
+    await interaction.editReply(`❌ ${moderationCommandErrorText(error)}`).catch(() => undefined);
+    return true;
+  }
   await interaction.editReply(`✅ ${result.summary ?? "Acțiunea de moderare a fost aplicată."}${result.caseId ? ` Caz: \`${result.caseId}\`.` : ""}`);
   return true;
+}
+
+/**
+ * What the person who used a staff command is told when it does not go
+ * through. The bot's own refusals (permissions, hierarchy, a switched-off
+ * command, …) are written for people and are shown as they are; anything
+ * unexpected gets a general sentence, with the details left in the logs.
+ */
+export function moderationCommandErrorText(error: unknown): string {
+  if (error instanceof DiscordAPIError) return `Discord a refuzat acțiunea: ${(error as Error).message}`.slice(0, 500);
+  if (error instanceof Error && error.message) {
+    const code = (error as { code?: unknown }).code;
+    // Plain errors with a code (ECONNREFUSED, …) come from the system, not from the bot.
+    const ownRefusal = (error.constructor === Error && code === undefined) || (typeof code === "string" && code.startsWith("MODERATION_"));
+    if (ownRefusal) return error.message.slice(0, 500);
+  }
+  return "Acțiunea de moderare nu a putut fi aplicată. Încearcă din nou peste puțin timp.";
 }
 
 /** Discord's default member permissions provide UI guidance; engine checks remain authoritative. */

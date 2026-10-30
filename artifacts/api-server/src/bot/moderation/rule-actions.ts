@@ -68,7 +68,9 @@ export function planRuleActions(
   const stronger = strongerSanction(selected);
   const warn = selected === "warn" || rule.warnMember === true;
   return {
-    deleteMessage: shouldDeleteAutoModMessage(selected, rule.deleteMessage, options.alwaysDelete === true),
+    // A rule saved with the old single "delete" action keeps deleting when an
+    // escalation step picks the sanction instead.
+    deleteMessage: shouldDeleteAutoModMessage(selected, rule.deleteMessage, options.alwaysDelete === true) || rule.action === "delete",
     primary: stronger ?? (warn ? "warn" : null),
     extraWarning: stronger !== null && warn,
     muteMinutes: stronger === "mute" ? normalizeMuteMinutes(rule.muteMinutes) : null,

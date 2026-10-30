@@ -732,13 +732,35 @@ describe("non-message moderation events", () => {
         type: "delete", messageId: second.id, targetId: "20109",
         idempotencyKey: expect.stringMatching(/^edit:10105:20109:.*:delete$/),
       });
-      expect(calls[1]).toMatchObject({ type: "warn", targetId: "20109", source: "automod" });
-      expect(calls[1]).not.toHaveProperty("countsAsOffense");
+      // The deletion already counted this incident: one incident, one offense.
+      expect(calls[1]).toMatchObject({ type: "warn", targetId: "20109", source: "automod", countsAsOffense: false });
       expect(helpers.notify).toHaveBeenCalledTimes(1);
       expect(helpers.notify).toHaveBeenCalledWith(
         config, targetGuild, "Spam de editări", expect.any(String), "55555",
         expect.objectContaining({ memberId: "20109", channelId: "33333" }), { pingStaff: true },
       );
+    });
+
+    it("counts the warning as the offense when the edit-spam message could not be deleted", async () => {
+      const config = structuredClone(defaultModerationConfig);
+      config.antiSpam.enabled = true;
+      config.antiSpam.edit = {
+        enabled: true, action: "warn", deleteMessage: true, severity: "normal",
+        thresholds: { limit: 1, window: 60 },
+      };
+      const { emitter, helpers } = setup(config);
+      vi.mocked(helpers.executeModerationAction).mockImplementation(async (input) => {
+        if (input.type === "delete") throw new Error("Unknown Message");
+        return {};
+      });
+      const targetGuild = guild("10115");
+      emitter.emit(Events.MessageUpdate, { content: "first" }, message(targetGuild, "20119"));
+      emitter.emit(Events.MessageUpdate, { content: "second" }, message(targetGuild, "20119"));
+      await waitForHandlers();
+
+      const calls = vi.mocked(helpers.executeModerationAction).mock.calls.map(([input]) => input);
+      expect(calls.map((input) => input.type)).toEqual(["delete", "warn"]);
+      expect(calls[1]).not.toHaveProperty("countsAsOffense");
     });
 
     it("applies the module's ticks to a verified actor's mass deletion", async () => {
