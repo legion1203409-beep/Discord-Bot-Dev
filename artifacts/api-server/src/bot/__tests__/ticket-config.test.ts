@@ -51,6 +51,13 @@ describe("custom ticket flow configuration", () => {
     expect(legacy.alliancePublicChannelId).toBe(DEFAULT_TICKET_CONFIG.alliancePublicChannelId);
   });
 
+  it("keeps the publication of alliances switched off when its server is cleared", () => {
+    expect(normalizeTicketConfig({ allianceOwnerGuildId: "" }).allianceOwnerGuildId).toBe("");
+    expect(normalizeTicketConfig({ allianceOwnerGuildId: "123456789" }).allianceOwnerGuildId).toBe("123456789");
+    expect(normalizeTicketConfig({}).allianceOwnerGuildId).toBe(DEFAULT_TICKET_CONFIG.allianceOwnerGuildId);
+    expect(normalizeTicketConfig({ allianceOwnerGuildId: "x" }).allianceOwnerGuildId).toBe(DEFAULT_TICKET_CONFIG.allianceOwnerGuildId);
+  });
+
   it("validates and normalizes independent custom flows for all ticket types", () => {
     const rawFlows = Object.fromEntries(
       KINDS.map((kind) => [kind, flow(kind)]),

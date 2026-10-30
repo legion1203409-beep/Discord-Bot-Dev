@@ -6,7 +6,7 @@
 import "./panel.css";
 import React from "react";
 import { Link, useLocation } from "wouter";
-import { useBotControlDraft } from "./bot-draft";
+import { BotDraftContext, useBotControlDraft } from "./bot-draft";
 import { PanelContext } from "./context";
 import { PageHead, PanelState, SaveBar } from "./draft";
 import { Ico, cx, type IconName } from "./fields";
@@ -14,7 +14,7 @@ import {
   VERIFICATION_MODULES, changedVerificationParts, isVerificationModuleChanged, messagesSummary, rolesSummary, settingsSummary,
   verificationDraftError, verificationModuleForRoute, type VerificationModuleId,
 } from "./verification-model";
-import { VERIFICATION_VIEWS, VerificationDraftContext } from "./verification";
+import { VERIFICATION_VIEWS } from "./verification";
 
 const MODULE_ICONS: Record<VerificationModuleId, IconName> = { settings: "verified", messages: "message", members: "userCheck" };
 
@@ -52,7 +52,7 @@ export function VerificationGroupPage() {
   const enabled = Boolean(current.verification?.enabled);
   const View = VERIFICATION_VIEWS[active.id];
   return (
-    <VerificationDraftContext.Provider value={draft}>
+    <BotDraftContext.Provider value={draft}>
       <PanelContext.Provider value={api}>
         <div className="pn" data-testid="verification-page" style={{ "--tc": "#2FCB8C" } as React.CSSProperties}>
           <PageHead
@@ -98,6 +98,6 @@ export function VerificationGroupPage() {
           />
         </div>
       </PanelContext.Provider>
-    </VerificationDraftContext.Provider>
+    </BotDraftContext.Provider>
   );
 }

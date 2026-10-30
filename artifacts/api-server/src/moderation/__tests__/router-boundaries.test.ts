@@ -1569,6 +1569,7 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
         ...payload.tickets,
         categories,
         alliancePublicChannelId: "",
+        allianceOwnerGuildId: "",
       },
     };
 
@@ -1583,6 +1584,8 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     expect(mocks.saveTicketConfig).toHaveBeenCalledWith(guildId, expect.objectContaining({
       categories: { staff: "", partnership: "", help_report: "", appeal: "" },
       alliancePublicChannelId: "",
+      // Publishing alliances is switched off on this server.
+      allianceOwnerGuildId: "",
     }));
     const result = await response.json() as BotControlResponse;
     expect(result.channels).toEqual(channels);

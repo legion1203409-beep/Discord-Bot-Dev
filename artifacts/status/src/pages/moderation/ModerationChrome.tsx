@@ -17,8 +17,8 @@ import {
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "../../components/ui/sheet";
 import { useActiveGuild, useModerationConfig, useSession } from "../../hooks/use-moderation-api";
 import {
-  cleanPath, isLogsRoute, isProtectionRoute, isSanctionsRoute, isVerificationRoute, isWidePanelRoute, LOGS_ROUTE, panelGroupRoute, PROTECTION_ROUTE,
-  SANCTIONS_ROUTE, VERIFICATION_ROUTE,
+  cleanPath, isLogsRoute, isProtectionRoute, isSanctionsRoute, isTicketsRoute, isVerificationRoute, isWidePanelRoute, LOGS_ROUTE, panelGroupRoute,
+  PROTECTION_ROUTE, SANCTIONS_ROUTE, TICKETS_ROUTE, VERIFICATION_ROUTE,
 } from "./panel/model";
 
 type NavigationItem = { id: string; label: string; description: string; href: string; icon: typeof Home; tint: string; keywords?: string };
@@ -30,28 +30,31 @@ const primaryItems: NavigationItem[] = [
   { id: "sanctions", label: "Sancțiuni", description: "Escaladare, comenzi, roluri și program", href: "/sanctiuni", icon: Gavel, tint: "gold", keywords: "sanctiuni comenzi staff escaladare politici roluri canale program" },
   { id: "cases", label: "Cazuri și jurnale", description: "Cazuri, audit și jurnale de activitate", href: "/jurnale", icon: History, tint: "blue", keywords: "cazuri dosare logs audit jurnale activitate" },
   { id: "verification", label: "Verificare", description: "Rolurile primite, panoul și verificarea manuală", href: "/verificare", icon: BadgeCheck, tint: "green", keywords: "verification verificare membri roluri manual" },
+  { id: "tickets", label: "Tichete", description: "Aplicații, parteneriate, ajutor și contestații", href: "/tichete", icon: Ticket, tint: "violet", keywords: "tichete tickets aplicatii parteneriate ajutor raportari contestatii" },
   { id: "rpg", label: "RPG", description: "Ranguri și progresul comunității", href: "/ranguri-activitate", icon: Trophy, tint: "gold", keywords: "ranguri activitate joc" },
   { id: "oracle", label: "Oracol", description: "Mesaje și servicii ale botului", href: "/bot?tab=messages", icon: MessageCircle, tint: "violet", keywords: "oracle mesaje bot" },
   { id: "settings", label: "Setări bot", description: "Module, configurare și canale", href: "/config", icon: Settings2, tint: "ember", keywords: "config settings" },
   { id: "assistant", label: "Asistent", description: "Ajutor offline și navigare în panou", href: "/asistent", icon: Bot, tint: "gold", keywords: "assistant help cauta" },
 ];
 
+const primary = (id: string) => primaryItems.find((item) => item.id === id)!;
+
 const allItems: Array<{ heading: string; items: NavigationItem[] }> = [
-  { heading: "Centru de comandă", items: [primaryItems[0]!, { id: "manual-actions", label: "Acțiuni manuale", description: "Comenzi pentru staff", href: "/comenzi", icon: ShieldAlert, tint: "ember" }] },
+  { heading: "Centru de comandă", items: [primary("overview"), { id: "manual-actions", label: "Acțiuni manuale", description: "Comenzi pentru staff", href: "/comenzi", icon: ShieldAlert, tint: "ember" }] },
   { heading: "Apărare", items: [
-    primaryItems[1]!, { id: "automod", label: "AutoMod", description: "Filtre și reguli native", href: "/automod", icon: Bot, tint: "blue" },
-    primaryItems[2]!, { id: "anti-spam", label: "Anti-Spam", description: "Limite pentru mesaje", href: "/anti-spam", icon: Activity, tint: "blue" },
+    primary("protection"), { id: "automod", label: "AutoMod", description: "Filtre și reguli native", href: "/automod", icon: Bot, tint: "blue" },
+    primary("judge"), { id: "anti-spam", label: "Anti-Spam", description: "Limite pentru mesaje", href: "/anti-spam", icon: Activity, tint: "blue" },
     { id: "anti-flood", label: "Anti-Flood", description: "Mesaje foarte lungi și repetări", href: "/anti-flood", icon: Activity, tint: "blue" },
     { id: "anti-raid", label: "Anti-Raid", description: "Protecție la valuri de intrări", href: "/anti-raid", icon: ShieldAlert, tint: "blue" },
     { id: "suspicious", label: "Comportament suspect", description: "Alerte pentru activitate neobișnuită", href: "/comportament-suspect", icon: Search, tint: "blue" },
   ] },
   { heading: "Intervenții și evidențe", items: [
-    primaryItems[3]!,
+    primary("sanctions"),
     { id: "escalation", label: "Escaladare", description: "Pedeapsa crește la abateri repetate", href: "/sanctiuni/escaladare", icon: Gavel, tint: "gold", keywords: "trepte abateri" },
     { id: "staff-commands", label: "Comenzi staff", description: "Ce comenzi sunt pornite și cine le folosește", href: "/sanctiuni/comenzi", icon: Shield, tint: "gold", keywords: "unelte warn mute kick ban purge" },
     { id: "policies", label: "Roluri și canale", description: "Roluri protejate, canale ignorate sau stricte", href: "/sanctiuni/roluri-canale", icon: BookOpen, tint: "gold", keywords: "politici protejate ignorate slowmode" },
     { id: "schedule", label: "Program", description: "Severitate după oră, weekend și eveniment", href: "/sanctiuni/program", icon: SlidersHorizontal, tint: "gold", keywords: "profile timp noapte zi weekend fus orar" },
-    primaryItems[4]!,
+    primary("cases"),
     { id: "case-list", label: "Cazuri", description: "Lista cazurilor, cu note și închidere", href: "/cazuri", icon: History, tint: "gold", keywords: "dosare lista" },
     { id: "audit", label: "Jurnal de audit", description: "Evenimente și modificări", href: "/audit", icon: History, tint: "gold" },
     { id: "case-settings", label: "Setările cazurilor", description: "Păstrare și ce poate face staff-ul", href: "/jurnale/cazuri", icon: History, tint: "gold", keywords: "retentie export note" },
@@ -59,7 +62,7 @@ const allItems: Array<{ heading: string; items: NavigationItem[] }> = [
     { id: "activity-logs", label: "Jurnale de activitate", description: "Canale private pentru fiecare categorie", href: "/jurnale/activitate", icon: History, tint: "gold", keywords: "loguri mesaje membri voce" },
   ] },
   { heading: "Configurare", items: [
-    primaryItems[8]!,
+    primary("settings"),
     { id: "config-messages", label: "Mesaje de moderare", description: "Șabloane și răspunsuri", href: "/config/mesaje", icon: MessageCircle, tint: "gold" },
     { id: "config-advanced", label: "Setări avansate", description: "Permisiunile staff-ului", href: "/config/avansat", icon: SlidersHorizontal, tint: "gold" },
     { id: "config-embeds", label: "Embed-uri", description: "Aspectul mesajelor", href: "/config/embeduri", icon: Sparkles, tint: "gold" },
@@ -69,17 +72,24 @@ const allItems: Array<{ heading: string; items: NavigationItem[] }> = [
     { id: "channels", label: "Canale și destinații", description: "Panouri și destinații bot", href: "/canale", icon: Server, tint: "violet" },
     { id: "provisioning", label: "Provisioning", description: "Canale și permisiuni", href: "/provisioning", icon: SlidersHorizontal, tint: "violet" },
     { id: "roles", label: "Roluri", description: "Roluri și acces", href: "/bot?tab=roles", icon: Shield, tint: "violet" },
-    { id: "tickets", label: "Tichete", description: "Fluxuri pentru cereri", href: "/bot?tab=tickets", icon: Ticket, tint: "violet" },
-    primaryItems[7]!,
+    primary("oracle"),
     { id: "bot-statistics", label: "Statistici bot", description: "Statistici și invitații", href: "/bot?tab=statistics", icon: Activity, tint: "violet" },
   ] },
+  { heading: "Tichete", items: [
+    primary("tickets"),
+    { id: "tickets-staff", label: "Aplicații staff", description: "Formularul pentru cine vrea în echipă", href: "/tichete/aplicatii", icon: Ticket, tint: "violet", keywords: "aplicatie staff candidatura" },
+    { id: "tickets-partnership", label: "Parteneriate", description: "Cereri de alianță și anunțul public", href: "/tichete/parteneriate", icon: Ticket, tint: "violet", keywords: "parteneriat alianta pact anunt" },
+    { id: "tickets-help", label: "Ajutor și raportări", description: "Cereri de ajutor și raportări", href: "/tichete/ajutor", icon: Ticket, tint: "violet", keywords: "ajutor raport raportare sesizare" },
+    { id: "tickets-appeal", label: "Contestații", description: "Revizuirea unei sancțiuni", href: "/tichete/contestatii", icon: Ticket, tint: "violet", keywords: "contestatie apel sanctiune caz" },
+    { id: "tickets-common", label: "Setările tichetelor", description: "Rolul staff-ului și termenele", href: "/tichete/setari", icon: Ticket, tint: "violet", keywords: "termene avertisment stergere rol staff" },
+  ] },
   { heading: "Membri și progres", items: [
-    primaryItems[5]!,
+    primary("verification"),
     { id: "verification-messages", label: "Mesajele verificării", description: "Textul panoului, butonul și imaginile", href: "/verificare/mesaje", icon: MessageCircle, tint: "green", keywords: "panou buton text emoji imagine" },
     { id: "verification-members", label: "Membri verificați", description: "Cine e verificat, verificare manuală și roluri lipsă", href: "/verificare/membri", icon: Users, tint: "green", keywords: "verificare manuala membri roluri lipsa categorie" },
     { id: "rank-settings", label: "Ranguri de activitate", description: "Configurarea progresului", href: "/ranguri-activitate", icon: Trophy, tint: "green" },
   ] },
-  { heading: "Ajutor", items: [primaryItems[9]!] },
+  { heading: "Ajutor", items: [primary("assistant")] },
 ];
 
 type Preferences = { accent: string; dock: "bottom" | "left"; labels: boolean; motion: boolean; order: string[] };
@@ -246,6 +256,7 @@ function primaryIsActive(href: string, location: string) {
   // The cases and logs settings, the case list and the audit log are one destination.
   if (href === LOGS_ROUTE && (isLogsRoute(location) || ["/cazuri", "/audit"].includes(cleanPath(location)))) return true;
   if (href === VERIFICATION_ROUTE && isVerificationRoute(location)) return true;
+  if (href === TICKETS_ROUTE && isTicketsRoute(location)) return true;
   return routeIsActive(href, location);
 }
 

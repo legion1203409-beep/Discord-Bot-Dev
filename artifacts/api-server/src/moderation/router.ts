@@ -735,7 +735,8 @@ export const botControlSchema = z.object(
 ).strict(),
     staffReviewRoleId: snowflake,
     alliancePublicChannelId: snowflake.or(z.literal("")),
-    allianceOwnerGuildId: snowflake,
+    // The server on which approved alliances are published; empty switches publishing off.
+    allianceOwnerGuildId: snowflake.or(z.literal("")),
     allianceAnnouncementTemplate: z.string().trim().max(2_000).optional(),
     allianceAnnouncementMode: z.enum(["text", "embed"]).optional(),
     allianceAnnouncementImageUrl: z.string().trim().max(2_000).refine((value) => isMessageImageUrl(value), "Imaginea trebuie să fie HTTPS sau încărcată în storage.").optional(),

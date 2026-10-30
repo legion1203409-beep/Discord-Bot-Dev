@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Activity, AlertTriangle, Bot, CircleHelp, Loader2, Save, Radio, Megaphone, Ticket, ShieldCheck, PlayCircle, RotateCcw, CheckCircle2, ChevronDown, Clock3, Folder, Hash, LockKeyhole, Settings2, Users, Wrench, Link2, RefreshCw } from "lucide-react";
+import { Activity, AlertTriangle, Bot, CircleHelp, Loader2, Save, Radio, Megaphone, ShieldCheck, RotateCcw, ChevronDown, Clock3, Folder, Hash, LockKeyhole, Settings2, Users, Wrench, Link2, RefreshCw } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Checkbox } from "../../components/ui/checkbox";
 import { Input } from "../../components/ui/input";
@@ -10,14 +10,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Tabs, TabsContent } from "../../components/ui/tabs";
 import { ImageField } from "../../components/moderation/ImageField";
 import { DiscordEmojiText, EmojiField } from "../../components/moderation/EmojiField";
-import { BotControlPartialApplyError, useActiveGuild, useBotControl, useInviteStats, useModerationMetadata, useSession, type BotControlConfig, type ChannelPermissionConfig, type InviteRecruitmentConfig, type InviteStatsRange, type TicketFlowConfig } from "../../hooks/use-moderation-api";
+import { BotControlPartialApplyError, useActiveGuild, useBotControl, useInviteStats, useModerationMetadata, useSession, type BotControlConfig, type ChannelPermissionConfig, type InviteRecruitmentConfig, type InviteStatsRange } from "../../hooks/use-moderation-api";
 import { clearBotControlDestinations, DESTINATION_CLEAR_CATEGORIES, type DestinationClearScope } from "../../lib/bot-control-destinations";
 import { rebaseDraftChanges } from "../../lib/utils";
 import { useToast } from "../../hooks/use-toast";
 import { useLocation, useSearch } from "wouter";
 
-type BotControlTab = "channels" | "roles" | "tickets" | "messages" | "statistics";
-const BOT_CONTROL_TABS: BotControlTab[] = ["channels", "roles", "tickets", "messages", "statistics"];
+type BotControlTab = "channels" | "roles" | "messages" | "statistics";
+const BOT_CONTROL_TABS: BotControlTab[] = ["channels", "roles", "messages", "statistics"];
 
 function recruitmentValidationErrors(config: InviteRecruitmentConfig): string[] {
   const fields: Array<{ key: keyof InviteRecruitmentConfig; label: string; min: number; max: number }> = [
@@ -140,20 +140,6 @@ const ROLE_PRESETS = [
   { key: "administrator", label: "Administrator", match: /administrator|admin/i, history: true, send: true },
 ] as const;
 
-const TICKET_CATEGORIES = [
-  ["staff", "Aplicare staff"],
-  ["partnership", "Parteneriate"],
-  ["help_report", "Ajutor / raportare"],
-  ["appeal", "Contestații sancțiuni"],
-] as const;
-
-const FLOW_KINDS = [
-  ["staff", "Aplicare staff"],
-  ["partnership", "Parteneriate"],
-  ["help_report", "Ajutor / raportare"],
-  ["appeal", "Contestații sancțiuni"],
-] as const;
-
 const DEFAULT_GAMEPLAY_MESSAGES = {
   gamePaused: "⏸️ Jocul este oprit momentan. Un administrator îl poate reporni cu `/startjoc`.",
   oraclePaused: "🛑 Oracle AI este oprit momentan. Un administrator îl poate reporni cu `/startai`.",
@@ -246,81 +232,12 @@ function renderDailyStatsPreviewText(template: string): string {
   return template.replace(/\{([a-zA-Z0-9_]+)\}/g, (match, key: string) => DAILY_STATS_PREVIEW_VALUES[key] ?? match);
 }
 
-const NEW_QUESTION = {
-  key: "question",
-  label: "Întrebare nouă",
-  description: "Scrie întrebarea la care trebuie să răspundă membrul.",
-  placeholder: "Scrie răspunsul tău...",
-  multiline: true,
-  required: true,
-};
-
-function getDuplicateQuestionKeys(flow: TicketFlowConfig): string[] {
-  const counts = new Map<string, number>();
-  for (const question of flow.questions) {
-    const key = question.key.trim().toLowerCase();
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-  return [...counts.entries()]
-    .filter(([, count]) => count > 1)
-    .map(([key]) => key);
-}
-
 function isCategory(type: number | string): boolean {
   return String(type) === "4" || type === "GuildCategory";
 }
 
 function isTextChannel(type: number | string): boolean {
   return String(type) === "0" || type === "GuildText";
-}
-
-const PARTNERSHIP_PREVIEW_KEYS = [
-  "server_name",
-  "representative",
-  "invite",
-  "members",
-  "description",
-  "motivation",
-  "offer",
-  "terms",
-] as const;
-
-function previewValue(value: string | undefined, fallback = "—"): string {
-  return value?.trim() || fallback;
-}
-
-function partnershipPreviewAnswers(
-  flow: TicketFlowConfig,
-  answers: Record<string, string>,
-): Record<string, string> {
-  const orderedAnswers = flow.questions
-    .map((question) => answers[question.key])
-    .filter((value): value is string => Boolean(value?.trim()));
-  return Object.fromEntries(
-    PARTNERSHIP_PREVIEW_KEYS.map((key, index) => [
-      key,
-      answers[key] ?? orderedAnswers[index] ?? "—",
-    ]),
-  );
-}
-
-function renderAnnouncementTemplate(
-  template: string,
-  answers: Record<string, string>,
-): string {
-  const values: Record<string, string> = {
-    ...answers,
-    applicant: "Membrul care testează",
-    applicant_mention: "@Membrul care testează",
-    members_total: answers.members_total ?? "150",
-    members_online: answers.members_online ?? "60",
-    timestamp: "5 octombrie 2026, 14:00",
-    timestamp_relative: "acum",
-    date: "5 octombrie 2026",
-    time: "14:00",
-    year: "2026",
-  };
-  return template.replace(/\{([a-z0-9_]+)\}/gi, (match, key: string) => values[key] ?? match);
 }
 
 export function BotControlPage({
@@ -365,14 +282,6 @@ export function BotControlPage({
     PROVISIONING_CATEGORIES.map((category) => category.key),
   );
   const [provisioningPermissions, setProvisioningPermissions] = useState<Record<string, ChannelPermissionConfig>>({});
-  const [activeFlowKind, setActiveFlowKind] = useState<keyof BotControlConfig["tickets"]["flows"]>("staff");
-  const [testOpen, setTestOpen] = useState(false);
-  const [testStarted, setTestStarted] = useState(false);
-  const [testCompleted, setTestCompleted] = useState(false);
-  const [testStep, setTestStep] = useState(0);
-  const [testDraftAnswer, setTestDraftAnswer] = useState("");
-  const [testAnswers, setTestAnswers] = useState<Record<string, string>>({});
-  const [testError, setTestError] = useState("");
   const searchString = useSearch();
   const requestedTab = new URLSearchParams(searchString || location.split("?")[1] || "").get("tab");
   const [activeTab, setActiveTab] = useState<BotControlTab>(
@@ -412,6 +321,10 @@ export function BotControlPage({
     }
     if (requestedTab === "verification") {
       setLocation("/verificare");
+      return;
+    }
+    if (requestedTab === "tickets") {
+      setLocation("/tichete");
       return;
     }
     if (requestedTab && BOT_CONTROL_TABS.includes(requestedTab as BotControlTab)) {
@@ -493,17 +406,6 @@ export function BotControlPage({
           sendMessages: preset.send,
         },
       },
-    });
-  };
-
-  const setTicket = (path: string[], value: string | number) => {
-    setDraft((current) => {
-      if (!current) return current;
-      const tickets = JSON.parse(JSON.stringify(current.tickets));
-      let target: any = tickets;
-      path.slice(0, -1).forEach((part) => { target = target[part]; });
-      target[path[path.length - 1]] = value;
-      return { ...current, tickets };
     });
   };
 
@@ -629,121 +531,6 @@ export function BotControlPage({
     } : current);
   };
 
-  const setFlow = (kind: keyof BotControlConfig["tickets"]["flows"], field: keyof TicketFlowConfig, value: string) => {
-    setDraft((current) => current ? {
-      ...current,
-      tickets: {
-        ...current.tickets,
-        flows: {
-          ...current.tickets.flows,
-          [kind]: { ...current.tickets.flows[kind], mode: "custom", [field]: value },
-        },
-      },
-    } : current);
-  };
-
-  const setPostedQuestion = (
-    kind: keyof BotControlConfig["tickets"]["flows"],
-    key: string,
-    included: boolean,
-  ) => {
-    setDraft((current) => {
-      if (!current) return current;
-      const flow = current.tickets.flows[kind];
-      const selected = flow.postedQuestionKeys ?? flow.questions.map((question) => question.key);
-      const postedQuestionKeys = included
-        ? Array.from(new Set([...selected, key]))
-        : selected.filter((selectedKey) => selectedKey !== key);
-      return {
-        ...current,
-        tickets: {
-          ...current.tickets,
-          flows: { ...current.tickets.flows, [kind]: { ...flow, mode: "custom", postedQuestionKeys } },
-        },
-      };
-    });
-  };
-
-  const updateQuestion = (
-    kind: keyof BotControlConfig["tickets"]["flows"],
-    index: number,
-    field: string,
-    value: string | boolean,
-  ) => {
-    setDraft((current) => {
-      if (!current) return current;
-      const flow = current.tickets.flows[kind];
-      const previousKey = flow.questions[index]?.key;
-      const questions = flow.questions.map((question, questionIndex) =>
-        questionIndex === index ? { ...question, [field]: value } : question,
-      );
-      const currentPostedKeys = flow.postedQuestionKeys ?? flow.questions.map((question) => question.key);
-      const postedQuestionKeys = field === "key" && typeof value === "string"
-        ? currentPostedKeys.map((key) => key === previousKey ? value : key)
-        : currentPostedKeys.filter((key) => questions.some((question) => question.key === key));
-      return {
-        ...current,
-        tickets: {
-          ...current.tickets,
-          flows: { ...current.tickets.flows, [kind]: { ...flow, questions, postedQuestionKeys } },
-        },
-      };
-    });
-  };
-
-  const addQuestion = (kind: keyof BotControlConfig["tickets"]["flows"]) => {
-    setDraft((current) => {
-      if (!current) return current;
-      const flow = current.tickets.flows[kind];
-      const suffix = flow.questions.length + 1;
-      const question = { ...NEW_QUESTION, key: `question_${suffix}` };
-      const postedQuestionKeys = [...(flow.postedQuestionKeys ?? flow.questions.map((entry) => entry.key)), question.key];
-      return {
-        ...current,
-        tickets: {
-          ...current.tickets,
-          flows: { ...current.tickets.flows, [kind]: { ...flow, mode: "custom", questions: [...flow.questions, question], postedQuestionKeys } },
-        },
-      };
-    });
-  };
-
-  const removeQuestion = (kind: keyof BotControlConfig["tickets"]["flows"], index: number) => {
-    setDraft((current) => {
-      if (!current) return current;
-      const flow = current.tickets.flows[kind];
-      if (flow.questions.length <= 1) return current;
-      const removedKey = flow.questions[index]?.key;
-      const postedQuestionKeys = (flow.postedQuestionKeys ?? flow.questions.map((entry) => entry.key))
-        .filter((key) => key !== removedKey);
-      return {
-        ...current,
-        tickets: {
-          ...current.tickets,
-          flows: { ...current.tickets.flows, [kind]: { ...flow, mode: "custom", questions: flow.questions.filter((_, questionIndex) => questionIndex !== index), postedQuestionKeys } },
-        },
-      };
-    });
-  };
-
-  const moveQuestion = (kind: keyof BotControlConfig["tickets"]["flows"], index: number, direction: -1 | 1) => {
-    setDraft((current) => {
-      if (!current) return current;
-      const flow = current.tickets.flows[kind];
-      const target = index + direction;
-      if (target < 0 || target >= flow.questions.length) return current;
-      const questions = [...flow.questions];
-      [questions[index], questions[target]] = [questions[target]!, questions[index]!];
-      return {
-        ...current,
-        tickets: {
-          ...current.tickets,
-          flows: { ...current.tickets.flows, [kind]: { ...flow, mode: "custom", questions } },
-        },
-      };
-    });
-  };
-
   const save = async () => {
     if (!guildId || !currentDraft || !hasUnsavedChanges || saving || provisioning) return;
     if (panelRecovery?.requiresManualReconciliation) {
@@ -766,30 +553,14 @@ export function BotControlPage({
       });
       return;
     }
-    const duplicateFlow = Object.entries(submittedDraft.tickets.flows)
-      .map(([kind, flow]) => ({ kind, flow, duplicateKeys: getDuplicateQuestionKeys(flow) }))
-      .find(({ duplicateKeys }) => duplicateKeys.length > 0);
-    if (duplicateFlow) {
-      const flowLabel = FLOW_KINDS.find(([kind]) => kind === duplicateFlow.kind)?.[1] ?? duplicateFlow.kind;
-      toast({
-        variant: "destructive",
-        title: "Salvarea a fost blocată",
-        description: `Fluxul „${flowLabel}” are chei duplicate: ${duplicateFlow.duplicateKeys.join(", ")}. Schimbă cheile înainte de salvare.`,
-      });
-      return;
-    }
     setSaving(true);
     try {
-      const flows = Object.fromEntries(
-        Object.entries(submittedDraft.tickets.flows).map(([kind, flow]) => [kind, { ...flow, mode: "custom" }]),
-      ) as BotControlConfig["tickets"]["flows"];
       const saved = await update({
         ...submittedDraft,
         provisioningPermissions: submittedPermissions,
         channels: Object.fromEntries(
           Object.entries(submittedDraft.channels).filter(([, value]) => typeof value === "string"),
         ),
-        tickets: { ...submittedDraft.tickets, flows },
       });
       if (currentGuild.current !== submittedGuild || initializedGuild.current !== submittedGuild) return;
       setDraft((current) => rebaseDraftChanges(structuredClone(saved), submittedDraft, current));
@@ -917,56 +688,6 @@ export function BotControlPage({
   const recruitment = draft.inviteTracking.recruitment;
   const recruitmentRoles = permissionRoles.filter((role) => !role.managed && role.id !== metadata?.guild.id);
   const categoryNames = new Map(categories.map((category) => [category.id, category.name]));
-  const activeFlow = draft.tickets.flows[activeFlowKind];
-  const duplicateQuestionKeys = getDuplicateQuestionKeys(activeFlow);
-  const activeCategory = draft.tickets.categories[activeFlowKind];
-  const selectedActiveCategory = !activeCategory
-    ? "__none__"
-    : categories.some((category) => category.id === activeCategory)
-      ? activeCategory
-      : "__manual__";
-  const postedQuestionKeys = new Set(
-    activeFlow.postedQuestionKeys ?? activeFlow.questions.map((question) => question.key),
-  );
-  const testQuestion = activeFlow.questions[testStep];
-  const partnershipAnswers = activeFlowKind === "partnership"
-    ? partnershipPreviewAnswers(activeFlow, testAnswers)
-    : null;
-  const partnershipAnnouncement = partnershipAnswers
-    ? renderAnnouncementTemplate(
-      draft.tickets.allianceAnnouncementTemplate,
-      partnershipAnswers,
-    )
-    : "";
-  const resetFlowTest = () => {
-    setTestStarted(false);
-    setTestCompleted(false);
-    setTestStep(0);
-    setTestDraftAnswer("");
-    setTestAnswers({});
-    setTestError("");
-  };
-  const openFlowTest = () => {
-    resetFlowTest();
-    setTestOpen(true);
-  };
-  const submitTestAnswer = () => {
-    if (!testQuestion) return;
-    const answer = testDraftAnswer.trim();
-    if (testQuestion.required && !answer) {
-      setTestError("Răspunsul este obligatoriu pentru această întrebare.");
-      return;
-    }
-    const nextAnswers = { ...testAnswers, [testQuestion.key]: answer || "—" };
-    setTestAnswers(nextAnswers);
-    setTestError("");
-    setTestDraftAnswer("");
-    if (testStep >= activeFlow.questions.length - 1) {
-      setTestCompleted(true);
-    } else {
-      setTestStep((step) => step + 1);
-    }
-  };
   const confirmLeaveServer = async () => {
     const target = leaveTarget;
     if (!target || !session?.isBotOwner || leavingServer) return;
@@ -1161,12 +882,6 @@ export function BotControlPage({
                   </span>
                 </div>
                 <div className="mod-save-actions">
-                  {!channelsOnly && (
-                    <Button type="button" variant="secondary" size="sm" onClick={openFlowTest} className="gap-2 font-medium tracking-wide">
-                      <PlayCircle className="h-4 w-4" />
-                      Testează fluxul
-                    </Button>
-                  )}
                   <Button onClick={() => void save()} disabled={saving || panelRecovery?.requiresManualReconciliation} size="sm" className="gap-2 font-semibold tracking-wide">
                     {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                     {saving ? "Se salvează…" : "Salvează"}
@@ -1533,424 +1248,6 @@ export function BotControlPage({
 
           </TabsContent>
 
-          <TabsContent value="tickets" className="mod-tab-content mt-0 space-y-5">
-          <section className="space-y-5 rounded-xl border border-border bg-card p-5">
-            <div className="flex items-start gap-3">
-              <Ticket className="mt-1 h-5 w-5 text-primary" />
-              <div>
-                <h2 className="font-medium">Editor flux ticket</h2>
-                <p className="text-xs text-muted-foreground">
-                  Configurează un singur tip de ticket de la cap la coadă: destinație, panou, răspunsuri și acțiunea finală.
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-3 rounded-lg border border-primary/25 bg-primary/[0.04] p-4">
-              <div>
-                <p className="text-xs font-mono tracking-widest text-primary">PASUL 1 · FLUX ȘI DESTINAȚIE</p>
-                <p className="mt-1 text-xs text-muted-foreground">Alege fluxul și categoria Discord în care vor fi create ticketurile.</p>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Tipul de ticket</label>
-                  <Select value={activeFlowKind} onValueChange={(value) => setActiveFlowKind(value as typeof activeFlowKind)}>
-                    <SelectTrigger className="mod-select-trigger"><SelectValue placeholder="Alege tipul de tichet" /></SelectTrigger>
-                    <SelectContent>
-                      {FLOW_KINDS.map(([kind, label]) => <SelectItem key={kind} value={kind}>{label}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Categoria Discord</label>
-                  <Select
-                    value={selectedActiveCategory}
-                    onValueChange={(value) => setTicket(
-                      ["categories", activeFlowKind],
-                      value === "__none__" ? "" : value === "__manual__" ? activeCategory : value,
-                    )}
-                  >
-                    <SelectTrigger className="mod-select-trigger"><SelectValue placeholder="Alege categoria" /></SelectTrigger>
-                    <SelectContent className="max-h-[min(70vh,32rem)] overscroll-contain">
-                      <SelectItem value="__none__">Neconfigurat</SelectItem>
-                      <SelectItem value="__manual__">Introduc manual ID-ul</SelectItem>
-                      {categories.map((category) => <SelectItem key={category.id} value={category.id}>▰ {category.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  <Input
-                    value={activeCategory}
-                    aria-label="ID categorie Discord pentru fluxul activ"
-                    placeholder="ID categorie Discord"
-                    onChange={(event) => setTicket(["categories", activeFlowKind], event.target.value.trim())}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div>
-                <p className="text-xs font-mono tracking-widest text-primary">PASUL 2 · PANOU ȘI COMPORTAMENT</p>
-                <p className="mt-1 text-xs text-muted-foreground">Acestea sunt mesajele și acțiunile pe care le vede membrul după ce deschide ticketul.</p>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Titlul panoului Discord</label>
-                <EmojiField value={activeFlow.title} maxLength={256} onChange={(value) => setFlow(activeFlowKind, "title", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Textul butonului de start</label>
-                <EmojiField value={activeFlow.startButtonLabel} maxLength={80} onChange={(value) => setFlow(activeFlowKind, "startButtonLabel", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Acțiune după completare</label>
-                <Select value={activeFlow.completionAction} onValueChange={(value) => setFlow(activeFlowKind, "completionAction", value)}>
-                 <SelectTrigger className="mod-select-trigger"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="notify_staff">Închide și anunță stafful</SelectItem>
-                    <SelectItem value="lock">Închide fără mesaj staff</SelectItem>
-                    <SelectItem value="keep_open">Lasă ticketul deschis</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2 md:col-span-2">
-                <label className="text-sm font-medium">Descrierea panoului</label>
-                <EmojiField multiline rows={3} maxLength={2000} value={activeFlow.panelDescription} onChange={(value) => setFlow(activeFlowKind, "panelDescription", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
-              </div>
-              <div className="space-y-2 md:col-span-2">
-                <label className="text-sm font-medium">Ghidul afișat la „Întrebări”</label>
-                <EmojiField multiline rows={3} maxLength={2000} value={activeFlow.requirementsText} onChange={(value) => setFlow(activeFlowKind, "requirementsText", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
-              </div>
-              <ImageField label="Imaginea panoului" value={activeFlow.panelImageUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setFlow(activeFlowKind, "panelImageUrl", value)} />
-              <ImageField label="Thumbnail-ul panoului (dreapta sus)" value={activeFlow.panelThumbnailUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setFlow(activeFlowKind, "panelThumbnailUrl", value)} />
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Mesajul după completare</label>
-                <EmojiField multiline rows={4} maxLength={2000} value={activeFlow.completionMessage} onChange={(value) => setFlow(activeFlowKind, "completionMessage", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Mesajul pentru staff</label>
-                <EmojiField multiline rows={4} maxLength={2000} value={activeFlow.staffNotificationMessage} onChange={(value) => setFlow(activeFlowKind, "staffNotificationMessage", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
-              </div>
-              <ImageField label="Imaginea mesajului de finalizare" value={activeFlow.completionImageUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setFlow(activeFlowKind, "completionImageUrl", value)} />
-              <ImageField label="Thumbnail-ul mesajului de finalizare" value={activeFlow.completionThumbnailUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setFlow(activeFlowKind, "completionThumbnailUrl", value)} />
-              <ImageField label="Imaginea mesajului pentru staff" value={activeFlow.staffNotificationImageUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setFlow(activeFlowKind, "staffNotificationImageUrl", value)} />
-              <ImageField label="Thumbnail-ul mesajului pentru staff" value={activeFlow.staffNotificationThumbnailUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setFlow(activeFlowKind, "staffNotificationThumbnailUrl", value)} />
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs font-mono tracking-widest text-primary">PASUL 3 · ÎNTREBĂRI</p>
-                  <h3 className="mt-1 font-medium">Întrebările ticketului ({activeFlow.questions.length}/20)</h3>
-                  <p className="text-xs text-muted-foreground">Adaugă întrebările pentru categoria aleasă. Ordinea de aici este ordinea în care botul le va cere.</p>
-                </div>
-                <Button type="button" variant="secondary" onClick={() => addQuestion(activeFlowKind)} disabled={activeFlow.questions.length >= 20}>
-                  Adaugă întrebare
-                </Button>
-              </div>
-              {duplicateQuestionKeys.length > 0 && (
-                <p className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-                  Chei duplicate în acest flux: {duplicateQuestionKeys.join(", ")}. Schimbă fiecare cheie astfel încât să fie unică înainte de salvare.
-                </p>
-              )}
-              <div className="space-y-3">
-                {activeFlow.questions.map((question, index) => (
-                  <div key={`${question.key}-${index}`} className="space-y-3 rounded-lg border border-border/80 bg-background/40 p-4">
-                    <div className="flex items-center justify-between gap-2">
-                       <div className="flex items-center gap-3">
-                         <p className="text-sm font-semibold">Întrebarea {index + 1}</p>
-                         <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <Checkbox
-                              checked={postedQuestionKeys.has(question.key)}
-                              onCheckedChange={(checked) => setPostedQuestion(activeFlowKind, question.key, checked === true)}
-                            />
-                           Postează în mesajul final
-                         </label>
-                       </div>
-                       <div className="flex gap-1">
-                        <Button type="button" size="sm" variant="ghost" onClick={() => moveQuestion(activeFlowKind, index, -1)} disabled={index === 0}>↑</Button>
-                        <Button type="button" size="sm" variant="ghost" onClick={() => moveQuestion(activeFlowKind, index, 1)} disabled={index === activeFlow.questions.length - 1}>↓</Button>
-                        <Button type="button" size="sm" variant="ghost" className="text-destructive" onClick={() => removeQuestion(activeFlowKind, index)} disabled={activeFlow.questions.length <= 1}>Șterge</Button>
-                      </div>
-                    </div>
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <div className="space-y-1">
-                        <label className="text-xs font-medium">Cheie internă</label>
-                        <Input value={question.key} maxLength={32} onChange={(event) => updateQuestion(activeFlowKind, index, "key", event.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_"))} />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-xs font-medium">Etichetă</label>
-                        <EmojiField value={question.label} maxLength={45} onChange={(value) => updateQuestion(activeFlowKind, index, "label", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
-                      </div>
-                      <div className="space-y-1 md:col-span-2">
-                        <label className="text-xs font-medium">Întrebarea / descrierea afișată</label>
-                        <EmojiField multiline rows={2} maxLength={900} value={question.description} onChange={(value) => updateQuestion(activeFlowKind, index, "description", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-xs font-medium">Placeholder</label>
-                        <EmojiField value={question.placeholder} maxLength={100} onChange={(value) => updateQuestion(activeFlowKind, index, "placeholder", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
-                      </div>
-                      <ImageField
-                        label="Thumbnail după acest răspuns (opțional)"
-                        value={question.thumbnailUrl}
-                        guildId={guildId}
-                        csrfToken={session?.csrfToken}
-                        onChange={(value) => updateQuestion(activeFlowKind, index, "thumbnailUrl", value)}
-                      />
-                      <ImageField
-                        label="Imaginea afișată după acest răspuns (opțional)"
-                        value={question.imageUrl}
-                        guildId={guildId}
-                        csrfToken={session?.csrfToken}
-                        onChange={(value) => updateQuestion(activeFlowKind, index, "imageUrl", value)}
-                      />
-                      <div className="flex items-center gap-5 pt-6 text-sm">
-                        <label className="flex items-center gap-2">
-                          <Checkbox checked={question.multiline} onCheckedChange={(checked) => updateQuestion(activeFlowKind, index, "multiline", checked === true)} />
-                          Răspuns lung
-                        </label>
-                        <label className="flex items-center gap-2">
-                          <Checkbox checked={question.required} onCheckedChange={(checked) => updateQuestion(activeFlowKind, index, "required", checked === true)} />
-                          Obligatoriu
-                        </label>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <details open className="overflow-hidden rounded-xl border border-white/15 bg-[#1E1E1E]">
-              <summary className="cursor-pointer list-none border-b border-white/15 px-4 py-3 text-sm font-semibold text-[#FFFFFF]">
-                <span className="mr-2 text-primary">▶</span>
-                Previzualizare test · {FLOW_KINDS.find(([kind]) => kind === activeFlowKind)?.[1] ?? "Flux activ"}
-              </summary>
-              <div className="grid gap-4 p-4 lg:grid-cols-2">
-                <div className="rounded-lg bg-[#1E1E1E] p-4">
-                  <p className="mb-3 text-[10px] font-mono tracking-[0.18em] text-[#B0B0B0]">MESAJUL DIN PANOU</p>
-                  {activeFlow.panelThumbnailUrl && <img src={activeFlow.panelThumbnailUrl} alt="" className="float-right ml-3 h-16 w-16 rounded object-cover" />}
-                  <h4 className="text-base font-semibold text-[#FFFFFF]"><DiscordEmojiText emojis={metadata?.emojis}>{activeFlow.title}</DiscordEmojiText></h4>
-                  <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[#B0B0B0]">
-                    <DiscordEmojiText emojis={metadata?.emojis}>{activeFlow.panelDescription}</DiscordEmojiText>
-                  </p>
-                  <p className="mt-3 whitespace-pre-wrap text-xs text-[#B0B0B0]"><DiscordEmojiText emojis={metadata?.emojis}>{activeFlow.requirementsText}</DiscordEmojiText></p>
-                  <div className="mt-4 space-y-2 border-t border-white/15 pt-3">
-                    {activeFlow.questions.map((question, index) => (
-                      <div key={`preview-question-${question.key}-${index}`} className="flex gap-2 text-xs">
-                        <span className="font-semibold text-[#B0B0B0]">{index + 1}.</span>
-                        <span className="text-[#B0B0B0]"><DiscordEmojiText emojis={metadata?.emojis}>{question.label}</DiscordEmojiText></span>
-                      </div>
-                    ))}
-                  </div>
-                  <Button type="button" size="sm" className="mt-4 pointer-events-none">
-                    <DiscordEmojiText emojis={metadata?.emojis}>{activeFlow.startButtonLabel}</DiscordEmojiText>
-                  </Button>
-                  {activeFlow.panelImageUrl && <img src={activeFlow.panelImageUrl} alt="" className="mt-3 max-h-40 w-full rounded object-contain" />}
-                </div>
-
-                <div className="rounded-lg bg-[#1E1E1E] p-4">
-                  <p className="mb-3 text-[10px] font-mono tracking-[0.18em] text-[#B0B0B0]">MESAJUL DUPĂ COMPLETARE</p>
-                  {activeFlow.completionThumbnailUrl && <img src={activeFlow.completionThumbnailUrl} alt="" className="float-right ml-3 h-16 w-16 rounded object-cover" />}
-                  <h4 className="text-base font-semibold text-[#FFFFFF]">Formular complet</h4>
-                  <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[#B0B0B0]">
-                    <DiscordEmojiText emojis={metadata?.emojis}>{activeFlow.completionMessage}</DiscordEmojiText>
-                  </p>
-                  <div className="mt-4 space-y-2 border-t border-white/15 pt-3">
-                    {activeFlow.questions.filter((question) => postedQuestionKeys.has(question.key)).length > 0 ? (
-                      activeFlow.questions
-                        .filter((question) => postedQuestionKeys.has(question.key))
-                        .map((question, index) => (
-                          <div key={`preview-answer-${question.key}-${index}`} className="rounded-md bg-[#121212] px-3 py-2">
-                            <p className="text-xs font-semibold text-[#FFFFFF]"><DiscordEmojiText emojis={metadata?.emojis}>{question.label}</DiscordEmojiText></p>
-                            <p className="mt-1 text-xs italic text-[#B0B0B0]">
-                              {question.placeholder || "Răspunsul membrului va apărea aici"}
-                            </p>
-                          </div>
-                        ))
-                    ) : (
-                      <p className="text-xs italic text-[#B0B0B0]">Nu este selectat niciun răspuns pentru mesajul final.</p>
-                    )}
-                  </div>
-                  {activeFlow.completionAction === "notify_staff" && (
-                    <p className="mt-4 text-xs text-primary">Mesajul va anunța rolul staff configurat.</p>
-                  )}
-                  {activeFlow.completionImageUrl && <img src={activeFlow.completionImageUrl} alt="" className="mt-3 max-h-40 w-full rounded object-contain" />}
-                </div>
-              </div>
-              <p className="border-t border-white/15 px-4 py-3 text-xs text-[#B0B0B0]">
-                Aceasta este o simulare. Pentru alt flux, schimbă „Tipul de ticket” de la Pasul 1.
-              </p>
-            </details>
-          </section>
-
-          <section className="space-y-4 rounded-xl border border-border bg-card p-5">
-            <div className="flex items-start gap-3">
-              <Ticket className="mt-1 h-5 w-5 text-primary" />
-              <div>
-                <h2 className="font-medium">Rutarea tichetelor</h2>
-                <p className="text-xs text-muted-foreground">Alege categoriile Discord în care botul recunoaște și gestionează tichetele. Pentru contestații, pune un canal de intrare vizibil membrilor în această categorie; ticketul creat de buton este privat pentru autor și staff.</p>
-              </div>
-            </div>
-            <div className="grid gap-4 md:grid-cols-3">
-              {TICKET_CATEGORIES.map(([key, label]) => {
-                const current = draft.tickets.categories[key];
-                const selected = !current
-                  ? "__none__"
-                  : categories.some((channel) => channel.id === current) ? current : "__manual__";
-                return (
-                  <div key={key} className="space-y-2">
-                    <label className="text-sm font-medium">{label}</label>
-                    <Select
-                      value={selected}
-                      onValueChange={(value) => setTicket(
-                        ["categories", key],
-                        value === "__none__" ? "" : value === "__manual__" ? current : value,
-                      )}
-                    >
-                       <SelectTrigger className="mod-select-trigger"><SelectValue placeholder="Alege categorie" /></SelectTrigger>
-                      <SelectContent className="max-h-[min(70vh,32rem)] overscroll-contain">
-                        <SelectItem value="__none__">Neconfigurat</SelectItem>
-                        <SelectItem value="__manual__">ID introdus manual</SelectItem>
-                        {categories.map((category) => <SelectItem key={category.id} value={category.id}>▰ {category.name}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                    <Input value={current} aria-label={`${label} ID`} placeholder="ID categorie Discord" onChange={(event) => setTicket(["categories", key], event.target.value.trim())} />
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-
-          {activeFlowKind === "partnership" && (
-          <section className="space-y-4 rounded-xl border border-border bg-card p-5">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="flex items-start gap-3">
-                <ShieldCheck className="mt-1 h-5 w-5 text-primary" />
-                <div>
-                  <h2 className="font-medium">Staff și publicarea alianțelor</h2>
-                  <p className="text-xs text-muted-foreground">Rolul care poate confirma sau refuza parteneriatele și canalul public pentru alianțele aprobate.</p>
-                </div>
-              </div>
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Rol staff alianțe</label>
-                <Select value={metadata?.roles.some((role) => role.id === draft.tickets.staffReviewRoleId) ? draft.tickets.staffReviewRoleId : "__manual__"} onValueChange={(value) => setTicket(["staffReviewRoleId"], value === "__manual__" ? draft.tickets.staffReviewRoleId : value)}>
-                   <SelectTrigger className="mod-select-trigger"><SelectValue placeholder="Alege rol" /></SelectTrigger>
-                  <SelectContent className="max-h-[min(70vh,32rem)] overscroll-contain">
-                    <SelectItem value="__manual__">ID introdus manual</SelectItem>
-                    {metadata?.roles.filter((role) => !role.managed).map((role) => <SelectItem key={role.id} value={role.id}>@{role.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-                <Input value={draft.tickets.staffReviewRoleId} placeholder="ID rol Discord" onChange={(event) => setTicket(["staffReviewRoleId"], event.target.value.trim())} />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Canal public alianțe</label>
-                <Select
-                  value={!draft.tickets.alliancePublicChannelId
-                    ? "__none__"
-                    : textChannels.some((channel) => channel.id === draft.tickets.alliancePublicChannelId)
-                      ? draft.tickets.alliancePublicChannelId
-                      : "__manual__"}
-                  onValueChange={(value) => setTicket(
-                    ["alliancePublicChannelId"],
-                    value === "__none__" ? "" : value === "__manual__" ? draft.tickets.alliancePublicChannelId : value,
-                  )}
-                >
-                   <SelectTrigger className="mod-select-trigger"><SelectValue placeholder="Alege canal" /></SelectTrigger>
-                  <SelectContent className="max-h-[min(70vh,32rem)] overscroll-contain">
-                    <SelectItem value="__none__">Neconfigurat</SelectItem>
-                    <SelectItem value="__manual__">ID introdus manual</SelectItem>
-                    {textChannels.map((channel) => <SelectItem key={channel.id} value={channel.id}>#{channel.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-                <Input value={draft.tickets.alliancePublicChannelId} placeholder="ID canal Discord" onChange={(event) => setTicket(["alliancePublicChannelId"], event.target.value.trim())} />
-              </div>
-            </div>
-            <Input value={draft.tickets.allianceOwnerGuildId} placeholder="ID server owner pentru publicarea alianțelor" aria-label="ID server alianțe" onChange={(event) => setTicket(["allianceOwnerGuildId"], event.target.value.trim())} />
-             <div className="space-y-2 rounded-lg border border-primary/25 bg-primary/[0.04] p-4">
-               <div>
-                 <label className="text-sm font-medium">Mesajul public al parteneriatului</label>
-                 <p className="mt-1 text-xs text-muted-foreground">
-                    Acest șablon este folosit când stafful apasă „Publică pactul”. Formatul și imaginile se configurează aici.
-                 </p>
-               </div>
-               <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-                 <div className="space-y-2">
-                   <label className="text-sm font-medium">Formatul publicării</label>
-                   <Select
-                     value={draft.tickets.allianceAnnouncementMode}
-                     onValueChange={(value) => setTicket(["allianceAnnouncementMode"], value)}
-                   >
-                     <SelectTrigger className="mod-select-trigger"><SelectValue /></SelectTrigger>
-                     <SelectContent>
-                       <SelectItem value="text">Text simplu în mesaj</SelectItem>
-                       <SelectItem value="embed">Embed Discord</SelectItem>
-                     </SelectContent>
-                   </Select>
-                 </div>
-               </div>
-                <ImageField
-                   label="Imagine mare sub anunțul public"
-                  value={draft.tickets.allianceAnnouncementImageUrl}
-                  guildId={guildId}
-                  csrfToken={session?.csrfToken}
-                  onChange={(value) => {
-                    setTicket(["allianceAnnouncementImageUrl"], value);
-                    setTicket(["allianceAnnouncementImageMode"], "large");
-                  }}
-                />
-                 <ImageField
-                   label="Thumbnail mic în dreapta anunțului public"
-                   value={draft.tickets.allianceAnnouncementThumbnailUrl}
-                   guildId={guildId}
-                   csrfToken={session?.csrfToken}
-                   onChange={(value) => {
-                     setTicket(["allianceAnnouncementThumbnailUrl"], value);
-                     setTicket(["allianceAnnouncementImageMode"], "large");
-                   }}
-                 />
-                 <div className="mt-4 border-t border-border/70 pt-4">
-                   <label className="text-sm font-medium">Mesajul de recrutare al alianței</label>
-                   <p className="mt-1 text-xs text-muted-foreground">Text de recrutare păstrat în configurație. Pentru anunțul publicat pe Discord, folosește șablonul și imaginea de mai sus.</p>
-                    <EmojiField
-                      multiline
-                     value={draft.allianceRecruitmentText}
-                     maxLength={2000}
-                     rows={5}
-                     className="mt-2 resize-y"
-                     placeholder="Scrie mesajul de recrutare..."
-                      onChange={(value) => setDraft({ ...draft, allianceRecruitmentText: value })}
-                      guildId={guildId}
-                      csrfToken={session?.csrfToken}
-                      emojis={metadata?.emojis}
-                      onEmojiCreated={refetchMetadata}
-                   />
-                 </div>
-             </div>
-          </section>
-          )}
-
-          <section className="space-y-4 rounded-xl border border-border bg-card p-5">
-            <div>
-              <h2 className="font-medium">Termene pentru tichete incomplete</h2>
-              <p className="text-xs text-muted-foreground">Minute de la crearea canalului: avertisment 1, avertisment 2 și ștergere automată.</p>
-            </div>
-            <div className="grid gap-4 md:grid-cols-3">
-              {[
-                ["firstWarningMinutes", "Primul avertisment", 1, 180],
-                ["secondWarningMinutes", "Al doilea avertisment", 2, 239],
-                ["incompleteTimeoutMinutes", "Ștergere automată", 10, 240],
-              ].map(([key, label, min, max]) => (
-                <div key={String(key)} className="space-y-2">
-                  <label className="text-sm font-medium">{label}</label>
-                  <Input type="number" min={Number(min)} max={Number(max)} value={draft.tickets[key as keyof typeof draft.tickets] as number} onChange={(event) => setTicket([String(key)], Number(event.target.value))} />
-                  <p className="text-xs text-muted-foreground">{min}–{max} minute</p>
-                </div>
-              ))}
-            </div>
-          </section>
-        </TabsContent>
- 
         <TabsContent value="messages" className="mt-0 space-y-5">
           <section className="space-y-5 rounded-xl border border-border bg-card p-5">
             <div className="flex items-start gap-3">
@@ -2657,209 +1954,6 @@ export function BotControlPage({
             <Button type="button" onClick={() => void provision()} disabled={provisioning}>
               {provisioning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wrench className="mr-2 h-4 w-4" />}
               Aplică și sincronizează
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={testOpen} onOpenChange={setTestOpen}>
-        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto border-white/15 bg-[#1E1E1E] text-[#FFFFFF]">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <PlayCircle className="h-5 w-5 text-primary" />
-              Test local · {FLOW_KINDS.find(([kind]) => kind === activeFlowKind)?.[1] ?? "Flux ticket"}
-            </DialogTitle>
-            <DialogDescription className="text-[#B0B0B0]">
-              Simulează pașii pe care îi vede membrul. Nu se creează ticket și nu se postează nimic pe Discord.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div className="rounded-lg border border-white/15 bg-[#1E1E1E] p-4">
-              <p className="text-[10px] font-mono tracking-[0.18em] text-[#B0B0B0]">PANOU DISCORD SIMULAT</p>
-              {activeFlow.panelThumbnailUrl && <img src={activeFlow.panelThumbnailUrl} alt="" className="float-right ml-3 h-16 w-16 rounded object-cover" />}
-              <h3 className="mt-2 text-lg font-semibold"><DiscordEmojiText emojis={metadata?.emojis}>{activeFlow.title}</DiscordEmojiText></h3>
-              <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[#B0B0B0]"><DiscordEmojiText emojis={metadata?.emojis}>{activeFlow.panelDescription}</DiscordEmojiText></p>
-              <p className="mt-3 whitespace-pre-wrap text-xs text-[#B0B0B0]"><DiscordEmojiText emojis={metadata?.emojis}>{activeFlow.requirementsText}</DiscordEmojiText></p>
-              {!testStarted && !testCompleted && (
-                <Button type="button" className="mt-4 gap-2" onClick={() => setTestStarted(true)}>
-                  <PlayCircle className="h-4 w-4" />
-                  <DiscordEmojiText emojis={metadata?.emojis}>{activeFlow.startButtonLabel}</DiscordEmojiText>
-                </Button>
-              )}
-              {activeFlow.panelImageUrl && <img src={activeFlow.panelImageUrl} alt="" className="mt-3 max-h-48 w-full rounded object-contain" />}
-            </div>
-
-            {testStarted && !testCompleted && testQuestion && (
-              <div className="rounded-lg border border-primary/40 bg-[#1E1E1E] p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-xs font-mono tracking-[0.14em] text-primary">
-                    ÎNTREBAREA {testStep + 1}/{activeFlow.questions.length}
-                  </p>
-                  <span className="text-xs text-[#B0B0B0]">
-                    {testQuestion.required ? "Obligatoriu" : "Opțional"}
-                  </span>
-                </div>
-                <h3 className="mt-3 text-base font-semibold"><DiscordEmojiText emojis={metadata?.emojis}>{testQuestion.label}</DiscordEmojiText></h3>
-                {testQuestion.thumbnailUrl && <img src={testQuestion.thumbnailUrl} alt="" className="float-right ml-3 h-16 w-16 rounded object-cover" />}
-                <p className="mt-1 text-sm text-[#B0B0B0]"><DiscordEmojiText emojis={metadata?.emojis}>{testQuestion.description}</DiscordEmojiText></p>
-                {testQuestion.imageUrl && <img src={testQuestion.imageUrl} alt="" className="mt-3 max-h-48 w-full rounded object-contain" />}
-                {testQuestion.multiline ? (
-                  <Textarea
-                    autoFocus
-                    rows={4}
-                    value={testDraftAnswer}
-                    placeholder={testQuestion.placeholder}
-                    onChange={(event) => {
-                      setTestDraftAnswer(event.target.value);
-                      setTestError("");
-                    }}
-                    className="mt-4 border-white/15 bg-[#121212] text-[#FFFFFF]"
-                  />
-                ) : (
-                  <Input
-                    autoFocus
-                    value={testDraftAnswer}
-                    placeholder={testQuestion.placeholder}
-                    onChange={(event) => {
-                      setTestDraftAnswer(event.target.value);
-                      setTestError("");
-                    }}
-                    className="mt-4 border-white/15 bg-[#121212] text-[#FFFFFF]"
-                  />
-                )}
-                {testError && <p className="mt-2 text-xs text-destructive">{testError}</p>}
-                <div className="mt-4 flex justify-end">
-                  <Button type="button" onClick={submitTestAnswer}>
-                    {testStep === activeFlow.questions.length - 1 ? "Finalizează simularea" : "Salvează și continuă"}
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {Object.keys(testAnswers).length > 0 && (
-              <div className="space-y-2 rounded-lg border border-white/15 bg-[#1E1E1E] p-4">
-                <p className="text-[10px] font-mono tracking-[0.18em] text-[#B0B0B0]">RĂSPUNSURI SIMULATE</p>
-                {activeFlow.questions
-                  .filter((question) => testAnswers[question.key] !== undefined)
-                  .map((question) => (
-                    <div key={`test-answer-${question.key}`} className="rounded-md bg-[#121212] px-3 py-2">
-                      <p className="text-xs font-semibold"><DiscordEmojiText emojis={metadata?.emojis}>{question.label}</DiscordEmojiText></p>
-                      <p className="mt-1 whitespace-pre-wrap text-sm text-[#B0B0B0]">{testAnswers[question.key]}</p>
-                    </div>
-                  ))}
-              </div>
-            )}
-
-            {testCompleted && (
-              <div className="rounded-lg border border-emerald-500/40 bg-[#1E1E1E] p-4">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="h-5 w-5 text-emerald-400" />
-                  <p className="text-[10px] font-mono tracking-[0.18em] text-emerald-300">
-                    {activeFlowKind === "partnership" ? "REZUMAT STAFF ÎN TICKET" : "MESAJ FINAL SIMULAT"}
-                  </p>
-                </div>
-                <h3 className="mt-3 text-base font-semibold">
-                  {activeFlowKind === "partnership"
-                    ? "🤝 Contract de Parteneriat · Rezumat pentru staff"
-                    : "Formular complet"}
-                </h3>
-                <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[#B0B0B0]"><DiscordEmojiText emojis={metadata?.emojis}>{activeFlow.completionMessage}</DiscordEmojiText></p>
-                {activeFlow.completionThumbnailUrl && <img src={activeFlow.completionThumbnailUrl} alt="" className="float-right ml-3 h-16 w-16 rounded object-cover" />}
-                <div className="mt-4 space-y-2 border-t border-white/15 pt-3">
-                  {activeFlow.questions.filter((question) => postedQuestionKeys.has(question.key)).map((question) => (
-                    <div key={`test-final-${question.key}`} className="rounded-md bg-[#121212] px-3 py-2">
-                      <p className="text-xs font-semibold"><DiscordEmojiText emojis={metadata?.emojis}>{question.label}</DiscordEmojiText></p>
-                      <p className="mt-1 whitespace-pre-wrap text-sm text-[#B0B0B0]">{testAnswers[question.key] ?? "—"}</p>
-                    </div>
-                  ))}
-                </div>
-                {activeFlowKind === "partnership" && (
-                  <div className="mt-4 flex flex-wrap gap-2 border-t border-white/15 pt-3">
-                    <Button type="button" size="sm" className="pointer-events-none">🛡️ Confirmă pentru publicare</Button>
-                    <Button type="button" size="sm" variant="destructive" className="pointer-events-none">Refuză pactul</Button>
-                  </div>
-                )}
-                {activeFlow.completionAction === "notify_staff" && (
-                  <p className="mt-4 text-xs text-primary"><DiscordEmojiText emojis={metadata?.emojis}>{activeFlow.staffNotificationMessage}</DiscordEmojiText></p>
-                )}
-                {activeFlow.completionImageUrl && <img src={activeFlow.completionImageUrl} alt="" className="mt-3 max-h-48 w-full rounded object-contain" />}
-              </div>
-            )}
-
-            {testCompleted && partnershipAnswers && (
-              <>
-                <div className="rounded-lg border border-[#D94A2B]/50 bg-[#1E1E1E] p-4">
-                  <p className="text-[10px] font-mono tracking-[0.18em] text-[#D94A2B]">DRAFT DUPĂ CONFIRMAREA STAFFULUI</p>
-                  <h3 className="mt-2 text-base font-semibold">🤝 Contract de Parteneriat · Draft de publicare</h3>
-                  <p className="mt-2 text-sm text-[#B0B0B0]">
-                    Draftul este vizibil în ticket până când stafful apasă „Publică pactul”.
-                  </p>
-                  <div className="mt-4 grid gap-2 border-t border-white/15 pt-3 sm:grid-cols-2">
-                    {[
-                      ["🏰 Numele serverului", partnershipAnswers.server_name],
-                      ["👤 Reprezentantul serverului", partnershipAnswers.representative],
-                      ["🔗 Linkul serverului", partnershipAnswers.invite],
-                      ["👥 Membri și activitate", partnershipAnswers.members],
-                      ["📝 Descrierea serverului", partnershipAnswers.description],
-                      ["🕯️ Motivul alianței", partnershipAnswers.motivation],
-                      ["🎁 Ce oferă serverul", partnershipAnswers.offer],
-                      ["📜 Așteptări și reguli", partnershipAnswers.terms],
-                    ].map(([label, value]) => (
-                      <div key={label} className="rounded-md bg-[#121212] px-3 py-2">
-                        <p className="text-xs font-semibold">{label}</p>
-                        <p className="mt-1 whitespace-pre-wrap text-sm text-[#B0B0B0]">{previewValue(value)}</p>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <Button type="button" size="sm" className="pointer-events-none">📣 Publică pactul</Button>
-                    <Button type="button" size="sm" variant="secondary" className="pointer-events-none">✏️ Revizuiește draftul</Button>
-                  </div>
-                </div>
-
-                <div className="rounded-lg border border-amber-500/40 bg-[#1E1E1E] p-4">
-                  <p className="text-[10px] font-mono tracking-[0.18em] text-amber-300">TEXTUL POSTAT ÎN CANALUL ALIANȚELOR</p>
-                   <p className="mt-2 text-xs text-[#B0B0B0]">
-                     Acesta este mesajul public trimis după „Publică pactul”. Imaginea este simulată aici ca preview Discord.
-                  </p>
-                    <div className="mt-3 overflow-hidden rounded-md bg-[#121212] p-3">
-                     {draft.tickets.allianceAnnouncementMode === "embed" ? (
-                        <div className="border-l-4 border-[#D94A2B] pl-3">
-                          <p className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-[#FFFFFF]"><DiscordEmojiText emojis={metadata?.emojis}>{partnershipAnnouncement}</DiscordEmojiText></p>
-                          {draft.tickets.allianceAnnouncementThumbnailUrl && (
-                            <img src={draft.tickets.allianceAnnouncementThumbnailUrl} alt="" className="float-right ml-3 h-20 w-20 rounded object-cover" />
-                          )}
-                          {draft.tickets.allianceAnnouncementImageUrl && (
-                            <img src={draft.tickets.allianceAnnouncementImageUrl} alt="" className="mt-3 max-h-56 w-full rounded object-cover" />
-                          )}
-                       </div>
-                     ) : (
-                       <>
-                          <p className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-[#FFFFFF]"><DiscordEmojiText emojis={metadata?.emojis}>{partnershipAnnouncement}</DiscordEmojiText></p>
-                          {(draft.tickets.allianceAnnouncementImageUrl || draft.tickets.allianceAnnouncementThumbnailUrl) && (
-                            <div className="mt-3 border-l-4 border-[#D94A2B] pl-3">
-                              {draft.tickets.allianceAnnouncementThumbnailUrl && (
-                                <img src={draft.tickets.allianceAnnouncementThumbnailUrl} alt="" className="float-right ml-3 h-20 w-20 rounded object-cover" />
-                              )}
-                              {draft.tickets.allianceAnnouncementImageUrl && (
-                                <img src={draft.tickets.allianceAnnouncementImageUrl} alt="" className="max-h-56 w-full rounded object-cover" />
-                              )}
-                           </div>
-                         )}
-                       </>
-                     )}
-                   </div>
-                </div>
-              </>
-            )}
-          </div>
-
-          <DialogFooter className="gap-2 sm:justify-between">
-            <p className="text-xs text-[#B0B0B0]">Modificările curente sunt testate local, chiar dacă nu sunt încă salvate.</p>
-            <Button type="button" variant="secondary" onClick={resetFlowTest} className="gap-2">
-              <RotateCcw className="h-4 w-4" />
-              Repornește testul
             </Button>
           </DialogFooter>
         </DialogContent>

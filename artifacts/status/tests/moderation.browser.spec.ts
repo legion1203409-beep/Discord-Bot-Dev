@@ -118,7 +118,7 @@ async function installPartialBotControlFixture(
           { id: "666666666", name: "Moderator", position: 8, managed: false, assignable: true, elevated: true, color: "#e2b467" },
           { id: "888888888", name: "Fondator", position: 30, managed: false, assignable: false, elevated: false, color: null },
         ],
-        channels: [{ id: "777777777", name: "verificare", type: 0 }],
+        channels: [{ id: "777777777", name: "verificare", type: 0 }, { id: "333333333", name: "Tichete staff", type: 4 }],
         emojis: [],
         botCapabilities: { online: true, messageContent: true, guildMembers: true, canManageRoles: true },
       },
@@ -250,11 +250,11 @@ test.describe("authenticated moderation console", () => {
     await expect(page.locator(`#nav-group-${groupId}`)).toBeVisible();
   }
 
-  test("keeps all ten dock destinations reachable on mobile and desktop", async ({ page }) => {
+  test("keeps all eleven dock destinations reachable on mobile and desktop", async ({ page }) => {
     test.setTimeout(45_000);
     const dockIds = [
       "overview", "protection", "judge", "sanctions", "cases",
-      "verification", "rpg", "oracle", "settings", "assistant",
+      "verification", "tickets", "rpg", "oracle", "settings", "assistant",
     ] as const;
 
     await page.setViewportSize({ width: 320, height: 780 });
@@ -328,7 +328,7 @@ test.describe("authenticated moderation console", () => {
     const ticketsResult = page.getByTestId("search-result-tickets");
     await expect(ticketsResult).toHaveAttribute("aria-selected", "false");
     await ticketsResult.click();
-    await expect(page).toHaveURL(/tab=tickets/);
+    await expect(page).toHaveURL(/\/moderare\/tichete$/);
 
     await page.keyboard.press("Meta+k");
     await expect(searchInput).toBeVisible();
@@ -1693,7 +1693,8 @@ test.describe("authenticated moderation console", () => {
     });
 
     await page.goto("/moderare/bot?tab=tickets");
-    await expect(page.getByRole("heading", { name: "Editor flux ticket" })).toBeVisible();
+    await expect(page).toHaveURL(/\/moderare\/tichete$/);
+    await expect(page.getByRole("heading", { name: "Aplicații de staff", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: /Anunțul public al parteneriatului/ })).toHaveCount(0);
     await page.goto("/moderare/config/mesaje");
     await page.getByRole("button", { name: /Anunțul public al parteneriatului/ }).click();
@@ -2572,6 +2573,123 @@ test.describe("verification page", () => {
     await expect(partialAlert).toContainText("Serverul a aplicat salvarea doar în parte; efectele din Discord nu sunt confirmate.");
     await expect(partialAlert).not.toContainText("Panoul a fost publicat");
     await expect(partialAlert).not.toContainText("Salvarea configurației nu a fost efectuată.");
+  });
+});
+
+test.describe("tickets page", () => {
+  const question = (key: string, label: string, required = true) => ({
+    key, label, description: `Despre ${label}`, placeholder: "Răspuns", multiline: false, required, imageUrl: "", thumbnailUrl: "",
+  });
+  const flow = (title: string, keys: Array<[string, string]>, completionAction = "notify_staff") => ({
+    mode: "custom", title, startButtonLabel: "Începe", panelDescription: `${title}: descriere`, requirementsText: "Citește regulile.",
+    completionMessage: "Formular trimis.", staffNotificationMessage: "Un formular nou.", completionAction,
+    questions: keys.map(([key, label]) => question(key, label)),
+    panelImageUrl: "", panelThumbnailUrl: "", completionImageUrl: "", completionThumbnailUrl: "", staffNotificationImageUrl: "", staffNotificationThumbnailUrl: "",
+  });
+  const ticketsConfig = () => ({
+    ...verificationBotControlConfig(false, ""),
+    tickets: {
+      categories: { staff: "", partnership: "", help_report: "", appeal: "" },
+      staffReviewRoleId: "444444444", alliancePublicChannelId: "", allianceOwnerGuildId: "",
+      allianceAnnouncementTemplate: "{server_name}", allianceAnnouncementMode: "text", allianceAnnouncementImageUrl: "",
+      allianceAnnouncementThumbnailUrl: "", allianceAnnouncementImageMode: "none",
+      incompleteTimeoutMinutes: 60, firstWarningMinutes: 20, secondWarningMinutes: 50,
+      flows: {
+        staff: flow("Aplicație", [["name", "Nume"], ["age", "Vârstă"]]),
+        partnership: flow("Parteneriat", [["server_name", "Server"], ["invite", "Link"]]),
+        help_report: flow("Ajutor", [["type", "Tip"]], "lock"),
+        appeal: flow("Contestație", [["case_id", "ID-ul cazului"], ["reason", "Motiv"]]),
+      },
+    },
+  });
+  async function openTickets(page: import("@playwright/test").Page, path = "/moderare/tichete") {
+    const putBodies = await installPartialBotControlFixture(page, new Map([
+      [guilds[0].id, ticketsConfig() as any], [guilds[1].id, ticketsConfig() as any],
+    ]));
+    await page.goto(path);
+    await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible({ timeout: 15_000 });
+    await page.getByRole("button", { name: guilds[0].name }).click();
+    await expect(page.getByTestId("tickets-page")).toBeVisible();
+    return putBodies;
+  }
+
+  test("is its own page and a flow works once it has a category", async ({ page }) => {
+    const putBodies = await openTickets(page);
+    await expect(page.getByRole("heading", { name: "Aplicații de staff", exact: true })).toBeVisible();
+    await expect(page.getByTestId("tickets-staff-state")).toHaveText("Oprit · fără categorie");
+    await page.getByRole("combobox", { name: "Categoria pentru Aplicații staff" }).selectOption("333333333");
+    await expect(page.getByTestId("tickets-staff-state")).toHaveText("Pornit");
+    await expect(page.getByTestId("nav-tickets-staff").locator(".pn-nav-dirty")).toBeVisible();
+    await page.getByTestId("button-save-tickets").click();
+    await expect.poll(() => putBodies.get(guilds[0].id)?.length).toBe(1);
+    expect(putBodies.get(guilds[0].id)?.[0].tickets.categories.staff).toBe("333333333");
+    await expect(page.getByTestId("tickets-save-bar")).toHaveCount(0);
+  });
+
+  test("edits the questions and does not save two answers with the same key", async ({ page }) => {
+    const putBodies = await openTickets(page);
+    await page.getByTestId("question-staff-1-open").click();
+    const keyField = page.getByTestId("question-staff-1").getByLabel("Cheia", { exact: true });
+    await keyField.fill("name");
+    await expect(page.getByTestId("tickets-staff-questions")).toContainText("Aceeași cheie apare de mai multe ori: name");
+    await page.getByTestId("button-save-tickets").click();
+    expect(putBodies.size).toBe(0);
+    await keyField.fill("Vârsta Mea");
+    await expect(keyField).toHaveValue("varsta_mea");
+    await page.getByTestId("tickets-staff-add-question").click();
+    await page.getByRole("button", { name: "Mută întrebarea 3 mai sus" }).click();
+    await page.getByTestId("button-save-tickets").click();
+    await expect.poll(() => putBodies.get(guilds[0].id)?.length).toBe(1);
+    const staff = putBodies.get(guilds[0].id)?.[0].tickets.flows.staff;
+    expect(staff.questions.map((item: { key: string }) => item.key)).toEqual(["name", "intrebare_3", "varsta_mea"]);
+    expect(staff.mode).toBe("custom");
+  });
+
+  test("keeps the case question first in appeals", async ({ page }) => {
+    await openTickets(page, "/moderare/tichete/contestatii");
+    await expect(page.getByRole("button", { name: "Șterge întrebarea 1" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Mută întrebarea 2 mai sus" })).toBeDisabled();
+    await expect(page.getByTestId("question-appeal-0")).toContainText("ID-ul cazului contestat · mereu prima");
+  });
+
+  test("turns the staff mention off and the publication of alliances on", async ({ page }) => {
+    const putBodies = await openTickets(page, "/moderare/tichete/parteneriate");
+    await page.getByTestId("tickets-partnership-notify").click();
+    await page.getByTestId("tickets-alliances-switch").click();
+    await expect(page.getByTestId("tickets-alliances")).toContainText("Alege canalul alianțelor");
+    await page.getByRole("combobox", { name: "Canalul alianțelor" }).selectOption("777777777");
+    await page.getByTestId("button-save-tickets").click();
+    await expect.poll(() => putBodies.get(guilds[0].id)?.length).toBe(1);
+    const tickets = putBodies.get(guilds[0].id)?.[0].tickets;
+    expect(tickets.flows.partnership.completionAction).toBe("lock");
+    expect(tickets.allianceOwnerGuildId).toBe(guilds[0].id);
+    expect(tickets.alliancePublicChannelId).toBe("777777777");
+  });
+
+  test("wants the warnings before the deletion of an unfinished ticket", async ({ page }) => {
+    const putBodies = await openTickets(page, "/moderare/tichete/setari");
+    const first = page.getByTestId("tickets-firstWarningMinutes");
+    await first.fill("55");
+    await expect(page.getByTestId("tickets-deadlines")).toContainText("Primul avertisment trebuie să vină înaintea celui de-al doilea.");
+    await page.getByTestId("button-save-tickets").click();
+    expect(putBodies.size).toBe(0);
+    await first.fill("15");
+    await page.getByTestId("button-save-tickets").click();
+    await expect.poll(() => putBodies.get(guilds[0].id)?.[0]?.tickets.firstWarningMinutes).toBe(15);
+  });
+
+  test("lets you try the form without sending anything", async ({ page }) => {
+    const putBodies = await openTickets(page);
+    await page.getByTestId("tickets-staff-try-start").click();
+    await page.getByTestId("tickets-staff-try-next").click();
+    await expect(page.getByTestId("tickets-staff-try")).toContainText("Răspunsul e obligatoriu.");
+    await page.getByTestId("tickets-staff-try-question").getByRole("textbox").fill("Ana");
+    await page.getByTestId("tickets-staff-try-next").click();
+    await page.getByTestId("tickets-staff-try-question").getByRole("textbox").fill("21");
+    await page.getByTestId("tickets-staff-try-next").click();
+    await expect(page.getByTestId("tickets-staff-try-done")).toContainText("Ana");
+    await expect(page.getByTestId("tickets-staff-try-done")).toContainText("@staff Un formular nou.");
+    expect(putBodies.size).toBe(0);
   });
 });
 

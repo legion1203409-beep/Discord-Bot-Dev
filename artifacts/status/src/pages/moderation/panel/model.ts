@@ -477,6 +477,22 @@ export function isVerificationRoute(path: string): boolean {
   return clean === VERIFICATION_ROUTE || Object.values(VERIFICATION_MODULE_ROUTES).some((route) => route === clean);
 }
 
+/** The overview route of the tickets group and the routes of its five modules. */
+export const TICKETS_ROUTE = "/tichete";
+export const TICKETS_MODULE_ROUTES = {
+  staff: "/tichete/aplicatii",
+  partnership: "/tichete/parteneriate",
+  help_report: "/tichete/ajutor",
+  appeal: "/tichete/contestatii",
+  common: "/tichete/setari",
+} as const;
+
+/** True for "/tichete" and the routes of its modules. */
+export function isTicketsRoute(path: string): boolean {
+  const clean = cleanPath(path);
+  return clean === TICKETS_ROUTE || Object.values(TICKETS_MODULE_ROUTES).some((route) => route === clean);
+}
+
 /**
  * The group a route belongs to, for pages whose modules share one draft: moving
  * between the modules of a group must not reload the page. Null elsewhere.
@@ -486,6 +502,7 @@ export function panelGroupRoute(path: string): string | null {
   if (isSanctionsRoute(path)) return SANCTIONS_ROUTE;
   if (isLogsRoute(path)) return LOGS_ROUTE;
   if (isVerificationRoute(path)) return VERIFICATION_ROUTE;
+  if (isTicketsRoute(path)) return TICKETS_ROUTE;
   return null;
 }
 

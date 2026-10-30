@@ -14,6 +14,7 @@ import { SanctionsGroupPage } from "./pages/moderation/panel/SanctionsGroup";
 import { LogsGroupPage } from "./pages/moderation/panel/LogsGroup";
 import { BotControlPage } from "./pages/moderation/BotControl";
 import { VerificationGroupPage } from "./pages/moderation/panel/VerificationGroup";
+import { TicketsGroupPage } from "./pages/moderation/panel/TicketsGroup";
 import { MessageTemplatesPage } from "./pages/moderation/MessageTemplates";
 import { ServerSetupPage } from "./pages/moderation/ServerSetup";
 import { ActivityRanksPage } from "./pages/moderation/ActivityRanks";
@@ -130,6 +131,12 @@ function ModerationApp() {
           <Route path="/verificare/setari" component={VerificationGroupPage} />
           <Route path="/verificare/mesaje" component={VerificationGroupPage} />
           <Route path="/verificare/membri" component={VerificationGroupPage} />
+          <Route path="/tichete" component={TicketsGroupPage} />
+          <Route path="/tichete/aplicatii" component={TicketsGroupPage} />
+          <Route path="/tichete/parteneriate" component={TicketsGroupPage} />
+          <Route path="/tichete/ajutor" component={TicketsGroupPage} />
+          <Route path="/tichete/contestatii" component={TicketsGroupPage} />
+          <Route path="/tichete/setari" component={TicketsGroupPage} />
           <Route path="/pornire-server" component={ServerSetupPage} />
           <Route path="/ranguri-activitate" component={ActivityRanksPage} />
           <Route path="/asistent" component={OfflineAssistant} />

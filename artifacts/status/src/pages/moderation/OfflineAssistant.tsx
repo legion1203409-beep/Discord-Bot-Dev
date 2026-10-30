@@ -10,6 +10,7 @@ const helperLinks = [
   { title: "Găsește cazurile deschise", detail: "Consultă dosarele și istoricul intervențiilor.", href: "/cazuri", words: "cazuri dosare sancțiuni" },
   { title: "Gestionează verificarea membrilor", detail: "Canalul panoului, rolul standard și rolurile în plus.", href: "/verificare", words: "verificare membri roluri categorie panou" },
   { title: "Verifică membri manual", detail: "Bifezi membri sau pe toți și le dai rolul de verificare și rolurile lipsă.", href: "/verificare/membri", words: "verificare manuala membri roluri lipsa bifeaza toti" },
+  { title: "Configurează tichetele", detail: "Aplicații staff, parteneriate, ajutor, contestații și termenele.", href: "/tichete", words: "tichete tickets aplicatii parteneriate ajutor contestatii termene" },
   { title: "Setează canalele botului", detail: "Alege destinațiile Discord existente.", href: "/canale", words: "canale bot destination" },
   { title: "Deschide setările serverului", detail: "Module și configurații avansate.", href: "/config", words: "setari config" },
 ];

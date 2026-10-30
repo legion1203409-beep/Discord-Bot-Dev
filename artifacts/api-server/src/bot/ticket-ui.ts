@@ -1983,9 +1983,10 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
     const ticketConfig = getTicketConfig(interaction.guildId);
     if (interaction.guildId !== ticketConfig.allianceOwnerGuildId) {
       await interaction.reply({
-        content:
-          "❌ Publicarea alianțelor nu este configurată pentru acest server. " +
-          "Destinația este disponibilă doar în serverul Regatului Cenușii.",
+        content: ticketConfig.allianceOwnerGuildId
+          ? "❌ Publicarea alianțelor nu este configurată pentru acest server. " +
+            "Destinația este disponibilă doar în serverul Regatului Cenușii."
+          : "❌ Publicarea alianțelor este oprită pe acest server. Un administrator o poate porni din panou, la Tichete › Parteneriate.",
         flags: MessageFlags.Ephemeral,
       });
       return true;

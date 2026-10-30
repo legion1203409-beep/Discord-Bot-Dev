@@ -4,16 +4,15 @@
  * Membri (lista care se actualizează singură și verificarea manuală). Logica
  * e în verification-model.ts; ciorna și salvarea în bot-draft.tsx.
  */
-import React, { createContext, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
+import React, { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetVerificationMembersQueryKey, useGetVerificationMembers } from "@workspace/api-client-react";
 import { DiscordEmojiText } from "../../../components/moderation/DiscordEmojiText";
-import { EmojiField } from "../../../components/moderation/EmojiField";
-import { uploadMessageImage } from "../../../components/moderation/ImageField";
 import { apiFetchWithMeta, verifyGuildMembers, type BotControlConfig } from "../../../hooks/use-moderation-api";
 import { useToast } from "../../../hooks/use-toast";
-import type { BotControlDraft } from "./bot-draft";
+import { useBotDraft } from "./bot-draft";
+import { EmojiTextField, ImageUrlField } from "./message-fields";
 import { usePanel } from "./context";
 import { ChannelField, Fields, Fld, IdPicker, Ico, Note, NoteRow, Pill, SectionCard, Seg, Spinner, cx, type PickerOption } from "./fields";
 import { countLabel, deepEqual } from "./model";
@@ -29,14 +28,7 @@ const MODULE: Record<VerificationModuleId, (typeof VERIFICATION_MODULES)[number]
   VERIFICATION_MODULES.map((module) => [module.id, module]),
 ) as Record<VerificationModuleId, (typeof VERIFICATION_MODULES)[number]>;
 
-/** The page's draft with what the modules need beyond the panel fields (publishing, emojis, uploads). */
-export const VerificationDraftContext = createContext<BotControlDraft | null>(null);
-
-function useVerificationDraft(): BotControlDraft {
-  const draft = useContext(VerificationDraftContext);
-  if (!draft) throw new Error("useVerificationDraft must be used inside the verification page.");
-  return draft;
-}
+const useVerificationDraft = useBotDraft;
 
 function useRoles() {
   const { roles } = usePanel();
@@ -268,68 +260,23 @@ export function SettingsModule() {
 type TextKey = (typeof VERIFICATION_TEXTS)[number]["key"];
 
 function TextInput({ textKey, hint, multiline, rows, replacement }: { textKey: TextKey; hint?: string; multiline?: boolean; rows?: number; replacement?: boolean }) {
-  const draft = useVerificationDraft();
   const { config, set } = usePanel();
   const spec = VERIFICATION_TEXTS.find((text) => text.key === textKey)!;
-  const value = String(config.verification[textKey] ?? "");
-  const id = useId();
   return (
-    <Fld wide label={spec.label} hint={hint} labelId={`${id}-l`} testId={`verification-text-${textKey}`}>
-      <div className="pn-emoji">
-        <EmojiField
-          value={value} onChange={(next) => set(["verification", textKey], next)} multiline={multiline} rows={rows}
-          maxLength={spec.max} replacement={replacement} aria-label={spec.label} className="pn-inp"
-          guildId={draft.guildId} csrfToken={draft.csrfToken} emojis={draft.metadata?.emojis}
-          onEmojiCreated={async () => { await draft.refetchMetadata(); }}
-        />
-      </div>
-      <span className="pn-count">{value.length}/{spec.max}</span>
-      {!spec.optional && !value.trim() ? <p className="pn-err" role="alert">{spec.label} nu poate fi gol.</p> : null}
-    </Fld>
+    <EmojiTextField
+      label={spec.label} hint={hint} value={String(config.verification[textKey] ?? "")} onChange={(next) => set(["verification", textKey], next)}
+      max={spec.max} multiline={multiline} rows={rows} replacement={replacement} optional={spec.optional} testId={`verification-text-${textKey}`}
+    />
   );
 }
 
 function ImageInput({ field, label, hint }: { field: "imageUrl" | "thumbnailUrl"; label: string; hint: string }) {
-  const draft = useVerificationDraft();
   const { config, set } = usePanel();
-  const value = String(config.verification[field] ?? "");
-  const [uploading, setUploading] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
-  const id = useId();
-  const invalid = !isMessageImageUrl(value.trim());
-  const upload = async (file: File) => {
-    if (!draft.guildId) return;
-    setUploading(true);
-    setProblem(null);
-    try {
-      set(["verification", field], await uploadMessageImage(file, draft.guildId, draft.csrfToken));
-    } catch (failure) {
-      setProblem(failure instanceof Error ? failure.message : "Imaginea nu a putut fi încărcată.");
-    } finally {
-      setUploading(false);
-    }
-  };
   return (
-    <Fld wide label={label} hint={hint} htmlFor={id} testId={`verification-image-${field}`}>
-      <div className="pn-img">
-        {value && !invalid ? <img src={value} alt="" className="pn-img-th" /> : <span className="pn-img-th is-empty" aria-hidden="true"><Ico name="image" /></span>}
-        <input
-          id={id} className="pn-inp" value={value} placeholder="https://… sau încarcă o imagine" autoComplete="off"
-          onChange={(event) => set(["verification", field], event.target.value)}
-        />
-        <label className={cx("pn-btn-ghost pn-btn-sm", (uploading || !draft.guildId) && "is-disabled")}>
-          {uploading ? <><Spinner />Se încarcă</> : <><Ico name="image" />Încarcă</>}
-          <input
-            type="file" className="pn-sr" accept="image/png,image/jpeg,image/gif,image/webp" disabled={uploading || !draft.guildId}
-            aria-label={`Încarcă ${label.toLocaleLowerCase("ro")}`}
-            onChange={(event) => { const file = event.target.files?.[0]; event.currentTarget.value = ""; if (file) void upload(file); }}
-          />
-        </label>
-        {value ? <button type="button" className="pn-btn-ghost pn-btn-sm" onClick={() => set(["verification", field], "")}>Scoate</button> : null}
-      </div>
-      {invalid ? <p className="pn-err" role="alert">Folosește un link HTTPS sau încarcă o imagine.</p> : null}
-      {problem ? <p className="pn-err" role="alert">{problem}</p> : null}
-    </Fld>
+    <ImageUrlField
+      label={label} hint={hint} value={String(config.verification[field] ?? "")} onChange={(next) => set(["verification", field], next)}
+      testId={`verification-image-${field}`}
+    />
   );
 }
 

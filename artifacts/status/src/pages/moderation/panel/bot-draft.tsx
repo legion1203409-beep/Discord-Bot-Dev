@@ -6,7 +6,7 @@
  * pe jumătate. Aceeași formă ca useConfigDraft, ca modulele să folosească
  * aceleași câmpuri.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   BotControlPartialApplyError, useActiveGuild, useBotControl, useModerationMetadata, useSession, type BotControlConfig,
 } from "../../../hooks/use-moderation-api";
@@ -225,3 +225,12 @@ export function useBotControlDraft({ changedParts, validate, savedText }: {
 }
 
 export type BotControlDraft = ReturnType<typeof useBotControlDraft>;
+
+/** The page's draft with what the modules need beyond the panel fields (publishing, emojis, uploads). */
+export const BotDraftContext = createContext<BotControlDraft | null>(null);
+
+export function useBotDraft(): BotControlDraft {
+  const draft = useContext(BotDraftContext);
+  if (!draft) throw new Error("useBotDraft must be used inside a page built on useBotControlDraft.");
+  return draft;
+}

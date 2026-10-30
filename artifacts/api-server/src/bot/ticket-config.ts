@@ -278,7 +278,8 @@ export function normalizeTicketConfig(value: unknown): TicketConfig {
       raw.alliancePublicChannelId,
       DEFAULT_TICKET_CONFIG.alliancePublicChannelId,
     ),
-    allianceOwnerGuildId: validSnowflake(raw.allianceOwnerGuildId) ? raw.allianceOwnerGuildId : DEFAULT_TICKET_CONFIG.allianceOwnerGuildId,
+    // An empty value switches the publication of alliances off on this server.
+    allianceOwnerGuildId: destinationOrDefault(raw.allianceOwnerGuildId, DEFAULT_TICKET_CONFIG.allianceOwnerGuildId),
     allianceAnnouncementTemplate: textOrDefault(
       raw.allianceAnnouncementTemplate,
       DEFAULT_TICKET_CONFIG.allianceAnnouncementTemplate,
