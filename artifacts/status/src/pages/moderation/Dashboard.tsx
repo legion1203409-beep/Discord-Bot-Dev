@@ -163,6 +163,7 @@ export function DashboardOverview() {
       intro: "Experiența noilor membri și progresul comunității.",
       links: [
         { title: "Verificare membri", href: "/verificare", text: "Configurare", tone: "info" as const },
+        { title: "Verificare manuală", href: "/verificare/membri", text: "Membri și roluri", tone: "info" as const },
         { title: "Ranguri de activitate", href: "/ranguri-activitate", text: "Configurare", tone: "info" as const },
         { title: "Pornire server", href: "/pornire-server", text: "Ghid de configurare", tone: "info" as const },
       ],

@@ -2335,6 +2335,8 @@ export interface VerificationConfig {
   imageUrl: string;
   thumbnailUrl: string;
   panelMessageId: string;
+  /** Roles given together with roleId (for example a category role); roleId alone marks a member as verified. Missing in configs saved before them. */
+  extraRoleIds?: string[];
 }
 
 const VERIFICATION_CONFIG_KEY = "verification_config";

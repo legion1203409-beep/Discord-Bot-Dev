@@ -112,10 +112,15 @@ async function installPartialBotControlFixture(
     await route.fulfill({
       json: {
         guild: { id: guildId, name: guilds.find((guild) => guild.id === guildId)?.name ?? guilds[0].name, ownerId: "999999999" },
-        roles: [],
-        channels: [],
+        roles: [
+          { id: "444444444", name: "Verified", position: 2, managed: false, assignable: true, elevated: false, color: "#2fcb8c" },
+          { id: "555555555", name: "━━ MEMBRI ━━", position: 5, managed: false, assignable: true, elevated: false, color: null },
+          { id: "666666666", name: "Moderator", position: 8, managed: false, assignable: true, elevated: true, color: "#e2b467" },
+          { id: "888888888", name: "Fondator", position: 30, managed: false, assignable: false, elevated: false, color: null },
+        ],
+        channels: [{ id: "777777777", name: "verificare", type: 0 }],
         emojis: [],
-        botCapabilities: { online: true, messageContent: true, guildMembers: true },
+        botCapabilities: { online: true, messageContent: true, guildMembers: true, canManageRoles: true },
       },
     });
   });
@@ -2245,54 +2250,125 @@ test.describe("Discord moderation authentication", () => {
   });
 });
 
-test.describe("verification panel partial applies", () => {
-  test("sends the active moderation CSRF token when manually verifying a member", async ({ page }) => {
-    const memberId = "1556341963018477713";
-    const northConfig = verificationBotControlConfig(true, "panel-north");
-    northConfig.verification.channelId = "777777777";
-    northConfig.verification.roleId = "444444444";
-    await installPartialBotControlFixture(page, new Map([
-      [guilds[0].id, northConfig],
-      [guilds[1].id, verificationBotControlConfig(false, "")],
-    ]));
+test.describe("verification page", () => {
+  const verifiedConfig = (extraRoleIds: string[] = []) => {
+    const config = verificationBotControlConfig(true, "panel-north");
+    config.verification.channelId = "777777777";
+    config.verification.roleId = "444444444";
+    return { ...config, verification: { ...config.verification, extraRoleIds } };
+  };
+  const member = (id: string, displayName: string, roleIds: string[]) => ({
+    id, displayName, username: displayName.toLowerCase().replace(/\s+/g, ""), avatarUrl: "https://cdn.discordapp.com/embed/avatars/0.png",
+    joinedAt: "2026-09-01T10:00:00.000Z", verified: roleIds.includes("444444444"), roleIds,
+  });
+  async function openVerification(page: import("@playwright/test").Page, path = "/moderare/verificare") {
+    await page.goto(path);
+    await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible({ timeout: 15_000 });
+    await page.getByRole("button", { name: guilds[0].name }).click();
+    await expect(page.getByTestId("verification-page")).toBeVisible();
+  }
+
+  test("is its own page with settings, messages and members", async ({ page }) => {
+    await installPartialBotControlFixture(page, new Map([[guilds[0].id, verifiedConfig()], [guilds[1].id, verificationBotControlConfig(false, "")]]));
+    await openVerification(page);
+    await expect(page.getByRole("heading", { name: "Verificare", exact: true })).toBeVisible();
+    await expect(page.getByTestId("nav-verification-settings")).toHaveAttribute("aria-current", "page");
+    await page.getByTestId("nav-verification-messages").click();
+    await expect(page).toHaveURL(/\/moderare\/verificare\/mesaje$/);
+    await expect(page.getByTestId("verification-discord-preview")).toContainText("Verifică-ți contul");
+    await page.getByTestId("nav-verification-members").click();
+    await expect(page).toHaveURL(/\/moderare\/verificare\/membri$/);
+    await expect(page.getByTestId("members-list-card")).toBeVisible();
+  });
+
+  test("gives extra roles such as a category role and shows them on the member's profile", async ({ page }) => {
+    const configs = new Map([[guilds[0].id, verifiedConfig()], [guilds[1].id, verificationBotControlConfig(false, "")]]);
+    const putBodies = await installPartialBotControlFixture(page, configs);
+    await openVerification(page);
+
+    const extraRoles = page.getByTestId("verification-extra-roles");
+    // Staff roles are never offered; a role above the bot is offered with a note.
+    await expect(extraRoles.getByRole("checkbox", { name: "@Moderator" })).toHaveCount(0);
+    await expect(extraRoles.getByRole("checkbox", { name: "@Fondator" })).toBeVisible();
+    await extraRoles.getByRole("checkbox", { name: "@━━ MEMBRI ━━" }).click();
+    const preview = page.getByTestId("verification-profile-preview");
+    await expect(preview).toContainText("MEMBRI");
+    await expect(preview).toContainText("Verified");
+    await expect(page.getByTestId("nav-verification-settings").locator(".pn-nav-dirty")).toBeVisible();
+
+    await page.getByTestId("button-save-verification").click();
+    await expect.poll(() => putBodies.get(guilds[0].id)?.length).toBe(1);
+    expect(putBodies.get(guilds[0].id)?.[0].verification).toMatchObject({ roleId: "444444444", extraRoleIds: ["555555555"] });
+    await expect(page.getByTestId("verification-save-bar")).toHaveCount(0);
+  });
+
+  test("does not save a switched-on verification without its channel", async ({ page }) => {
+    const config = verificationBotControlConfig(false, "");
+    config.verification.roleId = "444444444";
+    const putBodies = await installPartialBotControlFixture(page, new Map([[guilds[0].id, config], [guilds[1].id, verificationBotControlConfig(false, "")]]));
+    await openVerification(page);
+    await page.getByRole("switch", { name: "Activează verificarea" }).click();
+    await page.getByTestId("button-save-verification").click();
+    await expect(page.getByTestId("verification-save-bar")).toBeVisible();
+    expect(putBodies.size).toBe(0);
+    await page.getByRole("combobox", { name: "Canalul panoului" }).selectOption("777777777");
+    await page.getByTestId("button-save-verification").click();
+    await expect.poll(() => putBodies.get(guilds[0].id)?.[0]?.verification?.channelId).toBe("777777777");
+  });
+
+  test("lists the members live and verifies the selected ones with their missing roles", async ({ page }) => {
+    await installPartialBotControlFixture(page, new Map([[guilds[0].id, verifiedConfig(["555555555"])], [guilds[1].id, verificationBotControlConfig(false, "")]]));
+    let members = [
+      member("100000000000000001", "Ana", []),
+      member("100000000000000002", "Bogdan", ["444444444"]),
+      member("100000000000000003", "Cezar", ["444444444", "555555555"]),
+    ];
+    let listRequests = 0;
     await page.route("**/api/moderation/guilds/*/verification/members", async (route) => {
-      const guildId = route.request().url().match(/guilds\/(\d+)\/verification\/members/)?.[1] ?? guilds[0].id;
+      listRequests += 1;
+      const verifiedTotal = members.filter((item) => item.verified).length;
+      await route.fulfill({
+        json: { guildId: guilds[0].id, roleId: "444444444", roleName: "Verified", total: members.length, verifiedTotal, unverifiedTotal: members.length - verifiedTotal, members },
+      });
+    });
+    const verifyBodies: Array<{ userIds: string[]; roleIds: string[] }> = [];
+    let csrf: string | undefined;
+    await page.route("**/api/moderation/guilds/*/verification/members/verify", async (route) => {
+      const body = JSON.parse(route.request().postData() || "{}");
+      verifyBodies.push(body);
+      csrf = route.request().headers()["x-csrf-token"];
+      members = members.map((item) => body.userIds.includes(item.id)
+        ? { ...item, verified: true, roleIds: ["444444444", ...body.roleIds] }
+        : item);
       await route.fulfill({
         json: {
-          guildId,
           roleId: "444444444",
-          roleName: "Verified",
-          total: 1,
-          verifiedTotal: 0,
-          unverifiedTotal: 1,
-          members: [{
-            id: memberId,
-            displayName: "Test member",
-            avatarUrl: "https://cdn.discordapp.com/embed/avatars/0.png",
-            joinedAt: null,
-            verified: false,
-          }],
+          results: body.userIds.map((userId: string) => ({ userId, displayName: null, result: userId === "100000000000000001" ? "verified" : "updated", added: [] })),
+          unavailableRoles: [],
+          verified: 1, updated: body.userIds.length - 1, unchanged: 0, failed: 0,
         },
       });
     });
-    let verificationStatus: number | undefined;
-    let verificationCsrfToken: string | undefined;
-    await page.route(`**/api/moderation/guilds/${guilds[0].id}/verification/members/${memberId}/verify`, async (route) => {
-      verificationStatus = route.request().method() === "POST" ? 200 : 405;
-      verificationCsrfToken = route.request().headers()["x-csrf-token"];
-      await route.fulfill({
-        json: { userId: memberId, displayName: "Test member", result: "verified" },
-      });
-    });
 
-    await page.goto("/moderare/verificare");
-    await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible({ timeout: 15_000 });
-    await page.getByRole("button", { name: guilds[0].name }).click();
-    await page.getByRole("button", { name: "Verifică manual Test member" }).click();
+    await openVerification(page, "/moderare/verificare/membri");
+    await expect(page.getByTestId("member-state-100000000000000001")).toHaveText("Neverificat");
+    await expect(page.getByTestId("member-row-100000000000000002")).toContainText("lipsește @━━ MEMBRI ━━");
+    await page.getByRole("radio", { name: "Le lipsesc roluri · 1" }).click();
+    await expect(page.getByTestId("members-list").getByRole("listitem")).toHaveCount(1);
+    await page.getByRole("radio", { name: "Toți · 3" }).click();
 
-    await expect.poll(() => verificationStatus).toBe(200);
-    expect(verificationCsrfToken).toBe("test-csrf");
-    await expect(page.getByText("Membrul a fost verificat")).toBeVisible();
+    await page.getByText("Bifează toți cei 3 din listă").click();
+    await expect(page.getByTestId("button-verify-selected")).toHaveText(/Verifică și dă rolurile \(3 membri\)/);
+    await page.getByRole("checkbox", { name: "Bifează Cezar" }).uncheck();
+    await page.getByTestId("button-verify-selected").click();
+
+    await expect.poll(() => verifyBodies.length).toBe(1);
+    expect(verifyBodies[0]).toEqual({ userIds: ["100000000000000001", "100000000000000002"], roleIds: ["555555555"] });
+    expect(csrf).toBe("test-csrf");
+    await expect(page.getByTestId("members-outcome")).toContainText("1 membru verificat acum · 1 membru a primit rolurile lipsă");
+    await expect(page.getByTestId("member-state-100000000000000001")).toHaveText("Verificat");
+    await expect(page.getByTestId("member-row-100000000000000002")).not.toContainText("lipsește");
+    expect(listRequests).toBeGreaterThan(1);
   });
 
   test("publishes only the verification config without saving unrelated bot-control settings", async ({ page }) => {
@@ -2308,42 +2384,24 @@ test.describe("verification panel partial applies", () => {
     await page.route("**/api/moderation/guilds/*/bot-control/verification-panel", async (route) => {
       const body = JSON.parse(route.request().postData() || "{}") as Record<string, unknown>;
       publishBodies.push(body);
-      await route.fulfill({
-        json: {
-          verification: { ...body, panelMessageId: "panel-north" },
-        },
-      });
+      await route.fulfill({ json: { verification: { ...body, panelMessageId: "panel-north" } } });
     });
 
-    await page.goto("/moderare/verificare");
-    await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible({ timeout: 15_000 });
-    await page.getByRole("button", { name: guilds[0].name }).click();
-    await expect(page.getByText("Butonul deschide autentificarea Discord, apoi pagina cu sliderul.")).toBeVisible();
+    await openVerification(page);
     const publishRequest = page.waitForRequest((request) =>
       request.url().endsWith("/verification-panel") && request.method() === "POST");
     await page.getByRole("button", { name: "Publică panoul" }).click();
-    const request = await publishRequest;
-    const body = JSON.parse(request.postData() || "{}");
+    const body = JSON.parse((await publishRequest).postData() || "{}");
 
     expect(Object.keys(body).sort()).toEqual([
-      "alreadyVerifiedMessage",
-      "buttonEmoji",
-      "buttonLabel",
-      "channelId",
-      "enabled",
-      "imageUrl",
-      "message",
-      "panelMessageId",
-      "roleId",
-      "successMessage",
-      "thumbnailUrl",
-      "title",
+      "alreadyVerifiedMessage", "buttonEmoji", "buttonLabel", "channelId", "enabled", "imageUrl", "message",
+      "panelMessageId", "roleId", "successMessage", "thumbnailUrl", "title",
     ]);
     expect(body).toMatchObject({ channelId: "777777777", roleId: "444444444", enabled: true });
     expect(publishBodies).toHaveLength(1);
     expect(putBodies.size).toBe(0);
-    await expect(page.getByText("Panoul a fost publicat").first()).toBeVisible();
-    await expect(page.getByText("Ai modificări nesalvate.")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Actualizează panoul" })).toBeVisible();
+    await expect(page.getByTestId("verification-save-bar")).toHaveCount(0);
   });
 
   test("reuses the recovered panel ID after a partial result from the standalone publish action", async ({ page }) => {
@@ -2371,17 +2429,14 @@ test.describe("verification panel partial applies", () => {
         });
         return;
       }
-      await route.fulfill({
-        json: { verification: { ...body, panelMessageId: "panel-north" } },
-      });
+      await route.fulfill({ json: { verification: { ...body, panelMessageId: "panel-north" } } });
     });
 
-    await page.goto("/moderare/verificare");
-    await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible({ timeout: 15_000 });
-    await page.getByRole("button", { name: guilds[0].name }).click();
+    await openVerification(page);
     await page.getByRole("button", { name: "Publică panoul" }).click();
-    await expect(page.getByRole("alert")).toContainText("panel-north");
-    await expect(page.getByText("Panou publicat; salvare parțială")).toBeVisible();
+    const recovery = page.getByTestId("verification-recovery");
+    await expect(recovery).toContainText("panel-north");
+    await expect(recovery).toContainText("Panoul a fost publicat, dar setările s-au salvat doar în parte.");
 
     const retryRequest = page.waitForRequest((request) =>
       request.url().endsWith("/verification-panel") && request.method() === "POST");
@@ -2390,12 +2445,15 @@ test.describe("verification panel partial applies", () => {
     expect(retryBody.panelMessageId).toBe("panel-north");
     expect(publishBodies).toHaveLength(2);
     expect(putBodies.size).toBe(0);
-    await expect(page.getByText("Panou publicat; salvare parțială")).toHaveCount(0);
+    await expect(recovery).toHaveCount(0);
   });
 
-  test("retains the published panel ID per guild and sends it on retry", async ({ page }) => {
+  test("retains the published panel ID after a reload and sends it on retry", async ({ page }) => {
+    const northConfig = verificationBotControlConfig(false, "");
+    northConfig.verification.channelId = "777777777";
+    northConfig.verification.roleId = "444444444";
     const configs = new Map([
-      [guilds[0].id, verificationBotControlConfig(false, "")],
+      [guilds[0].id, northConfig],
       [guilds[1].id, verificationBotControlConfig(true, "panel-south", false)],
     ]);
     const putBodies = await installPartialBotControlFixture(page, configs, (body) => ({
@@ -2405,48 +2463,35 @@ test.describe("verification panel partial applies", () => {
       message: "Persistarea configurației a eșuat.",
     }));
 
-    await page.goto("/moderare/verificare");
-    await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible({ timeout: 15_000 });
-    await page.getByRole("button", { name: guilds[0].name }).click();
-    const enabled = page.getByRole("checkbox", { name: "Activ" });
-    await expect(enabled).not.toBeChecked();
-    await enabled.check();
-    await page.getByRole("button", { name: "Salvează verificarea" }).click();
+    await openVerification(page);
+    const enabled = page.getByRole("switch", { name: "Activează verificarea" });
+    await expect(enabled).toHaveAttribute("aria-checked", "false");
+    await enabled.click();
+    await page.getByTestId("button-save-verification").click();
 
-    await expect(page.getByRole("alert")).toContainText("Panoul a fost publicat, dar salvarea configurației a fost parțială.");
-    await expect(page.getByRole("alert")).toContainText("panel-north");
-    await expect(page.getByText("Panou publicat; salvare parțială")).toBeVisible();
+    const recovery = page.getByTestId("verification-recovery");
+    await expect(recovery).toContainText("Panoul a fost publicat, dar setările s-au salvat doar în parte.");
+    await expect(recovery).toContainText("panel-north");
 
     await page.reload();
-    await expect(page.getByRole("alert")).toContainText("panel-north");
-
-    const guildSelector = page.getByRole("combobox").first();
-    await guildSelector.click();
-    await page.getByRole("option", { name: guilds[1].name }).click();
-    await expect(page.getByRole("checkbox", { name: "Activ" })).toBeChecked();
-    await expect(page.getByText("Activată în configurație; botul Discord este offline")).toBeVisible();
-    await expect(page.getByRole("alert")).toHaveCount(0);
-    await page.getByRole("checkbox", { name: "Activ" }).uncheck();
-    await page.getByRole("button", { name: "Salvează verificarea" }).click();
-    expect(putBodies.get(guilds[1].id)?.[0].verification.panelMessageId).toBe("panel-south");
-
-    await guildSelector.click();
-    await page.getByRole("option", { name: guilds[0].name }).click();
-    await expect(page.getByRole("alert")).toContainText("panel-north");
-    await expect(page.getByRole("checkbox", { name: "Activ" })).not.toBeChecked();
-    await page.getByRole("checkbox", { name: "Activ" }).check();
+    await expect(page.getByTestId("verification-recovery")).toContainText("panel-north");
+    await expect(page.getByTestId("verification-save-bar")).toBeVisible();
+    await page.getByRole("switch", { name: "Activează verificarea" }).click();
     const retry = page.waitForRequest((request) =>
       request.url().includes(`/guilds/${guilds[0].id}/bot-control`) && request.method() === "PUT");
-    await page.getByRole("button", { name: "Salvează verificarea" }).click();
+    await page.getByTestId("button-save-verification").click();
     const retryBody = JSON.parse((await retry).postData() || "{}");
     expect(retryBody.verification.panelMessageId).toBe("panel-north");
-    await expect(page.getByRole("alert")).toHaveCount(0);
+    await expect(page.getByTestId("verification-recovery")).toHaveCount(0);
     expect(putBodies.get(guilds[0].id)?.[1].verification.panelMessageId).toBe("panel-north");
   });
 
   test("blocks retry when a published panel ID is missing until manual reconciliation", async ({ page }) => {
+    const northConfig = verificationBotControlConfig(false, "");
+    northConfig.verification.channelId = "777777777";
+    northConfig.verification.roleId = "444444444";
     const configs = new Map([
-      [guilds[0].id, verificationBotControlConfig(false, "")],
+      [guilds[0].id, northConfig],
       [guilds[1].id, verificationBotControlConfig(false, "")],
     ]);
     const putBodies = await installPartialBotControlFixture(page, configs, (body) => ({
@@ -2456,17 +2501,16 @@ test.describe("verification panel partial applies", () => {
       message: "Discord a publicat panoul, dar nu a returnat ID-ul.",
     }));
 
-    await page.goto("/moderare/verificare");
-    await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible({ timeout: 15_000 });
-    await page.getByRole("button", { name: guilds[0].name }).click();
-    await page.getByRole("checkbox", { name: "Activ" }).check();
-    await page.getByRole("button", { name: "Salvează verificarea" }).click();
-    await expect(page.getByRole("alert")).toContainText("Elimină sau reconciliază manual panoul");
-    const saveButton = page.getByRole("button", { name: "Salvează verificarea" });
+    await openVerification(page);
+    await page.getByRole("switch", { name: "Activează verificarea" }).click();
+    await page.getByTestId("button-save-verification").click();
+    await expect(page.getByTestId("verification-recovery")).toContainText("ID-ul panoului nu s-a întors.");
+    const saveButton = page.getByTestId("button-save-verification");
     await expect(saveButton).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Publică panoul" })).toBeDisabled();
 
     page.once("dialog", (dialog) => dialog.accept());
-    await page.getByRole("button", { name: "Confirmă reconcilierea manuală" }).click();
+    await page.getByRole("button", { name: "Am verificat panoul din Discord" }).click();
     await expect(saveButton).toBeEnabled();
     await saveButton.click();
     await expect.poll(() => putBodies.get(guilds[0].id)?.length).toBe(2);
@@ -2482,8 +2526,11 @@ test.describe("verification panel partial applies", () => {
         setItem.call(this, key, value);
       };
     });
+    const northConfig = verificationBotControlConfig(false, "");
+    northConfig.verification.channelId = "777777777";
+    northConfig.verification.roleId = "444444444";
     const configs = new Map([
-      [guilds[0].id, verificationBotControlConfig(false, "")],
+      [guilds[0].id, northConfig],
       [guilds[1].id, verificationBotControlConfig(false, "")],
     ]);
     await installPartialBotControlFixture(page, configs, (body) => ({
@@ -2493,21 +2540,22 @@ test.describe("verification panel partial applies", () => {
       message: "Partial response from Discord.",
     }));
 
-    await page.goto("/moderare/verificare");
-    await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible({ timeout: 15_000 });
-    await page.getByRole("button", { name: guilds[0].name }).click();
-    await page.getByRole("checkbox", { name: "Activ" }).check();
-    await page.getByRole("button", { name: "Salvează verificarea" }).click();
+    await openVerification(page);
+    await page.getByRole("switch", { name: "Activează verificarea" }).click();
+    await page.getByTestId("button-save-verification").click();
 
-    const recoveryAlert = page.getByRole("alert");
+    const recoveryAlert = page.getByTestId("verification-recovery");
     await expect(recoveryAlert).toContainText("panel-north");
-    await expect(recoveryAlert).toContainText("Stocarea sesiunii nu este disponibilă.");
-    await expect(page.getByRole("button", { name: "Salvează verificarea" })).toBeDisabled();
+    await expect(recoveryAlert).toContainText("Pagina nu poate păstra ID-ul după reîncărcare.");
+    await expect(page.getByTestId("button-save-verification")).toBeDisabled();
   });
 
   test("does not claim a panel was published for a generic partial apply", async ({ page }) => {
+    const northConfig = verificationBotControlConfig(false, "");
+    northConfig.verification.channelId = "777777777";
+    northConfig.verification.roleId = "444444444";
     const configs = new Map([
-      [guilds[0].id, verificationBotControlConfig(false, "")],
+      [guilds[0].id, northConfig],
       [guilds[1].id, verificationBotControlConfig(false, "")],
     ]);
     await installPartialBotControlFixture(page, configs, (body) => ({
@@ -2517,16 +2565,13 @@ test.describe("verification panel partial applies", () => {
       message: "Salvarea configurației nu a fost efectuată.",
     }));
 
-    await page.goto("/moderare/verificare");
-    await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible({ timeout: 15_000 });
-    await page.getByRole("button", { name: guilds[0].name }).click();
-    await page.getByRole("checkbox", { name: "Activ" }).check();
-    await page.getByRole("button", { name: "Salvează verificarea" }).click();
-    const partialAlert = page.getByRole("alert");
-    await expect(partialAlert).toContainText("Serverul a raportat un rezultat parțial; efectele Discord nu sunt confirmate.");
+    await openVerification(page);
+    await page.getByRole("switch", { name: "Activează verificarea" }).click();
+    await page.getByTestId("button-save-verification").click();
+    const partialAlert = page.getByTestId("verification-recovery");
+    await expect(partialAlert).toContainText("Serverul a aplicat salvarea doar în parte; efectele din Discord nu sunt confirmate.");
     await expect(partialAlert).not.toContainText("Panoul a fost publicat");
     await expect(partialAlert).not.toContainText("Salvarea configurației nu a fost efectuată.");
-    await expect(page.getByText("Aplicare parțială; efecte neconfirmate")).toBeVisible();
   });
 });
 

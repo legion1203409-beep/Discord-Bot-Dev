@@ -8,7 +8,10 @@ import {
   MessageFlags,
   PermissionFlagsBits,
   type ButtonInteraction,
+  type Guild,
+  type GuildMember,
   type Message,
+  type Role,
 } from "discord.js";
 import { pool } from "@workspace/db";
 import { getVerificationOAuthUrl } from "../moderation/oauth";
@@ -28,15 +31,33 @@ export const DEFAULT_VERIFICATION_CONFIG: VerificationConfig = {
   imageUrl: "",
   thumbnailUrl: "",
   panelMessageId: "",
+  extraRoleIds: [],
 };
 
+/** At most this many roles are given in addition to the verification role. */
+export const MAX_VERIFICATION_EXTRA_ROLES = 10;
+
+function normalizeExtraRoleIds(value: unknown, roleId: string): string[] {
+  if (!Array.isArray(value)) return [];
+  const ids: string[] = [];
+  for (const candidate of value) {
+    if (typeof candidate !== "string") continue;
+    const id = candidate.trim();
+    if (!/^\d{5,25}$/.test(id) || id === roleId || ids.includes(id)) continue;
+    ids.push(id);
+    if (ids.length === MAX_VERIFICATION_EXTRA_ROLES) break;
+  }
+  return ids;
+}
+
 export function normalizeVerificationConfig(value: Partial<VerificationConfig> | null | undefined): VerificationConfig {
+  const roleId = typeof value?.roleId === "string" ? value.roleId.trim() : "";
   return {
     ...DEFAULT_VERIFICATION_CONFIG,
     ...(value ?? {}),
     enabled: value?.enabled === true,
     channelId: typeof value?.channelId === "string" ? value.channelId.trim() : "",
-    roleId: typeof value?.roleId === "string" ? value.roleId.trim() : "",
+    roleId,
     title: typeof value?.title === "string" && value.title.trim() ? value.title.trim() : DEFAULT_VERIFICATION_CONFIG.title,
     message: typeof value?.message === "string" && value.message.trim() ? value.message.trim() : DEFAULT_VERIFICATION_CONFIG.message,
     buttonLabel: typeof value?.buttonLabel === "string" && value.buttonLabel.trim() ? value.buttonLabel.trim() : DEFAULT_VERIFICATION_CONFIG.buttonLabel,
@@ -46,6 +67,7 @@ export function normalizeVerificationConfig(value: Partial<VerificationConfig> |
     imageUrl: normalizeMessageImageUrl(value?.imageUrl),
     thumbnailUrl: normalizeMessageImageUrl(value?.thumbnailUrl),
     panelMessageId: typeof value?.panelMessageId === "string" ? value.panelMessageId.trim() : "",
+    extraRoleIds: normalizeExtraRoleIds(value?.extraRoleIds, roleId),
   };
 }
 
@@ -251,22 +273,150 @@ export async function publishVerificationPanel(client: Client, guildId: string, 
   });
 }
 
+/** Permissions a verification role must never carry: verifying would hand out staff powers. */
+export const VERIFICATION_ELEVATED_PERMISSIONS = [
+  PermissionFlagsBits.Administrator, PermissionFlagsBits.ManageGuild,
+  PermissionFlagsBits.ManageRoles, PermissionFlagsBits.ManageChannels,
+  PermissionFlagsBits.KickMembers, PermissionFlagsBits.BanMembers,
+  PermissionFlagsBits.ModerateMembers, PermissionFlagsBits.ManageMessages,
+  PermissionFlagsBits.ManageWebhooks,
+];
+
+/** Why the bot cannot give a role in addition to the verification role, or null when it can. */
+export function extraRoleProblem(
+  role: Pick<Role, "id" | "managed" | "position" | "permissions"> | null | undefined,
+  guild: Pick<Guild, "id">,
+  botMember: { roles: { highest: { position: number } } },
+): string | null {
+  if (!role) return "Rolul nu mai există.";
+  if (role.id === guild.id) return "@everyone îl au deja toți membrii.";
+  if (role.managed) return "Rolul aparține unei integrări și nu poate fi dat.";
+  if (role.position >= botMember.roles.highest.position) return "Rolul este deasupra rolului botului.";
+  if (role.permissions?.any(VERIFICATION_ELEVATED_PERMISSIONS, false)) return "Rolul are drepturi de staff și nu se dă la verificare.";
+  return null;
+}
+
+type RoleCheck = { roles: Role[]; unavailable: Array<{ roleId: string; reason: string }> };
+
+/** The roles among `roleIds` that the bot may give, and why the others are left out. */
+async function assignableExtraRoles(guild: Guild, botMember: GuildMember, roleIds: readonly string[]): Promise<RoleCheck> {
+  const roles: Role[] = [];
+  const unavailable: RoleCheck["unavailable"] = [];
+  for (const roleId of roleIds) {
+    const role = await guild.roles.fetch(roleId).catch(() => null);
+    const problem = extraRoleProblem(role, guild, botMember);
+    if (problem || !role) unavailable.push({ roleId, reason: problem ?? "Rolul nu mai există." });
+    else roles.push(role);
+  }
+  return { roles, unavailable };
+}
+
+/** The verification role, checked: the bot can give it. */
+async function verificationRoleFor(guild: Guild, botMember: GuildMember, roleId: string): Promise<Role> {
+  const role = await guild.roles.fetch(roleId);
+  if (!role) throw new Error("Rolul de verificare nu mai există.");
+  if (!botMember.permissions.has(PermissionFlagsBits.ManageRoles)) throw new Error("Botul nu are permisiunea Manage Roles.");
+  if (role.managed || role.position >= botMember.roles.highest.position) {
+    throw new Error("Rolul de verificare trebuie să fie sub rolul botului și să nu fie managed.");
+  }
+  return role;
+}
+
+/** Gives a member the configured roles in addition to the verification role, skipping those the bot cannot give. */
+async function addMissingExtraRoles(guild: Guild, botMember: GuildMember, member: GuildMember, roleIds: readonly string[], reason: string): Promise<void> {
+  if (!roleIds.length) return;
+  const { roles } = await assignableExtraRoles(guild, botMember, roleIds);
+  const missing = roles.filter((role) => !member.roles.cache.has(role.id));
+  if (missing.length) await member.roles.add(missing, reason);
+}
+
 export async function verifyMember(client: Client, guildId: string, userId: string): Promise<"verified" | "already_verified"> {
   const config = normalizeVerificationConfig(await loadVerificationConfig(guildId));
   if (!config.enabled || !config.roleId) throw new Error("Verificarea nu este configurată pentru acest server.");
 
   const guild = await client.guilds.fetch({ guild: guildId, force: true });
   const member = await guild.members.fetch(userId);
-  const role = await guild.roles.fetch(config.roleId);
   const botMember = guild.members.me ?? await guild.members.fetchMe();
-  if (!role) throw new Error("Rolul de verificare nu mai există.");
-  if (!botMember.permissions.has(PermissionFlagsBits.ManageRoles)) throw new Error("Botul nu are permisiunea Manage Roles.");
-  if (role.managed || role.position >= botMember.roles.highest.position) {
-    throw new Error("Rolul de verificare trebuie să fie sub rolul botului și să nu fie managed.");
+  const role = await verificationRoleFor(guild, botMember, config.roleId);
+  const reason = "Verificare confirmată prin site";
+  const alreadyVerified = member.roles.cache.has(role.id);
+  if (!alreadyVerified) await member.roles.add(role, reason);
+  // The extra roles (for example a category role) never block the verification itself.
+  await addMissingExtraRoles(guild, botMember, member, config.extraRoleIds ?? [], reason).catch(() => undefined);
+  return alreadyVerified ? "already_verified" : "verified";
+}
+
+export type VerificationGrantResult = {
+  userId: string;
+  displayName: string | null;
+  /** verified: received the verification role now; updated: was verified and received other roles; unchanged: had them all. */
+  result: "verified" | "updated" | "unchanged" | "failed";
+  added: string[];
+  error?: string;
+};
+
+/** At most this many members are verified by one request from the panel. */
+export const MAX_MANUAL_VERIFICATION_MEMBERS = 25;
+
+/**
+ * Manual verification from the panel: gives each member the verification role
+ * and the chosen extra roles they do not have yet. Roles the bot cannot give
+ * are reported in `unavailable` and left out; one member failing does not stop
+ * the others.
+ */
+export async function grantVerificationRoles(
+  client: Client,
+  guildId: string,
+  userIds: readonly string[],
+  extraRoleIds: readonly string[],
+): Promise<{ roleId: string; results: VerificationGrantResult[]; unavailable: RoleCheck["unavailable"] }> {
+  const config = normalizeVerificationConfig(await loadVerificationConfig(guildId));
+  if (!config.roleId) throw new Error("Verificarea nu este configurată pentru acest server.");
+  const guild = await client.guilds.fetch({ guild: guildId, force: true });
+  const botMember = guild.members.me ?? await guild.members.fetchMe();
+  const role = await verificationRoleFor(guild, botMember, config.roleId);
+  const { roles: extras, unavailable } = await assignableExtraRoles(
+    guild, botMember, [...new Set(extraRoleIds)].filter((id) => id !== role.id),
+  );
+  const reason = "Verificare manuală din panou";
+  const results: VerificationGrantResult[] = [];
+  for (const userId of [...new Set(userIds)]) {
+    let member: GuildMember;
+    try {
+      member = await guild.members.fetch(userId);
+    } catch (error) {
+      results.push({
+        userId, displayName: null, result: "failed", added: [],
+        error: discordErrorCode(error) === 10007 ? "Membrul nu mai este pe server." : "Membrul nu a putut fi citit din Discord.",
+      });
+      continue;
+    }
+    if (member.user.bot) {
+      results.push({ userId, displayName: member.displayName, result: "failed", added: [], error: "Boții nu se verifică." });
+      continue;
+    }
+    const missing = [role, ...extras].filter((candidate) => !member.roles.cache.has(candidate.id));
+    if (!missing.length) {
+      results.push({ userId, displayName: member.displayName, result: "unchanged", added: [] });
+      continue;
+    }
+    try {
+      await member.roles.add(missing, reason);
+    } catch (error) {
+      const code = discordErrorCode(error);
+      results.push({
+        userId, displayName: member.displayName, result: "failed", added: [],
+        error: code === 50013 || code === 50001 ? "Botul nu are voie să dea rolurile acestui membru." : "Discord a refuzat schimbarea rolurilor.",
+      });
+      continue;
+    }
+    results.push({
+      userId, displayName: member.displayName,
+      result: missing.some((candidate) => candidate.id === role.id) ? "verified" : "updated",
+      added: missing.map((candidate) => candidate.id),
+    });
   }
-  if (member.roles.cache.has(role.id)) return "already_verified";
-  await member.roles.add(role, "Verificare confirmată prin site");
-  return "verified";
+  return { roleId: role.id, results, unavailable };
 }
 
 const COOKIE_NAME = "verification_identity";
@@ -397,6 +547,12 @@ export async function handleVerificationButton(interaction: ButtonInteraction, w
     const guild = interaction.guild ?? await interaction.client.guilds.fetch({ guild: guildId, force: true });
     const member = await guild.members.fetch(interaction.user.id);
     if (member.roles.cache.has(config.roleId)) {
+      // A role added to the verification later (for example a category role)
+      // reaches members verified before it when they press the button again.
+      const botMember = guild.members.me ?? await guild.members.fetchMe().catch(() => null);
+      if (botMember) {
+        await addMissingExtraRoles(guild, botMember, member, config.extraRoleIds ?? [], "Rolurile verificării").catch(() => undefined);
+      }
       await interaction.editReply(config.alreadyVerifiedMessage);
       return;
     }

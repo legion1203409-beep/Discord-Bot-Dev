@@ -1437,6 +1437,104 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     ]);
   });
 
+  describe("manual verification of several members", () => {
+    const roleId = "444444444";
+    const categoryId = "555555555";
+    const staffRoleId = "666666666";
+    const role = (id: string, position: number, elevated = false) => ({
+      id, name: `rol-${id}`, managed: false, position, permissions: { any: () => elevated },
+    });
+
+    function verificationGuild(members: Record<string, string[]>) {
+      const given = new Map<string, string[]>();
+      const roles = new Map([[roleId, role(roleId, 2)], [categoryId, role(categoryId, 3)], [staffRoleId, role(staffRoleId, 4, true)]]);
+      const botMember = { permissions: { has: () => true }, roles: { highest: { position: 10 } } };
+      const guild = {
+        id: guildId,
+        members: {
+          me: botMember,
+          fetchMe: vi.fn(async () => botMember),
+          fetch: vi.fn(async (id: string) => {
+            if (!members[id]) throw Object.assign(new Error("Unknown Member"), { code: 10007 });
+            return {
+              id, displayName: `Membru ${id}`, user: { bot: false },
+              roles: {
+                cache: new Map(members[id].map((item) => [item, { id: item }])),
+                add: vi.fn(async (list: Array<{ id: string }>) => { given.set(id, list.map((item) => item.id)); }),
+              },
+            };
+          }),
+        },
+        roles: { fetch: vi.fn(async (id: string) => roles.get(id) ?? null) },
+        channels: {
+          fetch: vi.fn(async (id?: string) => id
+            ? Object.assign(Object.create(TextChannel.prototype) as TextChannel, { guildId, permissionsFor: () => ({ has: () => true }) })
+            : new Map()),
+        },
+      };
+      mocks.client.mockReturnValue({
+        isReady: () => true,
+        guilds: { cache: new Map([[guildId, guild]]), fetch: vi.fn(async () => guild) },
+      });
+      return given;
+    }
+
+    it("verifies new members and gives the verified ones only the roles they miss", async () => {
+      mocks.loadVerificationConfig.mockResolvedValue({ enabled: true, roleId, extraRoleIds: [categoryId] });
+      const given = verificationGuild({ "111111111": [], "222222222": [roleId], "333333333": [roleId, categoryId] });
+
+      const response = await fetch(`${base}/verification/members/verify`, post({
+        userIds: ["111111111", "222222222", "333333333", "999999999"],
+        roleIds: [categoryId, staffRoleId],
+      }, { "x-csrf-token": "csrf" }));
+
+      expect(response.status).toBe(200);
+      const result = await response.json() as Record<string, unknown> & { results: Array<{ userId: string; result: string }> };
+      expect(result).toMatchObject({ roleId, verified: 1, updated: 1, unchanged: 1, failed: 1 });
+      expect(result.results.map((item) => item.result)).toEqual(["verified", "updated", "unchanged", "failed"]);
+      expect(result.unavailableRoles).toEqual([{ roleId: staffRoleId, reason: "Rolul are drepturi de staff și nu se dă la verificare." }]);
+      expect(given.get("111111111")).toEqual([roleId, categoryId]);
+      expect(given.get("222222222")).toEqual([categoryId]);
+      expect(given.has("333333333")).toBe(false);
+      expect(mocks.csrf).toHaveBeenCalled();
+    });
+
+    it("refuses more members than one request may verify", async () => {
+      const userIds = Array.from({ length: 26 }, (_, index) => String(100000000 + index));
+      const response = await fetch(`${base}/verification/members/verify`, post({ userIds }, { "x-csrf-token": "csrf" }));
+      expect(response.status).toBe(400);
+    });
+
+    it("says so when the verification role is not set", async () => {
+      mocks.loadVerificationConfig.mockResolvedValue({ enabled: false, roleId: "" });
+      verificationGuild({ "111111111": [] });
+      const response = await fetch(`${base}/verification/members/verify`, post({ userIds: ["111111111"] }, { "x-csrf-token": "csrf" }));
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ error: "Verificarea nu este configurată pentru acest server." });
+    });
+
+    it("refuses to save a new extra role that carries staff powers", async () => {
+      mocks.loadVerificationConfig.mockResolvedValue({ enabled: false, roleId, extraRoleIds: [] });
+      verificationGuild({});
+      const payload = botControlPayload();
+      const response = await fetch(`${base}/bot-control`, {
+        ...post({
+          ...payload,
+          verification: {
+            enabled: false, channelId: "", roleId, title: "Verificare", message: "Confirmă", buttonLabel: "Verifică",
+            buttonEmoji: "✅", successMessage: "Gata", alreadyVerifiedMessage: "Deja", imageUrl: "", thumbnailUrl: "",
+            panelMessageId: "", extraRoleIds: [staffRoleId],
+          },
+        }),
+        method: "PUT",
+        headers: { "content-type": "application/json", "x-csrf-token": "csrf" },
+      });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ error: expect.stringContaining("drepturi de staff") });
+      expect(mocks.saveTicketConfig).not.toHaveBeenCalled();
+    });
+  });
+
   it("round-trips a fresh empty alliance message instead of rejecting the whole bot configuration", async () => {
     const payload = botControlPayload();
     payload.allianceRecruitmentText = "";
@@ -1875,10 +1973,11 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     });
 
     expect(response.status).toBe(200);
+    // A request without extra roles (an older page) keeps working: none are given.
     expect(await response.json()).toEqual({
-      verification: { ...verification, panelMessageId: "888888888" },
+      verification: { ...verification, extraRoleIds: [], panelMessageId: "888888888" },
     });
-    expect(mocks.publishVerificationPanel).toHaveBeenCalledWith(expect.anything(), guildId, verification);
+    expect(mocks.publishVerificationPanel).toHaveBeenCalledWith(expect.anything(), guildId, { ...verification, extraRoleIds: [] });
     expect(mocks.saveChannelConfig).not.toHaveBeenCalled();
     expect(mocks.saveTicketConfig).not.toHaveBeenCalled();
     expect(mocks.saveGuildGameplayConfig).not.toHaveBeenCalled();

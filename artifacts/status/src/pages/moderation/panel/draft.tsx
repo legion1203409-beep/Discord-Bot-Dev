@@ -191,8 +191,10 @@ export function PanelState({ status, error, onRetry, loadingText, children }: {
 }
 
 /** The bar that appears while there are unsaved changes. */
-export function SaveBar({ changed, saving, onSave, onDiscard, testId }: {
+export function SaveBar({ changed, saving, onSave, onDiscard, testId, blocked }: {
   changed: readonly DraftSection[]; saving: boolean; onSave: () => void; onDiscard: () => void; testId: string;
+  /** Saving is not possible right now; the page says why. */
+  blocked?: boolean;
 }) {
   if (!changed.length) return null;
   return (
@@ -203,7 +205,7 @@ export function SaveBar({ changed, saving, onSave, onDiscard, testId }: {
       </div>
       <div className="pn-save-act">
         <button type="button" className="pn-btn-ghost" onClick={onDiscard} disabled={saving}>Renunță</button>
-        <button type="button" className="pn-btn" onClick={onSave} disabled={saving} data-testid={`button-save-${testId}`}>
+        <button type="button" className="pn-btn" onClick={onSave} disabled={saving || blocked} data-testid={`button-save-${testId}`}>
           {saving ? <Spinner /> : <Ico name="check" />}Salvează
         </button>
       </div>

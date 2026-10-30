@@ -73,7 +73,12 @@ vi.mock("../../bot/verification", () => ({
   publishVerificationPanel: vi.fn(),
   verificationCookieName: vi.fn(() => "verification_identity"),
   verifyMember: mocks.verifyMember,
+  grantVerificationRoles: vi.fn(),
+  extraRoleProblem: vi.fn(() => null),
   DEFAULT_VERIFICATION_CONFIG: {},
+  MAX_MANUAL_VERIFICATION_MEMBERS: 25,
+  MAX_VERIFICATION_EXTRA_ROLES: 10,
+  VERIFICATION_ELEVATED_PERMISSIONS: [],
 }));
 
 vi.mock("../../bot/db", async (importOriginal) => ({

@@ -13,7 +13,7 @@ import { JudgePage } from "./pages/moderation/panel/JudgePage";
 import { SanctionsGroupPage } from "./pages/moderation/panel/SanctionsGroup";
 import { LogsGroupPage } from "./pages/moderation/panel/LogsGroup";
 import { BotControlPage } from "./pages/moderation/BotControl";
-import { VerificationAdminPage } from "./pages/moderation/VerificationAdmin";
+import { VerificationGroupPage } from "./pages/moderation/panel/VerificationGroup";
 import { MessageTemplatesPage } from "./pages/moderation/MessageTemplates";
 import { ServerSetupPage } from "./pages/moderation/ServerSetup";
 import { ActivityRanksPage } from "./pages/moderation/ActivityRanks";
@@ -126,7 +126,10 @@ function ModerationApp() {
           <Route path="/canale" component={() => <BotControlPage channelsOnly />} />
           <Route path="/provisioning" component={() => <BotControlPage provisioningOnly />} />
           <Route path="/bot" component={() => <BotControlPage />} />
-          <Route path="/verificare" component={VerificationAdminPage} />
+          <Route path="/verificare" component={VerificationGroupPage} />
+          <Route path="/verificare/setari" component={VerificationGroupPage} />
+          <Route path="/verificare/mesaje" component={VerificationGroupPage} />
+          <Route path="/verificare/membri" component={VerificationGroupPage} />
           <Route path="/pornire-server" component={ServerSetupPage} />
           <Route path="/ranguri-activitate" component={ActivityRanksPage} />
           <Route path="/asistent" component={OfflineAssistant} />

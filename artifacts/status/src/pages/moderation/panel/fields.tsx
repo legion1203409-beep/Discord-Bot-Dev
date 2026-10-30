@@ -52,6 +52,15 @@ const ICON_PATHS = {
   scroll: "M6.5 3.5h8l3.5 3.5v12a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 5 19V5a1.5 1.5 0 0 1 1.5-1.5zM14 3.5v4h4M8 11h8M8 14.5h8M8 18h5",
   list: "M9 6h11M9 12h11M9 18h11M4.5 6h.2M4.5 12h.2M4.5 18h.2",
   arrow: "M5 12h14M13 6l6 6-6 6",
+  verified: "M12 3l2.2 1.6 2.7-.1.8 2.6 2.2 1.6-.9 2.5.9 2.6-2.2 1.5-.8 2.6-2.7-.1L12 21l-2.2-1.6-2.7.1-.8-2.6-2.2-1.5.9-2.6-.9-2.5 2.2-1.6.8-2.6 2.7.1zM8.6 12.2l2.3 2.3 4.6-4.8",
+  userCheck: "M14.5 19v-1.4a3.6 3.6 0 0 0-3.6-3.6H6.1a3.6 3.6 0 0 0-3.6 3.6V19M8.5 11a3.3 3.3 0 1 0 0-6.6 3.3 3.3 0 0 0 0 6.6zM15.5 11l2 2 4-4.5",
+  message: "M20.5 12a8 8 0 0 1-11.6 7.1L3.5 20.5l1.4-5A8 8 0 1 1 20.5 12zM8.5 10.5h7M8.5 13.5h4.5",
+  send: "M21 3.5L10.5 14M21 3.5l-6.5 17-4-6.5-6.5-4z",
+  refresh: "M20 11a8 8 0 0 0-14.6-4.5M4 4v4.5h4.5M4 13a8 8 0 0 0 14.6 4.5M20 20v-4.5h-4.5",
+  image: "M5 4.5h14A1.5 1.5 0 0 1 20.5 6v12a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 18V6A1.5 1.5 0 0 1 5 4.5zM3.5 15.5l4.5-4.5 4 4 2.5-2.5 6 6M15.5 9.5a1.5 1.5 0 1 0 0-.01",
+  search: "M10.5 18a7.5 7.5 0 1 0 0-15 7.5 7.5 0 0 0 0 15zM16 16l5 5",
+  tag: "M3.5 12.6V5A1.5 1.5 0 0 1 5 3.5h7.6a1.5 1.5 0 0 1 1 .44l6.5 6.5a1.5 1.5 0 0 1 0 2.12l-7.5 7.5a1.5 1.5 0 0 1-2.12 0l-6.5-6.5a1.5 1.5 0 0 1-.44-1zM8.5 8.5h.01",
+  bot: "M7 8.5h10a2.5 2.5 0 0 1 2.5 2.5v6A2.5 2.5 0 0 1 17 19.5H7A2.5 2.5 0 0 1 4.5 17v-6A2.5 2.5 0 0 1 7 8.5zM12 8.5V4.5M9.5 13.5v1M14.5 13.5v1M2.5 13v2.5M21.5 13v2.5",
 } as const;
 export type IconName = keyof typeof ICON_PATHS;
 
@@ -373,9 +382,11 @@ export function roleOptions(roles: RoleOption[] | undefined): PickerOption[] | u
     .map((role) => ({ id: role.id, name: role.name, note: role.managed ? "integrare" : undefined }));
 }
 
-export function ChannelField({ label, hint, value, channels, onChange, onCreate, creating, createDisabled }: {
-  label: string; hint?: string; value: string | null | undefined; channels: ChannelOption[] | undefined; onChange: (next: string | null) => void;
+export function ChannelField({ label, hint, value, channels, onChange, onCreate, creating, createDisabled, selectLabel }: {
+  label: string; hint?: React.ReactNode; value: string | null | undefined; channels: ChannelOption[] | undefined; onChange: (next: string | null) => void;
   onCreate?: () => void; creating?: boolean; createDisabled?: boolean;
+  /** The list's own name, when "Canal pentru …" does not read well. */
+  selectLabel?: string;
 }) {
   const id = useId();
   const selectable = (channels ?? []).filter((channel) => TEXT_CHANNEL_TYPES.includes(channel.type));
@@ -385,7 +396,7 @@ export function ChannelField({ label, hint, value, channels, onChange, onCreate,
   return (
     <Fld label={label} hint={hint} labelId={`${id}-l`}>
       <div className="pn-chan">
-        <select className="pn-inp" aria-label={`Canal pentru ${label}`} value={channelId} onChange={(event) => onChange(event.target.value || null)}>
+        <select className="pn-inp" aria-label={selectLabel ?? `Canal pentru ${label}`} value={channelId} onChange={(event) => onChange(event.target.value || null)}>
           <option value="">Neconfigurat</option>
           {channelId && !available ? <option value={channelId}>Canal salvat, indisponibil ({channelId})</option> : null}
           {selectable.map((channel) => <option key={channel.id} value={channel.id}>#{channel.name}</option>)}

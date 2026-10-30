@@ -14,4 +14,6 @@ export interface VerificationMember {
   /** @nullable */
   joinedAt: Date | null;
   verified: boolean;
+  /** Every role the member has, so the panel can show which verification roles are missing. */
+  roleIds: string[];
 }

@@ -52,6 +52,12 @@ export interface ModerationRole {
   name: string;
   position?: number;
   managed?: boolean;
+  /** "#rrggbb", or null for a role without a color. */
+  color?: string | null;
+  /** The bot can give the role: it has Manage Roles and the role is below its own. */
+  assignable?: boolean;
+  /** The role carries staff powers (administrator, bans, roles…). */
+  elevated?: boolean;
   activityRewardAssignable?: boolean;
 }
 
@@ -133,6 +139,8 @@ export interface BotControlConfig {
     imageUrl: string;
     thumbnailUrl: string;
     panelMessageId: string;
+    /** Roles given together with roleId, at the button and at manual verification. */
+    extraRoleIds?: string[];
   };
 
   tickets: {
@@ -490,6 +498,37 @@ export async function apiFetchWithMeta<T>(
 
 async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   return (await apiFetchWithMeta<T>(endpoint, options)).data;
+}
+
+export type MemberVerificationResult = {
+  userId: string;
+  displayName: string | null;
+  /** verified: received the verification role now; updated: was verified and received other roles; unchanged: had them all. */
+  result: "verified" | "updated" | "unchanged" | "failed";
+  added: string[];
+  error?: string;
+};
+
+export type MembersVerificationResponse = {
+  roleId: string;
+  results: MemberVerificationResult[];
+  /** Roles that were asked for but that the bot cannot give, with the reason. */
+  unavailableRoles: Array<{ roleId: string; reason: string }>;
+  verified: number;
+  updated: number;
+  unchanged: number;
+  failed: number;
+};
+
+/**
+ * Manual verification of several members at once (at most 25 per request): each
+ * receives the verification role and the chosen extra roles it is missing.
+ */
+export function verifyGuildMembers(guildId: string, userIds: string[], roleIds: string[]): Promise<MembersVerificationResponse> {
+  return apiFetch<MembersVerificationResponse>(
+    `/guilds/${encodeURIComponent(guildId)}/verification/members/verify`,
+    { method: "POST", body: JSON.stringify({ userIds, roleIds }) },
+  );
 }
 
 export function manuallyVerifyGuildMember({ guildId, userId }: ManualVerificationInput): Promise<ManualVerificationResult> {

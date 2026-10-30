@@ -8,7 +8,8 @@ const helperLinks = [
   { title: "Configurează moderarea AI", detail: "Alege categoriile și sensibilitatea analizei AI.", href: "/ai", words: "ai judge judecator" },
   { title: "Setează sancțiunile", detail: "Escaladarea, comenzile staff-ului, rolurile protejate și programul.", href: "/sanctiuni", words: "sanctiuni sancțiuni escaladare comenzi staff warn mute ban roluri canale program noapte" },
   { title: "Găsește cazurile deschise", detail: "Consultă dosarele și istoricul intervențiilor.", href: "/cazuri", words: "cazuri dosare sancțiuni" },
-  { title: "Gestionează verificarea membrilor", detail: "Setează canalul și rolul de verificare.", href: "/verificare", words: "verificare membri tickets" },
+  { title: "Gestionează verificarea membrilor", detail: "Canalul panoului, rolul standard și rolurile în plus.", href: "/verificare", words: "verificare membri roluri categorie panou" },
+  { title: "Verifică membri manual", detail: "Bifezi membri sau pe toți și le dai rolul de verificare și rolurile lipsă.", href: "/verificare/membri", words: "verificare manuala membri roluri lipsa bifeaza toti" },
   { title: "Setează canalele botului", detail: "Alege destinațiile Discord existente.", href: "/canale", words: "canale bot destination" },
   { title: "Deschide setările serverului", detail: "Module și configurații avansate.", href: "/config", words: "setari config" },
 ];

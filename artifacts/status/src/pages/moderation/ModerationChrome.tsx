@@ -4,7 +4,7 @@ import {
   Activity, Bot, BookOpen, Check, ChevronLeft, ChevronRight, Command,
   Download, FileDown, Gavel, History, Home, LogOut, MessageCircle, RefreshCw, Search,
   Server, Settings2, Shield, ShieldAlert, SlidersHorizontal, Sparkles, Ticket,
-  Trophy, Upload,
+  Trophy, Upload, BadgeCheck, Users,
 } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -17,7 +17,8 @@ import {
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "../../components/ui/sheet";
 import { useActiveGuild, useModerationConfig, useSession } from "../../hooks/use-moderation-api";
 import {
-  cleanPath, isLogsRoute, isProtectionRoute, isSanctionsRoute, isWidePanelRoute, LOGS_ROUTE, panelGroupRoute, PROTECTION_ROUTE, SANCTIONS_ROUTE,
+  cleanPath, isLogsRoute, isProtectionRoute, isSanctionsRoute, isVerificationRoute, isWidePanelRoute, LOGS_ROUTE, panelGroupRoute, PROTECTION_ROUTE,
+  SANCTIONS_ROUTE, VERIFICATION_ROUTE,
 } from "./panel/model";
 
 type NavigationItem = { id: string; label: string; description: string; href: string; icon: typeof Home; tint: string; keywords?: string };
@@ -28,7 +29,7 @@ const primaryItems: NavigationItem[] = [
   { id: "judge", label: "Judecător AI", description: "Moderare AI și criteriile de analiză", href: "/ai", icon: Sparkles, tint: "violet", keywords: "ai judecator" },
   { id: "sanctions", label: "Sancțiuni", description: "Escaladare, comenzi, roluri și program", href: "/sanctiuni", icon: Gavel, tint: "gold", keywords: "sanctiuni comenzi staff escaladare politici roluri canale program" },
   { id: "cases", label: "Cazuri și jurnale", description: "Cazuri, audit și jurnale de activitate", href: "/jurnale", icon: History, tint: "blue", keywords: "cazuri dosare logs audit jurnale activitate" },
-  { id: "verification", label: "Verificare și tichete", description: "Membri noi și fluxuri de suport", href: "/verificare", icon: Ticket, tint: "green", keywords: "verification tickets" },
+  { id: "verification", label: "Verificare", description: "Rolurile primite, panoul și verificarea manuală", href: "/verificare", icon: BadgeCheck, tint: "green", keywords: "verification verificare membri roluri manual" },
   { id: "rpg", label: "RPG", description: "Ranguri și progresul comunității", href: "/ranguri-activitate", icon: Trophy, tint: "gold", keywords: "ranguri activitate joc" },
   { id: "oracle", label: "Oracol", description: "Mesaje și servicii ale botului", href: "/bot?tab=messages", icon: MessageCircle, tint: "violet", keywords: "oracle mesaje bot" },
   { id: "settings", label: "Setări bot", description: "Module, configurare și canale", href: "/config", icon: Settings2, tint: "ember", keywords: "config settings" },
@@ -73,7 +74,10 @@ const allItems: Array<{ heading: string; items: NavigationItem[] }> = [
     { id: "bot-statistics", label: "Statistici bot", description: "Statistici și invitații", href: "/bot?tab=statistics", icon: Activity, tint: "violet" },
   ] },
   { heading: "Membri și progres", items: [
-    primaryItems[5]!, { id: "rank-settings", label: "Ranguri de activitate", description: "Configurarea progresului", href: "/ranguri-activitate", icon: Trophy, tint: "green" },
+    primaryItems[5]!,
+    { id: "verification-messages", label: "Mesajele verificării", description: "Textul panoului, butonul și imaginile", href: "/verificare/mesaje", icon: MessageCircle, tint: "green", keywords: "panou buton text emoji imagine" },
+    { id: "verification-members", label: "Membri verificați", description: "Cine e verificat, verificare manuală și roluri lipsă", href: "/verificare/membri", icon: Users, tint: "green", keywords: "verificare manuala membri roluri lipsa categorie" },
+    { id: "rank-settings", label: "Ranguri de activitate", description: "Configurarea progresului", href: "/ranguri-activitate", icon: Trophy, tint: "green" },
   ] },
   { heading: "Ajutor", items: [primaryItems[9]!] },
 ];
@@ -241,6 +245,7 @@ function primaryIsActive(href: string, location: string) {
   if (href === SANCTIONS_ROUTE && isSanctionsRoute(location)) return true;
   // The cases and logs settings, the case list and the audit log are one destination.
   if (href === LOGS_ROUTE && (isLogsRoute(location) || ["/cazuri", "/audit"].includes(cleanPath(location)))) return true;
+  if (href === VERIFICATION_ROUTE && isVerificationRoute(location)) return true;
   return routeIsActive(href, location);
 }
 

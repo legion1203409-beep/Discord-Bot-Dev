@@ -231,6 +231,11 @@ import
   normalizeVerificationConfig,
   publishVerificationPanel,
   verifyMember,
+  extraRoleProblem,
+  grantVerificationRoles,
+  MAX_MANUAL_VERIFICATION_MEMBERS,
+  MAX_VERIFICATION_EXTRA_ROLES,
+  VERIFICATION_ELEVATED_PERMISSIONS,
   consumeVerificationLinkToken,
   createVerificationLinkToken,
   createVerificationIdentityToken,
@@ -447,6 +452,8 @@ const verificationConfigSchema = z.object(
   imageUrl: z.string().trim().max(2_000).refine(isMessageImageUrl, "Imaginea trebuie să fie HTTPS sau încărcată în storage."),
   thumbnailUrl: z.string().trim().max(2_000).refine(isMessageImageUrl, "Thumbnail-ul trebuie să fie HTTPS sau încărcat în storage.").default(""),
   panelMessageId: z.union([snowflake, z.literal("")]),
+  // Given together with roleId, at the button and at manual verification.
+  extraRoleIds: z.array(snowflake).max(MAX_VERIFICATION_EXTRA_ROLES).default([]),
 }
 ).strict()
 ;
@@ -1553,6 +1560,31 @@ async function validateBotControlChannelTargets(guildId: string, channels: Chann
         403,
         `Botul are nevoie de permisiunile View Channel, Send Messages și Embed Links în canalul ${key}.`,
       );
+    }
+  }
+}
+
+/**
+ * Roles newly added to the verification must exist and be roles the bot can
+ * give without handing out staff powers. Roles saved earlier are not checked
+ * again, so a role moved later does not block unrelated saves; the bot skips it.
+ */
+async function validateVerificationExtraRoles(guildId: string, extraRoleIds: readonly string[], previousIds: readonly string[]): Promise<void> {
+  const added = extraRoleIds.filter((id) => !previousIds.includes(id));
+  if (!added.length) return;
+  const client = getModerationClient();
+  if (!client?.isReady()) return;
+  const guild = client.guilds.cache?.get(guildId) ?? await client.guilds.fetch({ guild: guildId, force: true })
+    .catch(() => {
+      throw new ModerationAuthError(503, "Serverul Discord nu este disponibil.");
+    });
+  const botMember = guild.members.me ?? await guild.members.fetchMe().catch(() => null);
+  if (!botMember) return;
+  for (const roleId of added) {
+    const role = await guild.roles.fetch(roleId).catch(() => null);
+    const problem = extraRoleProblem(role, guild, botMember);
+    if (problem) {
+      throw new ModerationAuthError(400, `Rolurile verificării: ${role ? `@${role.name}` : roleId} nu poate fi dat. ${problem}`);
     }
   }
 }
@@ -3046,6 +3078,11 @@ router.post("/guilds/:guildId/bot-control/verification-panel", asyncRoute(async 
   if (!verification.channelId || !verification.roleId) {
     throw new ModerationAuthError(400, "Configurează canalul și rolul pentru verificare.");
   }
+  await validateVerificationExtraRoles(
+    guildId,
+    verification.extraRoleIds ?? [],
+    normalizeVerificationConfig(await loadVerificationConfig(guildId)).extraRoleIds ?? [],
+  );
   const client = getModerationClient();
   if (!client?.isReady()) {
     throw new ModerationAuthError(503, "Discord botul nu este conectat pentru publicarea panoului.");
@@ -3091,6 +3128,13 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   await validateMemberMessagesChannelTarget(guildId, value.gameplayConfig);
   const verification = normalizeVerificationConfig(value.verification);
   const verificationRequested = Object.prototype.hasOwnProperty.call(req.body ?? {}, "verification");
+  if (verificationRequested) {
+    await validateVerificationExtraRoles(
+      guildId,
+      verification.extraRoleIds ?? [],
+      normalizeVerificationConfig(await loadVerificationConfig(guildId)).extraRoleIds ?? [],
+    );
+  }
   let savedVerification = verification;
   let verificationPanelPublished = false;
   let anyWriteSucceeded = false;
@@ -3357,6 +3401,7 @@ router.get("/guilds/:guildId/verification/members", asyncRoute(async (req, res) 
         : "https://cdn.discordapp.com/embed/avatars/0.png",
       joinedAt: member.joined_at ?? null,
       verified: Array.isArray(member.roles) && member.roles.includes(role.id),
+      roleIds: Array.isArray(member.roles) ? member.roles.filter((id): id is string => typeof id === "string") : [],
     }))
     .sort((left, right) => left.displayName.localeCompare(right.displayName, "ro", { sensitivity: "base" }));
   const verifiedTotal = guildMembers.filter((member) => member.verified).length;
@@ -3370,6 +3415,60 @@ router.get("/guilds/:guildId/verification/members", asyncRoute(async (req, res) 
     unverifiedTotal: guildMembers.length - verifiedTotal,
     members: guildMembers,
   }));
+}));
+
+const manualVerificationSchema = z.object({
+  userIds: z.array(snowflake).min(1).max(MAX_MANUAL_VERIFICATION_MEMBERS),
+  roleIds: z.array(snowflake).max(MAX_VERIFICATION_EXTRA_ROLES).default([]),
+}).strict();
+
+/**
+ * Manual verification of several members at once: each receives the
+ * verification role and the chosen extra roles that are missing. Members who
+ * are already verified only receive the missing roles.
+ */
+router.post("/guilds/:guildId/verification/members/verify", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  await sessionAndGuild(req, guildId, "config", true);
+  const { userIds, roleIds } = parse(manualVerificationSchema, req.body);
+  const client = getModerationClient();
+  if (!client?.isReady()) {
+    throw new ModerationAuthError(503, "Botul Discord nu este disponibil pentru verificarea membrilor.");
+  }
+
+  let outcome: Awaited<ReturnType<typeof grantVerificationRoles>>;
+  try {
+    outcome = await grantVerificationRoles(client, guildId, userIds, roleIds);
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error ? Number(error.code) : null;
+    if (code === 50013 || code === 50001) {
+      throw new ModerationAuthError(503, "Botului îi lipsește permisiunea de a acorda rolurile de verificare.");
+    }
+    if (error instanceof Error && /nu mai există|nu este configurată|trebuie să fie sub|Manage Roles/i.test(error.message)) {
+      throw new ModerationAuthError(400, error.message);
+    }
+    logger.warn({ error, guildId }, "Manual member verification failed");
+    throw new ModerationAuthError(503, "Discord nu a putut finaliza verificarea membrilor.");
+  }
+
+  for (const result of outcome.results) {
+    if (result.result !== "verified") continue;
+    try {
+      await completeRecruitmentReferral(client, guildId, result.userId);
+    } catch (error) {
+      logger.warn({ error, guildId }, "Manually verified referral reward could not be completed");
+    }
+  }
+  const count = (kind: (typeof outcome.results)[number]["result"]) => outcome.results.filter((result) => result.result === kind).length;
+  res.set("Cache-Control", "no-store").json({
+    roleId: outcome.roleId,
+    results: outcome.results,
+    unavailableRoles: outcome.unavailable,
+    verified: count("verified"),
+    updated: count("updated"),
+    unchanged: count("unchanged"),
+    failed: count("failed"),
+  });
 }));
 
 router.post("/guilds/:guildId/verification/members/:userId/verify", asyncRoute(async (req, res) => {
@@ -3568,6 +3667,13 @@ router.get("/guilds/:guildId/metadata", asyncRoute(async (req, res) => {
     guild: { id: guild.id, name: guild.name, ownerId: guild.ownerId },
     roles: [...roles.values()].filter(Boolean).map((role) => ({
       id: role.id, name: role.name, position: role.position, managed: role.managed,
+      color: role.color ? role.hexColor : null,
+      // The bot can give the role: it has Manage Roles and the role is below its own.
+      assignable: role.id !== guild.id && !role.managed &&
+        Boolean(guild.members.me?.permissions.has(PermissionFlagsBits.ManageRoles)) &&
+        role.position < (guild.members.me?.roles.highest.position ?? 0),
+      // The role carries staff powers, so verification never hands it out.
+      elevated: Boolean(role.permissions?.any(VERIFICATION_ELEVATED_PERMISSIONS, false)),
       activityRewardAssignable: role.id !== guild.id && isSafeActivityRewardRole(role) &&
         Boolean(guild.members.me?.permissions.has(PermissionFlagsBits.ManageRoles)) &&
         role.position < (guild.members.me?.roles.highest.position ?? 0),

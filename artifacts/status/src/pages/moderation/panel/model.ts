@@ -463,6 +463,20 @@ export function isLogsRoute(path: string): boolean {
   return clean === LOGS_ROUTE || Object.values(LOGS_MODULE_ROUTES).some((route) => route === clean);
 }
 
+/** The overview route of the verification group and the routes of its three modules. */
+export const VERIFICATION_ROUTE = "/verificare";
+export const VERIFICATION_MODULE_ROUTES = {
+  settings: "/verificare/setari",
+  messages: "/verificare/mesaje",
+  members: "/verificare/membri",
+} as const;
+
+/** True for "/verificare" and the routes of its modules. */
+export function isVerificationRoute(path: string): boolean {
+  const clean = cleanPath(path);
+  return clean === VERIFICATION_ROUTE || Object.values(VERIFICATION_MODULE_ROUTES).some((route) => route === clean);
+}
+
 /**
  * The group a route belongs to, for pages whose modules share one draft: moving
  * between the modules of a group must not reload the page. Null elsewhere.
@@ -471,6 +485,7 @@ export function panelGroupRoute(path: string): string | null {
   if (isProtectionRoute(path)) return PROTECTION_ROUTE;
   if (isSanctionsRoute(path)) return SANCTIONS_ROUTE;
   if (isLogsRoute(path)) return LOGS_ROUTE;
+  if (isVerificationRoute(path)) return VERIFICATION_ROUTE;
   return null;
 }
 

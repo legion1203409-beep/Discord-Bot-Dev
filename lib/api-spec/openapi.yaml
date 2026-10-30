@@ -766,6 +766,11 @@ components:
         imageUrl: { type: string, maxLength: 2000 }
         thumbnailUrl: { type: string, maxLength: 2000, default: "" }
         panelMessageId: { type: string, pattern: "^(?:\\d{5,25})?$" }
+        extraRoleIds:
+          type: array
+          maxItems: 10
+          description: Roles given together with roleId, at the button and at manual verification.
+          items: { type: string }
     VerificationPanelPublishResponse:
       type: object
       additionalProperties: false
@@ -881,7 +886,7 @@ components:
     VerificationMember:
       type: object
       additionalProperties: false
-      required: [id, username, displayName, avatarUrl, joinedAt, verified]
+      required: [id, username, displayName, avatarUrl, joinedAt, verified, roleIds]
       properties:
         id: { type: string }
         username: { type: string }
@@ -889,6 +894,10 @@ components:
         avatarUrl: { type: string }
         joinedAt: { type: [string, "null"], format: date-time }
         verified: { type: boolean }
+        roleIds:
+          type: array
+          description: Every role the member has, so the panel can show which verification roles are missing.
+          items: { type: string }
     VerificationMembersResponse:
       type: object
       additionalProperties: false

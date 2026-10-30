@@ -185,7 +185,8 @@ export const GetVerificationMembersResponse = zod.object({
   "displayName": zod.string(),
   "avatarUrl": zod.string(),
   "joinedAt": zod.coerce.date().nullable(),
-  "verified": zod.boolean()
+  "verified": zod.boolean(),
+  "roleIds": zod.array(zod.string()).describe('Every role the member has, so the panel can show which verification roles are missing.')
 }))
 })
 
@@ -1101,6 +1102,8 @@ export const moderationPublishVerificationPanelBodyThumbnailUrlDefault = ``;
 export const moderationPublishVerificationPanelBodyThumbnailUrlMax = 2000;
 
 export const moderationPublishVerificationPanelBodyPanelMessageIdRegExp = new RegExp('^(?:\\d{5,25})?$');
+export const moderationPublishVerificationPanelBodyExtraRoleIdsMax = 10;
+
 
 
 export const ModerationPublishVerificationPanelBody = zod.object({
@@ -1115,7 +1118,8 @@ export const ModerationPublishVerificationPanelBody = zod.object({
   "alreadyVerifiedMessage": zod.string().min(1).max(moderationPublishVerificationPanelBodyAlreadyVerifiedMessageMax),
   "imageUrl": zod.string().max(moderationPublishVerificationPanelBodyImageUrlMax),
   "thumbnailUrl": zod.string().max(moderationPublishVerificationPanelBodyThumbnailUrlMax).default(moderationPublishVerificationPanelBodyThumbnailUrlDefault),
-  "panelMessageId": zod.string().regex(moderationPublishVerificationPanelBodyPanelMessageIdRegExp)
+  "panelMessageId": zod.string().regex(moderationPublishVerificationPanelBodyPanelMessageIdRegExp),
+  "extraRoleIds": zod.array(zod.string()).max(moderationPublishVerificationPanelBodyExtraRoleIdsMax).optional().describe('Roles given together with roleId, at the button and at manual verification.')
 })
 
 export const ModerationPublishVerificationPanelResponse = zod.object({
