@@ -15,7 +15,7 @@ import {
 export const SEVERITIES = [["soft", "Blândă"], ["normal", "Normală"], ["hard", "Strictă"]] as const;
 const SEVERITY_HINT: Record<"thresholds" | "slowmode", string> = {
   thresholds: "Blândă ridică pragurile cu 50%, Strictă le coboară cu 25%.",
-  slowmode: "Regula nu are un prag de ajustat; severitatea schimbă doar încetinirea automată din canalele alese la Politici (Strictă: 10 secunde între mesaje, altfel 5).",
+  slowmode: "Regula nu are un prag de ajustat; severitatea schimbă doar slowmode-ul automat din canalele alese la Sancțiuni › Roluri și canale (Strictă: 10 secunde între mesaje, altfel 5).",
 };
 
 /** Explains why a ticked staff alert would not reach anyone yet. */
@@ -128,12 +128,24 @@ export function RulesCard({ module, children }: { module: ModuleDef; children: R
   );
 }
 
-/** Header of a module (icon, title, main switch) and its body. */
-export function ModuleView({ module, icon, children }: { module: ModuleHeadDef; icon: IconName; children: React.ReactNode }) {
+/**
+ * Header of a module (icon, title, main switch) and its body. A module without
+ * a key of its own has no switch and is always in force; an `independent` one
+ * keeps working while the server's protection is off (the staff commands).
+ */
+export function ModuleView({ module, icon, independent, aside, children }: {
+  module: Pick<ModuleHeadDef, "id" | "title" | "description"> & { configKey?: string; switchLabel?: string };
+  icon: IconName;
+  independent?: boolean;
+  /** Shown on the right of a module without a switch. */
+  aside?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   const { config, set } = usePanel();
   const headingId = useId();
-  const on = isModuleEnabled(config, module);
-  const status = moduleStatus(config, module);
+  const configKey = module.configKey;
+  const on = configKey ? isModuleEnabled(config, { configKey }) : true;
+  const status = configKey && !independent ? moduleStatus(config, { configKey }) : on ? "on" : "off";
   return (
     <section className={cx("pn-mod", on && "is-on")} aria-labelledby={headingId} data-testid={`module-${module.id}`}>
       <header className="pn-mod-h">
@@ -142,16 +154,18 @@ export function ModuleView({ module, icon, children }: { module: ModuleHeadDef; 
           <h2 id={headingId}>{module.title}</h2>
           <p>{module.description}</p>
         </div>
-        <div className="pn-mod-pw">
-          <span aria-hidden="true">{on ? "Pornit" : "Oprit"}</span>
-          <Switch large checked={on} label={module.switchLabel} testId={`module-${module.id}-switch`} onChange={(next) => set([module.configKey, "enabled"], next)} />
-        </div>
+        {configKey ? (
+          <div className="pn-mod-pw">
+            <span aria-hidden="true">{on ? "Pornit" : "Oprit"}</span>
+            <Switch large checked={on} label={module.switchLabel} testId={`module-${module.id}-switch`} onChange={(next) => set([configKey, "enabled"], next)} />
+          </div>
+        ) : aside}
       </header>
-      {!on ? (
+      {configKey && !on ? (
         <div className="pn-mod-off">
           <Ico name="power" />
           <span>Modulul e oprit. Setările de mai jos rămân salvate pentru când îl pornești.</span>
-          <button type="button" className="pn-btn pn-btn-sm" onClick={() => set([module.configKey, "enabled"], true)}>Pornește modulul</button>
+          <button type="button" className="pn-btn pn-btn-sm" onClick={() => set([configKey, "enabled"], true)}>Pornește modulul</button>
         </div>
       ) : null}
       {status === "paused" ? (

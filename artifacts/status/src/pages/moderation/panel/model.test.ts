@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  ACTION_ORDER, MODULES, MODULE_BY_ID, actionsText, hasTickedAction, withTickFields, isProtectionRoute, moduleNavSummary, moduleStatus, ruleSummary, thresholdSummary, availableActions, changedSections, deepEqual, describeMuteLength, describeTicks,
+  ACTION_ORDER, MODULES, MODULE_BY_ID, actionsText, hasTickedAction, withTickFields, isProtectionRoute, moduleNavSummary, moduleStatus, ruleSummary, thresholdSummary, availableActions, changedSections, deepEqual, countLabel, describeMuteLength, describeTicks,
   enabledRuleCount, hasOwnSanction, hasUnavailableDelete, isModuleEnabled, lockedActions, moduleForRoute, pausedReason,
   protectionDraftError, readMuteMinutes, readThreshold, readTicks, setAt, setMuteMinutes, staffAlertProblems, thresholdFields,
   toggleTick, writeThreshold, writeTicks, type ActionTicks,
@@ -179,9 +179,19 @@ describe("the mute length", () => {
     expect(describeMuteLength(10)).toBe("10 minute");
     expect(describeMuteLength(60)).toBe("1 oră");
     expect(describeMuteLength(120)).toBe("2 ore");
-    expect(describeMuteLength(90)).toBe("90 minute");
+    expect(describeMuteLength(90)).toBe("90 de minute");
     expect(describeMuteLength(1_440)).toBe("1 zi");
-    expect(describeMuteLength(40_320)).toBe("28 zile");
+    expect(describeMuteLength(10_080)).toBe("7 zile");
+    expect(describeMuteLength(40_320)).toBe("28 de zile");
+  });
+
+  it("puts „de” before the noun from twenty on, except after 01–19", () => {
+    expect(countLabel(0, "zi", "zile")).toBe("0 zile");
+    expect(countLabel(19, "zi", "zile")).toBe("19 zile");
+    expect(countLabel(20, "zi", "zile")).toBe("20 de zile");
+    expect(countLabel(100, "zi", "zile")).toBe("100 de zile");
+    expect(countLabel(101, "zi", "zile")).toBe("101 zile");
+    expect(countLabel(365, "zi", "zile")).toBe("365 de zile");
   });
 
   it("is part of the summary only when mute is ticked", () => {
@@ -206,7 +216,7 @@ describe("the one-line summary of a rule", () => {
     expect(actionsText({ action: "none" }, "event", { moduleDefaults: { action: "none" } })).toBe("Doar înregistrare");
     expect(actionsText({ action: "none", alertStaff: true }, "event", { moduleDefaults: { action: "none" } })).toBe("Ca modulul: Anunță staff-ul");
     expect(actionsText({ action: "ban" }, "event", { moduleDefaults: { action: "none", alertStaff: true } })).toBe("Ban + Anunță staff-ul");
-    expect(actionsText({ action: "mute", muteMinutes: 30 }, "event", { moduleDefaults: { action: "kick", muteMinutes: 600 } })).toBe("Mute 30 minute");
+    expect(actionsText({ action: "mute", muteMinutes: 30 }, "event", { moduleDefaults: { action: "kick", muteMinutes: 600 } })).toBe("Mute 30 de minute");
     expect(hasOwnSanction({ action: "none", warnMember: true })).toBe(true);
     expect(hasOwnSanction({ action: "none", alertStaff: true })).toBe(false);
   });

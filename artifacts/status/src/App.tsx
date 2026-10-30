@@ -10,6 +10,7 @@ import { ConfigOverviewPage } from "./pages/moderation/ConfigOverview";
 import { CategorySettingsPage } from "./pages/moderation/CategorySettings";
 import { ProtectionGroupPage } from "./pages/moderation/panel/ProtectionGroup";
 import { JudgePage } from "./pages/moderation/panel/JudgePage";
+import { SanctionsGroupPage } from "./pages/moderation/panel/SanctionsGroup";
 import { BotControlPage } from "./pages/moderation/BotControl";
 import { VerificationAdminPage } from "./pages/moderation/VerificationAdmin";
 import { MessageTemplatesPage } from "./pages/moderation/MessageTemplates";
@@ -98,16 +99,23 @@ function ModerationApp() {
           <Route path="/anti-raid" component={ProtectionGroupPage} />
           <Route path="/comportament-suspect" component={ProtectionGroupPage} />
           <Route path="/ai" component={JudgePage} />
-          <Route path="/politici" component={() => <CategorySettingsPage section="roles-channels" />} />
+          {/* The sanctions group is one page too: escalation, staff commands, roles and channels, and the schedule. */}
+          <Route path="/sanctiuni" component={SanctionsGroupPage} />
+          <Route path="/sanctiuni/escaladare" component={SanctionsGroupPage} />
+          <Route path="/sanctiuni/comenzi" component={SanctionsGroupPage} />
+          <Route path="/sanctiuni/roluri-canale" component={SanctionsGroupPage} />
+          <Route path="/sanctiuni/program" component={SanctionsGroupPage} />
+          {/* Older addresses of the same settings, kept for bookmarks and links. */}
+          <Route path="/politici" component={() => <Redirect to="/sanctiuni/roluri-canale" replace />} />
+          <Route path="/config/escaladare" component={() => <Redirect to="/sanctiuni/escaladare" replace />} />
+          <Route path="/config/unelte" component={() => <Redirect to="/sanctiuni/comenzi" replace />} />
           <Route path="/comenzi" component={CommandsPage} />
           <Route path="/cazuri" component={CasesPage} />
           <Route path="/audit" component={AuditPage} />
           <Route path="/config" component={ConfigOverviewPage} />
           <Route path="/config/mesaje" component={MessageTemplatesPage} />
           <Route path="/config/avansat" component={AdvancedSettingsPage} />
-          <Route path="/config/unelte" component={() => <CategorySettingsPage section="tools" />} />
           <Route path="/config/cazuri-audit" component={() => <CategorySettingsPage section="cases-audit" />} />
-          <Route path="/config/escaladare" component={() => <CategorySettingsPage section="escalation" />} />
           <Route path="/config/embeduri" component={() => <CategorySettingsPage section="embeds" />} />
           <Route path="/canale" component={() => <BotControlPage channelsOnly />} />
           <Route path="/provisioning" component={() => <BotControlPage provisioningOnly />} />

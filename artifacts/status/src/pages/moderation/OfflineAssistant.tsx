@@ -6,6 +6,7 @@ import { Input } from "../../components/ui/input";
 const helperLinks = [
   { title: "Activează protecția AutoMod", detail: "Deschide filtrarea mesajelor, linkurilor și cuvintelor.", href: "/automod", words: "automod filtru protectie" },
   { title: "Configurează moderarea AI", detail: "Alege categoriile și sensibilitatea analizei AI.", href: "/ai", words: "ai judge judecator" },
+  { title: "Setează sancțiunile", detail: "Escaladarea, comenzile staff-ului, rolurile protejate și programul.", href: "/sanctiuni", words: "sanctiuni sancțiuni escaladare comenzi staff warn mute ban roluri canale program noapte" },
   { title: "Găsește cazurile deschise", detail: "Consultă dosarele și istoricul intervențiilor.", href: "/cazuri", words: "cazuri dosare sancțiuni" },
   { title: "Gestionează verificarea membrilor", detail: "Setează canalul și rolul de verificare.", href: "/verificare", words: "verificare membri tickets" },
   { title: "Setează canalele botului", detail: "Alege destinațiile Discord existente.", href: "/canale", words: "canale bot destination" },

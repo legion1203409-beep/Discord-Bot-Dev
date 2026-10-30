@@ -729,6 +729,118 @@ test.describe("authenticated moderation console", () => {
     await expect(page.getByTestId("ai-excluded-roles").getByRole("checkbox", { name: "ID 987654321098765432, nu apare în listă" })).toBeChecked();
   });
 
+  test("escalation steps, the mute length of a step and the reset are saved", async ({ page }) => {
+    await page.goto("/moderare/sanctiuni");
+    await chooseFirstGuild(page);
+    await expect(page.getByRole("heading", { name: "Escaladarea sancțiunilor" })).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Modulele sancțiunilor" }).getByRole("link")).toHaveCount(4);
+    await expect(page.getByTestId("nav-sanctions-escalation")).toHaveAttribute("aria-current", "page");
+
+    await page.getByRole("switch", { name: "Activează escaladarea" }).click();
+    // One saved step; each new one starts one offense later with a stronger sanction.
+    await page.getByTestId("escalation-add-level").click();
+    await expect(page.getByTestId("escalation-level-2-violations")).toHaveValue("2");
+    await expect(page.getByTestId("escalation-level-2-action")).toHaveValue("mute");
+    await page.getByTestId("escalation-level-2-minutes").fill("1440");
+    await page.getByTestId("escalation-add-level").click();
+    await expect(page.getByTestId("escalation-level-3-action")).toHaveValue("kick");
+    await page.getByTestId("escalation-reset-days").fill("14");
+    await expect(page.getByTestId("escalation-ladder")).toContainText("Mute 1 zi");
+
+    const saveResponse = page.waitForResponse((response) =>
+      response.url().includes("/api/moderation/guilds/111111111/config")
+      && response.request().method() === "PUT");
+    await page.getByRole("button", { name: "Salvează", exact: true }).click();
+    expect((await saveResponse).ok()).toBe(true);
+    const escalation = savedConfigs.get(guilds[0].id)?.escalation as any;
+    expect(escalation).toEqual({
+      enabled: true, resetAfterDays: 14,
+      levels: [
+        { level: 1, violations: 1, action: "warn" },
+        { level: 2, violations: 2, action: "mute", muteMinutes: 1440 },
+        { level: 3, violations: 3, action: "kick" },
+      ],
+    });
+
+    await page.reload();
+    await expect(page.getByTestId("escalation-level-2-minutes")).toHaveValue("1440");
+    await expect(page.getByTestId("escalation-reset-days")).toHaveValue("14");
+  });
+
+  test("staff commands, roles and channels, and the schedule are saved together from one draft", async ({ page }) => {
+    await page.unroute("**/api/moderation/guilds/*/metadata");
+    await page.route("**/api/moderation/guilds/*/metadata", async (route) => {
+      await route.fulfill({
+        json: {
+          guild: { id: guilds[0].id, name: guilds[0].name, ownerId: "999999999" },
+          roles: [
+            { id: guilds[0].id, name: "@everyone", position: 0, managed: false },
+            { id: "333333333", name: "Moderatori", position: 2, managed: false },
+          ],
+          channels: [
+            { id: "444444444", name: "audit", type: 0, parentId: null },
+            { id: "555555555", name: "ajutor", type: 15, parentId: null },
+            { id: "666666666", name: "voice", type: 2, parentId: null },
+          ],
+          botCapabilities: { online: true, messageContent: true, guildMembers: true },
+        },
+      });
+    });
+    await page.goto("/moderare/sanctiuni/comenzi");
+    await chooseFirstGuild(page);
+    await expect(page.getByRole("heading", { name: "Comenzi de moderare" })).toBeVisible();
+    await page.getByRole("switch", { name: "Activează comenzile de moderare" }).click();
+    await page.getByRole("switch", { name: "/purge", exact: true }).click();
+    await expect(page.getByTestId("command-purge")).toContainText("Oprită pentru toți");
+    await page.getByTestId("command-ban-open").click();
+    const banRoles = page.getByTestId("command-ban-roles");
+    // @everyone is every member: it is never offered.
+    await expect(banRoles.getByRole("checkbox", { name: "@@everyone" })).toHaveCount(0);
+    await banRoles.getByRole("checkbox", { name: "@Moderatori" }).click();
+    await expect(page.getByTestId("command-ban")).toContainText("Ban Members sau 1 rol ales");
+
+    await page.getByTestId("nav-sanctions-policies").click();
+    await expect(page).toHaveURL("/moderare/sanctiuni/roluri-canale");
+    const strict = page.getByTestId("policy-strict-channels");
+    // Forum and voice channels hold no messages the bot can moderate here.
+    await expect(strict.getByRole("checkbox", { name: "#ajutor" })).toHaveCount(0);
+    await expect(strict.getByRole("checkbox", { name: "#voice" })).toHaveCount(0);
+    await strict.getByRole("checkbox", { name: "#audit" }).click();
+
+    await page.getByTestId("nav-sanctions-schedule").click();
+    await page.getByRole("switch", { name: "Noapte strictă", exact: true }).click();
+    await page.getByTestId("schedule-timezone").selectOption("Europe/Bucharest");
+    await page.getByTestId("schedule-strictNight-end").selectOption("6");
+    await expect(page.getByTestId("profile-strictNight")).toContainText("22:00 – 06:59");
+    // The unsaved commands are still there after visiting two other modules.
+    await expect(page.getByTestId("nav-sanctions-commands").getByRole("img", { name: "are modificări nesalvate" })).toBeVisible();
+
+    const saveResponse = page.waitForResponse((response) =>
+      response.url().includes("/api/moderation/guilds/111111111/config")
+      && response.request().method() === "PUT");
+    await page.getByRole("button", { name: "Salvează", exact: true }).click();
+    expect((await saveResponse).ok()).toBe(true);
+    const saved = savedConfigs.get(guilds[0].id) as any;
+    expect(saved.manualTools).toEqual({ enabled: true, commandGrants: { ban: ["333333333"] }, logActions: false, disabledCommands: ["purge"] });
+    expect(saved.channels.strictChannelIds).toEqual(["444444444"]);
+    expect(saved.timeProfiles).toMatchObject({ timezone: "Europe/Bucharest", strictNight: { enabled: true, startHour: 22, endHour: 6 } });
+    expect(saved.escalation).toEqual(fullConfig().escalation);
+
+    await page.goto("/moderare/sanctiuni/comenzi");
+    await expect(page.getByRole("switch", { name: "/purge", exact: true })).not.toBeChecked();
+    await expect(page.getByRole("switch", { name: "/ban", exact: true })).toBeChecked();
+  });
+
+  test("the older addresses of sanctions settings open the new page", async ({ page }) => {
+    await page.goto("/moderare/config/unelte");
+    await chooseFirstGuild(page);
+    await expect(page).toHaveURL("/moderare/sanctiuni/comenzi");
+    await expect(page.getByRole("heading", { name: "Comenzi de moderare" })).toBeVisible();
+    await page.goto("/moderare/config/escaladare");
+    await expect(page).toHaveURL("/moderare/sanctiuni/escaladare");
+    await expect(page.getByRole("heading", { name: "Escaladarea sancțiunilor" })).toBeVisible();
+  });
+
   test("link blocking can target multiple channels or all channels and persists after reload", async ({ page }) => {
     await page.unroute("**/api/moderation/guilds/*/metadata");
     await page.route("**/api/moderation/guilds/*/metadata", async (route) => {
@@ -793,11 +905,11 @@ test.describe("authenticated moderation console", () => {
       },
       {
         group: "moderation",
-        routes: ["/politici", "/comenzi", "/cazuri", "/audit"],
+        routes: ["/sanctiuni", "/comenzi", "/cazuri", "/audit"],
       },
       {
         group: "configuration",
-        routes: ["/config", "/config/avansat", "/config/unelte", "/config/cazuri-audit", "/config/escaladare", "/config/embeduri"],
+        routes: ["/config", "/config/avansat", "/config/cazuri-audit", "/config/embeduri"],
       },
     ];
     for (const destinationGroup of destinations) {
@@ -1666,7 +1778,7 @@ test.describe("authenticated moderation console", () => {
     await ticks.getByLabel("Durata mute-ului (minute)").fill("45");
     await ticks.getByRole("checkbox", { name: "Anunță staff-ul" }).click();
     await expect(page.getByTestId("actions-Spam de mesaje-summary"))
-      .toContainText("Șterge mesajul + Avertisment + Mute 45 minute + Anunță staff-ul");
+      .toContainText("Șterge mesajul + Avertisment + Mute 45 de minute + Anunță staff-ul");
 
     // Mute, kick and ban exclude each other; the warning stays next to the new sanction.
     await ticks.getByRole("checkbox", { name: "Ban" }).click();

@@ -167,16 +167,21 @@ export function hasOwnSanction(rule: RuleLike | null | undefined): boolean {
   return action === "warn" || action === "mute" || action === "kick" || action === "ban" || rule?.warnMember === true;
 }
 
+/**
+ * A count with its noun, the Romanian way: "1 zi", "5 zile", "20 de zile",
+ * "101 zile". From 20 on, a number not ending in 01–19 takes "de".
+ */
+export function countLabel(count: number, one: string, many: string): string {
+  if (count === 1) return `1 ${one}`;
+  const rest = Math.abs(count) % 100;
+  const plain = count === 0 || (rest >= 1 && rest <= 19);
+  return plain ? `${count} ${many}` : `${count} de ${many}`;
+}
+
 export function describeMuteLength(minutes: number): string {
-  if (minutes % 1_440 === 0) {
-    const days = minutes / 1_440;
-    return days === 1 ? "1 zi" : `${days} zile`;
-  }
-  if (minutes % 60 === 0) {
-    const hours = minutes / 60;
-    return hours === 1 ? "1 oră" : `${hours} ore`;
-  }
-  return minutes === 1 ? "1 minut" : `${minutes} minute`;
+  if (minutes % 1_440 === 0) return countLabel(minutes / 1_440, "zi", "zile");
+  if (minutes % 60 === 0) return countLabel(minutes / 60, "oră", "ore");
+  return countLabel(minutes, "minut", "minute");
 }
 
 function partsOf(ticks: ActionTicks, muteMinutes: number, kind: RuleKind, only?: readonly ActionKey[]): string[] {
@@ -409,7 +414,8 @@ export const MODULE_BY_ID: Record<ModuleId, ModuleDef> = Object.fromEntries(MODU
 /** The overview route of the group; it opens the first module. */
 export const PROTECTION_ROUTE = "/protectie";
 
-function cleanPath(path: string): string {
+/** A route without its query, hash and trailing slash. */
+export function cleanPath(path: string): string {
   return path.split("?")[0]!.split("#")[0]!.replace(/\/+$/, "") || "/";
 }
 
@@ -428,9 +434,34 @@ export function isProtectionRoute(path: string): boolean {
 /** The page of the AI judge. */
 export const JUDGE_ROUTE = "/ai";
 
+/** The overview route of the sanctions group and the routes of its four modules (one page, one draft). */
+export const SANCTIONS_ROUTE = "/sanctiuni";
+export const SANCTIONS_MODULE_ROUTES = {
+  escalation: "/sanctiuni/escaladare",
+  commands: "/sanctiuni/comenzi",
+  policies: "/sanctiuni/roluri-canale",
+  schedule: "/sanctiuni/program",
+} as const;
+
+/** True for "/sanctiuni" and the routes of its modules. */
+export function isSanctionsRoute(path: string): boolean {
+  const clean = cleanPath(path);
+  return clean === SANCTIONS_ROUTE || Object.values(SANCTIONS_MODULE_ROUTES).some((route) => route === clean);
+}
+
+/**
+ * The group a route belongs to, for pages whose modules share one draft: moving
+ * between the modules of a group must not reload the page. Null elsewhere.
+ */
+export function panelGroupRoute(path: string): string | null {
+  if (isProtectionRoute(path)) return PROTECTION_ROUTE;
+  if (isSanctionsRoute(path)) return SANCTIONS_ROUTE;
+  return null;
+}
+
 /** Pages built with the panel, which use the whole width of the console column. */
 export function isWidePanelRoute(path: string): boolean {
-  return isProtectionRoute(path) || cleanPath(path) === JUDGE_ROUTE;
+  return panelGroupRoute(path) !== null || cleanPath(path) === JUDGE_ROUTE;
 }
 
 /** What a module header needs: the module's key in the configuration and its texts. */

@@ -16,7 +16,7 @@ import {
 } from "../../components/ui/dialog";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "../../components/ui/sheet";
 import { useActiveGuild, useModerationConfig, useSession } from "../../hooks/use-moderation-api";
-import { isProtectionRoute, isWidePanelRoute, PROTECTION_ROUTE } from "./panel/model";
+import { isProtectionRoute, isSanctionsRoute, isWidePanelRoute, panelGroupRoute, PROTECTION_ROUTE, SANCTIONS_ROUTE } from "./panel/model";
 
 type NavigationItem = { id: string; label: string; description: string; href: string; icon: typeof Home; tint: string; keywords?: string };
 
@@ -24,7 +24,7 @@ const primaryItems: NavigationItem[] = [
   { id: "overview", label: "Privire generală", description: "Centrul de comandă al serverului", href: "/", icon: Home, tint: "ember", keywords: "overview dashboard" },
   { id: "protection", label: "Protecție", description: "AutoMod, spam, raid și comportament", href: "/protectie", icon: Shield, tint: "blue", keywords: "automod anti spam flood raid" },
   { id: "judge", label: "Judecător AI", description: "Moderare AI și criteriile de analiză", href: "/ai", icon: Sparkles, tint: "violet", keywords: "ai judecator" },
-  { id: "sanctions", label: "Sancțiuni", description: "Politici și intervenții manuale", href: "/politici", icon: Gavel, tint: "gold", keywords: "sanctiuni comenzi staff" },
+  { id: "sanctions", label: "Sancțiuni", description: "Escaladare, comenzi, roluri și program", href: "/sanctiuni", icon: Gavel, tint: "gold", keywords: "sanctiuni comenzi staff escaladare politici roluri canale program" },
   { id: "cases", label: "Cazuri și jurnale", description: "Dosare și jurnal de audit", href: "/cazuri", icon: History, tint: "blue", keywords: "cazuri logs audit" },
   { id: "verification", label: "Verificare și tichete", description: "Membri noi și fluxuri de suport", href: "/verificare", icon: Ticket, tint: "green", keywords: "verification tickets" },
   { id: "rpg", label: "RPG", description: "Ranguri și progresul comunității", href: "/ranguri-activitate", icon: Trophy, tint: "gold", keywords: "ranguri activitate joc" },
@@ -43,15 +43,18 @@ const allItems: Array<{ heading: string; items: NavigationItem[] }> = [
     { id: "suspicious", label: "Comportament suspect", description: "Alerte pentru activitate neobișnuită", href: "/comportament-suspect", icon: Search, tint: "blue" },
   ] },
   { heading: "Intervenții și evidențe", items: [
-    primaryItems[3]!, primaryItems[4]!, { id: "audit", label: "Jurnal de audit", description: "Evenimente și modificări", href: "/audit", icon: History, tint: "gold" },
+    primaryItems[3]!,
+    { id: "escalation", label: "Escaladare", description: "Pedeapsa crește la abateri repetate", href: "/sanctiuni/escaladare", icon: Gavel, tint: "gold", keywords: "trepte abateri" },
+    { id: "staff-commands", label: "Comenzi staff", description: "Ce comenzi sunt pornite și cine le folosește", href: "/sanctiuni/comenzi", icon: Shield, tint: "gold", keywords: "unelte warn mute kick ban purge" },
+    { id: "policies", label: "Roluri și canale", description: "Roluri protejate, canale ignorate sau stricte", href: "/sanctiuni/roluri-canale", icon: BookOpen, tint: "gold", keywords: "politici protejate ignorate slowmode" },
+    { id: "schedule", label: "Program", description: "Severitate după oră, weekend și eveniment", href: "/sanctiuni/program", icon: SlidersHorizontal, tint: "gold", keywords: "profile timp noapte zi weekend fus orar" },
+    primaryItems[4]!, { id: "audit", label: "Jurnal de audit", description: "Evenimente și modificări", href: "/audit", icon: History, tint: "gold" },
   ] },
   { heading: "Configurare", items: [
-    primaryItems[8]!, { id: "policies", label: "Politici", description: "Roluri și canale protejate", href: "/politici", icon: BookOpen, tint: "gold" },
+    primaryItems[8]!,
     { id: "config-messages", label: "Mesaje de moderare", description: "Șabloane și răspunsuri", href: "/config/mesaje", icon: MessageCircle, tint: "gold" },
-    { id: "config-advanced", label: "Setări avansate", description: "Configurare avansată", href: "/config/avansat", icon: SlidersHorizontal, tint: "gold" },
-    { id: "config-tools", label: "Unelte staff", description: "Permisiuni pentru unelte", href: "/config/unelte", icon: Shield, tint: "gold" },
+    { id: "config-advanced", label: "Setări avansate", description: "Permisiunile staff-ului", href: "/config/avansat", icon: SlidersHorizontal, tint: "gold" },
     { id: "config-cases", label: "Cazuri și audit", description: "Păstrare și jurnale", href: "/config/cazuri-audit", icon: History, tint: "gold" },
-    { id: "config-escalation", label: "Escaladare", description: "Sancțiuni progresive", href: "/config/escaladare", icon: Gavel, tint: "gold" },
     { id: "config-embeds", label: "Embed-uri", description: "Aspectul mesajelor", href: "/config/embeduri", icon: Sparkles, tint: "gold" },
     { id: "server-setup", label: "Pornire server", description: "Ghid de configurare", href: "/pornire-server", icon: BookOpen, tint: "gold" },
   ] },
@@ -102,7 +105,7 @@ const sectionLabels: Record<string, string> = {
   antiFlood: "Anti-Flood",
   suspiciousBehavior: "Comportament suspect",
   ai: "Moderare AI",
-  manualTools: "Unelte staff",
+  manualTools: "Comenzi staff",
   cases: "Cazuri",
   audit: "Audit",
   escalation: "Escaladare",
@@ -226,9 +229,10 @@ function routeIsActive(href: string, location: string) {
   return !query || new URLSearchParams(location.split("?")[1] || "").get("tab") === new URLSearchParams(query).get("tab");
 }
 
-/** A dock destination stays lit on its own pages: the five protection modules belong to "Protecție". */
+/** A dock destination stays lit on its own pages: the protection modules belong to "Protecție", the sanctions modules to "Sancțiuni". */
 function primaryIsActive(href: string, location: string) {
   if (href === PROTECTION_ROUTE && isProtectionRoute(location)) return true;
+  if (href === SANCTIONS_ROUTE && isSanctionsRoute(location)) return true;
   return routeIsActive(href, location);
 }
 
@@ -470,7 +474,7 @@ export function ModerationChrome({ children }: { children: ReactNode }) {
 
       <main className="oracle-main" id="main">
         {/* Moving between protection modules keeps the same page (and its unsaved changes). */}
-        <div className="oracle-page-view mod-page" key={`${guildId}:${isProtectionRoute(navLocation) ? PROTECTION_ROUTE : navLocation}`}>
+        <div className="oracle-page-view mod-page" key={`${guildId}:${panelGroupRoute(navLocation) ?? navLocation}`}>
           <div className={`${isWidePanelRoute(navLocation) ? "max-w-none" : "max-w-5xl"} mx-auto w-full`}>{children}</div>
         </div>
         <footer className="oracle-footer"><span>CONSOLĂ DE MODERARE</span><span>{activePrimary.label} · {activeGuild?.name || "Server neselectat"}</span></footer>

@@ -1,7 +1,7 @@
 /**
  * Ciorna unei pagini din panou: încarcă setările serverului ales, ține
  * modificările nesalvate, trimite la salvare doar secțiunile schimbate și
- * creează canalele de jurnal. Folosită de pagina Protecție și de Judecătorul AI.
+ * creează canalele de jurnal. Folosită de paginile Protecție, Judecătorul AI și Sancțiuni.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useActiveGuild, useModerationConfig, useModerationMetadata } from "../../../hooks/use-moderation-api";
@@ -66,6 +66,12 @@ export function useConfigDraft({ sections, validate }: {
     if (latest.current) editDraft(setAt(latest.current, path, change(getAt(latest.current, path))));
   }, [editDraft]);
 
+  // @everyone is every member: protecting, ignoring or granting commands to it
+  // would cover the whole server, so the panel never offers it as a role.
+  const roles = useMemo(
+    () => metadata?.roles?.filter((role) => role.id !== metadata.guild?.id && role.name !== "@everyone"),
+    [metadata?.roles, metadata?.guild?.id],
+  );
   const capabilities = metadata?.botCapabilities;
   const createDisabled = capabilities?.online === false || capabilities?.canManageChannels === false || capabilities?.canManageRoles === false;
   const handleCreateChannel = useCallback(async (destination: string, path: Path) => {
@@ -89,13 +95,13 @@ export function useConfigDraft({ sections, validate }: {
     set,
     update,
     channels: metadata?.channels,
-    roles: metadata?.roles,
+    roles,
     createChannel: (destination, path) => { if (!creating) void handleCreateChannel(destination, path); },
     creating,
     createDisabled,
     isOpen: (key) => openCards[key] === true,
     toggleOpen: (key) => setOpenCards((open) => ({ ...open, [key]: !open[key] })),
-  } : null, [current, set, update, metadata?.channels, metadata?.roles, creating, createDisabled, handleCreateChannel, openCards]);
+  } : null, [current, set, update, metadata?.channels, roles, creating, createDisabled, handleCreateChannel, openCards]);
 
   const changed = current && data ? changedSectionsOf(sections, data, current) : [];
 
@@ -145,6 +151,8 @@ export function useConfigDraft({ sections, validate }: {
     refetch,
     api,
     config: current,
+    /** What the server has saved, to compare the draft with. */
+    saved: current ? data : null,
     changed,
     saving,
     save,

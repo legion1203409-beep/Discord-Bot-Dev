@@ -7,7 +7,9 @@ import "./panel.css";
 import React, { useId } from "react";
 import { usePanel, PanelContext } from "./context";
 import { CountSummary, PageHead, PanelState, SaveBar, useConfigDraft } from "./draft";
-import { ActionTicks, Fields, Fld, Ico, IdPicker, Note, NoteRow, SectionCard, Seg, Switch, SwitchField, cx } from "./fields";
+import {
+  ActionTicks, Fields, Fld, Ico, IdPicker, Note, NoteRow, SectionCard, Seg, Switch, SwitchField, cx, messageChannelOptions, roleOptions,
+} from "./fields";
 import {
   AI_CATEGORIES, AI_CATEGORY_SENSITIVITIES, AI_SECTIONS, AI_SENSITIVITIES, AI_TONES, aiCategoryHasOwnActions, aiCategoryRule, aiCategorySummary,
   aiDraftError, aiEnabledCategoryCount, aiOnlyRecords, setAiCategoryOwn, setAiCategorySensitivity, setAiCategoryTicks, type AiCategoryKey,
@@ -22,11 +24,6 @@ const JUDGE_MODULE: ModuleHeadDef = {
   description: "Oracolul citește mesajele, în orice limbă, și judecă ce încalcă regulile, pe categorii pe care le pornești separat.",
   switchLabel: "Activează AI",
 };
-
-const MESSAGE_CHANNEL_TYPES = new Set([
-  "0", "5", "10", "11", "12", "15", "16",
-  "GuildText", "GuildAnnouncement", "AnnouncementThread", "PublicThread", "PrivateThread", "GuildForum", "GuildMedia",
-]);
 
 function AiCategoryCard({ categoryKey, label, hint }: { categoryKey: AiCategoryKey; label: string; hint: string }) {
   const { config, set, update, isOpen, toggleOpen } = usePanel();
@@ -88,8 +85,8 @@ function JudgeModule() {
   const { config, set, update, channels, roles } = usePanel();
   const ai = config.ai ?? {};
   const enabledCount = aiEnabledCategoryCount(ai);
-  const messageChannels = channels?.filter((channel) => MESSAGE_CHANNEL_TYPES.has(String(channel.type))).sort((a, b) => a.name.localeCompare(b.name));
-  const roleOptions = roles?.slice().sort((a, b) => (b.position ?? 0) - (a.position ?? 0) || a.name.localeCompare(b.name));
+  const messageChannels = messageChannelOptions(channels);
+  const serverRoles = roleOptions(roles);
   return (
     <ModuleView module={JUDGE_MODULE} icon="gavel">
       <ModuleNotes>
@@ -141,7 +138,7 @@ function JudgeModule() {
             onChange={(next) => set(["ai", "excludedChannelIds"], next)}
           />
           <IdPicker
-            label="Roluri exceptate de la AI" kind="role" testId="ai-excluded-roles" options={roleOptions}
+            label="Roluri exceptate de la AI" kind="role" testId="ai-excluded-roles" options={serverRoles}
             hint="Oracolul nu judecă mesajele membrilor cu aceste roluri. Alte protecții rămân active."
             selected={Array.isArray(ai.excludedRoleIds) ? ai.excludedRoleIds : []}
             onChange={(next) => set(["ai", "excludedRoleIds"], next)}

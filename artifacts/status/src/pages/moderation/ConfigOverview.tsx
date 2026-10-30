@@ -18,10 +18,10 @@ export function ConfigOverviewPage() {
     { key: "antiFlood", title: "Anti-Flood", description: "Mesaje lungi și șiruri excesive.", href: "/anti-flood", enabled: Boolean(data.antiFlood?.enabled), dependent: true, icon: Activity },
     { key: "suspiciousBehavior", title: "Comportament suspect", description: "Alerte pentru activitate neobișnuită.", href: "/comportament-suspect", enabled: Boolean(data.suspiciousBehavior?.enabled), dependent: true, icon: Sparkles },
     { key: "ai", title: "Moderare AI", description: "Analiză inteligentă separată de AutoMod.", href: "/ai", enabled: Boolean(data.ai?.enabled), dependent: true, icon: Sparkles },
-    { key: "manualTools", title: "Unelte staff", description: "Comenzi și permisiuni manuale.", href: "/config/unelte", enabled: Boolean(data.manualTools?.enabled), dependent: false, icon: Wrench },
+    { key: "manualTools", title: "Comenzi staff", description: "Comenzile pornite și cine le poate folosi.", href: "/sanctiuni/comenzi", enabled: Boolean(data.manualTools?.enabled), dependent: false, icon: Wrench },
     { key: "cases", title: "Cazuri", description: "Dosare și drepturi pentru staff.", href: "/config/cazuri-audit", enabled: Boolean(data.cases?.enabled), dependent: false, icon: FileText },
     { key: "audit", title: "Audit", description: "Jurnalul acțiunilor de moderare.", href: "/config/cazuri-audit", enabled: Boolean(data.audit?.enabled), dependent: false, icon: FileText },
-    { key: "escalation", title: "Escaladare", description: "Sancțiuni progresive.", href: "/config/escaladare", enabled: Boolean(data.escalation?.enabled), dependent: false, icon: Gavel },
+    { key: "escalation", title: "Escaladare", description: "Sancțiuni progresive.", href: "/sanctiuni/escaladare", enabled: Boolean(data.escalation?.enabled), dependent: false, icon: Gavel },
     { key: "embeds", title: "Embed-uri", description: "Aspect, media și animații.", href: "/config/embeduri", enabled: Boolean(data.embeds?.enabled), dependent: false, icon: Settings },
   ];
 

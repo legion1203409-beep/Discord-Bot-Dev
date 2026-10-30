@@ -37,6 +37,17 @@ const ICON_PATHS = {
   raid: "M8.5 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 19.5v-.8A3.7 3.7 0 0 1 6.7 15h3.6a3.7 3.7 0 0 1 3.7 3.7v.8M18 20V9M15 12l3-3 3 3",
   gavel: "M13 4l7 7-3 3-7-7zM13.5 10.5l-9 9M3 21h9",
   scan: "M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16M7 12s2-3.2 5-3.2 5 3.2 5 3.2-2 3.2-5 3.2S7 12 7 12zM12 13.2a1.2 1.2 0 1 0 0-2.4 1.2 1.2 0 0 0 0 2.4z",
+  scale: "M12 4v16M8 20h8M4.5 7h15M4.5 7L2 13a2.5 2 0 0 0 5 0zM19.5 7L17 13a2.5 2 0 0 0 5 0z",
+  stairs: "M3.5 20.5H8V16h4.5v-4.5H17V7h3.5M15.5 3.5h5v5",
+  slash: "M5.5 4h13A2.5 2.5 0 0 1 21 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-11A2.5 2.5 0 0 1 5.5 4zM14.5 8l-5 8",
+  users: "M15.5 19v-1.4a3.6 3.6 0 0 0-3.6-3.6H6.1a3.6 3.6 0 0 0-3.6 3.6V19M9 11a3.3 3.3 0 1 0 0-6.6A3.3 3.3 0 0 0 9 11zM21.5 19v-1.4a3.6 3.6 0 0 0-2.7-3.5M15.8 4.5a3.3 3.3 0 0 1 0 6.4",
+  hash: "M5 9h14M5 15h14M10 4L8 20M16 4l-2 16",
+  clock: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2",
+  moon: "M19.5 14.6A8 8 0 1 1 9.4 4.5a6.5 6.5 0 0 0 10.1 10.1z",
+  sun: "M12 16.5a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9zM12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4",
+  calendar: "M5 6h14a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1zM4 10h16M8.5 3.5v4M15.5 3.5v4",
+  star: "M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z",
+  key: "M14.5 9.5a4 4 0 1 1-8 0 4 4 0 0 1 8 0zM13.4 12.4l7.1 7.1M17.5 16.5l2-2M15.5 14.5l1.5-1.5",
 } as const;
 export type IconName = keyof typeof ICON_PATHS;
 
@@ -130,12 +141,16 @@ export function SwitchField({ label, hint, checked, onChange, testId, disabled }
 /* Număr întreg cu pași                                                 */
 /* ------------------------------------------------------------------ */
 
-function NumberBox({ id, value, onChange, min, max, invalid, placeholder, label, testId }: {
+export function NumberBox({ id, value, onChange, min, max, invalid, placeholder, start, label, testId }: {
   id: string; value: number | undefined; onChange: (next: number | undefined) => void; min: number; max: number;
-  invalid: boolean; placeholder?: string; label?: string; testId?: string;
+  invalid: boolean; placeholder?: string;
+  /** Where the − and + buttons start from while the box is empty (else the placeholder, else the minimum). */
+  start?: number;
+  label?: string; testId?: string;
 }) {
   const bump = (delta: number) => {
-    const base = typeof value === "number" && Number.isFinite(value) ? Math.round(value) : placeholder !== undefined ? Number(placeholder) : min;
+    const fromPlaceholder = placeholder !== undefined && Number.isFinite(Number(placeholder)) ? Number(placeholder) : undefined;
+    const base = typeof value === "number" && Number.isFinite(value) ? Math.round(value) : start ?? fromPlaceholder ?? min;
     onChange(Math.min(max, Math.max(min, base + delta)));
   };
   return (
@@ -320,10 +335,39 @@ export type ChannelOption = { id: string; name: string; type: number | string; p
 export type RoleOption = { id: string; name: string; managed?: boolean; position?: number };
 
 const TEXT_CHANNEL_TYPES: ReadonlyArray<number | string> = [0, 5, "text", "announcement", "GuildText", "GuildAnnouncement", "GuildNews"];
-const MESSAGE_CHANNEL_TYPES = new Set([
-  "0", "5", "10", "11", "12", "15", "16",
-  "GuildText", "GuildAnnouncement", "AnnouncementThread", "PublicThread", "PrivateThread", "GuildForum", "GuildMedia",
+/**
+ * Channels whose messages the bot reads and that the server accepts in its
+ * channel lists: text, announcements and threads. Forums and media channels
+ * hold no messages of their own (each post is a thread), and the server refuses
+ * them, so they are not offered.
+ */
+const MESSAGE_CHANNEL_TYPES = new Map<string, string | undefined>([
+  ["0", undefined], ["GuildText", undefined],
+  ["5", "anunțuri"], ["GuildAnnouncement", "anunțuri"], ["GuildNews", "anunțuri"],
+  ["10", "fir"], ["11", "fir"], ["12", "fir"], ["AnnouncementThread", "fir"], ["PublicThread", "fir"], ["PrivateThread", "fir"],
 ]);
+const PLAIN_TEXT_CHANNEL_TYPES = new Set(["0", "GuildText"]);
+
+/** One entry of a list to pick from; the note is shown small next to the name. */
+export type PickerOption = { id: string; name: string; note?: string };
+
+/** The channels a list of channels can hold, by name; only plain text channels with `textOnly`. */
+export function messageChannelOptions(channels: ChannelOption[] | undefined, { textOnly = false }: { textOnly?: boolean } = {}): PickerOption[] | undefined {
+  if (!channels) return undefined;
+  return channels
+    .filter((channel) => (textOnly ? PLAIN_TEXT_CHANNEL_TYPES : MESSAGE_CHANNEL_TYPES).has(String(channel.type)))
+    .map((channel) => ({ id: channel.id, name: channel.name, note: textOnly ? undefined : MESSAGE_CHANNEL_TYPES.get(String(channel.type)) }))
+    .sort((a, b) => a.name.localeCompare(b.name, "ro"));
+}
+
+/** The server's roles, highest first, as Discord shows them. */
+export function roleOptions(roles: RoleOption[] | undefined): PickerOption[] | undefined {
+  if (!roles) return undefined;
+  return roles
+    .slice()
+    .sort((a, b) => (b.position ?? 0) - (a.position ?? 0) || a.name.localeCompare(b.name, "ro"))
+    .map((role) => ({ id: role.id, name: role.name, note: role.managed ? "integrare" : undefined }));
+}
 
 export function ChannelField({ label, hint, value, channels, onChange, onCreate, creating, createDisabled }: {
   label: string; hint?: string; value: string | null | undefined; channels: ChannelOption[] | undefined; onChange: (next: string | null) => void;
@@ -364,7 +408,7 @@ export function ChannelField({ label, hint, value, channels, onChange, onCreate,
 
 export function ChannelScope({ channels, selected, onChange }: { channels: ChannelOption[] | undefined; selected: string[]; onChange: (next: string[]) => void }) {
   const id = useId();
-  const messageChannels = (channels ?? []).filter((channel) => MESSAGE_CHANNEL_TYPES.has(String(channel.type))).sort((a, b) => a.name.localeCompare(b.name));
+  const messageChannels = messageChannelOptions(channels) ?? [];
   const chosen = new Set(selected);
   const everywhere = chosen.size === 0;
   const missing = selected.filter((channelId) => !messageChannels.some((channel) => channel.id === channelId));
@@ -383,9 +427,9 @@ export function ChannelScope({ channels, selected, onChange }: { channels: Chann
         {messageChannels.length > 0 ? (
           <div className="pn-multi pn-scroll">
             {messageChannels.map((channel) => (
-              <Pill key={channel.id} checked={chosen.has(channel.id)} testId={`link-channel-${channel.id}`}
+              <Pill key={channel.id} checked={chosen.has(channel.id)} testId={`link-channel-${channel.id}`} label={`#${channel.name}`}
                 onChange={(next) => onChange(next ? [...new Set([...selected, channel.id])] : selected.filter((item) => item !== channel.id))}>
-                #{channel.name}
+                #{channel.name}{channel.note ? <small>{channel.note}</small> : null}
               </Pill>
             ))}
           </div>
@@ -404,9 +448,11 @@ export function ChannelScope({ channels, selected, onChange }: { channels: Chann
 /* Alegerea unor canale sau roluri (cu ID-uri scrise de mână)           */
 /* ------------------------------------------------------------------ */
 
-export function IdPicker({ label, hint, kind, options, selected, onChange, max = 100, testId }: {
-  label: string; hint?: string; kind: "channel" | "role"; options: Array<{ id: string; name: string }> | undefined;
+export function IdPicker({ label, hint, kind, options, selected, onChange, max = 100, testId, children }: {
+  label: string; hint?: React.ReactNode; kind: "channel" | "role"; options: PickerOption[] | undefined;
   selected: string[]; onChange: (next: string[]) => void; max?: number; testId: string;
+  /** Notes shown under the list (what the current choice means). */
+  children?: React.ReactNode;
 }) {
   const id = useId();
   const [manual, setManual] = useState("");
@@ -436,7 +482,9 @@ export function IdPicker({ label, hint, kind, options, selected, onChange, max =
         {options && options.length > 0 ? (
           <div className="pn-multi pn-scroll">
             {options.map((option) => (
-              <Pill key={option.id} checked={chosen.has(option.id)} onChange={(next) => toggle(option.id, next)}>{prefix}{option.name}</Pill>
+              <Pill key={option.id} checked={chosen.has(option.id)} label={`${prefix}${option.name}`} onChange={(next) => toggle(option.id, next)}>
+                {prefix}{option.name}{option.note ? <small>{option.note}</small> : null}
+              </Pill>
             ))}
           </div>
         ) : (
@@ -461,6 +509,7 @@ export function IdPicker({ label, hint, kind, options, selected, onChange, max =
           <span className="pn-unit">{selected.length}/{max}</span>
         </div>
         {problem ? <p className="pn-err" role="alert">{problem}</p> : null}
+        {children}
       </div>
     </Fld>
   );

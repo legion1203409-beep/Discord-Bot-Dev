@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { AlertTriangle, Loader2, Save, Settings } from "lucide-react";
+import { Link } from "wouter";
 import { ConfigEditor } from "./ConfigEditor";
 import { useModerationConfig, useActiveGuild, useModerationMetadata } from "../../hooks/use-moderation-api";
 import { Button } from "../../components/ui/button";
@@ -188,7 +189,10 @@ export function AdvancedSettingsPage() {
         <h1 className="mb-2 flex items-center gap-3 text-3xl font-bold tracking-tight mod-heading">
           <Settings className="h-8 w-8 text-primary" /> Setări avansate
         </h1>
-        <p className="text-muted-foreground">Configurează permisiunile și profilurile de timp. Setările fiecărui modul și politicile de roluri/canale au pagini dedicate.</p>
+        <p className="text-muted-foreground">
+          Configurează permisiunile staff-ului. Fiecare modul are pagina lui; escaladarea, comenzile, rolurile și canalele și programul sunt la{" "}
+          <Link href="/sanctiuni" className="text-primary underline underline-offset-4">Sancțiuni</Link>.
+        </p>
       </header>
 
       {capabilities && (!capabilities.messageContent || !capabilities.guildMembers) && (
@@ -270,7 +274,7 @@ export function AdvancedSettingsPage() {
         <ConfigEditor
           value={localData}
           onChange={setLocalData}
-          sections={["time", "permissions"]}
+          sections={["permissions"]}
           discordRoles={metadata?.roles ?? []}
           discordChannels={metadata?.channels}
           botCapabilities={capabilities ?? undefined}
