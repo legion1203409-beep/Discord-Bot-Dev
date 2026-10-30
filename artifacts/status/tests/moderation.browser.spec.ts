@@ -314,15 +314,16 @@ test.describe("authenticated moderation console", () => {
   });
 
   test("keeps search results and bot tabs synchronized with query-only navigation", async ({ page }) => {
+    // The old roles tab now opens the channels and access of the bot control.
     await page.goto("/moderare/bot?tab=roles");
     await chooseFirstGuild(page);
-    await expect(page).toHaveURL(/tab=roles/);
+    await expect(page).toHaveURL("/moderare/control/canale");
 
     await page.keyboard.press("Control+k");
     const searchInput = page.getByTestId("input-settings-search");
     await expect(searchInput).toBeVisible();
-    await searchInput.fill("roluri");
-    await expect(page.getByTestId("search-result-roles")).toHaveAttribute("aria-selected", "true");
+    await searchInput.fill("canale si acces");
+    await expect(page.getByTestId("search-result-provisioning")).toHaveAttribute("aria-selected", "true");
 
     await searchInput.fill("tichete");
     const ticketsResult = page.getByTestId("search-result-tickets");
@@ -336,7 +337,7 @@ test.describe("authenticated moderation console", () => {
     const statisticsResult = page.getByTestId("search-result-bot-statistics");
     await expect(statisticsResult).toHaveAttribute("aria-selected", "false");
     await statisticsResult.click();
-    await expect(page).toHaveURL(/tab=statistics/);
+    await expect(page).toHaveURL("/moderare/control/invitatii");
 
     await page.keyboard.press("Control+k");
     await expect(searchInput).toBeVisible();
@@ -966,7 +967,7 @@ test.describe("authenticated moderation console", () => {
         },
         allianceRecruitmentText: "",
         dailyStats: {
-          channelId: "", title: "Statistici {guild}", description: "Raport {date}", color: "#5865F2", footer: "",
+          channelId: "", title: "Statistici {guild}", description: "Raport {date}", color: "#5865F2", footer: "Oracolul",
           activityTitle: "Activitate · ultimele 7 zile", channelsTitle: "Top 5 canale active",
           emptyChannelsText: "Nu există canale active.", imageUrl: "", thumbnailUrl: "",
           metricLabels: { messages: "Mesaje", uniqueUsers: "Utilizatori unici", boosts: "Boost-uri", joins: "Intrări", leaves: "Ieșiri", peakVoice: "Vârf vocal" },
@@ -991,21 +992,18 @@ test.describe("authenticated moderation console", () => {
       } });
     });
     await page.goto("/moderare/bot?tab=roles");
-    await expect(page.getByTestId("tab-roles")).toHaveAttribute("data-state", "active");
-    await page.getByTestId("tab-roles").click();
-    await expect(page).toHaveURL("/moderare/bot?tab=roles");
-    await expect(page.getByTestId("tab-roles")).toHaveAttribute("data-state", "active");
+    await expect(page).toHaveURL("/moderare/control/canale");
+    await expect(page.getByTestId("control-page")).toBeVisible();
 
     await page.goto("/moderare/canale");
     await expect(page.getByRole("heading", { name: "Canale Discord", exact: true })).toBeVisible();
     await expect(page.getByRole("tab")).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Identifică destinațiile pe Discord" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Creează ce lipsește" })).toBeDisabled();
     await page.getByLabel("Cufere ID").fill("555555555");
     const channelSave = page.waitForResponse((response) =>
       response.url().includes("/api/moderation/guilds/111111111/bot-control")
       && response.request().method() === "PUT");
-    await page.getByRole("button", { name: "Salvează setările canalelor" }).click();
+    await page.getByRole("button", { name: "Salvează", exact: true }).click();
     await expect((await channelSave).ok()).toBeTruthy();
     expect(savedMainChannel).toBe("555555555");
 
@@ -1013,25 +1011,20 @@ test.describe("authenticated moderation console", () => {
     await expect(page).toHaveURL("/moderare/canale");
     await expect(page.getByRole("heading", { name: "Canale Discord", exact: true })).toBeVisible();
 
-    await page.goto("/moderare/bot?tab=roles");
-    await expect(page.getByTestId("tab-roles")).toHaveAttribute("data-state", "active");
-    await page.getByTestId("tab-statistics").click();
-    await expect(page.getByText("Jurnal pentru fiecare intrare")).toBeVisible();
-    await expect(page.getByText("PREVIZUALIZARE EMBED")).toBeVisible();
-    await expect(page.getByText("Activitate · ultimele 7 zile").last()).toBeVisible();
-    await expect(page.getByText("Top 5 canale active").last()).toBeVisible();
-    await page.getByRole("switch", { name: "Activează colectarea statisticilor invitațiilor" }).click();
-    const inviteLogChannel = page.locator("label").filter({ hasText: "Canal jurnal invitații" }).getByRole("combobox");
-    await inviteLogChannel.click();
-    await page.getByRole("option", { name: "#audit" }).click();
-    await page.getByRole("combobox", { name: "Canal raport zilnic" }).click();
-    await expect(page.getByRole("option", { name: "Nu publica automat" })).toBeVisible();
-    await expect(page.getByRole("option", { name: "Folosește canalul principal" })).toHaveCount(0);
-    await page.getByRole("option", { name: "#audit" }).click();
+    // The old statistics tab now opens the invitations of the bot control.
+    await page.goto("/moderare/bot?tab=statistics");
+    await expect(page).toHaveURL("/moderare/control/invitatii");
+    await expect(page.getByTestId("control-invites-log")).toBeVisible();
+    await page.getByTestId("control-invites-switch").click();
+    await page.getByRole("combobox", { name: "Canalul jurnalului de intrări" }).selectOption("444444444");
+    await page.getByTestId("nav-control-daily").click();
+    await expect(page.getByTestId("control-daily-preview")).toContainText("Activitate · ultimele 7 zile");
+    await expect(page.getByTestId("control-daily-preview")).toContainText("Top 5 canale active");
+    await page.getByRole("combobox", { name: "Canalul raportului zilnic" }).selectOption("444444444");
     const configSave = page.waitForResponse((response) =>
       response.url().includes("/api/moderation/guilds/111111111/bot-control")
       && response.request().method() === "PUT");
-    await page.getByRole("button", { name: "Salvează controlul botului" }).click();
+    await page.getByTestId("button-save-control").click();
     await expect((await configSave).ok()).toBeTruthy();
     expect(savedInviteLogChannel).toBe("444444444");
     expect(savedDailyStatsChannel).toBe("444444444");
@@ -1676,9 +1669,9 @@ test.describe("authenticated moderation console", () => {
 
     await page.goto("/moderare");
     await chooseFirstGuild(page);
-    await page.goto("/moderare/bot?tab=statistics");
+    await page.goto("/moderare/control/raport");
     await expect(page.getByRole("button", { name: /Mesajul raportului zilnic/ })).toHaveCount(0);
-    await expect(page.getByRole("combobox", { name: "Canal raport zilnic" })).toBeVisible();
+    await expect(page.getByRole("combobox", { name: "Canalul raportului zilnic" })).toBeVisible();
     await page.goto("/moderare/config/mesaje");
     await page.getByRole("button", { name: /Mesajul raportului zilnic/ }).click();
     await expect(page.getByRole("radio", { name: /Mesaj personalizat/ })).toBeChecked();
@@ -2899,6 +2892,137 @@ test.describe("bot settings page", () => {
     expect(body.gameplayConfig.memberMessages).toEqual({ welcomeEnabled: true, leaveEnabled: false, channelId: "777777777", style: "medieval", customStyle: "" });
     expect(body).not.toHaveProperty("oracle");
     expect(configPuts).toEqual([]);
+  });
+});
+
+test.describe("bot control page", () => {
+  const controlConfig = () => ({
+    ...verificationBotControlConfig(false, ""),
+    channels: { main: "777777777" },
+    gameplayConfig: {
+      paused: false,
+      messages: { gamePaused: "Jocul e oprit.", oraclePaused: "Oracolul e oprit.", gamePausedImageUrl: "", gamePausedThumbnailUrl: "", oraclePausedImageUrl: "", oraclePausedThumbnailUrl: "" },
+      memberMessages: { welcomeEnabled: false, leaveEnabled: false, channelId: "", style: "normal", customStyle: "" },
+    },
+    dailyStats: {
+      channelId: "", title: "Statistici {guild}", description: "Raport {date}", color: "#5865F2", footer: "Oracolul",
+      activityTitle: "Activitate", channelsTitle: "Canale", emptyChannelsText: "Nimic azi.", imageUrl: "", thumbnailUrl: "",
+      metricLabels: { messages: "Mesaje", uniqueUsers: "Unici", boosts: "Boost", joins: "Intrări", leaves: "Ieșiri", peakVoice: "Voce" },
+    },
+    inviteTracking: {
+      enabled: false, joinLogChannelId: "", reportEnabled: false, reportChannelId: "", reportFrequency: "daily", reportTime: "09:00", reportWeekday: 1,
+      reportTimeZone: "Europe/Bucharest", reportTopLimit: 5,
+      recruitment: {
+        enabled: false, inviteChannelId: "", maxUses: 1, maxAgeDays: 7, dailyInviteLimit: 3, verificationHours: 24, rewardPoints: 10,
+        milestones: [{ requiredInvites: 1, roleId: "" }, { requiredInvites: 5, roleId: "" }, { requiredInvites: 10, roleId: "" }],
+      },
+    },
+  });
+  async function openControl(page: import("@playwright/test").Page, path = "/moderare/control") {
+    const putBodies = await installPartialBotControlFixture(page, new Map([
+      [guilds[0].id, controlConfig() as any], [guilds[1].id, controlConfig() as any],
+    ]));
+    const provisions: any[] = [];
+    await page.route("**/api/moderation/guilds/*/invite-stats**", async (route) => {
+      await route.fulfill({ json: { range: "7", startDay: "2026-10-23", endDay: "2026-10-29", totals: { attributedJoins: 4, unknownJoins: 1 }, rows: [] } });
+    });
+    await page.route("**/api/moderation/guilds/*/bot-control/provision-channels", async (route) => {
+      const body = JSON.parse(route.request().postData() || "{}");
+      provisions.push(body);
+      await route.fulfill({ json: {
+        ...controlConfig(), provisioningPermissions: body.permissions, discordLive: true,
+        provisioning: { created: [{ key: "audit.channelId", id: "1", name: "mod-audit", type: "text" }], reused: [], verificationPanel: "not_requested" },
+      } });
+    });
+    await page.route("**/api/moderation/guilds/*/metadata", async (route) => {
+      const guildId = route.request().url().match(/guilds\/(\d+)\/metadata/)?.[1] ?? guilds[0].id;
+      await route.fulfill({ json: {
+        guild: { id: guildId, name: guilds.find((guild) => guild.id === guildId)?.name ?? guilds[0].name, ownerId: "999999999" },
+        roles: [
+          { id: guildId, name: "@everyone", position: 0, managed: false },
+          { id: "444444444", name: "Verified", position: 2, managed: false },
+          { id: "666666666", name: "Moderator", position: 8, managed: false },
+        ],
+        channels: [{ id: "777777777", name: "cufere", type: 0 }, { id: "444444444", name: "invitatii", type: 0 }],
+        emojis: [],
+        botCapabilities: { online: true, messageContent: true, guildMembers: true, canManageGuild: true, canManageChannels: true, canManageRoles: true, canBanMembers: false },
+      } });
+    });
+    await page.goto(path);
+    await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible({ timeout: 15_000 });
+    await page.getByRole("button", { name: guilds[0].name }).click();
+    await expect(page.getByTestId("control-page")).toBeVisible();
+    return { putBodies, provisions };
+  }
+
+  test("tracks invitations with a weekly report and saves the daily report's channel", async ({ page }) => {
+    const { putBodies } = await openControl(page);
+    await expect(page.getByRole("heading", { name: "Invitații", exact: true })).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Modulele controlului" }).getByRole("link")).toHaveCount(5);
+    await page.getByTestId("control-invites-switch").click();
+    await page.getByTestId("control-invites-report-switch").click();
+    await page.getByRole("combobox", { name: "Canalul raportului de invitații" }).selectOption("444444444");
+    await page.getByTestId("control-invites-frequency").getByRole("radio", { name: "Săptămânal" }).click();
+    await page.getByTestId("control-invites-weekday").getByRole("radio", { name: "V" }).click();
+    await expect(page.getByTestId("control-invites-report")).toContainText("în fiecare vineri la 09:00");
+    await page.getByTestId("nav-control-daily").click();
+    const daily = page.getByRole("combobox", { name: "Canalul raportului zilnic" });
+    await expect(daily.locator("option", { hasText: "cufere" })).toHaveCount(0);
+    await daily.selectOption("444444444");
+    await page.getByTestId("button-save-control").click();
+    await expect.poll(() => putBodies.get(guilds[0].id)?.length).toBe(1);
+    const body = putBodies.get(guilds[0].id)![0];
+    expect(body.inviteTracking).toMatchObject({ enabled: true, reportEnabled: true, reportChannelId: "444444444", reportFrequency: "weekly", reportWeekday: 5 });
+    expect(body.dailyStats.channelId).toBe("444444444");
+    expect(body).not.toHaveProperty("oracle");
+  });
+
+  test("asks the recruitment program for its channel and warns while verification is off", async ({ page }) => {
+    const { putBodies } = await openControl(page, "/moderare/control/recrutare");
+    await page.getByTestId("control-recruitment-switch").click();
+    await expect(page.getByTestId("control-recruitment-verification")).toBeVisible();
+    await expect(page.getByTestId("control-recruitment-problem")).toContainText("canalul");
+    await page.getByTestId("button-save-control").click();
+    expect(putBodies.size).toBe(0);
+    await page.getByRole("combobox", { name: "Canalul invitațiilor personale" }).selectOption("444444444");
+    await page.getByTestId("control-recruitment-rewardPoints").fill("40");
+    await page.getByRole("combobox", { name: "Rolul pentru pragul 3" }).selectOption("666666666");
+    await expect(page.getByTestId("control-recruitment-preview")).toContainText("40 puncte");
+    await page.getByTestId("button-save-control").click();
+    await expect.poll(() => putBodies.get(guilds[0].id)?.length).toBe(1);
+    expect(putBodies.get(guilds[0].id)![0].inviteTracking.recruitment).toMatchObject({
+      enabled: true, inviteChannelId: "444444444", rewardPoints: 40, milestones: [{ requiredInvites: 1 }, { requiredInvites: 5 }, { requiredInvites: 10, roleId: "666666666" }],
+    });
+  });
+
+  test("saves a category's access first, then creates its channels with that access", async ({ page }) => {
+    const { putBodies, provisions } = await openControl(page, "/moderare/control/canale");
+    await page.getByTestId("control-category-admin-access").click();
+    await page.getByTestId("control-access-admin").getByRole("button", { name: "Adaugă rolul Moderator" }).click();
+    await page.getByTestId("control-access-admin").getByRole("checkbox", { name: "@Moderator: scrie" }).click();
+    await page.getByTestId("control-category-admin").getByRole("checkbox", { name: "Creează Administrație" }).click();
+    await expect(page.getByTestId("control-provision")).toBeDisabled();
+    await page.getByTestId("button-save-control").click();
+    await expect.poll(() => putBodies.get(guilds[0].id)?.length).toBe(1);
+    await page.getByTestId("control-provision").click();
+    await page.getByTestId("control-provision-go").click();
+    await expect.poll(() => provisions.length).toBe(1);
+    expect(provisions[0]).toEqual({
+      categories: ["admin"],
+      permissions: { admin: {
+        roleIds: ["666666666"], readMessageHistory: true, sendMessages: true,
+        rolePermissions: { "666666666": { viewChannel: true, readMessageHistory: true, sendMessages: false } },
+      } },
+    });
+    await expect(page.getByTestId("control-provision-result")).toContainText("1 canal creat");
+  });
+
+  test("old addresses lead here and the bot's missing permissions are shown", async ({ page }) => {
+    await openControl(page, "/moderare/provisioning");
+    await expect(page).toHaveURL("/moderare/control/canale");
+    await page.getByTestId("nav-control-server").click();
+    await expect(page.getByTestId("control-checks")).toContainText("Ban Members");
+    await expect(page.getByTestId("control-checks").locator("li.is-bad")).toHaveCount(1);
   });
 });
 

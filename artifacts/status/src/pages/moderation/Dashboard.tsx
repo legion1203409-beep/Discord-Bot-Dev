@@ -150,13 +150,13 @@ export function DashboardOverview() {
       title: "Servicii Discord",
       intro: "Panouri, automatizări și instrumente comunitare.",
       links: [
-        { title: "Canale și destinații", href: "/canale", text: "Gestionare", tone: "info" as const },
-        { title: "Provisioning", href: "/provisioning", text: "Gestionare", tone: "info" as const },
-        { title: "Roluri", href: "/bot?tab=roles", text: "Gestionare", tone: "info" as const },
+        { title: "Control bot", href: "/control", text: "Invitații și canale", tone: "info" as const },
+        { title: "Invitații", href: "/control/invitatii", text: "Statistici", tone: "info" as const },
+        { title: "Raport zilnic", href: "/control/raport", text: "Statistici", tone: "info" as const },
+        { title: "Canale și acces", href: "/control/canale", text: "Creare canale", tone: "info" as const },
         { title: "Tichete", href: "/tichete", text: "Fluxuri și termene", tone: "info" as const },
         { title: "Oracol", href: "/oracol", text: "Conversație și profeții", tone: "info" as const },
-        { title: "Mesaje bot", href: "/bot?tab=messages", text: "Gestionare", tone: "info" as const },
-        { title: "Statistici bot", href: "/bot?tab=statistics", text: "Vizualizare", tone: "info" as const },
+        { title: "Canalele jocului", href: "/canale", text: "Gestionare", tone: "info" as const },
       ],
     },
     {

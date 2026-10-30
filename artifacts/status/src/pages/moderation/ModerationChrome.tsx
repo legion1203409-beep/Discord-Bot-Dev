@@ -71,12 +71,15 @@ const allItems: Array<{ heading: string; items: NavigationItem[] }> = [
     { id: "config-messages", label: "Personalizare mesaje", description: "Șabloanele jurnalelor, raportul zilnic și anunțul alianței", href: "/config/mesaje", icon: MessageCircle, tint: "gold" },
     { id: "server-setup", label: "Pornire server", description: "Ghid de configurare", href: "/pornire-server", icon: BookOpen, tint: "gold" },
   ] },
-  { heading: "Servicii Discord", items: [
-    { id: "channels", label: "Canale și destinații", description: "Panouri și destinații bot", href: "/canale", icon: Server, tint: "violet" },
-    { id: "provisioning", label: "Provisioning", description: "Canale și permisiuni", href: "/provisioning", icon: SlidersHorizontal, tint: "violet" },
-    { id: "roles", label: "Roluri", description: "Roluri și acces", href: "/bot?tab=roles", icon: Shield, tint: "violet" },
-    { id: "bot-messages", label: "Mesajele botului", description: "Mesajul pentru jocul oprit", href: "/bot?tab=messages", icon: MessageCircle, tint: "violet", keywords: "joc oprit" },
-    { id: "bot-statistics", label: "Statistici bot", description: "Statistici și invitații", href: "/bot?tab=statistics", icon: Activity, tint: "violet" },
+  { heading: "Control bot", items: [
+    { id: "control", label: "Control bot", description: "Invitații, raport zilnic, canale și permisiunile botului", href: "/control", icon: Server, tint: "violet", keywords: "control bot server" },
+    { id: "bot-statistics", label: "Invitații", description: "Cine a adus pe cine, jurnalul și raportul", href: "/control/invitatii", icon: Activity, tint: "violet", keywords: "invitatii statistici bot linkuri jurnal intrari raport" },
+    { id: "control-recruitment", label: "Recrutare", description: "/invita, puncte și praguri cu roluri", href: "/control/recrutare", icon: Users, tint: "violet", keywords: "recrutare invita puncte praguri" },
+    { id: "control-daily", label: "Raport zilnic", description: "Statisticile zilei, postate după miezul nopții", href: "/control/raport", icon: Activity, tint: "violet", keywords: "raport zilnic statistici mesaje" },
+    { id: "provisioning", label: "Canale și acces", description: "Botul creează canalele și le dă acces rolurilor", href: "/control/canale", icon: SlidersHorizontal, tint: "violet", keywords: "provisioning canale permisiuni roluri acces creare" },
+    { id: "control-server", label: "Botul pe server", description: "Conexiunea și permisiunile botului", href: "/control/bot", icon: Bot, tint: "violet", keywords: "permisiuni intents conectat offline iesire" },
+    { id: "channels", label: "Canalele jocului", description: "Unde postează jocul, Consiliul și Frăția", href: "/canale", icon: Server, tint: "violet", keywords: "canale destinatii cufere joc" },
+    { id: "bot-messages", label: "Mesajele jocului", description: "Mesajul pentru jocul oprit", href: "/bot?tab=messages", icon: MessageCircle, tint: "violet", keywords: "joc oprit" },
   ] },
   { heading: "Oracol", items: [
     primary("oracle"),

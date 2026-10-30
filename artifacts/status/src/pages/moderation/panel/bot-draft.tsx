@@ -8,7 +8,7 @@
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
-  BotControlPartialApplyError, useActiveGuild, useBotControl, useModerationMetadata, useSession, type BotControlConfig,
+  BotControlPartialApplyError, useActiveGuild, useBotControl, useModerationMetadata, useSession, type BotControlConfig, type ChannelPermissionConfig,
 } from "../../../hooks/use-moderation-api";
 import { useToast } from "../../../hooks/use-toast";
 import { rebaseDraftChanges } from "../../../lib/utils";
@@ -25,7 +25,7 @@ export function useBotControlDraft({ changedParts, validate, savedText }: {
 }) {
   const { guildId, guilds } = useActiveGuild();
   const control = useBotControl(guildId);
-  const { data, loading, error, update, publishVerification, panelRecovery, confirmPanelReconciliation, refetch } = control;
+  const { data, loading, error, update, publishVerification, panelRecovery, confirmPanelReconciliation, refetch, provisionChannels, leaveServer } = control;
   const { data: metadata, refetch: refetchMetadata } = useModerationMetadata(guildId);
   const { session } = useSession();
   const { toast } = useToast();
@@ -193,6 +193,34 @@ export function useBotControlDraft({ changedParts, validate, savedText }: {
     }
   };
 
+  /**
+   * Creates or reuses the channels of the chosen categories and gives them the
+   * access from the draft. Only with nothing unsaved: the server saves the
+   * result as the new settings.
+   */
+  const provision = async (categories: string[], permissions: Record<string, ChannelPermissionConfig>) => {
+    if (saving || !editorKey || !current || changed.length) return null;
+    const provisioningGuild = editorKey;
+    setSaving(true);
+    try {
+      const saved = await provisionChannels(categories, permissions);
+      if (initialized.current !== provisioningGuild) return null;
+      const fresh = structuredClone(saved);
+      revision.current += 1;
+      latest.current = fresh;
+      setDraft(fresh);
+      await refetchMetadata();
+      return saved;
+    } catch (failure) {
+      if (initialized.current === provisioningGuild) {
+        toast({ variant: "destructive", title: "Crearea canalelor a eșuat", description: failure instanceof Error ? failure.message : "Verifică permisiunea Manage Channels și încearcă din nou." });
+      }
+      return null;
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const discard = () => {
     if (saving || !data) return;
     const fresh = structuredClone(data);
@@ -212,12 +240,15 @@ export function useBotControlDraft({ changedParts, validate, savedText }: {
     publishing,
     save,
     publish,
+    provision,
+    leaveServer,
     discard,
     guildId,
     guildName: guilds.find((guild) => guild.id === guildId)?.name || "Serverul selectat",
     metadata,
     refetchMetadata,
     csrfToken: session?.csrfToken,
+    isBotOwner: Boolean(session?.isBotOwner),
     panelRecovery,
     partialError: guildPartialError,
     confirmPanelReconciliation,

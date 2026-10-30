@@ -10,8 +10,9 @@ describe("verification editor ownership", () => {
 
     expect(botControl).not.toContain('TabsContent value="verification"');
     expect(botControl).not.toContain("PREVIZUALIZARE DISCORD");
-    expect(botControl).toContain('requestedTab === "verification"');
-    expect(botControl).toContain('setLocation("/verificare")');
+    // The old tab address leads to the verification page.
+    expect(botControl).toContain('verification: "/verificare"');
+    expect(botControl).toContain("setLocation(requestedTab && MOVED_TABS[requestedTab]");
 
     expect(verification).toContain("Panoul din Discord");
     expect(verification).toContain("Așa apare în Discord");

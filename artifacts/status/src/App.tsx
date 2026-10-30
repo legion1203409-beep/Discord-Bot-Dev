@@ -15,6 +15,7 @@ import { VerificationGroupPage } from "./pages/moderation/panel/VerificationGrou
 import { TicketsGroupPage } from "./pages/moderation/panel/TicketsGroup";
 import { OracleGroupPage } from "./pages/moderation/panel/OracleGroup";
 import { SettingsGroupPage } from "./pages/moderation/panel/SettingsGroup";
+import { ControlGroupPage } from "./pages/moderation/panel/ControlGroup";
 import { MessageTemplatesPage } from "./pages/moderation/MessageTemplates";
 import { ServerSetupPage } from "./pages/moderation/ServerSetup";
 import { ActivityRanksPage } from "./pages/moderation/ActivityRanks";
@@ -125,7 +126,7 @@ function ModerationApp() {
           <Route path="/config/avansat" component={() => <Redirect to="/setari/acces" replace />} />
           <Route path="/config/embeduri" component={() => <Redirect to="/setari/notificari" replace />} />
           <Route path="/canale" component={() => <BotControlPage channelsOnly />} />
-          <Route path="/provisioning" component={() => <BotControlPage provisioningOnly />} />
+          <Route path="/provisioning" component={() => <Redirect to="/control/canale" replace />} />
           <Route path="/bot" component={() => <BotControlPage />} />
           <Route path="/verificare" component={VerificationGroupPage} />
           <Route path="/verificare/setari" component={VerificationGroupPage} />
@@ -147,6 +148,12 @@ function ModerationApp() {
           <Route path="/setari/notificari" component={SettingsGroupPage} />
           <Route path="/setari/privat" component={SettingsGroupPage} />
           <Route path="/setari/bun-venit" component={SettingsGroupPage} />
+          <Route path="/control" component={ControlGroupPage} />
+          <Route path="/control/invitatii" component={ControlGroupPage} />
+          <Route path="/control/recrutare" component={ControlGroupPage} />
+          <Route path="/control/raport" component={ControlGroupPage} />
+          <Route path="/control/canale" component={ControlGroupPage} />
+          <Route path="/control/bot" component={ControlGroupPage} />
           <Route path="/pornire-server" component={ServerSetupPage} />
           <Route path="/ranguri-activitate" component={ActivityRanksPage} />
           <Route path="/asistent" component={OfflineAssistant} />

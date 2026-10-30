@@ -14,6 +14,7 @@ const helperLinks = [
   { title: "Configurează tichetele", detail: "Aplicații staff, parteneriate, ajutor, contestații și termenele.", href: "/tichete", words: "tichete tickets aplicatii parteneriate ajutor contestatii termene" },
   { title: "Setează canalele botului", detail: "Alege destinațiile Discord existente.", href: "/canale", words: "canale bot destination" },
   { title: "Deschide setările serverului", detail: "Starea tuturor modulelor.", href: "/config", words: "setari config module" },
+  { title: "Control bot", detail: "Invitațiile, recrutarea, raportul zilnic, crearea canalelor și permisiunile botului.", href: "/control", words: "control bot invitatii recrutare raport zilnic canale provisioning permisiuni roluri acces" },
   { title: "Setări bot", detail: "Rolurile staff, notificările de moderare, mesajul în privat la sancțiune și bun venit.", href: "/setari", words: "setari bot acces staff roluri notificari embed privat dm contestatie bun venit plecare" },
 ];
 
