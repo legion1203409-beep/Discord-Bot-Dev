@@ -154,6 +154,7 @@ export function DashboardOverview() {
         { title: "Provisioning", href: "/provisioning", text: "Gestionare", tone: "info" as const },
         { title: "Roluri", href: "/bot?tab=roles", text: "Gestionare", tone: "info" as const },
         { title: "Tichete", href: "/tichete", text: "Fluxuri și termene", tone: "info" as const },
+        { title: "Oracol", href: "/oracol", text: "Conversație și profeții", tone: "info" as const },
         { title: "Mesaje bot", href: "/bot?tab=messages", text: "Gestionare", tone: "info" as const },
         { title: "Statistici bot", href: "/bot?tab=statistics", text: "Vizualizare", tone: "info" as const },
       ],

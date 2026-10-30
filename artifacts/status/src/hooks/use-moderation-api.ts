@@ -126,6 +126,9 @@ export interface BotControlConfig {
 
   allianceRecruitmentText: string;
 
+  /** The Oracle's chat and prophecy settings; missing on a server that predates them. */
+  oracle?: OracleSettings;
+
   verification: {
     enabled: boolean;
     channelId: string;
@@ -236,6 +239,24 @@ export interface BotControlConfig {
     created: Array<{ key: string; id: string; name: string; type: "text" | "category" }>;
     reused: Array<{ key: string; id: string; name: string; type: "text" | "category" }>;
     verificationPanel?: "not_requested" | "disabled" | "needs_role" | "published" | "failed" | "published_not_saved";
+  };
+}
+
+/** What the Oracle does on a server (api-server/src/bot/oracle-settings.ts). */
+export interface OracleSettings {
+  enabled: boolean;
+  chat: {
+    /** Channels or categories where the Oracle answers; empty means every channel. */
+    channelIds: string[];
+    replyToReplies: boolean;
+    tone: "implicit" | "mistic" | "prietenos" | "sobru" | "jucaus";
+    length: "scurt" | "mediu" | "lung";
+    cooldownSeconds: number;
+  };
+  prophecy: {
+    commandEnabled: boolean;
+    dailyLimit: number;
+    daily: { enabled: boolean; channelId: string; hour: number; timeZone: string };
   };
 }
 
@@ -1270,7 +1291,10 @@ export function useBotControl(guildId: string | null) {
             },
           }
         : value;
-      const { discordLive: _discardedStatus, provisioning: _discardedProvisioning, ...payload } = payloadSource;
+      const { discordLive: _discardedStatus, provisioning: _discardedProvisioning, oracle, ...rest } = payloadSource;
+      // The Oracle's settings go only when this save changed them, so saving
+      // another page does not undo a /stopai or /startai given meanwhile.
+      const payload = oracle && JSON.stringify(oracle) !== JSON.stringify(data?.oracle) ? { ...rest, oracle } : rest;
       const result = await apiFetch<unknown>(`/guilds/${requestedGuildId}/bot-control`, {
         method: "PUT",
         body: JSON.stringify(payload),

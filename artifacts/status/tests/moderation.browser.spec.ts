@@ -2693,6 +2693,114 @@ test.describe("tickets page", () => {
   });
 });
 
+test.describe("oracle page", () => {
+  const oracleConfig = (oracle?: Record<string, unknown>) => ({
+    ...verificationBotControlConfig(false, ""),
+    ...(oracle ? { oracle } : {}),
+    gameplayConfig: {
+      paused: false,
+      messages: {
+        gamePaused: "Jocul e oprit.", oraclePaused: "Oracolul e oprit.", gamePausedImageUrl: "", gamePausedThumbnailUrl: "",
+        oraclePausedImageUrl: "", oraclePausedThumbnailUrl: "",
+      },
+      memberMessages: { welcomeEnabled: false, leaveEnabled: false, channelId: "", style: "medieval", customStyle: "" },
+    },
+  });
+  const savedOracle = () => ({
+    enabled: true,
+    chat: { channelIds: [], replyToReplies: true, tone: "implicit", length: "mediu", cooldownSeconds: 12 },
+    prophecy: { commandEnabled: true, dailyLimit: 10, daily: { enabled: false, channelId: "", hour: 9, timeZone: "Europe/Bucharest" } },
+  });
+  async function openOracle(page: import("@playwright/test").Page, path = "/moderare/oracol", oracle: Record<string, unknown> | undefined = savedOracle()) {
+    const putBodies = await installPartialBotControlFixture(page, new Map([
+      [guilds[0].id, oracleConfig(oracle) as any], [guilds[1].id, oracleConfig(oracle) as any],
+    ]));
+    await page.goto(path);
+    await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible({ timeout: 15_000 });
+    await page.getByRole("button", { name: guilds[0].name }).click();
+    await expect(page.getByTestId("oracle-page")).toBeVisible();
+    return putBodies;
+  }
+
+  test("is its own page; the switch stops the Oracle and the paused reply is edited here", async ({ page }) => {
+    const putBodies = await openOracle(page);
+    await expect(page.getByRole("heading", { name: "Pornirea Oracolului", exact: true })).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Modulele Oracolului" }).getByRole("link")).toHaveCount(4);
+    await page.getByTestId("oracle-enabled-switch").click();
+    await expect(page.getByTestId("oracle-disabled")).toBeVisible();
+    await expect(page.getByTestId("oracle-summary")).toContainText("Oprit");
+    await page.getByTestId("oracle-paused-text").getByRole("textbox").fill("Oracolul doarme.");
+    await expect(page.getByTestId("oracle-paused-preview")).toContainText("Oracolul doarme.");
+    await page.getByTestId("button-save-oracle").click();
+    await expect.poll(() => putBodies.get(guilds[0].id)?.length).toBe(1);
+    const body = putBodies.get(guilds[0].id)?.[0];
+    expect(body.oracle.enabled).toBe(false);
+    expect(body.gameplayConfig.messages.oraclePaused).toBe("Oracolul doarme.");
+  });
+
+  test("limits the chat to chosen places and asks for at least one", async ({ page }) => {
+    const putBodies = await openOracle(page, "/moderare/oracol/conversatie");
+    await page.getByTestId("oracle-where-mode").getByRole("radio", { name: "Doar unde aleg" }).click();
+    await expect(page.getByTestId("oracle-where-empty")).toBeVisible();
+    await page.getByTestId("oracle-channels").getByRole("checkbox", { name: "#Tichete staff" }).click();
+    await expect(page.getByTestId("oracle-where-summary")).toContainText("categoria Tichete staff");
+    await page.getByTestId("oracle-reply-switch").click();
+    await page.getByTestId("oracle-cooldown").fill("30");
+    await page.getByTestId("button-save-oracle").click();
+    await expect.poll(() => putBodies.get(guilds[0].id)?.length).toBe(1);
+    expect(putBodies.get(guilds[0].id)?.[0].oracle.chat).toEqual({
+      channelIds: ["333333333"], replyToReplies: false, tone: "implicit", length: "mediu", cooldownSeconds: 30,
+    });
+  });
+
+  test("shows an example for the chosen tone and length", async ({ page }) => {
+    const putBodies = await openOracle(page, "/moderare/oracol/ton");
+    const sample = page.getByTestId("oracle-style-sample");
+    const before = await sample.innerText();
+    await page.getByTestId("oracle-tone-sobru").click();
+    await page.getByTestId("oracle-length-seg").getByRole("radio", { name: "Scurt" }).click();
+    await expect(sample).not.toHaveText(before);
+    await expect(sample).toHaveText("Deschide un tichet „Aplicații staff” și completează formularul.");
+    await page.getByTestId("button-save-oracle").click();
+    await expect.poll(() => putBodies.get(guilds[0].id)?.length).toBe(1);
+    expect(putBodies.get(guilds[0].id)?.[0].oracle.chat).toMatchObject({ tone: "sobru", length: "scurt" });
+  });
+
+  test("needs a channel for the prophecy of the day and saves the hour and time zone", async ({ page }) => {
+    const putBodies = await openOracle(page, "/moderare/oracol/profetii");
+    await page.getByTestId("oracle-daily-limit").fill("4");
+    await page.getByTestId("oracle-daily-switch").click();
+    await page.getByTestId("button-save-oracle").click();
+    expect(putBodies.size).toBe(0);
+    await page.getByRole("combobox", { name: "Canalul profeției zilei" }).selectOption("777777777");
+    await page.getByTestId("oracle-daily-hour").getByRole("radio", { name: "21:00" }).click();
+    await page.getByTestId("oracle-daily-timezone").selectOption("UTC");
+    await expect(page.getByTestId("oracle-daily-next")).toContainText("la 21:00, ora UTC");
+    await page.getByTestId("button-save-oracle").click();
+    await expect.poll(() => putBodies.get(guilds[0].id)?.length).toBe(1);
+    expect(putBodies.get(guilds[0].id)?.[0].oracle.prophecy).toEqual({
+      commandEnabled: true, dailyLimit: 4, daily: { enabled: true, channelId: "777777777", hour: 21, timeZone: "UTC" },
+    });
+  });
+
+  test("a server without saved settings opens with the defaults, and other pages leave them alone", async ({ page }) => {
+    const putBodies = await openOracle(page, "/moderare/oracol/profetii", undefined);
+    await expect(page.getByTestId("oracle-command-switch")).toHaveAttribute("aria-checked", "true");
+    await expect(page.locator(".pn-nav-dirty")).toHaveCount(0);
+    await expect(page.getByTestId("oracle-save-bar")).toHaveCount(0);
+    // Same app, another page: the draft of the bot's settings is loaded again there.
+    await page.evaluate(() => {
+      window.history.pushState(null, "", "/moderare/verificare/mesaje");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    await expect(page.getByTestId("verification-page")).toBeVisible();
+    await page.getByTestId("verification-text-title").getByRole("textbox").fill("Bun venit");
+    await page.getByTestId("button-save-verification").click();
+    await expect.poll(() => putBodies.get(guilds[0].id)?.length).toBe(1);
+    expect(putBodies.get(guilds[0].id)?.[0]).not.toHaveProperty("oracle");
+  });
+});
+
 test.describe("moderation guild chooser", () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => window.localStorage.clear());

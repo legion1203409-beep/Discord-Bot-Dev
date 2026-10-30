@@ -16,6 +16,7 @@ import { postTicketPanelIfMissing } from "./ticket-ui";
 import { ORACLE_TICKET_CATEGORY_IDS, type TicketCategoryKind } from "./ticket-categories";
 import { getTicketConfig } from "./ticket-config";
 import { getSeasonalAiThemeInstruction } from "./seasonal-themes";
+import { getOracleSettings, oracleChatAllowedIn, oracleStyleInstruction } from "./oracle-settings";
 export { ORACLE_TICKET_CATEGORY_IDS } from "./ticket-categories";
 import type { Player } from "@workspace/db";
 
@@ -887,6 +888,38 @@ export async function generatePersonalProphecy(player: Player, mood: MoodState):
   return text && text.length > 0 ? text.slice(0, DISCORD_MAX_CHARS) : null;
 }
 
+/** The prophecy of the day for a whole server, or null without the AI. */
+export async function generateDailyProphecy(mood: MoodState, now = new Date()): Promise<string | null> {
+  const client = getClient();
+  if (!client) return null;
+  const completion = await client.chat.completions.create(
+    {
+      model: MODEL,
+      max_completion_tokens: 500,
+      ...(MODEL_SUPPORTS_REASONING_EFFORT ? { reasoning_effort: REASONING_EFFORT } : {}),
+      messages: [
+        {
+          role: "system",
+          content: [
+            "Ești Oracolul Cenușii într-un Regat medieval dark-fantasy.",
+            "Scrie profeția zilei pentru toți locuitorii Regatului, în limba română, în 2–4 propoziții.",
+            "Fii misterios, solemn și memorabil; lasă atmosfera serverului să coloreze tonul.",
+            "Profeția este cosmetică: nu promite aur, XP, recompense sau avantaje garantate.",
+            "Nu spune că ești AI, bot sau model. Nu folosi liste sau titluri.",
+          ].join("\n"),
+        },
+        {
+          role: "user",
+          content: `Ziua: ${now.toLocaleDateString("ro-RO", { weekday: "long", day: "numeric", month: "long" })}. Atmosfera serverului: ${MOOD_META[mood].label}. Creează profeția zilei.`,
+        },
+      ],
+    },
+    { timeout: MODEL_TIMEOUT_MS, maxRetries: 1 },
+  );
+  const text = completion.choices[0]?.message?.content?.trim();
+  return text && text.length > 0 ? text.slice(0, DISCORD_MAX_CHARS) : null;
+}
+
 /** A short cosmetic inscription for a rare chest reveal. */
 export async function generateChestInscription(
   rarityLabel: string,
@@ -1068,6 +1101,15 @@ export async function maybeReplyAsOracle(discordClient: Client, message: Message
     // Cheapest exit: neither a mention nor a reply of any kind.
     if (!isMention && !hasReference) return;
 
+    // The server chooses where the Oracle answers and whether a plain reply to it is enough.
+    const settings = getOracleSettings(message.guildId);
+    const channel = message.channel as { parentId?: string | null; parent?: { parentId?: string | null } | null; isThread?: () => boolean };
+    const grandParentId = channel.isThread?.() ? channel.parent?.parentId ?? null : null;
+    if (!oracleChatAllowedIn(settings, message.channelId, channel.parentId ?? null, grandParentId)) return;
+    if (!isMention && !settings.chat.replyToReplies) return;
+    const cooldownMs = settings.chat.cooldownSeconds * 1000;
+    const cooldownKey = `${message.guildId ?? "dm"}:${message.author.id}`;
+
     // Strip mention tokens so the model never sees raw "<@id>" noise.
     const raw = (message.content ?? "").trim();
     const cleaned = raw.replace(/<@!?\d+>/g, "").trim();
@@ -1086,7 +1128,7 @@ export async function maybeReplyAsOracle(discordClient: Client, message: Message
     // Read-only pre-filter: skip needless network/model work for throttled users
     // or once the hourly cap is already spent.
     const pre = Date.now();
-    if (pre - (lastReplyAt.get(message.author.id) ?? 0) < USER_COOLDOWN_MS) return;
+    if (pre - (lastReplyAt.get(cooldownKey) ?? 0) < cooldownMs) return;
     if (!underGlobalCap(pre)) return;
 
     // Resolve the message being replied to (cache-first) both to detect a reply
@@ -1108,7 +1150,7 @@ export async function maybeReplyAsOracle(discordClient: Client, message: Message
     const now = Date.now();
     if (!underGlobalCap(now)) return;
     replyTimestamps.push(now);
-    lastReplyAt.set(message.author.id, now);
+    lastReplyAt.set(cooldownKey, now);
 
     const signal = relationshipSignal(cleaned);
     const relationship = await recordOracleRelationshipChange(message, signal.bond, signal.chaos);
@@ -1166,6 +1208,8 @@ export async function maybeReplyAsOracle(discordClient: Client, message: Message
       isAdmin,
       relationship,
       council,
+      false,
+      oracleStyleInstruction(settings) ?? undefined,
     );
     if (!reply) {
       await sendFallback(message);

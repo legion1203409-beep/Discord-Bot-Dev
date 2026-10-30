@@ -159,11 +159,17 @@ import
 import 
 {
 
- initChannelConfig 
+ initChannelConfig, getChannel
 }
 
  from "../bot/channel-config"
 ;
+import {
+  MAX_ORACLE_CHANNELS, ORACLE_LENGTHS, ORACLE_TONES, isValidTimeZone, normalizeOracleSettings, setOracleSettings,
+} from "../bot/oracle-settings";
+import { loadOracleSettings } from "../bot/db";
+import { resumeOracle, stopOracle } from "../bot/oracle";
+import { startOracleCouncilScheduler, stopOracleCouncilScheduler } from "../bot/oracle-council";
 
 
 import 
@@ -611,6 +617,32 @@ export const ticketFlowConfigSchema = z.object(
 ;
 
 
+/** The Oracle's chat and prophecy settings (bot/oracle-settings.ts). */
+export const oracleSettingsSchema = z.object({
+  enabled: z.boolean(),
+  chat: z.object({
+    channelIds: z.array(snowflake).max(MAX_ORACLE_CHANNELS),
+    replyToReplies: z.boolean(),
+    tone: z.enum(ORACLE_TONES),
+    length: z.enum(ORACLE_LENGTHS),
+    cooldownSeconds: z.number().int().min(0).max(3_600),
+  }).strict(),
+  prophecy: z.object({
+    commandEnabled: z.boolean(),
+    dailyLimit: z.number().int().min(1).max(50),
+    daily: z.object({
+      enabled: z.boolean(),
+      channelId: snowflake.or(z.literal("")),
+      hour: z.number().int().min(0).max(23),
+      timeZone: z.string().refine(isValidTimeZone, "Fus orar necunoscut."),
+    }).strict(),
+  }).strict(),
+}).strict().superRefine((settings, ctx) => {
+  if (settings.prophecy.daily.enabled && !settings.prophecy.daily.channelId) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["prophecy", "daily", "channelId"], message: "Alege canalul profeției zilei." });
+  }
+});
+
 export const botControlSchema = z.object(
 {
 
@@ -624,6 +656,8 @@ export const botControlSchema = z.object(
   // endpoint already returns an empty string when no override is stored, so
   // PUT must accept that same round-trip value.
   allianceRecruitmentText: z.string().trim().max(2_000),
+  // Optional: pages that do not know the Oracle's settings keep them unchanged.
+  oracle: oracleSettingsSchema.optional(),
   dailyStats: dailyStatsEmbedConfigSchema,
   inviteTracking: z.object(
 {
@@ -2558,6 +2592,7 @@ router.get("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   res.set("Cache-Control", "no-store").json({
     channels: channels ?? {},
     allianceRecruitmentText: allianceRecruitmentText ?? "",
+    oracle: normalizeOracleSettings(await loadOracleSettings(guildId)),
     tickets: normalizeTicketConfig(tickets),
     gameplayConfig: getGameplayConfig(guildId),
     verification: normalizeVerificationConfig(verification),
@@ -3054,6 +3089,7 @@ router.post("/guilds/:guildId/bot-control/provision-channels", asyncRoute(async 
   res.status(verificationPanel === "failed" || verificationPanel === "published_not_saved" ? 207 : 200).json({
     channels: provisioned.channelConfig,
     allianceRecruitmentText: allianceRecruitmentText ?? "",
+    oracle: normalizeOracleSettings(await loadOracleSettings(guildId)),
     tickets: provisioned.ticketConfig,
     gameplayConfig: getGameplayConfig(guildId),
     verification: savedVerification,
@@ -3127,6 +3163,16 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   ) as ChannelConfig;
   await validateBotControlChannelTargets(guildId, channels);
   await validateMemberMessagesChannelTarget(guildId, value.gameplayConfig);
+  if (value.oracle?.prophecy.daily.channelId) {
+    const previousDaily = normalizeOracleSettings(await loadOracleSettings(guildId)).prophecy.daily;
+    if (previousDaily.channelId !== value.oracle.prophecy.daily.channelId && client?.isReady()) {
+      const guild = client.guilds.cache?.get(guildId) ?? await client.guilds.fetch({ guild: guildId, force: true }).catch(() => null);
+      const channel = guild ? await guild.channels.fetch(value.oracle.prophecy.daily.channelId).catch(() => null) : null;
+      if (!channel?.isTextBased() || !("send" in channel)) {
+        throw new ModerationAuthError(400, "Canalul profeției zilei nu este un canal text din acest server.");
+      }
+    }
+  }
   const verification = normalizeVerificationConfig(value.verification);
   const verificationRequested = Object.prototype.hasOwnProperty.call(req.body ?? {}, "verification");
   if (verificationRequested) {
@@ -3162,6 +3208,7 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   }
 
   let gameplayConfig = value.gameplayConfig;
+  let savedOracle: ReturnType<typeof normalizeOracleSettings> | null = null;
   try {
   await saveChannelConfig(guildId, channels);
   anyWriteSucceeded = true;
@@ -3181,6 +3228,22 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   }
   await saveTicketConfig(guildId, tickets);
   anyWriteSucceeded = true;
+  if (value.oracle) {
+    const previousOracle = normalizeOracleSettings(await loadOracleSettings(guildId));
+    savedOracle = await setOracleSettings(guildId, value.oracle);
+    anyWriteSucceeded = true;
+    if (previousOracle.enabled !== savedOracle.enabled) {
+      // Same effect as /stopai and /startai: answers, proactive posts and the council.
+      if (savedOracle.enabled) {
+        resumeOracle(guildId);
+        const councilChannelId = getChannel("council", guildId);
+        if (client?.isReady() && councilChannelId) startOracleCouncilScheduler(client, guildId, councilChannelId);
+      } else {
+        stopOracle(guildId);
+        stopOracleCouncilScheduler(guildId);
+      }
+    }
+  }
   await initGameplayConfig(guildId);
   const previousGameplayConfig = getGameplayConfig(guildId);
   // Pause/resume is controlled by the Dashboard endpoint. The bot-control
@@ -3224,6 +3287,7 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   res.status(200).json({
     channels,
     allianceRecruitmentText: value.allianceRecruitmentText,
+    oracle: savedOracle ?? normalizeOracleSettings(await loadOracleSettings(guildId)),
     tickets,
     gameplayConfig,
     verification: savedVerification,

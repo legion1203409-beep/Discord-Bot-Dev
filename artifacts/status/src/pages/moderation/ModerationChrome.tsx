@@ -17,8 +17,8 @@ import {
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "../../components/ui/sheet";
 import { useActiveGuild, useModerationConfig, useSession } from "../../hooks/use-moderation-api";
 import {
-  cleanPath, isLogsRoute, isProtectionRoute, isSanctionsRoute, isTicketsRoute, isVerificationRoute, isWidePanelRoute, LOGS_ROUTE, panelGroupRoute,
-  PROTECTION_ROUTE, SANCTIONS_ROUTE, TICKETS_ROUTE, VERIFICATION_ROUTE,
+  cleanPath, isLogsRoute, isOracleRoute, isProtectionRoute, isSanctionsRoute, isTicketsRoute, isVerificationRoute, isWidePanelRoute, LOGS_ROUTE,
+  ORACLE_ROUTE, panelGroupRoute, PROTECTION_ROUTE, SANCTIONS_ROUTE, TICKETS_ROUTE, VERIFICATION_ROUTE,
 } from "./panel/model";
 
 type NavigationItem = { id: string; label: string; description: string; href: string; icon: typeof Home; tint: string; keywords?: string };
@@ -32,7 +32,7 @@ const primaryItems: NavigationItem[] = [
   { id: "verification", label: "Verificare", description: "Rolurile primite, panoul și verificarea manuală", href: "/verificare", icon: BadgeCheck, tint: "green", keywords: "verification verificare membri roluri manual" },
   { id: "tickets", label: "Tichete", description: "Aplicații, parteneriate, ajutor și contestații", href: "/tichete", icon: Ticket, tint: "violet", keywords: "tichete tickets aplicatii parteneriate ajutor raportari contestatii" },
   { id: "rpg", label: "RPG", description: "Ranguri și progresul comunității", href: "/ranguri-activitate", icon: Trophy, tint: "gold", keywords: "ranguri activitate joc" },
-  { id: "oracle", label: "Oracol", description: "Mesaje și servicii ale botului", href: "/bot?tab=messages", icon: MessageCircle, tint: "violet", keywords: "oracle mesaje bot" },
+  { id: "oracle", label: "Oracol", description: "Conversația AI, tonul și profețiile", href: "/oracol", icon: MessageCircle, tint: "violet", keywords: "oracol oracle ai chat conversatie ton profetie startai stopai" },
   { id: "settings", label: "Setări bot", description: "Module, configurare și canale", href: "/config", icon: Settings2, tint: "ember", keywords: "config settings" },
   { id: "assistant", label: "Asistent", description: "Ajutor offline și navigare în panou", href: "/asistent", icon: Bot, tint: "gold", keywords: "assistant help cauta" },
 ];
@@ -72,8 +72,15 @@ const allItems: Array<{ heading: string; items: NavigationItem[] }> = [
     { id: "channels", label: "Canale și destinații", description: "Panouri și destinații bot", href: "/canale", icon: Server, tint: "violet" },
     { id: "provisioning", label: "Provisioning", description: "Canale și permisiuni", href: "/provisioning", icon: SlidersHorizontal, tint: "violet" },
     { id: "roles", label: "Roluri", description: "Roluri și acces", href: "/bot?tab=roles", icon: Shield, tint: "violet" },
-    primary("oracle"),
+    { id: "bot-messages", label: "Mesajele botului", description: "Bun venit, plecare și jocul oprit", href: "/bot?tab=messages", icon: MessageCircle, tint: "violet", keywords: "bun venit plecare joc oprit" },
     { id: "bot-statistics", label: "Statistici bot", description: "Statistici și invitații", href: "/bot?tab=statistics", icon: Activity, tint: "violet" },
+  ] },
+  { heading: "Oracol", items: [
+    primary("oracle"),
+    { id: "oracle-status", label: "Pornirea Oracolului", description: "Comutatorul general și mesajul pentru Oracolul oprit", href: "/oracol/pornire", icon: MessageCircle, tint: "violet", keywords: "startai stopai pornit oprit" },
+    { id: "oracle-chat", label: "Conversația Oracolului", description: "Unde răspunde, reply-uri și pauza dintre răspunsuri", href: "/oracol/conversatie", icon: MessageCircle, tint: "violet", keywords: "canale categorii mentiune reply pauza cooldown" },
+    { id: "oracle-style", label: "Tonul Oracolului", description: "Cum vorbește și cât de lung răspunde", href: "/oracol/ton", icon: MessageCircle, tint: "violet", keywords: "ton stil lungime mistic prietenos sobru jucaus" },
+    { id: "oracle-prophecy", label: "Profeții", description: "/profetie și profeția zilei", href: "/oracol/profetii", icon: Sparkles, tint: "violet", keywords: "profetie profetia zilei ora fus orar limita" },
   ] },
   { heading: "Tichete", items: [
     primary("tickets"),
@@ -257,6 +264,7 @@ function primaryIsActive(href: string, location: string) {
   if (href === LOGS_ROUTE && (isLogsRoute(location) || ["/cazuri", "/audit"].includes(cleanPath(location)))) return true;
   if (href === VERIFICATION_ROUTE && isVerificationRoute(location)) return true;
   if (href === TICKETS_ROUTE && isTicketsRoute(location)) return true;
+  if (href === ORACLE_ROUTE && isOracleRoute(location)) return true;
   return routeIsActive(href, location);
 }
 

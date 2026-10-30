@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   initGameplayConfig: vi.fn(), getGameplayConfig: vi.fn(), saveGuildGameplayConfig: vi.fn(),
   initChannelConfig: vi.fn(),
   loadVerificationConfig: vi.fn(), saveVerificationConfig: vi.fn(),
+  loadOracleSettings: vi.fn(), saveOracleSettings: vi.fn(),
   loadDailyStatsEmbedConfig: vi.fn(), saveDailyStatsEmbedConfig: vi.fn(),
   defaultDailyStatsConfig: {
     channelId: "",
@@ -129,6 +130,8 @@ vi.mock("../../bot/db", () => ({
   saveTicketConfig: mocks.saveTicketConfig,
   loadVerificationConfig: mocks.loadVerificationConfig,
   saveVerificationConfig: mocks.saveVerificationConfig,
+  loadOracleSettings: mocks.loadOracleSettings,
+  saveOracleSettings: mocks.saveOracleSettings,
   loadDailyStatsEmbedConfig: mocks.loadDailyStatsEmbedConfig,
   saveDailyStatsEmbedConfig: mocks.saveDailyStatsEmbedConfig,
   loadInviteTrackingConfig: mocks.loadInviteTrackingConfig,
@@ -471,6 +474,8 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     mocks.initChannelConfig.mockResolvedValue(undefined);
     mocks.loadVerificationConfig.mockResolvedValue(null);
     mocks.saveVerificationConfig.mockResolvedValue(undefined);
+    mocks.loadOracleSettings.mockResolvedValue(null);
+    mocks.saveOracleSettings.mockResolvedValue(undefined);
     mocks.loadDailyStatsEmbedConfig.mockResolvedValue(structuredClone(mocks.defaultDailyStatsConfig));
     mocks.saveDailyStatsEmbedConfig.mockResolvedValue(undefined);
     mocks.publishVerificationPanel.mockImplementation(async (_client, _guildId, config) => ({
@@ -1532,6 +1537,47 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
       expect(response.status).toBe(400);
       expect(await response.json()).toMatchObject({ error: expect.stringContaining("drepturi de staff") });
       expect(mocks.saveTicketConfig).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("the Oracle's settings", () => {
+    const oracle = {
+      enabled: true,
+      chat: { channelIds: ["777777777"], replyToReplies: false, tone: "sobru", length: "scurt", cooldownSeconds: 30 },
+      prophecy: { commandEnabled: false, dailyLimit: 2, daily: { enabled: false, channelId: "", hour: 8, timeZone: "Europe/Paris" } },
+    };
+
+    it("are read with the bot settings, with defaults for a server that never chose them", async () => {
+      const response = await fetch(`${base}/bot-control`);
+      expect(response.status).toBe(200);
+      const body = await response.json() as { oracle: { enabled: boolean; chat: { tone: string; channelIds: string[] } } };
+      expect(body.oracle).toMatchObject({ enabled: true, chat: { tone: "implicit", channelIds: [] } });
+    });
+
+    it("are saved when sent and kept when a page does not send them", async () => {
+      const put = (payload: unknown) => fetch(`${base}/bot-control`, {
+        ...post(payload), method: "PUT", headers: { "content-type": "application/json", "x-csrf-token": "csrf" },
+      });
+      const saved = await put({ ...botControlPayload(), oracle });
+      expect(saved.status).toBe(200);
+      expect(mocks.saveOracleSettings).toHaveBeenCalledWith(guildId, oracle);
+      expect((await saved.json() as { oracle: unknown }).oracle).toEqual(oracle);
+
+      mocks.saveOracleSettings.mockClear();
+      const without = await put(botControlPayload());
+      expect(without.status).toBe(200);
+      expect(mocks.saveOracleSettings).not.toHaveBeenCalled();
+    });
+
+    it("refuse a daily prophecy without its channel and an unknown time zone", async () => {
+      const put = (payload: unknown) => fetch(`${base}/bot-control`, {
+        ...post(payload), method: "PUT", headers: { "content-type": "application/json", "x-csrf-token": "csrf" },
+      });
+      const noChannel = await put({ ...botControlPayload(), oracle: { ...oracle, prophecy: { ...oracle.prophecy, daily: { ...oracle.prophecy.daily, enabled: true } } } });
+      expect(noChannel.status).toBe(400);
+      const badZone = await put({ ...botControlPayload(), oracle: { ...oracle, prophecy: { ...oracle.prophecy, daily: { ...oracle.prophecy.daily, timeZone: "Mars/Olympus" } } } });
+      expect(badZone.status).toBe(400);
+      expect(mocks.saveOracleSettings).not.toHaveBeenCalled();
     });
   });
 

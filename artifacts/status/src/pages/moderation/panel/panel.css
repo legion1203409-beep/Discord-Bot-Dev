@@ -500,6 +500,58 @@
 .pn .pn-dc-btns { display: flex; flex-wrap: wrap; gap: 6px; }
 .pn .pn-dc-btns span { padding: 6px 12px; border-radius: 4px; background: #4e5058; color: #fff; font: 500 13px var(--pn-body); }
 
+/* pagina Oracol */
+.pn .pn-orc-av { background: radial-gradient(circle at 50% 40%, #c9b2ff, #6b45d6 70%); }
+.pn .pn-orc-av .pn-ico { font-size: 20px; }
+.pn .pn-orc-member { background: linear-gradient(135deg, #3ba55d, #2d7d46); font: 600 16px/1 var(--pn-body); }
+.pn .pn-orc-eph { display: block; margin-top: 6px; color: #949ba4; font-size: 12px; }
+.pn .pn-orc-plain { margin-top: 0; white-space: pre-wrap; }
+.pn .pn-orc-media { margin-top: 8px; padding: 8px; }
+.pn .pn-orc-media .pn-dc-image { margin-top: 0; }
+.pn .pn-orc-cmd { display: flex; align-items: center; gap: 6px; margin: 0 0 6px 50px; color: #949ba4; font-size: 12.5px; }
+.pn .pn-orc-cmd .pn-ico { font-size: 13px; }
+.pn .pn-orc-cmd b { color: #c9cdfb; font-weight: 600; }
+.pn .pn-orc-q { margin-bottom: 14px; }
+.pn .pn-orc-mention { padding: 0 3px; border-radius: 3px; background: rgba(88, 101, 242, .3); color: #c9cdfb; font-weight: 500; }
+.pn .pn-orc-fine { margin-top: 12px; color: #949ba4; font-size: 12px; line-height: 1.45; }
+.pn .pn-orc-ghost { color: #949ba4; font-style: italic; }
+
+.pn .pn-orc-svcs { display: grid; gap: 8px; margin: 2px 0 12px; padding: 0; list-style: none; }
+.pn .pn-orc-svc { display: grid; grid-template-columns: 38px minmax(0, 1fr) auto 18px; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 14px; border: 1px solid var(--pn-line); background: rgba(255, 255, 255, .02); color: inherit; text-decoration: none; transition: border-color .2s, background .2s, transform .2s var(--pn-ease); }
+.pn a.pn-orc-svc:hover { border-color: color-mix(in oklab, var(--tc) 45%, transparent); background: color-mix(in oklab, var(--tc) 7%, transparent); }
+.pn a.pn-orc-svc:hover .pn-orc-svc-go { color: var(--tc); transform: translateX(2px); }
+.pn .pn-orc-svc-ic { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 11px; background: color-mix(in oklab, var(--tc) 14%, transparent); color: var(--tc); font-size: 18px; }
+.pn .pn-orc-svc-t { display: grid; gap: 2px; min-width: 0; }
+.pn .pn-orc-svc-t b { font: 600 14.5px/1.3 var(--pn-body); }
+.pn .pn-orc-svc-t small { color: var(--pn-ink-3); font-size: 13px; line-height: 1.4; }
+.pn .pn-orc-svc-go { display: grid; place-items: center; color: var(--pn-ink-4); font-size: 16px; transition: color .2s, transform .2s var(--pn-ease); }
+.pn .pn-orc-state { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--pn-line-2); color: var(--pn-ink-3); font: 600 12px/1.4 var(--pn-body); white-space: nowrap; }
+.pn .pn-orc-state::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--pn-ink-4); }
+.pn .pn-orc-state.on { border-color: rgba(61, 220, 132, .35); color: var(--pn-good); }
+.pn .pn-orc-state.on::before { background: var(--pn-good); box-shadow: 0 0 6px rgba(61, 220, 132, .7); }
+.pn .pn-orc-svc code, .pn .pn-note code { padding: 1px 5px; border-radius: 6px; background: rgba(255, 255, 255, .07); font: 500 12.5px var(--pn-mono); }
+
+.pn .pn-orc-tones { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; width: 100%; }
+.pn .pn-orc-tone { display: grid; gap: 4px; align-content: start; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--pn-line-2); background: rgba(255, 255, 255, .025); text-align: left; transition: border-color .2s, background .2s, box-shadow .25s; }
+.pn .pn-orc-tone b { display: flex; align-items: center; gap: 8px; font: 600 14.5px/1.3 var(--pn-body); }
+.pn .pn-orc-tone b::before { content: ""; width: 14px; height: 14px; flex: none; border-radius: 50%; border: 1.5px solid var(--pn-ink-4); transition: all .2s var(--pn-spring); }
+.pn .pn-orc-tone small { color: var(--pn-ink-3); font-size: 12.5px; line-height: 1.4; }
+.pn .pn-orc-tone:hover { border-color: var(--pn-line-3); }
+.pn .pn-orc-tone[aria-checked="true"] { border-color: color-mix(in oklab, var(--tc) 60%, transparent); background: color-mix(in oklab, var(--tc) 11%, transparent); box-shadow: 0 0 0 3px color-mix(in oklab, var(--tc) 12%, transparent); }
+.pn .pn-orc-tone[aria-checked="true"] b::before { border: 4px solid var(--tc); background: #fff; }
+
+.pn .pn-orc-hours { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 5px; width: 100%; }
+.pn .pn-orc-hour { min-width: 0; height: 36px; padding: 0; border-radius: 9px; border: 1px solid var(--pn-line); font: 600 13px/1 var(--pn-mono); font-variant-numeric: tabular-nums; transition: border-color .2s, background .2s, color .2s, transform .2s var(--pn-spring); }
+.pn .pn-orc-hour.is-night { background: rgba(80, 90, 160, .1); color: var(--pn-ink-3); }
+.pn .pn-orc-hour.is-day { background: rgba(245, 196, 81, .06); color: var(--pn-ink-2); }
+.pn .pn-orc-hour:hover { border-color: var(--pn-line-3); color: var(--pn-ink); }
+.pn .pn-orc-hour[aria-checked="true"] { border-color: var(--tc); background: var(--tc); color: #140b26; transform: scale(1.06); box-shadow: 0 4px 14px color-mix(in oklab, var(--tc) 40%, transparent); }
+.pn .pn-orc-next { display: flex; align-items: flex-start; gap: 10px; width: 100%; padding: 12px 14px; border-radius: 14px; border: 1px dashed var(--pn-line-3); color: var(--pn-ink-2); font-size: 14px; line-height: 1.5; }
+.pn .pn-orc-next .pn-ico { margin-top: 2px; font-size: 18px; color: var(--pn-ink-3); }
+.pn .pn-orc-next.is-ready { border-style: solid; border-color: color-mix(in oklab, var(--tc) 40%, transparent); background: color-mix(in oklab, var(--tc) 7%, transparent); }
+.pn .pn-orc-next.is-ready .pn-ico { color: var(--tc); }
+.pn .pn-orc-next b { color: var(--pn-ink); font-weight: 600; }
+
 /* ---------- ecrane înguste ---------- */
 @media (max-width: 1180px) {
   .pn .pn-vsplit { grid-template-columns: minmax(0, 1fr); }
@@ -540,6 +592,9 @@
 }
 @media (max-width: 640px) {
   .pn .pn-fld { grid-template-columns: minmax(0, 1fr); }
+  .pn .pn-orc-hours { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .pn .pn-orc-svc { grid-template-columns: 34px minmax(0, 1fr) auto; }
+  .pn .pn-orc-svc-go { display: none; }
   /* Segments become a small grid instead of running off the side of the screen. */
   .pn .pn-seg { display: grid; grid-template-columns: repeat(var(--seg-cols, 2), minmax(0, 1fr)); gap: 4px; width: 100%; }
   .pn .pn-seg::before { display: none; }

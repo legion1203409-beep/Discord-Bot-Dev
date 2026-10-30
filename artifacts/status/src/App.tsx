@@ -15,6 +15,7 @@ import { LogsGroupPage } from "./pages/moderation/panel/LogsGroup";
 import { BotControlPage } from "./pages/moderation/BotControl";
 import { VerificationGroupPage } from "./pages/moderation/panel/VerificationGroup";
 import { TicketsGroupPage } from "./pages/moderation/panel/TicketsGroup";
+import { OracleGroupPage } from "./pages/moderation/panel/OracleGroup";
 import { MessageTemplatesPage } from "./pages/moderation/MessageTemplates";
 import { ServerSetupPage } from "./pages/moderation/ServerSetup";
 import { ActivityRanksPage } from "./pages/moderation/ActivityRanks";
@@ -137,6 +138,11 @@ function ModerationApp() {
           <Route path="/tichete/ajutor" component={TicketsGroupPage} />
           <Route path="/tichete/contestatii" component={TicketsGroupPage} />
           <Route path="/tichete/setari" component={TicketsGroupPage} />
+          <Route path="/oracol" component={OracleGroupPage} />
+          <Route path="/oracol/pornire" component={OracleGroupPage} />
+          <Route path="/oracol/conversatie" component={OracleGroupPage} />
+          <Route path="/oracol/ton" component={OracleGroupPage} />
+          <Route path="/oracol/profetii" component={OracleGroupPage} />
           <Route path="/pornire-server" component={ServerSetupPage} />
           <Route path="/ranguri-activitate" component={ActivityRanksPage} />
           <Route path="/asistent" component={OfflineAssistant} />

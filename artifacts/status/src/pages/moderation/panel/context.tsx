@@ -23,7 +23,7 @@ export type PanelApi = {
   /** True when the bot is offline or lacks the permissions to create channels. */
   createDisabled: boolean;
   /** What the bot can do on the server, when known. */
-  capabilities?: { online?: boolean; canManageChannels?: boolean; canManageRoles?: boolean };
+  capabilities?: { online?: boolean; messageContent?: boolean; canManageChannels?: boolean; canManageRoles?: boolean };
   /** Open or closed rule cards, kept while moving between modules. */
   isOpen: (key: string) => boolean;
   toggleOpen: (key: string) => void;

@@ -14,7 +14,7 @@ import { BotControlPartialApplyError, useActiveGuild, useBotControl, useInviteSt
 import { clearBotControlDestinations, DESTINATION_CLEAR_CATEGORIES, type DestinationClearScope } from "../../lib/bot-control-destinations";
 import { rebaseDraftChanges } from "../../lib/utils";
 import { useToast } from "../../hooks/use-toast";
-import { useLocation, useSearch } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 
 type BotControlTab = "channels" | "roles" | "messages" | "statistics";
 const BOT_CONTROL_TABS: BotControlTab[] = ["channels", "roles", "messages", "statistics"];
@@ -516,7 +516,13 @@ export function BotControlPage({
       ...current,
       gameplayConfig: {
         ...current.gameplayConfig,
-        messages: { ...DEFAULT_GAMEPLAY_MESSAGES },
+        // The Oracle's paused message is edited on the Oracle page and kept here.
+        messages: {
+          ...current.gameplayConfig.messages,
+          gamePaused: DEFAULT_GAMEPLAY_MESSAGES.gamePaused,
+          gamePausedImageUrl: DEFAULT_GAMEPLAY_MESSAGES.gamePausedImageUrl,
+          gamePausedThumbnailUrl: DEFAULT_GAMEPLAY_MESSAGES.gamePausedThumbnailUrl,
+        },
       },
     } : current);
   };
@@ -1361,8 +1367,10 @@ export function BotControlPage({
             <div className="flex items-start gap-3">
               <Megaphone className="mt-1 h-5 w-5 text-primary" />
               <div className="min-w-0 flex-1">
-                <h2 className="font-medium">Mesaje de stare</h2>
-                <p className="text-xs text-muted-foreground">Acestea sunt mesajele trimise când jocul sau Oracle AI sunt oprite.</p>
+                <h2 className="font-medium">Jocul oprit</h2>
+                <p className="text-xs text-muted-foreground">
+                  Mesajul trimis când jocul e oprit. Mesajul pentru Oracolul oprit e pe pagina <Link href="/oracol/pornire" className="underline">Oracol</Link>.
+                </p>
               </div>
               <Button type="button" variant="ghost" size="sm" className="shrink-0 gap-1" onClick={resetGameplayMessages}>
                 <RotateCcw className="h-3.5 w-3.5" /> Implicit
@@ -1374,12 +1382,6 @@ export function BotControlPage({
                 <EmojiField multiline rows={4} maxLength={2000} value={draft.gameplayConfig.messages.gamePaused} onChange={(value) => setGameplayMessage("gamePaused", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
                 <ImageField label="Imagine pentru mesajul Joc oprit" value={draft.gameplayConfig.messages.gamePausedImageUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setGameplayMessage("gamePausedImageUrl", value)} />
                 <ImageField label="Thumbnail pentru mesajul Joc oprit" value={draft.gameplayConfig.messages.gamePausedThumbnailUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setGameplayMessage("gamePausedThumbnailUrl", value)} />
-              </label>
-              <label className="space-y-1 text-sm">
-                <span className="text-xs font-medium">Oracle AI oprit</span>
-                <EmojiField multiline rows={4} maxLength={2000} value={draft.gameplayConfig.messages.oraclePaused} onChange={(value) => setGameplayMessage("oraclePaused", value)} guildId={guildId} csrfToken={session?.csrfToken} emojis={metadata?.emojis} onEmojiCreated={refetchMetadata} />
-                <ImageField label="Imagine pentru mesajul Oracle oprit" value={draft.gameplayConfig.messages.oraclePausedImageUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setGameplayMessage("oraclePausedImageUrl", value)} />
-                <ImageField label="Thumbnail pentru mesajul Oracle oprit" value={draft.gameplayConfig.messages.oraclePausedThumbnailUrl} guildId={guildId} csrfToken={session?.csrfToken} onChange={(value) => setGameplayMessage("oraclePausedThumbnailUrl", value)} />
               </label>
             </div>
           </section>

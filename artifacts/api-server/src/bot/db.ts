@@ -2727,6 +2727,49 @@ export async function loadAllianceRecruitmentText(
   return row?.value ?? null;
 }
 
+// ─── Oracle settings persistence ──────────────────────────────────────────────
+const ORACLE_SETTINGS_KEY = "oracle_settings";
+const DAILY_PROPHECY_DATE_KEY = "oracle_daily_prophecy_date";
+
+async function saveGuildStateValue(guildId: string, name: string, value: string): Promise<void> {
+  await ensureBotStateTable();
+  const key = guildKey(guildId, name);
+  await db
+    .insert(botStateTable)
+    .values({ key, value })
+    .onConflictDoUpdate({ target: botStateTable.key, set: { value, updatedAt: new Date() } });
+}
+
+async function loadGuildStateValue(guildId: string, name: string): Promise<string | null> {
+  await ensureBotStateTable();
+  const [row] = await db.select().from(botStateTable).where(eq(botStateTable.key, guildKey(guildId, name)));
+  return row?.value ?? null;
+}
+
+/** The Oracle's chat and prophecy settings of a server, as JSON (normalized by oracle-settings.ts). */
+export async function saveOracleSettings(guildId: string, settings: unknown): Promise<void> {
+  await saveGuildStateValue(guildId, ORACLE_SETTINGS_KEY, JSON.stringify(settings));
+}
+
+export async function loadOracleSettings(guildId: string): Promise<unknown | null> {
+  const value = await loadGuildStateValue(guildId, ORACLE_SETTINGS_KEY);
+  if (value === null) return null;
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+/** The local day ("YYYY-MM-DD") of the last daily prophecy posted on a server. */
+export async function saveDailyProphecyDate(guildId: string, day: string): Promise<void> {
+  await saveGuildStateValue(guildId, DAILY_PROPHECY_DATE_KEY, day);
+}
+
+export async function loadDailyProphecyDate(guildId: string): Promise<string | null> {
+  return loadGuildStateValue(guildId, DAILY_PROPHECY_DATE_KEY);
+}
+
 // ─── Ticket configuration persistence ─────────────────────────────────────────
 const TICKET_CONFIG_KEY = "ticket_config";
 

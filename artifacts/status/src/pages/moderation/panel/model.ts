@@ -493,6 +493,20 @@ export function isTicketsRoute(path: string): boolean {
   return clean === TICKETS_ROUTE || Object.values(TICKETS_MODULE_ROUTES).some((route) => route === clean);
 }
 
+/** The overview route of the Oracle's group and the routes of its four modules. */
+export const ORACLE_ROUTE = "/oracol";
+export const ORACLE_MODULE_ROUTES = {
+  status: "/oracol/pornire",
+  chat: "/oracol/conversatie",
+  style: "/oracol/ton",
+  prophecy: "/oracol/profetii",
+} as const;
+
+export function isOracleRoute(path: string): boolean {
+  const clean = cleanPath(path);
+  return clean === ORACLE_ROUTE || Object.values(ORACLE_MODULE_ROUTES).some((route) => route === clean);
+}
+
 /**
  * The group a route belongs to, for pages whose modules share one draft: moving
  * between the modules of a group must not reload the page. Null elsewhere.
@@ -503,6 +517,7 @@ export function panelGroupRoute(path: string): string | null {
   if (isLogsRoute(path)) return LOGS_ROUTE;
   if (isVerificationRoute(path)) return VERIFICATION_ROUTE;
   if (isTicketsRoute(path)) return TICKETS_ROUTE;
+  if (isOracleRoute(path)) return ORACLE_ROUTE;
   return null;
 }
 
