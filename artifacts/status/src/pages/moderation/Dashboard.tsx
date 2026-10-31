@@ -21,13 +21,15 @@ import { useState } from "react";
 import { Link } from "wouter";
 import { useModerationConfig, useCases, useActiveGuild, useAuditLogs, useGameplayState } from "../../hooks/use-moderation-api";
 import { Button } from "../../components/ui/button";
+import { Switch } from "../../components/ui/switch";
 import { useToast } from "../../hooks/use-toast";
 import { DISCORD_INVITE } from "../../lib/public-constants";
 import { presentAuditActor, presentAuditLog } from "../../lib/moderation-audit";
+import { protectionToggleToastOptions } from "../../lib/protection-toggle-feedback";
 
 export function DashboardOverview() {
   const { guildId, guilds } = useActiveGuild();
-  const { data: config, loading: configLoading } = useModerationConfig(guildId);
+  const { data: config, loading: configLoading, updateProtectionToggle } = useModerationConfig(guildId);
   const { data: casesData, loading: casesLoading } = useCases(guildId, { limit: 10 });
   const { data: auditLogs, loading: auditLoading } = useAuditLogs(guildId);
   const {
@@ -39,6 +41,7 @@ export function DashboardOverview() {
   } = useGameplayState(guildId);
   const { toast } = useToast();
   const [savingGameState, setSavingGameState] = useState(false);
+  const [savingProtectionToggle, setSavingProtectionToggle] = useState(false);
   const activeGuild = guilds.find((guild) => guild.id === guildId);
   const activeGuildIcon = activeGuild?.icon
     ? (/^https?:\/\//i.test(activeGuild.icon)
@@ -187,6 +190,32 @@ export function DashboardOverview() {
     }
   };
 
+  const toggleProtection = async (
+    key: Parameters<typeof updateProtectionToggle>[0],
+    enabled: boolean,
+    label: string,
+  ) => {
+    if (savingProtectionToggle) return;
+    setSavingProtectionToggle(true);
+    try {
+      const result = await updateProtectionToggle(key, enabled);
+      toast(protectionToggleToastOptions(
+        enabled,
+        result.notification?.status,
+        `${label} ${enabled ? "activat" : "dezactivat"} pentru acest server.`,
+        result.nativeAutoMod?.status,
+      ));
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Setarea nu a putut fi actualizată",
+        description: error?.message || "Reîncarcă pagina și încearcă din nou.",
+      });
+    } finally {
+      setSavingProtectionToggle(false);
+    }
+  };
+
   return (
     <div className="space-y-8 pb-10 animate-stagger-1">
       <a
@@ -292,14 +321,23 @@ export function DashboardOverview() {
             </p>
           </div>
         </div>
-        <Link
-          href="/protectie"
-          className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold text-foreground transition-colors hover:border-primary/40 hover:bg-primary/5"
-          data-testid="link-dashboard-global-protection"
-        >
-          Gestionează protecția
-          <ChevronRight className="h-4 w-4" aria-hidden="true" />
-        </Link>
+        <div className="flex shrink-0 items-center gap-4">
+          <Switch
+            checked={protectionEnabled}
+            disabled={configLoading || savingProtectionToggle}
+            onCheckedChange={(enabled) => void toggleProtection("protection", enabled, "Protecția globală")}
+            aria-label="Activează sau oprește toată protecția"
+            data-testid="toggle-global-protection"
+          />
+          <Link
+            href="/protectie"
+            className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold text-foreground transition-colors hover:border-primary/40 hover:bg-primary/5"
+            data-testid="link-dashboard-global-protection"
+          >
+            Gestionează protecția
+            <ChevronRight className="h-4 w-4" aria-hidden="true" />
+          </Link>
+        </div>
       </section>
 
       <section
@@ -438,6 +476,13 @@ export function DashboardOverview() {
                     {mod.active ? "ACTIV" : mod.enabled && !protectionEnabled ? "CONFIGURAT · PROTECȚIA GLOBALĂ OPRITĂ" : mod.enabled && !mod.parentEnabled ? "CONFIGURAT · AUTOMOD OPRIT" : "INACTIV"}
                   </p>
                 </Link>
+                <Switch
+                  checked={mod.enabled}
+                  disabled={configLoading || savingProtectionToggle}
+                  onCheckedChange={(enabled) => void toggleProtection(mod.key, enabled, mod.name)}
+                  aria-label={`${mod.enabled ? "Dezactivează" : "Activează"} ${mod.name}`}
+                  data-testid={`toggle-module-${mod.key}`}
+                />
               </article>
             ))}
           </div>
