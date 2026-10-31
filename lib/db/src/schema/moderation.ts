@@ -8,8 +8,10 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 export const moderationConfigsTable = pgTable("moderation_configs", {
   guildId: text("guild_id").primaryKey(),
@@ -84,6 +86,47 @@ export const moderationCaseNotesTable = pgTable(
   (table) => [index("moderation_case_notes_case_idx").on(table.caseId, table.createdAt)],
 );
 
+export const moderationAppealsTable = pgTable(
+  "moderation_appeals",
+  {
+    id: uuid("id").primaryKey(),
+    guildId: text("guild_id").notNull(),
+    caseId: uuid("case_id").notNull(),
+    appellantId: text("appellant_id").notNull(),
+    channelId: text("channel_id").notNull(),
+    status: text("status").notNull().default("pending"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    decidedBy: text("decided_by"),
+    decisionNote: text("decision_note"),
+    pendingClarificationId: uuid("pending_clarification_id"),
+    pendingClarificationQuestion: text("pending_clarification_question"),
+    pendingClarificationBy: text("pending_clarification_by"),
+  },
+  (table) => [
+    unique("moderation_appeals_guild_id_channel_id_key").on(table.guildId, table.channelId),
+    uniqueIndex("moderation_appeals_one_pending_idx")
+      .on(table.guildId, table.caseId)
+      .where(sql`${table.status} = 'pending'`),
+  ],
+);
+
+export const moderationMemberJoinStateTable = pgTable(
+  "moderation_member_join_state",
+  {
+    guildId: text("guild_id").notNull(),
+    userId: text("user_id").notNull(),
+    joinedAt: timestamp("joined_at", { withTimezone: true }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({
+      name: "moderation_member_join_state_pkey",
+      columns: [table.guildId, table.userId],
+    }),
+  ],
+);
+
 export const moderationAuditLogsTable = pgTable(
   "moderation_audit_logs",
   {
@@ -145,4 +188,6 @@ export const moderationActionLedgerTable = pgTable(
 export type ModerationConfigRow = typeof moderationConfigsTable.$inferSelect;
 export type ModerationCaseRow = typeof moderationCasesTable.$inferSelect;
 export type ModerationCaseNoteRow = typeof moderationCaseNotesTable.$inferSelect;
+export type ModerationAppealRow = typeof moderationAppealsTable.$inferSelect;
+export type ModerationMemberJoinStateRow = typeof moderationMemberJoinStateTable.$inferSelect;
 export type ModerationAuditLogRow = typeof moderationAuditLogsTable.$inferSelect;
