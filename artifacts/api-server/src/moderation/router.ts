@@ -952,6 +952,52 @@ export const botControlSchema = z.object(
 }
 
 ).strict(),
+    // Daily streak and achievements; optional so older pages keep what is saved.
+    progress: z.object({
+      streakEnabled: z.boolean(),
+      streakBonusPercent: z.number().int().min(0).max(100),
+      streakMaxDays: z.number().int().min(1).max(30),
+      weeklyKey: z.boolean(),
+      achievementsEnabled: z.boolean(),
+      achievementRewards: z.boolean(),
+    }).strict().optional(),
+    seasons: z.object({
+      enabled: z.boolean(),
+      rewards: z.tuple([z.number().int().min(0).max(1_000_000), z.number().int().min(0).max(1_000_000), z.number().int().min(0).max(1_000_000)]),
+      roleIds: z.tuple([snowflake.or(z.literal("")), snowflake.or(z.literal("")), snowflake.or(z.literal(""))]),
+      channelId: snowflake.or(z.literal("")),
+    }).strict().optional(),
+    raid: z.object({
+      enabled: z.boolean(),
+      weekday: z.number().int().min(1).max(7),
+      hour: z.number().int().min(0).max(23),
+      durationHours: z.number().int().min(1).max(144),
+      cooldownMinutes: z.number().int().min(1).max(1_440),
+      hpPerPlayer: z.number().int().min(100).max(10_000_000),
+      rewardPool: z.number().int().min(0).max(10_000_000),
+      channelId: snowflake.or(z.literal("")),
+    }).strict().optional(),
+    duels: z.object({
+      enabled: z.boolean(),
+      maxBet: z.number().int().min(0).max(1_000_000),
+      cooldownSeconds: z.number().int().min(0).max(86_400),
+      taxPercent: z.number().int().min(0).max(50),
+    }).strict().optional(),
+    expeditions: z.object({
+      enabled: z.boolean(),
+      goldPerHour: z.number().int().min(0).max(100_000),
+      speed: z.number().int().min(1).max(4),
+    }).strict().optional(),
+    guilds: z.object({
+      enabled: z.boolean(),
+      createCost: z.number().int().min(0).max(10_000_000),
+      maxMembers: z.number().int().min(2).max(200),
+    }).strict().optional(),
+    crafting: z.object({
+      enabled: z.boolean(),
+      tradeEnabled: z.boolean(),
+      taxPercent: z.number().int().min(0).max(50),
+    }).strict().optional(),
   
 }
 
@@ -3354,6 +3400,14 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   // guild when it submits a stale draft.
   gameplayConfig = await saveGuildGameplayConfig(guildId, {
     ...value.gameplayConfig,
+    // A page that does not know the streak and achievements keeps them as saved.
+    progress: value.gameplayConfig.progress ?? previousGameplayConfig.progress,
+    seasons: value.gameplayConfig.seasons ?? previousGameplayConfig.seasons,
+    raid: value.gameplayConfig.raid ?? previousGameplayConfig.raid,
+    duels: value.gameplayConfig.duels ?? previousGameplayConfig.duels,
+    expeditions: value.gameplayConfig.expeditions ?? previousGameplayConfig.expeditions,
+    guilds: value.gameplayConfig.guilds ?? previousGameplayConfig.guilds,
+    crafting: value.gameplayConfig.crafting ?? previousGameplayConfig.crafting,
     paused: previousGameplayConfig.paused,
   });
   anyWriteSucceeded = true;

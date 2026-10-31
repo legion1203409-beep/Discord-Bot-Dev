@@ -2039,6 +2039,24 @@ export function buildDeathEmbed(
     .setImage(IMG.death);
 }
 
+/** The numbers behind combatStatsValue, for other fights (the weekly raid). */
+export function playerCombatStats(player: Player): { maxHp: number; atk: number; def: number; dodge: number; crit: number } {
+  const clsKey = player.class && isClassKey(player.class) ? player.class : null;
+  const cls = clsKey ? classStats(clsKey, player.classLevel ?? 1) : null;
+  const comp = player.companion && isCompanionKey(player.companion) ? companionStats(player.companion, player.companionLevel ?? 1) : null;
+  const talKey = player.talisman && isTalismanKey(player.talisman) ? player.talisman : null;
+  const talCrit = talKey === "sfera_abisului" ? talismanValue("sfera_abisului", player.talismanLevel ?? 1) : 0;
+  const weapon = player.equippedWeapon && isEquipmentKey(player.equippedWeapon) ? equipmentStats(player.equippedWeapon, equipmentLevel(player, player.equippedWeapon)) : null;
+  const armor = player.equippedArmor && isEquipmentKey(player.equippedArmor) ? equipmentStats(player.equippedArmor, equipmentLevel(player, player.equippedArmor)) : null;
+  return {
+    maxHp: 100 + player.maxHpBonus + player.prestigeHpBonus + (cls?.hp ?? 0) + (comp?.hp ?? 0) + (weapon?.hp ?? 0) + (armor?.hp ?? 0),
+    atk: player.attackBonus + player.prestigeAttackBonus + (cls?.attack ?? 0) + (comp?.attack ?? 0) + (weapon?.attack ?? 0) + (armor?.attack ?? 0),
+    def: player.defenseBonus + player.prestigeDefenseBonus + (comp?.defense ?? 0) + (weapon?.defense ?? 0) + (armor?.defense ?? 0),
+    dodge: player.dodgeBonus + player.prestigeDodgeBonus + (cls?.dodge ?? 0) + (weapon?.dodge ?? 0) + (armor?.dodge ?? 0),
+    crit: player.critBonus + player.prestigeCritBonus + (cls?.crit ?? 0) + (comp?.crit ?? 0) + (weapon?.crit ?? 0) + (armor?.crit ?? 0) + talCrit,
+  };
+}
+
 /** Real combat numbers the player fights with — mirrors the stat math used when
  *  joining fights (shop + prestigiu + clasă + companion + talisman crit). */
 export function combatStatsValue(player: Player): string {
