@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { isWidePanelRoute, panelGroupRoute } from "./model";
 import {
-  changedGameParts, economyOf, eventsOf, eventsPerDay, gameDraftError, gameModuleForRoute, gameModuleSummary, isValidMultiplier, minutesText, missionOf,
+  changedGameParts, progressOf, streakLadder, economyOf, eventsOf, eventsPerDay, gameDraftError, gameModuleForRoute, gameModuleSummary, isValidMultiplier, minutesText, missionOf,
 } from "./game-model";
 
 const config = (gameplayConfig: Record<string, unknown> = {}, channels: Record<string, string> = {}) => ({ channels, gameplayConfig: { paused: false, messages: { gamePaused: "Oprit." }, ...gameplayConfig } });
@@ -71,5 +71,19 @@ describe("checks before saving", () => {
     expect(economyOf(config()).bossGoldMultiplier).toBe(1);
     expect(isValidMultiplier(0.1)).toBe(true);
     expect(isValidMultiplier(0.05)).toBe(false);
+  });
+});
+
+describe("streak and achievements", () => {
+  it("reads the defaults and shows the bonus on each day like the bot", () => {
+    expect(progressOf(config())).toMatchObject({ streakEnabled: true, streakBonusPercent: 10, streakMaxDays: 7 });
+    expect(streakLadder({ streakBonusPercent: 10, streakMaxDays: 7 })).toEqual([0, 10, 20, 30, 40, 50, 60]);
+    expect(streakLadder({ streakBonusPercent: 15, streakMaxDays: 3 })).toEqual([0, 15, 30, 30, 30, 30, 30]);
+    expect(gameModuleSummary("progress", config())).toBe("serie până la +60% · realizări");
+    expect(gameModuleSummary("progress", config({ progress: { streakEnabled: false, achievementsEnabled: false } }))).toBe("Oprite");
+  });
+  it("refuses a bonus or a cap the server refuses", () => {
+    expect(gameDraftError(config({ progress: { streakBonusPercent: 101 } }))).toContain("Bonusul pe zi");
+    expect(gameDraftError(config({ progress: { streakMaxDays: 0 } }))).toContain("până în ziua");
   });
 });

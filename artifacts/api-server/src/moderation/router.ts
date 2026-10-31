@@ -952,6 +952,15 @@ export const botControlSchema = z.object(
 }
 
 ).strict(),
+    // Daily streak and achievements; optional so older pages keep what is saved.
+    progress: z.object({
+      streakEnabled: z.boolean(),
+      streakBonusPercent: z.number().int().min(0).max(100),
+      streakMaxDays: z.number().int().min(1).max(30),
+      weeklyKey: z.boolean(),
+      achievementsEnabled: z.boolean(),
+      achievementRewards: z.boolean(),
+    }).strict().optional(),
   
 }
 
@@ -3354,6 +3363,8 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   // guild when it submits a stale draft.
   gameplayConfig = await saveGuildGameplayConfig(guildId, {
     ...value.gameplayConfig,
+    // A page that does not know the streak and achievements keeps them as saved.
+    progress: value.gameplayConfig.progress ?? previousGameplayConfig.progress,
     paused: previousGameplayConfig.paused,
   });
   anyWriteSucceeded = true;

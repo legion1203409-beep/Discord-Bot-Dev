@@ -5,12 +5,12 @@
 import React, { createContext, useContext, useEffect, useId, useState } from "react";
 import { Link } from "wouter";
 import { usePanel } from "./context";
-import { ChannelField, Fields, Fld, Ico, Note, NoteRow, NumField, SectionCard, Spinner, Switch, cx, type IconName } from "./fields";
+import { ChannelField, Fields, Fld, Ico, Note, NoteRow, NumField, SectionCard, Spinner, Switch, SwitchField, cx, type IconName } from "./fields";
 import type { useGameplayState } from "../../../hooks/use-moderation-api";
 import { EmojiTextField, ImageUrlField } from "./message-fields";
 import {
   ECONOMY_FIELDS, EVENT_FIELDS, GAME_CHANNELS, GAME_MODULES, MAX_MULTIPLIER, MIN_MULTIPLIER, MISSIONS, MULTIPLIER_PRESETS,
-  economyOf, eventsOf, eventsPerDay, gameChannelCount, isValidMultiplier, minutesText, missionOf, multiplierText,
+  ACHIEVEMENT_LIST, progressOf, streakLadder, economyOf, eventsOf, eventsPerDay, gameChannelCount, isValidMultiplier, minutesText, missionOf, multiplierText,
   type GameModuleId,
 } from "./game-model";
 import { ModuleView } from "./rules";
@@ -20,7 +20,7 @@ const MODULE = Object.fromEntries(GAME_MODULES.map((module) => [module.id, modul
 /** The game's running state, read and changed at once through /gameplay-state (not part of the draft). */
 export const GameStateContext = createContext<ReturnType<typeof useGameplayState> | null>(null);
 
-export const GAME_ICONS: Record<GameModuleId, IconName> = { state: "power", channels: "hash", events: "calendar", missions: "scroll", economy: "star" };
+export const GAME_ICONS: Record<GameModuleId, IconName> = { state: "power", channels: "hash", events: "calendar", missions: "scroll", economy: "star", progress: "verified" };
 
 /* ------------------------------------------------------------------ */
 /* Stare                                                               */
@@ -247,10 +247,61 @@ function EconomyModule() {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* Serii și realizări                                                  */
+/* ------------------------------------------------------------------ */
+
+function ProgressModule() {
+  const { config, set } = usePanel();
+  const progress = progressOf(config);
+  const change = (key: string, value: unknown) => set(["gameplayConfig", "progress"], { ...progress, [key]: value });
+  const ladder = streakLadder(progress, 7);
+  return (
+    <ModuleView module={MODULE.progress} icon="verified">
+      <SectionCard title="Seria zilnică" small={progress.streakEnabled ? "Pornită" : "Oprită"} testId="game-streak">
+        <Fields>
+          <SwitchField label="Seria zilnică" testId="game-streak-switch" checked={progress.streakEnabled} hint="Zile la rând cu Cufărul Vegherii deschis. O zi sărită o ia de la capăt." onChange={(next) => change("streakEnabled", next)} />
+          <NumField label="Bonus pe zi" unit="%" min={0} max={100} value={progress.streakBonusPercent} testId="game-streak-bonus" hint="Cât adaugă fiecare zi la Obolii și XP-ul cufărului, începând cu a doua." onChange={(next) => change("streakBonusPercent", next ?? 0)} />
+          <NumField label="Bonusul crește până în ziua" unit="" min={1} max={30} value={progress.streakMaxDays} testId="game-streak-max" onChange={(next) => change("streakMaxDays", next ?? 0)} />
+          <SwitchField label="Cheie epică la fiecare 7 zile" testId="game-streak-key" checked={progress.weeklyKey} onChange={(next) => change("weeklyKey", next)} />
+        </Fields>
+        {progress.streakEnabled ? (
+          <div className="pn-ladder" aria-label="Bonusul pe zile" data-testid="game-streak-ladder">
+            {ladder.map((bonus, index) => (
+              <div key={index} className={cx("pn-ladder-d", index === 6 && progress.weeklyKey && "is-key")}>
+                <span>Ziua {index + 1}</span>
+                <b>{bonus ? `+${bonus}%` : "—"}</b>
+                {index === 6 && progress.weeklyKey ? <small>🗝️ cheie</small> : null}
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </SectionCard>
+      <SectionCard title="Realizările" small={`${ACHIEVEMENT_LIST.length} insigne`} testId="game-achievements">
+        <Fields>
+          <SwitchField label="Realizările" testId="game-achievements-switch" checked={progress.achievementsEnabled} hint="Oprite, nu se mai deblochează insigne noi; cele câștigate rămân." onChange={(next) => change("achievementsEnabled", next)} />
+          <SwitchField label="Recompense în Oboli" testId="game-achievements-rewards" checked={progress.achievementRewards} disabled={!progress.achievementsEnabled} onChange={(next) => change("achievementRewards", next)} />
+        </Fields>
+        <ul className="pn-ach">
+          {ACHIEVEMENT_LIST.map((achievement) => (
+            <li key={achievement.name}>
+              <span aria-hidden="true">{achievement.emoji}</span>
+              <b>{achievement.name}</b>
+              <small>{achievement.description}</small>
+              {progress.achievementRewards ? <em>+{achievement.reward.toLocaleString("ro-RO")} Oboli</em> : null}
+            </li>
+          ))}
+        </ul>
+      </SectionCard>
+    </ModuleView>
+  );
+}
+
 export const GAME_VIEWS: Record<GameModuleId, () => React.ReactElement> = {
   state: StateModule,
   channels: ChannelsModule,
   events: EventsModule,
   missions: MissionsModule,
   economy: EconomyModule,
+  progress: ProgressModule,
 };

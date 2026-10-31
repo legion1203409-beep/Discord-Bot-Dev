@@ -87,6 +87,7 @@ const allItems: Array<{ heading: string; items: NavigationItem[] }> = [
     { id: "game-events", label: "Evenimente și boși", description: "Ora Umbrelor, Dragonul Stins, cuferele", href: "/joc/evenimente", icon: Activity, tint: "violet", keywords: "evenimente boss dragon cufere interval durata" },
     { id: "game-missions", label: "Misiuni zilnice", description: "Ținta și recompensa fiecărei misiuni", href: "/joc/misiuni", icon: Activity, tint: "violet", keywords: "misiuni quest zilnic" },
     { id: "game-economy", label: "Economia jocului", description: "Oboli și XP de la monștri și boși", href: "/joc/economie", icon: Activity, tint: "violet", keywords: "economie oboli xp multiplicator weekend dublu" },
+    { id: "game-progress", label: "Serii și realizări", description: "Bonusul seriei zilnice și insignele", href: "/joc/progres", icon: Activity, tint: "violet", keywords: "serie streak realizari insigne achievements" },
   ] },
   { heading: "Oracol", items: [
     primary("oracle"),

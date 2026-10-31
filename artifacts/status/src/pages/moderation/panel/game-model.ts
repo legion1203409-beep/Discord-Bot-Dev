@@ -40,6 +40,11 @@ export const GAME_MODULES: readonly GameModuleDef[] = [
     description: "Câți Oboli și cât XP dau monștrii și boșii. 1× e valoarea de bază; 2× dublează, 0,5× înjumătățește.",
     paths: ["gameplayConfig.economy"],
   },
+  {
+    id: "progress", route: GAME_MODULE_ROUTES.progress, short: "Serii și realizări", title: "Serii zilnice și realizări",
+    description: "Seria crește cu fiecare zi la rând în care un jucător deschide Cufărul Vegherii și mărește cufărul. Realizările sunt insigne pentru fapte adunate în timp, văzute cu /realizari.",
+    paths: ["gameplayConfig.progress"],
+  },
 ];
 
 export function gameModuleForRoute(path: string): GameModuleDef {
@@ -198,6 +203,46 @@ export function allMultipliersAre(config: any, value: number): boolean {
 }
 
 /* ------------------------------------------------------------------ */
+/* Serii și realizări                                                  */
+/* ------------------------------------------------------------------ */
+
+export type ProgressSettings = {
+  streakEnabled: boolean; streakBonusPercent: number; streakMaxDays: number; weeklyKey: boolean; achievementsEnabled: boolean; achievementRewards: boolean;
+};
+
+export const DEFAULT_PROGRESS: ProgressSettings = {
+  streakEnabled: true, streakBonusPercent: 10, streakMaxDays: 7, weeklyKey: true, achievementsEnabled: true, achievementRewards: true,
+};
+
+export function progressOf(config: any): ProgressSettings {
+  return { ...DEFAULT_PROGRESS, ...(config?.gameplayConfig?.progress ?? {}) };
+}
+
+/** The extra on the daily chest on each day of a streak, as the bot computes it (bot/progress.ts). */
+export function streakLadder(settings: Pick<ProgressSettings, "streakBonusPercent" | "streakMaxDays">, days = 7): number[] {
+  return Array.from({ length: days }, (_, index) => Math.max(0, Math.min(index + 1, settings.streakMaxDays) - 1) * settings.streakBonusPercent);
+}
+
+/** The achievements the bot knows (bot/progress.ts → ACHIEVEMENTS), for the panel's list. */
+export const ACHIEVEMENT_LIST: ReadonlyArray<{ emoji: string; name: string; description: string; reward: number }> = [
+  { emoji: "⚔️", name: "Prima Vânătoare", description: "100 de monștri", reward: 300 },
+  { emoji: "🗡️", name: "Secerătorul", description: "1.000 de monștri", reward: 1_500 },
+  { emoji: "💀", name: "Flagelul Umbrelor", description: "10.000 de monștri", reward: 8_000 },
+  { emoji: "🐉", name: "Vânător de Dragoni", description: "10 bătălii cu boși", reward: 500 },
+  { emoji: "🔥", name: "Ucigașul de Titani", description: "100 de bătălii cu boși", reward: 4_000 },
+  { emoji: "📜", name: "Ucenicul Misiunilor", description: "10 misiuni", reward: 400 },
+  { emoji: "📚", name: "Cronicarul Regatului", description: "100 de misiuni", reward: 3_000 },
+  { emoji: "🗝️", name: "Purtătorul de Chei", description: "25 de chei", reward: 600 },
+  { emoji: "🔐", name: "Paznicul Porților", description: "250 de chei", reward: 5_000 },
+  { emoji: "💬", name: "Glasul Cetății", description: "500 de mesaje", reward: 300 },
+  { emoji: "📯", name: "Vestitorul", description: "5.000 de mesaje", reward: 2_000 },
+  { emoji: "🕯️", name: "Veghetorul", description: "7 cufere zilnice", reward: 400 },
+  { emoji: "🏮", name: "Flacăra Neclintită", description: "30 de cufere zilnice", reward: 2_500 },
+  { emoji: "🔥", name: "O Săptămână de Foc", description: "o serie de 7 zile", reward: 800 },
+  { emoji: "☄️", name: "Neînfrânt", description: "o serie de 30 de zile", reward: 6_000 },
+];
+
+/* ------------------------------------------------------------------ */
 /* Meniul și verificări                                                */
 /* ------------------------------------------------------------------ */
 
@@ -214,12 +259,18 @@ export function gameModuleSummary(id: GameModuleId, config: any): string {
       const economy = economyOf(config);
       return allMultipliersAre(config, 1) ? "Valorile de bază" : ECONOMY_FIELDS.map((field) => multiplierText(economy[field.key])).join(" · ");
     }
+    case "progress": {
+      const progress = progressOf(config);
+      const parts = [progress.streakEnabled ? `serie până la +${streakLadder(progress, progress.streakMaxDays).at(-1)}%` : null, progress.achievementsEnabled ? "realizări" : null].filter(Boolean);
+      return parts.length ? parts.join(" · ") : "Oprite";
+    }
   }
 }
 
 export function isGameModuleOn(id: GameModuleId, config: any): boolean {
   if (id === "state") return config?.gameplayConfig?.paused === false;
   if (id === "channels") return gameChannelCount(config) > 0;
+  if (id === "progress") return config?.gameplayConfig?.paused === false && (progressOf(config).streakEnabled || progressOf(config).achievementsEnabled);
   return config?.gameplayConfig?.paused === false;
 }
 
@@ -244,6 +295,9 @@ export function gameDraftError(config: any): string | null {
     if (!isValidInteger(value.target, 1, 10_000)) return `Misiuni — ${mission.label}: ținta e un număr întreg între 1 și 10000.`;
     if (!isValidInteger(value.rewardQty, 1, 100)) return `Misiuni — ${mission.label}: recompensa e un număr întreg între 1 și 100.`;
   }
+  const progress = progressOf(config);
+  if (!isValidInteger(progress.streakBonusPercent, 0, 100)) return "Serii — Bonusul pe zi e un număr întreg între 0 și 100.";
+  if (!isValidInteger(progress.streakMaxDays, 1, 30)) return "Serii — Bonusul crește până în ziua: un număr întreg între 1 și 30.";
   const economy = economyOf(config);
   for (const field of ECONOMY_FIELDS) {
     if (!isValidMultiplier(economy[field.key])) return `Economie — ${field.label}: între ${MIN_MULTIPLIER} și ${MAX_MULTIPLIER}.`;

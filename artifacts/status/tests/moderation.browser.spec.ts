@@ -1705,6 +1705,12 @@ test.describe("authenticated moderation console", () => {
     await page.getByTestId("nav-game-missions").click();
     await page.getByTestId("game-kill_10-target").fill("15");
 
+    await page.getByTestId("nav-game-progress").click();
+    await expect(page.getByTestId("game-streak-ladder")).toContainText("+60%");
+    await page.getByTestId("game-streak-bonus").fill("15");
+    await expect(page.getByTestId("game-streak-ladder")).toContainText("+90%");
+    await page.getByTestId("game-achievements-rewards").click();
+
     await page.getByTestId("nav-game-economy").click();
     await page.getByTestId("game-economy-double").click();
     await expect(page.getByTestId("game-monsterGoldMultiplier")).toHaveValue("2");
@@ -1717,6 +1723,7 @@ test.describe("authenticated moderation console", () => {
       messages: { gamePaused: "Jocul doarme. Revenim curând." },
       events: { eventCooldownMinMinutes: 200, eventCooldownMaxMinutes: 300 },
       missions: { kill_10: { target: 15 } },
+      progress: { streakEnabled: true, streakBonusPercent: 15, streakMaxDays: 7, weeklyKey: true, achievementsEnabled: true, achievementRewards: false },
       economy: { monsterGoldMultiplier: 2, monsterXpMultiplier: 2, bossGoldMultiplier: 2, bossXpMultiplier: 2 },
     });
     expect(botConfig.channels.event).toBe("444444444");
