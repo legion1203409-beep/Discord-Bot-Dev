@@ -66,12 +66,12 @@ export async function handleWebAppealModal(interaction: ModalSubmitInteraction):
     }
     const decision: AppealDecision = action === "accept" ? "accepted" : "rejected";
     const finalNote = note || (decision === "accepted" ? "Contestație acceptată." : "Contestație respinsă.");
-    const { unbanned } = await decideWebAppeal(interaction.client, {
+    const { unbanned, notified } = await decideWebAppeal(interaction.client, {
       guildId: interaction.guildId, appealId: id, actorId: interaction.user.id, actorTag: interaction.user.tag ?? interaction.user.username,
       decision, note: finalNote,
     });
     await interaction.editReply(decision === "accepted"
-      ? unbanned ? "✅ Contestația e acceptată și banul a fost scos." : "✅ Contestația e acceptată (banul nu a fost scos de bot)."
+      ? `${unbanned ? "✅ Contestația e acceptată și banul a fost scos." : "✅ Contestația e acceptată (banul nu a fost scos de bot)."} ${notified ? "Membrul a primit în privat vestea și linkul serverului." : "Nu am putut să-i scriu în privat; vede vestea și linkul pe pagina de contestație."}`
       : "❌ Contestația e respinsă.");
   } catch (error) {
     if (error instanceof AppealError) {

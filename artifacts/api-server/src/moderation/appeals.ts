@@ -308,7 +308,7 @@ export type AppealDecision = "accepted" | "rejected";
  */
 export async function decideWebAppeal(client: Client, input: {
   guildId: string; appealId: string; actorId: string; actorTag: string; decision: AppealDecision; note: string;
-}): Promise<{ appeal: ModerationWebAppeal; unbanned: boolean }> {
+}): Promise<{ appeal: ModerationWebAppeal; unbanned: boolean; notified: boolean }> {
   const appeal = await moderationStore.getWebAppeal?.(input.guildId, input.appealId);
   if (!appeal || appeal.status !== "pending") throw new AppealError(409, "Contestația a fost deja decisă.");
   const { config } = await moderationStore.getConfig(input.guildId);
@@ -342,7 +342,45 @@ export async function decideWebAppeal(client: Client, input: {
   }
   const updated = await moderationStore.getWebAppeal?.(input.guildId, appeal.id) ?? appeal;
   await refreshStaffMessage(client, appeal.id, input.guildId).catch(() => undefined);
-  return { appeal: updated, unbanned };
+  let notified = false;
+  if (input.decision === "accepted") {
+    const guild = await fetchGuild(client, input.guildId);
+    notified = await notifyAccepted(client, appeal.appellantId, guild?.name ?? "Regatul Cenușii", input.note, colorOf(config));
+    await moderationStore.addCaseNote({
+      guildId: input.guildId, caseId: appeal.caseId, authorId: input.actorId,
+      body: notified ? "Membrul a primit în privat vestea și linkul serverului." : "Mesajul privat nu a ajuns (DM-uri închise sau niciun server comun cu botul); vestea și linkul sunt pe pagina de contestație.",
+    }).catch(() => null);
+  }
+  return { appeal: updated, unbanned, notified };
+}
+
+/** The private message after an accepted appeal, with the server's invite. */
+export function acceptedAppealMessage(guildName: string, note: string, inviteUrl = PUBLIC_DISCORD_INVITE, color = 0xd94a2b) {
+  const embed = new EmbedBuilder()
+    .setColor(color)
+    .setTitle("✅ Contestația ta a fost acceptată")
+    .setDescription(`Banul de pe **${guildName.slice(0, 100)}** a fost scos. Te poți întoarce oricând.`)
+    .setTimestamp(new Date());
+  const cleanNote = note.trim();
+  if (cleanNote && cleanNote !== "Contestație acceptată.") embed.addFields({ name: "Mesaj de la staff", value: cleanNote.slice(0, 1_024) });
+  return {
+    embeds: [embed],
+    components: [new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setLabel("Intră în regat").setStyle(ButtonStyle.Link).setURL(inviteUrl),
+    )],
+    allowedMentions: { parse: [] as never[] },
+  };
+}
+
+/** Best effort: a user who shares no server with the bot, or has closed DMs, does not get it. */
+async function notifyAccepted(client: Client, userId: string, guildName: string, note: string, color: number): Promise<boolean> {
+  try {
+    const user = await client.users.fetch(userId);
+    await user.send(acceptedAppealMessage(guildName, note, PUBLIC_DISCORD_INVITE, color) as never);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function askWebAppeal(client: Client, input: { guildId: string; appealId: string; actorId: string; question: string; clarificationId: string }): Promise<void> {

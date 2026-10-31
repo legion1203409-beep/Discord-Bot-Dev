@@ -3,11 +3,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const store = vi.hoisted(() => ({
   getConfig: vi.fn(), getWebAppeal: vi.fn(), decideAppeal: vi.fn(), updateCase: vi.fn(), writeAudit: vi.fn(), getCase: vi.fn(),
   listCases: vi.fn(), getLatestAppeal: vi.fn(), createWebAppeal: vi.fn(), createCase: vi.fn(), setAppealStaffMessage: vi.fn(),
-  requestAppealClarification: vi.fn(), respondAppealClarification: vi.fn(),
+  requestAppealClarification: vi.fn(), respondAppealClarification: vi.fn(), addCaseNote: vi.fn(),
 }));
 vi.mock("../store", () => ({ moderationStore: store, webAppealChannelId: (id: string) => `web:${id}` }));
 
-import { answerClarification, appealWindow, askWebAppeal, cleanAppealText, decideWebAppeal, submitAppeal, AppealError } from "../appeals";
+import { acceptedAppealMessage, answerClarification, appealWindow, askWebAppeal, cleanAppealText, decideWebAppeal, submitAppeal, AppealError } from "../appeals";
 import { appealIdentityFromRequest, createAppealToken, parseAppealToken } from "../appeal-auth";
 
 const DAY = 86_400_000;
@@ -22,19 +22,20 @@ const webAppeal = (over: Record<string, unknown> = {}) => ({
   createdAt: new Date(), decidedAt: null, decidedBy: null, decisionNote: null, clarification: null, staffChannelId: null, staffMessageId: null, ...over,
 });
 
-function client(over: { removeError?: unknown; banned?: boolean } = {}) {
+function client(over: { removeError?: unknown; banned?: boolean; dmError?: unknown } = {}) {
+  const send = vi.fn(async () => { if (over.dmError) throw over.dmError; return {}; });
   const remove = vi.fn(async () => { if (over.removeError) throw over.removeError; });
   const guild = {
     name: "Regat", iconURL: () => null,
     bans: { remove, fetch: vi.fn(async () => { if (over.banned === false) throw { code: 10026 }; return { reason: "spam" }; }) },
   };
   return {
-    remove,
+    remove, send,
     client: {
       isReady: () => true,
       guilds: { cache: new Map([[GUILD, guild]]), fetch: vi.fn() },
       channels: { fetch: vi.fn(async () => null) },
-      users: { fetch: vi.fn(async () => null) },
+      users: { fetch: vi.fn(async () => ({ id: USER, send })) },
     } as never,
   };
 }
@@ -45,6 +46,7 @@ beforeEach(() => {
   store.writeAudit.mockResolvedValue(undefined);
   store.updateCase.mockResolvedValue({});
   store.getCase.mockResolvedValue({ id: CASE, reason: "spam" });
+  store.addCaseNote.mockResolvedValue({});
 });
 
 describe("when a ban can be appealed", () => {
@@ -144,6 +146,35 @@ describe("staff decisions", () => {
     expect(store.decideAppeal).toHaveBeenCalledWith(expect.objectContaining({ channelId: `web:${APPEAL}`, decision: "accepted" }));
     expect(store.updateCase).toHaveBeenCalledWith(expect.objectContaining({ caseId: CASE, status: "closed" }));
   });
+  it("tells the member in private, with the server's link, and notes whether it arrived", async () => {
+    const ok = client();
+    store.getWebAppeal.mockResolvedValue(webAppeal());
+    store.decideAppeal.mockResolvedValue({ appellantId: USER, channelId: `web:${APPEAL}` });
+    expect((await decideWebAppeal(ok.client, { ...input, decision: "accepted", note: "Bine ai revenit" })).notified).toBe(true);
+    const payload = (ok.send.mock.calls[0] as unknown as [any])[0];
+    expect(payload.embeds[0].data.title).toContain("acceptată");
+    expect(payload.embeds[0].data.fields[0].value).toBe("Bine ai revenit");
+    expect(payload.components[0].components[0].data).toMatchObject({ label: "Intră în regat", url: "https://discord.gg/regatulcenusii" });
+    expect(store.addCaseNote).toHaveBeenCalledWith(expect.objectContaining({ body: expect.stringContaining("a primit în privat") }));
+
+    const closed = client({ dmError: new Error("Cannot send messages to this user") });
+    store.addCaseNote.mockClear();
+    expect((await decideWebAppeal(closed.client, { ...input, decision: "accepted" })).notified).toBe(false);
+    expect(store.addCaseNote).toHaveBeenCalledWith(expect.objectContaining({ body: expect.stringContaining("nu a ajuns") }));
+  });
+
+  it("writes nothing in private on a rejection", async () => {
+    const c = client();
+    store.getWebAppeal.mockResolvedValue(webAppeal());
+    store.decideAppeal.mockResolvedValue({ appellantId: USER, channelId: `web:${APPEAL}` });
+    expect((await decideWebAppeal(c.client, { ...input, decision: "rejected" })).notified).toBe(false);
+    expect(c.send).not.toHaveBeenCalled();
+  });
+
+  it("leaves out the default note from the private message", () => {
+    expect(acceptedAppealMessage("Regat", "Contestație acceptată.").embeds[0]!.data.fields).toBeUndefined();
+  });
+
   it("keeps the appeal open when Discord refuses to lift the ban", async () => {
     const { client: c } = client({ removeError: { code: 50013 } });
     store.getWebAppeal.mockResolvedValue(webAppeal());
