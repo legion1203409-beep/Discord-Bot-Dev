@@ -1669,6 +1669,8 @@ export function useCases(guildId: string | null, params?: { status?: string, use
       setData(res.items || []);
     } catch (err) {
       if (requestedGuildId === guildId && thisRequest === requestId.current) {
+        if (dataGuildId.current !== requestedGuildId) setData([]);
+        dataGuildId.current = requestedGuildId;
         setError(err instanceof Error ? err : new Error("Nu s-au putut încărca dosarele."));
       }
     } finally {
@@ -1733,6 +1735,7 @@ export function useAuditLogs(guildId: string | null, params: AuditLogQuery = {})
       setTotal(Number.isFinite(res.total) ? res.total : 0);
     } catch (err) {
       if (requestedGuildId === guildId && thisRequest === requestId.current) {
+        dataGuildId.current = requestedGuildId;
         setError(err instanceof Error ? err : new Error("Nu s-au putut încărca evenimentele de audit."));
       }
     } finally {
