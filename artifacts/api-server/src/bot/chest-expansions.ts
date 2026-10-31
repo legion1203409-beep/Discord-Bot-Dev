@@ -25,6 +25,7 @@ import { getChannel } from "./channel-config";
 import { serializeBotOperation } from "./operation-lock";
 import { isTicketCategoryParentId } from "./ticket-categories";
 import { AUTOMATIC_CHEST_POSTS_ENABLED } from "./chest-automation";
+import { logProgressFailure, recordProgress } from "./progress";
 
 const WORLD_PREFIX = "chest_world:";
 const SEASONAL_ACTIVE_SUFFIX = "seasonal_active";
@@ -100,6 +101,8 @@ export async function recordPersonalActivity(
   kind: PersonalActivityKind,
   amount = 1,
 ): Promise<void> {
+  // The same deed counts toward the lifetime achievements (bot/progress.ts).
+  void recordProgress(discordId, guildId, kind, amount).catch((error) => logProgressFailure(error, { guildId, kind }));
   const key = stateKey(guildId, `personal:${discordId}`);
   const safeAmount = Math.max(1, Math.floor(amount));
   await ensureBotStateTable();
