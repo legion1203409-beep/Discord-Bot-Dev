@@ -22,7 +22,7 @@ import {
 import 
 {
 
- Router, type ErrorRequestHandler, type RequestHandler, type Response 
+ Router, type ErrorRequestHandler, type Request, type RequestHandler, type Response 
 }
 
  from "express"
@@ -99,6 +99,7 @@ import
 {
 
 
+  beginAppealOAuth,
   beginDiscordOAuth,
   beginVerificationOAuth,
   consumeDiscordOAuthRequest,
@@ -106,6 +107,8 @@ import
   exchangeDiscordOAuthCode,
   fetchBotGuildSnapshot,
   fetchDiscordOAuthIdentity,
+  fetchDiscordOAuthUser,
+  getAppealWebsiteUrl,
   getDiscordBotInviteUrl,
   getVerificationWebsiteUrl,
   isDiscordOAuthConfigured,
@@ -169,6 +172,8 @@ import {
 } from "../bot/oracle-settings";
 import { loadOracleSettings } from "../bot/db";
 import { MAX_PEOPLE_PER_REQUEST, resolvePeople } from "./people";
+import { appealIdentityFromRequest, clearAppealCookie, setAppealCookie } from "./appeal-auth";
+import { answerClarification, appealStatus, submitAppeal } from "./appeals";
 import { resumeOracle, stopOracle } from "../bot/oracle";
 import { startOracleCouncilScheduler, stopOracleCouncilScheduler } from "../bot/oracle-council";
 
@@ -1362,7 +1367,7 @@ async function validateConfigTargets(guildId: string, config: ModerationConfig, 
     ...Object.values(config.activityLog.channelIds),
     config.autoMod.logChannelId, config.antiFlood.logChannelId,
     config.antiRaid.alertChannelId, config.antiSpam.logChannelId, config.audit.channelId,
-    config.suspiciousBehavior.alertChannelId, config.ai.logChannelId,
+    config.suspiciousBehavior.alertChannelId, config.ai.logChannelId, config.appeals?.channelId,
   ].filter((id): id is string => Boolean(id));
   const previousChannelIds = [
     ...previous.channels.ignoredChannelIds, ...previous.channels.protectedChannelIds,
@@ -1372,7 +1377,7 @@ async function validateConfigTargets(guildId: string, config: ModerationConfig, 
     ...Object.values(previous.activityLog.channelIds),
     previous.autoMod.logChannelId, previous.antiFlood.logChannelId,
     previous.antiRaid.alertChannelId, previous.antiSpam.logChannelId, previous.audit.channelId,
-    previous.suspiciousBehavior.alertChannelId, previous.ai.logChannelId,
+    previous.suspiciousBehavior.alertChannelId, previous.ai.logChannelId, previous.appeals?.channelId,
   ].filter((id): id is string => Boolean(id));
   const categoryIds = [config.activityLog.categoryId].filter((id): id is string => Boolean(id));
   const previousCategoryIds = [previous.activityLog.categoryId].filter((id): id is string => Boolean(id));
@@ -1871,6 +1876,84 @@ router.get("/auth-config", (_req, res) =>
 }
 
 
+function appealRedirect(res: Response, guildId: string, error?: string): void {
+  const url = getAppealWebsiteUrl(guildId);
+  res.redirect(error ? `${url}${url.includes("?") ? "&" : "?"}appeal_error=${encodeURIComponent(error)}` : url);
+}
+
+async function finishAppealOAuth(req: Request, res: Response, guildId: string | undefined): Promise<void> {
+  if (!guildId) {
+    res.redirect("/contestatie?appeal_error=invalid_server");
+    return;
+  }
+  const oauthError = typeof req.query.error === "string" ? req.query.error : undefined;
+  if (oauthError === "access_denied") {
+    appealRedirect(res, guildId, "cancelled");
+    return;
+  }
+  const code = typeof req.query.code === "string" ? req.query.code : undefined;
+  if (!code || oauthError) {
+    appealRedirect(res, guildId, "oauth_failed");
+    return;
+  }
+  try {
+    const user = await fetchDiscordOAuthUser(await exchangeDiscordOAuthCode(code));
+    setAppealCookie(res, { userId: user.id, name: user.name, username: user.username, avatar: user.avatar });
+    appealRedirect(res, guildId);
+  } catch (error) {
+    // Like the panel's sign-in: never log or reflect the code or the token.
+    logger.warn({ errorType: error instanceof Error ? error.name : typeof error }, "Discord ban appeal sign-in failed");
+    appealRedirect(res, guildId, "oauth_failed");
+  }
+}
+
+function appealGuildId(req: Request): string {
+  return typeof req.query.guildId === "string" && /^\d{5,25}$/.test(req.query.guildId) ? req.query.guildId : GUILD_ID;
+}
+
+function requireAppealIdentity(req: Request) {
+  const identity = appealIdentityFromRequest(req);
+  if (!identity) throw new ModerationAuthError(401, "Conectează-te cu Discord ca să continui.");
+  return identity;
+}
+
+/** Who is signed in on the appeal page and what their ban looks like; no panel access. */
+router.get("/appeals/session", asyncRoute(async (req, res) => {
+  const guildId = appealGuildId(req);
+  const identity = appealIdentityFromRequest(req);
+  if (!identity) {
+    const { config } = await moderationStore.getConfig(guildId);
+    res.json({ authenticated: false, enabled: Boolean(config.appeals?.enabled) });
+    return;
+  }
+  res.json({
+    authenticated: true,
+    user: { id: identity.userId, name: identity.name, username: identity.username, avatar: identity.avatar },
+    status: await appealStatus(getModerationClient(), guildId, identity.userId),
+  });
+}));
+
+router.post("/appeals/logout", (_req, res) => {
+  clearAppealCookie(res);
+  res.json({ ok: true });
+});
+
+router.post("/appeals", asyncRoute(async (req, res) => {
+  const identity = requireAppealIdentity(req);
+  assertLoginRateLimit(req);
+  const body = parse(z.object({ guildId: z.string().regex(/^\d{5,25}$/).optional(), text: z.string().max(10_000) }), req.body ?? {});
+  res.json({ status: await submitAppeal(getModerationClient(), body.guildId ?? GUILD_ID, identity, body.text) });
+}));
+
+router.post("/appeals/answer", asyncRoute(async (req, res) => {
+  const identity = requireAppealIdentity(req);
+  assertLoginRateLimit(req);
+  const body = parse(z.object({
+    guildId: z.string().regex(/^\d{5,25}$/).optional(), clarificationId: z.string().min(1).max(64), text: z.string().max(10_000),
+  }), req.body ?? {});
+  res.json({ status: await answerClarification(getModerationClient(), body.guildId ?? GUILD_ID, identity, body.clarificationId, body.text) });
+}));
+
 function verificationFailure(res: Response, guildId: string | undefined, code: string): void 
 {
 
@@ -1895,6 +1978,12 @@ router.get("/oauth/discord", (req, res) =>
 
     assertLoginRateLimit(req)
 ;
+    if (req.query.appeal === "1") {
+      const requested = typeof req.query.guildId === "string" && /^\d{5,25}$/.test(req.query.guildId) ? req.query.guildId : GUILD_ID;
+      res.redirect(beginAppealOAuth(res, requested));
+      return;
+    }
+
 
 
     const verificationGuildId = typeof req.query.guildId === "string" ? parse(snowflake, req.query.guildId) : null
@@ -1990,6 +2079,11 @@ router.get("/oauth/discord/callback", asyncRoute(async (req, res) =>
 }
 
 
+  // A ban appeal signs in with identify only and goes back to the appeal page.
+  if (pendingState.purpose === "appeal") {
+    await finishAppealOAuth(req, res, pendingState.guildId);
+    return;
+  }
   const oauthError = typeof req.query.error === "string" ? req.query.error : undefined
 ;
 

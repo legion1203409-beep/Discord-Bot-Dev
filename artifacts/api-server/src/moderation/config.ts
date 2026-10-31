@@ -397,6 +397,17 @@ export const ModerationConfigSchema = z.object({
     /** A link button under the message, e.g. an appeal form or an appeal server. */
     appealUrl: safeHttpsUrl.nullable().default(null),
   }).default({}),
+  // Ban appeals on the website: a banned member signs in with Discord on the
+  // site and writes why the ban should go; staff decide in a Discord channel.
+  appeals: z.object({
+    enabled: z.boolean().default(false),
+    /** Where the bot posts each appeal, with the buttons to accept, reject or ask. */
+    channelId: snowflake.nullable().default(null),
+    /** Accepting an appeal lifts the ban. */
+    unbanOnAccept: z.boolean().default(true),
+    /** Days after a rejection before the same ban can be appealed again. */
+    cooldownDays: z.number().int().min(1).max(365).default(30),
+  }).default({}),
 }).superRefine((config, ctx) => {
   validateRuleThresholds(config.autoMod.wordFilter, ["autoMod", "wordFilter"], { matches: [1, 100] }, ctx);
   validateRuleThresholds(config.autoMod.linkBlock, ["autoMod", "linkBlock"], { matches: [1, 100] }, ctx);

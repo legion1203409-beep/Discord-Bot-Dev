@@ -10,7 +10,7 @@
  */
 import type { User } from "discord.js";
 import { logger } from "../../lib/logger";
-import type { ModerationConfig } from "../../moderation/config";
+import { defaultModerationConfig, type ModerationConfig } from "../../moderation/config";
 
 export type SanctionDmAction = "warn" | "mute" | "kick" | "ban";
 export type SanctionDmSource = "manual" | "automod" | "raid" | undefined;
@@ -50,6 +50,8 @@ export type SanctionDmInput = {
   /** Who gave it; "the bot" for an automatic sanction. */
   moderator?: string;
   now?: Date;
+  /** The ban appeal page on the site; used for a ban when appeals are on and no other link is set. */
+  appealPageUrl?: string | null;
 };
 
 /** The message as Discord takes it (an embed and, with an appeal link, a link button). */
@@ -67,7 +69,13 @@ export function buildSanctionDm(config: ModerationConfig, input: SanctionDmInput
   const appeal = fill(input.type === "kick" || input.type === "ban" ? settings.removedAppealText : settings.appealText, {
     guild: input.guildName, caseId: input.caseId,
   }).trim();
-  if (appeal) fields.push({ name: "Contestație", value: appeal.slice(0, 1_024) });
+  const pageUrl = input.type === "ban" && config.appeals?.enabled && !settings.appealUrl && input.appealPageUrl?.startsWith("https://")
+    ? input.appealPageUrl
+    : null;
+  // The default "write to an administrator" text would contradict the button; a text the server wrote itself stays.
+  const defaultText = settings.removedAppealText === defaultModerationConfig.sanctionDm.removedAppealText;
+  const appealText = pageUrl && (!appeal || defaultText) ? "Poți contesta banul pe site, cu contul tău Discord." : appeal;
+  if (appealText) fields.push({ name: "Contestație", value: appealText.slice(0, 1_024) });
   return {
     embeds: [{
       title: TITLES[input.type],
@@ -76,8 +84,8 @@ export function buildSanctionDm(config: ModerationConfig, input: SanctionDmInput
       fields,
       timestamp: now.toISOString(),
     }],
-    components: settings.appealUrl
-      ? [{ type: 1, components: [{ type: 2, style: 5, label: "Contestă", url: settings.appealUrl }] }]
+    components: settings.appealUrl || pageUrl
+      ? [{ type: 1, components: [{ type: 2, style: 5, label: "Contestă", url: (settings.appealUrl ?? pageUrl)! }] }]
       : [],
     allowedMentions: { parse: [] as never[] },
   };

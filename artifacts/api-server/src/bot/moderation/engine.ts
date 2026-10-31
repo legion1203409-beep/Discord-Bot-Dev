@@ -16,6 +16,7 @@ import {
 import OpenAI from "openai";
 import { pool } from "@workspace/db";
 import { moderationStore } from "../../moderation/store";
+import { getAppealWebsiteUrl } from "../../moderation/oauth";
 import type { ModerationConfig, ModerationAction as ConfiguredAction } from "../../moderation/config";
 import { logger } from "../../lib/logger";
 import { buildAutomaticModerationLogDescription } from "./automod-logging";
@@ -829,6 +830,7 @@ export async function executeModerationAction(input: ModerationActionInput): Pro
         reason: reason(input),
         durationMinutes: input.type === "mute" ? Math.max(1, Math.min(40_320, Math.floor(input.durationMinutes ?? 10))) : undefined,
         caseId,
+        appealPageUrl: getAppealWebsiteUrl(input.guildId),
         moderator: isAutomatic ? "Moderarea automată" : actor.displayName || actor.user.username,
       })
     : null;

@@ -7,7 +7,7 @@ import React, { useEffect, useId, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { usePanel } from "./context";
 import {
-  Fields, Fld, Ico, IdPicker, Note, NoteRow, NumField, NumberBox, SectionCard, Seg, Switch, SwitchField, cx, messageChannelOptions, roleOptions,
+  ChannelField, Fields, Fld, Ico, IdPicker, Note, NoteRow, NumField, NumberBox, SectionCard, Seg, Switch, SwitchField, cx, messageChannelOptions, roleOptions,
   type IconName, type PickerOption,
 } from "./fields";
 import { MAX_MUTE_MINUTES, MIN_MUTE_MINUTES, isValidInteger, isValidMuteMinutes } from "./model";
@@ -15,7 +15,7 @@ import { ModuleNotes, ModuleView } from "./rules";
 import {
   CHANNEL_POLICIES, COMMAND_GROUPS, ESCALATION_ACTIONS, LEGACY_ESCALATION_ACTIONS, MAX_ESCALATION_LEVELS, MAX_RESET_DAYS, MAX_VIOLATIONS,
   MIN_RESET_DAYS, MIN_VIOLATIONS, PROFILE_LABEL, ROLE_POLICIES, SANCTIONS_MODULES, SEVERITY_LABEL, SEVERITY_OPTIONS, STAFF_COMMANDS, TIMEZONES,
-  addEscalationLevel, commandGrants, commandSummary, dayTimeline, describeEscalationAction, enabledCommandCount, enabledProfiles,
+  appealSettings, MAX_APPEAL_COOLDOWN_DAYS, MIN_APPEAL_COOLDOWN_DAYS, addEscalationLevel, commandGrants, commandSummary, dayTimeline, describeEscalationAction, enabledCommandCount, enabledProfiles,
   escalationLadder, escalationLevels, formatHourRange, isCommandOn, isValidTimezone, ladderRange, localTime, policyConflicts, policyList,
   removeEscalationLevel, scheduleNow, setCommandGrants, setCommandOn, setEscalationAction, setEscalationMuteMinutes, setEscalationViolations,
   shadowedEscalationLevels, timelineStretches, type CommandDef, type EscalationLevel, type SanctionsModuleId, type ScheduleProfile, type Severity,
@@ -505,9 +505,51 @@ export function ScheduleModule() {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* Contestații                                                         */
+/* ------------------------------------------------------------------ */
+
+export function AppealsModule() {
+  const { config, set, channels } = usePanel();
+  const settings = appealSettings(config);
+  return (
+    <ModuleView module={MODULE.appeals} icon="scale" independent>
+      <SectionCard title="Cum merge" testId="appeals-how">
+        <ol className="pn-fh pn-card-lede" style={{ paddingLeft: 18, display: "grid", gap: 4 }}>
+          <li>Cel cu ban deschide pagina <b>/contestatie</b> a site-ului (linkul vine și în mesajul privat al banului, dacă ai mesaje private pornite) și se conectează cu Discord.</li>
+          <li>Scrie contestația; botul o postează în canalul de mai jos, cu butoanele Acceptă, Respinge și Cere clarificări.</li>
+          <li>Răspunsul apare pe pagină, iar contestația se vede și în Cazuri, la fișa banului.</li>
+        </ol>
+      </SectionCard>
+      <SectionCard title="Setări" testId="appeals-settings">
+        <Fields>
+          <ChannelField
+            label="Canalul staff-ului" selectLabel="Canalul contestațiilor" value={settings.channelId} channels={channels}
+            hint="Aici ajung contestațiile. Pune un canal pe care îl văd doar moderatorii; botul trebuie să poată scrie în el."
+            onChange={(next) => set(["appeals", "channelId"], next)}
+          />
+          {settings.enabled && !settings.channelId ? <NoteRow tone="bad" role="alert">Alege canalul, altfel contestațiile nu ajung la nimeni.</NoteRow> : null}
+          <SwitchField
+            label="Scoate banul când e acceptată" testId="appeals-unban" checked={settings.unbanOnAccept}
+            hint="Botul scoate banul singur la Acceptă și trece asta în caz. Dacă e oprit, acceptarea doar se notează, iar banul îl scoți tu."
+            onChange={(next) => set(["appeals", "unbanOnAccept"], next)}
+          />
+          <NumField
+            label="Zile până la o contestație nouă" testId="appeals-cooldown" unit="zile" value={settings.cooldownDays}
+            min={MIN_APPEAL_COOLDOWN_DAYS} max={MAX_APPEAL_COOLDOWN_DAYS}
+            hint="După o respingere, același ban poate fi contestat din nou abia după atâtea zile."
+            onChange={(next) => set(["appeals", "cooldownDays"], next)}
+          />
+        </Fields>
+      </SectionCard>
+    </ModuleView>
+  );
+}
+
 export const SANCTIONS_VIEWS: Record<SanctionsModuleId, () => React.ReactElement> = {
   escalation: EscalationModule,
   commands: CommandsModule,
   policies: PoliciesModule,
   schedule: ScheduleModule,
+  appeals: AppealsModule,
 };

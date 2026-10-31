@@ -58,6 +58,21 @@ describe("the private message on a sanction", () => {
     expect(payload.components[0]!.components[0]).toMatchObject({ style: 5, label: "Contestă", url: "https://apel.example.com" });
   });
 
+  it("links a ban to the site's appeal page when appeals are on, unless the server set its own link", () => {
+    const withAppeals = (sanctionDm: Record<string, unknown> = {}, appeals: Record<string, unknown> = { enabled: true }) =>
+      ModerationConfigSchema.parse({ sanctionDm: { enabled: true, ...sanctionDm }, appeals });
+    const page = "https://regat.example.com/contestatie?guildId=9";
+    const ban = buildSanctionDm(withAppeals(), { type: "ban", guildName: "Regatul", reason: "x", appealPageUrl: page });
+    expect(ban.components[0]!.components[0]).toMatchObject({ style: 5, label: "Contestă", url: page });
+    expect(ban.embeds[0]!.fields.at(-1)!.value).toContain("contesta banul pe site");
+    // Not for a kick, not when appeals are off, not for a link that is not absolute HTTPS.
+    expect(buildSanctionDm(withAppeals(), { type: "kick", guildName: "R", reason: "x", appealPageUrl: page }).components).toEqual([]);
+    expect(buildSanctionDm(withAppeals({}, { enabled: false }), { type: "ban", guildName: "R", reason: "x", appealPageUrl: page }).components).toEqual([]);
+    expect(buildSanctionDm(withAppeals(), { type: "ban", guildName: "R", reason: "x", appealPageUrl: "/contestatie" }).components).toEqual([]);
+    const own = buildSanctionDm(withAppeals({ appealUrl: "https://apel.example.com" }), { type: "ban", guildName: "R", reason: "x", appealPageUrl: page });
+    expect(own.components[0]!.components[0]).toMatchObject({ url: "https://apel.example.com" });
+  });
+
   it("does not fail the sanction when the member has closed private messages", async () => {
     const payload = buildSanctionDm(config({ enabled: true }), { type: "warn", guildName: "R", reason: "x" });
     const closed = { id: "1", send: vi.fn().mockRejectedValue(new Error("Cannot send messages to this user")) };

@@ -63,6 +63,9 @@ export type CaseNote = { id?: string; authorId: string; body: string; createdAt:
 export type CaseAppeal = {
   status: AppealStatus; appellantId: string; channelId: string; createdAt: string;
   decidedAt: string | null; decidedBy: string | null; decisionNote: string | null;
+  /** "web" for an appeal made on the site (its channelId is then "web:<id>"); a ticket otherwise. */
+  source?: "ticket" | "web"; body?: string | null;
+  clarification?: { id: string; question: string } | null;
 };
 export type CaseDetails = ModerationCase & { notes?: CaseNote[]; appeal?: CaseAppeal | null };
 

@@ -7,6 +7,7 @@ import {
   policySummary, profileAt, removeEscalationLevel, sanctionsDraftError, sanctionsModuleForRoute, scheduleNow, scheduleSummary,
   setCommandGrants, setCommandOn, setEscalationAction, setEscalationMuteMinutes, setEscalationViolations, shadowedEscalationLevels,
   timelineStretches, type EscalationLevel,
+  appealSettings, appealsSummary,
 } from "./sanctions-model";
 
 const DEFAULT_LEVELS: EscalationLevel[] = [
@@ -23,7 +24,7 @@ describe("the sanctions group", () => {
     expect(sanctionsModuleForRoute("/sanctiuni/roluri-canale/").id).toBe("policies");
     expect(sanctionsModuleForRoute("/sanctiuni/program?x=1").id).toBe("schedule");
     expect(SANCTIONS_MODULES.map((module) => module.route)).toEqual([
-      "/sanctiuni/escaladare", "/sanctiuni/comenzi", "/sanctiuni/roluri-canale", "/sanctiuni/program",
+      "/sanctiuni/escaladare", "/sanctiuni/comenzi", "/sanctiuni/roluri-canale", "/sanctiuni/program", "/sanctiuni/contestatii",
     ]);
   });
 
@@ -294,5 +295,27 @@ describe("checks before saving", () => {
     const broken = { ...valid, escalation: { ...valid.escalation, resetAfterDays: 0 } };
     expect(sanctionsDraftError(broken, ["timeProfiles"])).toBeNull();
     expect(sanctionsDraftError(broken, ["escalation"])).not.toBeNull();
+  });
+});
+
+describe("ban appeals", () => {
+  it("reads the settings with the defaults the bot uses", () => {
+    expect(appealSettings(undefined)).toEqual({ enabled: false, channelId: null, unbanOnAccept: true, cooldownDays: 30 });
+    expect(appealSettings({ appeals: { enabled: true, channelId: "123456", unbanOnAccept: false, cooldownDays: 10 } }))
+      .toEqual({ enabled: true, channelId: "123456", unbanOnAccept: false, cooldownDays: 10 });
+  });
+
+  it("tells in the menu whether appeals are off, on or missing a channel", () => {
+    expect(appealsSummary({})).toBe("Oprite");
+    expect(appealsSummary({ appeals: { enabled: true } })).toContain("fără canal");
+    expect(appealsSummary({ appeals: { enabled: true, channelId: "123456", cooldownDays: 14 } })).toContain("14 zile");
+  });
+
+  it("refuses to save appeals that are on without a staff channel, or with a wrong number of days", () => {
+    expect(sanctionsDraftError({ appeals: { enabled: true } }, ["appeals"])).toContain("alege canalul");
+    expect(sanctionsDraftError({ appeals: { enabled: true, channelId: "123456", cooldownDays: 0 } }, ["appeals"])).toContain("între 1 și 365");
+    expect(sanctionsDraftError({ appeals: { enabled: true, channelId: "x1" } }, ["appeals"])).toContain("ID Discord");
+    expect(sanctionsDraftError({ appeals: { enabled: true, channelId: "123456", cooldownDays: 30 } }, ["appeals"])).toBeNull();
+    expect(sanctionsDraftError({ appeals: { enabled: true } }, ["escalation"])).toBeNull();
   });
 });

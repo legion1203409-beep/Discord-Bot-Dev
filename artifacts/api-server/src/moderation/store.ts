@@ -22,13 +22,39 @@ export interface CaseListFilters {
 
 /** The latest appeal against a case. */
 export interface ModerationCaseAppeal {
+  id: string;
   status: AppealStatus;
   appellantId: string;
+  /** The appeal ticket's channel, or "web:<id>" for an appeal made on the website. */
   channelId: string;
+  /** Where it was made: a ticket on the server, or the website (after a ban). */
+  source: "ticket" | "web";
+  /** What the member wrote, for appeals made on the website. */
+  body: string | null;
   createdAt: Date;
   decidedAt: Date | null;
   decidedBy: string | null;
   decisionNote: string | null;
+  /** A question from staff still waiting for the member's answer. */
+  clarification: { id: string; question: string } | null;
+}
+
+/** A website appeal with what the bot needs to judge it. */
+export interface ModerationWebAppeal extends ModerationCaseAppeal {
+  guildId: string;
+  caseId: string;
+  staffChannelId: string | null;
+  staffMessageId: string | null;
+}
+
+/** The channel ID that stands for a website appeal in the appeals table. */
+export function webAppealChannelId(appealId: string): string {
+  return `web:${appealId}`;
+}
+
+/** Where an appeal was made, for case notes: the ticket, or the website. */
+function appealPlace(channelId: string): string {
+  return channelId.startsWith("web:") ? "de pe site" : `din ticketul <#${channelId}>`;
 }
 
 export interface ModerationCase {
@@ -127,6 +153,10 @@ export interface ModerationStore {
   /** Open and closed cases matching the member and action filters. */
   countCases?(guildId: string, filters: Pick<CaseListFilters, "userId" | "actionType">): Promise<{ open: number; closed: number }>;
   getLatestAppeal?(guildId: string, caseId: string): Promise<ModerationCaseAppeal | null>;
+  /** An appeal made on the website after a ban; null when the case has another one waiting. */
+  createWebAppeal?(input: { guildId: string; caseId: string; appellantId: string; body: string }): Promise<ModerationWebAppeal | null>;
+  getWebAppeal?(guildId: string, appealId: string): Promise<ModerationWebAppeal | null>;
+  setAppealStaffMessage?(input: { guildId: string; appealId: string; channelId: string; messageId: string }): Promise<void>;
   getCase(guildId: string, caseId: string): Promise<ModerationCase | null>;
   createCase(input: {
     guildId: string; subjectId: string; actorId: string | null; actionType: string;
@@ -171,6 +201,34 @@ function asObject(value: unknown): Record<string, unknown> {
 }
 
 const APPEAL_STATUSES: readonly AppealStatus[] = ["pending", "accepted", "rejected"];
+
+function appealFromRow(row: Record<string, unknown>): ModerationCaseAppeal {
+  return {
+    id: String(row.id),
+    status: APPEAL_STATUSES.includes(row.status as AppealStatus) ? row.status as AppealStatus : "pending",
+    appellantId: String(row.appellant_id),
+    channelId: String(row.channel_id),
+    source: row.source === "web" ? "web" : "ticket",
+    body: row.body ? String(row.body) : null,
+    createdAt: row.created_at as Date,
+    decidedAt: (row.decided_at as Date | null) ?? null,
+    decidedBy: row.decided_by ? String(row.decided_by) : null,
+    decisionNote: row.decision_note ? String(row.decision_note) : null,
+    clarification: row.pending_clarification_id && row.pending_clarification_question
+      ? { id: String(row.pending_clarification_id), question: String(row.pending_clarification_question) }
+      : null,
+  };
+}
+
+function webAppealFromRow(row: Record<string, unknown>): ModerationWebAppeal {
+  return {
+    ...appealFromRow(row),
+    guildId: String(row.guild_id),
+    caseId: String(row.case_id),
+    staffChannelId: row.staff_channel_id ? String(row.staff_channel_id) : null,
+    staffMessageId: row.staff_message_id ? String(row.staff_message_id) : null,
+  };
+}
 
 function caseFromRow(row: Record<string, unknown>): ModerationCase {
   const appeal = "appeal_status" in row
@@ -284,7 +342,11 @@ export class PostgresModerationStore implements ModerationStore {
         ALTER TABLE moderation_appeals
           ADD COLUMN IF NOT EXISTS pending_clarification_id uuid,
           ADD COLUMN IF NOT EXISTS pending_clarification_question text,
-          ADD COLUMN IF NOT EXISTS pending_clarification_by text;
+          ADD COLUMN IF NOT EXISTS pending_clarification_by text,
+          ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT 'ticket',
+          ADD COLUMN IF NOT EXISTS body text,
+          ADD COLUMN IF NOT EXISTS staff_channel_id text,
+          ADD COLUMN IF NOT EXISTS staff_message_id text;
       `);
     })();
     return schemaPromise;
@@ -519,22 +581,72 @@ export class PostgresModerationStore implements ModerationStore {
   async getLatestAppeal(guildId: string, caseId: string): Promise<ModerationCaseAppeal | null> {
     await this.ensureSchema();
     const { rows } = await pool.query<Record<string, unknown>>(
-      `SELECT status, appellant_id, channel_id, created_at, decided_at, decided_by, decision_note
-       FROM moderation_appeals WHERE guild_id = $1 AND case_id = $2
+      `SELECT * FROM moderation_appeals WHERE guild_id = $1 AND case_id = $2
        ORDER BY created_at DESC LIMIT 1`,
       [guildId, caseId],
     );
-    const row = rows[0];
-    if (!row || !APPEAL_STATUSES.includes(row.status as AppealStatus)) return null;
-    return {
-      status: row.status as AppealStatus,
-      appellantId: String(row.appellant_id),
-      channelId: String(row.channel_id),
-      createdAt: row.created_at as Date,
-      decidedAt: (row.decided_at as Date | null) ?? null,
-      decidedBy: row.decided_by ? String(row.decided_by) : null,
-      decisionNote: row.decision_note ? String(row.decision_note) : null,
-    };
+    return rows[0] ? appealFromRow(rows[0]) : null;
+  }
+
+  async createWebAppeal(input: { guildId: string; caseId: string; appellantId: string; body: string }): Promise<ModerationWebAppeal | null> {
+    await this.ensureSchema();
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const caseResult = await client.query<{ subject_id: string; action_type: string }>(
+        "SELECT subject_id, action_type FROM moderation_cases WHERE guild_id = $1 AND id = $2 FOR UPDATE",
+        [input.guildId, input.caseId],
+      );
+      const found = caseResult.rows[0];
+      if (found?.subject_id !== input.appellantId || found.action_type !== "ban") {
+        await client.query("ROLLBACK");
+        return null;
+      }
+      const id = randomUUID();
+      // At most one waiting appeal per case (moderation_appeals_one_pending_idx).
+      const inserted = await client.query<Record<string, unknown>>(
+        `INSERT INTO moderation_appeals (id, guild_id, case_id, appellant_id, channel_id, source, body)
+         VALUES ($1, $2, $3, $4, $5, 'web', $6) ON CONFLICT DO NOTHING RETURNING *`,
+        [id, input.guildId, input.caseId, input.appellantId, webAppealChannelId(id), input.body],
+      );
+      if (!inserted.rowCount) {
+        await client.query("ROLLBACK");
+        return null;
+      }
+      await client.query(
+        `INSERT INTO moderation_case_notes (id, case_id, guild_id, author_id, body)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [randomUUID(), input.caseId, input.guildId, input.appellantId, `Contestație depusă pe site:\n${input.body}`],
+      );
+      await this.insertAudit(client, {
+        guildId: input.guildId, actorId: input.appellantId, eventType: "case.appeal_submitted",
+        targetType: "case", targetId: input.caseId, detail: { source: "web", appealId: id },
+      });
+      await client.query("COMMIT");
+      return webAppealFromRow(inserted.rows[0]!);
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async getWebAppeal(guildId: string, appealId: string): Promise<ModerationWebAppeal | null> {
+    await this.ensureSchema();
+    const { rows } = await pool.query<Record<string, unknown>>(
+      "SELECT * FROM moderation_appeals WHERE guild_id = $1 AND id = $2 AND source = 'web'",
+      [guildId, appealId],
+    );
+    return rows[0] ? webAppealFromRow(rows[0]) : null;
+  }
+
+  async setAppealStaffMessage(input: { guildId: string; appealId: string; channelId: string; messageId: string }): Promise<void> {
+    await this.ensureSchema();
+    await pool.query(
+      "UPDATE moderation_appeals SET staff_channel_id = $3, staff_message_id = $4 WHERE guild_id = $1 AND id = $2",
+      [input.guildId, input.appealId, input.channelId, input.messageId],
+    );
   }
 
   async getCase(guildId: string, caseId: string) {
@@ -731,7 +843,7 @@ export class PostgresModerationStore implements ModerationStore {
          VALUES ($1, $2, $3, $4, $5)`,
         [
           randomUUID(), input.caseId, input.guildId, input.actorId,
-          `Personalul <@${input.actorId}> a solicitat clarificări pentru contestația din ticketul <#${input.channelId}>:\n${input.question}`,
+          `Personalul <@${input.actorId}> a solicitat clarificări pentru contestația ${appealPlace(input.channelId)}:\n${input.question}`,
         ],
       );
       await this.insertAudit(client, {
@@ -776,7 +888,7 @@ export class PostgresModerationStore implements ModerationStore {
          VALUES ($1, $2, $3, $4, $5)`,
         [
           randomUUID(), input.caseId, input.guildId, input.actorId,
-          `Solicitarea de clarificări nu a putut fi publicată în ticketul <#${input.channelId}> și a fost anulată.`,
+          `Solicitarea de clarificări nu a putut fi publicată ${input.channelId.startsWith("web:") ? "pe site" : `în ticketul <#${input.channelId}>`} și a fost anulată.`,
         ],
       );
       await this.insertAudit(client, {

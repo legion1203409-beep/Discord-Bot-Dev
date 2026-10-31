@@ -834,7 +834,7 @@ test.describe("authenticated moderation console", () => {
     await page.goto("/moderare/sanctiuni");
     await chooseFirstGuild(page);
     await expect(page.getByRole("heading", { name: "Escaladarea sancțiunilor" })).toBeVisible();
-    await expect(page.getByRole("navigation", { name: "Modulele sancțiunilor" }).getByRole("link")).toHaveCount(4);
+    await expect(page.getByRole("navigation", { name: "Modulele sancțiunilor" }).getByRole("link")).toHaveCount(5);
     await expect(page.getByTestId("nav-sanctions-escalation")).toHaveAttribute("aria-current", "page");
 
     await page.getByRole("switch", { name: "Activează escaladarea" }).click();
@@ -930,6 +930,106 @@ test.describe("authenticated moderation console", () => {
     await page.goto("/moderare/sanctiuni/comenzi");
     await expect(page.getByRole("switch", { name: "/purge", exact: true })).not.toBeChecked();
     await expect(page.getByRole("switch", { name: "/ban", exact: true })).toBeChecked();
+  });
+
+  test("ban appeals are turned on with a staff channel, the unban switch and the wait, and saved", async ({ page }) => {
+    await page.unroute("**/api/moderation/guilds/*/metadata");
+    await page.route("**/api/moderation/guilds/*/metadata", async (route) => {
+      await route.fulfill({
+        json: {
+          guild: { id: guilds[0].id, name: guilds[0].name, ownerId: "999999999" },
+          roles: [],
+          channels: [{ id: "444444444", name: "contestatii-staff", type: 0, parentId: null }],
+          botCapabilities: { online: true, messageContent: true, guildMembers: true },
+        },
+      });
+    });
+    await page.goto("/moderare/sanctiuni/contestatii");
+    await chooseFirstGuild(page);
+    await expect(page.getByRole("heading", { name: "Contestații de ban" })).toBeVisible();
+    await expect(page.getByTestId("nav-sanctions-appeals")).toHaveAttribute("aria-current", "page");
+    await page.getByRole("switch", { name: "Activează contestațiile de pe site" }).click();
+    // On without a staff channel: the page says so and refuses to save.
+    await expect(page.getByText("Alege canalul, altfel contestațiile nu ajung la nimeni.")).toBeVisible();
+    await page.getByRole("button", { name: "Salvează", exact: true }).click();
+    // Nothing was sent: the draft is refused before it leaves the page.
+    expect((savedConfigs.get(guilds[0].id) as any).appeals?.enabled).not.toBe(true);
+    await page.getByRole("combobox", { name: "Canalul contestațiilor" }).selectOption("444444444");
+    await page.getByRole("switch", { name: "Scoate banul când e acceptată" }).click();
+    await page.getByTestId("appeals-cooldown").fill("14");
+
+    const saveResponse = page.waitForResponse((response) =>
+      response.url().includes("/api/moderation/guilds/111111111/config")
+      && response.request().method() === "PUT");
+    await page.getByRole("button", { name: "Salvează", exact: true }).click();
+    expect((await saveResponse).ok()).toBe(true);
+    expect((savedConfigs.get(guilds[0].id) as any).appeals).toEqual({ enabled: true, channelId: "444444444", unbanOnAccept: false, cooldownDays: 14 });
+    await page.reload();
+    await expect(page.getByRole("switch", { name: "Activează contestațiile de pe site" })).toBeChecked();
+    await expect(page.getByTestId("appeals-cooldown")).toHaveValue("14");
+  });
+
+  test("a banned person signs in, appeals, answers a question and sees the result on the public page", async ({ page }) => {
+    const view = (over: Record<string, unknown> = {}) => ({
+      enabled: true, guild: { id: "111111111", name: "Regatul Cenușii", iconUrl: null }, banned: true,
+      ban: { reason: "spam în #general", caseId: "c1", at: null }, appeal: null, canAppeal: true, nextAllowedAt: null, inviteUrl: null, ...over,
+    });
+    const pending = { id: "a1", status: "pending", body: "x".repeat(40), createdAt: "2026-10-01T10:00:00Z", decidedAt: null, decisionNote: null, question: null };
+    let signedIn = false;
+    let status: Record<string, unknown> = view();
+    const posts: Array<{ url: string; body: any }> = [];
+    await page.route("**/api/moderation/appeals/session**", async (route) => {
+      await route.fulfill({ json: signedIn
+        ? { authenticated: true, user: { id: "234567890123456789", name: "Ana", username: "ana", avatar: null }, status }
+        : { authenticated: false, enabled: true } });
+    });
+    await page.route("**/api/moderation/appeals", async (route) => {
+      posts.push({ url: route.request().url(), body: route.request().postDataJSON() });
+      status = view({ canAppeal: false, appeal: pending });
+      await route.fulfill({ json: { status } });
+    });
+    await page.route("**/api/moderation/appeals/answer", async (route) => {
+      posts.push({ url: route.request().url(), body: route.request().postDataJSON() });
+      status = view({ canAppeal: false, appeal: pending });
+      await route.fulfill({ json: { status } });
+    });
+
+    await page.goto("/contestatie?guildId=111111111");
+    await expect(page.getByRole("heading", { name: "Contestă banul" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Conectează-te cu Discord" })).toHaveAttribute("href", "/api/moderation/oauth/discord?appeal=1&guildId=111111111");
+
+    signedIn = true;
+    await page.reload();
+    await expect(page.getByText("spam în #general")).toBeVisible();
+    const send = page.getByRole("button", { name: "Trimite contestația" });
+    await expect(send).toBeDisabled();
+    await page.getByLabel("Ce s-a întâmplat și de ce să fie scos banul?").fill("Am greșit și îmi pare rău, nu se va mai repeta.");
+    await expect(send).toBeEnabled();
+    await send.click();
+    await expect(page.getByText("Contestația ta a ajuns la staff.")).toBeVisible();
+    expect(posts[0]!.body).toMatchObject({ guildId: "111111111", text: "Am greșit și îmi pare rău, nu se va mai repeta." });
+
+    status = view({ canAppeal: false, appeal: { ...pending, question: { id: "q1", text: "Ai mai fost banat?" } } });
+    await page.reload();
+    await expect(page.getByText("Ai mai fost banat?")).toBeVisible();
+    await page.getByLabel("Răspunsul tău").fill("Nu, prima dată.");
+    await page.getByRole("button", { name: "Trimite răspunsul" }).click();
+    await expect(page.getByText("Contestația ta a ajuns la staff.")).toBeVisible();
+    expect(posts[1]!.body).toMatchObject({ clarificationId: "q1", text: "Nu, prima dată." });
+
+    status = view({ canAppeal: false, nextAllowedAt: "2026-11-15T00:00:00Z", appeal: { ...pending, status: "rejected", decidedAt: "2026-10-16T00:00:00Z", decisionNote: "Prea devreme." } });
+    await page.reload();
+    await expect(page.getByText("Contestația a fost respinsă.")).toBeVisible();
+    await expect(page.getByText("Poți face o contestație nouă după 15 noiembrie 2026.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Trimite contestația" })).toHaveCount(0);
+
+    status = view({ banned: false, canAppeal: false, appeal: { ...pending, status: "accepted", decidedAt: "2026-10-20T00:00:00Z" }, inviteUrl: "https://discord.gg/regatulcenusii" });
+    await page.reload();
+    await expect(page.getByText("Contestația a fost acceptată.")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Intră în regat" })).toHaveAttribute("href", "https://discord.gg/regatulcenusii");
+
+    await page.goto("/contestatie?guildId=111111111&appeal_error=cancelled");
+    await expect(page.getByRole("alert")).toContainText("Ai anulat conectarea cu Discord");
   });
 
   test("the older addresses of sanctions settings open the new page", async ({ page }) => {

@@ -17,7 +17,7 @@ import { Ico, cx, type IconName } from "./fields";
 import {
   SANCTIONS_MODULES, SANCTIONS_SECTIONS, STAFF_COMMANDS, availableCommandCount, commandsSummary, enabledProfiles, escalationSummary,
   isModuleChanged, policySummary, sanctionsDraftError, sanctionsModuleForRoute, scheduleSummary, CHANNEL_POLICIES, ROLE_POLICIES,
-  policyList, type SanctionsModuleId,
+  policyList, appealsSummary, appealSettings, type SanctionsModuleId,
 } from "./sanctions-model";
 import { SANCTIONS_VIEWS } from "./sanctions";
 
@@ -26,6 +26,7 @@ const MODULE_ICONS: Record<SanctionsModuleId, IconName> = {
   commands: "slash",
   policies: "users",
   schedule: "clock",
+  appeals: "scale",
 };
 
 /** The dot next to a module in the menu: on, on but not running, or off. */
@@ -41,6 +42,10 @@ function moduleState(config: any, id: SanctionsModuleId): "on" | "paused" | "off
       return [...ROLE_POLICIES, ...CHANNEL_POLICIES].some((def) => policyList(config, def).length > 0) ? "on" : "off";
     case "schedule":
       return enabledProfiles(config?.timeProfiles).length > 0 ? "on" : "off";
+    case "appeals": {
+      const settings = appealSettings(config);
+      return settings.enabled ? (settings.channelId ? "on" : "paused") : "off";
+    }
   }
 }
 
@@ -50,6 +55,7 @@ function moduleSummary(config: any, id: SanctionsModuleId): string {
     case "commands": return commandsSummary(config);
     case "policies": return policySummary(config);
     case "schedule": return scheduleSummary(config);
+    case "appeals": return appealsSummary(config);
   }
 }
 

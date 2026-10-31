@@ -357,15 +357,17 @@ function CaseBody({ item, who, busy, error, done, onStatus, onReason, onNote, on
         <section className="pn-sheet-s" aria-label="Contestația" data-testid="case-appeal">
           <div className="pn-sheet-sh"><h3>Contestația</h3><span className={cx("pn-badge", appeal.status === "pending" ? "is-wait" : "is-plain")}>{APPEAL_LABELS[appeal.status]}</span></div>
           <p className="pn-rec-text">
-            Depusă pe {fullTime(appeal.createdAt)}
-            {messageLink(guildId, appeal.channelId) ? <> în tichetul <a className="pn-lnk" href={messageLink(guildId, appeal.channelId)!} target="_blank" rel="noopener noreferrer">{channelName(appeal.channelId) ?? "contestației"}</a></> : null}.
+            Depusă pe {fullTime(appeal.createdAt)}{appeal.source === "web" ? " pe site" : ""}
+            {appeal.source !== "web" && messageLink(guildId, appeal.channelId) ? <> în tichetul <a className="pn-lnk" href={messageLink(guildId, appeal.channelId)!} target="_blank" rel="noopener noreferrer">{channelName(appeal.channelId) ?? "contestației"}</a></> : null}.
           </p>
+          {appeal.source === "web" && appeal.body ? <blockquote className="pn-rec-text" data-testid="case-appeal-body" style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{appeal.body}</blockquote> : null}
+          {appeal.clarification ? <p className="pn-fh">Întrebare trimisă, așteaptă răspunsul membrului: „{appeal.clarification.question}”</p> : null}
           {appeal.decidedAt ? (
             <p className="pn-rec-text">
               {appeal.status === "accepted" ? "Acceptată" : "Respinsă"} pe {fullTime(appeal.decidedAt)}{appeal.decidedBy ? ` de ${who(appeal.decidedBy)?.name ?? appeal.decidedBy}` : ""}.
               {appeal.decisionNote ? <> Nota: „{appeal.decisionNote}”</> : null}
             </p>
-          ) : <p className="pn-fh">Răspunsul se dă din tichetul contestației, în Discord.</p>}
+          ) : <p className="pn-fh">{appeal.source === "web" ? "Răspunsul se dă din butoanele mesajului din canalul contestațiilor, în Discord." : "Răspunsul se dă din tichetul contestației, în Discord."}</p>}
         </section>
       ) : null}
 

@@ -261,3 +261,15 @@ describe("moderation configuration defaults", () => {
     })).toThrow();
   });
 });
+
+describe("ban appeals configuration", () => {
+  it("is off by default, lifts the ban on accept and waits 30 days after a rejection", () => {
+    expect(ModerationConfigSchema.parse({}).appeals).toEqual({ enabled: false, channelId: null, unbanOnAccept: true, cooldownDays: 30 });
+  });
+  it("keeps only a Discord id as the staff channel and 1 to 365 days of waiting", () => {
+    expect(ModerationConfigSchema.parse({ appeals: { channelId: "123456789012345678", cooldownDays: 7 } }).appeals).toMatchObject({ channelId: "123456789012345678", cooldownDays: 7 });
+    expect(() => ModerationConfigSchema.parse({ appeals: { channelId: "nu-e-id" } })).toThrow();
+    expect(() => ModerationConfigSchema.parse({ appeals: { cooldownDays: 0 } })).toThrow();
+    expect(() => ModerationConfigSchema.parse({ appeals: { cooldownDays: 366 } })).toThrow();
+  });
+});

@@ -441,6 +441,7 @@ export const SANCTIONS_MODULE_ROUTES = {
   commands: "/sanctiuni/comenzi",
   policies: "/sanctiuni/roluri-canale",
   schedule: "/sanctiuni/program",
+  appeals: "/sanctiuni/contestatii",
 } as const;
 
 /** True for "/sanctiuni" and the routes of its modules. */

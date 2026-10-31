@@ -29,6 +29,7 @@ import { HomePage } from "./pages/public/home/HomePage";
 import { StartPage } from "./pages/public/StartPage";
 import { OperatorHealthPage } from "./pages/public/OperatorHealthPage";
 import { VerificationPage } from "./pages/public/VerificationPage";
+import { AppealPage } from "./pages/public/AppealPage";
 import { DailyStatsPage } from "./pages/public/DailyStatsPage";
 import { useEffect, useState } from "react";
 
@@ -107,6 +108,7 @@ function ModerationApp() {
           <Route path="/sanctiuni/comenzi" component={SanctionsGroupPage} />
           <Route path="/sanctiuni/roluri-canale" component={SanctionsGroupPage} />
           <Route path="/sanctiuni/program" component={SanctionsGroupPage} />
+          <Route path="/sanctiuni/contestatii" component={SanctionsGroupPage} />
           {/* Older addresses of the same settings, kept for bookmarks and links. */}
           <Route path="/politici" component={() => <Redirect to="/sanctiuni/roluri-canale" replace />} />
           <Route path="/config/escaladare" component={() => <Redirect to="/sanctiuni/escaladare" replace />} />
@@ -185,6 +187,7 @@ export default function App() {
         <Route path="/server" component={HomePage} />
         <Route path="/joc" component={() => <Redirect to="/server" replace />} />
         <Route path="/verificare" component={VerificationPage} />
+        <Route path="/contestatie" component={AppealPage} />
         <Route path="/statistici" component={() => <PublicLayout><DailyStatsPage /></PublicLayout>} />
         <Route path="/moderare" nest>
           <ModerationApp />

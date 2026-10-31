@@ -29,7 +29,7 @@ export type SanctionsModuleDef = {
   title: string;
   description: string;
   /** The module's own on/off switch, when it has one. */
-  configKey?: "escalation" | "manualTools";
+  configKey?: "escalation" | "manualTools" | "appeals";
   switchLabel?: string;
   /** What the module edits; a change in any of these marks it unsaved in the menu. */
   paths: readonly string[];
@@ -56,6 +56,11 @@ export const SANCTIONS_MODULES: readonly SanctionsModuleDef[] = [
     description: "Cât de strictă e moderarea automată a mesajelor noaptea, ziua, în weekend sau în timpul unui eveniment.",
     paths: ["timeProfiles"],
   },
+  {
+    id: "appeals", route: SANCTIONS_MODULE_ROUTES.appeals, short: "Contestații", title: "Contestații de ban",
+    description: "Cine are ban nu mai poate deschide un tichet pe server. Aici se pornește pagina de contestație de pe site: staff-ul primește contestațiile într-un canal Discord și poate scoate banul dintr-un click.",
+    configKey: "appeals", switchLabel: "Activează contestațiile de pe site", paths: ["appeals"],
+  },
 ];
 
 /** The module a route opens; "/sanctiuni" and unknown routes open the first one. */
@@ -71,6 +76,7 @@ export const SANCTIONS_SECTIONS = [
   { key: "roles", label: "Roluri" },
   { key: "channels", label: "Canale" },
   { key: "timeProfiles", label: "Program" },
+  { key: "appeals", label: "Contestații" },
 ] as const;
 
 /** True when the draft differs from what is saved in anything this module edits. */
@@ -529,6 +535,34 @@ export function scheduleSummary(config: any): string {
 }
 
 /* ------------------------------------------------------------------ */
+/* Contestații                                                         */
+/* ------------------------------------------------------------------ */
+
+export const MIN_APPEAL_COOLDOWN_DAYS = 1;
+export const MAX_APPEAL_COOLDOWN_DAYS = 365;
+export const DEFAULT_APPEAL_COOLDOWN_DAYS = 30;
+
+export type AppealSettings = { enabled: boolean; channelId: string | null; unbanOnAccept: boolean; cooldownDays: number };
+
+/** The appeal settings as the bot reads them (config.ts: appeals), with the defaults for what is missing. */
+export function appealSettings(config: any): AppealSettings {
+  const value = config?.appeals ?? {};
+  return {
+    enabled: value.enabled === true,
+    channelId: typeof value.channelId === "string" && value.channelId ? value.channelId : null,
+    unbanOnAccept: value.unbanOnAccept !== false,
+    cooldownDays: value.cooldownDays ?? DEFAULT_APPEAL_COOLDOWN_DAYS,
+  };
+}
+
+/** The line under "Contestații" in the menu. */
+export function appealsSummary(config: any): string {
+  const settings = appealSettings(config);
+  if (!settings.enabled) return "Oprite";
+  return settings.channelId ? `Pornite · iar după respingere, ${settings.cooldownDays} zile` : "Pornite, dar fără canal pentru staff";
+}
+
+/* ------------------------------------------------------------------ */
 /* Verificări înainte de salvare                                       */
 /* ------------------------------------------------------------------ */
 
@@ -564,6 +598,14 @@ export function sanctionsDraftError(config: any, sections?: ReadonlyArray<string
         return `${name}, Minute de mute: introdu un număr întreg între ${MIN_MUTE_MINUTES} și ${MAX_MUTE_MINUTES}.`;
       }
     }
+  }
+  if (checks("appeals")) {
+    const appeals = appealSettings(config);
+    if (config?.appeals?.cooldownDays !== undefined && !isValidInteger(appeals.cooldownDays, MIN_APPEAL_COOLDOWN_DAYS, MAX_APPEAL_COOLDOWN_DAYS)) {
+      return `Contestații — Zile până la o contestație nouă: introdu un număr întreg între ${MIN_APPEAL_COOLDOWN_DAYS} și ${MAX_APPEAL_COOLDOWN_DAYS}.`;
+    }
+    if (appeals.channelId && !isDiscordId(appeals.channelId)) return "Contestații — canalul pentru staff nu este un ID Discord valid.";
+    if (appeals.enabled && !appeals.channelId) return "Contestații — alege canalul în care staff-ul primește contestațiile.";
   }
   if (checks("manualTools")) {
     for (const command of STAFF_COMMANDS) {
