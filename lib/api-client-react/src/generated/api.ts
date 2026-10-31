@@ -27,6 +27,12 @@ import type {
   BotControlPartialApplyResponse,
   BotControlResponse,
   BotControlSettings,
+  GameActionInput,
+  GameAttackResponse,
+  GameAuthConfig,
+  GameLevelUpInput,
+  GameOverview,
+  GameSession,
   GetRecruitmentDashboardParams,
   GetVerificationStatusParams,
   HealthStatus,
@@ -170,6 +176,603 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
 
 
 
+
+export const getGameAuthConfigUrl = () => {
+
+
+
+
+  return `/api/game/auth-config`
+}
+
+/**
+ * @summary Read public Discord login availability
+ */
+export const gameAuthConfig = async ( options?: RequestInit): Promise<GameAuthConfig> => {
+
+  return customFetch<GameAuthConfig>(getGameAuthConfigUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGameAuthConfigQueryKey = () => {
+    return [
+    `/api/game/auth-config`
+    ] as const;
+    }
+
+
+export const getGameAuthConfigQueryOptions = <TData = Awaited<ReturnType<typeof gameAuthConfig>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof gameAuthConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGameAuthConfigQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof gameAuthConfig>>> = ({ signal }) => gameAuthConfig({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof gameAuthConfig>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GameAuthConfigQueryResult = NonNullable<Awaited<ReturnType<typeof gameAuthConfig>>>
+export type GameAuthConfigQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Read public Discord login availability
+ */
+
+export function useGameAuthConfig<TData = Awaited<ReturnType<typeof gameAuthConfig>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof gameAuthConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGameAuthConfigQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGameDiscordAuthorizeUrl = () => {
+
+
+
+
+  return `/api/game/oauth/discord`
+}
+
+/**
+ * @summary Start a browser RPG Discord sign-in
+ */
+export const gameDiscordAuthorize = async ( options?: RequestInit): Promise<unknown> => {
+
+  return customFetch<unknown>(getGameDiscordAuthorizeUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGameDiscordAuthorizeQueryKey = () => {
+    return [
+    `/api/game/oauth/discord`
+    ] as const;
+    }
+
+
+export const getGameDiscordAuthorizeQueryOptions = <TData = Awaited<ReturnType<typeof gameDiscordAuthorize>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof gameDiscordAuthorize>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGameDiscordAuthorizeQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof gameDiscordAuthorize>>> = ({ signal }) => gameDiscordAuthorize({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof gameDiscordAuthorize>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GameDiscordAuthorizeQueryResult = NonNullable<Awaited<ReturnType<typeof gameDiscordAuthorize>>>
+export type GameDiscordAuthorizeQueryError = ErrorType<void>
+
+
+/**
+ * @summary Start a browser RPG Discord sign-in
+ */
+
+export function useGameDiscordAuthorize<TData = Awaited<ReturnType<typeof gameDiscordAuthorize>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof gameDiscordAuthorize>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGameDiscordAuthorizeQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetGameSessionUrl = () => {
+
+
+
+
+  return `/api/game/session`
+}
+
+/**
+ * @summary Read the current browser player session
+ */
+export const getGameSession = async ( options?: RequestInit): Promise<GameSession> => {
+
+  return customFetch<GameSession>(getGetGameSessionUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetGameSessionQueryKey = () => {
+    return [
+    `/api/game/session`
+    ] as const;
+    }
+
+
+export const getGetGameSessionQueryOptions = <TData = Awaited<ReturnType<typeof getGameSession>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getGameSession>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetGameSessionQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getGameSession>>> = ({ signal }) => getGameSession({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getGameSession>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetGameSessionQueryResult = NonNullable<Awaited<ReturnType<typeof getGameSession>>>
+export type GetGameSessionQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Read the current browser player session
+ */
+
+export function useGetGameSession<TData = Awaited<ReturnType<typeof getGameSession>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getGameSession>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetGameSessionQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGameLogoutUrl = () => {
+
+
+
+
+  return `/api/game/logout`
+}
+
+/**
+ * @summary Revoke the current browser player session
+ */
+export const gameLogout = async ( options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getGameLogoutUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getGameLogoutMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof gameLogout>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof gameLogout>>, TError,void, TContext> => {
+
+const mutationKey = ['gameLogout'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof gameLogout>>, void> = () => {
+
+
+          return  gameLogout(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GameLogoutMutationResult = NonNullable<Awaited<ReturnType<typeof gameLogout>>>
+
+    export type GameLogoutMutationError = ErrorType<void>
+
+    /**
+ * @summary Revoke the current browser player session
+ */
+export const useGameLogout = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof gameLogout>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof gameLogout>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getGameLogoutMutationOptions(options));
+    }
+
+export const getGetGameOverviewUrl = (guildId: string,) => {
+
+
+
+
+  return `/api/game/guilds/${guildId}/overview`
+}
+
+/**
+ * @summary Read the signed-in player's guild-scoped RPG state
+ */
+export const getGameOverview = async (guildId: string, options?: RequestInit): Promise<GameOverview> => {
+
+  return customFetch<GameOverview>(getGetGameOverviewUrl(guildId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetGameOverviewQueryKey = (guildId: string,) => {
+    return [
+    `/api/game/guilds/${guildId}/overview`
+    ] as const;
+    }
+
+
+export const getGetGameOverviewQueryOptions = <TData = Awaited<ReturnType<typeof getGameOverview>>, TError = ErrorType<void>>(guildId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getGameOverview>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetGameOverviewQueryKey(guildId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getGameOverview>>> = ({ signal }) => getGameOverview(guildId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: guildId !== null && guildId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getGameOverview>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetGameOverviewQueryResult = NonNullable<Awaited<ReturnType<typeof getGameOverview>>>
+export type GetGameOverviewQueryError = ErrorType<void>
+
+
+/**
+ * @summary Read the signed-in player's guild-scoped RPG state
+ */
+
+export function useGetGameOverview<TData = Awaited<ReturnType<typeof getGameOverview>>, TError = ErrorType<void>>(
+ guildId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getGameOverview>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetGameOverviewQueryOptions(guildId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getJoinGameEncounterUrl = (guildId: string,
+    eventId: number,) => {
+
+
+
+
+  return `/api/game/guilds/${guildId}/events/${eventId}/join`
+}
+
+/**
+ * @summary Join the current guild PvE encounter
+ */
+export const joinGameEncounter = async (guildId: string,
+    eventId: number,
+    gameActionInput: GameActionInput, options?: RequestInit): Promise<GameOverview> => {
+
+  return customFetch<GameOverview>(getJoinGameEncounterUrl(guildId,eventId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(gameActionInput)
+  }
+);}
+
+
+
+
+export const getJoinGameEncounterMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof joinGameEncounter>>, TError,{guildId: string;eventId: number;data: BodyType<GameActionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof joinGameEncounter>>, TError,{guildId: string;eventId: number;data: BodyType<GameActionInput>}, TContext> => {
+
+const mutationKey = ['joinGameEncounter'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof joinGameEncounter>>, {guildId: string;eventId: number;data: BodyType<GameActionInput>}> = (props) => {
+          const {guildId,eventId,data} = props ?? {};
+
+          return  joinGameEncounter(guildId,eventId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type JoinGameEncounterMutationResult = NonNullable<Awaited<ReturnType<typeof joinGameEncounter>>>
+    export type JoinGameEncounterMutationBody = BodyType<GameActionInput>
+    export type JoinGameEncounterMutationError = ErrorType<void>
+
+    /**
+ * @summary Join the current guild PvE encounter
+ */
+export const useJoinGameEncounter = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof joinGameEncounter>>, TError,{guildId: string;eventId: number;data: BodyType<GameActionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof joinGameEncounter>>,
+        TError,
+        {guildId: string;eventId: number;data: BodyType<GameActionInput>},
+        TContext
+      > => {
+      return useMutation(getJoinGameEncounterMutationOptions(options));
+    }
+
+export const getAttackGameEncounterUrl = (guildId: string,
+    eventId: number,) => {
+
+
+
+
+  return `/api/game/guilds/${guildId}/events/${eventId}/attack`
+}
+
+/**
+ * @summary Perform one server-authoritative PvE combat turn
+ */
+export const attackGameEncounter = async (guildId: string,
+    eventId: number,
+    gameActionInput: GameActionInput, options?: RequestInit): Promise<GameAttackResponse> => {
+
+  return customFetch<GameAttackResponse>(getAttackGameEncounterUrl(guildId,eventId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(gameActionInput)
+  }
+);}
+
+
+
+
+export const getAttackGameEncounterMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof attackGameEncounter>>, TError,{guildId: string;eventId: number;data: BodyType<GameActionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof attackGameEncounter>>, TError,{guildId: string;eventId: number;data: BodyType<GameActionInput>}, TContext> => {
+
+const mutationKey = ['attackGameEncounter'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof attackGameEncounter>>, {guildId: string;eventId: number;data: BodyType<GameActionInput>}> = (props) => {
+          const {guildId,eventId,data} = props ?? {};
+
+          return  attackGameEncounter(guildId,eventId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AttackGameEncounterMutationResult = NonNullable<Awaited<ReturnType<typeof attackGameEncounter>>>
+    export type AttackGameEncounterMutationBody = BodyType<GameActionInput>
+    export type AttackGameEncounterMutationError = ErrorType<void>
+
+    /**
+ * @summary Perform one server-authoritative PvE combat turn
+ */
+export const useAttackGameEncounter = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof attackGameEncounter>>, TError,{guildId: string;eventId: number;data: BodyType<GameActionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof attackGameEncounter>>,
+        TError,
+        {guildId: string;eventId: number;data: BodyType<GameActionInput>},
+        TContext
+      > => {
+      return useMutation(getAttackGameEncounterMutationOptions(options));
+    }
+
+export const getChooseGameLevelUpUrl = (guildId: string,
+    eventId: number,) => {
+
+
+
+
+  return `/api/game/guilds/${guildId}/events/${eventId}/level-up`
+}
+
+/**
+ * @summary Choose a combat bonus after a player level-up
+ */
+export const chooseGameLevelUp = async (guildId: string,
+    eventId: number,
+    gameLevelUpInput: GameLevelUpInput, options?: RequestInit): Promise<GameOverview> => {
+
+  return customFetch<GameOverview>(getChooseGameLevelUpUrl(guildId,eventId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(gameLevelUpInput)
+  }
+);}
+
+
+
+
+export const getChooseGameLevelUpMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof chooseGameLevelUp>>, TError,{guildId: string;eventId: number;data: BodyType<GameLevelUpInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof chooseGameLevelUp>>, TError,{guildId: string;eventId: number;data: BodyType<GameLevelUpInput>}, TContext> => {
+
+const mutationKey = ['chooseGameLevelUp'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof chooseGameLevelUp>>, {guildId: string;eventId: number;data: BodyType<GameLevelUpInput>}> = (props) => {
+          const {guildId,eventId,data} = props ?? {};
+
+          return  chooseGameLevelUp(guildId,eventId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ChooseGameLevelUpMutationResult = NonNullable<Awaited<ReturnType<typeof chooseGameLevelUp>>>
+    export type ChooseGameLevelUpMutationBody = BodyType<GameLevelUpInput>
+    export type ChooseGameLevelUpMutationError = ErrorType<void>
+
+    /**
+ * @summary Choose a combat bonus after a player level-up
+ */
+export const useChooseGameLevelUp = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof chooseGameLevelUp>>, TError,{guildId: string;eventId: number;data: BodyType<GameLevelUpInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof chooseGameLevelUp>>,
+        TError,
+        {guildId: string;eventId: number;data: BodyType<GameLevelUpInput>},
+        TContext
+      > => {
+      return useMutation(getChooseGameLevelUpMutationOptions(options));
+    }
 
 export const getModerationSessionUrl = () => {
 

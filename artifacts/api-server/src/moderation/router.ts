@@ -1,4 +1,11 @@
 import { PUBLIC_DISCORD_INVITE } from "../lib/discord-invite";
+import {
+  createPlayerSession,
+  listPlayerGuilds,
+  revokeCurrentGamePlayerSession,
+  setGamePlayerSessionCookie,
+} from "../game/auth";
+import { getGameWebsiteUrl } from "./oauth";
 import { SUPER_ADMIN_ID } from "../bot/constants";
 import { GUILD_ID } from "../bot/index";
 import { setupDraftSchema, setupDraftSaveSchema, setupTemplate } from "./server-setup-schema";
@@ -1815,6 +1822,11 @@ function verificationFailure(res: Response, guildId: string | undefined, code: s
 }
 
 
+function gameOAuthFailure(res: Response, code: string): void {
+  res.redirect(`${getGameWebsiteUrl()}?auth_error=${encodeURIComponent(code)}`);
+}
+
+
 router.get("/oauth/discord", (req, res) => 
 {
 
@@ -1936,6 +1948,9 @@ router.get("/oauth/discord/callback", asyncRoute(async (req, res) =>
 
     
 }
+ else if (pendingState.purpose === "game") {
+      gameOAuthFailure(res, "cancelled");
+    }
  else 
 {
 
@@ -1971,6 +1986,9 @@ router.get("/oauth/discord/callback", asyncRoute(async (req, res) =>
 
     
 }
+ else if (pendingState.purpose === "game") {
+      gameOAuthFailure(res, "oauth_failed");
+    }
  else 
 {
 
@@ -2008,6 +2026,26 @@ router.get("/oauth/discord/callback", asyncRoute(async (req, res) =>
 
     const identity = await fetchDiscordOAuthIdentity(accessToken)
 ;
+
+    if (pendingState.purpose === "game") {
+      failureStage = "guild_access";
+      const guilds = await listPlayerGuilds(identity.id, identity.guilds);
+      if (!guilds.length) {
+        gameOAuthFailure(res, "no_eligible_guild");
+        return;
+      }
+
+      failureStage = "session";
+      const { token, session } = await createPlayerSession(
+        identity.id,
+        identity.username ?? identity.id,
+        guilds,
+      );
+      await revokeCurrentGamePlayerSession(req);
+      setGamePlayerSessionCookie(res, token, session.expiresAt);
+      res.redirect(getGameWebsiteUrl());
+      return;
+    }
 
 
     if (pendingState.purpose === "verification") 
@@ -2138,6 +2176,8 @@ router.get("/oauth/discord/callback", asyncRoute(async (req, res) =>
     }, "Discord moderation OAuth callback failed");
     if (pendingState.purpose === "verification") {
       verificationFailure(res, pendingState.guildId, "oauth_failed");
+    } else if (pendingState.purpose === "game") {
+      gameOAuthFailure(res, "oauth_failed");
     } else {
       oauthFailure(res, "oauth_failed");
     }

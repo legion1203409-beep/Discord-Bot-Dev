@@ -5,6 +5,7 @@ const DISCORD_API_BASE = "https://discord.com/api/v10";
 const OAUTH_AUTHORIZE_URL = "https://discord.com/oauth2/authorize";
 const OAUTH_TOKEN_URL = `${DISCORD_API_BASE}/oauth2/token`;
 const OAUTH_STATE_COOKIE = "moderation_oauth_state";
+const GAME_OAUTH_STATE_COOKIE = "rpg_game_oauth_state";
 const OAUTH_STATE_TTL_MS = 10 * 60_000;
 const MAX_PENDING_STATES = 10_000;
 const SNOWFLAKE = /^\d{5,25}$/;
@@ -20,7 +21,7 @@ const BOT_INVITE_PERMISSIONS =
 
 export interface PendingOAuthState {
   expiresAt: number;
-  purpose: "moderation" | "verification";
+  purpose: "moderation" | "verification" | "game";
   guildId?: string;
 }
 
@@ -44,6 +45,7 @@ export interface DiscordOAuthGuild {
 
 export interface DiscordOAuthIdentity {
   id: string;
+  username?: string;
   guilds: DiscordOAuthGuild[];
 }
 
@@ -184,6 +186,10 @@ export function beginVerificationOAuth(res: Response, guildId: string): string {
   return beginOAuth(res, { purpose: "verification", guildId });
 }
 
+export function beginGameOAuth(res: Response): string {
+  return beginOAuth(res, { purpose: "game" });
+}
+
 function beginOAuth(res: Response, pendingState: Omit<PendingOAuthState, "expiresAt">): string {
   const config = getDiscordOAuthConfig();
   if (!config) throw new Error("Discord OAuth is not configured");
@@ -196,7 +202,8 @@ function beginOAuth(res: Response, pendingState: Omit<PendingOAuthState, "expire
   const state = makeState();
   const expiresAt = new Date(Date.now() + OAUTH_STATE_TTL_MS);
   pendingStates.set(state, { ...pendingState, expiresAt: expiresAt.getTime() });
-  res.cookie(OAUTH_STATE_COOKIE, state, stateCookieOptions(expiresAt));
+  const cookieName = pendingState.purpose === "game" ? GAME_OAUTH_STATE_COOKIE : OAUTH_STATE_COOKIE;
+  res.cookie(cookieName, state, stateCookieOptions(expiresAt));
 
   const url = new URL(OAUTH_AUTHORIZE_URL);
   url.searchParams.set("response_type", "code");
@@ -220,18 +227,31 @@ export function consumeDiscordOAuthState(req: Request, res: Response, state: str
 }
 
 export function consumeDiscordOAuthRequest(req: Request, res: Response, state: string | undefined): PendingOAuthState | null {
-  const cookieState = parseCookie(req.headers.cookie, OAUTH_STATE_COOKIE);
-  res.clearCookie(OAUTH_STATE_COOKIE, stateCookieOptions());
+  const moderationState = parseCookie(req.headers.cookie, OAUTH_STATE_COOKIE);
+  const gameState = parseCookie(req.headers.cookie, GAME_OAUTH_STATE_COOKIE);
   clearExpiredStates();
 
-  // Delete the browser-bound nonce even when an attacker supplied a different
-  // query value, preventing a later reuse of the browser's cookie.
-  if (!sameSecret(state, cookieState) || !state) {
-    if (cookieState) pendingStates.delete(cookieState);
+  // Consume the exact browser-bound nonce for this OAuth purpose. Other open
+  // flows in another tab retain their independent state cookie.
+  const cookieState = state && sameSecret(state, moderationState)
+    ? moderationState
+    : state && sameSecret(state, gameState)
+      ? gameState
+      : null;
+  if (!cookieState || !state) {
+    if (moderationState) pendingStates.delete(moderationState);
+    if (gameState) pendingStates.delete(gameState);
     if (state) pendingStates.delete(state);
+    res.clearCookie(OAUTH_STATE_COOKIE, stateCookieOptions());
+    res.clearCookie(GAME_OAUTH_STATE_COOKIE, stateCookieOptions());
     return null;
   }
   const pending = pendingStates.get(state);
+  const expectedCookie = pending?.purpose === "game"
+    || (!pending && cookieState === gameState)
+    ? GAME_OAUTH_STATE_COOKIE
+    : OAUTH_STATE_COOKIE;
+  res.clearCookie(expectedCookie, stateCookieOptions());
   if (!pending || pending.expiresAt <= Date.now()) {
     pendingStates.delete(state);
     return null;
@@ -279,10 +299,18 @@ async function fetchDiscordOAuthJson<T>(path: string, accessToken: string): Prom
   }
 }
 
-function parseIdentity(payload: unknown): string {
-  const id = payload && typeof payload === "object" ? (payload as { id?: unknown }).id : undefined;
+function parseIdentity(payload: unknown): { id: string; username?: string } {
+  const user = payload && typeof payload === "object"
+    ? payload as { id?: unknown; username?: unknown; global_name?: unknown }
+    : {};
+  const id = user.id;
   if (typeof id !== "string" || !SNOWFLAKE.test(id)) throw new Error("Discord OAuth identity response was invalid");
-  return id;
+  const username = typeof user.global_name === "string" && user.global_name.trim()
+    ? user.global_name
+    : typeof user.username === "string" && user.username.trim()
+      ? user.username
+      : undefined;
+  return { id, username };
 }
 
 function parseGuilds(payload: unknown): DiscordOAuthGuild[] {
@@ -299,7 +327,20 @@ function parseGuilds(payload: unknown): DiscordOAuthGuild[] {
 export async function fetchDiscordOAuthIdentity(accessToken: string): Promise<DiscordOAuthIdentity> {
   const identity = await fetchDiscordOAuthJson<unknown>("/users/@me", accessToken);
   const guilds = await fetchDiscordOAuthJson<unknown>("/users/@me/guilds", accessToken);
-  return { id: parseIdentity(identity), guilds: parseGuilds(guilds) };
+  const parsedIdentity = parseIdentity(identity);
+  return { ...parsedIdentity, guilds: parseGuilds(guilds) };
+}
+
+export function getGameWebsiteUrl(): string {
+  const configuredOrigin = process.env.MODERATION_WEB_ORIGIN?.trim();
+  const configuredRedirect = configuredRedirectUri(process.env.DISCORD_OAUTH_REDIRECT_URI);
+  const base = configuredOrigin || configuredRedirect;
+  if (!base) return "/rpg-browser/";
+  try {
+    return new URL("/rpg-browser/", base).toString();
+  } catch {
+    return "/rpg-browser/";
+  }
 }
 
 function encodedId(value: string): string {

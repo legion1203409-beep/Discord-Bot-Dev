@@ -5,6 +5,163 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+export interface GameAuthConfig {
+  discordOAuthConfigured: boolean;
+  authorizationUrl: string;
+}
+
+export interface GameGuild {
+  /** @pattern ^\d{5,25}$ */
+  id: string;
+  name: string;
+  /** @nullable */
+  iconUrl: string | null;
+}
+
+export interface GameSession {
+  authenticated: boolean;
+  /** @nullable */
+  userId: string | null;
+  /** @nullable */
+  username: string | null;
+  /** @nullable */
+  csrfToken: string | null;
+  /** @nullable */
+  expiresAt: string | null;
+  guilds: GameGuild[];
+}
+
+export interface GamePlayer {
+  username: string;
+  xp: number;
+  gold: number;
+  reputation: number;
+  hp: number;
+  maxLevel: number;
+  /** @nullable */
+  class: string | null;
+  classLevel: number;
+  deaths: number;
+  retreats: number;
+  attackBonus: number;
+  defenseBonus: number;
+  dodgeBonus: number;
+  critBonus: number;
+  maxHpBonus: number;
+  mana: number;
+  manaLevel: number;
+  /** @nullable */
+  equippedWeapon: string | null;
+  /** @nullable */
+  equippedArmor: string | null;
+}
+
+export interface GameInventoryItem {
+  itemKey: string;
+  /** @minimum 0 */
+  quantity: number;
+  /** @minimum 1 */
+  level: number;
+}
+
+export interface GameMission {
+  key: string;
+  title: string;
+  description: string;
+  /** @minimum 0 */
+  progress: number;
+  /** @minimum 1 */
+  target: number;
+  completed: boolean;
+  rewardGiven: boolean;
+  rewardItemKey: string;
+  /** @minimum 1 */
+  rewardQuantity: number;
+}
+
+export interface GameCombatant {
+  username: string;
+  /** @minimum 1 */
+  monsterLevel: number;
+  monsterRarity: string;
+  /** @minimum 0 */
+  currentHp: number;
+  /** @minimum 1 */
+  maxHp: number;
+  /** @minimum 0 */
+  monsterCurrentHp: number;
+  isAlive: boolean;
+  pendingLevelup: boolean;
+  fled: boolean;
+  /** @minimum 0 */
+  totalDamage: number;
+  /** @minimum 0 */
+  xp: number;
+  /** @minimum 0 */
+  oboli: number;
+}
+
+export interface GameEncounter {
+  /** @minimum 1 */
+  id: number;
+  type: string;
+  expiresAt: string;
+  joined: boolean;
+  canJoin: boolean;
+  canAttack: boolean;
+  participant: GameCombatant | null;
+}
+
+export interface GameOverview {
+  guild: GameGuild;
+  player: GamePlayer;
+  inventory: GameInventoryItem[];
+  missions: GameMission[];
+  encounter: GameEncounter | null;
+}
+
+export interface GameActionInput {
+  /**
+     * @minLength 16
+     * @maxLength 128
+     */
+  idempotencyKey: string;
+}
+
+export type GameLevelUpInputBonus = typeof GameLevelUpInputBonus[keyof typeof GameLevelUpInputBonus];
+
+
+export const GameLevelUpInputBonus = {
+  xp: 'xp',
+  dodge: 'dodge',
+  attack: 'attack',
+  hp: 'hp',
+  crit: 'crit',
+} as const;
+
+export interface GameLevelUpInput {
+  bonus: GameLevelUpInputBonus;
+}
+
+export interface GameAttackResult {
+  /** @minimum 0 */
+  playerDamage: number;
+  /** @minimum 0 */
+  monsterDamage: number;
+  monsterDefeated: boolean;
+  playerDied: boolean;
+  /** @minimum 0 */
+  xpGained: number;
+  /** @minimum 0 */
+  oboliGained: number;
+  message: string;
+}
+
+export interface GameAttackResponse {
+  result: GameAttackResult;
+  overview: GameOverview;
+}
+
 export interface ServerSetupRole {
   /** @pattern ^[a-z][a-z0-9_-]{0,39}$ */
   key: string;

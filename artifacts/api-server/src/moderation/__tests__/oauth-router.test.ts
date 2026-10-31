@@ -14,6 +14,12 @@ const mocks = vi.hoisted(() => ({
   clearCookie: vi.fn(),
   configured: vi.fn(),
   invite: vi.fn(),
+  beginGame: vi.fn(),
+  gameWebsiteUrl: vi.fn(),
+  gameListGuilds: vi.fn(),
+  gameCreateSession: vi.fn(),
+  gameRevoke: vi.fn(),
+  gameSetCookie: vi.fn(),
   beginVerification: vi.fn(),
   verificationWebsiteUrl: vi.fn(),
   createTicket: vi.fn(),
@@ -53,6 +59,7 @@ vi.mock("../auth", () => ({
 
 vi.mock("../oauth", () => ({
   beginDiscordOAuth: vi.fn(() => "https://discord.com/oauth2/authorize?state=opaque"),
+  beginGameOAuth: mocks.beginGame,
   beginVerificationOAuth: mocks.beginVerification,
   consumeDiscordOAuthRequest: mocks.consumeRequest,
   consumeDiscordOAuthState: mocks.consumeState,
@@ -61,7 +68,15 @@ vi.mock("../oauth", () => ({
   fetchBotGuildSnapshot: mocks.snapshot,
   isDiscordOAuthConfigured: mocks.configured,
   getDiscordBotInviteUrl: mocks.invite,
+  getGameWebsiteUrl: mocks.gameWebsiteUrl,
   getVerificationWebsiteUrl: mocks.verificationWebsiteUrl,
+}));
+
+vi.mock("../../game/auth", () => ({
+  createPlayerSession: mocks.gameCreateSession,
+  listPlayerGuilds: mocks.gameListGuilds,
+  revokeCurrentGamePlayerSession: mocks.gameRevoke,
+  setGamePlayerSessionCookie: mocks.gameSetCookie,
 }));
 
 vi.mock("../../bot/verification", () => ({
@@ -129,6 +144,7 @@ describe("Discord OAuth moderation routes", () => {
     mocks.exchange.mockResolvedValue("server-only-oauth-token");
     mocks.identity.mockResolvedValue({
       id: "987654321",
+      username: "Player",
       guilds: [{ id: "123456789", name: "Eligible guild" }],
     });
     mocks.listGuilds.mockResolvedValue([{ id: "123456789", name: "Eligible guild", access: "owner" }]);
@@ -137,6 +153,14 @@ describe("Discord OAuth moderation routes", () => {
       session: { userId: "987654321", csrfToken: "csrf", expiresAt: new Date("2030-01-01T00:00:00.000Z") },
     });
     mocks.beginVerification.mockReturnValue("https://discord.com/oauth2/authorize?state=verification-state");
+    mocks.gameWebsiteUrl.mockReturnValue("https://codelinked.app/rpg-browser/");
+    mocks.gameListGuilds.mockResolvedValue([
+      { id: "123456789", name: "Eligible guild", iconUrl: null },
+    ]);
+    mocks.gameCreateSession.mockResolvedValue({
+      token: "opaque-player-session-token",
+      session: { expiresAt: new Date("2030-01-01T00:00:00.000Z") },
+    });
     mocks.verificationWebsiteUrl.mockImplementation((guildId: string) => `https://codelinked.app/verificare?guildId=${encodeURIComponent(guildId)}`);
     mocks.createTicket.mockResolvedValue("a".repeat(43));
     mocks.consumeTicket.mockResolvedValue({ guildId: "123456789", userId: "987654321" });
@@ -282,6 +306,54 @@ describe("Discord OAuth moderation routes", () => {
       "opaque-session-token",
       expect.any(Date),
     );
+  });
+
+  it("creates a separate player session from Discord identity and verified guilds", async () => {
+    mocks.consumeRequest.mockReturnValue({
+      purpose: "game",
+      expiresAt: Date.now() + 60_000,
+    });
+    const response = await fetch(
+      `${base}/oauth/discord/callback?state=valid&code=one-time-code`,
+      { headers: { cookie: "rpg_game_oauth_state=valid" }, redirect: "manual" },
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe("https://codelinked.app/rpg-browser/");
+    expect(mocks.gameListGuilds).toHaveBeenCalledWith("987654321", [
+      { id: "123456789", name: "Eligible guild" },
+    ]);
+    expect(mocks.gameCreateSession).toHaveBeenCalledWith(
+      "987654321",
+      "Player",
+      [{ id: "123456789", name: "Eligible guild", iconUrl: null }],
+    );
+    expect(mocks.gameRevoke).toHaveBeenCalled();
+    expect(mocks.gameSetCookie).toHaveBeenCalledWith(
+      expect.anything(),
+      "opaque-player-session-token",
+      new Date("2030-01-01T00:00:00.000Z"),
+    );
+    expect(mocks.createSession).not.toHaveBeenCalled();
+  });
+
+  it("returns a safe player login error when no verified guild is available", async () => {
+    mocks.consumeRequest.mockReturnValue({
+      purpose: "game",
+      expiresAt: Date.now() + 60_000,
+    });
+    mocks.gameListGuilds.mockResolvedValue([]);
+    const response = await fetch(
+      `${base}/oauth/discord/callback?state=valid&code=one-time-code`,
+      { headers: { cookie: "rpg_game_oauth_state=valid" }, redirect: "manual" },
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe(
+      "https://codelinked.app/rpg-browser/?auth_error=no_eligible_guild",
+    );
+    expect(mocks.gameCreateSession).not.toHaveBeenCalled();
+    expect(mocks.gameSetCookie).not.toHaveBeenCalled();
   });
 
   it("disables the legacy code login endpoint", async () => {

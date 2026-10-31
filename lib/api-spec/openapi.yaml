@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: game
+    description: Browser RPG player sessions and gameplay
 paths:
   /healthz:
     get:
@@ -30,6 +32,145 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /game/auth-config:
+    get:
+      operationId: gameAuthConfig
+      tags: [game]
+      summary: Read public Discord login availability
+      responses:
+        "200":
+          description: Public Discord sign-in configuration
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameAuthConfig" }
+  /game/oauth/discord:
+    get:
+      operationId: gameDiscordAuthorize
+      tags: [game]
+      summary: Start a browser RPG Discord sign-in
+      responses:
+        "302": { description: Redirects to Discord with browser-bound player OAuth state }
+        "503": { description: Discord OAuth is not configured }
+  /game/session:
+    get:
+      operationId: getGameSession
+      tags: [game]
+      summary: Read the current browser player session
+      responses:
+        "200":
+          description: Authenticated player identity, session CSRF token, and eligible guild choices
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameSession" }
+  /game/logout:
+    post:
+      operationId: gameLogout
+      tags: [game]
+      summary: Revoke the current browser player session
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Player session revoked }
+        "401": { description: Player session is required }
+        "403": { description: CSRF token is invalid }
+  /game/guilds/{guildId}/overview:
+    parameters:
+      - { name: guildId, in: path, required: true, schema: { type: string, pattern: "^\\d{5,25}$" } }
+    get:
+      operationId: getGameOverview
+      tags: [game]
+      summary: Read the signed-in player's guild-scoped RPG state
+      responses:
+        "200":
+          description: Player profile, inventory, daily missions, and active encounter
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameOverview" }
+        "401": { description: Player session is required }
+        "403": { description: Player is no longer a member of this guild }
+        "404": { description: Guild or player state is unavailable }
+        "503": { description: Discord membership could not be verified }
+  /game/guilds/{guildId}/events/{eventId}/join:
+    parameters:
+      - { name: guildId, in: path, required: true, schema: { type: string, pattern: "^\\d{5,25}$" } }
+      - { name: eventId, in: path, required: true, schema: { type: integer, minimum: 1 } }
+    post:
+      operationId: joinGameEncounter
+      tags: [game]
+      summary: Join the current guild PvE encounter
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GameActionInput" }
+      responses:
+        "200":
+          description: Existing or newly created participant state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameOverview" }
+        "400": { description: Invalid action request }
+        "401": { description: Player session is required }
+        "403": { description: Player is no longer a member of this guild or CSRF token is invalid }
+        "404": { description: Encounter is not active }
+        "409": { description: Gameplay is paused for this guild }
+        "503": { description: Discord membership could not be verified }
+  /game/guilds/{guildId}/events/{eventId}/attack:
+    parameters:
+      - { name: guildId, in: path, required: true, schema: { type: string, pattern: "^\\d{5,25}$" } }
+      - { name: eventId, in: path, required: true, schema: { type: integer, minimum: 1 } }
+    post:
+      operationId: attackGameEncounter
+      tags: [game]
+      summary: Perform one server-authoritative PvE combat turn
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GameActionInput" }
+      responses:
+        "200":
+          description: Combat result and refreshed guild-scoped player state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameAttackResponse" }
+        "400": { description: Invalid action request }
+        "401": { description: Player session is required }
+        "403": { description: Player is no longer a member of this guild or CSRF token is invalid }
+        "404": { description: Encounter or participant is unavailable }
+        "409": { description: "Duplicate action, inactive encounter, paused gameplay, or unresolved level-up" }
+        "503": { description: Discord membership could not be verified }
+  /game/guilds/{guildId}/events/{eventId}/level-up:
+    parameters:
+      - { name: guildId, in: path, required: true, schema: { type: string, pattern: "^\\d{5,25}$" } }
+      - { name: eventId, in: path, required: true, schema: { type: integer, minimum: 1 } }
+    post:
+      operationId: chooseGameLevelUp
+      tags: [game]
+      summary: Choose a combat bonus after a player level-up
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GameLevelUpInput" }
+      responses:
+        "200":
+          description: Updated combat participant state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameOverview" }
+        "400": { description: Invalid level-up choice }
+        "401": { description: Player session is required }
+        "403": { description: Player is no longer a member of this guild or CSRF token is invalid }
+        "404": { description: Encounter or participant is unavailable }
+        "409": { description: Gameplay is paused or no level-up is pending }
+        "503": { description: Discord membership could not be verified }
   /moderation/session:
     get:
       operationId: moderationSession
@@ -548,6 +689,160 @@ paths:
         "503": { description: Discord member list is unavailable }
 components:
   schemas:
+    GameAuthConfig:
+      type: object
+      additionalProperties: false
+      required: [discordOAuthConfigured, authorizationUrl]
+      properties:
+        discordOAuthConfigured: { type: boolean }
+        authorizationUrl: { type: string }
+    GameGuild:
+      type: object
+      additionalProperties: false
+      required: [id, name, iconUrl]
+      properties:
+        id: { type: string, pattern: "^\\d{5,25}$" }
+        name: { type: string }
+        iconUrl: { type: ["string", "null"], format: uri }
+    GameSession:
+      type: object
+      additionalProperties: false
+      required: [authenticated, userId, username, csrfToken, expiresAt, guilds]
+      properties:
+        authenticated: { type: boolean }
+        userId: { type: ["string", "null"] }
+        username: { type: ["string", "null"] }
+        csrfToken: { type: ["string", "null"] }
+        expiresAt: { type: ["string", "null"], format: date-time }
+        guilds:
+          type: array
+          items: { $ref: "#/components/schemas/GameGuild" }
+    GamePlayer:
+      type: object
+      additionalProperties: false
+      required: [username, xp, gold, reputation, hp, maxLevel, class, classLevel, deaths, retreats, attackBonus, defenseBonus, dodgeBonus, critBonus, maxHpBonus, mana, manaLevel, equippedWeapon, equippedArmor]
+      properties:
+        username: { type: string }
+        xp: { type: integer }
+        gold: { type: integer }
+        reputation: { type: integer }
+        hp: { type: integer }
+        maxLevel: { type: integer }
+        class: { type: ["string", "null"] }
+        classLevel: { type: integer }
+        deaths: { type: integer }
+        retreats: { type: integer }
+        attackBonus: { type: integer }
+        defenseBonus: { type: integer }
+        dodgeBonus: { type: integer }
+        critBonus: { type: integer }
+        maxHpBonus: { type: integer }
+        mana: { type: integer }
+        manaLevel: { type: integer }
+        equippedWeapon: { type: ["string", "null"] }
+        equippedArmor: { type: ["string", "null"] }
+    GameInventoryItem:
+      type: object
+      additionalProperties: false
+      required: [itemKey, quantity, level]
+      properties:
+        itemKey: { type: string }
+        quantity: { type: integer, minimum: 0 }
+        level: { type: integer, minimum: 1 }
+    GameMission:
+      type: object
+      additionalProperties: false
+      required: [key, title, description, progress, target, completed, rewardGiven, rewardItemKey, rewardQuantity]
+      properties:
+        key: { type: string }
+        title: { type: string }
+        description: { type: string }
+        progress: { type: integer, minimum: 0 }
+        target: { type: integer, minimum: 1 }
+        completed: { type: boolean }
+        rewardGiven: { type: boolean }
+        rewardItemKey: { type: string }
+        rewardQuantity: { type: integer, minimum: 1 }
+    GameCombatant:
+      type: object
+      additionalProperties: false
+      required: [username, monsterLevel, monsterRarity, currentHp, maxHp, monsterCurrentHp, isAlive, pendingLevelup, fled, totalDamage, xp, oboli]
+      properties:
+        username: { type: string }
+        monsterLevel: { type: integer, minimum: 1 }
+        monsterRarity: { type: string }
+        currentHp: { type: integer, minimum: 0 }
+        maxHp: { type: integer, minimum: 1 }
+        monsterCurrentHp: { type: integer, minimum: 0 }
+        isAlive: { type: boolean }
+        pendingLevelup: { type: boolean }
+        fled: { type: boolean }
+        totalDamage: { type: integer, minimum: 0 }
+        xp: { type: integer, minimum: 0 }
+        oboli: { type: integer, minimum: 0 }
+    GameEncounter:
+      type: object
+      additionalProperties: false
+      required: [id, type, expiresAt, joined, canJoin, canAttack, participant]
+      properties:
+        id: { type: integer, minimum: 1 }
+        type: { type: string }
+        expiresAt: { type: string, format: date-time }
+        joined: { type: boolean }
+        canJoin: { type: boolean }
+        canAttack: { type: boolean }
+        participant:
+          anyOf:
+            - $ref: "#/components/schemas/GameCombatant"
+            - type: "null"
+    GameOverview:
+      type: object
+      additionalProperties: false
+      required: [guild, player, inventory, missions, encounter]
+      properties:
+        guild: { $ref: "#/components/schemas/GameGuild" }
+        player: { $ref: "#/components/schemas/GamePlayer" }
+        inventory:
+          type: array
+          items: { $ref: "#/components/schemas/GameInventoryItem" }
+        missions:
+          type: array
+          items: { $ref: "#/components/schemas/GameMission" }
+        encounter:
+          anyOf:
+            - $ref: "#/components/schemas/GameEncounter"
+            - type: "null"
+    GameActionInput:
+      type: object
+      additionalProperties: false
+      required: [idempotencyKey]
+      properties:
+        idempotencyKey: { type: string, minLength: 16, maxLength: 128 }
+    GameLevelUpInput:
+      type: object
+      additionalProperties: false
+      required: [bonus]
+      properties:
+        bonus: { type: string, enum: [xp, dodge, attack, hp, crit] }
+    GameAttackResult:
+      type: object
+      additionalProperties: false
+      required: [playerDamage, monsterDamage, monsterDefeated, playerDied, xpGained, oboliGained, message]
+      properties:
+        playerDamage: { type: integer, minimum: 0 }
+        monsterDamage: { type: integer, minimum: 0 }
+        monsterDefeated: { type: boolean }
+        playerDied: { type: boolean }
+        xpGained: { type: integer, minimum: 0 }
+        oboliGained: { type: integer, minimum: 0 }
+        message: { type: string }
+    GameAttackResponse:
+      type: object
+      additionalProperties: false
+      required: [result, overview]
+      properties:
+        result: { $ref: "#/components/schemas/GameAttackResult" }
+        overview: { $ref: "#/components/schemas/GameOverview" }
     ServerSetupRole:
       type: object
       additionalProperties: false

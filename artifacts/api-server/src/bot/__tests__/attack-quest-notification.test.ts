@@ -30,6 +30,8 @@ function setup(levelUp = false) {
   const config = { economy: { monsterGoldMultiplier: 1, monsterXpMultiplier: 1 } };
   const completionText = "Misiune completată! Recompensă: 2 poțiuni";
   const deps = {
+    withCombatTurnLock: async (_key: string, operation: () => Promise<void>) => operation(),
+    combatTurnLockKey: (...parts: string[]) => parts.join(":"),
     questNotifications: new QuestNotifications(),
     getParticipant: vi.fn(async () => participant),
     getPlayerById: vi.fn(async () => player),

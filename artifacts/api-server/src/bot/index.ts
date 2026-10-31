@@ -35,6 +35,8 @@ import { getChannel, getAllChannels, setChannel, initChannelConfig, EVENT_LABELS
 import { getGameplayConfig, initGameplayConfig, isGameplayPaused, setGameplayPaused } from "./gameplay-store";
 import { awardRareBossDailyQuest } from "./boss-daily-quest";
 import { questNotifications } from "./quest-notifications";
+import { combatTurnLockKey, withCombatTurnLock } from "./combat-lock";
+import { levelUpBonusValues } from "./levelup";
 import { sendAiMemberMessage } from "./member-messages";
 import { messageWithImage } from "./message-media";
 import {
@@ -171,6 +173,7 @@ import {
   getPlayerById,
   getPlayerKeys,
   updateMaxLevel,
+  applyPendingParticipantLevelUp,
   setPlayerClass,
   resetPlayerClass,
   resetPlayerCompanion,
@@ -3000,6 +3003,14 @@ async function handleJoin(interaction: ButtonInteraction, eventId: number) {
 async function handleAttack(interaction: ButtonInteraction, eventId: number) {
   await interaction.deferUpdate();
   const guildId = interaction.guildId!;
+  await withCombatTurnLock(
+    combatTurnLockKey(guildId, eventId, interaction.user.id),
+    () => handleAttackLocked(interaction, eventId),
+  );
+}
+
+async function handleAttackLocked(interaction: ButtonInteraction, eventId: number) {
+  const guildId = interaction.guildId!;
   const notificationKey = JSON.stringify([guildId, interaction.user.id, eventId, interaction.message.id]);
   const editReply = (payload: Parameters<typeof interaction.editReply>[0]) => interaction.editReply(payload);
   if (await questNotifications.recover(notificationKey, editReply)) return;
@@ -3315,16 +3326,18 @@ async function handleLevelup(interaction: ButtonInteraction, eventId: number, bo
     return;
   }
 
-  const bonusMap: Record<string, Partial<typeof p>> = {
-    xp: { xpPerKill: p.xpPerKill + 5 },
-    dodge: { dodgeBonus: p.dodgeBonus + 3 },
-    atac: { attackBonus: p.attackBonus + 2 },
-    hp: { maxHp: p.maxHp + 5, currentHp: Math.min(p.maxHp + 5, p.currentHp + 5) },
-    crit: { critBonus: p.critBonus + 1 },
-  };
-
-  const bonusValues = bonusMap[bonus] ?? {};
-  const updated = await updateParticipant(p.id, { ...bonusValues, pendingLevelup: false });
+  const bonusKey = bonus === "atac" ? "attack" : bonus;
+  const supportedBonus = ["xp", "dodge", "attack", "hp", "crit"].includes(bonusKey)
+    ? bonusKey as "xp" | "dodge" | "attack" | "hp" | "crit"
+    : null;
+  const updated = await applyPendingParticipantLevelUp(
+    p.id,
+    supportedBonus ? levelUpBonusValues(p, supportedBonus) : {},
+  );
+  if (!updated) {
+    await ephemeralNote(interaction, "combat", "❌ Nu ai un level-up disponibil!");
+    return;
+  }
   await interaction.editReply({ embeds: [buildCombatEmbed(updated, "✨ **Bonus ales! Umbrele îți recunosc puterea.**", interaction.user.displayAvatarURL({ size: 256 }), pl, getGameplayConfig(guildId))], components: [combatRow(eventId, updated)] });
 }
 

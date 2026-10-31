@@ -9,3 +9,4 @@ export * from "./player-daily-quests";
 export * from "./moderation";
 export * from "./discord-daily-stats";
 export * from "./server-setup";
+export * from "./game-player";

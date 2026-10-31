@@ -28,6 +28,514 @@ export const HealthCheckResponse = zod.object({
 })
 
 
+/**
+ * @summary Read public Discord login availability
+ */
+export const GameAuthConfigResponse = zod.object({
+  "discordOAuthConfigured": zod.boolean(),
+  "authorizationUrl": zod.string()
+})
+
+
+/**
+ * @summary Start a browser RPG Discord sign-in
+ */
+export const GameDiscordAuthorizeResponse = zod.void()
+
+
+/**
+ * @summary Read the current browser player session
+ */
+export const getGameSessionResponseGuildsItemIdRegExp = new RegExp('^\\d{5,25}$');
+
+
+export const GetGameSessionResponse = zod.object({
+  "authenticated": zod.boolean(),
+  "userId": zod.string().nullable(),
+  "username": zod.string().nullable(),
+  "csrfToken": zod.string().nullable(),
+  "expiresAt": zod.coerce.date().nullable(),
+  "guilds": zod.array(zod.object({
+  "id": zod.string().regex(getGameSessionResponseGuildsItemIdRegExp),
+  "name": zod.string(),
+  "iconUrl": zod.string().url().nullable()
+}))
+})
+
+
+/**
+ * @summary Revoke the current browser player session
+ */
+export const GameLogoutHeader = zod.object({
+  "X-CSRF-Token": zod.string()
+})
+
+export const GameLogoutResponse = zod.void()
+
+
+/**
+ * @summary Read the signed-in player's guild-scoped RPG state
+ */
+export const getGameOverviewPathGuildIdRegExp = new RegExp('^\\d{5,25}$');
+
+
+export const GetGameOverviewParams = zod.object({
+  "guildId": zod.coerce.string().regex(getGameOverviewPathGuildIdRegExp)
+})
+
+export const getGameOverviewResponseGuildIdRegExp = new RegExp('^\\d{5,25}$');
+export const getGameOverviewResponseInventoryItemQuantityMin = 0;
+
+
+export const getGameOverviewResponseMissionsItemProgressMin = 0;
+
+
+
+
+
+export const getGameOverviewResponseEncounterOneParticipantOneCurrentHpMin = 0;
+
+
+export const getGameOverviewResponseEncounterOneParticipantOneMonsterCurrentHpMin = 0;
+
+export const getGameOverviewResponseEncounterOneParticipantOneTotalDamageMin = 0;
+
+export const getGameOverviewResponseEncounterOneParticipantOneXpMin = 0;
+
+export const getGameOverviewResponseEncounterOneParticipantOneOboliMin = 0;
+
+
+
+export const GetGameOverviewResponse = zod.object({
+  "guild": zod.object({
+  "id": zod.string().regex(getGameOverviewResponseGuildIdRegExp),
+  "name": zod.string(),
+  "iconUrl": zod.string().url().nullable()
+}),
+  "player": zod.object({
+  "username": zod.string(),
+  "xp": zod.number(),
+  "gold": zod.number(),
+  "reputation": zod.number(),
+  "hp": zod.number(),
+  "maxLevel": zod.number(),
+  "class": zod.string().nullable(),
+  "classLevel": zod.number(),
+  "deaths": zod.number(),
+  "retreats": zod.number(),
+  "attackBonus": zod.number(),
+  "defenseBonus": zod.number(),
+  "dodgeBonus": zod.number(),
+  "critBonus": zod.number(),
+  "maxHpBonus": zod.number(),
+  "mana": zod.number(),
+  "manaLevel": zod.number(),
+  "equippedWeapon": zod.string().nullable(),
+  "equippedArmor": zod.string().nullable()
+}),
+  "inventory": zod.array(zod.object({
+  "itemKey": zod.string(),
+  "quantity": zod.number().min(getGameOverviewResponseInventoryItemQuantityMin),
+  "level": zod.number().min(1)
+})),
+  "missions": zod.array(zod.object({
+  "key": zod.string(),
+  "title": zod.string(),
+  "description": zod.string(),
+  "progress": zod.number().min(getGameOverviewResponseMissionsItemProgressMin),
+  "target": zod.number().min(1),
+  "completed": zod.boolean(),
+  "rewardGiven": zod.boolean(),
+  "rewardItemKey": zod.string(),
+  "rewardQuantity": zod.number().min(1)
+})),
+  "encounter": zod.union([zod.object({
+  "id": zod.number().min(1),
+  "type": zod.string(),
+  "expiresAt": zod.coerce.date(),
+  "joined": zod.boolean(),
+  "canJoin": zod.boolean(),
+  "canAttack": zod.boolean(),
+  "participant": zod.union([zod.object({
+  "username": zod.string(),
+  "monsterLevel": zod.number().min(1),
+  "monsterRarity": zod.string(),
+  "currentHp": zod.number().min(getGameOverviewResponseEncounterOneParticipantOneCurrentHpMin),
+  "maxHp": zod.number().min(1),
+  "monsterCurrentHp": zod.number().min(getGameOverviewResponseEncounterOneParticipantOneMonsterCurrentHpMin),
+  "isAlive": zod.boolean(),
+  "pendingLevelup": zod.boolean(),
+  "fled": zod.boolean(),
+  "totalDamage": zod.number().min(getGameOverviewResponseEncounterOneParticipantOneTotalDamageMin),
+  "xp": zod.number().min(getGameOverviewResponseEncounterOneParticipantOneXpMin),
+  "oboli": zod.number().min(getGameOverviewResponseEncounterOneParticipantOneOboliMin)
+}),zod.null()])
+}),zod.null()])
+})
+
+
+/**
+ * @summary Join the current guild PvE encounter
+ */
+export const joinGameEncounterPathGuildIdRegExp = new RegExp('^\\d{5,25}$');
+
+
+
+export const JoinGameEncounterParams = zod.object({
+  "guildId": zod.coerce.string().regex(joinGameEncounterPathGuildIdRegExp),
+  "eventId": zod.coerce.number().min(1)
+})
+
+export const JoinGameEncounterHeader = zod.object({
+  "X-CSRF-Token": zod.string()
+})
+
+export const joinGameEncounterBodyIdempotencyKeyMin = 16;
+export const joinGameEncounterBodyIdempotencyKeyMax = 128;
+
+
+
+export const JoinGameEncounterBody = zod.object({
+  "idempotencyKey": zod.string().min(joinGameEncounterBodyIdempotencyKeyMin).max(joinGameEncounterBodyIdempotencyKeyMax)
+})
+
+export const joinGameEncounterResponseGuildIdRegExp = new RegExp('^\\d{5,25}$');
+export const joinGameEncounterResponseInventoryItemQuantityMin = 0;
+
+
+export const joinGameEncounterResponseMissionsItemProgressMin = 0;
+
+
+
+
+
+export const joinGameEncounterResponseEncounterOneParticipantOneCurrentHpMin = 0;
+
+
+export const joinGameEncounterResponseEncounterOneParticipantOneMonsterCurrentHpMin = 0;
+
+export const joinGameEncounterResponseEncounterOneParticipantOneTotalDamageMin = 0;
+
+export const joinGameEncounterResponseEncounterOneParticipantOneXpMin = 0;
+
+export const joinGameEncounterResponseEncounterOneParticipantOneOboliMin = 0;
+
+
+
+export const JoinGameEncounterResponse = zod.object({
+  "guild": zod.object({
+  "id": zod.string().regex(joinGameEncounterResponseGuildIdRegExp),
+  "name": zod.string(),
+  "iconUrl": zod.string().url().nullable()
+}),
+  "player": zod.object({
+  "username": zod.string(),
+  "xp": zod.number(),
+  "gold": zod.number(),
+  "reputation": zod.number(),
+  "hp": zod.number(),
+  "maxLevel": zod.number(),
+  "class": zod.string().nullable(),
+  "classLevel": zod.number(),
+  "deaths": zod.number(),
+  "retreats": zod.number(),
+  "attackBonus": zod.number(),
+  "defenseBonus": zod.number(),
+  "dodgeBonus": zod.number(),
+  "critBonus": zod.number(),
+  "maxHpBonus": zod.number(),
+  "mana": zod.number(),
+  "manaLevel": zod.number(),
+  "equippedWeapon": zod.string().nullable(),
+  "equippedArmor": zod.string().nullable()
+}),
+  "inventory": zod.array(zod.object({
+  "itemKey": zod.string(),
+  "quantity": zod.number().min(joinGameEncounterResponseInventoryItemQuantityMin),
+  "level": zod.number().min(1)
+})),
+  "missions": zod.array(zod.object({
+  "key": zod.string(),
+  "title": zod.string(),
+  "description": zod.string(),
+  "progress": zod.number().min(joinGameEncounterResponseMissionsItemProgressMin),
+  "target": zod.number().min(1),
+  "completed": zod.boolean(),
+  "rewardGiven": zod.boolean(),
+  "rewardItemKey": zod.string(),
+  "rewardQuantity": zod.number().min(1)
+})),
+  "encounter": zod.union([zod.object({
+  "id": zod.number().min(1),
+  "type": zod.string(),
+  "expiresAt": zod.coerce.date(),
+  "joined": zod.boolean(),
+  "canJoin": zod.boolean(),
+  "canAttack": zod.boolean(),
+  "participant": zod.union([zod.object({
+  "username": zod.string(),
+  "monsterLevel": zod.number().min(1),
+  "monsterRarity": zod.string(),
+  "currentHp": zod.number().min(joinGameEncounterResponseEncounterOneParticipantOneCurrentHpMin),
+  "maxHp": zod.number().min(1),
+  "monsterCurrentHp": zod.number().min(joinGameEncounterResponseEncounterOneParticipantOneMonsterCurrentHpMin),
+  "isAlive": zod.boolean(),
+  "pendingLevelup": zod.boolean(),
+  "fled": zod.boolean(),
+  "totalDamage": zod.number().min(joinGameEncounterResponseEncounterOneParticipantOneTotalDamageMin),
+  "xp": zod.number().min(joinGameEncounterResponseEncounterOneParticipantOneXpMin),
+  "oboli": zod.number().min(joinGameEncounterResponseEncounterOneParticipantOneOboliMin)
+}),zod.null()])
+}),zod.null()])
+})
+
+
+/**
+ * @summary Perform one server-authoritative PvE combat turn
+ */
+export const attackGameEncounterPathGuildIdRegExp = new RegExp('^\\d{5,25}$');
+
+
+
+export const AttackGameEncounterParams = zod.object({
+  "guildId": zod.coerce.string().regex(attackGameEncounterPathGuildIdRegExp),
+  "eventId": zod.coerce.number().min(1)
+})
+
+export const AttackGameEncounterHeader = zod.object({
+  "X-CSRF-Token": zod.string()
+})
+
+export const attackGameEncounterBodyIdempotencyKeyMin = 16;
+export const attackGameEncounterBodyIdempotencyKeyMax = 128;
+
+
+
+export const AttackGameEncounterBody = zod.object({
+  "idempotencyKey": zod.string().min(attackGameEncounterBodyIdempotencyKeyMin).max(attackGameEncounterBodyIdempotencyKeyMax)
+})
+
+export const attackGameEncounterResponseResultPlayerDamageMin = 0;
+
+export const attackGameEncounterResponseResultMonsterDamageMin = 0;
+
+export const attackGameEncounterResponseResultXpGainedMin = 0;
+
+export const attackGameEncounterResponseResultOboliGainedMin = 0;
+
+export const attackGameEncounterResponseOverviewGuildIdRegExp = new RegExp('^\\d{5,25}$');
+export const attackGameEncounterResponseOverviewInventoryItemQuantityMin = 0;
+
+
+export const attackGameEncounterResponseOverviewMissionsItemProgressMin = 0;
+
+
+
+
+
+export const attackGameEncounterResponseOverviewEncounterOneParticipantOneCurrentHpMin = 0;
+
+
+export const attackGameEncounterResponseOverviewEncounterOneParticipantOneMonsterCurrentHpMin = 0;
+
+export const attackGameEncounterResponseOverviewEncounterOneParticipantOneTotalDamageMin = 0;
+
+export const attackGameEncounterResponseOverviewEncounterOneParticipantOneXpMin = 0;
+
+export const attackGameEncounterResponseOverviewEncounterOneParticipantOneOboliMin = 0;
+
+
+
+export const AttackGameEncounterResponse = zod.object({
+  "result": zod.object({
+  "playerDamage": zod.number().min(attackGameEncounterResponseResultPlayerDamageMin),
+  "monsterDamage": zod.number().min(attackGameEncounterResponseResultMonsterDamageMin),
+  "monsterDefeated": zod.boolean(),
+  "playerDied": zod.boolean(),
+  "xpGained": zod.number().min(attackGameEncounterResponseResultXpGainedMin),
+  "oboliGained": zod.number().min(attackGameEncounterResponseResultOboliGainedMin),
+  "message": zod.string()
+}),
+  "overview": zod.object({
+  "guild": zod.object({
+  "id": zod.string().regex(attackGameEncounterResponseOverviewGuildIdRegExp),
+  "name": zod.string(),
+  "iconUrl": zod.string().url().nullable()
+}),
+  "player": zod.object({
+  "username": zod.string(),
+  "xp": zod.number(),
+  "gold": zod.number(),
+  "reputation": zod.number(),
+  "hp": zod.number(),
+  "maxLevel": zod.number(),
+  "class": zod.string().nullable(),
+  "classLevel": zod.number(),
+  "deaths": zod.number(),
+  "retreats": zod.number(),
+  "attackBonus": zod.number(),
+  "defenseBonus": zod.number(),
+  "dodgeBonus": zod.number(),
+  "critBonus": zod.number(),
+  "maxHpBonus": zod.number(),
+  "mana": zod.number(),
+  "manaLevel": zod.number(),
+  "equippedWeapon": zod.string().nullable(),
+  "equippedArmor": zod.string().nullable()
+}),
+  "inventory": zod.array(zod.object({
+  "itemKey": zod.string(),
+  "quantity": zod.number().min(attackGameEncounterResponseOverviewInventoryItemQuantityMin),
+  "level": zod.number().min(1)
+})),
+  "missions": zod.array(zod.object({
+  "key": zod.string(),
+  "title": zod.string(),
+  "description": zod.string(),
+  "progress": zod.number().min(attackGameEncounterResponseOverviewMissionsItemProgressMin),
+  "target": zod.number().min(1),
+  "completed": zod.boolean(),
+  "rewardGiven": zod.boolean(),
+  "rewardItemKey": zod.string(),
+  "rewardQuantity": zod.number().min(1)
+})),
+  "encounter": zod.union([zod.object({
+  "id": zod.number().min(1),
+  "type": zod.string(),
+  "expiresAt": zod.coerce.date(),
+  "joined": zod.boolean(),
+  "canJoin": zod.boolean(),
+  "canAttack": zod.boolean(),
+  "participant": zod.union([zod.object({
+  "username": zod.string(),
+  "monsterLevel": zod.number().min(1),
+  "monsterRarity": zod.string(),
+  "currentHp": zod.number().min(attackGameEncounterResponseOverviewEncounterOneParticipantOneCurrentHpMin),
+  "maxHp": zod.number().min(1),
+  "monsterCurrentHp": zod.number().min(attackGameEncounterResponseOverviewEncounterOneParticipantOneMonsterCurrentHpMin),
+  "isAlive": zod.boolean(),
+  "pendingLevelup": zod.boolean(),
+  "fled": zod.boolean(),
+  "totalDamage": zod.number().min(attackGameEncounterResponseOverviewEncounterOneParticipantOneTotalDamageMin),
+  "xp": zod.number().min(attackGameEncounterResponseOverviewEncounterOneParticipantOneXpMin),
+  "oboli": zod.number().min(attackGameEncounterResponseOverviewEncounterOneParticipantOneOboliMin)
+}),zod.null()])
+}),zod.null()])
+})
+})
+
+
+/**
+ * @summary Choose a combat bonus after a player level-up
+ */
+export const chooseGameLevelUpPathGuildIdRegExp = new RegExp('^\\d{5,25}$');
+
+
+
+export const ChooseGameLevelUpParams = zod.object({
+  "guildId": zod.coerce.string().regex(chooseGameLevelUpPathGuildIdRegExp),
+  "eventId": zod.coerce.number().min(1)
+})
+
+export const ChooseGameLevelUpHeader = zod.object({
+  "X-CSRF-Token": zod.string()
+})
+
+export const ChooseGameLevelUpBody = zod.object({
+  "bonus": zod.enum(['xp', 'dodge', 'attack', 'hp', 'crit'])
+})
+
+export const chooseGameLevelUpResponseGuildIdRegExp = new RegExp('^\\d{5,25}$');
+export const chooseGameLevelUpResponseInventoryItemQuantityMin = 0;
+
+
+export const chooseGameLevelUpResponseMissionsItemProgressMin = 0;
+
+
+
+
+
+export const chooseGameLevelUpResponseEncounterOneParticipantOneCurrentHpMin = 0;
+
+
+export const chooseGameLevelUpResponseEncounterOneParticipantOneMonsterCurrentHpMin = 0;
+
+export const chooseGameLevelUpResponseEncounterOneParticipantOneTotalDamageMin = 0;
+
+export const chooseGameLevelUpResponseEncounterOneParticipantOneXpMin = 0;
+
+export const chooseGameLevelUpResponseEncounterOneParticipantOneOboliMin = 0;
+
+
+
+export const ChooseGameLevelUpResponse = zod.object({
+  "guild": zod.object({
+  "id": zod.string().regex(chooseGameLevelUpResponseGuildIdRegExp),
+  "name": zod.string(),
+  "iconUrl": zod.string().url().nullable()
+}),
+  "player": zod.object({
+  "username": zod.string(),
+  "xp": zod.number(),
+  "gold": zod.number(),
+  "reputation": zod.number(),
+  "hp": zod.number(),
+  "maxLevel": zod.number(),
+  "class": zod.string().nullable(),
+  "classLevel": zod.number(),
+  "deaths": zod.number(),
+  "retreats": zod.number(),
+  "attackBonus": zod.number(),
+  "defenseBonus": zod.number(),
+  "dodgeBonus": zod.number(),
+  "critBonus": zod.number(),
+  "maxHpBonus": zod.number(),
+  "mana": zod.number(),
+  "manaLevel": zod.number(),
+  "equippedWeapon": zod.string().nullable(),
+  "equippedArmor": zod.string().nullable()
+}),
+  "inventory": zod.array(zod.object({
+  "itemKey": zod.string(),
+  "quantity": zod.number().min(chooseGameLevelUpResponseInventoryItemQuantityMin),
+  "level": zod.number().min(1)
+})),
+  "missions": zod.array(zod.object({
+  "key": zod.string(),
+  "title": zod.string(),
+  "description": zod.string(),
+  "progress": zod.number().min(chooseGameLevelUpResponseMissionsItemProgressMin),
+  "target": zod.number().min(1),
+  "completed": zod.boolean(),
+  "rewardGiven": zod.boolean(),
+  "rewardItemKey": zod.string(),
+  "rewardQuantity": zod.number().min(1)
+})),
+  "encounter": zod.union([zod.object({
+  "id": zod.number().min(1),
+  "type": zod.string(),
+  "expiresAt": zod.coerce.date(),
+  "joined": zod.boolean(),
+  "canJoin": zod.boolean(),
+  "canAttack": zod.boolean(),
+  "participant": zod.union([zod.object({
+  "username": zod.string(),
+  "monsterLevel": zod.number().min(1),
+  "monsterRarity": zod.string(),
+  "currentHp": zod.number().min(chooseGameLevelUpResponseEncounterOneParticipantOneCurrentHpMin),
+  "maxHp": zod.number().min(1),
+  "monsterCurrentHp": zod.number().min(chooseGameLevelUpResponseEncounterOneParticipantOneMonsterCurrentHpMin),
+  "isAlive": zod.boolean(),
+  "pendingLevelup": zod.boolean(),
+  "fled": zod.boolean(),
+  "totalDamage": zod.number().min(chooseGameLevelUpResponseEncounterOneParticipantOneTotalDamageMin),
+  "xp": zod.number().min(chooseGameLevelUpResponseEncounterOneParticipantOneXpMin),
+  "oboli": zod.number().min(chooseGameLevelUpResponseEncounterOneParticipantOneOboliMin)
+}),zod.null()])
+}),zod.null()])
+})
+
+
 export const ModerationSessionResponse = zod.object({
   "authenticated": zod.boolean(),
   "userId": zod.string().optional(),

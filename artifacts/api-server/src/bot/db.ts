@@ -1116,6 +1116,20 @@ export async function updateParticipant(id: number, values: Partial<Omit<EventPa
   return u!;
 }
 
+export async function applyPendingParticipantLevelUp(
+  id: number,
+  values: Partial<Omit<EventParticipant, "id" | "eventId" | "discordId" | "joinedAt" | "pendingLevelup">>,
+): Promise<EventParticipant | null> {
+  const [updated] = await db.update(eventParticipantsTable)
+    .set({ ...values, pendingLevelup: false })
+    .where(and(
+      eq(eventParticipantsTable.id, id),
+      eq(eventParticipantsTable.pendingLevelup, true),
+    ))
+    .returning();
+  return updated ?? null;
+}
+
 export async function getEventParticipants(eventId: number, guildId: string): Promise<EventParticipant[]> {
   return db.select().from(eventParticipantsTable)
     .where(and(eq(eventParticipantsTable.eventId, eventId), eq(eventParticipantsTable.guildId, guildId)));

@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/rpg-browser/"
+title = "Oracolul Cenușii — RPG în browser"
+description = "A browser-playable companion to the Oracolul Cenușii Discord RPG. Players sign in with Discord to view their guild-bound character, inventory, daily missions, and join live PvE encounters using the existing game rules."
+version = "1.0.0"
+id = "artifacts/rpg-browser"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/rpg-browser/" ]
+localPort = 25832
+
+[services.development]
+run = "pnpm --filter @workspace/rpg-browser run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/rpg-browser", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/rpg-browser/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "25832"
+BASE_PATH = "/rpg-browser/"
