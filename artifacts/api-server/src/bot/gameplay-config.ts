@@ -65,6 +65,19 @@ export interface GameplayConfig {
     /** Where the result is announced; empty: Top Ora Umbrelor. */
     channelId: string;
   };
+  /** The weekly raid (bot/raid.ts). */
+  raid: {
+    enabled: boolean;
+    /** 1 = Monday … 7 = Sunday, in Romania's time. */
+    weekday: number;
+    hour: number;
+    durationHours: number;
+    cooldownMinutes: number;
+    hpPerPlayer: number;
+    rewardPool: number;
+    /** Where the titan appears; empty: Dragonul Stins' channel. */
+    channelId: string;
+  };
 }
 
 export const DEFAULT_GAMEPLAY_CONFIG: GameplayConfig = {
@@ -121,6 +134,16 @@ export const DEFAULT_GAMEPLAY_CONFIG: GameplayConfig = {
     enabled: true,
     rewards: [10_000, 5_000, 2_500],
     roleIds: ["", "", ""],
+    channelId: "",
+  },
+  raid: {
+    enabled: true,
+    weekday: 6,
+    hour: 18,
+    durationHours: 48,
+    cooldownMinutes: 20,
+    hpPerPlayer: 15_000,
+    rewardPool: 50_000,
     channelId: "",
   },
 };
@@ -203,6 +226,23 @@ export function normalizeGameplayConfig(value: unknown): GameplayConfig {
     },
     progress: normalizeProgress(input.progress),
     seasons: normalizeSeasons(input.seasons),
+    raid: normalizeRaid(input.raid),
+  };
+}
+
+function normalizeRaid(value: unknown): GameplayConfig["raid"] {
+  const input = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const defaults = DEFAULT_GAMEPLAY_CONFIG.raid;
+  const channel = typeof input.channelId === "string" && /^\d{5,25}$/.test(input.channelId.trim()) ? input.channelId.trim() : "";
+  return {
+    enabled: typeof input.enabled === "boolean" ? input.enabled : defaults.enabled,
+    weekday: boundedInt(input.weekday, defaults.weekday, 1, 7),
+    hour: boundedInt(input.hour, defaults.hour, 0, 23),
+    durationHours: boundedInt(input.durationHours, defaults.durationHours, 1, 144),
+    cooldownMinutes: boundedInt(input.cooldownMinutes, defaults.cooldownMinutes, 1, 1_440),
+    hpPerPlayer: boundedInt(input.hpPerPlayer, defaults.hpPerPlayer, 100, 10_000_000),
+    rewardPool: boundedInt(input.rewardPool, defaults.rewardPool, 0, 10_000_000),
+    channelId: channel,
   };
 }
 

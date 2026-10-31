@@ -148,6 +148,7 @@ function ModerationApp() {
           <Route path="/joc/economie" component={GameGroupPage} />
           <Route path="/joc/progres" component={GameGroupPage} />
           <Route path="/joc/sezoane" component={GameGroupPage} />
+          <Route path="/joc/raid" component={GameGroupPage} />
           {/* The old game pages open the new one. */}
           <Route path="/canale" component={() => <Redirect to="/joc/canale" replace />} />
           <Route path="/provisioning" component={() => <Redirect to="/control/canale" replace />} />

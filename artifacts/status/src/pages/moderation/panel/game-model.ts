@@ -50,6 +50,11 @@ export const GAME_MODULES: readonly GameModuleDef[] = [
     description: "Un clasament care pornește de la zero în fiecare lună (/sezon). La final, primii trei primesc Oboli, un titlu de onoare și, dacă alegi, un rol.",
     paths: ["gameplayConfig.seasons"],
   },
+  {
+    id: "raid", route: GAME_MODULE_ROUTES.raid, short: "Raid", title: "Raidul săptămânal",
+    description: "O dată pe săptămână apare un titan pe care tot serverul îl bate împreună (/raid). Prada se împarte după daune: toată dacă titanul cade, un sfert dacă scapă.",
+    paths: ["gameplayConfig.raid"],
+  },
 ];
 
 export function gameModuleForRoute(path: string): GameModuleDef {
@@ -273,6 +278,33 @@ export const SEASON_POINT_LIST: ReadonlyArray<readonly [string, number]> = [
 export const PLACES = ["🥇 Locul 1", "🥈 Locul 2", "🥉 Locul 3"] as const;
 
 /* ------------------------------------------------------------------ */
+/* Raid                                                                */
+/* ------------------------------------------------------------------ */
+
+export type RaidSettings = {
+  enabled: boolean; weekday: number; hour: number; durationHours: number; cooldownMinutes: number; hpPerPlayer: number; rewardPool: number; channelId: string;
+};
+
+export const DEFAULT_RAID: RaidSettings = {
+  enabled: true, weekday: 6, hour: 18, durationHours: 48, cooldownMinutes: 20, hpPerPlayer: 15_000, rewardPool: 50_000, channelId: "",
+};
+
+export const RAID_WEEKDAYS: ReadonlyArray<readonly [number, string]> = [[1, "Luni"], [2, "Marți"], [3, "Miercuri"], [4, "Joi"], [5, "Vineri"], [6, "Sâmbătă"], [7, "Duminică"]];
+
+export function raidOf(config: any): RaidSettings {
+  return { ...DEFAULT_RAID, ...(config?.gameplayConfig?.raid ?? {}) };
+}
+
+/** „Sâmbătă 18:00 → luni 18:00”. */
+export function raidWindowText(raid: Pick<RaidSettings, "weekday" | "hour" | "durationHours">): string {
+  const startHours = (raid.weekday - 1) * 24 + raid.hour;
+  const end = (startHours + raid.durationHours) % (7 * 24);
+  const day = (hours: number) => RAID_WEEKDAYS[Math.floor(hours / 24)]![1];
+  const clock = (hours: number) => `${String(hours % 24).padStart(2, "0")}:00`;
+  return `${day(startHours)} ${clock(startHours)} → ${day(end).toLowerCase()} ${clock(end)}`;
+}
+
+/* ------------------------------------------------------------------ */
 /* Meniul și verificări                                                */
 /* ------------------------------------------------------------------ */
 
@@ -289,6 +321,10 @@ export function gameModuleSummary(id: GameModuleId, config: any): string {
       const economy = economyOf(config);
       return allMultipliersAre(config, 1) ? "Valorile de bază" : ECONOMY_FIELDS.map((field) => multiplierText(economy[field.key])).join(" · ");
     }
+    case "raid": {
+      const raid = raidOf(config);
+      return raid.enabled ? raidWindowText(raid) : "Oprit";
+    }
     case "seasons": {
       const seasons = seasonsOf(config);
       return seasons.enabled ? `🥇 ${seasons.rewards[0].toLocaleString("ro-RO")} Oboli` : "Oprite";
@@ -304,6 +340,7 @@ export function gameModuleSummary(id: GameModuleId, config: any): string {
 export function isGameModuleOn(id: GameModuleId, config: any): boolean {
   if (id === "state") return config?.gameplayConfig?.paused === false;
   if (id === "channels") return gameChannelCount(config) > 0;
+  if (id === "raid") return config?.gameplayConfig?.paused === false && raidOf(config).enabled;
   if (id === "seasons") return config?.gameplayConfig?.paused === false && seasonsOf(config).enabled;
   if (id === "progress") return config?.gameplayConfig?.paused === false && (progressOf(config).streakEnabled || progressOf(config).achievementsEnabled);
   return config?.gameplayConfig?.paused === false;
@@ -341,6 +378,15 @@ export function gameDraftError(config: any): string | null {
     if (roleId && !isDiscordId(roleId)) return `Sezoane — ${PLACES[index]}: „${roleId}” nu este un ID de rol.`;
   }
   if (seasons.channelId && !isDiscordId(seasons.channelId)) return `Sezoane — „${seasons.channelId}” nu este un ID de canal.`;
+  const raid = raidOf(config);
+  const raidLimits: Array<[keyof RaidSettings, string, number, number]> = [
+    ["weekday", "Ziua", 1, 7], ["hour", "Ora", 0, 23], ["durationHours", "Cât stă", 1, 144], ["cooldownMinutes", "Pauza dintre lovituri", 1, 1_440],
+    ["hpPerPlayer", "Viață pe jucător activ", 100, 10_000_000], ["rewardPool", "Prada", 0, 10_000_000],
+  ];
+  for (const [key, label, min, max] of raidLimits) {
+    if (!isValidInteger(raid[key], min, max)) return `Raid — ${label}: un număr întreg între ${min} și ${max}.`;
+  }
+  if (raid.channelId && !isDiscordId(raid.channelId)) return `Raid — „${raid.channelId}” nu este un ID de canal.`;
   const economy = economyOf(config);
   for (const field of ECONOMY_FIELDS) {
     if (!isValidMultiplier(economy[field.key])) return `Economie — ${field.label}: între ${MIN_MULTIPLIER} și ${MAX_MULTIPLIER}.`;

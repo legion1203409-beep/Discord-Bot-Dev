@@ -10,7 +10,7 @@ import type { useGameplayState } from "../../../hooks/use-moderation-api";
 import { EmojiTextField, ImageUrlField } from "./message-fields";
 import {
   ECONOMY_FIELDS, EVENT_FIELDS, GAME_CHANNELS, GAME_MODULES, MAX_MULTIPLIER, MIN_MULTIPLIER, MISSIONS, MULTIPLIER_PRESETS,
-  PLACES, SEASON_POINT_LIST, seasonsOf, ACHIEVEMENT_LIST, progressOf, streakLadder, economyOf, eventsOf, eventsPerDay, gameChannelCount, isValidMultiplier, minutesText, missionOf, multiplierText,
+  RAID_WEEKDAYS, raidOf, raidWindowText, PLACES, SEASON_POINT_LIST, seasonsOf, ACHIEVEMENT_LIST, progressOf, streakLadder, economyOf, eventsOf, eventsPerDay, gameChannelCount, isValidMultiplier, minutesText, missionOf, multiplierText,
   type GameModuleId,
 } from "./game-model";
 import { ModuleView } from "./rules";
@@ -20,7 +20,7 @@ const MODULE = Object.fromEntries(GAME_MODULES.map((module) => [module.id, modul
 /** The game's running state, read and changed at once through /gameplay-state (not part of the draft). */
 export const GameStateContext = createContext<ReturnType<typeof useGameplayState> | null>(null);
 
-export const GAME_ICONS: Record<GameModuleId, IconName> = { state: "power", channels: "hash", events: "calendar", missions: "scroll", economy: "star", progress: "verified", seasons: "calendar" };
+export const GAME_ICONS: Record<GameModuleId, IconName> = { state: "power", channels: "hash", events: "calendar", missions: "scroll", economy: "star", progress: "verified", seasons: "calendar", raid: "raid" };
 
 /* ------------------------------------------------------------------ */
 /* Stare                                                               */
@@ -352,6 +352,45 @@ function SeasonsModule() {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* Raid                                                                */
+/* ------------------------------------------------------------------ */
+
+function RaidModule() {
+  const { config, set, channels } = usePanel();
+  const raid = raidOf(config);
+  const change = (next: Partial<typeof raid>) => set(["gameplayConfig", "raid"], { ...raid, ...next });
+  const id = useId();
+  return (
+    <ModuleView module={MODULE.raid} icon="raid" aside={<span className="pn-badge is-plain">{raid.enabled ? raidWindowText(raid) : "Oprit"}</span>}>
+      <SectionCard title="Când vine" testId="game-raid-when">
+        <Fields>
+          <SwitchField label="Raidul săptămânal" testId="game-raid-switch" checked={raid.enabled} hint="Vine doar cât jocul e pornit." onChange={(next) => change({ enabled: next })} />
+          <Fld label="Ziua" htmlFor={`${id}-d`} hint="Ora României.">
+            <select id={`${id}-d`} className="pn-inp" value={raid.weekday} data-testid="game-raid-weekday" onChange={(event) => change({ weekday: Number(event.target.value) })}>
+              {RAID_WEEKDAYS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </Fld>
+          <NumField label="Ora" unit=":00" min={0} max={23} value={raid.hour} testId="game-raid-hour" onChange={(next) => change({ hour: next ?? -1 })} />
+          <NumField label="Cât stă" unit="ore" min={1} max={144} value={raid.durationHours} testId="game-raid-duration" onChange={(next) => change({ durationHours: next ?? 0 })} />
+          <ChannelField
+            label="Canalul raidului" selectLabel="Canalul raidului" value={raid.channelId || null} channels={channels}
+            hint="Gol: în canalul Dragonul Stins." onChange={(next) => change({ channelId: next ?? "" })}
+          />
+        </Fields>
+      </SectionCard>
+      <SectionCard title="Lupta și prada" testId="game-raid-fight">
+        <Fields>
+          <NumField label="Pauza dintre lovituri" unit="min" min={1} max={1_440} value={raid.cooldownMinutes} testId="game-raid-cooldown" hint="Cât așteaptă un jucător între două lovituri." onChange={(next) => change({ cooldownMinutes: next ?? 0 })} />
+          <NumField label="Viață pe jucător activ" unit="viață" min={100} max={10_000_000} value={raid.hpPerPlayer} testId="game-raid-hp" hint="Ori jucătorii activi în ultima săptămână (cel puțin 5). Mai mult înseamnă un titan mai greu." onChange={(next) => change({ hpPerPlayer: next ?? 0 })} />
+          <NumField label="Prada" unit="Oboli" min={0} max={10_000_000} value={raid.rewardPool} testId="game-raid-pool" hint="Împărțită după daune; primii trei mai primesc o cheie epică." onChange={(next) => change({ rewardPool: next ?? 0 })} />
+        </Fields>
+        <p className="pn-fh">Fiecare participare contează ca o bătălie cu un boss: pentru cufărul zilnic, realizări și sezon.</p>
+      </SectionCard>
+    </ModuleView>
+  );
+}
+
 export const GAME_VIEWS: Record<GameModuleId, () => React.ReactElement> = {
   state: StateModule,
   channels: ChannelsModule,
@@ -360,4 +399,5 @@ export const GAME_VIEWS: Record<GameModuleId, () => React.ReactElement> = {
   economy: EconomyModule,
   progress: ProgressModule,
   seasons: SeasonsModule,
+  raid: RaidModule,
 };

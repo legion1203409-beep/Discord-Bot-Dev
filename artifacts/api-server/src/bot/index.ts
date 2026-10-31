@@ -25,6 +25,7 @@ import {
   type GuildMember,
 } from "discord.js";
 import { handleBanEvasionButton } from "./moderation/ban-evasion";
+import { handleRaidButton, raidStatusEmbed, startRaidWatcher } from "./raid";
 import { buildSeasonEmbed, finalizeSeason, previousSeasonKey, seasonEndsAt, seasonKey, seasonStanding, seasonTop, startSeasonWatcher } from "./seasons";
 import { advanceStreak, buildAchievementsEmbed, getPlayerProgress, profileProgressLine, takeUnseen, unseenLine } from "./progress";
 import { randomUUID } from "node:crypto";
@@ -579,6 +580,7 @@ const slashCommands = [
   new SlashCommandBuilder().setName("companion").setDescription("🐾 Vezi companionul tău (cumpără și fă îmbunătățiri din /magazin)."),
   new SlashCommandBuilder().setName("ajutor").setDescription("❓ Ghidul comenzilor din Regatul Cenușii."),
   new SlashCommandBuilder().setName("misiuni").setDescription("📜 Misiunile tale zilnice — progres și recompense."),
+  new SlashCommandBuilder().setName("raid").setDescription("⚔️ Raidul săptămânal: titanul, viața lui și contribuția ta."),
   new SlashCommandBuilder().setName("sezon").setDescription("🏆 Clasamentul sezonului din luna aceasta și premiile."),
   new SlashCommandBuilder()
     .setName("realizari")
@@ -793,6 +795,27 @@ async function handleProfil(interaction: ChatInputCommandInteraction) {
   const embed = buildProfileEmbed(p, undefined, interaction.user.displayAvatarURL({ size: 256 }), items);
   if (progress) embed.addFields({ name: "Progres", value: profileProgressLine(progress, getGameplayConfig(guildId).progress) });
   await interaction.editReply({ content: unseen.length ? unseenLine(unseen) : undefined, embeds: [embed] });
+}
+
+async function handleRaid(interaction: ChatInputCommandInteraction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const guildId = interaction.guildId!;
+  const settings = getGameplayConfig(guildId).raid;
+  if (!settings.enabled) {
+    await interaction.editReply({ content: "⚔️ Raidul săptămânal e oprit pe acest server." });
+    return;
+  }
+  const status = await raidStatusEmbed(guildId, interaction.user.id);
+  const days = ["luni", "marți", "miercuri", "joi", "vineri", "sâmbătă", "duminică"];
+  const next = `Titanul vine în fiecare **${days[settings.weekday - 1]}** la ora **${settings.hour}:00** (ora României) și stă **${settings.durationHours}** ore.`;
+  if (!status) {
+    await interaction.editReply({ content: `⚔️ Încă n-a fost niciun raid. ${next}` });
+    return;
+  }
+  await interaction.editReply({
+    content: `${status.mine ? `Contribuția ta: **${status.mine.damage.toLocaleString("ro-RO")}** daune din **${status.mine.hits}** lovituri.` : "Încă n-ai lovit titanul."} ${next}`,
+    embeds: [status.embed],
+  });
 }
 
 async function handleSezon(interaction: ChatInputCommandInteraction) {
@@ -1241,6 +1264,7 @@ function buildHelpEmbed(category: HelpCategory) {
             "**/misiuni** — misiuni zilnice cu progres și recompense.\n" +
             "**/cufarpersonal** — recompensa pentru activitatea ta zilnică; deschis zi de zi îți crește seria și bonusul.\n" +
             "**/realizari** — insignele tale și seria zilnică.\n" +
+            "**/raid** — titanul săptămânii, pe care îl bate tot serverul; prada se împarte după daune.\n" +
             "**/sezon** — clasamentul lunii; primii trei primesc Oboli, un titlu și (dacă e ales) un rol.\n" +
              "**/licitatie** — vezi licitația sau licitezi rapid cu o sumă.\n" +
              "**/posteazalicitatie** — [Admin] publică licitația într-un canal pentru toți jucătorii.",
@@ -1333,7 +1357,7 @@ function buildHelpEmbed(category: HelpCategory) {
           name: "Jucător",
           value:
             "**/ajutor** · **/profil** · **/clasament** · **/rank** · **/toplvl** · **/profetie** · **/clasa** · **/companion**\n" +
-            "**/magazin** · **/misiuni** · **/cufarpersonal** · **/realizari** · **/sezon** · **/chei** · **/server**",
+            "**/magazin** · **/misiuni** · **/cufarpersonal** · **/realizari** · **/sezon** · **/raid** · **/chei** · **/server**",
         },
         {
           name: "Cufere și economie",
@@ -4673,6 +4697,10 @@ async function handleButton(interaction: ButtonInteraction) {
     return handleBanEvasionButton(interaction);
   }
 
+  if (id.startsWith("raid_")) {
+    return handleRaidButton(interaction);
+  }
+
   if (id.startsWith("help_")) {
     return handleHelpButton(interaction);
   }
@@ -5118,6 +5146,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
       startGuildScheduler(client, guildId);
       void setupTrader(client, guildId);
       startSeasonWatcher(client);
+      startRaidWatcher(client);
       for (const channel of guild.channels.cache.values()) {
         scheduleTicketPanel(channel);
       }
@@ -5444,6 +5473,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
     for (const [guildId] of client.guilds.cache) {
       void setupTrader(client, guildId);
       startSeasonWatcher(client);
+      startRaidWatcher(client);
     }
     logger.info({ shardId }, "Discord shard ready (fresh identify)");
   });
@@ -5567,6 +5597,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
       if (interaction.commandName === "inventar") dispatch(handleInventar(interaction));
       if (interaction.commandName === "realizari") dispatch(handleRealizari(interaction));
       if (interaction.commandName === "sezon") dispatch(handleSezon(interaction));
+      if (interaction.commandName === "raid") dispatch(handleRaid(interaction));
       if (interaction.commandName === "profetie") dispatch(handleProfetie(interaction));
       if (interaction.commandName === "clasament") dispatch(handleClasament(interaction));
       if (interaction.commandName === "magazin") dispatch(handleMagazin(interaction));
@@ -6161,6 +6192,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
       if (interaction.commandName === "inventar") dispatch(handleInventar(interaction));
       if (interaction.commandName === "realizari") dispatch(handleRealizari(interaction));
       if (interaction.commandName === "sezon") dispatch(handleSezon(interaction));
+      if (interaction.commandName === "raid") dispatch(handleRaid(interaction));
       if (interaction.commandName === "profetie") dispatch(handleProfetie(interaction));
       if (interaction.commandName === "clasament") dispatch(handleClasament(interaction));
       if (interaction.commandName === "magazin") dispatch(handleMagazin(interaction));

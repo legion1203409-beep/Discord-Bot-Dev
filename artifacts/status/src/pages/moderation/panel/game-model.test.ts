@@ -98,3 +98,15 @@ describe("seasons", () => {
     expect(gameDraftError(config({ seasons: { enabled: true, rewards: [1, 1, 1], roleIds: ["", "x", ""], channelId: "" } }))).toContain("Locul 2");
   });
 });
+
+describe("the weekly raid", () => {
+  it("describes its window and refuses bad values", async () => {
+    const { raidOf, raidWindowText } = await import("./game-model");
+    expect(raidOf(config()).weekday).toBe(6);
+    expect(raidWindowText({ weekday: 6, hour: 18, durationHours: 48 })).toBe("Sâmbătă 18:00 → luni 18:00");
+    expect(raidWindowText({ weekday: 7, hour: 20, durationHours: 6 })).toBe("Duminică 20:00 → luni 02:00");
+    expect(gameModuleSummary("raid", config({ raid: { enabled: false } }))).toBe("Oprit");
+    expect(gameDraftError(config({ raid: { hour: 24 } }))).toContain("Ora");
+    expect(gameDraftError(config({ raid: { hpPerPlayer: 10 } }))).toContain("Viață pe jucător");
+  });
+});

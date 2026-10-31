@@ -967,6 +967,16 @@ export const botControlSchema = z.object(
       roleIds: z.tuple([snowflake.or(z.literal("")), snowflake.or(z.literal("")), snowflake.or(z.literal(""))]),
       channelId: snowflake.or(z.literal("")),
     }).strict().optional(),
+    raid: z.object({
+      enabled: z.boolean(),
+      weekday: z.number().int().min(1).max(7),
+      hour: z.number().int().min(0).max(23),
+      durationHours: z.number().int().min(1).max(144),
+      cooldownMinutes: z.number().int().min(1).max(1_440),
+      hpPerPlayer: z.number().int().min(100).max(10_000_000),
+      rewardPool: z.number().int().min(0).max(10_000_000),
+      channelId: snowflake.or(z.literal("")),
+    }).strict().optional(),
   
 }
 
@@ -3372,6 +3382,7 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
     // A page that does not know the streak and achievements keeps them as saved.
     progress: value.gameplayConfig.progress ?? previousGameplayConfig.progress,
     seasons: value.gameplayConfig.seasons ?? previousGameplayConfig.seasons,
+    raid: value.gameplayConfig.raid ?? previousGameplayConfig.raid,
     paused: previousGameplayConfig.paused,
   });
   anyWriteSucceeded = true;
