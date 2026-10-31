@@ -1159,18 +1159,6 @@ test.describe("authenticated moderation console", () => {
       }
     }
 
-    await expectNavGroupExpanded(page, "bot-control");
-    const channelLink = page.locator('nav[aria-label="Categorii de moderare"] a[href="/moderare/canale"]');
-    await channelLink.click();
-    await expect(page).toHaveURL("/moderare/canale");
-    await expect(channelLink).toHaveAttribute("aria-current", "page");
-    for (const tab of ["tickets", "messages", "statistics"]) {
-      const link = page.locator(`nav[aria-label="Categorii de moderare"] a[href="/moderare/bot?tab=${tab}"]`);
-      await link.click();
-      await expect(page).toHaveURL(`/moderare/bot?tab=${tab}`);
-      await expect(link).toHaveAttribute("aria-current", "page");
-      await expect(page.locator('nav[aria-label="Categorii de moderare"] a[aria-current="page"]')).toHaveCount(1);
-    }
     // A separate test-only bot-control GET lets us verify the role tab itself;
     // sidebar navigation above is independent of whether that API is online.
     let savedInviteLogChannel = "";
@@ -1227,10 +1215,9 @@ test.describe("authenticated moderation console", () => {
     await expect(page.getByTestId("control-page")).toBeVisible();
 
     await page.goto("/moderare/canale");
-    await expect(page.getByRole("heading", { name: "Canale Discord", exact: true })).toBeVisible();
-    await expect(page.getByRole("tab")).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: "Identifică destinațiile pe Discord" })).toBeVisible();
-    await page.getByLabel("Cufere ID").fill("555555555");
+    await expect(page).toHaveURL("/moderare/joc/canale");
+    await expect(page.getByRole("heading", { name: "Canalele jocului", exact: true })).toBeVisible();
+    await page.getByLabel("Canal Cufere ID fallback").fill("555555555");
     const channelSave = page.waitForResponse((response) =>
       response.url().includes("/api/moderation/guilds/111111111/bot-control")
       && response.request().method() === "PUT");
@@ -1239,8 +1226,9 @@ test.describe("authenticated moderation console", () => {
     expect(savedMainChannel).toBe("555555555");
 
     await page.goto("/moderare/bot?tab=channels");
-    await expect(page).toHaveURL("/moderare/canale");
-    await expect(page.getByRole("heading", { name: "Canale Discord", exact: true })).toBeVisible();
+    await expect(page).toHaveURL("/moderare/joc/canale");
+    await page.goto("/moderare/bot?tab=messages");
+    await expect(page).toHaveURL("/moderare/joc");
 
     // The old statistics tab now opens the invitations of the bot control.
     await page.goto("/moderare/bot?tab=statistics");
@@ -1632,6 +1620,128 @@ test.describe("authenticated moderation console", () => {
     await page.getByRole("button", { name: "Salvează", exact: true }).click();
     expect((await save).ok()).toBe(true);
     expect(savedConfigs.get(guilds[0].id)?.embeds).toMatchObject({ titleTemplate: "Acțiune: {member}" });
+  });
+
+  test("the game is turned on, its channels, events, missions and economy are set and saved together", async ({ page }) => {
+    let botConfig: any = {
+      channels: {},
+      provisioningPermissions: {},
+      discordLive: true,
+      verification: {
+        enabled: false, channelId: "", roleId: "", title: "", message: "", buttonLabel: "",
+        buttonEmoji: "", successMessage: "", alreadyVerifiedMessage: "", imageUrl: "", thumbnailUrl: "", panelMessageId: "",
+      },
+      gameplayConfig: {
+        memberMessages: { channelId: "", style: "normal", welcomeEnabled: false, leaveEnabled: false, customStyle: "" },
+        messages: { gamePaused: "", gamePausedImageUrl: "", gamePausedThumbnailUrl: "", oraclePaused: "", oraclePausedImageUrl: "", oraclePausedThumbnailUrl: "" },
+        paused: true, events: {}, missions: {}, economy: {},
+      },
+      allianceRecruitmentText: "",
+      dailyStats: {
+        channelId: "", title: "Statistici {guild}", description: "Raport {date}", color: "#5865F2", footer: "",
+        activityTitle: "Activitate · ultimele 7 zile", channelsTitle: "Top 5 canale active",
+        emptyChannelsText: "Nu există canale active.", imageUrl: "https://example.com/report.png", thumbnailUrl: "",
+        metricLabels: { messages: "Mesaje", uniqueUsers: "Utilizatori unici", boosts: "Boost-uri", joins: "Intrări", leaves: "Ieșiri", peakVoice: "Vârf vocal" },
+      },
+      inviteTracking: { enabled: false, joinLogChannelId: "", reportEnabled: false, reportChannelId: "", reportFrequency: "daily", reportTime: "09:00", reportTimeZone: "UTC", reportTopLimit: 5, reportWeekday: 1 },
+      tickets: {
+        categories: { staff: "", partnership: "", help_report: "" },
+        allianceAnnouncementTemplate: "", allianceAnnouncementMode: "text",
+        staffReviewRoleId: "", alliancePublicChannelId: "", allianceOwnerGuildId: "",
+        flows: {
+          staff: { questions: [], title: "", panelDescription: "", startButtonLabel: "", requirementsText: "", completionMessage: "", completionAction: "none" },
+          partnership: { questions: [], title: "", panelDescription: "", startButtonLabel: "", requirementsText: "", completionMessage: "", completionAction: "none" },
+          help_report: { questions: [], title: "", panelDescription: "", startButtonLabel: "", requirementsText: "", completionMessage: "", completionAction: "none" },
+        },
+      },
+    };
+    await page.route("**/api/moderation/guilds/*/bot-control", async (route) => {
+      if (route.request().method() === "PUT") {
+        botConfig = { ...JSON.parse(route.request().postData() || "{}"), discordLive: true };
+        await route.fulfill({ json: botConfig });
+        return;
+      }
+      await route.fulfill({ json: structuredClone(botConfig) });
+    });
+    await page.route("**/api/moderation/guilds/*/invite-stats**", async (route) => {
+      await route.fulfill({ json: { range: "7", startDay: "2026-09-18", endDay: "2026-09-24", totals: { attributedJoins: 0, unknownJoins: 0 }, rows: [] } });
+    });
+
+    let paused = true;
+    const statePuts: boolean[] = [];
+    await page.route("**/api/moderation/guilds/*/gameplay-state", async (route) => {
+      if (route.request().method() === "PUT") {
+        paused = JSON.parse(route.request().postData() || "{}").paused;
+        statePuts.push(paused);
+      }
+      await route.fulfill({ json: { paused } });
+    });
+    await page.goto("/moderare/joc");
+    await chooseFirstGuild(page);
+    await expect(page.getByRole("heading", { name: "Starea jocului" })).toBeVisible();
+    await expect(page.getByTestId("game-summary")).toContainText("Oprit");
+    // Turning on applies at once, through its own route.
+    await page.getByRole("switch", { name: "Jocul rulează pe server" }).click();
+    await expect(page.getByTestId("game-summary")).toContainText("Pornit");
+    expect(statePuts).toEqual([false]);
+    await expect(page.getByText("Jocul e pornit, dar n-ai ales niciun canal")).toBeVisible();
+    // Turning off asks first.
+    await page.getByRole("switch", { name: "Jocul rulează pe server" }).click();
+    await expect(page.getByTestId("game-stop-confirm")).toBeVisible();
+    await page.getByRole("button", { name: "Renunță", exact: true }).first().click();
+    expect(statePuts).toEqual([false]);
+    await page.getByTestId("game-paused-text").getByRole("textbox").fill("Jocul doarme. Revenim curând.");
+
+    await page.getByTestId("nav-game-channels").click();
+    await page.getByRole("combobox", { name: "Canalul pentru Ora Umbrelor" }).selectOption("444444444");
+    await expect(page.getByTestId("nav-game-channels")).toContainText("1 din 8 canale alese");
+
+    await page.getByTestId("nav-game-events").click();
+    await page.getByTestId("game-eventCooldownMinMinutes").fill("200");
+    await expect(page.getByText("Pauza maximă trebuie să fie cel puțin cât cea minimă.")).toBeVisible();
+    await page.getByTestId("game-eventCooldownMaxMinutes").fill("300");
+    await expect(page.getByTestId("game-events-day")).toBeVisible();
+
+    await page.getByTestId("nav-game-missions").click();
+    await page.getByTestId("game-kill_10-target").fill("15");
+
+    await page.getByTestId("nav-game-progress").click();
+    await expect(page.getByTestId("game-streak-ladder")).toContainText("+60%");
+    await page.getByTestId("game-streak-bonus").fill("15");
+    await expect(page.getByTestId("game-streak-ladder")).toContainText("+90%");
+    await page.getByTestId("game-achievements-rewards").click();
+
+    await page.getByTestId("nav-game-seasons").click();
+    await page.getByTestId("game-season-reward-1").fill("20000");
+    await expect(page.getByTestId("nav-game-seasons")).toContainText("20.000 Oboli");
+
+    await page.getByTestId("nav-game-raid").click();
+    await page.getByTestId("game-raid-weekday").selectOption("7");
+    await page.getByTestId("game-raid-duration").fill("6");
+    await expect(page.getByTestId("nav-game-raid")).toContainText("Duminică 18:00 → luni 00:00");
+
+    await page.getByTestId("nav-game-economy").click();
+    await page.getByTestId("game-economy-double").click();
+    await expect(page.getByTestId("game-monsterGoldMultiplier")).toHaveValue("2");
+
+    const save = page.waitForResponse((response) =>
+      response.url().includes("/api/moderation/guilds/111111111/bot-control") && response.request().method() === "PUT");
+    await page.getByTestId("button-save-game").click();
+    expect((await save).ok()).toBe(true);
+    expect(botConfig.gameplayConfig).toMatchObject({
+      messages: { gamePaused: "Jocul doarme. Revenim curând." },
+      events: { eventCooldownMinMinutes: 200, eventCooldownMaxMinutes: 300 },
+      missions: { kill_10: { target: 15 } },
+      raid: { enabled: true, weekday: 7, hour: 18, durationHours: 6, cooldownMinutes: 20, hpPerPlayer: 15_000, rewardPool: 50_000, channelId: "" },
+      seasons: { enabled: true, rewards: [20_000, 5_000, 2_500], roleIds: ["", "", ""], channelId: "" },
+      progress: { streakEnabled: true, streakBonusPercent: 15, streakMaxDays: 7, weeklyKey: true, achievementsEnabled: true, achievementRewards: false },
+      economy: { monsterGoldMultiplier: 2, monsterXpMultiplier: 2, bossGoldMultiplier: 2, bossXpMultiplier: 2 },
+    });
+    expect(botConfig.channels.event).toBe("444444444");
+    // The rest of the bot's settings go back unchanged.
+    expect(botConfig.dailyStats.imageUrl).toBe("https://example.com/report.png");
+    await page.reload();
+    await expect(page.getByTestId("game-summary")).toContainText("Pornit");
   });
 
   test("the alliance announcement is edited with variables, previewed, reset and saved", async ({ page }) => {

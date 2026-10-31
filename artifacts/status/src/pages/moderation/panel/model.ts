@@ -550,6 +550,24 @@ export function isRecordsRoute(path: string): boolean {
   return Object.values(RECORDS_MODULE_ROUTES).some((route) => route === clean);
 }
 
+/** The game page and its modules. */
+export const GAME_ROUTE = "/joc";
+export const GAME_MODULE_ROUTES = {
+  state: "/joc",
+  channels: "/joc/canale",
+  events: "/joc/evenimente",
+  missions: "/joc/misiuni",
+  economy: "/joc/economie",
+  progress: "/joc/progres",
+  seasons: "/joc/sezoane",
+  raid: "/joc/raid",
+} as const;
+
+export function isGameRoute(path: string): boolean {
+  const clean = cleanPath(path);
+  return Object.values(GAME_MODULE_ROUTES).some((route) => route === clean);
+}
+
 /** The message customization page and its modules. */
 export const MESSAGES_ROUTE = "/config/mesaje";
 export const MESSAGES_MODULE_ROUTES = {
@@ -578,6 +596,7 @@ export function panelGroupRoute(path: string): string | null {
   if (isControlRoute(path)) return CONTROL_ROUTE;
   if (isRecordsRoute(path)) return RECORDS_ROUTE;
   if (isMessagesRoute(path)) return MESSAGES_ROUTE;
+  if (isGameRoute(path)) return GAME_ROUTE;
   return null;
 }
 
