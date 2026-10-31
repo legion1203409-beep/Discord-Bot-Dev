@@ -438,21 +438,22 @@ test.describe("authenticated moderation console", () => {
     });
 
     const openCase = async (caseId: string) => {
-      const row = page.getByRole("row").filter({ hasText: caseId.slice(0, 8) });
+      const row = page.getByTestId(`case-row-${caseId}`);
       await expect(row).toBeVisible();
       await row.click();
       const dialog = page.getByRole("dialog");
       await expect(dialog).toBeVisible();
+      await expect(page).toHaveURL(new RegExp(`caz=${caseId}`));
       return dialog;
     };
     const expectFirstCaseHistory = async (dialog: import("@playwright/test").Locator) => {
-      await expect(dialog.locator("p.text-sm.text-foreground")).toHaveText([question, answer]);
-      await expect(dialog.locator("span.text-xs.font-semibold")).toHaveText(["staff-fixture", "member-fixture"]);
+      await expect(dialog.getByTestId("case-notes").locator(".pn-rec-note-b")).toHaveText([question, answer]);
+      await expect(dialog.getByTestId("case-notes").locator(".pn-rec-who b")).toHaveText(["staff-fixture", "member-fixture"]);
     };
 
     await page.goto("/moderare/cazuri");
     await chooseFirstGuild(page);
-    await expect(page.getByRole("heading", { name: "Cazuri" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Cazuri", exact: true })).toBeVisible();
 
     let dialog = await openCase(firstCaseId);
     await expectFirstCaseHistory(dialog);
@@ -460,7 +461,7 @@ test.describe("authenticated moderation console", () => {
     await expect(dialog).toBeHidden();
 
     dialog = await openCase(secondCaseId);
-    await expect(dialog.locator("p.text-sm.text-foreground")).toHaveText(["Notiță izolată pentru al doilea dosar."]);
+    await expect(dialog.getByTestId("case-notes").locator(".pn-rec-note-b")).toHaveText(["Notiță izolată pentru al doilea dosar."]);
     await expect(dialog.getByText(question, { exact: true })).toHaveCount(0);
     await page.keyboard.press("Escape");
     await expect(dialog).toBeHidden();
@@ -471,9 +472,88 @@ test.describe("authenticated moderation console", () => {
     await expect(dialog).toBeHidden();
 
     await page.reload();
-    await expect(page.getByRole("heading", { name: "Cazuri" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Cazuri", exact: true })).toBeVisible();
     dialog = await openCase(firstCaseId);
     await expectFirstCaseHistory(dialog);
+    // A case's address opens it straight away.
+    await page.reload();
+    await expectFirstCaseHistory(page.getByRole("dialog"));
+  });
+
+  test("filters cases, closes one and answers an action Discord did not confirm", async ({ page }) => {
+    const openCase = {
+      id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", guildId: guilds[0].id, subjectId: "555555555", actorId: "999999999", actionType: "warn",
+      reason: "Limbaj nepotrivit", status: "open", createdAt: "2026-10-01T12:00:00.000Z", evidence: [], metadata: {},
+    };
+    const closedCase = { ...openCase, id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", actionType: "ban", status: "closed", closedAt: "2026-10-02T12:00:00.000Z" };
+    const cases = [openCase, closedCase];
+    const listQueries: string[] = [];
+    const patches: any[] = [];
+    const reconciles: any[] = [];
+    let ledger = [{ id: "ledger-1", status: "uncertain", actionType: "mute", actorId: "999999999", input: { type: "mute", targetId: "555555555", durationMinutes: 10 }, createdAt: "2026-10-03T12:00:00.000Z" }];
+    await page.unroute("**/api/moderation/guilds/*/cases**");
+    await page.route("**/api/moderation/guilds/*/cases**", async (route) => {
+      const url = new URL(route.request().url());
+      const caseId = url.pathname.match(/\/cases\/([^/]+)$/)?.[1];
+      if (caseId) {
+        const item = cases.find((entry) => entry.id === caseId)!;
+        if (route.request().method() === "PATCH") {
+          const body = JSON.parse(route.request().postData() || "{}");
+          patches.push(body);
+          Object.assign(item, body);
+        }
+        await route.fulfill({ json: { ...item, notes: [], appeal: null } });
+        return;
+      }
+      listQueries.push(url.search);
+      const status = url.searchParams.get("status");
+      const actionType = url.searchParams.get("actionType");
+      const matching = cases.filter((item) => !actionType || item.actionType === actionType);
+      await route.fulfill({ json: {
+        items: matching.filter((item) => !status || item.status === status),
+        counts: { open: matching.filter((item) => item.status === "open").length, closed: matching.filter((item) => item.status === "closed").length },
+      } });
+    });
+    await page.route("**/api/moderation/guilds/*/actions?**", async (route) => {
+      const status = new URL(route.request().url()).searchParams.get("status");
+      await route.fulfill({ json: { items: ledger.filter((item) => item.status === status) } });
+    });
+    await page.route("**/api/moderation/guilds/*/actions/*/reconcile", async (route) => {
+      reconciles.push(JSON.parse(route.request().postData() || "{}"));
+      ledger = [];
+      await route.fulfill({ json: { ok: true } });
+    });
+    await page.unroute("**/api/moderation/guilds/*/logs/audit**");
+    await page.route("**/api/moderation/guilds/*/logs/audit**", async (route) => {
+      await route.fulfill({ json: { items: [], total: 0 } });
+    });
+
+    await page.goto("/moderare/cazuri");
+    await chooseFirstGuild(page);
+    await expect(page.getByTestId("cases-status")).toContainText("Deschise · 1");
+    await page.getByTestId("cases-status").getByRole("radio", { name: /Închise/ }).click();
+    await expect(page.getByTestId("cases-list").getByRole("button")).toHaveCount(1);
+    await expect(page.getByTestId(`case-row-${closedCase.id}`)).toContainText("Interdicție");
+    await page.getByTestId("cases-action").selectOption("warn");
+    await expect(page.getByTestId("cases-empty")).toContainText("Niciun caz nu se potrivește filtrelor.");
+    expect(listQueries.at(-1)).toContain("actionType=warn");
+    await page.getByTestId("cases-clear").click();
+    await page.getByTestId(`case-row-${openCase.id}`).click();
+    await page.getByTestId("case-toggle").click();
+    await expect(page.getByTestId("case-done")).toContainText("Cazul e închis.");
+    expect(patches).toEqual([{ status: "closed" }]);
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId(`case-row-${openCase.id}`)).toContainText("Închis");
+
+    await page.getByTestId("nav-records-audit").click();
+    await expect(page).toHaveURL("/moderare/audit");
+    await expect(page.getByTestId("audit-ledger")).toContainText("Timeout de 10 minute");
+    await page.getByTestId("ledger-check-ledger-1").click();
+    await page.getByRole("textbox", { name: "Ce ai găsit în Discord" }).fill("Membrul are timeout.");
+    await page.getByRole("button", { name: "S-a aplicat", exact: true }).click();
+    await expect(page.getByTestId("audit-ledger")).toHaveCount(0);
+    expect(reconciles).toEqual([{ status: "applied", note: "Membrul are timeout." }]);
+    await expect(page.getByTestId("audit-empty")).toContainText("Niciun eveniment încă.");
   });
 
   test("saves setup drafts per guild, resumes only on request, and blocks silent session conflicts", async ({ page }) => {
@@ -1094,13 +1174,12 @@ test.describe("authenticated moderation console", () => {
 
     await page.getByTestId("link-dashboard-audit").click();
     await expect(page).toHaveURL("/moderare/audit");
-    await expect(page.getByText("Configurație actualizată")).toBeVisible();
-    await expect(page.getByText("Anti-Raid a fost activat.")).toBeVisible();
-    await page.getByPlaceholder("Caută în audit (acțiune, actor)...").fill("toxicitate");
+    await expect(page.getByTestId("audit-list")).toContainText("Configurație actualizată");
+    await expect(page.getByTestId("audit-list")).toContainText("Anti-Raid a fost activat.");
+    await page.getByTestId("audit-search").fill("toxicitate");
     await expect(page.getByText("Mesaj semnalat de moderarea AI")).toBeVisible();
     await expect(page.getByText("Configurație actualizată")).toHaveCount(0);
-    await page.getByRole("combobox", { name: "Categorie" }).click();
-    await page.getByRole("option", { name: "Securitate", exact: true }).click();
+    await page.getByRole("combobox", { name: "Categorie" }).selectOption({ label: "Securitate" });
     // Use the browser's local timezone, as datetime-local does.
     const localInput = await page.evaluate(() => {
       const date = new Date("2026-09-24T17:19:00Z");
@@ -1116,8 +1195,8 @@ test.describe("authenticated moderation console", () => {
     await page.getByRole("button", { name: "Elimină intervalul" }).click();
     await expect(page.getByLabel("De la", { exact: true })).toHaveValue("");
     await expect(page.getByLabel("Până la", { exact: true })).toHaveValue("");
-    await expect(page.getByRole("combobox", { name: "Categorie" })).toContainText("Securitate");
-    await expect(page.getByPlaceholder("Caută în audit (acțiune, actor)...")).toHaveValue("toxicitate");
+    await expect(page.getByRole("combobox", { name: "Categorie" })).toHaveValue("security");
+    await expect(page.getByTestId("audit-search")).toHaveValue("toxicitate");
     await expect(page.getByText("Mesaj semnalat de moderarea AI")).toBeVisible();
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(page.getByLabel("Până la", { exact: true })).toBeVisible();

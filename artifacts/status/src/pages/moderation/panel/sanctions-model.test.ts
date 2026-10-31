@@ -33,7 +33,7 @@ describe("the sanctions group", () => {
     expect(isSanctionsRoute("/politici")).toBe(false);
     expect(panelGroupRoute("/sanctiuni/comenzi")).toBe("/sanctiuni");
     expect(panelGroupRoute("/automod")).toBe("/protectie");
-    expect(panelGroupRoute("/cazuri")).toBeNull();
+    expect(panelGroupRoute("/politici")).toBeNull();
     expect(isWidePanelRoute("/sanctiuni/escaladare")).toBe(true);
     expect(isWidePanelRoute("/ai")).toBe(true);
     expect(isWidePanelRoute("/comenzi")).toBe(false);

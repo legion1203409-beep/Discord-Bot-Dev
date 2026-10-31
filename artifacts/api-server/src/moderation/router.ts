@@ -168,6 +168,7 @@ import {
   MAX_ORACLE_CHANNELS, ORACLE_LENGTHS, ORACLE_TONES, isValidTimeZone, normalizeOracleSettings, setOracleSettings,
 } from "../bot/oracle-settings";
 import { loadOracleSettings } from "../bot/db";
+import { MAX_PEOPLE_PER_REQUEST, resolvePeople } from "./people";
 import { resumeOracle, stopOracle } from "../bot/oracle";
 import { startOracleCouncilScheduler, stopOracleCouncilScheduler } from "../bot/oracle-council";
 
@@ -3786,13 +3787,36 @@ router.post("/guilds/:guildId/emojis", asyncRoute(async (req, res) => {
   }
 }));
 
+// Names and pictures for the members a case or audit list shows; IDs the bot cannot find are left out.
+router.get("/guilds/:guildId/people", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  await sessionAndGuild(req, guildId, "operations");
+  const { ids } = parse(z.object({ ids: z.string().min(1).max(1_400) }), req.query);
+  const list = parse(z.array(snowflake).min(1).max(MAX_PEOPLE_PER_REQUEST), [...new Set(ids.split(",").map((id) => id.trim()).filter(Boolean))]);
+  const client = getModerationClient();
+  res.set("Cache-Control", "no-store");
+  if (!client?.isReady()) {
+    res.json({ people: [] });
+    return;
+  }
+  res.json({ people: await resolvePeople(client, guildId, list) });
+}));
+
 router.get("/guilds/:guildId/cases", asyncRoute(async (req, res) => {
   const guildId = parse(snowflake, req.params.guildId);
   await sessionAndGuild(req, guildId, "operations");
   await enforceCaseRetention(guildId);
   const page = parse(paginationSchema, req.query);
-  const filter = parse(z.object({ status: z.enum(["open", "closed"]).optional(), userId: snowflake.optional() }), req.query);
-  res.json({ items: await moderationStore.listCases(guildId, { ...page, ...filter }) });
+  const filter = parse(z.object({
+    status: z.enum(["open", "closed"]).optional(),
+    userId: snowflake.optional(),
+    actionType: z.string().regex(/^[a-z_]{2,32}$/).optional(),
+  }), req.query);
+  const [items, counts] = await Promise.all([
+    moderationStore.listCases(guildId, { ...page, ...filter }),
+    moderationStore.countCases?.(guildId, { userId: filter.userId, actionType: filter.actionType }) ?? Promise.resolve(undefined),
+  ]);
+  res.json(counts ? { items, counts } : { items });
 }));
 
 router.get("/guilds/:guildId/cases/export", asyncRoute(async (req, res) => {
@@ -3878,14 +3902,11 @@ router.get("/guilds/:guildId/cases/:caseId", asyncRoute(async (req, res) =>
 }
 
 
-  res.json(
-{
-
- ...item, notes: await moderationStore.listCaseNotes(guildId, caseId) 
-}
-
-)
-;
+  const [notes, appeal] = await Promise.all([
+    moderationStore.listCaseNotes(guildId, caseId),
+    moderationStore.getLatestAppeal?.(guildId, caseId) ?? Promise.resolve(null),
+  ]);
+  res.json({ ...item, notes, appeal });
 
 
 }

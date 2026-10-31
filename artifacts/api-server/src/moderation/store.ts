@@ -10,6 +10,26 @@ import {
 import { ModerationRevisionConflictError } from "./errors";
 
 export type CaseStatus = "open" | "closed";
+export type AppealStatus = "pending" | "accepted" | "rejected";
+
+export interface CaseListFilters {
+  status?: CaseStatus;
+  userId?: string;
+  actionType?: string;
+  limit: number;
+  offset: number;
+}
+
+/** The latest appeal against a case. */
+export interface ModerationCaseAppeal {
+  status: AppealStatus;
+  appellantId: string;
+  channelId: string;
+  createdAt: Date;
+  decidedAt: Date | null;
+  decidedBy: string | null;
+  decisionNote: string | null;
+}
 
 export interface ModerationCase {
   id: string;
@@ -25,6 +45,8 @@ export interface ModerationCase {
   updatedAt: Date;
   closedAt: Date | null;
   closedBy: string | null;
+  /** The latest appeal's state, in case lists. */
+  appealStatus?: AppealStatus | null;
 }
 
 export interface ModerationCaseNote {
@@ -101,7 +123,10 @@ export interface ModerationStore {
   createSession(input: Omit<ModerationSession, "revokedAt">): Promise<void>;
   getSession(tokenHash: string): Promise<ModerationSession | null>;
   revokeSession(tokenHash: string): Promise<void>;
-  listCases(guildId: string, filters: { status?: CaseStatus; userId?: string; limit: number; offset: number }): Promise<ModerationCase[]>;
+  listCases(guildId: string, filters: CaseListFilters): Promise<ModerationCase[]>;
+  /** Open and closed cases matching the member and action filters. */
+  countCases?(guildId: string, filters: Pick<CaseListFilters, "userId" | "actionType">): Promise<{ open: number; closed: number }>;
+  getLatestAppeal?(guildId: string, caseId: string): Promise<ModerationCaseAppeal | null>;
   getCase(guildId: string, caseId: string): Promise<ModerationCase | null>;
   createCase(input: {
     guildId: string; subjectId: string; actorId: string | null; actionType: string;
@@ -145,8 +170,14 @@ function asObject(value: unknown): Record<string, unknown> {
     : {};
 }
 
+const APPEAL_STATUSES: readonly AppealStatus[] = ["pending", "accepted", "rejected"];
+
 function caseFromRow(row: Record<string, unknown>): ModerationCase {
+  const appeal = "appeal_status" in row
+    ? { appealStatus: APPEAL_STATUSES.includes(row.appeal_status as AppealStatus) ? row.appeal_status as AppealStatus : null }
+    : {};
   return {
+    ...appeal,
     id: String(row.id), guildId: String(row.guild_id), subjectId: String(row.subject_id),
     actorId: row.actor_id ? String(row.actor_id) : null, actionType: String(row.action_type),
     reason: row.reason ? String(row.reason) : null,
@@ -451,19 +482,59 @@ export class PostgresModerationStore implements ModerationStore {
     await pool.query("UPDATE moderation_sessions SET revoked_at = now() WHERE token_hash = $1 AND revoked_at IS NULL", [tokenHash]);
   }
 
-  async listCases(guildId: string, filters: { status?: CaseStatus; userId?: string; limit: number; offset: number }) {
+  async listCases(guildId: string, filters: CaseListFilters) {
     await this.ensureSchema();
     const params: unknown[] = [guildId];
-    const clauses = ["guild_id = $1"];
-    if (filters.status) { params.push(filters.status); clauses.push(`status = $${params.length}`); }
-    if (filters.userId) { params.push(filters.userId); clauses.push(`subject_id = $${params.length}`); }
+    const clauses = ["c.guild_id = $1"];
+    if (filters.status) { params.push(filters.status); clauses.push(`c.status = $${params.length}`); }
+    if (filters.userId) { params.push(filters.userId); clauses.push(`c.subject_id = $${params.length}`); }
+    if (filters.actionType) { params.push(filters.actionType); clauses.push(`c.action_type = $${params.length}`); }
     params.push(filters.limit, filters.offset);
     const { rows } = await pool.query<Record<string, unknown>>(
-      `SELECT * FROM moderation_cases WHERE ${clauses.join(" AND ")}
-       ORDER BY created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      `SELECT c.*,
+         (SELECT a.status FROM moderation_appeals a
+          WHERE a.guild_id = c.guild_id AND a.case_id = c.id
+          ORDER BY a.created_at DESC LIMIT 1) AS appeal_status
+       FROM moderation_cases c WHERE ${clauses.join(" AND ")}
+       ORDER BY c.created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params,
     );
     return rows.map(caseFromRow);
+  }
+
+  async countCases(guildId: string, filters: Pick<CaseListFilters, "userId" | "actionType">) {
+    await this.ensureSchema();
+    const params: unknown[] = [guildId];
+    const clauses = ["guild_id = $1"];
+    if (filters.userId) { params.push(filters.userId); clauses.push(`subject_id = $${params.length}`); }
+    if (filters.actionType) { params.push(filters.actionType); clauses.push(`action_type = $${params.length}`); }
+    const { rows } = await pool.query<{ status: string; count: string }>(
+      `SELECT status, COUNT(*)::text AS count FROM moderation_cases WHERE ${clauses.join(" AND ")} GROUP BY status`,
+      params,
+    );
+    const count = (status: CaseStatus) => Number(rows.find((row) => row.status === status)?.count ?? 0);
+    return { open: count("open"), closed: count("closed") };
+  }
+
+  async getLatestAppeal(guildId: string, caseId: string): Promise<ModerationCaseAppeal | null> {
+    await this.ensureSchema();
+    const { rows } = await pool.query<Record<string, unknown>>(
+      `SELECT status, appellant_id, channel_id, created_at, decided_at, decided_by, decision_note
+       FROM moderation_appeals WHERE guild_id = $1 AND case_id = $2
+       ORDER BY created_at DESC LIMIT 1`,
+      [guildId, caseId],
+    );
+    const row = rows[0];
+    if (!row || !APPEAL_STATUSES.includes(row.status as AppealStatus)) return null;
+    return {
+      status: row.status as AppealStatus,
+      appellantId: String(row.appellant_id),
+      channelId: String(row.channel_id),
+      createdAt: row.created_at as Date,
+      decidedAt: (row.decided_at as Date | null) ?? null,
+      decidedBy: row.decided_by ? String(row.decided_by) : null,
+      decisionNote: row.decision_note ? String(row.decision_note) : null,
+    };
   }
 
   async getCase(guildId: string, caseId: string) {

@@ -536,6 +536,18 @@ export function isControlRoute(path: string): boolean {
   return clean === CONTROL_ROUTE || Object.values(CONTROL_MODULE_ROUTES).some((route) => route === clean);
 }
 
+/** The case list and the audit log: one page with two modules (their settings stay under /jurnale). */
+export const RECORDS_ROUTE = "/cazuri";
+export const RECORDS_MODULE_ROUTES = {
+  cases: "/cazuri",
+  audit: "/audit",
+} as const;
+
+export function isRecordsRoute(path: string): boolean {
+  const clean = cleanPath(path);
+  return Object.values(RECORDS_MODULE_ROUTES).some((route) => route === clean);
+}
+
 /**
  * The group a route belongs to, for pages whose modules share one draft: moving
  * between the modules of a group must not reload the page. Null elsewhere.
@@ -549,6 +561,7 @@ export function panelGroupRoute(path: string): string | null {
   if (isOracleRoute(path)) return ORACLE_ROUTE;
   if (isSettingsRoute(path)) return SETTINGS_ROUTE;
   if (isControlRoute(path)) return CONTROL_ROUTE;
+  if (isRecordsRoute(path)) return RECORDS_ROUTE;
   return null;
 }
 

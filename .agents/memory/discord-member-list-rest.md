@@ -14,3 +14,9 @@ OAuth's `guilds.members.read` scope provides the authenticated user's membership
 **Why:** User OAuth access and the bot's Guild Members intent authorize different data paths. Treating the user-only scope as roster access would leave administrative listings incomplete.
 
 **How to apply:** Use the bot's privileged member intent plus paginated REST for full rosters; request `guilds.members.read` only for a feature that needs the signed-in user's own roles or membership details.
+
+Names and pictures in the panel's case and audit lists come from `GET /guilds/:id/people?ids=…` (`moderation/people.ts`): the bot's member cache first, then one REST member lookup per ID, then the user for members who left. At most 50 IDs per request and 4 lookups at a time; answers (found or unknown) are cached for 10 minutes, failures are not.
+
+**Why:** A list shows a handful of people, so per-member REST is cheaper and safer than any roster fetch, and the cache stops reopened lists from asking Discord again.
+
+**How to apply:** Lists show the ID until the name arrives and keep working when the lookup fails or the bot is offline; never block a list on names.

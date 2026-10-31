@@ -6,7 +6,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 
 const mocks = vi.hoisted(() => ({
   session: vi.fn(), access: vi.fn(), csrf: vi.fn(), client: vi.fn(),
-  getConfig: vi.fn(), putConfig: vi.fn(), putProtectionToggle: vi.fn(), listCases: vi.fn(),
+  getConfig: vi.fn(), putConfig: vi.fn(), putProtectionToggle: vi.fn(), listCases: vi.fn(), countCases: vi.fn(),
   listAudit: vi.fn(), listLogs: vi.fn(), beginAction: vi.fn(), getAction: vi.fn(),
   completeAction: vi.fn(), writeAudit: vi.fn(), execute: vi.fn(), previewBulkRoleGrant: vi.fn(),
   syncNativeAutoMod: vi.fn(), listAccessibleGuilds: vi.fn(),
@@ -108,7 +108,7 @@ vi.mock("../server-setup-drafts", () => ({
 vi.mock("../store", () => ({
   moderationStore: {
     getConfig: mocks.getConfig, putConfig: mocks.putConfig, putProtectionToggle: mocks.putProtectionToggle,
-    listCases: mocks.listCases, listAudit: mocks.listAudit,
+    listCases: mocks.listCases, countCases: mocks.countCases, listAudit: mocks.listAudit,
     listModerationLogs: mocks.listLogs, pruneCases: vi.fn(),
     beginAction: mocks.beginAction, getAction: mocks.getAction, completeAction: mocks.completeAction,
     writeAudit: mocks.writeAudit,
@@ -2227,6 +2227,33 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
   it("rejects unbounded pagination before running the cases query", async () => {
     expect((await fetch(`${base}/cases?limit=100000`)).status).toBe(400);
     expect(mocks.listCases).not.toHaveBeenCalled();
+  });
+
+  it("filters cases by member and action and sends the open and closed counts", async () => {
+    mocks.listCases.mockResolvedValueOnce([]);
+    mocks.countCases.mockResolvedValueOnce({ open: 2, closed: 5 });
+    const response = await fetch(`${base}/cases?actionType=ban&userId=555555555&status=open`);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ items: [], counts: { open: 2, closed: 5 } });
+    expect(mocks.listCases).toHaveBeenCalledWith(guildId, expect.objectContaining({ actionType: "ban", userId: "555555555", status: "open" }));
+    expect(mocks.countCases).toHaveBeenCalledWith(guildId, { userId: "555555555", actionType: "ban" });
+  });
+
+  it("rejects a malformed action filter before running the cases query", async () => {
+    expect((await fetch(`${base}/cases?actionType=${encodeURIComponent("ban' OR 1=1")}`)).status).toBe(400);
+    expect(mocks.listCases).not.toHaveBeenCalled();
+  });
+
+  it("looks up names only for a short list of Discord IDs", async () => {
+    expect((await fetch(`${base}/people?ids=abc`)).status).toBe(400);
+    const many = Array.from({ length: 51 }, (_, index) => String(500000000 + index)).join(",");
+    expect((await fetch(`${base}/people?ids=${many}`)).status).toBe(400);
+    mocks.client.mockReturnValueOnce({ isReady: () => false });
+    const offline = await fetch(`${base}/people?ids=555555555,555555555`);
+    expect(offline.status).toBe(200);
+    expect(await offline.json()).toEqual({ people: [] });
+    mocks.access.mockRejectedValueOnce(new ModerationAuthError(403, "Forbidden"));
+    expect((await fetch(`${base}/people?ids=555555555`)).status).toBe(403);
   });
 
   it("requires an idempotency key for destructive web actions", async () => {
