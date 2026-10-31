@@ -21,7 +21,7 @@ import { SwordCursor } from "./components/SwordCursor";
 
 // Public pages
 import { PublicLayout } from "./components/public/PublicLayout";
-import { GameGuidePage } from "./pages/public/GameGuidePage";
+import { HomePage } from "./pages/public/home/HomePage";
 import { OperatorHealthPage } from "./pages/public/OperatorHealthPage";
 import { VerificationPage } from "./pages/public/VerificationPage";
 import { DailyStatsPage } from "./pages/public/DailyStatsPage";
@@ -137,7 +137,7 @@ export default function App() {
       <ScrollAnimations />
       <Switch>
         <Route path="/" component={HomeApp} />
-        <Route path="/server" component={GameGuidePage} />
+        <Route path="/server" component={HomePage} />
         <Route path="/joc" component={() => <Redirect to="/server" replace />} />
         <Route path="/verificare" component={VerificationPage} />
         <Route path="/statistici" component={() => <PublicLayout><DailyStatsPage /></PublicLayout>} />

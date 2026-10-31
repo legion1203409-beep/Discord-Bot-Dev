@@ -627,7 +627,7 @@ test.describe("authenticated moderation console", () => {
 
   test("dashboard sections stack cleanly at a 1024px viewport", async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 768 });
-    await page.goto("/");
+    await page.goto("/moderare");
     await expect(page).toHaveURL("/moderare");
     await chooseFirstGuild(page);
     await expect(page.getByTestId("card-haunted-house")).toHaveCount(0);
@@ -722,7 +722,7 @@ test.describe("authenticated moderation console", () => {
   });
 
   test("renders every moderation destination instead of the work-in-progress fallback", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/moderare");
     await expect(page).toHaveURL("/moderare");
     await expect(page.locator(".hero-section")).toHaveCount(0);
     await chooseFirstGuild(page);
@@ -1148,7 +1148,7 @@ test.describe("authenticated moderation console", () => {
   });
 
   test("member activity templates preview and persist separately for each guild", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/moderare");
     await chooseFirstGuild(page);
     await expectNavGroupExpanded(page, "configuration");
     await page.locator('nav[aria-label="Categorii de moderare"] a[href="/moderare/config/mesaje"]').click();
@@ -1205,7 +1205,7 @@ test.describe("authenticated moderation console", () => {
   });
 
   test("message customization hub opens the member editor in view", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/moderare");
     await chooseFirstGuild(page);
     await expectNavGroupExpanded(page, "configuration");
     await page.getByRole("link", { name: "Personalizare mesaje" }).click();
@@ -1475,7 +1475,7 @@ test.describe("authenticated moderation console", () => {
       await route.fulfill({ json: { range: "7", startDay: "2026-09-18", endDay: "2026-09-24", totals: { attributedJoins: 0, unknownJoins: 0 }, rows: [] } });
     });
 
-    await page.goto("/");
+    await page.goto("/moderare");
     await chooseFirstGuild(page);
     await page.goto("/moderare/bot?tab=statistics");
     await expect(page.getByRole("button", { name: /Mesajul raportului zilnic/ })).toHaveCount(0);
