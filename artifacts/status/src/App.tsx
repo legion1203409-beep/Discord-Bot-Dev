@@ -1,4 +1,4 @@
-import { Switch, Route, Redirect } from "wouter";
+import { Switch, Route, Redirect, useSearch } from "wouter";
 import "./index.css";
 import { ModerationLayout } from "./pages/moderation/ModerationLayout";
 import { OverviewPage } from "./pages/moderation/panel/overview";
@@ -9,13 +9,13 @@ import { SanctionsGroupPage } from "./pages/moderation/panel/SanctionsGroup";
 import { LogsGroupPage } from "./pages/moderation/panel/LogsGroup";
 import { RecordsGroupPage } from "./pages/moderation/panel/RecordsGroup";
 import { CommandsPanelPage } from "./pages/moderation/panel/commands";
-import { BotControlPage } from "./pages/moderation/BotControl";
 import { VerificationGroupPage } from "./pages/moderation/panel/VerificationGroup";
 import { TicketsGroupPage } from "./pages/moderation/panel/TicketsGroup";
 import { OracleGroupPage } from "./pages/moderation/panel/OracleGroup";
 import { SettingsGroupPage } from "./pages/moderation/panel/SettingsGroup";
 import { ControlGroupPage } from "./pages/moderation/panel/ControlGroup";
 import { MessagesGroupPage } from "./pages/moderation/panel/MessagesGroup";
+import { GameGroupPage } from "./pages/moderation/panel/GameGroup";
 import { ServerSetupPage } from "./pages/moderation/ServerSetup";
 import { ActivityRanksPage } from "./pages/moderation/ActivityRanks";
 import { OfflineAssistant } from "./pages/moderation/OfflineAssistant";
@@ -87,6 +87,17 @@ function HomeApp() {
   return <StartPage />;
 }
 
+/** Where the tabs of the old bot control page (/bot?tab=…) live now. */
+const OLD_BOT_TABS: Record<string, string> = {
+  roles: "/control/canale", statistics: "/control/invitatii", verification: "/verificare", tickets: "/tichete",
+  channels: "/joc/canale", messages: "/joc",
+};
+
+function OldBotControlRedirect() {
+  const tab = new URLSearchParams(useSearch()).get("tab") ?? "";
+  return <Redirect to={OLD_BOT_TABS[tab] ?? "/joc"} replace />;
+}
+
 function ModerationApp() {
   const { guildId } = useActiveGuild();
   return (
@@ -130,9 +141,17 @@ function ModerationApp() {
           <Route path="/config/mesaje/alianta" component={MessagesGroupPage} />
           <Route path="/config/avansat" component={() => <Redirect to="/setari/acces" replace />} />
           <Route path="/config/embeduri" component={() => <Redirect to="/setari/notificari" replace />} />
-          <Route path="/canale" component={() => <BotControlPage channelsOnly />} />
+          <Route path="/joc" component={GameGroupPage} />
+          <Route path="/joc/canale" component={GameGroupPage} />
+          <Route path="/joc/evenimente" component={GameGroupPage} />
+          <Route path="/joc/misiuni" component={GameGroupPage} />
+          <Route path="/joc/economie" component={GameGroupPage} />
+          <Route path="/joc/progres" component={GameGroupPage} />
+          <Route path="/joc/sezoane" component={GameGroupPage} />
+          {/* The old game pages open the new one. */}
+          <Route path="/canale" component={() => <Redirect to="/joc/canale" replace />} />
           <Route path="/provisioning" component={() => <Redirect to="/control/canale" replace />} />
-          <Route path="/bot" component={() => <BotControlPage />} />
+          <Route path="/bot" component={OldBotControlRedirect} />
           <Route path="/verificare" component={VerificationGroupPage} />
           <Route path="/verificare/setari" component={VerificationGroupPage} />
           <Route path="/verificare/mesaje" component={VerificationGroupPage} />
