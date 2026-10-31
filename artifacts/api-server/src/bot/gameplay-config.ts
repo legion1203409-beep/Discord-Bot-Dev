@@ -42,6 +42,51 @@ export interface GameplayConfig {
     bossGoldMultiplier: number;
     bossXpMultiplier: number;
   };
+  /** Daily streak and achievements (bot/progress.ts). */
+  progress: {
+    streakEnabled: boolean;
+    /** Extra Oboli and XP from the daily chest for each day of the streak after the first. */
+    streakBonusPercent: number;
+    /** The bonus stops growing after this many days. */
+    streakMaxDays: number;
+    /** An epic key on every 7th day of the streak. */
+    weeklyKey: boolean;
+    achievementsEnabled: boolean;
+    /** Unlocking an achievement pays its Oboli. */
+    achievementRewards: boolean;
+  };
+  /** Monthly seasons (bot/seasons.ts). */
+  seasons: {
+    enabled: boolean;
+    /** Oboli for the 1st, 2nd and 3rd place. */
+    rewards: [number, number, number];
+    /** Optional roles for the 1st, 2nd and 3rd place, moved to the new winners each month. */
+    roleIds: [string, string, string];
+    /** Where the result is announced; empty: Top Ora Umbrelor. */
+    channelId: string;
+  };
+  /** The weekly raid (bot/raid.ts). */
+  raid: {
+    enabled: boolean;
+    /** 1 = Monday … 7 = Sunday, in Romania's time. */
+    weekday: number;
+    hour: number;
+    durationHours: number;
+    cooldownMinutes: number;
+    hpPerPlayer: number;
+    rewardPool: number;
+    /** Where the titan appears; empty: Dragonul Stins' channel. */
+    channelId: string;
+  };
+  /** Player duels (bot/duels.ts). */
+  duels: {
+    enabled: boolean;
+    maxBet: number;
+    /** Seconds a player waits between two duels. */
+    cooldownSeconds: number;
+    /** Part of the pot the bot keeps, in percent (Oboli leave the economy). */
+    taxPercent: number;
+  };
 }
 
 export const DEFAULT_GAMEPLAY_CONFIG: GameplayConfig = {
@@ -85,6 +130,36 @@ export const DEFAULT_GAMEPLAY_CONFIG: GameplayConfig = {
     monsterXpMultiplier: 1,
     bossGoldMultiplier: 1,
     bossXpMultiplier: 1,
+  },
+  progress: {
+    streakEnabled: true,
+    streakBonusPercent: 10,
+    streakMaxDays: 7,
+    weeklyKey: true,
+    achievementsEnabled: true,
+    achievementRewards: true,
+  },
+  seasons: {
+    enabled: true,
+    rewards: [10_000, 5_000, 2_500],
+    roleIds: ["", "", ""],
+    channelId: "",
+  },
+  raid: {
+    enabled: true,
+    weekday: 6,
+    hour: 18,
+    durationHours: 48,
+    cooldownMinutes: 20,
+    hpPerPlayer: 15_000,
+    rewardPool: 50_000,
+    channelId: "",
+  },
+  duels: {
+    enabled: true,
+    maxBet: 5_000,
+    cooldownSeconds: 120,
+    taxPercent: 5,
   },
 };
 
@@ -164,5 +239,68 @@ export function normalizeGameplayConfig(value: unknown): GameplayConfig {
       bossGoldMultiplier: multiplier(economy.bossGoldMultiplier, DEFAULT_GAMEPLAY_CONFIG.economy.bossGoldMultiplier),
       bossXpMultiplier: multiplier(economy.bossXpMultiplier, DEFAULT_GAMEPLAY_CONFIG.economy.bossXpMultiplier),
     },
+    progress: normalizeProgress(input.progress),
+    seasons: normalizeSeasons(input.seasons),
+    raid: normalizeRaid(input.raid),
+    duels: normalizeDuels(input.duels),
+  };
+}
+
+function normalizeDuels(value: unknown): GameplayConfig["duels"] {
+  const input = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const defaults = DEFAULT_GAMEPLAY_CONFIG.duels;
+  return {
+    enabled: typeof input.enabled === "boolean" ? input.enabled : defaults.enabled,
+    maxBet: boundedInt(input.maxBet, defaults.maxBet, 0, 1_000_000),
+    cooldownSeconds: boundedInt(input.cooldownSeconds, defaults.cooldownSeconds, 0, 86_400),
+    taxPercent: boundedInt(input.taxPercent, defaults.taxPercent, 0, 50),
+  };
+}
+
+function normalizeRaid(value: unknown): GameplayConfig["raid"] {
+  const input = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const defaults = DEFAULT_GAMEPLAY_CONFIG.raid;
+  const channel = typeof input.channelId === "string" && /^\d{5,25}$/.test(input.channelId.trim()) ? input.channelId.trim() : "";
+  return {
+    enabled: typeof input.enabled === "boolean" ? input.enabled : defaults.enabled,
+    weekday: boundedInt(input.weekday, defaults.weekday, 1, 7),
+    hour: boundedInt(input.hour, defaults.hour, 0, 23),
+    durationHours: boundedInt(input.durationHours, defaults.durationHours, 1, 144),
+    cooldownMinutes: boundedInt(input.cooldownMinutes, defaults.cooldownMinutes, 1, 1_440),
+    hpPerPlayer: boundedInt(input.hpPerPlayer, defaults.hpPerPlayer, 100, 10_000_000),
+    rewardPool: boundedInt(input.rewardPool, defaults.rewardPool, 0, 10_000_000),
+    channelId: channel,
+  };
+}
+
+function normalizeSeasons(value: unknown): GameplayConfig["seasons"] {
+  const input = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const defaults = DEFAULT_GAMEPLAY_CONFIG.seasons;
+  const rewards = Array.isArray(input.rewards) ? input.rewards : [];
+  const roles = Array.isArray(input.roleIds) ? input.roleIds : [];
+  const id = (raw: unknown) => typeof raw === "string" && /^\d{5,25}$/.test(raw.trim()) ? raw.trim() : "";
+  return {
+    enabled: typeof input.enabled === "boolean" ? input.enabled : defaults.enabled,
+    rewards: [0, 1, 2].map((index) => boundedInt(rewards[index], defaults.rewards[index]!, 0, 1_000_000)) as [number, number, number],
+    roleIds: [0, 1, 2].map((index) => id(roles[index])) as [string, string, string],
+    channelId: id(input.channelId),
+  };
+}
+
+function boundedInt(value: unknown, fallback: number, min: number, max: number): number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= min && value <= max ? value : fallback;
+}
+
+function normalizeProgress(value: unknown): GameplayConfig["progress"] {
+  const input = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const defaults = DEFAULT_GAMEPLAY_CONFIG.progress;
+  const flag = (key: keyof typeof defaults) => typeof input[key] === "boolean" ? input[key] as boolean : defaults[key] as boolean;
+  return {
+    streakEnabled: flag("streakEnabled"),
+    streakBonusPercent: boundedInt(input.streakBonusPercent, defaults.streakBonusPercent, 0, 100),
+    streakMaxDays: boundedInt(input.streakMaxDays, defaults.streakMaxDays, 1, 30),
+    weeklyKey: flag("weeklyKey"),
+    achievementsEnabled: flag("achievementsEnabled"),
+    achievementRewards: flag("achievementRewards"),
   };
 }
