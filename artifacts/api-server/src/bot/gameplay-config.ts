@@ -42,6 +42,19 @@ export interface GameplayConfig {
     bossGoldMultiplier: number;
     bossXpMultiplier: number;
   };
+  /** Daily streak and achievements (bot/progress.ts). */
+  progress: {
+    streakEnabled: boolean;
+    /** Extra Oboli and XP from the daily chest for each day of the streak after the first. */
+    streakBonusPercent: number;
+    /** The bonus stops growing after this many days. */
+    streakMaxDays: number;
+    /** An epic key on every 7th day of the streak. */
+    weeklyKey: boolean;
+    achievementsEnabled: boolean;
+    /** Unlocking an achievement pays its Oboli. */
+    achievementRewards: boolean;
+  };
 }
 
 export const DEFAULT_GAMEPLAY_CONFIG: GameplayConfig = {
@@ -85,6 +98,14 @@ export const DEFAULT_GAMEPLAY_CONFIG: GameplayConfig = {
     monsterXpMultiplier: 1,
     bossGoldMultiplier: 1,
     bossXpMultiplier: 1,
+  },
+  progress: {
+    streakEnabled: true,
+    streakBonusPercent: 10,
+    streakMaxDays: 7,
+    weeklyKey: true,
+    achievementsEnabled: true,
+    achievementRewards: true,
   },
 };
 
@@ -164,5 +185,24 @@ export function normalizeGameplayConfig(value: unknown): GameplayConfig {
       bossGoldMultiplier: multiplier(economy.bossGoldMultiplier, DEFAULT_GAMEPLAY_CONFIG.economy.bossGoldMultiplier),
       bossXpMultiplier: multiplier(economy.bossXpMultiplier, DEFAULT_GAMEPLAY_CONFIG.economy.bossXpMultiplier),
     },
+    progress: normalizeProgress(input.progress),
+  };
+}
+
+function boundedInt(value: unknown, fallback: number, min: number, max: number): number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= min && value <= max ? value : fallback;
+}
+
+function normalizeProgress(value: unknown): GameplayConfig["progress"] {
+  const input = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const defaults = DEFAULT_GAMEPLAY_CONFIG.progress;
+  const flag = (key: keyof typeof defaults) => typeof input[key] === "boolean" ? input[key] as boolean : defaults[key] as boolean;
+  return {
+    streakEnabled: flag("streakEnabled"),
+    streakBonusPercent: boundedInt(input.streakBonusPercent, defaults.streakBonusPercent, 0, 100),
+    streakMaxDays: boundedInt(input.streakMaxDays, defaults.streakMaxDays, 1, 30),
+    weeklyKey: flag("weeklyKey"),
+    achievementsEnabled: flag("achievementsEnabled"),
+    achievementRewards: flag("achievementRewards"),
   };
 }
