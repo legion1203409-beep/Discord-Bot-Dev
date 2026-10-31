@@ -140,6 +140,7 @@ export default function App() {
       <Switch>
         <Route path="/" component={HomeApp} />
         <Route path="/regatul-cenusii" component={HomePage} />
+        <Route path="/bot" component={() => <Redirect to="/moderare/bot" replace />} />
         <Route path="/server" component={() => <Redirect to="/regatul-cenusii" replace />} />
         <Route path="/joc" component={() => <Redirect to="/regatul-cenusii" replace />} />
         <Route path="/verificare" component={VerificationPage} />

@@ -245,6 +245,17 @@ test.describe("authenticated moderation console", () => {
     await expect(page.locator(`#nav-group-${groupId}`)).toBeVisible();
   }
 
+  test("opens bot configuration from the start page and the direct /bot link", async ({ page }) => {
+    await page.goto("/");
+    const openPanel = page.getByTestId("button-open-panel");
+    await expect(openPanel).toHaveAttribute("href", "/moderare/bot");
+    await openPanel.click();
+    await expect(page).toHaveURL(/\/moderare\/bot$/);
+
+    await page.goto("/bot");
+    await expect(page).toHaveURL(/\/moderare\/bot$/);
+  });
+
   test("keeps all ten dock destinations reachable on mobile and desktop", async ({ page }) => {
     test.setTimeout(45_000);
     const dockIds = [
