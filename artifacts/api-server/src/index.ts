@@ -3,6 +3,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { startBot, destroyBotClientForShutdown } from "./bot/index";
 import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./bot/alert";
+import { shouldStartBot } from "./lib/bot-start-config";
 
 // Warm the DB connection pool at boot so the first slash command isn't delayed
 // by a cold TLS handshake — that latency can otherwise push interaction replies
@@ -126,10 +127,10 @@ async function startBotWithRetry() {
   }
 }
 
-if (process.env.NODE_ENV === "production") {
+if (shouldStartBot(process.env.NODE_ENV, process.env.DISCORD_BOT_IN_DEVELOPMENT)) {
   startBotWithRetry();
 } else {
-  logger.info("Bot disabled in development mode — set NODE_ENV=production to enable");
+  logger.info("Bot disabled — set DISCORD_BOT_IN_DEVELOPMENT=true only for an intentional local run");
 }
 
 const rawPort = process.env["PORT"];
@@ -146,7 +147,7 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-app.listen(port, (err) => {
+app.listen(port, process.env.HOST ?? "0.0.0.0", (err) => {
   if (err) {
     logger.error({ err }, "Error listening on port");
     process.exit(1);
