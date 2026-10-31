@@ -1,0 +1,252 @@
+/**
+ * Logica paginii Jocul, fără React: modulele (Stare, Canale, Evenimente,
+ * Misiuni, Economie), rezumatele din meniu și verificările de dinainte de
+ * salvare. Totul e în setările botului: channels (destinațiile jocului, ca la
+ * /setcanal) și gameplayConfig (api-server/src/bot/gameplay-config.ts, cu
+ * limitele din moderation/router.ts → botControlSchema).
+ */
+import { GAME_MODULE_ROUTES, cleanPath, deepEqual, getAt, isDiscordId, isValidInteger } from "./model";
+
+export { GAME_ROUTE, isGameRoute } from "./model";
+
+export type GameModuleId = keyof typeof GAME_MODULE_ROUTES;
+
+export type GameModuleDef = { id: GameModuleId; route: string; short: string; title: string; description: string; paths: readonly string[] };
+
+export const GAME_MODULES: readonly GameModuleDef[] = [
+  {
+    id: "state", route: GAME_MODULE_ROUTES.state, short: "Stare și pauză", title: "Starea jocului",
+    description: "Pornește sau oprește jocul pe server (ca /startjoc și /stopjoc) și ce scrie botul cât e oprit.",
+    // Pausing is applied at once through its own route (/gameplay-state), not with the draft.
+    paths: ["gameplayConfig.messages.gamePaused", "gameplayConfig.messages.gamePausedImageUrl", "gameplayConfig.messages.gamePausedThumbnailUrl"],
+  },
+  {
+    id: "channels", route: GAME_MODULE_ROUTES.channels, short: "Canale", title: "Canalele jocului",
+    description: "Unde postează botul fiecare activitate a jocului (ca /setcanal). Fără canal, activitatea aceea nu apare.",
+    paths: ["channels"],
+  },
+  {
+    id: "events", route: GAME_MODULE_ROUTES.events, short: "Evenimente", title: "Evenimente, boși și cufere",
+    description: "Cât durează și cât de des vin Ora Umbrelor, Dragonul Stins, evenimentele de luptă și cuferele.",
+    paths: ["gameplayConfig.events"],
+  },
+  {
+    id: "missions", route: GAME_MODULE_ROUTES.missions, short: "Misiuni", title: "Misiunile zilnice",
+    description: "Cât de grele sunt cele trei misiuni zilnice din /misiuni și câte materiale dau la final.",
+    paths: ["gameplayConfig.missions"],
+  },
+  {
+    id: "economy", route: GAME_MODULE_ROUTES.economy, short: "Economie", title: "Economia jocului",
+    description: "Câți Oboli și cât XP dau monștrii și boșii. 1× e valoarea de bază; 2× dublează, 0,5× înjumătățește.",
+    paths: ["gameplayConfig.economy"],
+  },
+];
+
+export function gameModuleForRoute(path: string): GameModuleDef {
+  const clean = cleanPath(path);
+  return GAME_MODULES.find((module) => module.route === clean) ?? GAME_MODULES[0]!;
+}
+
+export function isGameModuleChanged(module: Pick<GameModuleDef, "paths">, saved: any, draft: any): boolean {
+  if (!saved || !draft) return false;
+  return module.paths.some((path) => !deepEqual(getAt(saved, path.split(".")), getAt(draft, path.split("."))));
+}
+
+export function changedGameParts(saved: any, draft: any): Array<{ key: string; label: string }> {
+  if (!saved || !draft) return [];
+  return GAME_MODULES.filter((module) => isGameModuleChanged(module, saved, draft)).map((module) => ({ key: module.id, label: module.short }));
+}
+
+/* ------------------------------------------------------------------ */
+/* Canale                                                              */
+/* ------------------------------------------------------------------ */
+
+export type GameChannelKey = "main" | "event" | "boss" | "trader" | "eventTop" | "bossTop" | "council" | "fratia";
+
+export const GAME_CHANNELS: ReadonlyArray<{ key: GameChannelKey; label: string; hint: string; group: "play" | "tops" | "community" }> = [
+  { key: "event", label: "Ora Umbrelor", hint: "Evenimentul cu valuri de monștri și boss-ul final.", group: "play" },
+  { key: "boss", label: "Dragonul Stins", hint: "Boșii care apar singuri între evenimente.", group: "play" },
+  { key: "main", label: "Cufere", hint: "Cuferele care apar din când în când pentru cine apasă primul.", group: "play" },
+  { key: "trader", label: "Negustorul (Forja Cenușii)", hint: "Negustorul și ofertele lui.", group: "play" },
+  { key: "eventTop", label: "Top Ora Umbrelor", hint: "Clasamentul de după fiecare Oră a Umbrelor.", group: "tops" },
+  { key: "bossTop", label: "Top Dragonul Stins", hint: "Clasamentul de după fiecare boss.", group: "tops" },
+  { key: "council", label: "Consiliul Umbrelor", hint: "Unde se adună Consiliul Oracolului.", group: "community" },
+  { key: "fratia", label: "Chivotul Frăției", hint: "Votul comunității din /fratie.", group: "community" },
+];
+
+export function gameChannelCount(config: any): number {
+  return GAME_CHANNELS.filter((channel) => Boolean(config?.channels?.[channel.key])).length;
+}
+
+/* ------------------------------------------------------------------ */
+/* Evenimente                                                          */
+/* ------------------------------------------------------------------ */
+
+export type EventKey =
+  | "eventDurationMinutes" | "eventCooldownMinMinutes" | "eventCooldownMaxMinutes" | "finalBossDurationMinutes"
+  | "standaloneBossIntervalMinMinutes" | "standaloneBossIntervalMaxMinutes" | "standaloneBossDurationMinutes"
+  | "battleEventIntervalMinutes" | "chestIntervalMinutes" | "chestExpireMinutes";
+
+export const DEFAULT_EVENTS: Record<EventKey, number> = {
+  eventDurationMinutes: 60, eventCooldownMinMinutes: 10, eventCooldownMaxMinutes: 120, finalBossDurationMinutes: 30,
+  standaloneBossIntervalMinMinutes: 30, standaloneBossIntervalMaxMinutes: 60, standaloneBossDurationMinutes: 60,
+  battleEventIntervalMinutes: 7, chestIntervalMinutes: 60, chestExpireMinutes: 20,
+};
+
+export const EVENT_FIELDS: ReadonlyArray<{ group: string; fields: ReadonlyArray<{ key: EventKey; label: string; hint?: string; max: number }> }> = [
+  {
+    group: "Ora Umbrelor", fields: [
+      { key: "eventDurationMinutes", label: "Cât durează", max: 1_440 },
+      { key: "finalBossDurationMinutes", label: "Cât durează boss-ul final", max: 1_440 },
+      { key: "eventCooldownMinMinutes", label: "Pauza dintre evenimente, cel puțin", hint: "Botul alege la întâmplare o pauză între minim și maxim.", max: 1_440 },
+      { key: "eventCooldownMaxMinutes", label: "Pauza dintre evenimente, cel mult", max: 1_440 },
+    ],
+  },
+  {
+    group: "Dragonul Stins", fields: [
+      { key: "standaloneBossDurationMinutes", label: "Cât durează", max: 1_440 },
+      { key: "standaloneBossIntervalMinMinutes", label: "Vine după cel puțin", max: 1_440 },
+      { key: "standaloneBossIntervalMaxMinutes", label: "Vine după cel mult", max: 1_440 },
+    ],
+  },
+  {
+    group: "Luptă și cufere", fields: [
+      { key: "battleEventIntervalMinutes", label: "Un eveniment de luptă la fiecare", hint: "Efectele care schimbă lupta pentru toți (furtuni, binecuvântări).", max: 1_440 },
+      { key: "chestIntervalMinutes", label: "Un cufăr la fiecare", max: 1_440 },
+      { key: "chestExpireMinutes", label: "Cufărul dispare după", max: 120 },
+    ],
+  },
+];
+
+export function eventsOf(config: any): Record<EventKey, number> {
+  return { ...DEFAULT_EVENTS, ...(config?.gameplayConfig?.events ?? {}) };
+}
+
+/** „1 oră și 30 de minute”, „45 de minute”. */
+export function minutesText(minutes: number): string {
+  if (!Number.isFinite(minutes) || minutes <= 0) return "—";
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  const part = (value: number, one: string, many: string) => value === 1 ? `1 ${one}` : `${value}${value >= 20 ? " de" : ""} ${many}`;
+  if (!hours) return part(rest, "minut", "minute");
+  return rest ? `${part(hours, "oră", "ore")} și ${part(rest, "minut", "minute")}` : part(hours, "oră", "ore");
+}
+
+/** How many events of each kind a day holds, on average, with these settings. */
+export function eventsPerDay(events: Record<EventKey, number>): { shadowHour: number; dragon: number; chests: number } {
+  const shadowCycle = events.eventDurationMinutes + (events.eventCooldownMinMinutes + events.eventCooldownMaxMinutes) / 2;
+  const dragonCycle = events.standaloneBossDurationMinutes + (events.standaloneBossIntervalMinMinutes + events.standaloneBossIntervalMaxMinutes) / 2;
+  const round = (value: number) => Math.round(value * 10) / 10;
+  return {
+    shadowHour: round(shadowCycle > 0 ? 1_440 / shadowCycle : 0),
+    dragon: round(dragonCycle > 0 ? 1_440 / dragonCycle : 0),
+    chests: round(events.chestIntervalMinutes > 0 ? 1_440 / events.chestIntervalMinutes : 0),
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Misiuni                                                             */
+/* ------------------------------------------------------------------ */
+
+export type MissionKey = "kill_10" | "rare_3" | "boss_1";
+
+/** The three daily missions, as bot/survival.ts → DAILY_QUESTS describes them. */
+export const MISSIONS: ReadonlyArray<{ key: MissionKey; label: string; verb: string; reward: string; defaults: { target: number; rewardQty: number } }> = [
+  { key: "kill_10", label: "⚔️ Ucide monștri", verb: "monștri în Ora Umbrelor", reward: "🐉 Coamă de Dragon", defaults: { target: 10, rewardQty: 1 } },
+  { key: "rare_3", label: "💠 Vânează monștri rari", verb: "monștri rari sau mai buni", reward: "💠 Solz Spectral", defaults: { target: 3, rewardQty: 2 } },
+  { key: "boss_1", label: "🐲 Răpune un mini-boss", verb: "mini-boși", reward: "💎 Cristal de Abis", defaults: { target: 1, rewardQty: 1 } },
+];
+
+export function missionOf(config: any, key: MissionKey): { target: number; rewardQty: number } {
+  const defaults = MISSIONS.find((mission) => mission.key === key)!.defaults;
+  return { ...defaults, ...(config?.gameplayConfig?.missions?.[key] ?? {}) };
+}
+
+/* ------------------------------------------------------------------ */
+/* Economie                                                            */
+/* ------------------------------------------------------------------ */
+
+export type EconomyKey = "monsterGoldMultiplier" | "monsterXpMultiplier" | "bossGoldMultiplier" | "bossXpMultiplier";
+
+export const ECONOMY_FIELDS: ReadonlyArray<{ key: EconomyKey; label: string; who: "monster" | "boss"; what: "gold" | "xp" }> = [
+  { key: "monsterGoldMultiplier", label: "Oboli de la monștri", who: "monster", what: "gold" },
+  { key: "monsterXpMultiplier", label: "XP de la monștri", who: "monster", what: "xp" },
+  { key: "bossGoldMultiplier", label: "Oboli de la boși", who: "boss", what: "gold" },
+  { key: "bossXpMultiplier", label: "XP de la boși", who: "boss", what: "xp" },
+];
+
+export const MIN_MULTIPLIER = 0.1;
+export const MAX_MULTIPLIER = 10;
+export const MULTIPLIER_PRESETS = [0.5, 1, 1.5, 2, 3] as const;
+
+export function economyOf(config: any): Record<EconomyKey, number> {
+  return { monsterGoldMultiplier: 1, monsterXpMultiplier: 1, bossGoldMultiplier: 1, bossXpMultiplier: 1, ...(config?.gameplayConfig?.economy ?? {}) };
+}
+
+export function isValidMultiplier(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= MIN_MULTIPLIER && value <= MAX_MULTIPLIER;
+}
+
+export function multiplierText(value: number): string {
+  return `${value.toLocaleString("ro-RO", { maximumFractionDigits: 2 })}×`;
+}
+
+/** „Weekend dublu” etc.: whether every multiplier equals the given value. */
+export function allMultipliersAre(config: any, value: number): boolean {
+  const economy = economyOf(config);
+  return ECONOMY_FIELDS.every((field) => economy[field.key] === value);
+}
+
+/* ------------------------------------------------------------------ */
+/* Meniul și verificări                                                */
+/* ------------------------------------------------------------------ */
+
+export function gameModuleSummary(id: GameModuleId, config: any): string {
+  switch (id) {
+    case "state": return config?.gameplayConfig?.paused === false ? "Jocul rulează" : "Jocul e oprit";
+    case "channels": return `${gameChannelCount(config)} din ${GAME_CHANNELS.length} canale alese`;
+    case "events": {
+      const perDay = eventsPerDay(eventsOf(config));
+      return `~${perDay.shadowHour.toLocaleString("ro-RO")} Ore ale Umbrelor pe zi`;
+    }
+    case "missions": return MISSIONS.map((mission) => missionOf(config, mission.key).target).join(" · ");
+    case "economy": {
+      const economy = economyOf(config);
+      return allMultipliersAre(config, 1) ? "Valorile de bază" : ECONOMY_FIELDS.map((field) => multiplierText(economy[field.key])).join(" · ");
+    }
+  }
+}
+
+export function isGameModuleOn(id: GameModuleId, config: any): boolean {
+  if (id === "state") return config?.gameplayConfig?.paused === false;
+  if (id === "channels") return gameChannelCount(config) > 0;
+  return config?.gameplayConfig?.paused === false;
+}
+
+export function gameDraftError(config: any): string | null {
+  const messages = config?.gameplayConfig?.messages;
+  if (messages && typeof messages.gamePaused === "string" && !messages.gamePaused.trim()) return "Stare — Mesajul cât jocul e oprit nu poate fi gol.";
+  if (messages && typeof messages.gamePaused === "string" && messages.gamePaused.length > 2_000) return "Stare — Mesajul cât jocul e oprit are cel mult 2000 de caractere.";
+  for (const channel of GAME_CHANNELS) {
+    const value = config?.channels?.[channel.key];
+    if (value && !isDiscordId(value)) return `Canale — ${channel.label}: „${value}” nu este un ID de canal.`;
+  }
+  const events = eventsOf(config);
+  for (const group of EVENT_FIELDS) {
+    for (const field of group.fields) {
+      if (!isValidInteger(events[field.key], 1, field.max)) return `Evenimente — ${group.group}, ${field.label}: un număr întreg de minute între 1 și ${field.max}.`;
+    }
+  }
+  if (events.eventCooldownMaxMinutes < events.eventCooldownMinMinutes) return "Evenimente — Ora Umbrelor: pauza maximă trebuie să fie cel puțin cât cea minimă.";
+  if (events.standaloneBossIntervalMaxMinutes < events.standaloneBossIntervalMinMinutes) return "Evenimente — Dragonul Stins: intervalul maxim trebuie să fie cel puțin cât cel minim.";
+  for (const mission of MISSIONS) {
+    const value = missionOf(config, mission.key);
+    if (!isValidInteger(value.target, 1, 10_000)) return `Misiuni — ${mission.label}: ținta e un număr întreg între 1 și 10000.`;
+    if (!isValidInteger(value.rewardQty, 1, 100)) return `Misiuni — ${mission.label}: recompensa e un număr întreg între 1 și 100.`;
+  }
+  const economy = economyOf(config);
+  for (const field of ECONOMY_FIELDS) {
+    if (!isValidMultiplier(economy[field.key])) return `Economie — ${field.label}: între ${MIN_MULTIPLIER} și ${MAX_MULTIPLIER}.`;
+  }
+  return null;
+}
