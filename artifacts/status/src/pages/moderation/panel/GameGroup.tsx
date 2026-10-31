@@ -11,15 +11,18 @@ import { PanelContext } from "./context";
 import { PageHead, PanelState, SaveBar } from "./draft";
 import { Ico, cx } from "./fields";
 import { GAME_MODULES, changedGameParts, gameDraftError, gameModuleForRoute, gameModuleSummary, isGameModuleChanged, isGameModuleOn } from "./game-model";
-import { GAME_ICONS, GAME_VIEWS } from "./game";
+import { GAME_ICONS, GAME_VIEWS, GameStateContext } from "./game";
+import { useActiveGuild, useGameplayState } from "../../../hooks/use-moderation-api";
 
 export function GameGroupPage() {
   const [location] = useLocation();
   const active = gameModuleForRoute(location);
+  const { guildId } = useActiveGuild();
+  const game = useGameplayState(guildId);
   const draft = useBotControlDraft({
     changedParts: changedGameParts,
     validate: gameDraftError,
-    savedText: (saved) => saved?.gameplayConfig?.paused === false ? "Jocul folosește noile setări." : "Setările jocului au fost salvate. Jocul e oprit.",
+    savedText: () => "Setările jocului au fost salvate.",
   });
   const { api, config: current, saved } = draft;
 
@@ -32,10 +35,13 @@ export function GameGroupPage() {
     );
   }
 
-  const running = current.gameplayConfig?.paused === false;
+  const running = game.paused === false;
+  // The menu reads the live running state, not the one in the draft.
+  const shown = { ...current, gameplayConfig: { ...(current.gameplayConfig ?? {}), paused: game.paused ?? true } };
   const View = GAME_VIEWS[active.id];
   return (
     <BotDraftContext.Provider value={draft}>
+      <GameStateContext.Provider value={game}>
       <PanelContext.Provider value={api}>
         <div className="pn" data-testid="game-page" style={{ "--tc": "#FF8A4C" } as React.CSSProperties}>
           <PageHead
@@ -44,7 +50,7 @@ export function GameGroupPage() {
             summary={(
               <div className="pn-sum pn-rv" style={{ "--i": 3 } as React.CSSProperties} data-testid="game-summary">
                 <span className={cx("pn-nav-st", running && "on")} aria-hidden="true" />
-                <b>{running ? "Pornit" : "Oprit"}</b>
+                <b>{game.paused === null ? "—" : running ? "Pornit" : "Oprit"}</b>
                 <span>jocul<br />pe server</span>
               </div>
             )}
@@ -59,10 +65,10 @@ export function GameGroupPage() {
                   <span className="pn-nav-ic" aria-hidden="true"><Ico name={GAME_ICONS[module.id]} /></span>
                   <span className="pn-nav-t">
                     <b>{module.short}</b>
-                    <small>{gameModuleSummary(module.id, current)}</small>
+                    <small>{gameModuleSummary(module.id, shown)}</small>
                   </span>
                   {isGameModuleChanged(module, saved, current) ? <span className="pn-nav-dirty" role="img" aria-label="are modificări nesalvate" /> : null}
-                  <span className={cx("pn-nav-st", isGameModuleOn(module.id, current) && "on")} aria-hidden="true" />
+                  <span className={cx("pn-nav-st", isGameModuleOn(module.id, shown) && "on")} aria-hidden="true" />
                 </Link>
               ))}
             </nav>
@@ -74,6 +80,7 @@ export function GameGroupPage() {
           />
         </div>
       </PanelContext.Provider>
+      </GameStateContext.Provider>
     </BotDraftContext.Provider>
   );
 }

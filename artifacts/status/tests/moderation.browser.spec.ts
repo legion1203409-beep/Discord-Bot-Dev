@@ -1667,12 +1667,29 @@ test.describe("authenticated moderation console", () => {
       await route.fulfill({ json: { range: "7", startDay: "2026-09-18", endDay: "2026-09-24", totals: { attributedJoins: 0, unknownJoins: 0 }, rows: [] } });
     });
 
+    let paused = true;
+    const statePuts: boolean[] = [];
+    await page.route("**/api/moderation/guilds/*/gameplay-state", async (route) => {
+      if (route.request().method() === "PUT") {
+        paused = JSON.parse(route.request().postData() || "{}").paused;
+        statePuts.push(paused);
+      }
+      await route.fulfill({ json: { paused } });
+    });
     await page.goto("/moderare/joc");
     await chooseFirstGuild(page);
     await expect(page.getByRole("heading", { name: "Starea jocului" })).toBeVisible();
     await expect(page.getByTestId("game-summary")).toContainText("Oprit");
+    // Turning on applies at once, through its own route.
     await page.getByRole("switch", { name: "Jocul rulează pe server" }).click();
+    await expect(page.getByTestId("game-summary")).toContainText("Pornit");
+    expect(statePuts).toEqual([false]);
     await expect(page.getByText("Jocul e pornit, dar n-ai ales niciun canal")).toBeVisible();
+    // Turning off asks first.
+    await page.getByRole("switch", { name: "Jocul rulează pe server" }).click();
+    await expect(page.getByTestId("game-stop-confirm")).toBeVisible();
+    await page.getByRole("button", { name: "Renunță", exact: true }).first().click();
+    expect(statePuts).toEqual([false]);
     await page.getByTestId("game-paused-text").getByRole("textbox").fill("Jocul doarme. Revenim curând.");
 
     await page.getByTestId("nav-game-channels").click();
@@ -1697,7 +1714,6 @@ test.describe("authenticated moderation console", () => {
     await page.getByTestId("button-save-game").click();
     expect((await save).ok()).toBe(true);
     expect(botConfig.gameplayConfig).toMatchObject({
-      paused: false,
       messages: { gamePaused: "Jocul doarme. Revenim curând." },
       events: { eventCooldownMinMinutes: 200, eventCooldownMaxMinutes: 300 },
       missions: { kill_10: { target: 15 } },

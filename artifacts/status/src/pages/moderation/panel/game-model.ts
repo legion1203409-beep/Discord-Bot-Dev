@@ -17,7 +17,8 @@ export const GAME_MODULES: readonly GameModuleDef[] = [
   {
     id: "state", route: GAME_MODULE_ROUTES.state, short: "Stare și pauză", title: "Starea jocului",
     description: "Pornește sau oprește jocul pe server (ca /startjoc și /stopjoc) și ce scrie botul cât e oprit.",
-    paths: ["gameplayConfig.paused", "gameplayConfig.messages.gamePaused", "gameplayConfig.messages.gamePausedImageUrl", "gameplayConfig.messages.gamePausedThumbnailUrl"],
+    // Pausing is applied at once through its own route (/gameplay-state), not with the draft.
+    paths: ["gameplayConfig.messages.gamePaused", "gameplayConfig.messages.gamePausedImageUrl", "gameplayConfig.messages.gamePausedThumbnailUrl"],
   },
   {
     id: "channels", route: GAME_MODULE_ROUTES.channels, short: "Canale", title: "Canalele jocului",

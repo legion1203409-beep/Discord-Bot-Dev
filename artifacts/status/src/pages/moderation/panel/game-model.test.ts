@@ -18,8 +18,11 @@ describe("the game page", () => {
     const saved = config();
     const draft = { ...saved, channels: { event: "123456" } };
     expect(changedGameParts(saved, draft).map((part) => part.key)).toEqual(["channels"]);
+    // Pausing goes through its own route at once, so it never marks the draft.
     const paused = { ...saved, gameplayConfig: { ...saved.gameplayConfig, paused: true } };
-    expect(changedGameParts(saved, paused).map((part) => part.key)).toEqual(["state"]);
+    expect(changedGameParts(saved, paused)).toEqual([]);
+    const message = { ...saved, gameplayConfig: { ...saved.gameplayConfig, messages: { gamePaused: "Altceva." } } };
+    expect(changedGameParts(saved, message).map((part) => part.key)).toEqual(["state"]);
   });
 
   it("sums up each module in the menu", () => {

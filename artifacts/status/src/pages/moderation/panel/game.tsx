@@ -2,10 +2,11 @@
  * Modulele paginii Jocul: Stare și pauză, Canale, Evenimente, Misiuni,
  * Economie. Logica e în game-model.ts; ciorna și salvarea în bot-draft.tsx.
  */
-import React, { useId } from "react";
+import React, { createContext, useContext, useEffect, useId, useState } from "react";
 import { Link } from "wouter";
 import { usePanel } from "./context";
-import { ChannelField, Fields, Fld, Ico, Note, NoteRow, NumField, SectionCard, Switch, cx, type IconName } from "./fields";
+import { ChannelField, Fields, Fld, Ico, Note, NoteRow, NumField, SectionCard, Spinner, Switch, cx, type IconName } from "./fields";
+import type { useGameplayState } from "../../../hooks/use-moderation-api";
 import { EmojiTextField, ImageUrlField } from "./message-fields";
 import {
   ECONOMY_FIELDS, EVENT_FIELDS, GAME_CHANNELS, GAME_MODULES, MAX_MULTIPLIER, MIN_MULTIPLIER, MISSIONS, MULTIPLIER_PRESETS,
@@ -16,6 +17,9 @@ import { ModuleView } from "./rules";
 
 const MODULE = Object.fromEntries(GAME_MODULES.map((module) => [module.id, module])) as Record<GameModuleId, (typeof GAME_MODULES)[number]>;
 
+/** The game's running state, read and changed at once through /gameplay-state (not part of the draft). */
+export const GameStateContext = createContext<ReturnType<typeof useGameplayState> | null>(null);
+
 export const GAME_ICONS: Record<GameModuleId, IconName> = { state: "power", channels: "hash", events: "calendar", missions: "scroll", economy: "star" };
 
 /* ------------------------------------------------------------------ */
@@ -24,20 +28,55 @@ export const GAME_ICONS: Record<GameModuleId, IconName> = { state: "power", chan
 
 function StateModule() {
   const { config, set } = usePanel();
-  const game = config.gameplayConfig ?? {};
-  const running = game.paused === false;
-  const messages = game.messages ?? {};
+  const game = useContext(GameStateContext);
+  const messages = config.gameplayConfig?.messages ?? {};
   const channels = gameChannelCount(config);
+  const paused = game?.paused ?? null;
+  const running = paused === false;
+  const [confirming, setConfirming] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  useEffect(() => { setConfirming(false); }, [paused]);
+  const change = async (nextRunning: boolean) => {
+    if (!game) return;
+    setSaving(true);
+    setProblem(null);
+    try {
+      await game.update(!nextRunning);
+      setConfirming(false);
+    } catch (failure) {
+      setProblem(failure instanceof Error ? failure.message : "Starea jocului nu a putut fi schimbată.");
+    } finally {
+      setSaving(false);
+    }
+  };
   return (
     <ModuleView
       module={MODULE.state} icon="power"
       aside={(
         <div className="pn-mod-pw">
-          <span aria-hidden="true">{running ? "Pornit" : "Oprit"}</span>
-          <Switch large checked={running} label="Jocul rulează pe server" testId="game-running" onChange={(next) => set(["gameplayConfig", "paused"], !next)} />
+          <span aria-hidden="true">{paused === null ? (game?.loading ? "Se încarcă" : "Necunoscut") : running ? "Pornit" : "Oprit"}</span>
+          {saving ? <Spinner /> : null}
+          <Switch
+            large checked={running} label="Jocul rulează pe server" testId="game-running" disabled={paused === null || saving}
+            onChange={(next) => (next ? void change(true) : setConfirming(true))}
+          />
         </div>
       )}
     >
+      {confirming ? (
+        <div className="pn-mod-off" role="alert" data-testid="game-stop-confirm">
+          <Ico name="alert" />
+          <span>Evenimentele, boșii, cuferele și recompensele se opresc până pornești jocul. Progresul jucătorilor rămâne.</span>
+          <button type="button" className="pn-btn-ghost pn-btn-sm" onClick={() => setConfirming(false)} disabled={saving}>Renunță</button>
+          <button type="button" className="pn-btn pn-btn-sm" onClick={() => void change(false)} disabled={saving} data-testid="game-stop-confirm-button">Da, oprește jocul</button>
+        </div>
+      ) : null}
+      {problem ? <Note tone="bad" role="alert">{problem}</Note> : null}
+      {paused === null && !game?.loading ? (
+        <Note tone="warn">Starea jocului nu a putut fi citită. <button type="button" className="pn-lnk" onClick={() => void game?.refetch()}>Încearcă din nou</button></Note>
+      ) : null}
+      <Note tone="plain">Pornirea și oprirea se aplică pe loc, fără „Salvează”.</Note>
       {running && channels === 0 ? (
         <Note tone="warn">Jocul e pornit, dar n-ai ales niciun canal, deci nu apare nimic. Alege canalele la <Link href="/joc/canale">Canale</Link>.</Note>
       ) : null}
