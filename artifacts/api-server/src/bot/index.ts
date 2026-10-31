@@ -24,6 +24,7 @@ import {
   AttachmentBuilder,
   type GuildMember,
 } from "discord.js";
+import { handleBanEvasionButton } from "./moderation/ban-evasion";
 import { randomUUID } from "node:crypto";
 import { logger } from "../lib/logger";
 import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./alert";
@@ -4607,6 +4608,10 @@ async function handleButton(interaction: ButtonInteraction) {
     return handleTicketButton(interaction);
   }
 
+  if (id.startsWith("evasion_")) {
+    return handleBanEvasionButton(interaction);
+  }
+
   if (id.startsWith("help_")) {
     return handleHelpButton(interaction);
   }
@@ -4902,6 +4907,8 @@ export async function startBot(onReady?: () => void): Promise<void> {
     GatewayIntentBits.AutoModerationExecution,
     GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.GuildInvites,
+    // Bans and unbans (not privileged): the ban evasion check remembers banned accounts.
+    GatewayIntentBits.GuildModeration,
   ];
   // GuildMembers, GuildPresences and MessageContent are all privileged. Keep the
   // bot online when the portal toggles are absent rather than requesting any one

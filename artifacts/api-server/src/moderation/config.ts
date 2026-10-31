@@ -415,6 +415,17 @@ export const ModerationConfigSchema = z.object({
     /** The server's invite for the message and the appeal page; without one the bot makes a single-use invite. */
     inviteUrl: safeHttpsUrl.nullable().default(null),
   }).default({}),
+  /** New accounts that look like someone banned recently (bot/moderation/ban-evasion.ts). Staff decides. */
+  banEvasion: z.object({
+    enabled: z.boolean().default(false),
+    alertChannelId: snowflake.nullable().default(null),
+    /** How long after a ban a look-alike account is still flagged. */
+    watchDays: z.number().int().min(1).max(365).default(30),
+    /** Only accounts younger than this are compared (an old account is rarely a new evasion). */
+    maxAccountAgeDays: z.number().int().min(1).max(3650).default(30),
+    matchName: z.boolean().default(true),
+    matchAvatar: z.boolean().default(true),
+  }).default({}),
 }).superRefine((config, ctx) => {
   validateRuleThresholds(config.autoMod.wordFilter, ["autoMod", "wordFilter"], { matches: [1, 100] }, ctx);
   validateRuleThresholds(config.autoMod.linkBlock, ["autoMod", "linkBlock"], { matches: [1, 100] }, ctx);

@@ -55,6 +55,7 @@ const allItems: Array<{ heading: string; items: NavigationItem[] }> = [
     { id: "policies", label: "Roluri și canale", description: "Roluri protejate, canale ignorate sau stricte", href: "/sanctiuni/roluri-canale", icon: BookOpen, tint: "gold", keywords: "politici protejate ignorate slowmode" },
     { id: "schedule", label: "Program", description: "Severitate după oră, weekend și eveniment", href: "/sanctiuni/program", icon: SlidersHorizontal, tint: "gold", keywords: "profile timp noapte zi weekend fus orar" },
     { id: "appeals", label: "Contestații", description: "Pagina de contestație a banurilor, de pe site", href: "/sanctiuni/contestatii", icon: BookOpen, tint: "gold", keywords: "apel ban unban contestatie recurs" },
+    { id: "evasion", label: "Ocolire ban", description: "Alerte pentru conturi noi care seamănă cu cineva banat", href: "/sanctiuni/ocolire-ban", icon: BookOpen, tint: "gold", keywords: "alt cont multicont evaziune ban evasion" },
     primary("cases"),
     { id: "case-list", label: "Cazuri", description: "Lista cazurilor, cu note și închidere", href: "/cazuri", icon: History, tint: "gold", keywords: "dosare lista" },
     { id: "audit", label: "Jurnal de audit", description: "Evenimente și modificări", href: "/audit", icon: History, tint: "gold" },

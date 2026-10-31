@@ -29,7 +29,7 @@ export type SanctionsModuleDef = {
   title: string;
   description: string;
   /** The module's own on/off switch, when it has one. */
-  configKey?: "escalation" | "manualTools" | "appeals";
+  configKey?: "escalation" | "manualTools" | "appeals" | "banEvasion";
   switchLabel?: string;
   /** What the module edits; a change in any of these marks it unsaved in the menu. */
   paths: readonly string[];
@@ -61,6 +61,11 @@ export const SANCTIONS_MODULES: readonly SanctionsModuleDef[] = [
     description: "Cine are ban nu mai poate deschide un tichet pe server. Aici se pornește pagina de contestație de pe site: staff-ul primește contestațiile într-un canal Discord și poate scoate banul dintr-un click.",
     configKey: "appeals", switchLabel: "Activează contestațiile de pe site", paths: ["appeals"],
   },
+  {
+    id: "evasion", route: SANCTIONS_MODULE_ROUTES.evasion, short: "Ocolire ban", title: "Ocolirea banului",
+    description: "Când intră un cont nou care seamănă cu cineva banat recent (nume asemănător, aceeași poză), staff-ul primește o alertă cu Ban și „Nu e el”. Botul nu banează singur.",
+    configKey: "banEvasion", switchLabel: "Activează verificarea conturilor noi", paths: ["banEvasion"],
+  },
 ];
 
 /** The module a route opens; "/sanctiuni" and unknown routes open the first one. */
@@ -77,6 +82,7 @@ export const SANCTIONS_SECTIONS = [
   { key: "channels", label: "Canale" },
   { key: "timeProfiles", label: "Program" },
   { key: "appeals", label: "Contestații" },
+  { key: "banEvasion", label: "Ocolire ban" },
 ] as const;
 
 /** True when the draft differs from what is saved in anything this module edits. */
@@ -577,6 +583,33 @@ export function appealsSummary(config: any): string {
 }
 
 /* ------------------------------------------------------------------ */
+/* Ocolire ban                                                         */
+/* ------------------------------------------------------------------ */
+
+export type EvasionSettings = {
+  enabled: boolean; alertChannelId: string | null; watchDays: number; maxAccountAgeDays: number; matchName: boolean; matchAvatar: boolean;
+};
+
+export function evasionSettings(config: any): EvasionSettings {
+  const value = config?.banEvasion ?? {};
+  return {
+    enabled: value.enabled === true,
+    alertChannelId: typeof value.alertChannelId === "string" && value.alertChannelId ? value.alertChannelId : null,
+    watchDays: value.watchDays ?? 30,
+    maxAccountAgeDays: value.maxAccountAgeDays ?? 30,
+    matchName: value.matchName !== false,
+    matchAvatar: value.matchAvatar !== false,
+  };
+}
+
+export function evasionSummary(config: any): string {
+  const settings = evasionSettings(config);
+  if (!settings.enabled) return "Oprită";
+  if (!settings.alertChannelId) return "Pornită, dar fără canal pentru alerte";
+  return `Banurile din ultimele ${settings.watchDays} zile`;
+}
+
+/* ------------------------------------------------------------------ */
 /* Verificări înainte de salvare                                       */
 /* ------------------------------------------------------------------ */
 
@@ -625,6 +658,14 @@ export function sanctionsDraftError(config: any, sections?: ReadonlyArray<string
       if (!value.trim()) return `Contestații — ${label} nu poate fi gol.`;
       if (value.length > max) return `Contestații — ${label}: cel mult ${max} de caractere.`;
     }
+  }
+  if (checks("banEvasion")) {
+    const evasion = evasionSettings(config);
+    if (config?.banEvasion?.watchDays !== undefined && !isValidInteger(evasion.watchDays, 1, 365)) return "Ocolire ban — Cât timp după ban: introdu un număr întreg de zile între 1 și 365.";
+    if (config?.banEvasion?.maxAccountAgeDays !== undefined && !isValidInteger(evasion.maxAccountAgeDays, 1, 3650)) return "Ocolire ban — Conturi mai noi de: introdu un număr întreg de zile între 1 și 3650.";
+    if (evasion.alertChannelId && !isDiscordId(evasion.alertChannelId)) return "Ocolire ban — canalul pentru alerte nu este un ID Discord valid.";
+    if (evasion.enabled && !evasion.alertChannelId) return "Ocolire ban — alege canalul în care staff-ul primește alertele.";
+    if (evasion.enabled && !evasion.matchName && !evasion.matchAvatar) return "Ocolire ban — lasă pornită cel puțin o comparație (numele sau poza).";
   }
   if (checks("manualTools")) {
     for (const command of STAFF_COMMANDS) {

@@ -276,3 +276,11 @@ describe("ban appeals configuration", () => {
     expect(() => ModerationConfigSchema.parse({ appeals: { cooldownDays: 366 } })).toThrow();
   });
 });
+
+describe("ban evasion configuration", () => {
+  it("is off by default and compares names and avatars of bans from the last 30 days, for accounts under 30 days", () => {
+    expect(ModerationConfigSchema.parse({}).banEvasion).toEqual({ enabled: false, alertChannelId: null, watchDays: 30, maxAccountAgeDays: 30, matchName: true, matchAvatar: true });
+    expect(() => ModerationConfigSchema.parse({ banEvasion: { watchDays: 0 } })).toThrow();
+    expect(() => ModerationConfigSchema.parse({ banEvasion: { alertChannelId: "x" } })).toThrow();
+  });
+});

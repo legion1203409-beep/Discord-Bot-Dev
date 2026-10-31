@@ -17,6 +17,7 @@ import OpenAI from "openai";
 import { pool } from "@workspace/db";
 import { moderationStore } from "../../moderation/store";
 import { getAppealWebsiteUrl } from "../../moderation/oauth";
+import { attachBanEvasion } from "./ban-evasion";
 import type { ModerationConfig, ModerationAction as ConfiguredAction } from "../../moderation/config";
 import { logger } from "../../lib/logger";
 import { buildAutomaticModerationLogDescription } from "./automod-logging";
@@ -1547,6 +1548,7 @@ export function attachModeration(client: Client): void {
   const attached = client as Client & { __moderationAttached?: boolean };
   if (attached.__moderationAttached) return;
   attached.__moderationAttached = true;
+  attachBanEvasion(client, { getConfig, executeModerationAction });
   attachModerationEvents(client, {
     getConfig,
     executeModerationAction,

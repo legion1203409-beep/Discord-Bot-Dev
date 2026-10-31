@@ -834,7 +834,7 @@ test.describe("authenticated moderation console", () => {
     await page.goto("/moderare/sanctiuni");
     await chooseFirstGuild(page);
     await expect(page.getByRole("heading", { name: "Escaladarea sancțiunilor" })).toBeVisible();
-    await expect(page.getByRole("navigation", { name: "Modulele sancțiunilor" }).getByRole("link")).toHaveCount(5);
+    await expect(page.getByRole("navigation", { name: "Modulele sancțiunilor" }).getByRole("link")).toHaveCount(6);
     await expect(page.getByTestId("nav-sanctions-escalation")).toHaveAttribute("aria-current", "page");
 
     await page.getByRole("switch", { name: "Activează escaladarea" }).click();
@@ -975,6 +975,34 @@ test.describe("authenticated moderation console", () => {
     await page.reload();
     await expect(page.getByRole("switch", { name: "Activează contestațiile de pe site" })).toBeChecked();
     await expect(page.getByTestId("appeals-cooldown")).toHaveValue("14");
+  });
+
+  test("ban evasion alerts are turned on with a channel and the comparisons, and saved", async ({ page }) => {
+    await page.unroute("**/api/moderation/guilds/*/metadata");
+    await page.route("**/api/moderation/guilds/*/metadata", async (route) => {
+      await route.fulfill({
+        json: {
+          guild: { id: guilds[0].id, name: guilds[0].name, ownerId: "999999999" },
+          roles: [],
+          channels: [{ id: "444444444", name: "alerte-staff", type: 0, parentId: null }],
+          botCapabilities: { online: true, messageContent: true, guildMembers: true },
+        },
+      });
+    });
+    await page.goto("/moderare/sanctiuni/ocolire-ban");
+    await chooseFirstGuild(page);
+    await expect(page.getByRole("heading", { name: "Ocolirea banului" })).toBeVisible();
+    await page.getByRole("switch", { name: "Activează verificarea conturilor noi" }).click();
+    await expect(page.getByText("Alege canalul, altfel alertele nu ajung la nimeni.")).toBeVisible();
+    await page.getByRole("combobox", { name: "Canalul alertelor de ocolire" }).selectOption("444444444");
+    await page.getByTestId("evasion-avatar").click();
+    await page.getByTestId("evasion-watch").fill("60");
+    const saveResponse = page.waitForResponse((response) =>
+      response.url().includes("/api/moderation/guilds/111111111/config") && response.request().method() === "PUT");
+    await page.getByRole("button", { name: "Salvează", exact: true }).click();
+    expect((await saveResponse).ok()).toBe(true);
+    expect((savedConfigs.get(guilds[0].id) as any).banEvasion).toMatchObject({ enabled: true, alertChannelId: "444444444", matchAvatar: false, watchDays: 60 });
+    await expect(page.getByTestId("nav-sanctions-evasion")).toContainText("ultimele 60 zile");
   });
 
   test("a banned person signs in, appeals, answers a question and sees the result on the public page", async ({ page }) => {

@@ -7,7 +7,7 @@ import {
   policySummary, profileAt, removeEscalationLevel, sanctionsDraftError, sanctionsModuleForRoute, scheduleNow, scheduleSummary,
   setCommandGrants, setCommandOn, setEscalationAction, setEscalationMuteMinutes, setEscalationViolations, shadowedEscalationLevels,
   timelineStretches, type EscalationLevel,
-  appealSettings, appealsSummary,
+  appealSettings, appealsSummary, evasionSettings, evasionSummary,
 } from "./sanctions-model";
 
 const DEFAULT_LEVELS: EscalationLevel[] = [
@@ -24,7 +24,7 @@ describe("the sanctions group", () => {
     expect(sanctionsModuleForRoute("/sanctiuni/roluri-canale/").id).toBe("policies");
     expect(sanctionsModuleForRoute("/sanctiuni/program?x=1").id).toBe("schedule");
     expect(SANCTIONS_MODULES.map((module) => module.route)).toEqual([
-      "/sanctiuni/escaladare", "/sanctiuni/comenzi", "/sanctiuni/roluri-canale", "/sanctiuni/program", "/sanctiuni/contestatii",
+      "/sanctiuni/escaladare", "/sanctiuni/comenzi", "/sanctiuni/roluri-canale", "/sanctiuni/program", "/sanctiuni/contestatii", "/sanctiuni/ocolire-ban",
     ]);
   });
 
@@ -322,5 +322,20 @@ describe("ban appeals", () => {
     expect(sanctionsDraftError({ appeals: { enabled: true } }, ["escalation"])).toBeNull();
     expect(sanctionsDraftError({ appeals: { inviteUrl: "discord.gg/x" } }, ["appeals"])).toContain("https://");
     expect(sanctionsDraftError({ appeals: { acceptedButton: "  " } }, ["appeals"])).toContain("Textul butonului");
+  });
+});
+
+describe("ban evasion", () => {
+  it("reads the settings with the bot's defaults and sums them up", () => {
+    expect(evasionSettings(undefined)).toEqual({ enabled: false, alertChannelId: null, watchDays: 30, maxAccountAgeDays: 30, matchName: true, matchAvatar: true });
+    expect(evasionSummary({})).toBe("Oprită");
+    expect(evasionSummary({ banEvasion: { enabled: true } })).toContain("fără canal");
+    expect(evasionSummary({ banEvasion: { enabled: true, alertChannelId: "123456", watchDays: 14 } })).toContain("14 zile");
+  });
+  it("refuses to save it on without a channel or with nothing to compare", () => {
+    expect(sanctionsDraftError({ banEvasion: { enabled: true } }, ["banEvasion"])).toContain("alege canalul");
+    expect(sanctionsDraftError({ banEvasion: { enabled: true, alertChannelId: "123456", matchName: false, matchAvatar: false } }, ["banEvasion"])).toContain("cel puțin o comparație");
+    expect(sanctionsDraftError({ banEvasion: { watchDays: 0 } }, ["banEvasion"])).toContain("între 1 și 365");
+    expect(sanctionsDraftError({ banEvasion: { enabled: true, alertChannelId: "123456" } }, ["banEvasion"])).toBeNull();
   });
 });

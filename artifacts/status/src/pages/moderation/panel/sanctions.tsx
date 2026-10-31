@@ -15,7 +15,7 @@ import { ModuleNotes, ModuleView } from "./rules";
 import {
   CHANNEL_POLICIES, COMMAND_GROUPS, ESCALATION_ACTIONS, LEGACY_ESCALATION_ACTIONS, MAX_ESCALATION_LEVELS, MAX_RESET_DAYS, MAX_VIOLATIONS,
   MIN_RESET_DAYS, MIN_VIOLATIONS, PROFILE_LABEL, ROLE_POLICIES, SANCTIONS_MODULES, SEVERITY_LABEL, SEVERITY_OPTIONS, STAFF_COMMANDS, TIMEZONES,
-  appealSettings, MAX_APPEAL_COOLDOWN_DAYS, MIN_APPEAL_COOLDOWN_DAYS, addEscalationLevel, commandGrants, commandSummary, dayTimeline, describeEscalationAction, enabledCommandCount, enabledProfiles,
+  evasionSettings, appealSettings, MAX_APPEAL_COOLDOWN_DAYS, MIN_APPEAL_COOLDOWN_DAYS, addEscalationLevel, commandGrants, commandSummary, dayTimeline, describeEscalationAction, enabledCommandCount, enabledProfiles,
   escalationLadder, escalationLevels, formatHourRange, isCommandOn, isValidTimezone, ladderRange, localTime, policyConflicts, policyList,
   removeEscalationLevel, scheduleNow, setCommandGrants, setCommandOn, setEscalationAction, setEscalationMuteMinutes, setEscalationViolations,
   shadowedEscalationLevels, timelineStretches, type CommandDef, type EscalationLevel, type SanctionsModuleId, type ScheduleProfile, type Severity,
@@ -585,10 +585,55 @@ export function AppealsModule() {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* Ocolire ban                                                         */
+/* ------------------------------------------------------------------ */
+
+export function EvasionModule() {
+  const { config, set, channels } = usePanel();
+  const settings = evasionSettings(config);
+  return (
+    <ModuleView module={MODULE.evasion} icon="users" independent>
+      <SectionCard title="Cum merge" testId="evasion-how">
+        <ol className="pn-fh pn-card-lede" style={{ paddingLeft: 18, display: "grid", gap: 4 }}>
+          <li>La fiecare ban (dat de bot sau direct din Discord), botul ține minte numele și poza contului.</li>
+          <li>Când intră un cont tânăr, îl compară cu banurile recente: nume asemănător (și cu cifre în loc de litere, puncte sau litere dublate) sau exact aceeași poză.</li>
+          <li>Dacă seamănă, trimite o alertă cu motivul, plus butoanele <b>Ban</b> și <b>Nu e el</b>. Banul trece prin aceleași verificări ca /ban.</li>
+        </ol>
+        <Note>Botul nu vede IP-ul sau dispozitivul nimănui, așa că e un semnal, nu o dovadă. Cea mai tare barieră rămâne nivelul de verificare „Highest” din setările serverului (telefon verificat). Vârsta minimă a contului o setezi la Protecție → Anti-raid.</Note>
+        <Note>Alertele la intrare cer intenția „Server Members” pornită pentru bot (la fel ca anti-raid).</Note>
+      </SectionCard>
+      <SectionCard title="Setări" testId="evasion-settings">
+        <Fields>
+          <ChannelField
+            label="Canalul alertelor" selectLabel="Canalul alertelor de ocolire" value={settings.alertChannelId} channels={channels}
+            hint="Un canal pe care îl văd doar moderatorii."
+            onChange={(next) => set(["banEvasion", "alertChannelId"], next)}
+          />
+          {settings.enabled && !settings.alertChannelId ? <NoteRow tone="bad" role="alert">Alege canalul, altfel alertele nu ajung la nimeni.</NoteRow> : null}
+          <SwitchField label="Compară numele" testId="evasion-name" checked={settings.matchName} onChange={(next) => set(["banEvasion", "matchName"], next)} />
+          <SwitchField label="Compară poza de profil" testId="evasion-avatar" checked={settings.matchAvatar} hint="Doar aceeași poză exactă; o poză ușor schimbată nu e recunoscută." onChange={(next) => set(["banEvasion", "matchAvatar"], next)} />
+          <NumField
+            label="Cât timp după ban" testId="evasion-watch" unit="zile" value={settings.watchDays} min={1} max={365}
+            hint="Se compară doar cu banurile din această perioadă."
+            onChange={(next) => set(["banEvasion", "watchDays"], next)}
+          />
+          <NumField
+            label="Conturi mai noi de" testId="evasion-age" unit="zile" value={settings.maxAccountAgeDays} min={1} max={3650}
+            hint="Conturile mai vechi nu se verifică: cine ocolește banul își face de obicei un cont nou."
+            onChange={(next) => set(["banEvasion", "maxAccountAgeDays"], next)}
+          />
+        </Fields>
+      </SectionCard>
+    </ModuleView>
+  );
+}
+
 export const SANCTIONS_VIEWS: Record<SanctionsModuleId, () => React.ReactElement> = {
   escalation: EscalationModule,
   commands: CommandsModule,
   policies: PoliciesModule,
   schedule: ScheduleModule,
   appeals: AppealsModule,
+  evasion: EvasionModule,
 };

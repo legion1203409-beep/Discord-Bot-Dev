@@ -1367,7 +1367,7 @@ async function validateConfigTargets(guildId: string, config: ModerationConfig, 
     ...Object.values(config.activityLog.channelIds),
     config.autoMod.logChannelId, config.antiFlood.logChannelId,
     config.antiRaid.alertChannelId, config.antiSpam.logChannelId, config.audit.channelId,
-    config.suspiciousBehavior.alertChannelId, config.ai.logChannelId, config.appeals?.channelId,
+    config.suspiciousBehavior.alertChannelId, config.ai.logChannelId, config.appeals?.channelId, config.banEvasion?.alertChannelId,
   ].filter((id): id is string => Boolean(id));
   const previousChannelIds = [
     ...previous.channels.ignoredChannelIds, ...previous.channels.protectedChannelIds,
@@ -1377,7 +1377,7 @@ async function validateConfigTargets(guildId: string, config: ModerationConfig, 
     ...Object.values(previous.activityLog.channelIds),
     previous.autoMod.logChannelId, previous.antiFlood.logChannelId,
     previous.antiRaid.alertChannelId, previous.antiSpam.logChannelId, previous.audit.channelId,
-    previous.suspiciousBehavior.alertChannelId, previous.ai.logChannelId, previous.appeals?.channelId,
+    previous.suspiciousBehavior.alertChannelId, previous.ai.logChannelId, previous.appeals?.channelId, previous.banEvasion?.alertChannelId,
   ].filter((id): id is string => Boolean(id));
   const categoryIds = [config.activityLog.categoryId].filter((id): id is string => Boolean(id));
   const previousCategoryIds = [previous.activityLog.categoryId].filter((id): id is string => Boolean(id));

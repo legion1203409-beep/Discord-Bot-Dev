@@ -109,6 +109,7 @@ function ModerationApp() {
           <Route path="/sanctiuni/roluri-canale" component={SanctionsGroupPage} />
           <Route path="/sanctiuni/program" component={SanctionsGroupPage} />
           <Route path="/sanctiuni/contestatii" component={SanctionsGroupPage} />
+          <Route path="/sanctiuni/ocolire-ban" component={SanctionsGroupPage} />
           {/* Older addresses of the same settings, kept for bookmarks and links. */}
           <Route path="/politici" component={() => <Redirect to="/sanctiuni/roluri-canale" replace />} />
           <Route path="/config/escaladare" component={() => <Redirect to="/sanctiuni/escaladare" replace />} />

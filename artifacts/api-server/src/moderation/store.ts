@@ -40,6 +40,11 @@ export interface ModerationCaseAppeal {
 }
 
 /** A website appeal with what the bot needs to judge it. */
+export type BanFingerprint = {
+  guildId: string; userId: string; username: string; globalName: string | null; avatarHash: string | null;
+  accountCreatedAt: Date | null; bannedAt: Date;
+};
+
 export interface ModerationWebAppeal extends ModerationCaseAppeal {
   guildId: string;
   caseId: string;
@@ -176,6 +181,10 @@ export interface ModerationStore {
   listModerationLogs(guildId: string, limit: number, offset: number): Promise<ModerationAuditLog[]>;
   writeAudit(input: Omit<ModerationAuditLog, "id" | "createdAt">): Promise<void>;
   recordMemberJoin(input: { guildId: string; userId: string; joinedAt: Date }): Promise<void>;
+  /** What a banned account looked like, to recognise it on a new account (bot/moderation/ban-evasion.ts). */
+  recordBanFingerprint?(input: BanFingerprint): Promise<void>;
+  removeBanFingerprint?(guildId: string, userId: string): Promise<void>;
+  listRecentBanFingerprints?(guildId: string, since: Date, limit: number): Promise<BanFingerprint[]>;
   getMemberJoinAt(guildId: string, userId: string): Promise<Date | null>;
   clearMemberJoinAt(guildId: string, userId: string, joinedAt: Date): Promise<void>;
   beginAction(input: { guildId: string; idempotencyKey: string; actorId: string; actionType: string; input: Record<string, unknown> }): Promise<{ created: boolean; action: ModerationActionLedger }>;
@@ -311,6 +320,12 @@ export class PostgresModerationStore implements ModerationStore {
           target_type text, target_id text, detail jsonb NOT NULL DEFAULT '{}'::jsonb,
           created_at timestamptz NOT NULL DEFAULT now()
         );
+        CREATE TABLE IF NOT EXISTS moderation_ban_fingerprints (
+          guild_id text NOT NULL, user_id text NOT NULL, username text NOT NULL DEFAULT '',
+          global_name text, avatar_hash text, account_created_at timestamptz,
+          banned_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY (guild_id, user_id)
+        );
+        CREATE INDEX IF NOT EXISTS moderation_ban_fingerprints_recent_idx ON moderation_ban_fingerprints (guild_id, banned_at DESC);
         CREATE TABLE IF NOT EXISTS moderation_member_join_state (
           guild_id text NOT NULL, user_id text NOT NULL, joined_at timestamptz NOT NULL,
           updated_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY (guild_id, user_id)
@@ -1110,6 +1125,35 @@ export class PostgresModerationStore implements ModerationStore {
   async writeAudit(input: Omit<ModerationAuditLog, "id" | "createdAt">) {
     await this.ensureSchema();
     await this.insertAudit(pool, input);
+  }
+
+  async recordBanFingerprint(input: BanFingerprint): Promise<void> {
+    await this.ensureSchema();
+    await pool.query(
+      `INSERT INTO moderation_ban_fingerprints (guild_id, user_id, username, global_name, avatar_hash, account_created_at, banned_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (guild_id, user_id) DO UPDATE SET username = EXCLUDED.username, global_name = EXCLUDED.global_name,
+         avatar_hash = EXCLUDED.avatar_hash, account_created_at = EXCLUDED.account_created_at, banned_at = EXCLUDED.banned_at`,
+      [input.guildId, input.userId, input.username.slice(0, 64), input.globalName?.slice(0, 64) ?? null, input.avatarHash, input.accountCreatedAt, input.bannedAt],
+    );
+  }
+
+  async removeBanFingerprint(guildId: string, userId: string): Promise<void> {
+    await this.ensureSchema();
+    await pool.query("DELETE FROM moderation_ban_fingerprints WHERE guild_id = $1 AND user_id = $2", [guildId, userId]);
+  }
+
+  async listRecentBanFingerprints(guildId: string, since: Date, limit: number): Promise<BanFingerprint[]> {
+    await this.ensureSchema();
+    const { rows } = await pool.query<Record<string, unknown>>(
+      `SELECT * FROM moderation_ban_fingerprints WHERE guild_id = $1 AND banned_at >= $2 ORDER BY banned_at DESC LIMIT $3`,
+      [guildId, since, limit],
+    );
+    return rows.map((row) => ({
+      guildId: String(row.guild_id), userId: String(row.user_id), username: String(row.username ?? ""),
+      globalName: row.global_name == null ? null : String(row.global_name), avatarHash: row.avatar_hash == null ? null : String(row.avatar_hash),
+      accountCreatedAt: row.account_created_at ? new Date(String(row.account_created_at)) : null, bannedAt: new Date(String(row.banned_at)),
+    }));
   }
 
   async recordMemberJoin(input: { guildId: string; userId: string; joinedAt: Date }): Promise<void> {
