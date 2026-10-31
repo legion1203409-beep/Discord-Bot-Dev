@@ -6,7 +6,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 
 const mocks = vi.hoisted(() => ({
   session: vi.fn(), access: vi.fn(), csrf: vi.fn(), client: vi.fn(),
-  getConfig: vi.fn(), putConfig: vi.fn(), putProtectionToggle: vi.fn(), listCases: vi.fn(),
+  getConfig: vi.fn(), putConfig: vi.fn(), putProtectionToggle: vi.fn(), listCases: vi.fn(), countCases: vi.fn(),
   listAudit: vi.fn(), listLogs: vi.fn(), beginAction: vi.fn(), getAction: vi.fn(),
   completeAction: vi.fn(), writeAudit: vi.fn(), execute: vi.fn(), previewBulkRoleGrant: vi.fn(),
   syncNativeAutoMod: vi.fn(), listAccessibleGuilds: vi.fn(),
@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   initGameplayConfig: vi.fn(), getGameplayConfig: vi.fn(), saveGuildGameplayConfig: vi.fn(),
   initChannelConfig: vi.fn(),
   loadVerificationConfig: vi.fn(), saveVerificationConfig: vi.fn(),
+  loadOracleSettings: vi.fn(), saveOracleSettings: vi.fn(),
   loadDailyStatsEmbedConfig: vi.fn(), saveDailyStatsEmbedConfig: vi.fn(),
   defaultDailyStatsConfig: {
     channelId: "",
@@ -107,7 +108,7 @@ vi.mock("../server-setup-drafts", () => ({
 vi.mock("../store", () => ({
   moderationStore: {
     getConfig: mocks.getConfig, putConfig: mocks.putConfig, putProtectionToggle: mocks.putProtectionToggle,
-    listCases: mocks.listCases, listAudit: mocks.listAudit,
+    listCases: mocks.listCases, countCases: mocks.countCases, listAudit: mocks.listAudit,
     listModerationLogs: mocks.listLogs, pruneCases: vi.fn(),
     beginAction: mocks.beginAction, getAction: mocks.getAction, completeAction: mocks.completeAction,
     writeAudit: mocks.writeAudit,
@@ -129,6 +130,8 @@ vi.mock("../../bot/db", () => ({
   saveTicketConfig: mocks.saveTicketConfig,
   loadVerificationConfig: mocks.loadVerificationConfig,
   saveVerificationConfig: mocks.saveVerificationConfig,
+  loadOracleSettings: mocks.loadOracleSettings,
+  saveOracleSettings: mocks.saveOracleSettings,
   loadDailyStatsEmbedConfig: mocks.loadDailyStatsEmbedConfig,
   saveDailyStatsEmbedConfig: mocks.saveDailyStatsEmbedConfig,
   loadInviteTrackingConfig: mocks.loadInviteTrackingConfig,
@@ -471,6 +474,8 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     mocks.initChannelConfig.mockResolvedValue(undefined);
     mocks.loadVerificationConfig.mockResolvedValue(null);
     mocks.saveVerificationConfig.mockResolvedValue(undefined);
+    mocks.loadOracleSettings.mockResolvedValue(null);
+    mocks.saveOracleSettings.mockResolvedValue(undefined);
     mocks.loadDailyStatsEmbedConfig.mockResolvedValue(structuredClone(mocks.defaultDailyStatsConfig));
     mocks.saveDailyStatsEmbedConfig.mockResolvedValue(undefined);
     mocks.publishVerificationPanel.mockImplementation(async (_client, _guildId, config) => ({
@@ -1437,6 +1442,145 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     ]);
   });
 
+  describe("manual verification of several members", () => {
+    const roleId = "444444444";
+    const categoryId = "555555555";
+    const staffRoleId = "666666666";
+    const role = (id: string, position: number, elevated = false) => ({
+      id, name: `rol-${id}`, managed: false, position, permissions: { any: () => elevated },
+    });
+
+    function verificationGuild(members: Record<string, string[]>) {
+      const given = new Map<string, string[]>();
+      const roles = new Map([[roleId, role(roleId, 2)], [categoryId, role(categoryId, 3)], [staffRoleId, role(staffRoleId, 4, true)]]);
+      const botMember = { permissions: { has: () => true }, roles: { highest: { position: 10 } } };
+      const guild = {
+        id: guildId,
+        members: {
+          me: botMember,
+          fetchMe: vi.fn(async () => botMember),
+          fetch: vi.fn(async (id: string) => {
+            if (!members[id]) throw Object.assign(new Error("Unknown Member"), { code: 10007 });
+            return {
+              id, displayName: `Membru ${id}`, user: { bot: false },
+              roles: {
+                cache: new Map(members[id].map((item) => [item, { id: item }])),
+                add: vi.fn(async (list: Array<{ id: string }>) => { given.set(id, list.map((item) => item.id)); }),
+              },
+            };
+          }),
+        },
+        roles: { fetch: vi.fn(async (id: string) => roles.get(id) ?? null) },
+        channels: {
+          fetch: vi.fn(async (id?: string) => id
+            ? Object.assign(Object.create(TextChannel.prototype) as TextChannel, { guildId, permissionsFor: () => ({ has: () => true }) })
+            : new Map()),
+        },
+      };
+      mocks.client.mockReturnValue({
+        isReady: () => true,
+        guilds: { cache: new Map([[guildId, guild]]), fetch: vi.fn(async () => guild) },
+      });
+      return given;
+    }
+
+    it("verifies new members and gives the verified ones only the roles they miss", async () => {
+      mocks.loadVerificationConfig.mockResolvedValue({ enabled: true, roleId, extraRoleIds: [categoryId] });
+      const given = verificationGuild({ "111111111": [], "222222222": [roleId], "333333333": [roleId, categoryId] });
+
+      const response = await fetch(`${base}/verification/members/verify`, post({
+        userIds: ["111111111", "222222222", "333333333", "999999999"],
+        roleIds: [categoryId, staffRoleId],
+      }, { "x-csrf-token": "csrf" }));
+
+      expect(response.status).toBe(200);
+      const result = await response.json() as Record<string, unknown> & { results: Array<{ userId: string; result: string }> };
+      expect(result).toMatchObject({ roleId, verified: 1, updated: 1, unchanged: 1, failed: 1 });
+      expect(result.results.map((item) => item.result)).toEqual(["verified", "updated", "unchanged", "failed"]);
+      expect(result.unavailableRoles).toEqual([{ roleId: staffRoleId, reason: "Rolul are drepturi de staff și nu se dă la verificare." }]);
+      expect(given.get("111111111")).toEqual([roleId, categoryId]);
+      expect(given.get("222222222")).toEqual([categoryId]);
+      expect(given.has("333333333")).toBe(false);
+      expect(mocks.csrf).toHaveBeenCalled();
+    });
+
+    it("refuses more members than one request may verify", async () => {
+      const userIds = Array.from({ length: 26 }, (_, index) => String(100000000 + index));
+      const response = await fetch(`${base}/verification/members/verify`, post({ userIds }, { "x-csrf-token": "csrf" }));
+      expect(response.status).toBe(400);
+    });
+
+    it("says so when the verification role is not set", async () => {
+      mocks.loadVerificationConfig.mockResolvedValue({ enabled: false, roleId: "" });
+      verificationGuild({ "111111111": [] });
+      const response = await fetch(`${base}/verification/members/verify`, post({ userIds: ["111111111"] }, { "x-csrf-token": "csrf" }));
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ error: "Verificarea nu este configurată pentru acest server." });
+    });
+
+    it("refuses to save a new extra role that carries staff powers", async () => {
+      mocks.loadVerificationConfig.mockResolvedValue({ enabled: false, roleId, extraRoleIds: [] });
+      verificationGuild({});
+      const payload = botControlPayload();
+      const response = await fetch(`${base}/bot-control`, {
+        ...post({
+          ...payload,
+          verification: {
+            enabled: false, channelId: "", roleId, title: "Verificare", message: "Confirmă", buttonLabel: "Verifică",
+            buttonEmoji: "✅", successMessage: "Gata", alreadyVerifiedMessage: "Deja", imageUrl: "", thumbnailUrl: "",
+            panelMessageId: "", extraRoleIds: [staffRoleId],
+          },
+        }),
+        method: "PUT",
+        headers: { "content-type": "application/json", "x-csrf-token": "csrf" },
+      });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ error: expect.stringContaining("drepturi de staff") });
+      expect(mocks.saveTicketConfig).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("the Oracle's settings", () => {
+    const oracle = {
+      enabled: true,
+      chat: { channelIds: ["777777777"], replyToReplies: false, tone: "sobru", length: "scurt", cooldownSeconds: 30 },
+      prophecy: { commandEnabled: false, dailyLimit: 2, daily: { enabled: false, channelId: "", hour: 8, timeZone: "Europe/Paris" } },
+    };
+
+    it("are read with the bot settings, with defaults for a server that never chose them", async () => {
+      const response = await fetch(`${base}/bot-control`);
+      expect(response.status).toBe(200);
+      const body = await response.json() as { oracle: { enabled: boolean; chat: { tone: string; channelIds: string[] } } };
+      expect(body.oracle).toMatchObject({ enabled: true, chat: { tone: "implicit", channelIds: [] } });
+    });
+
+    it("are saved when sent and kept when a page does not send them", async () => {
+      const put = (payload: unknown) => fetch(`${base}/bot-control`, {
+        ...post(payload), method: "PUT", headers: { "content-type": "application/json", "x-csrf-token": "csrf" },
+      });
+      const saved = await put({ ...botControlPayload(), oracle });
+      expect(saved.status).toBe(200);
+      expect(mocks.saveOracleSettings).toHaveBeenCalledWith(guildId, oracle);
+      expect((await saved.json() as { oracle: unknown }).oracle).toEqual(oracle);
+
+      mocks.saveOracleSettings.mockClear();
+      const without = await put(botControlPayload());
+      expect(without.status).toBe(200);
+      expect(mocks.saveOracleSettings).not.toHaveBeenCalled();
+    });
+
+    it("refuse a daily prophecy without its channel and an unknown time zone", async () => {
+      const put = (payload: unknown) => fetch(`${base}/bot-control`, {
+        ...post(payload), method: "PUT", headers: { "content-type": "application/json", "x-csrf-token": "csrf" },
+      });
+      const noChannel = await put({ ...botControlPayload(), oracle: { ...oracle, prophecy: { ...oracle.prophecy, daily: { ...oracle.prophecy.daily, enabled: true } } } });
+      expect(noChannel.status).toBe(400);
+      const badZone = await put({ ...botControlPayload(), oracle: { ...oracle, prophecy: { ...oracle.prophecy, daily: { ...oracle.prophecy.daily, timeZone: "Mars/Olympus" } } } });
+      expect(badZone.status).toBe(400);
+      expect(mocks.saveOracleSettings).not.toHaveBeenCalled();
+    });
+  });
+
   it("round-trips a fresh empty alliance message instead of rejecting the whole bot configuration", async () => {
     const payload = botControlPayload();
     payload.allianceRecruitmentText = "";
@@ -1471,6 +1615,7 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
         ...payload.tickets,
         categories,
         alliancePublicChannelId: "",
+        allianceOwnerGuildId: "",
       },
     };
 
@@ -1485,6 +1630,8 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     expect(mocks.saveTicketConfig).toHaveBeenCalledWith(guildId, expect.objectContaining({
       categories: { staff: "", partnership: "", help_report: "", appeal: "" },
       alliancePublicChannelId: "",
+      // Publishing alliances is switched off on this server.
+      allianceOwnerGuildId: "",
     }));
     const result = await response.json() as BotControlResponse;
     expect(result.channels).toEqual(channels);
@@ -1875,10 +2022,11 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     });
 
     expect(response.status).toBe(200);
+    // A request without extra roles (an older page) keeps working: none are given.
     expect(await response.json()).toEqual({
-      verification: { ...verification, panelMessageId: "888888888" },
+      verification: { ...verification, extraRoleIds: [], panelMessageId: "888888888" },
     });
-    expect(mocks.publishVerificationPanel).toHaveBeenCalledWith(expect.anything(), guildId, verification);
+    expect(mocks.publishVerificationPanel).toHaveBeenCalledWith(expect.anything(), guildId, { ...verification, extraRoleIds: [] });
     expect(mocks.saveChannelConfig).not.toHaveBeenCalled();
     expect(mocks.saveTicketConfig).not.toHaveBeenCalled();
     expect(mocks.saveGuildGameplayConfig).not.toHaveBeenCalled();
@@ -2079,6 +2227,33 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
   it("rejects unbounded pagination before running the cases query", async () => {
     expect((await fetch(`${base}/cases?limit=100000`)).status).toBe(400);
     expect(mocks.listCases).not.toHaveBeenCalled();
+  });
+
+  it("filters cases by member and action and sends the open and closed counts", async () => {
+    mocks.listCases.mockResolvedValueOnce([]);
+    mocks.countCases.mockResolvedValueOnce({ open: 2, closed: 5 });
+    const response = await fetch(`${base}/cases?actionType=ban&userId=555555555&status=open`);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ items: [], counts: { open: 2, closed: 5 } });
+    expect(mocks.listCases).toHaveBeenCalledWith(guildId, expect.objectContaining({ actionType: "ban", userId: "555555555", status: "open" }));
+    expect(mocks.countCases).toHaveBeenCalledWith(guildId, { userId: "555555555", actionType: "ban" });
+  });
+
+  it("rejects a malformed action filter before running the cases query", async () => {
+    expect((await fetch(`${base}/cases?actionType=${encodeURIComponent("ban' OR 1=1")}`)).status).toBe(400);
+    expect(mocks.listCases).not.toHaveBeenCalled();
+  });
+
+  it("looks up names only for a short list of Discord IDs", async () => {
+    expect((await fetch(`${base}/people?ids=abc`)).status).toBe(400);
+    const many = Array.from({ length: 51 }, (_, index) => String(500000000 + index)).join(",");
+    expect((await fetch(`${base}/people?ids=${many}`)).status).toBe(400);
+    mocks.client.mockReturnValueOnce({ isReady: () => false });
+    const offline = await fetch(`${base}/people?ids=555555555,555555555`);
+    expect(offline.status).toBe(200);
+    expect(await offline.json()).toEqual({ people: [] });
+    mocks.access.mockRejectedValueOnce(new ModerationAuthError(403, "Forbidden"));
+    expect((await fetch(`${base}/people?ids=555555555`)).status).toBe(403);
   });
 
   it("requires an idempotency key for destructive web actions", async () => {

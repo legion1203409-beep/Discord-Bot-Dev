@@ -61,9 +61,13 @@
         const title = document.getElementById("boot-loading-title");
         const message = document.getElementById("boot-loading-message");
         const retry = document.getElementById("boot-loading-retry");
-        if (/\/(?:server|joc)(?:\/|$)/.test(window.location.pathname)) {
-          title.textContent = "Se încarcă ghidul";
-          message.textContent = "Se pregătește ghidul serverului...";
+        const path = window.location.pathname.replace(/\/+$/, "");
+        if (path === "") {
+          title.textContent = "Se încarcă Regatul Cenușii";
+          message.textContent = "Se pregătește pagina de start...";
+        } else if (/\/(?:server|joc)$/.test(path)) {
+          title.textContent = "Se încarcă pagina serverului";
+          message.textContent = "Se pregătește pagina serverului...";
         }
         retry.addEventListener("click", () => window.location.reload());
         window.setTimeout(() => {

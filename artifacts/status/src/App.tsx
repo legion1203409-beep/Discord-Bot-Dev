@@ -1,17 +1,21 @@
 import { Switch, Route, Redirect } from "wouter";
 import "./index.css";
 import { ModerationLayout } from "./pages/moderation/ModerationLayout";
-import { DashboardOverview } from "./pages/moderation/Dashboard";
-import { CasesPage } from "./pages/moderation/Cases";
-import { CommandsPage } from "./pages/moderation/Commands";
-import { AuditPage } from "./pages/moderation/Audit";
-import { AdvancedSettingsPage } from "./pages/moderation/Settings";
+import { OverviewPage } from "./pages/moderation/panel/overview";
 import { ConfigOverviewPage } from "./pages/moderation/ConfigOverview";
-import { CategorySettingsPage } from "./pages/moderation/CategorySettings";
-import { ProtectionPage } from "./pages/moderation/Protection";
+import { ProtectionGroupPage } from "./pages/moderation/panel/ProtectionGroup";
+import { JudgePage } from "./pages/moderation/panel/JudgePage";
+import { SanctionsGroupPage } from "./pages/moderation/panel/SanctionsGroup";
+import { LogsGroupPage } from "./pages/moderation/panel/LogsGroup";
+import { RecordsGroupPage } from "./pages/moderation/panel/RecordsGroup";
+import { CommandsPanelPage } from "./pages/moderation/panel/commands";
 import { BotControlPage } from "./pages/moderation/BotControl";
-import { VerificationAdminPage } from "./pages/moderation/VerificationAdmin";
-import { MessageTemplatesPage } from "./pages/moderation/MessageTemplates";
+import { VerificationGroupPage } from "./pages/moderation/panel/VerificationGroup";
+import { TicketsGroupPage } from "./pages/moderation/panel/TicketsGroup";
+import { OracleGroupPage } from "./pages/moderation/panel/OracleGroup";
+import { SettingsGroupPage } from "./pages/moderation/panel/SettingsGroup";
+import { ControlGroupPage } from "./pages/moderation/panel/ControlGroup";
+import { MessagesGroupPage } from "./pages/moderation/panel/MessagesGroup";
 import { ServerSetupPage } from "./pages/moderation/ServerSetup";
 import { ActivityRanksPage } from "./pages/moderation/ActivityRanks";
 import { OfflineAssistant } from "./pages/moderation/OfflineAssistant";
@@ -21,9 +25,11 @@ import { SwordCursor } from "./components/SwordCursor";
 
 // Public pages
 import { PublicLayout } from "./components/public/PublicLayout";
-import { GameGuidePage } from "./pages/public/GameGuidePage";
+import { HomePage } from "./pages/public/home/HomePage";
+import { StartPage } from "./pages/public/StartPage";
 import { OperatorHealthPage } from "./pages/public/OperatorHealthPage";
 import { VerificationPage } from "./pages/public/VerificationPage";
+import { AppealPage } from "./pages/public/AppealPage";
 import { DailyStatsPage } from "./pages/public/DailyStatsPage";
 import { useEffect, useState } from "react";
 
@@ -63,7 +69,8 @@ function ScrollAnimations() {
   return null;
 }
 
-// The legacy operator/status logic uses hashes on root
+// Root: the start page with the two doors (the official community and the bot panel).
+// The community page itself is /server; the operator status view lives behind #status / #ops.
 function HomeApp() {
   const [hash, setHash] = useState(window.location.hash);
   
@@ -77,7 +84,7 @@ function HomeApp() {
     return <OperatorHealthPage />;
   }
 
-  return <Redirect to={`/moderare${window.location.search}`} replace />;
+  return <StartPage />;
 }
 
 function ModerationApp() {
@@ -86,29 +93,72 @@ function ModerationApp() {
     <ModerationLayout>
       <div key={guildId ?? "no-guild"}>
         <Switch>
-          <Route path="/" component={DashboardOverview} />
-          <Route path="/automod" component={() => <CategorySettingsPage section="automod" />} />
-          <Route path="/ai" component={() => <CategorySettingsPage section="ai" />} />
-          <Route path="/anti-spam" component={() => <CategorySettingsPage section="anti-spam" />} />
-          <Route path="/anti-flood" component={() => <CategorySettingsPage section="anti-flood" />} />
-          <Route path="/comportament-suspect" component={() => <CategorySettingsPage section="suspicious" />} />
-          <Route path="/protectie" component={ProtectionPage} />
-          <Route path="/anti-raid" component={() => <CategorySettingsPage section="anti-raid" />} />
-          <Route path="/politici" component={() => <CategorySettingsPage section="roles-channels" />} />
-          <Route path="/comenzi" component={CommandsPage} />
-          <Route path="/cazuri" component={CasesPage} />
-          <Route path="/audit" component={AuditPage} />
+          <Route path="/" component={OverviewPage} />
+          {/* The protection group is one page: the same component on all six routes keeps unsaved changes while moving between modules. */}
+          <Route path="/protectie" component={ProtectionGroupPage} />
+          <Route path="/automod" component={ProtectionGroupPage} />
+          <Route path="/anti-spam" component={ProtectionGroupPage} />
+          <Route path="/anti-flood" component={ProtectionGroupPage} />
+          <Route path="/anti-raid" component={ProtectionGroupPage} />
+          <Route path="/comportament-suspect" component={ProtectionGroupPage} />
+          <Route path="/ai" component={JudgePage} />
+          {/* The sanctions group is one page too: escalation, staff commands, roles and channels, and the schedule. */}
+          <Route path="/sanctiuni" component={SanctionsGroupPage} />
+          <Route path="/sanctiuni/escaladare" component={SanctionsGroupPage} />
+          <Route path="/sanctiuni/comenzi" component={SanctionsGroupPage} />
+          <Route path="/sanctiuni/roluri-canale" component={SanctionsGroupPage} />
+          <Route path="/sanctiuni/program" component={SanctionsGroupPage} />
+          <Route path="/sanctiuni/contestatii" component={SanctionsGroupPage} />
+          <Route path="/sanctiuni/ocolire-ban" component={SanctionsGroupPage} />
+          {/* Older addresses of the same settings, kept for bookmarks and links. */}
+          <Route path="/politici" component={() => <Redirect to="/sanctiuni/roluri-canale" replace />} />
+          <Route path="/config/escaladare" component={() => <Redirect to="/sanctiuni/escaladare" replace />} />
+          <Route path="/config/unelte" component={() => <Redirect to="/sanctiuni/comenzi" replace />} />
+          {/* Cases and logs: the settings of cases, the audit and the activity logs, as one page. */}
+          <Route path="/jurnale" component={LogsGroupPage} />
+          <Route path="/jurnale/cazuri" component={LogsGroupPage} />
+          <Route path="/jurnale/audit" component={LogsGroupPage} />
+          <Route path="/jurnale/activitate" component={LogsGroupPage} />
+          <Route path="/config/cazuri-audit" component={() => <Redirect to="/jurnale/cazuri" replace />} />
+          <Route path="/comenzi" component={CommandsPanelPage} />
+          {/* The case list and the audit log: one page, two modules. */}
+          <Route path="/cazuri" component={RecordsGroupPage} />
+          <Route path="/audit" component={RecordsGroupPage} />
           <Route path="/config" component={ConfigOverviewPage} />
-          <Route path="/config/mesaje" component={MessageTemplatesPage} />
-          <Route path="/config/avansat" component={AdvancedSettingsPage} />
-          <Route path="/config/unelte" component={() => <CategorySettingsPage section="tools" />} />
-          <Route path="/config/cazuri-audit" component={() => <CategorySettingsPage section="cases-audit" />} />
-          <Route path="/config/escaladare" component={() => <CategorySettingsPage section="escalation" />} />
-          <Route path="/config/embeduri" component={() => <CategorySettingsPage section="embeds" />} />
+          <Route path="/config/mesaje" component={MessagesGroupPage} />
+          <Route path="/config/mesaje/jurnale" component={MessagesGroupPage} />
+          <Route path="/config/mesaje/alianta" component={MessagesGroupPage} />
+          <Route path="/config/avansat" component={() => <Redirect to="/setari/acces" replace />} />
+          <Route path="/config/embeduri" component={() => <Redirect to="/setari/notificari" replace />} />
           <Route path="/canale" component={() => <BotControlPage channelsOnly />} />
-          <Route path="/provisioning" component={() => <BotControlPage provisioningOnly />} />
+          <Route path="/provisioning" component={() => <Redirect to="/control/canale" replace />} />
           <Route path="/bot" component={() => <BotControlPage />} />
-          <Route path="/verificare" component={VerificationAdminPage} />
+          <Route path="/verificare" component={VerificationGroupPage} />
+          <Route path="/verificare/setari" component={VerificationGroupPage} />
+          <Route path="/verificare/mesaje" component={VerificationGroupPage} />
+          <Route path="/verificare/membri" component={VerificationGroupPage} />
+          <Route path="/tichete" component={TicketsGroupPage} />
+          <Route path="/tichete/aplicatii" component={TicketsGroupPage} />
+          <Route path="/tichete/parteneriate" component={TicketsGroupPage} />
+          <Route path="/tichete/ajutor" component={TicketsGroupPage} />
+          <Route path="/tichete/contestatii" component={TicketsGroupPage} />
+          <Route path="/tichete/setari" component={TicketsGroupPage} />
+          <Route path="/oracol" component={OracleGroupPage} />
+          <Route path="/oracol/pornire" component={OracleGroupPage} />
+          <Route path="/oracol/conversatie" component={OracleGroupPage} />
+          <Route path="/oracol/ton" component={OracleGroupPage} />
+          <Route path="/oracol/profetii" component={OracleGroupPage} />
+          <Route path="/setari" component={SettingsGroupPage} />
+          <Route path="/setari/acces" component={SettingsGroupPage} />
+          <Route path="/setari/notificari" component={SettingsGroupPage} />
+          <Route path="/setari/privat" component={SettingsGroupPage} />
+          <Route path="/setari/bun-venit" component={SettingsGroupPage} />
+          <Route path="/control" component={ControlGroupPage} />
+          <Route path="/control/invitatii" component={ControlGroupPage} />
+          <Route path="/control/recrutare" component={ControlGroupPage} />
+          <Route path="/control/raport" component={ControlGroupPage} />
+          <Route path="/control/canale" component={ControlGroupPage} />
+          <Route path="/control/bot" component={ControlGroupPage} />
           <Route path="/pornire-server" component={ServerSetupPage} />
           <Route path="/ranguri-activitate" component={ActivityRanksPage} />
           <Route path="/asistent" component={OfflineAssistant} />
@@ -137,9 +187,10 @@ export default function App() {
       <ScrollAnimations />
       <Switch>
         <Route path="/" component={HomeApp} />
-        <Route path="/server" component={GameGuidePage} />
+        <Route path="/server" component={HomePage} />
         <Route path="/joc" component={() => <Redirect to="/server" replace />} />
         <Route path="/verificare" component={VerificationPage} />
+        <Route path="/contestatie" component={AppealPage} />
         <Route path="/statistici" component={() => <PublicLayout><DailyStatsPage /></PublicLayout>} />
         <Route path="/moderare" nest>
           <ModerationApp />

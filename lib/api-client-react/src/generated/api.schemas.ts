@@ -418,6 +418,11 @@ export interface VerificationPanelPublishInput {
   thumbnailUrl?: string;
   /** @pattern ^(?:\d{5,25})?$ */
   panelMessageId: string;
+  /**
+   * Roles given together with roleId, at the button and at manual verification.
+   * @maxItems 10
+   */
+  extraRoleIds?: string[];
 }
 
 /**
@@ -527,6 +532,8 @@ export interface VerificationMember {
   /** @nullable */
   joinedAt: string | null;
   verified: boolean;
+  /** Every role the member has, so the panel can show which verification roles are missing. */
+  roleIds: string[];
 }
 
 export interface VerificationMembersResponse {

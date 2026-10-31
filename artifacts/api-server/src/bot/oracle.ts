@@ -12,6 +12,7 @@
 // logged or echoed. Curses are announced in lore language, never by quoting.
 
 import { Client, TextChannel } from "discord.js";
+import { getOracleSettings, setOracleEnabled } from "./oracle-settings";
 import { logger } from "../lib/logger";
 import {
   MOOD_META,
@@ -113,7 +114,7 @@ function getGuildState(guildId = DEFAULT_GUILD_ID): GuildOracleState {
 }
 
 export function isOracleEnabled(guildId: string): boolean {
-  return !manuallyStoppedGuilds.has(guildId);
+  return !manuallyStoppedGuilds.has(guildId) && getOracleSettings(guildId).enabled;
 }
 
 function invalidateOracleRun(guildId: string): void {
@@ -126,10 +127,13 @@ export function stopOracle(guildId: string): void {
   manuallyStoppedGuilds.add(guildId);
   invalidateOracleRun(guildId);
   logger.info({ guildId }, "Oracle AI stopped by administrator");
+  // The panel shows the same switch; keep it in step and across restarts.
+  void setOracleEnabled(guildId, false).catch((err) => logger.warn({ err, guildId }, "Oracle switch could not be saved"));
 }
 
 export function resumeOracle(guildId: string): void {
   manuallyStoppedGuilds.delete(guildId);
+  void setOracleEnabled(guildId, true).catch((err) => logger.warn({ err, guildId }, "Oracle switch could not be saved"));
 }
 
 // Romanian toxicity keyword stems (substring match on a diacritics-stripped,

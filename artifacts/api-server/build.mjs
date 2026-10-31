@@ -125,6 +125,12 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
   await cp(path.join(artifactDir, "assets/activity-rank-default.png"), path.join(barDir, "default-banner.png"));
   await cp(path.join(artifactDir, "assets/activity-rank-font.ttf"), path.join(barDir, "member-font.ttf"));
   await cp(path.join(artifactDir, "assets/activity-rank-font-license.txt"), path.join(barDir, "member-font-license.txt"));
+  // The daily report's card: its script and the same font, next to the bundle.
+  const reportDir = path.join(distDir, "daily-report");
+  await mkdir(reportDir, { recursive: true });
+  await cp(path.join(artifactDir, "src/bot/daily-report/render.py"), path.join(reportDir, "render.py"));
+  await cp(path.join(artifactDir, "assets/activity-rank-font.ttf"), path.join(reportDir, "report-font.ttf"));
+  await cp(path.join(artifactDir, "assets/activity-rank-font-license.txt"), path.join(reportDir, "report-font-license.txt"));
   const artwork = {
     normal: "xp_bar_normale_1791233452457.py",
     pro: "xp_bar_pro_1791233452441.py",

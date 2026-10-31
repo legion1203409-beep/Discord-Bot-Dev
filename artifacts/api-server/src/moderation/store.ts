@@ -10,6 +10,57 @@ import {
 import { ModerationRevisionConflictError } from "./errors";
 
 export type CaseStatus = "open" | "closed";
+export type AppealStatus = "pending" | "accepted" | "rejected";
+
+export interface CaseListFilters {
+  status?: CaseStatus;
+  userId?: string;
+  actionType?: string;
+  limit: number;
+  offset: number;
+}
+
+/** The latest appeal against a case. */
+export interface ModerationCaseAppeal {
+  id: string;
+  status: AppealStatus;
+  appellantId: string;
+  /** The appeal ticket's channel, or "web:<id>" for an appeal made on the website. */
+  channelId: string;
+  /** Where it was made: a ticket on the server, or the website (after a ban). */
+  source: "ticket" | "web";
+  /** What the member wrote, for appeals made on the website. */
+  body: string | null;
+  createdAt: Date;
+  decidedAt: Date | null;
+  decidedBy: string | null;
+  decisionNote: string | null;
+  /** A question from staff still waiting for the member's answer. */
+  clarification: { id: string; question: string } | null;
+}
+
+/** A website appeal with what the bot needs to judge it. */
+export type BanFingerprint = {
+  guildId: string; userId: string; username: string; globalName: string | null; avatarHash: string | null;
+  accountCreatedAt: Date | null; bannedAt: Date;
+};
+
+export interface ModerationWebAppeal extends ModerationCaseAppeal {
+  guildId: string;
+  caseId: string;
+  staffChannelId: string | null;
+  staffMessageId: string | null;
+}
+
+/** The channel ID that stands for a website appeal in the appeals table. */
+export function webAppealChannelId(appealId: string): string {
+  return `web:${appealId}`;
+}
+
+/** Where an appeal was made, for case notes: the ticket, or the website. */
+function appealPlace(channelId: string): string {
+  return channelId.startsWith("web:") ? "de pe site" : `din ticketul <#${channelId}>`;
+}
 
 export interface ModerationCase {
   id: string;
@@ -25,6 +76,8 @@ export interface ModerationCase {
   updatedAt: Date;
   closedAt: Date | null;
   closedBy: string | null;
+  /** The latest appeal's state, in case lists. */
+  appealStatus?: AppealStatus | null;
 }
 
 export interface ModerationCaseNote {
@@ -101,7 +154,14 @@ export interface ModerationStore {
   createSession(input: Omit<ModerationSession, "revokedAt">): Promise<void>;
   getSession(tokenHash: string): Promise<ModerationSession | null>;
   revokeSession(tokenHash: string): Promise<void>;
-  listCases(guildId: string, filters: { status?: CaseStatus; userId?: string; limit: number; offset: number }): Promise<ModerationCase[]>;
+  listCases(guildId: string, filters: CaseListFilters): Promise<ModerationCase[]>;
+  /** Open and closed cases matching the member and action filters. */
+  countCases?(guildId: string, filters: Pick<CaseListFilters, "userId" | "actionType">): Promise<{ open: number; closed: number }>;
+  getLatestAppeal?(guildId: string, caseId: string): Promise<ModerationCaseAppeal | null>;
+  /** An appeal made on the website after a ban; null when the case has another one waiting. */
+  createWebAppeal?(input: { guildId: string; caseId: string; appellantId: string; body: string }): Promise<ModerationWebAppeal | null>;
+  getWebAppeal?(guildId: string, appealId: string): Promise<ModerationWebAppeal | null>;
+  setAppealStaffMessage?(input: { guildId: string; appealId: string; channelId: string; messageId: string }): Promise<void>;
   getCase(guildId: string, caseId: string): Promise<ModerationCase | null>;
   createCase(input: {
     guildId: string; subjectId: string; actorId: string | null; actionType: string;
@@ -121,6 +181,10 @@ export interface ModerationStore {
   listModerationLogs(guildId: string, limit: number, offset: number): Promise<ModerationAuditLog[]>;
   writeAudit(input: Omit<ModerationAuditLog, "id" | "createdAt">): Promise<void>;
   recordMemberJoin(input: { guildId: string; userId: string; joinedAt: Date }): Promise<void>;
+  /** What a banned account looked like, to recognise it on a new account (bot/moderation/ban-evasion.ts). */
+  recordBanFingerprint?(input: BanFingerprint): Promise<void>;
+  removeBanFingerprint?(guildId: string, userId: string): Promise<void>;
+  listRecentBanFingerprints?(guildId: string, since: Date, limit: number): Promise<BanFingerprint[]>;
   getMemberJoinAt(guildId: string, userId: string): Promise<Date | null>;
   clearMemberJoinAt(guildId: string, userId: string, joinedAt: Date): Promise<void>;
   beginAction(input: { guildId: string; idempotencyKey: string; actorId: string; actionType: string; input: Record<string, unknown> }): Promise<{ created: boolean; action: ModerationActionLedger }>;
@@ -145,8 +209,42 @@ function asObject(value: unknown): Record<string, unknown> {
     : {};
 }
 
-function caseFromRow(row: Record<string, unknown>): ModerationCase {
+const APPEAL_STATUSES: readonly AppealStatus[] = ["pending", "accepted", "rejected"];
+
+function appealFromRow(row: Record<string, unknown>): ModerationCaseAppeal {
   return {
+    id: String(row.id),
+    status: APPEAL_STATUSES.includes(row.status as AppealStatus) ? row.status as AppealStatus : "pending",
+    appellantId: String(row.appellant_id),
+    channelId: String(row.channel_id),
+    source: row.source === "web" ? "web" : "ticket",
+    body: row.body ? String(row.body) : null,
+    createdAt: row.created_at as Date,
+    decidedAt: (row.decided_at as Date | null) ?? null,
+    decidedBy: row.decided_by ? String(row.decided_by) : null,
+    decisionNote: row.decision_note ? String(row.decision_note) : null,
+    clarification: row.pending_clarification_id && row.pending_clarification_question
+      ? { id: String(row.pending_clarification_id), question: String(row.pending_clarification_question) }
+      : null,
+  };
+}
+
+function webAppealFromRow(row: Record<string, unknown>): ModerationWebAppeal {
+  return {
+    ...appealFromRow(row),
+    guildId: String(row.guild_id),
+    caseId: String(row.case_id),
+    staffChannelId: row.staff_channel_id ? String(row.staff_channel_id) : null,
+    staffMessageId: row.staff_message_id ? String(row.staff_message_id) : null,
+  };
+}
+
+function caseFromRow(row: Record<string, unknown>): ModerationCase {
+  const appeal = "appeal_status" in row
+    ? { appealStatus: APPEAL_STATUSES.includes(row.appeal_status as AppealStatus) ? row.appeal_status as AppealStatus : null }
+    : {};
+  return {
+    ...appeal,
     id: String(row.id), guildId: String(row.guild_id), subjectId: String(row.subject_id),
     actorId: row.actor_id ? String(row.actor_id) : null, actionType: String(row.action_type),
     reason: row.reason ? String(row.reason) : null,
@@ -222,6 +320,12 @@ export class PostgresModerationStore implements ModerationStore {
           target_type text, target_id text, detail jsonb NOT NULL DEFAULT '{}'::jsonb,
           created_at timestamptz NOT NULL DEFAULT now()
         );
+        CREATE TABLE IF NOT EXISTS moderation_ban_fingerprints (
+          guild_id text NOT NULL, user_id text NOT NULL, username text NOT NULL DEFAULT '',
+          global_name text, avatar_hash text, account_created_at timestamptz,
+          banned_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY (guild_id, user_id)
+        );
+        CREATE INDEX IF NOT EXISTS moderation_ban_fingerprints_recent_idx ON moderation_ban_fingerprints (guild_id, banned_at DESC);
         CREATE TABLE IF NOT EXISTS moderation_member_join_state (
           guild_id text NOT NULL, user_id text NOT NULL, joined_at timestamptz NOT NULL,
           updated_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY (guild_id, user_id)
@@ -253,7 +357,11 @@ export class PostgresModerationStore implements ModerationStore {
         ALTER TABLE moderation_appeals
           ADD COLUMN IF NOT EXISTS pending_clarification_id uuid,
           ADD COLUMN IF NOT EXISTS pending_clarification_question text,
-          ADD COLUMN IF NOT EXISTS pending_clarification_by text;
+          ADD COLUMN IF NOT EXISTS pending_clarification_by text,
+          ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT 'ticket',
+          ADD COLUMN IF NOT EXISTS body text,
+          ADD COLUMN IF NOT EXISTS staff_channel_id text,
+          ADD COLUMN IF NOT EXISTS staff_message_id text;
       `);
     })();
     return schemaPromise;
@@ -451,19 +559,109 @@ export class PostgresModerationStore implements ModerationStore {
     await pool.query("UPDATE moderation_sessions SET revoked_at = now() WHERE token_hash = $1 AND revoked_at IS NULL", [tokenHash]);
   }
 
-  async listCases(guildId: string, filters: { status?: CaseStatus; userId?: string; limit: number; offset: number }) {
+  async listCases(guildId: string, filters: CaseListFilters) {
     await this.ensureSchema();
     const params: unknown[] = [guildId];
-    const clauses = ["guild_id = $1"];
-    if (filters.status) { params.push(filters.status); clauses.push(`status = $${params.length}`); }
-    if (filters.userId) { params.push(filters.userId); clauses.push(`subject_id = $${params.length}`); }
+    const clauses = ["c.guild_id = $1"];
+    if (filters.status) { params.push(filters.status); clauses.push(`c.status = $${params.length}`); }
+    if (filters.userId) { params.push(filters.userId); clauses.push(`c.subject_id = $${params.length}`); }
+    if (filters.actionType) { params.push(filters.actionType); clauses.push(`c.action_type = $${params.length}`); }
     params.push(filters.limit, filters.offset);
     const { rows } = await pool.query<Record<string, unknown>>(
-      `SELECT * FROM moderation_cases WHERE ${clauses.join(" AND ")}
-       ORDER BY created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      `SELECT c.*,
+         (SELECT a.status FROM moderation_appeals a
+          WHERE a.guild_id = c.guild_id AND a.case_id = c.id
+          ORDER BY a.created_at DESC LIMIT 1) AS appeal_status
+       FROM moderation_cases c WHERE ${clauses.join(" AND ")}
+       ORDER BY c.created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params,
     );
     return rows.map(caseFromRow);
+  }
+
+  async countCases(guildId: string, filters: Pick<CaseListFilters, "userId" | "actionType">) {
+    await this.ensureSchema();
+    const params: unknown[] = [guildId];
+    const clauses = ["guild_id = $1"];
+    if (filters.userId) { params.push(filters.userId); clauses.push(`subject_id = $${params.length}`); }
+    if (filters.actionType) { params.push(filters.actionType); clauses.push(`action_type = $${params.length}`); }
+    const { rows } = await pool.query<{ status: string; count: string }>(
+      `SELECT status, COUNT(*)::text AS count FROM moderation_cases WHERE ${clauses.join(" AND ")} GROUP BY status`,
+      params,
+    );
+    const count = (status: CaseStatus) => Number(rows.find((row) => row.status === status)?.count ?? 0);
+    return { open: count("open"), closed: count("closed") };
+  }
+
+  async getLatestAppeal(guildId: string, caseId: string): Promise<ModerationCaseAppeal | null> {
+    await this.ensureSchema();
+    const { rows } = await pool.query<Record<string, unknown>>(
+      `SELECT * FROM moderation_appeals WHERE guild_id = $1 AND case_id = $2
+       ORDER BY created_at DESC LIMIT 1`,
+      [guildId, caseId],
+    );
+    return rows[0] ? appealFromRow(rows[0]) : null;
+  }
+
+  async createWebAppeal(input: { guildId: string; caseId: string; appellantId: string; body: string }): Promise<ModerationWebAppeal | null> {
+    await this.ensureSchema();
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const caseResult = await client.query<{ subject_id: string; action_type: string }>(
+        "SELECT subject_id, action_type FROM moderation_cases WHERE guild_id = $1 AND id = $2 FOR UPDATE",
+        [input.guildId, input.caseId],
+      );
+      const found = caseResult.rows[0];
+      if (found?.subject_id !== input.appellantId || found.action_type !== "ban") {
+        await client.query("ROLLBACK");
+        return null;
+      }
+      const id = randomUUID();
+      // At most one waiting appeal per case (moderation_appeals_one_pending_idx).
+      const inserted = await client.query<Record<string, unknown>>(
+        `INSERT INTO moderation_appeals (id, guild_id, case_id, appellant_id, channel_id, source, body)
+         VALUES ($1, $2, $3, $4, $5, 'web', $6) ON CONFLICT DO NOTHING RETURNING *`,
+        [id, input.guildId, input.caseId, input.appellantId, webAppealChannelId(id), input.body],
+      );
+      if (!inserted.rowCount) {
+        await client.query("ROLLBACK");
+        return null;
+      }
+      await client.query(
+        `INSERT INTO moderation_case_notes (id, case_id, guild_id, author_id, body)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [randomUUID(), input.caseId, input.guildId, input.appellantId, `Contestație depusă pe site:\n${input.body}`],
+      );
+      await this.insertAudit(client, {
+        guildId: input.guildId, actorId: input.appellantId, eventType: "case.appeal_submitted",
+        targetType: "case", targetId: input.caseId, detail: { source: "web", appealId: id },
+      });
+      await client.query("COMMIT");
+      return webAppealFromRow(inserted.rows[0]!);
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async getWebAppeal(guildId: string, appealId: string): Promise<ModerationWebAppeal | null> {
+    await this.ensureSchema();
+    const { rows } = await pool.query<Record<string, unknown>>(
+      "SELECT * FROM moderation_appeals WHERE guild_id = $1 AND id = $2 AND source = 'web'",
+      [guildId, appealId],
+    );
+    return rows[0] ? webAppealFromRow(rows[0]) : null;
+  }
+
+  async setAppealStaffMessage(input: { guildId: string; appealId: string; channelId: string; messageId: string }): Promise<void> {
+    await this.ensureSchema();
+    await pool.query(
+      "UPDATE moderation_appeals SET staff_channel_id = $3, staff_message_id = $4 WHERE guild_id = $1 AND id = $2",
+      [input.guildId, input.appealId, input.channelId, input.messageId],
+    );
   }
 
   async getCase(guildId: string, caseId: string) {
@@ -660,7 +858,7 @@ export class PostgresModerationStore implements ModerationStore {
          VALUES ($1, $2, $3, $4, $5)`,
         [
           randomUUID(), input.caseId, input.guildId, input.actorId,
-          `Personalul <@${input.actorId}> a solicitat clarificări pentru contestația din ticketul <#${input.channelId}>:\n${input.question}`,
+          `Personalul <@${input.actorId}> a solicitat clarificări pentru contestația ${appealPlace(input.channelId)}:\n${input.question}`,
         ],
       );
       await this.insertAudit(client, {
@@ -705,7 +903,7 @@ export class PostgresModerationStore implements ModerationStore {
          VALUES ($1, $2, $3, $4, $5)`,
         [
           randomUUID(), input.caseId, input.guildId, input.actorId,
-          `Solicitarea de clarificări nu a putut fi publicată în ticketul <#${input.channelId}> și a fost anulată.`,
+          `Solicitarea de clarificări nu a putut fi publicată ${input.channelId.startsWith("web:") ? "pe site" : `în ticketul <#${input.channelId}>`} și a fost anulată.`,
         ],
       );
       await this.insertAudit(client, {
@@ -927,6 +1125,35 @@ export class PostgresModerationStore implements ModerationStore {
   async writeAudit(input: Omit<ModerationAuditLog, "id" | "createdAt">) {
     await this.ensureSchema();
     await this.insertAudit(pool, input);
+  }
+
+  async recordBanFingerprint(input: BanFingerprint): Promise<void> {
+    await this.ensureSchema();
+    await pool.query(
+      `INSERT INTO moderation_ban_fingerprints (guild_id, user_id, username, global_name, avatar_hash, account_created_at, banned_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (guild_id, user_id) DO UPDATE SET username = EXCLUDED.username, global_name = EXCLUDED.global_name,
+         avatar_hash = EXCLUDED.avatar_hash, account_created_at = EXCLUDED.account_created_at, banned_at = EXCLUDED.banned_at`,
+      [input.guildId, input.userId, input.username.slice(0, 64), input.globalName?.slice(0, 64) ?? null, input.avatarHash, input.accountCreatedAt, input.bannedAt],
+    );
+  }
+
+  async removeBanFingerprint(guildId: string, userId: string): Promise<void> {
+    await this.ensureSchema();
+    await pool.query("DELETE FROM moderation_ban_fingerprints WHERE guild_id = $1 AND user_id = $2", [guildId, userId]);
+  }
+
+  async listRecentBanFingerprints(guildId: string, since: Date, limit: number): Promise<BanFingerprint[]> {
+    await this.ensureSchema();
+    const { rows } = await pool.query<Record<string, unknown>>(
+      `SELECT * FROM moderation_ban_fingerprints WHERE guild_id = $1 AND banned_at >= $2 ORDER BY banned_at DESC LIMIT $3`,
+      [guildId, since, limit],
+    );
+    return rows.map((row) => ({
+      guildId: String(row.guild_id), userId: String(row.user_id), username: String(row.username ?? ""),
+      globalName: row.global_name == null ? null : String(row.global_name), avatarHash: row.avatar_hash == null ? null : String(row.avatar_hash),
+      accountCreatedAt: row.account_created_at ? new Date(String(row.account_created_at)) : null, bannedAt: new Date(String(row.banned_at)),
+    }));
   }
 
   async recordMemberJoin(input: { guildId: string; userId: string; joinedAt: Date }): Promise<void> {

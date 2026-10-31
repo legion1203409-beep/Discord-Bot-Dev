@@ -9,9 +9,17 @@ vi.mock("../db", async (importOriginal) => ({
   ...await importOriginal<typeof import("../db")>(),
   loadDailyStatsEmbedConfig: vi.fn(),
 }));
+vi.mock("../daily-report-chart", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../daily-report-chart")>(),
+  renderDailyReportChart: vi.fn().mockResolvedValue(null),
+}));
 
 import { getChannel } from "../channel-config";
-import { buildDailyStatsEmbed, hasRecordedStats, isReportDayBeforeBotJoined, publishDailyStatsReport, repairRecentUnavailableReports, resolveDailyStatsChannelId, type DailyStatsReport } from "../daily-stats";
+import {
+  buildDailyStatsEmbed, dailyChartInput, hasRecordedStats, isReportDayBeforeBotJoined, publishDailyStatsReport, repairRecentUnavailableReports,
+  resolveDailyStatsChannelId, shortStatsDay, type DailyStatsReport,
+} from "../daily-stats";
+import { chartText, renderDailyReportChart } from "../daily-report-chart";
 import { DEFAULT_DAILY_STATS_EMBED_CONFIG } from "../db";
 import * as statsConfig from "../db";
 
@@ -82,12 +90,12 @@ describe("buildDailyStatsEmbed", () => {
     expect(embed.fields?.[0]?.value).toContain("Mesaje totale: **307**");
     expect(embed.fields?.[0]?.value).toContain("👥 Utilizatori unici: **13**");
     expect(embed.fields?.[1]?.name).toBe("Activitate recentă");
-    expect(embed.fields?.[1]?.value).toContain("18/09: 307");
+    expect(embed.fields?.[1]?.value).toContain("Jo 17: 176 · **Vi 18: 307**");
+    expect(embed.fields?.[1]?.value).toContain("Media: **242** mesaje/zi · ziua raportului a fost cea mai activă");
     expect(embed.fields?.[1]?.value).not.toContain("```");
     expect(embed.fields?.[1]?.value).not.toContain("█");
     expect(embed.fields?.[2]?.name).toBe("Canale active");
-    expect(embed.fields?.[2]?.value).toContain("#general");
-    expect(embed.fields?.[2]?.value).toContain("124 mesaje");
+    expect(embed.fields?.[2]?.value).toBe("🥇 **#general** · **124** mesaje · 40%");
     expect(embed.fields?.[2]?.value).not.toContain("░");
   });
 
@@ -168,10 +176,200 @@ describe("buildDailyStatsEmbed", () => {
     const joinedTimestamp = Date.parse("2026-09-25T17:00:00Z");
     const embed = buildDailyStatsEmbed("Server nou", report, DEFAULT_DAILY_STATS_EMBED_CONFIG, joinedTimestamp).toJSON();
     const activity = embed.fields?.find((field) => field.name === DEFAULT_DAILY_STATS_EMBED_CONFIG.activityTitle);
-    expect(activity?.value).toContain("23/09: —");
-    expect(activity?.value).toContain("24/09: —");
-    expect(activity?.value).toContain("25/09: 37");
+    expect(activity?.value).toContain("Mi 23: —");
+    expect(activity?.value).toContain("Jo 24: —");
+    expect(activity?.value).toContain("**Vi 25: 37**");
     expect(embed.fields?.find((field) => field.name === "Acoperirea datelor")?.value).toContain("Prima zi");
+  });
+});
+
+const WEEK: DailyStatsReport = {
+  guildId: "guild-1",
+  day: "2026-10-29",
+  metrics: { messages: 307, uniqueUsers: 13, boosts: 0, joins: 5, leaves: 2, peakVoice: 4 },
+  previous: { messages: 176, uniqueUsers: 15, boosts: 0, joins: 2, leaves: 1, peakVoice: 3 },
+  activity: [
+    { day: "2026-10-23", messages: 48 },
+    { day: "2026-10-24", messages: 83 },
+    { day: "2026-10-25", messages: 61 },
+    { day: "2026-10-26", messages: 119 },
+    { day: "2026-10-27", messages: 94 },
+    { day: "2026-10-28", messages: 176 },
+    { day: "2026-10-29", messages: 307 },
+  ],
+  topChannels: [
+    { channelId: "123456789012345678", channelName: "general", messages: 124 },
+    { channelId: "123456789012345679", channelName: "raiduri", messages: 83 },
+    { channelId: "123456789012345680", channelName: "ajutor", messages: 61 },
+    { channelId: "123456789012345681", channelName: "vechi", messages: 22 },
+    { channelId: "123456789012345682", channelName: "off-topic", messages: 1 },
+  ],
+};
+const LONG_AGO = Date.parse("2026-01-01T12:00:00Z");
+
+describe("the upgraded daily report", () => {
+  it("compares every number with the day before and sums up the members", () => {
+    const embed = buildDailyStatsEmbed("Regatul Cenușii", WEEK, DEFAULT_DAILY_STATS_EMBED_CONFIG, LONG_AGO, { memberCount: 1234 }).toJSON();
+    expect(embed.fields?.[0]?.value).toBe([
+      "💬 Mesaje: **307** · ▲ +131",
+      "👥 Utilizatori unici: **13** · ▼ −2",
+      "🚀 Boost-uri: **0** · la fel",
+      "🟢 Intrări: **5** · ▲ +3",
+      "🔴 Ieșiri: **2** · ▲ +1",
+      "🔊 Vârf vocal: **4** · ▲ +1",
+      "Bilanț: **+3** membri · **1.234** pe server acum",
+      "*▲ ▼ arată schimbarea față de ziua dinainte.*",
+    ].join("\n"));
+  });
+
+  it("does not compare with a day the bot did not watch whole", () => {
+    const joinedTheDayBefore = Date.parse("2026-10-28T17:00:00Z");
+    const embed = buildDailyStatsEmbed("Regatul Cenușii", WEEK, DEFAULT_DAILY_STATS_EMBED_CONFIG, joinedTheDayBefore).toJSON();
+    expect(embed.fields?.[0]?.value).toContain("💬 Mesaje: **307**\n");
+    expect(embed.fields?.[0]?.value).not.toContain("▲");
+    expect(embed.fields?.[0]?.value).not.toContain("ziua dinainte");
+    const noPrevious = buildDailyStatsEmbed("Regatul Cenușii", { ...WEEK, previous: null }, DEFAULT_DAILY_STATS_EMBED_CONFIG, LONG_AGO).toJSON();
+    expect(noPrevious.fields?.[0]?.value).not.toContain("▲");
+  });
+
+  it("lists the week with the report's day in bold, its average and its busiest day", () => {
+    const quieter = { ...WEEK, day: "2026-10-28", activity: WEEK.activity.slice(0, 6), topChannels: [] };
+    const embed = buildDailyStatsEmbed("Regatul Cenușii", quieter, DEFAULT_DAILY_STATS_EMBED_CONFIG, LONG_AGO).toJSON();
+    const activity = embed.fields?.find((field) => field.name === DEFAULT_DAILY_STATS_EMBED_CONFIG.activityTitle)?.value;
+    expect(activity).toBe("Vi 23: 48 · Sâ 24: 83 · Du 25: 61 · Lu 26: 119 · Ma 27: 94 · **Mi 28: 176**\nMedia: **97** mesaje/zi · ziua raportului a fost cea mai activă");
+    const busier = { ...quieter, activity: [...quieter.activity.slice(0, 5), { day: "2026-10-27", messages: 300 }, { day: "2026-10-28", messages: 10 }] };
+    const second = buildDailyStatsEmbed("Regatul Cenușii", busier, DEFAULT_DAILY_STATS_EMBED_CONFIG, LONG_AGO).toJSON();
+    expect(second.fields?.find((field) => field.name === DEFAULT_DAILY_STATS_EMBED_CONFIG.activityTitle)?.value).toContain("cea mai activă: **Ma 27** (300)");
+  });
+
+  it("names the channels with mentions, medals and their share of the day", () => {
+    const embed = buildDailyStatsEmbed("Regatul Cenușii", WEEK, DEFAULT_DAILY_STATS_EMBED_CONFIG, LONG_AGO, {
+      channelExists: (id) => id !== "123456789012345681",
+    }).toJSON();
+    expect(embed.fields?.find((field) => field.name === DEFAULT_DAILY_STATS_EMBED_CONFIG.channelsTitle)?.value).toBe([
+      "🥇 <#123456789012345678> · **124** mesaje · 40%",
+      "🥈 <#123456789012345679> · **83** mesaje · 27%",
+      "🥉 <#123456789012345680> · **61** mesaje · 20%",
+      "4. **#vechi** · **22** mesaje · 7%",
+      "5. <#123456789012345682> · **1** mesaje · sub 1%",
+    ].join("\n"));
+  });
+
+  it("shows the day's card instead of the custom image and keeps only the week's summary in the text", () => {
+    const config = { ...DEFAULT_DAILY_STATS_EMBED_CONFIG, imageUrl: "https://example.com/banner.png" };
+    const withCard = buildDailyStatsEmbed("Regatul Cenușii", WEEK, config, LONG_AGO, { chartAttached: true }).toJSON();
+    expect(withCard.image?.url).toBe("attachment://raport-zilnic.png");
+    expect(withCard.fields?.find((field) => field.name === config.activityTitle)?.value)
+      .toBe("Media: **127** mesaje/zi · ziua raportului a fost cea mai activă");
+    const withoutCard = buildDailyStatsEmbed("Regatul Cenușii", WEEK, config, LONG_AGO).toJSON();
+    expect(withoutCard.image?.url).toBe("https://example.com/banner.png");
+  });
+
+  it("gives the card plain text, the change since yesterday and the days before installation as gaps", () => {
+    const joined = Date.parse("2026-10-25T09:00:00Z");
+    const input = dailyChartInput("🔥 Regatul Cenușii", WEEK, DEFAULT_DAILY_STATS_EMBED_CONFIG, joined, 1234);
+    expect(input.guild).toBe("Regatul Cenușii");
+    expect(input.date).toBe("joi, 29 octombrie 2026");
+    expect(input.color).toBe(DEFAULT_DAILY_STATS_EMBED_CONFIG.color);
+    expect(input.metrics.map((metric) => metric.label)).toEqual(["Mesaje", "Utilizatori unici", "Boost-uri", "Intrări", "Ieșiri", "Vârf vocal"]);
+    expect(input.metrics[0]).toEqual({ label: "Mesaje", value: 307, delta: 131 });
+    expect(input.metrics[4]).toEqual({ label: "Ieșiri", value: 2, delta: 1, invert: true });
+    expect(input.activityTitle).toBe("Activitate · ultimele 7 zile");
+    expect(input.activity.slice(0, 2)).toEqual([{ label: "Vi 23", value: null, current: false }, { label: "Sâ 24", value: null, current: false }]);
+    expect(input.activity.at(-1)).toEqual({ label: "Jo 29", value: 307, current: true });
+    expect(input.average).toBeCloseTo((61 + 119 + 94 + 176 + 307) / 5);
+    expect(input.summary).toBe("Bilanț: +3 membri · 1.234 pe server acum");
+  });
+
+  it("strips what the card's font cannot draw", () => {
+    expect(chartText("📊 **Statistici** <:cenusa:123456789012345678> · {x}")).toBe("Statistici · {x}");
+    expect(chartText("👩‍👩‍👧 Familie ❤️")).toBe("Familie");
+    expect(shortStatsDay("2026-11-01")).toBe("Du 01");
+  });
+});
+
+describe("posting the upgraded report", () => {
+  const joinedTimestamp = LONG_AGO;
+
+  function setup(chart: boolean) {
+    vi.mocked(getChannel).mockReturnValue("main-channel");
+    const query = vi.spyOn(pool, "query").mockImplementation(async (sql, params) => {
+      const text = String(sql);
+      const day = Array.isArray(params) ? params[1] : undefined;
+      if (text.includes("SELECT report_message_id")) return { rows: [] } as never;
+      if (text.includes("COUNT(*)")) return { rows: [{ count: day === "2026-10-29" ? "13" : "15" }] } as never;
+      if (text.includes("FROM discord_daily_channels")) {
+        return { rows: WEEK.topChannels.map((item) => ({ channel_id: item.channelId, channel_name: item.channelName, message_count: item.messages })) } as never;
+      }
+      if (text.includes("day = ANY")) return { rows: WEEK.activity.map((item) => ({ day: item.day, message_count: item.messages })) } as never;
+      if (text.includes("SELECT message_count")) {
+        const metrics = day === "2026-10-29" ? WEEK.metrics : WEEK.previous!;
+        return { rows: [{ message_count: metrics.messages, joins: metrics.joins, leaves: metrics.leaves, boosts: metrics.boosts, peak_voice: metrics.peakVoice }] } as never;
+      }
+      return { rows: [] } as never;
+    });
+    const config = vi.mocked(statsConfig.loadDailyStatsEmbedConfig);
+    config.mockResolvedValue({ ...DEFAULT_DAILY_STATS_EMBED_CONFIG, channelId: "stats-channel", chart });
+    const send = vi.fn().mockResolvedValue({ id: "report-1" });
+    const channel = Object.create(TextChannel.prototype) as TextChannel;
+    Object.defineProperties(channel, { guildId: { value: "guild-1" }, send: { value: send } });
+    const client = {
+      user: { id: "bot-1" },
+      guilds: { cache: new Map([["guild-1", {
+        name: "Regatul Cenușii", joinedTimestamp, memberCount: 1234,
+        channels: { cache: new Map(WEEK.topChannels.map((item) => [item.channelId, {}])) },
+      }]]) },
+      channels: { fetch: vi.fn().mockResolvedValue(channel) },
+    } as unknown as Client;
+    return {
+      send, client,
+      restore: () => {
+        config.mockReset();
+        query.mockRestore();
+        vi.mocked(renderDailyReportChart).mockReset();
+        vi.mocked(renderDailyReportChart).mockResolvedValue(null);
+      },
+    };
+  }
+
+  it("attaches the day's card and points the embed at it", async () => {
+    const { send, client, restore } = setup(true);
+    vi.mocked(renderDailyReportChart).mockResolvedValue(Buffer.from("png"));
+    try {
+      expect(await publishDailyStatsReport(client, "guild-1", "2026-10-29")).toBe(true);
+      expect(vi.mocked(renderDailyReportChart).mock.calls[0][0].metrics[0]).toEqual({ label: "Mesaje", value: 307, delta: 131 });
+      expect(vi.mocked(renderDailyReportChart).mock.calls[0][0].summary).toBe("Bilanț: +3 membri · 1.234 pe server acum");
+      const payload = send.mock.calls[0][0];
+      expect(payload.files).toHaveLength(1);
+      expect(payload.files[0].name).toBe("raport-zilnic.png");
+      const embed = payload.embeds[0].toJSON();
+      expect(embed.image?.url).toBe("attachment://raport-zilnic.png");
+      expect(embed.fields?.[0]?.value).toContain("**1.234** pe server acum");
+      expect(embed.fields?.find((field: { name: string }) => field.name === DEFAULT_DAILY_STATS_EMBED_CONFIG.channelsTitle)?.value)
+        .toContain("🥇 <#123456789012345678>");
+    } finally {
+      restore();
+    }
+  });
+
+  it("posts without the card when it is turned off or cannot be drawn", async () => {
+    const off = setup(false);
+    try {
+      expect(await publishDailyStatsReport(off.client, "guild-1", "2026-10-29")).toBe(true);
+      expect(renderDailyReportChart).not.toHaveBeenCalled();
+      expect(off.send.mock.calls[0][0].files).toBeUndefined();
+    } finally {
+      off.restore();
+    }
+    const failed = setup(true);
+    try {
+      expect(await publishDailyStatsReport(failed.client, "guild-1", "2026-10-29")).toBe(true);
+      expect(renderDailyReportChart).toHaveBeenCalledOnce();
+      expect(failed.send.mock.calls[0][0].files).toBeUndefined();
+      expect(failed.send.mock.calls[0][0].embeds[0].toJSON().image).toBeUndefined();
+    } finally {
+      failed.restore();
+    }
   });
 });
 

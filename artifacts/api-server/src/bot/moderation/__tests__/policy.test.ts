@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PermissionFlagsBits, PermissionsBitField } from "discord.js";
-import { assertRoleGrantSafe, assertTargetHierarchy, classifyBulkRoleTarget, hasDiscordPermission } from "../policy";
+import { assertRoleGrantSafe, assertTargetHierarchy, classifyBulkRoleTarget, hasDiscordPermission, manualCommandRefusal } from "../policy";
 
 function member(id: string, position: number, permissions = 0n) {
   const role = { id: `${id}-role`, position };
@@ -37,6 +37,15 @@ describe("manual moderation policy", () => {
     expect(classifyBulkRoleTarget({ ...base, memberId: "member", isBot: false, memberRoleIds: ["protected"] })).toBe("skipped");
     expect(classifyBulkRoleTarget({ ...base, memberId: "senior", isBot: false, memberRoleIds: [], targetHighestPosition: 10 })).toBe("skipped");
     expect(classifyBulkRoleTarget({ ...base, memberId: "owner", isBot: false, memberRoleIds: [] })).toBe("skipped");
+  });
+
+  it("refuses every command while the staff tools are off, and a switched-off command for everyone", () => {
+    expect(manualCommandRefusal({ enabled: false }, "warn")).toMatch(/dezactivate/);
+    expect(manualCommandRefusal({ enabled: false, disabledCommands: [] }, "ban")).toMatch(/dezactivate/);
+    expect(manualCommandRefusal({ enabled: true }, "warn")).toBeNull();
+    expect(manualCommandRefusal({ enabled: true, disabledCommands: [] }, "purge")).toBeNull();
+    expect(manualCommandRefusal({ enabled: true, disabledCommands: ["purge", "role"] }, "purge")).toBe("Comanda /purge este oprită pe acest server.");
+    expect(manualCommandRefusal({ enabled: true, disabledCommands: ["purge", "role"] }, "kick")).toBeNull();
   });
 
   it("requires the matching Discord permission", () => {

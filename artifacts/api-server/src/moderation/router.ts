@@ -22,7 +22,7 @@ import {
 import 
 {
 
- Router, type ErrorRequestHandler, type RequestHandler, type Response 
+ Router, type ErrorRequestHandler, type Request, type RequestHandler, type Response 
 }
 
  from "express"
@@ -99,6 +99,7 @@ import
 {
 
 
+  beginAppealOAuth,
   beginDiscordOAuth,
   beginVerificationOAuth,
   consumeDiscordOAuthRequest,
@@ -106,6 +107,8 @@ import
   exchangeDiscordOAuthCode,
   fetchBotGuildSnapshot,
   fetchDiscordOAuthIdentity,
+  fetchDiscordOAuthUser,
+  getAppealWebsiteUrl,
   getDiscordBotInviteUrl,
   getVerificationWebsiteUrl,
   isDiscordOAuthConfigured,
@@ -159,11 +162,20 @@ import
 import 
 {
 
- initChannelConfig 
+ initChannelConfig, getChannel
 }
 
  from "../bot/channel-config"
 ;
+import {
+  MAX_ORACLE_CHANNELS, ORACLE_LENGTHS, ORACLE_TONES, isValidTimeZone, normalizeOracleSettings, setOracleSettings,
+} from "../bot/oracle-settings";
+import { loadOracleSettings } from "../bot/db";
+import { MAX_PEOPLE_PER_REQUEST, resolvePeople } from "./people";
+import { appealIdentityFromRequest, clearAppealCookie, setAppealCookie } from "./appeal-auth";
+import { answerClarification, appealStatus, submitAppeal } from "./appeals";
+import { resumeOracle, stopOracle } from "../bot/oracle";
+import { startOracleCouncilScheduler, stopOracleCouncilScheduler } from "../bot/oracle-council";
 
 
 import 
@@ -231,6 +243,11 @@ import
   normalizeVerificationConfig,
   publishVerificationPanel,
   verifyMember,
+  extraRoleProblem,
+  grantVerificationRoles,
+  MAX_MANUAL_VERIFICATION_MEMBERS,
+  MAX_VERIFICATION_EXTRA_ROLES,
+  VERIFICATION_ELEVATED_PERMISSIONS,
   consumeVerificationLinkToken,
   createVerificationLinkToken,
   createVerificationIdentityToken,
@@ -447,6 +464,8 @@ const verificationConfigSchema = z.object(
   imageUrl: z.string().trim().max(2_000).refine(isMessageImageUrl, "Imaginea trebuie să fie HTTPS sau încărcată în storage."),
   thumbnailUrl: z.string().trim().max(2_000).refine(isMessageImageUrl, "Thumbnail-ul trebuie să fie HTTPS sau încărcat în storage.").default(""),
   panelMessageId: z.union([snowflake, z.literal("")]),
+  // Given together with roleId, at the button and at manual verification.
+  extraRoleIds: z.array(snowflake).max(MAX_VERIFICATION_EXTRA_ROLES).default([]),
 }
 ).strict()
 ;
@@ -465,6 +484,7 @@ const DEFAULT_DAILY_STATS_EMBED_CONFIG =
   emptyChannelsText: "Încă nu există mesaje înregistrate pentru această zi.",
   imageUrl: "",
   thumbnailUrl: "",
+  chart: true,
   metricLabels: 
 {
 
@@ -494,6 +514,7 @@ const dailyStatsEmbedConfigSchema = z.object(
   emptyChannelsText: z.string().trim().min(1).max(1_024),
   imageUrl: z.string().trim().max(2_000).refine(isMessageImageUrl, "Imaginea trebuie să fie HTTPS sau încărcată în storage."),
   thumbnailUrl: z.string().trim().max(2_000).refine(isMessageImageUrl, "Thumbnail-ul trebuie să fie HTTPS sau încărcat în storage.").default(""),
+  chart: z.boolean().default(true),
   metricLabels: z.object(
 {
 
@@ -604,6 +625,32 @@ export const ticketFlowConfigSchema = z.object(
 ;
 
 
+/** The Oracle's chat and prophecy settings (bot/oracle-settings.ts). */
+export const oracleSettingsSchema = z.object({
+  enabled: z.boolean(),
+  chat: z.object({
+    channelIds: z.array(snowflake).max(MAX_ORACLE_CHANNELS),
+    replyToReplies: z.boolean(),
+    tone: z.enum(ORACLE_TONES),
+    length: z.enum(ORACLE_LENGTHS),
+    cooldownSeconds: z.number().int().min(0).max(3_600),
+  }).strict(),
+  prophecy: z.object({
+    commandEnabled: z.boolean(),
+    dailyLimit: z.number().int().min(1).max(50),
+    daily: z.object({
+      enabled: z.boolean(),
+      channelId: snowflake.or(z.literal("")),
+      hour: z.number().int().min(0).max(23),
+      timeZone: z.string().refine(isValidTimeZone, "Fus orar necunoscut."),
+    }).strict(),
+  }).strict(),
+}).strict().superRefine((settings, ctx) => {
+  if (settings.prophecy.daily.enabled && !settings.prophecy.daily.channelId) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["prophecy", "daily", "channelId"], message: "Alege canalul profeției zilei." });
+  }
+});
+
 export const botControlSchema = z.object(
 {
 
@@ -617,6 +664,8 @@ export const botControlSchema = z.object(
   // endpoint already returns an empty string when no override is stored, so
   // PUT must accept that same round-trip value.
   allianceRecruitmentText: z.string().trim().max(2_000),
+  // Optional: pages that do not know the Oracle's settings keep them unchanged.
+  oracle: oracleSettingsSchema.optional(),
   dailyStats: dailyStatsEmbedConfigSchema,
   inviteTracking: z.object(
 {
@@ -728,7 +777,8 @@ export const botControlSchema = z.object(
 ).strict(),
     staffReviewRoleId: snowflake,
     alliancePublicChannelId: snowflake.or(z.literal("")),
-    allianceOwnerGuildId: snowflake,
+    // The server on which approved alliances are published; empty switches publishing off.
+    allianceOwnerGuildId: snowflake.or(z.literal("")),
     allianceAnnouncementTemplate: z.string().trim().max(2_000).optional(),
     allianceAnnouncementMode: z.enum(["text", "embed"]).optional(),
     allianceAnnouncementImageUrl: z.string().trim().max(2_000).refine((value) => isMessageImageUrl(value), "Imaginea trebuie să fie HTTPS sau încărcată în storage.").optional(),
@@ -1317,7 +1367,7 @@ async function validateConfigTargets(guildId: string, config: ModerationConfig, 
     ...Object.values(config.activityLog.channelIds),
     config.autoMod.logChannelId, config.antiFlood.logChannelId,
     config.antiRaid.alertChannelId, config.antiSpam.logChannelId, config.audit.channelId,
-    config.suspiciousBehavior.alertChannelId, config.ai.logChannelId,
+    config.suspiciousBehavior.alertChannelId, config.ai.logChannelId, config.appeals?.channelId, config.banEvasion?.alertChannelId,
   ].filter((id): id is string => Boolean(id));
   const previousChannelIds = [
     ...previous.channels.ignoredChannelIds, ...previous.channels.protectedChannelIds,
@@ -1327,7 +1377,7 @@ async function validateConfigTargets(guildId: string, config: ModerationConfig, 
     ...Object.values(previous.activityLog.channelIds),
     previous.autoMod.logChannelId, previous.antiFlood.logChannelId,
     previous.antiRaid.alertChannelId, previous.antiSpam.logChannelId, previous.audit.channelId,
-    previous.suspiciousBehavior.alertChannelId, previous.ai.logChannelId,
+    previous.suspiciousBehavior.alertChannelId, previous.ai.logChannelId, previous.appeals?.channelId, previous.banEvasion?.alertChannelId,
   ].filter((id): id is string => Boolean(id));
   const categoryIds = [config.activityLog.categoryId].filter((id): id is string => Boolean(id));
   const previousCategoryIds = [previous.activityLog.categoryId].filter((id): id is string => Boolean(id));
@@ -1553,6 +1603,31 @@ async function validateBotControlChannelTargets(guildId: string, channels: Chann
         403,
         `Botul are nevoie de permisiunile View Channel, Send Messages și Embed Links în canalul ${key}.`,
       );
+    }
+  }
+}
+
+/**
+ * Roles newly added to the verification must exist and be roles the bot can
+ * give without handing out staff powers. Roles saved earlier are not checked
+ * again, so a role moved later does not block unrelated saves; the bot skips it.
+ */
+async function validateVerificationExtraRoles(guildId: string, extraRoleIds: readonly string[], previousIds: readonly string[]): Promise<void> {
+  const added = extraRoleIds.filter((id) => !previousIds.includes(id));
+  if (!added.length) return;
+  const client = getModerationClient();
+  if (!client?.isReady()) return;
+  const guild = client.guilds.cache?.get(guildId) ?? await client.guilds.fetch({ guild: guildId, force: true })
+    .catch(() => {
+      throw new ModerationAuthError(503, "Serverul Discord nu este disponibil.");
+    });
+  const botMember = guild.members.me ?? await guild.members.fetchMe().catch(() => null);
+  if (!botMember) return;
+  for (const roleId of added) {
+    const role = await guild.roles.fetch(roleId).catch(() => null);
+    const problem = extraRoleProblem(role, guild, botMember);
+    if (problem) {
+      throw new ModerationAuthError(400, `Rolurile verificării: ${role ? `@${role.name}` : roleId} nu poate fi dat. ${problem}`);
     }
   }
 }
@@ -1801,6 +1876,90 @@ router.get("/auth-config", (_req, res) =>
 }
 
 
+function appealRedirect(res: Response, guildId: string, error?: string): void {
+  const url = getAppealWebsiteUrl(guildId);
+  res.redirect(error ? `${url}${url.includes("?") ? "&" : "?"}appeal_error=${encodeURIComponent(error)}` : url);
+}
+
+async function finishAppealOAuth(req: Request, res: Response, guildId: string | undefined): Promise<void> {
+  if (!guildId) {
+    res.redirect("/contestatie?appeal_error=invalid_server");
+    return;
+  }
+  const oauthError = typeof req.query.error === "string" ? req.query.error : undefined;
+  if (oauthError === "access_denied") {
+    appealRedirect(res, guildId, "cancelled");
+    return;
+  }
+  const code = typeof req.query.code === "string" ? req.query.code : undefined;
+  if (!code || oauthError) {
+    appealRedirect(res, guildId, "oauth_failed");
+    return;
+  }
+  try {
+    const user = await fetchDiscordOAuthUser(await exchangeDiscordOAuthCode(code));
+    setAppealCookie(res, { userId: user.id, name: user.name, username: user.username, avatar: user.avatar });
+    appealRedirect(res, guildId);
+  } catch (error) {
+    // Like the panel's sign-in: never log or reflect the code or the token.
+    logger.warn({ errorType: error instanceof Error ? error.name : typeof error }, "Discord ban appeal sign-in failed");
+    appealRedirect(res, guildId, "oauth_failed");
+  }
+}
+
+function appealGuildId(req: Request): string {
+  return typeof req.query.guildId === "string" && /^\d{5,25}$/.test(req.query.guildId) ? req.query.guildId : GUILD_ID;
+}
+
+function requireAppealIdentity(req: Request) {
+  const identity = appealIdentityFromRequest(req);
+  if (!identity) throw new ModerationAuthError(401, "Conectează-te cu Discord ca să continui.");
+  return identity;
+}
+
+/** Who is signed in on the appeal page and what their ban looks like; no panel access. */
+router.get("/appeals/session", asyncRoute(async (req, res) => {
+  const guildId = appealGuildId(req);
+  const identity = appealIdentityFromRequest(req);
+  if (!identity) {
+    const { config } = await moderationStore.getConfig(guildId);
+    let guildName: string | null = null;
+    try {
+      guildName = getModerationClient()?.guilds?.cache?.get(guildId)?.name ?? null;
+    } catch {
+      // The page shows a generic heading without it.
+    }
+    res.json({ authenticated: false, enabled: Boolean(config.appeals?.enabled), guildName });
+    return;
+  }
+  res.json({
+    authenticated: true,
+    user: { id: identity.userId, name: identity.name, username: identity.username, avatar: identity.avatar },
+    status: await appealStatus(getModerationClient(), guildId, identity.userId),
+  });
+}));
+
+router.post("/appeals/logout", (_req, res) => {
+  clearAppealCookie(res);
+  res.json({ ok: true });
+});
+
+router.post("/appeals", asyncRoute(async (req, res) => {
+  const identity = requireAppealIdentity(req);
+  assertLoginRateLimit(req);
+  const body = parse(z.object({ guildId: z.string().regex(/^\d{5,25}$/).optional(), text: z.string().max(10_000) }), req.body ?? {});
+  res.json({ status: await submitAppeal(getModerationClient(), body.guildId ?? GUILD_ID, identity, body.text) });
+}));
+
+router.post("/appeals/answer", asyncRoute(async (req, res) => {
+  const identity = requireAppealIdentity(req);
+  assertLoginRateLimit(req);
+  const body = parse(z.object({
+    guildId: z.string().regex(/^\d{5,25}$/).optional(), clarificationId: z.string().min(1).max(64), text: z.string().max(10_000),
+  }), req.body ?? {});
+  res.json({ status: await answerClarification(getModerationClient(), body.guildId ?? GUILD_ID, identity, body.clarificationId, body.text) });
+}));
+
 function verificationFailure(res: Response, guildId: string | undefined, code: string): void 
 {
 
@@ -1825,6 +1984,12 @@ router.get("/oauth/discord", (req, res) =>
 
     assertLoginRateLimit(req)
 ;
+    if (req.query.appeal === "1") {
+      const requested = typeof req.query.guildId === "string" && /^\d{5,25}$/.test(req.query.guildId) ? req.query.guildId : GUILD_ID;
+      res.redirect(beginAppealOAuth(res, requested));
+      return;
+    }
+
 
 
     const verificationGuildId = typeof req.query.guildId === "string" ? parse(snowflake, req.query.guildId) : null
@@ -1920,6 +2085,11 @@ router.get("/oauth/discord/callback", asyncRoute(async (req, res) =>
 }
 
 
+  // A ban appeal signs in with identify only and goes back to the appeal page.
+  if (pendingState.purpose === "appeal") {
+    await finishAppealOAuth(req, res, pendingState.guildId);
+    return;
+  }
   const oauthError = typeof req.query.error === "string" ? req.query.error : undefined
 ;
 
@@ -2525,6 +2695,7 @@ router.get("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   res.set("Cache-Control", "no-store").json({
     channels: channels ?? {},
     allianceRecruitmentText: allianceRecruitmentText ?? "",
+    oracle: normalizeOracleSettings(await loadOracleSettings(guildId)),
     tickets: normalizeTicketConfig(tickets),
     gameplayConfig: getGameplayConfig(guildId),
     verification: normalizeVerificationConfig(verification),
@@ -3021,6 +3192,7 @@ router.post("/guilds/:guildId/bot-control/provision-channels", asyncRoute(async 
   res.status(verificationPanel === "failed" || verificationPanel === "published_not_saved" ? 207 : 200).json({
     channels: provisioned.channelConfig,
     allianceRecruitmentText: allianceRecruitmentText ?? "",
+    oracle: normalizeOracleSettings(await loadOracleSettings(guildId)),
     tickets: provisioned.ticketConfig,
     gameplayConfig: getGameplayConfig(guildId),
     verification: savedVerification,
@@ -3046,6 +3218,11 @@ router.post("/guilds/:guildId/bot-control/verification-panel", asyncRoute(async 
   if (!verification.channelId || !verification.roleId) {
     throw new ModerationAuthError(400, "Configurează canalul și rolul pentru verificare.");
   }
+  await validateVerificationExtraRoles(
+    guildId,
+    verification.extraRoleIds ?? [],
+    normalizeVerificationConfig(await loadVerificationConfig(guildId)).extraRoleIds ?? [],
+  );
   const client = getModerationClient();
   if (!client?.isReady()) {
     throw new ModerationAuthError(503, "Discord botul nu este conectat pentru publicarea panoului.");
@@ -3089,8 +3266,25 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   ) as ChannelConfig;
   await validateBotControlChannelTargets(guildId, channels);
   await validateMemberMessagesChannelTarget(guildId, value.gameplayConfig);
+  if (value.oracle?.prophecy.daily.channelId) {
+    const previousDaily = normalizeOracleSettings(await loadOracleSettings(guildId)).prophecy.daily;
+    if (previousDaily.channelId !== value.oracle.prophecy.daily.channelId && client?.isReady()) {
+      const guild = client.guilds.cache?.get(guildId) ?? await client.guilds.fetch({ guild: guildId, force: true }).catch(() => null);
+      const channel = guild ? await guild.channels.fetch(value.oracle.prophecy.daily.channelId).catch(() => null) : null;
+      if (!channel?.isTextBased() || !("send" in channel)) {
+        throw new ModerationAuthError(400, "Canalul profeției zilei nu este un canal text din acest server.");
+      }
+    }
+  }
   const verification = normalizeVerificationConfig(value.verification);
   const verificationRequested = Object.prototype.hasOwnProperty.call(req.body ?? {}, "verification");
+  if (verificationRequested) {
+    await validateVerificationExtraRoles(
+      guildId,
+      verification.extraRoleIds ?? [],
+      normalizeVerificationConfig(await loadVerificationConfig(guildId)).extraRoleIds ?? [],
+    );
+  }
   let savedVerification = verification;
   let verificationPanelPublished = false;
   let anyWriteSucceeded = false;
@@ -3117,6 +3311,7 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   }
 
   let gameplayConfig = value.gameplayConfig;
+  let savedOracle: ReturnType<typeof normalizeOracleSettings> | null = null;
   try {
   await saveChannelConfig(guildId, channels);
   anyWriteSucceeded = true;
@@ -3136,6 +3331,22 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   }
   await saveTicketConfig(guildId, tickets);
   anyWriteSucceeded = true;
+  if (value.oracle) {
+    const previousOracle = normalizeOracleSettings(await loadOracleSettings(guildId));
+    savedOracle = await setOracleSettings(guildId, value.oracle);
+    anyWriteSucceeded = true;
+    if (previousOracle.enabled !== savedOracle.enabled) {
+      // Same effect as /stopai and /startai: answers, proactive posts and the council.
+      if (savedOracle.enabled) {
+        resumeOracle(guildId);
+        const councilChannelId = getChannel("council", guildId);
+        if (client?.isReady() && councilChannelId) startOracleCouncilScheduler(client, guildId, councilChannelId);
+      } else {
+        stopOracle(guildId);
+        stopOracleCouncilScheduler(guildId);
+      }
+    }
+  }
   await initGameplayConfig(guildId);
   const previousGameplayConfig = getGameplayConfig(guildId);
   // Pause/resume is controlled by the Dashboard endpoint. The bot-control
@@ -3179,6 +3390,7 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   res.status(200).json({
     channels,
     allianceRecruitmentText: value.allianceRecruitmentText,
+    oracle: savedOracle ?? normalizeOracleSettings(await loadOracleSettings(guildId)),
     tickets,
     gameplayConfig,
     verification: savedVerification,
@@ -3357,6 +3569,7 @@ router.get("/guilds/:guildId/verification/members", asyncRoute(async (req, res) 
         : "https://cdn.discordapp.com/embed/avatars/0.png",
       joinedAt: member.joined_at ?? null,
       verified: Array.isArray(member.roles) && member.roles.includes(role.id),
+      roleIds: Array.isArray(member.roles) ? member.roles.filter((id): id is string => typeof id === "string") : [],
     }))
     .sort((left, right) => left.displayName.localeCompare(right.displayName, "ro", { sensitivity: "base" }));
   const verifiedTotal = guildMembers.filter((member) => member.verified).length;
@@ -3370,6 +3583,60 @@ router.get("/guilds/:guildId/verification/members", asyncRoute(async (req, res) 
     unverifiedTotal: guildMembers.length - verifiedTotal,
     members: guildMembers,
   }));
+}));
+
+const manualVerificationSchema = z.object({
+  userIds: z.array(snowflake).min(1).max(MAX_MANUAL_VERIFICATION_MEMBERS),
+  roleIds: z.array(snowflake).max(MAX_VERIFICATION_EXTRA_ROLES).default([]),
+}).strict();
+
+/**
+ * Manual verification of several members at once: each receives the
+ * verification role and the chosen extra roles that are missing. Members who
+ * are already verified only receive the missing roles.
+ */
+router.post("/guilds/:guildId/verification/members/verify", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  await sessionAndGuild(req, guildId, "config", true);
+  const { userIds, roleIds } = parse(manualVerificationSchema, req.body);
+  const client = getModerationClient();
+  if (!client?.isReady()) {
+    throw new ModerationAuthError(503, "Botul Discord nu este disponibil pentru verificarea membrilor.");
+  }
+
+  let outcome: Awaited<ReturnType<typeof grantVerificationRoles>>;
+  try {
+    outcome = await grantVerificationRoles(client, guildId, userIds, roleIds);
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error ? Number(error.code) : null;
+    if (code === 50013 || code === 50001) {
+      throw new ModerationAuthError(503, "Botului îi lipsește permisiunea de a acorda rolurile de verificare.");
+    }
+    if (error instanceof Error && /nu mai există|nu este configurată|trebuie să fie sub|Manage Roles/i.test(error.message)) {
+      throw new ModerationAuthError(400, error.message);
+    }
+    logger.warn({ error, guildId }, "Manual member verification failed");
+    throw new ModerationAuthError(503, "Discord nu a putut finaliza verificarea membrilor.");
+  }
+
+  for (const result of outcome.results) {
+    if (result.result !== "verified") continue;
+    try {
+      await completeRecruitmentReferral(client, guildId, result.userId);
+    } catch (error) {
+      logger.warn({ error, guildId }, "Manually verified referral reward could not be completed");
+    }
+  }
+  const count = (kind: (typeof outcome.results)[number]["result"]) => outcome.results.filter((result) => result.result === kind).length;
+  res.set("Cache-Control", "no-store").json({
+    roleId: outcome.roleId,
+    results: outcome.results,
+    unavailableRoles: outcome.unavailable,
+    verified: count("verified"),
+    updated: count("updated"),
+    unchanged: count("unchanged"),
+    failed: count("failed"),
+  });
 }));
 
 router.post("/guilds/:guildId/verification/members/:userId/verify", asyncRoute(async (req, res) => {
@@ -3568,6 +3835,13 @@ router.get("/guilds/:guildId/metadata", asyncRoute(async (req, res) => {
     guild: { id: guild.id, name: guild.name, ownerId: guild.ownerId },
     roles: [...roles.values()].filter(Boolean).map((role) => ({
       id: role.id, name: role.name, position: role.position, managed: role.managed,
+      color: role.color ? role.hexColor : null,
+      // The bot can give the role: it has Manage Roles and the role is below its own.
+      assignable: role.id !== guild.id && !role.managed &&
+        Boolean(guild.members.me?.permissions.has(PermissionFlagsBits.ManageRoles)) &&
+        role.position < (guild.members.me?.roles.highest.position ?? 0),
+      // The role carries staff powers, so verification never hands it out.
+      elevated: Boolean(role.permissions?.any(VERIFICATION_ELEVATED_PERMISSIONS, false)),
       activityRewardAssignable: role.id !== guild.id && isSafeActivityRewardRole(role) &&
         Boolean(guild.members.me?.permissions.has(PermissionFlagsBits.ManageRoles)) &&
         role.position < (guild.members.me?.roles.highest.position ?? 0),
@@ -3613,13 +3887,36 @@ router.post("/guilds/:guildId/emojis", asyncRoute(async (req, res) => {
   }
 }));
 
+// Names and pictures for the members a case or audit list shows; IDs the bot cannot find are left out.
+router.get("/guilds/:guildId/people", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  await sessionAndGuild(req, guildId, "operations");
+  const { ids } = parse(z.object({ ids: z.string().min(1).max(1_400) }), req.query);
+  const list = parse(z.array(snowflake).min(1).max(MAX_PEOPLE_PER_REQUEST), [...new Set(ids.split(",").map((id) => id.trim()).filter(Boolean))]);
+  const client = getModerationClient();
+  res.set("Cache-Control", "no-store");
+  if (!client?.isReady()) {
+    res.json({ people: [] });
+    return;
+  }
+  res.json({ people: await resolvePeople(client, guildId, list) });
+}));
+
 router.get("/guilds/:guildId/cases", asyncRoute(async (req, res) => {
   const guildId = parse(snowflake, req.params.guildId);
   await sessionAndGuild(req, guildId, "operations");
   await enforceCaseRetention(guildId);
   const page = parse(paginationSchema, req.query);
-  const filter = parse(z.object({ status: z.enum(["open", "closed"]).optional(), userId: snowflake.optional() }), req.query);
-  res.json({ items: await moderationStore.listCases(guildId, { ...page, ...filter }) });
+  const filter = parse(z.object({
+    status: z.enum(["open", "closed"]).optional(),
+    userId: snowflake.optional(),
+    actionType: z.string().regex(/^[a-z_]{2,32}$/).optional(),
+  }), req.query);
+  const [items, counts] = await Promise.all([
+    moderationStore.listCases(guildId, { ...page, ...filter }),
+    moderationStore.countCases?.(guildId, { userId: filter.userId, actionType: filter.actionType }) ?? Promise.resolve(undefined),
+  ]);
+  res.json(counts ? { items, counts } : { items });
 }));
 
 router.get("/guilds/:guildId/cases/export", asyncRoute(async (req, res) => {
@@ -3705,14 +4002,11 @@ router.get("/guilds/:guildId/cases/:caseId", asyncRoute(async (req, res) =>
 }
 
 
-  res.json(
-{
-
- ...item, notes: await moderationStore.listCaseNotes(guildId, caseId) 
-}
-
-)
-;
+  const [notes, appeal] = await Promise.all([
+    moderationStore.listCaseNotes(guildId, caseId),
+    moderationStore.getLatestAppeal?.(guildId, caseId) ?? Promise.resolve(null),
+  ]);
+  res.json({ ...item, notes, appeal });
 
 
 }

@@ -32,6 +32,12 @@ const mocks = vi.hoisted(() => ({
   listLogs: vi.fn(),
   getAction: vi.fn(),
   execute: vi.fn(),
+  appealUser: vi.fn(),
+  appealUrl: vi.fn(),
+  beginAppeal: vi.fn(),
+  appealStatus: vi.fn(),
+  submitAppeal: vi.fn(),
+  answerClarification: vi.fn(),
 }));
 
 vi.mock("../auth", () => ({
@@ -62,6 +68,15 @@ vi.mock("../oauth", () => ({
   isDiscordOAuthConfigured: mocks.configured,
   getDiscordBotInviteUrl: mocks.invite,
   getVerificationWebsiteUrl: mocks.verificationWebsiteUrl,
+  fetchDiscordOAuthUser: mocks.appealUser,
+  getAppealWebsiteUrl: mocks.appealUrl,
+  beginAppealOAuth: mocks.beginAppeal,
+}));
+
+vi.mock("../appeals", () => ({
+  appealStatus: mocks.appealStatus,
+  submitAppeal: mocks.submitAppeal,
+  answerClarification: mocks.answerClarification,
 }));
 
 vi.mock("../../bot/verification", () => ({
@@ -73,7 +88,12 @@ vi.mock("../../bot/verification", () => ({
   publishVerificationPanel: vi.fn(),
   verificationCookieName: vi.fn(() => "verification_identity"),
   verifyMember: mocks.verifyMember,
+  grantVerificationRoles: vi.fn(),
+  extraRoleProblem: vi.fn(() => null),
   DEFAULT_VERIFICATION_CONFIG: {},
+  MAX_MANUAL_VERIFICATION_MEMBERS: 25,
+  MAX_VERIFICATION_EXTRA_ROLES: 10,
+  VERIFICATION_ELEVATED_PERMISSIONS: [],
 }));
 
 vi.mock("../../bot/db", async (importOriginal) => ({
@@ -291,5 +311,83 @@ describe("Discord OAuth moderation routes", () => {
       body: JSON.stringify({ code: "ABCDEF" }),
     });
     expect(response.status).toBe(410);
+  });
+
+  describe("ban appeals", () => {
+    const GUILD = "123456789012345678";
+    const identity = { userId: "234567890123456789", name: "Ana", username: "ana", avatar: null };
+
+    async function signedIn() {
+      const { createAppealToken } = await import("../appeal-auth");
+      return `regat_appeal=${encodeURIComponent(createAppealToken(identity))}`;
+    }
+
+    beforeEach(() => {
+      mocks.appealUrl.mockReturnValue(`/contestatie?guildId=${GUILD}`);
+      mocks.getConfig.mockResolvedValue({ config: { appeals: { enabled: true } } });
+    });
+
+    it("sends the person to Discord with the appeal purpose", async () => {
+      mocks.beginAppeal.mockReturnValue("https://discord.com/oauth2/authorize?x=1");
+      const response = await fetch(`${base}/oauth/discord?appeal=1&guildId=${GUILD}`, { redirect: "manual" });
+      expect(response.status).toBe(302);
+      expect(mocks.beginAppeal).toHaveBeenCalledWith(expect.anything(), GUILD);
+    });
+
+    it("signs in with a cookie of its own and goes back to the appeal page, without panel access", async () => {
+      mocks.consumeRequest.mockReturnValue({ purpose: "appeal", guildId: GUILD, expiresAt: Date.now() + 60_000 });
+      mocks.appealUser.mockResolvedValue({ id: identity.userId, name: "Ana", username: "ana", avatar: null });
+      const response = await fetch(`${base}/oauth/discord/callback?state=valid&code=one-time-code`, { redirect: "manual" });
+      expect(response.status).toBe(302);
+      expect(response.headers.get("location")).toBe(`/contestatie?guildId=${GUILD}`);
+      const cookie = response.headers.get("set-cookie") ?? "";
+      expect(cookie).toContain("regat_appeal=");
+      expect(cookie.toLowerCase()).toContain("httponly");
+      expect(cookie).toContain("Path=/api/moderation/appeals");
+      expect(mocks.createSession).not.toHaveBeenCalled();
+      expect(await response.text()).not.toContain("server-only-oauth-token");
+    });
+
+    it("comes back with a message when the person cancels at Discord", async () => {
+      mocks.consumeRequest.mockReturnValue({ purpose: "appeal", guildId: GUILD, expiresAt: Date.now() + 60_000 });
+      const response = await fetch(`${base}/oauth/discord/callback?state=valid&error=access_denied`, { redirect: "manual" });
+      expect(response.headers.get("location")).toBe(`/contestatie?guildId=${GUILD}&appeal_error=cancelled`);
+      expect(response.headers.get("set-cookie")).toBeNull();
+    });
+
+    it("tells a visitor who is not signed in only whether appeals are on", async () => {
+      const response = await fetch(`${base}/appeals/session?guildId=${GUILD}`);
+      expect(await response.json()).toMatchObject({ authenticated: false, enabled: true });
+      expect(mocks.appealStatus).not.toHaveBeenCalled();
+    });
+
+    it("shows the signed-in person their own ban and appeal state", async () => {
+      mocks.appealStatus.mockResolvedValue({ banned: true });
+      const response = await fetch(`${base}/appeals/session?guildId=${GUILD}`, { headers: { cookie: await signedIn() } });
+      expect(await response.json()).toMatchObject({ authenticated: true, user: { id: identity.userId }, status: { banned: true } });
+      expect(mocks.appealStatus).toHaveBeenCalledWith(expect.anything(), GUILD, identity.userId);
+    });
+
+    it("takes an appeal only from a signed-in person, as that person", async () => {
+      const post = (headers: Record<string, string>) => fetch(`${base}/appeals`, {
+        method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify({ guildId: GUILD, text: "x".repeat(40), userId: "999999999999999999" }),
+      });
+      expect((await post({})).status).toBe(401);
+      mocks.submitAppeal.mockResolvedValue({ appeal: { status: "pending" } });
+      const ok = await post({ cookie: await signedIn() });
+      expect(ok.status).toBe(200);
+      expect(mocks.submitAppeal).toHaveBeenCalledWith(expect.anything(), GUILD, expect.objectContaining({ userId: identity.userId }), "x".repeat(40));
+    });
+
+    it("answers a clarification only when signed in, and signs out by clearing the cookie", async () => {
+      const answer = (headers: Record<string, string>) => fetch(`${base}/appeals/answer`, {
+        method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify({ clarificationId: "q1", text: "răspuns" }),
+      });
+      expect((await answer({})).status).toBe(401);
+      mocks.answerClarification.mockResolvedValue({ appeal: null });
+      expect((await answer({ cookie: await signedIn() })).status).toBe(200);
+      const out = await fetch(`${base}/appeals/logout`, { method: "POST" });
+      expect(out.headers.get("set-cookie") ?? "").toContain("regat_appeal=;");
+    });
   });
 });

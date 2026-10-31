@@ -20,7 +20,7 @@ const BOT_INVITE_PERMISSIONS =
 
 export interface PendingOAuthState {
   expiresAt: number;
-  purpose: "moderation" | "verification";
+  purpose: "moderation" | "verification" | "appeal";
   guildId?: string;
 }
 
@@ -184,6 +184,11 @@ export function beginVerificationOAuth(res: Response, guildId: string): string {
   return beginOAuth(res, { purpose: "verification", guildId });
 }
 
+/** Sign-in for a ban appeal: only who the person is (identify), nothing about their servers. */
+export function beginAppealOAuth(res: Response, guildId: string): string {
+  return beginOAuth(res, { purpose: "appeal", guildId });
+}
+
 function beginOAuth(res: Response, pendingState: Omit<PendingOAuthState, "expiresAt">): string {
   const config = getDiscordOAuthConfig();
   if (!config) throw new Error("Discord OAuth is not configured");
@@ -203,7 +208,9 @@ function beginOAuth(res: Response, pendingState: Omit<PendingOAuthState, "expire
   url.searchParams.set("client_id", config.clientId);
   const scopes = pendingState.purpose === "moderation"
     ? ["identify", "guilds", "email", "guilds.members.read"]
-    : ["identify", "guilds"];
+    : pendingState.purpose === "appeal"
+      ? ["identify"]
+      : ["identify", "guilds"];
   url.searchParams.set("scope", scopes.join(" "));
   url.searchParams.set("state", state);
   url.searchParams.set("redirect_uri", config.redirectUri);
@@ -296,6 +303,19 @@ function parseGuilds(payload: unknown): DiscordOAuthGuild[] {
   });
 }
 
+export type DiscordOAuthUser = { id: string; username: string; name: string; avatar: string | null };
+
+/** The signed-in Discord account alone (the identify scope). */
+export async function fetchDiscordOAuthUser(accessToken: string): Promise<DiscordOAuthUser> {
+  const payload = await fetchDiscordOAuthJson<unknown>("/users/@me", accessToken);
+  const id = parseIdentity(payload);
+  const value = payload as { username?: unknown; global_name?: unknown; avatar?: unknown };
+  const username = typeof value.username === "string" ? value.username.slice(0, 64) : "";
+  const name = typeof value.global_name === "string" && value.global_name.trim() ? value.global_name.slice(0, 64) : username || id;
+  const avatar = typeof value.avatar === "string" && /^(a_)?[0-9a-f]{32}$/.test(value.avatar) ? value.avatar : null;
+  return { id, username, name, avatar };
+}
+
 export async function fetchDiscordOAuthIdentity(accessToken: string): Promise<DiscordOAuthIdentity> {
   const identity = await fetchDiscordOAuthJson<unknown>("/users/@me", accessToken);
   const guilds = await fetchDiscordOAuthJson<unknown>("/users/@me/guilds", accessToken);
@@ -373,6 +393,13 @@ function getVerificationWebOrigin(): string | null {
 
 export function getVerificationWebsiteUrl(guildId: string): string {
   const url = `/verificare?guildId=${encodeURIComponent(guildId)}`;
+  const origin = getVerificationWebOrigin();
+  return origin ? new URL(url, origin).toString() : url;
+}
+
+/** The ban appeal page on the website, for a server. */
+export function getAppealWebsiteUrl(guildId: string): string {
+  const url = `/contestatie?guildId=${encodeURIComponent(guildId)}`;
   const origin = getVerificationWebOrigin();
   return origin ? new URL(url, origin).toString() : url;
 }

@@ -6,10 +6,16 @@ import { Input } from "../../components/ui/input";
 const helperLinks = [
   { title: "Activează protecția AutoMod", detail: "Deschide filtrarea mesajelor, linkurilor și cuvintelor.", href: "/automod", words: "automod filtru protectie" },
   { title: "Configurează moderarea AI", detail: "Alege categoriile și sensibilitatea analizei AI.", href: "/ai", words: "ai judge judecator" },
+  { title: "Setează sancțiunile", detail: "Escaladarea, comenzile staff-ului, rolurile protejate și programul.", href: "/sanctiuni", words: "sanctiuni sancțiuni escaladare comenzi staff warn mute ban roluri canale program noapte" },
   { title: "Găsește cazurile deschise", detail: "Consultă dosarele și istoricul intervențiilor.", href: "/cazuri", words: "cazuri dosare sancțiuni" },
-  { title: "Gestionează verificarea membrilor", detail: "Setează canalul și rolul de verificare.", href: "/verificare", words: "verificare membri tickets" },
+  { title: "Gestionează verificarea membrilor", detail: "Canalul panoului, rolul standard și rolurile în plus.", href: "/verificare", words: "verificare membri roluri categorie panou" },
+  { title: "Verifică membri manual", detail: "Bifezi membri sau pe toți și le dai rolul de verificare și rolurile lipsă.", href: "/verificare/membri", words: "verificare manuala membri roluri lipsa bifeaza toti" },
+  { title: "Configurează Oracolul", detail: "Unde răspunde în chat, tonul, pauza dintre răspunsuri și profețiile.", href: "/oracol", words: "oracol ai chat ton profetie profetia zilei startai stopai" },
+  { title: "Configurează tichetele", detail: "Aplicații staff, parteneriate, ajutor, contestații și termenele.", href: "/tichete", words: "tichete tickets aplicatii parteneriate ajutor contestatii termene" },
   { title: "Setează canalele botului", detail: "Alege destinațiile Discord existente.", href: "/canale", words: "canale bot destination" },
-  { title: "Deschide setările serverului", detail: "Module și configurații avansate.", href: "/config", words: "setari config" },
+  { title: "Deschide setările serverului", detail: "Starea tuturor modulelor.", href: "/config", words: "setari config module" },
+  { title: "Control bot", detail: "Invitațiile, recrutarea, raportul zilnic, crearea canalelor și permisiunile botului.", href: "/control", words: "control bot invitatii recrutare raport zilnic canale provisioning permisiuni roluri acces" },
+  { title: "Setări bot", detail: "Rolurile staff, notificările de moderare, mesajul în privat la sancțiune și bun venit.", href: "/setari", words: "setari bot acces staff roluri notificari embed privat dm contestatie bun venit plecare" },
 ];
 
 export function OfflineAssistant() {

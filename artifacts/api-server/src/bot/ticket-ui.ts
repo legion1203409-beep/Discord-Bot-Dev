@@ -14,6 +14,7 @@ import {
   type Message,
 } from "discord.js";
 import { randomUUID } from "node:crypto";
+import { handleWebAppealButton, handleWebAppealModal } from "../moderation/appeals-ui";
 import { logger } from "../lib/logger";
 import { loadAllianceRecruitmentText } from "./db";
 import { moderationStore } from "../moderation/store";
@@ -1742,6 +1743,7 @@ export async function handleTicketQuestionSelect(
 }
 
 export async function handleTicketButton(interaction: ButtonInteraction): Promise<boolean> {
+  if (await handleWebAppealButton(interaction)) return true;
   const appealClarificationCleanup = interaction.customId.match(
     /^ticket_appeal_cleanup_([0-9a-f-]{36})_([0-9a-f-]{36})$/i,
   );
@@ -1983,9 +1985,10 @@ export async function handleTicketButton(interaction: ButtonInteraction): Promis
     const ticketConfig = getTicketConfig(interaction.guildId);
     if (interaction.guildId !== ticketConfig.allianceOwnerGuildId) {
       await interaction.reply({
-        content:
-          "❌ Publicarea alianțelor nu este configurată pentru acest server. " +
-          "Destinația este disponibilă doar în serverul Regatului Cenușii.",
+        content: ticketConfig.allianceOwnerGuildId
+          ? "❌ Publicarea alianțelor nu este configurată pentru acest server. " +
+            "Destinația este disponibilă doar în serverul Regatului Cenușii."
+          : "❌ Publicarea alianțelor este oprită pe acest server. Un administrator o poate porni din panou, la Tichete › Parteneriate.",
         flags: MessageFlags.Ephemeral,
       });
       return true;
@@ -2652,6 +2655,7 @@ export async function handleTicketQuestionModal(interaction: ModalSubmitInteract
 }
 
 export async function handleTicketModal(interaction: ModalSubmitInteraction): Promise<boolean> {
+  if (await handleWebAppealModal(interaction)) return true;
   const appealClarificationRequest = interaction.customId.match(
     /^ticket_form_appeal_ask_([0-9a-f-]{36})$/i,
   );

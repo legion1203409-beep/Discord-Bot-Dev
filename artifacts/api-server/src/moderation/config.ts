@@ -27,6 +27,11 @@ const safeHttpsUrl = z.string().url().refine((value) => {
   const privateIpv4 = /^(10\.|127\.|0\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host);
   return url.protocol === "https:" && host !== "localhost" && host !== "::1" && !privateIpv4;
 }, "URL must use public HTTPS");
+const sanctionDmAction = z.enum(["warn", "mute", "kick", "ban"]);
+export const DEFAULT_SANCTION_DM_APPEAL_TEXT =
+  "Dacă vrei să contești, deschide pe {guild} un tichet de contestație și scrie ID-ul cazului de mai sus.";
+export const DEFAULT_SANCTION_DM_REMOVED_APPEAL_TEXT =
+  "Dacă vrei să contești, scrie-i unui administrator al serverului {guild} și dă-i ID-ul cazului de mai sus.";
 const safeGifUrl = safeHttpsUrl.refine((value) => new URL(value).pathname.toLowerCase().endsWith(".gif"), "Animation URL must point to a GIF");
 
 export const EvidenceItemSchema = z.object({
@@ -40,10 +45,18 @@ export const EvidenceItemSchema = z.object({
 });
 export const EvidenceSchema = z.array(EvidenceItemSchema).max(25);
 
+// A timeout lasts from one minute to Discord's 28-day maximum.
+const muteMinutes = z.number().int().min(1).max(40_320);
+
 export const RuleSchema = z.object({
   enabled: z.boolean().default(false),
   action: action.default("none"),
   deleteMessage: z.boolean().optional(),
+  // Extra reactions the panel can tick next to `action`. Older configurations
+  // do not have them, so they stay optional and mean "off" / "default" when absent.
+  warnMember: z.boolean().optional(),
+  alertStaff: z.boolean().optional(),
+  muteMinutes: muteMinutes.optional(),
   severity: severity.default("normal"),
   // A zero threshold silently sanctions every event (or creates a zero-length
   // rate window), so thresholds are always positive integers.
@@ -124,6 +137,10 @@ export const ModerationConfigSchema = z.object({
     scamFilter: z.object({
       enabled: z.boolean().default(false),
       action: z.enum(["delete", "mute", "kick"]).default("delete"),
+      // The message is always deleted; these add to it.
+      warnMember: z.boolean().optional(),
+      alertStaff: z.boolean().optional(),
+      muteMinutes: muteMinutes.optional(),
     }).default({}),
     scamPhrases: textList.default([]),
     wordFilter: RuleSchema.default({}),
@@ -186,6 +203,9 @@ export const ModerationConfigSchema = z.object({
     enabled: z.boolean().default(false),
     commandGrants: z.record(commandName, idList).default({}),
     logActions: z.boolean().default(false),
+    // Commands the owner switched off for everyone. Older configurations have
+    // none, so every command keeps working exactly as before.
+    disabledCommands: z.array(commandName).max(11).default([]),
   }).default({}),
   // 6. Cases
   cases: z.object({
@@ -263,6 +283,10 @@ export const ModerationConfigSchema = z.object({
     enabled: z.boolean().default(false),
     sensitivity: z.enum(["low", "medium", "high"]).default("medium"),
     action: action.default("none"),
+    // Module-wide defaults for every rule below that does not choose its own.
+    warnMember: z.boolean().optional(),
+    alertStaff: z.boolean().optional(),
+    muteMinutes: muteMinutes.optional(),
     alertChannelId: snowflake.nullable().default(null),
     nicknameChanges: ruleSchemaWithThresholdDefaults({ key: "limit", value: 5, aliases: ["changes"] }).default({}),
     roleChanges: ruleSchemaWithThresholdDefaults({ key: "limit", value: 5, aliases: ["changes"] }).default({}),
@@ -278,6 +302,11 @@ export const ModerationConfigSchema = z.object({
     tone: z.enum(["serious", "calm", "strict"]).default("calm"),
     action: action.default("none"),
     deleteMessage: z.boolean().optional(),
+    // Extra ticks of the general AI reaction; optional, so older guilds keep
+    // exactly what they had.
+    warnMember: z.boolean().optional(),
+    alertStaff: z.boolean().optional(),
+    muteMinutes: muteMinutes.optional(),
     logChannelId: snowflake.nullable().default(null),
     excludedChannelIds: idList.default([]),
     excludedRoleIds: idList.default([]),
@@ -286,6 +315,9 @@ export const ModerationConfigSchema = z.object({
       sensitivity: aiSensitivity.optional(),
       action: action.optional(),
       deleteMessage: z.boolean().optional(),
+      warnMember: z.boolean().optional(),
+      alertStaff: z.boolean().optional(),
+      muteMinutes: muteMinutes.optional(),
     }).strict()).default({}),
     categories: z.object({
       toxicity: z.boolean().default(false),
@@ -313,6 +345,9 @@ export const ModerationConfigSchema = z.object({
       level: z.number().int().min(1).max(4),
       violations: z.number().int().min(1).max(10_000),
       action,
+      // How long a mute at this step lasts. Without it, the mute length of the
+      // rule that caught the member applies, as it always did.
+      muteMinutes: muteMinutes.optional(),
     })).min(1).max(4).default([
       { level: 1, violations: 1, action: "warn" },
       { level: 2, violations: 2, action: "mute" },
@@ -343,6 +378,53 @@ export const ModerationConfigSchema = z.object({
     // Legacy persisted field. Settings and audit access now always follows
     // Discord Administrator permissions, independently of a per-guild toggle.
     allowAdminsSettings: z.boolean().default(false),
+  }).default({}),
+  // A private message to a sanctioned member: what happened, the case ID and
+  // how to appeal. Off by default; the bot never wrote to members in private
+  // before. Anti-raid sanctions never send one.
+  sanctionDm: z.object({
+    enabled: z.boolean().default(false),
+    actions: z.array(sanctionDmAction).max(4).default(["warn", "mute", "kick", "ban"])
+      .refine((actions) => new Set(actions).size === actions.length, "Each sanction may appear once"),
+    /** Also for the sanctions the bot gives on its own (AutoMod, anti-spam, the AI judge). */
+    automatic: z.boolean().default(true),
+    showReason: z.boolean().default(true),
+    showModerator: z.boolean().default(false),
+    /** How to appeal while still on the server (warning, timeout). */
+    appealText: z.string().trim().max(1_000).default(DEFAULT_SANCTION_DM_APPEAL_TEXT),
+    /** How to appeal after a kick or a ban, when the server's tickets are out of reach. */
+    removedAppealText: z.string().trim().max(1_000).default(DEFAULT_SANCTION_DM_REMOVED_APPEAL_TEXT),
+    /** A link button under the message, e.g. an appeal form or an appeal server. */
+    appealUrl: safeHttpsUrl.nullable().default(null),
+  }).default({}),
+  // Ban appeals on the website: a banned member signs in with Discord on the
+  // site and writes why the ban should go; staff decide in a Discord channel.
+  appeals: z.object({
+    enabled: z.boolean().default(false),
+    /** Where the bot posts each appeal, with the buttons to accept, reject or ask. */
+    channelId: snowflake.nullable().default(null),
+    /** Accepting an appeal lifts the ban. */
+    unbanOnAccept: z.boolean().default(true),
+    /** Days after a rejection before the same ban can be appealed again. */
+    cooldownDays: z.number().int().min(1).max(365).default(30),
+    /** The private message after an accepted appeal; {guild} is the server's name. */
+    dmOnAccept: z.boolean().default(true),
+    acceptedTitle: z.string().trim().min(1).max(200).default("✅ Contestația ta a fost acceptată"),
+    acceptedMessage: z.string().trim().min(1).max(1_500).default("Banul de pe **{guild}** a fost scos. Te poți întoarce oricând."),
+    acceptedButton: z.string().trim().min(1).max(80).default("Intră în regat"),
+    /** The server's invite for the message and the appeal page; without one the bot makes a single-use invite. */
+    inviteUrl: safeHttpsUrl.nullable().default(null),
+  }).default({}),
+  /** New accounts that look like someone banned recently (bot/moderation/ban-evasion.ts). Staff decides. */
+  banEvasion: z.object({
+    enabled: z.boolean().default(false),
+    alertChannelId: snowflake.nullable().default(null),
+    /** How long after a ban a look-alike account is still flagged. */
+    watchDays: z.number().int().min(1).max(365).default(30),
+    /** Only accounts younger than this are compared (an old account is rarely a new evasion). */
+    maxAccountAgeDays: z.number().int().min(1).max(3650).default(30),
+    matchName: z.boolean().default(true),
+    matchAvatar: z.boolean().default(true),
   }).default({}),
 }).superRefine((config, ctx) => {
   validateRuleThresholds(config.autoMod.wordFilter, ["autoMod", "wordFilter"], { matches: [1, 100] }, ctx);

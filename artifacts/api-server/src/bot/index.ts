@@ -24,6 +24,7 @@ import {
   AttachmentBuilder,
   type GuildMember,
 } from "discord.js";
+import { handleBanEvasionButton } from "./moderation/ban-evasion";
 import { randomUUID } from "node:crypto";
 import { logger } from "../lib/logger";
 import { sendAlert, sendRecoveryAlert, DISCONNECT_ALERT_THRESHOLD_MS } from "./alert";
@@ -78,6 +79,8 @@ import {
   stopOracleCouncilScheduler,
 } from "./oracle-council";
 import { initTicketConfig, isTicketCategoryParentId } from "./ticket-categories";
+import { getOracleSettings, initOracleSettings, prophecyUsesLeft, recordProphecyUse } from "./oracle-settings";
+import { startDailyProphecyScheduler } from "./oracle-daily";
 import {
   enforceOracleTimeout,
   handleToxicity,
@@ -1063,6 +1066,15 @@ async function handleProfetie(interaction: ChatInputCommandInteraction) {
     return;
   }
   const userId = interaction.user.id;
+  const oracleSettings = getOracleSettings(interaction.guildId);
+  if (!oracleSettings.prophecy.commandEnabled) {
+    await interaction.editReply("🔮 Profețiile la cerere sunt oprite pe acest server.");
+    return;
+  }
+  if (prophecyUsesLeft(interaction.guildId!, userId, oracleSettings) <= 0) {
+    await interaction.editReply(`🔮 Ai primit deja ${oracleSettings.prophecy.dailyLimit === 1 ? "profeția de azi" : `cele ${oracleSettings.prophecy.dailyLimit} profeții de azi`}. Revino mâine.`);
+    return;
+  }
   const remaining = prophecyCooldownRemaining(userId);
   if (remaining > 0) {
     const minutes = Math.ceil(remaining / 60_000);
@@ -1075,6 +1087,7 @@ async function handleProfetie(interaction: ChatInputCommandInteraction) {
     await interaction.editReply("🔮 O altă profeție se țese deja pentru tine. Mai așteaptă puțin.");
     return;
   }
+  recordProphecyUse(interaction.guildId!, userId, oracleSettings);
 
   const player = await upsertPlayer(interaction.user.id, interaction.guildId!, interaction.user.username);
   const prophecy = await generatePersonalProphecy(player, getCurrentMood(interaction.guildId!)).catch((err) => {
@@ -4595,6 +4608,10 @@ async function handleButton(interaction: ButtonInteraction) {
     return handleTicketButton(interaction);
   }
 
+  if (id.startsWith("evasion_")) {
+    return handleBanEvasionButton(interaction);
+  }
+
   if (id.startsWith("help_")) {
     return handleHelpButton(interaction);
   }
@@ -4890,6 +4907,8 @@ export async function startBot(onReady?: () => void): Promise<void> {
     GatewayIntentBits.AutoModerationExecution,
     GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.GuildInvites,
+    // Bans and unbans (not privileged): the ban evasion check remembers banned accounts.
+    GatewayIntentBits.GuildModeration,
   ];
   // GuildMembers, GuildPresences and MessageContent are all privileged. Keep the
   // bot online when the portal toggles are absent rather than requesting any one
@@ -5017,6 +5036,9 @@ export async function startBot(onReady?: () => void): Promise<void> {
       await initTicketConfig(guildId).catch((err) =>
         logger.error({ err, guildId }, "Failed to load ticket config for guild"),
       );
+      await initOracleSettings(guildId).catch((err) =>
+        logger.error({ err, guildId }, "Failed to load Oracle settings for guild"),
+      );
       await initGameplayConfig(guildId).catch((err) =>
         logger.error({ err, guildId }, "Failed to load gameplay config for guild"),
       );
@@ -5040,6 +5062,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
     }
 
     logOracleChatStatus();
+    startDailyProphecyScheduler(client);
     if (onReady) onReady();
 
     await maybeAlertOracleRecovery(getOracleReplyMode, consumeOracleFellBackMarker, sendAlert);
@@ -5105,6 +5128,9 @@ export async function startBot(onReady?: () => void): Promise<void> {
     );
     await initTicketConfig(guild.id).catch((err) =>
       logger.error({ err, guildId: guild.id }, "Failed to init ticket config for new guild"),
+    );
+    await initOracleSettings(guild.id).catch((err) =>
+      logger.error({ err, guildId: guild.id }, "Failed to init Oracle settings for new guild"),
     );
     await initGameplayConfig(guild.id).catch((err) =>
       logger.error({ err, guildId: guild.id }, "Failed to init gameplay config for new guild"),
@@ -5730,6 +5756,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
     }
 
     logOracleChatStatus();
+    startDailyProphecyScheduler(client);
     if (onReady) onReady();
 
     await maybeAlertOracleRecovery(getOracleReplyMode, consumeOracleFellBackMarker, sendAlert);

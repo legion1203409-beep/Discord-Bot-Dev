@@ -2335,6 +2335,8 @@ export interface VerificationConfig {
   imageUrl: string;
   thumbnailUrl: string;
   panelMessageId: string;
+  /** Roles given together with roleId (for example a category role); roleId alone marks a member as verified. Missing in configs saved before them. */
+  extraRoleIds?: string[];
 }
 
 const VERIFICATION_CONFIG_KEY = "verification_config";
@@ -2599,6 +2601,8 @@ export interface DailyStatsEmbedConfig {
   emptyChannelsText: string;
   imageUrl: string;
   thumbnailUrl: string;
+  /** Draw the day's card (numbers and the last 7 days) and post it as the report's image. */
+  chart: boolean;
   metricLabels: {
     messages: string;
     uniqueUsers: string;
@@ -2620,6 +2624,7 @@ export const DEFAULT_DAILY_STATS_EMBED_CONFIG: DailyStatsEmbedConfig = {
   emptyChannelsText: "Încă nu există mesaje înregistrate pentru această zi.",
   imageUrl: "",
   thumbnailUrl: "",
+  chart: true,
   metricLabels: {
     messages: "💬 Mesaje",
     uniqueUsers: "👥 Utilizatori unici",
@@ -2635,7 +2640,7 @@ export function normalizeDailyStatsEmbedConfig(value: unknown): DailyStatsEmbedC
   const labels = input.metricLabels && typeof input.metricLabels === "object"
     ? input.metricLabels as Record<string, unknown>
     : {};
-  const text = (key: keyof Omit<DailyStatsEmbedConfig, "metricLabels" | "color" | "imageUrl" | "thumbnailUrl" | "channelId">): string => {
+  const text = (key: keyof Omit<DailyStatsEmbedConfig, "metricLabels" | "color" | "imageUrl" | "thumbnailUrl" | "channelId" | "chart">): string => {
     const current = input[key];
     const fallback = DEFAULT_DAILY_STATS_EMBED_CONFIG[key];
     return typeof current === "string" && current.trim() ? current.trim() : fallback;
@@ -2664,6 +2669,7 @@ export function normalizeDailyStatsEmbedConfig(value: unknown): DailyStatsEmbedC
     emptyChannelsText: text("emptyChannelsText").slice(0, 1_024),
     imageUrl: normalizeMessageImageUrl(input.imageUrl),
     thumbnailUrl: normalizeMessageImageUrl(input.thumbnailUrl),
+    chart: input.chart !== false,
     metricLabels: {
       messages: label("messages").slice(0, 256),
       uniqueUsers: label("uniqueUsers").slice(0, 256),
@@ -2723,6 +2729,49 @@ export async function loadAllianceRecruitmentText(
     .from(botStateTable)
     .where(eq(botStateTable.key, guildKey(guildId, ALLIANCE_RECRUITMENT_TEXT_KEY)));
   return row?.value ?? null;
+}
+
+// ─── Oracle settings persistence ──────────────────────────────────────────────
+const ORACLE_SETTINGS_KEY = "oracle_settings";
+const DAILY_PROPHECY_DATE_KEY = "oracle_daily_prophecy_date";
+
+async function saveGuildStateValue(guildId: string, name: string, value: string): Promise<void> {
+  await ensureBotStateTable();
+  const key = guildKey(guildId, name);
+  await db
+    .insert(botStateTable)
+    .values({ key, value })
+    .onConflictDoUpdate({ target: botStateTable.key, set: { value, updatedAt: new Date() } });
+}
+
+async function loadGuildStateValue(guildId: string, name: string): Promise<string | null> {
+  await ensureBotStateTable();
+  const [row] = await db.select().from(botStateTable).where(eq(botStateTable.key, guildKey(guildId, name)));
+  return row?.value ?? null;
+}
+
+/** The Oracle's chat and prophecy settings of a server, as JSON (normalized by oracle-settings.ts). */
+export async function saveOracleSettings(guildId: string, settings: unknown): Promise<void> {
+  await saveGuildStateValue(guildId, ORACLE_SETTINGS_KEY, JSON.stringify(settings));
+}
+
+export async function loadOracleSettings(guildId: string): Promise<unknown | null> {
+  const value = await loadGuildStateValue(guildId, ORACLE_SETTINGS_KEY);
+  if (value === null) return null;
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+/** The local day ("YYYY-MM-DD") of the last daily prophecy posted on a server. */
+export async function saveDailyProphecyDate(guildId: string, day: string): Promise<void> {
+  await saveGuildStateValue(guildId, DAILY_PROPHECY_DATE_KEY, day);
+}
+
+export async function loadDailyProphecyDate(guildId: string): Promise<string | null> {
+  return loadGuildStateValue(guildId, DAILY_PROPHECY_DATE_KEY);
 }
 
 // ─── Ticket configuration persistence ─────────────────────────────────────────

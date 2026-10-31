@@ -315,3 +315,94 @@ describe.skipIf(!process.env.DATABASE_URL)("moderation appeals PostgreSQL concur
     }
   });
 });
+
+describe.skipIf(!process.env.DATABASE_URL)("web ban appeals in PostgreSQL", () => {
+  it("files one appeal per ban for the banned member, notes it, and decides it by its web channel id", async () => {
+    const schema = `web_appeal_test_${randomUUID().replace(/-/g, "")}`;
+    const setupClient = await pool.connect();
+    const originalConnect = pool.connect.bind(pool);
+    const pendingReleases: Promise<void>[] = [];
+    const connectSpy = vi.spyOn(pool, "connect").mockImplementation(async () => {
+      const client = await originalConnect();
+      await client.query(`SET search_path TO "${schema}"`);
+      return {
+        query: client.query.bind(client),
+        release: (error?: Error | boolean) => {
+          const reset = client.query("RESET search_path").then(() => client.release(error)).catch(() => client.release(error));
+          pendingReleases.push(reset);
+        },
+      } as never;
+    });
+    const store = new PostgresModerationStore();
+    vi.spyOn(store, "ensureSchema").mockResolvedValue();
+    try {
+      await setupClient.query(`CREATE SCHEMA "${schema}"`);
+      await setupClient.query(`CREATE TABLE "${schema}".moderation_cases (
+        id uuid PRIMARY KEY, guild_id text NOT NULL, subject_id text NOT NULL,
+        action_type text NOT NULL DEFAULT 'timeout', status text NOT NULL DEFAULT 'open'
+      )`);
+      await setupClient.query(`CREATE TABLE "${schema}".moderation_appeals (
+        id uuid PRIMARY KEY, guild_id text NOT NULL, case_id uuid NOT NULL,
+        appellant_id text NOT NULL, channel_id text NOT NULL,
+        status text NOT NULL DEFAULT 'pending', created_at timestamptz NOT NULL DEFAULT now(),
+        decided_at timestamptz, decided_by text, decision_note text,
+        pending_clarification_id uuid, pending_clarification_question text, pending_clarification_by text,
+        source text NOT NULL DEFAULT 'ticket', body text, staff_channel_id text, staff_message_id text,
+        UNIQUE (guild_id, channel_id)
+      )`);
+      await setupClient.query(`CREATE UNIQUE INDEX moderation_appeals_one_pending_idx
+        ON "${schema}".moderation_appeals (guild_id, case_id) WHERE status = 'pending'`);
+      await setupClient.query(`CREATE TABLE "${schema}".moderation_case_notes (
+        id uuid PRIMARY KEY, case_id uuid NOT NULL, guild_id text NOT NULL,
+        author_id text NOT NULL, body text NOT NULL, created_at timestamptz NOT NULL DEFAULT now()
+      )`);
+      await setupClient.query(`CREATE TABLE "${schema}".moderation_audit_logs (
+        id uuid PRIMARY KEY, guild_id text NOT NULL, actor_id text,
+        event_type text NOT NULL, target_type text, target_id text,
+        detail jsonb NOT NULL DEFAULT '{}'::jsonb, created_at timestamptz NOT NULL DEFAULT now()
+      )`);
+      const guildId = "123456789012345678";
+      const member = "234567890123456789";
+      const banCase = randomUUID();
+      const muteCase = randomUUID();
+      await setupClient.query(
+        `INSERT INTO "${schema}".moderation_cases (id, guild_id, subject_id, action_type) VALUES ($1,$2,$3,'ban'), ($4,$2,$3,'mute')`,
+        [banCase, guildId, member, muteCase],
+      );
+
+      // Only the banned member, and only for a ban case.
+      expect(await store.createWebAppeal({ guildId, caseId: banCase, appellantId: "999999999999999999", body: "nu e al lui" })).toBeNull();
+      expect(await store.createWebAppeal({ guildId, caseId: muteCase, appellantId: member, body: "nu e ban" })).toBeNull();
+
+      const appeal = await store.createWebAppeal({ guildId, caseId: banCase, appellantId: member, body: "Am greșit, îmi pare rău." });
+      expect(appeal).toMatchObject({ source: "web", status: "pending", body: "Am greșit, îmi pare rău.", caseId: banCase });
+      expect(appeal!.channelId).toBe(`web:${appeal!.id}`);
+      // One waiting appeal per ban.
+      expect(await store.createWebAppeal({ guildId, caseId: banCase, appellantId: member, body: "încă una" })).toBeNull();
+
+      const noted = await setupClient.query(`SELECT body FROM "${schema}".moderation_case_notes WHERE case_id = $1`, [banCase]);
+      expect(noted.rows.map((row) => row.body)).toEqual([expect.stringContaining("Contestație depusă pe site")]);
+
+      const asked = await store.requestAppealClarification({
+        guildId, caseId: banCase, channelId: appeal!.channelId, actorId: "888888888888888888", clarificationId: randomUUID(), question: "Ce s-a întâmplat?",
+      });
+      expect(asked).toEqual({ appellantId: member });
+      const waiting = await setupClient.query(`SELECT source, pending_clarification_question FROM "${schema}".moderation_appeals WHERE id = $1`, [appeal!.id]);
+      expect(waiting.rows[0]).toMatchObject({ source: "web", pending_clarification_question: "Ce s-a întâmplat?" });
+
+      const decided = await store.decideAppeal({
+        guildId, caseId: banCase, channelId: appeal!.channelId, actorId: "888888888888888888", decision: "rejected", note: "Nu.",
+      });
+      expect(decided).toMatchObject({ appellantId: member });
+      const decidedRow = await setupClient.query(`SELECT status, decision_note FROM "${schema}".moderation_appeals WHERE id = $1`, [appeal!.id]);
+      expect(decidedRow.rows[0]).toMatchObject({ status: "rejected", decision_note: "Nu." });
+      // After the rejection the same ban can be appealed again (the site enforces the wait).
+      expect(await store.createWebAppeal({ guildId, caseId: banCase, appellantId: member, body: "A doua oară, cu alte motive." })).not.toBeNull();
+    } finally {
+      connectSpy.mockRestore();
+      await Promise.allSettled(pendingReleases);
+      await setupClient.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+      setupClient.release();
+    }
+  });
+});

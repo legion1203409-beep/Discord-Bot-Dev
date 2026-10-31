@@ -11,7 +11,7 @@ import {
   findBlockedLink,
   longestRepeatedRun,
 } from "../detectors";
-import { aiActionForCategory, aiDeleteMessageForCategory, aiModerationPrompt, contentThresholdsForConfig, escalationActionForCount, isAiExcluded, parseAiModerationFinding, repeatedMessageCount, reserveAutomaticAction } from "../engine";
+import { activeSeverity, aiActionForCategory, aiDeleteMessageForCategory, aiModerationPrompt, aiRuleForCategory, contentThresholdsForConfig, escalationActionForCount, escalationLevelForCount, isAiExcluded, parseAiModerationFinding, repeatedMessageCount, reserveAutomaticAction, ruleAtEscalationLevel } from "../engine";
 import { ModerationConfigSchema } from "../../../moderation/config";
 
 describe("moderation detectors", () => {
@@ -203,6 +203,31 @@ describe("moderation detectors", () => {
     expect(aiActionForCategory(ai, "attacks")).toBe("warn");
   });
 
+  it("gives each AI category the general ticks until it chooses its own actions", () => {
+    const ai = ModerationConfigSchema.parse({
+      ai: {
+        action: "mute", deleteMessage: true, warnMember: true, alertStaff: true, muteMinutes: 120,
+        categorySettings: {
+          threats: { action: "ban", deleteMessage: true },
+          scams: { sensitivity: "high" },
+          toxicity: { action: "mute", deleteMessage: false, muteMinutes: 15, alertStaff: true },
+        },
+      },
+    }).ai;
+    // Only a sensitivity of its own: the category still follows every general tick.
+    expect(aiRuleForCategory(ai, "scams")).toEqual({ action: "mute", deleteMessage: true, warnMember: true, alertStaff: true, muteMinutes: 120 });
+    expect(aiRuleForCategory(ai, "bullying")).toEqual(aiRuleForCategory(ai, "scams"));
+    // Its own actions: what the category ticked is the whole story.
+    expect(aiRuleForCategory(ai, "threats")).toEqual({ action: "ban", deleteMessage: true, warnMember: false, alertStaff: false });
+    expect(aiRuleForCategory(ai, "toxicity")).toEqual({ action: "mute", deleteMessage: false, warnMember: false, alertStaff: true, muteMinutes: 15 });
+  });
+
+  it("reads AI settings saved before the extra ticks existed exactly as before", () => {
+    const ai = ModerationConfigSchema.parse({ ai: { action: "warn", deleteMessage: true, categorySettings: { attacks: { action: "kick" } } } }).ai;
+    expect(aiRuleForCategory(ai, "attacks")).toEqual({ action: "kick", deleteMessage: true, warnMember: false, alertStaff: false });
+    expect(aiRuleForCategory(ai, "toxicity")).toEqual({ action: "warn", deleteMessage: true, warnMember: false, alertStaff: false });
+  });
+
   it("excludes only configured AI channels or member roles", () => {
     const ai = ModerationConfigSchema.parse({
       ai: {
@@ -261,5 +286,70 @@ describe("moderation detectors", () => {
     expect(escalationActionForCount(config, "warn", 2)).toBe("mute");
     config.escalation.enabled = false;
     expect(escalationActionForCount(config, "warn", 99)).toBe("warn");
+  });
+
+  it("finds the escalation step reached, whatever order the steps were saved in", () => {
+    const config = ModerationConfigSchema.parse({ escalation: { enabled: true, levels: [
+      { level: 1, violations: 5, action: "ban" },
+      { level: 2, violations: 2, action: "mute", muteMinutes: 60 },
+      { level: 3, violations: 3, action: "kick" },
+    ] } });
+    expect(escalationLevelForCount(config, 1)).toBeNull();
+    expect(escalationLevelForCount(config, 2)).toMatchObject({ action: "mute", muteMinutes: 60 });
+    expect(escalationLevelForCount(config, 4)).toMatchObject({ action: "kick" });
+    expect(escalationLevelForCount(config, 50)).toMatchObject({ action: "ban" });
+    expect(escalationLevelForCount({ ...config, escalation: { ...config.escalation, enabled: false } }, 50)).toBeNull();
+  });
+
+  it("applies a step's sanction and mute length and keeps the rest of the rule", () => {
+    const rule = { action: "warn" as const, deleteMessage: true, alertStaff: true, muteMinutes: 15 };
+    expect(ruleAtEscalationLevel(rule, null)).toEqual({ rule, selectedAction: "warn" });
+    const muted = ruleAtEscalationLevel(rule, { level: 2, violations: 2, action: "mute", muteMinutes: 1_440 });
+    expect(muted).toEqual({ rule: { ...rule, muteMinutes: 1_440 }, selectedAction: "mute" });
+    // A step without its own length keeps the rule's, and the rule object itself is never changed.
+    expect(ruleAtEscalationLevel(rule, { level: 2, violations: 2, action: "mute" })).toEqual({ rule, selectedAction: "mute" });
+    expect(ruleAtEscalationLevel(rule, { level: 3, violations: 3, action: "kick", muteMinutes: 60 })).toEqual({ rule, selectedAction: "kick" });
+    expect(rule.muteMinutes).toBe(15);
+  });
+
+  it("chooses the severity of a channel, then a major event, the strict night, the weekend and the soft day", () => {
+    const config = ModerationConfigSchema.parse({
+      channels: { strictChannelIds: ["100000000000000001"], softChannelIds: ["100000000000000002"] },
+      timeProfiles: {
+        timezone: "Europe/Bucharest",
+        strictNight: { enabled: true, startHour: 22, endHour: 7 },
+        softDay: { enabled: true, startHour: 8, endHour: 21 },
+        weekend: { enabled: true, severity: "hard" },
+      },
+    });
+    // Wednesday 2026-10-28, 23:30 in Bucharest (UTC+2).
+    const wednesdayNight = new Date("2026-10-28T21:30:00Z");
+    // Wednesday, 07:59 and 08:00 in Bucharest: the night covers its last hour whole.
+    const endOfNight = new Date("2026-10-28T05:59:00Z");
+    const morning = new Date("2026-10-28T06:00:00Z");
+    // Saturday 2026-10-31, 12:00 and 23:30 in Bucharest.
+    const saturdayNoon = new Date("2026-10-31T10:00:00Z");
+    const saturdayNight = new Date("2026-10-31T21:30:00Z");
+    const other = "100000000000000003";
+    expect(activeSeverity(config, other, "normal", wednesdayNight)).toBe("hard");
+    expect(activeSeverity(config, other, "normal", endOfNight)).toBe("hard");
+    expect(activeSeverity(config, other, "normal", morning)).toBe("soft");
+    // On Saturdays and Sundays the weekend replaces the soft day, but not the strict night.
+    expect(activeSeverity(config, other, "normal", saturdayNoon)).toBe("hard");
+    const softWeekend = { ...config, timeProfiles: { ...config.timeProfiles, weekend: { enabled: true, severity: "normal" as const } } };
+    expect(activeSeverity(softWeekend, other, "soft", saturdayNoon)).toBe("normal");
+    expect(activeSeverity(softWeekend, other, "normal", saturdayNight)).toBe("hard");
+    expect(activeSeverity(config, "100000000000000001", "soft", morning)).toBe("hard");
+    expect(activeSeverity(config, "100000000000000002", "hard", wednesdayNight)).toBe("soft");
+
+    const event = { ...config, timeProfiles: { ...config.timeProfiles, majorEvent: { enabled: true, severity: "hard" as const } } };
+    expect(activeSeverity(event, other, "normal", morning)).toBe("hard");
+    expect(activeSeverity(event, "100000000000000002", "normal", morning)).toBe("soft");
+
+    const nothing = ModerationConfigSchema.parse({});
+    expect(activeSeverity(nothing, other, "soft", morning)).toBe("soft");
+    const weekendOnly = ModerationConfigSchema.parse({ timeProfiles: { weekend: { enabled: true, severity: "hard" } } });
+    expect(activeSeverity(weekendOnly, other, "normal", saturdayNoon)).toBe("hard");
+    expect(activeSeverity(weekendOnly, other, "normal", morning)).toBe("normal");
   });
 });

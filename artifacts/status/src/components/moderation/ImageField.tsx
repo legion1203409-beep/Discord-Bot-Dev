@@ -2,6 +2,30 @@ import { useState } from "react";
 import { apiFetchWithMeta } from "../../hooks/use-moderation-api";
 import { Input } from "../ui/input";
 
+/**
+ * Uploads a picture for a Discord message to the app's storage and returns the
+ * path the bot accepts ("/api/storage/objects/…"). Throws with a message to show.
+ */
+export async function uploadMessageImage(
+  file: File,
+  guildId: string,
+  csrfToken: string | undefined,
+  uploadEndpoint = "/storage/uploads/request-url",
+): Promise<string> {
+  if (!file.type.match(/^image\/(jpeg|png|gif|webp)$/) || file.size > 10 * 1024 * 1024) {
+    throw new Error("Alege PNG, JPG, GIF sau WEBP, maximum 10 MB.");
+  }
+  const { data: payload } = await apiFetchWithMeta<{ uploadURL?: string; objectPath?: string }>(uploadEndpoint, {
+    method: "POST",
+    headers: csrfToken ? { "x-csrf-token": csrfToken } : undefined,
+    body: JSON.stringify({ guildId, name: file.name, size: file.size, contentType: file.type }),
+  });
+  if (!payload.uploadURL || !payload.objectPath) throw new Error("Uploadul a eșuat.");
+  const uploaded = await fetch(payload.uploadURL, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
+  if (!uploaded.ok) throw new Error("Imaginea nu a putut fi încărcată în storage.");
+  return `/api/storage${payload.objectPath}`;
+}
+
 export function ImageField({
   label,
   value,
@@ -22,22 +46,10 @@ export function ImageField({
 
   const upload = async (file: File) => {
     if (!guildId) return;
-    if (!file.type.match(/^image\/(jpeg|png|gif|webp)$/) || file.size > 10 * 1024 * 1024) {
-      setError("Alege PNG, JPG, GIF sau WEBP, maximum 10 MB.");
-      return;
-    }
     setUploading(true);
     setError("");
     try {
-      const { data: payload } = await apiFetchWithMeta<{ uploadURL?: string; objectPath?: string }>(uploadEndpoint, {
-        method: "POST",
-        headers: csrfToken ? { "x-csrf-token": csrfToken } : undefined,
-        body: JSON.stringify({ guildId, name: file.name, size: file.size, contentType: file.type }),
-      });
-      if (!payload.uploadURL || !payload.objectPath) throw new Error("Uploadul a eșuat.");
-      const uploaded = await fetch(payload.uploadURL, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
-      if (!uploaded.ok) throw new Error("Imaginea nu a putut fi încărcată în storage.");
-      onChange(`/api/storage${payload.objectPath}`);
+      onChange(await uploadMessageImage(file, guildId, csrfToken, uploadEndpoint));
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : "Uploadul a eșuat.");
     } finally {

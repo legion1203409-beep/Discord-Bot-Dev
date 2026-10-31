@@ -12,11 +12,12 @@ import {
   type PartialMessage,
 } from "discord.js";
 import type { AutoModerationActionExecution } from "discord.js";
-import type { ActivityLogCategory, ModerationAction, ModerationConfig } from "../../moderation/config";
+import type { ActivityLogCategory, ModerationConfig } from "../../moderation/config";
 import { logger } from "../../lib/logger";
 import { buildActivityLogPresentation, renderMemberActivityTemplate } from "./activity-log-presentation";
 import { ACTIVITY_LOG_TEMPLATES, activityLogTemplateKey } from "../../moderation/activity-log-template-definitions";
 import { renderActivityLogTemplate } from "./activity-log-templates";
+import { describeMemberActions, planEventRuleActions, type RuleActionPlan } from "./rule-actions";
 
 export type ModerationEventActionInput = {
   guildId: string;
@@ -34,6 +35,11 @@ export type ModerationEventActionInput = {
   amount?: number;
   source?: "manual" | "automod" | "raid";
   evidence?: unknown[];
+  /**
+   * False for a warning that goes out together with a stronger sanction, so one
+   * incident does not move the member two steps up the escalation ladder.
+   */
+  countsAsOffense?: boolean;
 };
 
 /**
@@ -58,6 +64,8 @@ export type ModerationEventHelpers = {
       channelId?: string | null;
       durationMinutes?: number | null;
     },
+    /** Only passed when the rule ticks "Anunță staff-ul". */
+    options?: { pingStaff?: boolean },
   ): Promise<void>;
   auditExternal(guildId: string, eventType: string, targetType: string, targetId: string, detail: Record<string, unknown>): Promise<void>;
   recordMemberJoin(guildId: string, userId: string, joinedAt: Date): Promise<void>;
@@ -110,10 +118,6 @@ function claimIncident(key: string, cooldownMs: number, now = Date.now()): boole
   }
   incidentCooldowns.set(key, now + Math.max(1_000, Math.min(cooldownMs, 120_000)));
   return true;
-}
-
-function configuredAction(action: ModerationAction): ModerationEventActionInput["type"] | null {
-  return action === "none" || action === "delete" ? null : action;
 }
 
 function threshold(rule: { thresholds: Record<string, number> }, fallback: number): number {
@@ -448,8 +452,13 @@ async function alert(
     channelId?: string | null;
     durationMinutes?: number | null;
   },
+  options?: { pingStaff?: boolean },
 ): Promise<void> {
-  if (templateContext) {
+  // The extra arguments are only passed when they are needed, so a rule that
+  // does not ask for anything special behaves exactly as it always did.
+  if (options?.pingStaff) {
+    await helpers.notify(config, guild, title, description, channelId, templateContext, { pingStaff: true });
+  } else if (templateContext) {
     await helpers.notify(config, guild, title, description, channelId, templateContext);
   } else {
     await helpers.notify(config, guild, title, description, channelId);
@@ -467,6 +476,7 @@ async function sanction(
   evidence: unknown[],
   idempotencyKey: string,
   source: "automod" | "raid" = "automod",
+  options: { durationMinutes?: number | null; countsAsOffense?: boolean } = {},
 ): Promise<boolean> {
   if (!action || !client.user?.id) return false;
   try {
@@ -477,6 +487,8 @@ async function sanction(
     await helpers.executeModerationAction({
       guildId: guild.id, actorId: client.user.id, targetId: actorId, type: action,
       reason, evidence, source, idempotencyKey, channelId,
+      ...(action === "mute" && options.durationMinutes ? { durationMinutes: options.durationMinutes } : {}),
+      ...(options.countsAsOffense === false ? { countsAsOffense: false } : {}),
     });
     return true;
   } catch (error) {
@@ -487,6 +499,39 @@ async function sanction(
     });
     return false;
   }
+}
+
+/**
+ * Carries out what the operator ticked for a rule that reacts to a Discord
+ * event: a warning (alone or next to a stronger sanction), then the timeout,
+ * removal or ban. The warning gets its own idempotency key and does not count
+ * as a second offense. Returns true when at least one of them went through.
+ */
+async function applyEventPlan(
+  helpers: ModerationEventHelpers,
+  client: Client,
+  guild: Guild,
+  config: ModerationConfig,
+  targetId: string,
+  plan: RuleActionPlan,
+  reason: string,
+  evidence: unknown[],
+  idempotencyKey: string,
+  source: "automod" | "raid" = "automod",
+  options: { countsAsOffense?: boolean } = {},
+): Promise<boolean> {
+  let warned = false;
+  if (plan.extraWarning) {
+    warned = await sanction(
+      helpers, client, guild, config, targetId, "warn", reason, evidence, `${idempotencyKey}:warn`, source,
+      { countsAsOffense: false },
+    );
+  }
+  const primary = await sanction(
+    helpers, client, guild, config, targetId, plan.primary, reason, evidence, idempotencyKey, source,
+    { durationMinutes: plan.muteMinutes, ...(options.countsAsOffense === false ? { countsAsOffense: false } : {}) },
+  );
+  return warned || primary;
 }
 
 async function unusualActivity(
@@ -508,7 +553,8 @@ async function unusualActivity(
   if (!rate.exceeded) return;
   const idempotencyKey = `unusual:${guild.id}:${Math.floor(Date.now() / windowMs(rule))}`;
   if (!claimIncident(idempotencyKey, windowMs(rule))) return;
-  const action = configuredAction(rule.action) ?? configuredAction(config.suspiciousBehavior.action);
+  // A rule without a warning or sanction of its own follows the module's choice.
+  const plan = planEventRuleActions(rule, config.suspiciousBehavior);
   const eventLabels: Record<string, string> = {
     channelCreate: "crearea unui canal",
     channelUpdate: "modificarea unui canal",
@@ -531,8 +577,9 @@ async function unusualActivity(
   const actorDetail = actor?.verified
     ? `Actor identificat în jurnalul Discord: <@${actor.id}>.`
     : "Actorul nu a putut fi identificat în jurnalul Discord; nu se aplică sancțiune.";
-  const actionDetail = action
-    ? `Acțiune configurată: ${action} (se aplică numai unui actor verificat și eligibil).`
+  const memberActions = describeMemberActions({ ...plan, alertStaff: false });
+  const actionDetail = memberActions.length
+    ? `Acțiune configurată: ${memberActions.join(" + ")} (se aplică numai unui actor verificat și eligibil).`
     : "Doar alertă; nu este configurată o sancțiune.";
   const resourceDetail = resource?.entityName
     ? `Țintă: ${resource.channelId ? `#${resource.entityName}` : resource.entityName}${resource.channelId ? ` (<#${resource.channelId}>)` : ""}`
@@ -556,9 +603,10 @@ async function unusualActivity(
       channelId: resource?.channelId ?? null,
       durationMinutes: null,
     },
+    { pingStaff: plan.alertStaff },
   );
   if (await actorCanBeSanctioned(guild, config, actor)) {
-    await sanction(helpers, client, guild, config, actor!.id, action, `Activitate suspectă: ${event}`, [{ description }], idempotencyKey);
+    await applyEventPlan(helpers, client, guild, config, actor!.id, plan, `Activitate suspectă: ${event}`, [{ description }], idempotencyKey);
   } else {
     await recordAudit(helpers, config, guild, "suspicious.unusual_alert_only", "guild", guild.id,
       auditDetail(config, actor, { event, count: rate.count, noSanction: "actor unverified, bot, or excluded" }));
@@ -650,7 +698,10 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
         const incidentKey = `join-leave:${member.guild.id}:${Math.floor(Date.now() / windowMs(joinLeave))}`;
         if (claimIncident(incidentKey, windowMs(joinLeave))) {
           const description = `Flux join/leave detectat: ${rate.count} intrări/plecări în fereastra configurată. Nu există un actor sancționabil.`;
-          await alert(helpers, config, member.guild, "Activitate suspectă", description, config.suspiciousBehavior.alertChannelId);
+          await alert(
+            helpers, config, member.guild, "Activitate suspectă", description, config.suspiciousBehavior.alertChannelId,
+            undefined, { pingStaff: planEventRuleActions(joinLeave, config.suspiciousBehavior).alertStaff },
+          );
           await recordAudit(helpers, config, member.guild, "suspicious.join_leave_alert_only", "member", member.id,
             auditDetail(config, null, { count: rate.count, noSanction: "join/leave stream has no verified actor" }));
           await unusualActivity(helpers, client, member.guild, config, "member_join", null, false);
@@ -674,7 +725,11 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
     const description = young
       ? `Cont nou detectat la intrare (< ${config.antiRaid.accountAgeDays} zile).`
       : `Rată de join suspectă (${joins.count} în fereastra configurată).`;
-    await alert(helpers, config, member.guild, "Alertă anti-raid", description, config.antiRaid.alertChannelId);
+    const plan = planEventRuleActions(rule);
+    await alert(
+      helpers, config, member.guild, "Alertă anti-raid", description, config.antiRaid.alertChannelId,
+      undefined, { pingStaff: plan.alertStaff },
+    );
     await recordAudit(helpers, config, member.guild, "raid.detected", "member", member.id,
       auditDetail(config, null, { joins: joins.count, youngAccount: young, lockdown: config.antiRaid.lockdown }));
 
@@ -705,8 +760,8 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
         }
       }
     }
-    await sanction(
-      helpers, client, member.guild, config, member.id, configuredAction(rule.action),
+    await applyEventPlan(
+      helpers, client, member.guild, config, member.id, plan,
       `Anti-raid: ${description}`, [{ description }], `${incidentKey}:member:${member.id}`, "raid",
     );
   }, member.guild.id));
@@ -754,7 +809,10 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
     const incidentKey = `join-leave:${member.guild.id}:${Math.floor(Date.now() / windowMs(rule))}`;
     if (!claimIncident(incidentKey, windowMs(rule))) return;
     const description = `Flux join/leave detectat: ${rate.count} plecări/intrări în fereastra configurată. Actorul nu este verificabil; fără sancțiune.`;
-    await alert(helpers, config, member.guild, "Activitate suspectă", description, config.suspiciousBehavior.alertChannelId);
+    await alert(
+      helpers, config, member.guild, "Activitate suspectă", description, config.suspiciousBehavior.alertChannelId,
+      undefined, { pingStaff: planEventRuleActions(rule, config.suspiciousBehavior).alertStaff },
+    );
     await recordAudit(helpers, config, member.guild, "suspicious.join_leave_alert_only", "member", member.id,
       auditDetail(config, null, { count: rate.count, noSanction: "departure actor is unknown" }));
     await unusualActivity(helpers, client, member.guild, config, "member_leave", null, false);
@@ -785,6 +843,7 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
     let sanctioned = false;
     if (contentChanged && config.antiSpam.enabled && config.antiSpam.edit.enabled) {
       const rule = config.antiSpam.edit;
+      const plan = planEventRuleActions(rule);
       const rate = editRates.hit(`${message.guildId}:edit:${message.author.id}`, threshold(rule, 5), windowMs(rule, 10));
       if (rate.exceeded) {
         const incidentKey = `edit:${message.guildId}:${message.author.id}:${Math.floor(Date.now() / windowMs(rule, 10))}`;
@@ -792,15 +851,17 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
         const description = `Spam de editări: ${rate.count} editări în fereastra configurată.`;
         await recordAudit(helpers, config, message.guild, "spam.edit_burst", "member", message.author.id,
           auditDetail(config, { id: message.author.id, bot: false, staff: false, verified: true }, { count: rate.count, messageId: message.id }));
-        if (rule.action === "delete") {
+        let deleted = false;
+        if (plan.deleteMessage) {
           try {
             await helpers.executeModerationAction({
               guildId: message.guildId, actorId: client.user?.id ?? "system", targetId: message.author.id, type: "delete",
               messageId: message.id, channelId: message.channelId, reason: description, source: "automod",
               evidence: [{ messageId: message.id, channelId: message.channelId, kind: "edit-spam" }],
-              idempotencyKey: incidentKey,
+              idempotencyKey: `${incidentKey}:delete`,
             });
             sanctioned = true;
+            deleted = true;
           } catch (error) {
             logger.warn({ error, guildId: message.guildId, messageId: message.id }, "Configured edit deletion action failed");
             await recordAudit(helpers, config, message.guild, "event.action_failed", "message", message.id, {
@@ -808,10 +869,21 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
               error: error instanceof Error ? error.message.slice(0, 300) : "unknown deletion failure",
             });
           }
-        } else {
-          sanctioned = await sanction(
-            helpers, client, message.guild, config, message.author.id, configuredAction(rule.action), description,
-            [{ messageId: message.id, channelId: message.channelId, kind: "edit-spam" }], incidentKey,
+        }
+        if (plan.primary) {
+          // One incident is one offense: a deletion that went through already counted it.
+          const memberActionApplied = await applyEventPlan(
+            helpers, client, message.guild, config, message.author.id, plan, description,
+            [{ messageId: message.id, channelId: message.channelId, kind: "edit-spam" }], incidentKey, "automod",
+            { countsAsOffense: !deleted },
+          );
+          sanctioned = sanctioned || memberActionApplied;
+        }
+        if (plan.alertStaff) {
+          await alert(
+            helpers, config, message.guild, "Spam de editări", description, config.antiSpam.logChannelId,
+            { memberId: message.author.id, moderatorId: null, channelId: message.channelId, durationMinutes: plan.muteMinutes },
+            { pingStaff: true },
           );
         }
         }
@@ -824,10 +896,13 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
         const incidentKey = `mass-edit:${message.guildId}:${message.author.id}:${Math.floor(Date.now() / windowMs(massEdits))}`;
         if (!claimIncident(`mass-edit-cooldown:${message.guildId}:${message.author.id}`, windowMs(massEdits))) return;
         const description = `Editări în masă: ${rate.count} editări în fereastra configurată.`;
-        await alert(helpers, config, message.guild, "Activitate suspectă", description, config.suspiciousBehavior.alertChannelId);
+        const plan = planEventRuleActions(massEdits, config.suspiciousBehavior);
+        await alert(
+          helpers, config, message.guild, "Activitate suspectă", description, config.suspiciousBehavior.alertChannelId,
+          undefined, { pingStaff: plan.alertStaff },
+        );
         if (!sanctioned) {
-          await sanction(helpers, client, message.guild, config, message.author.id,
-            configuredAction(massEdits.action) ?? configuredAction(config.suspiciousBehavior.action),
+          await applyEventPlan(helpers, client, message.guild, config, message.author.id, plan,
             description, [{ messageId: message.id, channelId: message.channelId, kind: "mass-edits" }], incidentKey);
         }
         await unusualActivity(helpers, client, message.guild, config, "mass_edits", { id: message.author.id, bot: false, staff: false, verified: true }, false);
@@ -897,8 +972,11 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
       const incidentKey = `delete:${guild.id}:${keyActor}:${bulk ? "bulk" : "single"}:${Math.floor(Date.now() / windowMs(activeRule))}`;
       if (!claimIncident(incidentKey, windowMs(activeRule))) return;
       const description = `${bulk ? "Ștergere în masă" : "Ștergeri repetate"}: ${rate.count} mesaje. ${actor ? `Actor verificat: <@${actor.id}>.` : "Actor neverificat; alertă fără sancțiune."}`;
+      // Only the suspicious-behaviour rule falls back to the module-wide choice.
+      const plan = planEventRuleActions(activeRule, activeRule === massDeletes ? config.suspiciousBehavior : null);
       await alert(helpers, config, guild, "Activitate suspectă", description,
-        activeRule === massDeletes ? config.suspiciousBehavior.alertChannelId : config.antiSpam.logChannelId);
+        activeRule === massDeletes ? config.suspiciousBehavior.alertChannelId : config.antiSpam.logChannelId,
+        undefined, { pingStaff: plan.alertStaff });
       await recordAudit(helpers, config, guild, bulk ? "spam.bulk_delete" : "spam.message_delete", "channel", channelId ?? guild.id,
         auditDetail(config, actor, { count: rate.count, bulk, noSanction: !actor }));
       if (!actor || !await actorCanBeSanctioned(guild, config, actor)) {
@@ -906,10 +984,8 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
           auditDetail(config, actor, { count: rate.count, noSanction: "actor unverified, bot, or excluded" }));
         return;
       }
-      const action = configuredAction(activeRule.action) ??
-        (activeRule === massDeletes ? configuredAction(config.suspiciousBehavior.action) : null);
-      await sanction(
-        helpers, client, guild, config, actor.id, action, description,
+      await applyEventPlan(
+        helpers, client, guild, config, actor.id, plan, description,
         [{ channelId: channelId ?? undefined, kind: bulk ? "bulk-delete" : "delete-spam" }], incidentKey,
       );
       await unusualActivity(helpers, client, guild, config, bulk ? "bulk_delete" : "message_delete", actor, false);
@@ -948,13 +1024,13 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
       const incidentKey = `${kind}:${member.guild.id}:${member.id}:${Math.floor(Date.now() / windowMs(rule))}`;
       if (!claimIncident(incidentKey, windowMs(rule))) return;
       const description = `${kind === "nickname" ? "Schimbări repetate de nickname" : "Schimbări repetate de roluri"} pentru <@${member.id}> (${rate.count}).`;
+      const plan = planEventRuleActions(rule, config.suspiciousBehavior);
       await alert(helpers, config, member.guild, "Activitate suspectă",
         `${description} ${actor ? `Actor verificat: <@${actor.id}>.` : "Actor neverificat; fără sancțiune."}`,
-        config.suspiciousBehavior.alertChannelId);
+        config.suspiciousBehavior.alertChannelId, undefined, { pingStaff: plan.alertStaff });
       // Crucially, member is the target of the change, not the actor.
       if (await actorCanBeSanctioned(member.guild, config, actor)) {
-        await sanction(helpers, client, member.guild, config, actor!.id,
-          configuredAction(rule.action) ?? configuredAction(config.suspiciousBehavior.action),
+        await applyEventPlan(helpers, client, member.guild, config, actor!.id, plan,
           description, [{ description: `${kind}-change target=${member.id}` }], incidentKey);
       } else {
         await recordAudit(helpers, config, member.guild, `suspicious.${kind}_alert_only`, "member", member.id,

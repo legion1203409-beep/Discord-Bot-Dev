@@ -52,6 +52,12 @@ export interface ModerationRole {
   name: string;
   position?: number;
   managed?: boolean;
+  /** "#rrggbb", or null for a role without a color. */
+  color?: string | null;
+  /** The bot can give the role: it has Manage Roles and the role is below its own. */
+  assignable?: boolean;
+  /** The role carries staff powers (administrator, bans, roles…). */
+  elevated?: boolean;
   activityRewardAssignable?: boolean;
 }
 
@@ -120,6 +126,9 @@ export interface BotControlConfig {
 
   allianceRecruitmentText: string;
 
+  /** The Oracle's chat and prophecy settings; missing on a server that predates them. */
+  oracle?: OracleSettings;
+
   verification: {
     enabled: boolean;
     channelId: string;
@@ -133,6 +142,8 @@ export interface BotControlConfig {
     imageUrl: string;
     thumbnailUrl: string;
     panelMessageId: string;
+    /** Roles given together with roleId, at the button and at manual verification. */
+    extraRoleIds?: string[];
   };
 
   tickets: {
@@ -213,6 +224,8 @@ export interface BotControlConfig {
     emptyChannelsText: string;
     imageUrl: string;
     thumbnailUrl: string;
+    /** The day's card as the report's image; missing means on. */
+    chart?: boolean;
     metricLabels: {
       messages: string;
       uniqueUsers: string;
@@ -228,6 +241,24 @@ export interface BotControlConfig {
     created: Array<{ key: string; id: string; name: string; type: "text" | "category" }>;
     reused: Array<{ key: string; id: string; name: string; type: "text" | "category" }>;
     verificationPanel?: "not_requested" | "disabled" | "needs_role" | "published" | "failed" | "published_not_saved";
+  };
+}
+
+/** What the Oracle does on a server (api-server/src/bot/oracle-settings.ts). */
+export interface OracleSettings {
+  enabled: boolean;
+  chat: {
+    /** Channels or categories where the Oracle answers; empty means every channel. */
+    channelIds: string[];
+    replyToReplies: boolean;
+    tone: "implicit" | "mistic" | "prietenos" | "sobru" | "jucaus";
+    length: "scurt" | "mediu" | "lung";
+    cooldownSeconds: number;
+  };
+  prophecy: {
+    commandEnabled: boolean;
+    dailyLimit: number;
+    daily: { enabled: boolean; channelId: string; hour: number; timeZone: string };
   };
 }
 
@@ -490,6 +521,37 @@ export async function apiFetchWithMeta<T>(
 
 async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   return (await apiFetchWithMeta<T>(endpoint, options)).data;
+}
+
+export type MemberVerificationResult = {
+  userId: string;
+  displayName: string | null;
+  /** verified: received the verification role now; updated: was verified and received other roles; unchanged: had them all. */
+  result: "verified" | "updated" | "unchanged" | "failed";
+  added: string[];
+  error?: string;
+};
+
+export type MembersVerificationResponse = {
+  roleId: string;
+  results: MemberVerificationResult[];
+  /** Roles that were asked for but that the bot cannot give, with the reason. */
+  unavailableRoles: Array<{ roleId: string; reason: string }>;
+  verified: number;
+  updated: number;
+  unchanged: number;
+  failed: number;
+};
+
+/**
+ * Manual verification of several members at once (at most 25 per request): each
+ * receives the verification role and the chosen extra roles it is missing.
+ */
+export function verifyGuildMembers(guildId: string, userIds: string[], roleIds: string[]): Promise<MembersVerificationResponse> {
+  return apiFetch<MembersVerificationResponse>(
+    `/guilds/${encodeURIComponent(guildId)}/verification/members/verify`,
+    { method: "POST", body: JSON.stringify({ userIds, roleIds }) },
+  );
 }
 
 export function manuallyVerifyGuildMember({ guildId, userId }: ManualVerificationInput): Promise<ManualVerificationResult> {
@@ -1231,7 +1293,10 @@ export function useBotControl(guildId: string | null) {
             },
           }
         : value;
-      const { discordLive: _discardedStatus, provisioning: _discardedProvisioning, ...payload } = payloadSource;
+      const { discordLive: _discardedStatus, provisioning: _discardedProvisioning, oracle, ...rest } = payloadSource;
+      // The Oracle's settings go only when this save changed them, so saving
+      // another page does not undo a /stopai or /startai given meanwhile.
+      const payload = oracle && JSON.stringify(oracle) !== JSON.stringify(data?.oracle) ? { ...rest, oracle } : rest;
       const result = await apiFetch<unknown>(`/guilds/${requestedGuildId}/bot-control`, {
         method: "PUT",
         body: JSON.stringify(payload),

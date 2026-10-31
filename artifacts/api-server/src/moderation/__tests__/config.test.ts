@@ -74,6 +74,100 @@ describe("moderation configuration defaults", () => {
     })).toThrow();
   });
 
+  it("keeps rules saved before the warning, staff-alert and mute-length ticks existed exactly as they were", () => {
+    const config = ModerationConfigSchema.parse({
+      autoMod: { wordFilter: { enabled: true, action: "mute", deleteMessage: true } },
+      antiRaid: { rule: { enabled: true, action: "ban" } },
+      suspiciousBehavior: { enabled: true, action: "warn", massEdits: { enabled: true, action: "none" } },
+    });
+    for (const rule of [config.autoMod.wordFilter, config.antiRaid.rule, config.suspiciousBehavior.massEdits]) {
+      expect(rule).not.toHaveProperty("warnMember");
+      expect(rule).not.toHaveProperty("alertStaff");
+      expect(rule).not.toHaveProperty("muteMinutes");
+    }
+    expect(config.suspiciousBehavior).not.toHaveProperty("warnMember");
+    expect(config.autoMod.scamFilter).toEqual({ enabled: false, action: "delete" });
+  });
+
+  it("round-trips the extra ticks of a rule, the scam filter and the suspicious-behaviour module", () => {
+    const config = ModerationConfigSchema.parse({
+      autoMod: {
+        wordFilter: { enabled: true, action: "mute", deleteMessage: true, warnMember: true, alertStaff: true, muteMinutes: 90 },
+        scamFilter: { enabled: true, action: "mute", warnMember: true, alertStaff: false, muteMinutes: 1_440 },
+      },
+      antiSpam: { edit: { enabled: true, action: "none", warnMember: true, alertStaff: true } },
+      antiRaid: { rule: { enabled: true, action: "kick", warnMember: true, alertStaff: true } },
+      suspiciousBehavior: { enabled: true, action: "mute", warnMember: true, alertStaff: true, muteMinutes: 30 },
+    });
+    const loaded = ModerationConfigSchema.parse(JSON.parse(JSON.stringify(config)));
+    expect(loaded).toEqual(config);
+    expect(loaded.autoMod.wordFilter).toMatchObject({ warnMember: true, alertStaff: true, muteMinutes: 90 });
+    expect(loaded.autoMod.scamFilter).toMatchObject({ action: "mute", warnMember: true, alertStaff: false, muteMinutes: 1_440 });
+    expect(loaded.suspiciousBehavior).toMatchObject({ warnMember: true, alertStaff: true, muteMinutes: 30 });
+  });
+
+  it("keeps a configured mute inside what Discord accepts and does not widen the scam filter", () => {
+    const withMute = (muteMinutes: unknown) => ({ autoMod: { wordFilter: { enabled: true, action: "mute", muteMinutes } } });
+    expect(ModerationConfigSchema.parse(withMute(1)).autoMod.wordFilter.muteMinutes).toBe(1);
+    expect(ModerationConfigSchema.parse(withMute(40_320)).autoMod.wordFilter.muteMinutes).toBe(40_320);
+    for (const invalid of [0, -1, 40_321, 1.5, "30", null]) {
+      expect(() => ModerationConfigSchema.parse(withMute(invalid))).toThrow();
+    }
+    expect(() => ModerationConfigSchema.parse({ autoMod: { scamFilter: { action: "ban" } } })).toThrow();
+    expect(() => ModerationConfigSchema.parse({ autoMod: { wordFilter: { warnMember: "yes" } } })).toThrow();
+    expect(() => ModerationConfigSchema.parse({ autoMod: { wordFilter: { alertStaff: 1 } } })).toThrow();
+  });
+
+  it("round-trips the extra AI ticks for the general reaction and for a category, and keeps older AI settings unchanged", () => {
+    const legacy = ModerationConfigSchema.parse({ ai: { action: "warn", deleteMessage: true, categorySettings: { scams: { action: "ban" } } } });
+    expect(legacy.ai).not.toHaveProperty("warnMember");
+    expect(legacy.ai).not.toHaveProperty("alertStaff");
+    expect(legacy.ai).not.toHaveProperty("muteMinutes");
+    expect(legacy.ai.categorySettings.scams).toEqual({ action: "ban" });
+
+    const config = ModerationConfigSchema.parse({
+      ai: {
+        action: "mute", deleteMessage: true, warnMember: true, alertStaff: true, muteMinutes: 60,
+        categorySettings: { threats: { action: "ban", deleteMessage: true, alertStaff: true }, toxicity: { sensitivity: "high", action: "mute", deleteMessage: false, muteMinutes: 1_440 } },
+      },
+    });
+    const loaded = ModerationConfigSchema.parse(JSON.parse(JSON.stringify(config)));
+    expect(loaded.ai).toEqual(config.ai);
+    expect(loaded.ai).toMatchObject({ warnMember: true, alertStaff: true, muteMinutes: 60 });
+    expect(loaded.ai.categorySettings.toxicity).toEqual({ sensitivity: "high", action: "mute", deleteMessage: false, muteMinutes: 1_440 });
+    expect(() => ModerationConfigSchema.parse({ ai: { muteMinutes: 0 } })).toThrow();
+    expect(() => ModerationConfigSchema.parse({ ai: { categorySettings: { threats: { muteMinutes: 40_321 } } } })).toThrow();
+    expect(() => ModerationConfigSchema.parse({ ai: { categorySettings: { threats: { pingEveryone: true } } } })).toThrow();
+  });
+
+  it("gives escalation steps their own mute length and keeps steps saved without one unchanged", () => {
+    const legacy = ModerationConfigSchema.parse({ escalation: { levels: [{ level: 1, violations: 2, action: "mute" }] } });
+    expect(legacy.escalation.levels[0]).toEqual({ level: 1, violations: 2, action: "mute" });
+    expect(defaultModerationConfig.escalation.levels.every((level) => !("muteMinutes" in level))).toBe(true);
+
+    const config = ModerationConfigSchema.parse({
+      escalation: { enabled: true, resetAfterDays: 14, levels: [
+        { level: 1, violations: 1, action: "warn" },
+        { level: 2, violations: 3, action: "mute", muteMinutes: 1_440 },
+      ] },
+    });
+    const loaded = ModerationConfigSchema.parse(JSON.parse(JSON.stringify(config)));
+    expect(loaded.escalation).toEqual(config.escalation);
+    expect(loaded.escalation.levels[1]).toEqual({ level: 2, violations: 3, action: "mute", muteMinutes: 1_440 });
+    expect(() => ModerationConfigSchema.parse({ escalation: { levels: [{ level: 1, violations: 1, action: "mute", muteMinutes: 0 }] } })).toThrow();
+    expect(() => ModerationConfigSchema.parse({ escalation: { levels: [{ level: 1, violations: 1, action: "mute", muteMinutes: 40_321 }] } })).toThrow();
+  });
+
+  it("lets single staff commands be switched off, with none switched off in older settings", () => {
+    expect(defaultModerationConfig.manualTools.disabledCommands).toEqual([]);
+    expect(ModerationConfigSchema.parse({ manualTools: { enabled: true, commandGrants: { warn: ["123456789012345678"] } } }).manualTools)
+      .toEqual({ enabled: true, commandGrants: { warn: ["123456789012345678"] }, logActions: false, disabledCommands: [] });
+    const config = ModerationConfigSchema.parse({ manualTools: { enabled: true, disabledCommands: ["purge", "role"] } });
+    expect(ModerationConfigSchema.parse(JSON.parse(JSON.stringify(config))).manualTools.disabledCommands).toEqual(["purge", "role"]);
+    expect(() => ModerationConfigSchema.parse({ manualTools: { disabledCommands: ["login"] } })).toThrow();
+    expect(() => ModerationConfigSchema.parse({ manualTools: { disabledCommands: ["delete"] } })).toThrow();
+  });
+
   it("keeps automatic activity logs disabled by default and allows Discord-managed channel access", () => {
     expect(defaultModerationConfig.activityLog.enabled).toBe(false);
     expect(defaultModerationConfig.activityLog.channelIds.messages).toBeNull();
@@ -165,5 +259,28 @@ describe("moderation configuration defaults", () => {
     expect(() => ModerationConfigSchema.parse({
       timeProfiles: { timezone: "not/a-timezone" },
     })).toThrow();
+  });
+});
+
+describe("ban appeals configuration", () => {
+  it("is off by default, lifts the ban on accept and waits 30 days after a rejection", () => {
+    expect(ModerationConfigSchema.parse({}).appeals).toEqual({
+      enabled: false, channelId: null, unbanOnAccept: true, cooldownDays: 30, dmOnAccept: true, inviteUrl: null,
+      acceptedTitle: "✅ Contestația ta a fost acceptată", acceptedMessage: "Banul de pe **{guild}** a fost scos. Te poți întoarce oricând.", acceptedButton: "Intră în regat",
+    });
+  });
+  it("keeps only a Discord id as the staff channel and 1 to 365 days of waiting", () => {
+    expect(ModerationConfigSchema.parse({ appeals: { channelId: "123456789012345678", cooldownDays: 7 } }).appeals).toMatchObject({ channelId: "123456789012345678", cooldownDays: 7 });
+    expect(() => ModerationConfigSchema.parse({ appeals: { channelId: "nu-e-id" } })).toThrow();
+    expect(() => ModerationConfigSchema.parse({ appeals: { cooldownDays: 0 } })).toThrow();
+    expect(() => ModerationConfigSchema.parse({ appeals: { cooldownDays: 366 } })).toThrow();
+  });
+});
+
+describe("ban evasion configuration", () => {
+  it("is off by default and compares names and avatars of bans from the last 30 days, for accounts under 30 days", () => {
+    expect(ModerationConfigSchema.parse({}).banEvasion).toEqual({ enabled: false, alertChannelId: null, watchDays: 30, maxAccountAgeDays: 30, matchName: true, matchAvatar: true });
+    expect(() => ModerationConfigSchema.parse({ banEvasion: { watchDays: 0 } })).toThrow();
+    expect(() => ModerationConfigSchema.parse({ banEvasion: { alertChannelId: "x" } })).toThrow();
   });
 });
