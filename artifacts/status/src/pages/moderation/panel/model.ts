@@ -561,6 +561,7 @@ export const GAME_MODULE_ROUTES = {
   progress: "/joc/progres",
   seasons: "/joc/sezoane",
   raid: "/joc/raid",
+  duels: "/joc/dueluri",
 } as const;
 
 export function isGameRoute(path: string): boolean {

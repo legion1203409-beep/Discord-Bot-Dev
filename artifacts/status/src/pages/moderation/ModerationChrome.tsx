@@ -90,6 +90,7 @@ const allItems: Array<{ heading: string; items: NavigationItem[] }> = [
     { id: "game-progress", label: "Serii și realizări", description: "Bonusul seriei zilnice și insignele", href: "/joc/progres", icon: Activity, tint: "violet", keywords: "serie streak realizari insigne achievements" },
     { id: "game-seasons", label: "Sezoane", description: "Clasamentul lunar și premiile lui", href: "/joc/sezoane", icon: Activity, tint: "violet", keywords: "sezon clasament lunar premii campion" },
     { id: "game-raid", label: "Raidul săptămânal", description: "Titanul pe care îl bate tot serverul", href: "/joc/raid", icon: Activity, tint: "violet", keywords: "raid titan boss saptamanal breasla" },
+    { id: "game-duels", label: "Dueluri", description: "Pariuri, pauză și taxă pentru /duel", href: "/joc/dueluri", icon: Activity, tint: "violet", keywords: "duel pvp pariu elo rating topduel" },
   ] },
   { heading: "Oracol", items: [
     primary("oracle"),

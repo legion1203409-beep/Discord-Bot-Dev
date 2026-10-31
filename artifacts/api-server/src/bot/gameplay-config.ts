@@ -78,6 +78,15 @@ export interface GameplayConfig {
     /** Where the titan appears; empty: Dragonul Stins' channel. */
     channelId: string;
   };
+  /** Player duels (bot/duels.ts). */
+  duels: {
+    enabled: boolean;
+    maxBet: number;
+    /** Seconds a player waits between two duels. */
+    cooldownSeconds: number;
+    /** Part of the pot the bot keeps, in percent (Oboli leave the economy). */
+    taxPercent: number;
+  };
 }
 
 export const DEFAULT_GAMEPLAY_CONFIG: GameplayConfig = {
@@ -145,6 +154,12 @@ export const DEFAULT_GAMEPLAY_CONFIG: GameplayConfig = {
     hpPerPlayer: 15_000,
     rewardPool: 50_000,
     channelId: "",
+  },
+  duels: {
+    enabled: true,
+    maxBet: 5_000,
+    cooldownSeconds: 120,
+    taxPercent: 5,
   },
 };
 
@@ -227,6 +242,18 @@ export function normalizeGameplayConfig(value: unknown): GameplayConfig {
     progress: normalizeProgress(input.progress),
     seasons: normalizeSeasons(input.seasons),
     raid: normalizeRaid(input.raid),
+    duels: normalizeDuels(input.duels),
+  };
+}
+
+function normalizeDuels(value: unknown): GameplayConfig["duels"] {
+  const input = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const defaults = DEFAULT_GAMEPLAY_CONFIG.duels;
+  return {
+    enabled: typeof input.enabled === "boolean" ? input.enabled : defaults.enabled,
+    maxBet: boundedInt(input.maxBet, defaults.maxBet, 0, 1_000_000),
+    cooldownSeconds: boundedInt(input.cooldownSeconds, defaults.cooldownSeconds, 0, 86_400),
+    taxPercent: boundedInt(input.taxPercent, defaults.taxPercent, 0, 50),
   };
 }
 

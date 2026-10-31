@@ -10,7 +10,7 @@ import type { useGameplayState } from "../../../hooks/use-moderation-api";
 import { EmojiTextField, ImageUrlField } from "./message-fields";
 import {
   ECONOMY_FIELDS, EVENT_FIELDS, GAME_CHANNELS, GAME_MODULES, MAX_MULTIPLIER, MIN_MULTIPLIER, MISSIONS, MULTIPLIER_PRESETS,
-  RAID_WEEKDAYS, raidOf, raidWindowText, PLACES, SEASON_POINT_LIST, seasonsOf, ACHIEVEMENT_LIST, progressOf, streakLadder, economyOf, eventsOf, eventsPerDay, gameChannelCount, isValidMultiplier, minutesText, missionOf, multiplierText,
+  duelsOf, duelPayout, RAID_WEEKDAYS, raidOf, raidWindowText, PLACES, SEASON_POINT_LIST, seasonsOf, ACHIEVEMENT_LIST, progressOf, streakLadder, economyOf, eventsOf, eventsPerDay, gameChannelCount, isValidMultiplier, minutesText, missionOf, multiplierText,
   type GameModuleId,
 } from "./game-model";
 import { ModuleView } from "./rules";
@@ -20,7 +20,7 @@ const MODULE = Object.fromEntries(GAME_MODULES.map((module) => [module.id, modul
 /** The game's running state, read and changed at once through /gameplay-state (not part of the draft). */
 export const GameStateContext = createContext<ReturnType<typeof useGameplayState> | null>(null);
 
-export const GAME_ICONS: Record<GameModuleId, IconName> = { state: "power", channels: "hash", events: "calendar", missions: "scroll", economy: "star", progress: "verified", seasons: "calendar", raid: "raid" };
+export const GAME_ICONS: Record<GameModuleId, IconName> = { state: "power", channels: "hash", events: "calendar", missions: "scroll", economy: "star", progress: "verified", seasons: "calendar", raid: "raid", duels: "gavel" };
 
 /* ------------------------------------------------------------------ */
 /* Stare                                                               */
@@ -391,6 +391,39 @@ function RaidModule() {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* Dueluri                                                             */
+/* ------------------------------------------------------------------ */
+
+function DuelsModule() {
+  const { config, set } = usePanel();
+  const duels = duelsOf(config);
+  const change = (next: Partial<typeof duels>) => set(["gameplayConfig", "duels"], { ...duels, ...next });
+  const example = Math.min(1_000, duels.maxBet || 1_000);
+  return (
+    <ModuleView module={MODULE.duels} icon="gavel">
+      <SectionCard title="Regulile" testId="game-duels">
+        <Fields>
+          <SwitchField label="Dueluri" testId="game-duels-switch" checked={duels.enabled} onChange={(next) => change({ enabled: next })} />
+          <NumField label="Pariul maxim" unit="Oboli" min={0} max={1_000_000} value={duels.maxBet} testId="game-duels-max" hint="0: dueluri doar de onoare, fără pariuri." onChange={(next) => change({ maxBet: next ?? -1 })} />
+          <NumField label="Pauza dintre dueluri" unit="secunde" min={0} max={86_400} value={duels.cooldownSeconds} testId="game-duels-cooldown" onChange={(next) => change({ cooldownSeconds: next ?? -1 })} />
+          <NumField label="Taxa din pot" unit="%" min={0} max={50} value={duels.taxPercent} testId="game-duels-tax" hint="Partea din pariuri care dispare din joc; ține economia sub control." onChange={(next) => change({ taxPercent: next ?? -1 })} />
+        </Fields>
+        {duels.maxBet > 0 ? (
+          <p className="pn-fh" data-testid="game-duels-example">La un pariu de {example.toLocaleString("ro-RO")} Oboli fiecare, câștigătorul ia {duelPayout(example, duels.taxPercent).toLocaleString("ro-RO")} Oboli.</p>
+        ) : null}
+      </SectionCard>
+      <SectionCard title="Cum se luptă">
+        <ul className="pn-fh pn-card-lede" style={{ paddingLeft: 18, display: "grid", gap: 4 }}>
+          <li>Cel provocat are 2 minute să apese Acceptă sau Refuză; pariul se ia de la amândoi doar dacă amândoi îl au.</li>
+          <li>Cel mai rapid (eschiva) lovește primul; eschiva poate evita o lovitură, criticul o dublează, apărarea o îndulcește. Cel mult 12 runde.</li>
+          <li>Fiecare duel mută ratingul celor doi; o victorie contra cuiva mai bun aduce mai multe puncte.</li>
+        </ul>
+      </SectionCard>
+    </ModuleView>
+  );
+}
+
 export const GAME_VIEWS: Record<GameModuleId, () => React.ReactElement> = {
   state: StateModule,
   channels: ChannelsModule,
@@ -400,4 +433,5 @@ export const GAME_VIEWS: Record<GameModuleId, () => React.ReactElement> = {
   progress: ProgressModule,
   seasons: SeasonsModule,
   raid: RaidModule,
+  duels: DuelsModule,
 };

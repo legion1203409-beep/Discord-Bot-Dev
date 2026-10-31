@@ -55,6 +55,11 @@ export const GAME_MODULES: readonly GameModuleDef[] = [
     description: "O dată pe săptămână apare un titan pe care tot serverul îl bate împreună (/raid). Prada se împarte după daune: toată dacă titanul cade, un sfert dacă scapă.",
     paths: ["gameplayConfig.raid"],
   },
+  {
+    id: "duels", route: GAME_MODULE_ROUTES.duels, short: "Dueluri", title: "Duelurile",
+    description: "Jucătorii se provoacă cu /duel, cu sau fără pariu în Oboli. Lupta se joacă din statisticile fiecăruia, iar /topduel arată clasamentul (rating Elo).",
+    paths: ["gameplayConfig.duels"],
+  },
 ];
 
 export function gameModuleForRoute(path: string): GameModuleDef {
@@ -278,6 +283,23 @@ export const SEASON_POINT_LIST: ReadonlyArray<readonly [string, number]> = [
 export const PLACES = ["🥇 Locul 1", "🥈 Locul 2", "🥉 Locul 3"] as const;
 
 /* ------------------------------------------------------------------ */
+/* Dueluri                                                             */
+/* ------------------------------------------------------------------ */
+
+export type DuelSettings = { enabled: boolean; maxBet: number; cooldownSeconds: number; taxPercent: number };
+
+export const DEFAULT_DUELS: DuelSettings = { enabled: true, maxBet: 5_000, cooldownSeconds: 120, taxPercent: 5 };
+
+export function duelsOf(config: any): DuelSettings {
+  return { ...DEFAULT_DUELS, ...(config?.gameplayConfig?.duels ?? {}) };
+}
+
+/** What the winner takes for a bet, as bot/duels.ts → duelPayout computes it. */
+export function duelPayout(bet: number, taxPercent: number): number {
+  return Math.floor(bet * 2 * (1 - taxPercent / 100));
+}
+
+/* ------------------------------------------------------------------ */
 /* Raid                                                                */
 /* ------------------------------------------------------------------ */
 
@@ -321,6 +343,10 @@ export function gameModuleSummary(id: GameModuleId, config: any): string {
       const economy = economyOf(config);
       return allMultipliersAre(config, 1) ? "Valorile de bază" : ECONOMY_FIELDS.map((field) => multiplierText(economy[field.key])).join(" · ");
     }
+    case "duels": {
+      const duels = duelsOf(config);
+      return duels.enabled ? (duels.maxBet ? `pariu până la ${duels.maxBet.toLocaleString("ro-RO")}` : "fără pariuri") : "Oprite";
+    }
     case "raid": {
       const raid = raidOf(config);
       return raid.enabled ? raidWindowText(raid) : "Oprit";
@@ -340,6 +366,7 @@ export function gameModuleSummary(id: GameModuleId, config: any): string {
 export function isGameModuleOn(id: GameModuleId, config: any): boolean {
   if (id === "state") return config?.gameplayConfig?.paused === false;
   if (id === "channels") return gameChannelCount(config) > 0;
+  if (id === "duels") return config?.gameplayConfig?.paused === false && duelsOf(config).enabled;
   if (id === "raid") return config?.gameplayConfig?.paused === false && raidOf(config).enabled;
   if (id === "seasons") return config?.gameplayConfig?.paused === false && seasonsOf(config).enabled;
   if (id === "progress") return config?.gameplayConfig?.paused === false && (progressOf(config).streakEnabled || progressOf(config).achievementsEnabled);
@@ -378,6 +405,10 @@ export function gameDraftError(config: any): string | null {
     if (roleId && !isDiscordId(roleId)) return `Sezoane — ${PLACES[index]}: „${roleId}” nu este un ID de rol.`;
   }
   if (seasons.channelId && !isDiscordId(seasons.channelId)) return `Sezoane — „${seasons.channelId}” nu este un ID de canal.`;
+  const duels = duelsOf(config);
+  if (!isValidInteger(duels.maxBet, 0, 1_000_000)) return "Dueluri — Pariul maxim: un număr întreg între 0 și 1000000.";
+  if (!isValidInteger(duels.cooldownSeconds, 0, 86_400)) return "Dueluri — Pauza dintre dueluri: un număr întreg de secunde între 0 și 86400.";
+  if (!isValidInteger(duels.taxPercent, 0, 50)) return "Dueluri — Taxa: un număr întreg între 0 și 50.";
   const raid = raidOf(config);
   const raidLimits: Array<[keyof RaidSettings, string, number, number]> = [
     ["weekday", "Ziua", 1, 7], ["hour", "Ora", 0, 23], ["durationHours", "Cât stă", 1, 144], ["cooldownMinutes", "Pauza dintre lovituri", 1, 1_440],

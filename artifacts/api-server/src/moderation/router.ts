@@ -977,6 +977,12 @@ export const botControlSchema = z.object(
       rewardPool: z.number().int().min(0).max(10_000_000),
       channelId: snowflake.or(z.literal("")),
     }).strict().optional(),
+    duels: z.object({
+      enabled: z.boolean(),
+      maxBet: z.number().int().min(0).max(1_000_000),
+      cooldownSeconds: z.number().int().min(0).max(86_400),
+      taxPercent: z.number().int().min(0).max(50),
+    }).strict().optional(),
   
 }
 
@@ -3383,6 +3389,7 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
     progress: value.gameplayConfig.progress ?? previousGameplayConfig.progress,
     seasons: value.gameplayConfig.seasons ?? previousGameplayConfig.seasons,
     raid: value.gameplayConfig.raid ?? previousGameplayConfig.raid,
+    duels: value.gameplayConfig.duels ?? previousGameplayConfig.duels,
     paused: previousGameplayConfig.paused,
   });
   anyWriteSucceeded = true;

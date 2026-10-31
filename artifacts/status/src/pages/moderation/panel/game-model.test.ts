@@ -110,3 +110,13 @@ describe("the weekly raid", () => {
     expect(gameDraftError(config({ raid: { hpPerPlayer: 10 } }))).toContain("Viață pe jucător");
   });
 });
+
+describe("duels", () => {
+  it("sum up, pay like the bot and refuse bad values", async () => {
+    const { duelsOf, duelPayout } = await import("./game-model");
+    expect(duelsOf(config())).toEqual({ enabled: true, maxBet: 5_000, cooldownSeconds: 120, taxPercent: 5 });
+    expect(duelPayout(1_000, 5)).toBe(1_900);
+    expect(gameModuleSummary("duels", config({ duels: { maxBet: 0 } }))).toBe("fără pariuri");
+    expect(gameDraftError(config({ duels: { taxPercent: 60 } }))).toContain("Taxa");
+  });
+});
