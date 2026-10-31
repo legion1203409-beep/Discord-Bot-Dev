@@ -60,6 +60,11 @@ export const GAME_MODULES: readonly GameModuleDef[] = [
     description: "Jucătorii se provoacă cu /duel, cu sau fără pariu în Oboli. Lupta se joacă din statisticile fiecăruia, iar /topduel arată clasamentul (rating Elo).",
     paths: ["gameplayConfig.duels"],
   },
+  {
+    id: "expeditions", route: GAME_MODULE_ROUTES.expeditions, short: "Expediții", title: "Expedițiile companionilor",
+    description: "Jucătorii cu companion îl trimit 1, 4 sau 8 ore (/expeditie) și adună Oboli și materiale când se întoarce. Mai mult cu cât drumul e mai lung și companionul mai antrenat.",
+    paths: ["gameplayConfig.expeditions"],
+  },
 ];
 
 export function gameModuleForRoute(path: string): GameModuleDef {
@@ -283,6 +288,23 @@ export const SEASON_POINT_LIST: ReadonlyArray<readonly [string, number]> = [
 export const PLACES = ["🥇 Locul 1", "🥈 Locul 2", "🥉 Locul 3"] as const;
 
 /* ------------------------------------------------------------------ */
+/* Expediții                                                           */
+/* ------------------------------------------------------------------ */
+
+export type ExpeditionSettings = { enabled: boolean; goldPerHour: number; speed: number };
+
+export const DEFAULT_EXPEDITIONS: ExpeditionSettings = { enabled: true, goldPerHour: 120, speed: 1 };
+
+export function expeditionsOf(config: any): ExpeditionSettings {
+  return { ...DEFAULT_EXPEDITIONS, ...(config?.gameplayConfig?.expeditions ?? {}) };
+}
+
+/** Oboli brought back, as bot/expeditions.ts → expeditionLoot computes them (without the ±10% luck). */
+export function expeditionGold(hours: number, companionLevel: number, goldPerHour: number): number {
+  return Math.round(goldPerHour * hours * (1 + Math.min(20, Math.max(1, companionLevel) - 1) * 0.1));
+}
+
+/* ------------------------------------------------------------------ */
 /* Dueluri                                                             */
 /* ------------------------------------------------------------------ */
 
@@ -343,6 +365,10 @@ export function gameModuleSummary(id: GameModuleId, config: any): string {
       const economy = economyOf(config);
       return allMultipliersAre(config, 1) ? "Valorile de bază" : ECONOMY_FIELDS.map((field) => multiplierText(economy[field.key])).join(" · ");
     }
+    case "expeditions": {
+      const expeditions = expeditionsOf(config);
+      return expeditions.enabled ? `${expeditions.goldPerHour} Oboli pe oră${expeditions.speed > 1 ? ` · de ${expeditions.speed}× mai repede` : ""}` : "Oprite";
+    }
     case "duels": {
       const duels = duelsOf(config);
       return duels.enabled ? (duels.maxBet ? `pariu până la ${duels.maxBet.toLocaleString("ro-RO")}` : "fără pariuri") : "Oprite";
@@ -366,6 +392,7 @@ export function gameModuleSummary(id: GameModuleId, config: any): string {
 export function isGameModuleOn(id: GameModuleId, config: any): boolean {
   if (id === "state") return config?.gameplayConfig?.paused === false;
   if (id === "channels") return gameChannelCount(config) > 0;
+  if (id === "expeditions") return config?.gameplayConfig?.paused === false && expeditionsOf(config).enabled;
   if (id === "duels") return config?.gameplayConfig?.paused === false && duelsOf(config).enabled;
   if (id === "raid") return config?.gameplayConfig?.paused === false && raidOf(config).enabled;
   if (id === "seasons") return config?.gameplayConfig?.paused === false && seasonsOf(config).enabled;
@@ -405,6 +432,9 @@ export function gameDraftError(config: any): string | null {
     if (roleId && !isDiscordId(roleId)) return `Sezoane — ${PLACES[index]}: „${roleId}” nu este un ID de rol.`;
   }
   if (seasons.channelId && !isDiscordId(seasons.channelId)) return `Sezoane — „${seasons.channelId}” nu este un ID de canal.`;
+  const expeditions = expeditionsOf(config);
+  if (!isValidInteger(expeditions.goldPerHour, 0, 100_000)) return "Expediții — Oboli pe oră: un număr întreg între 0 și 100000.";
+  if (!isValidInteger(expeditions.speed, 1, 4)) return "Expediții — Viteza: între 1× și 4×.";
   const duels = duelsOf(config);
   if (!isValidInteger(duels.maxBet, 0, 1_000_000)) return "Dueluri — Pariul maxim: un număr întreg între 0 și 1000000.";
   if (!isValidInteger(duels.cooldownSeconds, 0, 86_400)) return "Dueluri — Pauza dintre dueluri: un număr întreg de secunde între 0 și 86400.";

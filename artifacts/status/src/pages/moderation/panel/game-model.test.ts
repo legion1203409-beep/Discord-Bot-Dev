@@ -120,3 +120,13 @@ describe("duels", () => {
     expect(gameDraftError(config({ duels: { taxPercent: 60 } }))).toContain("Taxa");
   });
 });
+
+describe("expeditions", () => {
+  it("compute the Oboli like the bot and refuse bad values", async () => {
+    const { expeditionGold, expeditionsOf } = await import("./game-model");
+    expect(expeditionsOf(config())).toEqual({ enabled: true, goldPerHour: 120, speed: 1 });
+    expect(expeditionGold(4, 6, 100)).toBe(600);
+    expect(gameModuleSummary("expeditions", config({ expeditions: { speed: 2 } }))).toBe("120 Oboli pe oră · de 2× mai repede");
+    expect(gameDraftError(config({ expeditions: { speed: 5 } }))).toContain("Viteza");
+  });
+});

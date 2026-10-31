@@ -5,12 +5,12 @@
 import React, { createContext, useContext, useEffect, useId, useState } from "react";
 import { Link } from "wouter";
 import { usePanel } from "./context";
-import { ChannelField, Fields, Fld, Ico, Note, NoteRow, NumField, SectionCard, Spinner, Switch, SwitchField, cx, type IconName } from "./fields";
+import { ChannelField, Fields, Fld, Ico, Note, NoteRow, NumField, SectionCard, Seg, Spinner, Switch, SwitchField, cx, type IconName } from "./fields";
 import type { useGameplayState } from "../../../hooks/use-moderation-api";
 import { EmojiTextField, ImageUrlField } from "./message-fields";
 import {
   ECONOMY_FIELDS, EVENT_FIELDS, GAME_CHANNELS, GAME_MODULES, MAX_MULTIPLIER, MIN_MULTIPLIER, MISSIONS, MULTIPLIER_PRESETS,
-  duelsOf, duelPayout, RAID_WEEKDAYS, raidOf, raidWindowText, PLACES, SEASON_POINT_LIST, seasonsOf, ACHIEVEMENT_LIST, progressOf, streakLadder, economyOf, eventsOf, eventsPerDay, gameChannelCount, isValidMultiplier, minutesText, missionOf, multiplierText,
+  expeditionsOf, expeditionGold, duelsOf, duelPayout, RAID_WEEKDAYS, raidOf, raidWindowText, PLACES, SEASON_POINT_LIST, seasonsOf, ACHIEVEMENT_LIST, progressOf, streakLadder, economyOf, eventsOf, eventsPerDay, gameChannelCount, isValidMultiplier, minutesText, missionOf, multiplierText,
   type GameModuleId,
 } from "./game-model";
 import { ModuleView } from "./rules";
@@ -20,7 +20,7 @@ const MODULE = Object.fromEntries(GAME_MODULES.map((module) => [module.id, modul
 /** The game's running state, read and changed at once through /gameplay-state (not part of the draft). */
 export const GameStateContext = createContext<ReturnType<typeof useGameplayState> | null>(null);
 
-export const GAME_ICONS: Record<GameModuleId, IconName> = { state: "power", channels: "hash", events: "calendar", missions: "scroll", economy: "star", progress: "verified", seasons: "calendar", raid: "raid", duels: "gavel" };
+export const GAME_ICONS: Record<GameModuleId, IconName> = { state: "power", channels: "hash", events: "calendar", missions: "scroll", economy: "star", progress: "verified", seasons: "calendar", raid: "raid", duels: "gavel", expeditions: "arrow" };
 
 /* ------------------------------------------------------------------ */
 /* Stare                                                               */
@@ -424,6 +424,49 @@ function DuelsModule() {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* Expediții                                                           */
+/* ------------------------------------------------------------------ */
+
+const EXPEDITION_ROUTES: ReadonlyArray<readonly [number, string]> = [[1, "🌲 Pădurea de Scrum"], [4, "🌫️ Mlaștinile Umbrei"], [8, "🏚️ Ruinele Abisului"]];
+
+function ExpeditionsModule() {
+  const { config, set } = usePanel();
+  const expeditions = expeditionsOf(config);
+  const change = (next: Partial<typeof expeditions>) => set(["gameplayConfig", "expeditions"], { ...expeditions, ...next });
+  return (
+    <ModuleView module={MODULE.expeditions} icon="arrow">
+      <SectionCard title="Setări" testId="game-expeditions">
+        <Fields>
+          <SwitchField label="Expediții" testId="game-expeditions-switch" checked={expeditions.enabled} onChange={(next) => change({ enabled: next })} />
+          <NumField label="Oboli pe oră" unit="Oboli" min={0} max={100_000} value={expeditions.goldPerHour} testId="game-expeditions-gold" hint="Pentru un companion de nivel 1; fiecare nivel în plus adaugă 10%." onChange={(next) => change({ goldPerHour: next ?? -1 })} />
+          <Seg
+            label="Viteza" testId="game-expeditions-speed" value={String(expeditions.speed)}
+            options={[["1", "Normală"], ["2", "2×"], ["3", "3×"], ["4", "4×"]]} hint="Pentru un eveniment: drumurile durează mai puțin, prada rămâne aceeași."
+            onChange={(next) => change({ speed: Number(next) })}
+          />
+        </Fields>
+      </SectionCard>
+      <SectionCard title="Drumurile" testId="game-expeditions-routes">
+        <table className="pn-gtable">
+          <thead><tr><th>Drum</th><th>Durează</th><th>Companion nivel 1</th><th>Nivel 5</th><th>Materiale</th></tr></thead>
+          <tbody>
+            {EXPEDITION_ROUTES.map(([hours, name]) => (
+              <tr key={hours}>
+                <td>{name}</td>
+                <td>{minutesText(Math.round((hours * 60) / expeditions.speed))}</td>
+                <td>{expeditionGold(hours, 1, expeditions.goldPerHour).toLocaleString("ro-RO")} Oboli</td>
+                <td>{expeditionGold(hours, 5, expeditions.goldPerHour).toLocaleString("ro-RO")} Oboli</td>
+                <td>{hours} (×2 de la nivelul 5)</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </SectionCard>
+    </ModuleView>
+  );
+}
+
 export const GAME_VIEWS: Record<GameModuleId, () => React.ReactElement> = {
   state: StateModule,
   channels: ChannelsModule,
@@ -434,4 +477,5 @@ export const GAME_VIEWS: Record<GameModuleId, () => React.ReactElement> = {
   seasons: SeasonsModule,
   raid: RaidModule,
   duels: DuelsModule,
+  expeditions: ExpeditionsModule,
 };

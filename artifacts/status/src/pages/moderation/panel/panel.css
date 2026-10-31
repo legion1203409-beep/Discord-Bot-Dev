@@ -1066,3 +1066,7 @@ a.pn-ov-tile:hover, .pn a.pn-ov-tile:hover { border-color: color-mix(in oklab, v
 .pn .pn-ach small { color: var(--pn-ink-3); font-size: 12px; }
 .pn .pn-ach em { font-style: normal; color: color-mix(in oklab, var(--tc) 75%, #fff); font-size: 12px; }
 @media (max-width: 640px) { .pn .pn-ladder { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.pn .pn-gtable { width: 100%; border-collapse: collapse; font-size: 13px; }
+.pn .pn-gtable th { text-align: left; color: var(--pn-ink-3); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--pn-line); }
+.pn .pn-gtable td { padding: 8px; border-bottom: 1px solid var(--pn-line); }
+@media (max-width: 640px) { .pn .pn-gtable th:nth-child(4), .pn .pn-gtable td:nth-child(4), .pn .pn-gtable th:nth-child(5), .pn .pn-gtable td:nth-child(5) { display: none; } }

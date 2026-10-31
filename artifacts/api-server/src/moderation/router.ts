@@ -983,6 +983,11 @@ export const botControlSchema = z.object(
       cooldownSeconds: z.number().int().min(0).max(86_400),
       taxPercent: z.number().int().min(0).max(50),
     }).strict().optional(),
+    expeditions: z.object({
+      enabled: z.boolean(),
+      goldPerHour: z.number().int().min(0).max(100_000),
+      speed: z.number().int().min(1).max(4),
+    }).strict().optional(),
   
 }
 
@@ -3390,6 +3395,7 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
     seasons: value.gameplayConfig.seasons ?? previousGameplayConfig.seasons,
     raid: value.gameplayConfig.raid ?? previousGameplayConfig.raid,
     duels: value.gameplayConfig.duels ?? previousGameplayConfig.duels,
+    expeditions: value.gameplayConfig.expeditions ?? previousGameplayConfig.expeditions,
     paused: previousGameplayConfig.paused,
   });
   anyWriteSucceeded = true;

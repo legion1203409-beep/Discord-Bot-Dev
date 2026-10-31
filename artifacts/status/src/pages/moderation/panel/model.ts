@@ -562,6 +562,7 @@ export const GAME_MODULE_ROUTES = {
   seasons: "/joc/sezoane",
   raid: "/joc/raid",
   duels: "/joc/dueluri",
+  expeditions: "/joc/expeditii",
 } as const;
 
 export function isGameRoute(path: string): boolean {

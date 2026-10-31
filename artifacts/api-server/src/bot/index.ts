@@ -25,6 +25,7 @@ import {
   type GuildMember,
 } from "discord.js";
 import { handleBanEvasionButton } from "./moderation/ban-evasion";
+import { handleExpeditionButton, handleExpeditionCommand } from "./expeditions";
 import { buildDuelLeaderboard, duelLeaderboard, handleDuelButton, handleDuelCommand } from "./duels";
 import { handleRaidButton, raidStatusEmbed, startRaidWatcher } from "./raid";
 import { buildSeasonEmbed, finalizeSeason, previousSeasonKey, seasonEndsAt, seasonKey, seasonStanding, seasonTop, startSeasonWatcher } from "./seasons";
@@ -586,6 +587,11 @@ const slashCommands = [
     .setDescription("⚔️ Provoacă un jucător la duel, cu sau fără pariu în Oboli.")
     .addUserOption((opt) => opt.setName("adversar").setDescription("Pe cine provoci").setRequired(true))
     .addIntegerOption((opt) => opt.setName("pariu").setDescription("Oboli puși de fiecare (opțional)").setRequired(false).setMinValue(0)),
+  new SlashCommandBuilder()
+    .setName("expeditie")
+    .setDescription("🧭 Trimite companionul într-o expediție și adună prada când se întoarce.")
+    .addIntegerOption((opt) => opt.setName("durata").setDescription("Cât de departe pleacă").setRequired(false)
+      .addChoices({ name: "1 oră — Pădurea de Scrum", value: 1 }, { name: "4 ore — Mlaștinile Umbrei", value: 4 }, { name: "8 ore — Ruinele Abisului", value: 8 })),
   new SlashCommandBuilder().setName("topduel").setDescription("🏆 Clasamentul duelurilor de pe server."),
   new SlashCommandBuilder().setName("raid").setDescription("⚔️ Raidul săptămânal: titanul, viața lui și contribuția ta."),
   new SlashCommandBuilder().setName("sezon").setDescription("🏆 Clasamentul sezonului din luna aceasta și premiile."),
@@ -1276,6 +1282,7 @@ function buildHelpEmbed(category: HelpCategory) {
             "**/misiuni** — misiuni zilnice cu progres și recompense.\n" +
             "**/cufarpersonal** — recompensa pentru activitatea ta zilnică; deschis zi de zi îți crește seria și bonusul.\n" +
             "**/realizari** — insignele tale și seria zilnică.\n" +
+            "**/expeditie** — trimite companionul după materiale și Oboli (1, 4 sau 8 ore).\n" +
             "**/duel** — provoacă pe cineva la duel, cu pariu opțional; **/topduel** — clasamentul.\n" +
             "**/raid** — titanul săptămânii, pe care îl bate tot serverul; prada se împarte după daune.\n" +
             "**/sezon** — clasamentul lunii; primii trei primesc Oboli, un titlu și (dacă e ales) un rol.\n" +
@@ -1370,7 +1377,7 @@ function buildHelpEmbed(category: HelpCategory) {
           name: "Jucător",
           value:
             "**/ajutor** · **/profil** · **/clasament** · **/rank** · **/toplvl** · **/profetie** · **/clasa** · **/companion**\n" +
-            "**/magazin** · **/misiuni** · **/cufarpersonal** · **/realizari** · **/sezon** · **/raid** · **/duel** · **/topduel** · **/chei** · **/server**",
+            "**/magazin** · **/misiuni** · **/cufarpersonal** · **/realizari** · **/sezon** · **/raid** · **/duel** · **/topduel** · **/expeditie** · **/chei** · **/server**",
         },
         {
           name: "Cufere și economie",
@@ -4718,6 +4725,10 @@ async function handleButton(interaction: ButtonInteraction) {
     return handleDuelButton(interaction);
   }
 
+  if (id === "expedition_claim") {
+    return handleExpeditionButton(interaction);
+  }
+
   if (id.startsWith("help_")) {
     return handleHelpButton(interaction);
   }
@@ -5617,6 +5628,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
       if (interaction.commandName === "raid") dispatch(handleRaid(interaction));
       if (interaction.commandName === "duel") dispatch(handleDuelCommand(interaction));
       if (interaction.commandName === "topduel") dispatch(handleTopDuel(interaction));
+      if (interaction.commandName === "expeditie") dispatch(handleExpeditionCommand(interaction));
       if (interaction.commandName === "profetie") dispatch(handleProfetie(interaction));
       if (interaction.commandName === "clasament") dispatch(handleClasament(interaction));
       if (interaction.commandName === "magazin") dispatch(handleMagazin(interaction));
@@ -6214,6 +6226,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
       if (interaction.commandName === "raid") dispatch(handleRaid(interaction));
       if (interaction.commandName === "duel") dispatch(handleDuelCommand(interaction));
       if (interaction.commandName === "topduel") dispatch(handleTopDuel(interaction));
+      if (interaction.commandName === "expeditie") dispatch(handleExpeditionCommand(interaction));
       if (interaction.commandName === "profetie") dispatch(handleProfetie(interaction));
       if (interaction.commandName === "clasament") dispatch(handleClasament(interaction));
       if (interaction.commandName === "magazin") dispatch(handleMagazin(interaction));

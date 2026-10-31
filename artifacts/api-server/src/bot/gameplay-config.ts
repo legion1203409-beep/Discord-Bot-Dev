@@ -87,6 +87,13 @@ export interface GameplayConfig {
     /** Part of the pot the bot keeps, in percent (Oboli leave the economy). */
     taxPercent: number;
   };
+  /** Companion expeditions (bot/expeditions.ts). */
+  expeditions: {
+    enabled: boolean;
+    goldPerHour: number;
+    /** 1 = real hours; 2 = twice as fast (for events). */
+    speed: number;
+  };
 }
 
 export const DEFAULT_GAMEPLAY_CONFIG: GameplayConfig = {
@@ -160,6 +167,11 @@ export const DEFAULT_GAMEPLAY_CONFIG: GameplayConfig = {
     maxBet: 5_000,
     cooldownSeconds: 120,
     taxPercent: 5,
+  },
+  expeditions: {
+    enabled: true,
+    goldPerHour: 120,
+    speed: 1,
   },
 };
 
@@ -243,6 +255,17 @@ export function normalizeGameplayConfig(value: unknown): GameplayConfig {
     seasons: normalizeSeasons(input.seasons),
     raid: normalizeRaid(input.raid),
     duels: normalizeDuels(input.duels),
+    expeditions: normalizeExpeditions(input.expeditions),
+  };
+}
+
+function normalizeExpeditions(value: unknown): GameplayConfig["expeditions"] {
+  const input = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const defaults = DEFAULT_GAMEPLAY_CONFIG.expeditions;
+  return {
+    enabled: typeof input.enabled === "boolean" ? input.enabled : defaults.enabled,
+    goldPerHour: boundedInt(input.goldPerHour, defaults.goldPerHour, 0, 100_000),
+    speed: boundedInt(input.speed, defaults.speed, 1, 4),
   };
 }
 
