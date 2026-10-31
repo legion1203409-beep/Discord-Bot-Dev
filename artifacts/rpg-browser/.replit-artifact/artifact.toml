@@ -15,9 +15,16 @@ localPort = 25832
 run = "pnpm --filter @workspace/rpg-browser run dev"
 
 [services.production]
-build = [ "pnpm", "--filter", "@workspace/rpg-browser", "run", "build" ]
 serve = "static"
 publicDir = "artifacts/rpg-browser/dist/public"
+
+[services.production.build]
+args = [ "pnpm", "--filter", "@workspace/rpg-browser", "run", "build" ]
+
+[services.production.build.env]
+NODE_ENV = "production"
+PORT = "25832"
+BASE_PATH = "/rpg-browser/"
 
 [[services.production.rewrites]]
 from = "/*"
