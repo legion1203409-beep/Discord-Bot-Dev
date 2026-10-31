@@ -4,7 +4,7 @@ import { ACTIVITY_LOG_TEMPLATE_KEYS, type ActivityLogTextTemplate } from "./acti
 // Keep this boundary structurally simple: the config schema is inferred by
 // many large schemas and routes throughout the bot.
 const activityLogTemplatesSchema: z.ZodType<
-  Record<string, ActivityLogTextTemplate>, z.ZodTypeDef,
+  Record<string, ActivityLogTextTemplate>,
   Record<string, { title?: string; description?: string }>
 > = z.record(z.string().refine((key) => ACTIVITY_LOG_TEMPLATE_KEYS.includes(key as typeof ACTIVITY_LOG_TEMPLATE_KEYS[number]), "Unknown activity log template"), z.object({
   title: z.string().max(256).default(""),
@@ -47,7 +47,7 @@ export const RuleSchema = z.object({
   severity: severity.default("normal"),
   // A zero threshold silently sanctions every event (or creates a zero-length
   // rate window), so thresholds are always positive integers.
-  thresholds: z.record(z.number().int().finite().min(1).max(100_000)).default({}),
+  thresholds: z.record(z.string(), z.number().int().finite().min(1).max(100_000)).default({}),
 });
 
 const LinkBlockRuleSchema = RuleSchema.extend({
@@ -58,7 +58,7 @@ const LinkBlockRuleSchema = RuleSchema.extend({
 type RuleThresholdDefault = { key: string; value: number; aliases?: string[] };
 function ruleSchemaWithThresholdDefaults(...defaults: RuleThresholdDefault[]) {
   return RuleSchema.extend({
-    thresholds: z.record(z.number().int().finite().min(1).max(100_000)).default({}).transform((saved) => {
+    thresholds: z.record(z.string(), z.number().int().finite().min(1).max(100_000)).default({}).transform((saved) => {
       const thresholds = { ...saved };
       for (const { key, value, aliases = [] } of defaults) {
         // Older configurations may use a compatibility alias. Do not add a
@@ -108,15 +108,17 @@ const activityLogCategories = z.object({
   voice: z.boolean().default(true),
   moderation: z.boolean().default(true),
   security: z.boolean().default(true),
-}).default({});
+}).prefault({});
 
+// Zod 4 defaults short-circuit parsing. Object prefaults preserve nested
+// defaults and threshold transforms for missing/legacy guild settings.
 export const ModerationConfigSchema = z.object({
   // Global protection switch. Module settings remain stored while the
   // category is disabled so an operator can turn protection back on without
   // rebuilding every rule.
   protection: z.object({
     enabled: z.boolean().default(true),
-  }).default({}),
+  }).prefault({}),
   // 1. AutoMod
   autoMod: z.object({
     enabled: z.boolean().default(false),
@@ -124,13 +126,13 @@ export const ModerationConfigSchema = z.object({
     scamFilter: z.object({
       enabled: z.boolean().default(false),
       action: z.enum(["delete", "mute", "kick"]).default("delete"),
-    }).default({}),
+    }).prefault({}),
     scamPhrases: textList.default([]),
-    wordFilter: RuleSchema.default({}),
-    linkBlock: LinkBlockRuleSchema.default({}),
-    emojiLimit: ruleSchemaWithThresholdDefaults({ key: "emoji", value: 10, aliases: ["limit", "max"] }).default({}),
-    capsLimit: ruleSchemaWithThresholdDefaults({ key: "capsPercent", value: 75, aliases: ["percent", "limit"] }).default({}),
-    repeatBlock: ruleSchemaWithThresholdDefaults({ key: "repeat", value: 8, aliases: ["limit", "max"] }).default({}),
+    wordFilter: RuleSchema.prefault({}),
+    linkBlock: LinkBlockRuleSchema.prefault({}),
+    emojiLimit: ruleSchemaWithThresholdDefaults({ key: "emoji", value: 10, aliases: ["limit", "max"] }).prefault({}),
+    capsLimit: ruleSchemaWithThresholdDefaults({ key: "capsPercent", value: 75, aliases: ["percent", "limit"] }).prefault({}),
+    repeatBlock: ruleSchemaWithThresholdDefaults({ key: "repeat", value: 8, aliases: ["limit", "max"] }).prefault({}),
     forbiddenWords: textList.default([]),
     forbiddenLinks: textList.default([]),
     forbiddenLinkCategories: z.object({
@@ -139,8 +141,8 @@ export const ModerationConfigSchema = z.object({
       video: z.boolean().default(false),
       shortener: z.boolean().default(false),
       all: z.boolean().default(false),
-    }).strict().default({}),
-  }).default({}),
+    }).strict().prefault({}),
+  }).prefault({}),
   // 2. Anti-raid
   antiRaid: z.object({
     enabled: z.boolean().default(false),
@@ -151,42 +153,42 @@ export const ModerationConfigSchema = z.object({
     rule: ruleSchemaWithThresholdDefaults(
       { key: "joins", value: 10, aliases: ["limit"] },
       { key: "windowSeconds", value: 60, aliases: ["window"] },
-    ).default({}),
-  }).default({}),
+    ).prefault({}),
+  }).prefault({}),
   // 3. Anti-spam
   antiSpam: z.object({
     enabled: z.boolean().default(false),
     message: ruleSchemaWithThresholdDefaults(
       { key: "messages", value: 5, aliases: ["limit", "max"] },
       { key: "windowMs", value: 5, aliases: ["window", "seconds"] },
-    ).default({}),
+    ).prefault({}),
     edit: ruleSchemaWithThresholdDefaults(
       { key: "limit", value: 5, aliases: ["edits", "max"] },
       { key: "windowMs", value: 10, aliases: ["window", "seconds"] },
-    ).default({}),
+    ).prefault({}),
     delete: ruleSchemaWithThresholdDefaults(
       { key: "limit", value: 5, aliases: ["deletes", "max"] },
       { key: "windowMs", value: 10, aliases: ["window", "seconds"] },
-    ).default({}),
-    mention: ruleSchemaWithThresholdDefaults({ key: "mentions", value: 5, aliases: ["limit", "max"] }).default({}),
-    emoji: ruleSchemaWithThresholdDefaults({ key: "emoji", value: 10, aliases: ["limit", "max"] }).default({}),
+    ).prefault({}),
+    mention: ruleSchemaWithThresholdDefaults({ key: "mentions", value: 5, aliases: ["limit", "max"] }).prefault({}),
+    emoji: ruleSchemaWithThresholdDefaults({ key: "emoji", value: 10, aliases: ["limit", "max"] }).prefault({}),
     logChannelId: snowflake.nullable().default(null),
-  }).default({}),
+  }).prefault({}),
   // 4. Anti-flood
   antiFlood: z.object({
     enabled: z.boolean().default(false),
     logChannelId: snowflake.nullable().default(null),
-    longMessage: ruleSchemaWithThresholdDefaults({ key: "length", value: 1_500, aliases: ["maxLength", "limit"] }).default({}),
-    character: ruleSchemaWithThresholdDefaults({ key: "run", value: 16, aliases: ["limit", "max"] }).default({}),
-    caps: ruleSchemaWithThresholdDefaults({ key: "capsPercent", value: 75, aliases: ["percent", "limit"] }).default({}),
-    symbol: ruleSchemaWithThresholdDefaults({ key: "run", value: 16, aliases: ["limit", "max"] }).default({}),
-  }).default({}),
+    longMessage: ruleSchemaWithThresholdDefaults({ key: "length", value: 1_500, aliases: ["maxLength", "limit"] }).prefault({}),
+    character: ruleSchemaWithThresholdDefaults({ key: "run", value: 16, aliases: ["limit", "max"] }).prefault({}),
+    caps: ruleSchemaWithThresholdDefaults({ key: "capsPercent", value: 75, aliases: ["percent", "limit"] }).prefault({}),
+    symbol: ruleSchemaWithThresholdDefaults({ key: "run", value: 16, aliases: ["limit", "max"] }).prefault({}),
+  }).prefault({}),
   // 5. Manual staff tools and independent command grants
   manualTools: z.object({
     enabled: z.boolean().default(false),
-    commandGrants: z.record(commandName, idList).default({}),
+    commandGrants: z.partialRecord(commandName, idList).default({}),
     logActions: z.boolean().default(false),
-  }).default({}),
+  }).prefault({}),
   // 6. Cases
   cases: z.object({
     enabled: z.boolean().default(false),
@@ -194,13 +196,13 @@ export const ModerationConfigSchema = z.object({
     allowStaffNotes: z.boolean().default(true),
     allowStaffExport: z.boolean().default(false),
     retentionDays: z.number().int().min(1).max(3650).default(365),
-  }).default({}),
+  }).prefault({}),
   // 7. Audit
   audit: z.object({
     enabled: z.boolean().default(false),
     detailLevel: z.enum(["minimal", "standard", "verbose"]).default("standard"),
     channelId: snowflake.nullable().default(null),
-  }).default({}),
+  }).prefault({}),
   // Automatic server activity logs are independent from the existing
   // moderation-audit switch. Destinations are guild-scoped with this config.
   activityLog: z.object({
@@ -218,13 +220,13 @@ export const ModerationConfigSchema = z.object({
       voice: snowflake.nullable().default(null),
       moderation: snowflake.nullable().default(null),
       security: snowflake.nullable().default(null),
-    }).default({}),
+    }).prefault({}),
     memberJoinTitleTemplate: z.string().max(256).default(""),
     memberJoinDescriptionTemplate: z.string().max(2_000).default(""),
     memberLeaveTitleTemplate: z.string().max(256).default(""),
     memberLeaveDescriptionTemplate: z.string().max(2_000).default(""),
     templates: activityLogTemplatesSchema.default({}),
-  }).default({}).superRefine((activityLog, ctx) => {
+  }).prefault({}).superRefine((activityLog, ctx) => {
     if (activityLog.enabled && !Object.values(activityLog.categories).some(Boolean)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -239,7 +241,7 @@ export const ModerationConfigSchema = z.object({
     protectedRoleIds: idList.default([]),
     ignoredAutoModRoleIds: idList.default([]),
     specialPermissionRoleIds: idList.default([]),
-  }).default({}),
+  }).prefault({}),
   // 9. Channels
   channels: z.object({
     ignoredChannelIds: idList.default([]),
@@ -247,30 +249,30 @@ export const ModerationConfigSchema = z.object({
     autoSlowmodeChannelIds: idList.default([]),
     strictChannelIds: idList.default([]),
     softChannelIds: idList.default([]),
-  }).default({}),
+  }).prefault({}),
   // 10. Time profiles
   timeProfiles: z.object({
     timezone: z.string().trim().min(1).max(64).refine((timezone) => {
       try { Intl.DateTimeFormat(undefined, { timeZone: timezone }); return true; } catch { return false; }
     }, "Timezone must be a valid IANA timezone").default("UTC"),
-    strictNight: z.object({ enabled: z.boolean().default(false), startHour: z.number().int().min(0).max(23).default(22), endHour: z.number().int().min(0).max(23).default(7) }).default({}),
-    softDay: z.object({ enabled: z.boolean().default(false), startHour: z.number().int().min(0).max(23).default(8), endHour: z.number().int().min(0).max(23).default(21) }).default({}),
-    weekend: z.object({ enabled: z.boolean().default(false), severity: severity.default("normal") }).default({}),
-    majorEvent: z.object({ enabled: z.boolean().default(false), severity: severity.default("hard") }).default({}),
-  }).default({}),
+    strictNight: z.object({ enabled: z.boolean().default(false), startHour: z.number().int().min(0).max(23).default(22), endHour: z.number().int().min(0).max(23).default(7) }).prefault({}),
+    softDay: z.object({ enabled: z.boolean().default(false), startHour: z.number().int().min(0).max(23).default(8), endHour: z.number().int().min(0).max(23).default(21) }).prefault({}),
+    weekend: z.object({ enabled: z.boolean().default(false), severity: severity.default("normal") }).prefault({}),
+    majorEvent: z.object({ enabled: z.boolean().default(false), severity: severity.default("hard") }).prefault({}),
+  }).prefault({}),
   // 11. Suspicious behaviour
   suspiciousBehavior: z.object({
     enabled: z.boolean().default(false),
     sensitivity: z.enum(["low", "medium", "high"]).default("medium"),
     action: action.default("none"),
     alertChannelId: snowflake.nullable().default(null),
-    nicknameChanges: ruleSchemaWithThresholdDefaults({ key: "limit", value: 5, aliases: ["changes"] }).default({}),
-    roleChanges: ruleSchemaWithThresholdDefaults({ key: "limit", value: 5, aliases: ["changes"] }).default({}),
-    massEdits: ruleSchemaWithThresholdDefaults({ key: "limit", value: 5, aliases: ["changes"] }).default({}),
-    massDeletes: ruleSchemaWithThresholdDefaults({ key: "limit", value: 5, aliases: ["changes"] }).default({}),
-    joinLeaveFlood: ruleSchemaWithThresholdDefaults({ key: "limit", value: 10, aliases: ["changes"] }).default({}),
-    unusualActivity: ruleSchemaWithThresholdDefaults({ key: "limit", value: 5, aliases: ["changes"] }).default({}),
-  }).default({}),
+    nicknameChanges: ruleSchemaWithThresholdDefaults({ key: "limit", value: 5, aliases: ["changes"] }).prefault({}),
+    roleChanges: ruleSchemaWithThresholdDefaults({ key: "limit", value: 5, aliases: ["changes"] }).prefault({}),
+    massEdits: ruleSchemaWithThresholdDefaults({ key: "limit", value: 5, aliases: ["changes"] }).prefault({}),
+    massDeletes: ruleSchemaWithThresholdDefaults({ key: "limit", value: 5, aliases: ["changes"] }).prefault({}),
+    joinLeaveFlood: ruleSchemaWithThresholdDefaults({ key: "limit", value: 10, aliases: ["changes"] }).prefault({}),
+    unusualActivity: ruleSchemaWithThresholdDefaults({ key: "limit", value: 5, aliases: ["changes"] }).prefault({}),
+  }).prefault({}),
   // 12. AI moderation
   ai: z.object({
     enabled: z.boolean().default(false),
@@ -282,7 +284,7 @@ export const ModerationConfigSchema = z.object({
     excludedChannelIds: idList.default([]),
     excludedRoleIds: idList.default([]),
     // Missing overrides inherit the general AI settings on existing guilds.
-    categorySettings: z.record(aiCategory, z.object({
+    categorySettings: z.partialRecord(aiCategory, z.object({
       sensitivity: aiSensitivity.optional(),
       action: action.optional(),
       deleteMessage: z.boolean().optional(),
@@ -297,14 +299,14 @@ export const ModerationConfigSchema = z.object({
       scams: z.boolean().default(false),
       threats: z.boolean().default(false),
       deceptiveLinks: z.boolean().default(false),
-    }).default({}),
-  }).default({}),
+    }).prefault({}),
+  }).prefault({}),
   // 13. Multi-server isolation
   multiServer: z.object({
     enabled: z.boolean().default(false),
     // Guild scoping is a privacy invariant, not an operator-selectable mode.
     isolatedData: z.literal(true).default(true),
-  }).default({}),
+  }).prefault({}),
   // 14. Escalation levels
   escalation: z.object({
     enabled: z.boolean().default(false),
@@ -319,7 +321,7 @@ export const ModerationConfigSchema = z.object({
       { level: 3, violations: 3, action: "kick" },
       { level: 4, violations: 4, action: "ban" },
     ]),
-  }).default({}),
+  }).prefault({}),
   // 15. Embed builder / visual moderation
   embeds: z.object({
     enabled: z.boolean().default(false),
@@ -330,20 +332,20 @@ export const ModerationConfigSchema = z.object({
     style: z.enum(["plain", "compact", "detailed"]).default("plain"),
     animations: z.boolean().default(false),
     animationUrl: safeGifUrl.nullable().default(null),
-  }).default({}).refine((embed) => !embed.animations || Boolean(embed.animationUrl), {
+  }).prefault({}).refine((embed) => !embed.animations || Boolean(embed.animationUrl), {
     message: "An HTTPS GIF animationUrl is required when animations are enabled",
     path: ["animationUrl"],
   }),
   // Discord moderation is slash-command based. Prefix is intentionally
   // read-only rather than storing a non-functional custom prefix.
-  bot: z.object({ prefix: z.literal("/").default("/") }).default({}),
+  bot: z.object({ prefix: z.literal("/").default("/") }).prefault({}),
   permissions: z.object({
     staffRoleIds: idList.default([]),
     allowManageGuild: z.boolean().default(true),
     // Legacy persisted field. Settings and audit access now always follows
     // Discord Administrator permissions, independently of a per-guild toggle.
     allowAdminsSettings: z.boolean().default(false),
-  }).default({}),
+  }).prefault({}),
 }).superRefine((config, ctx) => {
   validateRuleThresholds(config.autoMod.wordFilter, ["autoMod", "wordFilter"], { matches: [1, 100] }, ctx);
   validateRuleThresholds(config.autoMod.linkBlock, ["autoMod", "linkBlock"], { matches: [1, 100] }, ctx);

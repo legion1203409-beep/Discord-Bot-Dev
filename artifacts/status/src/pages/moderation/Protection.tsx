@@ -11,9 +11,7 @@ import { Link } from "wouter";
 import { useToast } from "../../hooks/use-toast";
 import { configSaveToastOptions } from "../../lib/protection-toggle-feedback";
 
-const protectionFormSchema = z.object({
-  protectionEnabled: z.boolean(),
-});
+import { protectionFormSchema } from "../../lib/moderation-form-schemas";
 
 export function ProtectionPage() {
   const { guildId } = useActiveGuild();

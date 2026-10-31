@@ -3499,7 +3499,7 @@ router.get("/verification/recruitment", asyncRoute(async (req, res) => {
       .map((part) => part.trim())
       .find((part) => part.startsWith(`${verificationCookieName()}=`));
     const identity = parseVerificationIdentityToken(cookie?.slice(verificationCookieName().length + 1));
-    if (identity?.guildId === guildId && client?.isReady()) {
+    if (identity && identity.guildId === guildId && client?.isReady()) {
       const verification = normalizeVerificationConfig(await loadVerificationConfig(guildId));
       const guild = client.guilds.cache.get(guildId)
         ?? await client.guilds.fetch({ guild: guildId, force: true }).catch(() => null);

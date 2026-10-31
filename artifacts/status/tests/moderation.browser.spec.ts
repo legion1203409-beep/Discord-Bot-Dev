@@ -1702,6 +1702,24 @@ test.describe("authenticated moderation console", () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
 
+  test("shows invalid manual command errors and permits correction without an unhandled rejection", async ({ page }) => {
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.goto("/moderare/comenzi");
+    await chooseFirstGuild(page);
+    await page.getByRole("button", { name: "Execută Comanda" }).click();
+    await expect(page.getByText("ID-ul țintei este necesar", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("input-manual-target-user-id")).toHaveAttribute("aria-invalid", "true");
+    expect(actionBodies).toEqual([]);
+    expect(errors).toEqual([]);
+    await page.getByLabel("ID Utilizator (Țintă)").fill("555555555");
+    page.once("dialog", (dialog) => dialog.accept());
+    await page.getByRole("button", { name: "Execută Comanda" }).click();
+    await expect(page.getByTestId("manual-action-result")).toContainText("Warn applied");
+    expect(errors).toEqual([]);
+    expect(actionBodies).toEqual([{ type: "warn", targetId: "555555555" }]);
+  });
+
   test("submits manual commands to the real action endpoint and displays its result", async ({ page }) => {
     await page.goto("/moderare/comenzi");
     await chooseFirstGuild(page);

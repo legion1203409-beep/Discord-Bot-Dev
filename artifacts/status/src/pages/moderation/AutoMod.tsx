@@ -13,23 +13,7 @@ import { useToast } from "../../hooks/use-toast";
 import { ToastAction } from "../../components/ui/toast";
 import { configSaveToastOptions } from "../../lib/protection-toggle-feedback";
 
-const ruleSchema = z.object({
-  enabled: z.boolean(),
-  action: z.enum(["none", "warn", "mute", "kick", "ban", "delete"]),
-  deleteMessage: z.boolean(),
-  severity: z.enum(["soft", "normal", "hard"]),
-});
-
-const autoModFormSchema = z.object({
-  enabled: z.boolean(),
-  wordFilter: ruleSchema,
-  linkBlock: ruleSchema,
-  forbiddenWords: z.string(),
-  aiEnabled: z.boolean(),
-  aiAction: z.enum(["none", "warn", "mute", "kick", "ban", "delete"]),
-  aiDeleteMessage: z.boolean(),
-  aiSensitivity: z.enum(["low", "medium", "high"]),
-});
+import { autoModFormSchema } from "../../lib/moderation-form-schemas";
 
 export function AutoModPage() {
   const { guildId } = useActiveGuild();
