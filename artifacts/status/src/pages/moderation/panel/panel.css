@@ -1042,3 +1042,14 @@ a.pn-ov-tile:hover, .pn a.pn-ov-tile:hover { border-color: color-mix(in oklab, v
 .pn .pn-msg-prev p { margin: 0; white-space: pre-wrap; color: var(--pn-ink-2); font-size: 13.5px; line-height: 1.5; }
 @media (max-width: 640px) { .pn .pn-cat-m { display: none; } }
 .pn .pn-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+
+/* Jocul */
+.pn .pn-gstats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+.pn .pn-gstats > div { padding: 14px; border-radius: 14px; border: 1px solid var(--pn-line); background: rgba(0, 0, 0, .18); display: grid; gap: 2px; }
+.pn .pn-gstats b { font: 600 24px/1.1 var(--pn-display, var(--pn-body)); color: color-mix(in oklab, var(--tc) 80%, #fff); }
+.pn .pn-gstats span { color: var(--pn-ink-3); font-size: 12.5px; }
+.pn .pn-mult { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.pn .pn-mult .pn-inp-num { width: 96px; }
+.pn .pn-mult-p { display: flex; flex-wrap: wrap; gap: 6px; }
+.pn .pn-inp.is-bad { border-color: var(--pn-bad, #ff6b6b); }
+@media (max-width: 640px) { .pn .pn-gstats { grid-template-columns: 1fr; } }
