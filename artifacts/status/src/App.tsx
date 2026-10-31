@@ -1,4 +1,4 @@
-import { Switch, Route, Redirect } from "wouter";
+import { Switch, Route, Redirect, useLocation } from "wouter";
 import "./index.css";
 import { ModerationLayout } from "./pages/moderation/ModerationLayout";
 import { DashboardOverview } from "./pages/moderation/Dashboard";
@@ -15,7 +15,7 @@ import { MessageTemplatesPage } from "./pages/moderation/MessageTemplates";
 import { ServerSetupPage } from "./pages/moderation/ServerSetup";
 import { ActivityRanksPage } from "./pages/moderation/ActivityRanks";
 import { OfflineAssistant } from "./pages/moderation/OfflineAssistant";
-import { ReferenceHomeView, ReferenceViewRoute } from "./pages/moderation/ReferenceViews";
+import { OriginalPanel, sourceViewFromPath } from "./pages/moderation/OriginalPanel";
 import { useActiveGuild } from "./hooks/use-moderation-api";
 import { Toaster } from "./components/ui/toaster";
 import { SwordCursor } from "./components/SwordCursor";
@@ -85,12 +85,19 @@ function HomeApp() {
 
 function ModerationApp() {
   const { guildId } = useActiveGuild();
+  const [location] = useLocation();
+  const sourceView = sourceViewFromPath(location.split("?")[0] ?? "/");
+  if (sourceView) {
+    return (
+      <ModerationLayout bare>
+        <OriginalPanel view={sourceView} />
+      </ModerationLayout>
+    );
+  }
   return (
     <ModerationLayout>
       <div key={guildId ?? "no-guild"}>
         <Switch>
-          <Route path="/" component={ReferenceHomeView} />
-          <Route path="/panou/:view" component={ReferenceViewRoute} />
           <Route path="/dashboard" component={DashboardOverview} />
           <Route path="/automod" component={() => <CategorySettingsPage section="automod" />} />
           <Route path="/ai" component={() => <CategorySettingsPage section="ai" />} />

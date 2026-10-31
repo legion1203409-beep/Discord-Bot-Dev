@@ -10,7 +10,7 @@ import { gateConnection, sameOriginDiscordUrl } from "./gate/authBridge";
 import { OperatorGate } from "./gate/OperatorGate";
 import { OperatorPicker } from "./picker/OperatorPicker";
 
-export function ModerationLayout({ children }: { children: ReactNode }) {
+export function ModerationLayout({ children, bare = false }: { children: ReactNode; bare?: boolean }) {
   const [location] = useLocation();
   const search = useSearch();
   const { session, loading, error, logout, retry } = useSession();
@@ -104,5 +104,7 @@ export function ModerationLayout({ children }: { children: ReactNode }) {
     );
   }
 
+  // Source-panel routes render the supplied document full-screen with its own header and dock.
+  if (bare) return <>{children}</>;
   return <ModerationChrome>{children}</ModerationChrome>;
 }
