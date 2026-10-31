@@ -92,6 +92,7 @@ const allItems: Array<{ heading: string; items: NavigationItem[] }> = [
     { id: "game-raid", label: "Raidul săptămânal", description: "Titanul pe care îl bate tot serverul", href: "/joc/raid", icon: Activity, tint: "violet", keywords: "raid titan boss saptamanal breasla" },
     { id: "game-duels", label: "Dueluri", description: "Pariuri, pauză și taxă pentru /duel", href: "/joc/dueluri", icon: Activity, tint: "violet", keywords: "duel pvp pariu elo rating topduel" },
     { id: "game-expeditions", label: "Expediții", description: "Prada companionilor trimiși după materiale", href: "/joc/expeditii", icon: Activity, tint: "violet", keywords: "expeditie companion materiale prada" },
+    { id: "game-guilds", label: "Bresle", description: "Costul și mărimea breslelor", href: "/joc/bresle", icon: Activity, tint: "violet", keywords: "breasla bresle clan echipa camara" },
   ] },
   { heading: "Oracol", items: [
     primary("oracle"),

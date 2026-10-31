@@ -96,7 +96,7 @@
 
 /* ---------- rețeaua: meniul modulelor + conținutul ---------- */
 .pn .pn-grid { display: grid; grid-template-columns: 262px minmax(0, 1fr); gap: 20px; align-items: start; }
-.pn .pn-nav { position: sticky; top: 84px; display: flex; flex-direction: column; gap: 6px; }
+.pn .pn-nav { position: sticky; top: 84px; display: flex; flex-direction: column; gap: 6px; max-height: calc(100vh - 100px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding-bottom: 88px; }
 .pn .pn-nav-i { display: flex; align-items: center; gap: 11px; width: 100%; padding: 10px 12px 10px 10px; border-radius: 15px; border: 1px solid transparent; color: var(--pn-ink); text-align: left; text-decoration: none; transition: background .2s, border-color .2s; }
 .pn .pn-nav-i:hover { background: rgba(255, 255, 255, .04); }
 .pn .pn-nav-i[aria-current="page"] { background: rgba(255, 255, 255, .06); border-color: var(--pn-line-2); box-shadow: 0 1px 0 rgba(255, 255, 255, .05) inset; }
@@ -932,7 +932,7 @@ a.pn-ov-tile:hover, .pn a.pn-ov-tile:hover { border-color: color-mix(in oklab, v
 }
 @media (max-width: 980px) {
   .pn .pn-grid { grid-template-columns: minmax(0, 1fr); }
-  .pn .pn-nav { position: static; flex-direction: row; gap: 8px; padding: 2px 2px 6px; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
+  .pn .pn-nav { position: static; max-height: none; overflow-y: visible; flex-direction: row; gap: 8px; padding: 2px 2px 6px; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
   .pn .pn-nav::-webkit-scrollbar { display: none; }
   .pn .pn-nav-i { flex: none; width: auto; max-width: 250px; padding: 8px 12px 8px 8px; border-color: var(--pn-line); }
   .pn .pn-nav-t small { display: none; }

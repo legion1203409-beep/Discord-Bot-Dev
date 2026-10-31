@@ -94,6 +94,12 @@ export interface GameplayConfig {
     /** 1 = real hours; 2 = twice as fast (for events). */
     speed: number;
   };
+  /** Player brotherhoods (bot/brotherhoods.ts). */
+  guilds: {
+    enabled: boolean;
+    createCost: number;
+    maxMembers: number;
+  };
 }
 
 export const DEFAULT_GAMEPLAY_CONFIG: GameplayConfig = {
@@ -172,6 +178,11 @@ export const DEFAULT_GAMEPLAY_CONFIG: GameplayConfig = {
     enabled: true,
     goldPerHour: 120,
     speed: 1,
+  },
+  guilds: {
+    enabled: true,
+    createCost: 5_000,
+    maxMembers: 20,
   },
 };
 
@@ -256,6 +267,17 @@ export function normalizeGameplayConfig(value: unknown): GameplayConfig {
     raid: normalizeRaid(input.raid),
     duels: normalizeDuels(input.duels),
     expeditions: normalizeExpeditions(input.expeditions),
+    guilds: normalizeGuilds(input.guilds),
+  };
+}
+
+function normalizeGuilds(value: unknown): GameplayConfig["guilds"] {
+  const input = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const defaults = DEFAULT_GAMEPLAY_CONFIG.guilds;
+  return {
+    enabled: typeof input.enabled === "boolean" ? input.enabled : defaults.enabled,
+    createCost: boundedInt(input.createCost, defaults.createCost, 0, 10_000_000),
+    maxMembers: boundedInt(input.maxMembers, defaults.maxMembers, 2, 200),
   };
 }
 

@@ -10,7 +10,7 @@ import type { useGameplayState } from "../../../hooks/use-moderation-api";
 import { EmojiTextField, ImageUrlField } from "./message-fields";
 import {
   ECONOMY_FIELDS, EVENT_FIELDS, GAME_CHANNELS, GAME_MODULES, MAX_MULTIPLIER, MIN_MULTIPLIER, MISSIONS, MULTIPLIER_PRESETS,
-  expeditionsOf, expeditionGold, duelsOf, duelPayout, RAID_WEEKDAYS, raidOf, raidWindowText, PLACES, SEASON_POINT_LIST, seasonsOf, ACHIEVEMENT_LIST, progressOf, streakLadder, economyOf, eventsOf, eventsPerDay, gameChannelCount, isValidMultiplier, minutesText, missionOf, multiplierText,
+  guildsOf, expeditionsOf, expeditionGold, duelsOf, duelPayout, RAID_WEEKDAYS, raidOf, raidWindowText, PLACES, SEASON_POINT_LIST, seasonsOf, ACHIEVEMENT_LIST, progressOf, streakLadder, economyOf, eventsOf, eventsPerDay, gameChannelCount, isValidMultiplier, minutesText, missionOf, multiplierText,
   type GameModuleId,
 } from "./game-model";
 import { ModuleView } from "./rules";
@@ -20,7 +20,7 @@ const MODULE = Object.fromEntries(GAME_MODULES.map((module) => [module.id, modul
 /** The game's running state, read and changed at once through /gameplay-state (not part of the draft). */
 export const GameStateContext = createContext<ReturnType<typeof useGameplayState> | null>(null);
 
-export const GAME_ICONS: Record<GameModuleId, IconName> = { state: "power", channels: "hash", events: "calendar", missions: "scroll", economy: "star", progress: "verified", seasons: "calendar", raid: "raid", duels: "gavel", expeditions: "arrow" };
+export const GAME_ICONS: Record<GameModuleId, IconName> = { state: "power", channels: "hash", events: "calendar", missions: "scroll", economy: "star", progress: "verified", seasons: "calendar", raid: "raid", duels: "gavel", expeditions: "arrow", guilds: "users" };
 
 /* ------------------------------------------------------------------ */
 /* Stare                                                               */
@@ -467,6 +467,40 @@ function ExpeditionsModule() {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* Bresle                                                              */
+/* ------------------------------------------------------------------ */
+
+const GUILD_COMMANDS: ReadonlyArray<readonly [string, string]> = [
+  ["/breasla creeaza", "întemeiază o breaslă (costă Oboli)"], ["/breasla invita", "lider și ofițeri: cheamă un jucător"],
+  ["/breasla doneaza", "pune Oboli în cămară"], ["/breasla imparte", "liderul dă din cămară unui membru"],
+  ["/breasla promoveaza", "liderul numește ofițeri"], ["/breasla exclude", "lider și ofițeri scot un membru"],
+  ["/breasla info", "membrii, cămara, punctele"], ["/breasla top", "clasamentul breslelor din luna aceasta"],
+];
+
+function GuildsModule() {
+  const { config, set } = usePanel();
+  const guilds = guildsOf(config);
+  const change = (next: Partial<typeof guilds>) => set(["gameplayConfig", "guilds"], { ...guilds, ...next });
+  return (
+    <ModuleView module={MODULE.guilds} icon="users">
+      <SectionCard title="Regulile" testId="game-guilds">
+        <Fields>
+          <SwitchField label="Bresle" testId="game-guilds-switch" checked={guilds.enabled} hint="Oprite, breslele rămân, dar comenzile nu mai merg." onChange={(next) => change({ enabled: next })} />
+          <NumField label="Costul unei bresle noi" unit="Oboli" min={0} max={10_000_000} value={guilds.createCost} testId="game-guilds-cost" onChange={(next) => change({ createCost: next ?? -1 })} />
+          <NumField label="Membri cel mult" unit="membri" min={2} max={200} value={guilds.maxMembers} testId="game-guilds-max" onChange={(next) => change({ maxMembers: next ?? 0 })} />
+        </Fields>
+      </SectionCard>
+      <SectionCard title="Comenzile" testId="game-guilds-commands">
+        <ul className="pn-ach">
+          {GUILD_COMMANDS.map(([command, text]) => <li key={command}><span aria-hidden="true">🏰</span><b>{command}</b><small>{text}</small></li>)}
+        </ul>
+        <p className="pn-fh">Când liderul pleacă, conducerea trece la un ofițer (sau la cel mai vechi membru); ultimul care pleacă închide breasla și ia cămara.</p>
+      </SectionCard>
+    </ModuleView>
+  );
+}
+
 export const GAME_VIEWS: Record<GameModuleId, () => React.ReactElement> = {
   state: StateModule,
   channels: ChannelsModule,
@@ -478,4 +512,5 @@ export const GAME_VIEWS: Record<GameModuleId, () => React.ReactElement> = {
   raid: RaidModule,
   duels: DuelsModule,
   expeditions: ExpeditionsModule,
+  guilds: GuildsModule,
 };

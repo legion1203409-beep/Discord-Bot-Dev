@@ -130,3 +130,12 @@ describe("expeditions", () => {
     expect(gameDraftError(config({ expeditions: { speed: 5 } }))).toContain("Viteza");
   });
 });
+
+describe("brotherhoods", () => {
+  it("sum up and refuse bad values", async () => {
+    const { guildsOf } = await import("./game-model");
+    expect(guildsOf(config())).toEqual({ enabled: true, createCost: 5_000, maxMembers: 20 });
+    expect(gameModuleSummary("guilds", config())).toBe("20 membri · 5.000 Oboli");
+    expect(gameDraftError(config({ guilds: { maxMembers: 1 } }))).toContain("Membri cel mult");
+  });
+});

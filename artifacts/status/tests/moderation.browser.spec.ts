@@ -1728,6 +1728,10 @@ test.describe("authenticated moderation console", () => {
     await page.getByTestId("game-expeditions-speed").getByRole("radio", { name: "2×" }).click();
     await expect(page.getByTestId("game-expeditions-routes")).toContainText("4 ore");
 
+    await page.getByTestId("nav-game-guilds").click();
+    await page.getByTestId("game-guilds-max").fill("30");
+    await expect(page.getByTestId("nav-game-guilds")).toContainText("30 membri");
+
     await page.getByTestId("nav-game-economy").click();
     await page.getByTestId("game-economy-double").click();
     await expect(page.getByTestId("game-monsterGoldMultiplier")).toHaveValue("2");
@@ -1740,6 +1744,7 @@ test.describe("authenticated moderation console", () => {
       messages: { gamePaused: "Jocul doarme. Revenim curând." },
       events: { eventCooldownMinMinutes: 200, eventCooldownMaxMinutes: 300 },
       missions: { kill_10: { target: 15 } },
+      guilds: { enabled: true, createCost: 5_000, maxMembers: 30 },
       expeditions: { enabled: true, goldPerHour: 120, speed: 2 },
       duels: { enabled: true, maxBet: 5_000, cooldownSeconds: 120, taxPercent: 10 },
       raid: { enabled: true, weekday: 7, hour: 18, durationHours: 6, cooldownMinutes: 20, hpPerPlayer: 15_000, rewardPool: 50_000, channelId: "" },
