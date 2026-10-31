@@ -105,7 +105,10 @@ function ocMark() {
     if (note && el.dataset.ocNote !== note) {
       el.dataset.ocNote = note; el.title = note;
       const h = document.createElement('small'); h.className = 'oc-hint'; h.textContent = note;
-      const row = el.closest('.fld, .field, .set, .sub, li') || el.parentNode;
+      // Overview rows are flex layouts; adding a help note beside their title
+      // steals the available width and makes names/descriptions overlap.
+      // Keep those notes available as the control tooltip instead.
+      const row = el.closest('.fld, .field, .set, .sub');
       if (row && !row.querySelector(':scope > .oc-hint')) row.appendChild(h);
     }
     if (SUP.has(path) || el.hasAttribute('data-oc-unav')) return;
@@ -270,6 +273,7 @@ const BRIDGE_CSS = `<style>
 .sw[data-oc-unav="implicit"]::after{transform:translateX(9px)!important;background:var(--ink-4)!important}
 [data-oc-unav="citire"]{opacity:.72;filter:none}
 .oc-hint{display:block;margin-top:4px;color:var(--ink-3);font:400 12px/1.4 var(--body)}
+.sw:not([data-oc-unav]){cursor:pointer}
 </style>`;
 
 function bridgeScript(boot: SourcePanelBoot): string {
