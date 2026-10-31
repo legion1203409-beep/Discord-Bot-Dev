@@ -688,8 +688,10 @@ test.describe("authenticated moderation console", () => {
     await expect(page.getByRole("heading", { name: "Regatul rulează normal" })).toBeVisible();
     await expect(gameToggle).toBeEnabled();
 
-    page.once("dialog", (dialog) => dialog.accept());
+    // Pausing asks first, in the page; resuming does not.
     await gameToggle.click();
+    expect(gameplayPuts).toEqual([]);
+    await page.getByTestId("button-gameplay-state-confirm").click();
     await expect(page.getByRole("heading", { name: "Activitățile sunt oprite" })).toBeVisible();
     await gameToggle.click();
     await expect(page.getByRole("heading", { name: "Regatul rulează normal" })).toBeVisible();
@@ -709,6 +711,18 @@ test.describe("authenticated moderation console", () => {
     await page.getByRole("option", { name: guilds[0].name }).click();
     await expect(page.getByRole("heading", { name: "Regatul rulează normal" })).toBeVisible();
     expect(gameplayGets.get(guilds[0].id)).toBe(3);
+  });
+
+  test("the overview lists what needs a look and links to where it is fixed", async ({ page }) => {
+    await page.goto("/moderare");
+    await chooseFirstGuild(page);
+    await expect(page.getByRole("heading", { name: "Cenușa Nordului", level: 1 })).toBeVisible();
+    const attention = page.getByTestId("overview-attention");
+    await expect(attention.getByTestId("attention-audit")).toContainText("Auditul e oprit");
+    await expect(attention.getByTestId("attention-commands")).toContainText("Comenzile staff-ului sunt oprite");
+    await expect(page.getByTestId("overview-summary")).toContainText("/8");
+    await attention.getByTestId("attention-audit").getByRole("link").click();
+    await expect(page).toHaveURL("/moderare/jurnale/audit");
   });
 
   test("dashboard sections stack cleanly at a 1024px viewport", async ({ page }) => {
@@ -734,7 +748,8 @@ test.describe("authenticated moderation console", () => {
     expect(activity?.width).toBeGreaterThan(500);
     expect(Math.abs(activity!.x - modules!.x)).toBeLessThan(1);
     expect(activity!.y).toBeGreaterThan(modules!.y + modules!.height);
-    expect(firstModuleCard?.width).toBeGreaterThan(500);
+    expect(firstModuleCard?.width).toBeGreaterThan(260);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
 
   test("AI settings persist after explicit save and reload", async ({ page }) => {

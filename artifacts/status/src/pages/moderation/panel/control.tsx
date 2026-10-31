@@ -16,7 +16,7 @@ import {
 import { EmojiTextField, ImageUrlField } from "./message-fields";
 import {
   CONTROL_MODULES, DAILY_METRICS, DAILY_PREVIEW_ACTIVITY, DAILY_PREVIEW_DAYS, DAILY_PREVIEW_MEMBERS, DAILY_TEXTS, DAILY_TOKENS, PROVISION_CATEGORIES,
-  RECRUITMENT_FIELDS, dailyCardDelta, dailyCardText, dailyChartOn, dailyDeltaText, dailyPreviewChannels, dailyPreviewWeek,
+  BOT_CHECKS, RECRUITMENT_FIELDS, dailyCardDelta, dailyCardText, dailyChartOn, dailyDeltaText, dailyPreviewChannels, dailyPreviewWeek,
   REPORT_TIME_ZONES, ROLE_PRESETS, WEEKDAYS, accessSummary, dailyProblem, inviteReportSummary, isClockTime, permissionOf, presetRole,
   recruitmentProblem, renderDailyText, roleAccessOf, withRole, withRoleAccess, type ControlModuleId, type ProvisionKey, type RoleAccess,
 } from "./control-model";
@@ -664,17 +664,7 @@ function countText(count: number, one: string, many: string) {
 /* Botul pe server                                                     */
 /* ------------------------------------------------------------------ */
 
-const CHECKS: ReadonlyArray<{ key: string; label: string; needed: string; kind: "intent" | "permission" }> = [
-  { key: "messageContent", label: "Message Content", needed: "Citește mesajele: filtre, Judecătorul AI, Oracolul.", kind: "intent" },
-  { key: "guildMembers", label: "Server Members", needed: "Vede intrările: anti-raid, invitații, verificare.", kind: "intent" },
-  { key: "canManageGuild", label: "Manage Server", needed: "Citește invitațiile pentru statistici.", kind: "permission" },
-  { key: "canManageRoles", label: "Manage Roles", needed: "Dă roluri la verificare, recrutare și ranguri.", kind: "permission" },
-  { key: "canManageChannels", label: "Manage Channels", needed: "Creează canale și setează slowmode și blocări.", kind: "permission" },
-  { key: "canManageMessages", label: "Manage Messages", needed: "Șterge mesajele prinse de filtre.", kind: "permission" },
-  { key: "canModerateMembers", label: "Timeout Members", needed: "Dă timeout.", kind: "permission" },
-  { key: "canKickMembers", label: "Kick Members", needed: "Scoate membri de pe server.", kind: "permission" },
-  { key: "canBanMembers", label: "Ban Members", needed: "Banează membri.", kind: "permission" },
-];
+const CHECKS = BOT_CHECKS;
 
 function LeaveCard() {
   const draft = useBotDraft();

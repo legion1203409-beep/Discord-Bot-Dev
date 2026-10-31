@@ -1,7 +1,7 @@
 import { Switch, Route, Redirect } from "wouter";
 import "./index.css";
 import { ModerationLayout } from "./pages/moderation/ModerationLayout";
-import { DashboardOverview } from "./pages/moderation/Dashboard";
+import { OverviewPage } from "./pages/moderation/panel/overview";
 import { ConfigOverviewPage } from "./pages/moderation/ConfigOverview";
 import { ProtectionGroupPage } from "./pages/moderation/panel/ProtectionGroup";
 import { JudgePage } from "./pages/moderation/panel/JudgePage";
@@ -92,7 +92,7 @@ function ModerationApp() {
     <ModerationLayout>
       <div key={guildId ?? "no-guild"}>
         <Switch>
-          <Route path="/" component={DashboardOverview} />
+          <Route path="/" component={OverviewPage} />
           {/* The protection group is one page: the same component on all six routes keeps unsaved changes while moving between modules. */}
           <Route path="/protectie" component={ProtectionGroupPage} />
           <Route path="/automod" component={ProtectionGroupPage} />

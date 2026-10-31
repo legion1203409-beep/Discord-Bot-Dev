@@ -350,3 +350,20 @@ export function controlDraftError(config: any): string | null {
   const channels = channelsProblem(config);
   return channels ? `Canale și acces — ${channels}` : null;
 }
+
+/* ------------------------------------------------------------------ */
+/* Botul pe server                                                     */
+/* ------------------------------------------------------------------ */
+
+/** What the bot needs on the server, with what each permission is for. */
+export const BOT_CHECKS: ReadonlyArray<{ key: string; label: string; needed: string; kind: "intent" | "permission" }> = [
+  { key: "messageContent", label: "Message Content", needed: "Citește mesajele: filtre, Judecătorul AI, Oracolul.", kind: "intent" },
+  { key: "guildMembers", label: "Server Members", needed: "Vede intrările: anti-raid, invitații, verificare.", kind: "intent" },
+  { key: "canManageGuild", label: "Manage Server", needed: "Citește invitațiile pentru statistici.", kind: "permission" },
+  { key: "canManageRoles", label: "Manage Roles", needed: "Dă roluri la verificare, recrutare și ranguri.", kind: "permission" },
+  { key: "canManageChannels", label: "Manage Channels", needed: "Creează canale și setează slowmode și blocări.", kind: "permission" },
+  { key: "canManageMessages", label: "Manage Messages", needed: "Șterge mesajele prinse de filtre.", kind: "permission" },
+  { key: "canModerateMembers", label: "Timeout Members", needed: "Dă timeout.", kind: "permission" },
+  { key: "canKickMembers", label: "Kick Members", needed: "Scoate membri de pe server.", kind: "permission" },
+  { key: "canBanMembers", label: "Ban Members", needed: "Banează membri.", kind: "permission" },
+];
