@@ -509,6 +509,44 @@ export function ScheduleModule() {
 /* Contestații                                                         */
 /* ------------------------------------------------------------------ */
 
+function AcceptedMessageCard() {
+  const { config, set } = usePanel();
+  const settings = appealSettings(config);
+  const id = useId();
+  const fill = (text: string) => text.replaceAll("{guild}", "numele serverului");
+  return (
+    <SectionCard title="Mesajul când e acceptată" testId="appeals-accepted">
+      <Fields>
+        <SwitchField
+          label="Trimite-i un mesaj privat" testId="appeals-dm" checked={settings.dmOnAccept}
+          hint="La Acceptă, botul îi scrie că banul a fost scos, cu butonul spre server. Dacă n-are cum să-i scrie (DM-uri închise, niciun server comun), vede vestea pe pagina de contestație."
+          onChange={(next) => set(["appeals", "dmOnAccept"], next)}
+        />
+        <Fld label="Titlul" htmlFor={`${id}-t`}>
+          <input id={`${id}-t`} className="pn-inp" data-testid="appeals-accepted-title" maxLength={200} value={settings.acceptedTitle} onChange={(event) => set(["appeals", "acceptedTitle"], event.target.value)} />
+        </Fld>
+        <Fld label="Textul" htmlFor={`${id}-m`} hint="{guild} se înlocuiește cu numele serverului. Nota scrisă de staff la Acceptă apare dedesubt.">
+          <textarea id={`${id}-m`} className="pn-inp" data-testid="appeals-accepted-message" rows={3} maxLength={1500} value={settings.acceptedMessage} onChange={(event) => set(["appeals", "acceptedMessage"], event.target.value)} />
+        </Fld>
+        <Fld label="Textul butonului" htmlFor={`${id}-b`}>
+          <input id={`${id}-b`} className="pn-inp" data-testid="appeals-accepted-button" maxLength={80} value={settings.acceptedButton} onChange={(event) => set(["appeals", "acceptedButton"], event.target.value)} />
+        </Fld>
+        <Fld label="Linkul serverului" htmlFor={`${id}-i`} hint="Invitația din butonul mesajului și de pe pagina de contestație. Lasă gol și botul face o invitație de o singură folosire, valabilă 7 zile.">
+          <input
+            id={`${id}-i`} className="pn-inp" data-testid="appeals-invite" placeholder="https://discord.gg/..." inputMode="url" autoComplete="off"
+            value={settings.inviteUrl ?? ""} onChange={(event) => set(["appeals", "inviteUrl"], event.target.value.trim() || null)}
+          />
+        </Fld>
+      </Fields>
+      <div className="pn-appeal-dm" aria-label="Previzualizare" data-testid="appeals-preview">
+        <b>{fill(settings.acceptedTitle)}</b>
+        <p>{fill(settings.acceptedMessage).replace(/\*\*/g, "")}</p>
+        <span className="pn-appeal-dm-btn">{settings.acceptedButton}</span>
+      </div>
+    </SectionCard>
+  );
+}
+
 export function AppealsModule() {
   const { config, set, channels } = usePanel();
   const settings = appealSettings(config);
@@ -542,6 +580,7 @@ export function AppealsModule() {
           />
         </Fields>
       </SectionCard>
+      <AcceptedMessageCard />
     </ModuleView>
   );
 }

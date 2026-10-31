@@ -13,10 +13,11 @@ export type AppealView = {
   canAppeal: boolean;
   nextAllowedAt: string | null;
   inviteUrl: string | null;
+  inviteLabel?: string;
 };
 
 export type AppealSession =
-  | { authenticated: false; enabled: boolean }
+  | { authenticated: false; enabled: boolean; guildName?: string | null }
   | { authenticated: true; user: { id: string; name: string; username: string; avatar: string | null }; status: AppealView };
 
 export const APPEAL_MIN = 30;

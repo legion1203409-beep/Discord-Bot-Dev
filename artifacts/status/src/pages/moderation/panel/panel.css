@@ -1012,3 +1012,8 @@ a.pn-ov-tile:hover, .pn a.pn-ov-tile:hover { border-color: color-mix(in oklab, v
 @media (prefers-reduced-motion: reduce) {
   .pn *, .pn *::before, .pn *::after { animation-duration: .01ms !important; animation-delay: 0ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* Contestații: previzualizarea mesajului privat de la acceptare */
+.pn-appeal-dm { margin-top: 14px; padding: 12px 14px; border-left: 4px solid var(--tc, #FF7A9A); border-radius: 8px; background: rgba(255, 255, 255, .03); display: grid; gap: 6px; overflow-wrap: anywhere; }
+.pn-appeal-dm p { margin: 0; white-space: pre-wrap; opacity: .85; }
+.pn-appeal-dm-btn { justify-self: start; padding: 6px 12px; border-radius: 6px; background: rgba(255, 255, 255, .1); font-size: .85rem; }

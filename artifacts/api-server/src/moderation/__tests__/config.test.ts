@@ -264,7 +264,10 @@ describe("moderation configuration defaults", () => {
 
 describe("ban appeals configuration", () => {
   it("is off by default, lifts the ban on accept and waits 30 days after a rejection", () => {
-    expect(ModerationConfigSchema.parse({}).appeals).toEqual({ enabled: false, channelId: null, unbanOnAccept: true, cooldownDays: 30 });
+    expect(ModerationConfigSchema.parse({}).appeals).toEqual({
+      enabled: false, channelId: null, unbanOnAccept: true, cooldownDays: 30, dmOnAccept: true, inviteUrl: null,
+      acceptedTitle: "✅ Contestația ta a fost acceptată", acceptedMessage: "Banul de pe **{guild}** a fost scos. Te poți întoarce oricând.", acceptedButton: "Intră în regat",
+    });
   });
   it("keeps only a Discord id as the staff channel and 1 to 365 days of waiting", () => {
     expect(ModerationConfigSchema.parse({ appeals: { channelId: "123456789012345678", cooldownDays: 7 } }).appeals).toMatchObject({ channelId: "123456789012345678", cooldownDays: 7 });

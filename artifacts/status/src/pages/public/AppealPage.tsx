@@ -69,7 +69,7 @@ export function AppealPage() {
       <main className="ap-card" aria-live="polite">
         <div className="ap-flame" aria-hidden="true"><Flame size={30} /></div>
         <h1>Contestă banul</h1>
-        <p className="ap-sub">{status?.guild.name ?? "Regatul Cenușii"}</p>
+        <p className="ap-sub">{status?.guild.name ?? (session && !session.authenticated ? session.guildName : null) ?? "Discord"}</p>
 
         {(urlError || loadError) && <p className="ap-error" role="alert">{urlError ?? loadError}</p>}
         {!session && !loadError && <p className="ap-muted"><LoaderCircle className="ap-spin" size={16} /> Se încarcă…</p>}
@@ -152,7 +152,7 @@ export function AppealPage() {
               <>
                 <p><strong>Contestația a fost acceptată.</strong> Banul a fost scos, te poți întoarce.</p>
                 {status.appeal?.decisionNote && <blockquote>{status.appeal.decisionNote}</blockquote>}
-                {status.inviteUrl && <a className="ap-btn" href={status.inviteUrl}>Intră în regat</a>}
+                {status.inviteUrl && <a className="ap-btn" href={status.inviteUrl}>{status.inviteLabel || "Intră în regat"}</a>}
               </>
             )}
           </>

@@ -15,7 +15,7 @@ import {
   type Client, type Guild, type GuildBan, type Message,
 } from "discord.js";
 import { logger } from "../lib/logger";
-import { PUBLIC_DISCORD_INVITE } from "../lib/discord-invite";
+import { PUBLIC_DISCORD_GUILD_ID, PUBLIC_DISCORD_INVITE } from "../lib/discord-invite";
 import { ModerationAuthError } from "./auth";
 import type { ModerationConfig } from "./config";
 import { moderationStore, webAppealChannelId, type ModerationCase, type ModerationCaseAppeal, type ModerationWebAppeal } from "./store";
@@ -42,6 +42,8 @@ export type AppealView = {
   nextAllowedAt: string | null;
   /** The server's invite, once the ban is gone after an accepted appeal. */
   inviteUrl: string | null;
+  /** The text of the invite button (the server's own, set in the panel). */
+  inviteLabel: string;
 };
 
 type Found = {
@@ -101,7 +103,7 @@ export function appealWindow(
   return next <= now ? { canAppeal: true, nextAllowedAt: null } : { canAppeal: false, nextAllowedAt: new Date(next) };
 }
 
-function viewOf(guildId: string, found: Found, now = Date.now()): AppealView {
+function viewOf(guildId: string, found: Found, invite: string | null = null, now = Date.now()): AppealView {
   const enabled = Boolean(found.config.appeals?.enabled);
   // An appeal accepted earlier does not stop a new one for a later ban (a new case).
   const window = appealWindow(found.appeal, found.config.appeals?.cooldownDays ?? 30, now);
@@ -110,7 +112,7 @@ function viewOf(guildId: string, found: Found, now = Date.now()): AppealView {
     enabled,
     guild: {
       id: guildId,
-      name: found.guild?.name ?? "Regatul Cenușii",
+      name: found.guild?.name ?? "Serverul",
       iconUrl: found.guild?.iconURL({ size: 128 }) ?? null,
     },
     banned: found.banned,
@@ -130,12 +132,17 @@ function viewOf(guildId: string, found: Found, now = Date.now()): AppealView {
       : null,
     canAppeal: enabled && found.banned && window.canAppeal,
     nextAllowedAt: found.banned && window.nextAllowedAt ? window.nextAllowedAt.toISOString() : null,
-    inviteUrl: !found.banned && appeal?.status === "accepted" ? PUBLIC_DISCORD_INVITE : null,
+    inviteUrl: !found.banned && appeal?.status === "accepted" ? invite : null,
+    inviteLabel: found.config.appeals?.acceptedButton ?? "Intră în regat",
   };
 }
 
 export async function appealStatus(client: Client | null, guildId: string, userId: string): Promise<AppealView> {
-  return viewOf(guildId, await find(client, guildId, userId));
+  const found = await find(client, guildId, userId);
+  const invite = !found.banned && found.appeal?.status === "accepted" && found.guild
+    ? await acceptedInvite(found.guild, userId, found.config)
+    : null;
+  return viewOf(guildId, found, invite);
 }
 
 /** The text of an appeal as the bot keeps it: trimmed, without control characters. */
@@ -345,8 +352,11 @@ export async function decideWebAppeal(client: Client, input: {
   let notified = false;
   if (input.decision === "accepted") {
     const guild = await fetchGuild(client, input.guildId);
-    notified = await notifyAccepted(client, appeal.appellantId, guild?.name ?? "Regatul Cenușii", input.note, colorOf(config));
-    await moderationStore.addCaseNote({
+    if (config.appeals?.dmOnAccept !== false) {
+      const invite = guild ? await acceptedInvite(guild, appeal.appellantId, config) : config.appeals?.inviteUrl ?? null;
+      notified = await notifyAccepted(client, appeal.appellantId, acceptedAppealMessage(config, guild?.name ?? "server", input.note, invite, colorOf(config)));
+    }
+    if (config.appeals?.dmOnAccept !== false) await moderationStore.addCaseNote({
       guildId: input.guildId, caseId: appeal.caseId, authorId: input.actorId,
       body: notified ? "Membrul a primit în privat vestea și linkul serverului." : "Mesajul privat nu a ajuns (DM-uri închise sau niciun server comun cu botul); vestea și linkul sunt pe pagina de contestație.",
     }).catch(() => null);
@@ -354,29 +364,63 @@ export async function decideWebAppeal(client: Client, input: {
   return { appeal: updated, unbanned, notified };
 }
 
-/** The private message after an accepted appeal, with the server's invite. */
-export function acceptedAppealMessage(guildName: string, note: string, inviteUrl = PUBLIC_DISCORD_INVITE, color = 0xd94a2b) {
+const createdInvites = new Map<string, { url: string; expiresAt: number }>();
+const INVITE_AGE_SECONDS = 7 * 24 * 60 * 60;
+
+/**
+ * The invite for someone whose appeal was accepted: the one set in the panel, the
+ * official community's public one, or a single-use invite of 7 days made by the
+ * bot (kept for the same person, so reloading the page does not make new ones).
+ */
+export async function acceptedInvite(guild: Guild, userId: string, config: ModerationConfig): Promise<string | null> {
+  if (config.appeals?.inviteUrl) return config.appeals.inviteUrl;
+  if (guild.id === PUBLIC_DISCORD_GUILD_ID) return PUBLIC_DISCORD_INVITE;
+  const key = `${guild.id}:${userId}`;
+  const cached = createdInvites.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.url;
+  const me = guild.members.me;
+  const channels = [guild.systemChannel, guild.rulesChannel, ...guild.channels.cache.values()];
+  const channel = channels.find((candidate) => candidate && "createInvite" in candidate && candidate.isTextBased()
+    && (!me || candidate.permissionsFor(me)?.has("CreateInstantInvite")));
+  if (!channel || !("createInvite" in channel)) return null;
+  try {
+    const invite = await channel.createInvite({ maxAge: INVITE_AGE_SECONDS, maxUses: 1, unique: true, reason: "Contestație de ban acceptată" });
+    createdInvites.set(key, { url: invite.url, expiresAt: Date.now() + (INVITE_AGE_SECONDS - 60) * 1_000 });
+    if (createdInvites.size > 1_000) createdInvites.delete(createdInvites.keys().next().value!);
+    return invite.url;
+  } catch (error) {
+    logger.warn({ error, guildId: guild.id }, "Could not make an invite for an accepted ban appeal");
+    return null;
+  }
+}
+
+/** The private message after an accepted appeal, as the server wrote it in the panel; {guild} is its name. */
+export function acceptedAppealMessage(config: ModerationConfig, guildName: string, note: string, inviteUrl: string | null, color = 0xd94a2b) {
+  const settings = config.appeals;
+  const fill = (text: string) => text.replaceAll("{guild}", guildName.slice(0, 100));
   const embed = new EmbedBuilder()
     .setColor(color)
-    .setTitle("✅ Contestația ta a fost acceptată")
-    .setDescription(`Banul de pe **${guildName.slice(0, 100)}** a fost scos. Te poți întoarce oricând.`)
+    .setTitle(fill(settings?.acceptedTitle ?? "✅ Contestația ta a fost acceptată").slice(0, 256))
+    .setDescription(fill(settings?.acceptedMessage ?? "Banul de pe **{guild}** a fost scos. Te poți întoarce oricând.").slice(0, 4_000))
     .setTimestamp(new Date());
   const cleanNote = note.trim();
   if (cleanNote && cleanNote !== "Contestație acceptată.") embed.addFields({ name: "Mesaj de la staff", value: cleanNote.slice(0, 1_024) });
   return {
     embeds: [embed],
-    components: [new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setLabel("Intră în regat").setStyle(ButtonStyle.Link).setURL(inviteUrl),
-    )],
+    components: inviteUrl
+      ? [new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setLabel((settings?.acceptedButton ?? "Intră în regat").slice(0, 80)).setStyle(ButtonStyle.Link).setURL(inviteUrl),
+      )]
+      : [],
     allowedMentions: { parse: [] as never[] },
   };
 }
 
 /** Best effort: a user who shares no server with the bot, or has closed DMs, does not get it. */
-async function notifyAccepted(client: Client, userId: string, guildName: string, note: string, color: number): Promise<boolean> {
+async function notifyAccepted(client: Client, userId: string, payload: ReturnType<typeof acceptedAppealMessage>): Promise<boolean> {
   try {
     const user = await client.users.fetch(userId);
-    await user.send(acceptedAppealMessage(guildName, note, PUBLIC_DISCORD_INVITE, color) as never);
+    await user.send(payload as never);
     return true;
   } catch {
     return false;

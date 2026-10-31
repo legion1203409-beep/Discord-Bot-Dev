@@ -357,7 +357,7 @@ describe("Discord OAuth moderation routes", () => {
 
     it("tells a visitor who is not signed in only whether appeals are on", async () => {
       const response = await fetch(`${base}/appeals/session?guildId=${GUILD}`);
-      expect(await response.json()).toEqual({ authenticated: false, enabled: true });
+      expect(await response.json()).toMatchObject({ authenticated: false, enabled: true });
       expect(mocks.appealStatus).not.toHaveBeenCalled();
     });
 

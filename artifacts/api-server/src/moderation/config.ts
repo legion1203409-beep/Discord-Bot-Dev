@@ -407,6 +407,13 @@ export const ModerationConfigSchema = z.object({
     unbanOnAccept: z.boolean().default(true),
     /** Days after a rejection before the same ban can be appealed again. */
     cooldownDays: z.number().int().min(1).max(365).default(30),
+    /** The private message after an accepted appeal; {guild} is the server's name. */
+    dmOnAccept: z.boolean().default(true),
+    acceptedTitle: z.string().trim().min(1).max(200).default("✅ Contestația ta a fost acceptată"),
+    acceptedMessage: z.string().trim().min(1).max(1_500).default("Banul de pe **{guild}** a fost scos. Te poți întoarce oricând."),
+    acceptedButton: z.string().trim().min(1).max(80).default("Intră în regat"),
+    /** The server's invite for the message and the appeal page; without one the bot makes a single-use invite. */
+    inviteUrl: safeHttpsUrl.nullable().default(null),
   }).default({}),
 }).superRefine((config, ctx) => {
   validateRuleThresholds(config.autoMod.wordFilter, ["autoMod", "wordFilter"], { matches: [1, 100] }, ctx);

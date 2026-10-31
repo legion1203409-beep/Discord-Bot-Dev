@@ -957,13 +957,21 @@ test.describe("authenticated moderation console", () => {
     await page.getByRole("combobox", { name: "Canalul contestațiilor" }).selectOption("444444444");
     await page.getByRole("switch", { name: "Scoate banul când e acceptată" }).click();
     await page.getByTestId("appeals-cooldown").fill("14");
+    await page.getByTestId("appeals-accepted-title").fill("Bine ai revenit pe {guild}");
+    await page.getByTestId("appeals-accepted-button").fill("Hai înapoi");
+    await page.getByTestId("appeals-invite").fill("https://discord.gg/altserver");
+    await expect(page.getByTestId("appeals-preview")).toContainText("Bine ai revenit pe numele serverului");
+    await expect(page.getByTestId("appeals-preview")).toContainText("Hai înapoi");
 
     const saveResponse = page.waitForResponse((response) =>
       response.url().includes("/api/moderation/guilds/111111111/config")
       && response.request().method() === "PUT");
     await page.getByRole("button", { name: "Salvează", exact: true }).click();
     expect((await saveResponse).ok()).toBe(true);
-    expect((savedConfigs.get(guilds[0].id) as any).appeals).toEqual({ enabled: true, channelId: "444444444", unbanOnAccept: false, cooldownDays: 14 });
+    expect((savedConfigs.get(guilds[0].id) as any).appeals).toMatchObject({
+      enabled: true, channelId: "444444444", unbanOnAccept: false, cooldownDays: 14,
+      acceptedTitle: "Bine ai revenit pe {guild}", acceptedButton: "Hai înapoi", inviteUrl: "https://discord.gg/altserver",
+    });
     await page.reload();
     await expect(page.getByRole("switch", { name: "Activează contestațiile de pe site" })).toBeChecked();
     await expect(page.getByTestId("appeals-cooldown")).toHaveValue("14");
@@ -1023,7 +1031,7 @@ test.describe("authenticated moderation console", () => {
     await expect(page.getByText("Poți face o contestație nouă după 15 noiembrie 2026.")).toBeVisible();
     await expect(page.getByRole("button", { name: "Trimite contestația" })).toHaveCount(0);
 
-    status = view({ banned: false, canAppeal: false, appeal: { ...pending, status: "accepted", decidedAt: "2026-10-20T00:00:00Z" }, inviteUrl: "https://discord.gg/regatulcenusii" });
+    status = view({ banned: false, canAppeal: false, appeal: { ...pending, status: "accepted", decidedAt: "2026-10-20T00:00:00Z" }, inviteUrl: "https://discord.gg/regatulcenusii", inviteLabel: "Intră în regat" });
     await page.reload();
     await expect(page.getByText("Contestația a fost acceptată.")).toBeVisible();
     await expect(page.getByRole("link", { name: "Intră în regat" })).toHaveAttribute("href", "https://discord.gg/regatulcenusii");

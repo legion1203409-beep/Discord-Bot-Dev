@@ -1923,7 +1923,8 @@ router.get("/appeals/session", asyncRoute(async (req, res) => {
   const identity = appealIdentityFromRequest(req);
   if (!identity) {
     const { config } = await moderationStore.getConfig(guildId);
-    res.json({ authenticated: false, enabled: Boolean(config.appeals?.enabled) });
+    const guildName = getModerationClient()?.guilds.cache.get(guildId)?.name ?? null;
+    res.json({ authenticated: false, enabled: Boolean(config.appeals?.enabled), guildName });
     return;
   }
   res.json({

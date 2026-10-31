@@ -25,12 +25,14 @@ const webAppeal = (over: Record<string, unknown> = {}) => ({
 function client(over: { removeError?: unknown; banned?: boolean; dmError?: unknown } = {}) {
   const send = vi.fn(async () => { if (over.dmError) throw over.dmError; return {}; });
   const remove = vi.fn(async () => { if (over.removeError) throw over.removeError; });
+  const createInvite = vi.fn(async () => ({ url: "https://discord.gg/unic" }));
   const guild = {
-    name: "Regat", iconURL: () => null,
+    id: GUILD, name: "Regat", iconURL: () => null, members: { me: null }, rulesChannel: null, channels: { cache: new Map() },
+    systemChannel: { createInvite, isTextBased: () => true, permissionsFor: () => null },
     bans: { remove, fetch: vi.fn(async () => { if (over.banned === false) throw { code: 10026 }; return { reason: "spam" }; }) },
   };
   return {
-    remove, send,
+    remove, send, createInvite,
     client: {
       isReady: () => true,
       guilds: { cache: new Map([[GUILD, guild]]), fetch: vi.fn() },
@@ -154,7 +156,8 @@ describe("staff decisions", () => {
     const payload = (ok.send.mock.calls[0] as unknown as [any])[0];
     expect(payload.embeds[0].data.title).toContain("acceptată");
     expect(payload.embeds[0].data.fields[0].value).toBe("Bine ai revenit");
-    expect(payload.components[0].components[0].data).toMatchObject({ label: "Intră în regat", url: "https://discord.gg/regatulcenusii" });
+    // No invite set for this server: a single-use one made by the bot (and reused for the same person).
+    expect(payload.components[0].components[0].data).toMatchObject({ label: "Intră în regat", url: "https://discord.gg/unic" });
     expect(store.addCaseNote).toHaveBeenCalledWith(expect.objectContaining({ body: expect.stringContaining("a primit în privat") }));
 
     const closed = client({ dmError: new Error("Cannot send messages to this user") });
@@ -171,8 +174,26 @@ describe("staff decisions", () => {
     expect(c.send).not.toHaveBeenCalled();
   });
 
-  it("leaves out the default note from the private message", () => {
-    expect(acceptedAppealMessage("Regat", "Contestație acceptată.").embeds[0]!.data.fields).toBeUndefined();
+  it("uses the server's own title, text, button and invite, and can stay silent", async () => {
+    const custom = config({ acceptedTitle: "Bine ai revenit pe {guild}", acceptedMessage: "Ești iar liber pe {guild}.", acceptedButton: "Hai înapoi", inviteUrl: "https://discord.gg/altserver" });
+    const message = acceptedAppealMessage(custom as never, "Tavernă", "Contestație acceptată.", "https://discord.gg/altserver");
+    expect(message.embeds[0]!.data).toMatchObject({ title: "Bine ai revenit pe Tavernă", description: "Ești iar liber pe Tavernă." });
+    expect(message.embeds[0]!.data.fields).toBeUndefined();
+    expect((message.components[0] as any).components[0].data).toMatchObject({ label: "Hai înapoi", url: "https://discord.gg/altserver" });
+    expect(acceptedAppealMessage(custom as never, "T", "", null).components).toEqual([]);
+
+    store.getWebAppeal.mockResolvedValue(webAppeal());
+    store.decideAppeal.mockResolvedValue({ appellantId: USER, channelId: `web:${APPEAL}` });
+    store.getConfig.mockResolvedValue({ config: custom });
+    const withInvite = client();
+    await decideWebAppeal(withInvite.client, { ...input, decision: "accepted" });
+    expect(withInvite.createInvite).not.toHaveBeenCalled();
+    expect(((withInvite.send.mock.calls[0] as unknown as [any])[0]).components[0].components[0].data.url).toBe("https://discord.gg/altserver");
+
+    store.getConfig.mockResolvedValue({ config: config({ dmOnAccept: false }) });
+    const silent = client();
+    expect((await decideWebAppeal(silent.client, { ...input, decision: "accepted" })).notified).toBe(false);
+    expect(silent.send).not.toHaveBeenCalled();
   });
 
   it("keeps the appeal open when Discord refuses to lift the ban", async () => {

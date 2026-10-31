@@ -542,7 +542,16 @@ export const MIN_APPEAL_COOLDOWN_DAYS = 1;
 export const MAX_APPEAL_COOLDOWN_DAYS = 365;
 export const DEFAULT_APPEAL_COOLDOWN_DAYS = 30;
 
-export type AppealSettings = { enabled: boolean; channelId: string | null; unbanOnAccept: boolean; cooldownDays: number };
+export const DEFAULT_APPEAL_ACCEPTED = {
+  title: "✅ Contestația ta a fost acceptată",
+  message: "Banul de pe **{guild}** a fost scos. Te poți întoarce oricând.",
+  button: "Intră în regat",
+} as const;
+
+export type AppealSettings = {
+  enabled: boolean; channelId: string | null; unbanOnAccept: boolean; cooldownDays: number;
+  dmOnAccept: boolean; acceptedTitle: string; acceptedMessage: string; acceptedButton: string; inviteUrl: string | null;
+};
 
 /** The appeal settings as the bot reads them (config.ts: appeals), with the defaults for what is missing. */
 export function appealSettings(config: any): AppealSettings {
@@ -552,6 +561,11 @@ export function appealSettings(config: any): AppealSettings {
     channelId: typeof value.channelId === "string" && value.channelId ? value.channelId : null,
     unbanOnAccept: value.unbanOnAccept !== false,
     cooldownDays: value.cooldownDays ?? DEFAULT_APPEAL_COOLDOWN_DAYS,
+    dmOnAccept: value.dmOnAccept !== false,
+    acceptedTitle: value.acceptedTitle ?? DEFAULT_APPEAL_ACCEPTED.title,
+    acceptedMessage: value.acceptedMessage ?? DEFAULT_APPEAL_ACCEPTED.message,
+    acceptedButton: value.acceptedButton ?? DEFAULT_APPEAL_ACCEPTED.button,
+    inviteUrl: typeof value.inviteUrl === "string" && value.inviteUrl ? value.inviteUrl : null,
   };
 }
 
@@ -606,6 +620,11 @@ export function sanctionsDraftError(config: any, sections?: ReadonlyArray<string
     }
     if (appeals.channelId && !isDiscordId(appeals.channelId)) return "Contestații — canalul pentru staff nu este un ID Discord valid.";
     if (appeals.enabled && !appeals.channelId) return "Contestații — alege canalul în care staff-ul primește contestațiile.";
+    if (appeals.inviteUrl && !/^https:\/\/[^\s]+$/i.test(appeals.inviteUrl)) return "Contestații — linkul serverului trebuie să înceapă cu https://.";
+    for (const [label, value, max] of [["Titlul mesajului", appeals.acceptedTitle, 200], ["Textul mesajului", appeals.acceptedMessage, 1500], ["Textul butonului", appeals.acceptedButton, 80]] as const) {
+      if (!value.trim()) return `Contestații — ${label} nu poate fi gol.`;
+      if (value.length > max) return `Contestații — ${label}: cel mult ${max} de caractere.`;
+    }
   }
   if (checks("manualTools")) {
     for (const command of STAFF_COMMANDS) {

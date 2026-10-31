@@ -300,9 +300,12 @@ describe("checks before saving", () => {
 
 describe("ban appeals", () => {
   it("reads the settings with the defaults the bot uses", () => {
-    expect(appealSettings(undefined)).toEqual({ enabled: false, channelId: null, unbanOnAccept: true, cooldownDays: 30 });
-    expect(appealSettings({ appeals: { enabled: true, channelId: "123456", unbanOnAccept: false, cooldownDays: 10 } }))
-      .toEqual({ enabled: true, channelId: "123456", unbanOnAccept: false, cooldownDays: 10 });
+    expect(appealSettings(undefined)).toEqual({
+      enabled: false, channelId: null, unbanOnAccept: true, cooldownDays: 30, dmOnAccept: true, inviteUrl: null,
+      acceptedTitle: "✅ Contestația ta a fost acceptată", acceptedMessage: "Banul de pe **{guild}** a fost scos. Te poți întoarce oricând.", acceptedButton: "Intră în regat",
+    });
+    expect(appealSettings({ appeals: { enabled: true, channelId: "123456", unbanOnAccept: false, cooldownDays: 10, dmOnAccept: false, acceptedButton: "Hai", inviteUrl: "https://discord.gg/x" } }))
+      .toMatchObject({ enabled: true, channelId: "123456", unbanOnAccept: false, cooldownDays: 10, dmOnAccept: false, acceptedButton: "Hai", inviteUrl: "https://discord.gg/x" });
   });
 
   it("tells in the menu whether appeals are off, on or missing a channel", () => {
@@ -317,5 +320,7 @@ describe("ban appeals", () => {
     expect(sanctionsDraftError({ appeals: { enabled: true, channelId: "x1" } }, ["appeals"])).toContain("ID Discord");
     expect(sanctionsDraftError({ appeals: { enabled: true, channelId: "123456", cooldownDays: 30 } }, ["appeals"])).toBeNull();
     expect(sanctionsDraftError({ appeals: { enabled: true } }, ["escalation"])).toBeNull();
+    expect(sanctionsDraftError({ appeals: { inviteUrl: "discord.gg/x" } }, ["appeals"])).toContain("https://");
+    expect(sanctionsDraftError({ appeals: { acceptedButton: "  " } }, ["appeals"])).toContain("Textul butonului");
   });
 });
