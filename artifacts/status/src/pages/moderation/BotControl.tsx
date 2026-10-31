@@ -326,9 +326,11 @@ function renderAnnouncementTemplate(
 export function BotControlPage({
   channelsOnly = false,
   provisioningOnly = false,
+  initialTab,
 }: {
   channelsOnly?: boolean;
   provisioningOnly?: boolean;
+  initialTab?: "channels" | "roles" | "tickets" | "messages" | "statistics";
 }) {
   const [location, setLocation] = useLocation();
   const { guildId, setGuildId } = useActiveGuild();
@@ -378,7 +380,7 @@ export function BotControlPage({
   const [activeTab, setActiveTab] = useState<BotControlTab>(
     requestedTab && BOT_CONTROL_TABS.includes(requestedTab as BotControlTab)
       ? requestedTab as BotControlTab
-      : "roles",
+      : initialTab ?? "roles",
   );
   const [expandedCategory, setExpandedCategory] = useState<string | null>("gameplay");
   const initializedGuild = React.useRef<string | null>(null);

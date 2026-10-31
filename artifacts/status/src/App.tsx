@@ -15,6 +15,7 @@ import { MessageTemplatesPage } from "./pages/moderation/MessageTemplates";
 import { ServerSetupPage } from "./pages/moderation/ServerSetup";
 import { ActivityRanksPage } from "./pages/moderation/ActivityRanks";
 import { OfflineAssistant } from "./pages/moderation/OfflineAssistant";
+import { ReferenceHomeView, ReferenceViewRoute } from "./pages/moderation/ReferenceViews";
 import { useActiveGuild } from "./hooks/use-moderation-api";
 import { Toaster } from "./components/ui/toaster";
 import { SwordCursor } from "./components/SwordCursor";
@@ -88,7 +89,9 @@ function ModerationApp() {
     <ModerationLayout>
       <div key={guildId ?? "no-guild"}>
         <Switch>
-          <Route path="/" component={DashboardOverview} />
+          <Route path="/" component={ReferenceHomeView} />
+          <Route path="/panou/:view" component={ReferenceViewRoute} />
+          <Route path="/dashboard" component={DashboardOverview} />
           <Route path="/automod" component={() => <CategorySettingsPage section="automod" />} />
           <Route path="/ai" component={() => <CategorySettingsPage section="ai" />} />
           <Route path="/anti-spam" component={() => <CategorySettingsPage section="anti-spam" />} />

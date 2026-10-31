@@ -1639,6 +1639,7 @@ export function useModerationMetadata(guildId: string | null) {
 export function useCases(guildId: string | null, params?: { status?: string, userId?: string, limit?: number, offset?: number }) {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
   const dataGuildId = useRef<string | null>(null);
   const requestId = useRef(0);
 
@@ -1649,10 +1650,12 @@ export function useCases(guildId: string | null, params?: { status?: string, use
       dataGuildId.current = null;
       setData([]);
       setLoading(false);
+      setError(null);
       return;
     }
     const thisRequest = ++requestId.current;
     setLoading(true);
+    setError(null);
     const query = new URLSearchParams();
     if (params?.status) query.set("status", params.status);
     if (params?.userId) query.set("userId", params.userId);
@@ -1664,19 +1667,24 @@ export function useCases(guildId: string | null, params?: { status?: string, use
       if (requestedGuildId !== guildId || thisRequest !== requestId.current) return;
       dataGuildId.current = requestedGuildId;
       setData(res.items || []);
-    } catch {} finally {
+    } catch (err) {
+      if (requestedGuildId === guildId && thisRequest === requestId.current) {
+        setError(err instanceof Error ? err : new Error("Nu s-au putut încărca dosarele."));
+      }
+    } finally {
       if (requestedGuildId === guildId && thisRequest === requestId.current) setLoading(false);
     }
   }, [guildId, params?.status, params?.userId, params?.limit, params?.offset]);
 
   useEffect(() => { fetchCases(); }, [fetchCases]);
-  return { data: dataGuildId.current === guildId ? data : [], loading: loading || Boolean(guildId && dataGuildId.current !== guildId), refetch: fetchCases };
+  return { data: dataGuildId.current === guildId ? data : [], loading: loading || Boolean(guildId && dataGuildId.current !== guildId), error: dataGuildId.current === guildId ? error : null, refetch: fetchCases };
 }
 
 export function useAuditLogs(guildId: string | null, params: AuditLogQuery = {}) {
   const [data, setData] = useState<ModerationAuditLog[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
   const dataGuildId = useRef<string | null>(null);
   const requestId = useRef(0);
   const search = params.search?.trim() ?? "";
@@ -1694,6 +1702,7 @@ export function useAuditLogs(guildId: string | null, params: AuditLogQuery = {})
       setData([]);
       setTotal(0);
       setLoading(false);
+      setError(null);
       return;
     }
     const thisRequest = ++requestId.current;
@@ -1702,11 +1711,13 @@ export function useAuditLogs(guildId: string | null, params: AuditLogQuery = {})
       setData([]);
       setTotal(0);
       setLoading(false);
+      setError(new Error(auditDateRangeError({ start, end })!));
       return;
     }
     setLoading(true);
     setData([]);
     setTotal(0);
+    setError(null);
     try {
       const query = new URLSearchParams({ limit: String(limit), offset: String(offset) });
       if (search) query.set("search", search);
@@ -1720,7 +1731,11 @@ export function useAuditLogs(guildId: string | null, params: AuditLogQuery = {})
       dataGuildId.current = requestedGuildId;
       setData(Array.isArray(res.items) ? res.items : []);
       setTotal(Number.isFinite(res.total) ? res.total : 0);
-    } catch {} finally {
+    } catch (err) {
+      if (requestedGuildId === guildId && thisRequest === requestId.current) {
+        setError(err instanceof Error ? err : new Error("Nu s-au putut încărca evenimentele de audit."));
+      }
+    } finally {
       if (requestedGuildId === guildId && thisRequest === requestId.current) setLoading(false);
     }
   }, [guildId, search, category, start, end, limit, offset]);
@@ -1730,6 +1745,7 @@ export function useAuditLogs(guildId: string | null, params: AuditLogQuery = {})
     data: dataGuildId.current === guildId ? data : [],
     total: dataGuildId.current === guildId ? total : 0,
     loading: loading || Boolean(guildId && dataGuildId.current !== guildId),
+    error: dataGuildId.current === guildId ? error : null,
     refetch: fetchLogs,
   };
 }

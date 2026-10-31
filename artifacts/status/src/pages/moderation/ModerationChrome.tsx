@@ -6,11 +6,11 @@ import {
   Server, Settings2, Shield, ShieldAlert, SlidersHorizontal, Sparkles, Ticket,
   Trophy, Upload,
 } from "lucide-react";
-import { Button } from "../../components/ui/button";
-import { Input } from "../../components/ui/input";
-import { Switch } from "../../components/ui/switch";
-import { Textarea } from "../../components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
+import { Button } from "@workspace/oracolul-cenusii-ds/components/ui/button";
+import { Input } from "@workspace/oracolul-cenusii-ds/components/ui/input";
+import { Switch } from "@workspace/oracolul-cenusii-ds/components/ui/switch";
+import { Textarea } from "@workspace/oracolul-cenusii-ds/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@workspace/oracolul-cenusii-ds/components/ui/select";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "../../components/ui/dialog";
@@ -21,31 +21,36 @@ type NavigationItem = { id: string; label: string; description: string; href: st
 
 const primaryItems: NavigationItem[] = [
   { id: "overview", label: "Privire generală", description: "Centrul de comandă al serverului", href: "/", icon: Home, tint: "ember", keywords: "overview dashboard" },
-  { id: "protection", label: "Protecție", description: "AutoMod, spam, raid și comportament", href: "/protectie", icon: Shield, tint: "blue", keywords: "automod anti spam flood raid" },
-  { id: "judge", label: "Judecător AI", description: "Moderare AI și criteriile de analiză", href: "/ai", icon: Sparkles, tint: "violet", keywords: "ai judecator" },
-  { id: "sanctions", label: "Sancțiuni", description: "Politici și intervenții manuale", href: "/politici", icon: Gavel, tint: "gold", keywords: "sanctiuni comenzi staff" },
-  { id: "cases", label: "Cazuri și jurnale", description: "Dosare și jurnal de audit", href: "/cazuri", icon: History, tint: "blue", keywords: "cazuri logs audit" },
-  { id: "verification", label: "Verificare și tichete", description: "Membri noi și fluxuri de suport", href: "/verificare", icon: Ticket, tint: "green", keywords: "verification tickets" },
-  { id: "rpg", label: "RPG", description: "Ranguri și progresul comunității", href: "/ranguri-activitate", icon: Trophy, tint: "gold", keywords: "ranguri activitate joc" },
-  { id: "oracle", label: "Oracol", description: "Mesaje și servicii ale botului", href: "/bot?tab=messages", icon: MessageCircle, tint: "violet", keywords: "oracle mesaje bot" },
-  { id: "settings", label: "Setări bot", description: "Module, configurare și canale", href: "/config", icon: Settings2, tint: "ember", keywords: "config settings" },
-  { id: "assistant", label: "Asistent", description: "Ajutor offline și navigare în panou", href: "/asistent", icon: Bot, tint: "gold", keywords: "assistant help cauta" },
+  { id: "protection", label: "Protecție", description: "AutoMod, spam, raid și comportament", href: "/panou/protectie", icon: Shield, tint: "blue", keywords: "automod anti spam flood raid" },
+  { id: "judge", label: "Judecător AI", description: "Moderare AI și criteriile de analiză", href: "/panou/judecator", icon: Sparkles, tint: "violet", keywords: "ai judecator" },
+  { id: "sanctions", label: "Sancțiuni", description: "Comenzi de moderare și escaladarea sancțiunilor", href: "/panou/sanctiuni", icon: Gavel, tint: "gold", keywords: "sanctiuni warn mute kick ban comenzi staff escaladare" },
+  { id: "cases", label: "Dosare și jurnale", description: "Dosare și jurnal de audit", href: "/panou/dosare", icon: History, tint: "blue", keywords: "cazuri logs audit dosare" },
+  { id: "verification", label: "Verificare și tichete", description: "Fluxurile de verificare și tichete pentru server", href: "/panou/tichete", icon: Ticket, tint: "green", keywords: "verification tickets tichete suport" },
+  { id: "rpg", label: "Jocul RPG", description: "Starea și configurația reală de gameplay", href: "/panou/rpg", icon: Trophy, tint: "gold", keywords: "rpg gameplay joc oboli boss misiuni" },
+  { id: "oracle", label: "Oracolul", description: "Funcții conversaționale și profeții", href: "/panou/oracol", icon: MessageCircle, tint: "violet", keywords: "oracle mesaje profetii comunitate" },
+  { id: "settings", label: "Setări bot", description: "Starea modulelor și configurația serverului", href: "/panou/setari", icon: Settings2, tint: "ember", keywords: "config settings" },
+  { id: "assistant", label: "Asistent", description: "Ajutor offline și navigare în panou", href: "/panou/asistent", icon: Bot, tint: "gold", keywords: "assistant help cauta" },
 ];
 
 const allItems: Array<{ heading: string; items: NavigationItem[] }> = [
-  { heading: "Centru de comandă", items: [primaryItems[0]!, { id: "manual-actions", label: "Acțiuni manuale", description: "Comenzi pentru staff", href: "/comenzi", icon: ShieldAlert, tint: "ember" }] },
+  { heading: "Centru de comandă", items: [primaryItems[0]!, { id: "dashboard-detail", label: "Dashboard detaliat", description: "Vederea operațională anterioară", href: "/dashboard", icon: Activity, tint: "ember" }, { id: "manual-actions", label: "Acțiuni manuale", description: "Comenzi pentru staff", href: "/comenzi", icon: ShieldAlert, tint: "ember" }] },
   { heading: "Apărare", items: [
-    primaryItems[1]!, { id: "automod", label: "AutoMod", description: "Filtre și reguli native", href: "/automod", icon: Bot, tint: "blue" },
-    primaryItems[2]!, { id: "anti-spam", label: "Anti-Spam", description: "Limite pentru mesaje", href: "/anti-spam", icon: Activity, tint: "blue" },
+    primaryItems[1]!, { id: "protection-detail", label: "Protecție globală", description: "Pagina operațională de protecție", href: "/protectie", icon: Shield, tint: "blue" },
+    { id: "automod", label: "AutoMod", description: "Filtre și reguli native", href: "/automod", icon: Bot, tint: "blue" },
+    primaryItems[2]!, { id: "ai-settings", label: "Setări Oracolul Judecător", description: "Editorul complet al configurației AI", href: "/ai", icon: Sparkles, tint: "violet" },
+    { id: "anti-spam", label: "Anti-Spam", description: "Limite pentru mesaje", href: "/anti-spam", icon: Activity, tint: "blue" },
     { id: "anti-flood", label: "Anti-Flood", description: "Mesaje foarte lungi și repetări", href: "/anti-flood", icon: Activity, tint: "blue" },
     { id: "anti-raid", label: "Anti-Raid", description: "Protecție la valuri de intrări", href: "/anti-raid", icon: ShieldAlert, tint: "blue" },
     { id: "suspicious", label: "Comportament suspect", description: "Alerte pentru activitate neobișnuită", href: "/comportament-suspect", icon: Search, tint: "blue" },
   ] },
   { heading: "Intervenții și evidențe", items: [
-    primaryItems[3]!, primaryItems[4]!, { id: "audit", label: "Jurnal de audit", description: "Evenimente și modificări", href: "/audit", icon: History, tint: "gold" },
+    primaryItems[3]!, { id: "policies", label: "Politici și roluri", description: "Roluri și canale protejate", href: "/politici", icon: BookOpen, tint: "gold" },
+    { id: "escalation-detail", label: "Escaladare", description: "Configurarea reală a sancțiunilor progresive", href: "/config/escaladare", icon: Gavel, tint: "gold" },
+    { id: "cases-detail", label: "Dosare", description: "Istoric și editarea cazurilor", href: "/cazuri", icon: BookOpen, tint: "gold" },
+    { id: "audit", label: "Jurnal de audit", description: "Evenimente și modificări", href: "/audit", icon: History, tint: "gold" },
   ] },
   { heading: "Configurare", items: [
-    primaryItems[8]!, { id: "policies", label: "Politici", description: "Roluri și canale protejate", href: "/politici", icon: BookOpen, tint: "gold" },
+    primaryItems[8]!, { id: "config-detail", label: "Configurare completă", description: "Editorul operațional de configurație", href: "/config", icon: Settings2, tint: "gold" },
     { id: "config-messages", label: "Mesaje de moderare", description: "Șabloane și răspunsuri", href: "/config/mesaje", icon: MessageCircle, tint: "gold" },
     { id: "config-advanced", label: "Setări avansate", description: "Configurare avansată", href: "/config/avansat", icon: SlidersHorizontal, tint: "gold" },
     { id: "config-tools", label: "Unelte staff", description: "Permisiuni pentru unelte", href: "/config/unelte", icon: Shield, tint: "gold" },
@@ -58,14 +63,19 @@ const allItems: Array<{ heading: string; items: NavigationItem[] }> = [
     { id: "channels", label: "Canale și destinații", description: "Panouri și destinații bot", href: "/canale", icon: Server, tint: "violet" },
     { id: "provisioning", label: "Provisioning", description: "Canale și permisiuni", href: "/provisioning", icon: SlidersHorizontal, tint: "violet" },
     { id: "roles", label: "Roluri", description: "Roluri și acces", href: "/bot?tab=roles", icon: Shield, tint: "violet" },
-    { id: "tickets", label: "Tichete", description: "Fluxuri pentru cereri", href: "/bot?tab=tickets", icon: Ticket, tint: "violet" },
+    { id: "bot-channels", label: "Canale Control Bot", description: "Setări de canale și ticketing din Control Bot", href: "/bot?tab=channels", icon: Server, tint: "violet" },
+    { id: "bot-messages", label: "Mesaje Control Bot", description: "Mesaje și setări de stare reale", href: "/bot?tab=messages", icon: MessageCircle, tint: "violet" },
+    { id: "verification-admin", label: "Verificare", description: "Reguli și mesaje pentru membri noi", href: "/verificare", icon: Ticket, tint: "green" },
+    { id: "bot-home", label: "Controlul botului", description: "Starea și administrarea serviciilor Discord", href: "/bot", icon: Bot, tint: "violet" },
     primaryItems[7]!,
     { id: "bot-statistics", label: "Statistici bot", description: "Statistici și invitații", href: "/bot?tab=statistics", icon: Activity, tint: "violet" },
   ] },
   { heading: "Membri și progres", items: [
-    primaryItems[5]!, { id: "rank-settings", label: "Ranguri de activitate", description: "Configurarea progresului", href: "/ranguri-activitate", icon: Trophy, tint: "green" },
+    { id: "verification-admin", label: "Verificare membri", description: "Editorul de verificare și publicarea panoului", href: "/verificare", icon: Ticket, tint: "green" },
+    { id: "tickets-detail", label: "Editor tichete", description: "Fluxuri și categorii reale din Control Bot", href: "/bot?tab=tickets", icon: Ticket, tint: "violet" },
+    { id: "rank-settings", label: "Ranguri de activitate", description: "Configurarea distinctă a rangurilor de activitate", href: "/ranguri-activitate", icon: Trophy, tint: "green" },
   ] },
-  { heading: "Ajutor", items: [primaryItems[9]!] },
+  { heading: "Ajutor", items: [primaryItems[9]!, { id: "assistant-detail", label: "Asistent offline", description: "Pagina de navigare anterioară", href: "/asistent", icon: Bot, tint: "gold" }] },
 ];
 
 type Preferences = { accent: string; dock: "bottom" | "left"; labels: boolean; motion: boolean; order: string[] };
@@ -83,11 +93,11 @@ type OperationPreview = {
 const PREF_KEY = "oracol.panel.preferences.v1";
 const defaultPrefs: Preferences = { accent: "ember", dock: "bottom", labels: false, motion: true, order: primaryItems.map((item) => item.id) };
 const accents = [
-  { id: "ember", label: "Jăratic", color: "#FF6B3D" },
-  { id: "gold", label: "Aur", color: "#E2B467" },
-  { id: "green", label: "Smarald", color: "#2FCB8C" },
-  { id: "violet", label: "Ametist", color: "#B28CFF" },
-  { id: "blue", label: "Gheață", color: "#4FB6FF" },
+  { id: "ember", label: "Jăratic", color: "hsl(var(--chart-1))" },
+  { id: "gold", label: "Aur", color: "hsl(var(--chart-2))" },
+  { id: "violet", label: "Ametist", color: "hsl(var(--chart-3))" },
+  { id: "blue", label: "Gheață", color: "hsl(var(--chart-4))" },
+  { id: "green", label: "Smarald", color: "hsl(var(--chart-5))" },
 ];
 
 const envelopeKeys = new Set(["format", "version", "config", "server", "exportedAt"]);
@@ -226,7 +236,7 @@ function routeIsActive(href: string, location: string) {
 }
 
 export function ModerationChrome({ children }: { children: ReactNode }) {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const search = useSearch();
   const navLocation = `${location.split("?")[0]}${search ? `?${search.replace(/^\?/, "")}` : location.includes("?") ? `?${location.split("?")[1]}` : ""}`;
   const { guildId, setGuildId, guilds } = useActiveGuild();
@@ -235,6 +245,7 @@ export function ModerationChrome({ children }: { children: ReactNode }) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [activeResultIndex, setActiveResultIndex] = useState(0);
   const [preferences, setPreferences] = useState(readPreferences);
   const [actionDialog, setActionDialog] = useState<"import" | "copy" | "reset" | null>(null);
   const [importText, setImportText] = useState("");
@@ -254,8 +265,8 @@ export function ModerationChrome({ children }: { children: ReactNode }) {
   const results = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("ro");
     const items = allItems.flatMap((group) => group.items.map((item) => ({ ...item, heading: group.heading })));
-    if (!needle) return items.slice(0, 10);
-    return items.filter((item) => `${item.label} ${item.description} ${item.keywords || ""} ${item.heading}`.toLocaleLowerCase("ro").includes(needle)).slice(0, 16);
+    if (!needle) return items;
+    return items.filter((item) => `${item.label} ${item.description} ${item.keywords || ""} ${item.heading}`.toLocaleLowerCase("ro").includes(needle));
   }, [query]);
 
   useEffect(() => {
@@ -281,6 +292,8 @@ export function ModerationChrome({ children }: { children: ReactNode }) {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, []);
+
+  useEffect(() => { setActiveResultIndex(0); }, [query, searchOpen]);
 
   const updatePreference = (patch: Partial<Preferences>) => setPreferences((current) => ({ ...current, ...patch }));
   const moveItem = (index: number, direction: -1 | 1) => {
@@ -518,11 +531,33 @@ export function ModerationChrome({ children }: { children: ReactNode }) {
       <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
         <DialogContent className="oracle-palette">
           <DialogHeader><DialogTitle className="sr-only">Caută setări și pagini</DialogTitle><DialogDescription className="sr-only">Navighează la o pagină sau categorie din consolă.</DialogDescription></DialogHeader>
-          <div className="oracle-palette-input"><Search aria-hidden="true" /><Input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Caută setări, module sau pagini..." aria-label="Caută setări" data-testid="input-settings-search" /><kbd>ESC</kbd></div>
+          <div className="oracle-palette-input"><Search aria-hidden="true" /><Input
+            autoFocus
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowDown") {
+                event.preventDefault();
+                setActiveResultIndex((index) => Math.min(index + 1, Math.max(results.length - 1, 0)));
+              } else if (event.key === "ArrowUp") {
+                event.preventDefault();
+                setActiveResultIndex((index) => Math.max(index - 1, 0));
+              } else if (event.key === "Enter" && results[activeResultIndex]) {
+                event.preventDefault();
+                setLocation(results[activeResultIndex]!.href);
+                setSearchOpen(false);
+                setQuery("");
+              }
+            }}
+            aria-activedescendant={results[activeResultIndex] ? `oracle-search-result-${activeResultIndex}` : undefined}
+            placeholder="Caută setări, module sau pagini..."
+            aria-label="Caută setări"
+            data-testid="input-settings-search"
+          /><kbd>ESC</kbd></div>
           <div className="oracle-palette-results" role="listbox" aria-label="Rezultate căutare">
-            {results.map((item) => {
+            {results.map((item, index) => {
               const Icon = item.icon;
-              return <Link key={`${item.id}-${item.href}`} href={item.href} className={`oracle-palette-item tint-${item.tint}`} role="option" aria-selected={routeIsActive(item.href, navLocation)} data-testid={`search-result-${item.id}`} onClick={() => { setSearchOpen(false); setQuery(""); }}>
+              return <Link id={`oracle-search-result-${index}`} key={`${item.id}-${item.href}`} href={item.href} className={`oracle-palette-item tint-${item.tint} ${index === activeResultIndex ? "is-keyboard-active" : ""}`} role="option" aria-selected={index === activeResultIndex} data-testid={`search-result-${item.id}`} onMouseEnter={() => setActiveResultIndex(index)} onClick={() => { setSearchOpen(false); setQuery(""); }}>
                 <span className="oracle-result-icon"><Icon aria-hidden="true" /></span><span><b>{item.label}</b><small>{item.heading} · {item.description}</small></span><ChevronRight aria-hidden="true" />
               </Link>;
             })}

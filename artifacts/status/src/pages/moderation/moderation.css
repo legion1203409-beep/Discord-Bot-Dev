@@ -570,48 +570,31 @@
 
 /* Authenticated Oracolul console: the visual language and motion of the
    supplied single-view panel, while route content remains server-backed. */
-:root {
-  --oracle-ground: #09090b;
-  --oracle-panel: #141619;
-  --oracle-ink: #f6f1ea;
-  --oracle-ink-2: #b9b4ad;
-  --oracle-ink-3: #8e8a84;
-  --oracle-line: rgba(246, 241, 234, .085);
-  --oracle-line-2: rgba(246, 241, 234, .15);
-  --oracle-accent: #ff6b3d;
-  --oracle-accent-2: #ffb45e;
-  --oracle-gold: #e2b467;
-  --oracle-green: #3ddc84;
-}
-:root[data-acc="gold"] { --oracle-accent: #e2b467; --oracle-accent-2: #f3d08e; }
-:root[data-acc="green"] { --oracle-accent: #2fcb8c; --oracle-accent-2: #9df0c8; }
-:root[data-acc="violet"] { --oracle-accent: #b28cff; --oracle-accent-2: #dccbff; }
-:root[data-acc="blue"] { --oracle-accent: #4fb6ff; --oracle-accent-2: #b9e2ff; }
 .oracle-console {
-  --oracle-ground: #09090b;
-  --oracle-panel: #141619;
-  --oracle-ink: #f6f1ea;
-  --oracle-ink-2: #b9b4ad;
-  --oracle-ink-3: #8e8a84;
-  --oracle-line: rgba(246, 241, 234, .085);
-  --oracle-line-2: rgba(246, 241, 234, .15);
-  --oracle-accent: #ff6b3d;
-  --oracle-accent-2: #ffb45e;
-  --oracle-gold: #e2b467;
-  --oracle-green: #3ddc84;
+  --oracle-ground: hsl(var(--background));
+  --oracle-panel: hsl(var(--card));
+  --oracle-ink: hsl(var(--foreground));
+  --oracle-ink-2: hsl(var(--muted-foreground));
+  --oracle-ink-3: hsl(var(--muted-foreground) / .72);
+  --oracle-line: hsl(var(--border) / .5);
+  --oracle-line-2: hsl(var(--border));
+  --oracle-accent: hsl(var(--primary));
+  --oracle-accent-2: hsl(var(--accent));
+  --oracle-gold: hsl(var(--chart-2));
+  --oracle-green: hsl(var(--chart-5));
   position: relative;
   min-height: 100dvh;
   overflow: clip;
   isolation: isolate;
   background: var(--oracle-ground);
   color: var(--oracle-ink);
-  font-family: "DM Sans", sans-serif;
+  font-family: var(--app-font-sans);
 }
 
-:root[data-acc="gold"] .oracle-console { --oracle-accent: #e2b467; --oracle-accent-2: #f3d08e; }
-:root[data-acc="green"] .oracle-console { --oracle-accent: #2fcb8c; --oracle-accent-2: #9df0c8; }
-:root[data-acc="violet"] .oracle-console { --oracle-accent: #b28cff; --oracle-accent-2: #dccbff; }
-:root[data-acc="blue"] .oracle-console { --oracle-accent: #4fb6ff; --oracle-accent-2: #b9e2ff; }
+:root[data-acc="gold"] .oracle-console { --oracle-accent: hsl(var(--chart-2)); --oracle-accent-2: hsl(var(--chart-2)); }
+:root[data-acc="green"] .oracle-console { --oracle-accent: hsl(var(--chart-5)); --oracle-accent-2: hsl(var(--chart-5)); }
+:root[data-acc="violet"] .oracle-console { --oracle-accent: hsl(var(--chart-3)); --oracle-accent-2: hsl(var(--chart-3)); }
+:root[data-acc="blue"] .oracle-console { --oracle-accent: hsl(var(--chart-4)); --oracle-accent-2: hsl(var(--chart-4)); }
 
 .oracle-ambient { position: fixed; z-index: -1; inset: 0; overflow: hidden; pointer-events: none; }
 .oracle-aurora { position: absolute; border-radius: 50%; filter: blur(70px); opacity: .56; }
@@ -670,7 +653,7 @@
 .oracle-dock::before { position: absolute; top: -1px; right: 22px; left: 22px; height: 1px; background: linear-gradient(90deg,transparent,color-mix(in oklab,var(--oracle-accent-2) 70%,transparent),transparent); content: ""; }
 .oracle-dock-items { display: flex; min-width: 0; align-items: flex-end; gap: 7px; }
 .oracle-dock-item { --dock-tint: var(--oracle-accent); position: relative; display: block; width: 50px; height: 50px; flex: none; border-radius: 16px; color: var(--oracle-ink); text-decoration: none; animation: oracle-dock-pop .6s cubic-bezier(.34,1.45,.55,1) both; animation-delay: calc(var(--dock-index,0) * 45ms + .25s); }
-.tint-gold { --dock-tint: #e2b467; }.tint-blue { --dock-tint: #4fb6ff; }.tint-violet { --dock-tint: #b28cff; }.tint-green { --dock-tint: #2fcb8c; }.tint-ember { --dock-tint: var(--oracle-accent); }
+.tint-gold { --dock-tint: hsl(var(--chart-2)); }.tint-blue { --dock-tint: hsl(var(--chart-4)); }.tint-violet { --dock-tint: hsl(var(--chart-3)); }.tint-green { --dock-tint: hsl(var(--chart-5)); }.tint-ember { --dock-tint: hsl(var(--chart-1)); }
 .oracle-dock-tile { position: absolute; inset: 0; display: grid; place-items: center; border: 1px solid color-mix(in oklab,var(--dock-tint) 26%,rgba(255,255,255,.07)); border-radius: 15px; background: radial-gradient(130% 110% at 28% 0%,color-mix(in oklab,var(--dock-tint) 36%,#25272c),#141619 74%); box-shadow: 0 1px 0 rgba(255,255,255,.14) inset,0 -8px 16px -10px color-mix(in oklab,var(--dock-tint) 50%,transparent) inset,0 10px 20px -12px rgba(0,0,0,.95); transition: box-shadow .3s,border-color .3s,transform .3s cubic-bezier(.2,.8,.2,1); }
 .oracle-dock-tile svg { width: 23px; height: 23px; color: color-mix(in oklab,var(--dock-tint) 70%,#fff); filter: drop-shadow(0 0 6px color-mix(in oklab,var(--dock-tint) 55%,transparent)); }
 .oracle-dock-item:hover .oracle-dock-tile { transform: translateY(-3px) scale(1.06); border-color: color-mix(in oklab,var(--dock-tint) 60%,transparent); }
