@@ -262,7 +262,7 @@ function AlliancesCard() {
           onChange={(next) => set(["tickets", "allianceAnnouncementThumbnailUrl"], next)}
         />
         <NoteRow tone="plain">
-          Textul anunțului îl schimbi la <Link href="/config/mesaje">Mesaje de moderare</Link>, la „Anunțul public al parteneriatului”.
+          Textul anunțului îl schimbi la <Link href="/config/mesaje/alianta">Personalizare mesaje → Anunțul alianței</Link>.
           Răspunsurile intră în el prin {"{server_name}"}, {"{description}"}, {"{invite}"}, {"{members_total}"} și celelalte.
         </NoteRow>
         <EmojiTextField

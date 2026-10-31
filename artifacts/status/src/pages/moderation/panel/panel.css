@@ -1017,3 +1017,28 @@ a.pn-ov-tile:hover, .pn a.pn-ov-tile:hover { border-color: color-mix(in oklab, v
 .pn-appeal-dm { margin-top: 14px; padding: 12px 14px; border-left: 4px solid var(--tc, #FF7A9A); border-radius: 8px; background: rgba(255, 255, 255, .03); display: grid; gap: 6px; overflow-wrap: anywhere; }
 .pn-appeal-dm p { margin: 0; white-space: pre-wrap; opacity: .85; }
 .pn-appeal-dm-btn { justify-self: start; padding: 6px 12px; border-radius: 6px; background: rgba(255, 255, 255, .1); font-size: .85rem; }
+
+/* Personalizare mesaje */
+.pn .pn-cat { list-style: none; margin: 0; padding: 0 0 6px; display: grid; gap: 8px; }
+.pn .pn-cat-i { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--pn-line); background: rgba(0, 0, 0, .16); color: var(--pn-ink); text-decoration: none; transition: border-color .2s, background .2s; }
+.pn .pn-cat-i:hover, .pn .pn-cat-i:focus-visible { border-color: color-mix(in oklab, var(--tc) 40%, var(--pn-line)); background: rgba(255, 255, 255, .03); }
+.pn .pn-cat-t { flex: 1; min-width: 0; }
+.pn .pn-cat-t b { display: block; font: 600 15px/1.3 var(--pn-body); }
+.pn .pn-cat-t small { display: block; margin-top: 2px; color: var(--pn-ink-3); font-size: 12.5px; line-height: 1.4; }
+.pn .pn-cat-m { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: none; }
+.pn .pn-cat-p { color: var(--pn-ink-3); font-size: 12px; }
+.pn .pn-cat-a { color: var(--pn-ink-3); font-size: 16px; }
+.pn .pn-tabs { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 12px; }
+.pn .pn-tab { height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--pn-line-2); background: none; color: var(--pn-ink-2); font: 600 13px/1 var(--pn-body); cursor: pointer; }
+.pn .pn-tab.is-on { color: var(--pn-ink); border-color: color-mix(in oklab, var(--tc) 50%, var(--pn-line)); background: color-mix(in oklab, var(--tc) 14%, transparent); }
+.pn .pn-tab:focus-visible, .pn .pn-var:focus-visible { outline: 2px solid var(--tc); outline-offset: 2px; }
+.pn .pn-log-b { display: grid; gap: 12px; padding: 0 16px 14px; }
+.pn .pn-log-b .pn-btn-ghost { justify-self: start; }
+.pn .pn-vars { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 10px; }
+.pn .pn-var { height: 26px; padding: 0 8px; border-radius: 7px; border: 1px solid var(--pn-line-2); background: rgba(255, 255, 255, .03); color: var(--pn-ink-2); font: 500 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace; cursor: pointer; }
+.pn .pn-var:hover { color: var(--pn-ink); border-color: color-mix(in oklab, var(--tc) 40%, var(--pn-line)); }
+.pn .pn-msg-prev { padding: 12px 14px; border-left: 4px solid var(--tc); border-radius: 8px; background: rgba(255, 255, 255, .03); display: grid; gap: 4px; overflow-wrap: anywhere; }
+.pn .pn-msg-prev b { font-weight: 600; }
+.pn .pn-msg-prev p { margin: 0; white-space: pre-wrap; color: var(--pn-ink-2); font-size: 13.5px; line-height: 1.5; }
+@media (max-width: 640px) { .pn .pn-cat-m { display: none; } }
+.pn .pn-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }

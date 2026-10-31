@@ -70,7 +70,7 @@ const allItems: Array<{ heading: string; items: NavigationItem[] }> = [
     { id: "settings-dm", label: "Mesaje în privat", description: "Mesajul pentru membrul sancționat și contestația", href: "/setari/privat", icon: MessageCircle, tint: "gold", keywords: "dm privat sanctiune contestatie apel caz" },
     { id: "settings-welcome", label: "Bun venit și plecare", description: "Mesajele AI la intrare și la plecare", href: "/setari/bun-venit", icon: Users, tint: "gold", keywords: "bun venit plecare intrare membri nou ai" },
     { id: "config-overview", label: "Module și configurare", description: "Starea tuturor modulelor", href: "/config", icon: SlidersHorizontal, tint: "gold", keywords: "module config overview" },
-    { id: "config-messages", label: "Personalizare mesaje", description: "Șabloanele jurnalelor, raportul zilnic și anunțul alianței", href: "/config/mesaje", icon: MessageCircle, tint: "gold" },
+    { id: "config-messages", label: "Personalizare mesaje", description: "Toate mesajele botului, textele jurnalelor și anunțul alianței", href: "/config/mesaje", icon: MessageCircle, tint: "gold" },
     { id: "server-setup", label: "Pornire server", description: "Ghid de configurare", href: "/pornire-server", icon: BookOpen, tint: "gold" },
   ] },
   { heading: "Control bot", items: [

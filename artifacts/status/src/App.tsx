@@ -15,7 +15,7 @@ import { TicketsGroupPage } from "./pages/moderation/panel/TicketsGroup";
 import { OracleGroupPage } from "./pages/moderation/panel/OracleGroup";
 import { SettingsGroupPage } from "./pages/moderation/panel/SettingsGroup";
 import { ControlGroupPage } from "./pages/moderation/panel/ControlGroup";
-import { MessageTemplatesPage } from "./pages/moderation/MessageTemplates";
+import { MessagesGroupPage } from "./pages/moderation/panel/MessagesGroup";
 import { ServerSetupPage } from "./pages/moderation/ServerSetup";
 import { ActivityRanksPage } from "./pages/moderation/ActivityRanks";
 import { OfflineAssistant } from "./pages/moderation/OfflineAssistant";
@@ -125,7 +125,9 @@ function ModerationApp() {
           <Route path="/cazuri" component={RecordsGroupPage} />
           <Route path="/audit" component={RecordsGroupPage} />
           <Route path="/config" component={ConfigOverviewPage} />
-          <Route path="/config/mesaje" component={MessageTemplatesPage} />
+          <Route path="/config/mesaje" component={MessagesGroupPage} />
+          <Route path="/config/mesaje/jurnale" component={MessagesGroupPage} />
+          <Route path="/config/mesaje/alianta" component={MessagesGroupPage} />
           <Route path="/config/avansat" component={() => <Redirect to="/setari/acces" replace />} />
           <Route path="/config/embeduri" component={() => <Redirect to="/setari/notificari" replace />} />
           <Route path="/canale" component={() => <BotControlPage channelsOnly />} />

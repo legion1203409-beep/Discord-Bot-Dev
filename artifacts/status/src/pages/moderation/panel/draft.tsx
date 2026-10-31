@@ -201,7 +201,7 @@ export function SaveBar({ changed, saving, onSave, onDiscard, testId, blocked }:
     <div className="pn-save" role="region" aria-label="Modificări nesalvate" data-testid={`${testId}-save-bar`}>
       <div className={cx("pn-save-st", saving && "is-saving")} role="status">
         <i aria-hidden="true" />
-        <span>{saving ? "Se salvează…" : <>Modificări nesalvate în <b>{changed.map((section) => section.label).join(", ")}</b>.</>}</span>
+        <span>{saving ? "Se salvează…" : <>Modificări nesalvate în <b>{[...new Set(changed.map((section) => section.label))].join(", ")}</b>.</>}</span>
       </div>
       <div className="pn-save-act">
         <button type="button" className="pn-btn-ghost" onClick={onDiscard} disabled={saving}>Renunță</button>

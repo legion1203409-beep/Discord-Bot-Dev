@@ -550,6 +550,19 @@ export function isRecordsRoute(path: string): boolean {
   return Object.values(RECORDS_MODULE_ROUTES).some((route) => route === clean);
 }
 
+/** The message customization page and its modules. */
+export const MESSAGES_ROUTE = "/config/mesaje";
+export const MESSAGES_MODULE_ROUTES = {
+  catalog: "/config/mesaje",
+  logs: "/config/mesaje/jurnale",
+  alliance: "/config/mesaje/alianta",
+} as const;
+
+export function isMessagesRoute(path: string): boolean {
+  const clean = cleanPath(path);
+  return Object.values(MESSAGES_MODULE_ROUTES).some((route) => route === clean);
+}
+
 /**
  * The group a route belongs to, for pages whose modules share one draft: moving
  * between the modules of a group must not reload the page. Null elsewhere.
@@ -564,6 +577,7 @@ export function panelGroupRoute(path: string): string | null {
   if (isSettingsRoute(path)) return SETTINGS_ROUTE;
   if (isControlRoute(path)) return CONTROL_ROUTE;
   if (isRecordsRoute(path)) return RECORDS_ROUTE;
+  if (isMessagesRoute(path)) return MESSAGES_ROUTE;
   return null;
 }
 
