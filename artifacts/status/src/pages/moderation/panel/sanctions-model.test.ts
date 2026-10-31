@@ -36,7 +36,8 @@ describe("the sanctions group", () => {
     expect(panelGroupRoute("/politici")).toBeNull();
     expect(isWidePanelRoute("/sanctiuni/escaladare")).toBe(true);
     expect(isWidePanelRoute("/ai")).toBe(true);
-    expect(isWidePanelRoute("/comenzi")).toBe(false);
+    expect(isWidePanelRoute("/comenzi")).toBe(true);
+    expect(isWidePanelRoute("/config")).toBe(false);
   });
 
   it("marks a module unsaved only for what it edits", () => {

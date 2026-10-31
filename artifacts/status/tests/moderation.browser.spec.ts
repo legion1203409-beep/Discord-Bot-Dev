@@ -2125,33 +2125,53 @@ test.describe("authenticated moderation console", () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
 
+  const enableCommands = () => {
+    const config = fullConfig();
+    config.manualTools.enabled = true;
+    savedConfigs.set(guilds[0].id, config);
+  };
+
   test("submits manual commands to the real action endpoint and displays its result", async ({ page }) => {
+    enableCommands();
     await page.goto("/moderare/comenzi");
     await chooseFirstGuild(page);
-    await page.getByLabel("ID Utilizator (Țintă)").fill("555555555");
-    page.once("dialog", (dialog) => dialog.accept());
-    await page.getByRole("button", { name: "Execută Comanda" }).click();
-    await expect(page.getByTestId("manual-action-result")).toContainText("Warn applied");
+    await expect(page.getByTestId("commands-summary")).toContainText("11/11");
+    await page.getByTestId("command-review").click();
+    await expect(page.getByTestId("command-problem")).toContainText("Scrie membrul");
+    expect(actionBodies).toEqual([]);
+    await page.getByTestId("command-member").fill("<@555555555>");
+    await page.getByTestId("command-review").click();
+    await expect(page.getByTestId("command-confirm")).toContainText("primește un avertisment");
+    await page.getByTestId("command-send").click();
+    await expect(page.getByTestId("command-result")).toContainText("Warn applied");
     expect(actionBodies).toEqual([{ type: "warn", targetId: "555555555" }]);
   });
 
-  test("previews eligible members and requires confirmation before granting a role in bulk", async ({ page }) => {
+  test("says the bot refuses every command while staff commands are switched off", async ({ page }) => {
     await page.goto("/moderare/comenzi");
     await chooseFirstGuild(page);
-    await page.getByTestId("button-pick-command-role").click();
-    await page.getByTestId("select-manual-rol").click();
-    await page.getByRole("option", { name: /@Moderatori/ }).click();
-    await page.getByTestId("checkbox-role-all-members").check();
-    await expect(page.getByTestId("input-manual-target-user-id")).toHaveCount(0);
+    await expect(page.getByTestId("commands-off")).toContainText("Comenzile staff-ului sunt oprite");
+    await expect(page.getByTestId("commands-summary")).toContainText("0/11");
+    await expect(page.getByTestId("command-blocked")).toBeVisible();
+  });
 
-    page.once("dialog", async (dialog) => {
-      expect(dialog.message()).toContain("Server: Cenușa Nordului");
-      expect(dialog.message()).toContain("Vor primi rolul: 5 membri umani.");
-      await dialog.accept();
-    });
-    await page.getByRole("button", { name: "Adaugă rolul tuturor membrilor" }).click();
-    await expect(page.getByTestId("manual-action-result")).toContainText("Warn applied");
+  test("previews eligible members and requires confirmation before granting a role in bulk", async ({ page }) => {
+    enableCommands();
+    await page.goto("/moderare/comenzi");
+    await chooseFirstGuild(page);
+    await page.getByTestId("pick-command-role").click();
+    await expect(page).toHaveURL(/comanda=role/);
+    await page.getByTestId("command-role-scope").getByRole("radio", { name: "Tuturor membrilor" }).click();
+    await expect(page.getByTestId("command-member")).toHaveCount(0);
+    await page.getByTestId("command-role").selectOption("333333333");
+    await page.getByTestId("command-review").click();
+    await expect(page.getByTestId("command-confirm")).toContainText("Toți membrii care pot primi rolul @Moderatori îl primesc.");
+    await expect(page.getByTestId("command-preview").locator("li").first()).toContainText("5");
+    await expect(page.getByTestId("command-preview").locator("li").first()).toContainText("primesc rolul");
     expect(rolePreviewBodies).toEqual([{ roleId: "333333333" }]);
+    expect(actionBodies).toEqual([]);
+    await page.getByRole("button", { name: "Dă rolul la 5 membri" }).click();
+    await expect(page.getByTestId("command-result")).toContainText("Warn applied");
     expect(actionBodies).toEqual([{
       type: "role",
       allMembers: true,
@@ -2161,19 +2181,19 @@ test.describe("authenticated moderation console", () => {
   });
 
   for (const command of [
-    { type: "purge", option: "Șterge Mesaje (Purge)", label: "Număr de mesaje de șters", amount: 25 },
-    { type: "slowmode", option: "Setează Slowmode", label: "Slowmode (secunde, 0 = oprit)", amount: 0 },
+    { type: "purge", amount: 25, sentence: "Se șterg ultimele 25 de mesaje" },
+    { type: "slowmode", amount: 0, sentence: "nu mai are slowmode" },
   ]) {
     test(`executes ${command.type} with the chosen channel and exact amount`, async ({ page }) => {
-      await page.goto("/moderare/comenzi");
+      enableCommands();
+      await page.goto(`/moderare/comenzi?comanda=${command.type}`);
       await chooseFirstGuild(page);
-      await page.getByLabel("Tipul Acțiunii").click();
-      await page.getByRole("option", { name: command.option }).click();
-      await page.getByLabel("Canal - ID canal").fill("444444444");
-      await page.getByLabel(command.label).fill(String(command.amount));
-      page.once("dialog", (dialog) => dialog.accept());
-      await page.getByRole("button", { name: "Execută Comanda" }).click();
-      await expect(page.getByTestId("manual-action-result")).toBeVisible();
+      await page.getByTestId("command-channel-id").fill("444444444");
+      await page.getByTestId(`command-${command.type}`).fill(String(command.amount));
+      await page.getByTestId("command-review").click();
+      await expect(page.getByTestId("command-confirm")).toContainText(command.sentence);
+      await page.getByTestId("command-send").click();
+      await expect(page.getByTestId("command-result")).toBeVisible();
       expect(actionBodies).toEqual([{ type: command.type, channelId: "444444444", amount: command.amount }]);
     });
   }

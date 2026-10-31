@@ -409,6 +409,11 @@ function CaseBody({ item, who, busy, error, done, onStatus, onReason, onNote, on
             <Ico name="list" />Toate cazurile membrului
           </button>
         ) : null}
+        {kind.subject === "member" ? (
+          <Link href={`/comenzi?membru=${item.subjectId}`} className="pn-btn-ghost" data-testid="case-command">
+            <Ico name="slash" />Dă o comandă
+          </Link>
+        ) : null}
         <button type="button" className="pn-btn-ghost" onClick={() => void copyLink()}><Ico name="send" />{copied ? "Link copiat" : "Copiază linkul"}</button>
       </div>
       <p className="pn-fh pn-sheet-fine">Setările cazurilor (cât se păstrează, ce poate face staff-ul) sunt la <Link href="/jurnale/cazuri">Cazuri și jurnale</Link>.</p>

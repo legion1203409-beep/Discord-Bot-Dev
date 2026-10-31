@@ -2,13 +2,13 @@ import { Switch, Route, Redirect } from "wouter";
 import "./index.css";
 import { ModerationLayout } from "./pages/moderation/ModerationLayout";
 import { DashboardOverview } from "./pages/moderation/Dashboard";
-import { CommandsPage } from "./pages/moderation/Commands";
 import { ConfigOverviewPage } from "./pages/moderation/ConfigOverview";
 import { ProtectionGroupPage } from "./pages/moderation/panel/ProtectionGroup";
 import { JudgePage } from "./pages/moderation/panel/JudgePage";
 import { SanctionsGroupPage } from "./pages/moderation/panel/SanctionsGroup";
 import { LogsGroupPage } from "./pages/moderation/panel/LogsGroup";
 import { RecordsGroupPage } from "./pages/moderation/panel/RecordsGroup";
+import { CommandsPanelPage } from "./pages/moderation/panel/commands";
 import { BotControlPage } from "./pages/moderation/BotControl";
 import { VerificationGroupPage } from "./pages/moderation/panel/VerificationGroup";
 import { TicketsGroupPage } from "./pages/moderation/panel/TicketsGroup";
@@ -117,7 +117,7 @@ function ModerationApp() {
           <Route path="/jurnale/audit" component={LogsGroupPage} />
           <Route path="/jurnale/activitate" component={LogsGroupPage} />
           <Route path="/config/cazuri-audit" component={() => <Redirect to="/jurnale/cazuri" replace />} />
-          <Route path="/comenzi" component={CommandsPage} />
+          <Route path="/comenzi" component={CommandsPanelPage} />
           {/* The case list and the audit log: one page, two modules. */}
           <Route path="/cazuri" component={RecordsGroupPage} />
           <Route path="/audit" component={RecordsGroupPage} />

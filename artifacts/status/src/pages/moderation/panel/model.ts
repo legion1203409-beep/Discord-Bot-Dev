@@ -567,7 +567,7 @@ export function panelGroupRoute(path: string): string | null {
 
 /** Pages built with the panel, which use the whole width of the console column. */
 export function isWidePanelRoute(path: string): boolean {
-  return panelGroupRoute(path) !== null || cleanPath(path) === JUDGE_ROUTE;
+  return panelGroupRoute(path) !== null || [JUDGE_ROUTE, "/comenzi"].includes(cleanPath(path));
 }
 
 /** What a module header needs: the module's key in the configuration and its texts. */
