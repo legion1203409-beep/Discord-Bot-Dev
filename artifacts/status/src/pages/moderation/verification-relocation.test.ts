@@ -5,14 +5,12 @@ const readSource = (name: string) => readFileSync(new URL(name, import.meta.url)
 
 describe("verification editor ownership", () => {
   it("keeps the editor and Discord preview on the verification page only", () => {
-    const botControl = readSource("./BotControl.tsx");
+    const app = readSource("../../App.tsx");
     const verification = readSource("./panel/verification.tsx");
 
-    expect(botControl).not.toContain('TabsContent value="verification"');
-    expect(botControl).not.toContain("PREVIZUALIZARE DISCORD");
-    // The old tab address leads to the verification page.
-    expect(botControl).toContain('verification: "/verificare"');
-    expect(botControl).toContain("setLocation(requestedTab && MOVED_TABS[requestedTab]");
+    // The old bot control page is gone; its tab address leads to the verification page.
+    expect(app).toContain('verification: "/verificare"');
+    expect(app).toContain("OLD_BOT_TABS[tab]");
 
     expect(verification).toContain("Panoul din Discord");
     expect(verification).toContain("Așa apare în Discord");

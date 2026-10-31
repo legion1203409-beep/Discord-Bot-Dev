@@ -1,7 +1,7 @@
 /**
  * Pagina Control bot: Invitații, Recrutare, Raport zilnic, Canale și acces și
  * Botul pe server, cu meniul modulelor în stânga și o singură ciornă. Canalele
- * jocului și mesajul pentru jocul oprit rămân în pagina veche până la RPG.
+ * jocului și mesajul pentru jocul oprit sunt în pagina Jocul (GameGroup.tsx).
  */
 import "./panel.css";
 import React from "react";
