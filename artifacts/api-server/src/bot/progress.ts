@@ -15,6 +15,7 @@ import { addPlayerGold, addPlayerKey, type KeyType } from "./db";
 import { DEFAULT_GAMEPLAY_CONFIG, type GameplayConfig } from "./gameplay-config";
 import { getGameplayConfig } from "./gameplay-store";
 import { logger } from "../lib/logger";
+import { addSeasonPoints } from "./seasons";
 
 export type ProgressCounter = "kills" | "bosses" | "quests" | "keys" | "messages" | "chests";
 
@@ -158,6 +159,7 @@ async function unlockReached(discordId: string, guildId: string, progress: Playe
 /** Adds to a lifetime counter; called with every activity that fills the daily chest. */
 export async function recordProgress(discordId: string, guildId: string, counter: ProgressCounter, amount = 1): Promise<Achievement[]> {
   const safe = Math.max(1, Math.floor(amount));
+  void addSeasonPoints(discordId, guildId, counter, safe).catch((error) => logProgressFailure(error, { guildId, counter, season: true }));
   await ensureProgressTable();
   const { rows } = await pool.query<Record<string, unknown>>(
     `INSERT INTO player_progress (guild_id, discord_id, counters)
@@ -239,6 +241,7 @@ export async function advanceStreak(discordId: string, guildId: string, now = ne
   } finally {
     client.release();
   }
+  void addSeasonPoints(discordId, guildId, "chests", 1, now).catch((error) => logProgressFailure(error, { guildId, season: true }));
   const milestone = settings.streakEnabled && settings.weeklyKey && progress.streak > 0 && progress.streak % 7 === 0 && progress.lastDay === dayKeys(now).today;
   if (milestone) await addPlayerKey(discordId, guildId, "epic");
   const unlocked = await unlockReached(discordId, guildId, progress);

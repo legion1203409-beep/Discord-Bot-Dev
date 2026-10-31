@@ -55,6 +55,16 @@ export interface GameplayConfig {
     /** Unlocking an achievement pays its Oboli. */
     achievementRewards: boolean;
   };
+  /** Monthly seasons (bot/seasons.ts). */
+  seasons: {
+    enabled: boolean;
+    /** Oboli for the 1st, 2nd and 3rd place. */
+    rewards: [number, number, number];
+    /** Optional roles for the 1st, 2nd and 3rd place, moved to the new winners each month. */
+    roleIds: [string, string, string];
+    /** Where the result is announced; empty: Top Ora Umbrelor. */
+    channelId: string;
+  };
 }
 
 export const DEFAULT_GAMEPLAY_CONFIG: GameplayConfig = {
@@ -106,6 +116,12 @@ export const DEFAULT_GAMEPLAY_CONFIG: GameplayConfig = {
     weeklyKey: true,
     achievementsEnabled: true,
     achievementRewards: true,
+  },
+  seasons: {
+    enabled: true,
+    rewards: [10_000, 5_000, 2_500],
+    roleIds: ["", "", ""],
+    channelId: "",
   },
 };
 
@@ -186,6 +202,21 @@ export function normalizeGameplayConfig(value: unknown): GameplayConfig {
       bossXpMultiplier: multiplier(economy.bossXpMultiplier, DEFAULT_GAMEPLAY_CONFIG.economy.bossXpMultiplier),
     },
     progress: normalizeProgress(input.progress),
+    seasons: normalizeSeasons(input.seasons),
+  };
+}
+
+function normalizeSeasons(value: unknown): GameplayConfig["seasons"] {
+  const input = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const defaults = DEFAULT_GAMEPLAY_CONFIG.seasons;
+  const rewards = Array.isArray(input.rewards) ? input.rewards : [];
+  const roles = Array.isArray(input.roleIds) ? input.roleIds : [];
+  const id = (raw: unknown) => typeof raw === "string" && /^\d{5,25}$/.test(raw.trim()) ? raw.trim() : "";
+  return {
+    enabled: typeof input.enabled === "boolean" ? input.enabled : defaults.enabled,
+    rewards: [0, 1, 2].map((index) => boundedInt(rewards[index], defaults.rewards[index]!, 0, 1_000_000)) as [number, number, number],
+    roleIds: [0, 1, 2].map((index) => id(roles[index])) as [string, string, string],
+    channelId: id(input.channelId),
   };
 }
 

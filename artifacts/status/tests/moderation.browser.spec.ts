@@ -1711,6 +1711,10 @@ test.describe("authenticated moderation console", () => {
     await expect(page.getByTestId("game-streak-ladder")).toContainText("+90%");
     await page.getByTestId("game-achievements-rewards").click();
 
+    await page.getByTestId("nav-game-seasons").click();
+    await page.getByTestId("game-season-reward-1").fill("20000");
+    await expect(page.getByTestId("nav-game-seasons")).toContainText("20.000 Oboli");
+
     await page.getByTestId("nav-game-economy").click();
     await page.getByTestId("game-economy-double").click();
     await expect(page.getByTestId("game-monsterGoldMultiplier")).toHaveValue("2");
@@ -1723,6 +1727,7 @@ test.describe("authenticated moderation console", () => {
       messages: { gamePaused: "Jocul doarme. Revenim curând." },
       events: { eventCooldownMinMinutes: 200, eventCooldownMaxMinutes: 300 },
       missions: { kill_10: { target: 15 } },
+      seasons: { enabled: true, rewards: [20_000, 5_000, 2_500], roleIds: ["", "", ""], channelId: "" },
       progress: { streakEnabled: true, streakBonusPercent: 15, streakMaxDays: 7, weeklyKey: true, achievementsEnabled: true, achievementRewards: false },
       economy: { monsterGoldMultiplier: 2, monsterXpMultiplier: 2, bossGoldMultiplier: 2, bossXpMultiplier: 2 },
     });

@@ -45,6 +45,11 @@ export const GAME_MODULES: readonly GameModuleDef[] = [
     description: "Seria crește cu fiecare zi la rând în care un jucător deschide Cufărul Vegherii și mărește cufărul. Realizările sunt insigne pentru fapte adunate în timp, văzute cu /realizari.",
     paths: ["gameplayConfig.progress"],
   },
+  {
+    id: "seasons", route: GAME_MODULE_ROUTES.seasons, short: "Sezoane", title: "Sezoanele lunare",
+    description: "Un clasament care pornește de la zero în fiecare lună (/sezon). La final, primii trei primesc Oboli, un titlu de onoare și, dacă alegi, un rol.",
+    paths: ["gameplayConfig.seasons"],
+  },
 ];
 
 export function gameModuleForRoute(path: string): GameModuleDef {
@@ -243,6 +248,31 @@ export const ACHIEVEMENT_LIST: ReadonlyArray<{ emoji: string; name: string; desc
 ];
 
 /* ------------------------------------------------------------------ */
+/* Sezoane                                                             */
+/* ------------------------------------------------------------------ */
+
+export type SeasonSettings = { enabled: boolean; rewards: [number, number, number]; roleIds: [string, string, string]; channelId: string };
+
+export const DEFAULT_SEASONS: SeasonSettings = { enabled: true, rewards: [10_000, 5_000, 2_500], roleIds: ["", "", ""], channelId: "" };
+
+export function seasonsOf(config: any): SeasonSettings {
+  const value = config?.gameplayConfig?.seasons ?? {};
+  return {
+    enabled: value.enabled !== false,
+    rewards: Array.isArray(value.rewards) && value.rewards.length === 3 ? value.rewards : DEFAULT_SEASONS.rewards,
+    roleIds: Array.isArray(value.roleIds) && value.roleIds.length === 3 ? value.roleIds : DEFAULT_SEASONS.roleIds,
+    channelId: typeof value.channelId === "string" ? value.channelId : "",
+  };
+}
+
+/** Season points per deed, as bot/seasons.ts → SEASON_POINTS gives them. */
+export const SEASON_POINT_LIST: ReadonlyArray<readonly [string, number]> = [
+  ["⚔️ Un monstru răpus", 1], ["🐉 O bătălie cu un boss", 5], ["📜 O misiune zilnică", 3], ["🗝️ O cheie", 2], ["🕯️ Cufărul zilnic deschis", 3], ["💬 Mesajele", 0],
+];
+
+export const PLACES = ["🥇 Locul 1", "🥈 Locul 2", "🥉 Locul 3"] as const;
+
+/* ------------------------------------------------------------------ */
 /* Meniul și verificări                                                */
 /* ------------------------------------------------------------------ */
 
@@ -259,6 +289,10 @@ export function gameModuleSummary(id: GameModuleId, config: any): string {
       const economy = economyOf(config);
       return allMultipliersAre(config, 1) ? "Valorile de bază" : ECONOMY_FIELDS.map((field) => multiplierText(economy[field.key])).join(" · ");
     }
+    case "seasons": {
+      const seasons = seasonsOf(config);
+      return seasons.enabled ? `🥇 ${seasons.rewards[0].toLocaleString("ro-RO")} Oboli` : "Oprite";
+    }
     case "progress": {
       const progress = progressOf(config);
       const parts = [progress.streakEnabled ? `serie până la +${streakLadder(progress, progress.streakMaxDays).at(-1)}%` : null, progress.achievementsEnabled ? "realizări" : null].filter(Boolean);
@@ -270,6 +304,7 @@ export function gameModuleSummary(id: GameModuleId, config: any): string {
 export function isGameModuleOn(id: GameModuleId, config: any): boolean {
   if (id === "state") return config?.gameplayConfig?.paused === false;
   if (id === "channels") return gameChannelCount(config) > 0;
+  if (id === "seasons") return config?.gameplayConfig?.paused === false && seasonsOf(config).enabled;
   if (id === "progress") return config?.gameplayConfig?.paused === false && (progressOf(config).streakEnabled || progressOf(config).achievementsEnabled);
   return config?.gameplayConfig?.paused === false;
 }
@@ -298,6 +333,14 @@ export function gameDraftError(config: any): string | null {
   const progress = progressOf(config);
   if (!isValidInteger(progress.streakBonusPercent, 0, 100)) return "Serii — Bonusul pe zi e un număr întreg între 0 și 100.";
   if (!isValidInteger(progress.streakMaxDays, 1, 30)) return "Serii — Bonusul crește până în ziua: un număr întreg între 1 și 30.";
+  const seasons = seasonsOf(config);
+  for (const [index, gold] of seasons.rewards.entries()) {
+    if (!isValidInteger(gold, 0, 1_000_000)) return `Sezoane — ${PLACES[index]}: Oboli, un număr întreg între 0 și 1000000.`;
+  }
+  for (const [index, roleId] of seasons.roleIds.entries()) {
+    if (roleId && !isDiscordId(roleId)) return `Sezoane — ${PLACES[index]}: „${roleId}” nu este un ID de rol.`;
+  }
+  if (seasons.channelId && !isDiscordId(seasons.channelId)) return `Sezoane — „${seasons.channelId}” nu este un ID de canal.`;
   const economy = economyOf(config);
   for (const field of ECONOMY_FIELDS) {
     if (!isValidMultiplier(economy[field.key])) return `Economie — ${field.label}: între ${MIN_MULTIPLIER} și ${MAX_MULTIPLIER}.`;

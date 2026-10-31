@@ -10,7 +10,7 @@ import type { useGameplayState } from "../../../hooks/use-moderation-api";
 import { EmojiTextField, ImageUrlField } from "./message-fields";
 import {
   ECONOMY_FIELDS, EVENT_FIELDS, GAME_CHANNELS, GAME_MODULES, MAX_MULTIPLIER, MIN_MULTIPLIER, MISSIONS, MULTIPLIER_PRESETS,
-  ACHIEVEMENT_LIST, progressOf, streakLadder, economyOf, eventsOf, eventsPerDay, gameChannelCount, isValidMultiplier, minutesText, missionOf, multiplierText,
+  PLACES, SEASON_POINT_LIST, seasonsOf, ACHIEVEMENT_LIST, progressOf, streakLadder, economyOf, eventsOf, eventsPerDay, gameChannelCount, isValidMultiplier, minutesText, missionOf, multiplierText,
   type GameModuleId,
 } from "./game-model";
 import { ModuleView } from "./rules";
@@ -20,7 +20,7 @@ const MODULE = Object.fromEntries(GAME_MODULES.map((module) => [module.id, modul
 /** The game's running state, read and changed at once through /gameplay-state (not part of the draft). */
 export const GameStateContext = createContext<ReturnType<typeof useGameplayState> | null>(null);
 
-export const GAME_ICONS: Record<GameModuleId, IconName> = { state: "power", channels: "hash", events: "calendar", missions: "scroll", economy: "star", progress: "verified" };
+export const GAME_ICONS: Record<GameModuleId, IconName> = { state: "power", channels: "hash", events: "calendar", missions: "scroll", economy: "star", progress: "verified", seasons: "calendar" };
 
 /* ------------------------------------------------------------------ */
 /* Stare                                                               */
@@ -297,6 +297,61 @@ function ProgressModule() {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* Sezoane                                                             */
+/* ------------------------------------------------------------------ */
+
+function SeasonsModule() {
+  const { config, set, roles, channels } = usePanel();
+  const seasons = seasonsOf(config);
+  const change = (next: Partial<typeof seasons>) => set(["gameplayConfig", "seasons"], { ...seasons, ...next });
+  const id = useId();
+  const assignable = (roles ?? []).filter((role) => !role.managed && role.name !== "@everyone");
+  return (
+    <ModuleView module={MODULE.seasons} icon="calendar">
+      <SectionCard title="Sezoanele" small={seasons.enabled ? "Pornite" : "Oprite"} testId="game-seasons">
+        <Fields>
+          <SwitchField label="Sezoane lunare" testId="game-seasons-switch" checked={seasons.enabled} hint="Oprite, nu se mai adună puncte și nu se mai dau premii." onChange={(next) => change({ enabled: next })} />
+          <ChannelField
+            label="Anunțul câștigătorilor" selectLabel="Canalul anunțului de sezon" value={seasons.channelId || null} channels={channels}
+            hint="Gol: în canalul Top Ora Umbrelor." onChange={(next) => change({ channelId: next ?? "" })}
+          />
+        </Fields>
+      </SectionCard>
+      <SectionCard title="Premii" testId="game-seasons-prizes">
+        <Fields>
+          {PLACES.map((place, index) => (
+            <React.Fragment key={place}>
+              <NumField
+                label={`${place}: Oboli`} unit="Oboli" min={0} max={1_000_000} value={seasons.rewards[index]} testId={`game-season-reward-${index + 1}`}
+                onChange={(next) => change({ rewards: seasons.rewards.map((gold, at) => at === index ? next ?? 0 : gold) as [number, number, number] })}
+              />
+              <Fld label={`${place}: rol`} htmlFor={`${id}-r${index}`} hint={index === 0 ? "Opțional. Botul îl ia de la câștigătorul de luna trecută și îl dă celui nou; are nevoie de Manage Roles și de un rol mai mare." : undefined}>
+                <select
+                  id={`${id}-r${index}`} className="pn-inp" value={seasons.roleIds[index]} data-testid={`game-season-role-${index + 1}`}
+                  onChange={(event) => change({ roleIds: seasons.roleIds.map((roleId, at) => at === index ? event.target.value : roleId) as [string, string, string] })}
+                >
+                  <option value="">Fără rol</option>
+                  {seasons.roleIds[index] && !assignable.some((role) => role.id === seasons.roleIds[index]) ? <option value={seasons.roleIds[index]}>Rol salvat ({seasons.roleIds[index]})</option> : null}
+                  {assignable.map((role) => <option key={role.id} value={role.id}>@{role.name}</option>)}
+                </select>
+              </Fld>
+            </React.Fragment>
+          ))}
+        </Fields>
+        <p className="pn-fh">Primii trei primesc și titlul de onoare („Campionul Sezonului de Noiembrie 2026”), afișat pe /profil.</p>
+      </SectionCard>
+      <SectionCard title="Cum se adună puncte" testId="game-seasons-points">
+        <ul className="pn-ach">
+          {SEASON_POINT_LIST.map(([label, points]) => (
+            <li key={label}><span aria-hidden="true">{label.split(" ")[0]}</span><b>{label.split(" ").slice(1).join(" ")}</b><small>{points ? `${points} ${points === 1 ? "punct" : "puncte"}` : "nu dau puncte, ca vorba să nu cumpere un sezon"}</small></li>
+          ))}
+        </ul>
+      </SectionCard>
+    </ModuleView>
+  );
+}
+
 export const GAME_VIEWS: Record<GameModuleId, () => React.ReactElement> = {
   state: StateModule,
   channels: ChannelsModule,
@@ -304,4 +359,5 @@ export const GAME_VIEWS: Record<GameModuleId, () => React.ReactElement> = {
   missions: MissionsModule,
   economy: EconomyModule,
   progress: ProgressModule,
+  seasons: SeasonsModule,
 };

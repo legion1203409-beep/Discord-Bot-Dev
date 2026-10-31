@@ -87,3 +87,14 @@ describe("streak and achievements", () => {
     expect(gameDraftError(config({ progress: { streakMaxDays: 0 } }))).toContain("până în ziua");
   });
 });
+
+describe("seasons", () => {
+  it("read the defaults, sum up and refuse bad prizes", async () => {
+    const { seasonsOf } = await import("./game-model");
+    expect(seasonsOf(config())).toEqual({ enabled: true, rewards: [10_000, 5_000, 2_500], roleIds: ["", "", ""], channelId: "" });
+    expect(gameModuleSummary("seasons", config())).toBe("🥇 10.000 Oboli");
+    expect(gameModuleSummary("seasons", config({ seasons: { enabled: false } }))).toBe("Oprite");
+    expect(gameDraftError(config({ seasons: { enabled: true, rewards: [-1, 0, 0], roleIds: ["", "", ""], channelId: "" } }))).toContain("Locul 1");
+    expect(gameDraftError(config({ seasons: { enabled: true, rewards: [1, 1, 1], roleIds: ["", "x", ""], channelId: "" } }))).toContain("Locul 2");
+  });
+});

@@ -559,6 +559,7 @@ export const GAME_MODULE_ROUTES = {
   missions: "/joc/misiuni",
   economy: "/joc/economie",
   progress: "/joc/progres",
+  seasons: "/joc/sezoane",
 } as const;
 
 export function isGameRoute(path: string): boolean {
