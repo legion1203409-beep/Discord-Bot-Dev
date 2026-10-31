@@ -70,6 +70,11 @@ export const GAME_MODULES: readonly GameModuleDef[] = [
     description: "Grupuri de jucători cu nume, etichetă, lider, ofițeri și o cămară comună (/breasla). Punctele unei bresle sunt punctele de sezon ale membrilor, deci clasamentul merge cu sezonul.",
     paths: ["gameplayConfig.guilds"],
   },
+  {
+    id: "crafting", route: GAME_MODULE_ROUTES.crafting, short: "Comerț și crafting", title: "Comerțul și craftingul",
+    description: "/crafteaza transformă materialele comune în materiale rare și fragmente pentru Forjă. /schimb mută materiale și Oboli între doi jucători, după ce amândoi confirmă.",
+    paths: ["gameplayConfig.crafting"],
+  },
 ];
 
 export function gameModuleForRoute(path: string): GameModuleDef {
@@ -293,6 +298,28 @@ export const SEASON_POINT_LIST: ReadonlyArray<readonly [string, number]> = [
 export const PLACES = ["🥇 Locul 1", "🥈 Locul 2", "🥉 Locul 3"] as const;
 
 /* ------------------------------------------------------------------ */
+/* Comerț și crafting                                                  */
+/* ------------------------------------------------------------------ */
+
+export type CraftingSettings = { enabled: boolean; tradeEnabled: boolean; taxPercent: number };
+
+export const DEFAULT_CRAFTING: CraftingSettings = { enabled: true, tradeEnabled: true, taxPercent: 5 };
+
+export function craftingOf(config: any): CraftingSettings {
+  return { ...DEFAULT_CRAFTING, ...(config?.gameplayConfig?.crafting ?? {}) };
+}
+
+/** The recipes the bot knows (bot/crafting.ts → RECIPES), for the panel's list. */
+export const RECIPE_LIST: ReadonlyArray<readonly [string, string]> = [
+  ["⚔️ Fragment de Armă", "4 Fragment de Cenușă + 2 Sânge de Monstru"],
+  ["🛡️ Fragment de Armură", "4 Fragment de Cenușă + 2 Picătură de Otravă"],
+  ["🐉 Coamă de Dragon", "5 Sânge de Monstru + 3 Esența Umbrei"],
+  ["💠 Solz Spectral", "5 Picătură de Otravă + 3 Esența Umbrei"],
+  ["💎 Cristal de Abis", "2 Coamă de Dragon + 2 Solz Spectral + 1 Inimă a Abisului + 150 Oboli"],
+  ["🧪 Sânge de Titan", "3 Cristal de Abis + 1 Inimă a Abisului + 500 Oboli"],
+];
+
+/* ------------------------------------------------------------------ */
 /* Bresle                                                              */
 /* ------------------------------------------------------------------ */
 
@@ -382,6 +409,11 @@ export function gameModuleSummary(id: GameModuleId, config: any): string {
       const economy = economyOf(config);
       return allMultipliersAre(config, 1) ? "Valorile de bază" : ECONOMY_FIELDS.map((field) => multiplierText(economy[field.key])).join(" · ");
     }
+    case "crafting": {
+      const crafting = craftingOf(config);
+      const parts = [crafting.enabled ? "crafting" : null, crafting.tradeEnabled ? `comerț${crafting.taxPercent ? ` · taxă ${crafting.taxPercent}%` : ""}` : null].filter(Boolean);
+      return parts.length ? parts.join(" · ") : "Oprite";
+    }
     case "guilds": {
       const guilds = guildsOf(config);
       return guilds.enabled ? `${guilds.maxMembers} membri · ${guilds.createCost.toLocaleString("ro-RO")} Oboli` : "Oprite";
@@ -413,6 +445,7 @@ export function gameModuleSummary(id: GameModuleId, config: any): string {
 export function isGameModuleOn(id: GameModuleId, config: any): boolean {
   if (id === "state") return config?.gameplayConfig?.paused === false;
   if (id === "channels") return gameChannelCount(config) > 0;
+  if (id === "crafting") return config?.gameplayConfig?.paused === false && (craftingOf(config).enabled || craftingOf(config).tradeEnabled);
   if (id === "guilds") return config?.gameplayConfig?.paused === false && guildsOf(config).enabled;
   if (id === "expeditions") return config?.gameplayConfig?.paused === false && expeditionsOf(config).enabled;
   if (id === "duels") return config?.gameplayConfig?.paused === false && duelsOf(config).enabled;
@@ -454,6 +487,7 @@ export function gameDraftError(config: any): string | null {
     if (roleId && !isDiscordId(roleId)) return `Sezoane — ${PLACES[index]}: „${roleId}” nu este un ID de rol.`;
   }
   if (seasons.channelId && !isDiscordId(seasons.channelId)) return `Sezoane — „${seasons.channelId}” nu este un ID de canal.`;
+  if (!isValidInteger(craftingOf(config).taxPercent, 0, 50)) return "Comerț — Taxa: un număr întreg între 0 și 50.";
   const guilds = guildsOf(config);
   if (!isValidInteger(guilds.createCost, 0, 10_000_000)) return "Bresle — Costul unei bresle noi: un număr întreg între 0 și 10000000.";
   if (!isValidInteger(guilds.maxMembers, 2, 200)) return "Bresle — Membri cel mult: un număr întreg între 2 și 200.";

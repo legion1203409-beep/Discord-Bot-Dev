@@ -993,6 +993,11 @@ export const botControlSchema = z.object(
       createCost: z.number().int().min(0).max(10_000_000),
       maxMembers: z.number().int().min(2).max(200),
     }).strict().optional(),
+    crafting: z.object({
+      enabled: z.boolean(),
+      tradeEnabled: z.boolean(),
+      taxPercent: z.number().int().min(0).max(50),
+    }).strict().optional(),
   
 }
 
@@ -3402,6 +3407,7 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
     duels: value.gameplayConfig.duels ?? previousGameplayConfig.duels,
     expeditions: value.gameplayConfig.expeditions ?? previousGameplayConfig.expeditions,
     guilds: value.gameplayConfig.guilds ?? previousGameplayConfig.guilds,
+    crafting: value.gameplayConfig.crafting ?? previousGameplayConfig.crafting,
     paused: previousGameplayConfig.paused,
   });
   anyWriteSucceeded = true;

@@ -1732,6 +1732,11 @@ test.describe("authenticated moderation console", () => {
     await page.getByTestId("game-guilds-max").fill("30");
     await expect(page.getByTestId("nav-game-guilds")).toContainText("30 membri");
 
+    await page.getByTestId("nav-game-crafting").click();
+    await page.getByTestId("game-trade-tax").fill("0");
+    await expect(page.getByTestId("nav-game-crafting")).toContainText("crafting · comerț");
+    await expect(page.getByTestId("game-recipes")).toContainText("Sânge de Titan");
+
     await page.getByTestId("nav-game-economy").click();
     await page.getByTestId("game-economy-double").click();
     await expect(page.getByTestId("game-monsterGoldMultiplier")).toHaveValue("2");
@@ -1744,6 +1749,7 @@ test.describe("authenticated moderation console", () => {
       messages: { gamePaused: "Jocul doarme. Revenim curând." },
       events: { eventCooldownMinMinutes: 200, eventCooldownMaxMinutes: 300 },
       missions: { kill_10: { target: 15 } },
+      crafting: { enabled: true, tradeEnabled: true, taxPercent: 0 },
       guilds: { enabled: true, createCost: 5_000, maxMembers: 30 },
       expeditions: { enabled: true, goldPerHour: 120, speed: 2 },
       duels: { enabled: true, maxBet: 5_000, cooldownSeconds: 120, taxPercent: 10 },

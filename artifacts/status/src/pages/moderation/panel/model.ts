@@ -564,6 +564,7 @@ export const GAME_MODULE_ROUTES = {
   duels: "/joc/dueluri",
   expeditions: "/joc/expeditii",
   guilds: "/joc/bresle",
+  crafting: "/joc/comert",
 } as const;
 
 export function isGameRoute(path: string): boolean {

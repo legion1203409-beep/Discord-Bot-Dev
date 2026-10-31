@@ -10,7 +10,7 @@ import type { useGameplayState } from "../../../hooks/use-moderation-api";
 import { EmojiTextField, ImageUrlField } from "./message-fields";
 import {
   ECONOMY_FIELDS, EVENT_FIELDS, GAME_CHANNELS, GAME_MODULES, MAX_MULTIPLIER, MIN_MULTIPLIER, MISSIONS, MULTIPLIER_PRESETS,
-  guildsOf, expeditionsOf, expeditionGold, duelsOf, duelPayout, RAID_WEEKDAYS, raidOf, raidWindowText, PLACES, SEASON_POINT_LIST, seasonsOf, ACHIEVEMENT_LIST, progressOf, streakLadder, economyOf, eventsOf, eventsPerDay, gameChannelCount, isValidMultiplier, minutesText, missionOf, multiplierText,
+  craftingOf, RECIPE_LIST, guildsOf, expeditionsOf, expeditionGold, duelsOf, duelPayout, RAID_WEEKDAYS, raidOf, raidWindowText, PLACES, SEASON_POINT_LIST, seasonsOf, ACHIEVEMENT_LIST, progressOf, streakLadder, economyOf, eventsOf, eventsPerDay, gameChannelCount, isValidMultiplier, minutesText, missionOf, multiplierText,
   type GameModuleId,
 } from "./game-model";
 import { ModuleView } from "./rules";
@@ -20,7 +20,7 @@ const MODULE = Object.fromEntries(GAME_MODULES.map((module) => [module.id, modul
 /** The game's running state, read and changed at once through /gameplay-state (not part of the draft). */
 export const GameStateContext = createContext<ReturnType<typeof useGameplayState> | null>(null);
 
-export const GAME_ICONS: Record<GameModuleId, IconName> = { state: "power", channels: "hash", events: "calendar", missions: "scroll", economy: "star", progress: "verified", seasons: "calendar", raid: "raid", duels: "gavel", expeditions: "arrow", guilds: "users" };
+export const GAME_ICONS: Record<GameModuleId, IconName> = { state: "power", channels: "hash", events: "calendar", missions: "scroll", economy: "star", progress: "verified", seasons: "calendar", raid: "raid", duels: "gavel", expeditions: "arrow", guilds: "users", crafting: "gavel" };
 
 /* ------------------------------------------------------------------ */
 /* Stare                                                               */
@@ -501,6 +501,33 @@ function GuildsModule() {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* Comerț și crafting                                                  */
+/* ------------------------------------------------------------------ */
+
+function CraftingModule() {
+  const { config, set } = usePanel();
+  const crafting = craftingOf(config);
+  const change = (next: Partial<typeof crafting>) => set(["gameplayConfig", "crafting"], { ...crafting, ...next });
+  return (
+    <ModuleView module={MODULE.crafting} icon="gavel">
+      <SectionCard title="Setări" testId="game-crafting">
+        <Fields>
+          <SwitchField label="Crafting (/crafteaza)" testId="game-crafting-switch" checked={crafting.enabled} onChange={(next) => change({ enabled: next })} />
+          <SwitchField label="Comerț între jucători (/schimb)" testId="game-trade-switch" checked={crafting.tradeEnabled} hint="Echipamentul cu nivel nu se schimbă, doar materialele, fragmentele și relicvele." onChange={(next) => change({ tradeEnabled: next })} />
+          <NumField label="Taxa pe Oboli schimbați" unit="%" min={0} max={50} value={crafting.taxPercent} testId="game-trade-tax" hint="Partea din Obolii schimbați care dispare din joc." onChange={(next) => change({ taxPercent: next ?? -1 })} />
+        </Fields>
+      </SectionCard>
+      <SectionCard title="Rețetele" small={`${RECIPE_LIST.length} rețete`} testId="game-recipes">
+        <ul className="pn-ach">
+          {RECIPE_LIST.map(([result, inputs]) => <li key={result}><span aria-hidden="true">{result.split(" ")[0]}</span><b>{result.split(" ").slice(1).join(" ")}</b><small>{inputs}</small></li>)}
+        </ul>
+        <p className="pn-fh">Fragmentele de armă și armură merg apoi în Forjă, la echipament. Totul sau nimic: dacă lipsește ceva, nu se ia nimic.</p>
+      </SectionCard>
+    </ModuleView>
+  );
+}
+
 export const GAME_VIEWS: Record<GameModuleId, () => React.ReactElement> = {
   state: StateModule,
   channels: ChannelsModule,
@@ -513,4 +540,5 @@ export const GAME_VIEWS: Record<GameModuleId, () => React.ReactElement> = {
   duels: DuelsModule,
   expeditions: ExpeditionsModule,
   guilds: GuildsModule,
+  crafting: CraftingModule,
 };

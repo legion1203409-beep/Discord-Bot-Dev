@@ -139,3 +139,13 @@ describe("brotherhoods", () => {
     expect(gameDraftError(config({ guilds: { maxMembers: 1 } }))).toContain("Membri cel mult");
   });
 });
+
+describe("crafting and trading", () => {
+  it("sum up and refuse a bad tax", async () => {
+    const { craftingOf } = await import("./game-model");
+    expect(craftingOf(config())).toEqual({ enabled: true, tradeEnabled: true, taxPercent: 5 });
+    expect(gameModuleSummary("crafting", config())).toBe("crafting · comerț · taxă 5%");
+    expect(gameModuleSummary("crafting", config({ crafting: { enabled: false, tradeEnabled: false } }))).toBe("Oprite");
+    expect(gameDraftError(config({ crafting: { taxPercent: 70 } }))).toContain("Taxa");
+  });
+});

@@ -25,6 +25,8 @@ import {
   type GuildMember,
 } from "discord.js";
 import { handleBanEvasionButton } from "./moderation/ban-evasion";
+import { RECIPES, handleCraftCommand } from "./crafting";
+import { TRADEABLE, handleTradeButton, handleTradeCommand } from "./trading";
 import { handleBrotherhoodButton, handleBrotherhoodCommand } from "./brotherhoods";
 import { handleExpeditionButton, handleExpeditionCommand } from "./expeditions";
 import { buildDuelLeaderboard, duelLeaderboard, handleDuelButton, handleDuelCommand } from "./duels";
@@ -588,6 +590,24 @@ const slashCommands = [
     .setDescription("⚔️ Provoacă un jucător la duel, cu sau fără pariu în Oboli.")
     .addUserOption((opt) => opt.setName("adversar").setDescription("Pe cine provoci").setRequired(true))
     .addIntegerOption((opt) => opt.setName("pariu").setDescription("Oboli puși de fiecare (opțional)").setRequired(false).setMinValue(0)),
+  new SlashCommandBuilder()
+    .setName("crafteaza")
+    .setDescription("⚒️ Transformă materialele în materiale mai rare și fragmente pentru Forjă.")
+    .addStringOption((opt) => opt.setName("reteta").setDescription("Ce făurești (gol: vezi rețetele)").setRequired(false)
+      .addChoices(...RECIPES.map((recipe) => ({ name: ITEMS[recipe.result].label, value: recipe.key }))))
+    .addIntegerOption((opt) => opt.setName("cantitate").setDescription("De câte ori (1–50)").setRequired(false).setMinValue(1).setMaxValue(50)),
+  new SlashCommandBuilder()
+    .setName("schimb")
+    .setDescription("🤝 Propune un schimb de materiale și/sau Oboli unui jucător.")
+    .addUserOption((opt) => opt.setName("jucator").setDescription("Cu cine").setRequired(true))
+    .addStringOption((opt) => opt.setName("dai_obiect").setDescription("Ce obiect dai").setRequired(false)
+      .addChoices(...TRADEABLE.map((key) => ({ name: ITEMS[key].label, value: key }))))
+    .addIntegerOption((opt) => opt.setName("dai_cantitate").setDescription("Câte dai (implicit 1)").setRequired(false).setMinValue(1).setMaxValue(10_000))
+    .addIntegerOption((opt) => opt.setName("dai_oboli").setDescription("Câți Oboli dai").setRequired(false).setMinValue(1).setMaxValue(10_000_000))
+    .addStringOption((opt) => opt.setName("ceri_obiect").setDescription("Ce obiect ceri").setRequired(false)
+      .addChoices(...TRADEABLE.map((key) => ({ name: ITEMS[key].label, value: key }))))
+    .addIntegerOption((opt) => opt.setName("ceri_cantitate").setDescription("Câte ceri (implicit 1)").setRequired(false).setMinValue(1).setMaxValue(10_000))
+    .addIntegerOption((opt) => opt.setName("ceri_oboli").setDescription("Câți Oboli ceri").setRequired(false).setMinValue(1).setMaxValue(10_000_000)),
   new SlashCommandBuilder()
     .setName("breasla")
     .setDescription("🏰 Breslele: grupuri de jucători cu cămară comună și clasament.")
@@ -1299,6 +1319,8 @@ function buildHelpEmbed(category: HelpCategory) {
             "**/misiuni** — misiuni zilnice cu progres și recompense.\n" +
             "**/cufarpersonal** — recompensa pentru activitatea ta zilnică; deschis zi de zi îți crește seria și bonusul.\n" +
             "**/realizari** — insignele tale și seria zilnică.\n" +
+            "**/crafteaza** — transformă materialele în materiale rare și fragmente pentru Forjă.\n" +
+            "**/schimb** — schimbă materiale sau Oboli cu alt jucător (amândoi confirmă).\n" +
             "**/breasla** — întemeiază sau intră într-o breaslă: cămară comună, ofițeri și clasament lunar.\n" +
             "**/expeditie** — trimite companionul după materiale și Oboli (1, 4 sau 8 ore).\n" +
             "**/duel** — provoacă pe cineva la duel, cu pariu opțional; **/topduel** — clasamentul.\n" +
@@ -1395,7 +1417,7 @@ function buildHelpEmbed(category: HelpCategory) {
           name: "Jucător",
           value:
             "**/ajutor** · **/profil** · **/clasament** · **/rank** · **/toplvl** · **/profetie** · **/clasa** · **/companion**\n" +
-            "**/magazin** · **/misiuni** · **/cufarpersonal** · **/realizari** · **/sezon** · **/raid** · **/duel** · **/topduel** · **/expeditie** · **/breasla** · **/chei** · **/server**",
+            "**/magazin** · **/misiuni** · **/cufarpersonal** · **/realizari** · **/sezon** · **/raid** · **/duel** · **/topduel** · **/expeditie** · **/breasla** · **/crafteaza** · **/schimb** · **/chei** · **/server**",
         },
         {
           name: "Cufere și economie",
@@ -4751,6 +4773,10 @@ async function handleButton(interaction: ButtonInteraction) {
     return handleBrotherhoodButton(interaction);
   }
 
+  if (id.startsWith("trade_")) {
+    return handleTradeButton(interaction);
+  }
+
   if (id.startsWith("help_")) {
     return handleHelpButton(interaction);
   }
@@ -5652,6 +5678,8 @@ export async function startBot(onReady?: () => void): Promise<void> {
       if (interaction.commandName === "topduel") dispatch(handleTopDuel(interaction));
       if (interaction.commandName === "expeditie") dispatch(handleExpeditionCommand(interaction));
       if (interaction.commandName === "breasla") dispatch(handleBrotherhoodCommand(interaction));
+      if (interaction.commandName === "crafteaza") dispatch(handleCraftCommand(interaction));
+      if (interaction.commandName === "schimb") dispatch(handleTradeCommand(interaction));
       if (interaction.commandName === "profetie") dispatch(handleProfetie(interaction));
       if (interaction.commandName === "clasament") dispatch(handleClasament(interaction));
       if (interaction.commandName === "magazin") dispatch(handleMagazin(interaction));
@@ -6251,6 +6279,8 @@ export async function startBot(onReady?: () => void): Promise<void> {
       if (interaction.commandName === "topduel") dispatch(handleTopDuel(interaction));
       if (interaction.commandName === "expeditie") dispatch(handleExpeditionCommand(interaction));
       if (interaction.commandName === "breasla") dispatch(handleBrotherhoodCommand(interaction));
+      if (interaction.commandName === "crafteaza") dispatch(handleCraftCommand(interaction));
+      if (interaction.commandName === "schimb") dispatch(handleTradeCommand(interaction));
       if (interaction.commandName === "profetie") dispatch(handleProfetie(interaction));
       if (interaction.commandName === "clasament") dispatch(handleClasament(interaction));
       if (interaction.commandName === "magazin") dispatch(handleMagazin(interaction));

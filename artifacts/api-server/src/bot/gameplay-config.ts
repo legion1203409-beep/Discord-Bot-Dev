@@ -100,6 +100,13 @@ export interface GameplayConfig {
     createCost: number;
     maxMembers: number;
   };
+  /** Crafting and trading between players (bot/crafting.ts, bot/trading.ts). */
+  crafting: {
+    enabled: boolean;
+    tradeEnabled: boolean;
+    /** Part of the traded Oboli that leaves the game, in percent. */
+    taxPercent: number;
+  };
 }
 
 export const DEFAULT_GAMEPLAY_CONFIG: GameplayConfig = {
@@ -183,6 +190,11 @@ export const DEFAULT_GAMEPLAY_CONFIG: GameplayConfig = {
     enabled: true,
     createCost: 5_000,
     maxMembers: 20,
+  },
+  crafting: {
+    enabled: true,
+    tradeEnabled: true,
+    taxPercent: 5,
   },
 };
 
@@ -268,6 +280,17 @@ export function normalizeGameplayConfig(value: unknown): GameplayConfig {
     duels: normalizeDuels(input.duels),
     expeditions: normalizeExpeditions(input.expeditions),
     guilds: normalizeGuilds(input.guilds),
+    crafting: normalizeCrafting(input.crafting),
+  };
+}
+
+function normalizeCrafting(value: unknown): GameplayConfig["crafting"] {
+  const input = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const defaults = DEFAULT_GAMEPLAY_CONFIG.crafting;
+  return {
+    enabled: typeof input.enabled === "boolean" ? input.enabled : defaults.enabled,
+    tradeEnabled: typeof input.tradeEnabled === "boolean" ? input.tradeEnabled : defaults.tradeEnabled,
+    taxPercent: boundedInt(input.taxPercent, defaults.taxPercent, 0, 50),
   };
 }
 
