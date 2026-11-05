@@ -3083,7 +3083,7 @@ test.describe("bot control page", () => {
   test("tracks invitations with a weekly report and saves the daily report's channel", async ({ page }) => {
     const { putBodies } = await openControl(page);
     await expect(page.getByRole("heading", { name: "Invitații", exact: true })).toBeVisible();
-    await expect(page.getByRole("navigation", { name: "Modulele controlului" }).getByRole("link")).toHaveCount(5);
+    await expect(page.getByRole("navigation", { name: "Modulele controlului" }).getByRole("link")).toHaveCount(6);
     await page.getByTestId("control-invites-switch").click();
     await page.getByTestId("control-invites-report-switch").click();
     await page.getByRole("combobox", { name: "Canalul raportului de invitații" }).selectOption("444444444");
@@ -3135,6 +3135,27 @@ test.describe("bot control page", () => {
     await page.getByTestId("button-save-control").click();
     await expect.poll(() => putBodies.get(guilds[0].id)?.length).toBe(1);
     expect(putBodies.get(guilds[0].id)![0].dailyStats).toMatchObject({ channelId: "444444444", intervalDays: 7, inviteTop: false });
+  });
+
+  test("the top of the most active members is its own report, with its channel and interval", async ({ page }) => {
+    const { putBodies } = await openControl(page, "/moderare/control/top-activi");
+    await expect(page.getByRole("heading", { name: "Cei mai activi membri", exact: true })).toBeVisible();
+    await expect(page.getByTestId("control-top-off")).toBeVisible();
+    await page.getByTestId("control-top-switch").click();
+    await page.getByTestId("button-save-control").click();
+    expect(putBodies.size).toBe(0);
+    await page.getByRole("combobox", { name: "Canalul topului membrilor activi" }).selectOption("444444444");
+    await page.getByTestId("control-top-interval").getByRole("radio", { name: "3 zile" }).click();
+    await page.getByTestId("control-top-limit").getByRole("radio", { name: "Top 5" }).click();
+    await expect(page.getByTestId("control-top-chat")).toContainText("🥇 @Adina · 523 mesaje");
+    await expect(page.getByTestId("control-top-voice")).toContainText("3 h 20 min");
+    await page.getByTestId("control-top-voice-switch").click();
+    await expect(page.getByTestId("control-top-voice")).toHaveCount(0);
+    await page.getByTestId("button-save-control").click();
+    await expect.poll(() => putBodies.get(guilds[0].id)?.length).toBe(1);
+    expect(putBodies.get(guilds[0].id)![0].activeTop).toEqual({
+      enabled: true, channelId: "444444444", intervalDays: 3, limit: 5, includeVoice: false, mention: false, color: "#d8a964",
+    });
   });
 
   test("asks the recruitment program for its channel and warns while verification is off", async ({ page }) => {

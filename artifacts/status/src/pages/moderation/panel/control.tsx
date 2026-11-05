@@ -15,6 +15,7 @@ import {
 } from "./fields";
 import { EmojiTextField, ImageUrlField } from "./message-fields";
 import {
+  ACTIVE_TOP_LIMITS, ACTIVE_TOP_PREVIEW_CHAT, ACTIVE_TOP_PREVIEW_VOICE, activeTopOf, activeTopProblem, activeTopVoiceTime, type ActiveTop,
   CONTROL_MODULES, DAILY_INTERVALS, DAILY_METRICS, DAILY_PREVIEW_ACTIVITY, DAILY_PREVIEW_INVITERS, dailyInterval, dailyIntervalText, dailyInviteTopOn, dailyTitleFor,
   longDayName, nextDailyReport, shortPeriod, DAILY_PREVIEW_DAYS, DAILY_PREVIEW_MEMBERS, DAILY_TEXTS, DAILY_TOKENS, PROVISION_CATEGORIES,
   BOT_CHECKS, RECRUITMENT_FIELDS, dailyCardDelta, dailyCardText, dailyChartOn, dailyDeltaText, dailyPreviewChannels, dailyPreviewWeek,
@@ -28,7 +29,7 @@ const MODULE: Record<ControlModuleId, (typeof CONTROL_MODULES)[number]> = Object
   CONTROL_MODULES.map((module) => [module.id, module]),
 ) as Record<ControlModuleId, (typeof CONTROL_MODULES)[number]>;
 
-export const CONTROL_ICONS: Record<ControlModuleId, IconName> = { invites: "send", recruitment: "star", daily: "calendar", channels: "folder", server: "bot" };
+export const CONTROL_ICONS: Record<ControlModuleId, IconName> = { invites: "send", recruitment: "star", daily: "calendar", activeTop: "stairs", channels: "folder", server: "bot" };
 
 /** A big on/off switch on the right of a module head, and the note when it is off. */
 function HeadSwitch({ on, label, testId, onChange }: { on: boolean; label: string; testId: string; onChange: (next: boolean) => void }) {
@@ -439,13 +440,13 @@ function DailyPreview() {
   );
 }
 
-function NextDailyReport({ days, on }: { days: number; on: boolean }) {
+function NextDailyReport({ days, on, what = "raport", siteNote = true }: { days: number; on: boolean; what?: string; siteNote?: boolean }) {
   const next = nextDailyReport(new Date(), days);
   return (
     <NoteRow tone="plain" testId="control-daily-next">
       {on
-        ? <>Următorul raport: <b>{longDayName(next.postDay)}</b>, imediat după miezul nopții (ora României), cu {days === 1 ? <>ziua de <b>{shortPeriod(next.endDay, next.endDay)}</b></> : <>zilele <b>{shortPeriod(next.startDay, next.endDay)}</b></>}. Raportul de pe site rămâne pe zile.</>
-        : "Alege un canal ca raportul să se posteze."}
+        ? <>Următorul {what}: <b>{longDayName(next.postDay)}</b>, imediat după miezul nopții (ora României), cu {days === 1 ? <>ziua de <b>{shortPeriod(next.endDay, next.endDay)}</b></> : <>zilele <b>{shortPeriod(next.startDay, next.endDay)}</b></>}.{siteNote ? " Raportul de pe site rămâne pe zile." : ""}</>
+        : `Pornește-l și alege un canal ca ${what === "raport" ? "raportul" : "topul"} să se posteze.`}
     </NoteRow>
   );
 }
@@ -775,10 +776,122 @@ function ServerModule() {
   );
 }
 
+function ActiveTopPreview({ top }: { top: ActiveTop }) {
+  const color = /^#[0-9a-f]{6}$/i.test(top.color) ? top.color : "#d8a964";
+  const medal = (index: number) => ["🥇", "🥈", "🥉"][index] ?? `${index + 1}.`;
+  const period = top.intervalDays === 1 ? "29 octombrie 2026" : top.intervalDays === 7 ? "23 – 29 octombrie 2026" : `${30 - top.intervalDays} – 29 octombrie 2026`;
+  const count = Math.min(top.limit, ACTIVE_TOP_PREVIEW_CHAT.length);
+  return (
+    <div className="pn-dc" data-testid="control-top-preview">
+      <p className="pn-dc-k">Așa apare în Discord</p>
+      <div className="pn-dc-msg">
+        <span className="pn-dc-av pn-orc-av" aria-hidden="true"><Ico name="eye" /></span>
+        <div className="pn-dc-body">
+          <p className="pn-dc-name"><b>Oracolul Cenușii</b><span>BOT</span></p>
+          <div className="pn-dc-embed" style={{ borderLeftColor: color }}>
+            <p className="pn-dc-title">🏆 Cei mai activi membri</p>
+            <p className="pn-dc-text">Perioada: <b>{period}</b></p>
+            <div className="pn-dc-field" data-testid="control-top-chat"><b>💬 În chat</b>
+              {ACTIVE_TOP_PREVIEW_CHAT.slice(0, count).map(([name, messages], index) => (
+                <span key={name} className="pn-ctl-metric">{medal(index)} <span className="pn-dc-mention">@{name}</span> · <b>{messages}</b> mesaje</span>
+              ))}
+              {top.limit > ACTIVE_TOP_PREVIEW_CHAT.length ? <span className="pn-ctl-metric">… până la locul {top.limit}</span> : null}
+            </div>
+            {top.includeVoice ? (
+              <div className="pn-dc-field" data-testid="control-top-voice"><b>🎙️ Pe voce</b>
+                {ACTIVE_TOP_PREVIEW_VOICE.slice(0, count).map(([name, minutes], index) => (
+                  <span key={name} className="pn-ctl-metric">{medal(index)} <span className="pn-dc-mention">@{name}</span> · <b>{activeTopVoiceTime(minutes)}</b></span>
+                ))}
+              </div>
+            ) : null}
+            <div className="pn-dc-field"><b>📊 Pe scurt</b>
+              <span className="pn-ctl-metric"><b>2.410</b> mesaje de la <b>38</b> membri</span>
+              {top.includeVoice ? <span className="pn-ctl-metric"><b>15 h</b> pe voce, <b>12</b> membri</span> : null}
+            </div>
+            <p className="pn-set-foot">🏆 Topul activității · botul numără mesajele și minutele pe voce</p>
+          </div>
+        </div>
+      </div>
+      <p className="pn-orc-fine">
+        Cifrele sunt inventate. {top.mention ? "Membrii din top primesc ping." : "Numele apar ca mențiuni, dar nimeni nu primește ping."}
+      </p>
+    </div>
+  );
+}
+
+function ActiveTopModule() {
+  const { config, set, channels } = usePanel();
+  const top = activeTopOf(config);
+  // The whole section is sent, so a server that never saved it gets every field at once.
+  const setTop = (key: keyof ActiveTop, value: unknown) => set(["activeTop"], { ...top, [key]: value });
+  const problem = activeTopProblem(top);
+  const id = useId();
+  return (
+    <ModuleView module={MODULE.activeTop} icon={CONTROL_ICONS.activeTop} aside={(
+      <HeadSwitch on={top.enabled} label="Topul membrilor activi" testId="control-top-switch" onChange={(next) => setTop("enabled", next)} />
+    )}>
+      {!top.enabled ? (
+        <OffNote testId="control-top-off" text="Oprit: topul nu se postează singur. /topactivi merge oricum, pentru oricine." action="Pornește topul" onTurnOn={() => setTop("enabled", true)} />
+      ) : null}
+      <ModuleNotes>{problem ? <Note tone="bad" role="alert">{problem}</Note> : null}</ModuleNotes>
+      <div className="pn-vsplit">
+        <div className="pn-vsplit-main">
+          <SectionCard title="Unde și când" small={top.enabled && top.channelId ? dailyIntervalText(top.intervalDays) : "nu se postează"} testId="control-top-where">
+            <Fields>
+              <ChannelField
+                label="Canalul" selectLabel="Canalul topului membrilor activi" value={top.channelId || null} channels={channels} wide
+                hint="Poate fi alt canal decât cel al statisticilor."
+                onChange={(next) => setTop("channelId", next ?? "")}
+              />
+              <Seg
+                label="La câte zile" testId="control-top-interval" value={String(top.intervalDays)}
+                hint="Topul adună zilele perioadei. La 7 zile, perioada e de luni până duminică și topul pleacă luni după miezul nopții."
+                options={DAILY_INTERVALS.map((value) => [String(value), value === 1 ? "1 zi" : `${value} zile`] as const)}
+                onChange={(next) => setTop("intervalDays", Number(next))}
+              />
+              <NextDailyReport days={top.intervalDays} on={Boolean(top.enabled && top.channelId)} what="top" siteNote={false} />
+            </Fields>
+          </SectionCard>
+          <SectionCard title="Ce arată" testId="control-top-what">
+            <Fields>
+              <Seg
+                label="Câți membri" testId="control-top-limit" value={String(top.limit)}
+                options={ACTIVE_TOP_LIMITS.map((value) => [String(value), `Top ${value}`] as const)}
+                onChange={(next) => setTop("limit", Number(next))}
+              />
+              <SwitchField
+                label="Și timpul pe voce" testId="control-top-voice-switch" checked={top.includeVoice}
+                hint="O a doua listă: cine a stat cel mai mult pe voce. Se numără minutele cu cel puțin încă un om pe canal, nu în AFK."
+                onChange={(next) => setTop("includeVoice", next)}
+              />
+              <SwitchField
+                label="Ping pentru cei din top" testId="control-top-mention" checked={top.mention}
+                hint="Membrii din top primesc notificare. Oprit, numele apar fără să deranjeze pe nimeni."
+                onChange={(next) => setTop("mention", next)}
+              />
+              <Fld label="Culoarea" htmlFor={`${id}-c`} hint="Banda din stânga mesajului.">
+                <div className="pn-set-colors">
+                  <label className="pn-set-picker" aria-label="Alege culoarea">
+                    <input type="color" value={/^#[0-9a-f]{6}$/i.test(top.color) ? top.color.toLowerCase() : "#d8a964"} onChange={(event) => setTop("color", event.target.value)} />
+                  </label>
+                  <input id={`${id}-c`} className="pn-inp pn-inp-mono pn-set-hex" maxLength={7} value={top.color} data-testid="control-top-color" onChange={(event) => setTop("color", event.target.value.trim())} />
+                </div>
+              </Fld>
+              <NoteRow tone="plain">Botul numără mesajele fiecărui membru de la această versiune încolo; zilele de dinainte nu au cifre pe membru.</NoteRow>
+            </Fields>
+          </SectionCard>
+        </div>
+        <aside className="pn-vsplit-side" aria-label="Previzualizare"><ActiveTopPreview top={top} /></aside>
+      </div>
+    </ModuleView>
+  );
+}
+
 export const CONTROL_VIEWS: Record<ControlModuleId, () => React.JSX.Element> = {
   invites: InvitesModule,
   recruitment: RecruitmentModule,
   daily: DailyModule,
+  activeTop: ActiveTopModule,
   channels: ChannelsModule,
   server: ServerModule,
 };

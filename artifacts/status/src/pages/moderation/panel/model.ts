@@ -529,6 +529,7 @@ export const CONTROL_MODULE_ROUTES = {
   invites: "/control/invitatii",
   recruitment: "/control/recrutare",
   daily: "/control/raport",
+  activeTop: "/control/top-activi",
   channels: "/control/canale",
   server: "/control/bot",
 } as const;
