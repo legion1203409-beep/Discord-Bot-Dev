@@ -18,6 +18,7 @@ import { buildActivityLogPresentation, renderMemberActivityTemplate } from "./ac
 import { ACTIVITY_LOG_TEMPLATES, activityLogTemplateKey } from "../../moderation/activity-log-template-definitions";
 import { renderActivityLogTemplate } from "./activity-log-templates";
 import { activityStyle, categoryEmoji } from "./activity-log-style";
+import { fetchLogImage, isDiscordCdnUrl } from "./log-media";
 import { describeMemberActions, planEventRuleActions, type RuleActionPlan } from "./rule-actions";
 
 export type ModerationEventActionInput = {
@@ -429,12 +430,26 @@ export async function deliverActivityLog(
       .setFooter({ text: `${categoryEmoji(category)} ${ACTIVITY_CATEGORY_LABELS[category]} · ${guild.name}`, ...(guildIcon ? { iconURL: guildIcon } : {}) })
       .setTimestamp();
     if (description) embed.setDescription(description);
-    if (presentation.thumbnailUrl) embed.setThumbnail(presentation.thumbnailUrl);
-    if (presentation.imageUrl) embed.setImage(presentation.imageUrl);
+    // A message's log shows who wrote it, when the bot already knows them.
+    const messageAuthor = isMessageLog && typeof detail.displayMessageAuthorId === "string"
+      ? guild.client?.users?.cache?.get(detail.displayMessageAuthorId) : undefined;
+    const thumbnail = presentation.thumbnailUrl ?? messageAuthor?.displayAvatarURL?.();
+    if (thumbnail) embed.setThumbnail(thumbnail);
+    // The picture is kept inside the log (a deleted message's link stops working after a while); its link is the fallback.
+    const files: Array<NonNullable<Awaited<ReturnType<typeof fetchLogImage>>>> = [];
+    if (presentation.imageUrl) {
+      const file = isDiscordCdnUrl(presentation.imageUrl) ? await fetchLogImage(presentation.imageUrl, "mesaj") : null;
+      if (file) {
+        files.push(file);
+        embed.setImage(`attachment://${file.name}`);
+      } else {
+        embed.setImage(presentation.imageUrl);
+      }
+    }
     if (!customDescription || (isMessageLog && !detailsWrittenInline)) {
       embed.addFields(...presentation.fields);
     }
-    await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
+    await channel.send({ embeds: [embed], ...(files.length ? { files } : {}), allowedMentions: { parse: [] } });
   } catch (error) {
     // Logging must never block moderation/event processing. Setup failures are
     // surfaced by the configuration route; later permission/channel changes
@@ -945,6 +960,11 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
             authorId: message.author?.id ?? null,
             content: typeof message.content === "string" ? message.content : null,
             attachmentCount: message.attachments?.size ?? 0,
+            attachments: [...(message.attachments?.values() ?? [])].slice(0, 8).map((attachment) => ({
+              name: attachment.name ?? "fișier", url: attachment.url, size: attachment.size, contentType: attachment.contentType ?? null,
+            })),
+            stickers: [...(message.stickers?.values() ?? [])].slice(0, 3).map((sticker) => sticker.name),
+            embedLinks: (message.embeds ?? []).map((embed) => embed.url).filter((url): url is string => Boolean(url)).slice(0, 3),
             imageAttachments: [...(message.attachments?.values() ?? [])]
               .slice(0, 3)
               .map((attachment) => ({

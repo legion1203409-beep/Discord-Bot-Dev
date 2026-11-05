@@ -1,3 +1,5 @@
+import { describeAttachment, type AttachmentInfo } from "./log-media";
+
 export type ActivityLogEmbedField = {
   name: string;
   value: string;
@@ -594,6 +596,14 @@ export function buildActivityLogPresentation(
         ? `_(fără text · ${attachmentCount} atașamente)_`
         : formatMessageExcerpt(first?.content);
       addField("Conținut șters", content);
+      const attachmentLines = Array.isArray(first?.attachments)
+        ? (first.attachments as AttachmentInfo[]).slice(0, 5).map((item, index) => `${index + 1}. ${describeAttachment(item)}`)
+        : [];
+      if (attachmentLines.length) addField(`Atașamente (${attachmentLines.length})`, attachmentLines.join("\n"));
+      const stickers = Array.isArray(first?.stickers) ? (first.stickers as unknown[]).filter((name): name is string => typeof name === "string") : [];
+      if (stickers.length) addField("Stickere", stickers.map((name) => `🏷️ ${name}`).join(" · "));
+      const links = Array.isArray(first?.embedLinks) ? (first.embedLinks as unknown[]).filter((url): url is string => typeof url === "string") : [];
+      if (links.length) addField("Linkuri", links.map((url) => `🔗 ${url.replace(/^https?:\/\//, "").slice(0, 120)}`).join("\n"));
     }
 
     const details = readableDetails(detail, ["messageCount"]);
