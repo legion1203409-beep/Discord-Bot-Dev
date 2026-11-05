@@ -3119,6 +3119,24 @@ test.describe("bot control page", () => {
     expect(putBodies.get(guilds[0].id)![0].dailyStats).toMatchObject({ channelId: "444444444", chart: false });
   });
 
+  test("the statistics report can go out every 1 to 7 days and shows the top inviters", async ({ page }) => {
+    const { putBodies } = await openControl(page, "/moderare/control/raport");
+    await page.getByRole("combobox", { name: "Canalul raportului zilnic" }).selectOption("444444444");
+    await expect(page.getByTestId("control-daily-invites")).toContainText("🥇 @Adina · 7 membri noi");
+    await expect(page.getByTestId("control-daily-next")).toContainText("Următorul raport");
+    await page.getByTestId("control-daily-interval").getByRole("radio", { name: "7 zile" }).click();
+    // A title chosen by the server stays as it is; {date} names the whole period.
+    await expect(page.getByTestId("control-daily-preview")).toContainText("23 – 29 octombrie 2026");
+    await expect(page.getByTestId("control-daily-preview")).toContainText("față de cele 7 zile dinainte");
+    await expect(page.getByTestId("control-daily-invites")).toContainText("Top invitații · 7 zile");
+    await expect(page.getByTestId("control-daily-next")).toContainText("cu zilele");
+    await page.getByTestId("control-daily-invite-top").click();
+    await expect(page.getByTestId("control-daily-invites")).toHaveCount(0);
+    await page.getByTestId("button-save-control").click();
+    await expect.poll(() => putBodies.get(guilds[0].id)?.length).toBe(1);
+    expect(putBodies.get(guilds[0].id)![0].dailyStats).toMatchObject({ channelId: "444444444", intervalDays: 7, inviteTop: false });
+  });
+
   test("asks the recruitment program for its channel and warns while verification is off", async ({ page }) => {
     const { putBodies } = await openControl(page, "/moderare/control/recrutare");
     await page.getByTestId("control-recruitment-switch").click();

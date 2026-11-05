@@ -226,6 +226,10 @@ export interface BotControlConfig {
     thumbnailUrl: string;
     /** The day's card as the report's image; missing means on. */
     chart?: boolean;
+    /** One report every this many days (1–7); missing means every day. */
+    intervalDays?: number;
+    /** The top inviters of the period in the report; missing means on. */
+    inviteTop?: boolean;
     metricLabels: {
       messages: string;
       uniqueUsers: string;
