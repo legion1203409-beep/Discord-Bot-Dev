@@ -5,7 +5,7 @@ describe("moderation configuration defaults", () => {
   it("ships with every enforcement module disabled", () => {
     expect(defaultModerationConfig.protection.enabled).toBe(true);
     expect(defaultModerationConfig.autoMod.enabled).toBe(false);
-    expect(defaultModerationConfig.autoMod.scamFilter).toEqual({ enabled: false, action: "delete" });
+    expect(defaultModerationConfig.autoMod.scamFilter).toEqual({ enabled: false, action: "delete", blockPhishingLinks: true, trustedLinkHosts: [], blockDangerousFiles: true, crossChannelFlood: { enabled: true, channels: 3, windowSeconds: 60 } });
     expect(defaultModerationConfig.autoMod.scamPhrases).toEqual([]);
     expect(defaultModerationConfig.antiRaid.enabled).toBe(false);
     expect(defaultModerationConfig.antiSpam.enabled).toBe(false);
@@ -86,7 +86,7 @@ describe("moderation configuration defaults", () => {
       expect(rule).not.toHaveProperty("muteMinutes");
     }
     expect(config.suspiciousBehavior).not.toHaveProperty("warnMember");
-    expect(config.autoMod.scamFilter).toEqual({ enabled: false, action: "delete" });
+    expect(config.autoMod.scamFilter).toEqual({ enabled: false, action: "delete", blockPhishingLinks: true, trustedLinkHosts: [], blockDangerousFiles: true, crossChannelFlood: { enabled: true, channels: 3, windowSeconds: 60 } });
   });
 
   it("round-trips the extra ticks of a rule, the scam filter and the suspicious-behaviour module", () => {
@@ -211,7 +211,7 @@ describe("moderation configuration defaults", () => {
         scamPhrases: ["claim bonus", "ai câștigat bani"],
       },
     });
-    expect(config.autoMod.scamFilter).toEqual({ enabled: true, action: "kick" });
+    expect(config.autoMod.scamFilter).toEqual({ enabled: true, action: "kick", blockPhishingLinks: true, trustedLinkHosts: [], blockDangerousFiles: true, crossChannelFlood: { enabled: true, channels: 3, windowSeconds: 60 } });
     expect(config.autoMod.scamPhrases).toEqual(["claim bonus", "ai câștigat bani"]);
     expect(() => ModerationConfigSchema.parse({
       autoMod: { scamFilter: { action: "ban" } },

@@ -29,6 +29,7 @@ import type { AutoModerationActionExecution } from "discord.js";
 import { NATIVE_AUTOMOD_KEYWORD_RULE_NAME } from "../native-automod";
 import { detectContent, detectScamContent, detectScamImageText, SlidingRateLimiter, SlidingUniqueMessageRateLimiter, type ContentThresholds, type Detection } from "./detectors";
 import { readScamImageTexts } from "./image-scam-ocr";
+import { CrossChannelFloodTracker, detectDangerousAttachment, detectPhishingLink, floodDetection } from "./anti-scam";
 import {
   assertRoleGrantSafe,
   assertTargetHierarchy,
@@ -84,6 +85,7 @@ export class ModerationActionStateError extends Error {
 
 let moderationClient: Client | null = null;
 const messageRates = new SlidingUniqueMessageRateLimiter();
+const scamFloodTracker = new CrossChannelFloodTracker();
 const editRates = new SlidingRateLimiter();
 const joinRates = new SlidingRateLimiter();
 const nicknameRates = new SlidingRateLimiter();
@@ -1337,6 +1339,29 @@ export async function handleModerationMessage(client: Client, message: Message):
     scamMessageText = [content, ...embedContent].filter((part): part is string => Boolean(part)).join("\n");
     const scamFinding = detectScamContent(scamMessageText, auto.scamPhrases);
     if (scamFinding && await applyAutomatic(message.guild, config, message, scamFinding, auto.scamFilter)) return true;
+    const scam = auto.scamFilter;
+    const phishing = scam.blockPhishingLinks === false ? null : detectPhishingLink(scamMessageText, scam.trustedLinkHosts ?? []);
+    if (phishing && await applyAutomatic(message.guild, config, message, phishing, scam)) return true;
+    const dangerousFile = scam.blockDangerousFiles === false || !message.attachments.size
+      ? null : detectDangerousAttachment([...message.attachments.values()].map((attachment) => attachment.name ?? ""));
+    if (dangerousFile && await applyAutomatic(message.guild, config, message, dangerousFile, scam)) return true;
+    const flood = scam.crossChannelFlood;
+    if (flood?.enabled !== false) {
+      const settings = { channels: flood?.channels ?? 3, windowSeconds: flood?.windowSeconds ?? 60 };
+      const earlier = scamFloodTracker.record(
+        `${message.guildId}:${message.author.id}`,
+        { channelId: message.channelId, messageId: message.id, content: scamMessageText },
+        settings,
+      );
+      if (earlier) {
+        // The copies already posted in other channels go too, best effort.
+        for (const copy of earlier) {
+          const channel = message.guild.channels.cache.get(copy.channelId);
+          if (channel?.isTextBased() && "messages" in channel) await channel.messages.delete(copy.messageId).catch(() => undefined);
+        }
+        if (await applyAutomatic(message.guild, config, message, floodDetection(settings.channels, settings.windowSeconds), scam)) return true;
+      }
+    }
   }
   const threshold = (value: number, base: "soft" | "normal" | "hard") => {
     const currentSeverity = activeSeverity(config, message.channelId, base);

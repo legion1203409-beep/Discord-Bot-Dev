@@ -141,6 +141,15 @@ export const ModerationConfigSchema = z.object({
       warnMember: z.boolean().optional(),
       alertStaff: z.boolean().optional(),
       muteMinutes: muteMinutes.optional(),
+      // Anti-scam, part two (bot/moderation/anti-scam.ts); each one works only while the filter is on.
+      blockPhishingLinks: z.boolean().default(true),
+      trustedLinkHosts: textList.default([]),
+      blockDangerousFiles: z.boolean().default(true),
+      crossChannelFlood: z.object({
+        enabled: z.boolean().default(true),
+        channels: z.number().int().min(2).max(10).default(3),
+        windowSeconds: z.number().int().min(10).max(600).default(60),
+      }).default({}),
     }).default({}),
     scamPhrases: textList.default([]),
     wordFilter: RuleSchema.default({}),
