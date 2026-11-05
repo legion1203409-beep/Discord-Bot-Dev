@@ -417,11 +417,16 @@ export async function deliverActivityLog(
       || (isMessageLog && /\{(?:before|after|content)\}/i.test(customDescription));
     const style = activityStyle(normalizedEventType, category);
     const usesCustomTitle = Boolean(customTemplate?.title.trim() || memberTemplates?.title.trim());
+    // Who did it: their name and photo on top, when the bot already knows them; otherwise the server.
+    const actorUser = verified ? guild.client?.users?.cache?.get(String(detail.actorId)) : undefined;
+    const guildIcon = guild.iconURL?.() ?? undefined;
     const embed = new EmbedBuilder()
       .setColor(style.color)
-      .setAuthor({ name: guild.name, ...(guild.iconURL?.() ? { iconURL: guild.iconURL()! } : {}) })
+      .setAuthor(actorUser
+        ? { name: actorUser.globalName ?? actorUser.username, iconURL: actorUser.displayAvatarURL?.() }
+        : { name: guild.name, ...(guildIcon ? { iconURL: guildIcon } : {}) })
       .setTitle(usesCustomTitle || title.startsWith(style.emoji) ? title : `${style.emoji} ${title}`.slice(0, 256))
-      .setFooter({ text: `${categoryEmoji(category)} Jurnal · ${ACTIVITY_CATEGORY_LABELS[category]}` })
+      .setFooter({ text: `${categoryEmoji(category)} ${ACTIVITY_CATEGORY_LABELS[category]} · ${guild.name}`, ...(guildIcon ? { iconURL: guildIcon } : {}) })
       .setTimestamp();
     if (description) embed.setDescription(description);
     if (presentation.thumbnailUrl) embed.setThumbnail(presentation.thumbnailUrl);

@@ -644,16 +644,26 @@ export function buildActivityLogPresentation(
   const rich = richEventPresentation(normalized, targetId, detail, actor);
   if (rich) return rich;
 
-  addField("Actor", actor);
+  fields.push(...inlineField("Actor", actor));
   const target = targetField(targetType, targetId, detail);
   if (
     target &&
     !(targetType.toLocaleLowerCase() === "channel" && detail.channelId === targetId)
   ) {
-    fields.push(target);
+    fields.push({ ...target, inline: true });
   }
-  if (channel !== "—") addField("Canal", channel);
+  if (channel !== "—") fields.push(...inlineField("Canal", channel));
   const details = readableDetails(detail);
   if (details) addField("Detalii", details);
-  return { description: null, fields };
+  return { description: FALLBACK_DESCRIPTIONS[normalized] ?? null, fields };
 }
+
+const FALLBACK_DESCRIPTIONS: Record<string, string> = {
+  "discord.channel_create": "Un canal nou a apărut pe server.",
+  "discord.channel_update": "Un canal a fost modificat.",
+  "discord.channel_delete": "Un canal a fost șters.",
+  "discord.guild_role_create": "Un rol nou a fost creat.",
+  "discord.guild_role_update": "Un rol a fost modificat.",
+  "discord.guild_role_delete": "Un rol a fost șters.",
+  "discord.voice_state_update": "Un membru și-a schimbat starea pe voce.",
+};
