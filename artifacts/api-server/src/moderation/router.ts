@@ -645,7 +645,24 @@ export const oracleSettingsSchema = z.object({
       timeZone: z.string().refine(isValidTimeZone, "Fus orar necunoscut."),
     }).strict(),
   }).strict(),
+  community: z.object({
+    dailyQuestion: z.object({
+      enabled: z.boolean(),
+      channelId: snowflake.or(z.literal("")),
+      hour: z.number().int().min(0).max(23),
+      timeZone: z.string().refine(isValidTimeZone, "Fus orar necunoscut."),
+      useOwnQuestions: z.boolean(),
+      ownQuestions: z.array(z.string().trim().min(1).max(300)).max(30),
+    }).strict(),
+  }).strict().optional(),
 }).strict().superRefine((settings, ctx) => {
+  const question = settings.community?.dailyQuestion;
+  if (question?.enabled && !question.channelId) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["community", "dailyQuestion", "channelId"], message: "Alege canalul întrebării zilei." });
+  }
+  if (question?.enabled && question.useOwnQuestions && !question.ownQuestions.length) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["community", "dailyQuestion", "ownQuestions"], message: "Scrie cel puțin o întrebare proprie sau folosește lista Oracolului." });
+  }
   if (settings.prophecy.daily.enabled && !settings.prophecy.daily.channelId) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["prophecy", "daily", "channelId"], message: "Alege canalul profeției zilei." });
   }

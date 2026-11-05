@@ -32,7 +32,14 @@ export interface OracleSettings {
     /** One prophecy for the whole server, posted every day at the chosen hour. */
     daily: { enabled: boolean; channelId: string; hour: number; timeZone: string };
   };
+  community: {
+    /** One question for the whole server, posted every day at the chosen hour. */
+    dailyQuestion: { enabled: boolean; channelId: string; hour: number; timeZone: string; useOwnQuestions: boolean; ownQuestions: string[] };
+  };
 }
+
+export const MAX_OWN_QUESTIONS = 30;
+export const MAX_QUESTION_LENGTH = 300;
 
 export const MAX_ORACLE_CHANNELS = 50;
 
@@ -46,6 +53,7 @@ export const DEFAULT_ORACLE_SETTINGS: OracleSettings = {
   enabled: true,
   chat: { channelIds: [], replyToReplies: true, tone: "implicit", length: "mediu", cooldownSeconds: defaultCooldownSeconds() },
   prophecy: { commandEnabled: true, dailyLimit: 10, daily: { enabled: false, channelId: "", hour: 9, timeZone: "Europe/Bucharest" } },
+  community: { dailyQuestion: { enabled: false, channelId: "", hour: 18, timeZone: "Europe/Bucharest", useOwnQuestions: false, ownQuestions: [] } },
 };
 
 const isSnowflake = (value: unknown): value is string => typeof value === "string" && /^\d{5,25}$/.test(value);
@@ -70,6 +78,8 @@ export function normalizeOracleSettings(value: unknown): OracleSettings {
   const prophecy = (raw.prophecy && typeof raw.prophecy === "object" ? raw.prophecy : {}) as Record<string, any>;
   const daily = (prophecy.daily && typeof prophecy.daily === "object" ? prophecy.daily : {}) as Record<string, unknown>;
   const defaults = DEFAULT_ORACLE_SETTINGS;
+  const community = (raw.community && typeof raw.community === "object" ? raw.community : {}) as Record<string, any>;
+  const question = (community.dailyQuestion && typeof community.dailyQuestion === "object" ? community.dailyQuestion : {}) as Record<string, unknown>;
   return {
     enabled: raw.enabled !== false,
     chat: {
@@ -87,6 +97,19 @@ export function normalizeOracleSettings(value: unknown): OracleSettings {
         channelId: isSnowflake(daily.channelId) ? daily.channelId : "",
         hour: integer(daily.hour, defaults.prophecy.daily.hour, 0, 23),
         timeZone: isValidTimeZone(daily.timeZone) ? daily.timeZone : defaults.prophecy.daily.timeZone,
+      },
+    },
+    community: {
+      dailyQuestion: {
+        enabled: question.enabled === true,
+        channelId: isSnowflake(question.channelId) ? question.channelId : "",
+        hour: integer(question.hour, defaults.community.dailyQuestion.hour, 0, 23),
+        timeZone: isValidTimeZone(question.timeZone) ? question.timeZone : defaults.community.dailyQuestion.timeZone,
+        useOwnQuestions: question.useOwnQuestions === true,
+        ownQuestions: Array.isArray(question.ownQuestions)
+          ? question.ownQuestions.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean)
+              .map((item) => item.slice(0, MAX_QUESTION_LENGTH)).slice(0, MAX_OWN_QUESTIONS)
+          : [],
       },
     },
   };
