@@ -17,6 +17,7 @@ import { logger } from "../../lib/logger";
 import { buildActivityLogPresentation, renderMemberActivityTemplate } from "./activity-log-presentation";
 import { ACTIVITY_LOG_TEMPLATES, activityLogTemplateKey } from "../../moderation/activity-log-template-definitions";
 import { renderActivityLogTemplate } from "./activity-log-templates";
+import { activityStyle, categoryEmoji } from "./activity-log-style";
 import { describeMemberActions, planEventRuleActions, type RuleActionPlan } from "./rule-actions";
 
 export type ModerationEventActionInput = {
@@ -312,8 +313,9 @@ function activityCategory(eventType: string, detail: Record<string, unknown>): A
   const normalized = eventType.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLocaleLowerCase();
   if (normalized.startsWith("discord.message_")) return "messages";
   if (isMemberRoleChange(eventType, detail)) return "roles";
-  if (normalized.startsWith("discord.member_")) return "members";
-  if (normalized.startsWith("discord.channel_")) return "channels";
+  if (normalized.startsWith("discord.member_") || normalized.startsWith("discord.invite_")) return "members";
+  if (normalized.startsWith("discord.guild_ban_")) return "moderation";
+  if (/^discord\.(channel_|thread_|emoji_|guild_update$)/.test(normalized)) return "channels";
   if (normalized.startsWith("discord.guild_role_")) return "roles";
   if (normalized.startsWith("discord.voice_")) return "voice";
   if (normalized.startsWith("action.")) return "moderation";
@@ -413,16 +415,13 @@ export async function deliverActivityLog(
       || normalizedEventType === "discord.message_bulk_delete";
     const detailsWrittenInline = /\{details\}/i.test(customDescription)
       || (isMessageLog && /\{(?:before|after|content)\}/i.test(customDescription));
+    const style = activityStyle(normalizedEventType, category);
+    const usesCustomTitle = Boolean(customTemplate?.title.trim() || memberTemplates?.title.trim());
     const embed = new EmbedBuilder()
-      .setColor(
-        normalizedEventType === "discord.member_join" ? 0x36a878 :
-          normalizedEventType === "discord.member_leave" ? 0xd95050 :
-            category === "security" ? 0xd94a2b :
-          category === "moderation" ? 0xc38b3b :
-            category === "messages" ? 0xd46a3c : 0x5865f2,
-      )
-      .setTitle(title)
-      .setFooter({ text: `Jurnal de activitate · ${ACTIVITY_CATEGORY_LABELS[category]}` })
+      .setColor(style.color)
+      .setAuthor({ name: guild.name, ...(guild.iconURL?.() ? { iconURL: guild.iconURL()! } : {}) })
+      .setTitle(usesCustomTitle || title.startsWith(style.emoji) ? title : `${style.emoji} ${title}`.slice(0, 256))
+      .setFooter({ text: `${categoryEmoji(category)} Jurnal · ${ACTIVITY_CATEGORY_LABELS[category]}` })
       .setTimestamp();
     if (description) embed.setDescription(description);
     if (presentation.thumbnailUrl) embed.setThumbnail(presentation.thumbnailUrl);
@@ -1144,4 +1143,70 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
         video: newState.selfVideo,
       }), voiceDisplayDetail);
   }, newState.guild.id));
+
+  // Ce nu se vedea până acum în jurnale: banurile date direct din Discord, invitațiile, firele, emoji-urile și schimbările serverului.
+  const extra = (event: string, auditAction: AuditLogEvent, eventType: string, targetType: string, guild: Guild, targetId: string,
+    standard: Record<string, unknown>, options: { skipBotActor?: boolean } = {}) => safely(event, async () => {
+    const config = await helpers.getConfig(guild.id);
+    if (!config.activityLog.enabled) return;
+    const actor = await findAuditActor(guild, config, auditAction, targetId);
+    // The bot's own bans are already logged as moderation actions.
+    if (options.skipBotActor && actor?.bot && actor.id === guild.client.user?.id) return;
+    await recordAudit(helpers, config, guild, eventType, targetType, targetId, auditDetail(config, actor, standard), standard);
+  }, guild.id);
+
+  client.on(Events.GuildBanAdd, (ban) => extra(Events.GuildBanAdd, AuditLogEvent.MemberBanAdd, "discord.guild_ban_add", "member", ban.guild, ban.user.id,
+    { memberName: ban.user.username, banReason: ban.reason ?? undefined }, { skipBotActor: true }));
+  client.on(Events.GuildBanRemove, (ban) => extra(Events.GuildBanRemove, AuditLogEvent.MemberBanRemove, "discord.guild_ban_remove", "member", ban.guild, ban.user.id,
+    { memberName: ban.user.username }, { skipBotActor: true }));
+  client.on(Events.InviteCreate, (invite) => {
+    if (!invite.guild || !("id" in invite.guild)) return;
+    void extra(Events.InviteCreate, AuditLogEvent.InviteCreate, "discord.invite_create", "invite", invite.guild as Guild, invite.code, {
+      inviteCode: invite.code, inviteChannelName: invite.channel?.name, maxUses: invite.maxUses ?? 0,
+      expiresInMinutes: invite.maxAge ? Math.round(invite.maxAge / 60) : 0, temporary: invite.temporary === true,
+      inviterId: invite.inviter?.id,
+    });
+  });
+  client.on(Events.InviteDelete, (invite) => {
+    if (!invite.guild || !("id" in invite.guild)) return;
+    void extra(Events.InviteDelete, AuditLogEvent.InviteDelete, "discord.invite_delete", "invite", invite.guild as Guild, invite.code, {
+      inviteCode: invite.code, inviteChannelName: invite.channel?.name,
+    });
+  });
+  client.on(Events.ThreadCreate, (thread, newlyCreated) => {
+    if (!newlyCreated) return;
+    void extra(Events.ThreadCreate, AuditLogEvent.ThreadCreate, "discord.thread_create", "thread", thread.guild, thread.id, {
+      threadName: thread.name, parentName: thread.parent?.name, channelId: thread.id,
+    });
+  });
+  client.on(Events.ThreadUpdate, (before, thread) => {
+    const changes: Record<string, unknown> = {};
+    if (before.name !== thread.name) changes.name = { from: before.name, to: thread.name };
+    if (before.archived !== thread.archived) changes.archived = { from: before.archived, to: thread.archived };
+    if (before.locked !== thread.locked) changes.locked = { from: before.locked, to: thread.locked };
+    if (!Object.keys(changes).length) return;
+    void extra(Events.ThreadUpdate, AuditLogEvent.ThreadUpdate, "discord.thread_update", "thread", thread.guild, thread.id, {
+      threadName: thread.name, parentName: thread.parent?.name, threadChanges: changes, channelId: thread.id,
+    });
+  });
+  client.on(Events.ThreadDelete, (thread) => extra(Events.ThreadDelete, AuditLogEvent.ThreadDelete, "discord.thread_delete", "thread", thread.guild, thread.id,
+    { threadName: thread.name, parentName: thread.parent?.name }));
+  client.on(Events.GuildEmojiCreate, (emoji) => extra(Events.GuildEmojiCreate, AuditLogEvent.EmojiCreate, "discord.emoji_create", "emoji", emoji.guild, emoji.id,
+    { emojiName: emoji.name ?? "emoji", emojiUrl: emoji.imageURL?.() }));
+  client.on(Events.GuildEmojiUpdate, (before, emoji) => {
+    if (before.name === emoji.name) return;
+    void extra(Events.GuildEmojiUpdate, AuditLogEvent.EmojiUpdate, "discord.emoji_update", "emoji", emoji.guild, emoji.id,
+      { emojiName: emoji.name ?? "emoji", oldEmojiName: before.name ?? undefined, emojiUrl: emoji.imageURL?.() });
+  });
+  client.on(Events.GuildEmojiDelete, (emoji) => extra(Events.GuildEmojiDelete, AuditLogEvent.EmojiDelete, "discord.emoji_delete", "emoji", emoji.guild, emoji.id,
+    { emojiName: emoji.name ?? "emoji" }));
+  client.on(Events.GuildUpdate, (before, guild) => {
+    const changes: Record<string, unknown> = {};
+    if (before.name !== guild.name) changes.name = { from: before.name, to: guild.name };
+    if (before.icon !== guild.icon) changes.icon = { from: before.icon ? "avea o poză" : "fără poză", to: guild.icon ? "poză nouă" : "fără poză" };
+    if (before.description !== guild.description) changes.description = { from: before.description ?? "—", to: guild.description ?? "—" };
+    if (before.verificationLevel !== guild.verificationLevel) changes.verificationLevel = { from: before.verificationLevel, to: guild.verificationLevel };
+    if (!Object.keys(changes).length) return;
+    void extra(Events.GuildUpdate, AuditLogEvent.GuildUpdate, "discord.guild_update", "guild", guild, guild.id, { serverChanges: changes, iconUrl: guild.iconURL?.() ?? undefined });
+  });
 }

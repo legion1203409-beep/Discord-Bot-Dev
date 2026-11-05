@@ -4909,6 +4909,8 @@ export async function startBot(onReady?: () => void): Promise<void> {
     GatewayIntentBits.GuildInvites,
     // Bans and unbans (not privileged): the ban evasion check remembers banned accounts.
     GatewayIntentBits.GuildModeration,
+    // Emoji adăugate, redenumite sau șterse, pentru jurnalul de canale (nu e privilegiat).
+    GatewayIntentBits.GuildExpressions,
   ];
   // GuildMembers, GuildPresences and MessageContent are all privileged. Keep the
   // bot online when the portal toggles are absent rather than requesting any one

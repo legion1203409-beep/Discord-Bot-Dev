@@ -438,6 +438,99 @@ function messageSamples(detail: Record<string, unknown>): string {
   return `${samples.join("\n\n")}${suffix}`.slice(0, 1_024);
 }
 
+const inlineField = (name: string, value: string | null | undefined): ActivityLogEmbedField[] =>
+  value ? [{ name, value: value.slice(0, 1_024), inline: true }] : [];
+
+const textOf = (value: unknown): string | null => (typeof value === "string" && value.trim() ? value.trim() : null);
+
+function changeLines(value: unknown): string {
+  if (!isRecord(value)) return "";
+  const labels: Record<string, string> = {
+    name: "Nume", archived: "Arhivat", locked: "Blocat", icon: "Poză", description: "Descriere", verificationLevel: "Nivel de verificare",
+  };
+  return Object.entries(value).map(([key, change]) => {
+    const from = isRecord(change) ? String(change.from ?? "—") : "—";
+    const to = isRecord(change) ? String(change.to ?? "—") : String(change);
+    return `**${labels[key] ?? key}:** ${from.slice(0, 200)} → ${to.slice(0, 200)}`;
+  }).join("\n");
+}
+
+/** The new events (ban, invite, thread, emoji, server): a sentence and tidy side-by-side fields instead of a list of raw details. */
+function richEventPresentation(
+  normalized: string, targetId: string, detail: Record<string, unknown>, actor: string,
+): ActivityLogPresentation | null {
+  const by = inlineField("Făcut de", actor);
+  switch (normalized) {
+    case "discord.guild_ban_add":
+    case "discord.guild_ban_remove": {
+      const banned = normalized === "discord.guild_ban_add";
+      const name = textOf(detail.memberName);
+      return {
+        description: banned ? "Un membru a primit ban direct din Discord." : "Un ban a fost ridicat direct din Discord.",
+        fields: [
+          ...inlineField(banned ? "Membru banat" : "Membru debanat", `<@${targetId}>${name ? ` · \`${name}\`` : ""}`),
+          ...by,
+          ...(banned ? inlineField("Motiv", textOf(detail.banReason) ?? "_nespecificat_") : []),
+        ],
+      };
+    }
+    case "discord.invite_create":
+    case "discord.invite_delete": {
+      const created = normalized === "discord.invite_create";
+      const maxUses = typeof detail.maxUses === "number" && detail.maxUses > 0 ? `${detail.maxUses} folosiri` : "nelimitat";
+      const minutes = typeof detail.expiresInMinutes === "number" && detail.expiresInMinutes > 0 ? `${detail.expiresInMinutes} min` : "fără expirare";
+      return {
+        description: created ? "O invitație nouă a fost creată." : "O invitație a fost ștearsă.",
+        fields: [
+          ...inlineField("Cod", `\`${targetId}\``),
+          ...inlineField("Canal", textOf(detail.inviteChannelName) ? `#${textOf(detail.inviteChannelName)}` : null),
+          ...by,
+          ...(created ? [...inlineField("Limită", maxUses), ...inlineField("Expiră", minutes), ...(detail.temporary === true ? inlineField("Tip", "Membership temporar") : [])] : []),
+        ],
+      };
+    }
+    case "discord.thread_create":
+    case "discord.thread_update":
+    case "discord.thread_delete": {
+      const verb = normalized.endsWith("create") ? "creat" : normalized.endsWith("update") ? "actualizat" : "șters";
+      const fields = [
+        ...inlineField("Fir", normalized.endsWith("delete") ? textOf(detail.threadName) : `<#${targetId}>`),
+        ...inlineField("În canalul", textOf(detail.parentName) ? `#${textOf(detail.parentName)}` : null),
+        ...by,
+      ];
+      const changes = changeLines(detail.threadChanges);
+      if (changes) fields.push({ name: "Modificări", value: changes.slice(0, 1_024), inline: false });
+      return { description: `Un fir a fost ${verb}.`, fields };
+    }
+    case "discord.emoji_create":
+    case "discord.emoji_update":
+    case "discord.emoji_delete": {
+      const verb = normalized.endsWith("create") ? "adăugat" : normalized.endsWith("update") ? "redenumit" : "șters";
+      const url = textOf(detail.emojiUrl);
+      return {
+        description: `Un emoji a fost ${verb}.`,
+        fields: [
+          ...inlineField("Emoji", `\`:${textOf(detail.emojiName) ?? "emoji"}:\``),
+          ...(textOf(detail.oldEmojiName) ? inlineField("Înainte", `\`:${textOf(detail.oldEmojiName)}:\``) : []),
+          ...by,
+        ],
+        ...(url && /^https:\/\/cdn\.discordapp\.com\//.test(url) && !normalized.endsWith("delete") ? { thumbnailUrl: url } : {}),
+      };
+    }
+    case "discord.guild_update": {
+      const changes = changeLines(detail.serverChanges);
+      const icon = textOf(detail.iconUrl);
+      return {
+        description: "Setările serverului s-au schimbat.",
+        fields: [...by, ...(changes ? [{ name: "Modificări", value: changes.slice(0, 1_024), inline: false }] : [])],
+        ...(icon && /^https:\/\/cdn\.discordapp\.com\//.test(icon) ? { thumbnailUrl: icon } : {}),
+      };
+    }
+    default:
+      return null;
+  }
+}
+
 export function buildActivityLogPresentation(
   eventType: string,
   targetType: string,
@@ -547,6 +640,9 @@ export function buildActivityLogPresentation(
       thumbnailUrl: safeDiscordAvatarUrl(detail.memberAvatarUrl) ?? undefined,
     };
   }
+
+  const rich = richEventPresentation(normalized, targetId, detail, actor);
+  if (rich) return rich;
 
   addField("Actor", actor);
   const target = targetField(targetType, targetId, detail);
