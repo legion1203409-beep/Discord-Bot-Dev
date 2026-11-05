@@ -11,6 +11,8 @@ export type ActivityLogPresentation = {
   fields: ActivityLogEmbedField[];
   thumbnailUrl?: string;
   imageUrl?: string;
+  /** More pictures of the same message (up to 3), shown with the first one as a gallery at the bottom. */
+  galleryUrls?: string[];
 };
 
 const snowflakePattern = /^\d{5,25}$/;
@@ -409,16 +411,32 @@ function deletedMessages(detail: Record<string, unknown>): Record<string, unknow
     : [];
 }
 
-function deletedMessageImageUrl(detail: Record<string, unknown>): string | undefined {
+/** The pictures of the deleted message(s), at most four (Discord shows four together at the bottom). */
+function deletedMessageImageUrls(detail: Record<string, unknown>): string[] {
+  const urls: string[] = [];
   for (const message of deletedMessages(detail)) {
     if (!Array.isArray(message.imageAttachments)) continue;
     for (const attachment of message.imageAttachments) {
       if (!isRecord(attachment)) continue;
       const imageUrl = safeDiscordAttachmentImageUrl(attachment.url, attachment.contentType);
-      if (imageUrl) return imageUrl;
+      if (imageUrl && !urls.includes(imageUrl)) urls.push(imageUrl);
+      if (urls.length === 4) return urls;
     }
   }
-  return undefined;
+  return urls;
+}
+
+/** The pictures still on an edited message, at most four. */
+function editedMessageImageUrls(detail: Record<string, unknown>): string[] {
+  if (!Array.isArray(detail.displayImageAttachments)) return [];
+  return (detail.displayImageAttachments as unknown[])
+    .map((attachment) => isRecord(attachment) ? safeDiscordAttachmentImageUrl(attachment.url, attachment.contentType) : null)
+    .filter((url): url is string => Boolean(url))
+    .slice(0, 4);
+}
+
+function pictures(urls: string[]): Pick<ActivityLogPresentation, "imageUrl" | "galleryUrls"> {
+  return urls.length ? { imageUrl: urls[0], ...(urls.length > 1 ? { galleryUrls: urls.slice(1) } : {}) } : {};
 }
 
 function messageSamples(detail: Record<string, unknown>): string {
@@ -588,7 +606,7 @@ export function buildActivityLogPresentation(
       : detail.displayContentChanged === false
         ? "Mesajul a fost actualizat fără schimbarea textului."
         : "A fost înregistrată o editare de mesaj.";
-    return { description, fields };
+    return { description, fields, ...pictures(editedMessageImageUrls(detail)) };
   }
 
   if (normalized === "discord.message_delete" || normalized === "discord.message_bulk_delete") {
@@ -626,7 +644,7 @@ export function buildActivityLogPresentation(
     const description = normalized === "discord.message_bulk_delete"
       ? `${count} ${count === 1 ? "mesaj a fost șters" : "mesaje au fost șterse"}.`
       : "Un mesaj a fost șters.";
-    return { description, fields, imageUrl: deletedMessageImageUrl(detail) };
+    return { description, fields, ...pictures(deletedMessageImageUrls(detail)) };
   }
 
   if (normalized === "discord.member_join" || normalized === "discord.member_leave") {

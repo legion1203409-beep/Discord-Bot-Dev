@@ -98,3 +98,64 @@ describe("mesaj șters: poze și alte atașamente", () => {
     expect(embed.fields.find((f: any) => f.name === "Linkuri").value).toContain("exemplu.ro/pagina");
   });
 });
+
+describe("pozele jos, în mesaj, până la 4 împreună", () => {
+  const cdn = (name: string) => `https://cdn.discordapp.com/attachments/111111/222222/${name}`;
+  const logGuild = (send: ReturnType<typeof vi.fn>) => ({
+    id: "999999", name: "Regatul", client: { users: { cache: new Map() } },
+    channels: { cache: new Map([["123456", { guildId: "999999", isTextBased: () => true, send }]]) },
+  }) as unknown as Guild;
+  const messagesConfig = () => {
+    const config = structuredClone(defaultModerationConfig);
+    config.activityLog.enabled = true;
+    config.activityLog.categories.messages = true;
+    config.activityLog.channelIds.messages = "123456";
+    return config;
+  };
+
+  it("un mesaj șters cu trei poze le arată pe toate trei jos, în același mesaj", async () => {
+    const send = vi.fn(async (_payload: unknown) => undefined);
+    await deliverActivityLog(logGuild(send), messagesConfig(), "discord.message_delete", "message", "1", {
+      actorVerified: false, channelId: "888888", displayMessageAuthorId: "555",
+      displayDeletedMessages: [{ authorId: "555", content: "", attachmentCount: 3, imageAttachments: ["a.png", "b.jpg", "c.webp"].map((name) => ({ url: cdn(name), contentType: null })) }],
+    });
+    const embeds = (send.mock.calls[0]![0] as any).embeds.map((embed: any) => embed.toJSON());
+    expect(embeds).toHaveLength(3);
+    expect(embeds.map((embed: any) => embed.image.url)).toEqual([cdn("a.png"), cdn("b.jpg"), cdn("c.webp")]);
+    // Discord shows them together only when they share the same link.
+    expect(new Set(embeds.map((embed: any) => embed.url))).toEqual(new Set(["https://discord.com/channels/999999/888888"]));
+    expect(embeds[0].title).toBe("🗑️ Mesaj șters");
+  });
+
+  it("o singură poză nu schimbă nimic altceva (fără link pe titlu)", async () => {
+    const send = vi.fn(async (_payload: unknown) => undefined);
+    await deliverActivityLog(logGuild(send), messagesConfig(), "discord.message_delete", "message", "1", {
+      actorVerified: false, channelId: "888888", displayMessageAuthorId: "555",
+      displayDeletedMessages: [{ authorId: "555", content: "x", attachmentCount: 1, imageAttachments: [{ url: cdn("a.png"), contentType: "image/png" }] }],
+    });
+    const embeds = (send.mock.calls[0]![0] as any).embeds.map((embed: any) => embed.toJSON());
+    expect(embeds).toHaveLength(1);
+    expect(embeds[0].url).toBeUndefined();
+  });
+
+  it("la un mesaj editat se văd și pozele lui", async () => {
+    const send = vi.fn(async (_payload: unknown) => undefined);
+    await deliverActivityLog(logGuild(send), messagesConfig(), "discord.message_update", "message", "1", {
+      actorVerified: false, channelId: "888888", displayMessageAuthorId: "555",
+      displayBeforeContent: "vechi", displayAfterContent: "nou", displayContentChanged: true,
+      displayImageAttachments: [{ url: cdn("poza.png"), contentType: "image/png" }, { url: "https://evil.example/x.png", contentType: "image/png" }],
+    });
+    const embeds = (send.mock.calls[0]![0] as any).embeds.map((embed: any) => embed.toJSON());
+    expect(embeds).toHaveLength(1);
+    expect(embeds[0].image.url).toBe(cdn("poza.png"));
+  });
+
+  it("la scam, toate pozele postate (până la 4) apar jos", async () => {
+    const result = await buildAutomodEmbed({
+      ...base, attachments: ["1.png", "2.png", "3.png", "4.png", "5.png", "setup.exe"].map((name) => ({ name, url: cdn(name), contentType: name.endsWith(".png") ? "image/png" : null })),
+    });
+    expect(result.embed.toJSON().image?.url).toBe(cdn("1.png"));
+    expect(result.extraEmbeds.map((embed) => embed.toJSON().image?.url)).toEqual([cdn("2.png"), cdn("3.png"), cdn("4.png")]);
+    expect(new Set([result.embed, ...result.extraEmbeds].map((embed) => embed.toJSON().url))).toEqual(new Set(["https://discord.com/channels/999/123"]));
+  });
+});

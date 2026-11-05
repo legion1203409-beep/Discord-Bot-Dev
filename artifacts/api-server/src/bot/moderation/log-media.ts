@@ -41,6 +41,25 @@ export async function fetchLogImage(url: string, fileName = "poza"): Promise<Att
   }
 }
 
+/**
+ * The pictures for a log: each one taken as a file when it can be (then shown as attachment://…), otherwise
+ * shown from its link. Returns the files to send and, in order, what each embed image points at.
+ */
+export async function logPictures(urls: string[], baseName = "mesaj"): Promise<{ files: AttachmentBuilder[]; images: string[] }> {
+  const files: AttachmentBuilder[] = [];
+  const images: string[] = [];
+  for (const [index, url] of urls.slice(0, 4).entries()) {
+    const file = isDiscordCdnUrl(url) ? await fetchLogImage(url, `${baseName}-${index + 1}`) : null;
+    if (file) {
+      files.push(file);
+      images.push(`attachment://${file.name}`);
+    } else {
+      images.push(url);
+    }
+  }
+  return { files, images };
+}
+
 export type AttachmentInfo = { name: string; url?: string; size?: number | null; contentType?: string | null };
 
 const KINDS: Array<[RegExp, string, string]> = [

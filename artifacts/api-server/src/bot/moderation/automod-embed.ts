@@ -6,7 +6,7 @@
  */
 import { EmbedBuilder, type AttachmentBuilder, type Guild } from "discord.js";
 import type { Detection } from "./detectors";
-import { describeAttachment, fetchLogImage, isDiscordCdnUrl, type AttachmentInfo } from "./log-media";
+import { describeAttachment, isDiscordCdnUrl, logPictures, type AttachmentInfo } from "./log-media";
 
 const KIND_STYLE: Record<string, { emoji: string; title: string; color: number }> = {
   scam: { emoji: "🚨", title: "Scam oprit", color: 0xd94a2b },
@@ -44,7 +44,7 @@ export function quoteBlock(value: string, max = 1_000): string {
   return lines.length <= max ? lines : `${lines.slice(0, max - 20).trimEnd()}\n_(text trunchiat)_`;
 }
 
-export async function buildAutomodEmbed(input: AutomodEmbedInput): Promise<{ embed: EmbedBuilder; files: AttachmentBuilder[] }> {
+export async function buildAutomodEmbed(input: AutomodEmbedInput): Promise<{ embed: EmbedBuilder; files: AttachmentBuilder[]; extraEmbeds: EmbedBuilder[] }> {
   const style = KIND_STYLE[input.kind] ?? { emoji: "🛡️", title: "Mesaj oprit", color: 0xc38b3b };
   const member = input.guild.members.cache.get(input.userId);
   const embed = new EmbedBuilder()
@@ -70,17 +70,21 @@ export async function buildAutomodEmbed(input: AutomodEmbedInput): Promise<{ emb
     embed.addFields({ name: "🔎 Text găsit în imagine", value: quoteBlock(input.extractedText, 700) });
   }
 
-  // The first picture goes in the log itself: kept as a file when it can be taken, otherwise shown from its link.
-  const files: AttachmentBuilder[] = [];
-  const picture = input.attachments.find((item) => isDiscordCdnUrl(item.url) && (/^image\//i.test(item.contentType ?? "") || /\.(?:png|jpe?g|gif|webp)$/i.test(item.name)));
-  if (picture?.url) {
-    const file = await fetchLogImage(picture.url, "mesaj");
-    if (file) {
-      files.push(file);
-      embed.setImage(`attachment://${file.name}`);
-    } else {
-      embed.setImage(picture.url);
+  // The pictures go at the bottom of the log, up to four together (Discord joins embeds that share a link),
+  // kept as files when they can be taken, otherwise shown from their links.
+  const pictureUrls = input.attachments
+    .filter((item) => isDiscordCdnUrl(item.url) && (/^image\//i.test(item.contentType ?? "") || /\.(?:png|jpe?g|gif|webp)$/i.test(item.name)))
+    .map((item) => item.url!)
+    .slice(0, 4);
+  const { files, images } = await logPictures(pictureUrls);
+  const extraEmbeds: EmbedBuilder[] = [];
+  if (images.length) {
+    embed.setImage(images[0]!);
+    if (images.length > 1) {
+      const anchor = `https://discord.com/channels/${input.guild.id}/${input.channelId}`;
+      embed.setURL(anchor);
+      for (const image of images.slice(1)) extraEmbeds.push(new EmbedBuilder().setURL(anchor).setImage(image));
     }
   }
-  return { embed, files };
+  return { embed, files, extraEmbeds };
 }

@@ -632,7 +632,7 @@ export type ModerationNotifyOptions = {
   /** Mention the staff roles from the settings in this message. */
   pingStaff?: boolean;
   /** A ready-made embed (with the files it shows) used instead of the template embed. */
-  rich?: { embed: EmbedBuilder; files?: AttachmentBuilder[] };
+  rich?: { embed: EmbedBuilder; files?: AttachmentBuilder[]; extraEmbeds?: EmbedBuilder[] };
 };
 
 /** The staff roles that "Anunță staff-ul" mentions: the configured ones, no duplicates, a sane maximum. */
@@ -663,7 +663,7 @@ export async function notify(
   const allowedMentions = pingRoles.length ? { parse: [] as never[], roles: pingRoles } : { parse: [] as never[] };
   const mentions = pingRoles.map((roleId) => `<@&${roleId}>`).join(" ");
   await channel.send(embed
-    ? { ...(mentions ? { content: mentions } : {}), embeds: [embed], ...(options?.rich?.files?.length ? { files: options.rich.files } : {}), allowedMentions }
+    ? { ...(mentions ? { content: mentions } : {}), embeds: [embed, ...(options?.rich?.extraEmbeds ?? [])], ...(options?.rich?.files?.length ? { files: options.rich.files } : {}), allowedMentions }
     : { content: `${mentions ? `${mentions}\n` : ""}**${title}**\n${description}`.slice(0, 2_000), allowedMentions },
   ).catch((error) => logger.warn({ error, guildId: guild.id, channelId: id }, "Moderation notification could not be sent"));
 }

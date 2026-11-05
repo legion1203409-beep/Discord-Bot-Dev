@@ -18,7 +18,7 @@ import { buildActivityLogPresentation, renderMemberActivityTemplate } from "./ac
 import { ACTIVITY_LOG_TEMPLATES, activityLogTemplateKey } from "../../moderation/activity-log-template-definitions";
 import { renderActivityLogTemplate } from "./activity-log-templates";
 import { activityStyle, categoryEmoji } from "./activity-log-style";
-import { fetchLogImage, isDiscordCdnUrl } from "./log-media";
+import { logPictures } from "./log-media";
 import { describeMemberActions, planEventRuleActions, type RuleActionPlan } from "./rule-actions";
 
 export type ModerationEventActionInput = {
@@ -439,21 +439,24 @@ export async function deliverActivityLog(
       ? guild.client?.users?.cache?.get(detail.displayMessageAuthorId) : undefined;
     const thumbnail = presentation.thumbnailUrl ?? messageAuthor?.displayAvatarURL?.();
     if (thumbnail) embed.setThumbnail(thumbnail);
-    // The picture is kept inside the log (a deleted message's link stops working after a while); its link is the fallback.
-    const files: Array<NonNullable<Awaited<ReturnType<typeof fetchLogImage>>>> = [];
-    if (presentation.imageUrl) {
-      const file = isDiscordCdnUrl(presentation.imageUrl) ? await fetchLogImage(presentation.imageUrl, "mesaj") : null;
-      if (file) {
-        files.push(file);
-        embed.setImage(`attachment://${file.name}`);
-      } else {
-        embed.setImage(presentation.imageUrl);
+    // The pictures go at the bottom of the log, kept inside it as files (a deleted message's links stop working
+    // after a while), or shown from their links when they cannot be taken. Up to four show together as a gallery.
+    const pictureUrls = [presentation.imageUrl, ...(presentation.galleryUrls ?? [])].filter((url): url is string => Boolean(url)).slice(0, 4);
+    const { files, images } = await logPictures(pictureUrls);
+    const extraEmbeds: EmbedBuilder[] = [];
+    if (images.length) {
+      embed.setImage(images[0]!);
+      if (images.length > 1) {
+        // Discord joins embeds that share a link into one message with several pictures.
+        const anchor = `https://discord.com/channels/${guild.id}/${typeof detail.channelId === "string" && /^\d{5,25}$/.test(detail.channelId) ? detail.channelId : ""}`.replace(/\/$/, "");
+        embed.setURL(anchor);
+        for (const image of images.slice(1)) extraEmbeds.push(new EmbedBuilder().setURL(anchor).setImage(image));
       }
     }
     if (!customDescription || (isMessageLog && !detailsWrittenInline)) {
       embed.addFields(...presentation.fields);
     }
-    await channel.send({ embeds: [embed], ...(files.length ? { files } : {}), allowedMentions: { parse: [] } });
+    await channel.send({ embeds: [embed, ...extraEmbeds], ...(files.length ? { files } : {}), allowedMentions: { parse: [] } });
   } catch (error) {
     // Logging must never block moderation/event processing. Setup failures are
     // surfaced by the configuration route; later permission/channel changes
@@ -859,6 +862,8 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
         displayBeforeContent: typeof oldMessage.content === "string" ? oldMessage.content : null,
         displayAfterContent: typeof message.content === "string" ? message.content : null,
         displayContentChanged: contentChanged,
+        displayImageAttachments: [...(message.attachments?.values() ?? [])].slice(0, 4)
+          .map((attachment) => ({ url: attachment.url, contentType: attachment.contentType })),
       });
     if (!config.protection.enabled) return;
     if (isExcludedChannel(config, message.channelId) || isExcludedMember(config, message.member)) return;
