@@ -191,7 +191,7 @@ describe("moderation configuration defaults", () => {
     expect(enabled.activityLog.enabled).toBe(true);
     expect(enabled.activityLog.roleIds).toEqual([]);
     expect(() => ModerationConfigSchema.parse({
-      activityLog: { enabled: true, roleIds: ["123456789012345678"], categories: { messages: false, members: false, channels: false, roles: false, voice: false, moderation: false, security: false } },
+      activityLog: { enabled: true, roleIds: ["123456789012345678"], categories: { messages: false, members: false, channels: false, roles: false, voice: false, moderation: false, security: false, invites: false } },
     })).toThrow(/cel puțin o categorie/i);
   });
 

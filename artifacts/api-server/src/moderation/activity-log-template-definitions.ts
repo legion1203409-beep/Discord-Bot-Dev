@@ -7,6 +7,7 @@ export const ACTIVITY_LOG_GROUPS = {
   voice: "Loguri de voce",
   moderation: "Loguri de moderare",
   security: "Loguri de securitate",
+  invites: "Loguri de invitații",
 } as const;
 
 export type ActivityLogGroup = keyof typeof ACTIVITY_LOG_GROUPS;
@@ -29,8 +30,8 @@ export const ACTIVITY_LOG_TEMPLATES = [
   { key: "guild_role_delete", event: "discord.guild_role_delete", group: "roles", title: "Rol șters" },
   { key: "guild_ban_add", event: "discord.guild_ban_add", group: "moderation", title: "Ban dat din Discord" },
   { key: "guild_ban_remove", event: "discord.guild_ban_remove", group: "moderation", title: "Ban ridicat din Discord" },
-  { key: "invite_create", event: "discord.invite_create", group: "members", title: "Invitație creată" },
-  { key: "invite_delete", event: "discord.invite_delete", group: "members", title: "Invitație ștearsă" },
+  { key: "invite_create", event: "discord.invite_create", group: "invites", title: "Invitație creată" },
+  { key: "invite_delete", event: "discord.invite_delete", group: "invites", title: "Invitație ștearsă" },
   { key: "thread_create", event: "discord.thread_create", group: "channels", title: "Fir creat" },
   { key: "thread_update", event: "discord.thread_update", group: "channels", title: "Fir actualizat" },
   { key: "thread_delete", event: "discord.thread_delete", group: "channels", title: "Fir șters" },
@@ -67,6 +68,7 @@ export const ACTIVITY_LOG_VARIABLES = {
   voice: ["old_channel", "new_channel"],
   moderation: ["duration", "count", "error"],
   security: ["count", "error"],
+  invites: ["code", "inviter", "uses"],
 } as const;
 
 export function activityLogTemplateKey(eventType: string, detail: Record<string, unknown>): ActivityLogTemplateKey | null {

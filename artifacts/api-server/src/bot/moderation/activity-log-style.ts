@@ -30,8 +30,8 @@ const BY_EVENT: Record<string, ActivityStyle> = {
   "discord.voice_state_update": { color: VIOLET, emoji: "🎙️" },
   "discord.guild_ban_add": { color: RED, emoji: "⛔" },
   "discord.guild_ban_remove": { color: GREEN, emoji: "🕊️" },
-  "discord.invite_create": { color: GREEN, emoji: "🔗" },
-  "discord.invite_delete": { color: RED, emoji: "🔗" },
+  "discord.invite_create": { color: GREEN, emoji: "🎟️" },
+  "discord.invite_delete": { color: RED, emoji: "🎟️" },
   "discord.thread_create": { color: GREEN, emoji: "🧵" },
   "discord.thread_update": { color: GOLD, emoji: "🧵" },
   "discord.thread_delete": { color: RED, emoji: "🧵" },
@@ -49,6 +49,7 @@ const BY_CATEGORY: Record<ActivityLogCategory, ActivityStyle> = {
   voice: { color: VIOLET, emoji: "🎙️" },
   moderation: { color: 0xc38b3b, emoji: "🛡️" },
   security: { color: 0xd94a2b, emoji: "🚨" },
+  invites: { color: 0x36a878, emoji: "🎟️" },
 };
 
 /** The style of an event; an event without its own look takes its category's. */

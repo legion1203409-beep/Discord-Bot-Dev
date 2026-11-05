@@ -1491,7 +1491,7 @@ test.describe("authenticated moderation console", () => {
     await chooseFirstGuild(page);
     const logToggle = page.getByRole("switch", { name: "Activează jurnalele de activitate" });
     await logToggle.click();
-    for (const name of ["Mesaje", "Membri", "Canale", "Roluri", "Voce", "Moderare", "Securitate"]) {
+    for (const name of ["Mesaje", "Membri", "Canale", "Roluri", "Voce", "Moderare", "Securitate", "Invitații"]) {
       await page.getByRole("switch", { name, exact: true }).click();
     }
     await expect(page.getByTestId("module-activity")).toContainText("Alege cel puțin o categorie");

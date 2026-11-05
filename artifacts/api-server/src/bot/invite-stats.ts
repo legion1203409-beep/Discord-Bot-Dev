@@ -607,8 +607,16 @@ export function buildInviteJoinLogEmbed(
     inviterId: string | null;
     inviterName: string | null;
     attributionAmbiguous: boolean;
+    /** Optional extras for a richer log; older callers can leave them out. */
+    memberName?: string | null;
+    memberAvatarUrl?: string | null;
+    accountCreatedAt?: Date | null;
+    inviteUses?: number | null;
+    inviteMaxUses?: number | null;
+    guildIconUrl?: string | null;
   },
 ): EmbedBuilder {
+  const known = Boolean(data.inviterId || data.inviterName);
   const invitedBy = data.inviterId
     ? `<@${data.inviterId}>`
     : data.inviterName
@@ -616,16 +624,33 @@ export function buildInviteJoinLogEmbed(
       : data.attributionAmbiguous
         ? "Necunoscut — au intrat mai mulți membri simultan."
         : "Necunoscut — Discord nu a confirmat codul folosit.";
-  const inviteCode = data.inviteCode
-    ? `[\`${safeEmbedText(data.inviteCode, 80)}\`](<https://discord.gg/${encodeURIComponent(data.inviteCode)}>)`
-    : "Necunoscut";
+  const code = data.inviteCode ? safeEmbedText(data.inviteCode, 80) : null;
+  const inviteLink = code ? `[\`${code}\`](<https://discord.gg/${encodeURIComponent(data.inviteCode!)}>)` : "Necunoscut";
+  const uses = typeof data.inviteUses === "number"
+    ? data.inviteMaxUses ? `${data.inviteUses} din ${data.inviteMaxUses} folosiri` : `folosită de ${data.inviteUses} ${data.inviteUses === 1 ? "dată" : "ori"}`
+    : null;
 
-  return new EmbedBuilder()
-    .setColor(data.inviterId ? 0x22c55e : 0xf59e0b)
-    .setAuthor({ name: `ORACOLUL CENUȘII · INVITE LOG · ${safeEmbedText(guildName, 100)}` })
-    .setTitle("A intrat un membru nou")
-    .setDescription(`**Membru:** <@${data.memberId}>\n**Invitat de:** ${invitedBy}\n**Codul invitației:** ${inviteCode}`)
+  const embed = new EmbedBuilder()
+    .setColor(known ? 0x36a878 : 0xd8a964)
+    .setAuthor({ name: `Invitații · ${safeEmbedText(guildName, 100)}`, ...(data.guildIconUrl ? { iconURL: data.guildIconUrl } : {}) })
+    .setTitle(known ? "🎟️ Membru nou prin invitație" : "🎟️ Membru nou")
+    .setDescription(known
+      ? `<@${data.memberId}> a intrat pe server prin invitația lui ${invitedBy}${code ? ` (\`${code}\`)` : ""}.`
+      : `<@${data.memberId}> a intrat pe server. ${invitedBy}`)
+    .addFields(
+      { name: "👤 Membru", value: `<@${data.memberId}>${data.memberName ? `\n${safeEmbedText(data.memberName, 60)}` : ""}`, inline: true },
+      { name: "🤝 Invitat de", value: known ? invitedBy : "Necunoscut", inline: true },
+      { name: "🔗 Invitația", value: `${inviteLink}${uses ? `\n${uses}` : ""}`, inline: true },
+    )
+    .setFooter({ text: "🎟️ Jurnalul invitațiilor" })
     .setTimestamp(new Date());
+  if (data.accountCreatedAt) {
+    const created = Math.floor(data.accountCreatedAt.getTime() / 1_000);
+    const days = Math.max(0, Math.floor((Date.now() - data.accountCreatedAt.getTime()) / 86_400_000));
+    embed.addFields({ name: "📅 Cont creat", value: `<t:${created}:D> · ${days < 7 ? `⚠️ ${days} ${days === 1 ? "zi" : "zile"}` : `<t:${created}:R>`}`, inline: true });
+  }
+  if (data.memberAvatarUrl) embed.setThumbnail(data.memberAvatarUrl);
+  return embed;
 }
 
 async function publishInviteJoinLogs(
@@ -656,6 +681,12 @@ async function publishInviteJoinLogs(
           inviterId: invite?.inviterId ?? null,
           inviterName: invite?.inviterName ?? null,
           attributionAmbiguous,
+          memberName: member.user?.username ?? null,
+          memberAvatarUrl: member.displayAvatarURL?.() ?? null,
+          accountCreatedAt: member.user?.createdAt ?? null,
+          inviteUses: invite?.uses ?? null,
+          inviteMaxUses: invite?.maxUses ?? null,
+          guildIconUrl: guild.iconURL?.() ?? null,
         })],
         allowedMentions: { parse: [] },
       });

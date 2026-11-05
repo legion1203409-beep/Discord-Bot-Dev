@@ -4,7 +4,7 @@ import { defaultModerationConfig } from "../../../moderation/config";
 import { deliverActivityLog } from "../events";
 import { buildActivityLogPresentation } from "../activity-log-presentation";
 
-const setup = (category: "moderation" | "members" | "channels") => {
+const setup = (category: "moderation" | "members" | "channels" | "invites") => {
   const config = structuredClone(defaultModerationConfig);
   config.activityLog.enabled = true;
   config.activityLog.categories[category] = true;
@@ -28,13 +28,35 @@ describe("jurnale pentru evenimentele noi", () => {
     expect(embed.fields.every((f: any) => f.inline === true)).toBe(true);
   });
 
-  it("invitația creată merge la membri, verde, cu limita și expirarea", async () => {
-    const { config, send, guild } = setup("members");
-    await deliverActivityLog(guild, config, "discord.invite_create", "invite", "abc123", { actorVerified: false, inviteChannelName: "bun-venit", maxUses: 5, expiresInMinutes: 1440 });
+  it("invitația creată merge în canalul invitațiilor, cu link, limită și expirare", async () => {
+    const { config, send, guild } = setup("invites");
+    await deliverActivityLog(guild, config, "discord.invite_create", "invite", "abc123", {
+      actorVerified: true, actorId: "777777", inviterId: "777777", inviteCode: "abc123", inviteChannelId: "888888", maxUses: 5, expiresAt: "2026-11-06T12:00:00.000Z",
+    });
     const embed = embedOf(send);
-    expect(embed.title).toBe("🔗 Invitație creată");
+    expect(embed.title).toBe("🎟️ Invitație creată");
     expect(embed.color).toBe(0x36a878);
-    expect(embed.fields.map((f: any) => f.value)).toEqual(expect.arrayContaining(["`abc123`", "#bun-venit", "5 folosiri", "1440 min"]));
+    expect(embed.footer.text).toContain("Invitații");
+    expect(embed.description).toBe("<@777777> a creat o invitație nouă pe server.");
+    expect(embed.fields.map((f: any) => f.value)).toEqual(expect.arrayContaining([
+      "[discord.gg/abc123](https://discord.gg/abc123)", "<#888888>", "cel mult 5", `<t:${Math.floor(Date.parse("2026-11-06T12:00:00.000Z") / 1000)}:R>`,
+    ]));
+  });
+
+  it("fără canal de invitații ales, invitațiile merg tot la membri, ca înainte", async () => {
+    const { config, send, guild } = setup("members");
+    config.activityLog.categories.invites = true;
+    await deliverActivityLog(guild, config, "discord.invite_delete", "invite", "abc123", { actorVerified: false, inviteCode: "abc123", uses: 3 });
+    const embed = embedOf(send);
+    expect(embed.title).toBe("🎟️ Invitație ștearsă");
+    expect(embed.fields.find((f: any) => f.name === "🔢 Folosită").value).toBe("3 ori");
+  });
+
+  it("categoria invitațiilor oprită nu postează nimic", async () => {
+    const { config, send, guild } = setup("invites");
+    config.activityLog.categories.invites = false;
+    await deliverActivityLog(guild, config, "discord.invite_create", "invite", "abc123", { inviteCode: "abc123" });
+    expect(send).not.toHaveBeenCalled();
   });
 
   it("firele, emoji-urile și serverul merg la canale", async () => {

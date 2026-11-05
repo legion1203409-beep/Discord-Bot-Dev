@@ -479,16 +479,31 @@ function richEventPresentation(
     case "discord.invite_create":
     case "discord.invite_delete": {
       const created = normalized === "discord.invite_create";
-      const maxUses = typeof detail.maxUses === "number" && detail.maxUses > 0 ? `${detail.maxUses} folosiri` : "nelimitat";
-      const minutes = typeof detail.expiresInMinutes === "number" && detail.expiresInMinutes > 0 ? `${detail.expiresInMinutes} min` : "fără expirare";
+      const code = textOf(detail.inviteCode) ?? targetId;
+      const link = /^[a-z0-9-]{2,40}$/i.test(code) ? `[discord.gg/${code}](https://discord.gg/${code})` : `\`${code}\``;
+      const channelId = textOf(detail.inviteChannelId);
+      const channelValue = channelId && /^\d{5,25}$/.test(channelId) ? `<#${channelId}>` : textOf(detail.inviteChannelName) ? `#${textOf(detail.inviteChannelName)}` : null;
+      const inviter = textOf(detail.inviterId) && /^\d{5,25}$/.test(String(detail.inviterId)) ? `<@${detail.inviterId}>` : actor;
+      const fields = [
+        ...inlineField(created ? "🔗 Link" : "🔗 Cod", created ? link : `\`${code}\``),
+        ...inlineField("📍 Canal", channelValue),
+        ...inlineField(created ? "👤 Creată de" : "👤 Ștearsă de", created ? inviter : actor),
+      ];
+      if (created) {
+        const maxUses = typeof detail.maxUses === "number" && detail.maxUses > 0 ? detail.maxUses : 0;
+        const expiresAt = typeof detail.expiresAt === "string" ? Date.parse(detail.expiresAt) : Number.NaN;
+        const minutes = typeof detail.expiresInMinutes === "number" ? detail.expiresInMinutes : 0;
+        fields.push(
+          ...inlineField("🔢 Folosiri", maxUses ? `cel mult ${maxUses}` : "nelimitat"),
+          ...inlineField("⏳ Expiră", Number.isFinite(expiresAt) ? `<t:${Math.floor(expiresAt / 1_000)}:R>` : minutes > 0 ? `în ${minutes} min` : "niciodată"),
+          ...(detail.temporary === true ? inlineField("🕒 Tip", "Membership temporar") : []),
+        );
+      } else if (typeof detail.uses === "number") {
+        fields.push(...inlineField("🔢 Folosită", `${detail.uses} ${detail.uses === 1 ? "dată" : "ori"}`));
+      }
       return {
-        description: created ? "O invitație nouă a fost creată." : "O invitație a fost ștearsă.",
-        fields: [
-          ...inlineField("Cod", `\`${targetId}\``),
-          ...inlineField("Canal", textOf(detail.inviteChannelName) ? `#${textOf(detail.inviteChannelName)}` : null),
-          ...by,
-          ...(created ? [...inlineField("Limită", maxUses), ...inlineField("Expiră", minutes), ...(detail.temporary === true ? inlineField("Tip", "Membership temporar") : [])] : []),
-        ],
+        description: created ? `${inviter} a creat o invitație nouă pe server.` : "O invitație a fost ștearsă sau a expirat.",
+        fields,
       };
     }
     case "discord.thread_create":

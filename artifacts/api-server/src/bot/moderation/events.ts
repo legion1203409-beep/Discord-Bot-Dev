@@ -294,6 +294,7 @@ const ACTIVITY_CATEGORY_LABELS: Record<ActivityLogCategory, string> = {
   voice: "Activitate vocală",
   moderation: "Moderare",
   security: "Securitate",
+  invites: "Invitații",
 };
 
 function isMemberRoleChange(eventType: string, detail: Record<string, unknown>): boolean {
@@ -314,7 +315,8 @@ function activityCategory(eventType: string, detail: Record<string, unknown>): A
   const normalized = eventType.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLocaleLowerCase();
   if (normalized.startsWith("discord.message_")) return "messages";
   if (isMemberRoleChange(eventType, detail)) return "roles";
-  if (normalized.startsWith("discord.member_") || normalized.startsWith("discord.invite_")) return "members";
+  if (normalized.startsWith("discord.invite_")) return "invites";
+  if (normalized.startsWith("discord.member_")) return "members";
   if (normalized.startsWith("discord.guild_ban_")) return "moderation";
   if (/^discord\.(channel_|thread_|emoji_|guild_update$)/.test(normalized)) return "channels";
   if (normalized.startsWith("discord.guild_role_")) return "roles";
@@ -362,7 +364,9 @@ export async function deliverActivityLog(
 ): Promise<void> {
   const category = activityCategory(eventType, detail);
   if (!config.activityLog.enabled || !category || !config.activityLog.categories[category]) return;
-  const channelId = config.activityLog.channelIds[category];
+  // A server that has not chosen an invites channel yet keeps getting invites with the members, as before.
+  const channelId = config.activityLog.channelIds[category]
+    ?? (category === "invites" ? config.activityLog.channelIds.members : null);
   if (!channelId) return;
   try {
     const channel = guild.channels.cache.get(channelId) ?? await guild.channels.fetch(channelId);
@@ -1171,10 +1175,13 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
 
   // Ce nu se vedea până acum în jurnale: banurile date direct din Discord, invitațiile, firele, emoji-urile și schimbările serverului.
   const extra = (event: string, auditAction: AuditLogEvent, eventType: string, targetType: string, guild: Guild, targetId: string,
-    standard: Record<string, unknown>, options: { skipBotActor?: boolean } = {}) => safely(event, async () => {
+    standard: Record<string, unknown>, options: { skipBotActor?: boolean; knownActor?: { id: string; bot: boolean } | null } = {}) => safely(event, async () => {
     const config = await helpers.getConfig(guild.id);
     if (!config.activityLog.enabled) return;
-    const actor = await findAuditActor(guild, config, auditAction, targetId);
+    // Discord names who made an invite in the event itself, so the audit log is only a fallback there.
+    const actor = options.knownActor
+      ? { id: options.knownActor.id, bot: options.knownActor.bot, staff: null, verified: true }
+      : await findAuditActor(guild, config, auditAction, targetId);
     // The bot's own bans are already logged as moderation actions.
     if (options.skipBotActor && actor?.bot && actor.id === guild.client.user?.id) return;
     await recordAudit(helpers, config, guild, eventType, targetType, targetId, auditDetail(config, actor, standard), standard);
@@ -1187,15 +1194,18 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
   client.on(Events.InviteCreate, (invite) => {
     if (!invite.guild || !("id" in invite.guild)) return;
     void extra(Events.InviteCreate, AuditLogEvent.InviteCreate, "discord.invite_create", "invite", invite.guild as Guild, invite.code, {
-      inviteCode: invite.code, inviteChannelName: invite.channel?.name, maxUses: invite.maxUses ?? 0,
-      expiresInMinutes: invite.maxAge ? Math.round(invite.maxAge / 60) : 0, temporary: invite.temporary === true,
-      inviterId: invite.inviter?.id,
-    });
+      inviteCode: invite.code, inviteChannelName: invite.channel?.name, inviteChannelId: invite.channelId ?? invite.channel?.id ?? null,
+      maxUses: invite.maxUses ?? 0, uses: invite.uses ?? 0,
+      expiresInMinutes: invite.maxAge ? Math.round(invite.maxAge / 60) : 0,
+      expiresAt: invite.expiresTimestamp ? new Date(invite.expiresTimestamp).toISOString() : null,
+      temporary: invite.temporary === true, inviterId: invite.inviter?.id,
+    }, { knownActor: invite.inviter ? { id: invite.inviter.id, bot: invite.inviter.bot } : null });
   });
   client.on(Events.InviteDelete, (invite) => {
     if (!invite.guild || !("id" in invite.guild)) return;
     void extra(Events.InviteDelete, AuditLogEvent.InviteDelete, "discord.invite_delete", "invite", invite.guild as Guild, invite.code, {
-      inviteCode: invite.code, inviteChannelName: invite.channel?.name,
+      inviteCode: invite.code, inviteChannelName: invite.channel?.name, inviteChannelId: invite.channelId ?? invite.channel?.id ?? null,
+      uses: typeof invite.uses === "number" ? invite.uses : null,
     });
   });
   client.on(Events.ThreadCreate, (thread, newlyCreated) => {

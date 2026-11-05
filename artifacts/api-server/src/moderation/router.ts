@@ -984,7 +984,7 @@ const paginationSchema = z.object(
 
 const auditQuerySchema = paginationSchema.extend({
   search: z.string().trim().max(200).default(""),
-  category: z.enum(["all", "messages", "members", "channels", "roles", "voice", "moderation", "security", "other"]).default("all"),
+  category: z.enum(["all", "messages", "members", "channels", "roles", "voice", "moderation", "security", "invites", "other"]).default("all"),
   start: z.string().datetime({ offset: true }).optional(),
   end: z.string().datetime({ offset: true }).optional(),
 }).superRefine((query, context) => {
@@ -2372,6 +2372,7 @@ const CONFIG_CHANNEL_DESTINATIONS = [
   "activityLog.voice",
   "activityLog.moderation",
   "activityLog.security",
+  "activityLog.invites",
   ...MODERATION_DESTINATION_KEYS,
 ] as const;
 

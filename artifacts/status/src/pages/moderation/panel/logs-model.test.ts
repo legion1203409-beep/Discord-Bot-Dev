@@ -83,23 +83,23 @@ describe("audit", () => {
 
 describe("activity logs", () => {
   it("lists the seven categories of the bot", () => {
-    expect(ACTIVITY_CATEGORIES.map((category) => category.key)).toEqual(["messages", "members", "channels", "roles", "voice", "moderation", "security"]);
+    expect(ACTIVITY_CATEGORIES.map((category) => category.key)).toEqual(["messages", "members", "channels", "roles", "voice", "moderation", "security", "invites"]);
   });
 
   it("counts the categories that are on and those still without a channel", () => {
     const config = {
       activityLog: {
         enabled: true,
-        categories: { messages: true, members: false, channels: false, roles: false, voice: true, moderation: false, security: false },
+        categories: { messages: true, members: false, channels: false, roles: false, voice: true, moderation: false, security: false, invites: false },
         channelIds: { messages: "100000000000000001", voice: null },
       },
     };
     expect(enabledCategoryCount(config)).toBe(2);
     expect(categoriesWithoutChannel(config)).toEqual(["voice"]);
-    expect(activitySummary(config)).toBe("2 din 7 categorii");
+    expect(activitySummary(config)).toBe("2 din 8 categorii");
     expect(activitySummary({ activityLog: { enabled: false } })).toBe("Oprite");
     // Categories left out are on, as on the server.
-    expect(enabledCategoryCount({ activityLog: {} })).toBe(7);
+    expect(enabledCategoryCount({ activityLog: {} })).toBe(8);
   });
 });
 
