@@ -170,7 +170,9 @@ import
 import {
   MAX_ORACLE_CHANNELS, ORACLE_LENGTHS, ORACLE_TONES, isValidTimeZone, normalizeOracleSettings, setOracleSettings,
 } from "../bot/oracle-settings";
-import { loadOracleSettings } from "../bot/db";
+import { loadOracleSettings, loadChannelNamesSetting, saveChannelNamesSetting } from "../bot/db";
+import { CHANNEL_NAME_CATALOG, setChannelNamesLoader } from "../bot/channel-provisioning";
+import { ChannelNamesAiError, MAX_THEME_LENGTH, channelNamesAiAvailable, normalizeChannelNames, suggestChannelNames } from "../bot/channel-names";
 import { MAX_PEOPLE_PER_REQUEST, resolvePeople } from "./people";
 import { appealIdentityFromRequest, clearAppealCookie, setAppealCookie } from "./appeal-auth";
 import { answerClarification, appealStatus, submitAppeal } from "./appeals";
@@ -2581,6 +2583,50 @@ router.put("/guilds/:guildId/protection-toggle", asyncRoute(async (req, res) => 
     notification,
     nativeAutoMod,
   });
+}));
+
+/* The themed names of the channels the panel creates (bot/channel-names.ts). */
+async function loadChannelNames(guildId: string) {
+  const load = optionalExport(() => loadChannelNamesSetting);
+  return normalizeChannelNames(load ? await load(guildId) : null);
+}
+// Channel creation reads the chosen names through this; without it, the built-in names stay.
+setChannelNamesLoader(async (guildId) => (await loadChannelNames(guildId)).names);
+
+router.get("/guilds/:guildId/channel-names", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  await sessionAndGuild(req, guildId, "config");
+  const settings = await loadChannelNames(guildId);
+  res.set("Cache-Control", "no-store").json({ ...settings, catalog: CHANNEL_NAME_CATALOG, aiAvailable: channelNamesAiAvailable() });
+}));
+
+const channelNamesSchema = z.object({
+  theme: z.string().trim().max(MAX_THEME_LENGTH),
+  names: z.record(z.string().max(100)).refine(
+    (names) => Object.keys(names).every((key) => CHANNEL_NAME_CATALOG.some((entry) => entry.key === key)),
+    "Un canal din listă nu e cunoscut.",
+  ),
+}).strict();
+
+router.put("/guilds/:guildId/channel-names", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  await sessionAndGuild(req, guildId, "config", true);
+  const settings = normalizeChannelNames(channelNamesSchema.parse(req.body));
+  const save = optionalExport(() => saveChannelNamesSetting);
+  if (save) await save(guildId, settings);
+  res.set("Cache-Control", "no-store").json({ ...settings, catalog: CHANNEL_NAME_CATALOG, aiAvailable: channelNamesAiAvailable() });
+}));
+
+router.post("/guilds/:guildId/channel-names/suggest", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  await sessionAndGuild(req, guildId, "config", true);
+  const { theme } = z.object({ theme: z.string().trim().min(1).max(MAX_THEME_LENGTH) }).strict().parse(req.body);
+  try {
+    res.set("Cache-Control", "no-store").json({ names: await suggestChannelNames(theme) });
+  } catch (error) {
+    if (error instanceof ChannelNamesAiError) throw new ModerationAuthError(503, error.message);
+    throw error;
+  }
 }));
 
 router.get("/guilds/:guildId/gameplay-state", asyncRoute(async (req, res) => {

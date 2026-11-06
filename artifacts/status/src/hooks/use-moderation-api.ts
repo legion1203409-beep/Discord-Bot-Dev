@@ -1006,6 +1006,44 @@ export function useModerationConfig(guildId: string | null) {
   };
 }
 
+export type ChannelNameEntry = { key: string; kind: "category" | "text"; group: string; defaultName: string; purpose: string };
+export type ChannelNamesState = { theme: string; names: Record<string, string>; catalog: ChannelNameEntry[]; aiAvailable: boolean };
+
+/** The themed names of the channels the panel creates: read, saved and suggested by the AI (api-server bot/channel-names.ts). */
+export function useChannelNames(guildId: string | null) {
+  const [state, setState] = useState<ChannelNamesState | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const current = useRef(guildId);
+  useEffect(() => {
+    current.current = guildId;
+    setState(null);
+    setError(null);
+    if (!guildId) return;
+    setLoading(true);
+    apiFetch<ChannelNamesState>(`/guilds/${guildId}/channel-names`)
+      .then((result) => { if (current.current === guildId) setState(result); })
+      .catch((err) => { if (current.current === guildId) setError(err instanceof Error ? err.message : "Numele tematice nu s-au putut încărca."); })
+      .finally(() => { if (current.current === guildId) setLoading(false); });
+  }, [guildId]);
+  const save = useCallback(async (theme: string, names: Record<string, string>) => {
+    if (!guildId) return null;
+    const result = await apiFetch<ChannelNamesState>(`/guilds/${guildId}/channel-names`, {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theme, names }),
+    });
+    if (current.current === guildId) setState(result);
+    return result;
+  }, [guildId]);
+  const suggest = useCallback(async (theme: string) => {
+    if (!guildId) return null;
+    const result = await apiFetch<{ names: Record<string, string> }>(`/guilds/${guildId}/channel-names/suggest`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theme }),
+    });
+    return result.names;
+  }, [guildId]);
+  return { state, error, loading, save, suggest };
+}
+
 export function useGameplayState(guildId: string | null) {
   const [paused, setPaused] = useState<boolean | null>(null);
   const [pausedGuildId, setPausedGuildId] = useState<string | null>(null);

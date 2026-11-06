@@ -3119,6 +3119,43 @@ test.describe("bot control page", () => {
     expect(putBodies.get(guilds[0].id)![0].dailyStats).toMatchObject({ channelId: "444444444", chart: false });
   });
 
+  test("themed channel names: the AI proposes, the owner edits and saves, only for new channels", async ({ page }) => {
+    const catalog = [
+      { key: "category.gameplay", kind: "category", group: "Categorii", defaultName: "🎮・JOC ȘI EVENIMENTE", purpose: "categoria jocului și a evenimentelor" },
+      { key: "activityLog.messages", kind: "text", group: "Jurnale", defaultName: "jurnal-mesaje", purpose: "jurnalul mesajelor editate și șterse" },
+      { key: "moderation.audit.channelId", kind: "text", group: "Moderare", defaultName: "mod-audit", purpose: "jurnalul de audit al staff-ului" },
+    ];
+    const saves: any[] = [];
+    const suggests: any[] = [];
+    await page.route("**/api/moderation/guilds/*/channel-names/suggest", async (route) => {
+      suggests.push(JSON.parse(route.request().postData() || "{}"));
+      await route.fulfill({ json: { names: { "category.gameplay": "⚔️・ARENA REGATULUI", "activityLog.messages": "📜・cronica-scrisorilor", "moderation.audit.channelId": "📜・registrul-strajerilor" } } });
+    });
+    await page.route("**/api/moderation/guilds/*/channel-names", async (route) => {
+      if (route.request().method() === "PUT") {
+        const body = JSON.parse(route.request().postData() || "{}");
+        saves.push(body);
+        await route.fulfill({ json: { ...body, catalog, aiAvailable: true } });
+        return;
+      }
+      await route.fulfill({ json: { theme: "", names: {}, catalog, aiAvailable: true } });
+    });
+    await openControl(page, "/moderare/control/canale");
+    const card = page.getByTestId("control-names");
+    await expect(card).toContainText("Cele care există deja nu se redenumesc");
+    await expect(page.getByTestId("control-names-ai")).toBeDisabled();
+    await page.getByTestId("control-names-theme").fill("regat medieval, cenușă și foc");
+    await page.getByTestId("control-names-ai").click();
+    await expect(page.getByTestId("control-names-activityLog.messages")).toHaveValue("📜・cronica-scrisorilor");
+    expect(suggests).toEqual([{ theme: "regat medieval, cenușă și foc" }]);
+    await page.getByTestId("control-names-moderation.audit.channelId").fill("");
+    await page.getByTestId("control-names-save").click();
+    await expect.poll(() => saves.length).toBe(1);
+    expect(saves[0]).toEqual({ theme: "regat medieval, cenușă și foc", names: { "category.gameplay": "⚔️・ARENA REGATULUI", "activityLog.messages": "📜・cronica-scrisorilor" } });
+    await expect(card).toContainText("Canalele create de acum încolo le vor folosi");
+    await expect(page.getByTestId("control-names-moderation.audit.channelId")).toHaveAttribute("placeholder", "mod-audit");
+  });
+
   test("asks the recruitment program for its channel and warns while verification is off", async ({ page }) => {
     const { putBodies } = await openControl(page, "/moderare/control/recrutare");
     await page.getByTestId("control-recruitment-switch").click();

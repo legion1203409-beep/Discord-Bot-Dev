@@ -2750,6 +2750,21 @@ async function loadGuildStateValue(guildId: string, name: string): Promise<strin
   return row?.value ?? null;
 }
 
+/** The theme and the chosen names of the channels the panel creates, as JSON (normalized by channel-names.ts). */
+export async function saveChannelNamesSetting(guildId: string, value: unknown): Promise<void> {
+  await saveGuildStateValue(guildId, "channel_names", JSON.stringify(value));
+}
+
+export async function loadChannelNamesSetting(guildId: string): Promise<unknown | null> {
+  const value = await loadGuildStateValue(guildId, "channel_names");
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
 /** The Oracle's chat and prophecy settings of a server, as JSON (normalized by oracle-settings.ts). */
 export async function saveOracleSettings(guildId: string, settings: unknown): Promise<void> {
   await saveGuildStateValue(guildId, ORACLE_SETTINGS_KEY, JSON.stringify(settings));
