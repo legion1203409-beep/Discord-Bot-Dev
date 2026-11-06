@@ -170,7 +170,15 @@ import
 import {
   MAX_ORACLE_CHANNELS, ORACLE_LENGTHS, ORACLE_TONES, isValidTimeZone, normalizeOracleSettings, setOracleSettings,
 } from "../bot/oracle-settings";
-import { loadOracleSettings } from "../bot/db";
+import { loadSupportTicketsSetting, saveSupportTicketsSetting } from "../bot/db";
+import {
+  MAX_TICKET_CATEGORIES, REPUTATION_PERIODS, getStaffReputation, normalizeSupportTicketsConfig, publishSupportTicketPanel,
+} from "../bot/support-tickets";
+import { loadOracleSettings, loadChannelNamesSetting, saveChannelNamesSetting } from "../bot/db";
+import { CHANNEL_NAME_CATALOG, setChannelNamesLoader } from "../bot/channel-provisioning";
+import { ChannelNamesAiError, MAX_THEME_LENGTH, channelNamesAiAvailable, normalizeChannelNames, suggestChannelNames } from "../bot/channel-names";
+import { normalizeActiveTopConfig } from "../bot/active-top";
+import { loadActiveTopSettings, saveActiveTopSettings } from "../bot/db";
 import { MAX_PEOPLE_PER_REQUEST, resolvePeople } from "./people";
 import { appealIdentityFromRequest, clearAppealCookie, setAppealCookie } from "./appeal-auth";
 import { answerClarification, appealStatus, submitAppeal } from "./appeals";
@@ -516,6 +524,86 @@ const DEFAULT_DAILY_STATS_EMBED_CONFIG =
 ;
 
 
+/** The bot's own tickets (bot/support-tickets.ts), read and saved like the other bot settings. */
+async function loadSupportTickets(guildId: string) {
+  const load = optionalExport(() => loadSupportTicketsSetting);
+  return normalizeSupportTicketsConfig(load ? await load(guildId) : null);
+}
+
+async function saveSupportTickets(guildId: string, value: unknown) {
+  const config = normalizeSupportTicketsConfig(value);
+  const save = optionalExport(() => saveSupportTicketsSetting);
+  if (save) await save(guildId, config);
+  return config;
+}
+
+/** Left out of the answer when it cannot be read, so the page does not send defaults back over the saved settings. */
+async function supportTicketsForResponse(guildId: string) {
+  try {
+    return await loadSupportTickets(guildId);
+  } catch (error) {
+    logger.warn({ error, guildId }, "Could not read the support ticket settings");
+    return undefined;
+  }
+}
+
+/** The top of the most active members (bot/active-top.ts), read and saved like the other bot settings. */
+async function loadActiveTopConfig(guildId: string) {
+  const load = optionalExport(() => loadActiveTopSettings);
+  return normalizeActiveTopConfig(load ? await load(guildId) : null);
+}
+
+/**
+ * For the bot-control answer: when the settings cannot be read, they are left out, so the page does not
+ * send defaults back over the saved ones (a page sends this section only when it got it or changed it).
+ */
+async function activeTopForResponse(guildId: string) {
+  try {
+    return await loadActiveTopConfig(guildId);
+  } catch (error) {
+    logger.warn({ error, guildId }, "Could not read the active members top settings");
+    return undefined;
+  }
+}
+
+const supportTicketCategorySchema = z.object({
+  id: z.string().trim().max(40),
+  label: z.string().trim().min(1, "Fiecare categorie are nevoie de un nume.").max(80),
+  emoji: z.string().trim().max(32),
+  description: z.string().trim().max(100),
+  parentId: snowflake.or(z.literal("")),
+  staffRoleIds: z.array(snowflake).max(10),
+  welcome: z.string().trim().max(1_500),
+  askReason: z.boolean(),
+}).strict();
+
+const supportTicketsSchema = z.object({
+  enabled: z.boolean(),
+  panelChannelId: snowflake.or(z.literal("")),
+  panelMessageId: snowflake.or(z.literal("")),
+  panelTitle: z.string().trim().max(256),
+  panelDescription: z.string().trim().max(2_000),
+  color: z.string().trim().regex(/^#[0-9a-f]{6}$/i),
+  staffRoleIds: z.array(snowflake).max(10),
+  logChannelId: snowflake.or(z.literal("")),
+  maxOpenPerUser: z.number().int().min(1).max(5),
+  deleteAfterClose: z.boolean(),
+  rating: z.object({ enabled: z.boolean(), question: z.string().trim().max(200) }).strict(),
+  categories: z.array(supportTicketCategorySchema).max(MAX_TICKET_CATEGORIES),
+}).strict().superRefine((value, ctx) => {
+  if (value.enabled && !value.categories.length) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["categories"], message: "Adaugă cel puțin o categorie de tichete." });
+  if (value.enabled && !value.staffRoleIds.length && value.categories.some((category) => !category.staffRoleIds.length)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["staffRoleIds"], message: "Alege rolul staff-ului care vede tichetele." });
+  }
+});
+
+async function saveActiveTopConfig(guildId: string, value: unknown) {
+  const config = normalizeActiveTopConfig(value);
+  const save = optionalExport(() => saveActiveTopSettings);
+  if (save) await save(guildId, config);
+  return config;
+}
+
 const dailyStatsEmbedConfigSchema = z.object(
 {
 
@@ -530,6 +618,8 @@ const dailyStatsEmbedConfigSchema = z.object(
   imageUrl: z.string().trim().max(2_000).refine(isMessageImageUrl, "Imaginea trebuie să fie HTTPS sau încărcată în storage."),
   thumbnailUrl: z.string().trim().max(2_000).refine(isMessageImageUrl, "Thumbnail-ul trebuie să fie HTTPS sau încărcat în storage.").default(""),
   chart: z.boolean().default(true),
+  intervalDays: z.number().int().min(1).max(7).default(1),
+  inviteTop: z.boolean().default(true),
   metricLabels: z.object(
 {
 
@@ -699,6 +789,20 @@ export const botControlSchema = z.object(
   // Optional: pages that do not know the Oracle's settings keep them unchanged.
   oracle: oracleSettingsSchema.optional(),
   dailyStats: dailyStatsEmbedConfigSchema,
+  // Optional: pages that do not know the bot's own tickets keep them unchanged.
+  supportTickets: supportTicketsSchema.optional(),
+  // Optional: pages that do not know the top of the most active members keep it unchanged.
+  activeTop: z.object({
+    enabled: z.boolean(),
+    channelId: snowflake.or(z.literal("")),
+    intervalDays: z.number().int().min(1).max(7),
+    limit: z.number().int().min(3).max(15),
+    includeVoice: z.boolean(),
+    mention: z.boolean(),
+    color: z.string().trim().regex(/^#[0-9a-f]{6}$/i),
+  }).strict().superRefine((value, ctx) => {
+    if (value.enabled && !value.channelId) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["channelId"], message: "Alege canalul topului membrilor activi." });
+  }).optional(),
   inviteTracking: z.object(
 {
 
@@ -1577,7 +1681,7 @@ async function validateInviteTrackingTargets(guildId: string, config: z.infer<ty
 
 }
 
-async function validateDailyStatsChannelTarget(guildId: string, channelId: string): Promise<void> {
+async function validateDailyStatsChannelTarget(guildId: string, channelId: string, what = "statisticile zilnice"): Promise<void> {
   if (!channelId) return;
   const client = getModerationClient();
   if (!client?.isReady()) return;
@@ -1588,7 +1692,7 @@ async function validateDailyStatsChannelTarget(guildId: string, channelId: strin
     });
   const channel = await guild.channels.fetch(channelId).catch(() => null);
   if (!(channel instanceof TextChannel) || channel.guildId !== guildId) {
-    throw new ModerationAuthError(400, "Alege un canal text valid din acest server pentru statisticile zilnice.");
+    throw new ModerationAuthError(400, `Alege un canal text valid din acest server pentru ${what}.`);
   }
 
   const botMember = guild.members.me ?? await guild.members.fetchMe().catch(() => null);
@@ -2616,6 +2720,84 @@ router.put("/guilds/:guildId/protection-toggle", asyncRoute(async (req, res) => 
   });
 }));
 
+router.post("/guilds/:guildId/support-tickets/publish", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  await sessionAndGuild(req, guildId, "config", true);
+  const client = getModerationClient();
+  if (!client?.isReady()) throw new ModerationAuthError(503, "Botul nu este conectat la Discord.");
+  const config = await loadSupportTickets(guildId);
+  if (!config.enabled) throw new ModerationAuthError(400, "Pornește tichetele și salvează înainte să publici panoul.");
+  let messageId: string;
+  try {
+    messageId = await publishSupportTicketPanel(client, guildId, config);
+  } catch (error) {
+    throw new ModerationAuthError(400, error instanceof Error ? error.message : "Panoul nu s-a putut publica.");
+  }
+  const saved = await saveSupportTickets(guildId, { ...config, panelMessageId: messageId });
+  res.set("Cache-Control", "no-store").json({ supportTickets: saved, messageId });
+}));
+
+router.get("/guilds/:guildId/support-tickets/reputation", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  await sessionAndGuild(req, guildId, "config");
+  const { range } = z.object({ range: z.enum(["7", "30", "90", "all"]).default("30") }).parse(req.query);
+  const period = REPUTATION_PERIODS.find((item) => item.value === range)!;
+  const rows = await getStaffReputation(guildId, period.days, 50);
+  const client = getModerationClient();
+  const guild = client?.guilds.cache.get(guildId);
+  res.set("Cache-Control", "no-store").json({
+    range, periodLabel: period.label,
+    rows: rows.map((row) => {
+      const member = guild?.members.cache.get(row.staffId);
+      return { ...row, name: member?.displayName ?? client?.users.cache.get(row.staffId)?.username ?? null, avatarUrl: member?.displayAvatarURL() ?? null };
+    }),
+  });
+}));
+
+/* The themed names of the channels the panel creates (bot/channel-names.ts). */
+async function loadChannelNames(guildId: string) {
+  const load = optionalExport(() => loadChannelNamesSetting);
+  return normalizeChannelNames(load ? await load(guildId) : null);
+}
+// Channel creation reads the chosen names through this; without it, the built-in names stay.
+setChannelNamesLoader(async (guildId) => (await loadChannelNames(guildId)).names);
+
+router.get("/guilds/:guildId/channel-names", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  await sessionAndGuild(req, guildId, "config");
+  const settings = await loadChannelNames(guildId);
+  res.set("Cache-Control", "no-store").json({ ...settings, catalog: CHANNEL_NAME_CATALOG, aiAvailable: channelNamesAiAvailable() });
+}));
+
+const channelNamesSchema = z.object({
+  theme: z.string().trim().max(MAX_THEME_LENGTH),
+  names: z.record(z.string().max(100)).refine(
+    (names) => Object.keys(names).every((key) => CHANNEL_NAME_CATALOG.some((entry) => entry.key === key)),
+    "Un canal din listă nu e cunoscut.",
+  ),
+}).strict();
+
+router.put("/guilds/:guildId/channel-names", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  await sessionAndGuild(req, guildId, "config", true);
+  const settings = normalizeChannelNames(channelNamesSchema.parse(req.body));
+  const save = optionalExport(() => saveChannelNamesSetting);
+  if (save) await save(guildId, settings);
+  res.set("Cache-Control", "no-store").json({ ...settings, catalog: CHANNEL_NAME_CATALOG, aiAvailable: channelNamesAiAvailable() });
+}));
+
+router.post("/guilds/:guildId/channel-names/suggest", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  await sessionAndGuild(req, guildId, "config", true);
+  const { theme } = z.object({ theme: z.string().trim().min(1).max(MAX_THEME_LENGTH) }).strict().parse(req.body);
+  try {
+    res.set("Cache-Control", "no-store").json({ names: await suggestChannelNames(theme) });
+  } catch (error) {
+    if (error instanceof ChannelNamesAiError) throw new ModerationAuthError(503, error.message);
+    throw error;
+  }
+}));
+
 router.get("/guilds/:guildId/gameplay-state", asyncRoute(async (req, res) => {
   const guildId = parse(snowflake, req.params.guildId);
   await sessionAndGuild(req, guildId, "config");
@@ -2733,6 +2915,8 @@ router.get("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
     gameplayConfig: getGameplayConfig(guildId),
     verification: normalizeVerificationConfig(verification),
     dailyStats,
+    supportTickets: await supportTicketsForResponse(guildId),
+    activeTop: await activeTopForResponse(guildId),
     inviteTracking,
     provisioningPermissions: provisioningPermissionsSchema.parse(provisioningPermissions),
     discordLive: Boolean(getModerationClient()?.isReady()),
@@ -3293,6 +3477,9 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   if (dailyStats.channelId !== currentDailyStats.channelId) {
     await validateDailyStatsChannelTarget(guildId, dailyStats.channelId);
   }
+  if (value.activeTop?.channelId && value.activeTop.channelId !== (await activeTopForResponse(guildId))?.channelId) {
+    await validateDailyStatsChannelTarget(guildId, value.activeTop.channelId, "topul membrilor activi");
+  }
   const tickets = normalizeTicketConfig(value.tickets);
   const channels: ChannelConfig = Object.fromEntries(
     Object.entries(value.channels).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
@@ -3319,6 +3506,8 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
     );
   }
   let savedVerification = verification;
+  let savedSupportTickets: ReturnType<typeof normalizeSupportTicketsConfig> | null = null;
+  let savedActiveTop: ReturnType<typeof normalizeActiveTopConfig> | null = null;
   let verificationPanelPublished = false;
   let anyWriteSucceeded = false;
   if (verification.enabled && verificationRequested) {
@@ -3355,6 +3544,16 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   const saveDailyStats = optionalExport(() => saveDailyStatsEmbedConfig);
   if (saveDailyStats) {
     await saveDailyStats(guildId, dailyStats);
+    anyWriteSucceeded = true;
+  }
+  if (value.supportTickets) {
+    // The panel's message id is the bot's to keep: a page never moves it.
+    const current = await supportTicketsForResponse(guildId);
+    savedSupportTickets = await saveSupportTickets(guildId, { ...value.supportTickets, panelMessageId: current?.panelMessageId ?? value.supportTickets.panelMessageId });
+    anyWriteSucceeded = true;
+  }
+  if (value.activeTop) {
+    savedActiveTop = await saveActiveTopConfig(guildId, value.activeTop);
     anyWriteSucceeded = true;
   }
   const saveInviteTracking = optionalExport(() => saveInviteTrackingConfig);
@@ -3428,6 +3627,8 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
     gameplayConfig,
     verification: savedVerification,
     dailyStats,
+    supportTickets: savedSupportTickets ?? await supportTicketsForResponse(guildId),
+    activeTop: savedActiveTop ?? await activeTopForResponse(guildId),
     inviteTracking,
     provisioningPermissions: value.provisioningPermissions,
     discordLive: Boolean(client?.isReady()),

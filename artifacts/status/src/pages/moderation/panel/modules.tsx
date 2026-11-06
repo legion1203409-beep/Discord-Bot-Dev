@@ -79,6 +79,41 @@ export function AutoModModule() {
             label="Expresii suplimentare de blocat" hint="Opțional: orice mesaj care conține una dintre ele e tratat ca scam." testId="input-anti-scam-phrases"
             values={auto.scamPhrases} onChange={(next) => set(["autoMod", "scamPhrases"], next)}
           />
+          <Fields>
+            <SwitchField
+              label="Linkuri false (Discord, Steam, Roblox)" testId="anti-scam-phishing" checked={auto.scamFilter?.blockPhishingLinks !== false}
+              hint="Oprește domeniile care imită site-urile cunoscute, ca „dlscord-nitro.com” sau „steamcommunlty.ru”."
+              onChange={(next) => set(["autoMod", "scamFilter", "blockPhishingLinks"], next)}
+            />
+            {auto.scamFilter?.blockPhishingLinks !== false ? (
+              <ChipsField
+                label="Domenii de încredere" hint="Domenii pe care botul nu le blochează niciodată la linkurile false. Apasă Enter după fiecare." placeholder="exemplu.com, apoi Enter"
+                testId="input-anti-scam-trusted" values={auto.scamFilter?.trustedLinkHosts ?? []} onChange={(next) => set(["autoMod", "scamFilter", "trustedLinkHosts"], next)}
+              />
+            ) : null}
+            <SwitchField
+              label="Fișiere periculoase" testId="anti-scam-files" checked={auto.scamFilter?.blockDangerousFiles !== false}
+              hint="Oprește atașamentele care pornesc cod pe calculator (.exe, .scr, .bat) și cele cu dublă extensie, ca „poza.png.exe”."
+              onChange={(next) => set(["autoMod", "scamFilter", "blockDangerousFiles"], next)}
+            />
+            <SwitchField
+              label="Același mesaj în mai multe canale" testId="anti-scam-flood" checked={auto.scamFilter?.crossChannelFlood?.enabled !== false}
+              hint="Un cont care pune același mesaj cu link în mai multe canale într-un timp scurt e, de obicei, spart sau bot. Mesajele sunt șterse peste tot."
+              onChange={(next) => set(["autoMod", "scamFilter", "crossChannelFlood", "enabled"], next)}
+            />
+            {auto.scamFilter?.crossChannelFlood?.enabled !== false ? (
+              <>
+                <NumField
+                  label="Câte canale" hint="Dacă mesajul apare în atâtea canale, se declanșează." min={2} max={10} testId="anti-scam-flood-channels"
+                  value={auto.scamFilter?.crossChannelFlood?.channels ?? 3} onChange={(next) => set(["autoMod", "scamFilter", "crossChannelFlood", "channels"], next)}
+                />
+                <NumField
+                  label="În cât timp" unit="secunde" min={10} max={600} testId="anti-scam-flood-window"
+                  value={auto.scamFilter?.crossChannelFlood?.windowSeconds ?? 60} onChange={(next) => set(["autoMod", "scamFilter", "crossChannelFlood", "windowSeconds"], next)}
+                />
+              </>
+            ) : null}
+          </Fields>
           <NoteRow tone="plain" testId="text-anti-scam-requirements">
             Rulează numai când Protecția serverului și AutoMod sunt pornite; mesajul găsit se șterge mereu. Mesajele și sancțiunile apar în Cazuri și în Audit.
             Botul are nevoie de Message Content și Manage Messages; mute cere Moderate Members, iar kick cere Kick Members și un rol al botului suficient de sus.

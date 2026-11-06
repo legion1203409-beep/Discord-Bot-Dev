@@ -4,6 +4,7 @@ import {
   TICKETS_MODULES, addQuestion, alliancePublishingOn, changedTicketParts, deadlinesProblem, deadlinesSummary, duplicateKeys, editFlow,
   flowSummary, isFlowOn, isTicketsModuleChanged, isTicketsRoute, moveQuestion, notifiesStaff, partnershipFieldsByQuestion, questionKey,
   removeQuestion, setQuestion, ticketsDraftError, ticketsModuleForRoute, type TicketFlow,
+  DEFAULT_SUPPORT_TICKETS, categoryIdFor, newSupportCategory, supportTicketsOf, supportTicketsProblem, supportTicketsSummary,
 } from "./tickets-model";
 
 const question = (key: string) => ({ key, label: `Întrebarea ${key}`, description: "Răspunde clar.", placeholder: "Răspuns", multiline: false, required: true });
@@ -28,7 +29,7 @@ const config = () => ({
 describe("the tickets group", () => {
   it("is its own page, apart from the verification, with four flows and the common settings", () => {
     expect(TICKETS_MODULES.map((module) => module.route)).toEqual([
-      "/tichete/aplicatii", "/tichete/parteneriate", "/tichete/ajutor", "/tichete/contestatii", "/tichete/setari",
+      "/tichete/aplicatii", "/tichete/parteneriate", "/tichete/ajutor", "/tichete/contestatii", "/tichete/bot", "/tichete/reputatie", "/tichete/setari",
     ]);
     expect(ticketsModuleForRoute("/tichete").id).toBe("staff");
     expect(ticketsModuleForRoute("/tichete/contestatii/").id).toBe("appeal");
@@ -43,7 +44,7 @@ describe("the tickets group", () => {
     const draft = config();
     draft.tickets.firstWarningMinutes = 10;
     draft.tickets.allianceOwnerGuildId = "";
-    expect(TICKETS_MODULES.map((module) => isTicketsModuleChanged(module, saved, draft))).toEqual([false, true, false, false, true]);
+    expect(TICKETS_MODULES.map((module) => isTicketsModuleChanged(module, saved, draft))).toEqual([false, true, false, false, false, false, true]);
     expect(changedTicketParts(saved, draft).map((part) => part.label)).toEqual(["Parteneriate", "Setări comune"]);
   });
 
@@ -135,5 +136,28 @@ describe("deadlines and checks before saving", () => {
     const longLabel = config();
     longLabel.tickets.flows.appeal.questions[1]!.label = "x".repeat(46);
     expect(ticketsDraftError(longLabel)).toMatch(/cel mult 45/);
+  });
+});
+
+describe("tichetele botului", () => {
+  it("are valorile botului și un rezumat în meniu", () => {
+    expect(supportTicketsOf({}).categories).toHaveLength(4);
+    expect(supportTicketsSummary({})).toBe("oprite");
+    expect(supportTicketsSummary({ supportTickets: { ...DEFAULT_SUPPORT_TICKETS, enabled: true } })).toBe("4 categorii, panou nepublicat");
+    expect(supportTicketsSummary({ supportTickets: { ...DEFAULT_SUPPORT_TICKETS, enabled: true, panelMessageId: "123456789" } })).toBe("4 categorii");
+  });
+  it("refuză ce refuză și botul", () => {
+    expect(supportTicketsProblem({ supportTickets: { ...DEFAULT_SUPPORT_TICKETS, enabled: true } })).toBe("Alege rolul staff-ului care vede tichetele.");
+    expect(supportTicketsProblem({ supportTickets: { ...DEFAULT_SUPPORT_TICKETS, enabled: true, staffRoleIds: ["123456789"], categories: [] } })).toBe("Adaugă cel puțin o categorie.");
+    expect(supportTicketsProblem({ supportTickets: { ...DEFAULT_SUPPORT_TICKETS, categories: [{ ...DEFAULT_SUPPORT_TICKETS.categories[0]!, label: " " }] } })).toBe("Fiecare categorie are nevoie de un nume.");
+    // A category with its own staff roles does not need the general ones.
+    const own = DEFAULT_SUPPORT_TICKETS.categories.map((category) => ({ ...category, staffRoleIds: ["123456789"] }));
+    expect(supportTicketsProblem({ supportTickets: { ...DEFAULT_SUPPORT_TICKETS, enabled: true, categories: own } })).toBeNull();
+    expect(supportTicketsProblem({})).toBeNull();
+  });
+  it("o categorie nouă primește un id liber", () => {
+    expect(categoryIdFor("Cerere de rol", [])).toBe("cerere-de-rol");
+    expect(categoryIdFor("Cerere de rol", ["cerere-de-rol"])).toBe("cerere-de-rol-2");
+    expect(newSupportCategory(["categorie-noua"]).id).toBe("categorie-noua-2");
   });
 });
