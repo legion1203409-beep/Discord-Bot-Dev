@@ -2443,6 +2443,34 @@ test.describe("verification page", () => {
     await expect(page.getByTestId("verification-save-bar")).toHaveCount(0);
   });
 
+  test("changes the texts of the website verification page, with a preview", async ({ page }) => {
+    const putBodies = await installPartialBotControlFixture(page, new Map([[guilds[0].id, verifiedConfig()], [guilds[1].id, verificationBotControlConfig(false, "")]]));
+    await openVerification(page, "/moderare/verificare/mesaje");
+    const card = page.getByTestId("verification-site-texts");
+    const preview = page.getByTestId("verification-site-preview");
+    await expect(preview).toContainText("Verifică-ți accesul");
+    await expect(preview).toContainText("Trage-ți runa");
+
+    const title = page.getByTestId("verification-page-title").locator("input, textarea").first();
+    await title.fill("Intră în Clanul Lupilor");
+    await page.getByTestId("verification-page-successTitle").locator("input, textarea").first().fill("Ești de-al nostru!");
+    await card.getByRole("switch", { name: "Jocul cu rune" }).click();
+    await expect(preview).toContainText("Intră în Clanul Lupilor");
+    await expect(preview).toContainText("Ești de-al nostru!");
+    await expect(preview).not.toContainText("Trage-ți runa");
+
+    await title.fill("");
+    await page.getByTestId("button-save-verification").click();
+    await expect(card.getByRole("alert")).toContainText("Titlul nu poate fi gol");
+    expect(putBodies.size).toBe(0);
+    await title.fill("Intră în Clanul Lupilor");
+    await page.getByTestId("button-save-verification").click();
+    await expect.poll(() => putBodies.get(guilds[0].id)?.length).toBe(1);
+    expect(putBodies.get(guilds[0].id)?.[0].verification.page).toMatchObject({
+      title: "Intră în Clanul Lupilor", successTitle: "Ești de-al nostru!", runesEnabled: false, ctaLabel: "Finalizează verificarea",
+    });
+  });
+
   test("does not save a switched-on verification without its channel", async ({ page }) => {
     const config = verificationBotControlConfig(false, "");
     config.verification.roleId = "444444444";

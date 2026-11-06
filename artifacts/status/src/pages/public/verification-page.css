@@ -1688,3 +1688,6 @@
   .vx-welcome *, .vx-welcome *::before, .vx-welcome *::after { animation: none !important; transition: none !important; }
   .vx-seal-core path { stroke-dashoffset: 0; }
 }
+
+/* Textele alese în panou ajung după o clipă; până atunci cardul nu arată textele de bază. */
+.vx-page.is-texts-loading .vx-card > *:not(.vx-effects-canvas):not(.vx-card-glow) { opacity: 0; }

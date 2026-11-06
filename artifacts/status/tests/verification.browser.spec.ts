@@ -272,4 +272,31 @@ test.describe("public member verification slider", () => {
     await expect(page.getByTestId("status-verification-success")).toHaveCount(0);
     expect(await page.evaluate(() => Object.keys(localStorage).some((key) => key.startsWith("oracol.welcomeRune")))).toBe(true);
   });
+  test("shows the texts the server wrote in the panel, and hides the runes when they are off", async ({ page }) => {
+    await page.route("**/api/moderation/verification/123456789012345678/config", (route) => route.fulfill({ json: {
+      guildId: "123456789012345678",
+      page: {
+        title: "Intră în Clanul Lupilor", lead: "Trage de flacără până la capăt.", sliderLabel: "Aprinde torța", ctaLabel: "Gata, intru",
+        successTitle: "Ești de-al nostru!", successText: "Ne vedem pe chat.", welcomeLabel: "Bine ai venit, lup tânăr",
+        runesEnabled: false, runesTitle: "x", runesText: "y",
+      },
+    } }));
+    await page.route("**/api/moderation/verification/complete", (route) => route.fulfill({ json: { verified: true, result: "verified", guildId: "123456789012345678" } }));
+    await page.route("**/api/moderation/verification/status", (route) => route.fulfill({ json: { verified: false } }));
+    await page.goto(`/verificare?guildId=123456789012345678#ticket=${ticket}`);
+
+    await expect(page.getByRole("heading", { name: "Intră în Clanul Lupilor" })).toBeVisible();
+    await expect(page.getByText("Trage de flacără până la capăt.")).toBeVisible();
+    await expect(page.getByText("Aprinde torța")).toBeVisible();
+    await expect(page.getByTestId("button-complete-verification")).toContainText("Gata, intru");
+
+    await page.getByTestId("slider-verification-completion").focus();
+    await page.keyboard.press("End");
+    await page.getByTestId("button-complete-verification").click();
+    await expect(page.getByTestId("status-verification-success")).toContainText("Ești de-al nostru!");
+    await expect(page.getByTestId("status-verification-success")).toContainText("Ne vedem pe chat.");
+    await expect(page.getByText("Bine ai venit, lup tânăr")).toBeVisible();
+    await expect(page.getByTestId("link-open-discord")).toBeVisible();
+    await expect(page.getByTestId("button-rune-0")).toHaveCount(0);
+  });
 });
