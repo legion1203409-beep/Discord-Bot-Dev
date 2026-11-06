@@ -5,6 +5,7 @@ import { SUPER_ADMIN_ID } from "../../bot/constants";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  loadActiveTopSettings: vi.fn(async () => null as unknown), saveActiveTopSettings: vi.fn(async () => undefined),
   session: vi.fn(), access: vi.fn(), csrf: vi.fn(), client: vi.fn(),
   getConfig: vi.fn(), putConfig: vi.fn(), putProtectionToggle: vi.fn(), listCases: vi.fn(), countCases: vi.fn(),
   listAudit: vi.fn(), listLogs: vi.fn(), beginAction: vi.fn(), getAction: vi.fn(),
@@ -132,6 +133,8 @@ vi.mock("../../bot/db", () => ({
   saveVerificationConfig: mocks.saveVerificationConfig,
   loadOracleSettings: mocks.loadOracleSettings,
   saveOracleSettings: mocks.saveOracleSettings,
+  loadActiveTopSettings: mocks.loadActiveTopSettings,
+  saveActiveTopSettings: mocks.saveActiveTopSettings,
   loadDailyStatsEmbedConfig: mocks.loadDailyStatsEmbedConfig,
   saveDailyStatsEmbedConfig: mocks.saveDailyStatsEmbedConfig,
   loadInviteTrackingConfig: mocks.loadInviteTrackingConfig,
@@ -1537,6 +1540,35 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
       expect(response.status).toBe(400);
       expect(await response.json()).toMatchObject({ error: expect.stringContaining("drepturi de staff") });
       expect(mocks.saveTicketConfig).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("the top of the most active members", () => {
+    const put = (payload: unknown) => fetch(`${base}/bot-control`, {
+      ...post(payload), method: "PUT", headers: { "content-type": "application/json", "x-csrf-token": "csrf" },
+    });
+    const top = { enabled: true, channelId: "", intervalDays: 3, limit: 5, includeVoice: false, mention: false, color: "#112233" };
+
+    it("is read with the bot settings, off by default", async () => {
+      mocks.loadActiveTopSettings.mockResolvedValueOnce(null);
+      const body = await (await fetch(`${base}/bot-control`)).json() as { activeTop: { enabled: boolean; intervalDays: number } };
+      expect(body.activeTop).toMatchObject({ enabled: false, intervalDays: 7, limit: 10 });
+    });
+
+    it("needs a channel when switched on, is saved when sent and left alone when a page does not send it", async () => {
+      mocks.saveActiveTopSettings.mockClear();
+      expect((await put({ ...botControlPayload(), activeTop: top })).status).toBe(400);
+      expect(mocks.saveActiveTopSettings).not.toHaveBeenCalled();
+      const saved = await put({ ...botControlPayload(), activeTop: { ...top, enabled: false } });
+      expect(saved.status).toBe(200);
+      expect(mocks.saveActiveTopSettings).toHaveBeenCalledWith(guildId, { ...top, enabled: false });
+      mocks.saveActiveTopSettings.mockClear();
+      expect((await put(botControlPayload())).status).toBe(200);
+      expect(mocks.saveActiveTopSettings).not.toHaveBeenCalled();
+    });
+
+    it("refuses an interval outside 1–7 days", async () => {
+      expect((await put({ ...botControlPayload(), activeTop: { ...top, enabled: false, intervalDays: 9 } })).status).toBe(400);
     });
   });
 

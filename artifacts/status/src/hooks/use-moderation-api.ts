@@ -239,6 +239,16 @@ export interface BotControlConfig {
       peakVoice: string;
     };
   };
+  /** The top of the most active members (api-server bot/active-top.ts); missing when the bot could not read it. */
+  activeTop?: {
+    enabled: boolean;
+    channelId: string;
+    intervalDays: number;
+    limit: number;
+    includeVoice: boolean;
+    mention: boolean;
+    color: string;
+  };
   inviteTracking: InviteTrackingConfig;
   discordLive?: boolean;
   provisioning?: {

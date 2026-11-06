@@ -171,6 +171,8 @@ import {
   MAX_ORACLE_CHANNELS, ORACLE_LENGTHS, ORACLE_TONES, isValidTimeZone, normalizeOracleSettings, setOracleSettings,
 } from "../bot/oracle-settings";
 import { loadOracleSettings } from "../bot/db";
+import { normalizeActiveTopConfig } from "../bot/active-top";
+import { loadActiveTopSettings, saveActiveTopSettings } from "../bot/db";
 import { MAX_PEOPLE_PER_REQUEST, resolvePeople } from "./people";
 import { appealIdentityFromRequest, clearAppealCookie, setAppealCookie } from "./appeal-auth";
 import { answerClarification, appealStatus, submitAppeal } from "./appeals";
@@ -501,6 +503,32 @@ const DEFAULT_DAILY_STATS_EMBED_CONFIG =
 ;
 
 
+/** The top of the most active members (bot/active-top.ts), read and saved like the other bot settings. */
+async function loadActiveTopConfig(guildId: string) {
+  const load = optionalExport(() => loadActiveTopSettings);
+  return normalizeActiveTopConfig(load ? await load(guildId) : null);
+}
+
+/**
+ * For the bot-control answer: when the settings cannot be read, they are left out, so the page does not
+ * send defaults back over the saved ones (a page sends this section only when it got it or changed it).
+ */
+async function activeTopForResponse(guildId: string) {
+  try {
+    return await loadActiveTopConfig(guildId);
+  } catch (error) {
+    logger.warn({ error, guildId }, "Could not read the active members top settings");
+    return undefined;
+  }
+}
+
+async function saveActiveTopConfig(guildId: string, value: unknown) {
+  const config = normalizeActiveTopConfig(value);
+  const save = optionalExport(() => saveActiveTopSettings);
+  if (save) await save(guildId, config);
+  return config;
+}
+
 const dailyStatsEmbedConfigSchema = z.object(
 {
 
@@ -686,6 +714,18 @@ export const botControlSchema = z.object(
   // Optional: pages that do not know the Oracle's settings keep them unchanged.
   oracle: oracleSettingsSchema.optional(),
   dailyStats: dailyStatsEmbedConfigSchema,
+  // Optional: pages that do not know the top of the most active members keep it unchanged.
+  activeTop: z.object({
+    enabled: z.boolean(),
+    channelId: snowflake.or(z.literal("")),
+    intervalDays: z.number().int().min(1).max(7),
+    limit: z.number().int().min(3).max(15),
+    includeVoice: z.boolean(),
+    mention: z.boolean(),
+    color: z.string().trim().regex(/^#[0-9a-f]{6}$/i),
+  }).strict().superRefine((value, ctx) => {
+    if (value.enabled && !value.channelId) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["channelId"], message: "Alege canalul topului membrilor activi." });
+  }).optional(),
   inviteTracking: z.object(
 {
 
@@ -1564,7 +1604,7 @@ async function validateInviteTrackingTargets(guildId: string, config: z.infer<ty
 
 }
 
-async function validateDailyStatsChannelTarget(guildId: string, channelId: string): Promise<void> {
+async function validateDailyStatsChannelTarget(guildId: string, channelId: string, what = "statisticile zilnice"): Promise<void> {
   if (!channelId) return;
   const client = getModerationClient();
   if (!client?.isReady()) return;
@@ -1575,7 +1615,7 @@ async function validateDailyStatsChannelTarget(guildId: string, channelId: strin
     });
   const channel = await guild.channels.fetch(channelId).catch(() => null);
   if (!(channel instanceof TextChannel) || channel.guildId !== guildId) {
-    throw new ModerationAuthError(400, "Alege un canal text valid din acest server pentru statisticile zilnice.");
+    throw new ModerationAuthError(400, `Alege un canal text valid din acest server pentru ${what}.`);
   }
 
   const botMember = guild.members.me ?? await guild.members.fetchMe().catch(() => null);
@@ -2720,6 +2760,7 @@ router.get("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
     gameplayConfig: getGameplayConfig(guildId),
     verification: normalizeVerificationConfig(verification),
     dailyStats,
+    activeTop: await activeTopForResponse(guildId),
     inviteTracking,
     provisioningPermissions: provisioningPermissionsSchema.parse(provisioningPermissions),
     discordLive: Boolean(getModerationClient()?.isReady()),
@@ -3280,6 +3321,9 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   if (dailyStats.channelId !== currentDailyStats.channelId) {
     await validateDailyStatsChannelTarget(guildId, dailyStats.channelId);
   }
+  if (value.activeTop?.channelId && value.activeTop.channelId !== (await activeTopForResponse(guildId))?.channelId) {
+    await validateDailyStatsChannelTarget(guildId, value.activeTop.channelId, "topul membrilor activi");
+  }
   const tickets = normalizeTicketConfig(value.tickets);
   const channels: ChannelConfig = Object.fromEntries(
     Object.entries(value.channels).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
@@ -3306,6 +3350,7 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
     );
   }
   let savedVerification = verification;
+  let savedActiveTop: ReturnType<typeof normalizeActiveTopConfig> | null = null;
   let verificationPanelPublished = false;
   let anyWriteSucceeded = false;
   if (verification.enabled && verificationRequested) {
@@ -3342,6 +3387,10 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   const saveDailyStats = optionalExport(() => saveDailyStatsEmbedConfig);
   if (saveDailyStats) {
     await saveDailyStats(guildId, dailyStats);
+    anyWriteSucceeded = true;
+  }
+  if (value.activeTop) {
+    savedActiveTop = await saveActiveTopConfig(guildId, value.activeTop);
     anyWriteSucceeded = true;
   }
   const saveInviteTracking = optionalExport(() => saveInviteTrackingConfig);
@@ -3415,6 +3464,7 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
     gameplayConfig,
     verification: savedVerification,
     dailyStats,
+    activeTop: savedActiveTop ?? await activeTopForResponse(guildId),
     inviteTracking,
     provisioningPermissions: value.provisioningPermissions,
     discordLive: Boolean(client?.isReady()),

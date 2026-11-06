@@ -158,6 +158,7 @@ function ModerationApp() {
           <Route path="/control/invitatii" component={ControlGroupPage} />
           <Route path="/control/recrutare" component={ControlGroupPage} />
           <Route path="/control/raport" component={ControlGroupPage} />
+          <Route path="/control/top-activi" component={ControlGroupPage} />
           <Route path="/control/canale" component={ControlGroupPage} />
           <Route path="/control/bot" component={ControlGroupPage} />
           <Route path="/pornire-server" component={ServerSetupPage} />
