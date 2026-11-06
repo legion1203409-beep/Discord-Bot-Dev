@@ -17,7 +17,7 @@ import { SettingsGroupPage } from "./pages/moderation/panel/SettingsGroup";
 import { ControlGroupPage } from "./pages/moderation/panel/ControlGroup";
 import { MessagesGroupPage } from "./pages/moderation/panel/MessagesGroup";
 import { ServerSetupPage } from "./pages/moderation/ServerSetup";
-import { ActivityRanksPage } from "./pages/moderation/ActivityRanks";
+import { XpPage } from "./pages/moderation/panel/xp";
 import { OfflineAssistant } from "./pages/moderation/OfflineAssistant";
 import { useActiveGuild } from "./hooks/use-moderation-api";
 import { Toaster } from "./components/ui/toaster";
@@ -164,7 +164,7 @@ function ModerationApp() {
           <Route path="/control/canale" component={ControlGroupPage} />
           <Route path="/control/bot" component={ControlGroupPage} />
           <Route path="/pornire-server" component={ServerSetupPage} />
-          <Route path="/ranguri-activitate" component={ActivityRanksPage} />
+          <Route path="/ranguri-activitate" component={XpPage} />
           <Route path="/asistent" component={OfflineAssistant} />
           <Route component={() => <div className="text-muted-foreground p-8 text-center border border-dashed border-border rounded-xl">Această secțiune este în lucru.</div>} />
         </Switch>
