@@ -264,6 +264,9 @@ export interface OracleSettings {
     dailyLimit: number;
     daily: { enabled: boolean; channelId: string; hour: number; timeZone: string };
   };
+  community: {
+    dailyQuestion: { enabled: boolean; channelId: string; hour: number; timeZone: string; useOwnQuestions: boolean; ownQuestions: string[] };
+  };
 }
 
 export interface InviteTrackingConfig {

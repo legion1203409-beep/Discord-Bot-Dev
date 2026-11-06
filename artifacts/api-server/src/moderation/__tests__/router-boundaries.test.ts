@@ -1545,6 +1545,7 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
       enabled: true,
       chat: { channelIds: ["777777777"], replyToReplies: false, tone: "sobru", length: "scurt", cooldownSeconds: 30 },
       prophecy: { commandEnabled: false, dailyLimit: 2, daily: { enabled: false, channelId: "", hour: 8, timeZone: "Europe/Paris" } },
+      community: { dailyQuestion: { enabled: false, channelId: "", hour: 20, timeZone: "Europe/Paris", useOwnQuestions: true, ownQuestions: ["Ce faci azi?"] } },
     };
 
     it("are read with the bot settings, with defaults for a server that never chose them", async () => {
@@ -1577,6 +1578,16 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
       expect(noChannel.status).toBe(400);
       const badZone = await put({ ...botControlPayload(), oracle: { ...oracle, prophecy: { ...oracle.prophecy, daily: { ...oracle.prophecy.daily, timeZone: "Mars/Olympus" } } } });
       expect(badZone.status).toBe(400);
+      expect(mocks.saveOracleSettings).not.toHaveBeenCalled();
+    });
+
+    it("refuse a daily question without its channel or without questions of its own", async () => {
+      const put = (payload: unknown) => fetch(`${base}/bot-control`, {
+        ...post(payload), method: "PUT", headers: { "content-type": "application/json", "x-csrf-token": "csrf" },
+      });
+      const question = (patch: Record<string, unknown>) => ({ ...oracle, community: { dailyQuestion: { ...oracle.community.dailyQuestion, ...patch } } });
+      expect((await put({ ...botControlPayload(), oracle: question({ enabled: true }) })).status).toBe(400);
+      expect((await put({ ...botControlPayload(), oracle: question({ enabled: true, channelId: "123456789012345678", ownQuestions: [] }) })).status).toBe(400);
       expect(mocks.saveOracleSettings).not.toHaveBeenCalled();
     });
   });

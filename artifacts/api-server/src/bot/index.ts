@@ -82,6 +82,7 @@ import { initTicketConfig, isTicketCategoryParentId } from "./ticket-categories"
 import { getOracleSettings, initOracleSettings, prophecyUsesLeft, recordProphecyUse } from "./oracle-settings";
 import { startDailyProphecyScheduler } from "./oracle-daily";
 import { handleInviteTopCommand } from "./invite-top";
+import { startDailyQuestionScheduler } from "./oracle-question";
 import {
   enforceOracleTimeout,
   handleToxicity,
@@ -5077,6 +5078,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
 
     logOracleChatStatus();
     startDailyProphecyScheduler(client);
+    startDailyQuestionScheduler(client);
     if (onReady) onReady();
 
     await maybeAlertOracleRecovery(getOracleReplyMode, consumeOracleFellBackMarker, sendAlert);
@@ -5773,6 +5775,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
 
     logOracleChatStatus();
     startDailyProphecyScheduler(client);
+    startDailyQuestionScheduler(client);
     if (onReady) onReady();
 
     await maybeAlertOracleRecovery(getOracleReplyMode, consumeOracleFellBackMarker, sendAlert);
