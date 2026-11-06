@@ -10,6 +10,18 @@ import { logger } from "../../lib/logger";
 import { getModerationWebsiteUrl } from "../../moderation/oauth";
 import { executeModerationAction, type ModerationActionInput } from "./engine";
 
+/** A warn, mute or ban needs a reason the member and the staff can read later. */
+export const REASON_REQUIRED_ACTIONS = new Set(["warn", "mute", "ban"]);
+export const REQUIRED_REASON_MIN = 3;
+
+/** Null when the reason is good enough, otherwise what the staff member is told. */
+export function missingReasonText(type: string, reason: string | null | undefined): string | null {
+  if (!REASON_REQUIRED_ACTIONS.has(type)) return null;
+  const text = (reason ?? "").trim();
+  if (text.length >= REQUIRED_REASON_MIN) return null;
+  return `Scrie motivul pentru /${type} (cel puțin ${REQUIRED_REASON_MIN} caractere). Fără motiv, sancțiunea nu se aplică.`;
+}
+
 export const moderationCommands = [
   new SlashCommandBuilder()
     .setName("moderare")
@@ -17,11 +29,11 @@ export const moderationCommands = [
     .addSubcommand((sub) => sub.setName("login").setDescription("Deschide autentificarea Discord pentru site")),
   new SlashCommandBuilder().setName("warn").setDescription("Avertizează un membru")
     .addUserOption((o) => o.setName("user").setDescription("Membrul").setRequired(true))
-    .addStringOption((o) => o.setName("reason").setDescription("Motivul").setMaxLength(500)),
+    .addStringOption((o) => o.setName("reason").setDescription("Motivul (obligatoriu)").setRequired(true).setMinLength(REQUIRED_REASON_MIN).setMaxLength(500)),
   new SlashCommandBuilder().setName("mute").setDescription("Aplică timeout unui membru")
     .addUserOption((o) => o.setName("user").setDescription("Membrul").setRequired(true))
     .addIntegerOption((o) => o.setName("minutes").setDescription("Minute (max. 28 zile)").setRequired(true).setMinValue(1).setMaxValue(40_320))
-    .addStringOption((o) => o.setName("reason").setDescription("Motivul").setMaxLength(500)),
+    .addStringOption((o) => o.setName("reason").setDescription("Motivul (obligatoriu)").setRequired(true).setMinLength(REQUIRED_REASON_MIN).setMaxLength(500)),
   new SlashCommandBuilder().setName("unmute").setDescription("Ridică timeout-ul unui membru")
     .addUserOption((o) => o.setName("user").setDescription("Membrul").setRequired(true))
     .addStringOption((o) => o.setName("reason").setDescription("Motivul").setMaxLength(500)),
@@ -30,7 +42,7 @@ export const moderationCommands = [
     .addStringOption((o) => o.setName("reason").setDescription("Motivul").setMaxLength(500)),
   new SlashCommandBuilder().setName("ban").setDescription("Banează un membru")
     .addUserOption((o) => o.setName("user").setDescription("Membrul").setRequired(true))
-    .addStringOption((o) => o.setName("reason").setDescription("Motivul").setMaxLength(500)),
+    .addStringOption((o) => o.setName("reason").setDescription("Motivul (obligatoriu)").setRequired(true).setMinLength(REQUIRED_REASON_MIN).setMaxLength(500)),
   new SlashCommandBuilder().setName("purge").setDescription("Șterge mesaje recente din canal")
     .addIntegerOption((o) => o.setName("amount").setDescription("1–100 mesaje").setRequired(true).setMinValue(1).setMaxValue(100))
     .addStringOption((o) => o.setName("reason").setDescription("Motivul").setMaxLength(500)),
@@ -71,6 +83,12 @@ export async function handleModerationCommand(interaction: ChatInputCommandInter
   if (!actionNames.has(interaction.commandName as ModerationActionInput["type"])) return false;
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const type = interaction.commandName as ModerationActionInput["type"];
+  // Discord asks for the reason already; this also stops an old cached command or a reason of spaces.
+  const reasonProblem = missingReasonText(type, interaction.options.getString("reason"));
+  if (reasonProblem) {
+    await interaction.editReply(`❌ ${reasonProblem}`);
+    return true;
+  }
   const target = interaction.options.getUser("user");
   const channel = interaction.options.getChannel("channel");
   const role = interaction.options.getRole("role");

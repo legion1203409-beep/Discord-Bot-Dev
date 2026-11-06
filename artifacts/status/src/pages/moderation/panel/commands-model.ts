@@ -178,9 +178,13 @@ export function commandProblem(form: CommandForm): string | null {
       if (!inRange(form.amount, 0, MAX_SLOWMODE_SECONDS)) return "Pauza e între 0 (oprit) și 21.600 de secunde (6 ore).";
       break;
   }
+  if (REASON_REQUIRED.has(form.type) && form.reason.trim().length < 3) return "Scrie motivul (cel puțin 3 caractere): la warn, mute și ban e obligatoriu.";
   if (form.reason.trim().length > 500) return "Motivul are cel mult 500 de caractere.";
   return null;
 }
+
+/** Commands that need a reason, as the bot checks them (bot/moderation/commands.ts, REASON_REQUIRED_ACTIONS). */
+export const REASON_REQUIRED: ReadonlySet<string> = new Set(["warn", "mute", "ban"]);
 
 /** What the bot receives for the form, with only the fields the command uses. */
 export function commandPayload(form: CommandForm): Record<string, unknown> {

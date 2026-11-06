@@ -32,9 +32,12 @@ describe("the commands page", () => {
   it("checks the form before anything is sent", () => {
     expect(commandProblem(form({ type: "warn" }))).toContain("Scrie membrul");
     expect(commandProblem(form({ type: "warn", member: "Ana" }))).toContain("Copiază ID-ul");
-    expect(commandProblem(form({ type: "warn", member: `<@${MEMBER}>` }))).toBeNull();
-    expect(commandProblem(form({ type: "mute", member: MEMBER, durationMinutes: 0 }))).toContain("28 de zile");
-    expect(commandProblem(form({ type: "mute", member: MEMBER, durationMinutes: 40_321 }))).toContain("28 de zile");
+    expect(commandProblem(form({ type: "warn", member: `<@${MEMBER}>` }))).toContain("Scrie motivul");
+    expect(commandProblem(form({ type: "warn", member: `<@${MEMBER}>`, reason: "spam" }))).toBeNull();
+    expect(commandProblem(form({ type: "ban", member: MEMBER, reason: "  " }))).toContain("obligatoriu");
+    expect(commandProblem(form({ type: "kick", member: MEMBER }))).toBeNull();
+    expect(commandProblem(form({ type: "mute", member: MEMBER, durationMinutes: 0, reason: "spam" }))).toContain("28 de zile");
+    expect(commandProblem(form({ type: "mute", member: MEMBER, durationMinutes: 40_321, reason: "spam" }))).toContain("28 de zile");
     expect(commandProblem(form({ type: "nick", member: MEMBER, nickname: "  " }))).toBe("Scrie porecla nouă.");
     expect(commandProblem(form({ type: "role", member: MEMBER }))).toBe("Alege rolul.");
     expect(commandProblem(form({ type: "role", allMembers: true, roleId: ROLE }))).toBeNull();

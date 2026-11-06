@@ -2187,10 +2187,15 @@ test.describe("authenticated moderation console", () => {
     expect(actionBodies).toEqual([]);
     await page.getByTestId("command-member").fill("<@555555555>");
     await page.getByTestId("command-review").click();
+    // A warn needs a reason.
+    await expect(page.getByTestId("command-problem")).toContainText("Scrie motivul");
+    expect(actionBodies).toEqual([]);
+    await page.getByTestId("command-reason").fill("spam în chat");
+    await page.getByTestId("command-review").click();
     await expect(page.getByTestId("command-confirm")).toContainText("primește un avertisment");
     await page.getByTestId("command-send").click();
     await expect(page.getByTestId("command-result")).toContainText("Warn applied");
-    expect(actionBodies).toEqual([{ type: "warn", targetId: "555555555" }]);
+    expect(actionBodies).toEqual([{ type: "warn", targetId: "555555555", reason: "spam în chat" }]);
   });
 
   test("says the bot refuses every command while staff commands are switched off", async ({ page }) => {
