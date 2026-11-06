@@ -143,11 +143,14 @@ function ModerationApp() {
           <Route path="/tichete/ajutor" component={TicketsGroupPage} />
           <Route path="/tichete/contestatii" component={TicketsGroupPage} />
           <Route path="/tichete/setari" component={TicketsGroupPage} />
+          <Route path="/tichete/bot" component={TicketsGroupPage} />
+          <Route path="/tichete/reputatie" component={TicketsGroupPage} />
           <Route path="/oracol" component={OracleGroupPage} />
           <Route path="/oracol/pornire" component={OracleGroupPage} />
           <Route path="/oracol/conversatie" component={OracleGroupPage} />
           <Route path="/oracol/ton" component={OracleGroupPage} />
           <Route path="/oracol/profetii" component={OracleGroupPage} />
+          <Route path="/oracol/comunitate" component={OracleGroupPage} />
           <Route path="/setari" component={SettingsGroupPage} />
           <Route path="/setari/acces" component={SettingsGroupPage} />
           <Route path="/setari/notificari" component={SettingsGroupPage} />
@@ -157,6 +160,7 @@ function ModerationApp() {
           <Route path="/control/invitatii" component={ControlGroupPage} />
           <Route path="/control/recrutare" component={ControlGroupPage} />
           <Route path="/control/raport" component={ControlGroupPage} />
+          <Route path="/control/top-activi" component={ControlGroupPage} />
           <Route path="/control/canale" component={ControlGroupPage} />
           <Route path="/control/bot" component={ControlGroupPage} />
           <Route path="/pornire-server" component={ServerSetupPage} />

@@ -165,15 +165,16 @@ export function moduleLogDestinations(config: any): ModuleLogDestination[] {
 /* Jurnale de activitate                                               */
 /* ------------------------------------------------------------------ */
 
-export type ActivityCategory = "messages" | "members" | "channels" | "roles" | "voice" | "moderation" | "security";
+export type ActivityCategory = "messages" | "members" | "channels" | "roles" | "voice" | "moderation" | "security" | "invites";
 export const ACTIVITY_CATEGORIES: ReadonlyArray<{ key: ActivityCategory; label: string; hint: string }> = [
   { key: "messages", label: "Mesaje", hint: "Mesaje modificate sau șterse, cu textul de dinainte și de după." },
   { key: "members", label: "Membri", hint: "Intrări și ieșiri de pe server și schimbări de nume." },
-  { key: "channels", label: "Canale", hint: "Canale create, modificate sau șterse și cine le-a schimbat." },
+  { key: "channels", label: "Canale", hint: "Canale, fire și emoji-uri create, modificate sau șterse, schimbările serverului și cine le-a făcut." },
   { key: "roles", label: "Roluri", hint: "Roluri create, modificate sau șterse și rolurile primite sau pierdute de membri." },
   { key: "voice", label: "Voce", hint: "Intrări, ieșiri și mutări în canalele de voce." },
-  { key: "moderation", label: "Moderare", hint: "Acțiunile de moderare: avertismente, mute, kick, ban, ștergeri, comenzi." },
+  { key: "moderation", label: "Moderare", hint: "Acțiunile de moderare: avertismente, mute, kick, ban (și cele date direct din Discord), ștergeri, comenzi." },
   { key: "security", label: "Securitate", hint: "Alertele de raid, spam, AutoMod, comportament suspect și Judecătorul AI." },
+  { key: "invites", label: "Invitații", hint: "Invitații create sau șterse: linkul, canalul, cine a făcut-o, câte folosiri și când expiră. Până are canalul lui (se creează la salvare), apar la Membri." },
 ];
 
 export function isCategoryOn(config: any, key: ActivityCategory): boolean {

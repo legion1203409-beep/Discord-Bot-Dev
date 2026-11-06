@@ -11,7 +11,7 @@ import { PanelContext } from "./context";
 import { CountSummary, PageHead, PanelState, SaveBar } from "./draft";
 import { Ico, cx } from "./fields";
 import {
-  FLOW_KINDS, TICKETS_MODULES, changedTicketParts, deadlinesSummary, flowSummary, isFlowOn, isTicketsModuleChanged, ticketsDraftError,
+  FLOW_KINDS, TICKETS_MODULES, changedTicketParts, supportTicketsOf, supportTicketsSummary, deadlinesSummary, flowSummary, isFlowOn, isTicketsModuleChanged, ticketsDraftError,
   ticketsModuleForRoute, type FlowKind,
 } from "./tickets-model";
 import { TICKET_ICONS, TICKET_VIEWS } from "./tickets";
@@ -52,8 +52,8 @@ export function TicketsGroupPage() {
           <div className="pn-grid">
             <nav className="pn-nav pn-rv" style={{ "--i": 4 } as React.CSSProperties} aria-label="Modulele tichetelor">
               {TICKETS_MODULES.map((module) => {
-                const isFlow = module.id !== "common";
-                const lit = isFlow ? isFlowOn(current, module.id as FlowKind) : true;
+                const isFlow = (FLOW_KINDS as readonly string[]).includes(module.id);
+                const lit = isFlow ? isFlowOn(current, module.id as FlowKind) : module.id === "bot" ? supportTicketsOf(current).enabled : true;
                 return (
                   <Link
                     key={module.id} href={module.route} className="pn-nav-i" data-testid={`nav-tickets-${module.id}`}
@@ -62,7 +62,7 @@ export function TicketsGroupPage() {
                     <span className="pn-nav-ic" aria-hidden="true"><Ico name={TICKET_ICONS[module.id]} /></span>
                     <span className="pn-nav-t">
                       <b>{module.short}</b>
-                      <small>{isFlow ? flowSummary(current, module.id as FlowKind) : deadlinesSummary(current)}</small>
+                      <small>{isFlow ? flowSummary(current, module.id as FlowKind) : module.id === "bot" ? supportTicketsSummary(current) : module.id === "reputation" ? "clasament, /topstaff" : deadlinesSummary(current)}</small>
                     </span>
                     {isTicketsModuleChanged(module, saved, current) ? <span className="pn-nav-dirty" role="img" aria-label="are modificări nesalvate" /> : null}
                     <span className={cx("pn-nav-st", lit && "on")} aria-hidden="true" />

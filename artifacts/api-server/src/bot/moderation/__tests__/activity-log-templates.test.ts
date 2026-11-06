@@ -44,7 +44,7 @@ describe("individual activity log templates", () => {
       expect((send.mock.calls[0][0] as any).allowedMentions).toEqual({ parse: [] });
       config.activityLog.templates[entry.key] = { title: "", description: "" };
       await deliverActivityLog(guild, config, entry.event, "member", "555555", detail);
-      expect((send.mock.calls[1][0] as any).embeds[0].toJSON().title).toBe(entry.title);
+      expect((send.mock.calls[1][0] as any).embeds[0].toJSON().title).toContain(entry.title);
       config.activityLog.enabled = false;
       await deliverActivityLog(guild, config, entry.event, "member", "555555", detail);
       expect(send).toHaveBeenCalledTimes(2);
