@@ -563,6 +563,7 @@ function BotTicketsModule() {
       <ModuleNotes>
         {problem ? <Note tone="bad" role="alert">{problem}</Note> : null}
         <Note tone="plain">E separat de fluxurile de mai jos (Aplicații, Parteneriate…), care pun formulare în canalele create de alt bot. Pot merge amândouă.</Note>
+        <Note tone="plain">🤖 În orice tichet, staff-ul poate scrie /analizeaza-ticket: botul spune problema, riscul, sancțiunile membrului, ce să facă și câteva sfaturi. Doar el vede răspunsul.</Note>
       </ModuleNotes>
       <div className="pn-vsplit">
         <div className="pn-vsplit-main">
