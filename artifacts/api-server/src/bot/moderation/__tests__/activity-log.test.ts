@@ -178,7 +178,7 @@ describe("automatic Discord activity-log delivery", () => {
     };
     const embed = payload.embeds[0]!.toJSON();
     const details = embed.fields.find((field) => field.name === "Detalii")?.value ?? "";
-    expect(embed.title).toBe("Rolurile membrului au fost schimbate");
+    expect(embed.title).toBe("🎭 Rolurile membrului au fost schimbate");
     expect(details).toContain("**Roluri adăugate:** LEGION");
     expect(details).toContain("**Roluri eliminate:** Scout");
     expect(details).toContain("element Discord");

@@ -6,6 +6,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 
 const mocks = vi.hoisted(() => ({
   loadChannelNamesSetting: vi.fn(async () => null as unknown), saveChannelNamesSetting: vi.fn(async () => undefined),
+  loadActiveTopSettings: vi.fn(async () => null as unknown), saveActiveTopSettings: vi.fn(async () => undefined),
   session: vi.fn(), access: vi.fn(), csrf: vi.fn(), client: vi.fn(),
   getConfig: vi.fn(), putConfig: vi.fn(), putProtectionToggle: vi.fn(), listCases: vi.fn(), countCases: vi.fn(),
   listAudit: vi.fn(), listLogs: vi.fn(), beginAction: vi.fn(), getAction: vi.fn(),
@@ -135,6 +136,8 @@ vi.mock("../../bot/db", () => ({
   saveOracleSettings: mocks.saveOracleSettings,
   loadChannelNamesSetting: mocks.loadChannelNamesSetting,
   saveChannelNamesSetting: mocks.saveChannelNamesSetting,
+  loadActiveTopSettings: mocks.loadActiveTopSettings,
+  saveActiveTopSettings: mocks.saveActiveTopSettings,
   loadDailyStatsEmbedConfig: mocks.loadDailyStatsEmbedConfig,
   saveDailyStatsEmbedConfig: mocks.saveDailyStatsEmbedConfig,
   loadInviteTrackingConfig: mocks.loadInviteTrackingConfig,
@@ -1567,11 +1570,41 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     });
   });
 
+  describe("the top of the most active members", () => {
+    const put = (payload: unknown) => fetch(`${base}/bot-control`, {
+      ...post(payload), method: "PUT", headers: { "content-type": "application/json", "x-csrf-token": "csrf" },
+    });
+    const top = { enabled: true, channelId: "", intervalDays: 3, limit: 5, includeVoice: false, mention: false, color: "#112233" };
+
+    it("is read with the bot settings, off by default", async () => {
+      mocks.loadActiveTopSettings.mockResolvedValueOnce(null);
+      const body = await (await fetch(`${base}/bot-control`)).json() as { activeTop: { enabled: boolean; intervalDays: number } };
+      expect(body.activeTop).toMatchObject({ enabled: false, intervalDays: 7, limit: 10 });
+    });
+
+    it("needs a channel when switched on, is saved when sent and left alone when a page does not send it", async () => {
+      mocks.saveActiveTopSettings.mockClear();
+      expect((await put({ ...botControlPayload(), activeTop: top })).status).toBe(400);
+      expect(mocks.saveActiveTopSettings).not.toHaveBeenCalled();
+      const saved = await put({ ...botControlPayload(), activeTop: { ...top, enabled: false } });
+      expect(saved.status).toBe(200);
+      expect(mocks.saveActiveTopSettings).toHaveBeenCalledWith(guildId, { ...top, enabled: false });
+      mocks.saveActiveTopSettings.mockClear();
+      expect((await put(botControlPayload())).status).toBe(200);
+      expect(mocks.saveActiveTopSettings).not.toHaveBeenCalled();
+    });
+
+    it("refuses an interval outside 1–7 days", async () => {
+      expect((await put({ ...botControlPayload(), activeTop: { ...top, enabled: false, intervalDays: 9 } })).status).toBe(400);
+    });
+  });
+
   describe("the Oracle's settings", () => {
     const oracle = {
       enabled: true,
       chat: { channelIds: ["777777777"], replyToReplies: false, tone: "sobru", length: "scurt", cooldownSeconds: 30 },
       prophecy: { commandEnabled: false, dailyLimit: 2, daily: { enabled: false, channelId: "", hour: 8, timeZone: "Europe/Paris" } },
+      community: { dailyQuestion: { enabled: false, channelId: "", hour: 20, timeZone: "Europe/Paris", useOwnQuestions: true, ownQuestions: ["Ce faci azi?"] } },
     };
 
     it("are read with the bot settings, with defaults for a server that never chose them", async () => {
@@ -1604,6 +1637,16 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
       expect(noChannel.status).toBe(400);
       const badZone = await put({ ...botControlPayload(), oracle: { ...oracle, prophecy: { ...oracle.prophecy, daily: { ...oracle.prophecy.daily, timeZone: "Mars/Olympus" } } } });
       expect(badZone.status).toBe(400);
+      expect(mocks.saveOracleSettings).not.toHaveBeenCalled();
+    });
+
+    it("refuse a daily question without its channel or without questions of its own", async () => {
+      const put = (payload: unknown) => fetch(`${base}/bot-control`, {
+        ...post(payload), method: "PUT", headers: { "content-type": "application/json", "x-csrf-token": "csrf" },
+      });
+      const question = (patch: Record<string, unknown>) => ({ ...oracle, community: { dailyQuestion: { ...oracle.community.dailyQuestion, ...patch } } });
+      expect((await put({ ...botControlPayload(), oracle: question({ enabled: true }) })).status).toBe(400);
+      expect((await put({ ...botControlPayload(), oracle: question({ enabled: true, channelId: "123456789012345678", ownQuestions: [] }) })).status).toBe(400);
       expect(mocks.saveOracleSettings).not.toHaveBeenCalled();
     });
   });

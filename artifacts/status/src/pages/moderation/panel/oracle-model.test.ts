@@ -3,7 +3,7 @@ import { isWidePanelRoute, panelGroupRoute } from "./model";
 import {
   DEFAULT_ORACLE, DEFAULT_PAUSED_MESSAGE, ORACLE_MODULES, changedOracleParts, cooldownText, dayWord, isDailyHourNow, isOracleModuleChanged,
   isOracleModuleOn, isOracleRoute, nextDailyProphecy, oracleChannelOptions, oracleDraftError, oracleModuleForRoute, oracleModuleSummary,
-  oracleOf, sampleAnswer, withOracle,
+  communitySummary, oracleOf, sampleAnswer, withOracle,
 } from "./oracle-model";
 
 const config = (oracle?: unknown) => ({
@@ -12,8 +12,8 @@ const config = (oracle?: unknown) => ({
 });
 
 describe("the Oracle group", () => {
-  it("is its own page, with four modules", () => {
-    expect(ORACLE_MODULES.map((module) => module.route)).toEqual(["/oracol/pornire", "/oracol/conversatie", "/oracol/ton", "/oracol/profetii"]);
+  it("is its own page, with five modules", () => {
+    expect(ORACLE_MODULES.map((module) => module.route)).toEqual(["/oracol/pornire", "/oracol/conversatie", "/oracol/ton", "/oracol/profetii", "/oracol/comunitate"]);
     expect(oracleModuleForRoute("/oracol").id).toBe("status");
     expect(oracleModuleForRoute("/oracol/profetii/").id).toBe("prophecy");
     expect(isOracleRoute("/oracol/ton")).toBe(true);
@@ -112,5 +112,32 @@ describe("the Oracle group", () => {
     const image = structuredClone(ok);
     image.gameplayConfig.messages.oraclePausedImageUrl = "http://nesigur.ro/a.png";
     expect(oracleDraftError(image)).toContain("imagine");
+  });
+});
+
+describe("Comunitate — întrebarea zilei", () => {
+  it("un server fără setări primește valorile implicite, oprite", () => {
+    const oracle = oracleOf({});
+    expect(oracle.community.dailyQuestion).toMatchObject({ enabled: false, channelId: "", hour: 18, useOwnQuestions: false, ownQuestions: [] });
+    expect(communitySummary(oracle)).toBe("oprită");
+  });
+
+  it("pornită fără canal nu se poate salva", () => {
+    const config = { oracle: { community: { dailyQuestion: { enabled: true, channelId: "" } } } };
+    expect(oracleDraftError(config)).toContain("Comunitate");
+    expect(oracleDraftError({ oracle: { community: { dailyQuestion: { enabled: true, channelId: "123456789012345678" } } } })).toBeNull();
+  });
+
+  it("întrebările proprii: lista goală și textele prea lungi sunt refuzate", () => {
+    const base = { enabled: true, channelId: "123456789012345678", useOwnQuestions: true };
+    expect(oracleDraftError({ oracle: { community: { dailyQuestion: { ...base, ownQuestions: [] } } } })).toContain("cel puțin o întrebare");
+    expect(oracleDraftError({ oracle: { community: { dailyQuestion: { ...base, ownQuestions: ["x".repeat(301)] } } } })).toContain("între 1 și 300");
+    expect(oracleDraftError({ oracle: { community: { dailyQuestion: { ...base, ownQuestions: ["Ce faci?"] } } } })).toBeNull();
+  });
+
+  it("modificarea unui câmp păstrează restul setărilor", () => {
+    const next = withOracle({}, ["community", "dailyQuestion", "hour"], 20);
+    expect(next.community.dailyQuestion.hour).toBe(20);
+    expect(next.prophecy.daily.hour).toBe(9);
   });
 });

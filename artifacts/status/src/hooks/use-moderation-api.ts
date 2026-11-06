@@ -226,6 +226,10 @@ export interface BotControlConfig {
     thumbnailUrl: string;
     /** The day's card as the report's image; missing means on. */
     chart?: boolean;
+    /** One report every this many days (1–7); missing means every day. */
+    intervalDays?: number;
+    /** The top inviters of the period in the report; missing means on. */
+    inviteTop?: boolean;
     metricLabels: {
       messages: string;
       uniqueUsers: string;
@@ -234,6 +238,16 @@ export interface BotControlConfig {
       leaves: string;
       peakVoice: string;
     };
+  };
+  /** The top of the most active members (api-server bot/active-top.ts); missing when the bot could not read it. */
+  activeTop?: {
+    enabled: boolean;
+    channelId: string;
+    intervalDays: number;
+    limit: number;
+    includeVoice: boolean;
+    mention: boolean;
+    color: string;
   };
   inviteTracking: InviteTrackingConfig;
   discordLive?: boolean;
@@ -259,6 +273,9 @@ export interface OracleSettings {
     commandEnabled: boolean;
     dailyLimit: number;
     daily: { enabled: boolean; channelId: string; hour: number; timeZone: string };
+  };
+  community: {
+    dailyQuestion: { enabled: boolean; channelId: string; hour: number; timeZone: string; useOwnQuestions: boolean; ownQuestions: string[] };
   };
 }
 

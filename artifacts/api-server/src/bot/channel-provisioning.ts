@@ -152,6 +152,7 @@ const ACTIVITY_LOG_CATEGORIES: Array<{ key: ActivityLogCategory; name: string }>
   { key: "voice", name: "jurnal-vocal" },
   { key: "moderation", name: "jurnal-moderare" },
   { key: "security", name: "jurnal-securitate" },
+  { key: "invites", name: "jurnal-invitatii" },
 ];
 
 /* ------------------------------------------------------------------ */

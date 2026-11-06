@@ -337,7 +337,7 @@ export const MODULES: ModuleDef[] = [
     rules: [
       rule({ id: "wordFilter", path: ["autoMod", "wordFilter"], title: "Filtru cuvinte", hint: "Șterge sau sancționează mesajele care conțin cuvintele din listă.", kind: "message", severity: "slowmode", thresholds: [] }),
       rule({ id: "linkBlock", path: ["autoMod", "linkBlock"], title: "Blocare linkuri", hint: "Blochează categoriile de linkuri alese și domeniile din listă.", kind: "message", severity: "slowmode", thresholds: [] }),
-      rule({ id: "scamFilter", path: ["autoMod", "scamFilter"], title: "Anti-Scam", hint: "Recunoaște afirmațiile clare despre câștiguri în bani sau crypto, inclusiv în imaginile atașate.", kind: "scam", severity: "none", thresholds: [], switchLabel: "Activează Anti-Scam" }),
+      rule({ id: "scamFilter", path: ["autoMod", "scamFilter"], title: "Anti-Scam", hint: "Recunoaște promisiunile de câștiguri în bani sau crypto (și în imagini), linkurile false care imită Discord, Steam sau Roblox, fișierele periculoase și mesajele de scam puse în mai multe canale.", kind: "scam", severity: "none", thresholds: [], switchLabel: "Activează Anti-Scam" }),
       rule({ id: "emojiLimit", path: ["autoMod", "emojiLimit"], title: "Limită emoji", hint: "Prea multe emoji într-un singur mesaj.", kind: "message", severity: "thresholds", thresholds: EMOJI_LIMIT }),
       rule({ id: "capsLimit", path: ["autoMod", "capsLimit"], title: "Limită majuscule", hint: "Mesaje scrise în mare parte cu majuscule.", kind: "message", severity: "thresholds", thresholds: CAPS_LIMIT }),
       rule({ id: "repeatBlock", path: ["autoMod", "repeatBlock"], title: "Repetări de caractere și mesaje", hint: "Același caracter la rând sau același mesaj trimis de mai multe ori.", kind: "message", severity: "thresholds", thresholds: REPEAT_LIMIT }),
@@ -502,6 +502,7 @@ export const ORACLE_MODULE_ROUTES = {
   chat: "/oracol/conversatie",
   style: "/oracol/ton",
   prophecy: "/oracol/profetii",
+  community: "/oracol/comunitate",
 } as const;
 
 export function isOracleRoute(path: string): boolean {
@@ -529,6 +530,7 @@ export const CONTROL_MODULE_ROUTES = {
   invites: "/control/invitatii",
   recruitment: "/control/recrutare",
   daily: "/control/raport",
+  activeTop: "/control/top-activi",
   channels: "/control/canale",
   server: "/control/bot",
 } as const;
