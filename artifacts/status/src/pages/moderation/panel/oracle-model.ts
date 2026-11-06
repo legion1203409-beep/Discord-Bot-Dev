@@ -28,7 +28,11 @@ export const DEFAULT_ORACLE: OracleSettings = {
   enabled: true,
   chat: { channelIds: [], replyToReplies: true, tone: "implicit", length: "mediu", cooldownSeconds: 12 },
   prophecy: { commandEnabled: true, dailyLimit: 10, daily: { enabled: false, channelId: "", hour: 9, timeZone: "Europe/Bucharest" } },
+  community: { dailyQuestion: { enabled: false, channelId: "", hour: 18, timeZone: "Europe/Bucharest", useOwnQuestions: false, ownQuestions: [] } },
 };
+
+export const MAX_OWN_QUESTIONS = 30;
+export const MAX_QUESTION_LENGTH = 300;
 
 export const DEFAULT_PAUSED_MESSAGE = "🛑 Oracle AI este oprit momentan. Un administrator îl poate reporni cu `/startai`.";
 
@@ -37,12 +41,19 @@ export function oracleOf(config: any): OracleSettings {
   const raw = config?.oracle ?? {};
   const chat = raw.chat ?? {};
   const prophecy = raw.prophecy ?? {};
+  const question = raw.community?.dailyQuestion ?? {};
   return {
     enabled: raw.enabled ?? DEFAULT_ORACLE.enabled,
     chat: { ...DEFAULT_ORACLE.chat, ...chat, channelIds: Array.isArray(chat.channelIds) ? chat.channelIds : [] },
     prophecy: {
       ...DEFAULT_ORACLE.prophecy, ...prophecy,
       daily: { ...DEFAULT_ORACLE.prophecy.daily, ...(prophecy.daily ?? {}) },
+    },
+    community: {
+      dailyQuestion: {
+        ...DEFAULT_ORACLE.community.dailyQuestion, ...question,
+        ownQuestions: Array.isArray(question.ownQuestions) ? question.ownQuestions : [],
+      },
     },
   };
 }
@@ -94,6 +105,11 @@ export const ORACLE_MODULES: readonly OracleModuleDef[] = [
     id: "prophecy", route: ORACLE_MODULE_ROUTES.prophecy, short: "Profeții", title: "Profeții",
     description: "Profețiile personale cerute cu /profetie și profeția zilei, trimisă pentru tot serverul la ora aleasă.",
     paths: ["oracle.prophecy"],
+  },
+  {
+    id: "community", route: ORACLE_MODULE_ROUTES.community, short: "Comunitate", title: "Comunitate",
+    description: "Activități pentru toată comunitatea: întrebarea zilei, pusă de Oracol în canalul ales, la ora aleasă.",
+    paths: ["oracle.community"],
   },
 ];
 
@@ -311,6 +327,11 @@ export function prophecySummary(oracle: OracleSettings): string {
   return parts.length ? parts.join(" · ") : "oprite";
 }
 
+export function communitySummary(oracle: OracleSettings): string {
+  const question = oracle.community.dailyQuestion;
+  return question.enabled ? `întrebarea zilei la ${hourText(question.hour)}` : "oprită";
+}
+
 /* ------------------------------------------------------------------ */
 /* Meniul și salvarea                                                   */
 /* ------------------------------------------------------------------ */
@@ -322,6 +343,7 @@ export function oracleModuleSummary(config: any, id: OracleModuleId): string {
     case "chat": return `${whereSummary(oracle)} · ${cooldownText(oracle.chat.cooldownSeconds)}`;
     case "style": return `${toneLabel(oracle.chat.tone)} · ${lengthLabel(oracle.chat.length).toLowerCase()}`;
     case "prophecy": return prophecySummary(oracle);
+    case "community": return communitySummary(oracle);
   }
 }
 
@@ -329,6 +351,7 @@ export function oracleModuleSummary(config: any, id: OracleModuleId): string {
 export function isOracleModuleOn(config: any, id: OracleModuleId): boolean {
   const oracle = oracleOf(config);
   if (!oracle.enabled) return false;
+  if (id === "community") return oracle.community.dailyQuestion.enabled;
   return id === "prophecy" ? oracle.prophecy.commandEnabled || oracle.prophecy.daily.enabled : true;
 }
 
@@ -357,5 +380,13 @@ export function oracleDraftError(config: any): string | null {
   if (daily.enabled && !daily.channelId) return "Profeții — Alege canalul profeției zilei.";
   if (!isValidInteger(daily.hour, 0, 23)) return "Profeții — Ora profeției zilei e între 0 și 23.";
   if (!isValidTimeZone(daily.timeZone)) return "Profeții — Fusul orar nu e cunoscut.";
+  const question = oracle.community.dailyQuestion;
+  if (question.channelId && !isDiscordId(question.channelId)) return `Comunitate — Canalul: „${question.channelId}” nu este un ID Discord.`;
+  if (question.enabled && !question.channelId) return "Comunitate — Alege canalul întrebării zilei.";
+  if (!isValidInteger(question.hour, 0, 23)) return "Comunitate — Ora întrebării zilei e între 0 și 23.";
+  if (!isValidTimeZone(question.timeZone)) return "Comunitate — Fusul orar nu e cunoscut.";
+  if (question.ownQuestions.length > MAX_OWN_QUESTIONS) return `Comunitate — Cel mult ${MAX_OWN_QUESTIONS} de întrebări proprii.`;
+  if (question.ownQuestions.some((text) => !text.trim() || text.length > MAX_QUESTION_LENGTH)) return `Comunitate — Fiecare întrebare are între 1 și ${MAX_QUESTION_LENGTH} de caractere.`;
+  if (question.enabled && question.useOwnQuestions && !question.ownQuestions.length) return "Comunitate — Scrie cel puțin o întrebare proprie sau folosește lista Oracolului.";
   return null;
 }

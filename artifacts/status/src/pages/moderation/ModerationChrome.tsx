@@ -88,6 +88,7 @@ const allItems: Array<{ heading: string; items: NavigationItem[] }> = [
     { id: "oracle-status", label: "Pornirea Oracolului", description: "Comutatorul general și mesajul pentru Oracolul oprit", href: "/oracol/pornire", icon: MessageCircle, tint: "violet", keywords: "startai stopai pornit oprit" },
     { id: "oracle-chat", label: "Conversația Oracolului", description: "Unde răspunde, reply-uri și pauza dintre răspunsuri", href: "/oracol/conversatie", icon: MessageCircle, tint: "violet", keywords: "canale categorii mentiune reply pauza cooldown" },
     { id: "oracle-style", label: "Tonul Oracolului", description: "Cum vorbește și cât de lung răspunde", href: "/oracol/ton", icon: MessageCircle, tint: "violet", keywords: "ton stil lungime mistic prietenos sobru jucaus" },
+    { id: "oracle-community", label: "Comunitate", description: "Întrebarea zilei", href: "/oracol/comunitate", icon: Sparkles, tint: "violet", keywords: "comunitate intrebarea zilei intrebare activitati" },
     { id: "oracle-prophecy", label: "Profeții", description: "/profetie și profeția zilei", href: "/oracol/profetii", icon: Sparkles, tint: "violet", keywords: "profetie profetia zilei ora fus orar limita" },
   ] },
   { heading: "Tichete", items: [
