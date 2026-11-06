@@ -22,6 +22,7 @@ export const AUDIT_EVENT_CATEGORIES = [
   { value: "voice", label: "Activitate vocală" },
   { value: "moderation", label: "Moderare" },
   { value: "security", label: "Securitate" },
+  { value: "invites", label: "Invitații" },
   { value: "other", label: "Altele" },
 ] as const;
 
@@ -60,6 +61,9 @@ export function getAuditEventCategory(eventType: string): AuditEventCategory {
   if (normalized.startsWith("discord.channel_")) return "channels";
   if (normalized.startsWith("discord.guild_role_")) return "roles";
   if (normalized.startsWith("discord.voice_")) return "voice";
+  if (normalized.startsWith("discord.invite_")) return "invites";
+  if (/^discord\.(thread_|emoji_|guild_update$)/.test(normalized)) return "channels";
+  if (normalized.startsWith("discord.guild_ban_")) return "moderation";
   if (/^(config\.|case\.|cases\.|action\.)/.test(normalized)) return "moderation";
   if (/^(raid\.|suspicious\.|spam\.|automod\.|ai\.|event\.)/.test(normalized)) return "security";
   return "other";

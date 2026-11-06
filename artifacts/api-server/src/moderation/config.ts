@@ -109,7 +109,7 @@ const commandName = z.enum([
 ]);
 
 export const ActivityLogCategorySchema = z.enum([
-  "messages", "members", "channels", "roles", "voice", "moderation", "security",
+  "messages", "members", "channels", "roles", "voice", "moderation", "security", "invites",
 ]);
 export type ActivityLogCategory = z.infer<typeof ActivityLogCategorySchema>;
 
@@ -121,6 +121,7 @@ const activityLogCategories = z.object({
   voice: z.boolean().default(true),
   moderation: z.boolean().default(true),
   security: z.boolean().default(true),
+  invites: z.boolean().default(true),
 }).default({});
 
 export const ModerationConfigSchema = z.object({
@@ -238,6 +239,8 @@ export const ModerationConfigSchema = z.object({
       voice: snowflake.nullable().default(null),
       moderation: snowflake.nullable().default(null),
       security: snowflake.nullable().default(null),
+      // Until a channel of its own is chosen, invites go to the members channel, as before.
+      invites: snowflake.nullable().default(null),
     }).default({}),
     memberJoinTitleTemplate: z.string().max(256).default(""),
     memberJoinDescriptionTemplate: z.string().max(2_000).default(""),

@@ -109,6 +109,7 @@ export type ModerationAuditCategory =
   | "voice"
   | "moderation"
   | "security"
+  | "invites"
   | "other";
 
 export interface ModerationAuditFilters {
@@ -1067,6 +1068,10 @@ export class PostgresModerationStore implements ModerationStore {
           WHEN lower(event_type) LIKE 'discord.channel%' THEN 'channels'
           WHEN lower(event_type) LIKE 'discord.guild_role%' OR lower(event_type) LIKE 'discord.guildrole%' THEN 'roles'
           WHEN lower(event_type) LIKE 'discord.voice%' THEN 'voice'
+          WHEN lower(event_type) LIKE 'discord.invite%' THEN 'invites'
+          WHEN lower(event_type) LIKE 'discord.thread%' OR lower(event_type) LIKE 'discord.emoji%'
+            OR lower(event_type) = 'discord.guild_update' THEN 'channels'
+          WHEN lower(event_type) LIKE 'discord.guild_ban%' THEN 'moderation'
           WHEN lower(event_type) LIKE 'config.%' OR lower(event_type) LIKE 'case.%'
             OR lower(event_type) LIKE 'cases.%' OR lower(event_type) LIKE 'action.%' THEN 'moderation'
           WHEN lower(event_type) LIKE 'raid.%' OR lower(event_type) LIKE 'suspicious.%'

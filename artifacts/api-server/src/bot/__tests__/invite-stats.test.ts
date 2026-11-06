@@ -49,10 +49,30 @@ describe("invite join log attribution", () => {
       attributionAmbiguous: false,
     }).toJSON();
 
-    expect(embed.title).toBe("A intrat un membru nou");
+    expect(embed.title).toBe("🎟️ Membru nou prin invitație");
     expect(embed.description).toContain("<@111111111>");
     expect(embed.description).toContain("<@222222222>");
     expect(embed.description).toContain("alpha");
+    expect(embed.fields?.map((field) => field.name)).toEqual(["👤 Membru", "🤝 Invitat de", "🔗 Invitația"]);
+  });
+
+  it("adds the member's photo, the invite's uses and a warning for a new account", () => {
+    const embed = buildInviteJoinLogEmbed("Server", {
+      memberId: "111111111", inviteCode: "alpha", inviterId: "222222222", inviterName: "Inviter", attributionAmbiguous: false,
+      memberName: "ion", memberAvatarUrl: "https://cdn.discordapp.com/embed/avatars/1.png",
+      accountCreatedAt: new Date(Date.now() - 2 * 86_400_000), inviteUses: 4, inviteMaxUses: 10,
+    }).toJSON();
+    expect(embed.thumbnail?.url).toBe("https://cdn.discordapp.com/embed/avatars/1.png");
+    expect(embed.fields?.find((field) => field.name === "🔗 Invitația")?.value).toContain("4 din 10 folosiri");
+    expect(embed.fields?.find((field) => field.name === "📅 Cont creat")?.value).toContain("⚠️ 2 zile");
+  });
+
+  it("says plainly when the inviter is unknown", () => {
+    const embed = buildInviteJoinLogEmbed("Server", {
+      memberId: "111111111", inviteCode: null, inviterId: null, inviterName: null, attributionAmbiguous: true,
+    }).toJSON();
+    expect(embed.title).toBe("🎟️ Membru nou");
+    expect(embed.description).toContain("au intrat mai mulți membri simultan");
   });
 
   it("defaults the optional join-log channel for previously saved settings", () => {
