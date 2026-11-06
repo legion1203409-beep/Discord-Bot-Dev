@@ -662,6 +662,26 @@ function readableRoleName(
     : "rol cu nume indisponibil";
 }
 
+type OverwriteLike = { id: string; type?: number; allow?: { bitfield?: bigint }; deny?: { bitfield?: bigint } };
+
+/** Who the channel's permissions changed for: roles and members whose overwrite was added, removed or changed. */
+export function permissionOverwriteChanges(before: unknown, after: unknown): { added: string[]; removed: string[]; changed: string[] } | null {
+  const read = (channel: unknown): Map<string, OverwriteLike> | null => {
+    const cache = (channel as { permissionOverwrites?: { cache?: { values?: () => Iterable<OverwriteLike> } } } | null)?.permissionOverwrites?.cache;
+    if (!cache?.values) return null;
+    return new Map([...cache.values()].map((overwrite) => [overwrite.id, overwrite]));
+  };
+  const old = read(before);
+  const now = read(after);
+  if (!old || !now) return null;
+  const key = (overwrite: OverwriteLike) => `${overwrite.allow?.bitfield ?? 0n}/${overwrite.deny?.bitfield ?? 0n}`;
+  const label = (overwrite: OverwriteLike) => (overwrite.type === 1 ? `<@${overwrite.id}>` : `<@&${overwrite.id}>`);
+  const added = [...now.values()].filter((overwrite) => !old.has(overwrite.id)).map(label);
+  const removed = [...old.values()].filter((overwrite) => !now.has(overwrite.id)).map(label);
+  const changed = [...now.values()].filter((overwrite) => old.has(overwrite.id) && key(old.get(overwrite.id)!) !== key(overwrite)).map(label);
+  return added.length || removed.length || changed.length ? { added, removed, changed } : null;
+}
+
 function resourceDiff(before: Record<string, unknown> | null, after: Record<string, unknown>, fields: string[]): Record<string, unknown> {
   const changed: Record<string, unknown> = {};
   for (const field of fields) {
@@ -1092,6 +1112,19 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
       : ["name", "color", "hoist", "mentionable", "permissions", "position"];
     const after = entity as unknown as Record<string, unknown>;
     const changes = resourceDiff(before, after, fields);
+    if (targetType === "channel" && before) {
+      if (typeof before.rawPosition === "number" && typeof after.rawPosition === "number" && before.rawPosition !== after.rawPosition) {
+        changes.position = { from: before.rawPosition + 1, to: after.rawPosition + 1 };
+      }
+      const permissions = permissionOverwriteChanges(before, after);
+      if (permissions) {
+        changes.permissions = [
+          permissions.changed.length ? `schimbate pentru ${permissions.changed.slice(0, 5).join(", ")}` : "",
+          permissions.added.length ? `adăugate pentru ${permissions.added.slice(0, 5).join(", ")}` : "",
+          permissions.removed.length ? `scoase pentru ${permissions.removed.slice(0, 5).join(", ")}` : "",
+        ].filter(Boolean).join("; ");
+      }
+    }
     const displayChanges = { ...changes };
     const parentChange = changes.parentId;
     if (
