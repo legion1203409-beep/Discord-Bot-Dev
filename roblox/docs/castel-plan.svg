@@ -1,0 +1,118 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1080" font-family="Georgia, serif">
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#ff8a3d" stop-opacity=".95"/>
+      <stop offset=".45" stop-color="#ee6a3a" stop-opacity=".45"/>
+      <stop offset="1" stop-color="#ee6a3a" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="ash" width="14" height="14" patternUnits="userSpaceOnUse">
+      <rect width="14" height="14" fill="#1b1513"/>
+      <circle cx="3" cy="4" r=".9" fill="#2c221e"/><circle cx="10" cy="11" r=".7" fill="#2a201c"/>
+    </pattern>
+    <pattern id="cobble" width="12" height="12" patternUnits="userSpaceOnUse">
+      <rect width="12" height="12" fill="#3a3330"/>
+      <rect x="1" y="1" width="10" height="4" rx="1.5" fill="#443c38"/><rect x="5" y="7" width="10" height="4" rx="1.5" fill="#443c38"/><rect x="-5" y="7" width="8" height="4" rx="1.5" fill="#443c38"/>
+    </pattern>
+  </defs>
+
+  <rect width="1000" height="1080" fill="url(#ash)"/>
+  <text x="500" y="54" text-anchor="middle" font-size="34" fill="#d8a964" letter-spacing="3">CASTELUL REGATULUI CENUȘII</text>
+  <text x="500" y="84" text-anchor="middle" font-size="16" fill="#b9a99c" font-family="Arial, sans-serif">văzut de sus · nordul e sus · 1 pătrățel = 10 studs</text>
+
+  <!-- șanțul -->
+  <rect x="150" y="150" width="700" height="700" rx="10" fill="none" stroke="#1f4a5c" stroke-width="56" opacity=".9"/>
+  <rect x="150" y="150" width="700" height="700" rx="10" fill="none" stroke="#2f6f86" stroke-width="40" opacity=".55"/>
+
+  <!-- curtea -->
+  <rect x="200" y="200" width="600" height="600" fill="url(#cobble)"/>
+
+  <!-- zidurile -->
+  <g fill="#5c5350" stroke="#2c2522" stroke-width="2">
+    <rect x="188" y="188" width="624" height="24"/>
+    <rect x="188" y="188" width="24" height="624"/>
+    <rect x="788" y="188" width="24" height="624"/>
+    <rect x="188" y="788" width="260" height="24"/>
+    <rect x="552" y="788" width="260" height="24"/>
+  </g>
+  <!-- poarta + pod -->
+  <rect x="432" y="780" width="20" height="40" fill="#6d625e" stroke="#2c2522" stroke-width="2"/>
+  <rect x="548" y="780" width="20" height="40" fill="#6d625e" stroke="#2c2522" stroke-width="2"/>
+  <rect x="460" y="812" width="80" height="108" fill="#5a3c26" stroke="#2c1d12" stroke-width="2"/>
+  <g stroke="#3e2818" stroke-width="2"><line x1="460" y1="834" x2="540" y2="834"/><line x1="460" y1="858" x2="540" y2="858"/><line x1="460" y1="882" x2="540" y2="882"/></g>
+  <rect x="436" y="742" width="8" height="34" fill="#8c1c18"/><rect x="556" y="742" width="8" height="34" fill="#8c1c18"/>
+
+  <!-- turnurile -->
+  <g>
+    <circle cx="200" cy="200" r="46" fill="#5c5350" stroke="#2c2522" stroke-width="3"/>
+    <circle cx="800" cy="200" r="46" fill="#5c5350" stroke="#2c2522" stroke-width="3"/>
+    <circle cx="200" cy="800" r="46" fill="#5c5350" stroke="#2c2522" stroke-width="3"/>
+    <circle cx="800" cy="800" r="46" fill="#5c5350" stroke="#2c2522" stroke-width="3"/>
+    <g fill="url(#glow)"><circle cx="200" cy="200" r="28"/><circle cx="800" cy="200" r="28"/><circle cx="200" cy="800" r="28"/><circle cx="800" cy="800" r="28"/></g>
+  </g>
+
+  <!-- drumurile -->
+  <rect x="472" y="260" width="56" height="540" fill="#5d5450" opacity=".85"/>
+  <rect x="260" y="466" width="480" height="48" fill="#5d5450" opacity=".85"/>
+
+  <!-- sala mare -->
+  <rect x="360" y="228" width="280" height="144" fill="#4a4240" stroke="#211b19" stroke-width="3"/>
+  <rect x="384" y="244" width="232" height="112" fill="#3a2a1e"/>
+  <rect x="472" y="364" width="56" height="12" fill="#2a1e14"/>
+  <rect x="488" y="266" width="24" height="16" fill="#5a3c26"/>
+  <circle cx="420" cy="320" r="10" fill="url(#glow)"/><circle cx="580" cy="320" r="10" fill="url(#glow)"/>
+
+  <!-- piața și fântâna de foc (spawn) -->
+  <circle cx="500" cy="490" r="92" fill="#4d4541" stroke="#2c2522" stroke-width="2"/>
+  <circle cx="500" cy="490" r="28" fill="#2c2522"/>
+  <circle cx="500" cy="490" r="60" fill="url(#glow)"/>
+  <circle cx="500" cy="490" r="16" fill="#ff7a30"/>
+  <g fill="#2f2826" stroke="#d8a964" stroke-width="2">
+    <rect x="488" y="534" width="24" height="24" rx="3"/><rect x="544" y="478" width="24" height="24" rx="3"/>
+    <rect x="432" y="478" width="24" height="24" rx="3"/><rect x="488" y="422" width="24" height="24" rx="3"/>
+  </g>
+
+  <!-- fierarul (est) -->
+  <rect x="664" y="420" width="64" height="88" fill="#6e281e" stroke="#2c1210" stroke-width="2" opacity=".95"/>
+  <rect x="664" y="424" width="10" height="72" fill="#5a3c26"/>
+  <circle cx="694" cy="466" r="9" fill="#d8a964"/>
+  <rect x="700" y="380" width="14" height="20" fill="#46464c"/>
+  <rect x="704" y="524" width="24" height="24" fill="#2c2522"/><circle cx="716" cy="536" r="12" fill="url(#glow)"/>
+
+  <!-- antrenorul (vest) -->
+  <rect x="272" y="420" width="64" height="88" fill="#2e3e5c" stroke="#141c2a" stroke-width="2" opacity=".95"/>
+  <rect x="326" y="424" width="10" height="72" fill="#5a3c26"/>
+  <circle cx="306" cy="466" r="9" fill="#d8a964"/>
+  <rect x="276" y="384" width="12" height="12" fill="#aa8c5a"/><rect x="276" y="534" width="12" height="12" fill="#aa8c5a"/>
+
+  <!-- torțe -->
+  <g fill="#ff8a3d">
+    <circle cx="260" cy="208" r="4"/><circle cx="380" cy="208" r="4"/><circle cx="620" cy="208" r="4"/><circle cx="740" cy="208" r="4"/>
+    <circle cx="208" cy="260" r="4"/><circle cx="208" cy="380" r="4"/><circle cx="208" cy="620" r="4"/><circle cx="208" cy="740" r="4"/>
+    <circle cx="792" cy="260" r="4"/><circle cx="792" cy="380" r="4"/><circle cx="792" cy="620" r="4"/><circle cx="792" cy="740" r="4"/>
+    <circle cx="260" cy="792" r="4"/><circle cx="380" cy="792" r="4"/><circle cx="620" cy="792" r="4"/><circle cx="740" cy="792" r="4"/>
+  </g>
+
+  <!-- etichete -->
+  <g font-family="Arial, sans-serif" font-size="17" fill="#f4e8dc">
+    <text x="500" y="300" text-anchor="middle" font-weight="bold">SALA MARE</text>
+    <text x="500" y="322" text-anchor="middle" font-size="13" fill="#b9a99c">tronul · steaguri · jar</text>
+    <text x="500" y="610" text-anchor="middle" font-weight="bold" fill="#ffc46e">SPAWN · Fântâna de foc</text>
+    <text x="500" y="630" text-anchor="middle" font-size="13" fill="#b9a99c">4 locuri de apariție în jurul focului</text>
+    <text x="696" y="572" text-anchor="middle" font-weight="bold">FIERARUL</text>
+    <text x="696" y="590" text-anchor="middle" font-size="13" fill="#b9a99c">Armură · Armă</text>
+    <text x="304" y="572" text-anchor="middle" font-weight="bold">ANTRENORUL</text>
+    <text x="304" y="590" text-anchor="middle" font-size="13" fill="#b9a99c">Vitalitate · Agilitate</text>
+    <text x="500" y="950" text-anchor="middle" font-weight="bold">POARTA · podul peste șanț</text>
+    <text x="905" y="500" text-anchor="middle" fill="#7fb6c8" transform="rotate(90 905 500)">ȘANȚUL CU APĂ</text>
+    <text x="200" y="128" text-anchor="middle" font-size="13" fill="#b9a99c">turn cu jar</text>
+  </g>
+
+  <!-- legenda -->
+  <g font-family="Arial, sans-serif" font-size="14" fill="#b9a99c">
+    <circle cx="190" cy="1010" r="7" fill="#ff8a3d"/><text x="204" y="1015">torță</text>
+    <rect x="270" y="1002" width="16" height="16" rx="3" fill="#2f2826" stroke="#d8a964" stroke-width="2"/><text x="294" y="1015">loc de spawn</text>
+    <rect x="410" y="1002" width="16" height="16" fill="#5c5350"/><text x="434" y="1015">zid (30 studs înălțime)</text>
+    <rect x="610" y="1002" width="16" height="16" fill="#2f6f86"/><text x="634" y="1015">apă</text>
+    <rect x="690" y="1002" width="16" height="16" fill="#5a3c26"/><text x="714" y="1015">lemn / tarabe</text>
+  </g>
+</svg>
