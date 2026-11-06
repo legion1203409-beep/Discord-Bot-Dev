@@ -83,21 +83,21 @@ def background(accent):
 
 
 def header(draw, data, accent):
-    draw.text((PAD, 30), "RAPORT ZILNIC", font=font(20), fill=accent)
+    draw.text((PAD, 30), data.get("kicker") or "RAPORT ZILNIC", font=font(20), fill=accent)
     draw.text((PAD, 56), fit(draw, data.get("guild", ""), font(40), WIDTH - 2 * PAD), font=font(40), fill=INK, stroke_width=1, stroke_fill=INK)
     draw.text((PAD, 108), fit(draw, data.get("date", ""), font(24), WIDTH - 2 * PAD), font=font(24), fill=INK_2)
 
 
-def delta_text(delta, invert=False):
-    """The change since the day before; for leaves, fewer is the good direction."""
+def delta_text(delta, invert=False, compare="ieri"):
+    """The change since the day (or the period) before; for leaves, fewer is the good direction."""
     if delta is None:
         return None, None
     up, down = (BAD, GOOD) if invert else (GOOD, BAD)
     if delta > 0:
-        return f"▲ +{number(delta)} față de ieri", up
+        return f"▲ +{number(delta)} față de {compare}", up
     if delta < 0:
-        return f"▼ −{number(-delta)} față de ieri", down
-    return "= la fel ca ieri", INK_3
+        return f"▼ −{number(-delta)} față de {compare}", down
+    return ("= la fel ca ieri" if compare == "ieri" else "= la fel ca înainte"), INK_3
 
 
 def metric_tiles(draw, data):
@@ -115,11 +115,11 @@ def metric_tiles(draw, data):
         while size > 26 and draw.textlength(value, font=font(size)) > tile_w - 32:
             size -= 2
         draw.text((x + 16, y + 42 + (46 - size) // 2), fit(draw, value, font(size), tile_w - 32), font=font(size), fill=INK, stroke_width=1, stroke_fill=INK)
-        text, color = delta_text(metric.get("delta"), bool(metric.get("invert")))
+        text, color = delta_text(metric.get("delta"), bool(metric.get("invert")), data.get("compare") or "ieri")
         if text:
             if draw.textlength(text, font=font(19)) > tile_w - 32:
                 # Big numbers keep the change and drop the words.
-                text = text.split(" față")[0].split(" ca ieri")[0]
+                text = text.split(" față")[0].split(" ca ")[0]
             draw.text((x + 16, y + 100), fit(draw, text, font(19), tile_w - 32), font=font(19), fill=color)
 
 

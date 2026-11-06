@@ -14,6 +14,7 @@ import {
 } from "./db";
 import { publicMessageImageUrl } from "./message-media";
 import { chartText, DAILY_CHART_FILE, renderDailyReportChart, type DailyChartInput } from "./daily-report-chart";
+import { getTopInviters, inviteTopLines, type InviteTopData } from "./invite-top";
 
 const STATS_TIME_ZONE = process.env.DISCORD_STATS_TIMEZONE || "Europe/Bucharest";
 const REPORT_CHECK_INTERVAL_MS = 60 * 1000;
@@ -48,9 +49,16 @@ export type DailyStatsMetrics = {
 
 export interface DailyStatsReport {
   guildId: string;
+  /** The last day of the report (for a one-day report, the day itself). */
   day: string;
+  /** The first day of the report; the same as `day` for a one-day report. */
+  startDay?: string;
+  /** How many days the report adds up (1–7). */
+  days?: number;
+  /** Who brought the most members through invites in the period; null when invite tracking never ran. */
+  invites?: InviteTopData | null;
   metrics: DailyStatsMetrics;
-  /** The day before, when the bot recorded something that day; the report compares with it. */
+  /** The period before (the day before, for one day), when the bot recorded something then; the report compares with it. */
   previous?: DailyStatsMetrics | null;
   activity: Array<{ day: string; messages: number }>;
   topChannels: Array<{ channelId: string; channelName: string; messages: number }>;
@@ -93,6 +101,47 @@ function daysEndingAt(day: string, count: number): string[] {
     current = previousDay(current);
   }
   return result;
+}
+
+/** Days between two "YYYY-MM-DD" days (b − a). */
+function dayDistance(a: string, b: string): number {
+  return Math.round((Date.parse(`${b}T12:00:00.000Z`) - Date.parse(`${a}T12:00:00.000Z`)) / 86_400_000);
+}
+
+/** A fixed Sunday the periods are counted from, so a 7-day report always covers Monday to Sunday. */
+const PERIOD_ANCHOR = "2024-01-07";
+
+/** Whether a report covering `intervalDays` days ends on this day (every day, for a daily report). */
+export function isReportEndDay(day: string, intervalDays = 1): boolean {
+  const interval = Math.max(1, Math.min(7, Math.trunc(intervalDays)));
+  if (interval === 1) return true;
+  return ((dayDistance(PERIOD_ANCHOR, day) % interval) + interval) % interval === 0;
+}
+
+/** The next day a report ends on, starting from `fromDay` (included). */
+export function nextReportEndDay(fromDay: string, intervalDays = 1): string {
+  let day = fromDay;
+  for (let step = 0; step < 7 && !isReportEndDay(day, intervalDays); step += 1) day = shiftStatsDay(day, 1);
+  return day;
+}
+
+export function shiftStatsDay(day: string, amount: number): string {
+  const date = new Date(`${day}T12:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + amount);
+  return date.toISOString().slice(0, 10);
+}
+
+/** "29 octombrie – 4 noiembrie 2026", or the day alone. */
+export function formatStatsPeriod(startDay: string, endDay: string): string {
+  if (startDay === endDay) return formatStatsDay(endDay);
+  const [startYear, startMonth] = startDay.split("-");
+  const [endYear, endMonth] = endDay.split("-");
+  const format = (day: string, options: Intl.DateTimeFormatOptions) =>
+    new Intl.DateTimeFormat("ro-RO", { ...options, timeZone: "UTC" }).format(new Date(`${day}T12:00:00.000Z`));
+  const start = startYear !== endYear
+    ? format(startDay, { day: "numeric", month: "long", year: "numeric" })
+    : startMonth !== endMonth ? format(startDay, { day: "numeric", month: "long" }) : format(startDay, { day: "numeric" });
+  return `${start} – ${format(endDay, { day: "numeric", month: "long", year: "numeric" })}`;
 }
 
 export function formatStatsDay(day: string): string {
@@ -254,33 +303,35 @@ function previousMetrics(
   return Object.values(metrics).some((value) => value > 0) ? metrics : null;
 }
 
-export async function getDailyStats(guildId: string, day = statsDay()): Promise<DailyStatsReport> {
+export async function getDailyStats(guildId: string, day = statsDay(), days = 1): Promise<DailyStatsReport> {
   await ensureDailyStatsTables();
+  const span = Math.max(1, Math.min(7, Math.trunc(days)));
+  const period = daysEndingAt(day, span);
+  const previousPeriod = daysEndingAt(previousDay(period[0]!), span);
   const activityDays = daysEndingAt(day, 7);
-  const dayBefore = previousDay(day);
+  type Totals = { message_count: number; joins: number; leaves: number; boosts: number; peak_voice: number; rows: number };
+  const totals = (dayList: string[]) => pool.query<Totals>(
+    `SELECT COALESCE(SUM(message_count), 0)::int AS message_count, COALESCE(SUM(joins), 0)::int AS joins,
+            COALESCE(SUM(leaves), 0)::int AS leaves, COALESCE(SUM(boosts), 0)::int AS boosts,
+            COALESCE(MAX(peak_voice), 0)::int AS peak_voice, COUNT(*)::int AS rows
+       FROM discord_daily_stats WHERE guild_id = $1 AND day = ANY($2::text[])`,
+    [guildId, dayList],
+  );
+  const users = (dayList: string[]) => pool.query<{ count: string }>(
+    `SELECT COUNT(DISTINCT user_id)::text AS count FROM discord_daily_users WHERE guild_id = $1 AND day = ANY($2::text[])`,
+    [guildId, dayList],
+  );
   const [statsResult, usersResult, channelsResult, activityResult, previousResult, previousUsersResult] = await Promise.all([
-    pool.query<{
-      message_count: number;
-      joins: number;
-      leaves: number;
-      boosts: number;
-      peak_voice: number;
-    }>(
-      `SELECT message_count, joins, leaves, boosts, peak_voice
-       FROM discord_daily_stats WHERE guild_id = $1 AND day = $2`,
-      [guildId, day],
-    ),
-    pool.query<{ count: string }>(
-      `SELECT COUNT(*)::text AS count FROM discord_daily_users WHERE guild_id = $1 AND day = $2`,
-      [guildId, day],
-    ),
+    totals(period),
+    users(period),
     pool.query<{ channel_id: string; channel_name: string; message_count: number }>(
-      `SELECT channel_id, channel_name, message_count
+      `SELECT channel_id, (array_agg(channel_name ORDER BY day DESC))[1] AS channel_name, SUM(message_count)::int AS message_count
        FROM discord_daily_channels
-       WHERE guild_id = $1 AND day = $2
+       WHERE guild_id = $1 AND day = ANY($2::text[])
+       GROUP BY channel_id
        ORDER BY message_count DESC, channel_name ASC
        LIMIT 5`,
-      [guildId, day],
+      [guildId, period],
     ),
     pool.query<{ day: string; message_count: number }>(
       `SELECT day, message_count
@@ -289,29 +340,18 @@ export async function getDailyStats(guildId: string, day = statsDay()): Promise<
        ORDER BY day ASC`,
       [guildId, activityDays],
     ),
-    pool.query<{
-      message_count: number;
-      joins: number;
-      leaves: number;
-      boosts: number;
-      peak_voice: number;
-    }>(
-      `SELECT message_count, joins, leaves, boosts, peak_voice
-       FROM discord_daily_stats WHERE guild_id = $1 AND day = $2`,
-      [guildId, dayBefore],
-    ),
-    pool.query<{ count: string }>(
-      `SELECT COUNT(*)::text AS count FROM discord_daily_users WHERE guild_id = $1 AND day = $2`,
-      [guildId, dayBefore],
-    ),
+    totals(previousPeriod),
+    users(previousPeriod),
   ]);
   const row = statsResult.rows[0];
-  const previousRow = previousResult.rows[0];
+  const previousRow = Number(previousResult.rows[0]?.rows ?? 0) > 0 ? previousResult.rows[0] : undefined;
   const activityByDay = new Map(activityResult.rows.map((item) => [item.day, Number(item.message_count)]));
 
   return {
     guildId,
     day,
+    startDay: period[0]!,
+    days: span,
     metrics: {
       messages: Number(row?.message_count ?? 0),
       uniqueUsers: Number(usersResult.rows[0]?.count ?? 0),
@@ -352,7 +392,8 @@ function renderDailyStatsText(
     : report.day;
   const values: Record<string, string> = {
     guild: guildName,
-    date: formatStatsDay(report.day),
+    date: formatStatsPeriod(report.startDay ?? report.day, report.day),
+    days: String(report.days ?? 1),
     year,
     month,
     day,
@@ -410,8 +451,11 @@ function reportFacts(report: DailyStatsReport, joinedTimestamp?: number | null) 
   const joinedDay = joinedTimestamp != null && Number.isFinite(joinedTimestamp)
     ? statsDay(joinedTimestamp)
     : null;
-  // The day before must be a full day the bot watched: the join day is partial, and earlier days were not recorded.
-  const comparable = report.previous != null && (joinedDay === null || previousDay(report.day) > joinedDay);
+  const days = report.days ?? 1;
+  const startDay = report.startDay ?? report.day;
+  // The period before must be fully watched by the bot: the join day is partial, and earlier days were not recorded.
+  const previousStart = shiftStatsDay(startDay, -days);
+  const comparable = report.previous != null && (joinedDay === null || previousStart > joinedDay);
   const deltas = Object.fromEntries(METRIC_KEYS.map((key) => [
     key,
     comparable && report.previous ? report.metrics[key] - report.previous[key] : null,
@@ -420,7 +464,7 @@ function reportFacts(report: DailyStatsReport, joinedTimestamp?: number | null) 
     day: item.day,
     label: shortStatsDay(item.day),
     value: joinedDay !== null && item.day < joinedDay ? null : item.messages,
-    current: item.day === report.day,
+    current: item.day >= startDay && item.day <= report.day,
   }));
   const available = activity.filter((item): item is typeof item & { value: number } => item.value !== null);
   const average = available.length >= 2
@@ -430,6 +474,8 @@ function reportFacts(report: DailyStatsReport, joinedTimestamp?: number | null) 
     ? available.reduce((best, item) => (item.value > best.value ? item : best))
     : null;
   return {
+    days,
+    startDay,
     joinedDay,
     comparable,
     deltas,
@@ -476,7 +522,9 @@ export function buildDailyStatsEmbed(
   const summaryLines = [
     ...metricLines,
     community,
-    ...(facts.comparable ? ["*▲ ▼ arată schimbarea față de ziua dinainte.*"] : []),
+    ...(facts.comparable
+      ? [facts.days === 1 ? "*▲ ▼ arată schimbarea față de ziua dinainte.*" : `*▲ ▼ arată schimbarea față de cele ${facts.days} zile dinainte.*`]
+      : []),
   ];
   const metricFields: { name: string; value: string; inline: false }[] = [];
   let metricValue = "";
@@ -504,7 +552,7 @@ export function buildDailyStatsEmbed(
   const weekLine = [
     facts.average !== null ? `Media: **${count(Math.round(facts.average))}** mesaje/zi` : null,
     facts.busiest
-      ? facts.busiest.current
+      ? facts.busiest.current && facts.days === 1
         ? "ziua raportului a fost cea mai activă"
         : `cea mai activă: **${facts.busiest.label}** (${count(facts.busiest.value)})`
       : null,
@@ -536,14 +584,33 @@ export function buildDailyStatsEmbed(
       .join("\n")
     : renderDailyStatsText(config.emptyChannelsText, guildName, report);
 
+  const joinedInPeriod = facts.joinedDay !== null && facts.joinedDay >= facts.startDay && facts.joinedDay <= report.day;
   const coverageNotes = [
-    facts.joinedDay === report.day ? "Prima zi include doar activitatea observată după instalarea botului." : null,
+    joinedInPeriod
+      ? facts.days === 1
+        ? "Prima zi include doar activitatea observată după instalarea botului."
+        : "Perioada include ziua instalării botului; activitatea de dinainte nu e numărată."
+      : null,
     hasUnavailableDays ? "„—” marchează zilele dinaintea instalării; nu există date istorice pentru ele." : null,
   ].filter((note): note is string => note !== null);
+  // The top inviters of the period, when invite tracking runs on the server and the report shows them.
+  const inviteField = config.inviteTop !== false && report.invites
+    ? {
+      name: facts.days === 1 ? "🎟️ Top invitații" : `🎟️ Top invitații · ${facts.days} zile`,
+      value: (report.invites.rows.length
+        ? [...inviteTopLines(report.invites.rows, 5), report.invites.unknown > 0 ? `*+${count(report.invites.unknown)} fără invitație știută*` : null]
+          .filter((line): line is string => line !== null).join("\n")
+        : "Nimeni n-a adus membri noi prin invitații în perioada asta.").slice(0, 1_024),
+    }
+    : null;
+  // The default title says "Zilnice"; a longer report says how many days it adds up instead.
+  const title = facts.days > 1 && config.title === DEFAULT_DAILY_STATS_EMBED_CONFIG.title
+    ? `📊 Statistici · ultimele ${facts.days} zile · {guild}`
+    : config.title;
   const embed = new EmbedBuilder()
     .setColor(Number.parseInt(config.color.slice(1), 16))
     .setAuthor({ name: "ORACOLUL CENUȘII · COMMUNITY INSIGHTS" })
-    .setTitle(renderDailyStatsText(config.title, guildName, report).slice(0, 256))
+    .setTitle(renderDailyStatsText(title, guildName, report).slice(0, 256))
     .setDescription(renderDailyStatsText(config.description, guildName, report).slice(0, 4_096))
     .addFields(
       ...metricFields,
@@ -551,6 +618,7 @@ export function buildDailyStatsEmbed(
         ? [{ name: renderDailyStatsText(config.activityTitle, guildName, report).slice(0, 256), value: activityText.slice(0, 1_024) }]
         : []),
       { name: renderDailyStatsText(config.channelsTitle, guildName, report).slice(0, 256), value: channelText.slice(0, 1_024) },
+      ...(inviteField ? [inviteField] : []),
       ...(coverageNotes.length > 0 ? [{ name: "Acoperirea datelor", value: coverageNotes.join("\n") }] : []),
     )
     .setFooter({ text: renderDailyStatsText(config.footer, guildName, report).slice(0, 2_048) })
@@ -577,7 +645,8 @@ export function dailyChartInput(
   const community = `Bilanț: ${signed(facts.net)} membri`;
   return {
     guild: chartText(guildName, 80) || "Server",
-    date: longStatsDay(report.day),
+    date: facts.days === 1 ? longStatsDay(report.day) : formatStatsPeriod(facts.startDay, report.day),
+    ...(facts.days > 1 ? { kicker: `RAPORT PE ${facts.days} ZILE`, compare: "perioada dinainte" } : {}),
     color: config.color,
     metrics: METRIC_KEYS.map((key) => ({
       label: label(key),
@@ -653,6 +722,8 @@ async function correctUnavailableReport(
 
 export async function repairRecentUnavailableReports(client: Client, guildId: string): Promise<void> {
   await ensureDailyStatsTables();
+  // A report over several days sits on its last day, which may be empty on its own: it is not "unavailable".
+  if (((await loadDailyStatsEmbedConfig(guildId))?.intervalDays ?? 1) > 1) return;
   const guild = client.guilds.cache.get(guildId) ?? await client.guilds.fetch(guildId).catch(() => null);
   if (!guild) return;
   const currentDay = statsDay();
@@ -699,6 +770,10 @@ export async function publishDailyStatsReport(client: Client, guildId: string, d
 
 async function publishDailyStatsReportOnce(client: Client, guildId: string, day: string): Promise<boolean> {
   await ensureDailyStatsTables();
+  const config = await loadDailyStatsEmbedConfig(guildId);
+  const intervalDays = config?.intervalDays ?? 1;
+  // A report every N days goes out only after the last day of its period.
+  if (!isReportEndDay(day, intervalDays)) return false;
   const existingMessageId = await publishedReportMessageId(guildId, day);
   const guild = client.guilds.cache.get(guildId) ?? await client.guilds.fetch(guildId).catch(() => null);
   if (!guild) {
@@ -706,7 +781,7 @@ async function publishDailyStatsReportOnce(client: Client, guildId: string, day:
     return false;
   }
   const beforeBotJoined = isReportDayBeforeBotJoined(day, guild.joinedTimestamp);
-  const report = await getDailyStats(guildId, day);
+  const report = await getDailyStats(guildId, day, intervalDays);
   if (beforeBotJoined || !hasRecordedStats(report)) {
     if (existingMessageId) {
       await correctUnavailableReport(
@@ -721,7 +796,9 @@ async function publishDailyStatsReportOnce(client: Client, guildId: string, day:
     return false;
   }
   if (existingMessageId) return false;
-  const config = await loadDailyStatsEmbedConfig(guildId);
+  if (config.inviteTop !== false) {
+    report.invites = await getTopInviters(guildId, report.startDay ?? day, day, 10);
+  }
   const channelId = resolveDailyStatsChannelId(config.channelId, guildId);
   if (!channelId) {
     warnDailyStatsReportSkipped(guildId, day, "target_channel_not_configured");

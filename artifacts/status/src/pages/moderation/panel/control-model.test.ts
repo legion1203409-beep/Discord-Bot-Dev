@@ -3,6 +3,7 @@ import { isWidePanelRoute, panelGroupRoute } from "./model";
 import {
   CONTROL_MODULES, accessSummary, changedControlParts, controlDraftError, controlModuleForRoute, controlModuleSummary, dailyCardDelta, dailyCardText,
   dailyChartOn, dailyDeltaText, dailyPreviewChannels, dailyPreviewWeek, defaultPermission,
+  DEFAULT_DAILY_TITLE, dailyInterval, dailyIntervalText, dailyInviteTopOn, dailyProblem, dailyTitleFor, isDailyReportEndDay, longDayName, nextDailyReport, shortPeriod,
   inviteReportSummary, isControlRoute, permissionOf, presetRole, ROLE_PRESETS, recruitmentProblem, renderDailyText, roleAccessOf, withRole, withRoleAccess,
 } from "./control-model";
 
@@ -131,5 +132,42 @@ describe("the bot control group", () => {
     color.dailyStats.color = "rosu";
     expect(controlDraftError(color)).toContain("#RRGGBB");
     expect(controlDraftError(config({ provisioningPermissions: { admin: { roleIds: ["x"], readMessageHistory: true, sendMessages: true } } }))).toContain("Administrație");
+  });
+});
+
+describe("raportul la N zile", () => {
+  it("citește intervalul ca botul: 1–7, altfel zilnic", () => {
+    expect(dailyInterval({})).toBe(1);
+    expect(dailyInterval({ intervalDays: 3 })).toBe(3);
+    expect(dailyInterval({ intervalDays: 8 })).toBe(1);
+    expect(dailyIntervalText(1)).toBe("zilnic");
+    expect(dailyIntervalText(4)).toBe("o dată la 4 zile");
+    expect(dailyInviteTopOn({})).toBe(true);
+    expect(dailyInviteTopOn({ inviteTop: false })).toBe(false);
+  });
+  it("aceleași zile de raport ca botul (7 zile: luni–duminică)", () => {
+    expect(isDailyReportEndDay("2026-11-01", 7)).toBe(true);
+    expect(isDailyReportEndDay("2026-10-31", 7)).toBe(false);
+    expect(isDailyReportEndDay("2026-11-08", 7)).toBe(true);
+    expect(["2026-10-29", "2026-10-30", "2026-10-31", "2026-11-01"].every((day) => isDailyReportEndDay(day, 1))).toBe(true);
+  });
+  it("arată următorul raport și perioada lui", () => {
+    // Joi 29 octombrie 2026, prânz la București.
+    const now = new Date("2026-10-29T10:00:00Z");
+    expect(nextDailyReport(now, 1)).toEqual({ startDay: "2026-10-29", endDay: "2026-10-29", postDay: "2026-10-30" });
+    expect(nextDailyReport(now, 7)).toEqual({ startDay: "2026-10-26", endDay: "2026-11-01", postDay: "2026-11-02" });
+    expect(longDayName("2026-11-02")).toBe("luni, 2 noiembrie");
+    expect(shortPeriod("2026-10-26", "2026-11-01")).toBe("26 octombrie – 1 noiembrie");
+    expect(shortPeriod("2026-11-02", "2026-11-04")).toBe("2 – 4 noiembrie");
+  });
+  it("rezumatul din meniu și titlul de bază se schimbă după interval", () => {
+    expect(controlModuleSummary("daily", { dailyStats: { channelId: "500000002", chart: false, intervalDays: 7 } })).toBe("o dată la 7 zile, după miezul nopții");
+    expect(dailyTitleFor(DEFAULT_DAILY_TITLE, 3)).toBe("📊 Statistici · ultimele 3 zile · {guild}");
+    expect(dailyTitleFor("Al nostru", 3)).toBe("Al nostru");
+    expect(dailyTitleFor(DEFAULT_DAILY_TITLE, 1)).toBe(DEFAULT_DAILY_TITLE);
+    expect(dailyCardDelta(5, 7)).toBe("▲ +5 față de perioada dinainte");
+  });
+  it("refuză un interval în afara 1–7", () => {
+    expect(dailyProblem({ color: "#123456", intervalDays: 9 })).toBe("Intervalul e între 1 și 7 zile.");
   });
 });

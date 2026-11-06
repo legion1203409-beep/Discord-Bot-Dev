@@ -2603,6 +2603,10 @@ export interface DailyStatsEmbedConfig {
   thumbnailUrl: string;
   /** Draw the day's card (numbers and the last 7 days) and post it as the report's image. */
   chart: boolean;
+  /** One report every this many days (1–7), counting the days since the last one. */
+  intervalDays: number;
+  /** Show who brought the most members through invites in the report's period. */
+  inviteTop: boolean;
   metricLabels: {
     messages: string;
     uniqueUsers: string;
@@ -2625,6 +2629,8 @@ export const DEFAULT_DAILY_STATS_EMBED_CONFIG: DailyStatsEmbedConfig = {
   imageUrl: "",
   thumbnailUrl: "",
   chart: true,
+  intervalDays: 1,
+  inviteTop: true,
   metricLabels: {
     messages: "💬 Mesaje",
     uniqueUsers: "👥 Utilizatori unici",
@@ -2640,7 +2646,7 @@ export function normalizeDailyStatsEmbedConfig(value: unknown): DailyStatsEmbedC
   const labels = input.metricLabels && typeof input.metricLabels === "object"
     ? input.metricLabels as Record<string, unknown>
     : {};
-  const text = (key: keyof Omit<DailyStatsEmbedConfig, "metricLabels" | "color" | "imageUrl" | "thumbnailUrl" | "channelId" | "chart">): string => {
+  const text = (key: keyof Omit<DailyStatsEmbedConfig, "metricLabels" | "color" | "imageUrl" | "thumbnailUrl" | "channelId" | "chart" | "intervalDays" | "inviteTop">): string => {
     const current = input[key];
     const fallback = DEFAULT_DAILY_STATS_EMBED_CONFIG[key];
     return typeof current === "string" && current.trim() ? current.trim() : fallback;
@@ -2670,6 +2676,10 @@ export function normalizeDailyStatsEmbedConfig(value: unknown): DailyStatsEmbedC
     imageUrl: normalizeMessageImageUrl(input.imageUrl),
     thumbnailUrl: normalizeMessageImageUrl(input.thumbnailUrl),
     chart: input.chart !== false,
+    intervalDays: typeof input.intervalDays === "number" && Number.isInteger(input.intervalDays) && input.intervalDays >= 1 && input.intervalDays <= 7
+      ? input.intervalDays
+      : DEFAULT_DAILY_STATS_EMBED_CONFIG.intervalDays,
+    inviteTop: input.inviteTop !== false,
     metricLabels: {
       messages: label("messages").slice(0, 256),
       uniqueUsers: label("uniqueUsers").slice(0, 256),
