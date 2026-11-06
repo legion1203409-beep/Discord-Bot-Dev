@@ -82,6 +82,9 @@ import { initTicketConfig, isTicketCategoryParentId } from "./ticket-categories"
 import { getOracleSettings, initOracleSettings, prophecyUsesLeft, recordProphecyUse } from "./oracle-settings";
 import { startDailyProphecyScheduler } from "./oracle-daily";
 import { handleSupportTicketInteraction, handleTopStaffCommand } from "./support-tickets";
+import { handleInviteTopCommand } from "./invite-top";
+import { handleActiveTopCommand, startActiveTopScheduler } from "./active-top";
+import { startDailyQuestionScheduler } from "./oracle-question";
 import {
   enforceOracleTimeout,
   handleToxicity,
@@ -101,7 +104,9 @@ import {
   recordDailyJoin,
   recordDailyLeave,
   recordDailyMessage,
+  recordDailyVoiceMinutes,
   recordDailyVoicePeak,
+  statsDay,
 } from "./daily-stats";
 import {
   awardActivityXp,
@@ -573,6 +578,30 @@ const slashCommands = [
         { name: "De la început", value: "all" },
       )),
   new SlashCommandBuilder()
+    .setName("topactivi")
+    .setDescription("🏆 Cei mai activi membri: în chat și pe voce.")
+    .addStringOption((option) => option
+      .setName("perioada")
+      .setDescription("Ce perioadă numără (implicit: ultimele 7 zile)")
+      .addChoices(
+        { name: "Azi", value: "1" },
+        { name: "Ultimele 7 zile", value: "7" },
+        { name: "Ultimele 30 de zile", value: "30" },
+        { name: "De la început", value: "all" },
+      )),
+  new SlashCommandBuilder()
+    .setName("topinvitatii")
+    .setDescription("🎟️ Cine a adus cei mai mulți membri noi prin invitații.")
+    .addStringOption((option) => option
+      .setName("perioada")
+      .setDescription("Ce perioadă numără (implicit: ultimele 7 zile)")
+      .addChoices(
+        { name: "Azi", value: "1" },
+        { name: "Ultimele 7 zile", value: "7" },
+        { name: "Ultimele 30 de zile", value: "30" },
+        { name: "De la început", value: "all" },
+      )),
+  new SlashCommandBuilder()
     .setName("clasament")
     .setDescription("👑 Clasamentele Regatelor Cenușii.")
     .addSubcommand((sub) =>
@@ -991,10 +1020,13 @@ function startActivityVoiceTicker(client: Client): void {
     const currentlyEligible = new Set<string>();
 
     for (const guild of client.guilds.cache.values()) {
+      // Minutes in voice for the top of the most active members: same rule as the XP (not AFK, not alone).
+      const inVoice: string[] = [];
       for (const channel of guild.channels.cache.values()) {
         if (!channel.isVoiceBased() || channel.id === guild.afkChannelId) continue;
         const members = [...channel.members.values()].filter((member) => !member.user.bot);
         if (members.length < 2) continue;
+        inVoice.push(...members.map((member) => member.id));
         for (const member of members) {
           const key = `${guild.id}:${member.id}`;
           currentlyEligible.add(key);
@@ -1010,6 +1042,10 @@ function startActivityVoiceTicker(client: Client): void {
             .catch((err) => logger.warn({ err, guildId: guild.id, userId: member.id }, "Voice activity XP update failed"))
             .finally(() => voiceActivityAwardsInProgress.delete(key));
         }
+      }
+      if (inVoice.length) {
+        void recordDailyVoiceMinutes(guild.id, inVoice, now)
+          .catch((err) => logger.warn({ err, guildId: guild.id }, "Voice minutes update failed"));
       }
     }
 
@@ -4926,6 +4962,8 @@ export async function startBot(onReady?: () => void): Promise<void> {
     GatewayIntentBits.GuildInvites,
     // Bans and unbans (not privileged): the ban evasion check remembers banned accounts.
     GatewayIntentBits.GuildModeration,
+    // Emoji adăugate, redenumite sau șterse, pentru jurnalul de canale (nu e privilegiat).
+    GatewayIntentBits.GuildExpressions,
   ];
   // GuildMembers, GuildPresences and MessageContent are all privileged. Keep the
   // bot online when the portal toggles are absent rather than requesting any one
@@ -5080,6 +5118,8 @@ export async function startBot(onReady?: () => void): Promise<void> {
 
     logOracleChatStatus();
     startDailyProphecyScheduler(client);
+    startActiveTopScheduler(client);
+    startDailyQuestionScheduler(client);
     if (onReady) onReady();
 
     await maybeAlertOracleRecovery(getOracleReplyMode, consumeOracleFellBackMarker, sendAlert);
@@ -5460,6 +5500,8 @@ export async function startBot(onReady?: () => void): Promise<void> {
           "server",
           "invita",
           "topstaff",
+          "topinvitatii",
+          "topactivi",
           "stopjoc",
           "startjoc",
           "stopai",
@@ -5522,6 +5564,8 @@ export async function startBot(onReady?: () => void): Promise<void> {
       if (interaction.commandName === "server") dispatch(handleServer(interaction));
       if (interaction.commandName === "invita") dispatch(handleRecruitmentInvite(interaction));
       if (interaction.commandName === "topstaff") dispatch(handleTopStaffCommand(interaction as ChatInputCommandInteraction));
+      if (interaction.commandName === "topinvitatii") dispatch(handleInviteTopCommand(interaction as ChatInputCommandInteraction, statsDay()));
+      if (interaction.commandName === "topactivi") dispatch(handleActiveTopCommand(interaction as ChatInputCommandInteraction));
       if (interaction.commandName === "inventar") dispatch(handleInventar(interaction));
       if (interaction.commandName === "profetie") dispatch(handleProfetie(interaction));
       if (interaction.commandName === "clasament") dispatch(handleClasament(interaction));
@@ -5786,6 +5830,8 @@ export async function startBot(onReady?: () => void): Promise<void> {
 
     logOracleChatStatus();
     startDailyProphecyScheduler(client);
+    startActiveTopScheduler(client);
+    startDailyQuestionScheduler(client);
     if (onReady) onReady();
 
     await maybeAlertOracleRecovery(getOracleReplyMode, consumeOracleFellBackMarker, sendAlert);
@@ -6073,6 +6119,8 @@ export async function startBot(onReady?: () => void): Promise<void> {
            "profetie",
           "invita",
           "topstaff",
+          "topinvitatii",
+          "topactivi",
           "setcanal",
           "setaliantatext",
           "moderare",
@@ -6126,6 +6174,8 @@ export async function startBot(onReady?: () => void): Promise<void> {
       if (interaction.commandName === "profil") dispatch(handleProfil(interaction));
       if (interaction.commandName === "invita") dispatch(handleRecruitmentInvite(interaction));
       if (interaction.commandName === "topstaff") dispatch(handleTopStaffCommand(interaction as ChatInputCommandInteraction));
+      if (interaction.commandName === "topinvitatii") dispatch(handleInviteTopCommand(interaction as ChatInputCommandInteraction, statsDay()));
+      if (interaction.commandName === "topactivi") dispatch(handleActiveTopCommand(interaction as ChatInputCommandInteraction));
       if (interaction.commandName === "inventar") dispatch(handleInventar(interaction));
       if (interaction.commandName === "profetie") dispatch(handleProfetie(interaction));
       if (interaction.commandName === "clasament") dispatch(handleClasament(interaction));

@@ -3,10 +3,10 @@
  * acces, Botul pe server. Logica e în control-model.ts; ciorna, salvarea și
  * crearea canalelor în bot-draft.tsx.
  */
-import React, { useId, useMemo, useState } from "react";
+import React, { useEffect, useId, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { DiscordEmojiText } from "../../../components/moderation/DiscordEmojiText";
-import { useActiveGuild, useInviteStats, useSession, type ChannelPermissionConfig, type InviteStatsRange } from "../../../hooks/use-moderation-api";
+import { useActiveGuild, useChannelNames, useInviteStats, useSession, type ChannelPermissionConfig, type InviteStatsRange } from "../../../hooks/use-moderation-api";
 import { useToast } from "../../../hooks/use-toast";
 import { useBotDraft } from "./bot-draft";
 import { usePanel } from "./context";
@@ -15,7 +15,9 @@ import {
 } from "./fields";
 import { EmojiTextField, ImageUrlField } from "./message-fields";
 import {
-  CONTROL_MODULES, DAILY_METRICS, DAILY_PREVIEW_ACTIVITY, DAILY_PREVIEW_DAYS, DAILY_PREVIEW_MEMBERS, DAILY_TEXTS, DAILY_TOKENS, PROVISION_CATEGORIES,
+  ACTIVE_TOP_LIMITS, ACTIVE_TOP_PREVIEW_CHAT, ACTIVE_TOP_PREVIEW_VOICE, activeTopOf, activeTopProblem, activeTopVoiceTime, type ActiveTop,
+  CONTROL_MODULES, DAILY_INTERVALS, DAILY_METRICS, DAILY_PREVIEW_ACTIVITY, DAILY_PREVIEW_INVITERS, dailyInterval, dailyIntervalText, dailyInviteTopOn, dailyTitleFor,
+  longDayName, nextDailyReport, shortPeriod, DAILY_PREVIEW_DAYS, DAILY_PREVIEW_MEMBERS, DAILY_TEXTS, DAILY_TOKENS, PROVISION_CATEGORIES,
   BOT_CHECKS, RECRUITMENT_FIELDS, dailyCardDelta, dailyCardText, dailyChartOn, dailyDeltaText, dailyPreviewChannels, dailyPreviewWeek,
   REPORT_TIME_ZONES, ROLE_PRESETS, WEEKDAYS, accessSummary, dailyProblem, inviteReportSummary, isClockTime, permissionOf, presetRole,
   recruitmentProblem, renderDailyText, roleAccessOf, withRole, withRoleAccess, type ControlModuleId, type ProvisionKey, type RoleAccess,
@@ -27,7 +29,7 @@ const MODULE: Record<ControlModuleId, (typeof CONTROL_MODULES)[number]> = Object
   CONTROL_MODULES.map((module) => [module.id, module]),
 ) as Record<ControlModuleId, (typeof CONTROL_MODULES)[number]>;
 
-export const CONTROL_ICONS: Record<ControlModuleId, IconName> = { invites: "send", recruitment: "star", daily: "calendar", channels: "folder", server: "bot" };
+export const CONTROL_ICONS: Record<ControlModuleId, IconName> = { invites: "send", recruitment: "star", daily: "calendar", activeTop: "stairs", channels: "folder", server: "bot" };
 
 /** A big on/off switch on the right of a module head, and the note when it is off. */
 function HeadSwitch({ on, label, testId, onChange }: { on: boolean; label: string; testId: string; onChange: (next: boolean) => void }) {
@@ -324,13 +326,14 @@ function DailyCardPreview({ color }: { color: string }) {
   const peak = Math.max(...values);
   const average = values.reduce((sum, value) => sum + value, 0) / values.length;
   const label = (key: keyof typeof daily.metricLabels, fallback: string) => dailyCardText(renderDailyText(daily.metricLabels[key] ?? "")) || fallback;
+  const days = dailyInterval(daily);
   return (
     <div className="pn-ctl-cardbox" data-testid="control-daily-card">
       <div className="pn-ctl-card" style={{ "--card": color } as React.CSSProperties} role="img"
         aria-label="Graficul zilei: cele șase cifre cu schimbarea față de ieri, ultimele 7 zile și bilanțul membrilor">
-        <p className="pn-ctl-card-k">RAPORT ZILNIC</p>
+        <p className="pn-ctl-card-k">{days === 1 ? "RAPORT ZILNIC" : `RAPORT PE ${days} ZILE`}</p>
         <p className="pn-ctl-card-g">Regatul Cenușii</p>
-        <p className="pn-ctl-card-d">joi, 29 octombrie 2026</p>
+        <p className="pn-ctl-card-d">{days === 1 ? "joi, 29 octombrie 2026" : renderDailyText("{date}", days)}</p>
         <div className="pn-ctl-card-tiles">
           {DAILY_METRICS.map(([key, fallback, value, delta]) => {
             const better = key === "leaves" ? delta < 0 : delta > 0;
@@ -338,7 +341,7 @@ function DailyCardPreview({ color }: { color: string }) {
               <div key={key} className="pn-ctl-card-tile">
                 <span>{label(key, fallback)}</span>
                 <b>{value.toLocaleString("ro-RO")}</b>
-                <i data-tone={delta === 0 ? "same" : better ? "good" : "bad"}>{dailyCardDelta(delta)}</i>
+                <i data-tone={delta === 0 ? "same" : better ? "good" : "bad"}>{dailyCardDelta(delta, days)}</i>
               </div>
             );
           })}
@@ -373,7 +376,8 @@ function DailyPreview() {
   const daily = config.dailyStats;
   const emojis = draft.metadata?.emojis;
   // Bold (**…**) the way Discord shows it, with the server's emojis in the rest.
-  const text = (value: string) => renderDailyText(value).split(/(\*\*[^*\n]+\*\*)/g).map((part, index) => /^\*\*[^*]+\*\*$/.test(part)
+  const days = dailyInterval(daily);
+  const text = (value: string) => renderDailyText(value, days).split(/(\*\*[^*\n]+\*\*)/g).map((part, index) => /^\*\*[^*]+\*\*$/.test(part)
     ? <b key={index}><DiscordEmojiText emojis={emojis}>{part.slice(2, -2)}</DiscordEmojiText></b>
     : <DiscordEmojiText key={index} emojis={emojis}>{part}</DiscordEmojiText>);
   const color = /^#[0-9a-f]{6}$/i.test(daily.color) ? daily.color : "#5865F2";
@@ -390,14 +394,14 @@ function DailyPreview() {
           <p className="pn-dc-name"><b>Oracolul Cenușii</b><span>BOT</span></p>
           <div className="pn-dc-embed" style={{ borderLeftColor: color }}>
             {thumbnail ? <img src={thumbnail} alt="" className="pn-dc-thumb" /> : null}
-            <p className="pn-dc-title">{text(daily.title)}</p>
+            <p className="pn-dc-title">{text(dailyTitleFor(daily.title, days))}</p>
             <p className="pn-dc-text">{text(daily.description)}</p>
             <div className="pn-dc-field" data-testid="control-daily-summary"><b>📊 Rezumat</b>
               {DAILY_METRICS.map(([key, , value, delta]) => (
                 <span key={key} className="pn-ctl-metric">{text(daily.metricLabels[key])}: <b>{value.toLocaleString("ro-RO")}</b> · {dailyDeltaText(delta)}</span>
               ))}
               <span className="pn-ctl-metric">Bilanț: <b>+3</b> membri · <b>{DAILY_PREVIEW_MEMBERS.toLocaleString("ro-RO")}</b> pe server acum</span>
-              <span className="pn-ctl-metric"><i>▲ ▼ arată schimbarea față de ziua dinainte.</i></span>
+              <span className="pn-ctl-metric"><i>▲ ▼ arată schimbarea față de {days === 1 ? "ziua dinainte" : `cele ${days} zile dinainte`}.</i></span>
             </div>
             <div className="pn-dc-field" data-testid="control-daily-week"><b>{text(daily.activityTitle)}</b>
               {week.days ? (
@@ -405,7 +409,7 @@ function DailyPreview() {
                   {week.days.slice(0, -1).join(" · ")} · <b>{week.days.at(-1)}</b>
                 </span>
               ) : null}
-              <span className="pn-ctl-metric">Media: <b>{week.average}</b> mesaje/zi · ziua raportului a fost cea mai activă</span>
+              <span className="pn-ctl-metric">Media: <b>{week.average}</b> mesaje/zi · {days === 1 ? "ziua raportului a fost cea mai activă" : "cea mai activă: Jo 29 (307)"}</span>
             </div>
             <div className="pn-dc-field" data-testid="control-daily-channels"><b>{text(daily.channelsTitle)}</b>
               {dailyPreviewChannels().map((channel) => (
@@ -414,6 +418,15 @@ function DailyPreview() {
                 </span>
               ))}
             </div>
+            {dailyInviteTopOn(daily) ? (
+              <div className="pn-dc-field" data-testid="control-daily-invites"><b>{days === 1 ? "🎟️ Top invitații" : `🎟️ Top invitații · ${days} zile`}</b>
+                {DAILY_PREVIEW_INVITERS.map(([name, joins], index) => (
+                  <span key={name} className="pn-ctl-metric">
+                    {["🥇", "🥈", "🥉"][index]} <span className="pn-dc-mention">@{name}</span> · <b>{joins}</b> membri noi
+                  </span>
+                ))}
+              </div>
+            ) : null}
             {chart ? <DailyCardPreview color={color} /> : null}
             {image ? <img src={image} alt="" className="pn-dc-image" /> : null}
             <p className="pn-set-foot">{text(daily.footer)} · 29 octombrie 2026</p>
@@ -421,9 +434,20 @@ function DailyPreview() {
         </div>
       </div>
       <p className="pn-orc-fine">
-        Cifrele sunt inventate. Săgețile apar doar când botul a urmărit toată ziua dinainte. Într-o zi fără mesaje, în locul canalelor active apare: „{renderDailyText(daily.emptyChannelsText)}”
+        Cifrele sunt inventate. Săgețile apar doar când botul a urmărit {dailyInterval(daily) === 1 ? "toată ziua dinainte" : "toată perioada dinainte"}. Într-o zi fără mesaje, în locul canalelor active apare: „{renderDailyText(daily.emptyChannelsText)}”
       </p>
     </div>
+  );
+}
+
+function NextDailyReport({ days, on, what = "raport", siteNote = true }: { days: number; on: boolean; what?: string; siteNote?: boolean }) {
+  const next = nextDailyReport(new Date(), days);
+  return (
+    <NoteRow tone="plain" testId="control-daily-next">
+      {on
+        ? <>Următorul {what}: <b>{longDayName(next.postDay)}</b>, imediat după miezul nopții (ora României), cu {days === 1 ? <>ziua de <b>{shortPeriod(next.endDay, next.endDay)}</b></> : <>zilele <b>{shortPeriod(next.startDay, next.endDay)}</b></>}.{siteNote ? " Raportul de pe site rămâne pe zile." : ""}</>
+        : `Pornește-l și alege un canal ca ${what === "raport" ? "raportul" : "topul"} să se posteze.`}
+    </NoteRow>
   );
 }
 
@@ -441,14 +465,25 @@ function DailyModule() {
       <ModuleNotes>{problem ? <Note tone="bad" role="alert">{problem}</Note> : null}</ModuleNotes>
       <div className="pn-vsplit">
         <div className="pn-vsplit-main">
-          <SectionCard title="Unde și când" small={target ? "zilnic" : "nu se postează"} testId="control-daily-where">
+          <SectionCard title="Unde și când" small={target ? dailyIntervalText(dailyInterval(daily)) : "nu se postează"} testId="control-daily-where">
             <Fields>
               <ChannelField
                 label="Canalul" selectLabel="Canalul raportului zilnic" value={target || null} channels={available} wide
                 hint="Fără canal, raportul nu se postează. Canalul Cufere e al jocului, deci nu poate fi ales."
                 onChange={(next) => setDaily("channelId", next ?? "")}
               />
-              <NoteRow tone="plain">Raportul pleacă imediat după miezul nopții, ora României, cu cifrele zilei care s-a încheiat. Același raport e și pe site.</NoteRow>
+              <Seg
+                label="La câte zile" testId="control-daily-interval" value={String(dailyInterval(daily))}
+                hint="1 zi: raportul zilei trecute, în fiecare noapte. Mai multe zile: un singur raport care adună toate zilele perioadei. La 7 zile, perioada e de luni până duminică."
+                options={DAILY_INTERVALS.map((value) => [String(value), value === 1 ? "1 zi" : `${value} zile`] as const)}
+                onChange={(next) => setDaily("intervalDays", Number(next))}
+              />
+              <NextDailyReport days={dailyInterval(daily)} on={Boolean(target)} />
+              <SwitchField
+                label="Topul invitațiilor" testId="control-daily-invite-top" checked={dailyInviteTopOn(daily)}
+                hint="Cine a adus cei mai mulți membri noi prin invitații în perioada raportului. Apare doar când urmărirea invitațiilor e pornită (Control bot → Invitații)."
+                onChange={(next) => setDaily("inviteTop", next)}
+              />
             </Fields>
           </SectionCard>
           <SectionCard title="Aspect" testId="control-daily-look">
@@ -569,6 +604,99 @@ function CategoryAccess({ categoryKey }: { categoryKey: ProvisionKey }) {
   );
 }
 
+/** The names the panel gives the channels it creates, in the server's theme (with the AI's help). */
+function ThemedNamesCard({ guildId }: { guildId: string | null }) {
+  const { state, error, loading, save, suggest } = useChannelNames(guildId);
+  const [theme, setTheme] = useState("");
+  const [names, setNames] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState<"ai" | "save" | null>(null);
+  const [message, setMessage] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
+  useEffect(() => {
+    setTheme(state?.theme ?? "");
+    setNames(state?.names ?? {});
+  }, [state]);
+  if (!guildId) return null;
+  const changed = Boolean(state) && (theme.trim() !== state!.theme || JSON.stringify(names) !== JSON.stringify(state!.names));
+  const groups = [...new Set((state?.catalog ?? []).map((entry) => entry.group))];
+  const generate = async () => {
+    setBusy("ai");
+    setMessage(null);
+    try {
+      const proposed = await suggest(theme);
+      if (proposed) {
+        setNames(proposed);
+        setMessage({ tone: "ok", text: `AI-ul a propus ${Object.keys(proposed).length} nume. Verifică-le, schimbă ce vrei, apoi salvează.` });
+      }
+    } catch (err) {
+      setMessage({ tone: "bad", text: err instanceof Error ? err.message : "AI-ul nu a răspuns." });
+    } finally {
+      setBusy(null);
+    }
+  };
+  const store = async () => {
+    setBusy("save");
+    setMessage(null);
+    try {
+      const clean = Object.fromEntries(Object.entries(names).filter(([, value]) => value.trim()));
+      await save(theme.trim(), clean);
+      setMessage({ tone: "ok", text: "Numele s-au salvat. Canalele create de acum încolo le vor folosi." });
+    } catch (err) {
+      setMessage({ tone: "bad", text: err instanceof Error ? err.message : "Numele nu s-au putut salva." });
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <SectionCard title="Nume tematice" small="doar pentru canalele noi" testId="control-names">
+      <Fields>
+        <NoteRow tone="plain">
+          Canalele și categoriile pe care le creează panoul primesc numele de aici. Cele care există deja nu se redenumesc,
+          iar un canal cu numele de bază e recunoscut în continuare, deci nu se dublează nimic.
+        </NoteRow>
+        {loading ? <NoteRow tone="plain">Se încarcă…</NoteRow> : null}
+        {error ? <NoteRow tone="bad" role="alert">{error}</NoteRow> : null}
+        {state ? (
+          <>
+            <Fld wide label="Tema serverului" hint="De exemplu: „regat medieval, cenușă și foc” sau „stație spațială”.">
+              <div className="pn-set-colors">
+                <input className="pn-inp" maxLength={300} value={theme} data-testid="control-names-theme" aria-label="Tema serverului"
+                  onChange={(event) => setTheme(event.target.value)} placeholder="regat medieval, cenușă și foc" />
+                <button type="button" className="pn-btn pn-btn-sm" data-testid="control-names-ai" disabled={!theme.trim() || !state.aiAvailable || busy !== null}
+                  onClick={() => void generate()}>
+                  <Ico name="orb" />{busy === "ai" ? "Se generează…" : "Generează cu AI"}
+                </button>
+              </div>
+            </Fld>
+            {!state.aiAvailable ? <NoteRow tone="plain">AI-ul nu e configurat pe bot (lipsește cheia OpenAI), dar poți scrie numele de mână.</NoteRow> : null}
+            {groups.map((group) => (
+              <div key={group} className="pn-names-group" data-testid={`control-names-group-${group}`}>
+                <p className="pn-names-title">{group}</p>
+                {state.catalog.filter((entry) => entry.group === group).map((entry) => (
+                  <label key={entry.key} className="pn-names-row">
+                    <span className="pn-names-purpose">{entry.purpose}</span>
+                    <input
+                      className="pn-inp pn-inp-mono" value={names[entry.key] ?? ""} placeholder={entry.defaultName} maxLength={100}
+                      aria-label={`Numele pentru ${entry.purpose}`} data-testid={`control-names-${entry.key}`}
+                      onChange={(event) => setNames((current) => ({ ...current, [entry.key]: event.target.value }))}
+                    />
+                  </label>
+                ))}
+              </div>
+            ))}
+            {message ? <NoteRow tone={message.tone === "ok" ? "info" : "bad"} role={message.tone === "bad" ? "alert" : undefined}>{message.text}</NoteRow> : null}
+            <div className="pn-names-actions">
+              <button type="button" className="pn-btn-ghost pn-btn-sm" data-testid="control-names-reset" disabled={busy !== null || !Object.keys(names).length}
+                onClick={() => setNames({})}>Înapoi la numele de bază</button>
+              <button type="button" className="pn-btn pn-btn-sm" data-testid="control-names-save" disabled={!changed || busy !== null}
+                onClick={() => void store()}><Ico name="check" />{busy === "save" ? "Se salvează…" : "Salvează numele"}</button>
+            </div>
+          </>
+        ) : null}
+      </Fields>
+    </SectionCard>
+  );
+}
+
 function ChannelsModule() {
   const draft = useBotDraft();
   const { config, saved, capabilities } = usePanel();
@@ -652,6 +780,7 @@ function ChannelsModule() {
           </div>
         </div>
       ) : null}
+      <ThemedNamesCard guildId={draft.guildId ?? null} />
     </ModuleView>
   );
 }
@@ -741,10 +870,122 @@ function ServerModule() {
   );
 }
 
+function ActiveTopPreview({ top }: { top: ActiveTop }) {
+  const color = /^#[0-9a-f]{6}$/i.test(top.color) ? top.color : "#d8a964";
+  const medal = (index: number) => ["🥇", "🥈", "🥉"][index] ?? `${index + 1}.`;
+  const period = top.intervalDays === 1 ? "29 octombrie 2026" : top.intervalDays === 7 ? "23 – 29 octombrie 2026" : `${30 - top.intervalDays} – 29 octombrie 2026`;
+  const count = Math.min(top.limit, ACTIVE_TOP_PREVIEW_CHAT.length);
+  return (
+    <div className="pn-dc" data-testid="control-top-preview">
+      <p className="pn-dc-k">Așa apare în Discord</p>
+      <div className="pn-dc-msg">
+        <span className="pn-dc-av pn-orc-av" aria-hidden="true"><Ico name="eye" /></span>
+        <div className="pn-dc-body">
+          <p className="pn-dc-name"><b>Oracolul Cenușii</b><span>BOT</span></p>
+          <div className="pn-dc-embed" style={{ borderLeftColor: color }}>
+            <p className="pn-dc-title">🏆 Cei mai activi membri</p>
+            <p className="pn-dc-text">Perioada: <b>{period}</b></p>
+            <div className="pn-dc-field" data-testid="control-top-chat"><b>💬 În chat</b>
+              {ACTIVE_TOP_PREVIEW_CHAT.slice(0, count).map(([name, messages], index) => (
+                <span key={name} className="pn-ctl-metric">{medal(index)} <span className="pn-dc-mention">@{name}</span> · <b>{messages}</b> mesaje</span>
+              ))}
+              {top.limit > ACTIVE_TOP_PREVIEW_CHAT.length ? <span className="pn-ctl-metric">… până la locul {top.limit}</span> : null}
+            </div>
+            {top.includeVoice ? (
+              <div className="pn-dc-field" data-testid="control-top-voice"><b>🎙️ Pe voce</b>
+                {ACTIVE_TOP_PREVIEW_VOICE.slice(0, count).map(([name, minutes], index) => (
+                  <span key={name} className="pn-ctl-metric">{medal(index)} <span className="pn-dc-mention">@{name}</span> · <b>{activeTopVoiceTime(minutes)}</b></span>
+                ))}
+              </div>
+            ) : null}
+            <div className="pn-dc-field"><b>📊 Pe scurt</b>
+              <span className="pn-ctl-metric"><b>2.410</b> mesaje de la <b>38</b> membri</span>
+              {top.includeVoice ? <span className="pn-ctl-metric"><b>15 h</b> pe voce, <b>12</b> membri</span> : null}
+            </div>
+            <p className="pn-set-foot">🏆 Topul activității · botul numără mesajele și minutele pe voce</p>
+          </div>
+        </div>
+      </div>
+      <p className="pn-orc-fine">
+        Cifrele sunt inventate. {top.mention ? "Membrii din top primesc ping." : "Numele apar ca mențiuni, dar nimeni nu primește ping."}
+      </p>
+    </div>
+  );
+}
+
+function ActiveTopModule() {
+  const { config, set, channels } = usePanel();
+  const top = activeTopOf(config);
+  // The whole section is sent, so a server that never saved it gets every field at once.
+  const setTop = (key: keyof ActiveTop, value: unknown) => set(["activeTop"], { ...top, [key]: value });
+  const problem = activeTopProblem(top);
+  const id = useId();
+  return (
+    <ModuleView module={MODULE.activeTop} icon={CONTROL_ICONS.activeTop} aside={(
+      <HeadSwitch on={top.enabled} label="Topul membrilor activi" testId="control-top-switch" onChange={(next) => setTop("enabled", next)} />
+    )}>
+      {!top.enabled ? (
+        <OffNote testId="control-top-off" text="Oprit: topul nu se postează singur. /topactivi merge oricum, pentru oricine." action="Pornește topul" onTurnOn={() => setTop("enabled", true)} />
+      ) : null}
+      <ModuleNotes>{problem ? <Note tone="bad" role="alert">{problem}</Note> : null}</ModuleNotes>
+      <div className="pn-vsplit">
+        <div className="pn-vsplit-main">
+          <SectionCard title="Unde și când" small={top.enabled && top.channelId ? dailyIntervalText(top.intervalDays) : "nu se postează"} testId="control-top-where">
+            <Fields>
+              <ChannelField
+                label="Canalul" selectLabel="Canalul topului membrilor activi" value={top.channelId || null} channels={channels} wide
+                hint="Poate fi alt canal decât cel al statisticilor."
+                onChange={(next) => setTop("channelId", next ?? "")}
+              />
+              <Seg
+                label="La câte zile" testId="control-top-interval" value={String(top.intervalDays)}
+                hint="Topul adună zilele perioadei. La 7 zile, perioada e de luni până duminică și topul pleacă luni după miezul nopții."
+                options={DAILY_INTERVALS.map((value) => [String(value), value === 1 ? "1 zi" : `${value} zile`] as const)}
+                onChange={(next) => setTop("intervalDays", Number(next))}
+              />
+              <NextDailyReport days={top.intervalDays} on={Boolean(top.enabled && top.channelId)} what="top" siteNote={false} />
+            </Fields>
+          </SectionCard>
+          <SectionCard title="Ce arată" testId="control-top-what">
+            <Fields>
+              <Seg
+                label="Câți membri" testId="control-top-limit" value={String(top.limit)}
+                options={ACTIVE_TOP_LIMITS.map((value) => [String(value), `Top ${value}`] as const)}
+                onChange={(next) => setTop("limit", Number(next))}
+              />
+              <SwitchField
+                label="Și timpul pe voce" testId="control-top-voice-switch" checked={top.includeVoice}
+                hint="O a doua listă: cine a stat cel mai mult pe voce. Se numără minutele cu cel puțin încă un om pe canal, nu în AFK."
+                onChange={(next) => setTop("includeVoice", next)}
+              />
+              <SwitchField
+                label="Ping pentru cei din top" testId="control-top-mention" checked={top.mention}
+                hint="Membrii din top primesc notificare. Oprit, numele apar fără să deranjeze pe nimeni."
+                onChange={(next) => setTop("mention", next)}
+              />
+              <Fld label="Culoarea" htmlFor={`${id}-c`} hint="Banda din stânga mesajului.">
+                <div className="pn-set-colors">
+                  <label className="pn-set-picker" aria-label="Alege culoarea">
+                    <input type="color" value={/^#[0-9a-f]{6}$/i.test(top.color) ? top.color.toLowerCase() : "#d8a964"} onChange={(event) => setTop("color", event.target.value)} />
+                  </label>
+                  <input id={`${id}-c`} className="pn-inp pn-inp-mono pn-set-hex" maxLength={7} value={top.color} data-testid="control-top-color" onChange={(event) => setTop("color", event.target.value.trim())} />
+                </div>
+              </Fld>
+              <NoteRow tone="plain">Botul numără mesajele fiecărui membru de la această versiune încolo; zilele de dinainte nu au cifre pe membru.</NoteRow>
+            </Fields>
+          </SectionCard>
+        </div>
+        <aside className="pn-vsplit-side" aria-label="Previzualizare"><ActiveTopPreview top={top} /></aside>
+      </div>
+    </ModuleView>
+  );
+}
+
 export const CONTROL_VIEWS: Record<ControlModuleId, () => React.JSX.Element> = {
   invites: InvitesModule,
   recruitment: RecruitmentModule,
   daily: DailyModule,
+  activeTop: ActiveTopModule,
   channels: ChannelsModule,
   server: ServerModule,
 };

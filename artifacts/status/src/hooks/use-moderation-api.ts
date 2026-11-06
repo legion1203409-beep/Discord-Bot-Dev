@@ -226,6 +226,10 @@ export interface BotControlConfig {
     thumbnailUrl: string;
     /** The day's card as the report's image; missing means on. */
     chart?: boolean;
+    /** One report every this many days (1–7); missing means every day. */
+    intervalDays?: number;
+    /** The top inviters of the period in the report; missing means on. */
+    inviteTop?: boolean;
     metricLabels: {
       messages: string;
       uniqueUsers: string;
@@ -237,6 +241,16 @@ export interface BotControlConfig {
   };
   /** The bot's own tickets (api-server bot/support-tickets.ts); missing when the bot could not read them. */
   supportTickets?: SupportTicketsConfig;
+  /** The top of the most active members (api-server bot/active-top.ts); missing when the bot could not read it. */
+  activeTop?: {
+    enabled: boolean;
+    channelId: string;
+    intervalDays: number;
+    limit: number;
+    includeVoice: boolean;
+    mention: boolean;
+    color: string;
+  };
   inviteTracking: InviteTrackingConfig;
   discordLive?: boolean;
   provisioning?: {
@@ -261,6 +275,9 @@ export interface OracleSettings {
     commandEnabled: boolean;
     dailyLimit: number;
     daily: { enabled: boolean; channelId: string; hour: number; timeZone: string };
+  };
+  community: {
+    dailyQuestion: { enabled: boolean; channelId: string; hour: number; timeZone: string; useOwnQuestions: boolean; ownQuestions: string[] };
   };
 }
 
@@ -1038,6 +1055,44 @@ export function useStaffReputation(guildId: string | null, range: "7" | "30" | "
 /** Posts the ticket panel in its channel, or updates the one already there. */
 export async function publishSupportTicketPanel(guildId: string): Promise<{ messageId: string; supportTickets: SupportTicketsConfig }> {
   return apiFetch(`/guilds/${guildId}/support-tickets/publish`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+}
+
+export type ChannelNameEntry = { key: string; kind: "category" | "text"; group: string; defaultName: string; purpose: string };
+export type ChannelNamesState = { theme: string; names: Record<string, string>; catalog: ChannelNameEntry[]; aiAvailable: boolean };
+
+/** The themed names of the channels the panel creates: read, saved and suggested by the AI (api-server bot/channel-names.ts). */
+export function useChannelNames(guildId: string | null) {
+  const [state, setState] = useState<ChannelNamesState | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const current = useRef(guildId);
+  useEffect(() => {
+    current.current = guildId;
+    setState(null);
+    setError(null);
+    if (!guildId) return;
+    setLoading(true);
+    apiFetch<ChannelNamesState>(`/guilds/${guildId}/channel-names`)
+      .then((result) => { if (current.current === guildId) setState(result); })
+      .catch((err) => { if (current.current === guildId) setError(err instanceof Error ? err.message : "Numele tematice nu s-au putut încărca."); })
+      .finally(() => { if (current.current === guildId) setLoading(false); });
+  }, [guildId]);
+  const save = useCallback(async (theme: string, names: Record<string, string>) => {
+    if (!guildId) return null;
+    const result = await apiFetch<ChannelNamesState>(`/guilds/${guildId}/channel-names`, {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theme, names }),
+    });
+    if (current.current === guildId) setState(result);
+    return result;
+  }, [guildId]);
+  const suggest = useCallback(async (theme: string) => {
+    if (!guildId) return null;
+    const result = await apiFetch<{ names: Record<string, string> }>(`/guilds/${guildId}/channel-names/suggest`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theme }),
+    });
+    return result.names;
+  }, [guildId]);
+  return { state, error, loading, save, suggest };
 }
 
 export function useGameplayState(guildId: string | null) {

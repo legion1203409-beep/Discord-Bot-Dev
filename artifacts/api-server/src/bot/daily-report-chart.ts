@@ -12,6 +12,10 @@ const MAX_WAITING = 4;
 export type DailyChartInput = {
   guild: string;
   date: string;
+  /** The small line on top ("RAPORT ZILNIC" when left out). */
+  kicker?: string;
+  /** What a change is measured against ("ieri" when left out). */
+  compare?: string;
   color: string;
   metrics: Array<{ label: string; value: number; delta: number | null; invert?: boolean }>;
   activityTitle: string;

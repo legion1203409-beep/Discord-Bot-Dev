@@ -295,16 +295,18 @@ describe("posting the upgraded report", () => {
     vi.mocked(getChannel).mockReturnValue("main-channel");
     const query = vi.spyOn(pool, "query").mockImplementation(async (sql, params) => {
       const text = String(sql);
-      const day = Array.isArray(params) ? params[1] : undefined;
+      const days = Array.isArray(params) ? params[1] : undefined;
+      const current = Array.isArray(days) ? days.includes("2026-10-29") : days === "2026-10-29";
       if (text.includes("SELECT report_message_id")) return { rows: [] } as never;
-      if (text.includes("COUNT(*)")) return { rows: [{ count: day === "2026-10-29" ? "13" : "15" }] } as never;
+      if (text.includes("discord_invite_daily")) return { rows: [] } as never;
+      if (text.includes("COUNT(DISTINCT user_id)")) return { rows: [{ count: current ? "13" : "15" }] } as never;
       if (text.includes("FROM discord_daily_channels")) {
         return { rows: WEEK.topChannels.map((item) => ({ channel_id: item.channelId, channel_name: item.channelName, message_count: item.messages })) } as never;
       }
-      if (text.includes("day = ANY")) return { rows: WEEK.activity.map((item) => ({ day: item.day, message_count: item.messages })) } as never;
-      if (text.includes("SELECT message_count")) {
-        const metrics = day === "2026-10-29" ? WEEK.metrics : WEEK.previous!;
-        return { rows: [{ message_count: metrics.messages, joins: metrics.joins, leaves: metrics.leaves, boosts: metrics.boosts, peak_voice: metrics.peakVoice }] } as never;
+      if (text.includes("SELECT day, message_count")) return { rows: WEEK.activity.map((item) => ({ day: item.day, message_count: item.messages })) } as never;
+      if (text.includes("SUM(message_count)")) {
+        const metrics = current ? WEEK.metrics : WEEK.previous!;
+        return { rows: [{ message_count: metrics.messages, joins: metrics.joins, leaves: metrics.leaves, boosts: metrics.boosts, peak_voice: metrics.peakVoice, rows: 1 }] } as never;
       }
       return { rows: [] } as never;
     });

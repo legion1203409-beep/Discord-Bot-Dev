@@ -170,10 +170,15 @@ import
 import {
   MAX_ORACLE_CHANNELS, ORACLE_LENGTHS, ORACLE_TONES, isValidTimeZone, normalizeOracleSettings, setOracleSettings,
 } from "../bot/oracle-settings";
-import { loadOracleSettings, loadSupportTicketsSetting, saveSupportTicketsSetting } from "../bot/db";
+import { loadSupportTicketsSetting, saveSupportTicketsSetting } from "../bot/db";
 import {
   MAX_TICKET_CATEGORIES, REPUTATION_PERIODS, getStaffReputation, normalizeSupportTicketsConfig, publishSupportTicketPanel,
 } from "../bot/support-tickets";
+import { loadOracleSettings, loadChannelNamesSetting, saveChannelNamesSetting } from "../bot/db";
+import { CHANNEL_NAME_CATALOG, setChannelNamesLoader } from "../bot/channel-provisioning";
+import { ChannelNamesAiError, MAX_THEME_LENGTH, channelNamesAiAvailable, normalizeChannelNames, suggestChannelNames } from "../bot/channel-names";
+import { normalizeActiveTopConfig } from "../bot/active-top";
+import { loadActiveTopSettings, saveActiveTopSettings } from "../bot/db";
 import { MAX_PEOPLE_PER_REQUEST, resolvePeople } from "./people";
 import { appealIdentityFromRequest, clearAppealCookie, setAppealCookie } from "./appeal-auth";
 import { answerClarification, appealStatus, submitAppeal } from "./appeals";
@@ -527,6 +532,25 @@ async function supportTicketsForResponse(guildId: string) {
   }
 }
 
+/** The top of the most active members (bot/active-top.ts), read and saved like the other bot settings. */
+async function loadActiveTopConfig(guildId: string) {
+  const load = optionalExport(() => loadActiveTopSettings);
+  return normalizeActiveTopConfig(load ? await load(guildId) : null);
+}
+
+/**
+ * For the bot-control answer: when the settings cannot be read, they are left out, so the page does not
+ * send defaults back over the saved ones (a page sends this section only when it got it or changed it).
+ */
+async function activeTopForResponse(guildId: string) {
+  try {
+    return await loadActiveTopConfig(guildId);
+  } catch (error) {
+    logger.warn({ error, guildId }, "Could not read the active members top settings");
+    return undefined;
+  }
+}
+
 const supportTicketCategorySchema = z.object({
   id: z.string().trim().max(40),
   label: z.string().trim().min(1, "Fiecare categorie are nevoie de un nume.").max(80),
@@ -558,6 +582,13 @@ const supportTicketsSchema = z.object({
   }
 });
 
+async function saveActiveTopConfig(guildId: string, value: unknown) {
+  const config = normalizeActiveTopConfig(value);
+  const save = optionalExport(() => saveActiveTopSettings);
+  if (save) await save(guildId, config);
+  return config;
+}
+
 const dailyStatsEmbedConfigSchema = z.object(
 {
 
@@ -572,6 +603,8 @@ const dailyStatsEmbedConfigSchema = z.object(
   imageUrl: z.string().trim().max(2_000).refine(isMessageImageUrl, "Imaginea trebuie să fie HTTPS sau încărcată în storage."),
   thumbnailUrl: z.string().trim().max(2_000).refine(isMessageImageUrl, "Thumbnail-ul trebuie să fie HTTPS sau încărcat în storage.").default(""),
   chart: z.boolean().default(true),
+  intervalDays: z.number().int().min(1).max(7).default(1),
+  inviteTop: z.boolean().default(true),
   metricLabels: z.object(
 {
 
@@ -702,7 +735,24 @@ export const oracleSettingsSchema = z.object({
       timeZone: z.string().refine(isValidTimeZone, "Fus orar necunoscut."),
     }).strict(),
   }).strict(),
+  community: z.object({
+    dailyQuestion: z.object({
+      enabled: z.boolean(),
+      channelId: snowflake.or(z.literal("")),
+      hour: z.number().int().min(0).max(23),
+      timeZone: z.string().refine(isValidTimeZone, "Fus orar necunoscut."),
+      useOwnQuestions: z.boolean(),
+      ownQuestions: z.array(z.string().trim().min(1).max(300)).max(30),
+    }).strict(),
+  }).strict().optional(),
 }).strict().superRefine((settings, ctx) => {
+  const question = settings.community?.dailyQuestion;
+  if (question?.enabled && !question.channelId) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["community", "dailyQuestion", "channelId"], message: "Alege canalul întrebării zilei." });
+  }
+  if (question?.enabled && question.useOwnQuestions && !question.ownQuestions.length) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["community", "dailyQuestion", "ownQuestions"], message: "Scrie cel puțin o întrebare proprie sau folosește lista Oracolului." });
+  }
   if (settings.prophecy.daily.enabled && !settings.prophecy.daily.channelId) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["prophecy", "daily", "channelId"], message: "Alege canalul profeției zilei." });
   }
@@ -726,6 +776,18 @@ export const botControlSchema = z.object(
   dailyStats: dailyStatsEmbedConfigSchema,
   // Optional: pages that do not know the bot's own tickets keep them unchanged.
   supportTickets: supportTicketsSchema.optional(),
+  // Optional: pages that do not know the top of the most active members keep it unchanged.
+  activeTop: z.object({
+    enabled: z.boolean(),
+    channelId: snowflake.or(z.literal("")),
+    intervalDays: z.number().int().min(1).max(7),
+    limit: z.number().int().min(3).max(15),
+    includeVoice: z.boolean(),
+    mention: z.boolean(),
+    color: z.string().trim().regex(/^#[0-9a-f]{6}$/i),
+  }).strict().superRefine((value, ctx) => {
+    if (value.enabled && !value.channelId) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["channelId"], message: "Alege canalul topului membrilor activi." });
+  }).optional(),
   inviteTracking: z.object(
 {
 
@@ -1043,7 +1105,7 @@ const paginationSchema = z.object(
 
 const auditQuerySchema = paginationSchema.extend({
   search: z.string().trim().max(200).default(""),
-  category: z.enum(["all", "messages", "members", "channels", "roles", "voice", "moderation", "security", "other"]).default("all"),
+  category: z.enum(["all", "messages", "members", "channels", "roles", "voice", "moderation", "security", "invites", "other"]).default("all"),
   start: z.string().datetime({ offset: true }).optional(),
   end: z.string().datetime({ offset: true }).optional(),
 }).superRefine((query, context) => {
@@ -1604,7 +1666,7 @@ async function validateInviteTrackingTargets(guildId: string, config: z.infer<ty
 
 }
 
-async function validateDailyStatsChannelTarget(guildId: string, channelId: string): Promise<void> {
+async function validateDailyStatsChannelTarget(guildId: string, channelId: string, what = "statisticile zilnice"): Promise<void> {
   if (!channelId) return;
   const client = getModerationClient();
   if (!client?.isReady()) return;
@@ -1615,7 +1677,7 @@ async function validateDailyStatsChannelTarget(guildId: string, channelId: strin
     });
   const channel = await guild.channels.fetch(channelId).catch(() => null);
   if (!(channel instanceof TextChannel) || channel.guildId !== guildId) {
-    throw new ModerationAuthError(400, "Alege un canal text valid din acest server pentru statisticile zilnice.");
+    throw new ModerationAuthError(400, `Alege un canal text valid din acest server pentru ${what}.`);
   }
 
   const botMember = guild.members.me ?? await guild.members.fetchMe().catch(() => null);
@@ -2431,6 +2493,7 @@ const CONFIG_CHANNEL_DESTINATIONS = [
   "activityLog.voice",
   "activityLog.moderation",
   "activityLog.security",
+  "activityLog.invites",
   ...MODERATION_DESTINATION_KEYS,
 ] as const;
 
@@ -2676,6 +2739,50 @@ router.get("/guilds/:guildId/support-tickets/reputation", asyncRoute(async (req,
   });
 }));
 
+/* The themed names of the channels the panel creates (bot/channel-names.ts). */
+async function loadChannelNames(guildId: string) {
+  const load = optionalExport(() => loadChannelNamesSetting);
+  return normalizeChannelNames(load ? await load(guildId) : null);
+}
+// Channel creation reads the chosen names through this; without it, the built-in names stay.
+setChannelNamesLoader(async (guildId) => (await loadChannelNames(guildId)).names);
+
+router.get("/guilds/:guildId/channel-names", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  await sessionAndGuild(req, guildId, "config");
+  const settings = await loadChannelNames(guildId);
+  res.set("Cache-Control", "no-store").json({ ...settings, catalog: CHANNEL_NAME_CATALOG, aiAvailable: channelNamesAiAvailable() });
+}));
+
+const channelNamesSchema = z.object({
+  theme: z.string().trim().max(MAX_THEME_LENGTH),
+  names: z.record(z.string().max(100)).refine(
+    (names) => Object.keys(names).every((key) => CHANNEL_NAME_CATALOG.some((entry) => entry.key === key)),
+    "Un canal din listă nu e cunoscut.",
+  ),
+}).strict();
+
+router.put("/guilds/:guildId/channel-names", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  await sessionAndGuild(req, guildId, "config", true);
+  const settings = normalizeChannelNames(channelNamesSchema.parse(req.body));
+  const save = optionalExport(() => saveChannelNamesSetting);
+  if (save) await save(guildId, settings);
+  res.set("Cache-Control", "no-store").json({ ...settings, catalog: CHANNEL_NAME_CATALOG, aiAvailable: channelNamesAiAvailable() });
+}));
+
+router.post("/guilds/:guildId/channel-names/suggest", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  await sessionAndGuild(req, guildId, "config", true);
+  const { theme } = z.object({ theme: z.string().trim().min(1).max(MAX_THEME_LENGTH) }).strict().parse(req.body);
+  try {
+    res.set("Cache-Control", "no-store").json({ names: await suggestChannelNames(theme) });
+  } catch (error) {
+    if (error instanceof ChannelNamesAiError) throw new ModerationAuthError(503, error.message);
+    throw error;
+  }
+}));
+
 router.get("/guilds/:guildId/gameplay-state", asyncRoute(async (req, res) => {
   const guildId = parse(snowflake, req.params.guildId);
   await sessionAndGuild(req, guildId, "config");
@@ -2794,6 +2901,7 @@ router.get("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
     verification: normalizeVerificationConfig(verification),
     dailyStats,
     supportTickets: await supportTicketsForResponse(guildId),
+    activeTop: await activeTopForResponse(guildId),
     inviteTracking,
     provisioningPermissions: provisioningPermissionsSchema.parse(provisioningPermissions),
     discordLive: Boolean(getModerationClient()?.isReady()),
@@ -3354,6 +3462,9 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   if (dailyStats.channelId !== currentDailyStats.channelId) {
     await validateDailyStatsChannelTarget(guildId, dailyStats.channelId);
   }
+  if (value.activeTop?.channelId && value.activeTop.channelId !== (await activeTopForResponse(guildId))?.channelId) {
+    await validateDailyStatsChannelTarget(guildId, value.activeTop.channelId, "topul membrilor activi");
+  }
   const tickets = normalizeTicketConfig(value.tickets);
   const channels: ChannelConfig = Object.fromEntries(
     Object.entries(value.channels).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
@@ -3381,6 +3492,7 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   }
   let savedVerification = verification;
   let savedSupportTickets: ReturnType<typeof normalizeSupportTicketsConfig> | null = null;
+  let savedActiveTop: ReturnType<typeof normalizeActiveTopConfig> | null = null;
   let verificationPanelPublished = false;
   let anyWriteSucceeded = false;
   if (verification.enabled && verificationRequested) {
@@ -3423,6 +3535,10 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
     // The panel's message id is the bot's to keep: a page never moves it.
     const current = await supportTicketsForResponse(guildId);
     savedSupportTickets = await saveSupportTickets(guildId, { ...value.supportTickets, panelMessageId: current?.panelMessageId ?? value.supportTickets.panelMessageId });
+    anyWriteSucceeded = true;
+  }
+  if (value.activeTop) {
+    savedActiveTop = await saveActiveTopConfig(guildId, value.activeTop);
     anyWriteSucceeded = true;
   }
   const saveInviteTracking = optionalExport(() => saveInviteTrackingConfig);
@@ -3497,6 +3613,7 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
     verification: savedVerification,
     dailyStats,
     supportTickets: savedSupportTickets ?? await supportTicketsForResponse(guildId),
+    activeTop: savedActiveTop ?? await activeTopForResponse(guildId),
     inviteTracking,
     provisioningPermissions: value.provisioningPermissions,
     discordLive: Boolean(client?.isReady()),

@@ -13,7 +13,7 @@ import { ChannelField, Fields, Fld, IdPicker, Ico, Note, NoteRow, NumField, Sect
 import { EmojiTextField, ImageUrlField } from "./message-fields";
 import { countLabel } from "./model";
 import {
-  DEFAULT_PAUSED_MESSAGE, LENGTHS, MAX_COOLDOWN_SECONDS, MAX_DAILY_LIMIT, MAX_ORACLE_CHANNELS, MAX_PAUSED_MESSAGE, ORACLE_MODULES, SAMPLE_QUESTION,
+  DEFAULT_PAUSED_MESSAGE, LENGTHS, MAX_OWN_QUESTIONS, MAX_QUESTION_LENGTH, MAX_COOLDOWN_SECONDS, MAX_DAILY_LIMIT, MAX_ORACLE_CHANNELS, MAX_PAUSED_MESSAGE, ORACLE_MODULES, SAMPLE_QUESTION,
   TIME_ZONES, TONES, cooldownText, dayWord, hourText, isCategory, isDailyHourNow, nextDailyProphecy, oracleChannelOptions, oracleOf, sampleAnswer,
   timeZoneClock, whereSummary, withOracle, type OracleModuleId,
 } from "./oracle-model";
@@ -24,7 +24,7 @@ const MODULE: Record<OracleModuleId, (typeof ORACLE_MODULES)[number]> = Object.f
   ORACLE_MODULES.map((module) => [module.id, module]),
 ) as Record<OracleModuleId, (typeof ORACLE_MODULES)[number]>;
 
-export const ORACLE_ICONS: Record<OracleModuleId, IconName> = { status: "power", chat: "message", style: "quill", prophecy: "orb" };
+export const ORACLE_ICONS: Record<OracleModuleId, IconName> = { status: "power", chat: "message", style: "quill", prophecy: "orb", community: "sun" };
 
 /** The Oracle's settings with the defaults, and a setter for one of them. */
 function useOracle() {
@@ -546,9 +546,77 @@ function ProphecyModule() {
   );
 }
 
+function CommunityModule() {
+  const { oracle, setOracle } = useOracle();
+  const { channels } = usePanel();
+  const question = oracle.community.dailyQuestion;
+  const path = (key: string) => ["community", "dailyQuestion", key];
+  return (
+    <ModuleView module={MODULE.community} icon={ORACLE_ICONS.community}>
+      <OracleOffNote what="nu pune întrebarea zilei" />
+      <SectionCard title="Întrebarea zilei" small={question.enabled ? `zilnic la ${hourText(question.hour)}` : "oprită"} testId="oracle-question">
+        <Fields>
+          <SwitchField
+            label="Pune întrebarea zilei" testId="oracle-question-switch" checked={question.enabled}
+            hint="O dată pe zi, Oracolul pune o întrebare pentru toată comunitatea, în canalul ales."
+            onChange={(next) => setOracle(path("enabled"), next)}
+          />
+          {question.enabled ? (
+            <>
+              <ChannelField
+                label="Canalul" selectLabel="Canalul întrebării zilei" value={question.channelId || null} channels={channels}
+                hint="Un canal text pe care îl văd membrii și în care botul poate scrie."
+                onChange={(next) => setOracle(path("channelId"), next ?? "")}
+              />
+              {!question.channelId ? <NoteRow tone="bad" role="alert">Alege canalul; fără el întrebarea zilei nu se poate salva pornită.</NoteRow> : null}
+              <NumField
+                label="Ora (0–23)" value={question.hour} min={0} max={23} testId="oracle-question-hour"
+                onChange={(next) => setOracle(path("hour"), next)}
+              />
+              <Fld label="Fusul orar" hint="După el se socotesc ora și ziua întrebării.">
+                <select
+                  className="pn-inp" value={question.timeZone} data-testid="oracle-question-timezone" aria-label="Fusul orar al întrebării zilei"
+                  onChange={(event) => setOracle(path("timeZone"), event.target.value)}
+                >
+                  {!TIME_ZONES.some(([known]) => known === question.timeZone) ? <option value={question.timeZone}>{question.timeZone}</option> : null}
+                  {TIME_ZONES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </select>
+              </Fld>
+              <SwitchField
+                label="Folosește întrebările serverului" testId="oracle-question-own-switch" checked={question.useOwnQuestions}
+                hint="Oprit: Oracolul alege din lista lui. Pornit: alege din lista ta, câte una pe zi."
+                onChange={(next) => setOracle(path("useOwnQuestions"), next)}
+              />
+              {question.useOwnQuestions ? (
+                <Fld wide label="Întrebările tale" hint={`O întrebare pe linie, cel mult ${MAX_OWN_QUESTIONS}, fiecare de cel mult ${MAX_QUESTION_LENGTH} de caractere.`}>
+                  <textarea
+                    className="pn-inp" rows={6} data-testid="oracle-question-own" aria-label="Întrebările serverului" defaultValue={question.ownQuestions.join("\n")}
+                    onBlur={(event) => setOracle(path("ownQuestions"), event.target.value.split("\n").map((line) => line.trim()).filter(Boolean).slice(0, MAX_OWN_QUESTIONS))}
+                  />
+                </Fld>
+              ) : null}
+              <Fld wide label="Cum arată">
+                <div className="pn-dc" data-testid="oracle-question-preview">
+                  <OracleMessage>
+                    <div className="pn-dc-embed">
+                      <p className="pn-dc-title">❓ Întrebarea zilei</p>
+                      <p className="pn-dc-text">Ce monstru ai vrea să nu mai întâlnești niciodată în Regat și de ce?</p>
+                    </div>
+                  </OracleMessage>
+                </div>
+              </Fld>
+            </>
+          ) : null}
+        </Fields>
+      </SectionCard>
+    </ModuleView>
+  );
+}
+
 export const ORACLE_VIEWS: Record<OracleModuleId, () => React.JSX.Element> = {
   status: StatusModule,
   chat: ChatModule,
   style: StyleModule,
   prophecy: ProphecyModule,
+  community: CommunityModule,
 };

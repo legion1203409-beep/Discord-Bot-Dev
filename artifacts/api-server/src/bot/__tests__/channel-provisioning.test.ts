@@ -346,9 +346,10 @@ describe("guild channel provisioning", () => {
     };
 
     const first = await provisionActivityLogChannels(guild, { activityLog });
-    expect(first.created).toHaveLength(8);
+    expect(first.created).toHaveLength(9);
     expect(first.created[0]).toMatchObject({ key: "activityLog.category", type: "category" });
-    expect(Object.values(first.activityLog.channelIds).filter(Boolean)).toHaveLength(7);
+    expect(Object.values(first.activityLog.channelIds).filter(Boolean)).toHaveLength(8);
+    expect(first.created.map((entry) => entry.name)).toContain("jurnal-invitatii");
     const categoryId = first.activityLog.categoryId;
     expect([...channels.values()].filter((entry) => entry.type === ChannelType.GuildText)
       .every((entry) => entry.parentId === categoryId)).toBe(true);
@@ -366,8 +367,8 @@ describe("guild channel provisioning", () => {
       activityLog: first.activityLog,
     });
     expect(second.created).toEqual([]);
-    expect(second.reused).toHaveLength(8);
-    expect(create).toHaveBeenCalledTimes(8);
+    expect(second.reused).toHaveLength(9);
+    expect(create).toHaveBeenCalledTimes(9);
 
     const membersChannelId = second.activityLog.channelIds.members!;
     const third = await provisionActivityLogChannels(guild, {
@@ -377,7 +378,7 @@ describe("guild channel provisioning", () => {
         roleIds: ["role-new"],
       },
     });
-    expect(create).toHaveBeenCalledTimes(8);
+    expect(create).toHaveBeenCalledTimes(9);
     expect(channels.get(membersChannelId)!.permissionOverwrites.edit).not.toHaveBeenCalledWith("role-staff", expect.anything(), expect.anything());
     expect(channels.get(membersChannelId)!.permissionOverwrites.edit).not.toHaveBeenCalledWith("role-new", expect.anything(), expect.anything());
     expect(third.activityLog.channelIds.members).toBe(membersChannelId);
