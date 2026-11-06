@@ -15,8 +15,38 @@ import {
 } from "discord.js";
 import { pool } from "@workspace/db";
 import { getVerificationOAuthUrl } from "../moderation/oauth";
-import { loadVerificationConfig, saveVerificationConfig, type VerificationConfig } from "./db";
+import { loadVerificationConfig, saveVerificationConfig, type VerificationConfig, type VerificationPageTexts } from "./db";
 import { normalizeMessageImageUrl, publicMessageImageUrl } from "./message-media";
+
+/** What the verification page on the website says, until the server changes it in the panel. */
+export const DEFAULT_VERIFICATION_PAGE: VerificationPageTexts = {
+  title: "Verifică-ți accesul",
+  lead: "Pentru a confirma verificarea, glisează marcajul până la capătul traseului. Biletul a fost emis de Discord și va fi folosit o singură dată pentru acest pas.",
+  sliderLabel: "Aprinde flacăra",
+  ctaLabel: "Finalizează verificarea",
+  successTitle: "Verificarea a fost finalizată.",
+  successText: "Poți reveni acum în Discord.",
+  welcomeLabel: "Bun venit în Regatul Cenușii",
+  runesEnabled: true,
+  runesTitle: "Trage-ți runa",
+  runesText: "Alege o carte. Oracolul îți spune cine ești în regat.",
+};
+
+/** The page texts' limits, as the panel and the server check them. */
+export const VERIFICATION_PAGE_LIMITS: Record<Exclude<keyof VerificationPageTexts, "runesEnabled">, number> = {
+  title: 80, lead: 500, sliderLabel: 40, ctaLabel: 40, successTitle: 120, successText: 300, welcomeLabel: 60, runesTitle: 60, runesText: 200,
+};
+
+export function normalizeVerificationPage(value: unknown): VerificationPageTexts {
+  const source = value && typeof value === "object" ? value as Partial<Record<keyof VerificationPageTexts, unknown>> : {};
+  const page = { ...DEFAULT_VERIFICATION_PAGE };
+  for (const key of Object.keys(VERIFICATION_PAGE_LIMITS) as Array<keyof typeof VERIFICATION_PAGE_LIMITS>) {
+    const text = source[key];
+    if (typeof text === "string" && text.trim()) page[key] = text.trim().slice(0, VERIFICATION_PAGE_LIMITS[key]);
+  }
+  page.runesEnabled = source.runesEnabled !== false;
+  return page;
+}
 
 export const DEFAULT_VERIFICATION_CONFIG: VerificationConfig = {
   enabled: false,
@@ -32,6 +62,7 @@ export const DEFAULT_VERIFICATION_CONFIG: VerificationConfig = {
   thumbnailUrl: "",
   panelMessageId: "",
   extraRoleIds: [],
+  page: DEFAULT_VERIFICATION_PAGE,
 };
 
 /** At most this many roles are given in addition to the verification role. */
@@ -68,6 +99,7 @@ export function normalizeVerificationConfig(value: Partial<VerificationConfig> |
     thumbnailUrl: normalizeMessageImageUrl(value?.thumbnailUrl),
     panelMessageId: typeof value?.panelMessageId === "string" ? value.panelMessageId.trim() : "",
     extraRoleIds: normalizeExtraRoleIds(value?.extraRoleIds, roleId),
+    page: normalizeVerificationPage(value?.page),
   };
 }
 

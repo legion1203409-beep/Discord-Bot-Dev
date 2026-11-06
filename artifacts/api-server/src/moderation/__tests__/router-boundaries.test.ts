@@ -2033,11 +2033,12 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     });
 
     expect(response.status).toBe(200);
-    // A request without extra roles (an older page) keeps working: none are given.
+    // A request without extra roles or page texts (an older page) keeps working: none are given, the page keeps its texts.
+    const page = expect.objectContaining({ title: "Verifică-ți accesul", runesEnabled: true });
     expect(await response.json()).toEqual({
-      verification: { ...verification, extraRoleIds: [], panelMessageId: "888888888" },
+      verification: { ...verification, extraRoleIds: [], page, panelMessageId: "888888888" },
     });
-    expect(mocks.publishVerificationPanel).toHaveBeenCalledWith(expect.anything(), guildId, { ...verification, extraRoleIds: [] });
+    expect(mocks.publishVerificationPanel).toHaveBeenCalledWith(expect.anything(), guildId, { ...verification, extraRoleIds: [], page });
     expect(mocks.saveChannelConfig).not.toHaveBeenCalled();
     expect(mocks.saveTicketConfig).not.toHaveBeenCalled();
     expect(mocks.saveGuildGameplayConfig).not.toHaveBeenCalled();

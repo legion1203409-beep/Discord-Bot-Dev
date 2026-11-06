@@ -247,6 +247,8 @@ import
   grantVerificationRoles,
   MAX_MANUAL_VERIFICATION_MEMBERS,
   MAX_VERIFICATION_EXTRA_ROLES,
+  DEFAULT_VERIFICATION_PAGE,
+  VERIFICATION_PAGE_LIMITS,
   VERIFICATION_ELEVATED_PERMISSIONS,
   consumeVerificationLinkToken,
   createVerificationLinkToken,
@@ -466,6 +468,19 @@ const verificationConfigSchema = z.object(
   panelMessageId: z.union([snowflake, z.literal("")]),
   // Given together with roleId, at the button and at manual verification.
   extraRoleIds: z.array(snowflake).max(MAX_VERIFICATION_EXTRA_ROLES).default([]),
+  // What the verification page on the website says (bot/verification.ts, DEFAULT_VERIFICATION_PAGE).
+  page: z.object({
+    title: z.string().trim().min(1, "Titlul paginii nu poate fi gol.").max(VERIFICATION_PAGE_LIMITS.title),
+    lead: z.string().trim().min(1, "Textul paginii nu poate fi gol.").max(VERIFICATION_PAGE_LIMITS.lead),
+    sliderLabel: z.string().trim().min(1).max(VERIFICATION_PAGE_LIMITS.sliderLabel),
+    ctaLabel: z.string().trim().min(1).max(VERIFICATION_PAGE_LIMITS.ctaLabel),
+    successTitle: z.string().trim().min(1).max(VERIFICATION_PAGE_LIMITS.successTitle),
+    successText: z.string().trim().min(1).max(VERIFICATION_PAGE_LIMITS.successText),
+    welcomeLabel: z.string().trim().min(1).max(VERIFICATION_PAGE_LIMITS.welcomeLabel),
+    runesEnabled: z.boolean(),
+    runesTitle: z.string().trim().min(1).max(VERIFICATION_PAGE_LIMITS.runesTitle),
+    runesText: z.string().trim().min(1).max(VERIFICATION_PAGE_LIMITS.runesText),
+  }).strict().default(DEFAULT_VERIFICATION_PAGE),
 }
 ).strict()
 ;
@@ -3500,6 +3515,7 @@ router.get("/verification/:guildId/config", asyncRoute(async (req, res) => {
     buttonEmoji: config.buttonEmoji,
     successMessage: config.successMessage,
     alreadyVerifiedMessage: config.alreadyVerifiedMessage,
+    page: config.page,
     websiteUrl: getVerificationWebsiteUrl(guildId),
   });
 }));

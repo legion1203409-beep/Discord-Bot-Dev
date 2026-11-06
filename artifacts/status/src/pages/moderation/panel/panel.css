@@ -1042,3 +1042,27 @@ a.pn-ov-tile:hover, .pn a.pn-ov-tile:hover { border-color: color-mix(in oklab, v
 .pn .pn-msg-prev p { margin: 0; white-space: pre-wrap; color: var(--pn-ink-2); font-size: 13.5px; line-height: 1.5; }
 @media (max-width: 640px) { .pn .pn-cat-m { display: none; } }
 .pn .pn-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+
+/* Verificare → Mesaje: pagina de pe site, în mic */
+.pn .pn-vxp { margin-top: 14px; padding: 14px; border-radius: 18px; border: 1px solid var(--pn-line-2); background: radial-gradient(120% 80% at 50% 0%, rgba(238, 106, 58, .16), transparent 60%), #120d0b; }
+.pn .pn-vxp .pn-dc-k { color: #b9a99c; }
+.pn .pn-vxp-card { display: flex; flex-direction: column; gap: 9px; margin: 6px 0 12px; padding: 14px; border-radius: 16px; border: 1px solid rgba(255, 255, 255, .09); background: linear-gradient(155deg, rgba(255, 255, 255, .05), transparent 40%), #1a1412; color: #f4e8dc; overflow-wrap: anywhere; }
+.pn .pn-vxp-card:last-child { margin-bottom: 0; }
+.pn .pn-vxp-k { color: #d8a964; font: 500 9.5px/1 var(--pn-mono); letter-spacing: .14em; text-transform: uppercase; }
+.pn .pn-vxp-t { font-size: 19px; font-weight: 700; line-height: 1.15; }
+.pn .pn-vxp-p { color: #b9a99c; font-size: 12.5px; line-height: 1.5; }
+.pn .pn-vxp-fuse { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, .08); background: rgba(0, 0, 0, .25); color: #d8a964; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
+.pn .pn-vxp-fuse i { flex: 1; height: 3px; border-radius: 9px; background: linear-gradient(90deg, #ffc46e 38%, rgba(255, 255, 255, .1) 38%); }
+.pn .pn-vxp-cta { display: grid; place-items: center; min-height: 36px; padding: 0 12px; border-radius: 11px; background: linear-gradient(180deg, #ffa05a, #ee6a3a); color: #1c0e08; font-size: 13px; font-weight: 700; text-align: center; }
+.pn .pn-vxp-ok { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(255, 196, 110, .32); background: rgba(216, 169, 100, .09); }
+.pn .pn-vxp-ok b { color: #ffc46e; font-size: 13px; }
+.pn .pn-vxp-ok span { color: #b9a99c; font-size: 12px; }
+.pn .pn-vxp-seal { display: grid; place-items: center; height: 64px; }
+.pn .pn-vxp-seal i { width: 46px; height: 46px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #ffe2a8, #ffa05a 45%, #d4532a 80%); box-shadow: 0 0 0 4px #1a1412, 0 0 0 5px rgba(255, 196, 110, .5), 0 0 30px 4px rgba(255, 143, 77, .5); }
+.pn .pn-vxp-welcome { color: #d8a964; font-size: 10px; letter-spacing: .2em; text-align: center; text-transform: uppercase; }
+.pn .pn-vxp-runes { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border-radius: 14px; border: 1px solid rgba(216, 169, 100, .24); background: rgba(0, 0, 0, .2); }
+.pn .pn-vxp-runes b { font-size: 13px; }
+.pn .pn-vxp-runes span { color: #b9a99c; font-size: 12px; }
+.pn .pn-vxp-runes div { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 6px; }
+.pn .pn-vxp-runes div i { aspect-ratio: 3 / 4.2; border-radius: 8px; border: 1px solid rgba(216, 169, 100, .45); background: repeating-linear-gradient(45deg, rgba(216, 169, 100, .08) 0 4px, transparent 4px 8px), linear-gradient(160deg, #2e2019, #120c0a); }
+.pn .pn-vxp-sep { margin-top: 6px; padding-top: 14px; border-top: 1px solid var(--pn-line); color: var(--pn-ink-2); font-weight: 600; font-size: 14px; }
