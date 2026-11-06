@@ -25,6 +25,13 @@ const detailLabels: Record<string, string> = {
   bulk: "Ștergere în masă",
   channelName: "Canal vocal",
   changes: "Modificări",
+  color: "Culoare",
+  excludedByPolicy: "Exceptat de la moderare",
+  hoist: "Afișat separat",
+  mentionable: "Poate fi menționat",
+  permissions: "Permisiuni",
+  position: "Poziție",
+  type: "Tip",
   entityName: "Element",
   count: "Număr de evenimente",
   error: "Eroare",
@@ -56,6 +63,7 @@ const hiddenDetailKeys = new Set([
   "actorId",
   "actorStaff",
   "actorVerified",
+  "changedFields",
   "channelId",
   "contentChanged",
   "displayAfterContent",
@@ -325,6 +333,10 @@ function readableValue(value: unknown, changedKey?: string): string {
 
 function readableDetails(detail: Record<string, unknown>, extraHidden: string[] = []): string {
   const omitted = new Set([...hiddenDetailKeys, ...extraHidden]);
+  // Only worth saying when it is true; the channel's name is already in the „Canal” field.
+  if (detail.excludedByPolicy !== true) omitted.add("excludedByPolicy");
+  if (typeof detail.channelId === "string" && detail.channelId) omitted.add("entityName");
+  if (isRecord(detail.changes) && Object.keys(detail.changes).length === 0) omitted.add("changes");
   const priority = new Map([
     "changes",
     "addedRoles",
@@ -698,6 +710,9 @@ export function buildActivityLogPresentation(
   if (channel !== "—") fields.push(...inlineField("Canal", channel));
   const details = readableDetails(detail);
   if (details) addField("Detalii", details);
+  else if (normalized === "discord.channel_update" || normalized === "discord.guild_role_update") {
+    addField("Detalii", "Discord nu a spus exact ce s-a schimbat (de obicei permisiunile sau ordinea din listă).");
+  }
   return { description: FALLBACK_DESCRIPTIONS[normalized] ?? null, fields };
 }
 
