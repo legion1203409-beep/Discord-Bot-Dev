@@ -486,6 +486,8 @@ export const TICKETS_MODULE_ROUTES = {
   partnership: "/tichete/parteneriate",
   help_report: "/tichete/ajutor",
   appeal: "/tichete/contestatii",
+  bot: "/tichete/bot",
+  reputation: "/tichete/reputatie",
   common: "/tichete/setari",
 } as const;
 

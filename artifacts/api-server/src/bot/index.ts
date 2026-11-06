@@ -81,6 +81,7 @@ import {
 import { initTicketConfig, isTicketCategoryParentId } from "./ticket-categories";
 import { getOracleSettings, initOracleSettings, prophecyUsesLeft, recordProphecyUse } from "./oracle-settings";
 import { startDailyProphecyScheduler } from "./oracle-daily";
+import { handleSupportTicketInteraction, handleTopStaffCommand } from "./support-tickets";
 import {
   enforceOracleTimeout,
   handleToxicity,
@@ -559,6 +560,18 @@ const slashCommands = [
   new SlashCommandBuilder()
     .setName("invita")
     .setDescription("🔗 Creează o invitație personală și urmărește recrutările verificate."),
+  new SlashCommandBuilder()
+    .setName("topstaff")
+    .setDescription("🏆 Reputația staff-ului: media stelelor primite după tichete.")
+    .addStringOption((option) => option
+      .setName("perioada")
+      .setDescription("Ce perioadă numără (implicit: ultimele 30 de zile)")
+      .addChoices(
+        { name: "Ultimele 7 zile", value: "7" },
+        { name: "Ultimele 30 de zile", value: "30" },
+        { name: "Ultimele 90 de zile", value: "90" },
+        { name: "De la început", value: "all" },
+      )),
   new SlashCommandBuilder()
     .setName("clasament")
     .setDescription("👑 Clasamentele Regatelor Cenușii.")
@@ -4604,6 +4617,10 @@ async function handleButton(interaction: ButtonInteraction) {
     return handleVerificationButton(interaction, getVerificationWebsiteUrl(interaction.guildId!));
   }
 
+  if (id.startsWith("tichet_")) {
+    return handleSupportTicketInteraction(interaction);
+  }
+
   if (id.startsWith("ticket_")) {
     return handleTicketButton(interaction);
   }
@@ -5442,6 +5459,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
           "toplvl",
           "server",
           "invita",
+          "topstaff",
           "stopjoc",
           "startjoc",
           "stopai",
@@ -5466,14 +5484,16 @@ export async function startBot(onReady?: () => void): Promise<void> {
       } else if (interaction.isButton()) {
         allowedWhileStopped =
           interaction.customId.startsWith("ticket_") ||
+          interaction.customId.startsWith("tichet_") ||
           interaction.customId.startsWith("help_") ||
           interaction.customId.startsWith("council_") ||
           interaction.customId.startsWith("verification_");
       } else if (interaction.isStringSelectMenu()) {
-        allowedWhileStopped = interaction.customId.startsWith("ticket_questions_");
+        allowedWhileStopped = interaction.customId.startsWith("ticket_questions_") || interaction.customId === "tichet_open";
       } else if (interaction.isModalSubmit()) {
         allowedWhileStopped =
           interaction.customId.startsWith("ticket_") ||
+          interaction.customId.startsWith("tichet_") ||
           interaction.customId.startsWith("help_question_");
       }
 
@@ -5501,6 +5521,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
       if (interaction.commandName === "toplvl") dispatch(handleActivityLeaderboard(interaction));
       if (interaction.commandName === "server") dispatch(handleServer(interaction));
       if (interaction.commandName === "invita") dispatch(handleRecruitmentInvite(interaction));
+      if (interaction.commandName === "topstaff") dispatch(handleTopStaffCommand(interaction as ChatInputCommandInteraction));
       if (interaction.commandName === "inventar") dispatch(handleInventar(interaction));
       if (interaction.commandName === "profetie") dispatch(handleProfetie(interaction));
       if (interaction.commandName === "clasament") dispatch(handleClasament(interaction));
@@ -5534,6 +5555,10 @@ export async function startBot(onReady?: () => void): Promise<void> {
         handled = true;
         dispatch(handleTicketQuestionSelect(interaction as StringSelectMenuInteraction));
       }
+      if (interaction.customId === "tichet_open") {
+        handled = true;
+        dispatch(handleSupportTicketInteraction(interaction as StringSelectMenuInteraction));
+      }
       if (!handled) {
         dispatch(interaction.reply({
           content: "⌛ Acest meniu nu mai este disponibil. Deschide-l din nou.",
@@ -5542,6 +5567,10 @@ export async function startBot(onReady?: () => void): Promise<void> {
       }
     } else if (interaction.isModalSubmit()) {
       let handled = false;
+      if (interaction.customId.startsWith("tichet_")) {
+        handled = true;
+        dispatch(handleSupportTicketInteraction(interaction));
+      }
       if (interaction.customId.startsWith("ticket_answer_")) {
         handled = true;
         dispatch(handleTicketQuestionModal(interaction));
@@ -6043,6 +6072,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
           "ajutor",
            "profetie",
           "invita",
+          "topstaff",
           "setcanal",
           "setaliantatext",
           "moderare",
@@ -6061,14 +6091,16 @@ export async function startBot(onReady?: () => void): Promise<void> {
       } else if (interaction.isButton()) {
         allowedWhileStopped =
           interaction.customId.startsWith("ticket_") ||
+          interaction.customId.startsWith("tichet_") ||
           interaction.customId.startsWith("help_") ||
           interaction.customId.startsWith("council_") ||
           interaction.customId.startsWith("verification_");
       } else if (interaction.isStringSelectMenu()) {
-        allowedWhileStopped = interaction.customId.startsWith("ticket_questions_");
+        allowedWhileStopped = interaction.customId.startsWith("ticket_questions_") || interaction.customId === "tichet_open";
       } else if (interaction.isModalSubmit()) {
         allowedWhileStopped =
           interaction.customId.startsWith("ticket_") ||
+          interaction.customId.startsWith("tichet_") ||
           interaction.customId.startsWith("help_question_");
       }
 
@@ -6093,6 +6125,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
       if (await handleModerationCommand(interaction as ChatInputCommandInteraction)) return;
       if (interaction.commandName === "profil") dispatch(handleProfil(interaction));
       if (interaction.commandName === "invita") dispatch(handleRecruitmentInvite(interaction));
+      if (interaction.commandName === "topstaff") dispatch(handleTopStaffCommand(interaction as ChatInputCommandInteraction));
       if (interaction.commandName === "inventar") dispatch(handleInventar(interaction));
       if (interaction.commandName === "profetie") dispatch(handleProfetie(interaction));
       if (interaction.commandName === "clasament") dispatch(handleClasament(interaction));
@@ -6126,6 +6159,10 @@ export async function startBot(onReady?: () => void): Promise<void> {
         handled = true;
         dispatch(handleTicketQuestionSelect(interaction as StringSelectMenuInteraction));
       }
+      if (interaction.customId === "tichet_open") {
+        handled = true;
+        dispatch(handleSupportTicketInteraction(interaction as StringSelectMenuInteraction));
+      }
       if (!handled) {
         dispatch(interaction.reply({
           content: "⌛ Acest meniu nu mai este disponibil. Deschide-l din nou.",
@@ -6134,6 +6171,10 @@ export async function startBot(onReady?: () => void): Promise<void> {
       }
     } else if (interaction.isModalSubmit()) {
       let handled = false;
+      if (interaction.customId.startsWith("tichet_")) {
+        handled = true;
+        dispatch(handleSupportTicketInteraction(interaction));
+      }
       if (interaction.customId.startsWith("ticket_answer_")) {
         handled = true;
         dispatch(handleTicketQuestionModal(interaction));

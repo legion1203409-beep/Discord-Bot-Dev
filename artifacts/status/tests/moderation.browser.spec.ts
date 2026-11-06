@@ -2765,6 +2765,49 @@ test.describe("tickets page", () => {
     expect(staff.mode).toBe("custom");
   });
 
+  test("the bot's own tickets: categories, staff, rating, publishing, and the staff's reputation", async ({ page }) => {
+    const publishes: unknown[] = [];
+    await page.route("**/api/moderation/guilds/*/support-tickets/publish", async (route) => {
+      publishes.push(route.request().method());
+      await route.fulfill({ json: { messageId: "888888888", supportTickets: {} } });
+    });
+    await page.route("**/api/moderation/guilds/*/support-tickets/reputation**", async (route) => {
+      await route.fulfill({ json: { range: "30", periodLabel: "ultimele 30 de zile", rows: [
+        { staffId: "111111111", name: "Adina", avatarUrl: null, ratings: 12, average: 4.75, score: 4.5, handled: 15, distribution: [0, 0, 1, 1, 10] },
+        { staffId: "222222222", name: "Mihai", avatarUrl: null, ratings: 3, average: 4, score: 3.75, handled: 4, distribution: [0, 0, 1, 1, 1] },
+      ] } });
+    });
+    const putBodies = await openTickets(page, "/moderare/tichete/bot");
+    await expect(page.getByRole("heading", { name: "Tichetele botului", exact: true })).toBeVisible();
+    await expect(page.getByTestId("tickets-bot-preview")).toContainText("🚨 Raportează un membru");
+    await page.getByTestId("tickets-bot-switch").click();
+    await expect(page.getByText("Alege rolul staff-ului care vede tichetele.").first()).toBeVisible();
+    await page.getByTestId("button-save-tickets").click();
+    expect(putBodies.size).toBe(0);
+    await page.getByTestId("tickets-bot-staff").getByRole("checkbox", { name: "@Moderator" }).click();
+    await page.getByRole("combobox", { name: "Canalul panoului de tichete" }).selectOption("777777777");
+    await page.getByTestId("tickets-bot-add").click();
+    await page.getByTestId("tickets-bot-category-4-label").fill("Cerere de rol");
+    await page.getByTestId("tickets-bot-category-4-emoji").fill("🎭");
+    await page.getByTestId("tickets-bot-category-4-reason").click();
+    await page.getByTestId("tickets-bot-category-2-remove").click();
+    await expect(page.getByTestId("tickets-bot-preview")).toContainText("🎭 Cerere de rol");
+    await expect(page.getByTestId("tickets-bot-publish")).toBeDisabled();
+    await page.getByTestId("button-save-tickets").click();
+    await expect.poll(() => putBodies.get(guilds[0].id)?.length).toBe(1);
+    const saved = putBodies.get(guilds[0].id)![0].supportTickets;
+    expect(saved).toMatchObject({ enabled: true, staffRoleIds: ["666666666"], panelChannelId: "777777777", rating: { enabled: true } });
+    expect(saved.categories.map((category: { label: string }) => category.label)).toEqual(["Ajutor general", "Raportează un membru", "Întrebări despre server", "Cerere de rol"]);
+    expect(saved.categories[3]).toMatchObject({ emoji: "🎭", askReason: true });
+    await page.getByTestId("tickets-bot-publish").click();
+    await expect.poll(() => publishes.length).toBe(1);
+    await expect(page.getByTestId("tickets-bot-panel")).toContainText("Panoul e în canal");
+
+    await page.getByTestId("nav-tickets-reputation").click();
+    await expect(page.getByTestId("tickets-reputation-rows")).toContainText("Adina");
+    await expect(page.getByTestId("tickets-reputation-rows")).toContainText("4,8 ⭐");
+  });
+
   test("keeps the case question first in appeals", async ({ page }) => {
     await openTickets(page, "/moderare/tichete/contestatii");
     await expect(page.getByRole("button", { name: "Șterge întrebarea 1" })).toBeDisabled();

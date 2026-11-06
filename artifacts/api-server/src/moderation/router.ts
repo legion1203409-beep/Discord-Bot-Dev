@@ -170,7 +170,10 @@ import
 import {
   MAX_ORACLE_CHANNELS, ORACLE_LENGTHS, ORACLE_TONES, isValidTimeZone, normalizeOracleSettings, setOracleSettings,
 } from "../bot/oracle-settings";
-import { loadOracleSettings } from "../bot/db";
+import { loadOracleSettings, loadSupportTicketsSetting, saveSupportTicketsSetting } from "../bot/db";
+import {
+  MAX_TICKET_CATEGORIES, REPUTATION_PERIODS, getStaffReputation, normalizeSupportTicketsConfig, publishSupportTicketPanel,
+} from "../bot/support-tickets";
 import { MAX_PEOPLE_PER_REQUEST, resolvePeople } from "./people";
 import { appealIdentityFromRequest, clearAppealCookie, setAppealCookie } from "./appeal-auth";
 import { answerClarification, appealStatus, submitAppeal } from "./appeals";
@@ -501,6 +504,60 @@ const DEFAULT_DAILY_STATS_EMBED_CONFIG =
 ;
 
 
+/** The bot's own tickets (bot/support-tickets.ts), read and saved like the other bot settings. */
+async function loadSupportTickets(guildId: string) {
+  const load = optionalExport(() => loadSupportTicketsSetting);
+  return normalizeSupportTicketsConfig(load ? await load(guildId) : null);
+}
+
+async function saveSupportTickets(guildId: string, value: unknown) {
+  const config = normalizeSupportTicketsConfig(value);
+  const save = optionalExport(() => saveSupportTicketsSetting);
+  if (save) await save(guildId, config);
+  return config;
+}
+
+/** Left out of the answer when it cannot be read, so the page does not send defaults back over the saved settings. */
+async function supportTicketsForResponse(guildId: string) {
+  try {
+    return await loadSupportTickets(guildId);
+  } catch (error) {
+    logger.warn({ error, guildId }, "Could not read the support ticket settings");
+    return undefined;
+  }
+}
+
+const supportTicketCategorySchema = z.object({
+  id: z.string().trim().max(40),
+  label: z.string().trim().min(1, "Fiecare categorie are nevoie de un nume.").max(80),
+  emoji: z.string().trim().max(32),
+  description: z.string().trim().max(100),
+  parentId: snowflake.or(z.literal("")),
+  staffRoleIds: z.array(snowflake).max(10),
+  welcome: z.string().trim().max(1_500),
+  askReason: z.boolean(),
+}).strict();
+
+const supportTicketsSchema = z.object({
+  enabled: z.boolean(),
+  panelChannelId: snowflake.or(z.literal("")),
+  panelMessageId: snowflake.or(z.literal("")),
+  panelTitle: z.string().trim().max(256),
+  panelDescription: z.string().trim().max(2_000),
+  color: z.string().trim().regex(/^#[0-9a-f]{6}$/i),
+  staffRoleIds: z.array(snowflake).max(10),
+  logChannelId: snowflake.or(z.literal("")),
+  maxOpenPerUser: z.number().int().min(1).max(5),
+  deleteAfterClose: z.boolean(),
+  rating: z.object({ enabled: z.boolean(), question: z.string().trim().max(200) }).strict(),
+  categories: z.array(supportTicketCategorySchema).max(MAX_TICKET_CATEGORIES),
+}).strict().superRefine((value, ctx) => {
+  if (value.enabled && !value.categories.length) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["categories"], message: "Adaugă cel puțin o categorie de tichete." });
+  if (value.enabled && !value.staffRoleIds.length && value.categories.some((category) => !category.staffRoleIds.length)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["staffRoleIds"], message: "Alege rolul staff-ului care vede tichetele." });
+  }
+});
+
 const dailyStatsEmbedConfigSchema = z.object(
 {
 
@@ -667,6 +724,8 @@ export const botControlSchema = z.object(
   // Optional: pages that do not know the Oracle's settings keep them unchanged.
   oracle: oracleSettingsSchema.optional(),
   dailyStats: dailyStatsEmbedConfigSchema,
+  // Optional: pages that do not know the bot's own tickets keep them unchanged.
+  supportTickets: supportTicketsSchema.optional(),
   inviteTracking: z.object(
 {
 
@@ -2583,6 +2642,40 @@ router.put("/guilds/:guildId/protection-toggle", asyncRoute(async (req, res) => 
   });
 }));
 
+router.post("/guilds/:guildId/support-tickets/publish", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  await sessionAndGuild(req, guildId, "config", true);
+  const client = getModerationClient();
+  if (!client?.isReady()) throw new ModerationAuthError(503, "Botul nu este conectat la Discord.");
+  const config = await loadSupportTickets(guildId);
+  if (!config.enabled) throw new ModerationAuthError(400, "Pornește tichetele și salvează înainte să publici panoul.");
+  let messageId: string;
+  try {
+    messageId = await publishSupportTicketPanel(client, guildId, config);
+  } catch (error) {
+    throw new ModerationAuthError(400, error instanceof Error ? error.message : "Panoul nu s-a putut publica.");
+  }
+  const saved = await saveSupportTickets(guildId, { ...config, panelMessageId: messageId });
+  res.set("Cache-Control", "no-store").json({ supportTickets: saved, messageId });
+}));
+
+router.get("/guilds/:guildId/support-tickets/reputation", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  await sessionAndGuild(req, guildId, "config");
+  const { range } = z.object({ range: z.enum(["7", "30", "90", "all"]).default("30") }).parse(req.query);
+  const period = REPUTATION_PERIODS.find((item) => item.value === range)!;
+  const rows = await getStaffReputation(guildId, period.days, 50);
+  const client = getModerationClient();
+  const guild = client?.guilds.cache.get(guildId);
+  res.set("Cache-Control", "no-store").json({
+    range, periodLabel: period.label,
+    rows: rows.map((row) => {
+      const member = guild?.members.cache.get(row.staffId);
+      return { ...row, name: member?.displayName ?? client?.users.cache.get(row.staffId)?.username ?? null, avatarUrl: member?.displayAvatarURL() ?? null };
+    }),
+  });
+}));
+
 router.get("/guilds/:guildId/gameplay-state", asyncRoute(async (req, res) => {
   const guildId = parse(snowflake, req.params.guildId);
   await sessionAndGuild(req, guildId, "config");
@@ -2700,6 +2793,7 @@ router.get("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
     gameplayConfig: getGameplayConfig(guildId),
     verification: normalizeVerificationConfig(verification),
     dailyStats,
+    supportTickets: await supportTicketsForResponse(guildId),
     inviteTracking,
     provisioningPermissions: provisioningPermissionsSchema.parse(provisioningPermissions),
     discordLive: Boolean(getModerationClient()?.isReady()),
@@ -3286,6 +3380,7 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
     );
   }
   let savedVerification = verification;
+  let savedSupportTickets: ReturnType<typeof normalizeSupportTicketsConfig> | null = null;
   let verificationPanelPublished = false;
   let anyWriteSucceeded = false;
   if (verification.enabled && verificationRequested) {
@@ -3322,6 +3417,12 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   const saveDailyStats = optionalExport(() => saveDailyStatsEmbedConfig);
   if (saveDailyStats) {
     await saveDailyStats(guildId, dailyStats);
+    anyWriteSucceeded = true;
+  }
+  if (value.supportTickets) {
+    // The panel's message id is the bot's to keep: a page never moves it.
+    const current = await supportTicketsForResponse(guildId);
+    savedSupportTickets = await saveSupportTickets(guildId, { ...value.supportTickets, panelMessageId: current?.panelMessageId ?? value.supportTickets.panelMessageId });
     anyWriteSucceeded = true;
   }
   const saveInviteTracking = optionalExport(() => saveInviteTrackingConfig);
@@ -3395,6 +3496,7 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
     gameplayConfig,
     verification: savedVerification,
     dailyStats,
+    supportTickets: savedSupportTickets ?? await supportTicketsForResponse(guildId),
     inviteTracking,
     provisioningPermissions: value.provisioningPermissions,
     discordLive: Boolean(client?.isReady()),

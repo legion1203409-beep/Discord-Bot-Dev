@@ -235,6 +235,8 @@ export interface BotControlConfig {
       peakVoice: string;
     };
   };
+  /** The bot's own tickets (api-server bot/support-tickets.ts); missing when the bot could not read them. */
+  supportTickets?: SupportTicketsConfig;
   inviteTracking: InviteTrackingConfig;
   discordLive?: boolean;
   provisioning?: {
@@ -1004,6 +1006,38 @@ export function useModerationConfig(guildId: string | null) {
     updateProtectionToggle,
     refetch: fetchConfig,
   };
+}
+
+export type SupportTicketCategory = {
+  id: string; label: string; emoji: string; description: string; parentId: string; staffRoleIds: string[]; welcome: string; askReason: boolean;
+};
+export type SupportTicketsConfig = {
+  enabled: boolean; panelChannelId: string; panelMessageId: string; panelTitle: string; panelDescription: string; color: string;
+  staffRoleIds: string[]; logChannelId: string; maxOpenPerUser: number; deleteAfterClose: boolean;
+  rating: { enabled: boolean; question: string }; categories: SupportTicketCategory[];
+};
+export type StaffReputationRow = { staffId: string; name: string | null; avatarUrl: string | null; ratings: number; average: number; score: number; handled: number; distribution: number[] };
+
+/** The staff's reputation from the ticket ratings, for a period. */
+export function useStaffReputation(guildId: string | null, range: "7" | "30" | "90" | "all") {
+  const [rows, setRows] = useState<StaffReputationRow[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    setRows(null);
+    setError(null);
+    if (!guildId) return;
+    let live = true;
+    apiFetch<{ rows: StaffReputationRow[] }>(`/guilds/${guildId}/support-tickets/reputation?range=${range}`)
+      .then((result) => { if (live) setRows(result.rows); })
+      .catch((err) => { if (live) setError(err instanceof Error ? err.message : "Reputația nu s-a putut încărca."); });
+    return () => { live = false; };
+  }, [guildId, range]);
+  return { rows, error };
+}
+
+/** Posts the ticket panel in its channel, or updates the one already there. */
+export async function publishSupportTicketPanel(guildId: string): Promise<{ messageId: string; supportTickets: SupportTicketsConfig }> {
+  return apiFetch(`/guilds/${guildId}/support-tickets/publish`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
 }
 
 export function useGameplayState(guildId: string | null) {

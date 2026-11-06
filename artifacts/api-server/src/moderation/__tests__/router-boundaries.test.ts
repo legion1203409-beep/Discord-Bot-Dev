@@ -5,6 +5,7 @@ import { SUPER_ADMIN_ID } from "../../bot/constants";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  loadSupportTicketsSetting: vi.fn(async () => null as unknown), saveSupportTicketsSetting: vi.fn(async () => undefined),
   session: vi.fn(), access: vi.fn(), csrf: vi.fn(), client: vi.fn(),
   getConfig: vi.fn(), putConfig: vi.fn(), putProtectionToggle: vi.fn(), listCases: vi.fn(), countCases: vi.fn(),
   listAudit: vi.fn(), listLogs: vi.fn(), beginAction: vi.fn(), getAction: vi.fn(),
@@ -132,6 +133,8 @@ vi.mock("../../bot/db", () => ({
   saveVerificationConfig: mocks.saveVerificationConfig,
   loadOracleSettings: mocks.loadOracleSettings,
   saveOracleSettings: mocks.saveOracleSettings,
+  loadSupportTicketsSetting: mocks.loadSupportTicketsSetting,
+  saveSupportTicketsSetting: mocks.saveSupportTicketsSetting,
   loadDailyStatsEmbedConfig: mocks.loadDailyStatsEmbedConfig,
   saveDailyStatsEmbedConfig: mocks.saveDailyStatsEmbedConfig,
   loadInviteTrackingConfig: mocks.loadInviteTrackingConfig,
@@ -1537,6 +1540,40 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
       expect(response.status).toBe(400);
       expect(await response.json()).toMatchObject({ error: expect.stringContaining("drepturi de staff") });
       expect(mocks.saveTicketConfig).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("the bot's own tickets", () => {
+    const put = (payload: unknown) => fetch(`${base}/bot-control`, {
+      ...post(payload), method: "PUT", headers: { "content-type": "application/json", "x-csrf-token": "csrf" },
+    });
+    const tickets = (patch: Record<string, unknown> = {}) => ({
+      enabled: true, panelChannelId: "123456789012345678", panelMessageId: "", panelTitle: "🎫 Tichete", panelDescription: "Alege",
+      color: "#d8a964", staffRoleIds: ["223456789012345678"], logChannelId: "", maxOpenPerUser: 1, deleteAfterClose: true,
+      rating: { enabled: true, question: "Cum a fost?" },
+      categories: [{ id: "ajutor", label: "Ajutor", emoji: "🙋", description: "", parentId: "", staffRoleIds: [], welcome: "Salut", askReason: false }],
+      ...patch,
+    });
+
+    it("are read with the bot settings, off by default with four categories", async () => {
+      mocks.loadSupportTicketsSetting.mockResolvedValueOnce(null);
+      const body = await (await fetch(`${base}/bot-control`)).json() as { supportTickets: { enabled: boolean; categories: unknown[] } };
+      expect(body.supportTickets.enabled).toBe(false);
+      expect(body.supportTickets.categories).toHaveLength(4);
+    });
+
+    it("need a staff role and a category when switched on; the panel's message id stays the bot's", async () => {
+      mocks.saveSupportTicketsSetting.mockClear();
+      expect((await put({ ...botControlPayload(), supportTickets: tickets({ staffRoleIds: [] }) })).status).toBe(400);
+      expect((await put({ ...botControlPayload(), supportTickets: tickets({ categories: [] }) })).status).toBe(400);
+      expect(mocks.saveSupportTicketsSetting).not.toHaveBeenCalled();
+      mocks.loadSupportTicketsSetting.mockResolvedValue({ panelMessageId: "323456789012345678" });
+      expect((await put({ ...botControlPayload(), supportTickets: tickets({ panelMessageId: "" }) })).status).toBe(200);
+      expect(mocks.saveSupportTicketsSetting).toHaveBeenCalledWith(guildId, expect.objectContaining({ enabled: true, panelMessageId: "323456789012345678" }));
+      mocks.loadSupportTicketsSetting.mockResolvedValue(null);
+      mocks.saveSupportTicketsSetting.mockClear();
+      expect((await put(botControlPayload())).status).toBe(200);
+      expect(mocks.saveSupportTicketsSetting).not.toHaveBeenCalled();
     });
   });
 
