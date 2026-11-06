@@ -1,5 +1,6 @@
 import { PUBLIC_DISCORD_INVITE } from "../lib/discord-invite";
 import { RECRUITMENT_PANEL_LIMITS, loadRecruitmentPanel, publishRecruitmentPanel, saveRecruitmentPanel } from "../bot/recruitment-panel";
+import { missingReasonText } from "../bot/moderation/commands";
 import { SUPER_ADMIN_ID } from "../bot/constants";
 import { GUILD_ID } from "../bot/index";
 import { setupDraftSchema, setupDraftSaveSchema, setupTemplate } from "./server-setup-schema";
@@ -1153,6 +1154,9 @@ const actionSchema = z.object(
 
 ).superRefine((value, ctx) => 
 {
+  const reasonProblem = missingReasonText(value.type, value.reason);
+  if (reasonProblem) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["reason"], message: reasonProblem.replace(/^Scrie motivul pentru \/(\w+)/, "Scrie motivul pentru $1") });
+
 
 
   if (value.allMembers && value.type !== "role")

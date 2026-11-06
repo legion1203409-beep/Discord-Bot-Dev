@@ -16,7 +16,7 @@ import { countLabel, isDiscordId } from "./model";
 import {
   COMMAND_GROUP_LABELS, MAX_SLOWMODE_SECONDS, MAX_TIMEOUT_MINUTES, PANEL_COMMANDS, PURGE_PRESETS, SLOWMODE_PRESETS, TIMEOUT_PRESETS,
   actionErrorText, availableCommands, commandBlock, commandPayload, commandProblem, commandSentence, emptyCommandForm, formMemberId,
-  minutesText, panelCommand, secondsText, type CommandForm, type PanelCommand,
+  REASON_REQUIRED, minutesText, panelCommand, secondsText, type CommandForm, type PanelCommand,
 } from "./commands-model";
 import { commandSummary, STAFF_COMMANDS } from "./sanctions-model";
 import { actionKind, caseSource, fullTime, relativeTime } from "./records-model";
@@ -275,7 +275,9 @@ function CommandModule({ guildId, command, form, setForm, config, channels, role
                 <input id="cmd-nick" className="pn-inp" maxLength={32} value={form.nickname} onChange={(event) => set("nickname", event.target.value)} data-testid="command-nickname" />
               </Fld>
             ) : null}
-            <Fld label="Motivul" htmlFor="cmd-reason" wide hint="Opțional. Apare în caz și în audit; la sancțiuni îl vede și membrul, dacă e pornit mesajul în privat.">
+            <Fld label="Motivul" htmlFor="cmd-reason" wide hint={REASON_REQUIRED.has(form.type)
+              ? "Obligatoriu la warn, mute și ban. Apare în caz și în audit; îl vede și membrul, dacă e pornit mesajul în privat."
+              : "Opțional. Apare în caz și în audit; la sancțiuni îl vede și membrul, dacă e pornit mesajul în privat."}>
               <textarea
                 id="cmd-reason" className="pn-inp pn-area" rows={3} maxLength={500} value={form.reason} placeholder="De ce?"
                 onChange={(event) => set("reason", event.target.value)} data-testid="command-reason"
