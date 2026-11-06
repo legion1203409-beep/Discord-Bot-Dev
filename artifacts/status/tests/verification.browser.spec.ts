@@ -242,4 +242,34 @@ test.describe("public member verification slider", () => {
     ]);
     expect(await page.evaluate(() => window.location.hash)).toBe("");
   });
+  test("after verifying, the member can open the server and draw a welcome rune", async ({ page, context }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    const { slider, completeButton } = await openVerificationPage(page, {
+      completionResponses: [{ json: { verified: true, result: "verified", guildId: "123456789012345678" } }],
+    });
+    await slider.focus();
+    await page.keyboard.press("End");
+    await completeButton.click();
+    await expectSuccessfulSubmission(page);
+
+    const welcome = page.getByTestId("verification-welcome");
+    await expect(welcome).toBeVisible();
+    await expect(page.getByTestId("link-open-discord")).toHaveAttribute("href", "https://discord.com/channels/123456789012345678");
+    await expect(page.getByTestId("text-rune")).toHaveCount(0);
+
+    await page.getByTestId("button-rune-1").click();
+    const rune = page.getByTestId("text-rune");
+    await expect(rune).toBeVisible();
+    await expect(page.getByTestId("button-rune-0")).toBeDisabled();
+    const title = (await rune.locator("strong").innerText()).replace(/[„”]/g, "");
+
+    await page.getByTestId("button-copy-rune").click();
+    await expect(page.getByTestId("button-copy-rune")).toContainText("Copiat");
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toContain(title);
+
+    // the rune stays the same after a reload on this device
+    await page.reload();
+    await expect(page.getByTestId("status-verification-success")).toHaveCount(0);
+    expect(await page.evaluate(() => Object.keys(localStorage).some((key) => key.startsWith("oracol.welcomeRune")))).toBe(true);
+  });
 });

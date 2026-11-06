@@ -1551,3 +1551,68 @@
     transition-duration: .001ms !important;
   }
 }
+
+/* ---------- după verificare: intrarea în regat și runa de bun venit ---------- */
+.vx-welcome { display: flex; flex-direction: column; gap: 16px; animation: vx-card-in .7s .25s cubic-bezier(.2, .8, .2, 1) backwards; }
+.vx-welcome-open { text-decoration: none; }
+.vx-runes { display: flex; flex-direction: column; gap: 14px; padding: 16px; border: 1px solid rgba(216, 169, 100, .22); border-radius: 20px; background: radial-gradient(120% 100% at 50% 0%, rgba(216, 169, 100, .1), transparent 60%), rgba(0, 0, 0, .18); }
+.vx-runes-head { display: flex; align-items: flex-start; gap: 12px; }
+.vx-runes-head > svg { flex: none; width: 20px; height: 20px; margin-top: 2px; color: var(--vx-gold); }
+.vx-runes-head div { display: flex; flex-direction: column; gap: 3px; }
+.vx-runes-head strong { color: var(--vx-bone); font-size: 15px; }
+.vx-runes-head span { color: var(--vx-muted); font-size: 13px; line-height: 1.5; }
+
+.vx-rune-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; perspective: 900px; }
+.vx-rune-card { position: relative; display: block; aspect-ratio: 3 / 4; padding: 0; border: 0; background: none; color: inherit; cursor: pointer; transition: transform .35s cubic-bezier(.2, .8, .2, 1), opacity .4s; }
+.vx-rune-card:not(:disabled):hover { transform: translateY(-5px) rotate(-1.5deg); }
+.vx-rune-card:nth-child(2):not(:disabled):hover { transform: translateY(-5px); }
+.vx-rune-card:nth-child(3):not(:disabled):hover { transform: translateY(-5px) rotate(1.5deg); }
+.vx-rune-card:focus-visible { outline: 2px solid var(--vx-flame); outline-offset: 4px; border-radius: 14px; }
+.vx-rune-card:disabled { cursor: default; }
+.vx-rune-card.is-away { opacity: .28; transform: scale(.94); }
+.vx-rune-inner { position: absolute; inset: 0; transform-style: preserve-3d; transition: transform .8s cubic-bezier(.3, 1.3, .4, 1); }
+.vx-rune-card.is-flipped .vx-rune-inner { transform: rotateY(180deg); }
+.vx-rune-back, .vx-rune-front { position: absolute; inset: 0; display: grid; place-items: center; border-radius: 14px; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.vx-rune-back {
+  border: 1px solid rgba(216, 169, 100, .4);
+  background: repeating-linear-gradient(45deg, rgba(216, 169, 100, .07) 0 6px, transparent 6px 12px), linear-gradient(160deg, #2a1d17, #140e0c);
+  box-shadow: inset 0 0 0 4px #1a1412, inset 0 0 0 5px rgba(216, 169, 100, .25), 0 12px 24px -12px rgba(0, 0, 0, .8);
+}
+.vx-rune-back i { color: rgba(216, 169, 100, .55); font: normal 30px/1 serif; text-shadow: 0 0 14px rgba(255, 143, 77, .45); }
+.vx-rune-front {
+  align-content: center; gap: 4px; transform: rotateY(180deg);
+  border: 1px solid rgba(255, 196, 110, .7);
+  background: radial-gradient(circle at 50% 40%, rgba(255, 143, 77, .35), transparent 65%), linear-gradient(160deg, #3a2418, #1a110d);
+  box-shadow: 0 0 34px -6px rgba(255, 143, 77, .7), inset 0 0 0 4px #1d130f, inset 0 0 0 5px rgba(255, 196, 110, .35);
+}
+.vx-rune-front b { color: var(--vx-flame); font: 600 44px/1 serif; text-shadow: 0 0 18px rgba(255, 154, 78, .9); }
+.vx-rune-front small { color: var(--vx-gold); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; }
+.vx-rune-card.is-static { width: 92px; flex: none; cursor: default; }
+.vx-rune-card.is-static .vx-rune-inner { transform: none; transition: none; }
+.vx-rune-card.is-static .vx-rune-front { transform: none; }
+.vx-rune-saved { display: flex; align-items: center; gap: 14px; }
+
+.vx-rune-text { display: flex; flex-direction: column; gap: 4px; animation: vx-card-in .6s .45s cubic-bezier(.2, .8, .2, 1) backwards; }
+.vx-rune-text span { color: var(--vx-gold); font-size: 11px; letter-spacing: .16em; text-transform: uppercase; }
+.vx-rune-text strong { color: var(--vx-bone); font-size: 19px; line-height: 1.25; }
+.vx-rune-text p { margin: 0; color: var(--vx-muted); font-size: 14px; line-height: 1.55; }
+.vx-rune-copy { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.vx-rune-copy svg { width: 16px; height: 16px; }
+
+@media (max-width: 520px) {
+  .vx-rune-front b { font-size: 36px; }
+  .vx-rune-saved { align-items: flex-start; }
+  .vx-rune-card.is-static { width: 76px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vx-welcome, .vx-rune-text { animation: none; }
+  .vx-rune-inner, .vx-rune-card { transition: none; }
+}
+.vx-page.is-sent .vx-cta.vx-welcome-open {
+  background: linear-gradient(180deg, #ffa05a, #ee6a3a);
+  box-shadow: 0 12px 30px rgba(238, 106, 58, .35), inset 0 1px 0 rgba(255, 255, 255, .35);
+  color: #1c0e08;
+  cursor: pointer;
+  animation: vx-cta-pulse 2.4s .7s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) { .vx-page.is-sent .vx-cta.vx-welcome-open { animation: none; } }

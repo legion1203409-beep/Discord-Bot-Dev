@@ -6,6 +6,7 @@ import {
   useGetVerificationStatus,
 } from "@workspace/api-client-react";
 import "./verification-page.css";
+import { VerificationWelcome } from "./VerificationWelcome";
 
 const EMBERS = Array.from({ length: 26 }, (_, index) => ({
   left: `${(index * 43 + 7) % 98}%`,
@@ -381,6 +382,9 @@ export function VerificationPage() {
                 <span>Poți reveni acum în Discord.</span>
               </div>
             </div>
+          ) : null}
+          {isSuccess ? (
+            <VerificationWelcome guildId={result?.guildId ?? status.data?.guildId ?? guildId} />
           ) : legacyErrorText ? (
             <div className="vx-message vx-message--error" role="alert" data-testid="status-verification-error">
               <TriangleAlert className="vx-message-icon" aria-hidden="true" />
