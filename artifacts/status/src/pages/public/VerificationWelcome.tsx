@@ -1,5 +1,6 @@
 import { type CSSProperties, type PointerEvent as ReactPointerEvent, useEffect, useState } from "react";
 import { Check, Copy, ExternalLink, Sparkles } from "lucide-react";
+import type { VerificationPageTexts } from "../../lib/verification-page-texts";
 import { WELCOME_RUNES, discordServerUrl, drawThree, runeShareText, saveRune, savedRune, type WelcomeRune } from "./verification-runes";
 
 /** Asks the page's fire canvas (VerificationPage) for a burst of golden sparks at a point on screen. */
@@ -18,7 +19,7 @@ const RING_TEXT = WELCOME_RUNES.map((rune) => rune.glyph).join(" · ");
  * pe masă, membrul alege una, cartea explodează în scântei, se întoarce și îi
  * spune titlul și profeția, cuvânt cu cuvânt.
  */
-export function VerificationWelcome({ guildId }: { guildId?: string | null }) {
+export function VerificationWelcome({ guildId, texts }: { guildId?: string | null; texts: VerificationPageTexts }) {
   const [cards] = useState(() => drawThree());
   const [remembered] = useState<WelcomeRune | null>(() => savedRune(guildId ?? undefined));
   const [picked, setPicked] = useState<WelcomeRune | null>(remembered);
@@ -76,7 +77,7 @@ export function VerificationWelcome({ guildId }: { guildId?: string | null }) {
         <span className="vx-seal-core">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path pathLength={1} d="M5 12.5l4.5 4.5L19 7.5" /></svg>
         </span>
-        <span className="vx-seal-label">Bun venit în Regatul Cenușii</span>
+        <span className="vx-seal-label">{texts.welcomeLabel}</span>
       </div>
 
       {serverUrl ? (
@@ -86,12 +87,13 @@ export function VerificationWelcome({ guildId }: { guildId?: string | null }) {
         </a>
       ) : null}
 
+      {texts.runesEnabled ? (
       <div className={`vx-runes ${picked ? "is-picked" : ""}`}>
         <div className="vx-runes-head">
           <Sparkles aria-hidden="true" />
           <div>
-            <strong>{picked ? "Runa ta de bun venit" : "Trage-ți runa"}</strong>
-            <span>{picked ? "Oracolul a vorbit. Arat-o pe chat." : "Alege o carte. Oracolul îți spune cine ești în regat."}</span>
+            <strong>{picked ? "Runa ta de bun venit" : texts.runesTitle}</strong>
+            <span>{picked ? "Oracolul a vorbit. Arat-o pe chat." : texts.runesText}</span>
           </div>
         </div>
 
@@ -142,6 +144,7 @@ export function VerificationWelcome({ guildId }: { guildId?: string | null }) {
           </button>
         ) : null}
       </div>
+      ) : null}
     </div>
   );
 }

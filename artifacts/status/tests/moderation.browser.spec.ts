@@ -2448,6 +2448,34 @@ test.describe("verification page", () => {
     await expect(page.getByTestId("verification-save-bar")).toHaveCount(0);
   });
 
+  test("changes the texts of the website verification page, with a preview", async ({ page }) => {
+    const putBodies = await installPartialBotControlFixture(page, new Map([[guilds[0].id, verifiedConfig()], [guilds[1].id, verificationBotControlConfig(false, "")]]));
+    await openVerification(page, "/moderare/verificare/mesaje");
+    const card = page.getByTestId("verification-site-texts");
+    const preview = page.getByTestId("verification-site-preview");
+    await expect(preview).toContainText("Verifică-ți accesul");
+    await expect(preview).toContainText("Trage-ți runa");
+
+    const title = page.getByTestId("verification-page-title").locator("input, textarea").first();
+    await title.fill("Intră în Clanul Lupilor");
+    await page.getByTestId("verification-page-successTitle").locator("input, textarea").first().fill("Ești de-al nostru!");
+    await card.getByRole("switch", { name: "Jocul cu rune" }).click();
+    await expect(preview).toContainText("Intră în Clanul Lupilor");
+    await expect(preview).toContainText("Ești de-al nostru!");
+    await expect(preview).not.toContainText("Trage-ți runa");
+
+    await title.fill("");
+    await page.getByTestId("button-save-verification").click();
+    await expect(card.getByRole("alert")).toContainText("Titlul nu poate fi gol");
+    expect(putBodies.size).toBe(0);
+    await title.fill("Intră în Clanul Lupilor");
+    await page.getByTestId("button-save-verification").click();
+    await expect.poll(() => putBodies.get(guilds[0].id)?.length).toBe(1);
+    expect(putBodies.get(guilds[0].id)?.[0].verification.page).toMatchObject({
+      title: "Intră în Clanul Lupilor", successTitle: "Ești de-al nostru!", runesEnabled: false, ctaLabel: "Finalizează verificarea",
+    });
+  });
+
   test("does not save a switched-on verification without its channel", async ({ page }) => {
     const config = verificationBotControlConfig(false, "");
     config.verification.roleId = "444444444";
@@ -3297,6 +3325,46 @@ test.describe("bot control page", () => {
     expect(putBodies.get(guilds[0].id)![0].inviteTracking.recruitment).toMatchObject({
       enabled: true, inviteChannelId: "444444444", rewardPoints: 40, milestones: [{ requiredInvites: 1 }, { requiredInvites: 5 }, { requiredInvites: 10, roleId: "666666666" }],
     });
+  });
+
+  test("publishes a recruitment panel with a button that makes personal invites", async ({ page }) => {
+    const panelBodies: any[] = [];
+    let published = 0;
+    let saved = { channelId: "", title: "🔗 Adu-ți prietenii în regat", description: "Apasă butonul.", buttonLabel: "Generează invitația mea", color: "#e2b467", imageUrl: "", messageId: "" };
+    await page.route("**/api/moderation/guilds/*/recruitment-panel", async (route) => {
+      if (route.request().method() === "PUT") {
+        const body = JSON.parse(route.request().postData() || "{}");
+        panelBodies.push(body);
+        saved = { ...saved, ...body };
+      }
+      await route.fulfill({ json: { config: saved } });
+    });
+    await page.route("**/api/moderation/guilds/*/recruitment-panel/publish", async (route) => {
+      published += 1;
+      saved = { ...saved, messageId: "888888888" };
+      await route.fulfill({ json: { config: saved, edited: false } });
+    });
+    const { putBodies } = await openControl(page, "/moderare/control/recrutare");
+    const card = page.getByTestId("control-recruitment-panel");
+    await expect(card).toContainText("nepublicat");
+    // The program is off: the panel cannot be published yet.
+    await expect(page.getByTestId("control-recruitment-panel-publish")).toBeDisabled();
+
+    await page.getByTestId("control-recruitment-switch").click();
+    await page.getByRole("combobox", { name: "Canalul invitațiilor personale" }).selectOption("444444444");
+    await page.getByTestId("button-save-control").click();
+    await expect.poll(() => putBodies.get(guilds[0].id)?.length).toBe(1);
+
+    await expect(page.getByTestId("control-recruitment-panel-problem")).toContainText("canalul");
+    await page.getByRole("combobox", { name: "Canalul panoului de recrutare" }).selectOption("777777777");
+    await page.getByTestId("control-recruitment-panel-button").locator("input, textarea").first().fill("Vreau invitația mea");
+    await expect(page.getByTestId("control-recruitment-panel-preview")).toContainText("Vreau invitația mea");
+    await page.getByTestId("control-recruitment-panel-publish").click();
+    await expect.poll(() => published).toBe(1);
+    expect(panelBodies[0]).toMatchObject({ channelId: "777777777", buttonLabel: "Vreau invitația mea" });
+    expect(panelBodies[0]).not.toHaveProperty("messageId");
+    await expect(card).toContainText("publicat");
+    await expect(page.getByTestId("control-recruitment-panel-publish")).toContainText("actualizează");
   });
 
   test("saves a category's access first, then creates its channels with that access", async ({ page }) => {

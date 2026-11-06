@@ -8,6 +8,7 @@
  * (roleId marchează un membru verificat; extraRoleIds se dau împreună cu el, la
  * buton și la verificarea manuală) și rutele de verificare din router.ts.
  */
+import { verificationPageError } from "../../../lib/verification-page-texts";
 import { VERIFICATION_MODULE_ROUTES, cleanPath, countLabel, deepEqual, getAt, isDiscordId } from "./model";
 
 export { VERIFICATION_ROUTE, isVerificationRoute } from "./model";
@@ -33,7 +34,7 @@ export type VerificationModuleDef = {
 const SETTINGS_PATHS = ["verification.enabled", "verification.channelId", "verification.roleId", "verification.extraRoleIds", "verification.panelMessageId"];
 const MESSAGE_PATHS = [
   "verification.title", "verification.message", "verification.buttonLabel", "verification.buttonEmoji",
-  "verification.imageUrl", "verification.thumbnailUrl", "verification.alreadyVerifiedMessage",
+  "verification.imageUrl", "verification.thumbnailUrl", "verification.alreadyVerifiedMessage", "verification.page",
 ];
 
 export const VERIFICATION_MODULES: readonly VerificationModuleDef[] = [
@@ -44,7 +45,7 @@ export const VERIFICATION_MODULES: readonly VerificationModuleDef[] = [
   },
   {
     id: "messages", route: VERIFICATION_MODULE_ROUTES.messages, short: "Mesaje", title: "Mesajele verificării",
-    description: "Ce scrie pe panoul din Discord, ce scrie pe buton și ce află membrul după ce se verifică.",
+    description: "Ce scrie pe panoul din Discord, pe buton și pe pagina de verificare de pe site, înainte și după ce membrul se verifică.",
     paths: MESSAGE_PATHS,
   },
   {
@@ -311,6 +312,10 @@ export function verificationDraftError(config: any): string | null {
     const value = String(verification[text.key] ?? "").trim();
     if (!value && !text.optional) return `Mesaje — ${text.label} nu poate fi gol.`;
     if (value.length > text.max) return `Mesaje — ${text.label} are ${value.length} de caractere; cel mult ${text.max}.`;
+  }
+  if (verification.page !== undefined) {
+    const pageProblem = verificationPageError(verification.page);
+    if (pageProblem) return `Mesaje — Pagina de pe site: ${pageProblem}`;
   }
   for (const [key, label] of [["imageUrl", "Imaginea mare"], ["thumbnailUrl", "Imaginea mică"]] as const) {
     const value = String(verification[key] ?? "").trim();

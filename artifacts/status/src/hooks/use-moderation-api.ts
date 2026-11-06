@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import type { VerificationPageTexts } from "../lib/verification-page-texts";
 import { useMutation } from "@tanstack/react-query";
 import { withAuthRequestTimeout } from "../lib/auth-request";
 import {
@@ -144,6 +145,8 @@ export interface BotControlConfig {
     panelMessageId: string;
     /** Roles given together with roleId, at the button and at manual verification. */
     extraRoleIds?: string[];
+    /** What the verification page on the website says; missing before the server saves it once. */
+    page?: VerificationPageTexts;
   };
 
   tickets: {

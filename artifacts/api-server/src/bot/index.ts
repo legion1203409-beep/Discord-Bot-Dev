@@ -24,6 +24,7 @@ import {
   AttachmentBuilder,
   type GuildMember,
 } from "discord.js";
+import { RECRUITMENT_PANEL_BUTTON_ID } from "./recruitment-panel";
 import { handleBanEvasionButton } from "./moderation/ban-evasion";
 import { randomUUID } from "node:crypto";
 import { logger } from "../lib/logger";
@@ -708,7 +709,7 @@ const slashCommands = [
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 ];
 
-async function handleRecruitmentInvite(interaction: ChatInputCommandInteraction): Promise<void> {
+async function handleRecruitmentInvite(interaction: ChatInputCommandInteraction | ButtonInteraction): Promise<void> {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const guildId = interaction.guildId;
   if (!guildId) {
@@ -4660,6 +4661,10 @@ async function handleButton(interaction: ButtonInteraction) {
     return handleVerificationButton(interaction, getVerificationWebsiteUrl(interaction.guildId!));
   }
 
+  if (id === RECRUITMENT_PANEL_BUTTON_ID) {
+    return handleRecruitmentInvite(interaction);
+  }
+
   if (id.startsWith("tichet_")) {
     return handleSupportTicketInteraction(interaction);
   }
@@ -5537,7 +5542,8 @@ export async function startBot(onReady?: () => void): Promise<void> {
           interaction.customId.startsWith("tichet_") ||
           interaction.customId.startsWith("help_") ||
           interaction.customId.startsWith("council_") ||
-          interaction.customId.startsWith("verification_");
+          interaction.customId.startsWith("verification_") ||
+          interaction.customId === RECRUITMENT_PANEL_BUTTON_ID;
       } else if (interaction.isStringSelectMenu()) {
         allowedWhileStopped = interaction.customId.startsWith("ticket_questions_") || interaction.customId === "tichet_open";
       } else if (interaction.isModalSubmit()) {
@@ -6152,7 +6158,8 @@ export async function startBot(onReady?: () => void): Promise<void> {
           interaction.customId.startsWith("tichet_") ||
           interaction.customId.startsWith("help_") ||
           interaction.customId.startsWith("council_") ||
-          interaction.customId.startsWith("verification_");
+          interaction.customId.startsWith("verification_") ||
+          interaction.customId === RECRUITMENT_PANEL_BUTTON_ID;
       } else if (interaction.isStringSelectMenu()) {
         allowedWhileStopped = interaction.customId.startsWith("ticket_questions_") || interaction.customId === "tichet_open";
       } else if (interaction.isModalSubmit()) {

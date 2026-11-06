@@ -2337,6 +2337,21 @@ export interface VerificationConfig {
   panelMessageId: string;
   /** Roles given together with roleId (for example a category role); roleId alone marks a member as verified. Missing in configs saved before them. */
   extraRoleIds?: string[];
+  /** The texts of the verification page on the website. Missing in configs saved before them. */
+  page?: VerificationPageTexts;
+}
+
+export interface VerificationPageTexts {
+  title: string;
+  lead: string;
+  sliderLabel: string;
+  ctaLabel: string;
+  successTitle: string;
+  successText: string;
+  welcomeLabel: string;
+  runesEnabled: boolean;
+  runesTitle: string;
+  runesText: string;
 }
 
 const VERIFICATION_CONFIG_KEY = "verification_config";
@@ -2759,6 +2774,21 @@ async function loadGuildStateValue(guildId: string, name: string): Promise<strin
   await ensureBotStateTable();
   const [row] = await db.select().from(botStateTable).where(eq(botStateTable.key, guildKey(guildId, name)));
   return row?.value ?? null;
+}
+
+/** The recruitment panel (bot/recruitment-panel.ts): the message with the "make my invite" button, as JSON. */
+export async function saveRecruitmentPanelSetting(guildId: string, value: unknown): Promise<void> {
+  await saveGuildStateValue(guildId, "recruitment_panel", JSON.stringify(value));
+}
+
+export async function loadRecruitmentPanelSetting(guildId: string): Promise<unknown | null> {
+  const value = await loadGuildStateValue(guildId, "recruitment_panel");
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
 }
 
 /** The bot's own tickets (categories, panel, rating), as JSON (normalized by support-tickets.ts). */
