@@ -2761,6 +2761,21 @@ async function loadGuildStateValue(guildId: string, name: string): Promise<strin
   return row?.value ?? null;
 }
 
+/** The settings of the top of the most active members, as JSON (normalized by active-top.ts). */
+export async function saveActiveTopSettings(guildId: string, settings: unknown): Promise<void> {
+  await saveGuildStateValue(guildId, "active_top_config", JSON.stringify(settings));
+}
+
+export async function loadActiveTopSettings(guildId: string): Promise<unknown | null> {
+  const value = await loadGuildStateValue(guildId, "active_top_config");
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
 /** The Oracle's chat and prophecy settings of a server, as JSON (normalized by oracle-settings.ts). */
 export async function saveOracleSettings(guildId: string, settings: unknown): Promise<void> {
   await saveGuildStateValue(guildId, ORACLE_SETTINGS_KEY, JSON.stringify(settings));

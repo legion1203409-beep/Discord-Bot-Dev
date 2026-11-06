@@ -3,6 +3,7 @@ import { isWidePanelRoute, panelGroupRoute } from "./model";
 import {
   CONTROL_MODULES, accessSummary, changedControlParts, controlDraftError, controlModuleForRoute, controlModuleSummary, dailyCardDelta, dailyCardText,
   dailyChartOn, dailyDeltaText, dailyPreviewChannels, dailyPreviewWeek, defaultPermission,
+  DEFAULT_ACTIVE_TOP, activeTopOf, activeTopProblem, activeTopVoiceTime,
   DEFAULT_DAILY_TITLE, dailyInterval, dailyIntervalText, dailyInviteTopOn, dailyProblem, dailyTitleFor, isDailyReportEndDay, longDayName, nextDailyReport, shortPeriod,
   inviteReportSummary, isControlRoute, permissionOf, presetRole, ROLE_PRESETS, recruitmentProblem, renderDailyText, roleAccessOf, withRole, withRoleAccess,
 } from "./control-model";
@@ -30,8 +31,8 @@ const config = (change: Record<string, unknown> = {}) => ({
 });
 
 describe("the bot control group", () => {
-  it("is its own page, with five modules", () => {
-    expect(CONTROL_MODULES.map((module) => module.route)).toEqual(["/control/invitatii", "/control/recrutare", "/control/raport", "/control/canale", "/control/bot"]);
+  it("is its own page, with six modules", () => {
+    expect(CONTROL_MODULES.map((module) => module.route)).toEqual(["/control/invitatii", "/control/recrutare", "/control/raport", "/control/top-activi", "/control/canale", "/control/bot"]);
     expect(controlModuleForRoute("/control").id).toBe("invites");
     expect(controlModuleForRoute("/control/canale/").id).toBe("channels");
     expect(isControlRoute("/control/bot")).toBe(true);
@@ -169,5 +170,27 @@ describe("raportul la N zile", () => {
   });
   it("refuză un interval în afara 1–7", () => {
     expect(dailyProblem({ color: "#123456", intervalDays: 9 })).toBe("Intervalul e între 1 și 7 zile.");
+  });
+});
+
+describe("topul membrilor activi", () => {
+  it("are valorile botului când serverul n-a ales nimic", () => {
+    expect(activeTopOf({})).toEqual(DEFAULT_ACTIVE_TOP);
+    expect(activeTopOf({ activeTop: { enabled: true, channelId: "500000002" } })).toMatchObject({ enabled: true, channelId: "500000002", intervalDays: 7, limit: 10 });
+  });
+  it("rezumatul din meniu și lumina", () => {
+    expect(controlModuleSummary("activeTop", {})).toBe("oprit");
+    expect(controlModuleSummary("activeTop", { activeTop: { enabled: true, channelId: "" } })).toBe("fără canal");
+    expect(controlModuleSummary("activeTop", { activeTop: { enabled: true, channelId: "500000002", intervalDays: 1, limit: 5 } })).toBe("zilnic, top 5");
+  });
+  it("refuză ce ar refuza și botul", () => {
+    expect(activeTopProblem({ ...DEFAULT_ACTIVE_TOP, enabled: true })).toBe("Alege canalul topului.");
+    expect(activeTopProblem({ ...DEFAULT_ACTIVE_TOP, intervalDays: 8 })).toBe("Intervalul e între 1 și 7 zile.");
+    expect(activeTopProblem({ ...DEFAULT_ACTIVE_TOP, limit: 20 })).toBe("Topul arată între 3 și 15 membri.");
+    expect(activeTopProblem(DEFAULT_ACTIVE_TOP)).toBeNull();
+    expect(controlDraftError({ activeTop: { ...DEFAULT_ACTIVE_TOP, enabled: true } })).toBe("Top activi — Alege canalul topului.");
+  });
+  it("timpul pe voce ca în Discord", () => {
+    expect(activeTopVoiceTime(200)).toBe("3 h 20 min");
   });
 });

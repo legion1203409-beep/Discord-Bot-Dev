@@ -43,6 +43,10 @@ export const CONTROL_MODULES: readonly ControlModuleDef[] = [
     description: "Statisticile serverului (mesaje, membri activi, intrări, ieșiri, voce, topul invitațiilor), postate după miezul nopții în canalul ales, zilnic sau o dată la până la 7 zile.",
   },
   {
+    id: "activeTop", route: CONTROL_MODULE_ROUTES.activeTop, short: "Top activi", title: "Cei mai activi membri", paths: ["activeTop"],
+    description: "Un clasament separat de statistici: cine a scris cele mai multe mesaje și cine a stat cel mai mult pe voce, postat în canalul lui, o dată la 1–7 zile. Oricine îl vede oricând cu /topactivi.",
+  },
+  {
     id: "channels", route: CONTROL_MODULE_ROUTES.channels, short: "Canale și acces", title: "Canale și acces", paths: ["provisioningPermissions"],
     description: "Botul creează categoriile și canalele de care are nevoie și le dă acces doar rolurilor alese.",
   },
@@ -227,6 +231,41 @@ export function shortPeriod(startDay: string, endDay: string): string {
 
 export const DAILY_PREVIEW_INVITERS = [["Adina", 7], ["Mihai", 4], ["Ion", 2]] as const;
 
+/* ------------------------------------------------------------------ */
+/* Top activi                                                           */
+/* ------------------------------------------------------------------ */
+
+export type ActiveTop = { enabled: boolean; channelId: string; intervalDays: number; limit: number; includeVoice: boolean; mention: boolean; color: string };
+
+/** The bot's defaults (DEFAULT_ACTIVE_TOP_CONFIG): off, every 7 days, top 10, with voice, no pings. */
+export const DEFAULT_ACTIVE_TOP: ActiveTop = { enabled: false, channelId: "", intervalDays: 7, limit: 10, includeVoice: true, mention: false, color: "#d8a964" };
+export const ACTIVE_TOP_LIMITS = [3, 5, 10, 15] as const;
+
+/** The top's settings with the defaults for what is missing (the whole section is sent when it is saved). */
+export function activeTopOf(config: any): ActiveTop {
+  return { ...DEFAULT_ACTIVE_TOP, ...(config?.activeTop ?? {}) };
+}
+
+export function activeTopProblem(top: any): string | null {
+  if (!top) return null;
+  if (top.channelId && !isDiscordId(top.channelId)) return `„${top.channelId}” nu este un ID de canal Discord.`;
+  if (top.enabled && !top.channelId) return "Alege canalul topului.";
+  if (!(Number.isInteger(top.intervalDays) && top.intervalDays >= 1 && top.intervalDays <= 7)) return "Intervalul e între 1 și 7 zile.";
+  if (!(Number.isInteger(top.limit) && top.limit >= 3 && top.limit <= 15)) return "Topul arată între 3 și 15 membri.";
+  if (!/^#[0-9a-f]{6}$/i.test(top.color ?? "")) return "Culoarea are forma #RRGGBB.";
+  return null;
+}
+
+export const ACTIVE_TOP_PREVIEW_CHAT = [["Adina", 523], ["Mihai", 301], ["Ion", 188], ["Ana", 97], ["Radu", 64]] as const;
+export const ACTIVE_TOP_PREVIEW_VOICE = [["Mihai", 200], ["Ana", 135], ["Adina", 45], ["Radu", 30], ["Ion", 12]] as const;
+
+export function activeTopVoiceTime(minutes: number): string {
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? `${hours} h ${rest} min` : `${hours} h`;
+}
+
 /** The day's card is on unless it was turned off. */
 export function dailyChartOn(daily: any): boolean {
   return daily?.chart !== false;
@@ -394,6 +433,10 @@ export function controlModuleSummary(id: ControlModuleId, config: any): string {
     case "daily": return config?.dailyStats?.channelId
       ? `${dailyIntervalText(dailyInterval(config.dailyStats))}, după miezul nopții${dailyChartOn(config.dailyStats) ? ", cu grafic" : ""}`
       : "nu se postează";
+    case "activeTop": {
+      const top = activeTopOf(config);
+      return top.enabled ? (top.channelId ? `${dailyIntervalText(top.intervalDays)}, top ${top.limit}` : "fără canal") : "oprit";
+    }
     case "channels": {
       const set = Object.keys(config?.provisioningPermissions ?? {}).length;
       return set ? `${countLabel(set, "categorie", "categorii")} cu acces ales` : "acces implicit";
@@ -407,6 +450,7 @@ export function isControlModuleOn(id: ControlModuleId, config: any): boolean {
     case "invites": return Boolean(config?.inviteTracking?.enabled);
     case "recruitment": return Boolean(config?.inviteTracking?.recruitment?.enabled);
     case "daily": return Boolean(config?.dailyStats?.channelId);
+    case "activeTop": return Boolean(activeTopOf(config).enabled && activeTopOf(config).channelId);
     case "channels": return true;
     case "server": return config?.discordLive !== false;
   }
@@ -427,6 +471,8 @@ export function controlDraftError(config: any): string | null {
   }
   const daily = dailyProblem(config?.dailyStats);
   if (daily) return `Raport zilnic — ${daily}`;
+  const top = activeTopProblem(config?.activeTop);
+  if (top) return `Top activi — ${top}`;
   const channels = channelsProblem(config);
   return channels ? `Canale și acces — ${channels}` : null;
 }

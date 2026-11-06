@@ -192,6 +192,16 @@ export async function ensureDailyStatsTables(): Promise<void> {
         ON discord_daily_stats (guild_id, day);
       CREATE INDEX IF NOT EXISTS discord_daily_channels_guild_day_idx
         ON discord_daily_channels (guild_id, day);
+      -- Per member, for the top of the most active members: messages (a row here is still "wrote that day",
+      -- which the unique users count reads) and, in their own table, minutes in voice.
+      ALTER TABLE discord_daily_users ADD COLUMN IF NOT EXISTS message_count integer NOT NULL DEFAULT 0;
+      CREATE TABLE IF NOT EXISTS discord_daily_voice (
+        guild_id text NOT NULL,
+        day text NOT NULL,
+        user_id text NOT NULL,
+        minutes integer NOT NULL DEFAULT 0,
+        PRIMARY KEY (guild_id, day, user_id)
+      );
     `).then(() => undefined).catch((error) => {
       schemaReady = null;
       throw error;
@@ -244,9 +254,10 @@ export async function recordDailyMessage(
       [guildId, day, channelId, channelName],
     );
     await client.query(
-      `INSERT INTO discord_daily_users (guild_id, day, user_id)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (guild_id, day, user_id) DO NOTHING`,
+      `INSERT INTO discord_daily_users (guild_id, day, user_id, message_count)
+       VALUES ($1, $2, $3, 1)
+       ON CONFLICT (guild_id, day, user_id) DO UPDATE
+       SET message_count = discord_daily_users.message_count + 1`,
       [guildId, day, userId],
     );
     await client.query("COMMIT");
@@ -256,6 +267,20 @@ export async function recordDailyMessage(
   } finally {
     client.release();
   }
+}
+
+/** One more minute in voice for each of these members (called once a minute by the voice ticker). */
+export async function recordDailyVoiceMinutes(guildId: string, userIds: string[], timestamp = Date.now()): Promise<void> {
+  const unique = [...new Set(userIds)].filter((id) => /^\d{5,25}$/.test(id));
+  if (!unique.length) return;
+  await ensureDailyStatsTables();
+  await pool.query(
+    `INSERT INTO discord_daily_voice (guild_id, day, user_id, minutes)
+     SELECT $1, $2, user_id, 1 FROM unnest($3::text[]) AS user_id
+     ON CONFLICT (guild_id, day, user_id) DO UPDATE
+     SET minutes = discord_daily_voice.minutes + 1`,
+    [guildId, statsDay(timestamp), unique],
+  );
 }
 
 export async function recordDailyJoin(guildId: string, timestamp = Date.now()): Promise<void> {
