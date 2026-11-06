@@ -1552,67 +1552,139 @@
   }
 }
 
-/* ---------- după verificare: intrarea în regat și runa de bun venit ---------- */
-.vx-welcome { display: flex; flex-direction: column; gap: 16px; animation: vx-card-in .7s .25s cubic-bezier(.2, .8, .2, 1) backwards; }
-.vx-welcome-open { text-decoration: none; }
-.vx-runes { display: flex; flex-direction: column; gap: 14px; padding: 16px; border: 1px solid rgba(216, 169, 100, .22); border-radius: 20px; background: radial-gradient(120% 100% at 50% 0%, rgba(216, 169, 100, .1), transparent 60%), rgba(0, 0, 0, .18); }
+/* ---------- după verificare: pecetea, intrarea în regat și runa de bun venit ---------- */
+.vx-welcome { display: flex; flex-direction: column; gap: 18px; }
+.vx-welcome-open { text-decoration: none; animation: vx-rise .7s .9s cubic-bezier(.2, .8, .2, 1) backwards; }
+.vx-page.is-sent .vx-cta.vx-welcome-open {
+  background: linear-gradient(180deg, #ffb06a, #ee6a3a 60%, #d4532a);
+  box-shadow: 0 14px 34px rgba(238, 106, 58, .4), inset 0 1px 0 rgba(255, 255, 255, .4);
+  color: #1c0e08;
+  cursor: pointer;
+  animation: vx-rise .7s .9s cubic-bezier(.2, .8, .2, 1) backwards, vx-cta-pulse 2.4s 1.6s ease-in-out infinite;
+}
+.vx-page.is-sent .vx-cta.vx-welcome-open::after { animation: vx-cta-shine 3.4s 1.8s ease-in-out infinite; }
+.vx-page.is-sent .vx-cta.vx-welcome-open:hover { transform: translateY(-2px); }
+
+/* pecetea */
+.vx-seal { position: relative; display: grid; place-items: center; height: 196px; margin: -4px 0 -6px; }
+.vx-seal-ring { position: absolute; width: 178px; height: 178px; overflow: visible; animation: vx-seal-in 1.1s cubic-bezier(.2, 1.3, .3, 1) both, vx-spin 38s 1.1s linear infinite; }
+.vx-seal-line { fill: none; stroke: rgba(216, 169, 100, .45); stroke-width: 1; }
+.vx-seal-line--dash { stroke: rgba(255, 154, 78, .5); stroke-dasharray: 2 6; }
+.vx-seal-runes { fill: var(--vx-flame); font: 600 13px/1 serif; letter-spacing: 1px; filter: drop-shadow(0 0 6px rgba(255, 143, 77, .9)); }
+.vx-seal-core {
+  position: relative; display: grid; place-items: center; width: 84px; height: 84px; border-radius: 50%; color: #1c0e08;
+  background: radial-gradient(circle at 35% 30%, #ffe2a8, #ffa05a 45%, #d4532a 80%);
+  box-shadow: 0 0 0 6px rgba(26, 20, 18, .9), 0 0 0 7px rgba(255, 196, 110, .55), 0 0 60px 10px rgba(255, 143, 77, .55);
+  animation: vx-core-in .9s .25s cubic-bezier(.2, 1.6, .4, 1) both, vx-core-glow 3s 1.2s ease-in-out infinite;
+}
+.vx-seal-core svg { width: 40px; height: 40px; }
+.vx-seal-core path { stroke-dasharray: 1; stroke-dashoffset: 1; animation: vx-draw .5s .8s ease-out forwards; }
+.vx-seal-wave { position: absolute; width: 84px; height: 84px; border: 2px solid rgba(255, 196, 110, .8); border-radius: 50%; animation: vx-wave 1.3s .3s cubic-bezier(.1, .7, .3, 1) both; }
+.vx-seal-wave--two { animation-delay: .55s; border-color: rgba(255, 143, 77, .6); }
+.vx-seal-label { position: absolute; bottom: 0; color: var(--vx-gold); font-size: 11px; letter-spacing: .22em; text-transform: uppercase; animation: vx-rise .7s .7s ease-out backwards; }
+
+/* masa cu rune */
+.vx-runes {
+  position: relative; display: flex; flex-direction: column; gap: 14px; padding: 16px; overflow: hidden;
+  border: 1px solid rgba(216, 169, 100, .24); border-radius: 22px;
+  background: radial-gradient(120% 90% at 50% 0%, rgba(216, 169, 100, .12), transparent 60%), rgba(0, 0, 0, .2);
+  animation: vx-rise .8s 1.05s cubic-bezier(.2, .8, .2, 1) backwards;
+}
+.vx-runes::before { position: absolute; inset: -40% -10% auto; height: 120%; background: radial-gradient(closest-side, rgba(255, 143, 77, .22), transparent); content: ""; opacity: 0; pointer-events: none; transition: opacity .8s; }
+.vx-runes.is-picked::before { opacity: 1; }
+.vx-runes > * { position: relative; }
 .vx-runes-head { display: flex; align-items: flex-start; gap: 12px; }
 .vx-runes-head > svg { flex: none; width: 20px; height: 20px; margin-top: 2px; color: var(--vx-gold); }
 .vx-runes-head div { display: flex; flex-direction: column; gap: 3px; }
 .vx-runes-head strong { color: var(--vx-bone); font-size: 15px; }
 .vx-runes-head span { color: var(--vx-muted); font-size: 13px; line-height: 1.5; }
 
-.vx-rune-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; perspective: 900px; }
-.vx-rune-card { position: relative; display: block; aspect-ratio: 3 / 4; padding: 0; border: 0; background: none; color: inherit; cursor: pointer; transition: transform .35s cubic-bezier(.2, .8, .2, 1), opacity .4s; }
-.vx-rune-card:not(:disabled):hover { transform: translateY(-5px) rotate(-1.5deg); }
-.vx-rune-card:nth-child(2):not(:disabled):hover { transform: translateY(-5px); }
-.vx-rune-card:nth-child(3):not(:disabled):hover { transform: translateY(-5px) rotate(1.5deg); }
-.vx-rune-card:focus-visible { outline: 2px solid var(--vx-flame); outline-offset: 4px; border-radius: 14px; }
-.vx-rune-card:disabled { cursor: default; }
-.vx-rune-card.is-away { opacity: .28; transform: scale(.94); }
-.vx-rune-inner { position: absolute; inset: 0; transform-style: preserve-3d; transition: transform .8s cubic-bezier(.3, 1.3, .4, 1); }
+.vx-rune-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 6px 2px 4px; perspective: 900px; }
+.vx-rune-card {
+  --rx: 0deg; --ry: 0deg; --mx: 50%;
+  position: relative; display: block; aspect-ratio: 3 / 4.2; padding: 0; border: 0; background: none; color: inherit; cursor: pointer;
+  transform-style: preserve-3d;
+  animation: vx-deal .9s calc(1.25s + var(--deal, 0) * .14s) cubic-bezier(.2, 1.2, .3, 1) backwards;
+  transition: opacity .5s, filter .5s, transform .6s cubic-bezier(.2, .8, .2, 1);
+}
+.vx-rune-float { position: absolute; inset: 0; transform-style: preserve-3d; animation: vx-bob 3.6s calc(var(--deal, 0) * -1.2s) ease-in-out infinite; }
+.vx-rune-inner {
+  position: absolute; inset: 0; transform-style: preserve-3d;
+  transform: rotateX(var(--rx)) rotateY(var(--ry));
+  transition: transform .9s cubic-bezier(.3, 1.35, .4, 1);
+}
+.vx-rune-card:not(:disabled):hover .vx-rune-inner { transition: transform .12s ease-out; }
+.vx-rune-card:not(:disabled):hover { transform: translateY(-8px) scale(1.04); }
+.vx-rune-card.is-flipped { z-index: 2; transform: translateY(-6px) scale(1.12); }
+.vx-rune-card.is-flipped .vx-rune-float { animation: none; }
 .vx-rune-card.is-flipped .vx-rune-inner { transform: rotateY(180deg); }
-.vx-rune-back, .vx-rune-front { position: absolute; inset: 0; display: grid; place-items: center; border-radius: 14px; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
-.vx-rune-back {
-  border: 1px solid rgba(216, 169, 100, .4);
-  background: repeating-linear-gradient(45deg, rgba(216, 169, 100, .07) 0 6px, transparent 6px 12px), linear-gradient(160deg, #2a1d17, #140e0c);
-  box-shadow: inset 0 0 0 4px #1a1412, inset 0 0 0 5px rgba(216, 169, 100, .25), 0 12px 24px -12px rgba(0, 0, 0, .8);
-}
-.vx-rune-back i { color: rgba(216, 169, 100, .55); font: normal 30px/1 serif; text-shadow: 0 0 14px rgba(255, 143, 77, .45); }
-.vx-rune-front {
-  align-content: center; gap: 4px; transform: rotateY(180deg);
-  border: 1px solid rgba(255, 196, 110, .7);
-  background: radial-gradient(circle at 50% 40%, rgba(255, 143, 77, .35), transparent 65%), linear-gradient(160deg, #3a2418, #1a110d);
-  box-shadow: 0 0 34px -6px rgba(255, 143, 77, .7), inset 0 0 0 4px #1d130f, inset 0 0 0 5px rgba(255, 196, 110, .35);
-}
-.vx-rune-front b { color: var(--vx-flame); font: 600 44px/1 serif; text-shadow: 0 0 18px rgba(255, 154, 78, .9); }
-.vx-rune-front small { color: var(--vx-gold); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; }
-.vx-rune-card.is-static { width: 92px; flex: none; cursor: default; }
-.vx-rune-card.is-static .vx-rune-inner { transform: none; transition: none; }
-.vx-rune-card.is-static .vx-rune-front { transform: none; }
-.vx-rune-saved { display: flex; align-items: center; gap: 14px; }
+.vx-rune-card.is-away { opacity: .14; filter: blur(1.5px) grayscale(.6); transform: translateY(18px) scale(.86) rotate(calc((var(--deal, 0) - 1) * 8deg)); }
+.vx-rune-card:focus-visible { outline: 2px solid var(--vx-flame); outline-offset: 5px; border-radius: 16px; }
+.vx-rune-card:disabled { cursor: default; }
 
-.vx-rune-text { display: flex; flex-direction: column; gap: 4px; animation: vx-card-in .6s .45s cubic-bezier(.2, .8, .2, 1) backwards; }
-.vx-rune-text span { color: var(--vx-gold); font-size: 11px; letter-spacing: .16em; text-transform: uppercase; }
-.vx-rune-text strong { color: var(--vx-bone); font-size: 19px; line-height: 1.25; }
-.vx-rune-text p { margin: 0; color: var(--vx-muted); font-size: 14px; line-height: 1.55; }
-.vx-rune-copy { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.vx-rune-back, .vx-rune-front { position: absolute; inset: 0; display: grid; place-items: center; overflow: hidden; border-radius: 16px; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.vx-rune-back {
+  border: 1px solid rgba(216, 169, 100, .45);
+  background:
+    radial-gradient(circle at var(--mx) 0%, rgba(255, 196, 110, .25), transparent 55%),
+    repeating-linear-gradient(45deg, rgba(216, 169, 100, .08) 0 5px, transparent 5px 11px),
+    repeating-linear-gradient(-45deg, rgba(216, 169, 100, .05) 0 5px, transparent 5px 11px),
+    linear-gradient(160deg, #2e2019, #120c0a);
+  box-shadow: inset 0 0 0 4px #1a1412, inset 0 0 0 5px rgba(216, 169, 100, .3), 0 18px 30px -14px rgba(0, 0, 0, .9);
+}
+.vx-rune-back i { color: rgba(255, 196, 110, .7); font: normal 34px/1 serif; text-shadow: 0 0 16px rgba(255, 143, 77, .7); animation: vx-glyph-pulse 2.6s calc(var(--deal, 0) * .4s) ease-in-out infinite; }
+.vx-rune-back em { position: absolute; inset: 0; background: linear-gradient(105deg, transparent 35%, rgba(255, 236, 200, .28) 48%, transparent 60%); transform: translateX(-120%); animation: vx-card-shine 4.5s calc(2.2s + var(--deal, 0) * .35s) ease-in-out infinite; }
+.vx-rune-front {
+  align-content: center; gap: 6px; transform: rotateY(180deg);
+  border: 1px solid rgba(255, 210, 140, .85);
+  background: radial-gradient(circle at 50% 38%, rgba(255, 143, 77, .45), transparent 62%), linear-gradient(165deg, #452a1b, #1a110d 70%);
+  box-shadow: 0 0 46px -4px rgba(255, 143, 77, .85), inset 0 0 0 4px #1d130f, inset 0 0 0 5px rgba(255, 196, 110, .45);
+}
+.vx-rune-halo { position: absolute; width: 140%; aspect-ratio: 1; background: conic-gradient(from 0deg, transparent, rgba(255, 196, 110, .35), transparent 30%, transparent 50%, rgba(255, 143, 77, .3), transparent 80%); animation: vx-spin 6s linear infinite; }
+.vx-rune-front b { position: relative; color: #ffe2a8; font: 600 50px/1 serif; text-shadow: 0 0 10px #ffb46a, 0 0 26px rgba(255, 120, 60, .9); }
+.vx-rune-card.is-flipped .vx-rune-front b { animation: vx-glyph-in .9s .45s cubic-bezier(.2, 1.5, .4, 1) backwards; }
+.vx-rune-front small { position: relative; color: var(--vx-gold); font-size: 11px; letter-spacing: .18em; text-transform: uppercase; }
+.vx-rune-card.is-static { width: 96px; flex: none; animation: none; cursor: default; }
+.vx-rune-card.is-static .vx-rune-inner, .vx-rune-card.is-static .vx-rune-front { transform: none; transition: none; }
+.vx-rune-saved { display: flex; align-items: center; gap: 16px; }
+
+.vx-rune-text { display: flex; flex-direction: column; gap: 5px; }
+.vx-rune-text > span { color: var(--vx-gold); font-size: 11px; letter-spacing: .18em; text-transform: uppercase; }
+.vx-rune-text strong { color: var(--vx-bone); font-size: 21px; line-height: 1.2; background: linear-gradient(90deg, #ffe2a8, #ffa05a, #ffe2a8); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; animation: vx-gold-run 4s linear infinite; }
+.vx-rune-text p { margin: 0; color: var(--vx-muted); font-size: 14.5px; line-height: 1.6; }
+.vx-rune-text p i { font-style: normal; }
+.vx-rune-text.is-delayed > span, .vx-rune-text.is-delayed strong { animation: vx-rise .6s 1s cubic-bezier(.2, .8, .2, 1) backwards; }
+.vx-rune-text.is-delayed strong { animation: vx-rise .6s 1.1s cubic-bezier(.2, .8, .2, 1) backwards, vx-gold-run 4s 1.7s linear infinite; }
+.vx-rune-text.is-delayed p i { display: inline-block; white-space: pre; animation: vx-word .5s calc(1.35s + var(--w) * .07s) cubic-bezier(.2, .8, .2, 1) backwards; }
+.vx-rune-copy { display: inline-flex; align-items: center; justify-content: center; gap: 8px; transition: background .3s, border-color .3s, color .3s; }
 .vx-rune-copy svg { width: 16px; height: 16px; }
+.vx-rune-copy.is-copied { border-color: rgba(120, 210, 150, .6); background: rgba(80, 180, 120, .12); color: #a9f0c2; }
+.vx-runes.is-picked .vx-rune-copy { animation: vx-rise .6s 2s ease-out backwards; }
+
+@keyframes vx-rise { from { opacity: 0; transform: translateY(14px); } }
+@keyframes vx-spin { to { transform: rotate(360deg); } }
+@keyframes vx-seal-in { from { opacity: 0; transform: scale(.4) rotate(-120deg); } }
+@keyframes vx-core-in { from { opacity: 0; transform: scale(.2); } }
+@keyframes vx-core-glow { 0%, 100% { box-shadow: 0 0 0 6px rgba(26, 20, 18, .9), 0 0 0 7px rgba(255, 196, 110, .55), 0 0 50px 8px rgba(255, 143, 77, .45); } 50% { box-shadow: 0 0 0 6px rgba(26, 20, 18, .9), 0 0 0 7px rgba(255, 196, 110, .8), 0 0 80px 18px rgba(255, 143, 77, .7); } }
+@keyframes vx-draw { to { stroke-dashoffset: 0; } }
+@keyframes vx-wave { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(3.2); } }
+@keyframes vx-deal { from { opacity: 0; transform: translateY(-90px) rotate(-14deg) scale(.7); } }
+@keyframes vx-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+@keyframes vx-glyph-pulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+@keyframes vx-card-shine { 0%, 60% { transform: translateX(-120%); } 85%, 100% { transform: translateX(120%); } }
+@keyframes vx-glyph-in { from { opacity: 0; transform: scale(2.4); filter: blur(6px); } }
+@keyframes vx-gold-run { to { background-position: 200% 0; } }
+@keyframes vx-word { from { opacity: 0; transform: translateY(6px); filter: blur(3px); } }
 
 @media (max-width: 520px) {
-  .vx-rune-front b { font-size: 36px; }
+  .vx-seal { height: 176px; }
+  .vx-seal-ring { width: 160px; height: 160px; }
+  .vx-rune-row { gap: 9px; }
+  .vx-rune-front b { font-size: 40px; }
   .vx-rune-saved { align-items: flex-start; }
-  .vx-rune-card.is-static { width: 76px; }
+  .vx-rune-card.is-static { width: 80px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .vx-welcome, .vx-rune-text { animation: none; }
-  .vx-rune-inner, .vx-rune-card { transition: none; }
+  .vx-welcome *, .vx-welcome *::before, .vx-welcome *::after { animation: none !important; transition: none !important; }
+  .vx-seal-core path { stroke-dashoffset: 0; }
 }
-.vx-page.is-sent .vx-cta.vx-welcome-open {
-  background: linear-gradient(180deg, #ffa05a, #ee6a3a);
-  box-shadow: 0 12px 30px rgba(238, 106, 58, .35), inset 0 1px 0 rgba(255, 255, 255, .35);
-  color: #1c0e08;
-  cursor: pointer;
-  animation: vx-cta-pulse 2.4s .7s ease-in-out infinite;
-}
-@media (prefers-reduced-motion: reduce) { .vx-page.is-sent .vx-cta.vx-welcome-open { animation: none; } }

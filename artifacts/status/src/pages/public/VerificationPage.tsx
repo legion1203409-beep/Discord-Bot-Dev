@@ -6,7 +6,7 @@ import {
   useGetVerificationStatus,
 } from "@workspace/api-client-react";
 import "./verification-page.css";
-import { VerificationWelcome } from "./VerificationWelcome";
+import { VX_BURST_EVENT, VerificationWelcome } from "./VerificationWelcome";
 
 const EMBERS = Array.from({ length: 26 }, (_, index) => ({
   left: `${(index * 43 + 7) % 98}%`,
@@ -157,7 +157,7 @@ export function VerificationPage() {
       gravity = 0,
       drag = 0.7,
     ) => {
-      if (particles.length >= 260) particles.shift();
+      if (particles.length >= 420) particles.shift();
       particles.push({ x, y, vx, vy, life, maxLife: life, size, gravity, drag, kind });
     };
     const localPoint = (element: HTMLElement | null) => {
@@ -314,8 +314,20 @@ export function VerificationPage() {
       frameId = requestAnimationFrame(animate);
     };
 
+    // Golden bursts asked for by the welcome section (the seal, a picked rune card).
+    const onBurst = (event: Event) => {
+      const detail = (event as CustomEvent<{ x: number; y: number; strength?: number }>).detail;
+      if (!detail) return;
+      const canvasRect = canvas.getBoundingClientRect();
+      const strength = Math.max(.3, Math.min(2, detail.strength ?? 1));
+      burst(detail.x - canvasRect.left, detail.y - canvasRect.top, Math.round(60 * strength), 260 * strength, true);
+      burst(detail.x - canvasRect.left, detail.y - canvasRect.top, Math.round(24 * strength), 180 * strength);
+    };
+    window.addEventListener(VX_BURST_EVENT, onBurst);
+
     frameId = requestAnimationFrame(animate);
     return () => {
+      window.removeEventListener(VX_BURST_EVENT, onBurst);
       cancelAnimationFrame(frameId);
       resizeObserver?.disconnect();
       window.removeEventListener("resize", resize);
