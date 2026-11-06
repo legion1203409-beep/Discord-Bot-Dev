@@ -2744,6 +2744,7 @@ export async function loadAllianceRecruitmentText(
 // ─── Oracle settings persistence ──────────────────────────────────────────────
 const ORACLE_SETTINGS_KEY = "oracle_settings";
 const DAILY_PROPHECY_DATE_KEY = "oracle_daily_prophecy_date";
+const DAILY_QUESTION_DATE_KEY = "oracle_daily_question_date";
 
 async function saveGuildStateValue(guildId: string, name: string, value: string): Promise<void> {
   await ensureBotStateTable();
@@ -2797,6 +2798,15 @@ export async function saveDailyProphecyDate(guildId: string, day: string): Promi
 
 export async function loadDailyProphecyDate(guildId: string): Promise<string | null> {
   return loadGuildStateValue(guildId, DAILY_PROPHECY_DATE_KEY);
+}
+
+/** The local day ("YYYY-MM-DD") of the last daily question posted on a server. */
+export async function saveDailyQuestionDate(guildId: string, day: string): Promise<void> {
+  await saveGuildStateValue(guildId, DAILY_QUESTION_DATE_KEY, day);
+}
+
+export async function loadDailyQuestionDate(guildId: string): Promise<string | null> {
+  return loadGuildStateValue(guildId, DAILY_QUESTION_DATE_KEY);
 }
 
 // ─── Ticket configuration persistence ─────────────────────────────────────────

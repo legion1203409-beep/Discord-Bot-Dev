@@ -148,6 +148,7 @@ function ModerationApp() {
           <Route path="/oracol/conversatie" component={OracleGroupPage} />
           <Route path="/oracol/ton" component={OracleGroupPage} />
           <Route path="/oracol/profetii" component={OracleGroupPage} />
+          <Route path="/oracol/comunitate" component={OracleGroupPage} />
           <Route path="/setari" component={SettingsGroupPage} />
           <Route path="/setari/acces" component={SettingsGroupPage} />
           <Route path="/setari/notificari" component={SettingsGroupPage} />

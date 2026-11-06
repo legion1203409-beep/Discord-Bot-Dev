@@ -502,6 +502,7 @@ export const ORACLE_MODULE_ROUTES = {
   chat: "/oracol/conversatie",
   style: "/oracol/ton",
   prophecy: "/oracol/profetii",
+  community: "/oracol/comunitate",
 } as const;
 
 export function isOracleRoute(path: string): boolean {

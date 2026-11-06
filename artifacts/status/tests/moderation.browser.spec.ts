@@ -2845,7 +2845,7 @@ test.describe("oracle page", () => {
   test("is its own page; the switch stops the Oracle and the paused reply is edited here", async ({ page }) => {
     const putBodies = await openOracle(page);
     await expect(page.getByRole("heading", { name: "Pornirea Oracolului", exact: true })).toBeVisible();
-    await expect(page.getByRole("navigation", { name: "Modulele Oracolului" }).getByRole("link")).toHaveCount(4);
+    await expect(page.getByRole("navigation", { name: "Modulele Oracolului" }).getByRole("link")).toHaveCount(5);
     await page.getByTestId("oracle-enabled-switch").click();
     await expect(page.getByTestId("oracle-disabled")).toBeVisible();
     await expect(page.getByTestId("oracle-summary")).toContainText("Oprit");
@@ -2900,6 +2900,24 @@ test.describe("oracle page", () => {
     await expect.poll(() => putBodies.get(guilds[0].id)?.length).toBe(1);
     expect(putBodies.get(guilds[0].id)?.[0].oracle.prophecy).toEqual({
       commandEnabled: true, dailyLimit: 4, daily: { enabled: true, channelId: "777777777", hour: 21, timeZone: "UTC" },
+    });
+  });
+
+  test("needs a channel for the daily question and saves the hour and the server's own questions", async ({ page }) => {
+    const putBodies = await openOracle(page, "/moderare/oracol/comunitate");
+    await expect(page.getByRole("heading", { name: "Comunitate", exact: true })).toBeVisible();
+    await page.getByTestId("oracle-question-switch").click();
+    await page.getByTestId("button-save-oracle").click();
+    expect(putBodies.size).toBe(0);
+    await page.getByRole("combobox", { name: "Canalul întrebării zilei" }).selectOption("777777777");
+    await page.getByTestId("oracle-question-timezone").selectOption("UTC");
+    await page.getByTestId("oracle-question-own-switch").click();
+    await page.getByTestId("oracle-question-own").fill("Ce faci azi?\nCe joc ai jucat?");
+    await page.getByTestId("oracle-question-own").blur();
+    await page.getByTestId("button-save-oracle").click();
+    await expect.poll(() => putBodies.get(guilds[0].id)?.length).toBe(1);
+    expect(putBodies.get(guilds[0].id)?.[0].oracle.community.dailyQuestion).toMatchObject({
+      enabled: true, channelId: "777777777", timeZone: "UTC", useOwnQuestions: true, ownQuestions: ["Ce faci azi?", "Ce joc ai jucat?"],
     });
   });
 
