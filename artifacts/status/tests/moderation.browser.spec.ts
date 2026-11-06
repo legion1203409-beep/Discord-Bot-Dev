@@ -2785,6 +2785,49 @@ test.describe("tickets page", () => {
     expect(staff.mode).toBe("custom");
   });
 
+  test("the bot's own tickets: categories, staff, rating, publishing, and the staff's reputation", async ({ page }) => {
+    const publishes: unknown[] = [];
+    await page.route("**/api/moderation/guilds/*/support-tickets/publish", async (route) => {
+      publishes.push(route.request().method());
+      await route.fulfill({ json: { messageId: "888888888", supportTickets: {} } });
+    });
+    await page.route("**/api/moderation/guilds/*/support-tickets/reputation**", async (route) => {
+      await route.fulfill({ json: { range: "30", periodLabel: "ultimele 30 de zile", rows: [
+        { staffId: "111111111", name: "Adina", avatarUrl: null, ratings: 12, average: 4.75, score: 4.5, handled: 15, distribution: [0, 0, 1, 1, 10] },
+        { staffId: "222222222", name: "Mihai", avatarUrl: null, ratings: 3, average: 4, score: 3.75, handled: 4, distribution: [0, 0, 1, 1, 1] },
+      ] } });
+    });
+    const putBodies = await openTickets(page, "/moderare/tichete/bot");
+    await expect(page.getByRole("heading", { name: "Tichetele botului", exact: true })).toBeVisible();
+    await expect(page.getByTestId("tickets-bot-preview")).toContainText("🚨 Raportează un membru");
+    await page.getByTestId("tickets-bot-switch").click();
+    await expect(page.getByText("Alege rolul staff-ului care vede tichetele.").first()).toBeVisible();
+    await page.getByTestId("button-save-tickets").click();
+    expect(putBodies.size).toBe(0);
+    await page.getByTestId("tickets-bot-staff").getByRole("checkbox", { name: "@Moderator" }).click();
+    await page.getByRole("combobox", { name: "Canalul panoului de tichete" }).selectOption("777777777");
+    await page.getByTestId("tickets-bot-add").click();
+    await page.getByTestId("tickets-bot-category-4-label").fill("Cerere de rol");
+    await page.getByTestId("tickets-bot-category-4-emoji").fill("🎭");
+    await page.getByTestId("tickets-bot-category-4-reason").click();
+    await page.getByTestId("tickets-bot-category-2-remove").click();
+    await expect(page.getByTestId("tickets-bot-preview")).toContainText("🎭 Cerere de rol");
+    await expect(page.getByTestId("tickets-bot-publish")).toBeDisabled();
+    await page.getByTestId("button-save-tickets").click();
+    await expect.poll(() => putBodies.get(guilds[0].id)?.length).toBe(1);
+    const saved = putBodies.get(guilds[0].id)![0].supportTickets;
+    expect(saved).toMatchObject({ enabled: true, staffRoleIds: ["666666666"], panelChannelId: "777777777", rating: { enabled: true } });
+    expect(saved.categories.map((category: { label: string }) => category.label)).toEqual(["Ajutor general", "Raportează un membru", "Întrebări despre server", "Cerere de rol"]);
+    expect(saved.categories[3]).toMatchObject({ emoji: "🎭", askReason: true });
+    await page.getByTestId("tickets-bot-publish").click();
+    await expect.poll(() => publishes.length).toBe(1);
+    await expect(page.getByTestId("tickets-bot-panel")).toContainText("Panoul e în canal");
+
+    await page.getByTestId("nav-tickets-reputation").click();
+    await expect(page.getByTestId("tickets-reputation-rows")).toContainText("Adina");
+    await expect(page.getByTestId("tickets-reputation-rows")).toContainText("4,8 ⭐");
+  });
+
   test("keeps the case question first in appeals", async ({ page }) => {
     await openTickets(page, "/moderare/tichete/contestatii");
     await expect(page.getByRole("button", { name: "Șterge întrebarea 1" })).toBeDisabled();
@@ -3121,7 +3164,7 @@ test.describe("bot control page", () => {
   test("tracks invitations with a weekly report and saves the daily report's channel", async ({ page }) => {
     const { putBodies } = await openControl(page);
     await expect(page.getByRole("heading", { name: "Invitații", exact: true })).toBeVisible();
-    await expect(page.getByRole("navigation", { name: "Modulele controlului" }).getByRole("link")).toHaveCount(5);
+    await expect(page.getByRole("navigation", { name: "Modulele controlului" }).getByRole("link")).toHaveCount(6);
     await page.getByTestId("control-invites-switch").click();
     await page.getByTestId("control-invites-report-switch").click();
     await page.getByRole("combobox", { name: "Canalul raportului de invitații" }).selectOption("444444444");
@@ -3155,6 +3198,82 @@ test.describe("bot control page", () => {
     await page.getByTestId("button-save-control").click();
     await expect.poll(() => putBodies.get(guilds[0].id)?.length).toBe(1);
     expect(putBodies.get(guilds[0].id)![0].dailyStats).toMatchObject({ channelId: "444444444", chart: false });
+  });
+
+  test("themed channel names: the AI proposes, the owner edits and saves, only for new channels", async ({ page }) => {
+    const catalog = [
+      { key: "category.gameplay", kind: "category", group: "Categorii", defaultName: "🎮・JOC ȘI EVENIMENTE", purpose: "categoria jocului și a evenimentelor" },
+      { key: "activityLog.messages", kind: "text", group: "Jurnale", defaultName: "jurnal-mesaje", purpose: "jurnalul mesajelor editate și șterse" },
+      { key: "moderation.audit.channelId", kind: "text", group: "Moderare", defaultName: "mod-audit", purpose: "jurnalul de audit al staff-ului" },
+    ];
+    const saves: any[] = [];
+    const suggests: any[] = [];
+    await page.route("**/api/moderation/guilds/*/channel-names/suggest", async (route) => {
+      suggests.push(JSON.parse(route.request().postData() || "{}"));
+      await route.fulfill({ json: { names: { "category.gameplay": "⚔️・ARENA REGATULUI", "activityLog.messages": "📜・cronica-scrisorilor", "moderation.audit.channelId": "📜・registrul-strajerilor" } } });
+    });
+    await page.route("**/api/moderation/guilds/*/channel-names", async (route) => {
+      if (route.request().method() === "PUT") {
+        const body = JSON.parse(route.request().postData() || "{}");
+        saves.push(body);
+        await route.fulfill({ json: { ...body, catalog, aiAvailable: true } });
+        return;
+      }
+      await route.fulfill({ json: { theme: "", names: {}, catalog, aiAvailable: true } });
+    });
+    await openControl(page, "/moderare/control/canale");
+    const card = page.getByTestId("control-names");
+    await expect(card).toContainText("Cele care există deja nu se redenumesc");
+    await expect(page.getByTestId("control-names-ai")).toBeDisabled();
+    await page.getByTestId("control-names-theme").fill("regat medieval, cenușă și foc");
+    await page.getByTestId("control-names-ai").click();
+    await expect(page.getByTestId("control-names-activityLog.messages")).toHaveValue("📜・cronica-scrisorilor");
+    expect(suggests).toEqual([{ theme: "regat medieval, cenușă și foc" }]);
+    await page.getByTestId("control-names-moderation.audit.channelId").fill("");
+    await page.getByTestId("control-names-save").click();
+    await expect.poll(() => saves.length).toBe(1);
+    expect(saves[0]).toEqual({ theme: "regat medieval, cenușă și foc", names: { "category.gameplay": "⚔️・ARENA REGATULUI", "activityLog.messages": "📜・cronica-scrisorilor" } });
+    await expect(card).toContainText("Canalele create de acum încolo le vor folosi");
+    await expect(page.getByTestId("control-names-moderation.audit.channelId")).toHaveAttribute("placeholder", "mod-audit");
+  });
+
+  test("the statistics report can go out every 1 to 7 days and shows the top inviters", async ({ page }) => {
+    const { putBodies } = await openControl(page, "/moderare/control/raport");
+    await page.getByRole("combobox", { name: "Canalul raportului zilnic" }).selectOption("444444444");
+    await expect(page.getByTestId("control-daily-invites")).toContainText("🥇 @Adina · 7 membri noi");
+    await expect(page.getByTestId("control-daily-next")).toContainText("Următorul raport");
+    await page.getByTestId("control-daily-interval").getByRole("radio", { name: "7 zile" }).click();
+    // A title chosen by the server stays as it is; {date} names the whole period.
+    await expect(page.getByTestId("control-daily-preview")).toContainText("23 – 29 octombrie 2026");
+    await expect(page.getByTestId("control-daily-preview")).toContainText("față de cele 7 zile dinainte");
+    await expect(page.getByTestId("control-daily-invites")).toContainText("Top invitații · 7 zile");
+    await expect(page.getByTestId("control-daily-next")).toContainText("cu zilele");
+    await page.getByTestId("control-daily-invite-top").click();
+    await expect(page.getByTestId("control-daily-invites")).toHaveCount(0);
+    await page.getByTestId("button-save-control").click();
+    await expect.poll(() => putBodies.get(guilds[0].id)?.length).toBe(1);
+    expect(putBodies.get(guilds[0].id)![0].dailyStats).toMatchObject({ channelId: "444444444", intervalDays: 7, inviteTop: false });
+  });
+
+  test("the top of the most active members is its own report, with its channel and interval", async ({ page }) => {
+    const { putBodies } = await openControl(page, "/moderare/control/top-activi");
+    await expect(page.getByRole("heading", { name: "Cei mai activi membri", exact: true })).toBeVisible();
+    await expect(page.getByTestId("control-top-off")).toBeVisible();
+    await page.getByTestId("control-top-switch").click();
+    await page.getByTestId("button-save-control").click();
+    expect(putBodies.size).toBe(0);
+    await page.getByRole("combobox", { name: "Canalul topului membrilor activi" }).selectOption("444444444");
+    await page.getByTestId("control-top-interval").getByRole("radio", { name: "3 zile" }).click();
+    await page.getByTestId("control-top-limit").getByRole("radio", { name: "Top 5" }).click();
+    await expect(page.getByTestId("control-top-chat")).toContainText("🥇 @Adina · 523 mesaje");
+    await expect(page.getByTestId("control-top-voice")).toContainText("3 h 20 min");
+    await page.getByTestId("control-top-voice-switch").click();
+    await expect(page.getByTestId("control-top-voice")).toHaveCount(0);
+    await page.getByTestId("button-save-control").click();
+    await expect.poll(() => putBodies.get(guilds[0].id)?.length).toBe(1);
+    expect(putBodies.get(guilds[0].id)![0].activeTop).toEqual({
+      enabled: true, channelId: "444444444", intervalDays: 3, limit: 5, includeVoice: false, mention: false, color: "#d8a964",
+    });
   });
 
   test("asks the recruitment program for its channel and warns while verification is off", async ({ page }) => {

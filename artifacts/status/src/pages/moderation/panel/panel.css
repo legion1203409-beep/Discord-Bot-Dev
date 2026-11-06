@@ -1047,3 +1047,34 @@ a.pn-ov-tile:hover, .pn a.pn-ov-tile:hover { border-color: color-mix(in oklab, v
 .pn .pn-rec-prev { margin: 4px 0 16px; }
 .pn .pn-rec-prev .pn-dc-embed { border-left: 4px solid #e2b467; }
 .pn .pn-rec-btn { background: #248046; }
+/* Tichetele botului și reputația staff-ului */
+.pn-stk-cats { display: grid; gap: 12px; }
+.pn-stk-cat { border: 1px solid var(--pn-line, rgba(255,255,255,.08)); border-radius: 12px; padding: 12px; display: grid; gap: 10px; }
+.pn-stk-cat-head { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.pn-stk-cat-head .pn-inp { width: 100%; min-width: 0; }
+.pn-stk-emoji { text-align: center; }
+.pn-stk-cat-tools { display: flex; gap: 4px; }
+.pn-stk-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; margin-top: 6px; }
+.pn-stk-menu { margin-top: 8px; padding: 8px 10px; border-radius: 6px; background: #1e1f22; color: #949ba4; font-size: 13px; max-width: 420px; }
+.pn-stk-stars { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.pn-stk-stars span { padding: 4px 10px; border-radius: 4px; background: #248046; color: #fff; font-size: 13px; }
+.pn-rep { display: grid; gap: 6px; grid-column: 1 / -1; }
+.pn-rep-row { display: grid; grid-template-columns: 36px 32px minmax(0, 1fr) auto minmax(80px, 140px); gap: 10px; align-items: center; padding: 8px 10px; border-radius: 10px; background: rgba(255,255,255,.03); }
+.pn-rep-place { font-size: 18px; text-align: center; }
+.pn-rep-av { width: 32px; height: 32px; border-radius: 50%; background: #3c4270; display: block; }
+.pn-rep-name { display: grid; min-width: 0; }
+.pn-rep-name b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pn-rep-name small { color: var(--pn-ink-3, #a59a90); font-size: 12px; }
+.pn-rep-avg { font-weight: 700; font-variant-numeric: tabular-nums; }
+.pn-rep-dist { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: rgba(255,255,255,.06); }
+.pn-rep-dist i[data-star="5"] { background: #36a878; } .pn-rep-dist i[data-star="4"] { background: #7cc47f; } .pn-rep-dist i[data-star="3"] { background: #d8a964; }
+.pn-rep-dist i[data-star="2"] { background: #d97a50; } .pn-rep-dist i[data-star="1"] { background: #d95050; }
+@media (max-width: 640px) { .pn-rep-row { grid-template-columns: 28px 28px minmax(0, 1fr) auto; } .pn-rep-dist { display: none; } .pn-stk-grid { grid-template-columns: 1fr; } }
+/* Nume tematice (Control bot → Canale și acces) */
+.pn-names-group { grid-column: 1 / -1; display: grid; gap: 6px; padding-top: 10px; border-top: 1px solid var(--pn-line, rgba(255,255,255,.08)); }
+.pn-names-title { margin: 0 0 2px; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--pn-ink-3, #a59a90); }
+.pn-names-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 12px; align-items: center; }
+.pn-names-purpose { font-size: 13px; color: var(--pn-ink-2, #d4c9bf); }
+.pn-names-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+@media (max-width: 640px) { .pn-names-row { grid-template-columns: 1fr; gap: 4px; } }
+.pn-names-row .pn-inp { width: 100%; min-width: 0; }
