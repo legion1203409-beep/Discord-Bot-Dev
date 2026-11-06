@@ -2337,6 +2337,21 @@ export interface VerificationConfig {
   panelMessageId: string;
   /** Roles given together with roleId (for example a category role); roleId alone marks a member as verified. Missing in configs saved before them. */
   extraRoleIds?: string[];
+  /** The texts of the verification page on the website. Missing in configs saved before them. */
+  page?: VerificationPageTexts;
+}
+
+export interface VerificationPageTexts {
+  title: string;
+  lead: string;
+  sliderLabel: string;
+  ctaLabel: string;
+  successTitle: string;
+  successText: string;
+  welcomeLabel: string;
+  runesEnabled: boolean;
+  runesTitle: string;
+  runesText: string;
 }
 
 const VERIFICATION_CONFIG_KEY = "verification_config";
@@ -2603,6 +2618,10 @@ export interface DailyStatsEmbedConfig {
   thumbnailUrl: string;
   /** Draw the day's card (numbers and the last 7 days) and post it as the report's image. */
   chart: boolean;
+  /** One report every this many days (1–7), counting the days since the last one. */
+  intervalDays: number;
+  /** Show who brought the most members through invites in the report's period. */
+  inviteTop: boolean;
   metricLabels: {
     messages: string;
     uniqueUsers: string;
@@ -2625,6 +2644,8 @@ export const DEFAULT_DAILY_STATS_EMBED_CONFIG: DailyStatsEmbedConfig = {
   imageUrl: "",
   thumbnailUrl: "",
   chart: true,
+  intervalDays: 1,
+  inviteTop: true,
   metricLabels: {
     messages: "💬 Mesaje",
     uniqueUsers: "👥 Utilizatori unici",
@@ -2640,7 +2661,7 @@ export function normalizeDailyStatsEmbedConfig(value: unknown): DailyStatsEmbedC
   const labels = input.metricLabels && typeof input.metricLabels === "object"
     ? input.metricLabels as Record<string, unknown>
     : {};
-  const text = (key: keyof Omit<DailyStatsEmbedConfig, "metricLabels" | "color" | "imageUrl" | "thumbnailUrl" | "channelId" | "chart">): string => {
+  const text = (key: keyof Omit<DailyStatsEmbedConfig, "metricLabels" | "color" | "imageUrl" | "thumbnailUrl" | "channelId" | "chart" | "intervalDays" | "inviteTop">): string => {
     const current = input[key];
     const fallback = DEFAULT_DAILY_STATS_EMBED_CONFIG[key];
     return typeof current === "string" && current.trim() ? current.trim() : fallback;
@@ -2670,6 +2691,10 @@ export function normalizeDailyStatsEmbedConfig(value: unknown): DailyStatsEmbedC
     imageUrl: normalizeMessageImageUrl(input.imageUrl),
     thumbnailUrl: normalizeMessageImageUrl(input.thumbnailUrl),
     chart: input.chart !== false,
+    intervalDays: typeof input.intervalDays === "number" && Number.isInteger(input.intervalDays) && input.intervalDays >= 1 && input.intervalDays <= 7
+      ? input.intervalDays
+      : DEFAULT_DAILY_STATS_EMBED_CONFIG.intervalDays,
+    inviteTop: input.inviteTop !== false,
     metricLabels: {
       messages: label("messages").slice(0, 256),
       uniqueUsers: label("uniqueUsers").slice(0, 256),
@@ -2749,6 +2774,66 @@ async function loadGuildStateValue(guildId: string, name: string): Promise<strin
   await ensureBotStateTable();
   const [row] = await db.select().from(botStateTable).where(eq(botStateTable.key, guildKey(guildId, name)));
   return row?.value ?? null;
+}
+
+/** The recruitment panel (bot/recruitment-panel.ts): the message with the "make my invite" button, as JSON. */
+export async function saveRecruitmentPanelSetting(guildId: string, value: unknown): Promise<void> {
+  await saveGuildStateValue(guildId, "recruitment_panel", JSON.stringify(value));
+}
+
+export async function loadRecruitmentPanelSetting(guildId: string): Promise<unknown | null> {
+  const value = await loadGuildStateValue(guildId, "recruitment_panel");
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+/** The bot's own tickets (categories, panel, rating), as JSON (normalized by support-tickets.ts). */
+export async function saveSupportTicketsSetting(guildId: string, value: unknown): Promise<void> {
+  await saveGuildStateValue(guildId, "support_tickets", JSON.stringify(value));
+}
+
+export async function loadSupportTicketsSetting(guildId: string): Promise<unknown | null> {
+  const value = await loadGuildStateValue(guildId, "support_tickets");
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+/** The theme and the chosen names of the channels the panel creates, as JSON (normalized by channel-names.ts). */
+export async function saveChannelNamesSetting(guildId: string, value: unknown): Promise<void> {
+  await saveGuildStateValue(guildId, "channel_names", JSON.stringify(value));
+}
+
+export async function loadChannelNamesSetting(guildId: string): Promise<unknown | null> {
+  const value = await loadGuildStateValue(guildId, "channel_names");
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+/** The settings of the top of the most active members, as JSON (normalized by active-top.ts). */
+export async function saveActiveTopSettings(guildId: string, settings: unknown): Promise<void> {
+  await saveGuildStateValue(guildId, "active_top_config", JSON.stringify(settings));
+}
+
+export async function loadActiveTopSettings(guildId: string): Promise<unknown | null> {
+  const value = await loadGuildStateValue(guildId, "active_top_config");
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
 }
 
 /** The Oracle's chat and prophecy settings of a server, as JSON (normalized by oracle-settings.ts). */

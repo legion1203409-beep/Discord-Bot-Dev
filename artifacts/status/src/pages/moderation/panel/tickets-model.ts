@@ -62,6 +62,16 @@ export const TICKETS_MODULES: readonly TicketsModuleDef[] = [
     paths: flowPaths("appeal"),
   },
   {
+    id: "bot", route: TICKETS_MODULE_ROUTES.bot, short: "Tichetele botului", title: "Tichetele botului",
+    description: "Botul creează singur tichetul: membrul alege categoria dintr-un meniu, iar botul îi face un canal privat cu staff-ul, cu „Preia” și „Închide”, transcriere și evaluare cu stele.",
+    paths: ["supportTickets"],
+  },
+  {
+    id: "reputation", route: TICKETS_MODULE_ROUTES.reputation, short: "Reputația staff-ului", title: "Reputația staff-ului",
+    description: "După fiecare tichet închis, membrul dă 1–5 stele celui care l-a ajutat. Aici e clasamentul; în Discord, /topstaff.",
+    paths: [],
+  },
+  {
     id: "common", route: TICKETS_MODULE_ROUTES.common, short: "Setări comune", title: "Setări comune",
     description: "Rolul staff-ului care se ocupă de tichete și cât timp are un membru să termine formularul.",
     paths: COMMON_PATHS,
@@ -304,8 +314,77 @@ function flowError(kind: FlowKind, flow: TicketFlow | undefined): string | null 
   return null;
 }
 
+/* ------------------------------------------------------------------ */
+/* Tichetele botului                                                   */
+/* ------------------------------------------------------------------ */
+
+export type SupportCategory = {
+  id: string; label: string; emoji: string; description: string; parentId: string; staffRoleIds: string[]; welcome: string; askReason: boolean;
+};
+export type SupportTickets = {
+  enabled: boolean; panelChannelId: string; panelMessageId: string; panelTitle: string; panelDescription: string; color: string;
+  staffRoleIds: string[]; logChannelId: string; maxOpenPerUser: number; deleteAfterClose: boolean;
+  rating: { enabled: boolean; question: string }; categories: SupportCategory[];
+};
+
+export const MAX_SUPPORT_CATEGORIES = 25;
+
+/** The bot's defaults (api-server support-tickets.ts DEFAULT_SUPPORT_TICKETS_CONFIG). */
+export const DEFAULT_SUPPORT_TICKETS: SupportTickets = {
+  enabled: false, panelChannelId: "", panelMessageId: "", panelTitle: "🎫 Deschide un tichet",
+  panelDescription: "Alege mai jos ce te aduce aici. Se deschide un canal privat doar pentru tine și staff.",
+  color: "#d8a964", staffRoleIds: [], logChannelId: "", maxOpenPerUser: 1, deleteAfterClose: true,
+  rating: { enabled: true, question: "Cum ai evalua ajutorul primit?" },
+  categories: [
+    { id: "ajutor", label: "Ajutor general", emoji: "🙋", description: "Ai o întrebare sau ai nevoie de ajutor.", parentId: "", staffRoleIds: [], welcome: "Salut, {user}! Spune-ne cu ce te putem ajuta, iar cineva din staff îți răspunde cât mai repede.", askReason: false },
+    { id: "raport", label: "Raportează un membru", emoji: "🚨", description: "Cineva încalcă regulile.", parentId: "", staffRoleIds: [], welcome: "{user}, mulțumim că ne anunți. Scrie cine, ce s-a întâmplat și, dacă poți, pune capturi.", askReason: true },
+    { id: "tehnic", label: "Problemă tehnică", emoji: "🛠️", description: "Un bot, un rol sau un canal nu merge.", parentId: "", staffRoleIds: [], welcome: "{user}, descrie problema și ce ai încercat deja.", askReason: false },
+    { id: "intrebari", label: "Întrebări despre server", emoji: "❓", description: "Reguli, roluri, evenimente.", parentId: "", staffRoleIds: [], welcome: "Salut, {user}! Pune întrebarea, te ajutăm imediat.", askReason: false },
+  ],
+};
+
+export function supportTicketsOf(config: any): SupportTickets {
+  const value = config?.supportTickets ?? {};
+  return { ...DEFAULT_SUPPORT_TICKETS, ...value, rating: { ...DEFAULT_SUPPORT_TICKETS.rating, ...(value.rating ?? {}) }, categories: value.categories ?? DEFAULT_SUPPORT_TICKETS.categories };
+}
+
+export function categoryIdFor(label: string, taken: string[]): string {
+  const base = label.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32) || "categorie";
+  let id = base;
+  for (let index = 2; taken.includes(id); index += 1) id = `${base.slice(0, 28)}-${index}`;
+  return id;
+}
+
+export function newSupportCategory(taken: string[]): SupportCategory {
+  return { id: categoryIdFor("Categorie nouă", taken), label: "Categorie nouă", emoji: "🎫", description: "", parentId: "", staffRoleIds: [], welcome: "Salut, {user}! Spune-ne cu ce te putem ajuta.", askReason: false };
+}
+
+export function supportTicketsSummary(config: any): string {
+  const tickets = supportTicketsOf(config);
+  if (!tickets.enabled) return "oprite";
+  return `${tickets.categories.length} ${tickets.categories.length === 1 ? "categorie" : "categorii"}${tickets.panelMessageId ? "" : ", panou nepublicat"}`;
+}
+
+export function supportTicketsProblem(config: any): string | null {
+  if (!config?.supportTickets) return null;
+  const tickets = supportTicketsOf(config);
+  for (const key of ["panelChannelId", "logChannelId"] as const) {
+    if (tickets[key] && !isDiscordId(tickets[key])) return `„${tickets[key]}” nu este un ID de canal Discord.`;
+  }
+  if (tickets.categories.length > MAX_SUPPORT_CATEGORIES) return `Cel mult ${MAX_SUPPORT_CATEGORIES} de categorii (atât încape în meniul Discord).`;
+  if (tickets.categories.some((category) => !category.label.trim())) return "Fiecare categorie are nevoie de un nume.";
+  if (tickets.enabled && !tickets.categories.length) return "Adaugă cel puțin o categorie.";
+  if (tickets.enabled && !tickets.staffRoleIds.length && tickets.categories.some((category) => !category.staffRoleIds.length)) {
+    return "Alege rolul staff-ului care vede tichetele.";
+  }
+  if (!/^#[0-9a-f]{6}$/i.test(tickets.color)) return "Culoarea are forma #RRGGBB.";
+  return null;
+}
+
 /** The first problem that would make the server refuse the tickets, or null. */
 export function ticketsDraftError(config: any): string | null {
+  const support = supportTicketsProblem(config);
+  if (support) return `Tichetele botului — ${support}`;
   const tickets = config?.tickets;
   if (!tickets) return null;
   if (!isDiscordId(String(tickets.staffReviewRoleId ?? ""))) return "Setări comune — Alege rolul staff-ului care se ocupă de tichete.";

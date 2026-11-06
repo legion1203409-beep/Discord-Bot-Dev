@@ -9,6 +9,7 @@ import {
 import { logger } from "../../lib/logger";
 import { getModerationWebsiteUrl } from "../../moderation/oauth";
 import { executeModerationAction, type ModerationActionInput } from "./engine";
+import { handleDossierCommand } from "./dossier";
 
 /** A warn, mute or ban needs a reason the member and the staff can read later. */
 export const REASON_REQUIRED_ACTIONS = new Set(["warn", "mute", "ban"]);
@@ -27,6 +28,8 @@ export const moderationCommands = [
     .setName("moderare")
     .setDescription("Acces securizat la panoul de moderare")
     .addSubcommand((sub) => sub.setName("login").setDescription("Deschide autentificarea Discord pentru site")),
+  new SlashCommandBuilder().setName("dosar").setDescription("Dosarul unui membru: sancțiuni, contestații și starea lui (doar staff)")
+    .addUserOption((o) => o.setName("membru").setDescription("Membrul").setRequired(true)),
   new SlashCommandBuilder().setName("warn").setDescription("Avertizează un membru")
     .addUserOption((o) => o.setName("user").setDescription("Membrul").setRequired(true))
     .addStringOption((o) => o.setName("reason").setDescription("Motivul (obligatoriu)").setRequired(true).setMinLength(REQUIRED_REASON_MIN).setMaxLength(500)),
@@ -71,6 +74,7 @@ const actionNames = new Set<ModerationActionInput["type"]>([
 ]);
 
 export async function handleModerationCommand(interaction: ChatInputCommandInteraction): Promise<boolean> {
+  if (await handleDossierCommand(interaction)) return true;
   if (interaction.commandName === "moderare") {
     if (interaction.options.getSubcommand() !== "login") return false;
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });

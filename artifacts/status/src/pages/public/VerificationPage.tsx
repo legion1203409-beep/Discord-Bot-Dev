@@ -6,6 +6,8 @@ import {
   useGetVerificationStatus,
 } from "@workspace/api-client-react";
 import "./verification-page.css";
+import { VX_BURST_EVENT, VerificationWelcome } from "./VerificationWelcome";
+import { DEFAULT_VERIFICATION_PAGE, verificationPageOf, type VerificationPageTexts } from "../../lib/verification-page-texts";
 
 const EMBERS = Array.from({ length: 26 }, (_, index) => ({
   left: `${(index * 43 + 7) % 98}%`,
@@ -42,6 +44,20 @@ export function VerificationPage() {
   const rippleSequence = useRef(0);
   const [ripple, setRipple] = useState<{ id: number; x: number; y: number } | null>(null);
   const completion = useCompleteWebsiteVerification();
+  // The texts the server chose in the panel (Verificare → Mesaje); the defaults until they arrive.
+  const [texts, setTexts] = useState<VerificationPageTexts>(DEFAULT_VERIFICATION_PAGE);
+  const [textsReady, setTextsReady] = useState(!guildId);
+  useEffect(() => {
+    if (!guildId || !/^\d{5,25}$/.test(guildId)) { setTextsReady(true); return; }
+    const controller = new AbortController();
+    const fallback = window.setTimeout(() => setTextsReady(true), 1_500);
+    void fetch(`/api/moderation/verification/${encodeURIComponent(guildId)}/config`, { signal: controller.signal, credentials: "same-origin" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data: { page?: unknown } | null) => { if (data?.page) setTexts(verificationPageOf(data.page)); })
+      .catch(() => undefined)
+      .finally(() => { if (!controller.signal.aborted) { window.clearTimeout(fallback); setTextsReady(true); } });
+    return () => { controller.abort(); window.clearTimeout(fallback); };
+  }, [guildId]);
   const statusParams = guildId ? { guildId } : undefined;
   const status = useGetVerificationStatus(statusParams, {
     query: {
@@ -100,6 +116,7 @@ export function VerificationPage() {
     completion.isPending ? "is-busy" : "",
     isSuccess ? "is-sent" : "",
     completion.error ? "is-error" : "",
+    textsReady ? "" : "is-texts-loading",
   ].filter(Boolean).join(" ");
   const markerStyle: CSSProperties = { left: `${markerLeft}px` };
   const ashStyle: CSSProperties = { width: `${Math.max(0, markerLeft - 24)}px` };
@@ -109,7 +126,7 @@ export function VerificationPage() {
   const successHeading = result?.result === "already_verified"
     ? "Contul era deja verificat."
     : result?.verified
-      ? "Verificarea a fost finalizată."
+      ? texts.successTitle
       : "Contul este verificat.";
 
   useEffect(() => {
@@ -156,7 +173,7 @@ export function VerificationPage() {
       gravity = 0,
       drag = 0.7,
     ) => {
-      if (particles.length >= 260) particles.shift();
+      if (particles.length >= 420) particles.shift();
       particles.push({ x, y, vx, vy, life, maxLife: life, size, gravity, drag, kind });
     };
     const localPoint = (element: HTMLElement | null) => {
@@ -313,8 +330,20 @@ export function VerificationPage() {
       frameId = requestAnimationFrame(animate);
     };
 
+    // Golden bursts asked for by the welcome section (the seal, a picked rune card).
+    const onBurst = (event: Event) => {
+      const detail = (event as CustomEvent<{ x: number; y: number; strength?: number }>).detail;
+      if (!detail) return;
+      const canvasRect = canvas.getBoundingClientRect();
+      const strength = Math.max(.3, Math.min(2, detail.strength ?? 1));
+      burst(detail.x - canvasRect.left, detail.y - canvasRect.top, Math.round(60 * strength), 260 * strength, true);
+      burst(detail.x - canvasRect.left, detail.y - canvasRect.top, Math.round(24 * strength), 180 * strength);
+    };
+    window.addEventListener(VX_BURST_EVENT, onBurst);
+
     frameId = requestAnimationFrame(animate);
     return () => {
+      window.removeEventListener(VX_BURST_EVENT, onBurst);
       cancelAnimationFrame(frameId);
       resizeObserver?.disconnect();
       window.removeEventListener("resize", resize);
@@ -369,7 +398,7 @@ export function VerificationPage() {
             </div>
             <div>
               <p className="vx-eyebrow">ORACOLUL CENUȘII · DISCORD</p>
-              <h1 id="verification-heading" className="vx-title">Verifică-ți accesul</h1>
+              <h1 id="verification-heading" className="vx-title">{texts.title}</h1>
             </div>
           </div>
 
@@ -378,9 +407,12 @@ export function VerificationPage() {
               <CheckCircle2 className="vx-message-icon" aria-hidden="true" />
               <div>
                 <strong>{successHeading}</strong>
-                <span>Poți reveni acum în Discord.</span>
+                <span>{texts.successText}</span>
               </div>
             </div>
+          ) : null}
+          {isSuccess ? (
+            <VerificationWelcome guildId={result?.guildId ?? status.data?.guildId ?? guildId} texts={texts} />
           ) : legacyErrorText ? (
             <div className="vx-message vx-message--error" role="alert" data-testid="status-verification-error">
               <TriangleAlert className="vx-message-icon" aria-hidden="true" />
@@ -408,13 +440,11 @@ export function VerificationPage() {
             </div>
           ) : (
             <>
-              <p className="vx-lead">
-                Pentru a confirma verificarea, glisează marcajul până la capătul traseului. Biletul a fost emis de Discord și va fi folosit o singură dată pentru acest pas.
-              </p>
+              <p className="vx-lead">{texts.lead}</p>
 
               <div className="vx-rite">
                 <div className="vx-rite-top">
-                  <span className="vx-rite-label">{sliderCompleted ? "Flacără aprinsă" : "Aprinde flacăra"}</span>
+                  <span className="vx-rite-label">{sliderCompleted ? "Flacără aprinsă" : texts.sliderLabel}</span>
                   <span className="vx-rite-hint" id="verification-hint" aria-live="polite">
                     {sliderCompleted ? "Poți finaliza verificarea" : "Glisează până la capăt"}
                   </span>
@@ -520,7 +550,7 @@ export function VerificationPage() {
                     ? "Se confirmă…"
                     : completion.isSuccess
                       ? "Verificare confirmată"
-                      : "Finalizează verificarea"}
+                      : texts.ctaLabel}
                 </span>
                 {ripple && (
                   <i

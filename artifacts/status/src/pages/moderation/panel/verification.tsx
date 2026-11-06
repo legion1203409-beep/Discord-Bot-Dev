@@ -13,8 +13,9 @@ import { apiFetchWithMeta, verifyGuildMembers, type BotControlConfig } from "../
 import { useToast } from "../../../hooks/use-toast";
 import { useBotDraft } from "./bot-draft";
 import { EmojiTextField, ImageUrlField } from "./message-fields";
+import { DEFAULT_VERIFICATION_PAGE, VERIFICATION_PAGE_FIELDS, verificationPageOf, type VerificationPageTextKey } from "../../../lib/verification-page-texts";
 import { usePanel } from "./context";
-import { ChannelField, Fields, Fld, IdPicker, Ico, Note, NoteRow, Pill, SectionCard, Seg, Spinner, cx, type PickerOption } from "./fields";
+import { ChannelField, Fields, Fld, IdPicker, Ico, Note, NoteRow, Pill, SectionCard, Seg, Spinner, SwitchField, cx, type PickerOption } from "./fields";
 import { countLabel, deepEqual } from "./model";
 import { ModuleNotes, ModuleView } from "./rules";
 import {
@@ -316,6 +317,78 @@ function DiscordPreview() {
   );
 }
 
+function PageTextInput({ textKey }: { textKey: VerificationPageTextKey }) {
+  const { config, set } = usePanel();
+  const page = verificationPageOf(config.verification.page);
+  const spec = VERIFICATION_PAGE_FIELDS.find((field) => field.key === textKey)!;
+  const raw = config.verification.page?.[textKey];
+  return (
+    <EmojiTextField
+      label={spec.label} hint={spec.hint} value={typeof raw === "string" ? raw : page[textKey]}
+      onChange={(next) => set(["verification", "page"], { ...page, ...(config.verification.page ?? {}), [textKey]: next })}
+      max={spec.max} multiline={spec.multiline} rows={spec.multiline ? 3 : undefined} testId={`verification-page-${textKey}`}
+    />
+  );
+}
+
+/** The website page, before and after, small: the title, the slider, the seal and the runes. */
+function SitePreview() {
+  const { config } = usePanel();
+  const page = verificationPageOf(config.verification.page);
+  return (
+    <div className="pn-vxp" data-testid="verification-site-preview">
+      <p className="pn-dc-k">Așa apare pe site</p>
+      <div className="pn-vxp-card">
+        <small className="pn-vxp-k">Oracolul Cenușii · Discord</small>
+        <b className="pn-vxp-t">{page.title}</b>
+        <p className="pn-vxp-p">{page.lead}</p>
+        <div className="pn-vxp-fuse"><span>{page.sliderLabel}</span><i /></div>
+        <span className="pn-vxp-cta">{page.ctaLabel}</span>
+      </div>
+      <p className="pn-dc-k">După ce se verifică</p>
+      <div className="pn-vxp-card">
+        <div className="pn-vxp-ok"><b>{page.successTitle}</b><span>{page.successText}</span></div>
+        <div className="pn-vxp-seal" aria-hidden="true"><i /></div>
+        <small className="pn-vxp-welcome">{page.welcomeLabel}</small>
+        <span className="pn-vxp-cta">Intră în regat</span>
+        {page.runesEnabled ? (
+          <div className="pn-vxp-runes">
+            <b>{page.runesTitle}</b><span>{page.runesText}</span>
+            <div aria-hidden="true"><i /><i /><i /></div>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function SitePageCard() {
+  const { config, set } = usePanel();
+  const page = verificationPageOf(config.verification.page);
+  const atDefaults = JSON.stringify(page) === JSON.stringify(DEFAULT_VERIFICATION_PAGE);
+  return (
+    <SectionCard title="Pagina de pe site" testId="verification-site-texts" small={(
+      <button
+        type="button" className="pn-btn-ghost pn-btn-sm" disabled={atDefaults} data-testid="button-verification-page-defaults"
+        onClick={() => set(["verification", "page"], { ...DEFAULT_VERIFICATION_PAGE })}
+      ><Ico name="refresh" />Textele de bază</button>
+    )}>
+      <Fields>
+        <NoteRow tone="plain">Ce vede membrul pe codelinked.app după ce apasă butonul din Discord. Butonul „Intră în regat” rămâne la fel.</NoteRow>
+        {VERIFICATION_PAGE_FIELDS.filter((field) => field.group === "before").map((field) => <PageTextInput key={field.key} textKey={field.key} />)}
+        <div className="pn-fld pn-wide"><p className="pn-vxp-sep">După verificare</p></div>
+        {VERIFICATION_PAGE_FIELDS.filter((field) => field.group === "after" && !field.key.startsWith("runes")).map((field) => <PageTextInput key={field.key} textKey={field.key} />)}
+        <SwitchField
+          label="Jocul cu rune" hint="Trei cărți întoarse: membrul alege una și primește un titlu și o profeție de bun venit."
+          checked={page.runesEnabled} testId="verification-page-runes"
+          onChange={(runesEnabled) => set(["verification", "page"], { ...page, ...(config.verification.page ?? {}), runesEnabled })}
+        />
+        {page.runesEnabled ? VERIFICATION_PAGE_FIELDS.filter((field) => field.key.startsWith("runes")).map((field) => <PageTextInput key={field.key} textKey={field.key} />) : null}
+      </Fields>
+    </SectionCard>
+  );
+}
+
 export function MessagesModule() {
   const { config, set } = usePanel();
   const atDefaults = (Object.keys(DEFAULT_VERIFICATION_TEXT) as Array<keyof typeof DEFAULT_VERIFICATION_TEXT>)
@@ -344,8 +417,9 @@ export function MessagesModule() {
               <TextInput textKey="alreadyVerifiedMessage" multiline rows={3} hint="Răspunsul botului, vizibil doar pentru membrul care apasă butonul." />
             </Fields>
           </SectionCard>
+          <SitePageCard />
         </div>
-        <aside className="pn-vsplit-side" aria-label="Previzualizare"><DiscordPreview /></aside>
+        <aside className="pn-vsplit-side" aria-label="Previzualizare"><DiscordPreview /><SitePreview /></aside>
       </div>
     </ModuleView>
   );

@@ -486,6 +486,8 @@ export const TICKETS_MODULE_ROUTES = {
   partnership: "/tichete/parteneriate",
   help_report: "/tichete/ajutor",
   appeal: "/tichete/contestatii",
+  bot: "/tichete/bot",
+  reputation: "/tichete/reputatie",
   common: "/tichete/setari",
 } as const;
 
@@ -530,6 +532,7 @@ export const CONTROL_MODULE_ROUTES = {
   invites: "/control/invitatii",
   recruitment: "/control/recrutare",
   daily: "/control/raport",
+  activeTop: "/control/top-activi",
   channels: "/control/canale",
   server: "/control/bot",
 } as const;

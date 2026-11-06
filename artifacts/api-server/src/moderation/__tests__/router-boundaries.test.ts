@@ -5,6 +5,9 @@ import { SUPER_ADMIN_ID } from "../../bot/constants";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  loadSupportTicketsSetting: vi.fn(async () => null as unknown), saveSupportTicketsSetting: vi.fn(async () => undefined),
+  loadChannelNamesSetting: vi.fn(async () => null as unknown), saveChannelNamesSetting: vi.fn(async () => undefined),
+  loadActiveTopSettings: vi.fn(async () => null as unknown), saveActiveTopSettings: vi.fn(async () => undefined),
   session: vi.fn(), access: vi.fn(), csrf: vi.fn(), client: vi.fn(),
   getConfig: vi.fn(), putConfig: vi.fn(), putProtectionToggle: vi.fn(), listCases: vi.fn(), countCases: vi.fn(),
   listAudit: vi.fn(), listLogs: vi.fn(), beginAction: vi.fn(), getAction: vi.fn(),
@@ -132,6 +135,12 @@ vi.mock("../../bot/db", () => ({
   saveVerificationConfig: mocks.saveVerificationConfig,
   loadOracleSettings: mocks.loadOracleSettings,
   saveOracleSettings: mocks.saveOracleSettings,
+  loadSupportTicketsSetting: mocks.loadSupportTicketsSetting,
+  saveSupportTicketsSetting: mocks.saveSupportTicketsSetting,
+  loadChannelNamesSetting: mocks.loadChannelNamesSetting,
+  saveChannelNamesSetting: mocks.saveChannelNamesSetting,
+  loadActiveTopSettings: mocks.loadActiveTopSettings,
+  saveActiveTopSettings: mocks.saveActiveTopSettings,
   loadDailyStatsEmbedConfig: mocks.loadDailyStatsEmbedConfig,
   saveDailyStatsEmbedConfig: mocks.saveDailyStatsEmbedConfig,
   loadInviteTrackingConfig: mocks.loadInviteTrackingConfig,
@@ -1540,6 +1549,93 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     });
   });
 
+  describe("the bot's own tickets", () => {
+    const put = (payload: unknown) => fetch(`${base}/bot-control`, {
+      ...post(payload), method: "PUT", headers: { "content-type": "application/json", "x-csrf-token": "csrf" },
+    });
+    const tickets = (patch: Record<string, unknown> = {}) => ({
+      enabled: true, panelChannelId: "123456789012345678", panelMessageId: "", panelTitle: "🎫 Tichete", panelDescription: "Alege",
+      color: "#d8a964", staffRoleIds: ["223456789012345678"], logChannelId: "", maxOpenPerUser: 1, deleteAfterClose: true,
+      rating: { enabled: true, question: "Cum a fost?" },
+      categories: [{ id: "ajutor", label: "Ajutor", emoji: "🙋", description: "", parentId: "", staffRoleIds: [], welcome: "Salut", askReason: false }],
+      ...patch,
+    });
+
+    it("are read with the bot settings, off by default with four categories", async () => {
+      mocks.loadSupportTicketsSetting.mockResolvedValueOnce(null);
+      const body = await (await fetch(`${base}/bot-control`)).json() as { supportTickets: { enabled: boolean; categories: unknown[] } };
+      expect(body.supportTickets.enabled).toBe(false);
+      expect(body.supportTickets.categories).toHaveLength(4);
+    });
+
+    it("need a staff role and a category when switched on; the panel's message id stays the bot's", async () => {
+      mocks.saveSupportTicketsSetting.mockClear();
+      expect((await put({ ...botControlPayload(), supportTickets: tickets({ staffRoleIds: [] }) })).status).toBe(400);
+      expect((await put({ ...botControlPayload(), supportTickets: tickets({ categories: [] }) })).status).toBe(400);
+      expect(mocks.saveSupportTicketsSetting).not.toHaveBeenCalled();
+      mocks.loadSupportTicketsSetting.mockResolvedValue({ panelMessageId: "323456789012345678" });
+      expect((await put({ ...botControlPayload(), supportTickets: tickets({ panelMessageId: "" }) })).status).toBe(200);
+      expect(mocks.saveSupportTicketsSetting).toHaveBeenCalledWith(guildId, expect.objectContaining({ enabled: true, panelMessageId: "323456789012345678" }));
+      mocks.loadSupportTicketsSetting.mockResolvedValue(null);
+      mocks.saveSupportTicketsSetting.mockClear();
+      expect((await put(botControlPayload())).status).toBe(200);
+      expect(mocks.saveSupportTicketsSetting).not.toHaveBeenCalled();
+      });
+    });
+
+  describe("themed channel names", () => {
+    const send = (method: string, path: string, payload: unknown) => fetch(`${base}${path}`, {
+      ...post(payload), method, headers: { "content-type": "application/json", "x-csrf-token": "csrf" },
+    });
+    it("are read with the catalog of every channel the panel creates", async () => {
+      mocks.loadChannelNamesSetting.mockResolvedValueOnce({ theme: "medieval", names: { "activityLog.messages": "cronica" } });
+      const body = await (await fetch(`${base}/channel-names`)).json() as { theme: string; names: Record<string, string>; catalog: Array<{ key: string }>; aiAvailable: boolean };
+      expect(body.theme).toBe("medieval");
+      expect(body.names).toEqual({ "activityLog.messages": "cronica" });
+      expect(body.catalog.some((entry) => entry.key === "category.gameplay")).toBe(true);
+    });
+    it("are saved cleaned, and an unknown channel is refused", async () => {
+      mocks.saveChannelNamesSetting.mockClear();
+      expect((await send("PUT", "/channel-names", { theme: "x", names: { "nu.exista": "y" } })).status).toBe(400);
+      expect(mocks.saveChannelNamesSetting).not.toHaveBeenCalled();
+      const saved = await send("PUT", "/channel-names", { theme: " medieval ", names: { "activityLog.messages": "Cronica Scrisorilor", main: "" } });
+      expect(saved.status).toBe(200);
+      expect(mocks.saveChannelNamesSetting).toHaveBeenCalledWith(guildId, { theme: "medieval", names: { "activityLog.messages": "cronica-scrisorilor" } });
+    });
+    it("asking the AI without a theme is refused", async () => {
+      expect((await send("POST", "/channel-names/suggest", { theme: "" })).status).toBe(400);
+    });
+  });
+
+  describe("the top of the most active members", () => {
+    const put = (payload: unknown) => fetch(`${base}/bot-control`, {
+      ...post(payload), method: "PUT", headers: { "content-type": "application/json", "x-csrf-token": "csrf" },
+    });
+    const top = { enabled: true, channelId: "", intervalDays: 3, limit: 5, includeVoice: false, mention: false, color: "#112233" };
+
+    it("is read with the bot settings, off by default", async () => {
+      mocks.loadActiveTopSettings.mockResolvedValueOnce(null);
+      const body = await (await fetch(`${base}/bot-control`)).json() as { activeTop: { enabled: boolean; intervalDays: number } };
+      expect(body.activeTop).toMatchObject({ enabled: false, intervalDays: 7, limit: 10 });
+    });
+
+    it("needs a channel when switched on, is saved when sent and left alone when a page does not send it", async () => {
+      mocks.saveActiveTopSettings.mockClear();
+      expect((await put({ ...botControlPayload(), activeTop: top })).status).toBe(400);
+      expect(mocks.saveActiveTopSettings).not.toHaveBeenCalled();
+      const saved = await put({ ...botControlPayload(), activeTop: { ...top, enabled: false } });
+      expect(saved.status).toBe(200);
+      expect(mocks.saveActiveTopSettings).toHaveBeenCalledWith(guildId, { ...top, enabled: false });
+      mocks.saveActiveTopSettings.mockClear();
+      expect((await put(botControlPayload())).status).toBe(200);
+      expect(mocks.saveActiveTopSettings).not.toHaveBeenCalled();
+    });
+
+    it("refuses an interval outside 1–7 days", async () => {
+      expect((await put({ ...botControlPayload(), activeTop: { ...top, enabled: false, intervalDays: 9 } })).status).toBe(400);
+    });
+  });
+
   describe("the Oracle's settings", () => {
     const oracle = {
       enabled: true,
@@ -2033,11 +2129,12 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     });
 
     expect(response.status).toBe(200);
-    // A request without extra roles (an older page) keeps working: none are given.
+    // A request without extra roles or page texts (an older page) keeps working: none are given, the page keeps its texts.
+    const page = expect.objectContaining({ title: "Verifică-ți accesul", runesEnabled: true });
     expect(await response.json()).toEqual({
-      verification: { ...verification, extraRoleIds: [], panelMessageId: "888888888" },
+      verification: { ...verification, extraRoleIds: [], page, panelMessageId: "888888888" },
     });
-    expect(mocks.publishVerificationPanel).toHaveBeenCalledWith(expect.anything(), guildId, { ...verification, extraRoleIds: [] });
+    expect(mocks.publishVerificationPanel).toHaveBeenCalledWith(expect.anything(), guildId, { ...verification, extraRoleIds: [], page });
     expect(mocks.saveChannelConfig).not.toHaveBeenCalled();
     expect(mocks.saveTicketConfig).not.toHaveBeenCalled();
     expect(mocks.saveGuildGameplayConfig).not.toHaveBeenCalled();
