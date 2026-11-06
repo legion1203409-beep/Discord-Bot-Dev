@@ -2761,6 +2761,36 @@ async function loadGuildStateValue(guildId: string, name: string): Promise<strin
   return row?.value ?? null;
 }
 
+/** The bot's own tickets (categories, panel, rating), as JSON (normalized by support-tickets.ts). */
+export async function saveSupportTicketsSetting(guildId: string, value: unknown): Promise<void> {
+  await saveGuildStateValue(guildId, "support_tickets", JSON.stringify(value));
+}
+
+export async function loadSupportTicketsSetting(guildId: string): Promise<unknown | null> {
+  const value = await loadGuildStateValue(guildId, "support_tickets");
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+/** The theme and the chosen names of the channels the panel creates, as JSON (normalized by channel-names.ts). */
+export async function saveChannelNamesSetting(guildId: string, value: unknown): Promise<void> {
+  await saveGuildStateValue(guildId, "channel_names", JSON.stringify(value));
+}
+
+export async function loadChannelNamesSetting(guildId: string): Promise<unknown | null> {
+  const value = await loadGuildStateValue(guildId, "channel_names");
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
 /** The settings of the top of the most active members, as JSON (normalized by active-top.ts). */
 export async function saveActiveTopSettings(guildId: string, settings: unknown): Promise<void> {
   await saveGuildStateValue(guildId, "active_top_config", JSON.stringify(settings));

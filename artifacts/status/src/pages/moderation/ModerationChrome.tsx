@@ -98,6 +98,8 @@ const allItems: Array<{ heading: string; items: NavigationItem[] }> = [
     { id: "tickets-partnership", label: "Parteneriate", description: "Cereri de alianță și anunțul public", href: "/tichete/parteneriate", icon: Ticket, tint: "violet", keywords: "parteneriat alianta pact anunt" },
     { id: "tickets-help", label: "Ajutor și raportări", description: "Cereri de ajutor și raportări", href: "/tichete/ajutor", icon: Ticket, tint: "violet", keywords: "ajutor raport raportare sesizare" },
     { id: "tickets-appeal", label: "Contestații", description: "Revizuirea unei sancțiuni", href: "/tichete/contestatii", icon: Ticket, tint: "violet", keywords: "contestatie apel sanctiune caz" },
+    { id: "tickets-bot", label: "Tichetele botului", description: "Categorii, panou, Preia/Închide, evaluare", href: "/tichete/bot", icon: Ticket, tint: "violet", keywords: "tichete categorii panou meniu preia inchide transcriere" },
+    { id: "tickets-reputation", label: "Reputația staff-ului", description: "Stele după tichete, clasament", href: "/tichete/reputatie", icon: Ticket, tint: "violet", keywords: "reputatie staff stele evaluare topstaff clasament" },
     { id: "tickets-common", label: "Setările tichetelor", description: "Rolul staff-ului și termenele", href: "/tichete/setari", icon: Ticket, tint: "violet", keywords: "termene avertisment stergere rol staff" },
   ] },
   { heading: "Membri și progres", items: [

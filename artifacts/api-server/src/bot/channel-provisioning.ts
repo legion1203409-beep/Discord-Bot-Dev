@@ -155,6 +155,90 @@ const ACTIVITY_LOG_CATEGORIES: Array<{ key: ActivityLogCategory; name: string }>
   { key: "invites", name: "jurnal-invitatii" },
 ];
 
+/* ------------------------------------------------------------------ */
+/* Nume tematice                                                        */
+/* ------------------------------------------------------------------ */
+
+/** Names chosen for the channels the panel creates, by key (bot/channel-names.ts); missing means the built-in one. */
+export type ChannelNameOverrides = Record<string, string>;
+
+let channelNamesLoader: (guildId: string) => Promise<ChannelNameOverrides> = async () => ({});
+
+/** The panel's settings decide the names; tests and older starts keep the built-in ones. */
+export function setChannelNamesLoader(loader: (guildId: string) => Promise<ChannelNameOverrides>): void {
+  channelNamesLoader = loader;
+}
+
+async function loadOverrides(guildId: string): Promise<ChannelNameOverrides> {
+  try {
+    return await channelNamesLoader(guildId);
+  } catch {
+    // A channel with the built-in name is better than no channel.
+    return {};
+  }
+}
+
+/** The chosen name first (it is created with it), then the built-in ones, still recognised when the channel exists. */
+function named(overrides: ChannelNameOverrides, key: string, defaults: readonly string[]): string[] {
+  const chosen = overrides[key]?.trim();
+  return chosen ? [chosen, ...defaults.filter((name) => name !== chosen)] : [...defaults];
+}
+
+export type ChannelNameEntry = { key: string; kind: "category" | "text"; group: string; defaultName: string; purpose: string };
+
+const CATEGORY_PURPOSE: Record<ProvisioningCategoryKey, string> = {
+  gameplay: "categoria jocului și a evenimentelor", admin: "categoria administrației și a tichetelor", filtered: "categoria jurnalelor de moderare automată",
+  links: "categoria filtrării linkurilor", security: "categoria alertelor de securitate", verification: "categoria verificării membrilor noi",
+  reports: "categoria rapoartelor și statisticilor",
+};
+const GAMEPLAY_PURPOSE: Record<string, string> = {
+  main: "canalul principal al jocului, cu cufere și Oracolul", event: "evenimentul Ora Umbrelor", boss: "lupta cu boss-ul (dragonul)",
+  trader: "negustorul jocului", eventTop: "topul evenimentului", bossTop: "topul luptei cu boss-ul", council: "consiliul staff-ului",
+  fratia: "frăția (cufărul comun)",
+};
+const MODERATION_PURPOSE: Record<string, string> = {
+  "autoMod.logChannelId": "jurnalul AutoMod", "antiFlood.logChannelId": "jurnalul anti-flood", "antiRaid.alertChannelId": "alertele anti-raid",
+  "antiSpam.logChannelId": "jurnalul anti-spam", "suspiciousBehavior.alertChannelId": "alertele de comportament suspect",
+  "ai.logChannelId": "jurnalul moderării AI", "audit.channelId": "jurnalul de audit al staff-ului",
+};
+const ACTIVITY_PURPOSE: Record<string, string> = {
+  messages: "jurnalul mesajelor editate și șterse", members: "jurnalul intrărilor și ieșirilor", channels: "jurnalul canalelor",
+  roles: "jurnalul rolurilor", voice: "jurnalul vocii", moderation: "jurnalul acțiunilor de moderare", security: "jurnalul de securitate",
+  invites: "jurnalul invitațiilor",
+};
+const TICKET_PURPOSE: Record<string, string> = {
+  staff: "categoria tichetelor de aplicare în staff", partnership: "categoria tichetelor de parteneriat",
+  help_report: "categoria tichetelor de ajutor și raportare", appeal: "categoria tichetelor de contestație",
+};
+
+/** Every channel and category the panel can create, with its built-in name and what it is for (for the panel and the AI). */
+export const CHANNEL_NAME_CATALOG: readonly ChannelNameEntry[] = [
+  ...CATEGORY_TARGETS.map((target) => ({ key: `category.${target.key}`, kind: "category" as const, group: "Categorii", defaultName: target.names[0]!, purpose: CATEGORY_PURPOSE[target.key] })),
+  ...GAMEPLAY_TARGETS.map((target) => ({ key: target.key, kind: "text" as const, group: target.category === "admin" ? "Administrație" : "Joc", defaultName: target.names[0]!, purpose: GAMEPLAY_PURPOSE[target.key] ?? target.key })),
+  ...TICKET_TARGETS.map((target) => ({ key: `tickets.categories.${target.key}`, kind: "category" as const, group: "Tichete", defaultName: target.names[0]!, purpose: TICKET_PURPOSE[target.key] ?? target.key })),
+  ...CONFIG_MODERATION_TARGETS.map((target) => ({ key: `moderation.${target.key}`, kind: "text" as const, group: "Moderare", defaultName: target.names[0]!, purpose: MODERATION_PURPOSE[target.key] ?? target.key })),
+  { key: "verification.channelId", kind: "text", group: "Verificare", defaultName: "verificare", purpose: "canalul cu butonul de verificare" },
+  { key: DAILY_STATS_TARGET.key, kind: "text", group: "Rapoarte", defaultName: DAILY_STATS_TARGET.names[0]!, purpose: "raportul de statistici" },
+  { key: "activityLog.category", kind: "category", group: "Jurnale", defaultName: "📋・JURNAL SERVER", purpose: "categoria jurnalelor de activitate" },
+  ...ACTIVITY_LOG_CATEGORIES.map((target) => ({ key: `activityLog.${target.key}`, kind: "text" as const, group: "Jurnale", defaultName: target.name, purpose: ACTIVITY_PURPOSE[target.key] ?? target.key })),
+];
+
+/**
+ * A name Discord accepts: text channels lowercase, no spaces (a dash instead), no symbols that Discord strips;
+ * categories keep capitals and spaces. Letters with diacritics, digits, emoji and "・" stay.
+ */
+export function cleanChannelName(value: string, kind: "category" | "text"): string {
+  const trimmed = value.normalize("NFC").replace(/[\u0000-\u001f]/g, "").trim().slice(0, 100);
+  if (kind === "category") return trimmed.replace(/\s+/g, " ");
+  return trimmed
+    .toLocaleLowerCase("ro-RO")
+    .replace(/\s+/g, "-")
+    .replace(/[^\p{L}\p{N}\p{Extended_Pictographic}\uFE0F\u200D・_-]/gu, "")
+    .replace(/-{2,}/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 100);
+}
+
 function activityLogPermissionOverwrites(guild: Guild) {
   const access = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory];
   const botAccess = [...access, PermissionFlagsBits.SendMessages];
@@ -311,12 +395,14 @@ async function provisionGuildChannelsUnlocked(
   const categoryIds = new Map<ProvisioningCategoryKey, string>();
   const selectedCategories = new Set(input.categories ?? PROVISIONING_CATEGORY_KEYS);
   if (!input.dailyStats) selectedCategories.delete("reports");
+  const overrides = await loadOverrides(guild.id);
 
   for (const target of CATEGORY_TARGETS.filter((target) => selectedCategories.has(target.key))) {
+    const names = named(overrides, `category.${target.key}`, target.names);
     const existing = [...channels.values()].find((channel) =>
       channel !== null &&
       isExpectedType(channel, "category") &&
-      target.names.some((name) => normalizeName(channel.name) === normalizeName(name)),
+      names.some((name) => normalizeName(channel.name) === normalizeName(name)),
     );
     if (existing) {
       reused.push({ key: `category.${target.key}`, id: existing.id, name: existing.name, type: "category" });
@@ -326,7 +412,7 @@ async function provisionGuildChannelsUnlocked(
     }
 
     const createdCategory = await guild.channels.create({
-      name: target.names[0],
+      name: names[0]!,
       type: ChannelType.GuildCategory,
     });
     await applyPermissions(guild, createdCategory, input.permissions?.[target.key], input.previousPermissions?.[target.key]?.roleIds);
@@ -335,6 +421,7 @@ async function provisionGuildChannelsUnlocked(
   }
 
   const resolve = async (target: ChannelTarget): Promise<string> => {
+    const names = named(overrides, target.key, target.names);
     const categoryId = categoryIds.get(target.category);
     if (!categoryId) throw new Error(`Categoria ${target.category} nu a putut fi pregătită.`);
     const excludedIds = new Set(target.excludeIds ?? []);
@@ -347,7 +434,7 @@ async function provisionGuildChannelsUnlocked(
         channel !== null &&
         !excludedIds.has(channel.id) &&
         isExpectedType(channel, target.type) &&
-        target.names.some((name) => normalizeName(channel.name) === normalizeName(name)),
+        names.some((name) => normalizeName(channel.name) === normalizeName(name)),
       );
 
     if (existing) {
@@ -361,7 +448,7 @@ async function provisionGuildChannelsUnlocked(
     }
 
     const createdChannel = await guild.channels.create({
-      name: target.names[0],
+      name: names[0]!,
       type: target.type === "category" ? ChannelType.GuildCategory : ChannelType.GuildText,
       ...(target.type === "text" ? { parent: categoryId } : {}),
     });
@@ -473,7 +560,8 @@ async function provisionActivityLogChannelsUnlocked(
     readMessageHistory: true,
     sendMessages: false,
   };
-  const categoryNames = ["📋・JURNAL SERVER", "jurnal server", "server logs"];
+  const overrides = await loadOverrides(guild.id);
+  const categoryNames = named(overrides, "activityLog.category", ["📋・JURNAL SERVER", "jurnal server", "server logs"]);
   const configuredCategory = input.activityLog.categoryId
     ? channels.get(input.activityLog.categoryId)
     : null;
@@ -517,13 +605,14 @@ async function provisionActivityLogChannelsUnlocked(
       }
       continue;
     }
+    const logNames = named(overrides, `activityLog.${target.key}`, [target.name]);
     const configured = channelIds[target.key] ? channels.get(channelIds[target.key]!) : null;
     const existing = configured && isExpectedType(configured, "text")
       ? configured
       : [...channels.values()].find((channel) =>
         channel !== null &&
         isExpectedType(channel, "text") &&
-        normalizeName(channel.name) === normalizeName(target.name),
+        logNames.some((name) => normalizeName(channel.name) === normalizeName(name)),
       );
 
     let logChannel: NonThreadGuildBasedChannel;
@@ -532,7 +621,7 @@ async function provisionActivityLogChannelsUnlocked(
       reused.push({ key: `activityLog.${target.key}`, id: logChannel.id, name: logChannel.name, type: "text" });
     } else {
       logChannel = await guild.channels.create({
-        name: target.name,
+        name: logNames[0]!,
         type: ChannelType.GuildText,
         parent: category.id,
         permissionOverwrites: activityLogPermissionOverwrites(guild),
@@ -583,15 +672,18 @@ async function provisionModerationDestinationUnlocked(
     readMessageHistory: true,
     sendMessages: false,
   };
+  const overrides = await loadOverrides(guild.id);
+  const categoryNames = named(overrides, `category.${categoryTarget.key}`, categoryTarget.names);
+  const channelNames = named(overrides, `moderation.${target.key}`, target.names);
 
   let category = [...channels.values()].find((channel) =>
     channel !== null &&
     isExpectedType(channel, "category") &&
-    categoryTarget.names.some((name) => normalizeName(channel.name) === normalizeName(name)),
+    categoryNames.some((name) => normalizeName(channel.name) === normalizeName(name)),
   );
   if (!category) {
     category = await guild.channels.create({
-      name: categoryTarget.names[0],
+      name: categoryNames[0]!,
       type: ChannelType.GuildCategory,
       permissionOverwrites: privateChannelViewOverwrites(guild),
     });
@@ -606,7 +698,7 @@ async function provisionModerationDestinationUnlocked(
     : [...channels.values()].find((channel) =>
       channel !== null &&
       isExpectedType(channel, "text") &&
-      target.names.some((name) => normalizeName(channel.name) === normalizeName(name)),
+      channelNames.some((name) => normalizeName(channel.name) === normalizeName(name)),
     );
 
   let channel: NonThreadGuildBasedChannel;
@@ -615,7 +707,7 @@ async function provisionModerationDestinationUnlocked(
     channel = existing;
   } else {
     channel = await guild.channels.create({
-      name: target.names[0],
+      name: channelNames[0]!,
       type: ChannelType.GuildText,
       parent: categoryId,
       permissionOverwrites: privateChannelViewOverwrites(guild),

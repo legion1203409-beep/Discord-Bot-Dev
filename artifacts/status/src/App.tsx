@@ -143,6 +143,8 @@ function ModerationApp() {
           <Route path="/tichete/ajutor" component={TicketsGroupPage} />
           <Route path="/tichete/contestatii" component={TicketsGroupPage} />
           <Route path="/tichete/setari" component={TicketsGroupPage} />
+          <Route path="/tichete/bot" component={TicketsGroupPage} />
+          <Route path="/tichete/reputatie" component={TicketsGroupPage} />
           <Route path="/oracol" component={OracleGroupPage} />
           <Route path="/oracol/pornire" component={OracleGroupPage} />
           <Route path="/oracol/conversatie" component={OracleGroupPage} />

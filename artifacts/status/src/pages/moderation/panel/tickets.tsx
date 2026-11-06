@@ -9,13 +9,15 @@ import { Link } from "wouter";
 import { DiscordEmojiText } from "../../../components/moderation/DiscordEmojiText";
 import { useBotDraft } from "./bot-draft";
 import { usePanel } from "./context";
-import { ChannelField, Fields, Fld, Ico, Note, NoteRow, NumField, SectionCard, Seg, SwitchField, cx, type IconName } from "./fields";
+import { ChannelField, Fields, Fld, Ico, IdPicker, Note, NoteRow, NumField, SectionCard, Seg, SwitchField, cx, roleOptions, type IconName } from "./fields";
+import { publishSupportTicketPanel, useStaffReputation } from "../../../hooks/use-moderation-api";
 import { EmojiTextField, ImageUrlField } from "./message-fields";
 import { ModuleNotes, ModuleView } from "./rules";
 import {
   DEADLINES, FLOW_NAMES, MAX_QUESTIONS, TICKETS_MODULES, addQuestion, alliancePublishingOn, categoryOf, deadlinesProblem,
   duplicateKeys, editFlow, flowOf, isFlowOn, isLockedQuestion, moveQuestion, notifiesStaff, partnershipFieldsByQuestion, questionKey,
   removeQuestion, setQuestion, type FlowKind, type TicketFlow, type TicketQuestion, type TicketsModuleId,
+  MAX_SUPPORT_CATEGORIES, newSupportCategory, supportTicketsOf, supportTicketsProblem, type SupportCategory, type SupportTickets,
 } from "./tickets-model";
 
 const MODULE: Record<TicketsModuleId, (typeof TICKETS_MODULES)[number]> = Object.fromEntries(
@@ -23,7 +25,7 @@ const MODULE: Record<TicketsModuleId, (typeof TICKETS_MODULES)[number]> = Object
 ) as Record<TicketsModuleId, (typeof TICKETS_MODULES)[number]>;
 
 export const TICKET_ICONS: Record<TicketsModuleId, IconName> = {
-  staff: "star", partnership: "users", help_report: "info", appeal: "scale", common: "clock",
+  bot: "message", reputation: "stairs", staff: "star", partnership: "users", help_report: "info", appeal: "scale", common: "clock",
 };
 
 function useFlow(kind: FlowKind) {
@@ -442,7 +444,241 @@ function CommonModule() {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* Tichetele botului                                                   */
+/* ------------------------------------------------------------------ */
+
+function SupportCategoryCard({ category, index, count, categories, onChange, onMove, onRemove }: {
+  category: SupportCategory; index: number; count: number; categories: Array<{ id: string; name: string }>;
+  onChange: (change: Partial<SupportCategory>) => void; onMove: (step: -1 | 1) => void; onRemove: () => void;
+}) {
+  const { roles } = usePanel();
+  const id = useId();
+  return (
+    <div className="pn-stk-cat" data-testid={`tickets-bot-category-${index}`}>
+      <div className="pn-stk-cat-head">
+        <input className="pn-inp pn-stk-emoji" value={category.emoji} maxLength={32} aria-label={`Emoji pentru ${category.label}`}
+          data-testid={`tickets-bot-category-${index}-emoji`} onChange={(event) => onChange({ emoji: event.target.value })} />
+        <input className="pn-inp" value={category.label} maxLength={80} aria-label="Numele categoriei" placeholder="Numele categoriei"
+          data-testid={`tickets-bot-category-${index}-label`} onChange={(event) => onChange({ label: event.target.value })} />
+        <div className="pn-stk-cat-tools">
+          <button type="button" className="pn-btn-ghost pn-btn-sm" disabled={index === 0} onClick={() => onMove(-1)} aria-label="Mută mai sus">↑</button>
+          <button type="button" className="pn-btn-ghost pn-btn-sm" disabled={index === count - 1} onClick={() => onMove(1)} aria-label="Mută mai jos">↓</button>
+          <button type="button" className="pn-btn-ghost pn-btn-sm" onClick={onRemove} data-testid={`tickets-bot-category-${index}-remove`} aria-label={`Șterge ${category.label}`}>Șterge</button>
+        </div>
+      </div>
+      {!category.label.trim() ? <p className="pn-err" role="alert">Categoria are nevoie de un nume.</p> : null}
+      <Fields>
+        <Fld wide label="Descrierea din meniu" htmlFor={`${id}-d`} hint="Un rând scurt sub nume, în meniul din Discord.">
+          <input id={`${id}-d`} className="pn-inp" maxLength={100} value={category.description} onChange={(event) => onChange({ description: event.target.value })} />
+        </Fld>
+        <Fld wide label="Primul mesaj din tichet" htmlFor={`${id}-w`} hint="{user} devine mențiunea membrului.">
+          <textarea id={`${id}-w`} className="pn-inp" rows={3} maxLength={1_500} value={category.welcome} data-testid={`tickets-bot-category-${index}-welcome`}
+            onChange={(event) => onChange({ welcome: event.target.value })} />
+        </Fld>
+        <Fld label="Categoria din Discord" htmlFor={`${id}-p`} hint="Unde apar canalele. Goală: aceeași cu a canalului cu panoul.">
+          <select id={`${id}-p`} className="pn-inp" value={category.parentId} onChange={(event) => onChange({ parentId: event.target.value })}>
+            <option value="">Ca panoul</option>
+            {category.parentId && !categories.some((item) => item.id === category.parentId) ? <option value={category.parentId}>Categorie salvată ({category.parentId})</option> : null}
+            {categories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+          </select>
+        </Fld>
+        <SwitchField label="Cere motivul la deschidere" checked={category.askReason} testId={`tickets-bot-category-${index}-reason`}
+          hint="Membrul scrie pe scurt despre ce e vorba înainte să se deschidă canalul."
+          onChange={(next) => onChange({ askReason: next })} />
+        <IdPicker
+          label="Staff doar pentru categoria asta" kind="role" testId={`tickets-bot-category-${index}-roles`} options={roleOptions(roles)} max={10}
+          hint="Gol: o văd rolurile de staff de mai sus. Ales: doar aceste roluri (de ex. doar adminii pentru rapoarte)."
+          selected={category.staffRoleIds} onChange={(next) => onChange({ staffRoleIds: next })}
+        />
+      </Fields>
+    </div>
+  );
+}
+
+function SupportTicketsPreview({ tickets }: { tickets: SupportTickets }) {
+  const color = /^#[0-9a-f]{6}$/i.test(tickets.color) ? tickets.color : "#d8a964";
+  return (
+    <div className="pn-dc" data-testid="tickets-bot-preview">
+      <p className="pn-dc-k">Panoul, în Discord</p>
+      <div className="pn-dc-msg">
+        <span className="pn-dc-av pn-orc-av" aria-hidden="true"><Ico name="eye" /></span>
+        <div className="pn-dc-body">
+          <p className="pn-dc-name"><b>Oracolul Cenușii</b><span>BOT</span></p>
+          <div className="pn-dc-embed" style={{ borderLeftColor: color }}>
+            <p className="pn-dc-title">{tickets.panelTitle}</p>
+            <p className="pn-dc-text">{tickets.panelDescription}</p>
+            <div className="pn-stk-grid">
+              {tickets.categories.slice(0, 10).map((category) => (
+                <div key={category.id} className="pn-dc-field"><b>{category.emoji} {category.label || "…"}</b><span className="pn-ctl-metric">{category.description || " "}</span></div>
+              ))}
+            </div>
+          </div>
+          <div className="pn-stk-menu" aria-hidden="true">Alege categoria tichetului ▾</div>
+        </div>
+      </div>
+      {tickets.rating.enabled ? (
+        <>
+          <p className="pn-dc-k">După închidere, în privat</p>
+          <div className="pn-dc-embed" style={{ borderLeftColor: color }}>
+            <p className="pn-dc-title">⭐ {tickets.rating.question}</p>
+            <p className="pn-dc-text">Te-a ajutat <span className="pn-dc-mention">@Adina</span>. Alege de la 1 la 5 stele.</p>
+            <div className="pn-stk-stars">{[1, 2, 3, 4, 5].map((value) => <span key={value}>⭐ {value}</span>)}</div>
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function BotTicketsModule() {
+  const { config, set, channels, roles } = usePanel();
+  const draft = useBotDraft();
+  const tickets = supportTicketsOf(config);
+  const setTickets = (change: Partial<SupportTickets>) => set(["supportTickets"], { ...tickets, ...change });
+  const setCategories = (categories: SupportCategory[]) => setTickets({ categories });
+  const problem = supportTicketsProblem({ supportTickets: tickets });
+  const discordCategories = (channels ?? []).filter((channel) => channel.type === 4).map((channel) => ({ id: channel.id, name: channel.name }));
+  const [publishing, setPublishing] = useState(false);
+  const [published, setPublished] = useState<{ tone: "info" | "bad"; text: string } | null>(null);
+  const unsaved = draft.changed.length > 0;
+  const publish = async () => {
+    if (!draft.guildId) return;
+    setPublishing(true);
+    setPublished(null);
+    try {
+      await publishSupportTicketPanel(draft.guildId);
+      setPublished({ tone: "info", text: "Panoul e în canal. Membrii pot deschide tichete din meniu." });
+    } catch (error) {
+      setPublished({ tone: "bad", text: error instanceof Error ? error.message : "Panoul nu s-a putut publica." });
+    } finally {
+      setPublishing(false);
+    }
+  };
+  const id = useId();
+  return (
+    <ModuleView module={MODULE.bot} icon={TICKET_ICONS.bot} aside={(
+      <SwitchField label="Tichetele botului" checked={tickets.enabled} testId="tickets-bot-switch" onChange={(next) => setTickets({ enabled: next })} />
+    )}>
+      <ModuleNotes>
+        {problem ? <Note tone="bad" role="alert">{problem}</Note> : null}
+        <Note tone="plain">E separat de fluxurile de mai jos (Aplicații, Parteneriate…), care pun formulare în canalele create de alt bot. Pot merge amândouă.</Note>
+      </ModuleNotes>
+      <div className="pn-vsplit">
+        <div className="pn-vsplit-main">
+          <SectionCard title="Panoul și staff-ul" testId="tickets-bot-panel">
+            <Fields>
+              <ChannelField label="Canalul panoului" selectLabel="Canalul panoului de tichete" value={tickets.panelChannelId || null} channels={channels} wide
+                hint="Aici botul pune mesajul cu meniul de categorii." onChange={(next) => setTickets({ panelChannelId: next ?? "" })} />
+              <IdPicker label="Rolurile staff-ului" kind="role" testId="tickets-bot-staff" options={roleOptions(roles)} max={10}
+                hint="Văd toate tichetele, le pot prelua și închide, și primesc ping la un tichet nou."
+                selected={tickets.staffRoleIds} onChange={(next) => setTickets({ staffRoleIds: next })} />
+              <ChannelField label="Jurnalul tichetelor" selectLabel="Canalul jurnalului de tichete" value={tickets.logChannelId || null} channels={channels} wide
+                hint="Transcrierile, închiderile și evaluările. Un canal doar pentru staff." onChange={(next) => setTickets({ logChannelId: next ?? "" })} />
+              <Fld label="Titlul panoului" htmlFor={`${id}-t`}>
+                <input id={`${id}-t`} className="pn-inp" maxLength={256} value={tickets.panelTitle} onChange={(event) => setTickets({ panelTitle: event.target.value })} />
+              </Fld>
+              <Fld label="Culoarea" htmlFor={`${id}-c`}>
+                <input id={`${id}-c`} className="pn-inp pn-inp-mono" maxLength={7} value={tickets.color} onChange={(event) => setTickets({ color: event.target.value.trim() })} />
+              </Fld>
+              <Fld wide label="Textul panoului" htmlFor={`${id}-x`}>
+                <textarea id={`${id}-x`} className="pn-inp" rows={2} maxLength={2_000} value={tickets.panelDescription} onChange={(event) => setTickets({ panelDescription: event.target.value })} />
+              </Fld>
+              <Seg label="Tichete deschise odată de un membru" testId="tickets-bot-max" value={String(tickets.maxOpenPerUser)}
+                options={[1, 2, 3, 5].map((value) => [String(value), String(value)] as const)} onChange={(next) => setTickets({ maxOpenPerUser: Number(next) })} />
+              <SwitchField label="Șterge canalul după închidere" checked={tickets.deleteAfterClose} testId="tickets-bot-delete"
+                hint="Transcrierea rămâne în jurnal. Oprit: canalul rămâne închis, doar de citit."
+                onChange={(next) => setTickets({ deleteAfterClose: next })} />
+              <Fld wide label="Publică panoul" hint={unsaved ? "Salvează întâi (bara de jos), apoi publică." : tickets.panelMessageId ? "Panoul există: publicarea îl actualizează, nu face altul." : "Pune mesajul cu meniul în canalul ales."}>
+                <div>
+                  <button type="button" className="pn-btn pn-btn-sm" data-testid="tickets-bot-publish" disabled={publishing || unsaved || !tickets.enabled || !tickets.panelChannelId}
+                    onClick={() => void publish()}><Ico name="send" />{publishing ? "Se publică…" : tickets.panelMessageId ? "Actualizează panoul" : "Publică panoul"}</button>
+                </div>
+              </Fld>
+              {published ? <NoteRow tone={published.tone} role={published.tone === "bad" ? "alert" : undefined}>{published.text}</NoteRow> : null}
+            </Fields>
+          </SectionCard>
+          <SectionCard title="Categorii" small={`${tickets.categories.length} din ${MAX_SUPPORT_CATEGORIES}`} testId="tickets-bot-categories">
+            <div className="pn-stk-cats">
+              {tickets.categories.map((category, index) => (
+                <SupportCategoryCard
+                  key={category.id} category={category} index={index} count={tickets.categories.length} categories={discordCategories}
+                  onChange={(change) => setCategories(tickets.categories.map((item, at) => (at === index ? { ...item, ...change } : item)))}
+                  onMove={(step) => {
+                    const next = [...tickets.categories];
+                    const [moved] = next.splice(index, 1);
+                    next.splice(index + step, 0, moved!);
+                    setCategories(next);
+                  }}
+                  onRemove={() => setCategories(tickets.categories.filter((_, at) => at !== index))}
+                />
+              ))}
+              <button type="button" className="pn-btn-ghost pn-btn-sm" data-testid="tickets-bot-add" disabled={tickets.categories.length >= MAX_SUPPORT_CATEGORIES}
+                onClick={() => setCategories([...tickets.categories, newSupportCategory(tickets.categories.map((item) => item.id))])}>
+                <Ico name="plus" />Adaugă o categorie
+              </button>
+            </div>
+          </SectionCard>
+          <SectionCard title="Evaluarea staff-ului" small={tickets.rating.enabled ? "pornită" : "oprită"} testId="tickets-bot-rating">
+            <Fields>
+              <SwitchField label="Întreabă membrul la închidere" checked={tickets.rating.enabled} testId="tickets-bot-rating-switch"
+                hint="Primește în privat 1–5 stele pentru cine l-a ajutat (cine a preluat tichetul sau cine din staff l-a închis), cu comentariu dacă vrea. Dacă are mesajele private închise, întrebarea apare în tichet."
+                onChange={(next) => setTickets({ rating: { ...tickets.rating, enabled: next } })} />
+              {tickets.rating.enabled ? (
+                <Fld wide label="Întrebarea" htmlFor={`${id}-q`}>
+                  <input id={`${id}-q`} className="pn-inp" maxLength={200} value={tickets.rating.question} onChange={(event) => setTickets({ rating: { ...tickets.rating, question: event.target.value } })} />
+                </Fld>
+              ) : null}
+            </Fields>
+          </SectionCard>
+        </div>
+        <aside className="pn-vsplit-side" aria-label="Previzualizare"><SupportTicketsPreview tickets={tickets} /></aside>
+      </div>
+    </ModuleView>
+  );
+}
+
+const REPUTATION_RANGES = [["7", "7 zile"], ["30", "30 de zile"], ["90", "90 de zile"], ["all", "Tot"]] as const;
+
+function ReputationModule() {
+  const draft = useBotDraft();
+  const [range, setRange] = useState<"7" | "30" | "90" | "all">("30");
+  const { rows, error } = useStaffReputation(draft.guildId ?? null, range);
+  return (
+    <ModuleView module={MODULE.reputation} icon={TICKET_ICONS.reputation}>
+      <SectionCard title="Clasamentul staff-ului" testId="tickets-reputation">
+        <Fields>
+          <Seg label="Perioada" testId="tickets-reputation-range" value={range} options={REPUTATION_RANGES} onChange={(next) => setRange(next as typeof range)} />
+          {error ? <NoteRow tone="bad" role="alert">{error}</NoteRow> : null}
+          {!rows && !error ? <NoteRow tone="plain">Se încarcă…</NoteRow> : null}
+          {rows && !rows.length ? <NoteRow tone="plain">Încă nicio evaluare în perioada asta. Evaluările vin după tichetele închise din „Tichetele botului”.</NoteRow> : null}
+          {rows?.length ? (
+            <div className="pn-rep" data-testid="tickets-reputation-rows">
+              {rows.map((row, index) => (
+                <div key={row.staffId} className="pn-rep-row">
+                  <span className="pn-rep-place">{["🥇", "🥈", "🥉"][index] ?? `${index + 1}.`}</span>
+                  {row.avatarUrl ? <img className="pn-rep-av" src={row.avatarUrl} alt="" /> : <span className="pn-rep-av" aria-hidden="true" />}
+                  <span className="pn-rep-name"><b>{row.name ?? `@${row.staffId}`}</b><small>{row.handled} {row.handled === 1 ? "tichet" : "tichete"} · {row.ratings} {row.ratings === 1 ? "evaluare" : "evaluări"}</small></span>
+                  <span className="pn-rep-avg" aria-label={`Media ${row.average.toFixed(1)} din 5`}>{row.average.toFixed(1).replace(".", ",")} ⭐</span>
+                  <span className="pn-rep-dist" aria-hidden="true">
+                    {[5, 4, 3, 2, 1].map((star) => (
+                      <i key={star} style={{ width: `${row.ratings ? (row.distribution[star - 1]! / row.ratings) * 100 : 0}%` }} data-star={star} />
+                    ))}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <NoteRow tone="plain">Ordinea ține cont și de câte evaluări are fiecare: o singură notă de 5 nu bate douăzeci de 4. În Discord: /topstaff.</NoteRow>
+        </Fields>
+      </SectionCard>
+    </ModuleView>
+  );
+}
+
 export const TICKET_VIEWS: Record<TicketsModuleId, () => React.JSX.Element> = {
+  bot: BotTicketsModule,
+  reputation: ReputationModule,
   staff: () => <FlowModule kind="staff" />,
   partnership: () => <FlowModule kind="partnership" />,
   help_report: () => <FlowModule kind="help_report" />,

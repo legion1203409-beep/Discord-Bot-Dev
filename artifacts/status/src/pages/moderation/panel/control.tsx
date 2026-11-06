@@ -3,10 +3,10 @@
  * acces, Botul pe server. Logica e în control-model.ts; ciorna, salvarea și
  * crearea canalelor în bot-draft.tsx.
  */
-import React, { useId, useMemo, useState } from "react";
+import React, { useEffect, useId, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { DiscordEmojiText } from "../../../components/moderation/DiscordEmojiText";
-import { useActiveGuild, useInviteStats, useSession, type ChannelPermissionConfig, type InviteStatsRange } from "../../../hooks/use-moderation-api";
+import { useActiveGuild, useChannelNames, useInviteStats, useSession, type ChannelPermissionConfig, type InviteStatsRange } from "../../../hooks/use-moderation-api";
 import { useToast } from "../../../hooks/use-toast";
 import { useBotDraft } from "./bot-draft";
 import { usePanel } from "./context";
@@ -604,6 +604,99 @@ function CategoryAccess({ categoryKey }: { categoryKey: ProvisionKey }) {
   );
 }
 
+/** The names the panel gives the channels it creates, in the server's theme (with the AI's help). */
+function ThemedNamesCard({ guildId }: { guildId: string | null }) {
+  const { state, error, loading, save, suggest } = useChannelNames(guildId);
+  const [theme, setTheme] = useState("");
+  const [names, setNames] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState<"ai" | "save" | null>(null);
+  const [message, setMessage] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
+  useEffect(() => {
+    setTheme(state?.theme ?? "");
+    setNames(state?.names ?? {});
+  }, [state]);
+  if (!guildId) return null;
+  const changed = Boolean(state) && (theme.trim() !== state!.theme || JSON.stringify(names) !== JSON.stringify(state!.names));
+  const groups = [...new Set((state?.catalog ?? []).map((entry) => entry.group))];
+  const generate = async () => {
+    setBusy("ai");
+    setMessage(null);
+    try {
+      const proposed = await suggest(theme);
+      if (proposed) {
+        setNames(proposed);
+        setMessage({ tone: "ok", text: `AI-ul a propus ${Object.keys(proposed).length} nume. Verifică-le, schimbă ce vrei, apoi salvează.` });
+      }
+    } catch (err) {
+      setMessage({ tone: "bad", text: err instanceof Error ? err.message : "AI-ul nu a răspuns." });
+    } finally {
+      setBusy(null);
+    }
+  };
+  const store = async () => {
+    setBusy("save");
+    setMessage(null);
+    try {
+      const clean = Object.fromEntries(Object.entries(names).filter(([, value]) => value.trim()));
+      await save(theme.trim(), clean);
+      setMessage({ tone: "ok", text: "Numele s-au salvat. Canalele create de acum încolo le vor folosi." });
+    } catch (err) {
+      setMessage({ tone: "bad", text: err instanceof Error ? err.message : "Numele nu s-au putut salva." });
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <SectionCard title="Nume tematice" small="doar pentru canalele noi" testId="control-names">
+      <Fields>
+        <NoteRow tone="plain">
+          Canalele și categoriile pe care le creează panoul primesc numele de aici. Cele care există deja nu se redenumesc,
+          iar un canal cu numele de bază e recunoscut în continuare, deci nu se dublează nimic.
+        </NoteRow>
+        {loading ? <NoteRow tone="plain">Se încarcă…</NoteRow> : null}
+        {error ? <NoteRow tone="bad" role="alert">{error}</NoteRow> : null}
+        {state ? (
+          <>
+            <Fld wide label="Tema serverului" hint="De exemplu: „regat medieval, cenușă și foc” sau „stație spațială”.">
+              <div className="pn-set-colors">
+                <input className="pn-inp" maxLength={300} value={theme} data-testid="control-names-theme" aria-label="Tema serverului"
+                  onChange={(event) => setTheme(event.target.value)} placeholder="regat medieval, cenușă și foc" />
+                <button type="button" className="pn-btn pn-btn-sm" data-testid="control-names-ai" disabled={!theme.trim() || !state.aiAvailable || busy !== null}
+                  onClick={() => void generate()}>
+                  <Ico name="orb" />{busy === "ai" ? "Se generează…" : "Generează cu AI"}
+                </button>
+              </div>
+            </Fld>
+            {!state.aiAvailable ? <NoteRow tone="plain">AI-ul nu e configurat pe bot (lipsește cheia OpenAI), dar poți scrie numele de mână.</NoteRow> : null}
+            {groups.map((group) => (
+              <div key={group} className="pn-names-group" data-testid={`control-names-group-${group}`}>
+                <p className="pn-names-title">{group}</p>
+                {state.catalog.filter((entry) => entry.group === group).map((entry) => (
+                  <label key={entry.key} className="pn-names-row">
+                    <span className="pn-names-purpose">{entry.purpose}</span>
+                    <input
+                      className="pn-inp pn-inp-mono" value={names[entry.key] ?? ""} placeholder={entry.defaultName} maxLength={100}
+                      aria-label={`Numele pentru ${entry.purpose}`} data-testid={`control-names-${entry.key}`}
+                      onChange={(event) => setNames((current) => ({ ...current, [entry.key]: event.target.value }))}
+                    />
+                  </label>
+                ))}
+              </div>
+            ))}
+            {message ? <NoteRow tone={message.tone === "ok" ? "info" : "bad"} role={message.tone === "bad" ? "alert" : undefined}>{message.text}</NoteRow> : null}
+            <div className="pn-names-actions">
+              <button type="button" className="pn-btn-ghost pn-btn-sm" data-testid="control-names-reset" disabled={busy !== null || !Object.keys(names).length}
+                onClick={() => setNames({})}>Înapoi la numele de bază</button>
+              <button type="button" className="pn-btn pn-btn-sm" data-testid="control-names-save" disabled={!changed || busy !== null}
+                onClick={() => void store()}><Ico name="check" />{busy === "save" ? "Se salvează…" : "Salvează numele"}</button>
+            </div>
+          </>
+        ) : null}
+      </Fields>
+    </SectionCard>
+  );
+}
+
 function ChannelsModule() {
   const draft = useBotDraft();
   const { config, saved, capabilities } = usePanel();
@@ -687,6 +780,7 @@ function ChannelsModule() {
           </div>
         </div>
       ) : null}
+      <ThemedNamesCard guildId={draft.guildId ?? null} />
     </ModuleView>
   );
 }
