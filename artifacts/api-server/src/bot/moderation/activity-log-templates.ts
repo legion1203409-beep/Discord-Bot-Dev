@@ -43,6 +43,9 @@ export function renderActivityLogTemplate(template: string, context: {
     old_nickname: text(detail.oldNickname), new_nickname: text(detail.newNickname),
     duration: detail.durationMinutes == null ? "—" : `${text(detail.durationMinutes)} minute`,
     error: text(detail.error),
+    code: text(detail.inviteCode),
+    inviter: snowflake(detail.inviterId) ? `<@${detail.inviterId}>` : actor,
+    uses: detail.maxUses ? `${text(detail.uses ?? 0)} din ${text(detail.maxUses)}` : text(detail.uses ?? "nelimitat"),
   };
   if (memberId) {
     for (const variable of ["member_name", "username", "account_created_at", "account_created_at_relative", "account_age", "account_age_years", "account_age_days", "server_joined_at", "server_joined_at_relative", "server_left_at", "server_left_at_relative", "server_duration"]) {

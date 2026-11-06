@@ -238,7 +238,7 @@ export function clockTime(value: string | Date): string {
 /* ------------------------------------------------------------------ */
 
 export const AUDIT_CATEGORY_ICONS: Record<AuditEventCategory, IconName> = {
-  messages: "message", members: "users", channels: "hash", roles: "tag", voice: "mega", moderation: "gavel", security: "shield", other: "info",
+  messages: "message", members: "users", channels: "hash", roles: "tag", voice: "mega", moderation: "gavel", security: "shield", invites: "send", other: "info",
 };
 
 export const AUDIT_CATEGORY_OPTIONS: ReadonlyArray<readonly [string, string]> = [
