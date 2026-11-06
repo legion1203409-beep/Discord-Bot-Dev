@@ -31,7 +31,7 @@ const primaryItems: NavigationItem[] = [
   { id: "cases", label: "Cazuri și jurnale", description: "Cazuri, audit și jurnale de activitate", href: "/jurnale", icon: History, tint: "blue", keywords: "cazuri dosare logs audit jurnale activitate" },
   { id: "verification", label: "Verificare", description: "Rolurile primite, panoul și verificarea manuală", href: "/verificare", icon: BadgeCheck, tint: "green", keywords: "verification verificare membri roluri manual" },
   { id: "tickets", label: "Tichete", description: "Aplicații, parteneriate, ajutor și contestații", href: "/tichete", icon: Ticket, tint: "violet", keywords: "tichete tickets aplicatii parteneriate ajutor raportari contestatii" },
-  { id: "rpg", label: "RPG", description: "Ranguri și progresul comunității", href: "/ranguri-activitate", icon: Trophy, tint: "gold", keywords: "ranguri activitate joc" },
+  { id: "rpg", label: "RPG", description: "Ranguri și progresul comunității", href: "/ranguri-activitate", icon: Trophy, tint: "gold", keywords: "ranguri activitate joc xp niveluri nivel rank" },
   { id: "oracle", label: "Oracol", description: "Conversația AI, tonul și profețiile", href: "/oracol", icon: MessageCircle, tint: "violet", keywords: "oracol oracle ai chat conversatie ton profetie startai stopai" },
   { id: "settings", label: "Setări bot", description: "Acces staff, notificări și mesajele către membri", href: "/setari", icon: Settings2, tint: "ember", keywords: "setari config settings acces staff notificari embed privat dm bun venit plecare" },
   { id: "assistant", label: "Asistent", description: "Ajutor offline și navigare în panou", href: "/asistent", icon: Bot, tint: "gold", keywords: "assistant help cauta" },
@@ -102,7 +102,7 @@ const allItems: Array<{ heading: string; items: NavigationItem[] }> = [
     primary("verification"),
     { id: "verification-messages", label: "Mesajele verificării", description: "Textul panoului, butonul și imaginile", href: "/verificare/mesaje", icon: MessageCircle, tint: "green", keywords: "panou buton text emoji imagine" },
     { id: "verification-members", label: "Membri verificați", description: "Cine e verificat, verificare manuală și roluri lipsă", href: "/verificare/membri", icon: Users, tint: "green", keywords: "verificare manuala membri roluri lipsa categorie" },
-    { id: "rank-settings", label: "Ranguri de activitate", description: "Configurarea progresului", href: "/ranguri-activitate", icon: Trophy, tint: "green" },
+    { id: "rank-settings", label: "Niveluri și XP", description: "Cardul /rank, anunțuri și roluri", href: "/ranguri-activitate", icon: Trophy, tint: "green" },
   ] },
   { heading: "Ajutor", items: [primary("assistant")] },
 ];
