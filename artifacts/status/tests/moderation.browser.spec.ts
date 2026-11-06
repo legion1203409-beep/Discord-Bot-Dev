@@ -3175,6 +3175,46 @@ test.describe("bot control page", () => {
     });
   });
 
+  test("publishes a recruitment panel with a button that makes personal invites", async ({ page }) => {
+    const panelBodies: any[] = [];
+    let published = 0;
+    let saved = { channelId: "", title: "🔗 Adu-ți prietenii în regat", description: "Apasă butonul.", buttonLabel: "Generează invitația mea", color: "#e2b467", imageUrl: "", messageId: "" };
+    await page.route("**/api/moderation/guilds/*/recruitment-panel", async (route) => {
+      if (route.request().method() === "PUT") {
+        const body = JSON.parse(route.request().postData() || "{}");
+        panelBodies.push(body);
+        saved = { ...saved, ...body };
+      }
+      await route.fulfill({ json: { config: saved } });
+    });
+    await page.route("**/api/moderation/guilds/*/recruitment-panel/publish", async (route) => {
+      published += 1;
+      saved = { ...saved, messageId: "888888888" };
+      await route.fulfill({ json: { config: saved, edited: false } });
+    });
+    const { putBodies } = await openControl(page, "/moderare/control/recrutare");
+    const card = page.getByTestId("control-recruitment-panel");
+    await expect(card).toContainText("nepublicat");
+    // The program is off: the panel cannot be published yet.
+    await expect(page.getByTestId("control-recruitment-panel-publish")).toBeDisabled();
+
+    await page.getByTestId("control-recruitment-switch").click();
+    await page.getByRole("combobox", { name: "Canalul invitațiilor personale" }).selectOption("444444444");
+    await page.getByTestId("button-save-control").click();
+    await expect.poll(() => putBodies.get(guilds[0].id)?.length).toBe(1);
+
+    await expect(page.getByTestId("control-recruitment-panel-problem")).toContainText("canalul");
+    await page.getByRole("combobox", { name: "Canalul panoului de recrutare" }).selectOption("777777777");
+    await page.getByTestId("control-recruitment-panel-button").locator("input, textarea").first().fill("Vreau invitația mea");
+    await expect(page.getByTestId("control-recruitment-panel-preview")).toContainText("Vreau invitația mea");
+    await page.getByTestId("control-recruitment-panel-publish").click();
+    await expect.poll(() => published).toBe(1);
+    expect(panelBodies[0]).toMatchObject({ channelId: "777777777", buttonLabel: "Vreau invitația mea" });
+    expect(panelBodies[0]).not.toHaveProperty("messageId");
+    await expect(card).toContainText("publicat");
+    await expect(page.getByTestId("control-recruitment-panel-publish")).toContainText("actualizează");
+  });
+
   test("saves a category's access first, then creates its channels with that access", async ({ page }) => {
     const { putBodies, provisions } = await openControl(page, "/moderare/control/canale");
     await page.getByTestId("control-category-admin-access").click();

@@ -2751,6 +2751,21 @@ async function loadGuildStateValue(guildId: string, name: string): Promise<strin
   return row?.value ?? null;
 }
 
+/** The recruitment panel (bot/recruitment-panel.ts): the message with the "make my invite" button, as JSON. */
+export async function saveRecruitmentPanelSetting(guildId: string, value: unknown): Promise<void> {
+  await saveGuildStateValue(guildId, "recruitment_panel", JSON.stringify(value));
+}
+
+export async function loadRecruitmentPanelSetting(guildId: string): Promise<unknown | null> {
+  const value = await loadGuildStateValue(guildId, "recruitment_panel");
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
 /** The Oracle's chat and prophecy settings of a server, as JSON (normalized by oracle-settings.ts). */
 export async function saveOracleSettings(guildId: string, settings: unknown): Promise<void> {
   await saveGuildStateValue(guildId, ORACLE_SETTINGS_KEY, JSON.stringify(settings));

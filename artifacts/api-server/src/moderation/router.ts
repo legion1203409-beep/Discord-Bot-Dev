@@ -1,4 +1,5 @@
 import { PUBLIC_DISCORD_INVITE } from "../lib/discord-invite";
+import { RECRUITMENT_PANEL_LIMITS, loadRecruitmentPanel, publishRecruitmentPanel, saveRecruitmentPanel } from "../bot/recruitment-panel";
 import { SUPER_ADMIN_ID } from "../bot/constants";
 import { GUILD_ID } from "../bot/index";
 import { setupDraftSchema, setupDraftSaveSchema, setupTemplate } from "./server-setup-schema";
@@ -2750,6 +2751,50 @@ router.post("/guilds/:guildId/bot-control/leave", asyncRoute(async (req, res) =>
     throw new ModerationAuthError(502, "Discord nu a confirmat ieșirea botului de pe server.");
   }
   res.status(200).json({ left: true, guildId, guildName });
+}));
+
+/* The recruitment panel: a bot message with a "make my invite" button (bot/recruitment-panel.ts). */
+const recruitmentPanelSchema = z.object({
+  channelId: snowflake.or(z.literal("")),
+  title: z.string().trim().min(1, "Titlul panoului nu poate fi gol.").max(RECRUITMENT_PANEL_LIMITS.title),
+  description: z.string().trim().min(1, "Textul panoului nu poate fi gol.").max(RECRUITMENT_PANEL_LIMITS.description),
+  buttonLabel: z.string().trim().min(1, "Textul butonului nu poate fi gol.").max(RECRUITMENT_PANEL_LIMITS.buttonLabel),
+  color: z.string().regex(/^#[0-9a-f]{6}$/i, "Alege o culoare validă."),
+  imageUrl: z.string().trim().max(2_000).refine((value) => value === "" || /^https:\/\/\S+$/i.test(value), "Imaginea trebuie să fie un link HTTPS."),
+}).strict();
+
+router.get("/guilds/:guildId/recruitment-panel", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  await sessionAndGuild(req, guildId, "config");
+  res.set("Cache-Control", "no-store").json({ config: await loadRecruitmentPanel(guildId) });
+}));
+
+router.put("/guilds/:guildId/recruitment-panel", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  const session = await sessionAndGuild(req, guildId, "config", true);
+  const input = parse(recruitmentPanelSchema, req.body);
+  const current = await loadRecruitmentPanel(guildId);
+  // A new channel means a new message; the same channel keeps editing the one already posted.
+  const messageId = input.channelId === current.channelId ? current.messageId : "";
+  const config = await saveRecruitmentPanel(guildId, { ...input, messageId });
+  await moderationStore.writeAudit({
+    guildId, actorId: session.userId, eventType: "recruitment.panel_saved", targetType: "guild", targetId: guildId, detail: { channelId: config.channelId },
+  }).catch(() => undefined);
+  res.set("Cache-Control", "no-store").json({ config });
+}));
+
+router.post("/guilds/:guildId/recruitment-panel/publish", asyncRoute(async (req, res) => {
+  const guildId = parse(snowflake, req.params.guildId);
+  const session = await sessionAndGuild(req, guildId, "config", true);
+  const client = getModerationClient();
+  if (!client?.isReady()) throw new ModerationAuthError(503, "Botul nu e online acum. Încearcă din nou în câteva momente.");
+  const tracking = await loadInviteTrackingConfig(guildId);
+  const result = await publishRecruitmentPanel(client, guildId, tracking.recruitment);
+  if (!result.ok) throw new ModerationAuthError(400, result.error);
+  await moderationStore.writeAudit({
+    guildId, actorId: session.userId, eventType: "recruitment.panel_published", targetType: "channel", targetId: result.config.channelId, detail: { edited: result.edited },
+  }).catch(() => undefined);
+  res.set("Cache-Control", "no-store").json({ config: result.config, edited: result.edited });
 }));
 
 router.get("/guilds/:guildId/activity-ranks", asyncRoute(async (req, res) => {

@@ -3,10 +3,10 @@
  * acces, Botul pe server. Logica e în control-model.ts; ciorna, salvarea și
  * crearea canalelor în bot-draft.tsx.
  */
-import React, { useId, useMemo, useState } from "react";
+import React, { useEffect, useId, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { DiscordEmojiText } from "../../../components/moderation/DiscordEmojiText";
-import { useActiveGuild, useInviteStats, useSession, type ChannelPermissionConfig, type InviteStatsRange } from "../../../hooks/use-moderation-api";
+import { apiFetchWithMeta, useActiveGuild, useInviteStats, useSession, type ChannelPermissionConfig, type InviteStatsRange } from "../../../hooks/use-moderation-api";
 import { useToast } from "../../../hooks/use-toast";
 import { useBotDraft } from "./bot-draft";
 import { usePanel } from "./context";
@@ -265,6 +265,112 @@ function MilestonesCard() {
   );
 }
 
+type RecruitmentPanel = { channelId: string; title: string; description: string; buttonLabel: string; color: string; imageUrl: string; messageId: string };
+const PANEL_LIMITS = { title: 256, description: 2_000, buttonLabel: 80 } as const;
+
+function recruitmentPanelProblem(panel: RecruitmentPanel): string | null {
+  if (!panel.channelId) return "Alege canalul în care apare panoul.";
+  for (const [key, label] of [["title", "Titlul"], ["description", "Textul"], ["buttonLabel", "Textul butonului"]] as const) {
+    const value = panel[key].trim();
+    if (!value) return `${label} nu poate fi gol.`;
+    if (value.length > PANEL_LIMITS[key]) return `${label} are prea multe caractere (cel mult ${PANEL_LIMITS[key]}).`;
+  }
+  if (panel.imageUrl && !/^https:\/\/\S+$/i.test(panel.imageUrl)) return "Imaginea trebuie să fie un link HTTPS.";
+  return null;
+}
+
+/** The bot's message with the "make my invite" button: its texts, a preview and „Salvează și publică”. */
+function RecruitmentPanelCard() {
+  const { channels, config } = usePanel();
+  const draft = useBotDraft();
+  const { guildId } = useActiveGuild();
+  const { toast } = useToast();
+  const [panel, setPanel] = useState<RecruitmentPanel | null>(null);
+  const [loadError, setLoadError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const recruitment = config.inviteTracking.recruitment;
+  const savedOn = Boolean(draft.saved?.inviteTracking?.recruitment?.enabled);
+
+  useEffect(() => {
+    if (!guildId) return;
+    let live = true;
+    setPanel(null); setLoadError("");
+    void apiFetchWithMeta<{ config: RecruitmentPanel }>(`/guilds/${guildId}/recruitment-panel`)
+      .then(({ data }) => { if (live) setPanel(data.config); })
+      .catch((error: unknown) => { if (live) setLoadError(error instanceof Error ? error.message : "Panoul nu a putut fi încărcat."); });
+    return () => { live = false; };
+  }, [guildId]);
+
+  if (loadError) return <SectionCard title="Panoul cu buton" testId="control-recruitment-panel"><Fields><NoteRow tone="bad">{loadError}</NoteRow></Fields></SectionCard>;
+  if (!panel) return <SectionCard title="Panoul cu buton" testId="control-recruitment-panel"><Fields><NoteRow tone="plain"><Spinner /> Se încarcă…</NoteRow></Fields></SectionCard>;
+
+  const edit = (key: keyof RecruitmentPanel, value: string) => setPanel({ ...panel, [key]: value });
+  const problem = recruitmentPanelProblem(panel);
+  const publish = async () => {
+    if (!guildId || problem) return;
+    setBusy(true);
+    try {
+      const { channelId, title, description, buttonLabel, color, imageUrl } = panel;
+      await apiFetchWithMeta(`/guilds/${guildId}/recruitment-panel`, { method: "PUT", body: JSON.stringify({ channelId, title, description, buttonLabel, color, imageUrl }) });
+      const { data } = await apiFetchWithMeta<{ config: RecruitmentPanel; edited: boolean }>(`/guilds/${guildId}/recruitment-panel/publish`, { method: "POST", body: "{}" });
+      setPanel(data.config);
+      toast({ title: data.edited ? "Panoul a fost actualizat" : "Panoul a fost publicat", description: "Membrii își pot face invitația cu un click." });
+    } catch (error) {
+      toast({ variant: "destructive", title: "Panoul nu a fost publicat", description: error instanceof Error ? error.message : "Încearcă din nou." });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <SectionCard title="Panoul cu buton" small={panel.messageId ? "publicat" : "nepublicat"} testId="control-recruitment-panel">
+      <Fields>
+        <NoteRow tone="plain">Botul postează un mesaj cu butonul „{panel.buttonLabel || "Generează invitația mea"}”. Cine apasă primește invitația personală, la fel ca la /invita, vizibilă doar pentru el.</NoteRow>
+        <ChannelField
+          label="Canalul panoului" selectLabel="Canalul panoului de recrutare" value={panel.channelId || null} channels={channels} wide
+          hint="Un canal în care membrii pot vedea mesajele botului, de exemplu #recrutare."
+          onChange={(next) => edit("channelId", next ?? "")}
+        />
+        <EmojiTextField label="Titlul" value={panel.title} onChange={(next) => edit("title", next)} max={PANEL_LIMITS.title} testId="control-recruitment-panel-title" />
+        <EmojiTextField label="Textul" value={panel.description} onChange={(next) => edit("description", next)} max={PANEL_LIMITS.description} multiline rows={4} testId="control-recruitment-panel-description" />
+        <EmojiTextField label="Textul butonului" value={panel.buttonLabel} onChange={(next) => edit("buttonLabel", next)} max={PANEL_LIMITS.buttonLabel} testId="control-recruitment-panel-button" />
+        <Fld label="Culoarea">
+          <div className="pn-set-colors">
+            <label className="pn-set-picker" aria-label="Culoarea panoului de recrutare">
+              <input type="color" value={panel.color} onChange={(event) => edit("color", event.target.value)} />
+            </label>
+            <span className="pn-inp pn-inp-mono pn-set-hex">{panel.color.toUpperCase()}</span>
+          </div>
+        </Fld>
+        <ImageUrlField label="Imaginea" hint="Opțional: apare mare, sub text." value={panel.imageUrl} onChange={(next) => edit("imageUrl", next)} testId="control-recruitment-panel-image" />
+        {!savedOn ? <NoteRow tone="warn">Pornește programul de recrutare și salvează, apoi publică panoul.</NoteRow> : null}
+        {problem ? <NoteRow tone="bad" testId="control-recruitment-panel-problem">{problem}</NoteRow> : null}
+        <div className="pn-fld pn-wide">
+          <button type="button" className="pn-btn" disabled={busy || Boolean(problem) || !savedOn} onClick={() => void publish()} data-testid="control-recruitment-panel-publish">
+            {busy ? <Spinner /> : <Ico name="send" />}{panel.messageId ? "Salvează și actualizează panoul" : "Salvează și publică panoul"}
+          </button>
+        </div>
+      </Fields>
+      <div className="pn-dc pn-rec-prev" data-testid="control-recruitment-panel-preview">
+        <p className="pn-dc-k">Așa apare în Discord</p>
+        <div className="pn-dc-msg">
+          <span className="pn-dc-av pn-orc-av" aria-hidden="true"><Ico name="eye" /></span>
+          <div className="pn-dc-body">
+            <p className="pn-dc-name"><b>Oracolul Cenușii</b><span>BOT</span></p>
+            <div className="pn-dc-embed" style={{ borderLeftColor: panel.color }}>
+              <p className="pn-dc-title"><DiscordEmojiText>{panel.title || "Titlul panoului"}</DiscordEmojiText></p>
+              <p className="pn-dc-text"><DiscordEmojiText>{panel.description || "Textul panoului"}</DiscordEmojiText></p>
+              <p className="pn-dc-text"><b>Cum merge invitația</b>{"\n"}⏳ ține {recruitment.maxAgeDays} {recruitment.maxAgeDays === 1 ? "zi" : "zile"} · 👥 până la {recruitment.maxUses} {recruitment.maxUses === 1 ? "membru" : "membri"} · 🎟️ {recruitment.dailyInviteLimit} pe zi · ⭐ {recruitment.rewardPoints} puncte pe fiecare verificat</p>
+              {panel.imageUrl && /^https:\/\//.test(panel.imageUrl) ? <img src={panel.imageUrl} alt="" className="pn-dc-image" /> : null}
+            </div>
+            <span className="pn-dc-btn pn-rec-btn">🔗 {panel.buttonLabel || "Generează invitația mea"}</span>
+          </div>
+        </div>
+      </div>
+    </SectionCard>
+  );
+}
+
 function RecruitmentModule() {
   const { config, set, channels } = usePanel();
   const recruitment = config.inviteTracking.recruitment;
@@ -305,6 +411,7 @@ function RecruitmentModule() {
             </Fields>
           </SectionCard>
           <MilestonesCard />
+          <RecruitmentPanelCard />
         </div>
         <aside className="pn-vsplit-side" aria-label="Previzualizare"><RecruitmentPreview /></aside>
       </div>

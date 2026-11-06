@@ -1042,3 +1042,8 @@ a.pn-ov-tile:hover, .pn a.pn-ov-tile:hover { border-color: color-mix(in oklab, v
 .pn .pn-msg-prev p { margin: 0; white-space: pre-wrap; color: var(--pn-ink-2); font-size: 13.5px; line-height: 1.5; }
 @media (max-width: 640px) { .pn .pn-cat-m { display: none; } }
 .pn .pn-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+
+/* Control bot → Recrutare: panoul cu buton */
+.pn .pn-rec-prev { margin: 4px 0 16px; }
+.pn .pn-rec-prev .pn-dc-embed { border-left: 4px solid #e2b467; }
+.pn .pn-rec-btn { background: #248046; }
