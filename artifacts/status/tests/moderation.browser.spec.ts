@@ -1128,6 +1128,26 @@ test.describe("authenticated moderation console", () => {
     expect(savedConfigs.get(guilds[0].id)?.autoMod.linkBlock.channelIds).toEqual([]);
   });
 
+  test("anti-scam protections are on by default and the new options save", async ({ page }) => {
+    await page.goto("/moderare/automod");
+    await chooseFirstGuild(page);
+    await page.getByTestId("rule-automod-scamFilter-open").click();
+    await expect(page.getByTestId("anti-scam-phishing")).toBeChecked();
+    await expect(page.getByTestId("anti-scam-files")).toBeChecked();
+    await expect(page.getByTestId("anti-scam-flood")).toBeChecked();
+    await page.getByTestId("anti-scam-files").click();
+    await page.getByTestId("anti-scam-flood-channels").fill("4");
+    await page.getByRole("textbox", { name: "Domenii de încredere" }).fill("exemplu.com");
+    await page.keyboard.press("Enter");
+    const save = page.waitForResponse((response) =>
+      response.url().includes("/api/moderation/guilds/111111111/config") && response.request().method() === "PUT");
+    await page.getByRole("button", { name: "Salvează", exact: true }).click();
+    await expect((await save).ok()).toBeTruthy();
+    expect(savedConfigs.get(guilds[0].id)?.autoMod.scamFilter).toMatchObject({
+      blockDangerousFiles: false, trustedLinkHosts: ["exemplu.com"], crossChannelFlood: { channels: 4 },
+    });
+  });
+
   test("renders every moderation destination instead of the work-in-progress fallback", async ({ page }) => {
     await page.goto("/moderare");
     await expect(page).toHaveURL("/moderare");
