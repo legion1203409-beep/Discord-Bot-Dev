@@ -15,7 +15,8 @@ import {
 } from "./fields";
 import { EmojiTextField, ImageUrlField } from "./message-fields";
 import {
-  CONTROL_MODULES, DAILY_METRICS, DAILY_PREVIEW_ACTIVITY, DAILY_PREVIEW_DAYS, DAILY_PREVIEW_MEMBERS, DAILY_TEXTS, DAILY_TOKENS, PROVISION_CATEGORIES,
+  CONTROL_MODULES, DAILY_INTERVALS, DAILY_METRICS, DAILY_PREVIEW_ACTIVITY, DAILY_PREVIEW_INVITERS, dailyInterval, dailyIntervalText, dailyInviteTopOn, dailyTitleFor,
+  longDayName, nextDailyReport, shortPeriod, DAILY_PREVIEW_DAYS, DAILY_PREVIEW_MEMBERS, DAILY_TEXTS, DAILY_TOKENS, PROVISION_CATEGORIES,
   BOT_CHECKS, RECRUITMENT_FIELDS, dailyCardDelta, dailyCardText, dailyChartOn, dailyDeltaText, dailyPreviewChannels, dailyPreviewWeek,
   REPORT_TIME_ZONES, ROLE_PRESETS, WEEKDAYS, accessSummary, dailyProblem, inviteReportSummary, isClockTime, permissionOf, presetRole,
   recruitmentProblem, renderDailyText, roleAccessOf, withRole, withRoleAccess, type ControlModuleId, type ProvisionKey, type RoleAccess,
@@ -324,13 +325,14 @@ function DailyCardPreview({ color }: { color: string }) {
   const peak = Math.max(...values);
   const average = values.reduce((sum, value) => sum + value, 0) / values.length;
   const label = (key: keyof typeof daily.metricLabels, fallback: string) => dailyCardText(renderDailyText(daily.metricLabels[key] ?? "")) || fallback;
+  const days = dailyInterval(daily);
   return (
     <div className="pn-ctl-cardbox" data-testid="control-daily-card">
       <div className="pn-ctl-card" style={{ "--card": color } as React.CSSProperties} role="img"
         aria-label="Graficul zilei: cele șase cifre cu schimbarea față de ieri, ultimele 7 zile și bilanțul membrilor">
-        <p className="pn-ctl-card-k">RAPORT ZILNIC</p>
+        <p className="pn-ctl-card-k">{days === 1 ? "RAPORT ZILNIC" : `RAPORT PE ${days} ZILE`}</p>
         <p className="pn-ctl-card-g">Regatul Cenușii</p>
-        <p className="pn-ctl-card-d">joi, 29 octombrie 2026</p>
+        <p className="pn-ctl-card-d">{days === 1 ? "joi, 29 octombrie 2026" : renderDailyText("{date}", days)}</p>
         <div className="pn-ctl-card-tiles">
           {DAILY_METRICS.map(([key, fallback, value, delta]) => {
             const better = key === "leaves" ? delta < 0 : delta > 0;
@@ -338,7 +340,7 @@ function DailyCardPreview({ color }: { color: string }) {
               <div key={key} className="pn-ctl-card-tile">
                 <span>{label(key, fallback)}</span>
                 <b>{value.toLocaleString("ro-RO")}</b>
-                <i data-tone={delta === 0 ? "same" : better ? "good" : "bad"}>{dailyCardDelta(delta)}</i>
+                <i data-tone={delta === 0 ? "same" : better ? "good" : "bad"}>{dailyCardDelta(delta, days)}</i>
               </div>
             );
           })}
@@ -373,7 +375,8 @@ function DailyPreview() {
   const daily = config.dailyStats;
   const emojis = draft.metadata?.emojis;
   // Bold (**…**) the way Discord shows it, with the server's emojis in the rest.
-  const text = (value: string) => renderDailyText(value).split(/(\*\*[^*\n]+\*\*)/g).map((part, index) => /^\*\*[^*]+\*\*$/.test(part)
+  const days = dailyInterval(daily);
+  const text = (value: string) => renderDailyText(value, days).split(/(\*\*[^*\n]+\*\*)/g).map((part, index) => /^\*\*[^*]+\*\*$/.test(part)
     ? <b key={index}><DiscordEmojiText emojis={emojis}>{part.slice(2, -2)}</DiscordEmojiText></b>
     : <DiscordEmojiText key={index} emojis={emojis}>{part}</DiscordEmojiText>);
   const color = /^#[0-9a-f]{6}$/i.test(daily.color) ? daily.color : "#5865F2";
@@ -390,14 +393,14 @@ function DailyPreview() {
           <p className="pn-dc-name"><b>Oracolul Cenușii</b><span>BOT</span></p>
           <div className="pn-dc-embed" style={{ borderLeftColor: color }}>
             {thumbnail ? <img src={thumbnail} alt="" className="pn-dc-thumb" /> : null}
-            <p className="pn-dc-title">{text(daily.title)}</p>
+            <p className="pn-dc-title">{text(dailyTitleFor(daily.title, days))}</p>
             <p className="pn-dc-text">{text(daily.description)}</p>
             <div className="pn-dc-field" data-testid="control-daily-summary"><b>📊 Rezumat</b>
               {DAILY_METRICS.map(([key, , value, delta]) => (
                 <span key={key} className="pn-ctl-metric">{text(daily.metricLabels[key])}: <b>{value.toLocaleString("ro-RO")}</b> · {dailyDeltaText(delta)}</span>
               ))}
               <span className="pn-ctl-metric">Bilanț: <b>+3</b> membri · <b>{DAILY_PREVIEW_MEMBERS.toLocaleString("ro-RO")}</b> pe server acum</span>
-              <span className="pn-ctl-metric"><i>▲ ▼ arată schimbarea față de ziua dinainte.</i></span>
+              <span className="pn-ctl-metric"><i>▲ ▼ arată schimbarea față de {days === 1 ? "ziua dinainte" : `cele ${days} zile dinainte`}.</i></span>
             </div>
             <div className="pn-dc-field" data-testid="control-daily-week"><b>{text(daily.activityTitle)}</b>
               {week.days ? (
@@ -405,7 +408,7 @@ function DailyPreview() {
                   {week.days.slice(0, -1).join(" · ")} · <b>{week.days.at(-1)}</b>
                 </span>
               ) : null}
-              <span className="pn-ctl-metric">Media: <b>{week.average}</b> mesaje/zi · ziua raportului a fost cea mai activă</span>
+              <span className="pn-ctl-metric">Media: <b>{week.average}</b> mesaje/zi · {days === 1 ? "ziua raportului a fost cea mai activă" : "cea mai activă: Jo 29 (307)"}</span>
             </div>
             <div className="pn-dc-field" data-testid="control-daily-channels"><b>{text(daily.channelsTitle)}</b>
               {dailyPreviewChannels().map((channel) => (
@@ -414,6 +417,15 @@ function DailyPreview() {
                 </span>
               ))}
             </div>
+            {dailyInviteTopOn(daily) ? (
+              <div className="pn-dc-field" data-testid="control-daily-invites"><b>{days === 1 ? "🎟️ Top invitații" : `🎟️ Top invitații · ${days} zile`}</b>
+                {DAILY_PREVIEW_INVITERS.map(([name, joins], index) => (
+                  <span key={name} className="pn-ctl-metric">
+                    {["🥇", "🥈", "🥉"][index]} <span className="pn-dc-mention">@{name}</span> · <b>{joins}</b> membri noi
+                  </span>
+                ))}
+              </div>
+            ) : null}
             {chart ? <DailyCardPreview color={color} /> : null}
             {image ? <img src={image} alt="" className="pn-dc-image" /> : null}
             <p className="pn-set-foot">{text(daily.footer)} · 29 octombrie 2026</p>
@@ -421,9 +433,20 @@ function DailyPreview() {
         </div>
       </div>
       <p className="pn-orc-fine">
-        Cifrele sunt inventate. Săgețile apar doar când botul a urmărit toată ziua dinainte. Într-o zi fără mesaje, în locul canalelor active apare: „{renderDailyText(daily.emptyChannelsText)}”
+        Cifrele sunt inventate. Săgețile apar doar când botul a urmărit {dailyInterval(daily) === 1 ? "toată ziua dinainte" : "toată perioada dinainte"}. Într-o zi fără mesaje, în locul canalelor active apare: „{renderDailyText(daily.emptyChannelsText)}”
       </p>
     </div>
+  );
+}
+
+function NextDailyReport({ days, on }: { days: number; on: boolean }) {
+  const next = nextDailyReport(new Date(), days);
+  return (
+    <NoteRow tone="plain" testId="control-daily-next">
+      {on
+        ? <>Următorul raport: <b>{longDayName(next.postDay)}</b>, imediat după miezul nopții (ora României), cu {days === 1 ? <>ziua de <b>{shortPeriod(next.endDay, next.endDay)}</b></> : <>zilele <b>{shortPeriod(next.startDay, next.endDay)}</b></>}. Raportul de pe site rămâne pe zile.</>
+        : "Alege un canal ca raportul să se posteze."}
+    </NoteRow>
   );
 }
 
@@ -441,14 +464,25 @@ function DailyModule() {
       <ModuleNotes>{problem ? <Note tone="bad" role="alert">{problem}</Note> : null}</ModuleNotes>
       <div className="pn-vsplit">
         <div className="pn-vsplit-main">
-          <SectionCard title="Unde și când" small={target ? "zilnic" : "nu se postează"} testId="control-daily-where">
+          <SectionCard title="Unde și când" small={target ? dailyIntervalText(dailyInterval(daily)) : "nu se postează"} testId="control-daily-where">
             <Fields>
               <ChannelField
                 label="Canalul" selectLabel="Canalul raportului zilnic" value={target || null} channels={available} wide
                 hint="Fără canal, raportul nu se postează. Canalul Cufere e al jocului, deci nu poate fi ales."
                 onChange={(next) => setDaily("channelId", next ?? "")}
               />
-              <NoteRow tone="plain">Raportul pleacă imediat după miezul nopții, ora României, cu cifrele zilei care s-a încheiat. Același raport e și pe site.</NoteRow>
+              <Seg
+                label="La câte zile" testId="control-daily-interval" value={String(dailyInterval(daily))}
+                hint="1 zi: raportul zilei trecute, în fiecare noapte. Mai multe zile: un singur raport care adună toate zilele perioadei. La 7 zile, perioada e de luni până duminică."
+                options={DAILY_INTERVALS.map((value) => [String(value), value === 1 ? "1 zi" : `${value} zile`] as const)}
+                onChange={(next) => setDaily("intervalDays", Number(next))}
+              />
+              <NextDailyReport days={dailyInterval(daily)} on={Boolean(target)} />
+              <SwitchField
+                label="Topul invitațiilor" testId="control-daily-invite-top" checked={dailyInviteTopOn(daily)}
+                hint="Cine a adus cei mai mulți membri noi prin invitații în perioada raportului. Apare doar când urmărirea invitațiilor e pornită (Control bot → Invitații)."
+                onChange={(next) => setDaily("inviteTop", next)}
+              />
             </Fields>
           </SectionCard>
           <SectionCard title="Aspect" testId="control-daily-look">

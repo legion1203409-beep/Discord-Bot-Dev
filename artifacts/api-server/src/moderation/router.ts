@@ -515,6 +515,8 @@ const dailyStatsEmbedConfigSchema = z.object(
   imageUrl: z.string().trim().max(2_000).refine(isMessageImageUrl, "Imaginea trebuie să fie HTTPS sau încărcată în storage."),
   thumbnailUrl: z.string().trim().max(2_000).refine(isMessageImageUrl, "Thumbnail-ul trebuie să fie HTTPS sau încărcat în storage.").default(""),
   chart: z.boolean().default(true),
+  intervalDays: z.number().int().min(1).max(7).default(1),
+  inviteTop: z.boolean().default(true),
   metricLabels: z.object(
 {
 

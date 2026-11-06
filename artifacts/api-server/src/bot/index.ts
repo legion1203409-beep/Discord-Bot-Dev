@@ -81,6 +81,7 @@ import {
 import { initTicketConfig, isTicketCategoryParentId } from "./ticket-categories";
 import { getOracleSettings, initOracleSettings, prophecyUsesLeft, recordProphecyUse } from "./oracle-settings";
 import { startDailyProphecyScheduler } from "./oracle-daily";
+import { handleInviteTopCommand } from "./invite-top";
 import { startDailyQuestionScheduler } from "./oracle-question";
 import {
   enforceOracleTimeout,
@@ -102,6 +103,7 @@ import {
   recordDailyLeave,
   recordDailyMessage,
   recordDailyVoicePeak,
+  statsDay,
 } from "./daily-stats";
 import {
   awardActivityXp,
@@ -560,6 +562,18 @@ const slashCommands = [
   new SlashCommandBuilder()
     .setName("invita")
     .setDescription("🔗 Creează o invitație personală și urmărește recrutările verificate."),
+  new SlashCommandBuilder()
+    .setName("topinvitatii")
+    .setDescription("🎟️ Cine a adus cei mai mulți membri noi prin invitații.")
+    .addStringOption((option) => option
+      .setName("perioada")
+      .setDescription("Ce perioadă numără (implicit: ultimele 7 zile)")
+      .addChoices(
+        { name: "Azi", value: "1" },
+        { name: "Ultimele 7 zile", value: "7" },
+        { name: "Ultimele 30 de zile", value: "30" },
+        { name: "De la început", value: "all" },
+      )),
   new SlashCommandBuilder()
     .setName("clasament")
     .setDescription("👑 Clasamentele Regatelor Cenușii.")
@@ -5446,6 +5460,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
           "toplvl",
           "server",
           "invita",
+          "topinvitatii",
           "stopjoc",
           "startjoc",
           "stopai",
@@ -5505,6 +5520,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
       if (interaction.commandName === "toplvl") dispatch(handleActivityLeaderboard(interaction));
       if (interaction.commandName === "server") dispatch(handleServer(interaction));
       if (interaction.commandName === "invita") dispatch(handleRecruitmentInvite(interaction));
+      if (interaction.commandName === "topinvitatii") dispatch(handleInviteTopCommand(interaction as ChatInputCommandInteraction, statsDay()));
       if (interaction.commandName === "inventar") dispatch(handleInventar(interaction));
       if (interaction.commandName === "profetie") dispatch(handleProfetie(interaction));
       if (interaction.commandName === "clasament") dispatch(handleClasament(interaction));
@@ -6048,6 +6064,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
           "ajutor",
            "profetie",
           "invita",
+          "topinvitatii",
           "setcanal",
           "setaliantatext",
           "moderare",
@@ -6098,6 +6115,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
       if (await handleModerationCommand(interaction as ChatInputCommandInteraction)) return;
       if (interaction.commandName === "profil") dispatch(handleProfil(interaction));
       if (interaction.commandName === "invita") dispatch(handleRecruitmentInvite(interaction));
+      if (interaction.commandName === "topinvitatii") dispatch(handleInviteTopCommand(interaction as ChatInputCommandInteraction, statsDay()));
       if (interaction.commandName === "inventar") dispatch(handleInventar(interaction));
       if (interaction.commandName === "profetie") dispatch(handleProfetie(interaction));
       if (interaction.commandName === "clasament") dispatch(handleClasament(interaction));
