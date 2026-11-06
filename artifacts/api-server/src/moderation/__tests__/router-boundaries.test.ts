@@ -2369,9 +2369,18 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     expect(mocks.execute).not.toHaveBeenCalled();
   });
 
+  it("refuses a warn, mute or ban without a reason", async () => {
+    for (const body of [{ type: "warn", targetId: "555555555" }, { type: "ban", targetId: "555555555", reason: "  " }, { type: "mute", targetId: "555555555", durationMinutes: 10, reason: "ok" }]) {
+      const response = await fetch(`${base}/actions`, post(body, { "idempotency-key": `test-no-reason-${body.type}-01` }));
+      expect(response.status).toBe(400);
+      expect(JSON.stringify(await response.json())).toMatch(/Scrie motivul/);
+    }
+    expect(mocks.execute).not.toHaveBeenCalled();
+  });
+
   it("never trusts a client-supplied actor, guild, or automatic-enforcement source", async () => {
     const response = await fetch(`${base}/actions`, post({
-      type: "warn", targetId: "555555555", actorId: "111111111",
+      type: "warn", targetId: "555555555", reason: "spam în chat", actorId: "111111111",
       guildId: "222222222", source: "automod",
     }, { "idempotency-key": "test-action-unique-01" }));
     expect(response.status).toBe(201);
@@ -2423,7 +2432,7 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
     mocks.getAction.mockResolvedValue({
       id: "ledger", status: "applied", result: { summary: "Already applied" },
     });
-    const response = await fetch(`${base}/actions`, post({ type: "warn", targetId: "555555555" }, {
+    const response = await fetch(`${base}/actions`, post({ type: "warn", targetId: "555555555", reason: "spam în chat" }, {
       "idempotency-key": "test-action-unique-02",
     }));
     expect(response.status).toBe(200);
@@ -2432,7 +2441,7 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
 
   it("does not repeat a pending or uncertain action", async () => {
     mocks.getAction.mockResolvedValue({ id: "ledger", status: "pending" });
-    const response = await fetch(`${base}/actions`, post({ type: "warn", targetId: "555555555" }, {
+    const response = await fetch(`${base}/actions`, post({ type: "warn", targetId: "555555555", reason: "spam în chat" }, {
       "idempotency-key": "test-action-unique-03",
     }));
     expect(response.status).toBe(409);
