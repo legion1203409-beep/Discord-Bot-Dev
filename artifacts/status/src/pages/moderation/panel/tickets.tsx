@@ -622,7 +622,7 @@ function BotTicketsModule() {
           <SectionCard title="Evaluarea staff-ului" small={tickets.rating.enabled ? "pornită" : "oprită"} testId="tickets-bot-rating">
             <Fields>
               <SwitchField label="Întreabă membrul la închidere" checked={tickets.rating.enabled} testId="tickets-bot-rating-switch"
-                hint="Primește în privat 1–5 stele pentru cine l-a ajutat (cine a preluat tichetul sau cine din staff l-a închis), cu comentariu dacă vrea. Dacă are mesajele private închise, întrebarea apare în tichet."
+                hint="Primește în privat 1–5 stele pentru cine l-a ajutat (cine a preluat tichetul sau cine din staff l-a închis), cu comentariu dacă vrea. Doar în privat: dacă are mesajele private închise, nu primește întrebarea."
                 onChange={(next) => setTickets({ rating: { ...tickets.rating, enabled: next } })} />
               {tickets.rating.enabled ? (
                 <Fld wide label="Întrebarea" htmlFor={`${id}-q`}>

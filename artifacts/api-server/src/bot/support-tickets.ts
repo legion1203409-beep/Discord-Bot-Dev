@@ -404,7 +404,7 @@ async function closeTicket(interaction: ButtonInteraction, config: SupportTicket
     allowedMentions: { parse: [] },
   }).catch((error) => logger.warn({ error, guildId: guild.id }, "Ticket transcript could not be posted"));
 
-  let ratingInChannel = false;
+  let ratingNotSent = false;
   if (config.rating.enabled && helper && helper !== row.opener_id) {
     await pool.query(`UPDATE support_tickets SET rated_staff_id = $2 WHERE id = $1`, [row.id, helper]);
     const prompt = {
@@ -412,18 +412,16 @@ async function closeTicket(interaction: ButtonInteraction, config: SupportTicket
         .setDescription(`Tichetul **${row.category_label}** de pe **${guild.name}** s-a închis. Te-a ajutat <@${helper}>.\nAlege de la 1 la 5 stele; răspunsul ajută echipa să se facă mai bună.`)],
       components: [ratingRow(row.id)],
     };
+    // The question goes only in private, to the member who opened the ticket.
     const opener = await interaction.client.users.fetch(row.opener_id).catch(() => null);
     const sent = await opener?.send(prompt).catch(() => null);
-    if (!sent) {
-      // Private messages are closed: the question goes in the ticket, which then stays a while longer.
-      await channel.send({ content: `<@${row.opener_id}>`, ...prompt, allowedMentions: { users: [row.opener_id] } }).catch(() => undefined);
-      ratingInChannel = true;
-    }
+    ratingNotSent = !sent;
   }
-  const delay = ratingInChannel ? 10 * 60_000 : 10_000;
+  const delay = 10_000;
+  const dmNote = ratingNotSent ? " Evaluarea nu a putut fi trimisă în privat (membrul are DM-urile închise)." : "";
   await interaction.editReply(config.deleteAfterClose
-    ? `🔒 Tichet închis. Canalul se șterge ${ratingInChannel ? "în 10 minute (până atunci membrul poate evalua aici)" : "în câteva secunde"}; transcrierea rămâne în jurnal.`
-    : "🔒 Tichet închis. Transcrierea e în jurnal.");
+    ? `🔒 Tichet închis. Canalul se șterge în câteva secunde; transcrierea rămâne în jurnal.${dmNote}`
+    : `🔒 Tichet închis. Transcrierea e în jurnal.${dmNote}`);
   if (config.deleteAfterClose) {
     setTimeout(() => { void channel.delete(`Tichet #${row.id} închis`).catch(() => undefined); }, delay).unref?.();
   }
