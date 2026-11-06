@@ -1066,3 +1066,11 @@ a.pn-ov-tile:hover, .pn a.pn-ov-tile:hover { border-color: color-mix(in oklab, v
 .pn-rep-dist i[data-star="5"] { background: #36a878; } .pn-rep-dist i[data-star="4"] { background: #7cc47f; } .pn-rep-dist i[data-star="3"] { background: #d8a964; }
 .pn-rep-dist i[data-star="2"] { background: #d97a50; } .pn-rep-dist i[data-star="1"] { background: #d95050; }
 @media (max-width: 640px) { .pn-rep-row { grid-template-columns: 28px 28px minmax(0, 1fr) auto; } .pn-rep-dist { display: none; } .pn-stk-grid { grid-template-columns: 1fr; } }
+/* Nume tematice (Control bot → Canale și acces) */
+.pn-names-group { grid-column: 1 / -1; display: grid; gap: 6px; padding-top: 10px; border-top: 1px solid var(--pn-line, rgba(255,255,255,.08)); }
+.pn-names-title { margin: 0 0 2px; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--pn-ink-3, #a59a90); }
+.pn-names-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 12px; align-items: center; }
+.pn-names-purpose { font-size: 13px; color: var(--pn-ink-2, #d4c9bf); }
+.pn-names-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+@media (max-width: 640px) { .pn-names-row { grid-template-columns: 1fr; gap: 4px; } }
+.pn-names-row .pn-inp { width: 100%; min-width: 0; }

@@ -5,6 +5,7 @@ import {
   EmbedBuilder,
   PermissionFlagsBits,
   Routes,
+  type AttachmentBuilder,
   type Client,
   type Guild,
   type GuildBasedChannel,
@@ -21,6 +22,7 @@ import { attachBanEvasion } from "./ban-evasion";
 import type { ModerationConfig, ModerationAction as ConfiguredAction } from "../../moderation/config";
 import { logger } from "../../lib/logger";
 import { buildAutomaticModerationLogDescription } from "./automod-logging";
+import { buildAutomodEmbed } from "./automod-embed";
 import { shouldApplyLinkBlockInChannel } from "./automod-policy";
 import { describeConfiguredPlan, describeMemberActions, describeRulePlan, planRuleActions, ruleHasEffect, type RuleActionPlan, type RuleActionSettings } from "./rule-actions";
 import { deliverWarningInGuild } from "./warning-delivery";
@@ -29,6 +31,7 @@ import type { AutoModerationActionExecution } from "discord.js";
 import { NATIVE_AUTOMOD_KEYWORD_RULE_NAME } from "../native-automod";
 import { detectContent, detectScamContent, detectScamImageText, SlidingRateLimiter, SlidingUniqueMessageRateLimiter, type ContentThresholds, type Detection } from "./detectors";
 import { readScamImageTexts } from "./image-scam-ocr";
+import { CrossChannelFloodTracker, detectDangerousAttachment, detectPhishingLink, floodDetection } from "./anti-scam";
 import {
   assertRoleGrantSafe,
   assertTargetHierarchy,
@@ -84,6 +87,7 @@ export class ModerationActionStateError extends Error {
 
 let moderationClient: Client | null = null;
 const messageRates = new SlidingUniqueMessageRateLimiter();
+const scamFloodTracker = new CrossChannelFloodTracker();
 const editRates = new SlidingRateLimiter();
 const joinRates = new SlidingRateLimiter();
 const nicknameRates = new SlidingRateLimiter();
@@ -629,6 +633,8 @@ export type ModerationTemplateContext = {
 export type ModerationNotifyOptions = {
   /** Mention the staff roles from the settings in this message. */
   pingStaff?: boolean;
+  /** A ready-made embed (with the files it shows) used instead of the template embed. */
+  rich?: { embed: EmbedBuilder; files?: AttachmentBuilder[]; extraEmbeds?: EmbedBuilder[] };
 };
 
 /** The staff roles that "Anunță staff-ul" mentions: the configured ones, no duplicates, a sane maximum. */
@@ -652,14 +658,14 @@ export async function notify(
     logger.warn({ guildId: guild.id, channelId: id }, "Moderation notification destination is unavailable or belongs to another server");
     return;
   }
-  const embed = buildEmbed(config, guild, title, description, templateContext);
+  const embed = options?.rich?.embed ?? buildEmbed(config, guild, title, description, templateContext);
   const pingRoles = options?.pingStaff ? staffPingRoleIds(config) : [];
   // Only the roles chosen in the settings may be pinged, never @everyone or a
   // member, whatever the description says.
   const allowedMentions = pingRoles.length ? { parse: [] as never[], roles: pingRoles } : { parse: [] as never[] };
   const mentions = pingRoles.map((roleId) => `<@&${roleId}>`).join(" ");
   await channel.send(embed
-    ? { ...(mentions ? { content: mentions } : {}), embeds: [embed], allowedMentions }
+    ? { ...(mentions ? { content: mentions } : {}), embeds: [embed, ...(options?.rich?.extraEmbeds ?? [])], ...(options?.rich?.files?.length ? { files: options.rich.files } : {}), allowedMentions }
     : { content: `${mentions ? `${mentions}\n` : ""}**${title}**\n${description}`.slice(0, 2_000), allowedMentions },
   ).catch((error) => logger.warn({ error, guildId: guild.id, channelId: id }, "Moderation notification could not be sent"));
 }
@@ -1111,6 +1117,12 @@ export function sharesActivityLogDestination(
   );
 }
 
+function richAttachments(message: Message): Array<{ name: string; url: string; size: number; contentType: string | null }> {
+  return [...message.attachments.values()].map((attachment) => ({
+    name: attachment.name || "Atașament", url: attachment.url, size: attachment.size, contentType: attachment.contentType ?? null,
+  }));
+}
+
 function moderationMessageEvidence(message: Message): {
   messageContent: string;
   attachments: Array<{ name: string; url: string }>;
@@ -1205,7 +1217,17 @@ async function applyAutomaticSerialized(
         channelId: message.channelId,
         durationMinutes: plan.muteMinutes,
       },
-      plan.alertStaff ? { pingStaff: true } : undefined,
+      {
+        ...(plan.alertStaff ? { pingStaff: true } : {}),
+        rich: await buildAutomodEmbed({
+          guild, kind: detection.kind, detail: why, userId: message.author.id, channelId: message.channelId,
+          actionSummary: describeRulePlan(plan, { deletionSucceeded }) + escalationNote(step),
+          deletionFailed: deleteMessage && !deletionSucceeded,
+          messageContent: evidence.messageContent,
+          attachments: richAttachments(message),
+          extractedText, source: destination.title,
+        }),
+      },
     );
   }
   if (config.channels.autoSlowmodeChannelIds.includes(message.channelId)) {
@@ -1337,6 +1359,29 @@ export async function handleModerationMessage(client: Client, message: Message):
     scamMessageText = [content, ...embedContent].filter((part): part is string => Boolean(part)).join("\n");
     const scamFinding = detectScamContent(scamMessageText, auto.scamPhrases);
     if (scamFinding && await applyAutomatic(message.guild, config, message, scamFinding, auto.scamFilter)) return true;
+    const scam = auto.scamFilter;
+    const phishing = scam.blockPhishingLinks === false ? null : detectPhishingLink(scamMessageText, scam.trustedLinkHosts ?? []);
+    if (phishing && await applyAutomatic(message.guild, config, message, phishing, scam)) return true;
+    const dangerousFile = scam.blockDangerousFiles === false || !message.attachments.size
+      ? null : detectDangerousAttachment([...message.attachments.values()].map((attachment) => attachment.name ?? ""));
+    if (dangerousFile && await applyAutomatic(message.guild, config, message, dangerousFile, scam)) return true;
+    const flood = scam.crossChannelFlood;
+    if (flood?.enabled !== false) {
+      const settings = { channels: flood?.channels ?? 3, windowSeconds: flood?.windowSeconds ?? 60 };
+      const earlier = scamFloodTracker.record(
+        `${message.guildId}:${message.author.id}`,
+        { channelId: message.channelId, messageId: message.id, content: scamMessageText },
+        settings,
+      );
+      if (earlier) {
+        // The copies already posted in other channels go too, best effort.
+        for (const copy of earlier) {
+          const channel = message.guild.channels.cache.get(copy.channelId);
+          if (channel?.isTextBased() && "messages" in channel) await channel.messages.delete(copy.messageId).catch(() => undefined);
+        }
+        if (await applyAutomatic(message.guild, config, message, floodDetection(settings.channels, settings.windowSeconds), scam)) return true;
+      }
+    }
   }
   const threshold = (value: number, base: "soft" | "normal" | "hard") => {
     const currentSeverity = activeSeverity(config, message.channelId, base);
@@ -1439,7 +1484,14 @@ export async function handleModerationMessage(client: Client, message: Message):
         durationMinutes: aiPlan.muteMinutes,
       },
       // The AI log is the only notice for this finding, so the staff ping rides on it.
-      aiPlan.alertStaff ? { pingStaff: true } : undefined,
+      {
+        ...(aiPlan.alertStaff ? { pingStaff: true } : {}),
+        rich: await buildAutomodEmbed({
+          guild: message.guild, kind: "ai", detail: aiFinding.detail, userId: message.author.id, channelId: message.channelId,
+          actionSummary: describeConfiguredPlan(aiPlan), messageContent: evidence.messageContent,
+          attachments: richAttachments(message), source: "Moderare AI", category: `${categoryLabel} · încredere ${aiFinding.count ?? 0}%`,
+        }),
+      },
     );
     // A deletion, a warning or a sanction is applied like any other rule;
     // a staff alert alone was already delivered above.
@@ -1527,7 +1579,17 @@ async function handleNativeAutoModerationExecution(
         channelId,
         durationMinutes: plan.muteMinutes,
       },
-      plan.alertStaff ? { pingStaff: true } : undefined,
+      {
+        ...(plan.alertStaff ? { pingStaff: true } : {}),
+        rich: await buildAutomodEmbed({
+          guild: execution.guild, kind: "word", detail: `Cuvânt interzis detectat${matched ? ` („${matched}”)` : ""}`,
+          userId: target.id, channelId,
+          actionSummary: (execution.action.type === AutoModerationActionType.BlockMessage
+            ? ["Mesaj blocat de AutoMod Discord", ...describeMemberActions(plan)].join(" + ")
+            : describeRulePlan(plan)) + escalationNote(step),
+          messageContent: execution.content ?? "", attachments: [], source: "AutoMod Discord",
+        }),
+      },
     );
   }
   if (!plan.primary) return;

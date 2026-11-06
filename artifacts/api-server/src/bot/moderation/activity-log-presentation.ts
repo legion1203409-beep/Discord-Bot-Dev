@@ -1,3 +1,5 @@
+import { describeAttachment, type AttachmentInfo } from "./log-media";
+
 export type ActivityLogEmbedField = {
   name: string;
   value: string;
@@ -9,6 +11,8 @@ export type ActivityLogPresentation = {
   fields: ActivityLogEmbedField[];
   thumbnailUrl?: string;
   imageUrl?: string;
+  /** More pictures of the same message (up to 3), shown with the first one as a gallery at the bottom. */
+  galleryUrls?: string[];
 };
 
 const snowflakePattern = /^\d{5,25}$/;
@@ -407,16 +411,32 @@ function deletedMessages(detail: Record<string, unknown>): Record<string, unknow
     : [];
 }
 
-function deletedMessageImageUrl(detail: Record<string, unknown>): string | undefined {
+/** The pictures of the deleted message(s), at most four (Discord shows four together at the bottom). */
+function deletedMessageImageUrls(detail: Record<string, unknown>): string[] {
+  const urls: string[] = [];
   for (const message of deletedMessages(detail)) {
     if (!Array.isArray(message.imageAttachments)) continue;
     for (const attachment of message.imageAttachments) {
       if (!isRecord(attachment)) continue;
       const imageUrl = safeDiscordAttachmentImageUrl(attachment.url, attachment.contentType);
-      if (imageUrl) return imageUrl;
+      if (imageUrl && !urls.includes(imageUrl)) urls.push(imageUrl);
+      if (urls.length === 4) return urls;
     }
   }
-  return undefined;
+  return urls;
+}
+
+/** The pictures still on an edited message, at most four. */
+function editedMessageImageUrls(detail: Record<string, unknown>): string[] {
+  if (!Array.isArray(detail.displayImageAttachments)) return [];
+  return (detail.displayImageAttachments as unknown[])
+    .map((attachment) => isRecord(attachment) ? safeDiscordAttachmentImageUrl(attachment.url, attachment.contentType) : null)
+    .filter((url): url is string => Boolean(url))
+    .slice(0, 4);
+}
+
+function pictures(urls: string[]): Pick<ActivityLogPresentation, "imageUrl" | "galleryUrls"> {
+  return urls.length ? { imageUrl: urls[0], ...(urls.length > 1 ? { galleryUrls: urls.slice(1) } : {}) } : {};
 }
 
 function messageSamples(detail: Record<string, unknown>): string {
@@ -436,6 +456,114 @@ function messageSamples(detail: Record<string, unknown>): string {
   const omitted = Math.max(0, total - messages.length);
   const suffix = omitted ? `\n\n*… și încă ${omitted} mesaje.*` : "";
   return `${samples.join("\n\n")}${suffix}`.slice(0, 1_024);
+}
+
+const inlineField = (name: string, value: string | null | undefined): ActivityLogEmbedField[] =>
+  value ? [{ name, value: value.slice(0, 1_024), inline: true }] : [];
+
+const textOf = (value: unknown): string | null => (typeof value === "string" && value.trim() ? value.trim() : null);
+
+function changeLines(value: unknown): string {
+  if (!isRecord(value)) return "";
+  const labels: Record<string, string> = {
+    name: "Nume", archived: "Arhivat", locked: "Blocat", icon: "Poză", description: "Descriere", verificationLevel: "Nivel de verificare",
+  };
+  return Object.entries(value).map(([key, change]) => {
+    const from = isRecord(change) ? String(change.from ?? "—") : "—";
+    const to = isRecord(change) ? String(change.to ?? "—") : String(change);
+    return `**${labels[key] ?? key}:** ${from.slice(0, 200)} → ${to.slice(0, 200)}`;
+  }).join("\n");
+}
+
+/** The new events (ban, invite, thread, emoji, server): a sentence and tidy side-by-side fields instead of a list of raw details. */
+function richEventPresentation(
+  normalized: string, targetId: string, detail: Record<string, unknown>, actor: string,
+): ActivityLogPresentation | null {
+  const by = inlineField("Făcut de", actor);
+  switch (normalized) {
+    case "discord.guild_ban_add":
+    case "discord.guild_ban_remove": {
+      const banned = normalized === "discord.guild_ban_add";
+      const name = textOf(detail.memberName);
+      return {
+        description: banned ? "Un membru a primit ban direct din Discord." : "Un ban a fost ridicat direct din Discord.",
+        fields: [
+          ...inlineField(banned ? "Membru banat" : "Membru debanat", `<@${targetId}>${name ? ` · \`${name}\`` : ""}`),
+          ...by,
+          ...(banned ? inlineField("Motiv", textOf(detail.banReason) ?? "_nespecificat_") : []),
+        ],
+      };
+    }
+    case "discord.invite_create":
+    case "discord.invite_delete": {
+      const created = normalized === "discord.invite_create";
+      const code = textOf(detail.inviteCode) ?? targetId;
+      const link = /^[a-z0-9-]{2,40}$/i.test(code) ? `[discord.gg/${code}](https://discord.gg/${code})` : `\`${code}\``;
+      const channelId = textOf(detail.inviteChannelId);
+      const channelValue = channelId && /^\d{5,25}$/.test(channelId) ? `<#${channelId}>` : textOf(detail.inviteChannelName) ? `#${textOf(detail.inviteChannelName)}` : null;
+      const inviter = textOf(detail.inviterId) && /^\d{5,25}$/.test(String(detail.inviterId)) ? `<@${detail.inviterId}>` : actor;
+      const fields = [
+        ...inlineField(created ? "🔗 Link" : "🔗 Cod", created ? link : `\`${code}\``),
+        ...inlineField("📍 Canal", channelValue),
+        ...inlineField(created ? "👤 Creată de" : "👤 Ștearsă de", created ? inviter : actor),
+      ];
+      if (created) {
+        const maxUses = typeof detail.maxUses === "number" && detail.maxUses > 0 ? detail.maxUses : 0;
+        const expiresAt = typeof detail.expiresAt === "string" ? Date.parse(detail.expiresAt) : Number.NaN;
+        const minutes = typeof detail.expiresInMinutes === "number" ? detail.expiresInMinutes : 0;
+        fields.push(
+          ...inlineField("🔢 Folosiri", maxUses ? `cel mult ${maxUses}` : "nelimitat"),
+          ...inlineField("⏳ Expiră", Number.isFinite(expiresAt) ? `<t:${Math.floor(expiresAt / 1_000)}:R>` : minutes > 0 ? `în ${minutes} min` : "niciodată"),
+          ...(detail.temporary === true ? inlineField("🕒 Tip", "Membership temporar") : []),
+        );
+      } else if (typeof detail.uses === "number") {
+        fields.push(...inlineField("🔢 Folosită", `${detail.uses} ${detail.uses === 1 ? "dată" : "ori"}`));
+      }
+      return {
+        description: created ? `${inviter} a creat o invitație nouă pe server.` : "O invitație a fost ștearsă sau a expirat.",
+        fields,
+      };
+    }
+    case "discord.thread_create":
+    case "discord.thread_update":
+    case "discord.thread_delete": {
+      const verb = normalized.endsWith("create") ? "creat" : normalized.endsWith("update") ? "actualizat" : "șters";
+      const fields = [
+        ...inlineField("Fir", normalized.endsWith("delete") ? textOf(detail.threadName) : `<#${targetId}>`),
+        ...inlineField("În canalul", textOf(detail.parentName) ? `#${textOf(detail.parentName)}` : null),
+        ...by,
+      ];
+      const changes = changeLines(detail.threadChanges);
+      if (changes) fields.push({ name: "Modificări", value: changes.slice(0, 1_024), inline: false });
+      return { description: `Un fir a fost ${verb}.`, fields };
+    }
+    case "discord.emoji_create":
+    case "discord.emoji_update":
+    case "discord.emoji_delete": {
+      const verb = normalized.endsWith("create") ? "adăugat" : normalized.endsWith("update") ? "redenumit" : "șters";
+      const url = textOf(detail.emojiUrl);
+      return {
+        description: `Un emoji a fost ${verb}.`,
+        fields: [
+          ...inlineField("Emoji", `\`:${textOf(detail.emojiName) ?? "emoji"}:\``),
+          ...(textOf(detail.oldEmojiName) ? inlineField("Înainte", `\`:${textOf(detail.oldEmojiName)}:\``) : []),
+          ...by,
+        ],
+        ...(url && /^https:\/\/cdn\.discordapp\.com\//.test(url) && !normalized.endsWith("delete") ? { thumbnailUrl: url } : {}),
+      };
+    }
+    case "discord.guild_update": {
+      const changes = changeLines(detail.serverChanges);
+      const icon = textOf(detail.iconUrl);
+      return {
+        description: "Setările serverului s-au schimbat.",
+        fields: [...by, ...(changes ? [{ name: "Modificări", value: changes.slice(0, 1_024), inline: false }] : [])],
+        ...(icon && /^https:\/\/cdn\.discordapp\.com\//.test(icon) ? { thumbnailUrl: icon } : {}),
+      };
+    }
+    default:
+      return null;
+  }
 }
 
 export function buildActivityLogPresentation(
@@ -478,7 +606,7 @@ export function buildActivityLogPresentation(
       : detail.displayContentChanged === false
         ? "Mesajul a fost actualizat fără schimbarea textului."
         : "A fost înregistrată o editare de mesaj.";
-    return { description, fields };
+    return { description, fields, ...pictures(editedMessageImageUrls(detail)) };
   }
 
   if (normalized === "discord.message_delete" || normalized === "discord.message_bulk_delete") {
@@ -501,6 +629,14 @@ export function buildActivityLogPresentation(
         ? `_(fără text · ${attachmentCount} atașamente)_`
         : formatMessageExcerpt(first?.content);
       addField("Conținut șters", content);
+      const attachmentLines = Array.isArray(first?.attachments)
+        ? (first.attachments as AttachmentInfo[]).slice(0, 5).map((item, index) => `${index + 1}. ${describeAttachment(item)}`)
+        : [];
+      if (attachmentLines.length) addField(`Atașamente (${attachmentLines.length})`, attachmentLines.join("\n"));
+      const stickers = Array.isArray(first?.stickers) ? (first.stickers as unknown[]).filter((name): name is string => typeof name === "string") : [];
+      if (stickers.length) addField("Stickere", stickers.map((name) => `🏷️ ${name}`).join(" · "));
+      const links = Array.isArray(first?.embedLinks) ? (first.embedLinks as unknown[]).filter((url): url is string => typeof url === "string") : [];
+      if (links.length) addField("Linkuri", links.map((url) => `🔗 ${url.replace(/^https?:\/\//, "").slice(0, 120)}`).join("\n"));
     }
 
     const details = readableDetails(detail, ["messageCount"]);
@@ -508,7 +644,7 @@ export function buildActivityLogPresentation(
     const description = normalized === "discord.message_bulk_delete"
       ? `${count} ${count === 1 ? "mesaj a fost șters" : "mesaje au fost șterse"}.`
       : "Un mesaj a fost șters.";
-    return { description, fields, imageUrl: deletedMessageImageUrl(detail) };
+    return { description, fields, ...pictures(deletedMessageImageUrls(detail)) };
   }
 
   if (normalized === "discord.member_join" || normalized === "discord.member_leave") {
@@ -548,16 +684,29 @@ export function buildActivityLogPresentation(
     };
   }
 
-  addField("Actor", actor);
+  const rich = richEventPresentation(normalized, targetId, detail, actor);
+  if (rich) return rich;
+
+  fields.push(...inlineField("Actor", actor));
   const target = targetField(targetType, targetId, detail);
   if (
     target &&
     !(targetType.toLocaleLowerCase() === "channel" && detail.channelId === targetId)
   ) {
-    fields.push(target);
+    fields.push({ ...target, inline: true });
   }
-  if (channel !== "—") addField("Canal", channel);
+  if (channel !== "—") fields.push(...inlineField("Canal", channel));
   const details = readableDetails(detail);
   if (details) addField("Detalii", details);
-  return { description: null, fields };
+  return { description: FALLBACK_DESCRIPTIONS[normalized] ?? null, fields };
 }
+
+const FALLBACK_DESCRIPTIONS: Record<string, string> = {
+  "discord.channel_create": "Un canal nou a apărut pe server.",
+  "discord.channel_update": "Un canal a fost modificat.",
+  "discord.channel_delete": "Un canal a fost șters.",
+  "discord.guild_role_create": "Un rol nou a fost creat.",
+  "discord.guild_role_update": "Un rol a fost modificat.",
+  "discord.guild_role_delete": "Un rol a fost șters.",
+  "discord.voice_state_update": "Un membru și-a schimbat starea pe voce.",
+};

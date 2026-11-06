@@ -7,6 +7,7 @@ export const ACTIVITY_LOG_GROUPS = {
   voice: "Loguri de voce",
   moderation: "Loguri de moderare",
   security: "Loguri de securitate",
+  invites: "Loguri de invitații",
 } as const;
 
 export type ActivityLogGroup = keyof typeof ACTIVITY_LOG_GROUPS;
@@ -27,6 +28,17 @@ export const ACTIVITY_LOG_TEMPLATES = [
   { key: "guild_role_create", event: "discord.guild_role_create", group: "roles", title: "Rol creat" },
   { key: "guild_role_update", event: "discord.guild_role_update", group: "roles", title: "Rol actualizat" },
   { key: "guild_role_delete", event: "discord.guild_role_delete", group: "roles", title: "Rol șters" },
+  { key: "guild_ban_add", event: "discord.guild_ban_add", group: "moderation", title: "Ban dat din Discord" },
+  { key: "guild_ban_remove", event: "discord.guild_ban_remove", group: "moderation", title: "Ban ridicat din Discord" },
+  { key: "invite_create", event: "discord.invite_create", group: "invites", title: "Invitație creată" },
+  { key: "invite_delete", event: "discord.invite_delete", group: "invites", title: "Invitație ștearsă" },
+  { key: "thread_create", event: "discord.thread_create", group: "channels", title: "Fir creat" },
+  { key: "thread_update", event: "discord.thread_update", group: "channels", title: "Fir actualizat" },
+  { key: "thread_delete", event: "discord.thread_delete", group: "channels", title: "Fir șters" },
+  { key: "emoji_create", event: "discord.emoji_create", group: "channels", title: "Emoji adăugat" },
+  { key: "emoji_update", event: "discord.emoji_update", group: "channels", title: "Emoji redenumit" },
+  { key: "emoji_delete", event: "discord.emoji_delete", group: "channels", title: "Emoji șters" },
+  { key: "guild_update", event: "discord.guild_update", group: "channels", title: "Serverul a fost modificat" },
   { key: "action_applied", event: "action.applied", group: "moderation", title: "Acțiune de moderare aplicată" },
   { key: "action_failed", event: "action.failed", group: "moderation", title: "Acțiune de moderare eșuată" },
   { key: "action_reconciled", event: "action.reconciled", group: "moderation", title: "Acțiune de moderare verificată" },
@@ -56,6 +68,7 @@ export const ACTIVITY_LOG_VARIABLES = {
   voice: ["old_channel", "new_channel"],
   moderation: ["duration", "count", "error"],
   security: ["count", "error"],
+  invites: ["code", "inviter", "uses"],
 } as const;
 
 export function activityLogTemplateKey(eventType: string, detail: Record<string, unknown>): ActivityLogTemplateKey | null {
