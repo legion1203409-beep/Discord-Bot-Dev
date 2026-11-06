@@ -81,6 +81,7 @@ import {
 import { initTicketConfig, isTicketCategoryParentId } from "./ticket-categories";
 import { getOracleSettings, initOracleSettings, prophecyUsesLeft, recordProphecyUse } from "./oracle-settings";
 import { startDailyProphecyScheduler } from "./oracle-daily";
+import { handleStaffCopilotCommand } from "./staff-copilot";
 import { handleSupportTicketInteraction, handleTopStaffCommand } from "./support-tickets";
 import { handleInviteTopCommand } from "./invite-top";
 import { handleActiveTopCommand, startActiveTopScheduler } from "./active-top";
@@ -565,6 +566,12 @@ const slashCommands = [
   new SlashCommandBuilder()
     .setName("invita")
     .setDescription("🔗 Creează o invitație personală și urmărește recrutările verificate."),
+  new SlashCommandBuilder()
+    .setName("analizeaza-ticket")
+    .setDescription("🤖 Staff Copilot: problema, riscul, sancțiunile membrului și ce să faci (doar staff).")
+    .addUserOption((option) => option
+      .setName("membru")
+      .setDescription("Membrul tichetului (dacă nu e un tichet al botului)")),
   new SlashCommandBuilder()
     .setName("topstaff")
     .setDescription("🏆 Reputația staff-ului: media stelelor primite după tichete.")
@@ -5500,6 +5507,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
           "server",
           "invita",
           "topstaff",
+          "analizeaza-ticket",
           "topinvitatii",
           "topactivi",
           "stopjoc",
@@ -5564,6 +5572,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
       if (interaction.commandName === "server") dispatch(handleServer(interaction));
       if (interaction.commandName === "invita") dispatch(handleRecruitmentInvite(interaction));
       if (interaction.commandName === "topstaff") dispatch(handleTopStaffCommand(interaction as ChatInputCommandInteraction));
+      if (interaction.commandName === "analizeaza-ticket") dispatch(handleStaffCopilotCommand(interaction as ChatInputCommandInteraction));
       if (interaction.commandName === "topinvitatii") dispatch(handleInviteTopCommand(interaction as ChatInputCommandInteraction, statsDay()));
       if (interaction.commandName === "topactivi") dispatch(handleActiveTopCommand(interaction as ChatInputCommandInteraction));
       if (interaction.commandName === "inventar") dispatch(handleInventar(interaction));
@@ -6119,6 +6128,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
            "profetie",
           "invita",
           "topstaff",
+          "analizeaza-ticket",
           "topinvitatii",
           "topactivi",
           "setcanal",
@@ -6174,6 +6184,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
       if (interaction.commandName === "profil") dispatch(handleProfil(interaction));
       if (interaction.commandName === "invita") dispatch(handleRecruitmentInvite(interaction));
       if (interaction.commandName === "topstaff") dispatch(handleTopStaffCommand(interaction as ChatInputCommandInteraction));
+      if (interaction.commandName === "analizeaza-ticket") dispatch(handleStaffCopilotCommand(interaction as ChatInputCommandInteraction));
       if (interaction.commandName === "topinvitatii") dispatch(handleInviteTopCommand(interaction as ChatInputCommandInteraction, statsDay()));
       if (interaction.commandName === "topactivi") dispatch(handleActiveTopCommand(interaction as ChatInputCommandInteraction));
       if (interaction.commandName === "inventar") dispatch(handleInventar(interaction));
