@@ -17,7 +17,7 @@ import {
   DEADLINES, FLOW_NAMES, MAX_QUESTIONS, TICKETS_MODULES, addQuestion, alliancePublishingOn, categoryOf, deadlinesProblem,
   duplicateKeys, editFlow, flowOf, isFlowOn, isLockedQuestion, moveQuestion, notifiesStaff, partnershipFieldsByQuestion, questionKey,
   removeQuestion, setQuestion, type FlowKind, type TicketFlow, type TicketQuestion, type TicketsModuleId,
-  MAX_SUPPORT_CATEGORIES, newSupportCategory, supportTicketsOf, supportTicketsProblem, type SupportCategory, type SupportTickets,
+  EXTERNAL_KINDS, MAX_SUPPORT_CATEGORIES, RATING_WHERE, newSupportCategory, supportTicketsOf, supportTicketsProblem, type SupportCategory, type SupportTickets,
 } from "./tickets-model";
 
 const MODULE: Record<TicketsModuleId, (typeof TICKETS_MODULES)[number]> = Object.fromEntries(
@@ -623,12 +623,36 @@ function BotTicketsModule() {
           <SectionCard title="Evaluarea staff-ului" small={tickets.rating.enabled ? "pornită" : "oprită"} testId="tickets-bot-rating">
             <Fields>
               <SwitchField label="Întreabă membrul la închidere" checked={tickets.rating.enabled} testId="tickets-bot-rating-switch"
-                hint="Primește în privat 1–5 stele pentru cine l-a ajutat (cine a preluat tichetul sau cine din staff l-a închis), cu comentariu dacă vrea. Dacă are mesajele private închise, întrebarea apare în tichet."
+                hint="Membrul care a deschis tichetul dă 1–5 stele pentru cine l-a ajutat (cine a preluat tichetul sau ultimul din staff care a răspuns), cu comentariu dacă vrea."
                 onChange={(next) => setTickets({ rating: { ...tickets.rating, enabled: next } })} />
               {tickets.rating.enabled ? (
-                <Fld wide label="Întrebarea" htmlFor={`${id}-q`}>
-                  <input id={`${id}-q`} className="pn-inp" maxLength={200} value={tickets.rating.question} onChange={(event) => setTickets({ rating: { ...tickets.rating, question: event.target.value } })} />
-                </Fld>
+                <>
+                  <Fld wide label="Întrebarea" htmlFor={`${id}-q`}>
+                    <input id={`${id}-q`} className="pn-inp" maxLength={200} value={tickets.rating.question} onChange={(event) => setTickets({ rating: { ...tickets.rating, question: event.target.value } })} />
+                  </Fld>
+                  <Seg
+                    label="Unde întreabă" testId="tickets-bot-rating-where" value={tickets.rating.where} options={RATING_WHERE}
+                    onChange={(next) => setTickets({ rating: { ...tickets.rating, where: next as typeof tickets.rating.where } })}
+                  />
+                  <NoteRow tone="plain">{tickets.rating.where === "dm"
+                    ? "Doar în privat. Dacă membrul are mesajele private închise, nu primește întrebarea."
+                    : tickets.rating.where === "ticket"
+                      ? "În tichet, cu tag la membru, cât timp încă îl vede; dacă nu, în privat."
+                      : "În privat; dacă are mesajele private închise, în tichet, cu tag, cât timp încă îl vede."}</NoteRow>
+                  <div className="pn-fld pn-wide">
+                    <span className="pn-fl">Și la tichetele vechi</span>
+                    <p className="pn-fh">Tichetele făcute de celălalt bot (aplicații, parteneriate, ajutor, contestații). Botul ține minte cine l-a deschis și cine din staff a răspuns, iar când tichetul se închide (canalul e șters sau membrul pierde accesul) îl întreabă de stele.</p>
+                    <div className="pn-stk-ext" data-testid="tickets-bot-rating-external">
+                      {EXTERNAL_KINDS.map(([kind, label, emoji]) => (
+                        <label key={kind} className={cx("pn-stk-ext-i", tickets.rating.external[kind] && "is-on")}>
+                          <input type="checkbox" checked={tickets.rating.external[kind]} data-testid={`tickets-bot-rating-ext-${kind}`}
+                            onChange={(event) => setTickets({ rating: { ...tickets.rating, external: { ...tickets.rating.external, [kind]: event.target.checked } } })} />
+                          <span aria-hidden="true">{emoji}</span>{label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </>
               ) : null}
             </Fields>
           </SectionCard>

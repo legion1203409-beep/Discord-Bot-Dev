@@ -2844,12 +2844,18 @@ test.describe("tickets page", () => {
     await page.getByTestId("tickets-bot-category-4-emoji").fill("🎭");
     await page.getByTestId("tickets-bot-category-4-reason").click();
     await page.getByTestId("tickets-bot-category-2-remove").click();
+    // Stars: only in private, and not for partnerships run by the other bot.
+    await page.getByTestId("tickets-bot-rating-where").getByRole("radio", { name: "Doar privat" }).click();
+    await page.getByTestId("tickets-bot-rating-ext-partnership").uncheck();
     await expect(page.getByTestId("tickets-bot-preview")).toContainText("🎭 Cerere de rol");
     await expect(page.getByTestId("tickets-bot-publish")).toBeDisabled();
     await page.getByTestId("button-save-tickets").click();
     await expect.poll(() => putBodies.get(guilds[0].id)?.length).toBe(1);
     const saved = putBodies.get(guilds[0].id)![0].supportTickets;
-    expect(saved).toMatchObject({ enabled: true, staffRoleIds: ["666666666"], panelChannelId: "777777777", rating: { enabled: true } });
+    expect(saved).toMatchObject({
+      enabled: true, staffRoleIds: ["666666666"], panelChannelId: "777777777",
+      rating: { enabled: true, where: "dm", external: { staff: true, partnership: false, help_report: true, appeal: true } },
+    });
     expect(saved.categories.map((category: { label: string }) => category.label)).toEqual(["Ajutor general", "Raportează un membru", "Întrebări despre server", "Cerere de rol"]);
     expect(saved.categories[3]).toMatchObject({ emoji: "🎭", askReason: true });
     await page.getByTestId("tickets-bot-publish").click();

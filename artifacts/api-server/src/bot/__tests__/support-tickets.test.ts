@@ -178,7 +178,7 @@ describe("butoanele din tichet", () => {
 
   it("cu un tichet deja deschis nu se mai deschide altul", async () => {
     vi.mocked(db.loadSupportTicketsSetting).mockResolvedValue(ON);
-    const query = vi.spyOn(pool, "query").mockImplementation(async (sql) => (String(sql).includes("status = 'open' ORDER BY") ? { rows: [{ channel_id: "old" }] } : { rows: [] }) as never);
+    const query = vi.spyOn(pool, "query").mockImplementation(async (sql) => (String(sql).includes("status = 'open' AND category_id NOT LIKE 'ext:%' ORDER BY") ? { rows: [{ channel_id: "old" }] } : { rows: [] }) as never);
     const create = vi.fn();
     const editReply = vi.fn();
     try {

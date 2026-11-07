@@ -24,6 +24,7 @@ import {
   AttachmentBuilder,
   type GuildMember,
 } from "discord.js";
+import { attachExternalTicketRating } from "./external-ticket-rating";
 import { RECRUITMENT_PANEL_BUTTON_ID } from "./recruitment-panel";
 import { handleBanEvasionButton } from "./moderation/ban-evasion";
 import { randomUUID } from "node:crypto";
@@ -5029,6 +5030,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
   client.on(Events.ChannelCreate, (channel) => {
     scheduleTicketPanel(channel);
   });
+  attachExternalTicketRating(client);
   client.on(Events.ChannelUpdate, (_oldChannel, channel) => {
     scheduleTicketPanel(channel);
   });
@@ -5763,6 +5765,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
   client.on(Events.ChannelCreate, (channel) => {
     scheduleTicketPanel(channel);
   });
+  attachExternalTicketRating(client);
   client.on(Events.ChannelUpdate, (_oldChannel, channel) => {
     scheduleTicketPanel(channel);
   });
