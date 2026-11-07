@@ -1034,7 +1034,12 @@ export type SupportTicketCategory = {
 export type SupportTicketsConfig = {
   enabled: boolean; panelChannelId: string; panelMessageId: string; panelTitle: string; panelDescription: string; color: string;
   staffRoleIds: string[]; logChannelId: string; maxOpenPerUser: number; deleteAfterClose: boolean;
-  rating: { enabled: boolean; question: string }; categories: SupportTicketCategory[];
+  rating: SupportTicketRating; categories: SupportTicketCategory[];
+};
+/** Where the stars question goes, and which of the other bot's ticket categories ask for stars too. */
+export type SupportTicketRating = {
+  enabled: boolean; question: string; where?: "auto" | "dm" | "ticket";
+  external?: { staff: boolean; partnership: boolean; help_report: boolean; appeal: boolean };
 };
 export type StaffReputationRow = { staffId: string; name: string | null; avatarUrl: string | null; ratings: number; average: number; score: number; handled: number; distribution: number[] };
 

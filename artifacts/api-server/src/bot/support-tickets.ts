@@ -53,8 +53,25 @@ export type SupportTicketsConfig = {
   maxOpenPerUser: number;
   /** Delete the channel a little after it is closed (the transcript stays in the log). */
   deleteAfterClose: boolean;
-  rating: { enabled: boolean; question: string };
+  rating: SupportTicketRatingConfig;
   categories: SupportTicketCategory[];
+};
+
+/** Where the rating question goes: private first and the ticket if that fails, only private, or the ticket first. */
+export type RatingWhere = "auto" | "dm" | "ticket";
+/** The ticket categories run by another bot (aplicații, parteneriate, ajutor, contestații). */
+export type ExternalTicketKind = "staff" | "partnership" | "help_report" | "appeal";
+export const EXTERNAL_TICKET_KINDS: readonly ExternalTicketKind[] = ["staff", "partnership", "help_report", "appeal"];
+export const EXTERNAL_TICKET_LABELS: Record<ExternalTicketKind, string> = {
+  staff: "Aplicație de staff", partnership: "Parteneriat", help_report: "Ajutor / raport", appeal: "Contestație",
+};
+
+export type SupportTicketRatingConfig = {
+  enabled: boolean;
+  question: string;
+  where: RatingWhere;
+  /** Which of the other bot's ticket categories also ask for stars when they close. */
+  external: Record<ExternalTicketKind, boolean>;
 };
 
 export const MAX_TICKET_CATEGORIES = 25;
@@ -77,7 +94,10 @@ export const DEFAULT_SUPPORT_TICKETS_CONFIG: SupportTicketsConfig = {
   logChannelId: "",
   maxOpenPerUser: 1,
   deleteAfterClose: true,
-  rating: { enabled: true, question: "Cum ai evalua ajutorul primit?" },
+  rating: {
+    enabled: true, question: "Cum ai evalua ajutorul primit?", where: "auto",
+    external: { staff: true, partnership: true, help_report: true, appeal: true },
+  },
   categories: DEFAULT_CATEGORIES,
 };
 
@@ -127,6 +147,8 @@ export function normalizeSupportTicketsConfig(value: unknown): SupportTicketsCon
     rating: {
       enabled: raw.rating?.enabled !== false,
       question: text(raw.rating?.question, defaults.rating.question, 200),
+      where: raw.rating?.where === "dm" || raw.rating?.where === "ticket" ? raw.rating.where : "auto",
+      external: Object.fromEntries(EXTERNAL_TICKET_KINDS.map((kind) => [kind, raw.rating?.external?.[kind] !== false])) as Record<ExternalTicketKind, boolean>,
     },
     categories,
   };
@@ -270,7 +292,7 @@ async function openTicket(
   const guild = interaction.guild!;
   await ensureSupportTicketTables();
   const open = await pool.query<{ channel_id: string }>(
-    `SELECT channel_id FROM support_tickets WHERE guild_id = $1 AND opener_id = $2 AND status = 'open' ORDER BY opened_at`,
+    `SELECT channel_id FROM support_tickets WHERE guild_id = $1 AND opener_id = $2 AND status = 'open' AND category_id NOT LIKE 'ext:%' ORDER BY opened_at`,
     [guild.id, interaction.user.id],
   );
   // A ticket whose channel was deleted by hand does not count.
@@ -406,19 +428,8 @@ async function closeTicket(interaction: ButtonInteraction, config: SupportTicket
 
   let ratingInChannel = false;
   if (config.rating.enabled && helper && helper !== row.opener_id) {
-    await pool.query(`UPDATE support_tickets SET rated_staff_id = $2 WHERE id = $1`, [row.id, helper]);
-    const prompt = {
-      embeds: [new EmbedBuilder().setColor(colorOf(config)).setTitle(`⭐ ${config.rating.question}`)
-        .setDescription(`Tichetul **${row.category_label}** de pe **${guild.name}** s-a închis. Te-a ajutat <@${helper}>.\nAlege de la 1 la 5 stele; răspunsul ajută echipa să se facă mai bună.`)],
-      components: [ratingRow(row.id)],
-    };
-    const opener = await interaction.client.users.fetch(row.opener_id).catch(() => null);
-    const sent = await opener?.send(prompt).catch(() => null);
-    if (!sent) {
-      // Private messages are closed: the question goes in the ticket, which then stays a while longer.
-      await channel.send({ content: `<@${row.opener_id}>`, ...prompt, allowedMentions: { users: [row.opener_id] } }).catch(() => undefined);
-      ratingInChannel = true;
-    }
+    const where = await askForRating(interaction.client, config, row, helper, guild.name, channel);
+    ratingInChannel = where === "ticket";
   }
   const delay = ratingInChannel ? 10 * 60_000 : 10_000;
   await interaction.editReply(config.deleteAfterClose
@@ -427,6 +438,50 @@ async function closeTicket(interaction: ButtonInteraction, config: SupportTicket
   if (config.deleteAfterClose) {
     setTimeout(() => { void channel.delete(`Tichet #${row.id} închis`).catch(() => undefined); }, delay).unref?.();
   }
+}
+
+export function ratingPrompt(config: SupportTicketsConfig, row: Pick<SupportTicketRow, "id" | "category_label">, helper: string, guildName: string) {
+  return {
+    embeds: [new EmbedBuilder().setColor(colorOf(config)).setTitle(`⭐ ${config.rating.question}`)
+      .setDescription(`Tichetul **${row.category_label}** de pe **${guildName}** s-a închis. Te-a ajutat <@${helper}>.\nAlege de la 1 la 5 stele; răspunsul ajută echipa să se facă mai bună.`)],
+    components: [ratingRow(row.id)],
+  };
+}
+
+/** Whether a member still sees a channel; without the member cached, their own overwrite decides. */
+export function memberCanSee(channel: TextChannel, userId: string): boolean {
+  const perms = channel.permissionsFor?.(userId);
+  if (perms) return perms.has(PermissionFlagsBits.ViewChannel);
+  const overwrite = channel.permissionOverwrites?.cache.get(userId);
+  return Boolean(overwrite?.allow.has(PermissionFlagsBits.ViewChannel) && !overwrite.deny.has(PermissionFlagsBits.ViewChannel));
+}
+
+/** The order of the places tried for the question, as the server chose it. */
+export function ratingPlaces(where: RatingWhere): Array<"dm" | "ticket"> {
+  return where === "dm" ? ["dm"] : where === "ticket" ? ["ticket", "dm"] : ["dm", "ticket"];
+}
+
+/**
+ * Sends the rating question to the member who opened the ticket: in private,
+ * in the ticket (with a tag) or both in turn, as the server chose. The ticket
+ * is only used when the member can still see it. Says where it went, or null.
+ */
+export async function askForRating(
+  client: Client, config: SupportTicketsConfig, row: Pick<SupportTicketRow, "id" | "opener_id" | "category_label">,
+  helper: string, guildName: string, channel: TextChannel | null,
+): Promise<"dm" | "ticket" | null> {
+  await pool.query(`UPDATE support_tickets SET rated_staff_id = $2 WHERE id = $1`, [row.id, helper]);
+  const prompt = ratingPrompt(config, row, helper, guildName);
+  for (const place of ratingPlaces(config.rating.where)) {
+    if (place === "dm") {
+      const opener = await client.users.fetch(row.opener_id).catch(() => null);
+      if (await opener?.send(prompt).catch(() => null)) return "dm";
+      continue;
+    }
+    const canSee = channel ? memberCanSee(channel, row.opener_id) : false;
+    if (channel && canSee && await channel.send({ content: `<@${row.opener_id}>`, ...prompt, allowedMentions: { users: [row.opener_id] } }).catch(() => null)) return "ticket";
+  }
+  return null;
 }
 
 async function recordRating(interaction: ButtonInteraction, id: number, value: number): Promise<void> {

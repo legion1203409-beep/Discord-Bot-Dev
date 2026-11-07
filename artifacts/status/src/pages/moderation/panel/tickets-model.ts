@@ -324,17 +324,27 @@ export type SupportCategory = {
 export type SupportTickets = {
   enabled: boolean; panelChannelId: string; panelMessageId: string; panelTitle: string; panelDescription: string; color: string;
   staffRoleIds: string[]; logChannelId: string; maxOpenPerUser: number; deleteAfterClose: boolean;
-  rating: { enabled: boolean; question: string }; categories: SupportCategory[];
+  rating: { enabled: boolean; question: string; where: "auto" | "dm" | "ticket"; external: Record<ExternalKind, boolean> }; categories: SupportCategory[];
 };
 
 export const MAX_SUPPORT_CATEGORIES = 25;
 
 /** The bot's defaults (api-server support-tickets.ts DEFAULT_SUPPORT_TICKETS_CONFIG). */
+/** The ticket categories run by another bot, which can ask for stars too (bot/support-tickets.ts, EXTERNAL_TICKET_KINDS). */
+export type ExternalKind = "staff" | "partnership" | "help_report" | "appeal";
+export const EXTERNAL_KINDS: ReadonlyArray<readonly [ExternalKind, string, string]> = [
+  ["staff", "Aplicații de staff", "🛡️"],
+  ["partnership", "Parteneriate", "🤝"],
+  ["help_report", "Ajutor și rapoarte", "🕯️"],
+  ["appeal", "Contestații", "⚖️"],
+];
+export const RATING_WHERE: ReadonlyArray<readonly [string, string]> = [["auto", "Privat, apoi tichet"], ["dm", "Doar privat"], ["ticket", "Tichet, apoi privat"]];
+
 export const DEFAULT_SUPPORT_TICKETS: SupportTickets = {
   enabled: false, panelChannelId: "", panelMessageId: "", panelTitle: "🎫 Deschide un tichet",
   panelDescription: "Alege mai jos ce te aduce aici. Se deschide un canal privat doar pentru tine și staff.",
   color: "#d8a964", staffRoleIds: [], logChannelId: "", maxOpenPerUser: 1, deleteAfterClose: true,
-  rating: { enabled: true, question: "Cum ai evalua ajutorul primit?" },
+  rating: { enabled: true, question: "Cum ai evalua ajutorul primit?", where: "auto", external: { staff: true, partnership: true, help_report: true, appeal: true } },
   categories: [
     { id: "ajutor", label: "Ajutor general", emoji: "🙋", description: "Ai o întrebare sau ai nevoie de ajutor.", parentId: "", staffRoleIds: [], welcome: "Salut, {user}! Spune-ne cu ce te putem ajuta, iar cineva din staff îți răspunde cât mai repede.", askReason: false },
     { id: "raport", label: "Raportează un membru", emoji: "🚨", description: "Cineva încalcă regulile.", parentId: "", staffRoleIds: [], welcome: "{user}, mulțumim că ne anunți. Scrie cine, ce s-a întâmplat și, dacă poți, pune capturi.", askReason: true },
@@ -345,7 +355,12 @@ export const DEFAULT_SUPPORT_TICKETS: SupportTickets = {
 
 export function supportTicketsOf(config: any): SupportTickets {
   const value = config?.supportTickets ?? {};
-  return { ...DEFAULT_SUPPORT_TICKETS, ...value, rating: { ...DEFAULT_SUPPORT_TICKETS.rating, ...(value.rating ?? {}) }, categories: value.categories ?? DEFAULT_SUPPORT_TICKETS.categories };
+  const rating = { ...DEFAULT_SUPPORT_TICKETS.rating, ...(value.rating ?? {}) };
+  return {
+    ...DEFAULT_SUPPORT_TICKETS, ...value,
+    rating: { ...rating, where: rating.where ?? "auto", external: { ...DEFAULT_SUPPORT_TICKETS.rating.external, ...(value.rating?.external ?? {}) } },
+    categories: value.categories ?? DEFAULT_SUPPORT_TICKETS.categories,
+  };
 }
 
 export function categoryIdFor(label: string, taken: string[]): string {

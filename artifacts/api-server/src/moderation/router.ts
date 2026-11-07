@@ -590,7 +590,13 @@ const supportTicketsSchema = z.object({
   logChannelId: snowflake.or(z.literal("")),
   maxOpenPerUser: z.number().int().min(1).max(5),
   deleteAfterClose: z.boolean(),
-  rating: z.object({ enabled: z.boolean(), question: z.string().trim().max(200) }).strict(),
+  rating: z.object({
+    enabled: z.boolean(),
+    question: z.string().trim().max(200),
+    // Older pages do not send these: the stored or default values stay.
+    where: z.enum(["auto", "dm", "ticket"]).optional(),
+    external: z.object({ staff: z.boolean(), partnership: z.boolean(), help_report: z.boolean(), appeal: z.boolean() }).strict().optional(),
+  }).strict(),
   categories: z.array(supportTicketCategorySchema).max(MAX_TICKET_CATEGORIES),
 }).strict().superRefine((value, ctx) => {
   if (value.enabled && !value.categories.length) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["categories"], message: "Adaugă cel puțin o categorie de tichete." });
@@ -3598,7 +3604,11 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   if (value.supportTickets) {
     // The panel's message id is the bot's to keep: a page never moves it.
     const current = await supportTicketsForResponse(guildId);
-    savedSupportTickets = await saveSupportTickets(guildId, { ...value.supportTickets, panelMessageId: current?.panelMessageId ?? value.supportTickets.panelMessageId });
+    savedSupportTickets = await saveSupportTickets(guildId, {
+      ...value.supportTickets,
+      rating: { ...(current?.rating ?? {}), ...value.supportTickets.rating },
+      panelMessageId: current?.panelMessageId ?? value.supportTickets.panelMessageId,
+    });
     anyWriteSucceeded = true;
   }
   if (value.activeTop) {
