@@ -66,8 +66,8 @@ describe("automatic Discord activity-log delivery", () => {
         expect(fields.find((field) => field.name === "Țintă")).toBeUndefined();
       } else if (targetType === "member") {
         const memberField = fields.find((field) => field.name === "Membru");
-        expect(memberField?.value).toBe("Necunoscut");
-        expect(memberField?.value).not.toContain("345678901234567890");
+        // The member can be opened: mention, profile link and ID (an embed never pings).
+        expect(memberField?.value).toBe("<@345678901234567890>\n[Deschide profilul](https://discord.com/users/345678901234567890) · ID `345678901234567890`");
       } else {
         expect(fields.find((field) => field.name === "Țintă")?.value).toContain("nume indisponibil");
         expect(fields.find((field) => field.name === "Țintă")?.value).not.toContain("345678901234567890");
@@ -93,9 +93,7 @@ describe("automatic Discord activity-log delivery", () => {
       embeds: Array<{ toJSON: () => { fields: Array<{ name: string; value: string }> } }>;
     };
     const memberField = payload.embeds[0]!.toJSON().fields.find((field) => field.name === "Membru");
-    expect(memberField?.value).toBe("alvin\nUtilizator: @ioanaaa._");
-    expect(memberField?.value).not.toContain("<@");
-    expect(memberField?.value).not.toContain("345678901234567890");
+    expect(memberField?.value).toBe("<@345678901234567890>\nalvin · @ioanaaa._\n[Deschide profilul](https://discord.com/users/345678901234567890) · ID `345678901234567890`");
   });
 
   it("shows a safe before-and-after comparison for edited messages", async () => {

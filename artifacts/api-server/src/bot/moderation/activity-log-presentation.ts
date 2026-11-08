@@ -25,6 +25,7 @@ const detailLabels: Record<string, string> = {
   bulk: "Ștergere în masă",
   channelName: "Canal vocal",
   changes: "Modificări",
+  voiceChange: "Ce s-a schimbat",
   color: "Culoare",
   excludedByPolicy: "Exceptat de la moderare",
   hoist: "Afișat separat",
@@ -380,6 +381,22 @@ function readableDetails(detail: Record<string, unknown>, extraHidden: string[] 
     .slice(0, 900);
 }
 
+/**
+ * The member, so the staff can open the profile: a mention (tap → profile), the
+ * name and username, and a profile link that works even after the member left.
+ */
+export function memberFieldValue(targetId: string, detail: Record<string, unknown>): string {
+  const displayName = safeMemberName(detail.memberDisplayName);
+  const username = safeMemberName(detail.memberUsername);
+  const lines: string[] = [];
+  if (validSnowflake(targetId)) lines.push(`<@${targetId}>`);
+  const name = [displayName, username && username !== displayName ? `@${username}` : null].filter(Boolean).join(" · ");
+  if (name) lines.push(name);
+  if (validSnowflake(targetId)) lines.push(`[Deschide profilul](https://discord.com/users/${targetId}) · ID \`${targetId}\``);
+  if (!lines.length) lines.push("Necunoscut");
+  return lines.join("\n").slice(0, 1_024);
+}
+
 function targetField(
   targetType: string,
   targetId: string,
@@ -388,13 +405,7 @@ function targetField(
   const normalizedType = targetType.toLocaleLowerCase();
   if (normalizedType === "message" || normalizedType === "guild") return null;
   if (normalizedType === "member" || normalizedType === "user") {
-    const displayName = safeMemberName(detail.memberDisplayName);
-    const username = safeMemberName(detail.memberUsername);
-    const lines = [displayName ?? (username ? `@${username}` : "Necunoscut")];
-    if (displayName && username && displayName !== username) {
-      lines.push(`Utilizator: @${username}`);
-    }
-    return { name: "Membru", value: lines.join("\n").slice(0, 1_024), inline: false };
+    return { name: "Membru", value: memberFieldValue(targetId, detail), inline: false };
   }
   if (normalizedType === "channel") {
     return validSnowflake(targetId)
