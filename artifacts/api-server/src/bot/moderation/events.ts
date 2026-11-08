@@ -662,6 +662,23 @@ function readableRoleName(
     : "rol cu nume indisponibil";
 }
 
+type VoiceFlags = { selfMute?: boolean | null; serverMute?: boolean | null; selfDeaf?: boolean | null; serverDeaf?: boolean | null; streaming?: boolean | null; selfVideo?: boolean | null };
+
+/** What changed in a member's voice state, in words, or null when nothing worth logging changed. */
+export function voiceStateChangeText(before: VoiceFlags, after: VoiceFlags): string | null {
+  const changes: string[] = [];
+  const flip = (key: keyof VoiceFlags, on: string, off: string) => {
+    if (Boolean(before[key]) !== Boolean(after[key])) changes.push(after[key] ? on : off);
+  };
+  flip("serverMute", "🔇 a primit mute de la staff", "🔊 i s-a scos mute-ul dat de staff");
+  flip("serverDeaf", "🙉 a primit deafen de la staff", "👂 i s-a scos deafen-ul dat de staff");
+  flip("selfMute", "🎙️ și-a oprit microfonul", "🎙️ și-a pornit microfonul");
+  flip("selfDeaf", "🎧 și-a oprit sunetul", "🎧 și-a pornit sunetul");
+  flip("streaming", "📺 a pornit transmisia live", "📺 a oprit transmisia live");
+  flip("selfVideo", "📷 a pornit camera", "📷 a oprit camera");
+  return changes.length ? changes.join("\n") : null;
+}
+
 type OverwriteLike = { id: string; type?: number; allow?: { bitfield?: bigint }; deny?: { bitfield?: bigint } };
 
 /** Who the channel's permissions changed for: roles and members whose overwrite was added, removed or changed. */
@@ -1174,6 +1191,10 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
     const memberId = newState.id || oldState.id;
     const config = await helpers.getConfig(guild.id);
     const channelChanged = oldState.channelId !== newState.channelId;
+    // Who joins or leaves voice is not logged; only moves between channels and changes of state.
+    if (channelChanged && (!oldState.channelId || !newState.channelId)) return;
+    const stateChange = channelChanged ? null : voiceStateChangeText(oldState, newState);
+    if (!channelChanged && !stateChange) return;
     const actor = channelChanged
       ? await findAuditActor(
         guild,
@@ -1201,13 +1222,9 @@ export function attachModerationEvents(client: Client, helpers: ModerationEventH
         channelId: newState.channelId,
         oldChannelId: oldState.channelId,
         newChannelId: newState.channelId,
-        channelChanged,
-        selfMute: newState.selfMute,
-        serverMute: newState.serverMute,
-        selfDeaf: newState.selfDeaf,
-        serverDeaf: newState.serverDeaf,
-        streaming: newState.streaming,
-        video: newState.selfVideo,
+        ...(stateChange ? { voiceChange: stateChange } : {}),
+        memberDisplayName: newState.member?.displayName ?? oldState.member?.displayName ?? null,
+        memberUsername: newState.member?.user.username ?? oldState.member?.user.username ?? null,
       }), voiceDisplayDetail);
   }, newState.guild.id));
 
