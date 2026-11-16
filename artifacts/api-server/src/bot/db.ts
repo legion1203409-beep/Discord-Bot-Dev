@@ -2836,6 +2836,21 @@ export async function loadActiveTopSettings(guildId: string): Promise<unknown | 
   }
 }
 
+/** The automatic translation into Romanian (bot/auto-translate.ts), as JSON. */
+export async function saveAutoTranslateSettings(guildId: string, settings: unknown): Promise<void> {
+  await saveGuildStateValue(guildId, "auto_translate", JSON.stringify(settings));
+}
+
+export async function loadAutoTranslateSettings(guildId: string): Promise<unknown | null> {
+  const value = await loadGuildStateValue(guildId, "auto_translate");
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
 /** The Oracle's chat and prophecy settings of a server, as JSON (normalized by oracle-settings.ts). */
 export async function saveOracleSettings(guildId: string, settings: unknown): Promise<void> {
   await saveGuildStateValue(guildId, ORACLE_SETTINGS_KEY, JSON.stringify(settings));

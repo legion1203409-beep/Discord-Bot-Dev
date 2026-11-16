@@ -31,14 +31,25 @@ const config = (change: Record<string, unknown> = {}) => ({
 });
 
 describe("the bot control group", () => {
-  it("is its own page, with six modules", () => {
-    expect(CONTROL_MODULES.map((module) => module.route)).toEqual(["/control/invitatii", "/control/recrutare", "/control/raport", "/control/top-activi", "/control/canale", "/control/bot"]);
+  it("is its own page, with seven modules", () => {
+    expect(CONTROL_MODULES.map((module) => module.route)).toEqual(["/control/invitatii", "/control/recrutare", "/control/raport", "/control/top-activi", "/control/traducere", "/control/canale", "/control/bot"]);
     expect(controlModuleForRoute("/control").id).toBe("invites");
     expect(controlModuleForRoute("/control/canale/").id).toBe("channels");
     expect(isControlRoute("/control/bot")).toBe(true);
     expect(isControlRoute("/canale")).toBe(false);
     expect(panelGroupRoute("/control/raport")).toBe("/control");
     expect(isWidePanelRoute("/control")).toBe(true);
+  });
+
+  it("translation: needs a place when on, and says where it translates", async () => {
+    const { autoTranslateOf, autoTranslateProblem, autoTranslateSummary, controlDraftError } = await import("./control-model");
+    expect(autoTranslateOf({}).enabled).toBe(false);
+    expect(autoTranslateSummary({})).toBe("oprită");
+    expect(autoTranslateProblem({ enabled: true, channelIds: [], categoryIds: [] })).toBe("Alege cel puțin un canal sau o categorie.");
+    expect(controlDraftError({ ...config(), autoTranslate: { enabled: true, channelIds: [], categoryIds: [] } })).toBe("Traducere — Alege cel puțin un canal sau o categorie.");
+    expect(autoTranslateProblem({ enabled: true, channelIds: ["111111111"], categoryIds: [] })).toBeNull();
+    expect(autoTranslateSummary({ autoTranslate: { enabled: true, channelIds: ["1", "2"], categoryIds: ["3"] } })).toBe("2 canale + 1 categorie");
+    expect(autoTranslateProblem({ hourlyLimit: 5 })).toMatch(/pe oră/);
   });
 
   it("marks only the changed module", () => {

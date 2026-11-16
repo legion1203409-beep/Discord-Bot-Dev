@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import {
-  Activity, Bot, BookOpen, Check, ChevronLeft, ChevronRight, Command,
+  Activity, Bot, BookOpen, Languages, Check, ChevronLeft, ChevronRight, Command,
   Download, FileDown, Gavel, History, Home, LogOut, MessageCircle, RefreshCw, Search,
   Server, Settings2, Shield, ShieldAlert, SlidersHorizontal, Sparkles, Ticket,
   Trophy, Upload, BadgeCheck, Users,
@@ -78,6 +78,7 @@ const allItems: Array<{ heading: string; items: NavigationItem[] }> = [
     { id: "bot-statistics", label: "Invitații", description: "Cine a adus pe cine, jurnalul și raportul", href: "/control/invitatii", icon: Activity, tint: "violet", keywords: "invitatii statistici bot linkuri jurnal intrari raport" },
     { id: "control-recruitment", label: "Recrutare", description: "/invita, puncte și praguri cu roluri", href: "/control/recrutare", icon: Users, tint: "violet", keywords: "recrutare invita puncte praguri" },
     { id: "control-active-top", label: "Top activi", description: "Cei mai activi membri, în chat și pe voce", href: "/control/top-activi", icon: Activity, tint: "gold", keywords: "top activi clasament membri mesaje voce" },
+    { id: "control-translate", label: "Traducere", description: "Anunțurile traduse automat în română", href: "/control/traducere", icon: Languages, tint: "blue", keywords: "traducere traduce romana anunturi limba engleza" },
     { id: "control-daily", label: "Raport zilnic", description: "Statisticile zilei, postate după miezul nopții", href: "/control/raport", icon: Activity, tint: "violet", keywords: "raport zilnic statistici mesaje" },
     { id: "provisioning", label: "Canale și acces", description: "Botul creează canalele și le dă acces rolurilor", href: "/control/canale", icon: SlidersHorizontal, tint: "violet", keywords: "provisioning canale permisiuni roluri acces creare" },
     { id: "control-server", label: "Botul pe server", description: "Conexiunea și permisiunile botului", href: "/control/bot", icon: Bot, tint: "violet", keywords: "permisiuni intents conectat offline iesire" },

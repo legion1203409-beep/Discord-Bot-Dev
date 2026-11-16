@@ -180,6 +180,8 @@ import { loadOracleSettings, loadChannelNamesSetting, saveChannelNamesSetting } 
 import { CHANNEL_NAME_CATALOG, setChannelNamesLoader } from "../bot/channel-provisioning";
 import { ChannelNamesAiError, MAX_THEME_LENGTH, channelNamesAiAvailable, normalizeChannelNames, suggestChannelNames } from "../bot/channel-names";
 import { normalizeActiveTopConfig } from "../bot/active-top";
+import { MAX_TRANSLATE_CATEGORIES, MAX_TRANSLATE_CHANNELS, normalizeAutoTranslateConfig, saveAutoTranslateConfig as saveAutoTranslateSettingsAndCache } from "../bot/auto-translate";
+import { loadAutoTranslateSettings } from "../bot/db";
 import { loadActiveTopSettings, saveActiveTopSettings } from "../bot/db";
 import { MAX_PEOPLE_PER_REQUEST, resolvePeople } from "./people";
 import { appealIdentityFromRequest, clearAppealCookie, setAppealCookie } from "./appeal-auth";
@@ -605,6 +607,22 @@ const supportTicketsSchema = z.object({
   }
 });
 
+/** The automatic translation into Romanian (bot/auto-translate.ts), read and saved like the other bot settings. */
+async function autoTranslateForResponse(guildId: string) {
+  try {
+    const load = optionalExport(() => loadAutoTranslateSettings);
+    return normalizeAutoTranslateConfig(load ? await load(guildId) : null);
+  } catch (error) {
+    logger.warn({ error, guildId }, "Could not read the automatic translation settings");
+    return undefined;
+  }
+}
+
+async function saveAutoTranslate(guildId: string, value: unknown) {
+  const save = optionalExport(() => saveAutoTranslateSettingsAndCache);
+  return save ? await save(guildId, value) : normalizeAutoTranslateConfig(value);
+}
+
 async function saveActiveTopConfig(guildId: string, value: unknown) {
   const config = normalizeActiveTopConfig(value);
   const save = optionalExport(() => saveActiveTopSettings);
@@ -799,6 +817,21 @@ export const botControlSchema = z.object(
   dailyStats: dailyStatsEmbedConfigSchema,
   // Optional: pages that do not know the bot's own tickets keep them unchanged.
   supportTickets: supportTicketsSchema.optional(),
+  // Optional: pages that do not know the automatic translation keep it unchanged.
+  autoTranslate: z.object({
+    enabled: z.boolean(),
+    channelIds: z.array(snowflake).max(MAX_TRANSLATE_CHANNELS),
+    categoryIds: z.array(snowflake).max(MAX_TRANSLATE_CATEGORIES),
+    minLength: z.number().int().min(1).max(200),
+    hourlyLimit: z.number().int().min(10).max(2_000),
+    color: z.string().trim().regex(/^#[0-9a-f]{6}$/i),
+    includeBots: z.boolean(),
+    targetChannelId: snowflake.or(z.literal("")),
+  }).strict().superRefine((value, ctx) => {
+    if (value.enabled && !value.channelIds.length && !value.categoryIds.length) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["channelIds"], message: "Alege cel puțin un canal sau o categorie pentru traducere." });
+    }
+  }).optional(),
   // Optional: pages that do not know the top of the most active members keep it unchanged.
   activeTop: z.object({
     enabled: z.boolean(),
@@ -2928,9 +2961,11 @@ router.get("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
     dailyStats,
     supportTickets: await supportTicketsForResponse(guildId),
     activeTop: await activeTopForResponse(guildId),
+    autoTranslate: await autoTranslateForResponse(guildId),
     inviteTracking,
     provisioningPermissions: provisioningPermissionsSchema.parse(provisioningPermissions),
     discordLive: Boolean(getModerationClient()?.isReady()),
+    translationAiAvailable: Boolean(process.env.OPENAI_API_KEY),
   });
 }));
 
@@ -3563,6 +3598,7 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   let savedVerification = verification;
   let savedSupportTickets: ReturnType<typeof normalizeSupportTicketsConfig> | null = null;
   let savedActiveTop: ReturnType<typeof normalizeActiveTopConfig> | null = null;
+  let savedAutoTranslate: ReturnType<typeof normalizeAutoTranslateConfig> | null = null;
   let verificationPanelPublished = false;
   let anyWriteSucceeded = false;
   if (verification.enabled && verificationRequested) {
@@ -3613,6 +3649,10 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
   }
   if (value.activeTop) {
     savedActiveTop = await saveActiveTopConfig(guildId, value.activeTop);
+    anyWriteSucceeded = true;
+  }
+  if (value.autoTranslate) {
+    savedAutoTranslate = await saveAutoTranslate(guildId, value.autoTranslate);
     anyWriteSucceeded = true;
   }
   const saveInviteTracking = optionalExport(() => saveInviteTrackingConfig);
@@ -3688,6 +3728,7 @@ router.put("/guilds/:guildId/bot-control", asyncRoute(async (req, res) => {
     dailyStats,
     supportTickets: savedSupportTickets ?? await supportTicketsForResponse(guildId),
     activeTop: savedActiveTop ?? await activeTopForResponse(guildId),
+    autoTranslate: savedAutoTranslate ?? await autoTranslateForResponse(guildId),
     inviteTracking,
     provisioningPermissions: value.provisioningPermissions,
     discordLive: Boolean(client?.isReady()),

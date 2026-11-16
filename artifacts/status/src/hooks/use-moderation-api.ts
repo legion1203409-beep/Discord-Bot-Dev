@@ -254,6 +254,19 @@ export interface BotControlConfig {
     mention: boolean;
     color: string;
   };
+  /** The automatic translation into Romanian (api-server bot/auto-translate.ts); missing when the bot could not read it. */
+  autoTranslate?: {
+    enabled: boolean;
+    channelIds: string[];
+    categoryIds: string[];
+    minLength: number;
+    hourlyLimit: number;
+    color: string;
+    includeBots: boolean;
+    targetChannelId: string;
+  };
+  /** Whether the bot has an AI key, without which nothing is translated. */
+  translationAiAvailable?: boolean;
   inviteTracking: InviteTrackingConfig;
   discordLive?: boolean;
   provisioning?: {

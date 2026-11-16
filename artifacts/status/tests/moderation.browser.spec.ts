@@ -3203,7 +3203,7 @@ test.describe("bot control page", () => {
   test("tracks invitations with a weekly report and saves the daily report's channel", async ({ page }) => {
     const { putBodies } = await openControl(page);
     await expect(page.getByRole("heading", { name: "Invitații", exact: true })).toBeVisible();
-    await expect(page.getByRole("navigation", { name: "Modulele controlului" }).getByRole("link")).toHaveCount(6);
+    await expect(page.getByRole("navigation", { name: "Modulele controlului" }).getByRole("link")).toHaveCount(7);
     await page.getByTestId("control-invites-switch").click();
     await page.getByTestId("control-invites-report-switch").click();
     await page.getByRole("combobox", { name: "Canalul raportului de invitații" }).selectOption("444444444");
@@ -3330,6 +3330,28 @@ test.describe("bot control page", () => {
     await expect.poll(() => putBodies.get(guilds[0].id)?.length).toBe(1);
     expect(putBodies.get(guilds[0].id)![0].inviteTracking.recruitment).toMatchObject({
       enabled: true, inviteChannelId: "444444444", rewardPoints: 40, milestones: [{ requiredInvites: 1 }, { requiredInvites: 5 }, { requiredInvites: 10, roleId: "666666666" }],
+    });
+  });
+
+  test("translates announcements into Romanian: where, whose, and where the translation goes", async ({ page }) => {
+    const { putBodies } = await openControl(page, "/moderare/control/traducere");
+    await expect(page.getByTestId("control-translate-off")).toBeVisible();
+    await page.getByTestId("control-translate-switch").click();
+    await expect(page.getByText("Alege cel puțin un canal sau o categorie.").first()).toBeVisible();
+    await page.getByTestId("button-save-control").click();
+    expect(putBodies.size).toBe(0);
+
+    await page.getByTestId("control-translate-channels").getByRole("checkbox", { name: "#cufere" }).click();
+    await expect(page.getByTestId("control-translate-preview")).toContainText("răspuns la");
+    await page.getByTestId("control-translate-bots").click();
+    await page.getByTestId("control-translate-mode").getByRole("radio", { name: "Într-un canal ales" }).click();
+    await page.getByRole("combobox", { name: "Canalul traducerilor" }).selectOption("444444444");
+    await expect(page.getByTestId("control-translate-preview")).toContainText("Mesajul original");
+    await page.getByTestId("control-translate-hourly").getByRole("radio", { name: "100", exact: true }).click();
+    await page.getByTestId("button-save-control").click();
+    await expect.poll(() => putBodies.get(guilds[0].id)?.length).toBe(1);
+    expect(putBodies.get(guilds[0].id)![0].autoTranslate).toEqual({
+      enabled: true, channelIds: ["777777777"], categoryIds: [], minLength: 4, hourlyLimit: 100, color: "#4f8bd6", includeBots: false, targetChannelId: "444444444",
     });
   });
 
