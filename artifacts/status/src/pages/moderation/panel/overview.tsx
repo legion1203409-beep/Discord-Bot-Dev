@@ -109,7 +109,7 @@ function Overview({ guildId, guildName, guildIcon }: { guildId: string; guildNam
           </a>
           <p className={cx("pn-ov-bot", capabilities?.online === false ? "is-off" : capabilities ? "is-on" : null)} data-testid="overview-bot">
             <span className="pn-ov-dot" aria-hidden="true" />
-            {capabilities ? capabilities.online === false ? "Botul e offline" : "Botul e online" : "Se verifică botul…"}
+            {capabilities ? capabilities.online === false ? "Botul e offline" : "Botul e online" : metadata.error && !metadata.loading ? "Starea botului nu a putut fi citită" : "Se verifică botul…"}
           </p>
           <nav className="pn-ov-quick" aria-label="Scurtături">
             <Link href="/comenzi" className="pn-ov-q" data-testid="quick-command"><Ico name="slash" /><span>Dă o comandă</span></Link>
