@@ -24,6 +24,7 @@ import {
   AttachmentBuilder,
   type GuildMember,
 } from "discord.js";
+import { TRANSLATE_COMMAND_NAME, attachAutoTranslate, handleTranslateContextMenu, translateMessageCommand } from "./auto-translate";
 import { attachExternalTicketRating } from "./external-ticket-rating";
 import { RECRUITMENT_PANEL_BUTTON_ID } from "./recruitment-panel";
 import { handleBanEvasionButton } from "./moderation/ban-evasion";
@@ -5031,6 +5032,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
     scheduleTicketPanel(channel);
   });
   attachExternalTicketRating(client);
+  attachAutoTranslate(client);
   client.on(Events.ChannelUpdate, (_oldChannel, channel) => {
     scheduleTicketPanel(channel);
   });
@@ -5505,6 +5507,12 @@ export async function startBot(onReady?: () => void): Promise<void> {
       );
     }
 
+    // Apps → „Traduce în română”: works on any message, also while the game is stopped.
+    if (interaction.isMessageContextMenuCommand?.() && interaction.commandName === TRANSLATE_COMMAND_NAME) {
+      dispatch(handleTranslateContextMenu(interaction));
+      return;
+    }
+
     if (interaction.guildId && isGuildGameStopped(interaction.guildId)) {
       let allowedWhileStopped = false;
       if (interaction.isChatInputCommand()) {
@@ -5687,7 +5695,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
 
   // Register commands globally so they appear on every server
   const rest = new REST().setToken(token);
-  const body = [...slashCommands.map((c) => c.toJSON()), ...moderationCommands];
+  const body = [...slashCommands.map((c) => c.toJSON()), ...moderationCommands, translateMessageCommand];
   await rest.put(Routes.applicationCommands(APPLICATION_ID), { body });
   logger.info("Commands registered globally");
 
@@ -5766,6 +5774,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
     scheduleTicketPanel(channel);
   });
   attachExternalTicketRating(client);
+  attachAutoTranslate(client);
   client.on(Events.ChannelUpdate, (_oldChannel, channel) => {
     scheduleTicketPanel(channel);
   });
@@ -6125,6 +6134,12 @@ export async function startBot(onReady?: () => void): Promise<void> {
       );
     }
 
+    // Apps → „Traduce în română”: works on any message, also while the game is stopped.
+    if (interaction.isMessageContextMenuCommand?.() && interaction.commandName === TRANSLATE_COMMAND_NAME) {
+      dispatch(handleTranslateContextMenu(interaction));
+      return;
+    }
+
     if (interaction.guildId && isGuildGameStopped(interaction.guildId)) {
       let allowedWhileStopped = false;
       if (interaction.isChatInputCommand()) {
@@ -6301,7 +6316,7 @@ export async function startBot(onReady?: () => void): Promise<void> {
 
   // Register commands globally so they appear on every server
   const rest = new REST().setToken(token);
-  const body = [...slashCommands.map((c) => c.toJSON()), ...moderationCommands];
+  const body = [...slashCommands.map((c) => c.toJSON()), ...moderationCommands, translateMessageCommand];
   await rest.put(Routes.applicationCommands(APPLICATION_ID), { body });
   logger.info("Commands registered globally");
 

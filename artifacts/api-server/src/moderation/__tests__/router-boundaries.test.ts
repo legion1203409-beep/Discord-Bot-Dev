@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   loadSupportTicketsSetting: vi.fn(async () => null as unknown), saveSupportTicketsSetting: vi.fn(async () => undefined),
   loadChannelNamesSetting: vi.fn(async () => null as unknown), saveChannelNamesSetting: vi.fn(async () => undefined),
   loadActiveTopSettings: vi.fn(async () => null as unknown), saveActiveTopSettings: vi.fn(async () => undefined),
+  loadAutoTranslateSettings: vi.fn(async () => null as unknown), saveAutoTranslateSettings: vi.fn(async () => undefined),
   session: vi.fn(), access: vi.fn(), csrf: vi.fn(), client: vi.fn(),
   getConfig: vi.fn(), putConfig: vi.fn(), putProtectionToggle: vi.fn(), listCases: vi.fn(), countCases: vi.fn(),
   listAudit: vi.fn(), listLogs: vi.fn(), beginAction: vi.fn(), getAction: vi.fn(),
@@ -141,6 +142,8 @@ vi.mock("../../bot/db", () => ({
   saveChannelNamesSetting: mocks.saveChannelNamesSetting,
   loadActiveTopSettings: mocks.loadActiveTopSettings,
   saveActiveTopSettings: mocks.saveActiveTopSettings,
+  loadAutoTranslateSettings: mocks.loadAutoTranslateSettings,
+  saveAutoTranslateSettings: mocks.saveAutoTranslateSettings,
   loadDailyStatsEmbedConfig: mocks.loadDailyStatsEmbedConfig,
   saveDailyStatsEmbedConfig: mocks.saveDailyStatsEmbedConfig,
   loadInviteTrackingConfig: mocks.loadInviteTrackingConfig,
@@ -1633,6 +1636,32 @@ describe("moderation HTTP authorization and mutation boundaries", () => {
 
     it("refuses an interval outside 1–7 days", async () => {
       expect((await put({ ...botControlPayload(), activeTop: { ...top, enabled: false, intervalDays: 9 } })).status).toBe(400);
+    });
+  });
+
+  describe("the automatic translation into Romanian", () => {
+    const put = (payload: unknown) => fetch(`${base}/bot-control`, {
+      ...post(payload), method: "PUT", headers: { "content-type": "application/json", "x-csrf-token": "csrf" },
+    });
+    const translate = { enabled: true, channelIds: [] as string[], categoryIds: [] as string[], minLength: 4, hourlyLimit: 200, color: "#4f8bd6", includeBots: true, targetChannelId: "" };
+
+    it("is read with the bot settings, off by default, and says whether the AI can translate", async () => {
+      mocks.loadAutoTranslateSettings.mockResolvedValueOnce(null);
+      const body = await (await fetch(`${base}/bot-control`)).json() as { autoTranslate: { enabled: boolean }; translationAiAvailable: boolean };
+      expect(body.autoTranslate).toMatchObject({ enabled: false, channelIds: [], hourlyLimit: 200 });
+      expect(typeof body.translationAiAvailable).toBe("boolean");
+    });
+
+    it("needs a channel or a category when switched on, and is saved only when sent", async () => {
+      mocks.saveAutoTranslateSettings.mockClear();
+      expect((await put({ ...botControlPayload(), autoTranslate: translate })).status).toBe(400);
+      expect(mocks.saveAutoTranslateSettings).not.toHaveBeenCalled();
+      const withCategory = { ...translate, categoryIds: ["999999999"] };
+      expect((await put({ ...botControlPayload(), autoTranslate: withCategory })).status).toBe(200);
+      expect(mocks.saveAutoTranslateSettings).toHaveBeenCalledWith(guildId, withCategory);
+      mocks.saveAutoTranslateSettings.mockClear();
+      expect((await put(botControlPayload())).status).toBe(200);
+      expect(mocks.saveAutoTranslateSettings).not.toHaveBeenCalled();
     });
   });
 

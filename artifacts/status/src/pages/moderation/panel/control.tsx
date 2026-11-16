@@ -11,10 +11,13 @@ import { useToast } from "../../../hooks/use-toast";
 import { useBotDraft } from "./bot-draft";
 import { usePanel } from "./context";
 import {
-  ChannelField, Fields, Fld, Ico, Note, NoteRow, NumField, Pill, SectionCard, Seg, Spinner, Switch, SwitchField, cx, type IconName,
+  ChannelField, Fields, Fld, Ico, IdPicker, Note, NoteRow, NumField, Pill, SectionCard, Seg, Spinner, Switch, SwitchField, cx, type IconName,
 } from "./fields";
+import { isCategory, oracleChannelOptions } from "./oracle-model";
+import { countLabel } from "./model";
 import { EmojiTextField, ImageUrlField } from "./message-fields";
 import {
+  MAX_TRANSLATE_CATEGORIES, MAX_TRANSLATE_CHANNELS, TRANSLATE_HOURLY_LIMITS, autoTranslateOf, autoTranslateProblem, type AutoTranslate,
   ACTIVE_TOP_LIMITS, ACTIVE_TOP_PREVIEW_CHAT, ACTIVE_TOP_PREVIEW_VOICE, activeTopOf, activeTopProblem, activeTopVoiceTime, type ActiveTop,
   CONTROL_MODULES, DAILY_INTERVALS, DAILY_METRICS, DAILY_PREVIEW_ACTIVITY, DAILY_PREVIEW_INVITERS, dailyInterval, dailyIntervalText, dailyInviteTopOn, dailyTitleFor,
   longDayName, nextDailyReport, shortPeriod, DAILY_PREVIEW_DAYS, DAILY_PREVIEW_MEMBERS, DAILY_TEXTS, DAILY_TOKENS, PROVISION_CATEGORIES,
@@ -29,7 +32,7 @@ const MODULE: Record<ControlModuleId, (typeof CONTROL_MODULES)[number]> = Object
   CONTROL_MODULES.map((module) => [module.id, module]),
 ) as Record<ControlModuleId, (typeof CONTROL_MODULES)[number]>;
 
-export const CONTROL_ICONS: Record<ControlModuleId, IconName> = { invites: "send", recruitment: "star", daily: "calendar", activeTop: "stairs", channels: "folder", server: "bot" };
+export const CONTROL_ICONS: Record<ControlModuleId, IconName> = { invites: "send", recruitment: "star", daily: "calendar", activeTop: "stairs", translate: "message", channels: "folder", server: "bot" };
 
 /** A big on/off switch on the right of a module head, and the note when it is off. */
 function HeadSwitch({ on, label, testId, onChange }: { on: boolean; label: string; testId: string; onChange: (next: boolean) => void }) {
@@ -1088,11 +1091,144 @@ function ActiveTopModule() {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* Traducere                                                            */
+/* ------------------------------------------------------------------ */
+
+function TranslatePreview({ translate }: { translate: AutoTranslate }) {
+  const elsewhere = Boolean(translate.targetChannelId);
+  return (
+    <div className="pn-dc" data-testid="control-translate-preview">
+      <p className="pn-dc-k">Așa apare în Discord</p>
+      <div className="pn-dc-msg">
+        <span className="pn-dc-av" aria-hidden="true">G</span>
+        <div className="pn-dc-body">
+          <p className="pn-dc-name"><b>Game News</b><span>BOT</span></p>
+          <div className="pn-dc-embed pn-tr-orig">
+            <p className="pn-dc-title">Season 4 is live!</p>
+            <p className="pn-dc-text">New map, two new heroes and double XP all weekend. Patch notes in the thread.</p>
+          </div>
+        </div>
+      </div>
+      <div className={cx("pn-dc-msg", !elsewhere && "pn-tr-reply")}>
+        <span className="pn-dc-av pn-orc-av" aria-hidden="true"><Ico name="eye" /></span>
+        <div className="pn-dc-body">
+          {!elsewhere ? <p className="pn-tr-replyto">↪ răspuns la <b>Game News</b></p> : null}
+          <p className="pn-dc-name"><b>Oracolul Cenușii</b><span>BOT</span></p>
+          <div className="pn-dc-embed" style={{ borderLeftColor: translate.color }}>
+            <p className="pn-tr-from">🌐 Tradus din engleză{elsewhere ? " · Game News" : ""}</p>
+            <p className="pn-dc-text"><b>Sezonul 4 a început!</b>{"\n"}Hartă nouă, doi eroi noi și XP dublu tot weekendul. Notele de patch sunt în fir.</p>
+            {elsewhere ? <p className="pn-dc-text pn-tr-link">↗ Mesajul original</p> : null}
+          </div>
+        </div>
+      </div>
+      <p className="pn-fh pn-tr-note">Pe orice mesaj: click dreapta (pe telefon, ține apăsat) → <b>Aplicații</b> → <b>Traduce în română</b>. Traducerea o vede doar cine a cerut-o.</p>
+    </div>
+  );
+}
+
+function TranslateModule() {
+  const { config, set, channels } = usePanel();
+  const translate = autoTranslateOf(config);
+  // The whole section is sent, so a server that never saved it gets every field at once.
+  const setTranslate = (patch: Partial<AutoTranslate>) => set(["autoTranslate"], { ...translate, ...patch });
+  const problem = autoTranslateProblem(translate);
+  const options = useMemo(() => oracleChannelOptions(channels), [channels]);
+  const places = [...translate.categoryIds, ...translate.channelIds];
+  const aiOff = (config as { translationAiAvailable?: boolean }).translationAiAvailable === false;
+  const id = useId();
+  return (
+    <ModuleView module={MODULE.translate} icon={CONTROL_ICONS.translate} aside={(
+      <HeadSwitch on={translate.enabled} label="Traducerea automată" testId="control-translate-switch" onChange={(next) => setTranslate({ enabled: next })} />
+    )}>
+      {!translate.enabled ? (
+        <OffNote testId="control-translate-off" text="Oprită: botul nu traduce singur nimic. „Traduce în română” din meniul Aplicații merge oricum." action="Pornește traducerea" onTurnOn={() => setTranslate({ enabled: true })} />
+      ) : null}
+      <ModuleNotes>
+        {aiOff ? <Note tone="warn" testId="control-translate-ai-off">Botul nu are cheia AI (OPENAI_API_KEY), așa că deocamdată nu poate traduce nimic. Setările se salvează și pornesc când cheia e adăugată.</Note> : null}
+        {problem ? <Note tone="bad" role="alert">{problem}</Note> : null}
+      </ModuleNotes>
+      <div className="pn-vsplit">
+        <div className="pn-vsplit-main">
+          <SectionCard title="Ce traduce" small={places.length ? countLabel(places.length, "loc", "locuri") : "nimic ales"} testId="control-translate-where">
+            <Fields>
+              <IdPicker
+                label="Canale și categorii" kind="channel" options={options} selected={places}
+                max={MAX_TRANSLATE_CHANNELS + MAX_TRANSLATE_CATEGORIES} testId="control-translate-channels"
+                hint="De obicei canalele de anunțuri. O categorie include toate canalele din ea, chiar și cele făcute mai târziu."
+                onChange={(next) => setTranslate({
+                  categoryIds: next.filter((value) => isCategory(channels, value)).slice(0, MAX_TRANSLATE_CATEGORIES),
+                  channelIds: next.filter((value) => !isCategory(channels, value)).slice(0, MAX_TRANSLATE_CHANNELS),
+                })}
+              />
+              <SwitchField
+                label="Și anunțurile boților și ale serverelor urmărite" testId="control-translate-bots" checked={translate.includeBots}
+                hint="Mesajele postate de alte boți și aplicații și cele venite prin „Follow” de la canalele de anunțuri ale altor servere. Mesajele botului însuși nu se traduc niciodată."
+                onChange={(next) => setTranslate({ includeBots: next })}
+              />
+              <NoteRow tone="plain">Mesajele deja în română sunt sărite. Se traduce și textul din embed-uri; imaginea anunțului apare și în traducere.</NoteRow>
+            </Fields>
+          </SectionCard>
+          <SectionCard title="Unde apare traducerea" testId="control-translate-output">
+            <Fields>
+              <Seg
+                label="Locul" testId="control-translate-mode" value={translate.targetChannelId ? "channel" : "reply"}
+                options={[["reply", "Răspuns sub mesaj"], ["channel", "Într-un canal ales"]]}
+                onChange={(next) => {
+                  if (next === "reply") setTranslate({ targetChannelId: "" });
+                  else if (!translate.targetChannelId) {
+                    const first = (channels ?? []).find((channel) => ["0", "5", "GuildText", "GuildAnnouncement"].includes(String(channel.type)));
+                    if (first) setTranslate({ targetChannelId: first.id });
+                  }
+                }}
+              />
+              {translate.targetChannelId ? (
+                <ChannelField
+                  label="Canalul traducerilor" selectLabel="Canalul traducerilor" value={translate.targetChannelId} channels={channels} wide
+                  hint="De exemplu #anunturi-ro. Fiecare traducere are un link spre mesajul original."
+                  onChange={(next) => setTranslate({ targetChannelId: next ?? "" })}
+                />
+              ) : (
+                <NoteRow tone="plain">Botul răspunde sub anunț, fără să dea ping cuiva. Dacă anunțul e editat, traducerea se actualizează; dacă e șters, dispare și ea.</NoteRow>
+              )}
+              <Fld label="Culoarea" htmlFor={`${id}-c`} hint="Banda din stânga traducerii.">
+                <div className="pn-set-colors">
+                  <label className="pn-set-picker" aria-label="Alege culoarea">
+                    <input type="color" value={/^#[0-9a-f]{6}$/i.test(translate.color) ? translate.color.toLowerCase() : "#4f8bd6"} onChange={(event) => setTranslate({ color: event.target.value })} />
+                  </label>
+                  <input id={`${id}-c`} className="pn-inp pn-inp-mono pn-set-hex" maxLength={7} value={translate.color} data-testid="control-translate-color" onChange={(event) => setTranslate({ color: event.target.value.trim() })} />
+                </div>
+              </Fld>
+            </Fields>
+          </SectionCard>
+          <SectionCard title="Limite" testId="control-translate-limits">
+            <Fields>
+              <NumField
+                label="Lungimea minimă" min={1} max={200} value={translate.minLength} unit="litere" testId="control-translate-min"
+                hint="Mesajele mai scurte („ok”, „gg”, emoji) nu se traduc."
+                onChange={(next) => setTranslate({ minLength: next ?? 0 })}
+              />
+              <Seg
+                label="Cel mult pe oră" testId="control-translate-hourly" value={String(translate.hourlyLimit)}
+                hint="Traducerile automate pe tot serverul, ca un canal foarte activ să nu consume prea mult AI."
+                options={TRANSLATE_HOURLY_LIMITS.map((value) => [String(value), String(value)] as const)}
+                onChange={(next) => setTranslate({ hourlyLimit: Number(next) })}
+              />
+            </Fields>
+          </SectionCard>
+        </div>
+        <aside className="pn-vsplit-side" aria-label="Previzualizare"><TranslatePreview translate={translate} /></aside>
+      </div>
+    </ModuleView>
+  );
+}
+
 export const CONTROL_VIEWS: Record<ControlModuleId, () => React.JSX.Element> = {
   invites: InvitesModule,
   recruitment: RecruitmentModule,
   daily: DailyModule,
   activeTop: ActiveTopModule,
+  translate: TranslateModule,
   channels: ChannelsModule,
   server: ServerModule,
 };

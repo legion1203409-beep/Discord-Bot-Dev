@@ -47,6 +47,10 @@ export const CONTROL_MODULES: readonly ControlModuleDef[] = [
     description: "Un clasament separat de statistici: cine a scris cele mai multe mesaje și cine a stat cel mai mult pe voce, postat în canalul lui, o dată la 1–7 zile. Oricine îl vede oricând cu /topactivi.",
   },
   {
+    id: "translate", route: CONTROL_MODULE_ROUTES.translate, short: "Traducere", title: "Traducere în română", paths: ["autoTranslate"],
+    description: "Anunțurile postate în altă limbă (de oameni, boți, aplicații sau servere urmărite) sunt traduse automat în română. Și din meniul Aplicații al oricărui mesaj: „Traduce în română”.",
+  },
+  {
     id: "channels", route: CONTROL_MODULE_ROUTES.channels, short: "Canale și acces", title: "Canale și acces", paths: ["provisioningPermissions"],
     description: "Botul creează categoriile și canalele de care are nevoie și le dă acces doar rolurilor alese.",
   },
@@ -266,6 +270,47 @@ export function activeTopVoiceTime(minutes: number): string {
   return rest ? `${hours} h ${rest} min` : `${hours} h`;
 }
 
+/* ------------------------------------------------------------------ */
+/* Traducere                                                            */
+/* ------------------------------------------------------------------ */
+
+export type AutoTranslate = {
+  enabled: boolean; channelIds: string[]; categoryIds: string[]; minLength: number; hourlyLimit: number; color: string;
+  includeBots: boolean; targetChannelId: string;
+};
+
+/** The bot's defaults (DEFAULT_AUTO_TRANSLATE in bot/auto-translate.ts). */
+export const DEFAULT_AUTO_TRANSLATE: AutoTranslate = {
+  enabled: false, channelIds: [], categoryIds: [], minLength: 4, hourlyLimit: 200, color: "#4f8bd6", includeBots: true, targetChannelId: "",
+};
+export const MAX_TRANSLATE_CHANNELS = 25;
+export const MAX_TRANSLATE_CATEGORIES = 10;
+export const TRANSLATE_HOURLY_LIMITS = [50, 100, 200, 500, 1000] as const;
+
+export function autoTranslateOf(config: any): AutoTranslate {
+  return { ...DEFAULT_AUTO_TRANSLATE, ...(config?.autoTranslate ?? {}) };
+}
+
+export function autoTranslateProblem(value: any): string | null {
+  if (!value) return null;
+  const translate = autoTranslateOf({ autoTranslate: value });
+  if (translate.enabled && !translate.channelIds.length && !translate.categoryIds.length) return "Alege cel puțin un canal sau o categorie.";
+  if (translate.channelIds.length > MAX_TRANSLATE_CHANNELS) return `Cel mult ${MAX_TRANSLATE_CHANNELS} de canale.`;
+  if (translate.categoryIds.length > MAX_TRANSLATE_CATEGORIES) return `Cel mult ${MAX_TRANSLATE_CATEGORIES} categorii.`;
+  if (translate.targetChannelId && !isDiscordId(translate.targetChannelId)) return `„${translate.targetChannelId}” nu este un ID de canal Discord.`;
+  if (!(Number.isInteger(translate.minLength) && translate.minLength >= 1 && translate.minLength <= 200)) return "Lungimea minimă e între 1 și 200 de litere.";
+  if (!(Number.isInteger(translate.hourlyLimit) && translate.hourlyLimit >= 10 && translate.hourlyLimit <= 2_000)) return "Limita pe oră e între 10 și 2.000.";
+  if (!/^#[0-9a-f]{6}$/i.test(translate.color)) return "Culoarea are forma #RRGGBB.";
+  return null;
+}
+
+export function autoTranslateSummary(config: any): string {
+  const translate = autoTranslateOf(config);
+  if (!translate.enabled) return "oprită";
+  const places = translate.channelIds.length + translate.categoryIds.length;
+  return places ? `${countLabel(translate.channelIds.length, "canal", "canale")}${translate.categoryIds.length ? ` + ${countLabel(translate.categoryIds.length, "categorie", "categorii")}` : ""}` : "fără canale";
+}
+
 /** The day's card is on unless it was turned off. */
 export function dailyChartOn(daily: any): boolean {
   return daily?.chart !== false;
@@ -437,6 +482,7 @@ export function controlModuleSummary(id: ControlModuleId, config: any): string {
       const top = activeTopOf(config);
       return top.enabled ? (top.channelId ? `${dailyIntervalText(top.intervalDays)}, top ${top.limit}` : "fără canal") : "oprit";
     }
+    case "translate": return autoTranslateSummary(config);
     case "channels": {
       const set = Object.keys(config?.provisioningPermissions ?? {}).length;
       return set ? `${countLabel(set, "categorie", "categorii")} cu acces ales` : "acces implicit";
@@ -451,6 +497,10 @@ export function isControlModuleOn(id: ControlModuleId, config: any): boolean {
     case "recruitment": return Boolean(config?.inviteTracking?.recruitment?.enabled);
     case "daily": return Boolean(config?.dailyStats?.channelId);
     case "activeTop": return Boolean(activeTopOf(config).enabled && activeTopOf(config).channelId);
+    case "translate": {
+      const translate = autoTranslateOf(config);
+      return translate.enabled && (translate.channelIds.length + translate.categoryIds.length) > 0;
+    }
     case "channels": return true;
     case "server": return config?.discordLive !== false;
   }
@@ -473,6 +523,8 @@ export function controlDraftError(config: any): string | null {
   if (daily) return `Raport zilnic — ${daily}`;
   const top = activeTopProblem(config?.activeTop);
   if (top) return `Top activi — ${top}`;
+  const translate = autoTranslateProblem(config?.autoTranslate);
+  if (translate) return `Traducere — ${translate}`;
   const channels = channelsProblem(config);
   return channels ? `Canale și acces — ${channels}` : null;
 }
