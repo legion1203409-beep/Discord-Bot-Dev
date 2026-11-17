@@ -122,8 +122,13 @@ export function useCaseList(guildId: string | null, filters: CaseFilters) {
 
 /** The open and closed counts of the whole server, for the menu and the head of the page. */
 export function useCaseCounts(guildId: string | null, refreshKey = 0) {
+  return useCaseCountsState(guildId, refreshKey).counts;
+}
+
+/** The counts, and whether reading them failed, so a page can say so instead of loading forever. */
+export function useCaseCountsState(guildId: string | null, refreshKey = 0) {
   const loaded = useLoad<CasePage>(guildId ? `${guildId}|counts|${refreshKey}` : null, (signal) => get<CasePage>(`/guilds/${guildId}/cases?limit=1&offset=0`, signal));
-  return loaded.data?.counts;
+  return { counts: loaded.data?.counts, failed: Boolean(loaded.error) && !loaded.loading };
 }
 
 export function useCaseDetails(guildId: string | null, caseId: string | null) {

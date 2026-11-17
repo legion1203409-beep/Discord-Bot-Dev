@@ -6,9 +6,16 @@ type ToggleKey = "autoMod" | "antiRaid" | "antiSpam" | "antiFlood" | "suspicious
 
 export function ConfigOverviewPage() {
   const { guildId } = useActiveGuild();
-  const { data, loading, error } = useModerationConfig(guildId);
+  const { data, loading, error, refetch } = useModerationConfig(guildId);
   if (loading) return <div className="flex justify-center p-12"><Loader2 className="h-8 w-8 animate-spin" /></div>;
-  if (!data) return <div role="alert" className="rounded-xl border border-destructive/40 p-6 text-destructive">{error?.message || "Configurația nu a putut fi încărcată."}</div>;
+  if (!data) {
+    return (
+      <div role="alert" className="rounded-xl border border-destructive/40 p-6 text-destructive">
+        <p>{error?.message || "Configurația nu a putut fi încărcată."}</p>
+        {guildId ? <button type="button" className="mt-3 rounded-lg border border-destructive/40 px-3 py-1.5 text-sm font-semibold" onClick={() => void refetch()}>Reîncearcă</button> : null}
+      </div>
+    );
+  }
 
   const master = Boolean(data.protection?.enabled);
   const modules: Array<{ key: ToggleKey; title: string; description: string; href: string; enabled: boolean; dependent: boolean; icon: typeof Bot }> = [

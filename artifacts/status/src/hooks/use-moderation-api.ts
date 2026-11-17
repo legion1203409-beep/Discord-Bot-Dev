@@ -748,6 +748,8 @@ export function useModerationConfig(guildId: string | null) {
   const [version, setVersion] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  // The server whose last load failed: its page shows the error, not a spinner.
+  const [failedGuildId, setFailedGuildId] = useState<string | null>(null);
   const requestId = useRef(0);
   const currentGuildId = useRef(guildId);
   const controllerRef = useRef<AbortController | null>(null);
@@ -764,6 +766,7 @@ export function useModerationConfig(guildId: string | null) {
     dataGuildIdRef.current = null;
     versionRef.current = null;
     setError(null);
+    setFailedGuildId(null);
     setLoading(Boolean(guildId));
   }, [guildId]);
 
@@ -787,6 +790,7 @@ export function useModerationConfig(guildId: string | null) {
     setDataGuildId(null);
     setVersion(null);
     setError(null);
+    setFailedGuildId(null);
     setLoading(true);
     try {
       const response = await apiFetchWithMeta<any>(`/guilds/${requestedGuildId}/config`, { signal: controller.signal });
@@ -806,6 +810,7 @@ export function useModerationConfig(guildId: string | null) {
         setDataGuildId(null);
         setVersion(null);
         setError(err);
+        setFailedGuildId(requestedGuildId);
       }
     } finally {
       if (currentGuildId.current === requestedGuildId && requestId.current === thisRequest) setLoading(false);
@@ -1018,7 +1023,7 @@ export function useModerationConfig(guildId: string | null) {
   return {
     data: dataGuildId === guildId ? data : null,
     version: dataGuildId === guildId ? version : null,
-    loading: loading || Boolean(guildId && dataGuildId !== guildId),
+    loading: loading || Boolean(guildId && dataGuildId !== guildId && failedGuildId !== guildId),
     error,
     update,
     updateSection,
@@ -1310,6 +1315,8 @@ export function useBotControl(guildId: string | null) {
   const [dataGuildId, setDataGuildId] = useState<string | null>(null);
   const [loading, setLoading] = useState(Boolean(guildId));
   const [error, setError] = useState<ApiError | null>(null);
+  // The server whose last load failed: its page shows the error, not a spinner.
+  const [failedGuildId, setFailedGuildId] = useState<string | null>(null);
   const [panelRecovery, setPanelRecovery] = useState<BotControlPanelRecovery | null>(
     () => guildId ? botControlPanelRecoveryByGuild.get(guildId) ?? null : null,
   );
@@ -1322,6 +1329,7 @@ export function useBotControl(guildId: string | null) {
     setData(null);
     setDataGuildId(null);
     setError(null);
+    setFailedGuildId(null);
     setLoading(Boolean(guildId));
     setPanelRecovery(guildId ? botControlPanelRecoveryByGuild.get(guildId) ?? null : null);
   }, [guildId]);
@@ -1337,6 +1345,7 @@ export function useBotControl(guildId: string | null) {
     }
     setLoading(true);
     setError(null);
+    setFailedGuildId(null);
     try {
       const response = await apiFetch<unknown>(`/guilds/${requestedGuildId}/bot-control`);
       if (isPartialBotControlApplyResponse(response)) {
@@ -1356,6 +1365,7 @@ export function useBotControl(guildId: string | null) {
           setDataGuildId(null);
         }
         setError(err);
+        setFailedGuildId(requestedGuildId);
       }
       return null;
     } finally {
@@ -1597,7 +1607,7 @@ export function useBotControl(guildId: string | null) {
 
   return {
     data: dataGuildId === guildId ? data : null,
-    loading: loading || Boolean(guildId && dataGuildId !== guildId),
+    loading: loading || Boolean(guildId && dataGuildId !== guildId && failedGuildId !== guildId),
     error,
     update,
     publishVerification,
@@ -1616,6 +1626,8 @@ export function useInviteStats(guildId: string | null, range: InviteStatsRange) 
   const [loading, setLoading] = useState(Boolean(guildId));
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
+  // The server and period whose last load failed: the card shows the error, not a spinner.
+  const [failedKey, setFailedKey] = useState<string | null>(null);
   const requestId = useRef(0);
   const currentGuildId = useRef(guildId);
 
@@ -1626,6 +1638,7 @@ export function useInviteStats(guildId: string | null, range: InviteStatsRange) 
     setDataGuildId(null);
     setDataRange(null);
     setError(null);
+    setFailedKey(null);
     setLoading(Boolean(guildId));
   }, [guildId, range]);
 
@@ -1642,6 +1655,7 @@ export function useInviteStats(guildId: string | null, range: InviteStatsRange) 
     }
     setLoading(true);
     setError(null);
+    setFailedKey(null);
     try {
       const response = await apiFetch<InviteStatsResponse>(
         `/guilds/${requestedGuildId}/invite-stats?range=${requestedRange}`,
@@ -1658,6 +1672,7 @@ export function useInviteStats(guildId: string | null, range: InviteStatsRange) 
         setDataGuildId(null);
         setDataRange(null);
         setError(err as ApiError);
+        setFailedKey(`${requestedGuildId}:${requestedRange}`);
       }
       throw err;
     } finally {
@@ -1695,7 +1710,7 @@ export function useInviteStats(guildId: string | null, range: InviteStatsRange) 
 
   return {
     data: dataGuildId === guildId && dataRange === range ? data : null,
-    loading: loading || Boolean(guildId && (dataGuildId !== guildId || dataRange !== range)),
+    loading: loading || Boolean(guildId && (dataGuildId !== guildId || dataRange !== range) && failedKey !== `${guildId}:${range}`),
     syncing,
     error,
     refresh: fetchStats,
@@ -1744,6 +1759,7 @@ export function useModerationMetadata(guildId: string | null) {
   const [dataGuildId, setDataGuildId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const [failedGuildId, setFailedGuildId] = useState<string | null>(null);
   const requestId = useRef(0);
   const currentGuildId = useRef(guildId);
   const controllerRef = useRef<AbortController | null>(null);
@@ -1755,6 +1771,7 @@ export function useModerationMetadata(guildId: string | null) {
     setData(null);
     setDataGuildId(null);
     setError(null);
+    setFailedGuildId(null);
     setLoading(Boolean(guildId));
   }, [guildId]);
 
@@ -1770,6 +1787,7 @@ export function useModerationMetadata(guildId: string | null) {
     controllerRef.current?.abort();
     const controller = new AbortController();
     controllerRef.current = controller;
+    setFailedGuildId(null);
     setLoading(true);
     try {
       const result = await apiFetch<ModerationMetadata>(`/guilds/${requestedGuildId}/metadata`, { signal: controller.signal });
@@ -1782,6 +1800,7 @@ export function useModerationMetadata(guildId: string | null) {
         setData(null);
         setDataGuildId(null);
         setError(err);
+        setFailedGuildId(requestedGuildId);
       }
     } finally {
       if (currentGuildId.current === requestedGuildId && requestId.current === thisRequest) setLoading(false);
@@ -1792,7 +1811,7 @@ export function useModerationMetadata(guildId: string | null) {
 
   return {
     data: dataGuildId === guildId ? data : null,
-    loading: loading || Boolean(guildId && dataGuildId !== guildId),
+    loading: loading || Boolean(guildId && dataGuildId !== guildId && failedGuildId !== guildId),
     error,
     refetch: fetchMetadata,
   };

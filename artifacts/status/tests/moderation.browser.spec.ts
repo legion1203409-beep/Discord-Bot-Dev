@@ -250,6 +250,56 @@ test.describe("authenticated moderation console", () => {
     await expect(page.locator(`#nav-group-${groupId}`)).toBeVisible();
   }
 
+  test("the overview says what it could not read instead of showing it as fine", async ({ page }) => {
+    let configFailures = 1;
+    await page.route("**/api/moderation/guilds/*/config", async (route) => {
+      if (route.request().method() === "GET" && configFailures > 0) {
+        configFailures -= 1;
+        await route.fulfill({ status: 503, json: { error: "Baza de date nu răspunde." } });
+        return;
+      }
+      await route.fallback();
+    });
+    await page.route("**/api/moderation/guilds/*/cases**", (route) => route.fulfill({ status: 503, json: { error: "Cazurile nu răspund." } }));
+    await page.route("**/api/moderation/guilds/*/actions**", (route) => route.fulfill({ status: 503, json: { error: "Jurnalul nu răspunde." } }));
+    await page.goto("/moderare");
+    await chooseFirstGuild(page);
+    const cases = page.getByTestId("overview-cases");
+    const ledger = page.getByTestId("overview-ledger");
+    await expect(cases).toContainText("Nu s-au putut citi");
+    await expect(ledger).toContainText("Nu s-a putut citi");
+    // Unknown is not good news: no green tile and no "nothing unconfirmed".
+    await expect(ledger).not.toContainText("Nicio acțiune neconfirmată");
+    await expect(cases).not.toHaveClass(/is-on/);
+    await expect(ledger).not.toHaveClass(/is-on/);
+    const modules = page.getByTestId("overview-modules-error");
+    await expect(modules).toContainText("Baza de date nu răspunde.");
+    await modules.getByRole("button", { name: "Reîncearcă" }).click();
+    await expect(page.getByTestId("card-module-autoMod")).toBeVisible();
+    await expect(modules).toHaveCount(0);
+  });
+
+  test("shows why the protection settings did not load and loads them again on retry", async ({ page }) => {
+    let failures = 1;
+    await page.route("**/api/moderation/guilds/*/config", async (route) => {
+      if (route.request().method() === "GET" && failures > 0) {
+        failures -= 1;
+        await route.fulfill({ status: 503, json: { error: "Baza de date nu răspunde." } });
+        return;
+      }
+      await route.fallback();
+    });
+    await page.goto("/moderare/protectie");
+    await chooseFirstGuild(page);
+    // A failed load ends in the reason and a retry, never in an endless spinner.
+    const failure = page.getByRole("alert").filter({ hasText: "Baza de date nu răspunde." });
+    await expect(failure).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "Se încarcă" })).toHaveCount(0);
+    await failure.getByRole("button", { name: "Reîncearcă" }).click();
+    await expect(page.getByTestId("protection-page")).toBeVisible();
+    await expect(failure).toHaveCount(0);
+  });
+
   test("keeps all eleven dock destinations reachable on mobile and desktop", async ({ page }) => {
     test.setTimeout(45_000);
     const dockIds = [
@@ -3199,6 +3249,29 @@ test.describe("bot control page", () => {
     await expect(page.getByTestId("control-page")).toBeVisible();
     return { putBodies, provisions };
   }
+
+  test("shows why the bot settings did not load and loads them again on retry", async ({ page }) => {
+    await installPartialBotControlFixture(page, new Map([
+      [guilds[0].id, controlConfig() as any], [guilds[1].id, controlConfig() as any],
+    ]));
+    let failures = 1;
+    await page.route("**/api/moderation/guilds/*/bot-control", async (route) => {
+      if (route.request().method() === "GET" && failures > 0) {
+        failures -= 1;
+        await route.fulfill({ status: 503, json: { error: "Botul nu răspunde acum." } });
+        return;
+      }
+      await route.fallback();
+    });
+    await page.goto("/moderare/control");
+    await expect(page.getByRole("heading", { name: "Alege serverul" })).toBeVisible({ timeout: 15_000 });
+    await page.getByRole("button", { name: guilds[0].name }).click();
+    const failure = page.getByRole("alert").filter({ hasText: "Botul nu răspunde acum." });
+    await expect(failure).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "Se încarcă setările botului" })).toHaveCount(0);
+    await failure.getByRole("button", { name: "Reîncearcă" }).click();
+    await expect(page.getByTestId("control-page")).toBeVisible();
+  });
 
   test("tracks invitations with a weekly report and saves the daily report's channel", async ({ page }) => {
     const { putBodies } = await openControl(page);

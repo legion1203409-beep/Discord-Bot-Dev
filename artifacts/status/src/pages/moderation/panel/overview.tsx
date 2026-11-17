@@ -22,7 +22,7 @@ import {
   PROTECTION_CARDS, activeCards, attentionItems, cardEnabled, cardState, pageMap, protectionOn, withToggle, type ToggleKey,
 } from "./overview-model";
 import { AUDIT_CATEGORY_ICONS, auditCategory, clockTime, fullTime, relativeTime } from "./records-model";
-import { errorText, useAuditPage, useCaseCounts, useLedger, usePeople } from "./records-data";
+import { errorText, useAuditPage, useCaseCountsState, useLedger, usePeople } from "./records-data";
 
 const NO_AUDIT_FILTERS = { search: "", category: "all", start: "", end: "", page: 0 };
 
@@ -39,7 +39,8 @@ function Overview({ guildId, guildName, guildIcon }: { guildId: string; guildNam
   const config = useModerationConfig(guildId);
   const metadata = useModerationMetadata(guildId);
   const bot = useBotControl(guildId);
-  const counts = useCaseCounts(guildId);
+  const cases = useCaseCountsState(guildId);
+  const counts = cases.counts;
   const ledger = useLedger(guildId);
   const audit = useAuditPage(guildId, NO_AUDIT_FILTERS, true);
   const recent = audit.data?.items.slice(0, 7) ?? [];
@@ -109,7 +110,7 @@ function Overview({ guildId, guildName, guildIcon }: { guildId: string; guildNam
           </a>
           <p className={cx("pn-ov-bot", capabilities?.online === false ? "is-off" : capabilities ? "is-on" : null)} data-testid="overview-bot">
             <span className="pn-ov-dot" aria-hidden="true" />
-            {capabilities ? capabilities.online === false ? "Botul e offline" : "Botul e online" : "Se verifică botul…"}
+            {capabilities ? capabilities.online === false ? "Botul e offline" : "Botul e online" : metadata.error && !metadata.loading ? "Starea botului nu a putut fi citită" : "Se verifică botul…"}
           </p>
           <nav className="pn-ov-quick" aria-label="Scurtături">
             <Link href="/comenzi" className="pn-ov-q" data-testid="quick-command"><Ico name="slash" /><span>Dă o comandă</span></Link>
@@ -132,17 +133,17 @@ function Overview({ guildId, guildName, guildIcon }: { guildId: string; guildNam
           <p className="pn-ov-tile-v">{shown ? (protectionOn(shown) ? "Pornită" : "Oprită") : "–"}</p>
           <Link href="/protectie" className="pn-ov-tile-a" data-testid="link-dashboard-global-protection">Gestionează protecția<Ico name="arrow" /></Link>
         </section>
-        <Link href="/cazuri" className={cx("pn-ov-tile", counts?.open ? "is-warn" : "is-on")} data-testid="overview-cases">
+        <Link href="/cazuri" className={cx("pn-ov-tile", counts ? (counts.open ? "is-warn" : "is-on") : null)} data-testid="overview-cases">
           <div className="pn-ov-tile-h"><span className="pn-ov-tile-ic" aria-hidden="true"><Ico name="gavel" /></span></div>
           <h3>Cazuri deschise</h3>
           <p className="pn-ov-tile-v">{counts ? counts.open : "–"}</p>
-          <span className="pn-ov-tile-a">{counts ? `${countLabel(counts.closed, "închis", "închise")} în total` : "Se încarcă…"}<Ico name="arrow" /></span>
+          <span className="pn-ov-tile-a">{counts ? `${countLabel(counts.closed, "închis", "închise")} în total` : cases.failed ? "Nu s-au putut citi" : "Se încarcă…"}<Ico name="arrow" /></span>
         </Link>
-        <Link href="/audit" className={cx("pn-ov-tile", ledger.data?.length ? "is-bad" : "is-on")} data-testid="overview-ledger">
+        <Link href="/audit" className={cx("pn-ov-tile", ledger.data ? (ledger.data.length ? "is-bad" : "is-on") : null)} data-testid="overview-ledger">
           <div className="pn-ov-tile-h"><span className="pn-ov-tile-ic" aria-hidden="true"><Ico name="alert" /></span></div>
           <h3>De verificat în audit</h3>
           <p className="pn-ov-tile-v">{ledger.data ? ledger.data.length : "–"}</p>
-          <span className="pn-ov-tile-a">{ledger.data?.length ? "Acțiuni neconfirmate de Discord" : "Nicio acțiune neconfirmată"}<Ico name="arrow" /></span>
+          <span className="pn-ov-tile-a">{ledger.data ? (ledger.data.length ? "Acțiuni neconfirmate de Discord" : "Nicio acțiune neconfirmată") : ledger.error && !ledger.loading ? "Nu s-a putut citi" : "Se încarcă…"}<Ico name="arrow" /></span>
         </Link>
         <GameTile guildId={guildId} />
       </div>
@@ -175,7 +176,12 @@ function Overview({ guildId, guildName, guildIcon }: { guildId: string; guildNam
                 );
               })}
             </div>
-          ) : config.loading ? <div className="pn-state" role="status"><Spinner /><span className="pn-sr">Se încarcă modulele…</span></div> : null}
+          ) : config.loading ? <div className="pn-state" role="status"><Spinner /><span className="pn-sr">Se încarcă modulele…</span></div> : config.error ? (
+            <div className="pn-fail" role="alert" data-testid="overview-modules-error">
+              <p>{errorText(config.error, "Setările protecției nu au putut fi citite.")}</p>
+              <button type="button" className="pn-btn-ghost pn-btn-sm" onClick={() => void config.refetch()}>Reîncearcă</button>
+            </div>
+          ) : null}
         </section>
 
         <section className="pn-ov-sec" aria-labelledby="ov-act">

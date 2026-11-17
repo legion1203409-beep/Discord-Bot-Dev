@@ -48,7 +48,7 @@ const MOVED_TABS: Record<string, string> = {
 export function BotControlPage({ channelsOnly = false }: { channelsOnly?: boolean }) {
   const [location, setLocation] = useLocation();
   const { guildId } = useActiveGuild();
-  const { data, loading, error, update, panelRecovery, confirmPanelReconciliation } = useBotControl(guildId);
+  const { data, loading, error, update, refetch, panelRecovery, confirmPanelReconciliation } = useBotControl(guildId);
   const { data: metadata, refetch: refetchMetadata } = useModerationMetadata(guildId);
   const { toast } = useToast();
   const { session } = useSession();
@@ -165,7 +165,12 @@ export function BotControlPage({ channelsOnly = false }: { channelsOnly?: boolea
     return <div className="flex justify-center p-12 text-muted-foreground"><Loader2 className="h-8 w-8 animate-spin" /></div>;
   }
   if (!draft || !currentDraft) {
-    return <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-6 text-sm text-destructive">{error?.message ?? "Setările botului nu au putut fi încărcate."}</div>;
+    return (
+      <div role="alert" className="rounded-xl border border-destructive/40 bg-destructive/10 p-6 text-sm text-destructive">
+        <p>{error?.message ?? "Setările botului nu au putut fi încărcate."}</p>
+        {guildId ? <Button type="button" variant="outline" className="mt-3 h-8 text-xs" onClick={() => void refetch()}>Reîncearcă</Button> : null}
+      </div>
+    );
   }
 
   const categoryNames = new Map((metadata?.channels ?? []).filter((channel) => isCategory(channel.type)).map((category) => [category.id, category.name]));

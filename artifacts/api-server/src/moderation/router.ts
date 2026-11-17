@@ -4103,14 +4103,6 @@ router.post("/verification/complete", asyncRoute(async (req, res) => {
     logger.warn({ error, guildId: ticket.guildId }, "Verified referral reward will be retried when the member opens recruitment stats");
   }
 
-  res.cookie(verificationCookieName(), createVerificationIdentityToken(ticket.guildId, ticket.userId), {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 30 * 24 * 60 * 60 * 1_000,
-  });
-
   res.set("Cache-Control", "no-store").json(CompleteWebsiteVerificationResponse.parse({
     verified: true,
     result,
