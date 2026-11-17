@@ -250,6 +250,35 @@ test.describe("authenticated moderation console", () => {
     await expect(page.locator(`#nav-group-${groupId}`)).toBeVisible();
   }
 
+  test("the overview says what it could not read instead of showing it as fine", async ({ page }) => {
+    let configFailures = 1;
+    await page.route("**/api/moderation/guilds/*/config", async (route) => {
+      if (route.request().method() === "GET" && configFailures > 0) {
+        configFailures -= 1;
+        await route.fulfill({ status: 503, json: { error: "Baza de date nu răspunde." } });
+        return;
+      }
+      await route.fallback();
+    });
+    await page.route("**/api/moderation/guilds/*/cases**", (route) => route.fulfill({ status: 503, json: { error: "Cazurile nu răspund." } }));
+    await page.route("**/api/moderation/guilds/*/actions**", (route) => route.fulfill({ status: 503, json: { error: "Jurnalul nu răspunde." } }));
+    await page.goto("/moderare");
+    await chooseFirstGuild(page);
+    const cases = page.getByTestId("overview-cases");
+    const ledger = page.getByTestId("overview-ledger");
+    await expect(cases).toContainText("Nu s-au putut citi");
+    await expect(ledger).toContainText("Nu s-a putut citi");
+    // Unknown is not good news: no green tile and no "nothing unconfirmed".
+    await expect(ledger).not.toContainText("Nicio acțiune neconfirmată");
+    await expect(cases).not.toHaveClass(/is-on/);
+    await expect(ledger).not.toHaveClass(/is-on/);
+    const modules = page.getByTestId("overview-modules-error");
+    await expect(modules).toContainText("Baza de date nu răspunde.");
+    await modules.getByRole("button", { name: "Reîncearcă" }).click();
+    await expect(page.getByTestId("card-module-autoMod")).toBeVisible();
+    await expect(modules).toHaveCount(0);
+  });
+
   test("shows why the protection settings did not load and loads them again on retry", async ({ page }) => {
     let failures = 1;
     await page.route("**/api/moderation/guilds/*/config", async (route) => {
