@@ -139,7 +139,7 @@ export function CasesView() {
 function CaseList({ list, person, filtered, onOpen }: {
   list: ReturnType<typeof useCaseList>; person: (id: string | null | undefined) => Person | null; filtered: boolean; onOpen: (id: string) => void;
 }) {
-  if (list.loading) return <div className="pn-state" role="status"><Spinner /><span className="pn-sr">Se încarcă cazurile…</span></div>;
+  if (list.loading) return <div className="pn-state" role="status"><Spinner /><span className="pn-state-t">Se încarcă cazurile…</span></div>;
   if (list.error && !list.items.length) {
     return (
       <div className="pn-fail" role="alert">
@@ -237,7 +237,7 @@ function CaseSheet({ caseId, person, onClose, onChanged, onMemberCases }: {
         <button type="button" className="pn-icon-btn" onClick={onClose} aria-label="Închide fișa cazului" data-autofocus><Ico name="x" /></button>
       </div>
       <div className="pn-sheet-b">
-        {details.loading && !item ? <div className="pn-state" role="status"><Spinner /><span className="pn-sr">Se încarcă cazul…</span></div> : null}
+        {details.loading && !item ? <div className="pn-state" role="status"><Spinner /><span className="pn-state-t">Se încarcă cazul…</span></div> : null}
         {details.error && !item ? (
           <div className="pn-fail" role="alert">
             <p>{errorText(details.error, "Cazul nu a putut fi încărcat.")}</p>

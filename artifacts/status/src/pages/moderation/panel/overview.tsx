@@ -82,7 +82,7 @@ function Overview({ guildId, guildName, guildIcon }: { guildId: string; guildNam
       <div className="pn-ov-top pn-rv" style={{ "--i": 3 } as React.CSSProperties}>
         <section className="pn-card pn-ov-att" aria-labelledby="ov-att" data-testid="overview-attention">
           <h2 className="pn-card-t" id="ov-att">De verificat acum<small>{config.data ? (attention.length ? countLabel(attention.length, "lucru", "lucruri") : "nimic") : ""}</small></h2>
-          {!config.data && config.loading ? <div className="pn-state" role="status"><Spinner /><span className="pn-sr">Se încarcă…</span></div> : null}
+          {!config.data && config.loading ? <div className="pn-state" role="status"><Spinner /><span className="pn-state-t">Se încarcă…</span></div> : null}
           {config.error && !config.data ? <Note tone="bad" role="alert">{errorText(config.error, "Setările nu au putut fi încărcate.")}</Note> : null}
           {config.data && !attention.length ? (
             <p className="pn-ov-ok" data-testid="overview-all-good"><Ico name="check" />Totul e în regulă. Botul are ce îi trebuie și nimic nu așteaptă după tine.</p>
@@ -175,7 +175,7 @@ function Overview({ guildId, guildName, guildIcon }: { guildId: string; guildNam
                 );
               })}
             </div>
-          ) : config.loading ? <div className="pn-state" role="status"><Spinner /><span className="pn-sr">Se încarcă modulele…</span></div> : null}
+          ) : config.loading ? <div className="pn-state" role="status"><Spinner /><span className="pn-state-t">Se încarcă modulele…</span></div> : null}
         </section>
 
         <section className="pn-ov-sec" aria-labelledby="ov-act">
@@ -184,7 +184,7 @@ function Overview({ guildId, guildName, guildIcon }: { guildId: string; guildNam
             <Link href="/audit" className="pn-lnk" data-testid="link-dashboard-audit">Vezi tot jurnalul</Link>
           </div>
           <div className="pn-card pn-ov-act">
-            {audit.loading && !audit.data ? <div className="pn-state" role="status"><Spinner /><span className="pn-sr">Se încarcă activitatea…</span></div> : null}
+            {audit.loading && !audit.data ? <div className="pn-state" role="status"><Spinner /><span className="pn-state-t">Se încarcă activitatea…</span></div> : null}
             {audit.error && !audit.data ? <p className="pn-fh">{errorText(audit.error, "Jurnalul nu a putut fi încărcat.")}</p> : null}
             {audit.data && !audit.data.items.length ? <p className="pn-ov-empty"><Ico name="scroll" />Nicio activitate încă.</p> : null}
             {audit.data?.items.length ? (

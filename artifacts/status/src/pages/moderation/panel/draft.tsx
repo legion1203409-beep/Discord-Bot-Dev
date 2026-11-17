@@ -3,7 +3,8 @@
  * modificările nesalvate, trimite la salvare doar secțiunile schimbate și
  * creează canalele de jurnal. Folosită de paginile Protecție, Judecătorul AI și Sancțiuni.
  */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useLocation } from "wouter";
 import { useActiveGuild, useModerationConfig, useModerationMetadata } from "../../../hooks/use-moderation-api";
 import { useToast } from "../../../hooks/use-toast";
 import { configSaveToastOptions } from "../../../lib/protection-toggle-feedback";
@@ -177,7 +178,7 @@ export function PanelState({ status, error, onRetry, loadingText, children }: {
   children?: React.ReactNode;
 }) {
   if (status === "loading") {
-    return <div className="pn"><div className="pn-state" role="status"><Spinner /><span className="pn-sr">{loadingText}</span></div></div>;
+    return <div className="pn"><div className="pn-state" role="status"><Spinner /><span className="pn-state-t">{loadingText}</span></div></div>;
   }
   return (
     <div className="pn">
@@ -217,15 +218,58 @@ export function SaveBar({ changed, saving, onSave, onDiscard, testId, blocked }:
 export function PageHead({ icon, guildName, title, lede, summary }: {
   icon: React.ReactNode; guildName: string; title: string; lede: React.ReactNode; summary?: React.ReactNode;
 }) {
+  const ref = useRef<HTMLElement>(null);
+  const [location] = useLocation();
+  const followed = useRef(false);
+  // On a phone the module menu is a row that scrolls sideways: keep the open
+  // module in view, so a page opened from a link does not hide where you are.
+  useEffect(() => {
+    const nav = ref.current?.parentElement?.querySelector<HTMLElement>(".pn-nav");
+    const active = nav?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (!nav || !active || nav.scrollWidth <= nav.clientWidth + 1) return;
+    const box = nav.getBoundingClientRect();
+    const item = active.getBoundingClientRect();
+    const left = nav.scrollLeft + item.left - box.left - (box.width - item.width) / 2;
+    const still = !followed.current || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    followed.current = true;
+    nav.scrollTo({ left: Math.max(0, left), behavior: still ? "auto" : "smooth" });
+  }, [location]);
   return (
-    <header className="pn-head">
+    <header className={cx("pn-head", summary ? "has-sum" : null)} ref={ref}>
       <div>
         <span className="pn-kick pn-rv" style={{ "--i": 0 } as React.CSSProperties}><span aria-hidden="true">{icon}</span>{guildName}</span>
         <h1 className="pn-h1 pn-rv" style={{ "--i": 1 } as React.CSSProperties}>{title}</h1>
         <p className="pn-lede pn-rv" style={{ "--i": 2 } as React.CSSProperties}>{lede}</p>
       </div>
       {summary}
+      <Sigil title={title} />
     </header>
+  );
+}
+
+/**
+ * The seal of the Ash Kingdom behind the page's title: the same ring of runes
+ * as on the entrance page, in the colour of the page, so every page of the
+ * panel carries the kingdom's mark. Drawn once when the page opens.
+ */
+function Sigil({ title }: { title: string }) {
+  const arc = `pn-sigil-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
+  const words = `REGATUL CENUȘII · ${title.toLocaleUpperCase("ro-RO")} · PANOUL ORACOLULUI · `;
+  // The upper half of the ring shows; a short title fits twice around it, so it reads across the arch.
+  const ring = words.length <= 48 ? words + words : words;
+  // Turn the ring so the page's name sits at the top of the arch.
+  const middle = ("REGATUL CENUȘII · ".length + title.length / 2) / ring.length;
+  const turn = 90 - middle * 360;
+  return (
+    <svg className="pn-sigil" viewBox="0 0 400 400" aria-hidden="true" focusable="false">
+      <defs><path id={arc} d="M200 200m-158 0a158 158 0 1 1 316 0a158 158 0 1 1-316 0" /></defs>
+      <circle className="pn-sigil-ring" cx="200" cy="200" r="186" />
+      <circle className="pn-sigil-ticks" cx="200" cy="200" r="178" pathLength="360" />
+      <circle className="pn-sigil-major" cx="200" cy="200" r="178" pathLength="360" />
+      <text className="pn-sigil-text" transform={`rotate(${turn.toFixed(1)} 200 200)`}><textPath href={`#${arc}`} textLength="985" lengthAdjust="spacing">{ring}</textPath></text>
+      <circle className="pn-sigil-ring is-inner" cx="200" cy="200" r="138" />
+      <circle className="pn-sigil-dash" cx="200" cy="200" r="126" pathLength="360" />
+    </svg>
   );
 }
 

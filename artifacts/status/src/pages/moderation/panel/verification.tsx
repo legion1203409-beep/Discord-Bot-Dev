@@ -709,7 +709,7 @@ function MemberList({ query, shown, filteredCount, required, selected, busy, onT
 }) {
   const roles = useRoles();
   if (query.isLoading && !query.data) {
-    return <div className="pn-state" role="status"><Spinner /><span className="pn-sr">Se încarcă membrii…</span></div>;
+    return <div className="pn-state" role="status"><Spinner /><span className="pn-state-t">Se încarcă membrii…</span></div>;
   }
   if (query.isError && !query.data) {
     return (

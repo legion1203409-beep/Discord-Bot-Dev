@@ -433,7 +433,7 @@ function RecentCases({ guildId, refreshKey }: { guildId: string; refreshKey: num
   return (
     <section className="pn-card pn-cmd-recent" aria-label="Ultimele cazuri" data-testid="commands-recent">
       <h3 className="pn-card-t">Ultimele cazuri<small><Link href="/cazuri">Toate cazurile</Link></small></h3>
-      {list.loading ? <div className="pn-state" role="status"><Spinner /><span className="pn-sr">Se încarcă cazurile…</span></div> : null}
+      {list.loading ? <div className="pn-state" role="status"><Spinner /><span className="pn-state-t">Se încarcă cazurile…</span></div> : null}
       {!list.loading && list.error && !items.length ? <p className="pn-fh">{errorText(list.error, "Cazurile nu au putut fi încărcate.")}</p> : null}
       {!list.loading && !list.error && !items.length ? <p className="pn-fh">Niciun caz încă.</p> : null}
       {items.length ? (

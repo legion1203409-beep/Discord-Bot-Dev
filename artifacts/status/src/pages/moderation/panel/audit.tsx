@@ -123,7 +123,7 @@ export function AuditView({ auditEnabled }: { auditEnabled?: boolean }) {
         {rangeError ? <p className="pn-err" role="alert">{rangeError}</p> : null}
       </div>
 
-      {events.loading && !events.data && !rangeError ? <div className="pn-state" role="status"><Spinner /><span className="pn-sr">Se încarcă jurnalul…</span></div> : null}
+      {events.loading && !events.data && !rangeError ? <div className="pn-state" role="status"><Spinner /><span className="pn-state-t">Se încarcă jurnalul…</span></div> : null}
       {events.error && !events.data ? (
         <div className="pn-fail" role="alert">
           <p>{errorText(events.error, "Jurnalul de audit nu a putut fi încărcat.")}</p>

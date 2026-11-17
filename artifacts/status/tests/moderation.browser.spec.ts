@@ -2786,6 +2786,21 @@ test.describe("tickets page", () => {
     return putBodies;
   }
 
+  test("on a phone the row of modules opens scrolled to the module on screen", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openTickets(page, "/moderare/tichete/setari");
+    const nav = page.getByRole("navigation", { name: "Modulele tichetelor" });
+    await expect(nav.getByRole("link", { name: /Setări comune/ })).toHaveAttribute("aria-current", "page");
+    // The last module starts off screen in the sideways row; the page brings it into view.
+    await expect.poll(() => nav.evaluate((element) => {
+      const active = element.querySelector('[aria-current="page"]');
+      if (!active) return "missing";
+      const box = element.getBoundingClientRect();
+      const item = active.getBoundingClientRect();
+      return element.scrollLeft > 0 && item.left >= box.left && item.right <= box.right ? "in view" : "hidden";
+    })).toBe("in view");
+  });
+
   test("is its own page and a flow works once it has a category", async ({ page }) => {
     const putBodies = await openTickets(page);
     await expect(page.getByRole("heading", { name: "Aplicații de staff", exact: true })).toBeVisible();

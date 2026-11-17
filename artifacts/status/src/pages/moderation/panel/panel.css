@@ -77,11 +77,38 @@
 .pn .pn-kick > span { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; background: color-mix(in oklab, var(--tc) 15%, #16181b); border: 1px solid color-mix(in oklab, var(--tc) 30%, transparent); font-size: 16px; }
 .pn .pn-h1 { margin-top: 14px; font-size: clamp(40px, 5.4vw, 64px); line-height: 1; letter-spacing: -.014em; }
 .pn .pn-lede { margin-top: 12px; max-width: 62ch; color: var(--pn-ink-2); font-size: 17px; line-height: 1.55; }
-.pn .pn-sum { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 16px; border: 1px solid var(--pn-line); background: rgba(255, 255, 255, .03); }
+.pn .pn-sum { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 16px; border: 1px solid color-mix(in oklab, var(--tc) 20%, var(--pn-line)); background: linear-gradient(180deg, rgba(30, 32, 36, .78), rgba(16, 17, 20, .84)); box-shadow: 0 1px 0 rgba(255, 255, 255, .05) inset, 0 16px 34px -22px rgba(0, 0, 0, .95); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
 .pn .pn-sum b { font: 600 26px/1 var(--pn-display); font-variant-numeric: lining-nums; }
 .pn .pn-sum span { color: var(--pn-ink-3); font-size: 13px; line-height: 1.3; }
 .pn .pn-sum .pn-bar { width: 90px; height: 5px; border-radius: 9px; background: rgba(255, 255, 255, .08); overflow: hidden; }
 .pn .pn-sum .pn-bar i { display: block; height: 100%; width: var(--p, 0%); border-radius: inherit; background: linear-gradient(90deg, color-mix(in oklab, var(--tc) 55%, #000), var(--tc)); transition: width .6s var(--pn-ease); }
+
+/* pecetea Regatului în spatele titlului: inelul de rune de pe pagina de intrare, în culoarea paginii */
+.pn .pn-head { position: relative; isolation: isolate; overflow-x: clip; overflow-clip-margin: 0px; }
+.pn .pn-head > :not(.pn-sigil) { position: relative; z-index: 1; }
+.pn .pn-sigil {
+  --s: 310px;
+  position: absolute; z-index: 0; right: calc(118px - var(--s) / 2); bottom: calc(29px - var(--s) / 2);
+  width: var(--s); height: var(--s); overflow: visible; pointer-events: none;
+  color: color-mix(in oklab, var(--tc) 64%, var(--pn-gold));
+  background: radial-gradient(closest-side, color-mix(in oklab, var(--tc) 24%, transparent), transparent 72%);
+  -webkit-mask-image: linear-gradient(180deg, #000 34%, transparent 51%), linear-gradient(270deg, transparent, #000 16%);
+  -webkit-mask-composite: source-in;
+  mask-image: linear-gradient(180deg, #000 34%, transparent 51%), linear-gradient(270deg, transparent, #000 16%);
+  mask-composite: intersect;
+  --o: .8;
+  opacity: var(--o);
+  animation: pn-sigil 1.8s var(--pn-ease) .1s both;
+}
+.pn .pn-head:not(.has-sum) .pn-sigil { right: -60px; bottom: calc(12px - var(--s) / 2); }
+.pn .pn-sigil circle { fill: none; stroke: currentColor; }
+.pn .pn-sigil-ring { stroke-width: 1; opacity: .55; }
+.pn .pn-sigil-ring.is-inner { opacity: .32; }
+.pn .pn-sigil-ticks { stroke-width: 7; stroke-dasharray: .4 2.6; opacity: .42; }
+.pn .pn-sigil-major { stroke-width: 13; stroke-dasharray: 1 29; opacity: .85; }
+.pn .pn-sigil-dash { stroke-width: 1; stroke-dasharray: 1.5 4.5; opacity: .45; }
+.pn .pn-sigil-text { fill: currentColor; font: 600 15px/1 var(--pn-display); opacity: .95; }
+@keyframes pn-sigil { from { opacity: 0; transform: rotate(-28deg) scale(.92); } to { opacity: var(--o); transform: none; } }
 
 /* ---------- comutatorul general ---------- */
 .pn .pn-master { display: flex; align-items: center; gap: 16px 20px; flex-wrap: wrap; margin: 0 0 20px; padding: 16px 20px; border-radius: 20px; border: 1px solid var(--pn-line-2); background: linear-gradient(180deg, rgba(255, 255, 255, .04), rgba(255, 255, 255, .012)); transition: border-color .3s; }
@@ -99,7 +126,9 @@
 .pn .pn-nav { position: sticky; top: 84px; display: flex; flex-direction: column; gap: 6px; }
 .pn .pn-nav-i { display: flex; align-items: center; gap: 11px; width: 100%; padding: 10px 12px 10px 10px; border-radius: 15px; border: 1px solid transparent; color: var(--pn-ink); text-align: left; text-decoration: none; transition: background .2s, border-color .2s; }
 .pn .pn-nav-i:hover { background: rgba(255, 255, 255, .04); }
-.pn .pn-nav-i[aria-current="page"] { background: rgba(255, 255, 255, .06); border-color: var(--pn-line-2); box-shadow: 0 1px 0 rgba(255, 255, 255, .05) inset; }
+.pn .pn-nav-i[aria-current="page"] { position: relative; background: linear-gradient(90deg, color-mix(in oklab, var(--tc) 19%, transparent), rgba(255, 255, 255, .035) 78%); border-color: color-mix(in oklab, var(--tc) 32%, var(--pn-line-2)); box-shadow: 0 1px 0 rgba(255, 255, 255, .05) inset; }
+.pn .pn-nav-i[aria-current="page"]::before { content: ""; position: absolute; left: -1px; top: 13px; bottom: 13px; width: 3px; border-radius: 0 3px 3px 0; background: var(--tc); box-shadow: 0 0 12px color-mix(in oklab, var(--tc) 80%, transparent); }
+.pn .pn-nav-i[aria-current="page"] .pn-nav-ic { border-color: color-mix(in oklab, var(--tc) 55%, transparent); box-shadow: 0 0 22px -6px color-mix(in oklab, var(--tc) 85%, transparent); }
 .pn .pn-nav-ic { display: grid; place-items: center; width: 36px; height: 36px; flex: none; border-radius: 11px; font-size: 18px; background: color-mix(in oklab, var(--tc) 14%, #17191c); border: 1px solid color-mix(in oklab, var(--tc) 28%, transparent); color: color-mix(in oklab, var(--tc) 75%, #fff); }
 .pn .pn-nav-t { flex: 1; min-width: 0; }
 .pn .pn-nav-t b { display: block; font: 600 14.5px/1.25 var(--pn-body); }
@@ -121,13 +150,16 @@
 .pn .pn-mod-t p { margin-top: 8px; max-width: 62ch; color: var(--pn-ink-2); font-size: 15px; line-height: 1.55; }
 .pn .pn-mod-pw { display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 14px; border-radius: 999px; border: 1px solid var(--pn-line-2); background: rgba(0, 0, 0, .25); }
 .pn .pn-mod-pw > span { font: 600 14px var(--pn-body); color: var(--pn-ink-3); transition: color .3s; }
-.pn .pn-mod.is-on .pn-mod-pw > span { color: var(--pn-good); }
+/* The word next to the big switch follows the switch itself, also where the page draws its own switch. */
+.pn .pn-mod-pw:has(.pn-sw[aria-checked="true"]) > span { color: var(--pn-good); }
+.pn .pn-mod.is-on > .pn-mod-h:has(> .pn-mod-pw .pn-sw[aria-checked="false"]) { border-color: var(--pn-line-2); }
+.pn .pn-mod.is-on > .pn-mod-h:has(> .pn-mod-pw .pn-sw[aria-checked="false"]) .pn-mod-ic { box-shadow: none; }
 .pn .pn-mod-off { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 12px; padding: 12px 14px; border-radius: 14px; border: 1px dashed var(--pn-line-3); color: var(--pn-ink-2); font-size: 14px; }
 .pn .pn-mod-off .pn-ico { font-size: 18px; color: var(--pn-ink-3); }
 .pn .pn-mod-off .pn-btn { margin-left: auto; }
 .pn .pn-mod-body { display: grid; gap: 14px; margin-top: 14px; transition: opacity .35s; }
 .pn .pn-mod:not(.is-on) .pn-mod-body { opacity: .66; }
-.pn .pn-card { min-width: 0; padding: 6px 20px 8px; border-radius: 20px; border: 1px solid var(--pn-line); background: linear-gradient(180deg, rgba(255, 255, 255, .03), rgba(255, 255, 255, .01)); }
+.pn .pn-card { min-width: 0; padding: 6px 20px 8px; border-radius: 20px; border: 1px solid var(--pn-line); background: linear-gradient(180deg, rgba(255, 255, 255, .032), rgba(255, 255, 255, .01) 140px); box-shadow: 0 1px 0 rgba(255, 255, 255, .04) inset, 0 18px 40px -30px rgba(0, 0, 0, .9); }
 .pn .pn-card-t { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 14px 0 8px; font: 600 21px/1.15 var(--pn-display); }
 .pn .pn-card-t small { font: 500 12.5px var(--pn-body); color: var(--pn-ink-3); }
 
@@ -270,8 +302,9 @@
 /* ---------- înlănțuiri, legături, încărcare ---------- */
 .pn .pn-lnk { padding: 8px 4px; border: 0; background: none; color: var(--pn-ink-3); font: 500 13.5px var(--pn-body); text-decoration: underline; text-decoration-color: var(--pn-line-3); text-underline-offset: 4px; }
 .pn .pn-lnk:hover { color: var(--pn-ink); }
-.pn .pn-state { display: flex; justify-content: center; padding: 56px 0; color: var(--pn-ink-3); }
-.pn .pn-state .pn-spinner { width: 30px; height: 30px; }
+.pn .pn-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 56px 0; color: var(--pn-ink-3); }
+.pn .pn-state .pn-spinner { width: 34px; height: 34px; border-color: color-mix(in oklab, var(--tc) 18%, transparent); border-top-color: color-mix(in oklab, var(--tc) 80%, #fff); box-shadow: 0 0 26px -8px var(--tc); }
+.pn .pn-state-t { font-size: 13.5px; }
 .pn .pn-fail { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; padding: 20px; border-radius: 18px; border: 1px solid color-mix(in oklab, var(--pn-bad) 40%, transparent); background: color-mix(in oklab, var(--pn-bad) 6%, transparent); color: #ffd2c8; }
 .pn .pn-fail p { flex: 1 1 260px; }
 
@@ -889,11 +922,12 @@ a.pn-ov-tile:hover, .pn a.pn-ov-tile:hover { border-color: color-mix(in oklab, v
 .pn .pn-ov-sh { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .pn .pn-ov-sh h2 { font: 600 26px/1.1 var(--pn-display); }
 .pn .pn-ov-mods { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px; }
-.pn .pn-ov-mod { --k: var(--pn-ink-4); display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 16px; border: 1px solid var(--pn-line); background: rgba(255, 255, 255, .02); transition: border-color .2s; }
+.pn .pn-ov-mod { --k: var(--pn-ink-4); display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; align-items: start; gap: 12px; padding: 12px 14px; border-radius: 16px; border: 1px solid var(--pn-line); background: rgba(255, 255, 255, .02); transition: border-color .2s; }
 .pn .pn-ov-mod.is-on { --k: var(--pn-good); border-color: rgba(61, 220, 132, .25); }
 .pn .pn-ov-mod.is-paused { --k: var(--pn-warn); }
 .pn .pn-ov-mod-ic { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 12px; background: color-mix(in oklab, var(--k) 13%, #16181c); border: 1px solid color-mix(in oklab, var(--k) 30%, transparent); color: color-mix(in oklab, var(--k) 75%, #fff); font-size: 18px; }
 .pn .pn-ov-mod-t { display: grid; gap: 2px; min-width: 0; color: var(--pn-ink); text-decoration: none; }
+.pn .pn-ov-mod > .pn-sw { margin-top: 6px; }
 .pn .pn-ov-mod-t b { display: inline-flex; align-items: center; gap: 6px; font: 600 14.5px/1.3 var(--pn-body); }
 .pn .pn-ov-mod-t b > .pn-ico { color: var(--pn-ink-4); font-size: 12px; transition: transform .2s, color .2s; }
 .pn .pn-ov-mod-t:hover b > .pn-ico { color: var(--tc); transform: translateX(2px); }
@@ -932,9 +966,11 @@ a.pn-ov-tile:hover, .pn a.pn-ov-tile:hover { border-color: color-mix(in oklab, v
 }
 @media (max-width: 980px) {
   .pn .pn-grid { grid-template-columns: minmax(0, 1fr); }
-  .pn .pn-nav { position: static; flex-direction: row; gap: 8px; padding: 2px 2px 6px; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
+  .pn .pn-nav { position: static; flex-direction: row; gap: 8px; padding: 2px 28px 6px 2px; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scroll-padding-inline: 24px; -webkit-mask-image: linear-gradient(90deg, transparent, #000 10px, #000 calc(100% - 30px), transparent); mask-image: linear-gradient(90deg, transparent, #000 10px, #000 calc(100% - 30px), transparent); }
   .pn .pn-nav::-webkit-scrollbar { display: none; }
-  .pn .pn-nav-i { flex: none; width: auto; max-width: 250px; padding: 8px 12px 8px 8px; border-color: var(--pn-line); }
+  .pn .pn-nav-i { flex: none; width: auto; max-width: 250px; padding: 8px 12px 8px 8px; border-color: var(--pn-line); scroll-snap-align: center; }
+  .pn .pn-nav-i[aria-current="page"]::before { left: 14px; right: 14px; top: auto; bottom: -1px; width: auto; height: 2px; border-radius: 2px 2px 0 0; }
+  .pn .pn-sigil { --s: 250px; }
   .pn .pn-nav-t small { display: none; }
   .pn .pn-nav-ic { width: 30px; height: 30px; }
   .pn .pn-cmd-g { display: none; }
@@ -1008,6 +1044,13 @@ a.pn-ov-tile:hover, .pn a.pn-ov-tile:hover { border-color: color-mix(in oklab, v
   .pn .pn-save { flex-direction: column; align-items: stretch; padding: 14px; }
   .pn .pn-save-act { display: grid; grid-template-columns: 1fr 1fr; margin-left: 0; }
   .pn select.pn-inp { min-width: 0; width: 100%; }
+  /* On a phone the summary drops under the text, so the seal moves to the edge, beside the title. */
+  .pn .pn-sigil { --s: 280px; right: -158px; top: -40px; bottom: auto; --o: .45; -webkit-mask-image: linear-gradient(90deg, transparent 6%, #000 44%); mask-image: linear-gradient(90deg, transparent 6%, #000 44%); }
+  .pn .pn-head:not(.has-sum) .pn-sigil { right: -158px; bottom: auto; }
+  /* A question keeps its whole title; moving and removing it go on a line of their own. */
+  .pn .pn-rule-h:has(> .pn-qmove) { flex-wrap: wrap; row-gap: 2px; }
+  .pn .pn-rule-h:has(> .pn-qmove) > .pn-rule-x { flex-basis: 100%; }
+  .pn .pn-rule-h > .pn-qmove { margin-left: auto; }
 }
 @media (prefers-reduced-motion: reduce) {
   .pn *, .pn *::before, .pn *::after { animation-duration: .01ms !important; animation-delay: 0ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
